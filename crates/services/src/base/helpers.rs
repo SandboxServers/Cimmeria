@@ -83,21 +83,24 @@ pub(crate) fn to_hex(data: &[u8]) -> String {
 /// without retransmit support — the channel silently skips bytes-empty
 /// entries during the retransmit scan.
 ///
-/// **Failure mode — TX window full.** When `Channel::register_sent_packet`
-/// returns `Err` (typically because the 32-slot TX window already holds
-/// the spec-mandated maximum of in-flight reliable packets), the packet
-/// is already on the wire but cannot be tracked here for ACK
-/// processing or retransmit. The reliable-delivery contract is
-/// effectively downgraded to best-effort for this single packet.
+/// **Overflow behavior.** When the TX window is full, the Channel queues
+/// the entry in its per-session [`unsent_packets`] deque rather than
+/// rejecting it (or — as a prior, broken implementation did — silently
+/// downgrading the packet's reliable-delivery contract to best-effort).
+/// Queued entries are dispatched on the wire at register time but the
+/// retransmit scan only walks the TX window, so a queued entry becomes
+/// eligible for retransmit only once an ACK frees a window slot and
+/// promotion moves it across. ACKs that cover a still-queued seq drain
+/// it from the queue directly without going through promotion.
 ///
-/// The current behavior logs at `warn` and continues — the alternative
-/// (returning `Result` to ~30 callers so they can disconnect or apply
-/// backpressure) is a meaningful API surface change worth its own PR.
-/// In a healthy session this is unreachable: the cap is hit only when
-/// the client has stopped acking for many ticks, in which case the
-/// channel's inactivity / max-retries detection will kill the session
-/// shortly anyway. Watch for repeated TX-window-full warns in
-/// production logs as a precursor to that signal.
+/// The only remaining error condition routed through this helper is the
+/// unsent-packets queue hitting its [`MAX_UNSENT_PACKETS`] cap, which
+/// indicates the peer has stopped acking entirely and the channel is on
+/// its way to the inactivity-timeout reap. That is surfaced at WARN so
+/// it remains observable as a precursor to the channel-dead detection.
+///
+/// [`unsent_packets`]: cimmeria_mercury::channel::Channel::unsent_packets
+/// [`MAX_UNSENT_PACKETS`]: cimmeria_mercury::consts::MAX_UNSENT_PACKETS
 pub(crate) fn shadow_register_reliable_send(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
@@ -117,17 +120,18 @@ pub(crate) fn shadow_register_reliable_send(
         return;
     };
     if let Err(e) = channel.register_sent_packet(pkt, raw_bytes) {
-        // TX window full (or invalid seq) — the packet is on the wire
-        // but won't be tracked for ACK / retransmit. Warn so this is
-        // observable in production logs as a precursor to the
-        // channel-dead detection (`is_timed_out` / max-retries).
+        // After the deferred-send queue landed, the only paths that
+        // return Err from here are: out-of-range sequence (a programming
+        // bug — the seq should have come from the masked counter), and
+        // the unsent-packets queue cap. Both are channel-dead-class
+        // signals, so WARN remains the right level.
         tracing::warn!(
             %addr,
             seq,
             error = %e,
-            "shadow_register_reliable_send: packet sent on wire but NOT tracked \
-             (TX window full or invalid seq); reliable-delivery downgraded to \
-             best-effort for this packet"
+            "shadow_register_reliable_send: packet bookkeeping rejected \
+             (invalid seq or unsent-queue cap exceeded); reliability cannot \
+             be tracked for this packet"
         );
     }
 }

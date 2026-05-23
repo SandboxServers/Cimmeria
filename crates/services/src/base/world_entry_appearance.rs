@@ -429,6 +429,19 @@ pub(crate) async fn handle_on_client_ready(
         tracing::info!(%addr, entity_id, "First-login cinematic dispatched after onClientReady gate");
     }
 
+    // Flush any AoI messages the cell tried to dispatch while the client
+    // was still loading terrain. The client is now ready to receive
+    // entity-state traffic; the Channel's deferred-send queue absorbs
+    // any overflow past the 32-slot TX window.
+    super::world_entry::cell_dispatch::flush_deferred_aoi(
+        entity_id,
+        addr,
+        socket,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+
     tracing::info!(%addr, entity_id, "World entry finalized (BeingAppearance resent)");
     Ok(())
 }

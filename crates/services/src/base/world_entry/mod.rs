@@ -14,7 +14,7 @@
 
 pub(crate) mod methods;
 
-mod cell_dispatch;
+pub(crate) mod cell_dispatch;
 mod enable_entities;
 mod gate_travel;
 mod map_loaded;

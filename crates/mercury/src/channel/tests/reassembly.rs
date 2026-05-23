@@ -211,43 +211,249 @@ fn sliding_window_rejects_overflow() {
     assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
 }
 
-/// TX window must be 32 (not 45) to match the SGW client's 32-bit
-/// outstanding-ack bitmap. Pin the constant value so a future regression
-/// that bumps it back to 45 (or any other value > 32) re-introduces
-/// the phantom-ack collision class: `seq=0` and `seq=32` would land on
-/// the same bitmap bit (`seq & 0x1F == 0` for both), letting the client
-/// phantom-ack both when only one arrived.
+/// TX window must stay at 32 until the SGW.exe binary is patched to
+/// widen the unpatched client's slot store. The client's `ChannelInternal`
+/// at `ghidra://SGW.exe@0x0158c7b0` allocates a heap-resident slot hash
+/// table sized from the runtime config field at `[ChannelInternal+0x2C]`,
+/// defaulting to 32 in the unmodified binary; sending more than 32
+/// in-flight reliable packets would let two seqs differing by 32 collide
+/// on the same hash slot (mask at `[+0x44]` = `capacity - 1`) and let
+/// `queueAckForPacket` at `ghidra://SGW.exe@0x0158cba0` phantom-ack the
+/// older un-acked entry. (The original framing of this test as "32-bit
+/// outstanding-ack bitmap" was wrong — there is no bitmap; the slot-store
+/// hash-collision shape above is the corrected understanding.)
+///
+/// When that patch ships, this assertion can move to the next power of
+/// two (likely 64 — a length-preserving 3-byte patch fits the rewrite at
+/// VA `0x0158C801`) and the [`Channel::unsent_packets`] queue handles the
+/// residual transient bursts past the new cap.
 #[test]
-fn tx_window_size_matches_client_bitmap_width_for_phantom_ack_safety() {
+fn tx_window_size_pinned_until_client_patch_widens_slot_store() {
     assert_eq!(
         consts::TX_WINDOW_SIZE,
         32,
-        "TX_WINDOW_SIZE must equal the SGW client's 32-bit outstanding-ack \
-         bitmap width. Bumping above 32 would let two in-flight seqs \
-         differing by 32 collide on the same bitmap bit."
+        "TX_WINDOW_SIZE must equal the unpatched SGW client's default \
+         slot-store capacity (32). Raising it before SGW.exe is patched \
+         would cause the client's hash-table-indexed ack tracker to \
+         phantom-ack older entries when two in-flight seqs collide on \
+         the same slot."
     );
 }
 
-/// Back-pressure: registering the 33rd in-flight reliable packet must
-/// fail, matching the constant pinned above. Same shape as
-/// `sliding_window_rejects_overflow` but exercises the
-/// `register_sent_packet` path used by the services-layer shadow
-/// migration. The migration helper hits the same cap.
+/// Registering the (TX_WINDOW_SIZE + 1)-th reliable packet via
+/// `register_sent_packet` no longer errors — it routes to the
+/// [`Channel::unsent_packets`] deferred-send queue. This replaces the
+/// prior "downgrade reliable send to best-effort" path at the services
+/// layer that silently lost retransmit bookkeeping for overflow packets.
 #[test]
-fn register_sent_packet_back_pressure_at_tx_window_size() {
+fn register_sent_packet_overflow_routes_to_unsent_queue() {
     let mut ch = Channel::new(test_addr());
 
     for seq in 0..(consts::TX_WINDOW_SIZE as u32) {
         let mut pkt = test_packet();
         pkt.sequence = seq;
-        ch.register_sent_packet(pkt, bytes::Bytes::new()).unwrap();
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"raw"))
+            .unwrap();
     }
     assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
+    assert!(ch.unsent_packets.is_empty(), "queue empty before overflow");
 
-    // 33rd registration (seq=32) must back-pressure.
+    // (TX_WINDOW_SIZE + 1)-th send must succeed AND land in the queue —
+    // the bytes already went on the wire so we keep retransmit bookkeeping
+    // for the case where the original send is lost.
     let mut pkt = test_packet();
     pkt.sequence = consts::TX_WINDOW_SIZE as u32;
-    let result = ch.register_sent_packet(pkt, bytes::Bytes::new());
-    assert!(result.is_err(), "33rd in-flight reliable must be rejected");
+    ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"overflow-raw"))
+        .unwrap();
+
+    assert_eq!(
+        ch.tx_window.len(),
+        consts::TX_WINDOW_SIZE,
+        "TX window stayed at the cap — the overflow entry did not slip in"
+    );
+    assert_eq!(
+        ch.unsent_packets.len(),
+        1,
+        "overflow entry was routed to the unsent-packets queue, not dropped"
+    );
+    assert_eq!(
+        ch.unsent_packets[0].packet.sequence,
+        consts::TX_WINDOW_SIZE as u32,
+        "queued entry preserves the caller-allocated sequence"
+    );
+    assert_eq!(
+        ch.unsent_packets[0].raw_bytes,
+        bytes::Bytes::from_static(b"overflow-raw"),
+        "queued entry preserves the on-wire bytes for future retransmit"
+    );
+}
+
+/// Sequence ack covering a queued entry's seq drains it from the queue,
+/// even before it has been promoted into the TX window. Queued entries
+/// were sent on the wire when registered, so the peer can ack them
+/// while they're still queued.
+#[test]
+fn acks_drain_queued_entries() {
+    let mut ch = Channel::new(test_addr());
+
+    // Fill TX window with seqs 0..32; queue holds seqs 32..40.
+    for seq in 0..(consts::TX_WINDOW_SIZE as u32) {
+        let mut pkt = test_packet();
+        pkt.sequence = seq;
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"raw"))
+            .unwrap();
+    }
+    for seq in consts::TX_WINDOW_SIZE as u32..(consts::TX_WINDOW_SIZE as u32 + 8) {
+        let mut pkt = test_packet();
+        pkt.sequence = seq;
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"queued"))
+            .unwrap();
+    }
     assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
+    assert_eq!(ch.unsent_packets.len(), 8);
+
+    // ACK covers everything up through the queued seqs. The drain reaches
+    // into both deques, and after the TX window is empty the promote
+    // step has nothing left to do.
+    ch.process_acks(consts::TX_WINDOW_SIZE as u32 + 7).unwrap();
+    assert!(
+        ch.tx_window.is_empty(),
+        "tx_window fully drained by cumulative ack"
+    );
+    assert!(
+        ch.unsent_packets.is_empty(),
+        "unsent_packets also drained by the same cumulative ack"
+    );
+}
+
+/// Cumulative ack against the TX window frees slots that are then
+/// filled by promoting the oldest queued entries. The total in-flight
+/// count drops by exactly the number of acked seqs.
+#[test]
+fn acks_promote_queued_entries_into_freed_window() {
+    let mut ch = Channel::new(test_addr());
+
+    // Fill TX window with seqs 0..32; queue holds seqs 32..40.
+    for seq in 0..(consts::TX_WINDOW_SIZE as u32) {
+        let mut pkt = test_packet();
+        pkt.sequence = seq;
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"raw"))
+            .unwrap();
+    }
+    for seq in consts::TX_WINDOW_SIZE as u32..(consts::TX_WINDOW_SIZE as u32 + 8) {
+        let mut pkt = test_packet();
+        pkt.sequence = seq;
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"queued"))
+            .unwrap();
+    }
+
+    // ACK covers the first 8 TX-window entries (seqs 0..8). 8 slots free,
+    // all 8 queued entries promote in.
+    ch.process_acks(7).unwrap();
+    assert_eq!(
+        ch.tx_window.len(),
+        consts::TX_WINDOW_SIZE,
+        "TX window refilled to capacity by promoted entries"
+    );
+    assert!(
+        ch.unsent_packets.is_empty(),
+        "all queued entries promoted into the freed slots"
+    );
+
+    // Promoted entries are at the back of the window, preserving the
+    // caller-allocated order.
+    let promoted_seqs: Vec<u32> = ch
+        .tx_window
+        .iter()
+        .rev()
+        .take(8)
+        .map(|e| e.packet.sequence)
+        .rev()
+        .collect();
+    assert_eq!(
+        promoted_seqs,
+        (consts::TX_WINDOW_SIZE as u32..(consts::TX_WINDOW_SIZE as u32 + 8)).collect::<Vec<_>>(),
+        "queued seqs appear at the tail of the TX window after promotion"
+    );
+}
+
+/// At the [`consts::MAX_UNSENT_PACKETS`] cap the next overflow registration
+/// returns an error. This is the channel-likely-dead signal — the peer
+/// has stopped acking entirely, the queue cannot grow further, and the
+/// inactivity timer will reap the channel shortly.
+#[test]
+fn unsent_queue_cap_returns_error() {
+    let mut ch = Channel::new(test_addr());
+
+    // Fill TX window first.
+    for seq in 0..(consts::TX_WINDOW_SIZE as u32) {
+        let mut pkt = test_packet();
+        pkt.sequence = seq;
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"raw"))
+            .unwrap();
+    }
+    // Fill the unsent queue to capacity.
+    for i in 0..(consts::MAX_UNSENT_PACKETS as u32) {
+        let mut pkt = test_packet();
+        pkt.sequence = consts::TX_WINDOW_SIZE as u32 + i;
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"queued"))
+            .unwrap();
+    }
+    assert_eq!(ch.unsent_packets.len(), consts::MAX_UNSENT_PACKETS);
+
+    // One past the cap: must error and not insert.
+    let mut pkt = test_packet();
+    pkt.sequence = consts::TX_WINDOW_SIZE as u32 + consts::MAX_UNSENT_PACKETS as u32;
+    let result = ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"over-cap"));
+    assert!(
+        result.is_err(),
+        "registration past the unsent-queue cap must error"
+    );
+    assert_eq!(
+        ch.unsent_packets.len(),
+        consts::MAX_UNSENT_PACKETS,
+        "queue size unchanged — the over-cap entry was not inserted"
+    );
+}
+
+/// Promoting a queued entry preserves its original `last_sent` timestamp.
+/// This is the property that lets `check_timeouts` retransmit a stale
+/// queued entry on the next tick after promotion — bytes went on the
+/// wire at queue time, so the RTO clock should keep counting from there.
+#[test]
+fn promoted_entry_preserves_last_sent_for_retransmit_timing() {
+    use std::time::Duration;
+
+    let mut ch = Channel::new(test_addr());
+
+    // Fill TX window with seqs 0..32.
+    for seq in 0..(consts::TX_WINDOW_SIZE as u32) {
+        let mut pkt = test_packet();
+        pkt.sequence = seq;
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"raw"))
+            .unwrap();
+    }
+    // Queue one entry, then backdate its `last_sent` to simulate having
+    // sat in the queue for 500 ms.
+    let mut pkt = test_packet();
+    pkt.sequence = consts::TX_WINDOW_SIZE as u32;
+    ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"queued"))
+        .unwrap();
+    let backdated = std::time::Instant::now() - Duration::from_millis(500);
+    ch.unsent_packets[0].last_sent = backdated;
+
+    // ACK frees a window slot, queued entry promotes.
+    ch.process_acks(0).unwrap();
+
+    // Find the promoted entry (will be at the tail of the window).
+    let promoted = ch
+        .tx_window
+        .iter()
+        .find(|e| e.packet.sequence == consts::TX_WINDOW_SIZE as u32)
+        .expect("queued entry was promoted into the TX window");
+    assert_eq!(
+        promoted.last_sent, backdated,
+        "promoted entry must keep its original last_sent so the next \
+         check_timeouts pass can retransmit if it sat in the queue past RTO"
+    );
 }

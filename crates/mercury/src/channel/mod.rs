@@ -81,6 +81,23 @@ pub struct Channel {
     /// Outbound packets awaiting acknowledgement.
     pub tx_window: VecDeque<TxEntry>,
 
+    /// Deferred-send queue: packets that hit the [`consts::TX_WINDOW_SIZE`]
+    /// cap when first registered, holding bookkeeping for retransmit until
+    /// a TX-window slot frees up via [`Self::process_acks`].
+    ///
+    /// Entries are inserted in caller-allocated sequence order (the same
+    /// order the bytes went on the wire) and promoted FIFO into the
+    /// TX window when ACKs drain it. Capped at [`consts::MAX_UNSENT_PACKETS`]
+    /// so a peer that has stopped acking cannot grow the queue unbounded —
+    /// past the cap, `register_sent_packet` returns an error and the
+    /// inactivity timeout reaps the channel.
+    ///
+    /// Replaces the prior "downgrade reliable send to best-effort" path
+    /// at the services layer: the bytes that went on the wire stay tracked
+    /// here for retransmit, so a lost packet beyond the TX window cap is
+    /// no longer silently un-recoverable.
+    pub unsent_packets: VecDeque<TxEntry>,
+
     /// Inbound packets buffered for ordered delivery.
     pub rx_window: VecDeque<Option<RxEntry>>,
 
@@ -158,6 +175,11 @@ impl Channel {
         Self {
             state: ChannelState::Connecting,
             tx_window: VecDeque::with_capacity(consts::TX_WINDOW_SIZE),
+            // Allocate empty — the queue is only populated when a sustained
+            // send burst overflows the TX window, which is rare in steady
+            // state. Pre-allocating MAX_UNSENT_PACKETS would waste memory
+            // on every channel for a path that fires only under congestion.
+            unsent_packets: VecDeque::new(),
             rx_window: VecDeque::with_capacity(consts::RX_WINDOW_SIZE),
             next_tx_seq: 0,
             expected_rx_seq: 0,
@@ -212,6 +234,22 @@ impl Channel {
     /// Pass `Bytes::new()` to register-without-retransmit-capability (rare;
     /// only useful for shadow-mode observation that never needs to resend).
     ///
+    /// **Overflow handling:** when the TX window is at [`consts::TX_WINDOW_SIZE`]
+    /// the entry is appended to [`Self::unsent_packets`] instead, where it
+    /// stays bookkept until a TX-window slot frees. [`process_acks`] drains
+    /// any queued entry whose seq is covered by the cumulative ACK and
+    /// promotes the remaining oldest-first into freed slots; only after
+    /// promotion is an entry eligible for retransmit by [`check_timeouts`]
+    /// (the retransmit scan only walks `tx_window`, not the queue). This
+    /// replaces the prior "return Err on overflow" behavior that the
+    /// services layer silently downgraded to best-effort.
+    ///
+    /// Only two error paths remain: an out-of-range sequence number (a
+    /// programming bug — the 28-bit Mercury space is the contract), and
+    /// the unsent-queue cap being hit ([`consts::MAX_UNSENT_PACKETS`]),
+    /// which indicates the peer has stopped acking entirely and the
+    /// channel is on its way to the inactivity-timeout reap.
+    ///
     /// [`send_packet`]: Self::send_packet
     /// [`process_acks`]: Self::process_acks
     pub fn register_sent_packet(&mut self, packet: Packet, raw_bytes: Bytes) -> Result<()> {
@@ -227,23 +265,41 @@ impl Channel {
             )));
         }
 
-        if self.tx_window.len() >= consts::TX_WINDOW_SIZE {
-            return Err(cimmeria_common::CimmeriaError::Channel(format!(
-                "TX window full ({} packets), cannot register seq={}",
-                self.tx_window.len(),
-                packet.sequence,
-            )));
-        }
-
         let now = Instant::now();
-        self.tx_window.push_back(TxEntry {
+        let entry = TxEntry {
             packet,
             last_sent: now,
             retransmit_count: 0,
             raw_bytes,
-        });
-        self.last_sent = now;
+        };
 
+        if self.tx_window.len() < consts::TX_WINDOW_SIZE {
+            self.tx_window.push_back(entry);
+            self.last_sent = now;
+            return Ok(());
+        }
+
+        // TX window full — defer to the unsent-packets queue. The packet
+        // bytes already went on the wire; this preserves retransmit
+        // bookkeeping for the case where the original send is lost. See
+        // the field doc on `unsent_packets` for the drain/promotion path.
+        if self.unsent_packets.len() >= consts::MAX_UNSENT_PACKETS {
+            // The packet bytes already went on the wire; only the
+            // retransmit/ACK bookkeeping is being rejected here. The
+            // peer-side outcome is "we sent it once; if it was lost we
+            // cannot recover it" — which is fine because the inactivity
+            // timer is about to reap this channel.
+            return Err(cimmeria_common::CimmeriaError::Channel(format!(
+                "unsent-packets queue full ({} packets); channel likely dead, awaiting inactivity reap. bookkeeping rejected for seq={} (datagram already on wire, no retransmit possible)",
+                self.unsent_packets.len(),
+                entry.packet.sequence,
+            )));
+        }
+        self.unsent_packets.push_back(entry);
+        // Update `last_sent` even on the queued path — the bytes went out
+        // on the wire, so for keepalive-timing purposes the channel was
+        // active in the send direction.
+        self.last_sent = now;
         Ok(())
     }
 
@@ -338,6 +394,15 @@ impl Channel {
     /// samples to the per-channel RTO state machine for any **clean**
     /// rounds (Karn's algorithm — retransmitted packets are excluded
     /// because the ack is ambiguous about which copy reached the peer).
+    ///
+    /// Also drains any [`Self::unsent_packets`] entries covered by the
+    /// cumulative ACK (their bytes went on the wire when they were
+    /// queued, so the peer can ack them while they're still queued), and
+    /// promotes oldest-first from the queue into freed TX-window slots so
+    /// the retransmit scan can pick them up if needed. Promoted entries
+    /// keep their original `last_sent` so an entry that sat in the queue
+    /// past its RTO will be retransmitted on the next [`Self::check_timeouts`]
+    /// pass.
     pub fn process_acks(&mut self, ack_seq: u32) -> Result<()> {
         // ACK frames are peer-originated → counts as receive-side activity,
         // not send-side. (We aren't putting bytes on the wire; we're
@@ -345,9 +410,11 @@ impl Channel {
         let now = Instant::now();
         self.last_received = now;
 
-        // Cumulative ACK: remove all TX entries with sequence <= ack_seq.
-        // The tx_window is ordered by sequence (oldest at front), so we can
-        // drain from the front until we hit a sequence beyond the ACK.
+        let ack_seq_masked = ack_seq & crate::packet::SEQUENCE_MASK;
+
+        // 28-bit modular `seq <= ack_seq` comparator. Used to drain both
+        // tx_window and unsent_packets — both are ordered by allocation
+        // sequence so a front-of-deque check suffices.
         //
         // Mercury sequence space is 28 bits (`SEQUENCE_MASK = 0x0FFF_FFFF`),
         // not 32. The modular `<=` comparison must use the 28-bit
@@ -359,12 +426,17 @@ impl Channel {
         //                  → STOP (wrong — front IS <= ack post-wrap)
         //     28-bit cmp:  diff = 0x0FFF_FFFD & MASK = 0x0FFF_FFFD;
         //                  0x0FFF_FFFD > 0x0800_0000 = true → DRAIN (correct)
+        let covered = |seq: u32| -> bool {
+            let seq_masked = seq & crate::packet::SEQUENCE_MASK;
+            let diff = seq_masked.wrapping_sub(ack_seq_masked) & crate::packet::SEQUENCE_MASK;
+            diff == 0 || diff > 0x0800_0000
+        };
+
+        // Cumulative ACK: remove all TX entries with sequence <= ack_seq.
+        // The tx_window is ordered by sequence (oldest at front), so we can
+        // drain from the front until we hit a sequence beyond the ACK.
         while let Some(front) = self.tx_window.front() {
-            let front_seq = front.packet.sequence & crate::packet::SEQUENCE_MASK;
-            let ack_seq_masked = ack_seq & crate::packet::SEQUENCE_MASK;
-            let diff = front_seq.wrapping_sub(ack_seq_masked) & crate::packet::SEQUENCE_MASK;
-            if diff == 0 || diff > 0x0800_0000 {
-                // front.packet.sequence <= ack_seq (in 28-bit modular arithmetic).
+            if covered(front.packet.sequence) {
                 // Drain the entry and — if it was never retransmitted —
                 // feed the round-trip time into the RTO smoother. This
                 // is Karn's algorithm: only un-retransmitted samples are
@@ -379,6 +451,30 @@ impl Channel {
                 }
             } else {
                 break;
+            }
+        }
+
+        // Same drain logic against unsent_packets: queued entries can be
+        // acked too. No RTT sample here — queued entries are by
+        // definition past the trivial "just sent" case and the timing
+        // wouldn't be informative.
+        while let Some(front) = self.unsent_packets.front() {
+            if covered(front.packet.sequence) {
+                self.unsent_packets.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        // Promote oldest queued entries into the freed TX-window slots so
+        // the retransmit scan can fire on them. Preserve `last_sent` —
+        // if the entry sat in the queue past RTO, the next
+        // `check_timeouts` pass will retransmit it (correct: bytes went
+        // on the wire when queued, no ack means lost in flight).
+        while self.tx_window.len() < consts::TX_WINDOW_SIZE {
+            match self.unsent_packets.pop_front() {
+                Some(entry) => self.tx_window.push_back(entry),
+                None => break,
             }
         }
 
