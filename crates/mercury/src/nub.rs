@@ -12,7 +12,7 @@ use cimmeria_common::Result;
 use tokio::net::UdpSocket;
 
 use crate::channel::Channel;
-use crate::packet::{Bytes, Packet};
+use crate::packet::Bytes;
 
 /// Outputs from one [`Nub::tick`] pass — work the I/O layer should now do.
 ///
@@ -68,19 +68,14 @@ impl Nub {
         })
     }
 
-    /// Send a packet to the given remote address.
-    ///
-    /// The packet is encoded to wire format and transmitted via the UDP socket.
-    pub async fn send_to(&self, _packet: &Packet, _addr: SocketAddr) -> Result<()> {
-        todo!("Nub::send_to — encode packet and send via UDP socket")
-    }
-
-    /// Receive a single datagram from the UDP socket.
-    ///
-    /// Returns the decoded packet and the source address.
-    pub async fn recv_from(&self) -> Result<(Packet, SocketAddr)> {
-        todo!("Nub::recv_from — read datagram, decode packet header")
-    }
+    // Outbound encode-and-send is handled by
+    // [`crate::transport::UdpTransport`]; the recv loop in
+    // `services/src/base/connect_loop/mod.rs` owns the inbound
+    // `recv_from`/decode path and keeps the concrete `UdpSocket`. The Nub
+    // itself owns only pure Mercury logic — channel registry, `tick`,
+    // fragment reassembly. The former `Nub::send_to`/`Nub::recv_from`
+    // unimplemented stubs (#57) were removed in favor of that split; the
+    // recv-side end-to-end harness is tracked by #352.
 
     /// Look up or create a channel for the given remote address.
     ///
@@ -217,7 +212,7 @@ mod tests {
     use bytes::Bytes;
     use std::time::{Duration, Instant};
 
-    use crate::packet::PacketFlags;
+    use crate::packet::{Packet, PacketFlags};
 
     /// Build a Nub by binding to an ephemeral local address. The socket
     /// is real (so `local_addr()` works) but `tick` does no I/O so the
