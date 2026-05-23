@@ -22,7 +22,7 @@ md-5 = { workspace = true }
 
 # Codec / framing
 tokio-util = { version = "0.7", features = ["codec"] }
-cipher = "0.4"
+cipher = "0.5"
 digest = "0.10"
 
 [dev-dependencies]

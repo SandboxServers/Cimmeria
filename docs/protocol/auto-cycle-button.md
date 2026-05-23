@@ -3,7 +3,7 @@
 **Status**: Confirmed  
 **Confidence**: HIGH (binary + live-debugger verification + Python canonical source + entity def confirmed)  
 **Ghidra anchors**: `ghidra://SGW.exe@0x00aa29c0`, `ghidra://SGW.exe@0x00ad7820`, `ghidra://SGW.exe@0x00e02700`, `ghidra://SGW.exe@0x00e061b0`, `ghidra://SGW.exe@0x00cbbc40`, `ghidra://SGW.exe@0x00e01c90`, `ghidra://SGW.exe@0x00e05fb0`  
-**Related files**: `crates/services/src/cell/cell_methods/player/world.rs`, `crates/services/src/cell/combat/auto_cycle.rs`, `crates/services/src/cell/service/ticks.rs`, `crates/entity/src/abilities.rs`, `deprecated/python/cell/SGWPlayer.py`, `deprecated/python/cell/AbilityManager.py`, `entities/defs/SGWPlayer.def`
+**Related files**: `crates/services/src/cell/cell_methods/player/world/mod.rs`, `crates/services/src/cell/combat/auto_cycle.rs`, `crates/services/src/cell/service/ticks/auto_cycle.rs`, `crates/entity/src/abilities.rs`, `deprecated/python/cell/SGWPlayer.py`, `deprecated/python/cell/AbilityManager.py`, `entities/defs/SGWPlayer.def`
 
 ---
 
@@ -79,7 +79,7 @@ Source: `docs/reverse-engineering/findings/combat-wire-formats.md` §setAutoCycl
 
 ### 4. Server-side handler (Cimmeria)
 
-`crates/services/src/cell/cell_methods/player/world.rs`, `dispatch()` match arm `SET_AUTO_CYCLE`:
+`crates/services/src/cell/cell_methods/player/world/mod.rs`, `dispatch()` match arm `SET_AUTO_CYCLE`:
 
 ```rust
 SET_AUTO_CYCLE => {
@@ -190,16 +190,16 @@ The loop is fully wired. The code lives in nine locations:
 | `crates/services/src/cell/combat/state.rs` | `BSF_AUTO_CYCLING` constant (mask `0x002`, bit 1). |
 | `crates/services/src/cell/combat/auto_cycle.rs` | Lifecycle primitives: `arm_auto_cycle`, `clear_auto_cycle`, `clear_auto_cycle_for_target`. Manipulate `BSF_AUTO_CYCLING` with **raw `\|=` / `&= !mask` ops** (NOT the ref-counted `set_state_flag` / `unset_state_flag` helpers — see "Bit management" below). All three return `Some(new_state_field)` only when the bit actually transitioned. |
 | `crates/services/src/cell/cell_methods/being.rs` | `SET_TARGET_ID` handler (cell method 0) — persists the target id to `current_target_id` on the player entity so the auto-cycle tick can read it as the live re-fire target. |
-| `crates/services/src/cell/cell_methods/player/world.rs` | `SET_AUTO_CYCLE` handler: enable sets the flag AND lights `BSF_AUTO_CYCLING` immediately AND fires immediately if `(last_fired_ability_id, current_target_id)` are both Some; disable drops the stash, clears the BSF bit, and broadcasts `onStateFieldUpdate`. |
-| `crates/services/src/cell/abilities/use_ability.rs` | Manual-override gate at function entry (different ability ⇒ clear loop), arm/AF_DEACTIVATE branch at commit time, AND stashes `last_fired_ability_id` on every commit regardless of `auto_cycle` state. |
-| `crates/services/src/cell/service/ticks.rs` | `auto_cycle_tick` — every 100 ms AoI tick, scans armed players and re-invokes `handle_use_ability` against the LIVE `current_target_id`. Cursor switches mid-loop redirect automatically; target deselect (`current_target_id = None`) or dead/missing target clears the loop. Cooldown gate is the rate-limiter. |
+| `crates/services/src/cell/cell_methods/player/world/mod.rs` | `SET_AUTO_CYCLE` handler: enable sets the flag AND lights `BSF_AUTO_CYCLING` immediately AND fires immediately if `(last_fired_ability_id, current_target_id)` are both Some; disable drops the stash, clears the BSF bit, and broadcasts `onStateFieldUpdate`. |
+| `crates/services/src/cell/abilities/use_ability/mod.rs` | Manual-override gate at function entry (different ability ⇒ clear loop), arm/AF_DEACTIVATE branch at commit time, AND stashes `last_fired_ability_id` on every commit regardless of `auto_cycle` state. |
+| `crates/services/src/cell/service/ticks/auto_cycle.rs` | `auto_cycle_tick` — every 100 ms AoI tick, scans armed players and re-invokes `handle_use_ability` against the LIVE `current_target_id`. Cursor switches mid-loop redirect automatically; target deselect (`current_target_id = None`), dead/missing target, or out-of-range silently skips (no error packet, loop stays armed for resume). |
 | `crates/services/src/cell/abilities/death.rs` | `apply_death_transition` calls `clear_auto_cycle_for_target` so every player auto-firing at the dying entity gets their loop cleared (matches against LIVE `current_target_id`, not an arm-time stash). **Plus** clears the dying player's OWN auto-cycle — prevents the loop from auto-resuming on respawn. |
 
 ### Bit management — raw ops, NOT the ref-counted helpers
 
 `BSF_AUTO_CYCLING` uses raw `|=` and `&= !mask` ops, deliberately bypassing the ref-counted `set_state_flag` / `unset_state_flag` API on `CellEntity`. Mirrors how `BSF_IN_COMBAT` is handled in `combat::threat` — both are single-source flags where exactly one module (this one) arms and clears the bit.
 
-Using the ref-counted helpers would be a correctness bug: every tick-driven re-fire re-enters `arm_auto_cycle`, `set_state_flag` would bump the per-flag counter from 1 to 2, 3, 4 …, and the single decrement in `clear_auto_cycle` would only bring it back to N-1 — leaving the bit stuck set forever and suppressing every disable/death/manual-override broadcast. This failure mode was observed in #341 playtest (server logs showed `auto-cycle: armed` firing on first commit, then **zero** `death: clearing player auto-cycle loop` lines despite the target dying and the player getting un-aggroed cleanly). Pinned by `clear_after_n_arms_still_transitions_bit_and_broadcasts`.
+Using the ref-counted helpers would be a correctness bug: every tick-driven re-fire re-enters `arm_auto_cycle`, `set_state_flag` would bump the per-flag counter from 1 to 2, 3, 4 …, and the single decrement in `clear_auto_cycle` would only bring it back to N-1 — leaving the bit stuck set forever and suppressing every disable/death/manual-override broadcast. Observable symptoms: server logs show `auto-cycle: armed` firing on first commit, then **zero** `death: clearing player auto-cycle loop` lines despite the target dying and the player getting un-aggroed cleanly. Pinned by `clear_after_n_arms_still_transitions_bit_and_broadcasts`.
 
 ### Loop semantics (what the tests pin)
 
@@ -223,13 +223,12 @@ Using the ref-counted helpers would be a correctness bug: every tick-driven re-f
 Phase 2 added two server-side player state fields that didn't exist before. They live independently of the auto-cycle loop state and survive its on/off cycles:
 
 - **`current_target_id: Option<i32>`** on `CellEntity` — written by `setTargetID` (cell method 0). Every cursor selection on the client updates this. `setTargetID(0)` clears to `None`. The auto-cycle tick reads it LIVE on every re-fire; the death sweep filters against it. Mirrors python's `self.entity().targetId` live read in `abilityCooledDown`.
-- **`last_fired_ability_id: Option<i32>`** on `AbilityManager` — stashed on every `handle_use_ability` commit, regardless of `auto_cycle` state. Persists across loop on/off cycles (only reset on respawn). The `SET_AUTO_CYCLE(1)` immediate-fire path uses this as a heuristic for "what ability would the player fire?" since the wire payload doesn't carry an ability id. Distinct from `auto_cycle_ability_id`, which is the LOOP'S committed ability and clears on stop.
+- **`last_fired_ability_id: Option<i32>`** on `AbilityManager` — stashed on every `handle_use_ability` commit, regardless of `auto_cycle` state. Persists for the whole session: never cleared on loop stop, death, or respawn. Stale values are harmless — the immediate-fire path routes through the normal `handle_use_ability` validation, which rejects abilities the player no longer has (e.g. after a weapon unequip) and leaves the loop BSF-armed for the next manual fire to refresh. The `SET_AUTO_CYCLE(1)` immediate-fire path uses this as a heuristic for "what ability would the player fire?" since the wire payload doesn't carry an ability id. Distinct from `auto_cycle_ability_id`, which is the LOOP'S committed ability and clears on stop.
 
-### What was NOT implemented (out of scope for #341)
+### Known gaps / follow-ups
 
 - **The `interact` path arming auto-cycle.** Python `SGWPlayer.py:1175-1178` had `interact` against a hostile NPC set `BSF_AutoCycling` and call `launchAbility(autoCycle=True)` implicitly. Cimmeria's `interact` does not do this yet — the explicit `setAutoCycle(1)` button is currently the only entry point. With Phase 2's immediate-fire, the button + a target selection now produces the same end-result UX without the interact-path arming. Could still be wired for parity.
 - **`DoNotActivate_AutoCycle` ability flag (mask `0x200`).** Only meaningful on the `interact` path (it suppresses the implicit auto-cycle arming when interacting with a hostile). Will land alongside the interact-path work.
-- **Out-of-range tick spam.** When the player walks out of range mid-loop, every tick re-fire fails range validation inside `handle_use_ability` and emits `onErrorCode(OutsideWeaponRange)` to the player. At a 0.5s cooldown that's an error packet every ~600ms while out of range. The tick should ideally range-pre-check and silently skip rather than retry+fail+error. Minor — affects UX, not correctness.
 
 ---
 
@@ -249,4 +248,4 @@ The gun-icon button is the **auto-cycle / auto-fire toggle** (`setAutoCycle`, ce
 
 The loop stops on: target death (death-transition sweep), target despawn (tick's defensive sweep), manual fire of a different ability (entry gate in `handle_use_ability`), an `AF_DEACTIVATE_AUTO_CYCLE`-flagged ability firing (commit-time gate), or explicit `setAutoCycle(0)` (button toggle off).
 
-As of #341 the full server-side loop is implemented and tested. The end-to-end handshake the client expects (`BSF_AutoCycling` toggling bit 1 of `bStateField` to drive the button highlight) is in place — verified against the live binary's state-field dispatcher at `ghidra://SGW.exe@0x00e01c90`.
+Cimmeria implements the full server-side loop. The end-to-end handshake the client expects (`BSF_AutoCycling` toggling bit 1 of `bStateField` to drive the button highlight) is in place — verified against the live binary's state-field dispatcher at `ghidra://SGW.exe@0x00e01c90`.

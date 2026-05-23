@@ -52,7 +52,7 @@ See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
 
 ## Testing
 
-The workspace currently carries **1071 `#[test]` / `#[tokio::test]` cases across 166 files**, of which 110 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+The workspace currently carries **1351 `#[test]` / `#[tokio::test]` cases across 215 files**, of which 151 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
 
 ```bash
 # Unit + non-DB integration (covers ~961 tests):

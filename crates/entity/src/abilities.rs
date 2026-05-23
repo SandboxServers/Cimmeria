@@ -176,8 +176,8 @@ pub struct AbilityManager {
     /// cleared by `setAutoCycle(0)`, by `stoppedAutoCycling`-equivalent events
     /// (target death, `AF_DEACTIVATE_AUTO_CYCLE` ability fire), or by a manual
     /// `useAbility` against a different ability ID. The actual re-fire loop
-    /// lives in [`crate::cell::service::ticks::auto_cycle_tick`] — this flag
-    /// just arms it.
+    /// lives in `cimmeria-services` (`cell::service::ticks::auto_cycle_tick`) —
+    /// this flag just arms it.
     pub auto_cycle: bool,
 
     /// The ability ID being auto-cycled (if any).

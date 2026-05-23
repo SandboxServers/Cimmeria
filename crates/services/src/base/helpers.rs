@@ -5,7 +5,7 @@
 //! Every `ConnectedClientState` owns **two independent sequence counters**:
 //!
 //! - **`next_seq`** — reliable stream. Used by [`send_to_witness_reliable`]
-//!   and the `tick_sync` loop. Each packet is also mirrored into the
+//!   and other reliable application-packet paths. Each packet is also mirrored into the
 //!   per-session [`Channel`]'s TX window so the adaptive-RTO retransmit
 //!   driver can recover loss. The client tracks this stream via `inSeqAt`
 //!   at struct offset `+0x50` and **requires it to be contiguous** —
@@ -31,7 +31,7 @@
 //! | Entity method call | [`send_to_witness_reliable`] | Must execute exactly once |
 //! | Property update | [`send_to_witness_reliable`] | Client state depends on it |
 //! | Dialog / mission update | [`send_to_witness_reliable`] | UI-visible, can't be lost |
-//! | Tick sync | sent from `tick_sync.rs` (reliable) | See #317 — reliable for ordering |
+//! | Tick sync | sent from `tick_sync.rs` (unreliable, own counter) | 10 Hz emit rate would saturate the 32-slot reliable TX window if it shared the reliable counter; loss is self-correcting (next tick 100 ms later supersedes) |
 //! | AoI position update | [`send_to_witness`] (unreliable) | Superseded by next frame |
 //!
 //! **Default to reliable.** Only use [`send_to_witness`] (unreliable) if
@@ -479,6 +479,62 @@ mod tests {
             "reliable stream stays contiguous (0,1,2,3,...)"
         );
         assert_eq!(u_third, 2, "unreliable stream stays contiguous (0,1,2,...)");
+    }
+
+    /// TX-window pressure regression guard. The split-counter design only
+    /// helps if the tick-sync emit path also avoids registering its
+    /// packets in the reliable Channel's TX window. Without this guard,
+    /// a refactor could re-introduce a `shadow_register_reliable_send`
+    /// call on the tickSync path (the way `send_to_witness_reliable`
+    /// does for actual reliable packets) and silently start filling
+    /// the 32-slot window again.
+    ///
+    /// The test calls [`tick_sync_packet`] — the same function `run_tick_loop`
+    /// delegates to — so any registration logic added *inside that function*
+    /// will cause the assertion to fire. Note the guard's scope: a
+    /// `shadow_register_reliable_send` call added *at the call site in
+    /// `run_tick_loop`* (outside the helper) would still slip past this test.
+    ///
+    /// [`tick_sync_packet`]: crate::base::tick_sync::tick_sync_packet
+    #[test]
+    fn tick_sync_emission_does_not_consume_reliable_tx_window_slots() {
+        use crate::base::tick_sync::tick_sync_packet;
+        use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
+
+        let state = crate::test_support::test_default_connected_client_state();
+
+        // Burst: fill the TX window with 30 reliable application packets.
+        // Mirrors the world-entry shape (charList + versionInfo +
+        // resourceFragments + createBasePlayer + mapLoaded fragments).
+        {
+            let mut ch = state.channel.lock().unwrap();
+            for seq in 0..30u32 {
+                let pkt = Packet::new(PacketFlags::default(), seq, Bytes::new());
+                ch.register_sent_packet(pkt, Bytes::new())
+                    .expect("register_sent_packet must succeed under window cap");
+            }
+            assert_eq!(ch.tx_window.len(), 30, "TX window seeded with 30 reliable");
+        }
+
+        // Run 10 tick iterations via the same function `run_tick_loop` calls.
+        // The UDP send is omitted — the TX-window-pressure failure mode is
+        // about register_sent_packet calls, not socket I/O.
+        for tick in 0..10u32 {
+            let (_seq_id, _pkt) =
+                tick_sync_packet(&state.next_seq_unreliable, &state.key, tick, &[]);
+        }
+
+        // The reliable TX window must be unchanged. If a future refactor
+        // accidentally registers tickSync seqs into the window, this
+        // assertion will fire (`tx_window.len() == 40` instead of 30).
+        let ch = state.channel.lock().unwrap();
+        assert_eq!(
+            ch.tx_window.len(),
+            30,
+            "tickSync emission must not consume reliable TX window slots — \
+             the split-counter design's invariant. If this fires, check that \
+             `tick_sync_packet` still avoids calling `shadow_register_reliable_send`."
+        );
     }
 
     /// The encapsulating accessor [`ConnectedClientState::next_unreliable_seq`]
