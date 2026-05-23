@@ -10,8 +10,8 @@
 //! UPDATE_AVATAR packet (and a property cascade), totaling ~33+ reliable
 //! packets sent in the 3.5s window while the client is loading terrain
 //! and cannot ACK. The TX window fills before `mapLoaded` itself runs;
-//! its own burst then triggers the deferred-queue / silent-best-effort
-//! path (see #354).
+//! its own burst then pressures the deferred-send queue and (pre-fix)
+//! the silent-best-effort downgrade path.
 //!
 //! # The defer gate
 //!
@@ -32,8 +32,6 @@
 //! The next post-`onClientReady` position frame supersedes anything we
 //! would have buffered, so dropping `EntityMoved` pre-ready is correct
 //! and cheaper than queueing.
-//!
-//! See issue #354 fix #2.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -42,6 +40,20 @@ use std::sync::{Arc, Mutex};
 use crate::cell::messages::NpcAoIData;
 
 use super::ConnectedClientState;
+
+/// Per-session cap on the deferred-AoI buffer.
+///
+/// Symmetric with `cimmeria_mercury::consts::MAX_UNSENT_PACKETS` (1024): a
+/// healthy session reaches `onClientReady` well before the cell could push
+/// this many AoI events into the buffer. If the cap is hit, the session is
+/// either stuck mid-load or under deliberate spam — drop further pushes at
+/// WARN so the failure is observable without unbounded memory growth.
+///
+/// 512 is 4× the worst-case Castle_CellBlock first-load burst (~120 AoI
+/// events across 28 NPCs + appearance + property cascades), which gives
+/// transient-stall headroom while keeping the worst-case buffer to a
+/// few KB per session.
+pub(crate) const MAX_DEFERRED_AOI_MSGS: usize = 512;
 
 /// AoI-class cell→base messages that may be deferred when the witness
 /// hasn't signalled `onClientReady`.
@@ -97,6 +109,12 @@ pub(crate) fn should_defer(
 /// Silent no-op if the session has been removed between the check and
 /// this call — the client disconnected mid-flight and any buffered work
 /// would have been dropped by [`drain_deferred`] anyway.
+///
+/// At [`MAX_DEFERRED_AOI_MSGS`] the message is dropped with a WARN — the
+/// session is stuck mid-load or under deliberate spam and the buffer
+/// cannot grow further. Dropping pre-ready AoI is equivalent to the cell
+/// having fired the event a tick later (after onClientReady), which the
+/// client tolerates as long as the missing entity isn't load-bearing.
 pub(crate) fn push_deferred(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
@@ -108,6 +126,14 @@ pub(crate) fn push_deferred(
     let Some(state) = clients.get_mut(&addr) else {
         return;
     };
+    if state.deferred_aoi_msgs.len() >= MAX_DEFERRED_AOI_MSGS {
+        tracing::warn!(
+            %addr,
+            buffered = state.deferred_aoi_msgs.len(),
+            "Deferred-AoI buffer at cap; dropping message (session stuck pre-onClientReady?)"
+        );
+        return;
+    }
     state.deferred_aoi_msgs.push(msg);
 }
 
@@ -227,5 +253,46 @@ mod tests {
         // No panic; no observable side effect. The drained buffer for
         // the (non-existent) session is empty.
         assert!(drain_deferred(&connected, addr).is_empty());
+    }
+
+    /// At [`MAX_DEFERRED_AOI_MSGS`] the next push must be dropped (not
+    /// inserted) so a session stuck pre-`onClientReady` cannot leak
+    /// unbounded memory. Pin so a future regression that drops the cap
+    /// check surfaces here.
+    #[test]
+    fn push_deferred_drops_at_cap() {
+        let (addr, connected) = make_state_and_connected();
+        for i in 0..MAX_DEFERRED_AOI_MSGS as u32 {
+            push_deferred(&connected, addr, DeferredAoiMsg::LeftAoI { entity_id: i });
+        }
+        assert_eq!(
+            connected
+                .lock()
+                .unwrap()
+                .get(&addr)
+                .unwrap()
+                .deferred_aoi_msgs
+                .len(),
+            MAX_DEFERRED_AOI_MSGS,
+            "buffer filled to cap",
+        );
+
+        // One past the cap: must NOT insert.
+        push_deferred(
+            &connected,
+            addr,
+            DeferredAoiMsg::LeftAoI { entity_id: 999_999 },
+        );
+        assert_eq!(
+            connected
+                .lock()
+                .unwrap()
+                .get(&addr)
+                .unwrap()
+                .deferred_aoi_msgs
+                .len(),
+            MAX_DEFERRED_AOI_MSGS,
+            "buffer size unchanged — over-cap push dropped, not inserted",
+        );
     }
 }
