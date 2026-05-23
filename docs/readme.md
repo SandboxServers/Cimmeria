@@ -292,6 +292,7 @@ Annotation scripts, function naming progress, and per-system RE findings.
 | [duel-wire-formats.md](reverse-engineering/findings/duel-wire-formats.md) | 3 | Duel request, accept, resolution | HIGH |
 | [pet-wire-formats.md](reverse-engineering/findings/pet-wire-formats.md) | 2 | Pet summon, commands | HIGH |
 | [cme-event-signal.md](reverse-engineering/findings/cme-event-signal.md) | — | CME EventSignal emit pipeline + `TypedEmitInfo`/`CallbackImpl` class anatomy (V5 campaign session 1) | HIGH |
+| [mercury-nub-anatomy.md](reverse-engineering/findings/mercury-nub-anatomy.md) | — | Mercury `Nub` / `BaseNub` / `ChannelInternal` / `Connection` class layouts (22 functions, 4 struct anatomies); two-channel-map design; network thread loop; `Nub::send` 4-phase pipeline; rdtsc inactivity vs our `MAX_RETRIES`; two latent wire gaps | HIGH |
 
 ---
 

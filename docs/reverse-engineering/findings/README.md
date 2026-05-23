@@ -35,6 +35,7 @@ This directory contains per-system reverse engineering findings with evidence.
 | `world-entry-pipeline.md` | 4b | Full connect-to-in-world pipeline — 8 phases, CREATE_BASE_PLAYER/CELL_PLAYER wire formats, onClientMapLoad field-name audit, RESET_ENTITIES/ENABLE_ENTITIES exchange, mapLoaded bundle contents, CME signal bus inventory | HIGH |
 | `architectural-anomalies.md` | V5 (W-anom) | Three CME EventSignal anomalies resolved: BM emitters use Pattern B (not unknown mechanism); GiveInventory NetOut has no client subscriber (server-only signal); SGWHomeless is `class_SGWHomeless`, an in-editor developer tool class | HIGH |
 | `cooked-data-pipeline.md` | V5 (W-cooked) | 21 ServerSource categories (1–21) with binary-confirmed PAK filenames; LibCategory/ServerSource struct layout; 5 CME events per category; onVersionInfo/onCookedDataError handler logic; ZipStorageBase open+MetaData-write path; contradiction with existing pipeline doc category table | HIGH |
+| `mercury-nub-anatomy.md` | V5 | Mercury `Nub` / `BaseNub` / `ChannelInternal` / `Connection` class layouts (22 functions, 4 struct anatomies); two-channel-map design; network thread loop; `Nub::send` 4-phase pipeline; rdtsc inactivity vs our `MAX_RETRIES`; two latent wire gaps (REPLY piggyback XOR-inverted length, ACK batching per 10ms tick) | HIGH |
 
 ## Finding Format
 
