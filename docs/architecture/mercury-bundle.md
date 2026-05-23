@@ -113,11 +113,21 @@ The bundle body is the same byte layout the services-layer
 Multiple messages concatenate in append order. On `finalize`, the body
 goes through `crate::packet::build_fragmented_bundle` which:
 
-- emits one non-fragmented packet for bodies ≤ `FRAGMENT_BODY_SIZE` (1300
-  bytes);
+- emits one non-fragmented packet for bodies ≤ `FRAGMENT_BODY_SIZE`
+  (1300 bytes — Mercury's `MAX_BODY_LENGTH` is 1411, minus per-packet
+  footer overhead of flags(1) + seq(4) + frag_begin(4) + frag_end(4) +
+  ack headroom, and AES-256-CBC encryption overhead of up to 16 bytes
+  PKCS7 padding + 16-byte HMAC. The 111-byte slack on `MAX_BODY_LENGTH`
+  is what keeps the encrypted datagram under the 1472-byte
+  PACKET_MAX_SIZE = UDP MTU-safe size. See the constant doc in
+  [crates/mercury/src/packet/build.rs](../../crates/mercury/src/packet/build.rs).);
 - otherwise emits `ceil(body / 1300)` fragments, each carrying
   `FLAG_FRAGMENTED` + matching `frag_begin` / `frag_end` footers;
-- piggybacks the bundle's ACKs **only on the first fragment**.
+- piggybacks the bundle's ACKs **only on the first fragment**;
+- masks every per-fragment seq, `frag_begin`, and `frag_end` against
+  `SEQUENCE_MASK` so a `base_seq` near the 28-bit wrap point cannot
+  silently emit `seq >= NULL_SEQUENCE` (which the peer parser drops as
+  an R4 violation, killing reliable delivery for the whole bundle).
 
 Byte-equivalence with the standalone-packet builders is pinned by tests in
 [crates/services/src/mercury/aoi/tests.rs](../../crates/services/src/mercury/aoi/tests.rs)
@@ -134,12 +144,28 @@ fragment, and registers each with the per-channel TX window via
 queue from issue #357 absorbs the overflow — `register_sent_packet` never
 returns the silent best-effort path anymore.
 
-`estimated_packet_count()` is a contract: it equals
-`finalize().packets.len()` for this implementation (see the seq-reservation
-debug_assert in
-[base/helpers.rs](../../crates/services/src/base/helpers.rs)). The bundle's
-ACK count is folded into the estimate so seq reservation matches actual
-emission without a TOCTOU window.
+`estimated_packet_count()` is a load-bearing contract: it must equal
+`finalize().packets.len()` for any given bundle state. Violating that
+contract makes the send helper either **over-reserve** seqs (creating
+permanent gaps in the reliable stream that stall every subsequent
+reliable packet behind them) or **under-reserve** seqs (causing
+collision with later sends from concurrent threads).
+
+The helper drains pending ACKs into the bundle **before** consulting
+`estimated_packet_count()` under the same lock window as the seq
+reservation, then `finalize()` runs without further mutation — so the
+estimate reflects the exact post-drain state at reservation time and
+no TOCTOU window opens between estimate and finalize. The contract is
+guarded by a `debug_assert!` (the post-finalize check in
+[base/helpers.rs](../../crates/services/src/base/helpers.rs)) and by
+the boundary-case test
+`estimated_packet_count_matches_finalize_at_fragment_boundary_with_acks`
+in [crates/mercury/src/channel_bundle.rs](../../crates/mercury/src/channel_bundle.rs).
+
+`estimated_packet_count()` itself depends only on `body.len()`
+(fragmented) or the empty-body-with-acks special case (which always
+emits exactly 1 packet); ACK count never affects the fragment count
+because ACKs ride only the first fragment.
 
 ## Observed win
 
@@ -185,7 +211,7 @@ When migrating another call family (the issue's deferred list):
 ## What did NOT change
 
 - Wire format. The bundle body is byte-identical to a concatenation of
-  per-message body bodies that the existing `append_entity_method`
+  per-message bodies that the existing `append_entity_method`
   produces. Pinned by tests.
 - Reliability. Bundled packets ride `FLAG_RELIABLE | FLAG_ON_CHANNEL` and
   register with the TX window the same way as pre-migration packets.

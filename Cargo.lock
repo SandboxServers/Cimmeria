@@ -893,6 +893,7 @@ name = "cimmeria-services"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "cimmeria-commands",
  "cimmeria-common",

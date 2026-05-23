@@ -128,6 +128,16 @@ pub const FRAGMENT_BODY_SIZE: usize = 1300;
 /// (no `FLAG_FRAGMENTED` overhead).
 ///
 /// Returns `(encrypted_packets, sequence_ids_consumed)`.
+///
+/// **Sequence-space masking:** `base_seq`, every per-fragment seq, `frag_begin`,
+/// and `frag_end` are all masked with [`super::SEQUENCE_MASK`] before being
+/// written to the wire. A `base_seq` near the 28-bit wrap point
+/// (e.g. `0x0FFF_FFFE`) combined with multi-fragment output would otherwise
+/// produce a per-fragment seq >= [`super::NULL_SEQUENCE`], which the peer
+/// parser drops as an R4 violation — silently breaking reliable delivery and
+/// ACK accounting for the whole bundle. Mask-on-the-way-out is the canonical
+/// safety net; callers should still pre-mask `base_seq` per the spec but the
+/// safety net keeps a forgetful caller from corrupting the stream.
 pub fn build_fragmented_bundle(
     base_flags: u8,
     body: &[u8],
@@ -135,6 +145,7 @@ pub fn build_fragmented_bundle(
     acks: &[u32],
     encrypt: impl Fn(&[u8]) -> Vec<u8>,
 ) -> (Vec<Vec<u8>>, u32) {
+    let base_seq = base_seq & super::SEQUENCE_MASK;
     if body.len() <= FRAGMENT_BODY_SIZE {
         // Fits in one packet — no fragmentation needed.
         let flags =
@@ -146,11 +157,14 @@ pub fn build_fragmented_bundle(
     // Calculate fragment count and sequence range.
     let num_frags = body.len().div_ceil(FRAGMENT_BODY_SIZE);
     let frag_begin = base_seq;
-    let frag_end = base_seq + num_frags as u32 - 1;
+    // `wrapping_add` + mask: if `base_seq + num_frags - 1` straddles the 28-bit
+    // wrap point, the wrap-and-mask combo keeps `frag_end` inside the valid
+    // sequence space rather than letting it land on or past `NULL_SEQUENCE`.
+    let frag_end = base_seq.wrapping_add(num_frags as u32 - 1) & super::SEQUENCE_MASK;
 
     let mut packets = Vec::with_capacity(num_frags);
     for (i, chunk) in body.chunks(FRAGMENT_BODY_SIZE).enumerate() {
-        let seq = base_seq + i as u32;
+        let seq = base_seq.wrapping_add(i as u32) & super::SEQUENCE_MASK;
         // Only first fragment carries acks.
         let pkt_acks: &[u32] = if i == 0 { acks } else { &[] };
         let flags = base_flags

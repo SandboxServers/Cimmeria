@@ -382,7 +382,7 @@ fn ghost_lifecycle_emits_create_cascade_update_invisible_leave_in_order() {
     assert_eq!(seq3, 4);
 }
 
-/// Issue #356 — `compose_create_entity_base_body` must produce the same
+/// `compose_create_entity_base_body` must produce the same
 /// body bytes that `build_create_entity_base` puts inside its
 /// (eventually-encrypted) Mercury packet.
 ///

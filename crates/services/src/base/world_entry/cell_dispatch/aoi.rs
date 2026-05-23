@@ -32,7 +32,7 @@ use super::super::super::ConnectedClientState;
 /// re-dispatched `EnteredAoI` / `LeftAoI` events). `EntityMethodCall`
 /// entries carry their own target entity_id.
 ///
-/// # Bundle batching (issue #356 conservative slice)
+/// # Bundle batching
 ///
 /// `EnteredAoI` is the burst-shape failure mode — a Castle_CellBlock
 /// instance with 28 NPCs would pre-bundle emit 56 reliable packets
@@ -51,19 +51,23 @@ use super::super::super::ConnectedClientState;
 ///   `cimmeria_mercury::channel_bundle` module doc and the deliberate
 ///   two-bundle split in `base/world_entry/map_loaded.rs`).
 ///
-/// For 28 NPCs each ~50 bytes phase-1 (1.4 KB body) + ~200 bytes phase-2
-/// (5.6 KB body): phase-1 collapses to 2 packets, phase-2 to ~5 packets.
-/// Total: 7 reliable packets, down from 56. The deferred-send queue
-/// still backstops the case where bundle finalize emits more than the
-/// remaining TX-window capacity.
+/// For 28 NPCs: phase-1 ≈ 28×37 = 1 KB (1 fragment under
+/// `FRAGMENT_BODY_SIZE`=1300); phase-2 ≈ 28×442 = 12 KB (10 fragments
+/// at 1300 bytes each) ≈ **~11 reliable packets total**, down from 56.
+/// The regression guard at
+/// [`flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget`]
+/// pins this at `≤15` to leave headroom for cascade-payload growth.
+/// The deferred-send queue still backstops the case where bundle
+/// finalize emits more than the remaining TX-window capacity.
 ///
 /// `LeftAoI` and `EntityMethodCall` stay on the per-message
-/// `send_to_witness_reliable` path: they don't have the same burst
-/// shape AND `EntityMethodCall` targets the entity_id directly (the
-/// witness/target distinction matters), so cross-entity bundling would
-/// risk a same-entity-after-CREATE collision if the buffer interleaves
-/// an EnteredAoI(X) followed immediately by an EntityMethodCall(X) for
-/// the same X.
+/// `send_to_witness_reliable` path. They preserve their **encounter
+/// order** in the buffer relative to each other so the cell's intended
+/// sequencing survives the flush — an `EntityMethodCall(X)` followed by
+/// `LeftAoI(X)` must NOT be reordered to `LeftAoI(X)` then
+/// `EntityMethodCall(X)`, or the method targets a destroyed entity.
+/// Both classes flush **after** the two bundles to guarantee any
+/// `LeftAoI(X)` runs after the matching `EnteredAoI(X)`'s cascade.
 pub(crate) async fn flush_deferred_aoi(
     witness_id: u32,
     addr: SocketAddr,
@@ -89,12 +93,17 @@ pub(crate) async fn flush_deferred_aoi(
     let mut phase2 = ChannelBundle::new(true);
     let mut entered_count = 0usize;
 
-    // Per-message tail — LeftAoI / EntityMethodCall preserve their
-    // existing one-packet-each shape. Collected so we can flush after
-    // the bundles land, keeping the relative ordering "creates before
-    // leaves before method calls" the cell side intended.
-    let mut left_aoi_targets: Vec<u32> = Vec::new();
-    let mut method_calls: Vec<(u32, u16, Vec<u8>)> = Vec::new();
+    // Per-message tail — LeftAoI / EntityMethodCall keep their existing
+    // one-packet-each shape and MUST preserve encounter order relative to
+    // each other (a buffered EntityMethodCall(X) followed by LeftAoI(X)
+    // would otherwise reorder to LeftAoI(X) then EntityMethodCall(X) and
+    // the method would target a destroyed entity). Single enum + push in
+    // iteration order is what holds this invariant.
+    enum TailMsg {
+        LeftAoI(u32),
+        EntityMethodCall(u32, u16, Vec<u8>),
+    }
+    let mut tail: Vec<TailMsg> = Vec::new();
 
     for msg in buffered {
         match msg {
@@ -117,12 +126,12 @@ pub(crate) async fn flush_deferred_aoi(
                 ));
                 entered_count += 1;
             }
-            DeferredAoiMsg::LeftAoI { entity_id } => left_aoi_targets.push(entity_id),
+            DeferredAoiMsg::LeftAoI { entity_id } => tail.push(TailMsg::LeftAoI(entity_id)),
             DeferredAoiMsg::EntityMethodCall {
                 entity_id,
                 method_index,
                 args,
-            } => method_calls.push((entity_id, method_index, args)),
+            } => tail.push(TailMsg::EntityMethodCall(entity_id, method_index, args)),
         }
     }
 
@@ -149,19 +158,23 @@ pub(crate) async fn flush_deferred_aoi(
             .await;
     }
 
-    for entity_id in left_aoi_targets {
-        left_aoi(witness_id, entity_id, transport, connected, entity_to_addr).await;
-    }
-    for (entity_id, method_index, args) in method_calls {
-        entity_method_call(
-            entity_id,
-            method_index,
-            args,
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
+    for msg in tail {
+        match msg {
+            TailMsg::LeftAoI(entity_id) => {
+                left_aoi(witness_id, entity_id, transport, connected, entity_to_addr).await;
+            }
+            TailMsg::EntityMethodCall(entity_id, method_index, args) => {
+                entity_method_call(
+                    entity_id,
+                    method_index,
+                    args,
+                    transport,
+                    connected,
+                    entity_to_addr,
+                )
+                .await;
+            }
+        }
     }
 }
 

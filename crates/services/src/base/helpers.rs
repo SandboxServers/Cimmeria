@@ -514,15 +514,31 @@ pub(crate) async fn send_bundle_to_witness_reliable(
     for (i, pkt) in packets.iter().enumerate() {
         let frag_seq = base_seq.wrapping_add(i as u32) & SEQUENCE_MASK;
         if let Err(e) = transport.send_to(pkt, addr).await {
-            tracing::warn!(
+            // Abort the rest of the bundle on the first send failure.
+            // Continuing would push the trailing fragments onto the wire
+            // with no chance of client-side reassembly (the failed
+            // fragment's seq is already a gap in the reliable stream and
+            // the bundle's frag_begin/frag_end footers expect every
+            // fragment in [base_seq..base_seq+packet_count) to arrive).
+            // The retransmit driver in tick_sync re-sends the registered
+            // fragments [0..i); the unsent fragments [i..packet_count)
+            // remain a permanent gap until the inactivity timer reaps
+            // the channel — an outcome no worse than continuing, with
+            // less wasted bandwidth.
+            tracing::error!(
                 witness_id,
                 %addr,
                 frag_seq,
                 fragment = i + 1,
                 total = packets.len(),
-                "AoI bundle: failed to send fragment: {e}"
+                already_sent = i,
+                "AoI bundle: failed to send fragment; aborting remainder of bundle. \
+                 Reliable seq stream now has gaps at [{}..{}); channel will be reaped \
+                 on inactivity timeout: {e}",
+                frag_seq,
+                base_seq.wrapping_add(packet_count as u32) & SEQUENCE_MASK,
             );
-            continue;
+            return;
         }
         shadow_register_reliable_send(
             connected,

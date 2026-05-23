@@ -82,12 +82,23 @@ use crate::packet::FRAGMENT_BODY_SIZE;
 /// Method-index boundary between direct and extended entity-method
 /// encoding. Indices `< 61` use direct encoding (msg_id = index | 0x80),
 /// indices `>= 61` use extended encoding (msg_id = 0xBD, sub_index byte
-/// after entity_id). Mirrors the constant baked into
-/// `crates/services/src/mercury/mod.rs`'s `append_entity_method`.
-const EXTENDED_ENCODING_THRESHOLD: u16 = 61;
+/// after entity_id).
+///
+/// **Single source of truth** for the entity-method encoding boundary —
+/// both `ChannelBundle::append_entity_method` and the services-layer
+/// `crates/services/src/mercury/mod.rs::append_entity_method` import
+/// this constant so they cannot silently drift. A divergence between
+/// the two encoders would split the wire format between bundle-migrated
+/// and un-migrated call sites (pinned by the byte-equivalence tests
+/// `compose_create_entity_*_body_matches_*` in
+/// `crates/services/src/mercury/aoi/tests.rs`, but the shared constant
+/// removes the failure mode entirely).
+pub const EXTENDED_ENCODING_THRESHOLD: u16 = 61;
 
 /// Extended-encoding marker byte. Cannot be used as a direct msg_id.
-const EXTENDED_ENCODING_MARKER: u8 = 0xBD;
+/// Shared with `services` for the same anti-drift reason as
+/// [`EXTENDED_ENCODING_THRESHOLD`].
+pub const EXTENDED_ENCODING_MARKER: u8 = 0xBD;
 
 /// Accumulator for one logical bundle of application-level messages.
 ///
@@ -155,17 +166,36 @@ impl ChannelBundle {
     /// **Transaction-state hazard:** see the module doc. Do NOT combine
     /// `CREATE_ENTITY(X)` (or `CELL_PLAYER` for the player entity) with
     /// any later same-entity-X message in the same bundle.
+    ///
+    /// **Field-width contract:** panics on inputs the Mercury wire format
+    /// cannot represent:
+    /// - `method_index >= EXTENDED_ENCODING_THRESHOLD + 256` (extended
+    ///   sub-index byte overflow — max representable extended index is
+    ///   `61 + 255 = 316`)
+    /// - `args.len()` such that the per-message length field would exceed
+    ///   `u16::MAX` (~65 KB body)
+    ///
+    /// A panic is preferable to a silent narrowing cast: the latter would
+    /// emit a packet with a corrupt method/length field that the client
+    /// parses incorrectly, producing a hard-to-diagnose downstream bug.
     pub fn append_entity_method(&mut self, method_index: u16, entity_id: u32, args: &[u8]) {
         if method_index >= EXTENDED_ENCODING_THRESHOLD {
+            let sub_index = u8::try_from(method_index - EXTENDED_ENCODING_THRESHOLD).expect(
+                "method_index exceeds Mercury extended-encoding range (max 61 + 255 = 316)",
+            );
+            let payload_len = u16::try_from(4 + 1 + args.len())
+                .expect("entity-method payload exceeds Mercury u16 length field (~65 KB max)");
             self.body.push(EXTENDED_ENCODING_MARKER);
-            let payload_len = (4 + 1 + args.len()) as u16;
             self.body.extend_from_slice(&payload_len.to_le_bytes());
             self.body.extend_from_slice(&entity_id.to_le_bytes());
-            self.body
-                .push((method_index - EXTENDED_ENCODING_THRESHOLD) as u8);
+            self.body.push(sub_index);
         } else {
+            let payload_len = u16::try_from(4 + args.len())
+                .expect("entity-method payload exceeds Mercury u16 length field (~65 KB max)");
+            // Safe: method_index < 61 < 128 < u8::MAX, so `as u8` cannot
+            // truncate. The high bit is then set via `| 0x80` as the
+            // direct-encoding marker.
             self.body.push((method_index as u8) | 0x80);
-            let payload_len = (4 + args.len()) as u16;
             self.body.extend_from_slice(&payload_len.to_le_bytes());
             self.body.extend_from_slice(&entity_id.to_le_bytes());
         }
@@ -181,7 +211,20 @@ impl ChannelBundle {
     /// **Transaction-state hazard:** `CREATE_ENTITY(X)` placed via this
     /// method puts entity X in transaction for the rest of the bundle.
     /// See the module doc.
+    ///
+    /// **Debug-only well-formedness check:** an empty `raw_msg` is a
+    /// caller bug — the bundle would silently swallow the append (no msg
+    /// id, no length, no bytes). In debug builds a `debug_assert!` fires;
+    /// release builds tolerate the no-op append and bump `num_messages`
+    /// as if a real message had been written, which the caller can detect
+    /// downstream via [`Self::body_len`]. This avoids paying the branch
+    /// cost in release builds where the caller is trusted code paths
+    /// (the body composers in `services::mercury`).
     pub fn append_raw_message(&mut self, raw_msg: &[u8]) {
+        debug_assert!(
+            !raw_msg.is_empty(),
+            "append_raw_message: empty raw_msg silently swallowed — caller bug"
+        );
         self.body.extend_from_slice(raw_msg);
         self.num_messages += 1;
     }
@@ -341,8 +384,8 @@ mod tests {
 
     /// Boundary check: index 60 stays direct, index 61 flips to extended.
     /// A regression that moved the boundary would silently break either
-    /// the high direct indices (e.g. 122 = setupWorldParameters, observed
-    /// working with direct in C++) or the low extended ones.
+    /// the high direct/extended boundary (e.g. 122 = setupWorldParameters
+    /// is extended in this implementation) or the low extended ones.
     #[test]
     fn append_entity_method_boundary_between_direct_and_extended_encoding() {
         let mut direct = ChannelBundle::new(false);
@@ -614,5 +657,126 @@ mod tests {
         assert!(ChannelBundle::new(true).is_reliable());
         assert!(!ChannelBundle::new(false).is_reliable());
         assert!(!ChannelBundle::default().is_reliable());
+    }
+
+    /// Pin the `estimated_packet_count == finalize().packets.len()`
+    /// contract at the fragment boundary (`body_len == FRAGMENT_BODY_SIZE`)
+    /// with ACKs present — historically the first place an estimate vs
+    /// actual-emission drift would surface. The `send_bundle_to_witness_reliable`
+    /// helper reserves seqs based on the estimate before calling finalize;
+    /// if they ever disagree it would over-/under-reserve and leave gaps
+    /// in the reliable stream.
+    #[test]
+    fn estimated_packet_count_matches_finalize_at_fragment_boundary_with_acks() {
+        let mut bundle = ChannelBundle::new(true);
+        let body = vec![0xAB; FRAGMENT_BODY_SIZE];
+        bundle.append_raw_message(&body);
+        bundle.add_ack(7);
+
+        let estimated = bundle.estimated_packet_count();
+        let (packets, seqs_consumed) = bundle.finalize(FLAG_RELIABLE, 77, passthrough);
+
+        assert_eq!(
+            packets.len(),
+            estimated,
+            "exactly-at-boundary body must collapse to one packet \
+             (FRAGMENT_BODY_SIZE fits in a single fragment)"
+        );
+        assert_eq!(seqs_consumed as usize, estimated);
+        assert_eq!(estimated, 1, "body == FRAGMENT_BODY_SIZE → 1 packet");
+    }
+
+    /// Pin the same contract one byte over the boundary — the first
+    /// case that MUST fragment. `body_len == FRAGMENT_BODY_SIZE + 1`
+    /// rounds up to 2 packets.
+    #[test]
+    fn estimated_packet_count_matches_finalize_one_byte_over_boundary() {
+        let mut bundle = ChannelBundle::new(true);
+        let body = vec![0xCD; FRAGMENT_BODY_SIZE + 1];
+        bundle.append_raw_message(&body);
+
+        let estimated = bundle.estimated_packet_count();
+        let (packets, _) = bundle.finalize(FLAG_RELIABLE, 0, passthrough);
+        assert_eq!(packets.len(), estimated);
+        assert_eq!(estimated, 2, "1 byte over boundary forces 2 fragments");
+    }
+
+    /// `append_raw_message` is the catch-all path the AoI burst migration
+    /// uses to bundle multi-message packet bodies (CREATE_ENTITY +
+    /// UPDATE_AVATAR pairs, cascade per NPC). It must preserve arbitrary
+    /// bytes exactly — no length prefix, no msg-id wrapping, no padding.
+    ///
+    /// A regression that added a length prefix or framing byte to
+    /// `append_raw_message` would silently corrupt every migrated
+    /// caller's wire bytes.
+    #[test]
+    fn append_raw_message_preserves_arbitrary_bytes_in_order() {
+        let mut bundle = ChannelBundle::new(true);
+
+        // Append three differently-shaped raw messages — a tight little
+        // CREATE_ENTITY shape, a UPDATE_AVATAR-shaped block, and a
+        // synthetic extended-encoding shape — and assert the bundle body
+        // is exactly their concatenation in append order.
+        let create_entity_shape: &[u8] = &[
+            0x09, // BASEMSG_CREATE_ENTITY
+            0x08, 0x00, // wordLen = 8
+            0xEF, 0xBE, 0xAD, 0xDE, // entity_id
+            0xFF, 0x42, 0x00, 0x00, // idAlias + class_id + zeros
+        ];
+        let update_avatar_shape: &[u8] = &[
+            0x10, // BASEMSG_UPDATE_AVATAR
+            0xEF, 0xBE, 0xAD, 0xDE, // entity_id
+            0x00, 0x00, 0x20,
+            0x41, // pos.x = 10.0 f32 LE
+                  // … rest of UPDATE_AVATAR is byte-after-byte fine to elide
+        ];
+        let extended_shape: &[u8] = &[
+            EXTENDED_ENCODING_MARKER,
+            0x05,
+            0x00, // payload_len = 5
+            0x01,
+            0x00,
+            0x00,
+            0x00, // entity_id = 1
+            61,   // sub_index
+        ];
+
+        bundle.append_raw_message(create_entity_shape);
+        bundle.append_raw_message(update_avatar_shape);
+        bundle.append_raw_message(extended_shape);
+
+        let mut expected = Vec::new();
+        expected.extend_from_slice(create_entity_shape);
+        expected.extend_from_slice(update_avatar_shape);
+        expected.extend_from_slice(extended_shape);
+        assert_eq!(
+            bundle.body, expected,
+            "append_raw_message must preserve every byte in append order, \
+             with no framing or padding inserted"
+        );
+        assert_eq!(bundle.num_messages(), 3);
+    }
+
+    /// Field-width contract: extended-encoding sub_index overflow MUST
+    /// panic (not silently truncate to garbage). A `method_index = 317`
+    /// (== 61 + 256) exceeds the single-byte sub_index range; the panic
+    /// message should name the violated invariant clearly.
+    #[test]
+    #[should_panic(expected = "extended-encoding range")]
+    fn append_entity_method_panics_on_extended_sub_index_overflow() {
+        let mut bundle = ChannelBundle::new(true);
+        bundle.append_entity_method(EXTENDED_ENCODING_THRESHOLD + 256, 1, &[]);
+    }
+
+    /// Field-width contract: payload_len overflow MUST panic. A 65_536-byte
+    /// args buffer exceeds the u16 length field by 1 byte (after adding
+    /// the 4-byte entity_id, it's well over u16::MAX). The panic message
+    /// should name the violated invariant clearly.
+    #[test]
+    #[should_panic(expected = "u16 length field")]
+    fn append_entity_method_panics_on_payload_length_overflow() {
+        let mut bundle = ChannelBundle::new(true);
+        let huge_args = vec![0u8; u16::MAX as usize - 3]; // 4 + (u16::MAX - 3) > u16::MAX
+        bundle.append_entity_method(12, 1, &huge_args);
     }
 }
