@@ -41,6 +41,7 @@ pub use aoi::{
     build_avatar_update, build_create_entity_base, build_create_entity_cascade,
     build_entity_invisible, build_entity_leave, build_entity_method_packet, build_forced_position,
 };
+pub(crate) use aoi::{compose_create_entity_base_body, compose_create_entity_cascade_body};
 
 pub use world_data::{
     archetype_ability_tree, archetype_stats, build_create_player, build_enter_world,
@@ -244,16 +245,20 @@ pub mod method_idx {
 /// direct encoding through index 127 (verified with setupWorldParameters=122
 /// and onPlayerDataLoaded=115). We use the simpler boundary at 128.
 pub fn append_entity_method(body: &mut Vec<u8>, method_index: u16, entity_id: u32, args: &[u8]) {
+    use cimmeria_mercury::channel_bundle::{EXTENDED_ENCODING_MARKER, EXTENDED_ENCODING_THRESHOLD};
+
     // BigWorld uses direct encoding for indices 0-60 (msg_id 0x80-0xBC) and
     // extended encoding for indices 61+ (msg_id 0xBD with sub_index byte).
     // 0xBD is the marker — it cannot be used as a direct msg_id.
-    if method_index >= 61 {
+    // Boundary + marker imported from cimmeria-mercury so this encoder
+    // and `ChannelBundle::append_entity_method` cannot drift.
+    if method_index >= EXTENDED_ENCODING_THRESHOLD {
         // Extended encoding: marker 0xBD
-        body.push(0xBD);
+        body.push(EXTENDED_ENCODING_MARKER);
         let payload_len = (4 + 1 + args.len()) as u16; // entity_id + sub_index + args
         body.extend_from_slice(&payload_len.to_le_bytes());
         body.extend_from_slice(&entity_id.to_le_bytes());
-        body.push((method_index - 61) as u8);
+        body.push((method_index - EXTENDED_ENCODING_THRESHOLD) as u8);
     } else {
         // Direct encoding: msg_id = index | 0x80
         body.push((method_index as u8) | 0x80);

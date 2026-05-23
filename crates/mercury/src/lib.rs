@@ -10,6 +10,7 @@
 
 pub mod bundle;
 pub mod channel;
+pub mod channel_bundle;
 pub mod codec;
 pub mod encryption;
 pub mod messages;

@@ -166,7 +166,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 13 documents.
+How the Cimmeria emulator itself is structured. 14 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -183,6 +183,7 @@ How the Cimmeria emulator itself is structured. 13 documents.
 | [state-field-bits.md](architecture/state-field-bits.md) | Verified `bStateField` bit layout (bits 0-7 only), client dispatch table, BSF_Holster retirement notice with Ghidra anchors | Complete |
 | [integration-test-infra.md](architecture/integration-test-infra.md) | Live-DB test infrastructure: why no testcontainers, why no `sqlx::test`, local setup, isolation patterns | Complete |
 | [transport-trait.md](architecture/transport-trait.md) | ADR: `Transport` trait for the Mercury send side — `UdpTransport`/`TestTransport`, the send/recv asymmetric split, why `Nub` I/O (#57) was retired, and the fan-out byte test seam | Complete |
+| [mercury-bundle.md](architecture/mercury-bundle.md) | `ChannelBundle` accumulator: cross-entity bundling rule, transaction-state hazard, AoI burst migration (#356), follow-up migration playbook | Complete |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
 

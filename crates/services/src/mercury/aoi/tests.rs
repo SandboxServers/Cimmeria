@@ -381,3 +381,72 @@ fn ghost_lifecycle_emits_create_cascade_update_invisible_leave_in_order() {
     assert_eq!(seq2, 3);
     assert_eq!(seq3, 4);
 }
+
+/// `compose_create_entity_base_body` must produce the same
+/// body bytes that `build_create_entity_base` puts inside its
+/// (eventually-encrypted) Mercury packet.
+///
+/// This is the load-bearing regression guard for the bundle migration:
+/// the bundle path appends `compose_*` output verbatim into a multi-
+/// message bundle, and the resulting wire format must be byte-equivalent
+/// to a sequence of standalone-packet `build_*` emits. Any drift would
+/// mean the migrated AoI flush path is sending different bytes to the
+/// client than the un-migrated paths still are — a wire-format
+/// divergence the existing flush-test would not catch.
+///
+/// Verifies: decrypted standalone packet body == compose() output.
+#[test]
+fn compose_create_entity_base_body_matches_build_create_entity_base_body() {
+    use crate::mercury::compose_create_entity_base_body;
+
+    let composed =
+        compose_create_entity_base_body(0xDEADBEEF, 0x42, [10.0, 20.0, 30.0], [0.0, 0.0, 0.0]);
+
+    // Decrypt the standalone-packet variant and strip [flags] prefix +
+    // [seq_id] footer to recover the body byte slice.
+    let pkt = build_create_entity_base(
+        &TEST_KEY,
+        1,
+        &[],
+        0xDEADBEEF,
+        0x42,
+        [10.0, 20.0, 30.0],
+        [0.0, 0.0, 0.0],
+    );
+    let enc = MercuryEncryption::from_session_key(TEST_KEY);
+    let pt = enc.decrypt(&pkt).unwrap();
+    // pt[0] = flags, body follows, then 4 bytes of seq_id footer.
+    let standalone_body = &pt[1..pt.len() - 4];
+
+    assert_eq!(
+        composed.as_slice(),
+        standalone_body,
+        "compose_create_entity_base_body must produce byte-identical output to \
+         build_create_entity_base's pre-framing body — divergence would split the \
+         wire format between bundle-migrated and un-migrated call sites"
+    );
+}
+
+/// Same regression guard for the phase-2 cascade composer. Tests the
+/// `npc_data: None` shape (player phase-2, smallest cascade — class_id !=
+/// 0 → includes the SGWBeing block but skips all the npc-specific
+/// optional fields).
+#[test]
+fn compose_create_entity_cascade_body_matches_build_create_entity_cascade_body() {
+    use crate::mercury::compose_create_entity_cascade_body;
+
+    let composed = compose_create_entity_cascade_body(0x12345678, 0x42, 7, None);
+
+    let pkt = build_create_entity_cascade(&TEST_KEY, 1, &[], 0x12345678, 0x42, 7, None);
+    let enc = MercuryEncryption::from_session_key(TEST_KEY);
+    let pt = enc.decrypt(&pkt).unwrap();
+    let standalone_body = &pt[1..pt.len() - 4];
+
+    assert_eq!(
+        composed.as_slice(),
+        standalone_body,
+        "compose_create_entity_cascade_body must produce byte-identical output to \
+         build_create_entity_cascade's pre-framing body — divergence would split \
+         the wire format between bundle-migrated and un-migrated call sites"
+    );
+}

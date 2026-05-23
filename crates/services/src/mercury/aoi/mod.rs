@@ -23,6 +23,7 @@ mod update;
 mod tests;
 
 pub use create::{build_create_entity_base, build_create_entity_cascade};
+pub(crate) use create::{compose_create_entity_base_body, compose_create_entity_cascade_body};
 pub use leave::{build_entity_invisible, build_entity_leave};
 pub use method::build_entity_method_packet;
 pub use update::{build_avatar_update, build_forced_position};

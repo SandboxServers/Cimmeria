@@ -30,6 +30,33 @@ pub fn build_create_entity_base(
     position: [f32; 3],
     direction: [f32; 3],
 ) -> Vec<u8> {
+    let body = compose_create_entity_base_body(entity_id, class_id, position, direction);
+    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
+    encrypt_packet(&plaintext, key)
+}
+
+/// Compose the wire body for the phase-1 CREATE_ENTITY + UPDATE_AVATAR
+/// pair WITHOUT packet framing or encryption.
+///
+/// Same byte layout the standalone-packet [`build_create_entity_base`]
+/// produces; extracted so callers can append the body to a
+/// [`cimmeria_mercury::channel_bundle::ChannelBundle`] alongside other
+/// per-NPC bodies for cross-entity batching.
+///
+/// **Transaction-state contract** (see `channel_bundle` module doc):
+/// safe to combine with OTHER entities' phase-1 bodies in the same
+/// bundle — the CREATE_ENTITY puts THIS entity in transaction state,
+/// but a sibling entity's body in the same bundle targets a different
+/// entity_id and is unaffected. NOT safe to combine with same-entity
+/// property cascade in the same bundle (those must land in a later
+/// bundle once the CREATE_ENTITY transaction completes).
+pub(crate) fn compose_create_entity_base_body(
+    entity_id: u32,
+    class_id: u8,
+    position: [f32; 3],
+    direction: [f32; 3],
+) -> Vec<u8> {
     let mut body = Vec::with_capacity(48);
 
     // CREATE_ENTITY (0x09, WORD_LENGTH)
@@ -53,9 +80,7 @@ pub fn build_create_entity_base(
     body.push(pack_angle(direction[0])); // pitch
     body.push(pack_angle(direction[2])); // roll
 
-    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
-    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    body
 }
 
 /// Build and encrypt the `createOnClient()` property cascade — phase 2.
@@ -68,6 +93,33 @@ pub fn build_create_entity_cascade(
     key: &[u8; 32],
     seq_id: u32,
     acks: &[u32],
+    entity_id: u32,
+    class_id: u8,
+    level: u32,
+    npc_data: Option<&NpcAoIData>,
+) -> Vec<u8> {
+    let body = compose_create_entity_cascade_body(entity_id, class_id, level, npc_data);
+    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
+    encrypt_packet(&plaintext, key)
+}
+
+/// Compose the wire body for the phase-2 `createOnClient()` property
+/// cascade WITHOUT packet framing or encryption.
+///
+/// Same byte layout the standalone-packet [`build_create_entity_cascade`]
+/// produces; extracted so callers can append the body to a
+/// [`cimmeria_mercury::channel_bundle::ChannelBundle`] alongside other
+/// per-NPC cascade bodies for cross-entity batching.
+///
+/// **Transaction-state contract** (see `channel_bundle` module doc):
+/// safe to combine with OTHER entities' cascade bodies in the same
+/// bundle. **NOT safe** to combine in the same bundle as the matching
+/// entity's [`compose_create_entity_base_body`] — the CREATE_ENTITY in
+/// phase 1 would put the entity in transaction for the rest of the
+/// bundle and silently drop the same-entity cascade messages
+/// (BeingAppearance, onStatUpdate, …).
+pub(crate) fn compose_create_entity_cascade_body(
     entity_id: u32,
     class_id: u8,
     level: u32,
@@ -194,9 +246,7 @@ pub fn build_create_entity_cascade(
         append_entity_method(&mut body, method_idx::ON_STAT_UPDATE, entity_id, &stat_data);
     }
 
-    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
-    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    body
 }
 
 /// Build default NPC stat data matching `SGWBeing.statsTemplate`.

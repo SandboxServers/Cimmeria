@@ -43,3 +43,8 @@ reqwest = { workspace = true }
 # random entity walks across many ticks and verify that the per-event
 # diff-accumulated witness set always equals the actual witness set.
 proptest = { workspace = true }
+
+# Implement the `Transport` trait in tests that need send-failure
+# injection (e.g. partial-fragment recovery guard). Mercury's trait
+# uses `#[async_trait]`, so any implementor must also pull it in.
+async-trait = { workspace = true }

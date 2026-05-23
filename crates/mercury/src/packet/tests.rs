@@ -303,3 +303,63 @@ fn parse_incoming_accepts_max_28_bit_sequence() {
     let pkt = parse_incoming(&raw).expect("0x0FFFFFFF is the highest legal seq");
     assert_eq!(pkt.seq_id, Some(SEQUENCE_MASK));
 }
+
+/// Regression guard for build_fragmented_bundle seq-wrap masking. With
+/// `base_seq` near `SEQUENCE_MASK` (the 28-bit valid range's upper bound)
+/// and a body that requires multiple fragments, the per-fragment seq +
+/// `frag_end` footer must NOT overflow into [`NULL_SEQUENCE`] — which the
+/// peer parser drops as an R4 violation, silently killing reliable
+/// delivery for the whole bundle.
+///
+/// Pin: base_seq = SEQUENCE_MASK - 1 (one before wrap), 3-fragment body.
+/// Pre-fix bytes would have produced seq=0x0FFFFFFF (ok), seq=0x10000000
+/// (illegal, == NULL_SEQUENCE), seq=0x10000001 (illegal). Post-fix:
+/// seq=0x0FFFFFFE, 0x0FFFFFFF, 0x00000000 (wrapped + masked).
+#[test]
+fn build_fragmented_bundle_masks_seqs_at_28_bit_wrap() {
+    let body = vec![0xAAu8; FRAGMENT_BODY_SIZE * 3 - 100];
+    let base_seq = SEQUENCE_MASK - 1;
+    let (packets, num_seqs) =
+        build_fragmented_bundle(FLAG_RELIABLE, &body, base_seq, &[], |pt| pt.to_vec());
+    assert_eq!(num_seqs, 3, "test must exercise multi-fragment path");
+    assert_eq!(packets.len(), 3);
+
+    let p0 = parse_incoming(&packets[0]).expect("fragment 0 parses");
+    let p1 = parse_incoming(&packets[1]).expect("fragment 1 parses post-wrap");
+    let p2 = parse_incoming(&packets[2]).expect("fragment 2 parses post-wrap");
+
+    assert_eq!(p0.seq_id, Some(SEQUENCE_MASK - 1));
+    assert_eq!(p1.seq_id, Some(SEQUENCE_MASK));
+    assert_eq!(p2.seq_id, Some(0), "wrap to 0, NOT 0x10000001");
+
+    // frag_begin stays at base; frag_end masked to wrapped value.
+    assert_eq!(p0.frag_begin, Some(SEQUENCE_MASK - 1));
+    assert_eq!(p0.frag_end, Some(0), "frag_end masked post-wrap");
+    assert_eq!(p2.frag_begin, Some(SEQUENCE_MASK - 1));
+    assert_eq!(p2.frag_end, Some(0));
+}
+
+/// Same masking guarantee for the single-packet (non-fragmented) path.
+/// `base_seq` passed in at exactly `SEQUENCE_MASK` must round-trip; any
+/// value just above the mask must mask back into range rather than land
+/// on `NULL_SEQUENCE`.
+#[test]
+fn build_fragmented_bundle_masks_seq_in_single_packet_path() {
+    let (packets, _) = build_fragmented_bundle(FLAG_RELIABLE, b"small", SEQUENCE_MASK, &[], |pt| {
+        pt.to_vec()
+    });
+    let p = parse_incoming(&packets[0]).expect("single-packet at SEQUENCE_MASK parses");
+    assert_eq!(p.seq_id, Some(SEQUENCE_MASK));
+
+    // Caller passed an unmasked value (e.g. raw fetch_add output before
+    // masking) — build_fragmented_bundle must defensively mask it.
+    let (packets, _) = build_fragmented_bundle(
+        FLAG_RELIABLE,
+        b"small",
+        NULL_SEQUENCE, // 0x1000_0000 — illegal on the wire
+        &[],
+        |pt| pt.to_vec(),
+    );
+    let p = parse_incoming(&packets[0]).expect("masked unmasked-base parses");
+    assert_eq!(p.seq_id, Some(0), "NULL_SEQUENCE masked back to 0");
+}

@@ -8,14 +8,19 @@ use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
 
+use cimmeria_mercury::channel_bundle::ChannelBundle;
+
 use crate::cell::messages::NpcAoIData;
 use crate::mercury::{
     build_avatar_update, build_create_entity_base, build_create_entity_cascade,
     build_entity_invisible, build_entity_leave, build_entity_method_packet,
+    compose_create_entity_base_body, compose_create_entity_cascade_body,
 };
 
 use super::super::super::deferred_aoi::{self, DeferredAoiMsg};
-use super::super::super::helpers::{send_to_witness, send_to_witness_reliable};
+use super::super::super::helpers::{
+    send_bundle_to_witness_reliable, send_to_witness, send_to_witness_reliable,
+};
 use super::super::super::ConnectedClientState;
 
 /// Drain a session's deferred-AoI buffer and dispatch each held message
@@ -27,12 +32,42 @@ use super::super::super::ConnectedClientState;
 /// re-dispatched `EnteredAoI` / `LeftAoI` events). `EntityMethodCall`
 /// entries carry their own target entity_id.
 ///
-/// Burst sizing: this can dispatch dozens of reliable packets in one
-/// call (one CREATE_ENTITY + cascade per NPC). The deferred-send queue
-/// on `Channel` absorbs any overflow past the 32-slot TX window — the
-/// entries queue and drain as the client ACKs. Without that queue this
-/// flush would have re-introduced the silent-best-effort path the gate
-/// was meant to avoid.
+/// # Bundle batching
+///
+/// `EnteredAoI` is the burst-shape failure mode — a Castle_CellBlock
+/// instance with 28 NPCs would pre-bundle emit 56 reliable packets
+/// (2 per NPC: CREATE_ENTITY/UPDATE_AVATAR pair, then cascade).
+/// Instead this function bundles into TWO logical client frames:
+///
+/// - **Phase-1 bundle**: every NPC's `CREATE_ENTITY + UPDATE_AVATAR`
+///   body. Safe to combine cross-entity: CREATE_ENTITY(A) puts entity A
+///   in transaction for the bundle, but CREATE_ENTITY(B) targets a
+///   different entity and is unaffected.
+/// - **Phase-2 bundle**: every NPC's `createOnClient()` property cascade
+///   body. Safe to combine cross-entity for the same reason. Critically
+///   sent as a SEPARATE bundle from phase-1 — same-entity messages
+///   after CREATE_ENTITY in the same bundle hit the client's
+///   HOLD-FOR-TRANSACTION path and are silently dropped (see the
+///   `cimmeria_mercury::channel_bundle` module doc and the deliberate
+///   two-bundle split in `base/world_entry/map_loaded.rs`).
+///
+/// For 28 NPCs: phase-1 ≈ 28×37 = 1 KB (1 fragment under
+/// `FRAGMENT_BODY_SIZE`=1300); phase-2 ≈ 28×442 = 12 KB (10 fragments
+/// at 1300 bytes each) ≈ **~11 reliable packets total**, down from 56.
+/// The regression guard at
+/// [`flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget`]
+/// pins this at `≤15` to leave headroom for cascade-payload growth.
+/// The deferred-send queue still backstops the case where bundle
+/// finalize emits more than the remaining TX-window capacity.
+///
+/// `LeftAoI` and `EntityMethodCall` stay on the per-message
+/// `send_to_witness_reliable` path. They preserve their **encounter
+/// order** in the buffer relative to each other so the cell's intended
+/// sequencing survives the flush — an `EntityMethodCall(X)` followed by
+/// `LeftAoI(X)` must NOT be reordered to `LeftAoI(X)` then
+/// `EntityMethodCall(X)`, or the method targets a destroyed entity.
+/// Both classes flush **after** the two bundles to guarantee any
+/// `LeftAoI(X)` runs after the matching `EnteredAoI(X)`'s cascade.
 pub(crate) async fn flush_deferred_aoi(
     witness_id: u32,
     addr: SocketAddr,
@@ -50,6 +85,26 @@ pub(crate) async fn flush_deferred_aoi(
         count = buffered.len(),
         "Flushing deferred-AoI buffer after onClientReady"
     );
+
+    // Pre-aggregate EnteredAoI events into two cross-entity bundles.
+    // Tracked separately so phase-1 emits before phase-2 (the client must
+    // process each NPC's CREATE_ENTITY transaction before its cascade).
+    let mut phase1 = ChannelBundle::new(true);
+    let mut phase2 = ChannelBundle::new(true);
+    let mut entered_count = 0usize;
+
+    // Per-message tail — LeftAoI / EntityMethodCall keep their existing
+    // one-packet-each shape and MUST preserve encounter order relative to
+    // each other (a buffered EntityMethodCall(X) followed by LeftAoI(X)
+    // would otherwise reorder to LeftAoI(X) then EntityMethodCall(X) and
+    // the method would target a destroyed entity). Single enum + push in
+    // iteration order is what holds this invariant.
+    enum TailMsg {
+        LeftAoI(u32),
+        EntityMethodCall(u32, u16, Vec<u8>),
+    }
+    let mut tail: Vec<TailMsg> = Vec::new();
+
     for msg in buffered {
         match msg {
             DeferredAoiMsg::EnteredAoI {
@@ -60,28 +115,55 @@ pub(crate) async fn flush_deferred_aoi(
                 level,
                 npc_data,
             } => {
-                entered_aoi(
-                    witness_id,
+                phase1.append_raw_message(&compose_create_entity_base_body(
+                    entity_id, class_id, position, direction,
+                ));
+                phase2.append_raw_message(&compose_create_entity_cascade_body(
                     entity_id,
                     class_id,
-                    position,
-                    direction,
                     level,
-                    npc_data,
-                    transport,
-                    connected,
-                    entity_to_addr,
-                )
-                .await;
+                    npc_data.as_ref(),
+                ));
+                entered_count += 1;
             }
-            DeferredAoiMsg::LeftAoI { entity_id } => {
-                left_aoi(witness_id, entity_id, transport, connected, entity_to_addr).await;
-            }
+            DeferredAoiMsg::LeftAoI { entity_id } => tail.push(TailMsg::LeftAoI(entity_id)),
             DeferredAoiMsg::EntityMethodCall {
                 entity_id,
                 method_index,
                 args,
-            } => {
+            } => tail.push(TailMsg::EntityMethodCall(entity_id, method_index, args)),
+        }
+    }
+
+    if !phase1.is_empty() {
+        tracing::debug!(
+            witness_id,
+            entered = entered_count,
+            phase1_bytes = phase1.body_len(),
+            phase1_packets = phase1.estimated_packet_count(),
+            "AoI flush: phase-1 bundle (CREATE_ENTITY + UPDATE_AVATAR per NPC)"
+        );
+        send_bundle_to_witness_reliable(transport, connected, entity_to_addr, witness_id, phase1)
+            .await;
+    }
+    if !phase2.is_empty() {
+        tracing::debug!(
+            witness_id,
+            entered = entered_count,
+            phase2_bytes = phase2.body_len(),
+            phase2_packets = phase2.estimated_packet_count(),
+            "AoI flush: phase-2 bundle (createOnClient() cascade per NPC)"
+        );
+        send_bundle_to_witness_reliable(transport, connected, entity_to_addr, witness_id, phase2)
+            .await;
+    }
+
+    for msg in tail {
+        match msg {
+            TailMsg::LeftAoI(entity_id) => {
+                left_aoi(witness_id, entity_id, transport, connected, entity_to_addr).await;
+            }
+            TailMsg::EntityMethodCall(entity_id, method_index, args) => {
                 entity_method_call(
                     entity_id,
                     method_index,
