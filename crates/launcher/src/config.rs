@@ -181,6 +181,17 @@ mod tests {
         ));
     }
 
+    // Windows-only: the assertion compares against a path built from
+    // backslash-separated string literals (`Z:\LocalApp\Stargate Worlds`),
+    // which only parse as multi-component paths on Windows. On Linux
+    // `PathBuf::from("Z:\\LocalApp")` is a single-component string and
+    // `.join("Stargate Worlds")` produces `Z:\LocalApp/Stargate Worlds`
+    // — different on the byte level from the expected literal. The
+    // production behavior under test (`LOCALAPPDATA` → `<dir>/Stargate
+    // Worlds`) is a Windows convention; the cross-platform fallback
+    // branches in `default_install_path` are exercised implicitly by
+    // every other test that constructs a `LauncherConfig::default()`.
+    #[cfg(target_os = "windows")]
     #[test]
     fn default_uses_localappdata_when_set() {
         let prev_local = std::env::var("LOCALAPPDATA").ok();
