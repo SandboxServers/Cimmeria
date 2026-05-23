@@ -22,6 +22,7 @@ pub(crate) mod character_create;
 pub(crate) mod chardef;
 pub(crate) mod connect_loop;
 pub(crate) mod cooked_data;
+pub(crate) mod deferred_aoi;
 pub(crate) mod dispatch;
 pub(crate) mod helpers;
 pub(crate) mod login;
@@ -133,6 +134,19 @@ pub(crate) struct ConnectedClientState {
     pub pending_player_load_data: Option<PlayerLoadData>,
     pub pending_map_loaded: Option<WorldEntryInfo>,
     pub pending_client_ready: Option<PendingClientReadyInfo>,
+    /// Buffer of AoI-class cell→base messages held back while the client
+    /// is still in the pre-`onClientReady` world-entry window. Flushed
+    /// from [`crate::base::world_entry_appearance::handle_on_client_ready`]
+    /// once the client signals it's ready to receive entity data.
+    ///
+    /// Without this gate, the cell would fire CREATE_ENTITY + property
+    /// cascade for every NPC in the spawned space the moment the player
+    /// is added as a witness — that's ~33+ reliable packets sent during
+    /// the 3.5s window while the client is loading terrain and cannot
+    /// ACK. The TX window then fills before `mapLoaded`'s own burst can
+    /// run. See [`deferred_aoi`] for the buffer semantics and #354 for
+    /// the bug shape.
+    pub deferred_aoi_msgs: Vec<deferred_aoi::DeferredAoiMsg>,
     pub cached_appearance_args: Option<Vec<u8>>,
     pub cached_tint_args: Option<Vec<u8>>,
     /// Tracks whether the player is currently rendering holstered (no
@@ -187,6 +201,12 @@ pub(crate) struct ConnectedClientState {
     /// happen on every received packet (`connect_loop/encrypted.rs`);
     /// retransmits fire from the per-session `tick_sync` loop every
     /// 100 ms, capped at `RETRANSMIT_BUDGET_PER_TICK` entries per scan.
+    ///
+    /// When a send arrives while the TX window is at its `TX_WINDOW_SIZE`
+    /// cap, the Channel queues the entry in its `unsent_packets` deque
+    /// rather than rejecting it. Queued entries are promoted into the
+    /// window FIFO as ACKs free slots. This replaces the prior
+    /// downgrade-reliable-send-to-best-effort path (see #354).
     ///
     /// Wrapped in `Mutex` because `process_acks`, `register_sent_packet`,
     /// and `check_timeouts` all need `&mut self` and run from different

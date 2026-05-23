@@ -14,8 +14,87 @@ use crate::mercury::{
     build_entity_invisible, build_entity_leave, build_entity_method_packet,
 };
 
+use super::super::super::deferred_aoi::{self, DeferredAoiMsg};
 use super::super::super::helpers::{send_to_witness, send_to_witness_reliable};
 use super::super::super::ConnectedClientState;
+
+/// Drain a session's deferred-AoI buffer and dispatch each held message
+/// through the normal AoI handlers.
+///
+/// Called from `handle_on_client_ready` once the client signals it's
+/// ready to receive entity-state traffic. `witness_id` is the player's
+/// own entity_id (the buffer's owner — used as the AoI witness for the
+/// re-dispatched `EnteredAoI` / `LeftAoI` events). `EntityMethodCall`
+/// entries carry their own target entity_id.
+///
+/// Burst sizing: this can dispatch dozens of reliable packets in one
+/// call (one CREATE_ENTITY + cascade per NPC). The deferred-send queue
+/// added in #354 fix #3 absorbs any overflow past the 32-slot TX
+/// window — the entries queue and drain as the client ACKs. Without
+/// that queue this flush would have re-introduced the silent-best-effort
+/// path the gate was meant to avoid.
+pub(crate) async fn flush_deferred_aoi(
+    witness_id: u32,
+    addr: SocketAddr,
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    let buffered = deferred_aoi::drain_deferred(connected, addr);
+    if buffered.is_empty() {
+        return;
+    }
+    tracing::info!(
+        %addr,
+        witness_id,
+        count = buffered.len(),
+        "Flushing deferred-AoI buffer after onClientReady"
+    );
+    for msg in buffered {
+        match msg {
+            DeferredAoiMsg::EnteredAoI {
+                entity_id,
+                class_id,
+                position,
+                direction,
+                level,
+                npc_data,
+            } => {
+                entered_aoi(
+                    witness_id,
+                    entity_id,
+                    class_id,
+                    position,
+                    direction,
+                    level,
+                    npc_data,
+                    socket,
+                    connected,
+                    entity_to_addr,
+                )
+                .await;
+            }
+            DeferredAoiMsg::LeftAoI { entity_id } => {
+                left_aoi(witness_id, entity_id, socket, connected, entity_to_addr).await;
+            }
+            DeferredAoiMsg::EntityMethodCall {
+                entity_id,
+                method_index,
+                args,
+            } => {
+                entity_method_call(
+                    entity_id,
+                    method_index,
+                    args,
+                    socket,
+                    connected,
+                    entity_to_addr,
+                )
+                .await;
+            }
+        }
+    }
+}
 
 /// `CellToBaseMsg::EnteredAoI` — entity entered a witness's range.
 /// Emits CREATE_ENTITY + UPDATE_AVATAR (phase 1, BaseApp immediate) followed

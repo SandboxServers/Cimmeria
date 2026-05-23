@@ -146,6 +146,7 @@ pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
         pending_player_load_data: None,
         pending_map_loaded: None,
         pending_client_ready: None,
+        deferred_aoi_msgs: Vec::new(),
         cached_appearance_args: None,
         cached_tint_args: None,
         weapon_holstered: true,

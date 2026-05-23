@@ -38,6 +38,8 @@ mod aoi;
 mod bandolier;
 mod minigame;
 
+pub(crate) use aoi::flush_deferred_aoi;
+
 #[cfg(test)]
 mod tests;
 
@@ -82,6 +84,31 @@ pub(crate) async fn handle_cell_message(
             level,
             npc_data,
         } => {
+            // Gate: while the witness is pre-`onClientReady`, the client
+            // hasn't loaded terrain yet — buffer the CREATE_ENTITY +
+            // cascade so it fires AFTER the client is ready to ACK.
+            // See `crate::base::deferred_aoi` and issue #354 fix #2.
+            let witness_addr = entity_to_addr
+                .lock()
+                .ok()
+                .and_then(|m| m.get(&witness_id).copied());
+            if let Some(addr) = witness_addr {
+                if super::super::deferred_aoi::should_defer(connected, addr) {
+                    super::super::deferred_aoi::push_deferred(
+                        connected,
+                        addr,
+                        super::super::deferred_aoi::DeferredAoiMsg::EnteredAoI {
+                            entity_id,
+                            class_id,
+                            position,
+                            direction,
+                            level,
+                            npc_data,
+                        },
+                    );
+                    return;
+                }
+            }
             aoi::entered_aoi(
                 witness_id,
                 entity_id,
@@ -100,6 +127,25 @@ pub(crate) async fn handle_cell_message(
             witness_id,
             entity_id,
         } => {
+            // Gate: while the witness is pre-`onClientReady`, buffer
+            // the LEFT event so it pairs correctly with the buffered
+            // ENTERED event on flush. If the entity enters AND leaves
+            // before the client is ready, the client never sees either
+            // (both buffered, both dispatched at flush). See #354 fix #2.
+            let witness_addr = entity_to_addr
+                .lock()
+                .ok()
+                .and_then(|m| m.get(&witness_id).copied());
+            if let Some(addr) = witness_addr {
+                if super::super::deferred_aoi::should_defer(connected, addr) {
+                    super::super::deferred_aoi::push_deferred(
+                        connected,
+                        addr,
+                        super::super::deferred_aoi::DeferredAoiMsg::LeftAoI { entity_id },
+                    );
+                    return;
+                }
+            }
             aoi::left_aoi(witness_id, entity_id, socket, connected, entity_to_addr).await;
         }
         CellToBaseMsg::EntityMoved {
@@ -110,6 +156,29 @@ pub(crate) async fn handle_cell_message(
             direction,
             velocity,
         } => {
+            // Position updates are unreliable and superseded by the next
+            // frame. While the witness is pre-`onClientReady` the client
+            // doesn't have the moving entity yet (its CREATE_ENTITY is
+            // buffered), so this update would target an unknown id and
+            // be dropped client-side anyway. Drop pre-ready instead of
+            // buffering — saves the buffer space and matches what the
+            // client will do with it. See `crate::base::deferred_aoi`
+            // module docs.
+            let witness_addr = entity_to_addr
+                .lock()
+                .ok()
+                .and_then(|m| m.get(&witness_id).copied());
+            if let Some(addr) = witness_addr {
+                if super::super::deferred_aoi::should_defer(connected, addr) {
+                    tracing::trace!(
+                        %addr,
+                        witness_id,
+                        entity_id,
+                        "Dropping EntityMoved while witness is pre-onClientReady"
+                    );
+                    return;
+                }
+            }
             aoi::entity_moved(
                 witness_id,
                 entity_id,
@@ -127,6 +196,29 @@ pub(crate) async fn handle_cell_message(
             method_index,
             args,
         } => {
+            // Gate on the TARGET entity's session — entity-method calls
+            // are dispatched to the entity_id's owning client (see
+            // `aoi::entity_method_call`'s lookup). If that client is
+            // still pre-`onClientReady`, buffer the method. See #354
+            // fix #2.
+            let target_addr = entity_to_addr
+                .lock()
+                .ok()
+                .and_then(|m| m.get(&entity_id).copied());
+            if let Some(addr) = target_addr {
+                if super::super::deferred_aoi::should_defer(connected, addr) {
+                    super::super::deferred_aoi::push_deferred(
+                        connected,
+                        addr,
+                        super::super::deferred_aoi::DeferredAoiMsg::EntityMethodCall {
+                            entity_id,
+                            method_index,
+                            args,
+                        },
+                    );
+                    return;
+                }
+            }
             aoi::entity_method_call(
                 entity_id,
                 method_index,

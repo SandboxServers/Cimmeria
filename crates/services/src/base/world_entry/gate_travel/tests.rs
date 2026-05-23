@@ -60,6 +60,7 @@ fn make_state() -> ConnectedClientState {
         // it surfaces as a failed assertion in the round-trip test.
         // Without seeding, asserting None would be a no-op.
         pending_client_ready: Some(stub_pending_ready()),
+        deferred_aoi_msgs: Vec::new(),
         cached_appearance_args: None,
         cached_tint_args: None,
         weapon_holstered: true,
