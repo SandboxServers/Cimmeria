@@ -394,6 +394,145 @@ pub(crate) async fn send_to_witness_reliable<F>(
     }
 }
 
+/// Send a [`ChannelBundle`] of N messages to a witness's client as a
+/// reliable Mercury bundle (one or more fragmented packets).
+///
+/// Bundles collapse multiple cross-entity AoI / property messages into
+/// fewer UDP datagrams, cutting per-packet header overhead AND reducing
+/// the number of slots consumed in the per-channel TX window. See the
+/// [`cimmeria_mercury::channel_bundle`] module doc for the
+/// "one bundle == one client frame" rule (CRITICAL: do not combine
+/// `CREATE_ENTITY(X)` with same-entity-X messages in one bundle).
+///
+/// The helper:
+/// 1. Resolves `witness_id` → `addr` and reads the session key.
+/// 2. Drains the session's pending ACKs into the bundle (ACKs ride only
+///    the first finalized packet — bundle handles this internally).
+/// 3. Atomically reserves `bundle.estimated_packet_count()` consecutive
+///    reliable sequence numbers from the session counter, masked to the
+///    28-bit space.
+/// 4. Finalizes the bundle through the session AES-256-CBC encrypt path.
+/// 5. Sends each fragment via the UDP socket.
+/// 6. Registers each fragment with the per-session
+///    [`Channel`](cimmeria_mercury::channel::Channel) so the retransmit
+///    driver in `tick_sync.rs` can re-send on RTO expiry.
+///
+/// `estimated_packet_count` is the contract: it equals
+/// `finalize().packets.len()` for this implementation (assert pinned in
+/// the bundle tests), so the seq reservation matches actual emission
+/// without a TOCTOU window.
+///
+/// Empty bundle (no messages, no acks) is a no-op — no seq is allocated,
+/// no UDP traffic flows. Use [`ChannelBundle::is_empty`] on the caller
+/// side if you want to skip the lookup overhead entirely.
+///
+/// [`ChannelBundle`]: cimmeria_mercury::channel_bundle::ChannelBundle
+pub(crate) async fn send_bundle_to_witness_reliable(
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    witness_id: u32,
+    mut bundle: cimmeria_mercury::channel_bundle::ChannelBundle,
+) {
+    use cimmeria_mercury::packet::{FLAG_ON_CHANNEL, FLAG_RELIABLE, SEQUENCE_MASK};
+
+    let send_data = {
+        let addr = match entity_to_addr.lock().unwrap().get(&witness_id).copied() {
+            Some(a) => a,
+            None => {
+                tracing::trace!(
+                    witness_id,
+                    "AoI bundle: no client addr for witness -- skipping"
+                );
+                return;
+            }
+        };
+
+        let clients = connected.lock().unwrap();
+        let c = match clients.get(&addr) {
+            Some(c) => c,
+            None => {
+                tracing::trace!(witness_id, %addr, "AoI bundle: client disconnected -- skipping");
+                return;
+            }
+        };
+
+        // Drain pending ACKs into the bundle so they ride the first
+        // finalized packet. Done under the same lock window as the seq
+        // reservation so a concurrent ACK-pumping send doesn't race.
+        let drained_acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+        bundle.add_acks(&drained_acks);
+
+        // Now that ACKs are in, estimated_packet_count reflects the true
+        // emit count (empty body + empty acks → 0; empty body + acks → 1;
+        // otherwise ceil(body / FRAGMENT_BODY_SIZE)).
+        let packet_count = bundle.estimated_packet_count();
+        if packet_count == 0 {
+            return;
+        }
+
+        // Atomically reserve `packet_count` consecutive sequence numbers.
+        // Mask the base to the 28-bit Mercury space; per-fragment seqs
+        // (base+1, base+2, ...) inherit the contiguous reservation and are
+        // re-masked by build_fragmented_bundle internally.
+        let base_seq = c.next_seq.fetch_add(packet_count as u32, Ordering::Relaxed) & SEQUENCE_MASK;
+        let key = c.key;
+        Some((addr, key, base_seq, packet_count))
+    };
+
+    let Some((addr, key, base_seq, packet_count)) = send_data else {
+        return;
+    };
+
+    let num_messages = bundle.num_messages();
+    let body_len = bundle.body_len();
+
+    // Finalize through the session encrypt closure. Use FLAG_RELIABLE +
+    // FLAG_ON_CHANNEL as base flags — the bundle adds FLAG_HAS_SEQUENCE,
+    // FLAG_FRAGMENTED, FLAG_HAS_ACKS internally as needed per fragment.
+    let base_flags = FLAG_RELIABLE | FLAG_ON_CHANNEL;
+    let (packets, seqs_consumed) = bundle.finalize(base_flags, base_seq, |plaintext| {
+        crate::mercury::encrypt_packet(plaintext, &key)
+    });
+
+    debug_assert_eq!(
+        seqs_consumed as usize, packet_count,
+        "estimated_packet_count contract violated — seq reservation overshoots finalize"
+    );
+
+    tracing::info!(
+        %addr,
+        witness_id,
+        messages = num_messages,
+        body_bytes = body_len,
+        packets = packets.len(),
+        base_seq,
+        "AoI bundle: flushed {num_messages} messages in {} packet(s)",
+        packets.len()
+    );
+
+    for (i, pkt) in packets.iter().enumerate() {
+        let frag_seq = base_seq.wrapping_add(i as u32) & SEQUENCE_MASK;
+        if let Err(e) = socket.send_to(pkt, addr).await {
+            tracing::warn!(
+                witness_id,
+                %addr,
+                frag_seq,
+                fragment = i + 1,
+                total = packets.len(),
+                "AoI bundle: failed to send fragment: {e}"
+            );
+            continue;
+        }
+        shadow_register_reliable_send(
+            connected,
+            addr,
+            frag_seq,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt),
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
