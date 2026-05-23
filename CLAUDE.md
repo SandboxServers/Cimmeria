@@ -115,7 +115,7 @@ The markdown lint runs via [`markdownlint-cli2`](https://github.com/DavidAnson/m
 
 ## Required testing for every PR
 
-A PR that changes runtime behavior without adding or updating a test will be sent back. **Before writing a test, read [TESTING.md](TESTING.md)** — it covers the seven test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference), the picker for which type fits which bug shape, and the gotchas mined from PR reviews #131 onwards.
+A PR that changes runtime behavior without adding or updating a test will be sent back. **Before writing a test, read [TESTING.md](TESTING.md)** — it covers the eight test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte), the picker for which type fits which bug shape, and the gotchas mined from PR reviews #131 onwards.
 
 The non-negotiables:
 

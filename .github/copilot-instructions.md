@@ -31,9 +31,11 @@ Default to **none**. Add a comment only when the **why** is non-obvious: a hidde
 
 When adding a client method call, confirm the index against `docs/protocol/client-method-dispatch-table.md` and byte layout against `entities/defs/*.def`. Notable trap: `onPlayerTeleport` (method 116) is a streaming-load hint, not an authoritative move — use `BASEMSG_FORCED_POSITION` (`build_forced_position` in `mercury/aoi.rs`) for actual avatar snaps.
 
+**Handlers must take `&Arc<dyn Transport>`, never `&Arc<UdpSocket>`, outside the recv loop.** Outbound sends go through `cimmeria_mercury::transport::Transport`; only `connect_loop::run_connect_loop` keeps the concrete `UdpSocket` (it owns `recv_from`) and wraps it in a `UdpTransport` for dispatch. A new handler that reaches for `UdpSocket` directly is a review block — it defeats the byte-exact fan-out test seam. See [docs/architecture/transport-trait.md](../docs/architecture/transport-trait.md).
+
 ## Required tests on every PR
 
-A PR that changes runtime behaviour must add or update a test. **Read [TESTING.md](../TESTING.md) before writing one** — it has the picker for the seven test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference) and the gotchas mined from review comments since PR #131. Reviewer non-negotiables:
+A PR that changes runtime behaviour must add or update a test. **Read [TESTING.md](../TESTING.md) before writing one** — it has the picker for the eight test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte) and the gotchas mined from review comments since PR #131. Reviewer non-negotiables:
 
 - The test must fail when the fix is reverted (regression-guard shape, not happy-path).
 - Tighten assertions: composite keys, exact final positions, `== 1` not `>= 1`, exact byte strings for serializers.
