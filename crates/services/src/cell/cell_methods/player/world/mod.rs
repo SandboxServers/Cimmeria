@@ -18,11 +18,92 @@ pub async fn dispatch(
         SET_AUTO_CYCLE => {
             if !args.is_empty() {
                 let enabled = args[0] != 0;
-                tracing::debug!(entity_id, enabled, "setAutoCycle");
-                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-                    entity.abilities.auto_cycle = enabled;
-                    if !enabled {
-                        entity.abilities.auto_cycle_ability_id = None;
+                tracing::info!(entity_id, enabled, "setAutoCycle");
+                if enabled {
+                    // Light BSF_AUTO_CYCLING immediately so the button
+                    // highlights on the very first press; without this
+                    // the button looks broken until the player happens
+                    // to right-click an enemy. Phase 2: if the player
+                    // already has a target selected AND has fired any
+                    // ability in this session, ALSO fire that ability
+                    // now — the press feels like an action ("start
+                    // firing"), not a mode flip. `last_fired_ability_id`
+                    // is the simplest server-side proxy for "what
+                    // would the player fire?" since the wire payload
+                    // carries no ability id.
+                    let (new_state, immediate_fire) = {
+                        let entity = match space_mgr.get_entity_mut(entity_id) {
+                            Some(e) => e,
+                            None => return true,
+                        };
+                        entity.abilities.auto_cycle = true;
+                        // Raw bit op — see auto_cycle module doc for why
+                        // BSF_AUTO_CYCLING bypasses the ref-counted helpers.
+                        let old = entity.state_field;
+                        entity.state_field |= crate::cell::combat::BSF_AUTO_CYCLING;
+                        let new_state = (entity.state_field != old).then_some(entity.state_field);
+                        let immediate_fire = entity
+                            .abilities
+                            .last_fired_ability_id
+                            .zip(entity.current_target_id);
+                        // Persist the loop's committed ability BEFORE
+                        // calling handle_use_ability. If that call
+                        // rejects (out of range / cooldown / no ammo),
+                        // its commit-time arm path never runs and the
+                        // tick driver would have no ability id to
+                        // re-fire with — BSF-armed but functionally
+                        // dead. Stashing here lets the next
+                        // cooldown-clear tick pick up the loop
+                        // regardless of immediate-fire outcome.
+                        if let Some((ability_id, _)) = immediate_fire {
+                            entity.abilities.auto_cycle_ability_id = Some(ability_id);
+                        }
+                        (new_state, immediate_fire)
+                    };
+                    if let Some(new_state) = new_state {
+                        super::super::super::abilities::send_entity_method(
+                            entity_id,
+                            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                            new_state.to_le_bytes().to_vec(),
+                            tx,
+                            space_mgr,
+                        )
+                        .await;
+                    }
+                    // Gated on bit transition. CEGUI fires the Lua
+                    // binding 3-4× per physical click (~150µs apart);
+                    // without the gate every duplicate would re-attempt
+                    // the fire and rely on the cooldown gate inside
+                    // handle_use_ability to reject — wasted work + log
+                    // noise.
+                    if let (Some(_), Some((ability_id, target_id))) = (new_state, immediate_fire) {
+                        tracing::info!(
+                            entity_id,
+                            ability_id,
+                            target_id,
+                            "setAutoCycle: immediate fire on enable (last_fired + current_target ready)"
+                        );
+                        let _ = super::super::super::abilities::handle_use_ability(
+                            entity_id, ability_id, target_id, tx, space_mgr,
+                        )
+                        .await;
+                    }
+                } else {
+                    // Explicit disable: drop the stash AND clear the bit.
+                    // clear_auto_cycle returns Some only on bit
+                    // transition — re-broadcasting for an already-off
+                    // player would be wire noise.
+                    if let Some(new_state) =
+                        crate::cell::combat::clear_auto_cycle(space_mgr, entity_id)
+                    {
+                        super::super::super::abilities::send_entity_method(
+                            entity_id,
+                            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                            new_state.to_le_bytes().to_vec(),
+                            tx,
+                            space_mgr,
+                        )
+                        .await;
                     }
                 }
             }

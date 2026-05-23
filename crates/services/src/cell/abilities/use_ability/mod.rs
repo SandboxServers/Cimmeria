@@ -10,13 +10,34 @@
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::abilities::{serialize_timer_update, TIMER_ABILITY_COOLDOWN};
+use cimmeria_entity::abilities::{
+    serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE, TIMER_ABILITY_COOLDOWN,
+};
 
 use super::super::combat;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
 use super::messaging::{flush_attacker_ammo_stat, send_entity_method};
+
+/// Broadcast `onStateFieldUpdate` after a `BSF_AUTO_CYCLING` transition.
+/// Self-only routing (like BSF_InCombat changes) — kept in one place so
+/// arm/clear sites don't drift apart on the wire rule.
+async fn send_state_field(
+    entity_id: u32,
+    new_state: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    send_entity_method(
+        entity_id,
+        crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+        new_state.to_le_bytes().to_vec(),
+        tx,
+        space_mgr,
+    )
+    .await;
+}
 
 /// Handle a `useAbility(abilityId, targetId)` cell method call.
 ///
@@ -47,6 +68,35 @@ pub async fn handle_use_ability(
 ) -> bool {
     // ── Look up ability definition from DB (before mutable borrow) ──
     let ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
+
+    // ── Auto-cycle manual-override gate ──
+    //
+    // If the player has auto-cycle armed for one ability and manually
+    // fires a different ability, cancel the loop before validation.
+    // Matches python `AbilityManager.useAbility` (line 1019:
+    // `self.autoCycle = False`) — the manual click is intent to break
+    // the cycle. Tick-driven re-fires always invoke with the stashed
+    // ability_id, so this never trips for loop-driven shots. Same-
+    // ability manual fire is NOT a cancel: clicking the same weapon
+    // on a different target should let the loop continue and let the
+    // next tick redirect via `current_target_id`.
+    let override_clears_loop = space_mgr.get_entity(entity_id).is_some_and(|e| {
+        e.is_player
+            && e.abilities.auto_cycle
+            && e.abilities
+                .auto_cycle_ability_id
+                .is_some_and(|id| id != ability_id)
+    });
+    if override_clears_loop {
+        if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
+            tracing::info!(
+                entity_id,
+                ability_id,
+                "auto-cycle: cleared by manual override (different ability fired)"
+            );
+            send_state_field(entity_id, new_state, tx, space_mgr).await;
+        }
+    }
 
     // ── Validation (immutable checks first to avoid borrow conflicts) ──
 
@@ -260,6 +310,37 @@ pub async fn handle_use_ability(
         .abilities
         .start_ability_cooldown(ability_id, cooldown_duration);
 
+    // Stash the just-fired ability so `setAutoCycle(1)` can fire it
+    // immediately on the next button press. Distinct from
+    // `auto_cycle_ability_id` (the LOOP's committed ability, cleared
+    // on stop): this field persists across auto-cycle on/off cycles
+    // for the whole session. NPCs use `chooseAbility` per-fire and
+    // don't need the stash.
+    if entity.is_player {
+        entity.abilities.last_fired_ability_id = Some(ability_id);
+    }
+
+    // ── Auto-cycle commit-time arm / deactivate classification ──
+    //
+    // Three cases after the cooldown has started:
+    //
+    //   1. `AF_DEACTIVATE_AUTO_CYCLE` flag (mask `0x400`) on the firing
+    //      ability — break the loop. One-shot specials that mustn't
+    //      auto-repeat.
+    //   2. `auto_cycle == true` (button armed) — stash the ability id
+    //      AND set `BSF_AUTO_CYCLING`. The driver tick reads
+    //      `current_target_id` LIVE at re-fire time so target stash
+    //      isn't needed here.
+    //   3. `auto_cycle == false` — no-op.
+    //
+    // Mutation + broadcast run AFTER the cooldown-timer send below
+    // (which would re-acquire the immutable borrow).
+    let is_player = entity.is_player;
+    let auto_cycle_armed = entity.abilities.auto_cycle;
+    let has_deactivate_flag = ability_def
+        .as_ref()
+        .is_some_and(|d| d.flags & AF_DEACTIVATE_AUTO_CYCLE != 0);
+
     // Consume ammo (players only). Routes through `set_slot_ammo` so the
     // AmmoSlot{N} stat updates and the slot is marked dirty for batched
     // persistence (drained on reload completion / slot swap / ammo change /
@@ -301,6 +382,37 @@ pub async fn handle_use_ability(
     );
 
     send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
+
+    // ── Auto-cycle commit: arm or DEACTIVATE-flag clear ──
+    //
+    // Classification was captured before the mutable borrow ended.
+    // Run the actual state mutation + broadcast now that the cooldown
+    // timer send is past.
+    if is_player && auto_cycle_armed {
+        if has_deactivate_flag {
+            if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
+                tracing::info!(
+                    entity_id,
+                    ability_id,
+                    "auto-cycle: cleared by AF_DEACTIVATE_AUTO_CYCLE flag"
+                );
+                send_state_field(entity_id, new_state, tx, space_mgr).await;
+            }
+        } else if let Some(new_state) =
+            combat::arm_auto_cycle(space_mgr, entity_id, ability_id, target_id)
+        {
+            tracing::info!(
+                entity_id,
+                ability_id,
+                target_id,
+                "auto-cycle: armed (first commit) — BSF_AUTO_CYCLING set"
+            );
+            send_state_field(entity_id, new_state, tx, space_mgr).await;
+        }
+        // Bit-already-set path: `arm_auto_cycle` updates the stash
+        // unconditionally; only the `Some(new_state)` branch needs to
+        // broadcast.
+    }
 
     // Note on BSF_InCombat (bit 3): intentionally NOT set here. The bit is
     // derived from `threatened_mobs` and flips on via

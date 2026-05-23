@@ -427,6 +427,21 @@ pub struct CellEntity {
     /// Entity ID of the currently-open vendor (only for player entities).
     pub vendor_entity: Option<u32>,
 
+    /// Entity ID of the player's currently-selected target on the client
+    /// (player entities only).
+    ///
+    /// Source of truth: written by the `setTargetID` cell method (index 0
+    /// on the `SGWBeing` interface) every time the client's targeting
+    /// reticle moves to a new entity. `None` when the player has no
+    /// target selected (the client sends `setTargetID(0)` to deselect).
+    ///
+    /// Used by the auto-cycle loop driver as the live re-fire target so
+    /// the player can switch targets mid-loop without breaking it (and
+    /// so the loop pauses when the player deselects). Mirrors python's
+    /// `self.entity().targetId` live read inside `abilityCooledDown`.
+    /// Reference: `python/cell/SGWBeing.py:setTarget`.
+    pub current_target_id: Option<i32>,
+
     /// Currently-active bandolier slot (0-based index).
     pub active_bandolier_slot: i32,
 
@@ -575,6 +590,7 @@ impl CellEntity {
             next_loot_index: 1,
             looting_entity: None,
             vendor_entity: None,
+            current_target_id: None,
             active_bandolier_slot: 0,
             bandolier_items: HashMap::new(),
             bandolier_ammo_dirty: HashSet::new(),

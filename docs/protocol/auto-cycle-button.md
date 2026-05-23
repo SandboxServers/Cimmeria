@@ -1,21 +1,60 @@
 # Auto-Cycle (Auto-Fire) Button — Protocol and Behavior Reference
 
 **Status**: Confirmed  
-**Confidence**: HIGH (binary + Python canonical source + entity def confirmed)  
-**Ghidra anchors**: `ghidra://SGW.exe@0x00d68250`, `ghidra://SGW.exe@0x00e01c90`, `ghidra://SGW.exe@0x00e05fb0`  
-**Related files**: `crates/services/src/cell/cell_methods/player/world.rs`, `crates/entity/src/abilities.rs`, `deprecated/python/cell/SGWPlayer.py`, `deprecated/python/cell/AbilityManager.py`, `entities/defs/SGWPlayer.def`
+**Confidence**: HIGH (binary + live-debugger verification + Python canonical source + entity def confirmed)  
+**Ghidra anchors**: `ghidra://SGW.exe@0x00aa29c0`, `ghidra://SGW.exe@0x00ad7820`, `ghidra://SGW.exe@0x00e02700`, `ghidra://SGW.exe@0x00e061b0`, `ghidra://SGW.exe@0x00cbbc40`, `ghidra://SGW.exe@0x00e01c90`, `ghidra://SGW.exe@0x00e05fb0`  
+**Related files**: `crates/services/src/cell/cell_methods/player/world/mod.rs`, `crates/services/src/cell/combat/auto_cycle.rs`, `crates/services/src/cell/service/ticks/auto_cycle.rs`, `crates/entity/src/abilities.rs`, `deprecated/python/cell/SGWPlayer.py`, `deprecated/python/cell/AbilityManager.py`, `entities/defs/SGWPlayer.def`
 
 ---
 
 ## Wire Path — Button to Handler
 
-### 1. Client-side UI binding
+### 1. Client-side trace (verified via live debugger)
 
-The gun-icon button on the bottom-right HUD is handled by **`USGWTargetIndicator`**, the UE3 HUD widget class responsible for the targeting reticle and combat-mode indicators. The RTTI string `".?AV$MemberCallback@XVUSGWTargetIndicator@@P81@AEXPBUEvent_UI_AutoCycle@@PAX@ZU2@@EventSignal@CME@@"` at `ghidra://SGW.exe@0x01e6b538` confirms that `USGWTargetIndicator` subscribes to **`Event_UI_AutoCycle`** — the CME event that carries the toggle state into the client UI layer.
+The auto-cycle button on the bottom-right HUD is **a CEGUI widget bound to a Lua function**, not a Flash/UnrealScript widget. The Lua function is named `setAutoAttack` (player-facing name); the C side wires it to a Lua-binding shim that constructs the `Event_NetOut_SetAutoCycle` network event directly. Verified by attaching x64dbg to a live SGW client and watching the breakpoint hit on every button click.
 
-The button press travels via the CME event bus through **`SGWScriptedWindow`** (`GameEventHandler<Event_UI_AutoCycle>` at `ghidra://SGW.exe@0x00ce9b90`) then serialises onto the Mercury wire as **`Event_NetOut_SetAutoCycle`** (`ghidra://SGW.exe@0x019b3e90`).
+```
+Lua  setAutoAttack(enabled: bool)           [Lua function bound to the CEGUI widget]
+  ↓
+0x00aa29c0  Lua_setAutoAttack                [CEGUI Lua binding shim — error string
+                                              `"#ferror in function 'setAutoAttack'."`
+                                              confirms the binding's Lua name]
+  ↓
+0x00ad7820  MaybeSendSetAutoCycle(bool)      [RTTI-gates on local controller being a
+                                              GameBeing — refuses to send if you have
+                                              no live character]
+  ↓
+0x00e02700  SendSetAutoCycle(bool)           [Allocates Event_NetOut_SetAutoCycle,
+                                              sets the "enabled" property to the bool,
+                                              emits through CME]
+  ↓
+0x00e061b0  CME::EventSignal<...>::Emit      [Allocates 0x18-byte TypedEmitInfo,
+                                              walks the handler list]
+  ↓
+0x00cbbc40  TypedEmitInfo<...>::ctor         [Sets dispatch metadata + vftable]
+  ↓
+(vtable)    SGWNetworkManager::EventHandler  [Per-event serializer]
+              <Event_NetOut_SetAutoCycle>::handle
+  ↓
+0x00d43dc0  shared NetOut byte-writer        [Generic trampoline shared by ~100
+                                              NetOut events. Writes `methodID|0x80`
+                                              + 1-byte payload to Mercury buffer]
+  ↓
+Mercury wire → server (cell method 83)
+```
 
-There is also a slash-command path: **`Event_SlashCmd_toggleAutoCycleAbility`** (`ghidra://SGW.exe@0x01842480`) handled by `SGWTextCommandMgr`, which feeds the same `Event_NetOut_SetAutoCycle` emission. The player could type `/toggleAutoCycleAbility` as a keyboard shortcut alternative.
+### 2. `Event_UI_AutoCycle` is INBOUND (server → client), not outbound
+
+The previous version of this document characterized `Event_UI_AutoCycle` as a step on the OUT path. **That was wrong.** RTTI evidence:
+
+- The only two subscribers to `Event_UI_AutoCycle` are both *listeners*:
+  - `USGWTargetIndicator::MemberCallback<Event_UI_AutoCycle>` at `0x01e6b538` — updates the gun-icon button highlight.
+  - `SGWScriptedWindow::GameEventHandler<Event_UI_AutoCycle>` at `0x01e1cfc8` — propagates the change to downstream UI.
+- The only *emitter* of `Event_UI_AutoCycle` is `FUN_00e05fb0` (`EmitAutoCycleStateChanged`), called *from* `FUN_00e01c90` (the state-field XOR-delta handler) when **the server** toggles `BSF_AutoCycling` (mask `0x002`) on the player's `bStateField`.
+
+So `Event_UI_AutoCycle` is purely a server-driven UI refresh signal. The button press skips it entirely on the way out — the Lua → CEGUI binding constructs `Event_NetOut_SetAutoCycle` directly.
+
+There is also a slash-command path: **`Event_SlashCmd_toggleAutoCycleAbility`** (`ghidra://SGW.exe@0x01842480`) handled by `SGWTextCommandMgr`, which constructs the same outbound event. The player can type `/toggleAutoCycleAbility` as a keyboard alternative to the gun-icon button.
 
 ### 2. Method index: 83 (`setAutoCycle`)
 
@@ -24,7 +63,7 @@ The `Event_NetOut_SetAutoCycle` network dispatch resolves to **cell method index
 - `entities/defs/SGWPlayer.def` lines 701–704: `<setAutoCycle><Exposed/><Arg>INT8 enabled</Arg></setAutoCycle>`
 - `crates/services/src/cell/cell_methods/player/constants.rs:21`: `pub const SET_AUTO_CYCLE: u16 = 83;`
 - RTTI string `"setAutoCycle"` at `ghidra://SGW.exe@0x019c2e6c`
-- `docs/protocol/cell-method-dispatch-table.md:289`: entry 83 confirmed
+- `docs/protocol/client-method-dispatch-table.md:289`: entry 83 confirmed
 
 ### 3. Wire format
 
@@ -40,7 +79,7 @@ Source: `docs/reverse-engineering/findings/combat-wire-formats.md` §setAutoCycl
 
 ### 4. Server-side handler (Cimmeria)
 
-`crates/services/src/cell/cell_methods/player/world.rs`, `dispatch()` match arm `SET_AUTO_CYCLE`:
+`crates/services/src/cell/cell_methods/player/world/mod.rs`, `dispatch()` match arm `SET_AUTO_CYCLE`:
 
 ```rust
 SET_AUTO_CYCLE => {
@@ -140,57 +179,56 @@ No explicit `onTimerUpdate` handshake is required to start or stop the loop. The
 
 ---
 
-## Implementation Guidance for Cimmeria
+## Implementation in Cimmeria
 
-The current Cimmeria implementation handles `setAutoCycle(enabled)` correctly at the **message-receipt layer** — it stores `auto_cycle` and clears `auto_cycle_ability_id` on disable. What is missing is the **cooldown-expiry re-fire loop** that makes auto-cycle actually shoot. Specifically:
+The loop is fully wired. The code lives in nine locations:
 
-### What is missing
+| File | What it owns |
+|---|---|
+| `crates/entity/src/abilities.rs` | `AbilityManager` fields: `auto_cycle` (flag), `auto_cycle_ability_id` (loop's committed ability), `last_fired_ability_id` (player's most recent fire — persists across loop on/off cycles, used by the immediate-fire path). |
+| `crates/entity/src/cell_entity/mod.rs` | `current_target_id` field — the player's live cursor selection, written by `setTargetID` (cell method 0). The auto-cycle tick + death sweep read this as the LIVE target instead of stashing one at arm-time. |
+| `crates/services/src/cell/combat/state.rs` | `BSF_AUTO_CYCLING` constant (mask `0x002`, bit 1). |
+| `crates/services/src/cell/combat/auto_cycle.rs` | Lifecycle primitives: `arm_auto_cycle`, `clear_auto_cycle`, `clear_auto_cycle_for_target`. Manipulate `BSF_AUTO_CYCLING` with **raw `\|=` / `&= !mask` ops** (NOT the ref-counted `set_state_flag` / `unset_state_flag` helpers — see "Bit management" below). All three return `Some(new_state_field)` only when the bit actually transitioned. |
+| `crates/services/src/cell/cell_methods/being.rs` | `SET_TARGET_ID` handler (cell method 0) — persists the target id to `current_target_id` on the player entity so the auto-cycle tick can read it as the live re-fire target. |
+| `crates/services/src/cell/cell_methods/player/world/mod.rs` | `SET_AUTO_CYCLE` handler: enable sets the flag AND lights `BSF_AUTO_CYCLING` immediately AND fires immediately if `(last_fired_ability_id, current_target_id)` are both Some; disable drops the stash, clears the BSF bit, and broadcasts `onStateFieldUpdate`. |
+| `crates/services/src/cell/abilities/use_ability/mod.rs` | Manual-override gate at function entry (different ability ⇒ clear loop), arm/AF_DEACTIVATE branch at commit time, AND stashes `last_fired_ability_id` on every commit regardless of `auto_cycle` state. |
+| `crates/services/src/cell/service/ticks/auto_cycle.rs` | `auto_cycle_tick` — every 100 ms AoI tick, scans armed players and re-invokes `handle_use_ability` against the LIVE `current_target_id`. Cursor switches mid-loop redirect automatically; target deselect (`current_target_id = None`), dead/missing target, or out-of-range silently skips (no error packet, loop stays armed for resume). |
+| `crates/services/src/cell/abilities/death.rs` | `apply_death_transition` calls `clear_auto_cycle_for_target` so every player auto-firing at the dying entity gets their loop cleared (matches against LIVE `current_target_id`, not an arm-time stash). **Plus** clears the dying player's OWN auto-cycle — prevents the loop from auto-resuming on respawn. |
 
-1. **The cooldown-expiry auto-cycle check.** When `handle_use_ability` starts a cooldown in `use_ability/mod.rs`, it does not check `auto_cycle` at cooldown expiry. The ability's cooldown timer expires inside `start_ability_cooldown` / `AbilityManager::cleanup_expired` but there is no callback that re-invokes `handle_use_ability` when the timer lapses and `auto_cycle == true`.
+### Bit management — raw ops, NOT the ref-counted helpers
 
-2. **`auto_cycle_ability_id` is never set on enable.** `SET_AUTO_CYCLE` with `enabled=1` does not set `auto_cycle_ability_id` — it only sets the flag. The ability ID needs to be stored at the time the *first* `useAbility` fires with auto-cycle intent, not at `setAutoCycle(1)`. For the `interact` path this would be the bandolier weapon ability; for the button-press path it is the ability that was last fired.
+`BSF_AUTO_CYCLING` uses raw `|=` and `&= !mask` ops, deliberately bypassing the ref-counted `set_state_flag` / `unset_state_flag` API on `CellEntity`. Mirrors how `BSF_IN_COMBAT` is handled in `combat::threat` — both are single-source flags where exactly one module (this one) arms and clears the bit.
 
-3. **`BSF_AutoCycling` is never set in the Rust path.** `setAutoCycle(1)` stores `auto_cycle = true` on `AbilityManager` but does not set bit 1 of `entity.state_field`. The state-field bit drives the client button highlight and `USGWTargetIndicator` update. Without it the button has no visual feedback.
+Using the ref-counted helpers would be a correctness bug: every tick-driven re-fire re-enters `arm_auto_cycle`, `set_state_flag` would bump the per-flag counter from 1 to 2, 3, 4 …, and the single decrement in `clear_auto_cycle` would only bring it back to N-1 — leaving the bit stuck set forever and suppressing every disable/death/manual-override broadcast. Observable symptoms: server logs show `auto-cycle: armed` firing on first commit, then **zero** `death: clearing player auto-cycle loop` lines despite the target dying and the player getting un-aggroed cleanly. Pinned by `clear_after_n_arms_still_transitions_bit_and_broadcasts`.
 
-4. **`stoppedAutoCycling()` equivalent is missing.** When the loop terminates (target dead, explicit disable, `AF_DEACTIVATE_AUTO_CYCLE` ability fires), the server must clear `BSF_AutoCycling` from the state field and broadcast the change so the client un-highlights the button.
+### Loop semantics (what the tests pin)
 
-### Recommended implementation sketch
+- **Enable (button press):** sets `auto_cycle = true` AND lights `BSF_AUTO_CYCLING` immediately so the button highlights on the very first press. **Phase 2: if the player has a target selected (`current_target_id`) AND has fired any ability in this session (`last_fired_ability_id`), the button press ALSO fires that ability immediately at the target** — the MMO auto-attack feel. Pins: `set_auto_cycle_enable_lights_bsf_and_broadcasts` (base behavior), `set_auto_cycle_enable_fires_immediately_when_target_and_last_ability_set` (immediate-fire path), `set_auto_cycle_enable_does_not_fire_without_last_ability` / `set_auto_cycle_enable_does_not_fire_without_target` (degradation paths).
+- **Duplicate enable presses (CEGUI fires the Lua function 3-4× per click, observed within ~150µs):** idempotent — the bit-transition gate suppresses re-broadcast AND the immediate-fire path is gated on the same transition so duplicates don't refire. Pin: `set_auto_cycle_enable_spam_does_not_re_broadcast`.
+- **First commit while armed:** `arm_auto_cycle` stashes ability. BSF was already set by enable so no second broadcast fires. Pin: `auto_cycle_first_commit_arms_loop_and_broadcasts_state_field`.
+- **Tick-driven re-fire:** every 100 ms, eligible players (armed, cursor target alive, cooldown clear) get a re-invocation of `handle_use_ability` against `current_target_id`. Pins: `auto_cycle_tick_refires_when_cooldown_clear`, `auto_cycle_tick_skips_when_on_cooldown`.
+- **Cursor target switch mid-loop:** the tick reads `current_target_id` LIVE — switching cursor from enemy A to enemy B redirects the next re-fire to B with zero loop disruption. Pin: `auto_cycle_tick_refires_at_live_current_target`.
+- **Target deselect (`setTargetID(0)`):** clears the loop (no point firing at "no target"). Pin: `auto_cycle_tick_clears_loop_when_target_deselected`.
+- **Same-ability manual fire:** does NOT break the loop — right-clicking the same weapon at a new target just commits a manual shot; the tick keeps cycling at `current_target_id`. Pin: `same_ability_manual_fire_does_not_break_loop`.
+- **Different-ability manual fire:** breaks the loop on entry. Pin: `manual_fire_of_different_ability_cancels_auto_cycle`.
+- **`AF_DEACTIVATE_AUTO_CYCLE` flag (mask `0x400`):** breaks the loop after commit so one-shot specials don't auto-repeat. Pin: `af_deactivate_auto_cycle_clears_loop_on_commit`.
+- **Target death:** the death-transition burst sweeps every player whose `current_target_id` matches the dying entity. Pins: `target_sweep_clears_every_player_cycling_at_dying_target`, `target_sweep_follows_live_target_after_switch` (a player who switched cursor after arming is NOT cleared by the original target's death).
+- **Dying player's own loop:** if the dying entity is itself an auto-cycling player, their own flag + ability stash + BSF clear in the same death burst — otherwise the loop would auto-resume on respawn. Pin: `dying_player_own_auto_cycle_clears_and_broadcasts`.
+- **Target despawn (no death message):** the tick's secondary sweep catches missing target ids. Pin: `auto_cycle_tick_clears_loop_when_target_missing`.
+- **Explicit disable (`setAutoCycle(0)`):** clears flag + ability stash + BSF, broadcasts. Pin: `set_auto_cycle_disable_clears_stash_and_bsf`.
+- **Duplicate disable presses:** idempotent — same transition-gate pattern as enable. Pin: `set_auto_cycle_disable_spam_does_not_re_broadcast`.
 
-The cleanest approach, matching the original Python model:
+### `current_target_id` vs `last_fired_ability_id` — Phase 2 fields
 
-**A. At `use_ability/mod.rs` fire-time:** when the call succeeds and `entity.abilities.auto_cycle == true`, store the fired `ability_id` in `entity.abilities.auto_cycle_ability_id`. This is the "lock in the cycled ability" step.
+Phase 2 added two server-side player state fields that didn't exist before. They live independently of the auto-cycle loop state and survive its on/off cycles:
 
-**B. In the per-entity tick** (wherever cooldown completion is checked — the same tick that handles `reload_complete_at`, `pending_reload_at`, etc.): after a cooldown entry for an ability expires, check:
+- **`current_target_id: Option<i32>`** on `CellEntity` — written by `setTargetID` (cell method 0). Every cursor selection on the client updates this. `setTargetID(0)` clears to `None`. The auto-cycle tick reads it LIVE on every re-fire; the death sweep filters against it. Mirrors python's `self.entity().targetId` live read in `abilityCooledDown`.
+- **`last_fired_ability_id: Option<i32>`** on `AbilityManager` — stashed on every `handle_use_ability` commit, regardless of `auto_cycle` state. Persists for the whole session: never cleared on loop stop, death, or respawn. Stale values are harmless — the immediate-fire path routes through the normal `handle_use_ability` validation, which rejects abilities the player no longer has (e.g. after a weapon unequip) and leaves the loop BSF-armed for the next manual fire to refresh. The `SET_AUTO_CYCLE(1)` immediate-fire path uses this as a heuristic for "what ability would the player fire?" since the wire payload doesn't carry an ability id. Distinct from `auto_cycle_ability_id`, which is the LOOP'S committed ability and clears on stop.
 
-```rust
-if entity.abilities.auto_cycle {
-    if let Some(cycle_id) = entity.abilities.auto_cycle_ability_id {
-        if target is still alive {
-            // re-invoke handle_use_ability with cycle_id and stored target_id
-        } else {
-            entity.abilities.auto_cycle = false;
-            entity.abilities.auto_cycle_ability_id = None;
-            // clear BSF_AutoCycling and broadcast state field
-        }
-    }
-}
-```
+### Known gaps / follow-ups
 
-**C. `BSF_AutoCycling` state-field management:**
-
-- Set bit 1 of `entity.state_field` when `auto_cycle` goes `true` (both from `setAutoCycle(1)` and from `interact` kicking off a cycle).
-- Clear bit 1 and broadcast `onStateFieldUpdate` when the loop stops.
-- The existing `set_state_flag` / `broadcast_state_field` infrastructure already handles this for `BSF_InCombat`; the same pattern applies.
-
-**D. `AF_DEACTIVATE_AUTO_CYCLE` gate in `use_ability/mod.rs`:** check the ability's `flags & AF_DEACTIVATE_AUTO_CYCLE` (constant `1024`, already defined as `cimmeria_entity::abilities::AF_DEACTIVATE_AUTO_CYCLE`) when launching. If set, cancel auto-cycle before firing.
-
-**E. `interact` path:** the Rust `interact` handler should set `auto_cycle = true` and `auto_cycle_ability_id` to the weapon ability (matching `SGWPlayer.py:1176–1178`). This is the normal entry path — the standalone button is the override.
-
-### What does NOT need to change
-
-- `SET_AUTO_CYCLE` disable handling is correct: it clears both `auto_cycle` and `auto_cycle_ability_id`.
-- `USE_ABILITY` should continue to cancel auto-cycle when called directly (matching Python `AbilityManager.useAbility:1019`).
-- Wire format is correct: 1-byte `int8 enabled` payload.
+- **The `interact` path arming auto-cycle.** Python `SGWPlayer.py:1175-1178` had `interact` against a hostile NPC set `BSF_AutoCycling` and call `launchAbility(autoCycle=True)` implicitly. Cimmeria's `interact` does not do this yet — the explicit `setAutoCycle(1)` button is currently the only entry point. With Phase 2's immediate-fire, the button + a target selection now produces the same end-result UX without the interact-path arming. Could still be wired for parity.
+- **`DoNotActivate_AutoCycle` ability flag (mask `0x200`).** Only meaningful on the `interact` path (it suppresses the implicit auto-cycle arming when interacting with a hostile). Will land alongside the interact-path work.
 
 ---
 
@@ -198,12 +236,16 @@ if entity.abilities.auto_cycle {
 
 | # | Question | Evidence needed |
 |---|----------|-----------------|
-| OQ-1 | Does `setAutoCycle(1)` as a standalone button press (without a prior `interact`) require a prior target to be set, or does it effectively no-op until the player attacks something? | Check client Lua/SWF to see if the button is only enabled when a hostile is targeted. The Python code implies it would fire into `autoCycleAbility = None` and do nothing useful — `launchAbility(None, ...)` would crash — so presumably the button is only clickable when already in combat. |
-| OQ-2 | What was `startAutoCycleAbility` (a base method in `SGWPlayer.def:694`) called by, and how does it differ from `setAutoCycle`? It has no args — is it a server-to-client signal or a server-internal trigger? | No Python implementation found in the deprecation tree. The def entry has no `<Exposed/>` tag, so it was a server-to-server or internal call, not a client RPC. Needs Python base-side search or Ghidra for the handler. |
-| OQ-3 | Does the client send `setAutoCycle(0)` when the user clicks the button again to toggle off, or does it rely solely on `BSF_AutoCycling` clearing? | The wire format supports it (enabled=0 is a valid message). The Python `setAutoCycle` handles both. Assuming symmetric toggle — confirmed by `SGWPlayer.def` which shows a separate `stopAutoCycle` internal method alongside `setAutoCycle`. |
+| OQ-1 | Does the CEGUI button widget gate clicks on having a hostile targeted, or does it accept clicks unconditionally? | Live-debugger evidence: clicking the button reaches the outbound emit (`0x00e02700`) even with no target. Cimmeria handles the empty-target case at TWO independent checks: (a) the `setAutoCycle(1)` immediate-fire path skips when `current_target_id.is_none()` (zip of two Options returns None); (b) the `auto_cycle_tick` driver clears the loop + un-lights BSF when `current_target_id.is_none()` (treats deselect same as dead/despawned target). The loop CAN be armed without a target (BSF lights, button highlights), but no fire occurs until a target is selected — and the moment one is, the next tick re-fire commits the loop. Behavior is correct either way; the Lua-side gate is a UX nicety, not a correctness requirement. |
+| OQ-2 | What was `startAutoCycleAbility` (a base method in `SGWPlayer.def:694`) called by, and how does it differ from `setAutoCycle`? It has no args — is it a server-to-client signal or a server-internal trigger? | No Python implementation found in the deprecation tree. The def entry has no `<Exposed/>` tag, so it was a server-to-server or internal call, not a client RPC. Currently unused in Cimmeria; revisit if a future feature needs it. |
+| OQ-3 | Does the client send `setAutoCycle(0)` when the user toggles off, or does it rely solely on `BSF_AutoCycling` clearing? | Confirmed via live debugger: every button click hits the outbound emit regardless of state, and the byte argument toggles between `0` and `1`. The wire is symmetric — the client always sends the new value rather than relying on a server-side toggle. |
 
 ---
 
-## Summary for Relaying to the User
+## Summary
 
-The gun-icon button is confirmed to be the **auto-cycle / auto-fire toggle** (`setAutoCycle`, cell method 83). Pressing it sends a 2-byte packet to the server (`methodID + enabled:int8`). When enabled, the server is supposed to automatically re-fire the player's current weapon ability at their current target every time that ability's cooldown expires — no further input required. The client just receives the same ability-fire packets it would from a manual shot. The loop stops when the target dies, when the player manually fires a different ability, or when they press the button again to disable it. Currently the Cimmeria server correctly receives and stores the flag but does not have the cooldown-expiry re-fire tick that actually drives the loop, so the button has no effect in gameplay. The fix requires hooking the cooldown-completion tick to check the auto_cycle flag and re-invoke `handle_use_ability` when it's set.
+The gun-icon button is the **auto-cycle / auto-fire toggle** (`setAutoCycle`, cell method 83). Pressing it sends a 2-byte packet (`methodID|0x80 + int8 enabled`). When enabled, the server re-fires the player's current weapon ability at the stashed target every time the cooldown expires — no further client input required. The client receives the same `onTimerUpdate` + `onSequence` + `onEffectResults` packets a manual shot would produce, indistinguishable on the wire.
+
+The loop stops on: target death (death-transition sweep), target despawn (tick's defensive sweep), manual fire of a different ability (entry gate in `handle_use_ability`), an `AF_DEACTIVATE_AUTO_CYCLE`-flagged ability firing (commit-time gate), or explicit `setAutoCycle(0)` (button toggle off).
+
+Cimmeria implements the full server-side loop. The end-to-end handshake the client expects (`BSF_AutoCycling` toggling bit 1 of `bStateField` to drive the button highlight) is in place — verified against the live binary's state-field dispatcher at `ghidra://SGW.exe@0x00e01c90`.
