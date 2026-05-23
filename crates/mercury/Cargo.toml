@@ -13,6 +13,7 @@ bytes = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }
+async-trait = { workspace = true }
 
 # Cryptography (AES-256-CBC + HMAC-MD5 — must be byte-identical to C++ implementation)
 aes = { workspace = true }
@@ -24,6 +25,14 @@ md-5 = { workspace = true }
 tokio-util = { version = "0.7", features = ["codec"] }
 cipher = "0.5"
 digest = "0.10"
+
+[features]
+# Exposes `test_transport::TestTransport`, a recording `Transport` impl for
+# byte-exact fan-out assertions. Consumer crates pull it in via a
+# dev-dependency: `cimmeria-mercury = { path = "../mercury", features =
+# ["test-support"] }`. Kept off by default so production builds never include
+# the recorder. See docs/architecture/transport-trait.md.
+test-support = []
 
 [dev-dependencies]
 # Property-based round-trip tests for the wire-format codec. The

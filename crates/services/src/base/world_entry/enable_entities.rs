@@ -13,8 +13,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
@@ -34,7 +34,7 @@ use super::super::ConnectedClientState;
 ///   Sends `CREATE_BASE_PLAYER` + `onClientMapLoad`. The client loads terrain and
 ///   then sends `mapLoaded`, which triggers the enter-world step.
 pub(crate) async fn handle_enable_entities(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     account_id: u32,
@@ -80,7 +80,7 @@ pub(crate) async fn handle_enable_entities(
         );
 
         let pkt = build_create_player(&key, seq, &acks, &entry_info, load_data.as_ref());
-        socket.send_to(&pkt, addr).await?;
+        transport.send_to(&pkt, addr).await?;
         // Register this reliable send with the per-session Channel's TX
         // window so it retransmits if the ACK doesn't land.
         super::super::helpers::shadow_register_reliable_send(
@@ -140,7 +140,7 @@ pub(crate) async fn handle_enable_entities(
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
     let pkt = build_char_list(&key, seq, &acks, &characters, account_eid);
     tracing::trace!(%addr, len = pkt.len(), seq, hex = %super::super::helpers::to_hex(&pkt), "UDP_OUT char_list");
-    socket.send_to(&pkt, addr).await?;
+    transport.send_to(&pkt, addr).await?;
     // Char list is a one-shot state delivery; retransmit on loss.
     super::super::helpers::shadow_register_reliable_send(
         connected,
@@ -165,25 +165,17 @@ pub(crate) async fn handle_enable_entities(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TestTransport;
     use std::collections::HashMap;
-    use std::io::ErrorKind;
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
-    use tokio::net::UdpSocket;
-
-    fn assert_no_udp_packet(receiver: &UdpSocket) {
-        let mut buf = [0u8; 2048];
-        let err = receiver
-            .try_recv_from(&mut buf)
-            .expect_err("early return must not send UDP");
-        assert_eq!(err.kind(), ErrorKind::WouldBlock);
-    }
 
     #[tokio::test]
     async fn enable_entities_returns_ok_when_addr_not_in_connected_map() {
-        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
-        let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        let addr = receiver.local_addr().unwrap();
+        // Typed handle for the no-send assertion; dyn handle for the call.
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+        let addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
@@ -191,7 +183,7 @@ mod tests {
         let key = [0u8; 32];
 
         let result = handle_enable_entities(
-            &socket,
+            &dyn_transport,
             addr,
             key,
             1,
@@ -206,14 +198,14 @@ mod tests {
         assert!(connected.lock().unwrap().is_empty());
         assert_eq!(entity_manager.lock().unwrap().entity_count(), 0);
         assert!(entity_to_addr.lock().unwrap().is_empty());
-        assert_no_udp_packet(&receiver);
+        assert!(transport.is_empty(), "early return must not send UDP");
     }
 
     #[tokio::test]
     async fn enable_entities_returns_ok_when_char_list_already_sent() {
-        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
-        let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        let addr = receiver.local_addr().unwrap();
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+        let addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
         let mut client = crate::test_support::test_default_connected_client_state();
         client.char_list_sent = true;
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
@@ -227,7 +219,7 @@ mod tests {
         let key = [0u8; 32];
 
         let result = handle_enable_entities(
-            &socket,
+            &dyn_transport,
             addr,
             key,
             1,
@@ -248,6 +240,6 @@ mod tests {
         drop(clients);
         assert_eq!(entity_manager.lock().unwrap().entity_count(), 0);
         assert!(entity_to_addr.lock().unwrap().is_empty());
-        assert_no_udp_packet(&receiver);
+        assert!(transport.is_empty(), "early return must not send UDP");
     }
 }

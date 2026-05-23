@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use super::super::super::ConnectedClientState;
 use super::super::methods::inventory::update_bandolier_ammo;
@@ -20,7 +20,7 @@ pub(super) async fn active_slot_update(
     player_id: i32,
     slot_id: i32,
     db_pool: &Option<Arc<PgPool>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -63,7 +63,7 @@ pub(super) async fn active_slot_update(
                 entity_id,
                 player_id,
                 db_pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -95,7 +95,7 @@ pub(super) async fn refresh_appearance(
     player_id: i32,
     holstered: bool,
     db_pool: &Option<Arc<PgPool>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -112,7 +112,7 @@ pub(super) async fn refresh_appearance(
                     entity_id,
                     player_id,
                     holstered,
-                    "RefreshAppearance: entity has no socket addr (disconnected?), skipping"
+                    "RefreshAppearance: entity has no transport addr (disconnected?), skipping"
                 );
                 return;
             }
@@ -145,7 +145,7 @@ pub(super) async fn refresh_appearance(
         entity_id,
         player_id,
         db_pool,
-        socket,
+        transport,
         connected,
         entity_to_addr,
     )

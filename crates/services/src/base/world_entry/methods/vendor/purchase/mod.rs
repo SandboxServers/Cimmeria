@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use super::super::super::super::ConnectedClientState;
@@ -30,7 +30,7 @@ pub async fn handle_purchase_vendor_items(
     items: Vec<(i32, i32)>,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -321,15 +321,21 @@ pub async fn handle_purchase_vendor_items(
     }
 
     if total_cash_cost > 0 {
-        send_cash_changed_to_client(entity_id, new_cash_total, socket, connected, entity_to_addr)
-            .await;
+        send_cash_changed_to_client(
+            entity_id,
+            new_cash_total,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
     }
 
     let total_items = send_full_inventory_update(
         entity_id,
         player_id,
         pool,
-        socket,
+        transport,
         connected,
         entity_to_addr,
     )
@@ -347,7 +353,7 @@ pub async fn handle_purchase_vendor_items(
         vendor_entity_id,
         Some(vendor_template_id),
         db_pool,
-        socket,
+        transport,
         connected,
         entity_to_addr,
     )

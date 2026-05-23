@@ -18,6 +18,7 @@ use tokio::sync::mpsc;
 use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::{FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE};
+use cimmeria_mercury::transport::{Transport, UdpTransport};
 
 use crate::cell::messages::BaseToCellMsg;
 
@@ -33,6 +34,12 @@ mod encrypted;
 pub(crate) use encrypted::handle_encrypted_datagram;
 
 /// Main receive loop -- one per running `BaseService`.
+///
+/// Owns the concrete [`UdpSocket`] because it is the only place that reads
+/// from the wire (`recv_from`). The send side is handed to handlers as a
+/// `&Arc<dyn Transport>` — a [`UdpTransport`] wrapping the same socket,
+/// constructed once here rather than per datagram. See
+/// `docs/architecture/transport-trait.md`.
 pub(crate) async fn run_connect_loop(
     socket: Arc<UdpSocket>,
     pending_logins: Arc<Mutex<HashMap<String, crate::auth::PendingLogin>>>,
@@ -45,12 +52,16 @@ pub(crate) async fn run_connect_loop(
 ) {
     let mut buf = [0u8; 4096];
 
+    // Wrap the recv socket once for the send side. Handlers take
+    // `&Arc<dyn Transport>`, never the concrete socket.
+    let transport: Arc<dyn Transport> = Arc::new(UdpTransport::new(Arc::clone(&socket)));
+
     loop {
         match socket.recv_from(&mut buf).await {
             Ok((len, addr)) => {
                 tracing::trace!(%addr, len, hex = %to_hex(&buf[..len]), "UDP_IN");
                 if let Err(e) = handle_datagram(
-                    &socket,
+                    &transport,
                     addr,
                     &buf[..len],
                     &pending_logins,
@@ -83,7 +94,7 @@ pub(crate) async fn run_connect_loop(
 
 /// Dispatch a single incoming UDP datagram.
 async fn handle_datagram(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     raw: &[u8],
     pending_logins: &Arc<Mutex<HashMap<String, crate::auth::PendingLogin>>>,
@@ -122,7 +133,7 @@ async fn handle_datagram(
         // Update last-recv timestamp on every packet from this client.
         *last_recv.lock().unwrap() = Instant::now();
         return handle_encrypted_datagram(
-            socket,
+            transport,
             addr,
             raw,
             enc,
@@ -150,7 +161,7 @@ async fn handle_datagram(
         Ok((request_id, ticket_str)) => {
             tracing::info!(%addr, ticket = %ticket_str, "baseAppLogin received");
             handle_login(
-                socket,
+                transport,
                 addr,
                 request_id,
                 &ticket_str,

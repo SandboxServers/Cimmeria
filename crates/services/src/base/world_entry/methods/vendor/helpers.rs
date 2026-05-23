@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use super::super::player_load::meta::query_bandolier_items_tx;
@@ -14,12 +14,12 @@ use crate::mercury::{build_entity_method_packet, method_idx};
 pub async fn send_cash_changed_to_client(
     entity_id: u32,
     total: i32,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     helpers::send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -42,7 +42,7 @@ pub async fn sync_bandolier_after_inventory_change(
     player_id: i32,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -51,7 +51,7 @@ pub async fn sync_bandolier_after_inventory_change(
         player_id,
         db_pool,
         cell_tx,
-        socket,
+        transport,
         connected,
         entity_to_addr,
         false,
@@ -76,7 +76,7 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
     player_id: i32,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     defer_appearance_refresh: bool,
@@ -164,7 +164,7 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
                 entity_id,
                 player_id,
                 db_pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -218,7 +218,7 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
         args.extend_from_slice(&CONTAINER_BANDOLIER.to_le_bytes());
         args.extend_from_slice(&(active_slot + 1).to_le_bytes());
         helpers::send_to_witness_reliable(
-            socket,
+            transport,
             connected,
             entity_to_addr,
             entity_id,
@@ -268,7 +268,7 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
             entity_id,
             player_id,
             db_pool,
-            socket,
+            transport,
             connected,
             entity_to_addr,
         )
@@ -287,6 +287,7 @@ mod sync_bandolier_tests {
 
     use super::*;
     use crate::test_support::require_db_or_skip;
+    use crate::test_support::TestTransport;
 
     /// Sentinel base for sync_bandolier tests. Distinct from prior
     /// live-DB sentinels (outbox 0x000 / grant_cash +0x100 /
@@ -372,13 +373,11 @@ mod sync_bandolier_tests {
     fn make_state(
         entity_id: u32,
     ) -> (
-        Arc<UdpSocket>,
+        Arc<dyn Transport>,
         Arc<Mutex<HashMap<u32, SocketAddr>>>,
         Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     ) {
-        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-        std_sock.set_nonblocking(true).unwrap();
-        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
         let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
         let entity_to_addr = Arc::new(Mutex::new({
             let mut m = HashMap::new();
@@ -386,7 +385,7 @@ mod sync_bandolier_tests {
             m
         }));
         let connected = Arc::new(Mutex::new(HashMap::new()));
-        (socket, entity_to_addr, connected)
+        (transport, entity_to_addr, connected)
     }
 
     /// Active-slot fixup: the player's persisted bandolier_slot points
@@ -407,7 +406,7 @@ mod sync_bandolier_tests {
         insert_bandolier_row(&pool, player_id, 3).await;
         insert_bandolier_row(&pool, player_id, 2).await;
 
-        let (socket, e2a, conn) = make_state(0x7000_0E01);
+        let (transport, e2a, conn) = make_state(0x7000_0E01);
         let db_pool = Some(Arc::new(pool.clone()));
         let (cell_tx, mut cell_rx) = mpsc::channel::<BaseToCellMsg>(4);
 
@@ -416,7 +415,7 @@ mod sync_bandolier_tests {
             player_id,
             &db_pool,
             &Some(cell_tx),
-            &socket,
+            &transport,
             &conn,
             &e2a,
         )
@@ -460,7 +459,7 @@ mod sync_bandolier_tests {
         insert_bandolier_row(&pool, player_id, 2).await;
         insert_bandolier_row(&pool, player_id, 3).await;
 
-        let (socket, e2a, conn) = make_state(0x7000_0E11);
+        let (transport, e2a, conn) = make_state(0x7000_0E11);
         let db_pool = Some(Arc::new(pool.clone()));
         let (cell_tx, mut cell_rx) = mpsc::channel::<BaseToCellMsg>(4);
 
@@ -469,7 +468,7 @@ mod sync_bandolier_tests {
             player_id,
             &db_pool,
             &Some(cell_tx),
-            &socket,
+            &transport,
             &conn,
             &e2a,
         )
@@ -514,7 +513,7 @@ mod sync_bandolier_tests {
         insert_account_and_player(&pool, account_id, player_id, 3).await;
         // Deliberately no bandolier rows.
 
-        let (socket, e2a, conn) = make_state(0x7000_0E21);
+        let (transport, e2a, conn) = make_state(0x7000_0E21);
         let db_pool = Some(Arc::new(pool.clone()));
         let (cell_tx, mut cell_rx) = mpsc::channel::<BaseToCellMsg>(4);
 
@@ -523,7 +522,7 @@ mod sync_bandolier_tests {
             player_id,
             &db_pool,
             &Some(cell_tx),
-            &socket,
+            &transport,
             &conn,
             &e2a,
         )

@@ -10,8 +10,8 @@ use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -33,7 +33,7 @@ use super::methods::default_player_load_data;
 /// (which itself fires after `connected()` sends `onClientMapLoad`) and the
 /// Python `onClientReady()` -> `mapLoaded()` callback chain.
 pub(crate) async fn handle_map_loaded(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -99,7 +99,7 @@ pub(crate) async fn handle_map_loaded(
     let enter_world_pkt = build_enter_world(&key, base_seq, &acks, &entry_info, Some(&player_data));
     tracing::debug!(%addr, len = enter_world_pkt.len(), seq = base_seq,
         "UDP_OUT enter world: VIEWPORT+CELL+FORCED (standalone)");
-    socket.send_to(&enter_world_pkt, addr).await?;
+    transport.send_to(&enter_world_pkt, addr).await?;
     // Register this reliable send with the per-session Channel's TX
     // window. ACK consumption + RTO sampling are live, and the
     // retransmit driver in `tick_sync.rs` will resend the cached bytes
@@ -132,7 +132,7 @@ pub(crate) async fn handle_map_loaded(
             map_base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
         tracing::debug!(%addr, len = pkt_data.len(), seq = frag_seq,
             part = i + 1, total = map_packets.len(), "UDP_OUT mapLoaded entity data");
-        socket.send_to(pkt_data, addr).await?;
+        transport.send_to(pkt_data, addr).await?;
         super::super::helpers::shadow_register_reliable_send(
             connected,
             addr,
@@ -165,7 +165,7 @@ pub(crate) async fn handle_map_loaded(
 
     // Register entity_id -> addr before the final onClientReady gate so any
     // resource responses and future client-targeted traffic can resolve the
-    // socket, but defer CellService player initialization until the client
+    // transport, but defer CellService player initialization until the client
     // explicitly signals readiness (matches C++ SGWPlayer.onClientReady).
     entity_to_addr
         .lock()
@@ -215,16 +215,14 @@ pub(crate) async fn handle_map_loaded(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TestTransport;
     use std::collections::HashMap;
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
-    use tokio::net::UdpSocket;
 
     #[tokio::test]
     async fn map_loaded_errors_when_no_pending_entry() {
-        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-        std_sock.set_nonblocking(true).unwrap();
-        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
         let addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
             Arc::new(Mutex::new({
@@ -239,7 +237,7 @@ mod tests {
 
         // Client has no pending_map_loaded — must return an error.
         let result = handle_map_loaded(
-            &socket,
+            &transport,
             addr,
             key,
             &connected,

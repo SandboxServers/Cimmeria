@@ -15,7 +15,7 @@ common ──┬──► mercury ──► entity ──► game ────�
 | Crate | Package Name | Purpose |
 |---|---|---|
 | `common` | `cimmeria-common` | Shared types, config loading, error handling. No deps on other crates. |
-| `mercury` | `cimmeria-mercury` | Mercury reliable UDP protocol + AES-256-CBC/HMAC-MD5 encryption |
+| `mercury` | `cimmeria-mercury` | Mercury reliable UDP protocol + AES-256-CBC/HMAC-MD5 encryption. Owns the `Transport` trait (`UdpTransport` prod impl; `TestTransport` recorder behind the `test-support` feature) — the send-side seam for byte-exact fan-out tests |
 | `defs` | `cimmeria-defs` | Parses entity definitions from `entities/defs/` XML into Rust types |
 | `entity` | `cimmeria-entity` | Entity lifecycle management, property synchronization |
 | `commands` | `cimmeria-commands` | Server command dispatch framework |

@@ -7,6 +7,7 @@
 
 use super::*;
 use crate::test_support::require_db_or_skip;
+use crate::test_support::TestTransport;
 
 /// Sentinel base for purchase-vendor tests. Distinct from prior live-DB
 /// sentinels (outbox 0x000 / grant_cash +0x100 / move +0x200 /
@@ -145,13 +146,11 @@ async fn naquadah_of(pool: &PgPool, player_id: i32) -> i32 {
 fn make_state(
     entity_id: u32,
 ) -> (
-    Arc<UdpSocket>,
+    Arc<dyn Transport>,
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
-    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-    std_sock.set_nonblocking(true).unwrap();
-    let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
     let entity_to_addr = Arc::new(Mutex::new({
         let mut m = HashMap::new();
@@ -159,7 +158,7 @@ fn make_state(
         m
     }));
     let connected = Arc::new(Mutex::new(HashMap::new()));
-    (socket, entity_to_addr, connected)
+    (transport, entity_to_addr, connected)
 }
 
 /// Happy path: a pure-cash purchase debits the player's naquadah by
@@ -178,7 +177,7 @@ async fn pure_cash_purchase_debits_balance_and_grants_inventory_row() {
     // the exact delta rather than just "lower than before".
     insert_account_and_player(&pool, account_id, player_id, 5_000).await;
 
-    let (socket, e2a, conn) = make_state(entity_id as u32);
+    let (transport, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_purchase_vendor_items(
@@ -189,7 +188,7 @@ async fn pure_cash_purchase_debits_balance_and_grants_inventory_row() {
         vec![(PURE_CASH_STORE_INDEX, 1)],
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -232,7 +231,7 @@ async fn item_prereq_purchase_consumes_prereq_and_skips_cash_update() {
     let prereq_item =
         insert_item(&pool, player_id, ITEM_COST_PREREQ_DESIGN_ID, INV_MAIN, 5, 3).await;
 
-    let (socket, e2a, conn) = make_state(entity_id as u32);
+    let (transport, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_purchase_vendor_items(
@@ -243,7 +242,7 @@ async fn item_prereq_purchase_consumes_prereq_and_skips_cash_update() {
         vec![(ITEM_COST_STORE_INDEX, 1)],
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -289,7 +288,7 @@ async fn purchase_rejected_when_player_cannot_afford() {
     // Less than PURE_CASH_PRICE — purchase must fail.
     insert_account_and_player(&pool, account_id, player_id, PURE_CASH_PRICE - 1).await;
 
-    let (socket, e2a, conn) = make_state(entity_id as u32);
+    let (transport, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_purchase_vendor_items(
@@ -300,7 +299,7 @@ async fn purchase_rejected_when_player_cannot_afford() {
         vec![(PURE_CASH_STORE_INDEX, 1)],
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -380,7 +379,7 @@ async fn purchase_rejected_for_index_not_in_buy_list() {
     cleanup(&pool, entity_id, account_id, player_id).await;
     insert_account_and_player(&pool, account_id, player_id, 5_000).await;
 
-    let (socket, e2a, conn) = make_state(entity_id as u32);
+    let (transport, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_purchase_vendor_items(
@@ -392,7 +391,7 @@ async fn purchase_rejected_for_index_not_in_buy_list() {
         vec![(99, 1)],
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )

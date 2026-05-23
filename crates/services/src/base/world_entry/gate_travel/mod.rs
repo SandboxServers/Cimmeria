@@ -10,8 +10,8 @@ use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -40,13 +40,13 @@ pub(crate) async fn handle_gate_travel(
     position: [f32; 3],
     rotation: [f32; 3],
     destination_ring_id: Option<i32>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Look up client socket from entity_id
+    // Look up client transport from entity_id
     let addr = entity_to_addr
         .lock()
         .unwrap()
@@ -196,7 +196,7 @@ pub(crate) async fn handle_gate_travel(
     };
     let seq = next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     let pkt = build_reset_entities(&key, seq, &acks);
-    socket.send_to(&pkt, addr).await?;
+    transport.send_to(&pkt, addr).await?;
     // RESET_ENTITIES is one-shot state — kicks off the cross-world
     // handoff. Channel retransmit covers loss.
     crate::base::helpers::shadow_register_reliable_send(

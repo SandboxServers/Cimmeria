@@ -6,10 +6,10 @@
 
 use super::*;
 use crate::test_support::require_db_or_skip;
+use crate::test_support::TestTransport;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use tokio::net::UdpSocket;
 
 /// Sentinel base for player_ids used by live-DB grant_cash tests. Stays
 /// well below i32::MAX (sgw_player.player_id is `integer`). Per-test
@@ -60,12 +60,12 @@ async fn insert_test_player(pool: &sqlx::PgPool, account_id: i32, player_id: i32
 }
 
 async fn make_state() -> (
-    Arc<UdpSocket>,
+    Arc<dyn Transport>,
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     u32,
 ) {
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.expect("bind UDP"));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let entity_id: u32 = 9_999_001;
     // entity_to_addr must contain `entity_id` so handle_grant_cash's first
     // lookup succeeds and reaches the DB UPDATE. `connected` stays empty —
@@ -78,7 +78,7 @@ async fn make_state() -> (
         m
     }));
     let connected = Arc::new(Mutex::new(HashMap::new()));
-    (socket, entity_to_addr, connected, entity_id)
+    (transport, entity_to_addr, connected, entity_id)
 }
 
 /// Regression guard: handle_grant_cash MUST scope its UPDATE by player_id,
@@ -100,7 +100,7 @@ async fn credits_only_target_character_when_account_has_multiple() {
     insert_test_player(&pool, account_id, player_a, 100).await;
     insert_test_player(&pool, account_id, player_b, 999).await;
 
-    let (socket, entity_to_addr, connected, entity_id) = make_state().await;
+    let (transport, entity_to_addr, connected, entity_id) = make_state().await;
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_grant_cash(
@@ -108,7 +108,7 @@ async fn credits_only_target_character_when_account_has_multiple() {
         player_a,
         50,
         &db_pool,
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
     )
@@ -151,7 +151,7 @@ async fn does_not_credit_when_player_row_missing() {
 
     insert_test_player(&pool, account_id, bystander, 200).await;
 
-    let (socket, entity_to_addr, connected, entity_id) = make_state().await;
+    let (transport, entity_to_addr, connected, entity_id) = make_state().await;
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_grant_cash(
@@ -159,7 +159,7 @@ async fn does_not_credit_when_player_row_missing() {
         nonexistent,
         50,
         &db_pool,
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
     )

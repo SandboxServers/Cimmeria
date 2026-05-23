@@ -108,7 +108,7 @@ cimmeria/
 │   │   │   ├── lib.rs
 │   │   │   ├── packet.rs               # Packet framing, flags, MTU
 │   │   │   ├── channel.rs              # Reliable UDP (ARQ, windows, retransmit)
-│   │   │   ├── nub.rs                  # UDP socket manager, channel registry
+│   │   │   ├── transport.rs            # Send-only `Transport` trait + UdpTransport wrapper
 │   │   │   ├── bundle.rs               # Message aggregation + fragmentation
 │   │   │   ├── unpacker.rs             # Fragment reassembly
 │   │   │   ├── encryption.rs           # AES-256-CBC + HMAC-MD5

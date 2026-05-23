@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use tokio::net::UdpSocket;
+use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -24,7 +24,7 @@ pub(super) async fn start_minigame(
     game_name: String,
     difficulty: u32,
     on_victory_chains: Vec<i64>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     minigame_registry: &Option<crate::minigame::SessionRegistry>,
@@ -67,7 +67,7 @@ pub(super) async fn start_minigame(
             }
             let method = crate::cell::dispatch::CLIENT_MG_ON_START_MINIGAME;
             send_to_witness_reliable(
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
                 entity_id,
@@ -91,7 +91,7 @@ pub(super) async fn minigame_result(
     entity_id: u32,
     result_code: u8,
     on_victory_chains: Vec<i64>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
@@ -100,7 +100,7 @@ pub(super) async fn minigame_result(
     // Send onEndMinigame to client
     let method = crate::cell::dispatch::CLIENT_MG_ON_END_MINIGAME;
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,

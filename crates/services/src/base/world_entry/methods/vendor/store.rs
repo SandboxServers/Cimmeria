@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use super::super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::super::ConnectedClientState;
@@ -31,7 +31,7 @@ pub async fn handle_open_vendor_store(
     vendor_entity_id: i32,
     vendor_template_id: Option<i32>,
     db_pool: &Option<Arc<PgPool>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -40,7 +40,7 @@ pub async fn handle_open_vendor_store(
             entity_id,
             vendor_entity_id,
             serialize_empty_store_open(vendor_entity_id),
-            socket,
+            transport,
             connected,
             entity_to_addr,
         )
@@ -54,7 +54,7 @@ pub async fn handle_open_vendor_store(
             entity_id,
             vendor_entity_id,
             serialize_empty_store_open(vendor_entity_id),
-            socket,
+            transport,
             connected,
             entity_to_addr,
         )
@@ -122,7 +122,7 @@ pub async fn handle_open_vendor_store(
         entity_id,
         vendor_entity_id,
         args,
-        socket,
+        transport,
         connected,
         entity_to_addr,
     )
@@ -146,12 +146,12 @@ pub async fn send_store_open_to_client(
     entity_id: u32,
     vendor_entity_id: i32,
     args: Vec<u8>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -167,7 +167,7 @@ pub async fn send_store_open_to_client(
 pub async fn send_store_update_to_client(
     entity_id: u32,
     updates: &[StoreItemCostUpdate],
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -177,7 +177,7 @@ pub async fn send_store_update_to_client(
 
     let args = serialize_store_update(updates);
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
