@@ -69,7 +69,7 @@ async fn flush_deferred_aoi_drains_buffer_and_dispatches_to_aoi_handlers() {
     use crate::test_support::test_default_connected_client_state;
     use std::sync::atomic::Ordering;
 
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let witness_addr: SocketAddr = "127.0.0.1:54321".parse().unwrap();
     let witness_id: u32 = 100;
 
@@ -107,7 +107,7 @@ async fn flush_deferred_aoi_drains_buffer_and_dispatches_to_aoi_handlers() {
     super::aoi::flush_deferred_aoi(
         witness_id,
         witness_addr,
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
     )
@@ -141,7 +141,7 @@ async fn flush_deferred_aoi_is_noop_on_empty_buffer() {
     use crate::test_support::test_default_connected_client_state;
     use std::sync::atomic::Ordering;
 
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let witness_addr: SocketAddr = "127.0.0.1:54322".parse().unwrap();
     let witness_id: u32 = 101;
 
@@ -152,7 +152,7 @@ async fn flush_deferred_aoi_is_noop_on_empty_buffer() {
     super::aoi::flush_deferred_aoi(
         witness_id,
         witness_addr,
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
     )

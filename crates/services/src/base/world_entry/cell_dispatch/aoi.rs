@@ -36,7 +36,7 @@ use super::super::super::ConnectedClientState;
 pub(crate) async fn flush_deferred_aoi(
     witness_id: u32,
     addr: SocketAddr,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -68,14 +68,14 @@ pub(crate) async fn flush_deferred_aoi(
                     direction,
                     level,
                     npc_data,
-                    socket,
+                    transport,
                     connected,
                     entity_to_addr,
                 )
                 .await;
             }
             DeferredAoiMsg::LeftAoI { entity_id } => {
-                left_aoi(witness_id, entity_id, socket, connected, entity_to_addr).await;
+                left_aoi(witness_id, entity_id, transport, connected, entity_to_addr).await;
             }
             DeferredAoiMsg::EntityMethodCall {
                 entity_id,
@@ -86,7 +86,7 @@ pub(crate) async fn flush_deferred_aoi(
                     entity_id,
                     method_index,
                     args,
-                    socket,
+                    transport,
                     connected,
                     entity_to_addr,
                 )

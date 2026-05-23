@@ -336,7 +336,7 @@ pub(crate) async fn handle_on_client_ready(
     for &(channel_name, channel_id) in DEFAULT_CHAT_CHANNELS {
         let args = build_chat_joined_args(channel_name, channel_id);
         send_to_witness_reliable(
-            socket,
+            transport,
             connected,
             entity_to_addr,
             entity_id,
@@ -377,7 +377,7 @@ pub(crate) async fn handle_on_client_ready(
     {
         let args = build_welcome_message_args(speaker, entity_id);
         send_to_witness_reliable(
-            socket,
+            transport,
             connected,
             entity_to_addr,
             entity_id,
@@ -436,7 +436,7 @@ pub(crate) async fn handle_on_client_ready(
     super::world_entry::cell_dispatch::flush_deferred_aoi(
         entity_id,
         addr,
-        socket,
+        transport,
         connected,
         entity_to_addr,
     )
