@@ -21,8 +21,8 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
 | Documentation files | 152 |
-| Rust tests (`#[test]` / `#[tokio::test]`) | 1088 across 167 files |
-| Live-DB regression guards | 110 |
+| Rust tests (`#[test]` / `#[tokio::test]`) | 1351 across 215 files |
+| Live-DB regression guards | 151 |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 

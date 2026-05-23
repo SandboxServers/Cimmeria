@@ -127,6 +127,69 @@ fn ongoing_tick_sync_changes_with_seq() {
     assert_ne!(a, b, "different seq_ids must produce different ciphertexts");
 }
 
+/// Regression guard for the unreliable-stream invariant: the outer flags
+/// byte of `build_ongoing_tick_sync` must NOT carry `FLAG_RELIABLE`.
+///
+/// Putting tickSync on the reliable stream is the failure mode the
+/// split-counter design defends against — a reliable tickSync at 10 Hz
+/// saturates the 32-slot TX window within seconds of world entry. The
+/// invariant lives at the wire-format layer (the receiver decides by
+/// looking at this byte), so the regression guard reads the byte after
+/// decrypting and verifies the bit is clear.
+///
+/// Pin both forms: with and without piggybacked ACKs. The ACK form must
+/// additionally set `FLAG_HAS_ACKS` without ever toggling `FLAG_RELIABLE`
+/// on by accident.
+#[test]
+fn ongoing_tick_sync_flags_byte_is_unreliable_with_or_without_acks() {
+    use cimmeria_mercury::packet::FLAG_RELIABLE;
+
+    // No ACKs: outer flags should be exactly REPLY_FLAGS_UNRELIABLE
+    // (FLAG_HAS_SEQUENCE | FLAG_ON_CHANNEL), with FLAG_RELIABLE cleared
+    // and FLAG_HAS_ACKS not set.
+    let no_acks = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[]);
+    let enc = MercuryEncryption::from_session_key(TEST_KEY);
+    let plaintext = enc.decrypt(&no_acks).expect("decrypt failed");
+    let flags = plaintext[0];
+    assert_eq!(
+        flags & FLAG_RELIABLE,
+        0,
+        "tickSync packet flags byte must NOT have FLAG_RELIABLE set; \
+         a reliable tickSync at 10 Hz saturates the 32-slot reliable \
+         TX window during world-entry burst (got flags = {flags:#04x})"
+    );
+    assert_eq!(
+        flags & FLAG_HAS_ACKS,
+        0,
+        "tickSync without ACKs must not set FLAG_HAS_ACKS (got flags = {flags:#04x})"
+    );
+    assert_eq!(
+        flags, REPLY_FLAGS_UNRELIABLE,
+        "tickSync flags byte should equal REPLY_FLAGS_UNRELIABLE exactly when no ACKs are present"
+    );
+
+    // ACK-piggyback form: flags should add FLAG_HAS_ACKS, still no
+    // FLAG_RELIABLE.
+    let with_acks = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[0]);
+    let plaintext_acks = enc.decrypt(&with_acks).expect("decrypt failed");
+    let flags_acks = plaintext_acks[0];
+    assert_eq!(
+        flags_acks & FLAG_RELIABLE,
+        0,
+        "tickSync with ACKs must still not set FLAG_RELIABLE (got flags = {flags_acks:#04x})"
+    );
+    assert_ne!(
+        flags_acks & FLAG_HAS_ACKS,
+        0,
+        "tickSync with ACKs must set FLAG_HAS_ACKS (got flags = {flags_acks:#04x})"
+    );
+    assert_eq!(
+        flags_acks,
+        REPLY_FLAGS_UNRELIABLE | FLAG_HAS_ACKS,
+        "tickSync flags byte should equal REPLY_FLAGS_UNRELIABLE|FLAG_HAS_ACKS when ACKs are present"
+    );
+}
+
 #[test]
 fn char_create_failed_produces_output() {
     let out = build_char_create_failed(&TEST_KEY, 5, &[], 1, 1);

@@ -171,10 +171,41 @@ pub struct AbilityManager {
     moniker_cooldowns: HashMap<i64, CooldownEntry>,
 
     /// Whether auto-cycle is enabled.
+    ///
+    /// Set by the `setAutoCycle(enabled=1)` cell method (gun-icon button) and
+    /// cleared by `setAutoCycle(0)`, by `stoppedAutoCycling`-equivalent events
+    /// (target death, `AF_DEACTIVATE_AUTO_CYCLE` ability fire), or by a manual
+    /// `useAbility` against a different ability ID. The actual re-fire loop
+    /// lives in `cimmeria-services` (`cell::service::ticks::auto_cycle_tick`) —
+    /// this flag just arms it.
     pub auto_cycle: bool,
 
     /// The ability ID being auto-cycled (if any).
+    ///
+    /// Stashed at the first commit of `useAbility` after `auto_cycle` flipped
+    /// to `true`. The driver tick re-invokes `handle_use_ability` with this
+    /// id every time the cooldown clears.
     pub auto_cycle_ability_id: Option<i32>,
+
+    /// The last ability the player successfully fired. Stashed at every
+    /// `handle_use_ability` commit regardless of `auto_cycle` state, so
+    /// `setAutoCycle(1)` can fire immediately against the player's
+    /// previously-fired ability + current target without requiring the
+    /// player to right-click an enemy first.
+    ///
+    /// `None` only at session start before any fire. Once set, kept
+    /// for the rest of the session — never cleared on auto-cycle
+    /// stop, death, or respawn. Stale values are harmless: the
+    /// immediate-fire path runs the value through the normal
+    /// `handle_use_ability` validation, which rejects abilities the
+    /// player no longer has (e.g. after a weapon unequip) and leaves
+    /// the loop BSF-armed for the next manual fire to refresh.
+    ///
+    /// Distinct from `auto_cycle_ability_id`: that field is the ability
+    /// the LOOP is currently committed to and clears on stop; this
+    /// field is the player's most-recent fire, used as the seed for
+    /// the immediate-fire-on-enable path.
+    pub last_fired_ability_id: Option<i32>,
 
     /// Next unique effect sequence ID.
     pub effect_sequence_id: i32,
@@ -189,6 +220,7 @@ impl AbilityManager {
             moniker_cooldowns: HashMap::new(),
             auto_cycle: false,
             auto_cycle_ability_id: None,
+            last_fired_ability_id: None,
             effect_sequence_id: 1,
         }
     }

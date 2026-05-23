@@ -20,6 +20,9 @@ use crate::base_entity::PropertyValue;
 use crate::missions::MissionManager;
 use crate::stats::StatList;
 
+mod bandolier;
+mod state_flags;
+
 #[cfg(test)]
 mod tests;
 
@@ -424,6 +427,21 @@ pub struct CellEntity {
     /// Entity ID of the currently-open vendor (only for player entities).
     pub vendor_entity: Option<u32>,
 
+    /// Entity ID of the player's currently-selected target on the client
+    /// (player entities only).
+    ///
+    /// Source of truth: written by the `setTargetID` cell method (index 0
+    /// on the `SGWBeing` interface) every time the client's targeting
+    /// reticle moves to a new entity. `None` when the player has no
+    /// target selected (the client sends `setTargetID(0)` to deselect).
+    ///
+    /// Used by the auto-cycle loop driver as the live re-fire target so
+    /// the player can switch targets mid-loop without breaking it (and
+    /// so the loop pauses when the player deselects). Mirrors python's
+    /// `self.entity().targetId` live read inside `abilityCooledDown`.
+    /// Reference: `python/cell/SGWBeing.py:setTarget`.
+    pub current_target_id: Option<i32>,
+
     /// Currently-active bandolier slot (0-based index).
     pub active_bandolier_slot: i32,
 
@@ -572,6 +590,7 @@ impl CellEntity {
             next_loot_index: 1,
             looting_entity: None,
             vendor_entity: None,
+            current_target_id: None,
             active_bandolier_slot: 0,
             bandolier_items: HashMap::new(),
             bandolier_ammo_dirty: HashSet::new(),
@@ -611,108 +630,6 @@ impl CellEntity {
     /// Uses squared distance comparison to avoid a square root.
     pub fn is_in_aoi(&self, other_pos: &Vector3) -> bool {
         self.position.distance_squared_to(other_pos) <= self.aoi_radius * self.aoi_radius
-    }
-
-    // ── State-field flag helpers ─────────────────────────────────────────────
-    //
-    // Mirror python's per-flag counter pattern (`SGWBeing.py:697-734` for the
-    // generic `combatantStates` map; `:770-787` for the dedicated movement-lock
-    // counter). Two stuns from different abilities both bump the BSF_MovementLock
-    // counter to 2; clearing one drops it to 1 and the bit STAYS set until the
-    // second clear drains the counter.
-    //
-    // **When to use these helpers vs raw bitmask ops:**
-    //
-    //   - **Use the helpers** for flags with multiple potential set/unset
-    //     sources that don't coordinate, where a single source clearing
-    //     would silently drop the others' refs. Today: `BSF_DEAD` (death/
-    //     respawn pair), `BSF_MOVEMENT_LOCK` (death + future stun/cast/fear).
-    //
-    //   - **Raw `|=` / `&=` is fine** for flags that are either (a) driven
-    //     by an idempotent player input (BSF_CROUCHING from `setCrouched` —
-    //     clicking twice should set, not bump), or (b) externally managed
-    //     via a separate dedup mechanism (BSF_IN_COMBAT gated on
-    //     `threatened_mobs` non-empty in `combat::threat`).
-    //
-    // Mixing the two patterns on the same flag will desync the counter from
-    // the bit: a raw `|=` doesn't bump the counter, so the next `unset_*`
-    // helper sees count==0, takes the no-op branch, and **does not clear the
-    // bit** — a real production hazard. If you migrate a flag to the helpers,
-    // migrate ALL its writers in the same change, and force-reset via
-    // `clear_all_state_flags` on any hard-reset path (respawn, world entry).
-
-    /// Increment the per-flag counter and set the bit on a 0->1 transition.
-    /// Returns `true` when the bit transitioned (caller should send
-    /// `onStateFieldUpdate`); `false` when the flag was already set by a
-    /// prior source.
-    pub fn set_state_flag(&mut self, mask: u32) -> bool {
-        debug_assert!(
-            mask.count_ones() == 1,
-            "state_flag helpers require single-bit masks (got {mask:#x}) — multi-bit masks would conflate counts across independent flags"
-        );
-        let count = self.state_flag_counts.entry(mask).or_insert(0);
-        *count += 1;
-        if self.state_field & mask == 0 {
-            self.state_field |= mask;
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Decrement the per-flag counter and clear the bit on a 1->0 transition.
-    /// Returns `true` when the bit transitioned (caller should send
-    /// `onStateFieldUpdate`); `false` when other sources are still holding
-    /// the flag set, when no source has set it, or when the bit is clear.
-    ///
-    /// **A best-effort clear (no prior `set_state_flag`) is a silent no-op.**
-    /// The earlier version warned + inserted a 0-entry into the counter map
-    /// on every stray clear, which (a) leaked map entries on hot paths like
-    /// `npc_ai_leash` that defensively unset flags they may not own, and
-    /// (b) buried real desync warnings under the noise. If a caller mixes
-    /// raw `|=` with `unset_state_flag`, the bit stays stuck and the
-    /// debug_assert on misuse below isn't enough to catch it — that's a
-    /// project-policy issue documented in the helper-block doc above.
-    pub fn unset_state_flag(&mut self, mask: u32) -> bool {
-        debug_assert!(
-            mask.count_ones() == 1,
-            "state_flag helpers require single-bit masks (got {mask:#x})"
-        );
-        // Use `get_mut` so missing keys aren't materialized — best-effort
-        // clears on flags this entity has never owned should be a no-op,
-        // not a map-growth event.
-        let Some(count) = self.state_flag_counts.get_mut(&mask) else {
-            return false;
-        };
-        if *count == 0 {
-            return false;
-        }
-        *count -= 1;
-        if *count == 0 {
-            // Drained the last ref — drop the entry rather than leaving a
-            // 0-count straggler so the map stays bounded by the set of
-            // flags currently held, not the set ever touched.
-            self.state_flag_counts.remove(&mask);
-            if self.state_field & mask != 0 {
-                self.state_field &= !mask;
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Force-clear all state flags and counters. Used by respawn paths
-    /// where the entity returns to a known-clean state regardless of how
-    /// many sources had previously set things. Bypasses ref-counting on
-    /// purpose — respawn is a hard reset, not a per-source unwind.
-    pub fn clear_all_state_flags(&mut self) {
-        self.state_field = 0;
-        self.state_flag_counts.clear();
-    }
-
-    /// Convenience read: is the given flag bit set?
-    pub fn has_state_flag(&self, mask: u32) -> bool {
-        self.state_field & mask != 0
     }
 
     /// Build the `ComponentList` that should go out in `BeingAppearance`,
@@ -771,58 +688,6 @@ impl CellEntity {
     /// place.
     pub fn sync_holster_to_combat(&mut self, in_combat: bool) -> bool {
         self.set_weapon_holstered(!in_combat)
-    }
-
-    // ── Bandolier ammo helpers ───────────────────────────────────────────────
-    //
-    // Per-slot ammo lives on `BandolierItem.current_ammo` and is mirrored to
-    // the `Stat[AMMO_SLOT_1+slot]` map. These helpers are the read/write path
-    // for fire, reload, slot swap, and ammo-change; the shadow scalars that
-    // used to live on `CellEntity` were removed in Stage C.
-
-    /// Read the active slot's current ammo, or 0 if no item equipped.
-    pub fn active_ammo(&self) -> i32 {
-        self.bandolier_items
-            .get(&self.active_bandolier_slot)
-            .map_or(0, |i| i.current_ammo)
-    }
-
-    /// Read the active slot's clip size, or 0 if no item equipped.
-    pub fn active_clip_size(&self) -> i32 {
-        self.bandolier_items
-            .get(&self.active_bandolier_slot)
-            .map_or(0, |i| i.clip_size)
-    }
-
-    /// Read the active slot's selected ammo type, or 0 if no item equipped.
-    pub fn active_ammo_type(&self) -> i32 {
-        self.bandolier_items
-            .get(&self.active_bandolier_slot)
-            .map_or(0, |i| i.cur_ammo_type)
-    }
-
-    /// Set ammo for a slot, mirroring to the AmmoSlot{N} stat. Returns the
-    /// clamped value, or `None` if the slot is unequipped.
-    ///
-    /// Marks the slot dirty in `bandolier_ammo_dirty` for batched persistence.
-    pub fn set_slot_ammo(&mut self, slot_id: i32, current: i32) -> Option<i32> {
-        let item = self.bandolier_items.get_mut(&slot_id)?;
-        item.current_ammo = current.clamp(0, item.clip_size);
-        let clamped = item.current_ammo;
-        let stat_id = crate::stats::AMMO_SLOT_1 + slot_id;
-        if let Some(stat) = self.stats.get_mut(stat_id) {
-            stat.set_current(clamped);
-        }
-        self.bandolier_ammo_dirty.insert(slot_id);
-        Some(clamped)
-    }
-
-    /// Refill the active slot's magazine to its `clip_size`. Returns the new
-    /// ammo value, or `None` if no slot is equipped.
-    pub fn refill_active_slot(&mut self) -> Option<i32> {
-        let slot = self.active_bandolier_slot;
-        let max = self.bandolier_items.get(&slot).map(|i| i.clip_size)?;
-        self.set_slot_ammo(slot, max)
     }
 }
 

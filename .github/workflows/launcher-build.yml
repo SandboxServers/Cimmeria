@@ -111,10 +111,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
-      - name: install eframe / egui Linux deps
+      - name: install eframe / egui Linux deps + clang + mold
+        # `.cargo/config.toml` pins `linker = "clang"` with
+        # `rustflags = ["-C", "link-arg=-fuse-ld=mold"]` for the Linux GNU
+        # target. The runner's stock clang doesn't ship with mold so the
+        # build fails with `invalid linker name in argument '-fuse-ld=mold'`
+        # unless we install it here.
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            clang mold \
             libxkbcommon-dev libwayland-dev libx11-dev libxcb1-dev \
             libxrandr-dev libxi-dev libgl1-mesa-dev
       - uses: Swatinem/rust-cache@v2
