@@ -133,11 +133,17 @@ pub(crate) async fn handle_on_client_ready(
         }
     }
 
-    let pending = {
+    // Take the pending finalization AND copy out the player_name in the
+    // same lock so the welcome-message send below doesn't need a second
+    // round-trip. `player_name` is set during `playCharacter` and stays
+    // for the session, so reading it here is safe.
+    let (pending, player_name) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        clients
-            .get_mut(&addr)
-            .and_then(|c| c.pending_client_ready.take())
+        let entry = clients.get_mut(&addr);
+        match entry {
+            Some(c) => (c.pending_client_ready.take(), c.player_name.clone()),
+            None => (None, None),
+        }
     };
 
     let Some(pending) = pending else {
@@ -310,6 +316,85 @@ pub(crate) async fn handle_on_client_ready(
         },
     )
     .await;
+
+    // Chat-channel joins + welcome message. Original C++ path is
+    // `python/base/SGWPlayer.py onClientReady -> ChannelManager.playerLoggedIn`,
+    // so onClientReady (here) is the canonical fire-point. These used to
+    // live in the mapLoaded bundle and padded ~311 B onto the worst-case
+    // fragment burst — moved out per issue #345. Routed via
+    // `send_to_witness_reliable`: the player is a witness of their own
+    // entity, so this targets the connected client and keeps the bytes
+    // on the reliable channel.
+    for &(channel_name, channel_id) in &[
+        ("say", 0u8),
+        ("emote", 1),
+        ("yell", 2),
+        ("team", 3),
+        ("squad", 4),
+        ("command", 5),
+        ("server", 7),
+        ("tell", 9),
+    ] {
+        let mut args = Vec::new();
+        write_wstring(&mut args, channel_name);
+        args.push(channel_id);
+        send_to_witness_reliable(
+            socket,
+            connected,
+            entity_to_addr,
+            entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key,
+                    seq,
+                    acks,
+                    entity_id,
+                    method_idx::ON_CHAT_JOINED,
+                    &args,
+                )
+            },
+        )
+        .await;
+    }
+
+    // Welcome message — `onPlayerCommunication(speaker, flags, channel, text)`
+    // on CHAN_TELL (9). Matches python `SGWPlayer.py:541`. Cosmetic-only;
+    // dropping it has no correctness impact, but it's the moment-of-arrival
+    // visible signal that the channel registration above actually landed.
+    if let Some(name) = player_name.as_deref() {
+        let mut args = Vec::new();
+        write_wstring(&mut args, name);
+        args.push(0u8); // SpeakerFlags
+        args.push(9u8); // Channel = CHAN_TELL
+        let welcome = format!(
+            "Welcome to Stargate Worlds. Your player id is: {}.",
+            entity_id
+        );
+        write_wstring(&mut args, &welcome);
+        send_to_witness_reliable(
+            socket,
+            connected,
+            entity_to_addr,
+            entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key,
+                    seq,
+                    acks,
+                    entity_id,
+                    method_idx::ON_PLAYER_COMMUNICATION,
+                    &args,
+                )
+            },
+        )
+        .await;
+    } else {
+        tracing::warn!(
+            %addr,
+            entity_id,
+            "onClientReady: player_name not set on connected state — skipping welcome message"
+        );
+    }
 
     // First-login cinematic — fires AFTER appearance is bound to the now-live
     // possessed pawn. Sending it inside the mapLoaded bundle (before this

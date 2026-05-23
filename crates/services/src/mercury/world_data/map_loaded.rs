@@ -377,23 +377,14 @@ fn build_map_loaded_body_inner(
         append_method!(method_idx::ON_UPDATE_KNOWN_CRAFTS, &args);
     }
 
-    // 24. onChatJoined — notify client about default channels
-    //     Reference: python/base/SGWPlayer.py onClientReady -> ChannelManager.playerLoggedIn
-    for &(channel_name, channel_id) in &[
-        ("say", 0u8),
-        ("emote", 1),
-        ("yell", 2),
-        ("team", 3),
-        ("squad", 4),
-        ("command", 5),
-        ("server", 7),
-        ("tell", 9),
-    ] {
-        let mut args = Vec::new();
-        write_wstring(&mut args, channel_name);
-        args.push(channel_id);
-        append_method!(method_idx::ON_CHAT_JOINED, &args);
-    }
+    // NOTE: `onChatJoined` × 8 channels and `onPlayerCommunication` (welcome
+    // message) used to live here but were moved to `handle_on_client_ready`
+    // — that's where the original `python/base/SGWPlayer.py onClientReady
+    // -> ChannelManager.playerLoggedIn` flow runs them. Keeping them in the
+    // mapLoaded bundle padded ~311 B onto the worst-case fragment burst
+    // (issue #345), and the one-RTT window where the player is in the world
+    // without registered chat channels is identical to the original game's
+    // behavior.
 
     // NOTE: onPlayMovie (first-login cinematic) is intentionally NOT in this
     // bundle. It is deferred to `handle_on_client_ready` and fired AFTER the
@@ -405,24 +396,9 @@ fn build_map_loaded_body_inner(
     // issue #288 and python/cell/SGWPlayer.py:558-565 (the original flow
     // gated mapLoaded() ITSELF on onClientReady, which had the same effect).
 
-    // 25. onPlayerDataLoaded (no args) — client transitions to gameplay
+    // 24. onPlayerDataLoaded (no args) — client transitions to gameplay
     append_method!(method_idx::ON_PLAYER_DATA_LOADED, &[]);
 
-    // 26. onTargetUpdate(INT32) — default 0 (no target)
+    // 25. onTargetUpdate(INT32) — default 0 (no target)
     append_method!(method_idx::ON_TARGET_UPDATE, &0i32.to_le_bytes());
-
-    // 27. onPlayerCommunication(WSTRING speaker, UINT8 flags, UINT8 channel, WSTRING text)
-    //     Welcome message on the feedback channel.
-    {
-        let mut args = Vec::new();
-        write_wstring(&mut args, &data.player_name); // Speaker
-        args.push(0u8); // SpeakerFlags
-        args.push(9u8); // Channel = CHAN_TELL (matches C++ SGWPlayer.py:541)
-        let welcome = format!(
-            "Welcome to Stargate Worlds. Your player id is: {}.",
-            entity_id
-        );
-        write_wstring(&mut args, &welcome); // Text
-        append_method!(method_idx::ON_PLAYER_COMMUNICATION, &args);
-    }
 }
