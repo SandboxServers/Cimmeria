@@ -504,6 +504,29 @@ The cap is wire-architectural — the 32-bit ACK bitmap cannot be widened withou
 
 [Cimmeria server-side note: the reliable counter is `ConnectedClientState::next_seq`; the unreliable counter is `next_seq_unreliable`. The two counters start at the same value (0) — they do not share state on the receiver (`inSeqAt` at `+0x50` tracks reliable; the unreliable dedup structure at `+0x128` is independent), so a reliable seq 0 and an unreliable seq 0 do not collide. Mixing the two — emitting unreliable packets on the reliable counter — leaves permanent gaps in the reliable stream that stall every subsequent reliable emit (the failure mode that produced the bitmap-stall log spam during 2026-05 deploys).]
 
+#### 1.7.1 Deferred-send queue (Cimmeria server-side overflow handling)
+
+The 32-slot reliable-stream cap is a wire constraint — the client cannot accept more than 32 in-flight reliable seqs without phantom-acking older entries on hash-slot collision (§1.7, slot store at `[ChannelInternal+0x40]`, mask `+0x44`). It is **not** a server-side throughput cap — a world-entry burst or defeat-state-change burst can momentarily try to emit more than 32 reliable packets before any ACK returns.
+
+Cimmeria's server (`cimmeria-mercury::channel::Channel`) handles this overflow with a per-channel deferred-send queue, replacing the prior "silently downgrade reliable send to best-effort" path:
+
+| Property | Value | Where |
+|---|---|---|
+| Queue field | `Channel::unsent_packets: VecDeque<TxEntry>` | `crates/mercury/src/channel/mod.rs` |
+| Cap | `MAX_UNSENT_PACKETS = 1024` (32× TX window) | `crates/mercury/src/lib.rs` |
+| Insertion order | FIFO, preserves caller-allocated sequence number | `register_sent_packet` |
+| Promotion order | Oldest-first into freed TX-window slots, on `process_acks` | `process_acks` drain loop |
+| `last_sent` on promote | Preserved from queue-insertion time | so an entry that sat past its RTO retransmits on the next `check_timeouts` |
+| ACK-while-queued | Drained directly from `unsent_packets` without going through `tx_window` | `process_acks` walks both deques |
+| Retransmit eligibility | Only after promotion — `check_timeouts` scans `tx_window`, not the queue | bytes already went on the wire at register time; loss is recoverable only post-promotion |
+| Cap-exceeded behavior | `register_sent_packet` returns `Err`; the inactivity-timeout reaper takes the channel down shortly thereafter | the only remaining error path besides out-of-range seq |
+
+The queue is bookkeeping for retransmit; the on-wire bytes go out at register time regardless. The previous path (silent best-effort downgrade) acknowledged this with the same on-wire emit but **dropped the retransmit tracking** — a lost packet beyond the cap was un-recoverable. The deferred-send queue restores the retransmit contract: a lost overflow packet is detected the moment its entry is promoted into the TX window past its RTO, and the standard retransmit driver re-sends it.
+
+This is a server-only mechanism — no change to the wire format, the ack bitmap, or the client's behavior. The 32-slot cap remains in §1.7 R-rules; the queue is the implementation answer to "what does the server do between the cap and the inactivity-timeout reap."
+
+Cell-driven AoI traffic during the pre-`onClientReady` world-entry window is additionally **deferred upstream** by `services::base::deferred_aoi` so it never pressures the queue at all — see `crates/services/src/base/deferred_aoi.rs` for the buffer semantics. The Mercury-layer queue catches whatever the upstream gate let through (mostly the post-`onClientReady` flush burst itself, and any unrelated reliable traffic colliding with it).
+
 ### 1.8 Message dispatch
 
 ![Message dispatch routing — msg_id ranges to system / cell-direct / cell-extended / base-direct / base-extended / reply](figures/mercury-15-message-dispatch-routing.svg)
