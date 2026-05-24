@@ -92,6 +92,7 @@ fn spawn_npc_from_record_sets_template_fields() {
         components: Some(vec!["Comp1".to_string()]),
         loot_table_id: Some(2),
         is_stationary: false,
+        ability_ids: vec![],
     };
 
     mgr.spawn_npc_from_record(600, &record).unwrap();

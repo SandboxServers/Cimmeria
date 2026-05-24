@@ -58,9 +58,19 @@ pub(super) async fn set_interaction_type(
     }
 }
 
-/// `Action::SetAggression` — store the int32 aggression level in the
-/// tagged entity's properties. Read by combat AI; not broadcast (each
-/// witness reads on its own AoI create).
+/// `Action::SetAggression` — set the tagged NPC's behavior-aggression
+/// level (`0` = passive, `≥1` = hostile-on-sight). The AI idle tick reads
+/// this directly off the entity (no property-bag lookup) and seeds threat
+/// on opposing-faction witnesses when `aggression > 0`.
+///
+/// The Python flow uses `setAggression` for the *durable behavior bit*
+/// and a separate `threatGenerated` for the *initial threat seed* — see
+/// `python/cell/missions/Castle_CellBlock/FindAmbernol.py:99-103`. Chain
+/// 1032 follows the same pattern: this action sets the behavior, then a
+/// `generate_threat` action focuses the NPC on the player who triggered
+/// the chain. Without that explicit seed the drone would aggro on the
+/// next idle tick anyway, but the seed delivers the correct frame
+/// ordering (drone faces the player immediately, not 2s later).
 pub(super) fn set_aggression(
     entity_tag: String,
     agg_level: i32,
@@ -71,10 +81,7 @@ pub(super) fn set_aggression(
     if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
         tracing::debug!(entity_id, %entity_tag, target_id, agg_level, chain_id, "Content: set aggression");
         if let Some(target) = space_mgr.get_entity_mut(target_id) {
-            target.properties.insert(
-                "aggression".to_string(),
-                cimmeria_entity::base_entity::PropertyValue::Int32(agg_level),
-            );
+            target.aggression = agg_level;
         }
     }
 }

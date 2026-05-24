@@ -127,9 +127,18 @@ impl SpaceManager {
         e.is_stationary = record.is_stationary;
         e.loot_table_id = record.loot_table_id;
 
-        // Give NPCs a default combat ability and stats so they can fight back
-        e.abilities
-            .add_ability(super::super::combat::NPC_DEFAULT_ABILITY);
+        // Per-template ability bucket. Empty `ability_ids` (template has
+        // no `ability_set_id`) falls back to `NPC_DEFAULT_ABILITY` so
+        // unspecified mobs still have something to fire. Matches the
+        // Python convention where un-assigned NPCs default to Pistol Shot.
+        if record.ability_ids.is_empty() {
+            e.abilities
+                .add_ability(super::super::combat::NPC_DEFAULT_ABILITY);
+        } else {
+            for &ability_id in &record.ability_ids {
+                e.abilities.add_ability(ability_id);
+            }
+        }
         // Initialize NPC health based on level (simple scaling)
         use cimmeria_entity::stats::{FOCUS, HEALTH};
         let hp = 200 + (e.level as i32 * 50);

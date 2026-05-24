@@ -7,22 +7,32 @@ use tokio::sync::mpsc;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
-/// NPC AI tick — for each NPC in Fighting state: find top threat target,
-/// check leash distance, attack with default ability. For NPCs in Leashing
-/// state: reset to Idle when close enough to spawn point, restore health.
+/// NPC AI tick — drives Fighting, Leashing, and Idle-with-aggression
+/// NPCs. The `Idle` filter on `aggression > 0` is what makes the
+/// `set_aggression` content action actually trigger combat — without it
+/// the action would be a behavior bit nothing read. See
+/// [`super::super::content::executor::world::set_aggression`].
 pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     use cimmeria_entity::cell_entity::AiState;
 
     // Snapshot NPC IDs and their AI state so we don't hold a borrow on space_mgr
     // while calling handle_use_ability (which needs &mut SpaceManager).
-    let npc_snapshot: Vec<(u32, AiState)> = space_mgr
+    let npc_snapshot: Vec<(u32, AiState, i32)> = space_mgr
         .all_npc_entity_ids()
         .iter()
-        .filter_map(|&eid| space_mgr.get_entity(eid).map(|e| (eid, e.ai_state)))
-        .filter(|(_, state)| *state == AiState::Fighting || *state == AiState::Leashing)
+        .filter_map(|&eid| {
+            space_mgr
+                .get_entity(eid)
+                .map(|e| (eid, e.ai_state, e.aggression))
+        })
+        .filter(|(_, state, aggression)| {
+            *state == AiState::Fighting
+                || *state == AiState::Leashing
+                || (*state == AiState::Idle && *aggression > 0)
+        })
         .collect();
 
-    for (npc_id, ai_state) in npc_snapshot {
+    for (npc_id, ai_state, _) in npc_snapshot {
         match ai_state {
             AiState::Fighting => {
                 npc_ai_fight(npc_id, tx, space_mgr).await;
@@ -30,8 +40,68 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
             AiState::Leashing => {
                 npc_ai_leash(npc_id, tx, space_mgr).await;
             }
+            AiState::Idle => {
+                npc_ai_idle_auto_aggro(npc_id, space_mgr);
+            }
             _ => {}
         }
+    }
+}
+
+/// Auto-aggro tick for Idle NPCs with `aggression > 0`.
+///
+/// Scans witnesses for opposing-faction players, seeds a small threat on
+/// the closest. The next AI tick transitions the NPC to Fighting.
+///
+/// Seed magnitude (`1.0`) is intentionally tiny so an explicit
+/// `generate_threat` from a content chain (e.g., chain 1032's `1000`)
+/// dominates and focuses the NPC on the triggering player rather than
+/// whichever player happens to be closest. Caller (`npc_ai_tick`)
+/// guarantees `aggression > 0`.
+fn npc_ai_idle_auto_aggro(npc_id: u32, space_mgr: &mut SpaceManager) {
+    use super::super::combat;
+
+    let (npc_pos, npc_faction) = match space_mgr.get_entity(npc_id) {
+        Some(e) => (e.position, e.faction),
+        None => return,
+    };
+
+    // Witnesses-of-NPC = players currently rendering this NPC, i.e. players
+    // in the NPC's AoI. That's exactly the candidate set the Python `Atrea`
+    // engine scans — restricted to players because NPCs don't aggro on
+    // other NPCs from idle.
+    let witnesses = space_mgr.get_witnesses_of(npc_id);
+    let target = witnesses
+        .into_iter()
+        .filter_map(|pid| {
+            let p = space_mgr.get_entity(pid)?;
+            if !p.is_player || p.faction == npc_faction {
+                return None;
+            }
+            // Skip dead players (BSF_DEAD in state_field — bit 0).
+            if combat::is_dead_state(p.state_field) {
+                return None;
+            }
+            let dist = npc_pos.distance_to(&p.position);
+            Some((pid, dist))
+        })
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(pid, _)| pid);
+
+    if let Some(player_id) = target {
+        tracing::info!(
+            npc_id,
+            player_id,
+            "NPC AI: aggression-driven auto-aggro on opposing-faction player"
+        );
+        // Discard the optional new-state — the auto-aggro path doesn't
+        // broadcast `onStateFieldUpdate` to the player here. The next
+        // explicit hit (player fires back, NPC retaliates, etc.) will go
+        // through the normal generate_threat → enter_player_combat path
+        // which does the BSF_IN_COMBAT broadcast. Doing it here would
+        // light up the combat HUD before the player has any reason to
+        // know they've been seen — surfacing as a "ghost combat" UX bug.
+        let _ = combat::generate_threat(space_mgr, player_id, npc_id, 1.0);
     }
 }
 
@@ -185,21 +255,63 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
         npc.nav_path.clear();
     }
 
-    // Attack the target with the default ability
+    // Mirrors `python/cell/SGWMob.py:chooseAbility`. Range gating already
+    // happened above; selector only sees cooldown state. `None` → hold fire.
+    let chosen_ability = match choose_npc_ability(npc_id, space_mgr) {
+        Some(id) => id,
+        None => {
+            tracing::debug!(
+                npc_id,
+                target = target_id,
+                "NPC AI: no usable ability (all cooling or needs-ammo), holding fire"
+            );
+            return;
+        }
+    };
+
     tracing::debug!(
         npc_id,
         target = target_id,
+        ability_id = chosen_ability,
         distance = dist_to_target,
         "NPC AI: attacking top threat target"
     );
     super::super::abilities::handle_use_ability(
         npc_id,
-        combat::NPC_DEFAULT_ABILITY,
+        chosen_ability,
         target_id as i32,
         tx,
         space_mgr,
     )
     .await;
+}
+
+/// Pick an off-cooldown ability for the NPC's fight tick. `None` → all
+/// cooling → caller holds fire. Empty bucket falls back to
+/// `NPC_DEFAULT_ABILITY` so a misconfigured template doesn't wedge silently.
+///
+/// Why no ammo gate: NPCs have infinite ammo (the `required_ammo > 0` check
+/// at the dispatch site is player-only). Gating here would permanently
+/// disable abilities like Pistol Shot 592 (`required_ammo = 1`) that every
+/// stock NPC carries.
+///
+/// Stable sort over `known_ability_ids` keeps selection deterministic
+/// tick-to-tick; a future "prefer higher threat_level_id" refinement
+/// changes the ordering without touching the partition.
+pub(super) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager) -> Option<i32> {
+    use super::super::combat;
+
+    let npc = space_mgr.get_entity(npc_id)?;
+    if npc.abilities.known_count() == 0 {
+        return Some(combat::NPC_DEFAULT_ABILITY);
+    }
+
+    let mut ability_ids = npc.abilities.known_ability_ids();
+    ability_ids.sort_unstable();
+
+    ability_ids
+        .into_iter()
+        .find(|&id| !npc.abilities.is_on_cooldown(id))
 }
 
 /// NPC leashing behavior: reset to Idle and restore health.

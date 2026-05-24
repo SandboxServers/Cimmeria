@@ -336,13 +336,23 @@ VALUES (1032, 'interact_tag', 'ArmYourself_AmbernolVial', 'player', false, 0);
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES (1032, 'step_status', 639, '2145', 'eq', 'active', 0);
 
+-- Canonical Python ordering from FindAmbernol.py:21-35 + :151-159:
+--   1. add_item 19          (inventory.pickedUpItem)
+--   2. destroy_entity vial  (destroyCellEntity)
+--   3. set_aggression 1     (drone.setAggression — durable behavior bit)
+--   4. generate_threat 1000 (drone.threatGenerated — focuses drone on this player)
+--   5. display_dialog 2297  (Net'an reaction VO)
+--   6. play_sequence 10001  (cinematic / door / etc.)
+--   7. advance_step 2144    (mission step transition)
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  (1032, 'add_item',  19, NULL, '{"container": 0, "qty": 1}', 0, 0),
-  (1032, 'destroy_entity', NULL, 'ArmYourself_AmbernolVial', '{}', 0, 1),
-  (1032, 'set_aggression', NULL, 'ArmYourself_PrisonerRetrievalUnit', '{"level": 1}', 0, 2),
-  (1032, 'play_sequence', 10001, NULL, '{}', 0, 3),
-  (1032, 'advance_step', 639, '2144', '{}', 0, 4);
+  (1032, 'add_item',        19,   NULL,                                '{"container": 0, "qty": 1}',     0, 0),
+  (1032, 'destroy_entity',  NULL, 'ArmYourself_AmbernolVial',          '{}',                             0, 1),
+  (1032, 'set_aggression',  NULL, 'ArmYourself_PrisonerRetrievalUnit', '{"level": 1}',                   0, 2),
+  (1032, 'generate_threat', NULL, 'ArmYourself_PrisonerRetrievalUnit', '{"threat_level": 1000}',         0, 3),
+  (1032, 'display_dialog',  2297, NULL,                                '{}',                             0, 4),
+  (1032, 'play_sequence',   10001, NULL,                               '{}',                             0, 5),
+  (1032, 'advance_step',    639,  '2144',                              '{}',                             0, 6);
 
 -- Chain 1033: entity dead tag for guard (space-scoped) while step 2144 active → advance to 2343
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)

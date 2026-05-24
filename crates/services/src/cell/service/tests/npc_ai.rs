@@ -414,3 +414,233 @@ async fn npc_ai_leash_emits_stat_update_then_state_field_to_witnesses() {
         "second witness method must be onStateFieldUpdate (19)"
     );
 }
+
+// ── set_aggression auto-aggro tests ──────────────────────────────────────
+
+/// Castle test space + one NPC at the origin and one player. NPC defaults
+/// to `class_id = 0x04` so `npc_ai_tick` sees it; the caller flips
+/// faction / aggression as needed. The NPC's default ability bucket is
+/// left intact (Pistol Shot 592) so the fight path doesn't wedge on an
+/// empty selector.
+fn make_aggression_fixture(
+    npc_id: u32,
+    npc_faction: u8,
+    player_id: u32,
+    player_pos: [f32; 3],
+) -> SpaceManager {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.spawn_npc(npc_id, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(npc_id) {
+        npc.faction = npc_faction;
+        npc.ai_state = AiState::Idle;
+    }
+    mgr.create_entity(player_id, "Castle", player_pos, [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(player_id) {
+        p.is_player = true;
+        p.player_id = Some(player_id as i32);
+        p.faction = 0;
+    }
+    mgr.connect_entity(player_id);
+    let _ = mgr.compute_aoi_changes();
+    mgr
+}
+
+/// `aggression > 0` on an Idle NPC with an opposing-faction player in AoI
+/// transitions the NPC to Fighting on the next tick with the player on
+/// the threat list. Bug shape: the previous `set_aggression` wrote a
+/// property nothing read, so the drone sat idle forever.
+#[tokio::test]
+async fn idle_npc_with_aggression_aggros_opposing_player() {
+    let mut mgr = make_aggression_fixture(200_001, 10, 1, [5.0, 0.0, 0.0]);
+    if let Some(npc) = mgr.get_entity_mut(200_001) {
+        npc.aggression = 1;
+    }
+    let (tx, _rx) = mpsc::channel(16);
+
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(200_001).unwrap();
+    assert_eq!(
+        npc.ai_state,
+        AiState::Fighting,
+        "aggression=1 with opposing-faction witness must transition to Fighting",
+    );
+    assert!(
+        npc.threat_list.contains_key(&1),
+        "player must be on NPC threat list after auto-aggro",
+    );
+}
+
+/// `aggression == 0` (default) keeps the NPC Idle even with a hostile
+/// player in AoI. The outer-tick filter — not an inner defensive check —
+/// is what enforces this baseline; the test goes through `npc_ai_tick`
+/// to exercise the actual production path.
+#[tokio::test]
+async fn idle_npc_without_aggression_stays_idle() {
+    let mut mgr = make_aggression_fixture(200_002, 10, 1, [5.0, 0.0, 0.0]);
+    assert_eq!(mgr.get_entity(200_002).unwrap().aggression, 0);
+    let (tx, _rx) = mpsc::channel(16);
+
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(200_002).unwrap();
+    assert_eq!(npc.ai_state, AiState::Idle);
+    assert!(npc.threat_list.is_empty());
+}
+
+/// `aggression > 0` but the witness shares the NPC's faction → no aggro.
+/// Pins that the faction-equality check is in the right direction (skip
+/// same-faction, target opposing).
+#[tokio::test]
+async fn aggression_skips_same_faction_witnesses() {
+    let mut mgr = make_aggression_fixture(200_003, 0, 1, [5.0, 0.0, 0.0]);
+    if let Some(npc) = mgr.get_entity_mut(200_003) {
+        npc.aggression = 1;
+    }
+    let (tx, _rx) = mpsc::channel(16);
+
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(200_003).unwrap();
+    assert_eq!(npc.ai_state, AiState::Idle, "same faction must not aggro");
+    assert!(npc.threat_list.is_empty());
+}
+
+// ── choose_npc_ability selector tests ────────────────────────────────────
+
+/// Selector: NPC with two abilities, the lower-id one on cooldown →
+/// returns the higher-id one. Pins that the cooldown gate participates
+/// in selection (without it, the selector always returns the first
+/// sorted ability and the test would still pass for the wrong reason).
+#[tokio::test]
+async fn selector_skips_cooling_ability() {
+    let mut mgr = make_aggression_fixture(200_004, 10, 1, [5.0, 0.0, 0.0]);
+    if let Some(npc) = mgr.get_entity_mut(200_004) {
+        npc.abilities
+            .remove_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
+        npc.abilities.add_ability(221);
+        npc.abilities.add_ability(592);
+        // Sort order is ascending — put the first one on cooldown so the
+        // selector must skip past it.
+        npc.abilities
+            .start_ability_cooldown(221, std::time::Duration::from_secs(10));
+    }
+
+    let chosen = crate::cell::service::npc_ai::choose_npc_ability(200_004, &mgr);
+    assert_eq!(chosen, Some(592), "cooling 221 → selector must pick 592");
+}
+
+/// Selector: NPC with three abilities, the two lowest-id ones on
+/// cooldown → returns the third. Pins selection across a non-trivial
+/// bucket (the single-cooling-of-two case is the minimal partition; a
+/// multi-cooling case verifies the `find` walks past every cooling
+/// ability rather than stopping at the first).
+#[tokio::test]
+async fn selector_skips_multiple_cooling_abilities() {
+    let mut mgr = make_aggression_fixture(200_008, 10, 1, [5.0, 0.0, 0.0]);
+    if let Some(npc) = mgr.get_entity_mut(200_008) {
+        npc.abilities
+            .remove_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
+        npc.abilities.add_ability(100);
+        npc.abilities.add_ability(200);
+        npc.abilities.add_ability(300);
+        // Sort order is ascending — cool 100 and 200, leave 300 fresh.
+        npc.abilities
+            .start_ability_cooldown(100, std::time::Duration::from_secs(10));
+        npc.abilities
+            .start_ability_cooldown(200, std::time::Duration::from_secs(10));
+    }
+
+    let chosen = crate::cell::service::npc_ai::choose_npc_ability(200_008, &mgr);
+    assert_eq!(
+        chosen,
+        Some(300),
+        "selector must walk past 100 and 200 (both cooling) to reach 300",
+    );
+}
+
+/// Selector: every known ability is on cooldown → `None` so the AI tick
+/// holds fire rather than misfiring against an unfireable ability.
+#[tokio::test]
+async fn selector_returns_none_when_all_cooling() {
+    let mut mgr = make_aggression_fixture(200_005, 10, 1, [5.0, 0.0, 0.0]);
+    if let Some(npc) = mgr.get_entity_mut(200_005) {
+        npc.abilities
+            .remove_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
+        npc.abilities.add_ability(221);
+        npc.abilities
+            .start_ability_cooldown(221, std::time::Duration::from_secs(10));
+    }
+
+    let chosen = crate::cell::service::npc_ai::choose_npc_ability(200_005, &mgr);
+    assert_eq!(chosen, None, "all cooling → hold fire");
+}
+
+/// Selector: NPC with no abilities at all (misconfigured template) falls
+/// back to `NPC_DEFAULT_ABILITY` so the tick never wedges silently.
+#[tokio::test]
+async fn selector_falls_back_to_default_when_no_abilities() {
+    let mut mgr = make_aggression_fixture(200_006, 10, 1, [5.0, 0.0, 0.0]);
+    if let Some(npc) = mgr.get_entity_mut(200_006) {
+        npc.abilities
+            .remove_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
+    }
+
+    let chosen = crate::cell::service::npc_ai::choose_npc_ability(200_006, &mgr);
+    assert_eq!(
+        chosen,
+        Some(crate::cell::combat::NPC_DEFAULT_ABILITY),
+        "empty bucket → fallback to NPC_DEFAULT_ABILITY",
+    );
+}
+
+/// Selector: ability with `required_ammo > 0` is still picked — NPCs have
+/// infinite ammo (the ammo gate at the dispatch site is player-only).
+/// Pinning this guards against re-introducing the regression where every
+/// NPC carrying Pistol Shot 592 (`required_ammo = 1`) silently held
+/// fire forever. The test seeds the ability def with `required_ammo = 1`
+/// directly — without this seed, `space_mgr.ability_defs.get(&592)`
+/// would return `None` and a re-introduced ammo gate would silently
+/// fall through to `required_ammo = 0` and pass.
+#[tokio::test]
+async fn selector_picks_ammo_bearing_ability_for_npc() {
+    use cimmeria_entity::abilities::AbilityDef;
+
+    let mut mgr = make_aggression_fixture(200_007, 10, 1, [5.0, 0.0, 0.0]);
+    mgr.ability_defs.insert(
+        crate::cell::combat::NPC_DEFAULT_ABILITY,
+        AbilityDef {
+            ability_id: crate::cell::combat::NPC_DEFAULT_ABILITY,
+            name: "Pistol Shot".to_string(),
+            cooldown: 1.0,
+            warmup: 0.0,
+            flags: 0,
+            is_ranged: true,
+            min_range: 0,
+            max_range: 30,
+            target_type_id: 0,
+            effect_ids: vec![],
+            moniker_ids: vec![],
+            // Mirror the seeded DB value — Pistol Shot is required_ammo=1.
+            required_ammo: 1,
+            event_set_id: None,
+            velocity: 0.0,
+        },
+    );
+
+    let chosen = crate::cell::service::npc_ai::choose_npc_ability(200_007, &mgr);
+    assert_eq!(
+        chosen,
+        Some(crate::cell::combat::NPC_DEFAULT_ABILITY),
+        "selector must pick 592 even with required_ammo > 0 — NPCs have \
+         infinite ammo and the dispatch-site ammo check is player-only",
+    );
+}

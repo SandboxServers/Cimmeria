@@ -407,6 +407,18 @@ pub struct CellEntity {
     /// Pin this NPC to its spawn position. AI will attack when the target
     /// is in range + LOS but never pathfind. Loaded from `spawnlist.is_stationary`.
     pub is_stationary: bool,
+    /// NPC behavior-aggression level. `0` = passive (only fights back when
+    /// threatened, the default). `≥1` = hostile-on-sight (the AI idle tick
+    /// scans the NPC's witnesses for opposing-faction players and seeds
+    /// threat to wake the NPC up). Set by the `set_aggression` content
+    /// action when a mission chain wants an NPC to start hunting — e.g.,
+    /// chain 1032 flips the Castle_CellBlock prisoner-retrieval drone to
+    /// `1` when the player grabs the Ambernol vial. Persists across kills
+    /// so a stationary drone re-aggros the next player who walks in.
+    ///
+    /// Distinct from any UI-layer aggression-override (nameplate color);
+    /// this field drives combat behavior, not the friend/foe indicator.
+    pub aggression: i32,
 
     // ── Saved mission state (for re-login) ────────────────────────────────────
     /// Saved missions loaded from DB, to be populated before content engine fires.
@@ -584,6 +596,7 @@ impl CellEntity {
             nav_path: VecDeque::new(),
             move_speed: 0.6, // ~0.6 world units per 100ms tick = 6 units/sec
             is_stationary: false,
+            aggression: 0,
             saved_missions_loaded: false,
             loot_table_id: None,
             loot: Vec::new(),
