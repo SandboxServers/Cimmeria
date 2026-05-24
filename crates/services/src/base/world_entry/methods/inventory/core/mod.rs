@@ -21,6 +21,8 @@ use crate::mercury::{build_entity_method_packet, method_idx};
 mod remove_by_type;
 mod remove_instance;
 mod use_instance;
+#[cfg(test)]
+mod use_instance_tests;
 
 pub use remove_by_type::handle_remove_inventory_item_by_type;
 pub use remove_instance::handle_remove_inventory_item;

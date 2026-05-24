@@ -188,6 +188,7 @@ This section is mined from review comments since the test push began. Each item 
 - **Assert by relationship**, not by id: `slot.cur_ammo_type == slot.default_ammo_type` survives seed churn; `slot.cur_ammo_type == 3241` does not.
 - **Never use a "definitely nonexistent" id like `99_999_999`.** The sequence may have advanced past it. Use a sentinel from your module's reserved `0x7000_xxxx` slot (see "Sentinel id discipline") or `MAX(id) + 1` computed at runtime (PR #144).
 - **Assert fixture cardinality up front.** If `pick_main_bag_type_ids(2)` can return one row, assert `types.len() == 2` so the failure points at missing fixture data, not a cryptic out-of-bounds panic (PR #144).
+- **Validate the discriminator against actual seed values, not the schema spec.** `clip_size IS NOT NULL` looks like a clean "is this a weapon?" predicate, but the SGW seed uses `clip_size = 0` for non-weapons rather than NULL — so the predicate misclassifies every consumable as a weapon. When a handler infers item type (or any boolean trait) from a column, write a live-DB test that exercises both sides of the partition with **real seed rows** (a slappack at `clip_size = 0` AND a pistol at `clip_size > 0`) so the test catches the value-vs-sentinel mismatch. The robust fix is usually to read the authoritative discriminator field directly — for "is this auto-equippable to the bandolier?", `3 = ANY(container_sets)` beats any inference from a sibling column.
 
 ### Sentinel id discipline
 

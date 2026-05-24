@@ -21,10 +21,12 @@ pub(in crate::cell::content) fn item_container(
 /// Return the clip size and default ammo type for a granted weapon item.
 ///
 /// Reads from the `space_mgr.item_defs` cache loaded at startup from
-/// `resources.items` (see `spawner::load_item_defs`). Returns `None` for
-/// non-weapon items (clip_size IS NULL in DB) or when the cache wasn't
-/// populated (e.g. tests without a DB pool) — callers skip the bandolier
-/// seeding in that case, and the player can still receive the item normally.
+/// `resources.items` (see `spawner::load_item_defs`). The loader filters
+/// to `clip_size > 0`, so the cache only contains actual weapons —
+/// non-weapons return `None` here. Same `None` is returned when the
+/// cache wasn't populated (e.g. tests without a DB pool); callers skip
+/// the bandolier seeding in that case, and the player can still receive
+/// the item normally.
 fn weapon_stats(
     item_id: i32,
     item_defs: &HashMap<i32, crate::cell::spawner::WeaponDef>,

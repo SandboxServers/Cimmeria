@@ -2,11 +2,24 @@
 //! an inventory instance the player owns. Does not consume the stack;
 //! per-item consumption is the chain's responsibility via `Action::RemoveItem`.
 //!
-//! As of the right-click-to-equip work: weapon instances (rows with
-//! `clip_size IS NOT NULL` in `resources.items`) bypass the `OnItemUse`
-//! event and route to the move path instead — `useItem` on a weapon means
-//! "equip" (main bag → bandolier) or "unequip" (bandolier → main bag)
-//! depending on the source container.
+//! Right-click auto-equip routing: instances whose item type lists the
+//! bandolier (container 3) in `container_sets` bypass the `OnItemUse`
+//! event and route to the move handler — "equip" (main bag → bandolier)
+//! or "unequip" (bandolier → main bag) depending on the source container.
+//! Items NOT in `container_sets` for the bandolier (consumables like
+//! slappacks, mission items, etc.) fall through to `OnItemUse` so per-item
+//! chains in `content_chains` can match.
+//!
+//! The bandolier-eligibility check intentionally reads `container_sets`
+//! directly rather than inferring from `clip_size` or any other proxy.
+//! Earlier versions inferred "is weapon" from `clip_size IS NOT NULL`,
+//! but seed data uses `clip_size = 0` for non-weapons (the slappack row
+//! at `db/resources/Items/Seed/items.sql` is a representative example),
+//! so the inference misclassified every consumable as a weapon and
+//! suppressed its `OnItemUse` event. `container_sets` is the
+//! authoritative signal the move handler already uses
+//! (`item_allows_container`), so reading it here keeps both sides
+//! consistent.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -75,19 +88,23 @@ pub async fn handle_use_inventory_item(
     };
 
     // Resolve the inventory instance — type id, current location, and
-    // whether the resource row marks it as a weapon (clip_size IS NOT
-    // NULL). The single query keeps us at one DB round-trip for the
-    // common "is this a weapon?" check that gates the equip/unequip
-    // routing below.
+    // whether the resource row marks the type as bandolier-eligible
+    // (`3 = ANY(container_sets)`). Bandolier-eligible items are
+    // auto-equip/unequip targets; everything else falls through to
+    // the `OnItemUse` event. One round-trip per useItem dispatch.
+    //
+    // Why not `clip_size IS NOT NULL`: see the module doc. Seed data
+    // uses `clip_size = 0` for non-weapons, so the null-check
+    // misclassifies every consumable as a weapon.
     #[derive(sqlx::FromRow)]
     struct InstanceRow {
         type_id: i32,
         container_id: i32,
-        is_weapon: bool,
+        is_bandolier_eligible: bool,
     }
     let row: InstanceRow = match sqlx::query_as::<_, InstanceRow>(
         "SELECT inv.type_id, inv.container_id, \
-                (ri.clip_size IS NOT NULL) AS is_weapon \
+                (3 = ANY(ri.container_sets)) AS is_bandolier_eligible \
          FROM sgw_inventory inv \
          JOIN resources.items ri ON ri.item_id = inv.type_id \
          WHERE inv.character_id = $1 AND inv.item_id = $2 \
@@ -113,8 +130,8 @@ pub async fn handle_use_inventory_item(
     };
     let type_id = row.type_id;
 
-    // Right-click auto-equip / auto-unequip: weapons bypass
-    // the `OnItemUse` event entirely and route to the move path
+    // Right-click auto-equip / auto-unequip: bandolier-eligible items
+    // bypass the `OnItemUse` event entirely and route to the move path
     // instead. Direction is keyed off `container_id`:
     //
     // - Bandolier (3) → Main (1): unequip back to first empty bag slot
@@ -124,7 +141,7 @@ pub async fn handle_use_inventory_item(
     // Other source containers (equipment slots, mission bag, etc.)
     // fall through to the normal `OnItemUse` event — auto-equip only
     // makes sense between the inventory↔bandolier pair.
-    if row.is_weapon
+    if row.is_bandolier_eligible
         && (row.container_id == CONTAINER_BANDOLIER || row.container_id == CONTAINER_MAIN)
     {
         let target =
