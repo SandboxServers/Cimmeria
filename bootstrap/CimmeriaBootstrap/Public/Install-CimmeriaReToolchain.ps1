@@ -435,6 +435,14 @@ function Install-CimmeriaReToolchain {
                         Test-Path (Join-Path $_.FullName "release\x96dbg.exe")
                     } | Select-Object -First 1
                     if ($candidate) {
+                        # If $dbgRelease already exists from a partial earlier
+                        # run, Move-Item -Force into it would nest the new
+                        # release/ inside the old one (producing dbg/release/
+                        # release/...). Wipe before move so the final layout is
+                        # always dbg/release/{x32,x64,x96dbg.exe,...}.
+                        if (Test-Path $dbgRelease) {
+                            Remove-Item $dbgRelease -Recurse -Force
+                        }
                         Move-Item (Join-Path $candidate.FullName "release") $dbgRelease -Force
                         Remove-Item $candidate.FullName -Recurse -Force
                     }
@@ -459,50 +467,59 @@ function Install-CimmeriaReToolchain {
 
     # ---------------------------------------------------------------------- #
     # Step 6: x64dbg-automate plugin DLLs
+    #   Gated on x64dbg being installed (Step 5 succeeded). Otherwise we'd
+    #   silently create stub dbg/release/{x32,x64}/plugins/ directories with
+    #   plugin DLLs that have no host debugger to load them, and report
+    #   "installed" even though the toolchain is half-built.
     # ---------------------------------------------------------------------- #
     Write-Step "X64DBG-AUTOMATE PLUGIN $($Dependencies.X64DbgAutomate.Version)"
 
-    $plugin32Dir = Join-Path $dbgRelease "x32\plugins"
-    $plugin64Dir = Join-Path $dbgRelease "x64\plugins"
-    $dp32Target = Join-Path $plugin32Dir "x64dbg-automate.dp32"
-    $dp64Target = Join-Path $plugin64Dir "x64dbg-automate.dp64"
-    $zmq32Target = Join-Path $plugin32Dir "libzmq-mt-4_3_5.dll"
-    $zmq64Target = Join-Path $plugin64Dir "libzmq-mt-4_3_5.dll"
-
-    if ((Test-Path $dp32Target) -and (Test-Path $dp64Target) -and -not $Force) {
-        Write-Status "x64dbg-automate plugin: already installed" "DarkGray"
+    if (-not (Test-Path $x96dbgExe)) {
+        Write-Status "x64dbg not installed (no x96dbg.exe at $dbgRelease) — skipping plugin install." "Yellow"
+        Write-Status "  Drop a snapshot zip into $DownloadDir and re-run (see Step 5 hints above)." "DarkGray"
     } else {
-        $dp32Cached = Join-Path $DownloadDir "x64dbg-automate.dp32"
-        $dp64Cached = Join-Path $DownloadDir "x64dbg-automate.dp64"
-        $zmqCached  = Join-Path $DownloadDir "libzmq-mt-4_3_5.dll"
+        $plugin32Dir = Join-Path $dbgRelease "x32\plugins"
+        $plugin64Dir = Join-Path $dbgRelease "x64\plugins"
+        $dp32Target = Join-Path $plugin32Dir "x64dbg-automate.dp32"
+        $dp64Target = Join-Path $plugin64Dir "x64dbg-automate.dp64"
+        $zmq32Target = Join-Path $plugin32Dir "libzmq-mt-4_3_5.dll"
+        $zmq64Target = Join-Path $plugin64Dir "libzmq-mt-4_3_5.dll"
 
-        if (-not $SkipDownload) {
-            if (-not (Test-Path $dp32Cached) -or $Force) {
-                Write-Status "Downloading x64dbg-automate.dp32 ..." "White"
-                Get-DownloadFile $Dependencies.X64DbgAutomate.Dp32Url $dp32Cached
-            }
-            if (-not (Test-Path $dp64Cached) -or $Force) {
-                Write-Status "Downloading x64dbg-automate.dp64 ..." "White"
-                Get-DownloadFile $Dependencies.X64DbgAutomate.Dp64Url $dp64Cached
-            }
-            if (-not (Test-Path $zmqCached) -or $Force) {
-                Write-Status "Downloading libzmq-mt-4_3_5.dll ..." "White"
-                Get-DownloadFile $Dependencies.X64DbgAutomate.ZmqDllUrl $zmqCached
-            }
-        }
-
-        if ((Test-Path $dp32Cached) -and (Test-Path $dp64Cached) -and (Test-Path $zmqCached)) {
-            if ($PSCmdlet.ShouldProcess("$plugin32Dir + $plugin64Dir", "Install x64dbg-automate plugin")) {
-                New-Item -ItemType Directory -Path $plugin32Dir -Force | Out-Null
-                New-Item -ItemType Directory -Path $plugin64Dir -Force | Out-Null
-                Copy-Item $dp32Cached $dp32Target -Force
-                Copy-Item $dp64Cached $dp64Target -Force
-                Copy-Item $zmqCached  $zmq32Target -Force
-                Copy-Item $zmqCached  $zmq64Target -Force
-                Write-Status "x64dbg-automate plugin: installed" "Green"
-            }
+        if ((Test-Path $dp32Target) -and (Test-Path $dp64Target) -and -not $Force) {
+            Write-Status "x64dbg-automate plugin: already installed" "DarkGray"
         } else {
-            Write-Status "Plugin artifacts not all cached — skipping install." "Yellow"
+            $dp32Cached = Join-Path $DownloadDir "x64dbg-automate.dp32"
+            $dp64Cached = Join-Path $DownloadDir "x64dbg-automate.dp64"
+            $zmqCached  = Join-Path $DownloadDir "libzmq-mt-4_3_5.dll"
+
+            if (-not $SkipDownload) {
+                if (-not (Test-Path $dp32Cached) -or $Force) {
+                    Write-Status "Downloading x64dbg-automate.dp32 ..." "White"
+                    Get-DownloadFile $Dependencies.X64DbgAutomate.Dp32Url $dp32Cached
+                }
+                if (-not (Test-Path $dp64Cached) -or $Force) {
+                    Write-Status "Downloading x64dbg-automate.dp64 ..." "White"
+                    Get-DownloadFile $Dependencies.X64DbgAutomate.Dp64Url $dp64Cached
+                }
+                if (-not (Test-Path $zmqCached) -or $Force) {
+                    Write-Status "Downloading libzmq-mt-4_3_5.dll ..." "White"
+                    Get-DownloadFile $Dependencies.X64DbgAutomate.ZmqDllUrl $zmqCached
+                }
+            }
+
+            if ((Test-Path $dp32Cached) -and (Test-Path $dp64Cached) -and (Test-Path $zmqCached)) {
+                if ($PSCmdlet.ShouldProcess("$plugin32Dir + $plugin64Dir", "Install x64dbg-automate plugin")) {
+                    New-Item -ItemType Directory -Path $plugin32Dir -Force | Out-Null
+                    New-Item -ItemType Directory -Path $plugin64Dir -Force | Out-Null
+                    Copy-Item $dp32Cached $dp32Target -Force
+                    Copy-Item $dp64Cached $dp64Target -Force
+                    Copy-Item $zmqCached  $zmq32Target -Force
+                    Copy-Item $zmqCached  $zmq64Target -Force
+                    Write-Status "x64dbg-automate plugin: installed" "Green"
+                }
+            } else {
+                Write-Status "Plugin artifacts not all cached — skipping install." "Yellow"
+            }
         }
     }
 
