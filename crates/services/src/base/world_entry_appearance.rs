@@ -8,13 +8,14 @@ use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::channel_bundle::ChannelBundle;
 use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx, write_wstring, SKIN_TINTS};
 
-use super::helpers::send_to_witness_reliable;
+use super::helpers::{send_bundle_to_witness_reliable, send_to_witness_reliable};
 use super::world_entry::handle_map_loaded;
 use super::world_entry_chat::{
     build_chat_joined_args, build_welcome_message_args, DEFAULT_CHAT_CHANNELS,
@@ -52,6 +53,41 @@ pub(crate) fn build_tint_args(skin_color_id: i32) -> Vec<u8> {
     buf.extend_from_slice(&0u32.to_le_bytes());
     buf.extend_from_slice(&skin_tint.to_le_bytes());
     buf
+}
+
+/// Compose the post-onClientReady burst into a single Mercury bundle.
+///
+/// Order matches the original per-message dispatch sequence so a regression
+/// that swaps two entries can't slip past via the packet-count check:
+///   1. `BeingAppearance` resend  (heals HOLD-FOR-TRANSACTION drop from
+///      `handle_map_loaded`'s bundle — see the two-bundle split comment
+///      block in [`crate::base::world_entry::map_loaded`] for the
+///      transaction-state rationale, and `docs/architecture/mercury-bundle.md`
+///      for the ADR.)
+///   2. `onEntityTint` resend     (same reason)
+///   3. `onChatJoined` × N        (channel registration — N = DEFAULT_CHAT_CHANNELS.len())
+///   4. `onPlayerCommunication`   (cosmetic welcome line)
+///
+/// Extracted as a pure builder so the burst-shape regression guard
+/// [`tests::on_client_ready_burst_bundles_to_single_packet`] can pin
+/// `num_messages = 2 + N + 1` and `estimated_packet_count() = 1` against
+/// realistic arg sizes — the same composition the handler actually emits
+/// (call-site duplication would let the test and the handler drift).
+fn build_on_client_ready_burst_bundle(
+    entity_id: u32,
+    appearance_args: &[u8],
+    tint_args: &[u8],
+    welcome_args: &[u8],
+) -> ChannelBundle {
+    let mut bundle = ChannelBundle::new(true);
+    bundle.append_entity_method(method_idx::BEING_APPEARANCE, entity_id, appearance_args);
+    bundle.append_entity_method(method_idx::ON_ENTITY_TINT, entity_id, tint_args);
+    for &(channel_name, channel_id) in DEFAULT_CHAT_CHANNELS {
+        let args = build_chat_joined_args(channel_name, channel_id);
+        bundle.append_entity_method(method_idx::ON_CHAT_JOINED, entity_id, &args);
+    }
+    bundle.append_entity_method(method_idx::ON_PLAYER_COMMUNICATION, entity_id, welcome_args);
+    bundle
 }
 
 // ── Visual resend handlers ──────────────────────────────────────────────────
@@ -282,89 +318,30 @@ pub(crate) async fn handle_on_client_ready(
         }
     }
 
-    // Resend BeingAppearance + onEntityTint now that the entity is fully ready.
+    // Bundle the post-onClientReady burst: BeingAppearance resend +
+    // onEntityTint resend + 8× onChatJoined + onPlayerCommunication welcome.
+    //
+    // **Transaction-state audit** (see
+    // [docs/architecture/mercury-bundle.md](../../../docs/architecture/mercury-bundle.md)):
+    // every message below targets the player's own `entity_id`, which was
+    // created in `handle_map_loaded`'s prior bundle. The CREATE_BASE_PLAYER
+    // transaction released at that bundle's end-of-frame, so same-entity
+    // messages in THIS bundle bind to the now-live entity and are NOT
+    // HOLD-FOR-TRANSACTION dropped. No CREATE_ENTITY / CELL_PLAYER fires
+    // inside this handler, so the bundle is exclusively post-transaction
+    // property/method updates — the canonical "safe to combine" case.
+    //
+    // Pre-bundle: 11 reliable packets (1 appearance + 1 tint + 8 chat-joined
+    // + 1 welcome), each consuming a TX-window slot. Post-bundle: 1 reliable
+    // packet (the burst body is ~700 B, well under FRAGMENT_BODY_SIZE=1300),
+    // pinned by [`tests::on_client_ready_burst_bundles_to_single_packet`]
+    // in this file.
+    //
+    // `speaker` resolution mirrors the pre-bundle path: prefer the session's
+    // `player_name`, fall back to "Server" (a real DEFAULT_CHAT_CHANNELS
+    // entry) with a WARN so the unexpected missing-name case stays visible.
     let appearance_args = pending.appearance_args;
     let tint_args = pending.tint_args;
-    send_to_witness_reliable(
-        transport,
-        connected,
-        entity_to_addr,
-        entity_id,
-        |key, seq, acks| {
-            build_entity_method_packet(
-                key,
-                seq,
-                acks,
-                entity_id,
-                method_idx::BEING_APPEARANCE,
-                &appearance_args,
-            )
-        },
-    )
-    .await;
-    send_to_witness_reliable(
-        transport,
-        connected,
-        entity_to_addr,
-        entity_id,
-        |key, seq, acks| {
-            build_entity_method_packet(
-                key,
-                seq,
-                acks,
-                entity_id,
-                method_idx::ON_ENTITY_TINT,
-                &tint_args,
-            )
-        },
-    )
-    .await;
-
-    // Chat-channel joins + welcome message. Original C++ path is
-    // `python/base/SGWPlayer.py onClientReady -> ChannelManager.playerLoggedIn`,
-    // so onClientReady (here) is the canonical fire-point. These used to
-    // live in the mapLoaded bundle and padded ~311 B onto the worst-case
-    // fragment burst before being moved out. Routed via
-    // `send_to_witness_reliable`: the player is a witness of their own
-    // entity, so this targets the connected client and keeps the bytes
-    // on the reliable channel.
-    //
-    // Arg-building is split into pure helpers (`build_chat_joined_args` /
-    // `build_welcome_message_args`) so they're independently unit-tested;
-    // this loop is the wire side that the test suite can't reach without
-    // a full async harness.
-    for &(channel_name, channel_id) in DEFAULT_CHAT_CHANNELS {
-        let args = build_chat_joined_args(channel_name, channel_id);
-        send_to_witness_reliable(
-            transport,
-            connected,
-            entity_to_addr,
-            entity_id,
-            |key, seq, acks| {
-                build_entity_method_packet(
-                    key,
-                    seq,
-                    acks,
-                    entity_id,
-                    method_idx::ON_CHAT_JOINED,
-                    &args,
-                )
-            },
-        )
-        .await;
-    }
-
-    // Welcome message — `onPlayerCommunication(speaker, flags, channel, text)`
-    // on CHAN_TELL (9). Matches python `SGWPlayer.py:541`. Cosmetic-only;
-    // dropping it has no correctness impact, but it's the moment-of-arrival
-    // visible signal that the channel registration above actually landed.
-    //
-    // `player_name` is normally set during `playCharacter` and stays for
-    // the session; falling back to a generic "Server" speaker keeps the
-    // welcome line visible even when the name didn't propagate (race
-    // during a synthesised cross-world `onClientReady`, or a future
-    // refactor that defers the name read). The warn log surfaces the
-    // unexpected case without dropping the message on the floor.
     let speaker = player_name.as_deref().unwrap_or_else(|| {
         tracing::warn!(
             %addr,
@@ -374,26 +351,11 @@ pub(crate) async fn handle_on_client_ready(
         );
         "Server"
     });
-    {
-        let args = build_welcome_message_args(speaker, entity_id);
-        send_to_witness_reliable(
-            transport,
-            connected,
-            entity_to_addr,
-            entity_id,
-            |key, seq, acks| {
-                build_entity_method_packet(
-                    key,
-                    seq,
-                    acks,
-                    entity_id,
-                    method_idx::ON_PLAYER_COMMUNICATION,
-                    &args,
-                )
-            },
-        )
-        .await;
-    }
+    let welcome_args = build_welcome_message_args(speaker, entity_id);
+
+    let bundle =
+        build_on_client_ready_burst_bundle(entity_id, &appearance_args, &tint_args, &welcome_args);
+    send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
 
     // First-login cinematic — fires AFTER appearance is bound to the now-live
     // possessed pawn. Sending it inside the mapLoaded bundle (before this
@@ -611,40 +573,37 @@ async fn resend_appearance_after_cinematic(
         return;
     };
 
-    send_to_witness_reliable(
-        transport,
-        connected,
-        entity_to_addr,
-        entity_id,
-        |key, seq, acks| {
-            build_entity_method_packet(
-                key,
-                seq,
-                acks,
-                entity_id,
-                method_idx::BEING_APPEARANCE,
-                &appearance_args,
-            )
-        },
-    )
-    .await;
-    send_to_witness_reliable(
-        transport,
-        connected,
-        entity_to_addr,
-        entity_id,
-        |key, seq, acks| {
-            build_entity_method_packet(
-                key,
-                seq,
-                acks,
-                entity_id,
-                method_idx::ON_ENTITY_TINT,
-                &tint_args,
-            )
-        },
-    )
-    .await;
+    // Bundle the BeingAppearance + onEntityTint pair into one fragment.
+    // Built via the shared helper so the burst-shape regression guard
+    // [`tests::appearance_resend_bundle_collapses_to_single_packet`]
+    // pins the same composition the production path emits.
+    let bundle = build_appearance_resend_bundle(entity_id, &appearance_args, &tint_args);
+    send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+}
+
+/// Compose the BeingAppearance + onEntityTint resend pair into one bundle.
+///
+/// Both methods target the player's own entity (long since created in
+/// `handle_map_loaded`'s bundle), so the transaction-state rule allows
+/// combining them — see the safe-combine catalogue in
+/// `docs/architecture/mercury-bundle.md` and the two-bundle split comment in
+/// [`crate::base::world_entry::map_loaded`] for the rationale.
+///
+/// Called per-iteration of the cinematic-guard spam loop (every 100 ms for
+/// up to 20 s) and also from `handle_cancel_movie` on real client
+/// `cancelMovie`. Extracted as a pure builder so
+/// [`tests::appearance_resend_bundle_collapses_to_single_packet`] can pin
+/// `num_messages == 2` and `estimated_packet_count() == 1` against the same
+/// composition the resend path actually emits.
+fn build_appearance_resend_bundle(
+    entity_id: u32,
+    appearance_args: &[u8],
+    tint_args: &[u8],
+) -> ChannelBundle {
+    let mut bundle = ChannelBundle::new(true);
+    bundle.append_entity_method(method_idx::BEING_APPEARANCE, entity_id, appearance_args);
+    bundle.append_entity_method(method_idx::ON_ENTITY_TINT, entity_id, tint_args);
+    bundle
 }
 
 /// Handle the client's `cancelMovie` (exposed cell method index 108): the
@@ -777,6 +736,150 @@ mod tests {
         let buf = build_tint_args(-1);
         let tint = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
         assert_eq!(tint, SKIN_TINTS[0]);
+    }
+
+    /// **Burst-shape regression guard for the `handle_on_client_ready`
+    /// bundle migration.**
+    ///
+    /// Before the migration, `handle_on_client_ready` emitted 11 reliable
+    /// packets at world entry (1 BeingAppearance + 1 onEntityTint + 8
+    /// onChatJoined + 1 onPlayerCommunication welcome), each consuming a
+    /// slot in the per-channel 32-slot reliable TX window. After the
+    /// migration, the burst rides one `ChannelBundle` that finalizes to a
+    /// single fragment whenever the body fits inside `FRAGMENT_BODY_SIZE`.
+    ///
+    /// Pin two invariants the migration depends on:
+    ///   - `num_messages == 2 + DEFAULT_CHAT_CHANNELS.len() + 1` — every
+    ///     message expected in the burst is appended. A regression that
+    ///     drops one of the methods (or skips the channel loop) fails here
+    ///     before the wire desync reaches the client.
+    ///   - `estimated_packet_count() == 1` — realistic-sized inputs
+    ///     comfortably fit a single fragment. A future regression that
+    ///     either bloats one of the appended args past
+    ///     `FRAGMENT_BODY_SIZE - other_messages` OR adds a 9th chat channel
+    ///     would tip this to 2+ packets and fire here, prompting an
+    ///     explicit re-audit of the bundle shape (and potentially a
+    ///     transaction-state re-audit if the second fragment lands after
+    ///     a same-entity CREATE in the same client frame).
+    ///
+    /// Args sizes mirror the production wire: appearance is a typical
+    /// 8-component humanoid set (~120 B), tint is the fixed 12 B layout
+    /// from `build_tint_args`, welcome uses the realistic entity_id 12345
+    /// to exercise the multi-digit branch of the welcome text formatter.
+    #[test]
+    fn on_client_ready_burst_bundles_to_single_packet() {
+        use cimmeria_mercury::packet::FRAGMENT_BODY_SIZE;
+
+        const ENTITY_ID: u32 = 12345;
+
+        // Realistic 8-component humanoid appearance (Castle_CellBlock spawn
+        // shape — see `build_appearance_args` test cases for the canonical
+        // wire layout).
+        let appearance = build_appearance_args(
+            "MaleBody",
+            &[
+                "Hair".to_string(),
+                "Head".to_string(),
+                "Torso".to_string(),
+                "Legs".to_string(),
+                "Hands".to_string(),
+                "Feet".to_string(),
+                "Belt".to_string(),
+                "Backpack".to_string(),
+            ],
+        );
+        let tint = build_tint_args(3);
+        let welcome = build_welcome_message_args("Cadacious", ENTITY_ID);
+
+        let bundle = build_on_client_ready_burst_bundle(ENTITY_ID, &appearance, &tint, &welcome);
+
+        // Count check: every burst message must land in the bundle. The
+        // expected number is parameterised on DEFAULT_CHAT_CHANNELS so an
+        // addition to the chat-channel set updates both sides at once.
+        let expected_count = 2 + DEFAULT_CHAT_CHANNELS.len() + 1;
+        assert_eq!(
+            bundle.num_messages(),
+            expected_count,
+            "burst must contain BeingAppearance + onEntityTint + N onChatJoined + welcome \
+             (where N = DEFAULT_CHAT_CHANNELS.len() = {})",
+            DEFAULT_CHAT_CHANNELS.len()
+        );
+
+        // Single-fragment shape: the burst is small enough that
+        // estimated_packet_count drops to 1 for the current channel set + arg
+        // sizes. If realistic args grow past the fragment size, this assert
+        // forces an explicit re-audit (the migration's "1 frame == 1 bundle"
+        // safety claim hinges on the post-finalize fragment count).
+        assert!(
+            bundle.body_len() < FRAGMENT_BODY_SIZE,
+            "burst body ({} B) must fit one fragment (limit {} B) — a regression here \
+             means the chat channel set grew or an arg ballooned, and the migration's \
+             single-packet shape needs a re-audit",
+            bundle.body_len(),
+            FRAGMENT_BODY_SIZE
+        );
+        assert_eq!(
+            bundle.estimated_packet_count(),
+            1,
+            "post-bundle burst must collapse to a single reliable packet \
+             (was 11 pre-bundle)"
+        );
+    }
+
+    /// **Burst-shape regression guard for the `resend_appearance_after_cinematic`
+    /// 2-packet collapse.**
+    ///
+    /// The cinematic-guard spam loop in `send_cinematic` invokes
+    /// `resend_appearance_after_cinematic` every 100 ms for up to 20 s
+    /// (200 iterations max), each iteration emitting BeingAppearance +
+    /// onEntityTint. Pre-bundle that was 2 reliable packets per iteration
+    /// (400 TX-window slots over the worst-case spam window); post-bundle
+    /// each iteration emits exactly 1 packet (200 slots).
+    ///
+    /// `handle_cancel_movie` also calls the same resend path on real
+    /// client `cancelMovie` — single-shot 2 → 1.
+    ///
+    /// Pin two invariants:
+    ///   - `num_messages == 2` — exactly BeingAppearance + onEntityTint,
+    ///     in order. A regression that drops one or appends a stray method
+    ///     fails here.
+    ///   - `estimated_packet_count() == 1` — the realistic appearance arg
+    ///     size (~120 B for an 8-component humanoid) plus the 12-byte tint
+    ///     fits comfortably under `FRAGMENT_BODY_SIZE`. If a future regression
+    ///     bloats the appearance args past the fragment cutoff, this assert
+    ///     forces a re-audit (a fragmented appearance resend defeats the
+    ///     spam-loop's per-iter slot savings).
+    #[test]
+    fn appearance_resend_bundle_collapses_to_single_packet() {
+        const ENTITY_ID: u32 = 12345;
+        let appearance = build_appearance_args(
+            "MaleBody",
+            &[
+                "Hair".to_string(),
+                "Head".to_string(),
+                "Torso".to_string(),
+                "Legs".to_string(),
+                "Hands".to_string(),
+                "Feet".to_string(),
+                "Belt".to_string(),
+                "Backpack".to_string(),
+            ],
+        );
+        let tint = build_tint_args(3);
+
+        let bundle = build_appearance_resend_bundle(ENTITY_ID, &appearance, &tint);
+
+        assert_eq!(
+            bundle.num_messages(),
+            2,
+            "appearance resend must be exactly BeingAppearance + onEntityTint"
+        );
+        assert_eq!(
+            bundle.estimated_packet_count(),
+            1,
+            "appearance resend must collapse to a single reliable packet \
+             (was 2 pre-bundle, called per-iter of the 100 ms × 200 spam loop)"
+        );
     }
 }
 

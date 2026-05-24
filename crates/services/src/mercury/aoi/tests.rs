@@ -427,6 +427,113 @@ fn compose_create_entity_base_body_matches_build_create_entity_base_body() {
     );
 }
 
+/// **Load-bearing byte-equivalence guard for the entity-method bundle path.**
+///
+/// `ChannelBundle::append_entity_method` (in `cimmeria-mercury`) and
+/// `build_entity_method_packet`'s body (via `services::mercury::append_entity_method`)
+/// must emit byte-identical wire bytes. They live in two different crates
+/// and the encoder is duplicated for performance — the only thing keeping
+/// them in lock-step is the shared `EXTENDED_ENCODING_THRESHOLD` /
+/// `EXTENDED_ENCODING_MARKER` constants and this test.
+///
+/// Coverage:
+/// - **Direct encoding** (`method_index < 61`): pin `BEING_APPEARANCE` (26),
+///   `ON_ENTITY_TINT` (10), `ON_CHAT_JOINED` (31), `ON_PLAYER_COMMUNICATION`
+///   (28). Together these are every method in the
+///   `handle_on_client_ready` post-bundle burst — drift in any of them
+///   silently desyncs the post-onClientReady client state.
+/// - **Extended encoding** (`method_index >= 61`): pin `ON_PLAY_MOVIE` (155),
+///   the only extended-encoding emit in `world_entry_appearance.rs` (via
+///   `send_cinematic`). The encoder's `(method_index - 61) as u8` truncation
+///   path needs at least one extended-encoding witness or a future regression
+///   could land at index ≥ 317 (`u8::MAX + 61 + 1`) and silently truncate.
+///
+/// **Regression shape**: if a future refactor changes the wire layout in
+/// only one of the two encoders (a length-prefix endian flip, dropping the
+/// 0x80 direct-encoding marker, etc.), the bundle-migrated `handle_on_client_ready`
+/// path would emit different bytes than the still-per-message `send_cinematic`
+/// path, breaking the BeingAppearance/onChatJoined replay semantics. This
+/// test fires before the wire divergence reaches a real client.
+#[test]
+fn channel_bundle_append_entity_method_matches_build_entity_method_packet_body() {
+    use crate::mercury::{build_entity_method_packet, method_idx};
+    use cimmeria_mercury::channel_bundle::ChannelBundle;
+
+    const ENTITY_ID: u32 = 0xCAFE_BABE;
+
+    // Direct-encoding witnesses: every method index in the
+    // handle_on_client_ready burst.
+    let direct_cases: &[(u16, &[u8])] = &[
+        (method_idx::BEING_APPEARANCE, b"appearance-body-bytes"),
+        (method_idx::ON_ENTITY_TINT, &[0u8; 12]),
+        (method_idx::ON_CHAT_JOINED, b"chat-joined-args"),
+        (method_idx::ON_PLAYER_COMMUNICATION, b"welcome-msg-args"),
+    ];
+
+    for &(method_index, args) in direct_cases {
+        // Bundle path: append one method and grab the accumulated body.
+        let mut bundle = ChannelBundle::new(true);
+        bundle.append_entity_method(method_index, ENTITY_ID, args);
+        // body is private — finalize without acks/flags to recover the
+        // bytes. With body_len() < FRAGMENT_BODY_SIZE this emits 1 packet,
+        // and the plaintext closure is identity so we get the body back.
+        let (packets, _seqs) = bundle.finalize(0, 0, |plaintext| plaintext.to_vec());
+        assert_eq!(
+            packets.len(),
+            1,
+            "small body must be one un-fragmented packet"
+        );
+        // Bundle's finalize prepends the flags byte AND appends the seq
+        // footer (since FLAG_HAS_SEQUENCE is implied by base_seq=0 +
+        // build_fragmented_bundle's framing). Recover body == pkt[1..len-4].
+        let bundle_body = &packets[0][1..packets[0].len() - 4];
+
+        // Standalone-packet path: decrypt and strip flags+seq footer.
+        let pkt = build_entity_method_packet(&TEST_KEY, 1, &[], ENTITY_ID, method_index, args);
+        let enc = MercuryEncryption::from_session_key(TEST_KEY);
+        let pt = enc.decrypt(&pkt).unwrap();
+        let standalone_body = &pt[1..pt.len() - 4];
+
+        assert_eq!(
+            bundle_body, standalone_body,
+            "direct encoding mismatch for method_index={method_index} — \
+             ChannelBundle::append_entity_method drifted from \
+             services::mercury::append_entity_method"
+        );
+    }
+
+    // Extended-encoding witness: ON_PLAY_MOVIE (155 ≥ 61). Exercises the
+    // marker-byte + sub_index code path that direct cases don't.
+    {
+        let method_index = method_idx::ON_PLAY_MOVIE;
+        let args = b"\x10\x00\x00\x00Cine-Test.Cine\x00\x01".as_slice();
+        let mut bundle = ChannelBundle::new(true);
+        bundle.append_entity_method(method_index, ENTITY_ID, args);
+        let (packets, _seqs) = bundle.finalize(0, 0, |plaintext| plaintext.to_vec());
+        assert_eq!(packets.len(), 1);
+        let bundle_body = &packets[0][1..packets[0].len() - 4];
+
+        let pkt = build_entity_method_packet(&TEST_KEY, 1, &[], ENTITY_ID, method_index, args);
+        let enc = MercuryEncryption::from_session_key(TEST_KEY);
+        let pt = enc.decrypt(&pkt).unwrap();
+        let standalone_body = &pt[1..pt.len() - 4];
+
+        assert_eq!(
+            bundle_body, standalone_body,
+            "extended encoding mismatch for method_index={method_index} — \
+             the 0xBD marker + sub_index path drifted between bundle and \
+             standalone-packet encoders"
+        );
+        // Also pin the extended-marker first byte so a regression that
+        // accidentally encoded ON_PLAY_MOVIE as direct (255 & 0x80 → wrong
+        // method id) still fails clearly.
+        assert_eq!(
+            bundle_body[0], 0xBD,
+            "method_index >= 61 must use extended encoding marker 0xBD"
+        );
+    }
+}
+
 /// Same regression guard for the phase-2 cascade composer. Tests the
 /// `npc_data: None` shape (player phase-2, smallest cascade — class_id !=
 /// 0 → includes the SGWBeing block but skips all the npc-specific
