@@ -1,0 +1,59 @@
+//! Loopback Mercury session harness for end-to-end protocol tests.
+//!
+//! Pairs two [`Channel`](crate::channel::Channel) instances on real
+//! `127.0.0.1:0` loopback `UdpSocket`s and runs a driver loop that pumps
+//! recv on both sides, dispatches inbound bytes to the right channel,
+//! drives `tick()` at a controllable cadence, and exposes hooks for
+//! simulated loss / reorder / latency / duplication.
+//!
+//! # When to reach for this vs. its siblings
+//!
+//! - [`crate::test_transport::TestTransport`] (Tier 1) records outbound
+//!   `(SocketAddr, bytes)` for byte-exact fan-out assertions. Right when
+//!   the question is "did handler H emit these bytes?".
+//! - **This harness** (Tier 2) drives two endpoints exchanging real
+//!   packets over real loopback sockets. Right when the question is
+//!   "does the Mercury protocol deliver these bytes under conditions X?"
+//!   — retransmit, fragment reassembly, keepalive, encryption.
+//! - The wireclient (#281) is the content-aware end-to-end driver one
+//!   floor up; it walks scripts with auth, entity mirrors, and dialog
+//!   state. That layer is for "does the game work?", not "does the
+//!   wire work?".
+//!
+//! # Ordering, isolation, and runtime guarantees
+//!
+//! These are the contract bits tests can rely on:
+//!
+//! - **Per-direction ordering is preserved.** If A sends packets 1, 2, 3
+//!   to B, B observes them in that order (subject to any active
+//!   `reorder_pairs` or `drop_next` policy in the A→B direction). Same
+//!   for B→A.
+//! - **Cross-direction interleaving is implementation-defined unless
+//!   serialized via `tick()`.** If A sends 1, 2, 3 and B sends 4, 5, 6
+//!   simultaneously, the relative ordering across directions is NOT
+//!   guaranteed. Tests that need a precise interleaving must drive the
+//!   harness with explicit `session.tick().await` calls between phases.
+//! - **Per-session [`TestClock`] isolation.** Each [`LoopbackPeer`] owns
+//!   its own `Arc<TestClock>` — no process-global state. `cargo nextest`
+//!   parallel runs cannot perturb each other's clock.
+//! - **Per-session port isolation.** Each [`LoopbackPeer`] binds
+//!   `127.0.0.1:0` so the OS assigns ephemeral ports. Parallel runs
+//!   cannot collide.
+//! - **Tokio runtime defaults to `#[tokio::test]` (current-thread).**
+//!   Recv pumps are driven cooperatively via `tokio::select!`. Tests
+//!   that want to assert "neither direction stalls the other" must opt
+//!   into `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]`
+//!   and document why in the test header.
+
+mod clock;
+mod peer;
+mod policy;
+mod session;
+
+#[cfg(test)]
+mod tests;
+
+pub use clock::TestClock;
+pub use peer::{LoopbackPeer, TickActions};
+pub use policy::{Direction, NetworkDirection, NetworkPolicy};
+pub use session::LoopbackSession;

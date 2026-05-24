@@ -33,9 +33,11 @@ When adding a client method call, confirm the index against `docs/protocol/clien
 
 **Handlers must take `&Arc<dyn Transport>`, never `&Arc<UdpSocket>`, outside the recv loop.** Outbound sends go through `cimmeria_mercury::transport::Transport`; only `connect_loop::run_connect_loop` keeps the concrete `UdpSocket` (it owns `recv_from`) and wraps it in a `UdpTransport` for dispatch. A new handler that reaches for `UdpSocket` directly is a review block — it defeats the byte-exact fan-out test seam. See [docs/architecture/transport-trait.md](../docs/architecture/transport-trait.md).
 
+**Mercury-protocol changes** (channel state-machine, retransmit, fragmentation, keepalive, ack, RTO) **require a paired-channel test in the loopback harness**, not just a unit test on the state machine in isolation. The harness lives in `crates/mercury/src/test_harness/` behind the `test-harness` feature; use `LoopbackSession::connected(None)` (or `Some(enc)` for encryption tests) and drive time via `peer.clock.advance(...)` instead of `tokio::time::sleep`. See [docs/architecture/mercury-loopback-harness.md](../docs/architecture/mercury-loopback-harness.md) and TESTING.md type 9 (Mercury session tests).
+
 ## Required tests on every PR
 
-A PR that changes runtime behaviour must add or update a test. **Read [TESTING.md](../TESTING.md) before writing one** — it has the picker for the eight test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte) and the gotchas mined from review comments since PR #131. Reviewer non-negotiables:
+A PR that changes runtime behaviour must add or update a test. **Read [TESTING.md](../TESTING.md) before writing one** — it has the picker for the nine test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte / Mercury session) and the gotchas mined from review comments since PR #131. Reviewer non-negotiables:
 
 - The test must fail when the fix is reverted (regression-guard shape, not happy-path).
 - Tighten assertions: composite keys, exact final positions, `== 1` not `>= 1`, exact byte strings for serializers.

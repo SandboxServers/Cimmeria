@@ -34,6 +34,16 @@ digest = "0.10"
 # the recorder. See docs/architecture/transport-trait.md.
 test-support = []
 
+# Exposes `test_harness`, the Tier 2 loopback Mercury session harness for
+# end-to-end paired-channel tests (reliable delivery under simulated loss,
+# fragment reassembly, keepalive cadence, encryption round-trip, handshake,
+# ack aggregation, RTO convergence). Consumer crates pull it in via a
+# dev-dependency: `cimmeria-mercury = { path = "../mercury", features =
+# ["test-harness"] }`. Kept off by default so production builds never include
+# the harness, its `TestClock`, or its `tokio::net::UdpSocket` recv pumps.
+# See docs/architecture/mercury-loopback-harness.md.
+test-harness = []
+
 [dev-dependencies]
 # Property-based round-trip tests for the wire-format codec. The
 # packet builders + parse_incoming are example-tested in

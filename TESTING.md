@@ -135,6 +135,35 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 
 **Examples**: `crates/services/src/base/world_entry/teleport.rs` (forced-position snap to the player addr, zero witness fan-out), `reanchor_player.rs` (owner-only burst), `login.rs` (phase 1→4 ordered sequence), `crates/services/src/base/world_entry/cell_dispatch/aoi.rs` (`left_aoi_fans_out_one_packet_per_witness_to_each_addr` — witness fan-out cardinality + per-addr bytes).
 
+### 9. Mercury session tests (loopback harness)
+
+**Where**: `crates/mercury/src/test_harness/tests/{reliable,fragment,keepalive,encryption,handshake,ack,rto}.rs`, using `crate::test_harness::LoopbackSession` (the paired-channel loopback harness). Behind the `test-harness` Cargo feature on `crates/mercury` — see [docs/architecture/mercury-loopback-harness.md](docs/architecture/mercury-loopback-harness.md).
+
+**For**: Mercury **protocol-layer** end-to-end behavior — anything that needs two real `Channel`s exchanging real packets on real loopback sockets. Fan-out byte tests (type 8) cover the outbound side only; this covers the recv loop, channel state evolution, timing-sensitive paths (RTO / keepalive / inactivity), and the encryption pipeline round-trip.
+
+**The failure modes it catches** (uninspectable before the harness landed):
+
+- **End-to-end reliable delivery under loss** — send → drop → RTO → retransmit → ack → tx-window clear. Every leg has a unit test; the **pipeline** had none.
+- **Fragment reassembly across paired channels** — wrong fragment numbering on the sender that the in-memory unpacker tests would happily round-trip but a real peer can't reassemble.
+- **Keepalive cadence end-to-end** — a real keepalive packet, decoded by the peer, recognised, updates `last_received`.
+- **Encryption keystream behavior across multiple bundles** — single-shot encrypt/decrypt unit tests can't catch a regression where the cipher state was inadvertently shared across bundles.
+- **Retransmit-uses-cached-bytes invariant** — the retransmit must emit the **same** bytes that went on the wire originally, not a fresh encryption.
+- **Ack aggregation under realistic bursts** — N inbound reliable packets coalesce into one outbound packet's ack footer.
+- **Adaptive RTO floor engagement on real loopback** — the floor exists for sub-millisecond LAN RTTs; only paired channels on actual sockets exercise that.
+
+**Patterns to follow:**
+
+- Default to `LoopbackSession::connected(None)` — both peers handshaked, no encryption. Reach for `LoopbackSession::connected(Some(enc))` only when the test is about the encryption path.
+- Advance time via `peer.clock.advance(Duration::from_millis(...))` rather than `tokio::time::sleep`. The clock is a `Clock`-trait `TestClock` injected into the inner `Channel`; advancing it drives keepalive / RTO / inactivity deterministically with no wall-clock cost.
+- Drop / latency / duplicate via `session.policy.lock().unwrap().drop_next.a_to_b = N`. Applied on the sender side — the receiver-side outcome is identical to a wire-side drop, and the sender's TX-window / RTO state stays correct.
+- Use `session.quiesce(Duration::from_millis(500)).await` to assert "both peers have empty TX windows and zero pending acks". Avoids brittle timing assertions.
+- Use `peer.recv_n_bundles(n, timeout).await` to wait for assembled bundles. Returns fewer than `n` if the timeout fires first — assert the length.
+- Per-direction ordering is preserved (A's 1, 2, 3 → B observes 1, 2, 3). **Cross-direction interleaving is implementation-defined** unless serialized via `session.tick().await` — document explicitly when a test depends on a specific interleaving.
+- Default `#[tokio::test]` (current-thread). Tests asserting "neither direction stalls the other" need `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]` with a doc-comment naming the reason.
+- For the encryption category, use `MercuryEncryption::from_session_key([0x42u8; 32])` for synthetic keys. Known-answer ciphertext tests against the real C++ client need Ghidra-extracted samples (the 22nd test in the inventory; deferred — see the ADR).
+
+**Examples**: `crates/mercury/src/test_harness/tests/reliable.rs` (drop → RTO → retransmit → ack pipeline), `fragment.rs` (3-fragment reassembly under latency policy), `keepalive.rs` (clock-advance past `KEEPALIVE_INTERVAL_MS`), `encryption.rs` (multi-bundle keystream + retransmit-cached-bytes), `rto.rs` (floor engagement on zero-latency loopback).
+
 ---
 
 ## Choosing a test type
@@ -147,6 +176,8 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 | An invariant that spans two or more handlers | PL/pgSQL smoke + Rust harness |
 | A race condition or `join!`-of-futures correctness | Concurrency regression guard |
 | Content seed correctness (chains, triggers, action wiring) | Chain-replay test |
+| A BaseApp handler's outbound fan-out (which addrs, in what order, with which bytes) | Fan-out byte test |
+| Mercury protocol-layer behavior (reliable delivery under loss, fragment reassembly, keepalive cadence, encryption round-trip, RTO convergence) | Mercury session test |
 
 ### When one feature needs more than one test
 
