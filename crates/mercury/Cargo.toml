@@ -13,6 +13,11 @@ bytes = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }
+# ChaCha20 RNG — bitwise-deterministic across platforms (unlike StdRng).
+# Used by the chaos-testing primitives in `test_harness::policy` so seeded
+# loss / reorder runs reproduce byte-identically in CI. Workspace dep but
+# the chaos surface is feature-gated under `test-harness`.
+rand_chacha = { workspace = true }
 async-trait = { workspace = true }
 
 # Cryptography (AES-256-CBC + HMAC-MD5 — must be byte-identical to C++ implementation)
@@ -50,3 +55,13 @@ test-harness = []
 # packet/replay_smoke.rs; proptest widens that coverage to the full
 # valid input space.
 proptest = { workspace = true }
+# Pcap file parsing for the network-chaos pcap-replay regression
+# harness. Pure-Rust, supports both classic pcap and pcap-ng.
+# Used by `test_harness::pcap_replay` to load the lomiada fixture
+# from debug/lomiada-broke-in-hallway02/ and replay it against a
+# synthetic Channel for the deterministic regression test.
+pcap-file = "2.0"
+# Ethernet + IPv4 + UDP frame parser used to extract Mercury UDP
+# payloads from pcap records. Cross-platform, no system libpcap
+# needed.
+etherparse = "0.20"

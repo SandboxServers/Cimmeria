@@ -26,6 +26,14 @@ pub mod unpacker;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_transport;
 
+/// Chaos-testing `BidirectionalTransport` wrapper with seeded drop / latency
+/// / duplicate filters. Behind `test-support` so production builds never
+/// pull in the RNG state. Used by services-layer chaos integration tests
+/// that wrap the real recv loop's transport. See
+/// `docs/architecture/network-chaos-testing.md`.
+#[cfg(any(test, feature = "test-support"))]
+pub mod lossy_transport;
+
 /// Tier 2 loopback Mercury session harness. Pairs two `Channel`s on real
 /// loopback `UdpSocket`s and runs end-to-end protocol tests covering reliable
 /// delivery under simulated loss, fragment reassembly, keepalive cadence,
@@ -35,6 +43,11 @@ pub mod test_transport;
 /// `docs/architecture/mercury-loopback-harness.md` for the rationale and
 /// for how this differs from [`test_transport`] (Tier 1, byte-exact fan-out)
 /// and from the content-aware wireclient layer above it.
+///
+/// The pcap-replay submodule (under `test_harness::pcap_replay`) depends on
+/// `pcap-file` and `etherparse` which live in `[dev-dependencies]`, so the
+/// pcap-replay path is gated to `cfg(test)` inside the harness module
+/// itself rather than the broader `test-harness` feature.
 #[cfg(any(test, feature = "test-harness"))]
 pub mod test_harness;
 

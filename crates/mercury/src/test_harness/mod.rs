@@ -59,14 +59,23 @@
 //!   handles its own duplicate-fragment dedup.
 
 mod clock;
+pub mod invariants;
 mod peer;
 mod policy;
 mod session;
+
+// Pcap replay depends on `pcap-file` + `etherparse` which live in
+// `[dev-dependencies]` (not available to feature-gated lib code).
+// Gate the module to `cfg(test)` so the lomiada replay tests under
+// mercury's own test suite can use it; consumer crates that want
+// pcap replay must add the same dev-deps themselves.
+#[cfg(test)]
+pub mod pcap_replay;
 
 #[cfg(test)]
 mod tests;
 
 pub use clock::TestClock;
 pub use peer::{LoopbackPeer, TickActions};
-pub use policy::{Direction, NetworkDirection, NetworkPolicy};
+pub use policy::{Direction, DropProbability, NetworkDirection, NetworkPolicy};
 pub use session::LoopbackSession;
