@@ -77,14 +77,18 @@ pub(super) async fn run_cell_loop(
                 // whose draw window has elapsed gets the deferred
                 // ability dispatched. Same filter shape — short-circuits
                 // when the queue is empty.
-                super::ticks::pending_attack_tick(tx, &mut space_mgr).await;
+                super::ticks::pending_attack_tick(tx, &mut space_mgr, &engine).await;
 
                 // Drive the server-side auto-cycle loop: re-fire any
                 // armed player's stashed ability against the LIVE
                 // current_target_id whenever its cooldown has cleared.
                 // Cooldown gate is the rate limiter; the eligibility
                 // filter short-circuits when nobody is auto-cycling.
-                super::ticks::auto_cycle_tick(tx, &mut space_mgr).await;
+                // Engine is threaded for the kill-credit hook:
+                // loop-driven kills against quest-tagged NPCs fire
+                // `EntityDeath` so KillCount missions advance via the
+                // same content-engine path as manual right-click kills.
+                super::ticks::auto_cycle_tick(tx, &mut space_mgr, &engine).await;
 
                 // Promote queued bandolier slot swap: any player whose
                 // Item_Unequip animation window has elapsed gets the

@@ -980,3 +980,115 @@ async fn reload_in_isolation_does_not_flip_bsf_in_combat() {
          for the in-combat state"
     );
 }
+
+/// **Regression guard: SET_AUTO_CYCLE's immediate-fire path must
+/// credit quest kills.** When pressing the auto-fire button kills a
+/// quest-tagged NPC in the same press (immediate-fire fires the
+/// stashed ability at the current target), the EntityDeath content
+/// event must reach the chain engine so KillCount missions advance.
+///
+/// Parallel coverage to `auto_cycle_tick_credits_quest_kill_on_tagged_npc_death`
+/// in `service/ticks/auto_cycle.rs`. Both paths route through
+/// `handle_use_ability_with_kill_credit`; both tests fail when the
+/// caller is reverted to bare `handle_use_ability`.
+#[tokio::test]
+async fn set_auto_cycle_immediate_fire_credits_quest_kill_on_tagged_npc_death() {
+    use cimmeria_content_engine::actions::Action;
+    use cimmeria_content_engine::chain::Chain;
+    use cimmeria_content_engine::triggers::Trigger;
+    use cimmeria_entity::abilities::EffectDef;
+    use cimmeria_entity::stats::HEALTH;
+
+    const QUEST_TAG: &str = "QuestTargetDrone";
+    const COUNTER_NAME: &str = "drone_kills";
+
+    let mut mgr = make_mgr_with_player();
+    mgr.spawn_npc(50, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    // Pre-conditions for SET_AUTO_CYCLE's immediate-fire branch:
+    // current_target_id + last_fired_ability_id both Some. Mirror
+    // the existing `set_auto_cycle_enable_fires_immediately_*` test
+    // shape so a future regression that changes the branch
+    // conditions is caught uniformly.
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.abilities.add_ability(7);
+        p.abilities.last_fired_ability_id = Some(7);
+        p.current_target_id = Some(50);
+        p.weapon_holstered = false;
+    }
+    // Lethal effect on ability 7 so the immediate fire kills the
+    // NPC outright. Mirrors the fixture in the auto_cycle_tick test.
+    let mut params = std::collections::HashMap::new();
+    params.insert("HealthDamage".to_string(), "9999".to_string());
+    mgr.effect_defs.insert(
+        100,
+        EffectDef {
+            effect_id: 100,
+            ability_id: 7,
+            delay: 0,
+            effect_sequence: 0,
+            event_set_id: None,
+            script_name: None,
+            params,
+        },
+    );
+    mgr.ability_defs.insert(
+        7,
+        AbilityDef {
+            ability_id: 7,
+            name: "test".to_string(),
+            cooldown: 0.5,
+            warmup: 0.0,
+            flags: 0,
+            is_ranged: false,
+            min_range: 0,
+            max_range: 30,
+            target_type_id: 0,
+            effect_ids: vec![100],
+            moniker_ids: vec![],
+            required_ammo: 0,
+            event_set_id: None,
+            velocity: 0.0,
+        },
+    );
+    if let Some(npc) = mgr.get_entity_mut(50) {
+        npc.tag = Some(QUEST_TAG.to_string());
+        if let Some(stat) = npc.stats.get_mut(HEALTH) {
+            stat.update(0, 1, 100);
+            stat.clear_dirty();
+        }
+    }
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(Chain {
+        id: 999_998,
+        name: "test: SET_AUTO_CYCLE drone kill counter".to_string(),
+        enabled: true,
+        trigger: Trigger::OnEntityDeath {
+            entity_type: None,
+            entity_tag: Some(QUEST_TAG.to_string()),
+        },
+        conditions: vec![],
+        actions: vec![Action::IncrementCounter {
+            counter_name: COUNTER_NAME.to_string(),
+            amount: 1,
+        }],
+        priority: 0,
+    });
+
+    let (tx, _rx) = mpsc::channel(64);
+    let handled = dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
+    assert!(handled);
+
+    assert_eq!(
+        mgr.get_entity(1).unwrap().counters.get(COUNTER_NAME),
+        Some(&1),
+        "SET_AUTO_CYCLE's immediate-fire on enable must credit a tagged-NPC \
+         kill via fire_entity_death — reverting the immediate-fire site to \
+         bare handle_use_ability leaves this counter at None",
+    );
+    assert!(
+        crate::cell::combat::is_dead_state(mgr.get_entity(50).unwrap().state_field),
+        "test fixture: target must be dead after the lethal immediate fire",
+    );
+}

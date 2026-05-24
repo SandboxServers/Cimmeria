@@ -158,6 +158,48 @@ baseDamage
 | Critical | `RC_Critical` | qrRand < QR_DOUBLE_CRITICAL_HIT |
 | Double Critical | `RC_DoubleCritical` | qrRand >= QR_DOUBLE_CRITICAL_HIT |
 
+## Kill credit (quest objective progression)
+
+The cell-side ability path has **two** entry-point shapes, and the
+distinction is load-bearing for mission progression.
+
+| Caller shape | Entry point | When to use |
+|---|---|---|
+| Player-driven, single target | `handle_use_ability_with_kill_credit` | Every player-initiated single-target attack |
+| NPC AI, tests, AoE caller layer | `handle_use_ability` (bare) | NPC attacks; ability-mechanic tests; AoE primary cast (the AoE caller fires `fire_entity_death` per-death itself) |
+
+`handle_use_ability_with_kill_credit` wraps `handle_use_ability` with
+an alive→dead transition detector that fires the content-engine
+`EntityDeath` event. KillCount-style mission chains (e.g., "kill 5
+Hallway_Guards") subscribe to that event via
+`Trigger::OnEntityDeath { entity_tag }` and progress on each tagged
+kill. Skipping the wrapper makes the kill happen on the wire AND in
+the cell entity state, but the chain never fires — the player sees
+the NPC die, the corpse is lootable, XP is granted, but the
+"3 of 5" counter never moves.
+
+### Why two entry points
+
+NPC AI also calls `handle_use_ability`. NPC kills shouldn't fire
+`EntityDeath` — the killer has no `player_id`, no mission to credit.
+Baking the credit hook into `handle_use_ability` itself would either
+require an `Option<player_id>` branch inside the helper (verbose and
+easy to miss at call sites) or a separate `engine: Option<&ChainEngine>`
+parameter on every caller. Keeping the bare function callable from
+NPC AI + tests, and wrapping it explicitly at player entry points,
+keeps both invariants visible at the call site.
+
+### Every player-driven attack path routes through the wrapper
+
+Cell-method dispatch sites (`USE_ABILITY`, `INTERACT`, `SET_AUTO_CYCLE`'s
+immediate fire) and tick-driven re-fire paths (`auto_cycle_tick`,
+`pending_attack_tick`) all route through
+`handle_use_ability_with_kill_credit`. The cell-method `USE_ABILITY_ON_GROUND`
+(AoE) is the one player path that calls `handle_use_ability_on_ground`
++ fires `fire_entity_death` per-death at the caller layer, because
+the AoE flow returns a `Vec<entity_id>` of every NPC that died during
+the cast (primary + secondaries).
+
 ## Data References
 
 - **Abilities**: 1,887 defined in `db/resources.sql`
