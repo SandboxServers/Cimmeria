@@ -1,0 +1,119 @@
+//! Category 4 — encryption round-trip across multiple bundles.
+//!
+//! Unit tests in `encryption.rs` validate single encrypt/decrypt
+//! round-trips. These tests pair two real channels with a real
+//! `MercuryEncryption` context and exercise the failure modes that
+//! single-shot unit tests structurally can't catch.
+//!
+//! **The known-answer ciphertext test** lives in the sibling
+//! [`super::encryption_kat`] module. Reference vectors were generated
+//! by `tools/generate-mercury-kat.py` using an implementation
+//! independent of both Crypto++ (the SGW.exe stack) and RustCrypto
+//! (our stack); the ADR at
+//! `docs/architecture/mercury-loopback-harness.md` covers why
+//! independent reference vectors give us the same failure-mode
+//! coverage as live extraction from SGW.exe would.
+
+use std::time::Duration;
+
+use crate::encryption::MercuryEncryption;
+use crate::test_harness::LoopbackSession;
+
+fn test_encryption() -> MercuryEncryption {
+    // Deterministic key + zero IV match the C++ `EncryptionFilter::setKey`
+    // path. Any 32 bytes will do for protocol-level tests — known-answer
+    // tests against the C++ client need real Ghidra-extracted samples.
+    let key = [0x42u8; 32];
+    MercuryEncryption::from_session_key(key)
+}
+
+/// Multiple bundles over one encrypted session — each one decrypts to
+/// its original plaintext. Catches keystream-advancement regressions
+/// where the second bundle would decrypt to garbage if the cipher state
+/// were shared across bundles.
+#[tokio::test]
+async fn multi_bundle_encryption_round_trips_each_payload() {
+    let session = LoopbackSession::connected(Some(test_encryption()))
+        .await
+        .unwrap();
+
+    let payloads: [&[u8]; 3] = [b"first", b"second message", b"third and final"];
+    for p in payloads.iter() {
+        session.a.send_bundle(p, false).await.unwrap();
+    }
+
+    let bundles = session.b.recv_n_bundles(3, Duration::from_secs(2)).await;
+    assert_eq!(bundles.len(), 3);
+    for (i, p) in payloads.iter().enumerate() {
+        assert_eq!(
+            bundles[i].as_ref(),
+            *p,
+            "encrypted bundle {i} must decrypt to original plaintext",
+        );
+    }
+}
+
+/// Reliable encrypted send that gets dropped → A's retransmit re-sends
+/// the **cached encrypted bytes** byte-identically. Validates that
+/// retransmit does NOT re-encrypt (which would, with a zero-IV CBC mode,
+/// happen to produce the same bytes — but the cached-bytes path is the
+/// invariant we want to pin against future changes to the cipher).
+#[tokio::test]
+async fn retransmit_uses_pre_encrypted_bytes_not_re_encryption() {
+    let session = LoopbackSession::connected(Some(test_encryption()))
+        .await
+        .unwrap();
+
+    session.policy.lock().unwrap().drop_next.a_to_b = 1;
+    session.a.send_bundle(b"retransmit me", true).await.unwrap();
+
+    // Grab the first-attempt cached bytes off the TX-window entry.
+    let original_raw = {
+        let ch = session.a.channel.lock().unwrap();
+        ch.tx_window[0].raw_bytes.clone()
+    };
+
+    // Force a retransmit by jumping past RTO.
+    session.a.clock.advance(Duration::from_secs(2));
+    let (a_actions, _) = session.tick().await.unwrap();
+    assert_eq!(a_actions.retransmits.len(), 1);
+    assert_eq!(
+        a_actions.retransmits[0].as_ref(),
+        original_raw.as_ref(),
+        "retransmit bytes must equal the original cached bytes byte-for-byte"
+    );
+
+    let bundles = session.b.recv_n_bundles(1, Duration::from_secs(1)).await;
+    assert_eq!(bundles.len(), 1);
+    assert_eq!(bundles[0].as_ref(), b"retransmit me");
+}
+
+/// Corrupt one byte mid-flight via a custom send (bypass `send_bundle`
+/// to inject the wrong bytes). B's decryption fails (HMAC mismatch);
+/// the channel survives; A's next send still works.
+#[tokio::test]
+async fn corrupted_inbound_does_not_crash_channel() {
+    let session = LoopbackSession::connected(Some(test_encryption()))
+        .await
+        .unwrap();
+
+    // Send garbage from A's socket directly — bypasses encryption so
+    // B's decrypt() fails on HMAC.
+    let garbage = vec![0u8; 64];
+    session
+        .a
+        .socket
+        .send_to(&garbage, session.a.peer_addr)
+        .await
+        .unwrap();
+
+    // No sleep: rely on `recv_n_bundles` to sync with B's recv pump.
+    // The pump processes garbage first (silently dropped on HMAC
+    // failure), then the legit send, then pushes the legit body onto
+    // the inbox. The wait below succeeds when that happens — no
+    // wall-clock dependency.
+    session.a.send_bundle(b"still alive", false).await.unwrap();
+    let bundles = session.b.recv_n_bundles(1, Duration::from_secs(1)).await;
+    assert_eq!(bundles.len(), 1);
+    assert_eq!(bundles[0].as_ref(), b"still alive");
+}

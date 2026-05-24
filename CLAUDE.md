@@ -115,7 +115,7 @@ The markdown lint runs via [`markdownlint-cli2`](https://github.com/DavidAnson/m
 
 ## Required testing for every PR
 
-A PR that changes runtime behavior without adding or updating a test will be sent back. **Before writing a test, read [TESTING.md](TESTING.md)** — it covers the eight test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte), the picker for which type fits which bug shape, and the gotchas mined from PR reviews #131 onwards.
+A PR that changes runtime behavior without adding or updating a test will be sent back. **Before writing a test, read [TESTING.md](TESTING.md)** — it covers the nine test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte / Mercury session), the picker for which type fits which bug shape, and the gotchas mined from PR reviews #131 onwards.
 
 The non-negotiables:
 
@@ -140,6 +140,7 @@ The map of "what changed → what to update":
 | Live-DB infra or local setup | [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) |
 | Crate layout, dependency graph, or new crate | [crates/README.md](crates/README.md) and the crate diagram in [README.md](README.md) |
 | Wire format, method indices, or message catalog | [docs/protocol/client-method-dispatch-table.md](docs/protocol/client-method-dispatch-table.md), [docs/protocol/message-catalog.md](docs/protocol/message-catalog.md), the rest of [docs/protocol/](docs/protocol/), the canonical entity definitions under [entities/defs/](entities/defs/), and `crates/services/src/mercury/method_idx.rs` constants |
+| Mercury protocol-layer behavior (channel state, retransmit, fragmentation, keepalive, ack, RTO) or the loopback harness itself | [docs/architecture/mercury-loopback-harness.md](docs/architecture/mercury-loopback-harness.md), TESTING.md type 9, and (if the harness API surface changes) the `test_harness` module under [crates/mercury/src/test_harness/](crates/mercury/src/test_harness/) plus the `cimmeria-mercury` row in [crates/README.md](crates/README.md) |
 | Figure source DSL under `docs/drafts/spec/figures/sources/` | Must re-render and commit the matching SVG in [docs/drafts/spec/figures/](docs/drafts/spec/figures/) in the same PR — gated by [tools/check-figure-sources.sh](tools/check-figure-sources.sh) and the [figure-sources-in-sync workflow](.github/workflows/figure-sources.yml). |
 | Architecture decisions (cell/base split, outbox, state-flag conventions, etc.) | New or amended doc under [docs/architecture/](docs/architecture/) |
 | Mission PAK overrides / new client-visible mission steps not in the canonical PAK | [docs/architecture/mission-pak-overrides.md](docs/architecture/mission-pak-overrides.md) and [docs/content/equip-from-inventory-pattern.md](docs/content/equip-from-inventory-pattern.md) (when the new step is part of an equip flow); cross-link from the mission's row in [docs/content/mission-chains.md](docs/content/mission-chains.md) |

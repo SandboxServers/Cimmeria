@@ -6,11 +6,13 @@
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Instant;
 
 use bytes::Bytes;
 use cimmeria_common::Result;
 
+use crate::clock::{Clock, SystemClock};
 use crate::consts;
 use crate::packet::{Packet, ParsedPacket};
 use crate::unpacker::FragmentAssembler;
@@ -159,19 +161,45 @@ pub struct Channel {
     /// Karn's algorithm) and `check_timeouts` (exponential backoff
     /// on retransmit).
     rto: Rto,
+
+    /// Pluggable clock — `SystemClock` in production, `TestClock`
+    /// (from `crate::test_harness`) for paired-channel tests that
+    /// need deterministic time advancement. Every read of "now"
+    /// inside `Channel` flows through this so tests can drive the
+    /// keepalive / RTO / inactivity machinery without sleeping.
+    clock: Arc<dyn Clock>,
 }
 
 impl Channel {
     /// Create a new channel to `remote_addr` in the `Connecting` state,
-    /// seeded with the default [`RtoConfig`].
+    /// seeded with the default [`RtoConfig`] and the production
+    /// [`SystemClock`].
     pub fn new(remote_addr: SocketAddr) -> Self {
-        Self::with_rto_config(remote_addr, RtoConfig::default())
+        Self::with_clock_and_rto_config(remote_addr, Arc::new(SystemClock), RtoConfig::default())
     }
 
     /// Create a new channel with explicit [`RtoConfig`] — primarily for
     /// tests that need tight RTO bounds to keep test runtimes short.
     pub fn with_rto_config(remote_addr: SocketAddr, rto_config: RtoConfig) -> Self {
-        let now = Instant::now();
+        Self::with_clock_and_rto_config(remote_addr, Arc::new(SystemClock), rto_config)
+    }
+
+    /// Create a new channel with an explicit [`Clock`] but the default
+    /// [`RtoConfig`]. The loopback test harness uses this to inject a
+    /// `TestClock` while keeping the production RTO bounds.
+    pub fn with_clock(remote_addr: SocketAddr, clock: Arc<dyn Clock>) -> Self {
+        Self::with_clock_and_rto_config(remote_addr, clock, RtoConfig::default())
+    }
+
+    /// Create a new channel with both an explicit [`Clock`] and
+    /// [`RtoConfig`]. The full power-user constructor that all the
+    /// shorter ones funnel through.
+    pub fn with_clock_and_rto_config(
+        remote_addr: SocketAddr,
+        clock: Arc<dyn Clock>,
+        rto_config: RtoConfig,
+    ) -> Self {
+        let now = clock.now();
         Self {
             state: ChannelState::Connecting,
             tx_window: VecDeque::with_capacity(consts::TX_WINDOW_SIZE),
@@ -188,6 +216,7 @@ impl Channel {
             last_received: now,
             fragment_assembler: FragmentAssembler::new(),
             rto: Rto::new(rto_config),
+            clock,
         }
     }
 
@@ -211,7 +240,7 @@ impl Channel {
     /// Tying the assembler to the channel makes the per-peer scope
     /// implicit.
     pub fn reassemble_parsed(&mut self, pkt: &ParsedPacket) -> Result<Option<Bytes>> {
-        self.last_received = Instant::now();
+        self.last_received = self.clock.now();
         self.fragment_assembler.process_parsed(pkt)
     }
 
@@ -265,7 +294,7 @@ impl Channel {
             )));
         }
 
-        let now = Instant::now();
+        let now = self.clock.now();
         let entry = TxEntry {
             packet,
             last_sent: now,
@@ -324,7 +353,7 @@ impl Channel {
         packet.sequence = self.next_tx_seq & crate::packet::SEQUENCE_MASK;
         self.next_tx_seq = self.next_tx_seq.wrapping_add(1) & crate::packet::SEQUENCE_MASK;
 
-        let now = Instant::now();
+        let now = self.clock.now();
         self.tx_window.push_back(TxEntry {
             packet,
             last_sent: now,
@@ -346,7 +375,7 @@ impl Channel {
     /// for earlier sequences.
     pub fn receive_packet(&mut self, packet: Packet) -> Result<Option<Vec<Packet>>> {
         let seq = packet.sequence;
-        self.last_received = Instant::now();
+        self.last_received = self.clock.now();
 
         // How far ahead of our expected sequence is this packet?
         // Wrapping subtraction handles sequence wraparound.
@@ -407,7 +436,7 @@ impl Channel {
         // ACK frames are peer-originated → counts as receive-side activity,
         // not send-side. (We aren't putting bytes on the wire; we're
         // observing the peer's response to a prior emit.)
-        let now = Instant::now();
+        let now = self.clock.now();
         self.last_received = now;
 
         let ack_seq_masked = ack_seq & crate::packet::SEQUENCE_MASK;
@@ -514,7 +543,7 @@ impl Channel {
     /// Returns a `Vec<Bytes>` of encrypted-and-ready-to-wire datagrams.
     /// The caller `socket.send_to`s each one to `self.remote_addr`.
     pub fn check_timeouts(&mut self) -> Vec<Bytes> {
-        let now = Instant::now();
+        let now = self.clock.now();
         let timeout = self.rto.current();
         let mut retransmits = Vec::new();
         let mut budget = consts::RETRANSMIT_BUDGET_PER_TICK;
@@ -567,7 +596,11 @@ impl Channel {
     /// MAX_RETRIES'th retransmit, giving the last attempt zero time to
     /// land.
     pub fn is_timed_out(&self) -> bool {
-        let peer_idle_ms = self.last_received.elapsed().as_millis() as u64;
+        let peer_idle_ms = self
+            .clock
+            .now()
+            .duration_since(self.last_received)
+            .as_millis() as u64;
 
         // Check if any TX entry has BEEN RETRIED past the budget — i.e.,
         // the MAX_RETRIES'th retransmit also timed out without ACK. See
@@ -591,20 +624,27 @@ impl Channel {
     /// doesn't relieve us of the obligation to send something ourselves;
     /// NAT entries time out per direction.
     pub fn keepalive_due(&self) -> bool {
-        self.last_sent.elapsed().as_millis() as u64 >= consts::KEEPALIVE_INTERVAL_MS
+        self.clock.now().duration_since(self.last_sent).as_millis() as u64
+            >= consts::KEEPALIVE_INTERVAL_MS
     }
 
     /// Mark the send clock as just-now. Use after sending a keepalive (or
     /// any out-of-band packet that doesn't go through `send_packet`).
     pub fn touch_sent(&mut self) {
-        self.last_sent = Instant::now();
+        self.last_sent = self.clock.now();
     }
 
     /// Mark the receive clock as just-now. Use after observing peer-
     /// originated traffic that doesn't flow through `receive_packet` /
     /// `process_acks` (e.g., raw datagram counted at the socket layer).
     pub fn touch_received(&mut self) {
-        self.last_received = Instant::now();
+        self.last_received = self.clock.now();
+    }
+
+    /// Read-only access to the channel's clock. The harness uses this
+    /// to advance a `TestClock` from outside without a back-channel.
+    pub fn clock(&self) -> &Arc<dyn Clock> {
+        &self.clock
     }
 }
 

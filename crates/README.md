@@ -15,7 +15,7 @@ common ──┬──► mercury ──► entity ──► game ────�
 | Crate | Package Name | Purpose |
 |---|---|---|
 | `common` | `cimmeria-common` | Shared types, config loading, error handling. No deps on other crates. |
-| `mercury` | `cimmeria-mercury` | Mercury reliable UDP protocol + AES-256-CBC/HMAC-MD5 encryption. Owns the `Transport` trait (`UdpTransport` prod impl; `TestTransport` recorder behind the `test-support` feature) — the send-side seam for byte-exact fan-out tests |
+| `mercury` | `cimmeria-mercury` | Mercury reliable UDP protocol + AES-256-CBC/HMAC-MD5 encryption. Owns the `Transport` trait (`UdpTransport` prod impl; `TestTransport` recorder behind the `test-support` feature) — the send-side seam for byte-exact fan-out tests. Also owns the `Clock` trait (`SystemClock` prod impl; `TestClock` in the harness) and the Tier 2 loopback session harness (`test_harness` module behind the `test-harness` feature) — paired-channel end-to-end tests for retransmit / fragment reassembly / keepalive / encryption / RTO. See [docs/architecture/transport-trait.md](../docs/architecture/transport-trait.md) and [docs/architecture/mercury-loopback-harness.md](../docs/architecture/mercury-loopback-harness.md) |
 | `defs` | `cimmeria-defs` | Parses entity definitions from `entities/defs/` XML into Rust types |
 | `entity` | `cimmeria-entity` | Entity lifecycle management, property synchronization |
 | `commands` | `cimmeria-commands` | Server command dispatch framework |

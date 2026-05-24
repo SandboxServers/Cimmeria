@@ -120,6 +120,13 @@ impl Rto {
         self.rto
     }
 
+    /// Read-only access to the seed config — useful for diagnostics and
+    /// for tests that need to assert the RTO stays inside the configured
+    /// clamp range.
+    pub fn config(&self) -> &RtoConfig {
+        &self.config
+    }
+
     /// Currently-smoothed RTT. `None` until the first sample arrives.
     /// Exposed for diagnostics / logging — not used by the algorithm
     /// itself outside this struct.

@@ -11,6 +11,7 @@
 pub mod bundle;
 pub mod channel;
 pub mod channel_bundle;
+pub mod clock;
 pub mod codec;
 pub mod encryption;
 pub mod messages;
@@ -24,6 +25,18 @@ pub mod unpacker;
 /// feature; excluded from production builds. See [`test_transport`].
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_transport;
+
+/// Tier 2 loopback Mercury session harness. Pairs two `Channel`s on real
+/// loopback `UdpSocket`s and runs end-to-end protocol tests covering reliable
+/// delivery under simulated loss, fragment reassembly, keepalive cadence,
+/// encryption round-trip, the handshake, ack aggregation, and adaptive RTO
+/// convergence. Available to mercury's own tests and to consumer crates that
+/// enable the `test-harness` feature; excluded from production builds. See
+/// `docs/architecture/mercury-loopback-harness.md` for the rationale and
+/// for how this differs from [`test_transport`] (Tier 1, byte-exact fan-out)
+/// and from the content-aware wireclient layer above it.
+#[cfg(any(test, feature = "test-harness"))]
+pub mod test_harness;
 
 /// Mercury protocol constants — these MUST match the C++ implementation exactly.
 ///
