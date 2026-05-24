@@ -1,6 +1,6 @@
 # Mercury Bundle abstraction
 
-> **Last updated**: 2026-05-23
+> **Last updated**: 2026-05-24
 > **Audience**: Engineers touching Mercury send paths, AoI fanout, world-entry
 > bursts, or anything that calls `send_to_witness_reliable`
 > **Type**: Architecture decision + reference for callers
@@ -42,11 +42,22 @@ decision sits with the caller, not with a per-channel auto-accumulator.
   (was 56 pre-bundle). ✅
 - **Layer C**: regression guards in place (compose↔build byte-equivalence,
   28-NPC burst budget). ✅
+- **#360 follow-up — world_entry_appearance migration**: the
+  `handle_on_client_ready` 11-packet burst (1 BeingAppearance + 1 onEntityTint
+  + 8 onChatJoined + 1 onPlayerCommunication welcome) and the
+  `resend_appearance_after_cinematic` 2-packet pair now ride a single
+  `ChannelBundle` each. Safe per the rule below: every message in both
+  bursts targets the player's own entity_id, which was created in
+  `handle_map_loaded`'s prior bundle, so the CREATE_BASE_PLAYER transaction
+  released between bundles. Pinned by
+  `on_client_ready_burst_bundles_to_single_packet` (11 → 1 packet) and a
+  new compose↔build byte-equivalence guard for the entity-method bundle
+  path covering both direct and extended encodings. ✅
 - **Deferred to follow-up [#360](https://github.com/SandboxServers/Cimmeria/issues/360)**:
-  per-handler migrations across world-entry, world-entry-appearance,
-  inventory/vendor/mail, progression, teleport, and the remaining AoI
-  handlers. Each has its own transaction-state surface to audit and
-  warrants a separate, reviewable PR.
+  remaining per-handler migrations across world-data/phases.rs, inventory/
+  vendor/mail, progression, teleport, and the remaining AoI handlers. Each
+  has its own transaction-state surface to audit and warrants a separate,
+  reviewable PR.
 
 ## The transaction-state rule
 
@@ -182,6 +193,27 @@ Regression-guarded at "≤ 15 packets" in
 [base/world_entry/cell_dispatch/tests.rs](../../crates/services/src/base/world_entry/cell_dispatch/tests.rs)
 (`flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget`) with
 comfortable headroom for cascade-payload growth.
+
+The #360 follow-up extends the same shape to the post-`onClientReady`
+appearance / chat / welcome burst on every world entry:
+
+| Pre-bundle | Post-bundle |
+|---:|---:|
+| 1 × BeingAppearance + 1 × onEntityTint + 8 × onChatJoined + 1 × welcome | 1 same-entity bundle, ~700 B body, 1 packet |
+| **11 reliable packets** | **1 reliable packet** |
+
+Safe per the transaction-state rule because the player entity was created
+in `handle_map_loaded`'s prior bundle and its transaction released at the
+prior bundle's end-of-frame; this bundle is exclusively post-transaction
+property/method updates. Regression-guarded by
+`on_client_ready_burst_bundles_to_single_packet` in
+[base/world_entry_appearance.rs](../../crates/services/src/base/world_entry_appearance.rs)
+(pins `num_messages = 2 + DEFAULT_CHAT_CHANNELS.len() + 1` and
+`estimated_packet_count() == 1`) and by the new entity-method byte-
+equivalence guard at
+[mercury/aoi/tests.rs](../../crates/services/src/mercury/aoi/tests.rs)
+(`channel_bundle_append_entity_method_matches_build_entity_method_packet_body` —
+covers both direct and extended encodings via ON_PLAY_MOVIE = 155).
 
 ## Migration playbook for follow-up call families
 
