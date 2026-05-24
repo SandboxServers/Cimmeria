@@ -165,6 +165,27 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 
 **Examples**: `crates/mercury/src/test_harness/tests/reliable.rs` (drop → RTO → retransmit → ack pipeline), `fragment.rs` (3-fragment reassembly under latency policy), `keepalive.rs` (clock-advance past `KEEPALIVE_INTERVAL_MS`), `encryption.rs` (multi-bundle keystream + retransmit-cached-bytes), `rto.rs` (floor engagement on zero-latency loopback).
 
+### 10. Wire-level replay tests (`cimmeria-wireclient`)
+
+**Where**: `crates/wireclient/tests/*.rs`. Uses [`cimmeria_wireclient::session_trace::Trace`](crates/wireclient/src/session_trace.rs) to load a JSONL trace produced by [`tools/pcap_to_session.py`](tools/pcap_to_session.py) from a decrypted `.pcap` + AES `keys.txt`. See the [wireclient ADR](docs/architecture/wireclient.md).
+
+**For**: End-to-end behavioural validation that no in-process harness can prove — a real client's *intent stream* replayed against a fresh server, with the server's *observable behaviour* diffed against the recorded baseline. Closes the gap between "server accepts a call" and "a real client could have sent that call."
+
+**The failure modes it catches** (uninspectable from the Tier 1/2 harnesses):
+
+- **Wire-path drift** — the server emits an `onCharacterList` body shape the Flash client wouldn't parse; existing wire-format tests pin one serializer at a time but don't catch when the *sequence* would desync the client.
+- **Client-invariant violations** — wireclient enforces equipped-weapon, ammo, range, LOS, cooldown on its own outbound `useAbility` sends. A regression that lets the server accept a fire that any real client would have refused never reaches the wire here.
+- **Behaviour diffs across a full playthrough** — the JSONL trace captures every observable behavior (entity created, mission advanced, chain fired, dialog opened, kismet played) for an entire recorded session. A regression that disturbs *one* observable surface here, even if every per-handler test passes.
+
+**Patterns to follow:**
+
+- **Hybrid comparison policy.** Byte-exact for static msg_ids (`0x00`–`0x7F`) — the handshake. Behavioural (length-and-msg_id, or full semantic diff for known entity-method bodies) for `0x80`–`0xFE`. The default policy lives in `session_trace::DefaultPolicy`; swap in a custom impl for stricter / looser comparison.
+- **One trace per regression flag.** A new recorded `.pcap` adds a corpus entry; existing wireclient code consumes it without changes. The flagship corpus is `castle-cellblock-full-run` (`2026-05-24_17-18.pcap`, 125 770 events).
+- **Reuse the dissector.** `tools/pcap_to_session.py` rides on `tools/pcap_dissect.py` so the decoder stays a single source of truth.
+- **The auth + handshake smoke is byte-exact.** SOAP Phase 1+2 and Mercury phase-3 are deterministic and pinned in `crates/wireclient/tests/auth_smoke.rs` plus the handshake unit tests in `handshake.rs`.
+
+**Examples**: `crates/wireclient/tests/auth_smoke.rs` (SOAP round-trip against in-process `AuthService`); `crates/wireclient/src/handshake.rs` (byte-exact `baseAppLogin` + reply parsers); follow-up phases land the Castle Cellblock e2e smoke against a spawned server.
+
 ---
 
 ## Choosing a test type
@@ -179,6 +200,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 | Content seed correctness (chains, triggers, action wiring) | Chain-replay test |
 | A BaseApp handler's outbound fan-out (which addrs, in what order, with which bytes) | Fan-out byte test |
 | Mercury protocol-layer behavior (reliable delivery under loss, fragment reassembly, keepalive cadence, encryption round-trip, RTO convergence) | Mercury session test |
+| An end-to-end client-intent + server-behaviour pair (full Castle Cellblock playthrough, wire-path drift, client-invariant violations on `useAbility`) | Wire-level replay test (wireclient) |
 
 ### When one feature needs more than one test
 

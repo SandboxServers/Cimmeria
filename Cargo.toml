@@ -26,6 +26,7 @@ members = [
     "tools/spec-lint",
     "crates/upk",
     "crates/upk-objects",
+    "crates/wireclient",
 ]
 default-members = [
     "crates/common",
@@ -39,6 +40,7 @@ default-members = [
     "crates/commands",
     "crates/server",
     "crates/supervisor",
+    "crates/wireclient",
 ]
 
 # Optimize dependencies and strip their debug info in dev builds.
@@ -140,6 +142,7 @@ cimmeria-commands = { path = "crates/commands" }
 cimmeria-server = { path = "crates/server" }
 cimmeria-upk = { path = "crates/upk" }
 cimmeria-upk-objects = { path = "crates/upk-objects" }
+cimmeria-wireclient = { path = "crates/wireclient" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed

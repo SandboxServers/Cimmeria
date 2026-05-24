@@ -28,6 +28,7 @@ common ──┬──► mercury ──► entity ──► game ────�
 | `launcher` | `sgw-launcher` | Player-facing game launcher. egui native window, installs from a seed + patch manifest on Azure Blob, launches `SGW.exe` or the Atera debug bat, uploads debug logs back to storage. See [docs/client/sgw-launcher.md](../docs/client/sgw-launcher.md). |
 | `upk` | `cimmeria-upk` | UPK (Unreal Package) file parser |
 | `upk-objects` | `cimmeria-upk-objects` | UPK object type definitions |
+| `wireclient` | `cimmeria-wireclient` | **Tier 3 headless test client.** Drives the SOAP auth, Mercury phase-3 handshake, and replays captured `.pcap` + AES-key sessions for end-to-end behavioral validation. Pairs with `tools/pcap_to_session.py` (JSONL exporter built atop `tools/pcap_dissect.py`). See [docs/architecture/wireclient.md](../docs/architecture/wireclient.md). |
 
 ## Building
 
