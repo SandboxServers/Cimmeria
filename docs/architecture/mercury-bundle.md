@@ -202,15 +202,24 @@ appearance / chat / welcome burst on every world entry:
 | 1 × BeingAppearance + 1 × onEntityTint + 8 × onChatJoined + 1 × welcome | 1 same-entity bundle, ~700 B body, 1 packet |
 | **11 reliable packets** | **1 reliable packet** |
 
+Plus the `resend_appearance_after_cinematic` 2-packet pair (BeingAppearance
++ onEntityTint), called both from `handle_cancel_movie` (single-shot) and
+from the cinematic-guard spam loop in `send_cinematic` (every 100 ms for up
+to 20 s — 200 iterations × 2 packets = 400 reliable packets worst-case,
+now 200 packets). For a first-login cinematic that runs the full spam
+window (e.g. SGWLogo intro at 13.10 s natural end + 7 s safety buffer),
+that's a ~50% reduction in cinematic-guard TX-window pressure.
+
 Safe per the transaction-state rule because the player entity was created
 in `handle_map_loaded`'s prior bundle and its transaction released at the
 prior bundle's end-of-frame; this bundle is exclusively post-transaction
 property/method updates. Regression-guarded by
-`on_client_ready_burst_bundles_to_single_packet` in
-[base/world_entry_appearance.rs](../../crates/services/src/base/world_entry_appearance.rs)
-(pins `num_messages = 2 + DEFAULT_CHAT_CHANNELS.len() + 1` and
-`estimated_packet_count() == 1`) and by the new entity-method byte-
-equivalence guard at
+`on_client_ready_burst_bundles_to_single_packet` (pins `num_messages =
+2 + DEFAULT_CHAT_CHANNELS.len() + 1` and `estimated_packet_count() == 1`)
+and `appearance_resend_bundle_collapses_to_single_packet` (pins
+`num_messages == 2` and `estimated_packet_count() == 1`) — both in
+[base/world_entry_appearance.rs](../../crates/services/src/base/world_entry_appearance.rs).
+Plus the entity-method byte-equivalence guard at
 [mercury/aoi/tests.rs](../../crates/services/src/mercury/aoi/tests.rs)
 (`channel_bundle_append_entity_method_matches_build_entity_method_packet_body` —
 covers both direct and extended encodings via ON_PLAY_MOVIE = 155).

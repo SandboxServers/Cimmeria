@@ -60,7 +60,10 @@ pub(crate) fn build_tint_args(skin_color_id: i32) -> Vec<u8> {
 /// Order matches the original per-message dispatch sequence so a regression
 /// that swaps two entries can't slip past via the packet-count check:
 ///   1. `BeingAppearance` resend  (heals HOLD-FOR-TRANSACTION drop from
-///      `handle_map_loaded`'s bundle — see issue #356 / map_loaded.rs:66)
+///      `handle_map_loaded`'s bundle — see the two-bundle split comment
+///      block in [`crate::base::world_entry::map_loaded`] for the
+///      transaction-state rationale, and `docs/architecture/mercury-bundle.md`
+///      for the ADR.)
 ///   2. `onEntityTint` resend     (same reason)
 ///   3. `onChatJoined` × N        (channel registration — N = DEFAULT_CHAT_CHANNELS.len())
 ///   4. `onPlayerCommunication`   (cosmetic welcome line)
@@ -331,8 +334,8 @@ pub(crate) async fn handle_on_client_ready(
     // Pre-bundle: 11 reliable packets (1 appearance + 1 tint + 8 chat-joined
     // + 1 welcome), each consuming a TX-window slot. Post-bundle: 1 reliable
     // packet (the burst body is ~700 B, well under FRAGMENT_BODY_SIZE=1300),
-    // pinned by `on_client_ready_burst_bundles_to_single_packet` in
-    // `world_data/tests/player_creation.rs`.
+    // pinned by [`tests::on_client_ready_burst_bundles_to_single_packet`]
+    // in this file.
     //
     // `speaker` resolution mirrors the pre-bundle path: prefer the session's
     // `player_name`, fall back to "Server" (a real DEFAULT_CHAT_CHANNELS
@@ -571,16 +574,36 @@ async fn resend_appearance_after_cinematic(
     };
 
     // Bundle the BeingAppearance + onEntityTint pair into one fragment.
-    // Both methods target the player's own entity (long since created in
-    // map_loaded's bundle), so the transaction-state rule allows combining
-    // them — see [docs/architecture/mercury-bundle.md] for the safe-combine
-    // catalogue. Called per-iteration of the cinematic-guard spam loop
-    // (every 100 ms for up to 20 s), so the per-iter packet-count halving
-    // compounds across the spam window.
-    let mut bundle = ChannelBundle::new(true);
-    bundle.append_entity_method(method_idx::BEING_APPEARANCE, entity_id, &appearance_args);
-    bundle.append_entity_method(method_idx::ON_ENTITY_TINT, entity_id, &tint_args);
+    // Built via the shared helper so the burst-shape regression guard
+    // [`tests::appearance_resend_bundle_collapses_to_single_packet`]
+    // pins the same composition the production path emits.
+    let bundle = build_appearance_resend_bundle(entity_id, &appearance_args, &tint_args);
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+}
+
+/// Compose the BeingAppearance + onEntityTint resend pair into one bundle.
+///
+/// Both methods target the player's own entity (long since created in
+/// `handle_map_loaded`'s bundle), so the transaction-state rule allows
+/// combining them — see the safe-combine catalogue in
+/// `docs/architecture/mercury-bundle.md` and the two-bundle split comment in
+/// [`crate::base::world_entry::map_loaded`] for the rationale.
+///
+/// Called per-iteration of the cinematic-guard spam loop (every 100 ms for
+/// up to 20 s) and also from `handle_cancel_movie` on real client
+/// `cancelMovie`. Extracted as a pure builder so
+/// [`tests::appearance_resend_bundle_collapses_to_single_packet`] can pin
+/// `num_messages == 2` and `estimated_packet_count() == 1` against the same
+/// composition the resend path actually emits.
+fn build_appearance_resend_bundle(
+    entity_id: u32,
+    appearance_args: &[u8],
+    tint_args: &[u8],
+) -> ChannelBundle {
+    let mut bundle = ChannelBundle::new(true);
+    bundle.append_entity_method(method_idx::BEING_APPEARANCE, entity_id, appearance_args);
+    bundle.append_entity_method(method_idx::ON_ENTITY_TINT, entity_id, tint_args);
+    bundle
 }
 
 /// Handle the client's `cancelMovie` (exposed cell method index 108): the
@@ -715,7 +738,7 @@ mod tests {
         assert_eq!(tint, SKIN_TINTS[0]);
     }
 
-    /// **Burst-shape regression guard for the issue #360 onClientReady
+    /// **Burst-shape regression guard for the `handle_on_client_ready`
     /// bundle migration.**
     ///
     /// Before the migration, `handle_on_client_ready` emitted 11 reliable
@@ -800,6 +823,62 @@ mod tests {
             1,
             "post-bundle burst must collapse to a single reliable packet \
              (was 11 pre-bundle)"
+        );
+    }
+
+    /// **Burst-shape regression guard for the `resend_appearance_after_cinematic`
+    /// 2-packet collapse.**
+    ///
+    /// The cinematic-guard spam loop in `send_cinematic` invokes
+    /// `resend_appearance_after_cinematic` every 100 ms for up to 20 s
+    /// (200 iterations max), each iteration emitting BeingAppearance +
+    /// onEntityTint. Pre-bundle that was 2 reliable packets per iteration
+    /// (400 TX-window slots over the worst-case spam window); post-bundle
+    /// each iteration emits exactly 1 packet (200 slots).
+    ///
+    /// `handle_cancel_movie` also calls the same resend path on real
+    /// client `cancelMovie` — single-shot 2 → 1.
+    ///
+    /// Pin two invariants:
+    ///   - `num_messages == 2` — exactly BeingAppearance + onEntityTint,
+    ///     in order. A regression that drops one or appends a stray method
+    ///     fails here.
+    ///   - `estimated_packet_count() == 1` — the realistic appearance arg
+    ///     size (~120 B for an 8-component humanoid) plus the 12-byte tint
+    ///     fits comfortably under `FRAGMENT_BODY_SIZE`. If a future regression
+    ///     bloats the appearance args past the fragment cutoff, this assert
+    ///     forces a re-audit (a fragmented appearance resend defeats the
+    ///     spam-loop's per-iter slot savings).
+    #[test]
+    fn appearance_resend_bundle_collapses_to_single_packet() {
+        const ENTITY_ID: u32 = 12345;
+        let appearance = build_appearance_args(
+            "MaleBody",
+            &[
+                "Hair".to_string(),
+                "Head".to_string(),
+                "Torso".to_string(),
+                "Legs".to_string(),
+                "Hands".to_string(),
+                "Feet".to_string(),
+                "Belt".to_string(),
+                "Backpack".to_string(),
+            ],
+        );
+        let tint = build_tint_args(3);
+
+        let bundle = build_appearance_resend_bundle(ENTITY_ID, &appearance, &tint);
+
+        assert_eq!(
+            bundle.num_messages(),
+            2,
+            "appearance resend must be exactly BeingAppearance + onEntityTint"
+        );
+        assert_eq!(
+            bundle.estimated_packet_count(),
+            1,
+            "appearance resend must collapse to a single reliable packet \
+             (was 2 pre-bundle, called per-iter of the 100 ms × 200 spam loop)"
         );
     }
 }
