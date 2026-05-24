@@ -312,14 +312,14 @@ async fn sync_bandolier_items_active_slot_unchanged_does_not_re_animate() {
     }
 }
 
-/// **Regression guard for issue #372** — right-click / drag equip into
-/// the bandolier must emit `onEntityProperty(AmmoTypeId, cur_ammo_type)`
-/// so the client's fire-animation gate opens immediately. Without this
-/// the client retains `AmmoTypeId=0` (no ammo) and the weapon-shot
-/// ability plays no animation until the player manually swaps to
-/// another bandolier slot and back (which fires
-/// `handle_request_active_slot_change`, the path that already emits
-/// AmmoTypeId).
+/// **Regression guard: in-game equip must emit AmmoTypeId.**
+/// Right-click / drag equip into the bandolier must emit
+/// `onEntityProperty(AmmoTypeId, cur_ammo_type)` so the client's
+/// fire-animation gate opens immediately. Without this the client
+/// retains `AmmoTypeId=0` (no ammo) and the weapon-shot ability plays
+/// no animation until the player manually swaps to another bandolier
+/// slot and back (which fires `handle_request_active_slot_change`, the
+/// path that already emits AmmoTypeId).
 ///
 /// Pinned via the wire packet: collect every `onEntityProperty` emit
 /// from the sync, find the one carrying `prop_id == 3`

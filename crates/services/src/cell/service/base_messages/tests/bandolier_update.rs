@@ -320,6 +320,13 @@ async fn update_bandolier_item_make_active_false_into_non_active_slot_does_not_d
         "stash-slot grant must NOT arm the OOC holster timer",
     );
 
+    // Also pin the AmmoTypeId negative case (Clara G5 on PR #373):
+    // the equip-display branch is gated on `slot_is_active`, so a
+    // stash-slot grant must not stomp the player's existing
+    // AmmoTypeId. If a future refactor moves the AmmoTypeId emit
+    // outside the `play_equip_anim` gate, this panic fires before
+    // the wire-side regression reaches the client.
+    use crate::cell::cell_methods::inventory::GENERICPROPERTY_AMMO_TYPE_ID;
     while let Ok(msg) = rx.try_recv() {
         match msg {
             CellToBaseMsg::RefreshAppearance { .. } => {
@@ -328,10 +335,22 @@ async fn update_bandolier_item_make_active_false_into_non_active_slot_does_not_d
                      the active slot's appearance is unchanged",
                 );
             }
-            CellToBaseMsg::EntityMethodCall { method_index, .. }
-                if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
-            {
-                panic!("stash-slot grant must NOT fire Item_Equip");
+            CellToBaseMsg::EntityMethodCall {
+                method_index, args, ..
+            } => {
+                if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE {
+                    panic!("stash-slot grant must NOT fire Item_Equip");
+                }
+                if method_index == crate::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY
+                    && args.len() == 8
+                {
+                    let prop_id = i32::from_le_bytes(args[0..4].try_into().unwrap());
+                    assert_ne!(
+                        prop_id, GENERICPROPERTY_AMMO_TYPE_ID,
+                        "stash-slot grant must NOT emit AmmoTypeId — would stomp \
+                         the player's existing active-slot ammo subtype",
+                    );
+                }
             }
             _ => {}
         }
@@ -398,7 +417,7 @@ async fn update_bandolier_item_in_combat_does_not_arm_holster_timer() {
     );
 }
 
-/// **Regression guard for issue #372 (chain-engine grant path)** —
+/// **Regression guard: chain-engine grant must emit AmmoTypeId.**
 /// `UpdateBandolierItem` lands a weapon directly into the bandolier
 /// (e.g. mission reward that grants a weapon into a still-empty
 /// active slot). The client needs `onEntityProperty(AmmoTypeId,

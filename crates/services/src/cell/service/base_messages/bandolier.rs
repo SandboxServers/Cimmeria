@@ -156,7 +156,7 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
         // AmmoTypeId=0 (no ammo) and the fire animation gate never
         // opens until the player manually swaps bandolier slots and
         // back (the slot-swap handler is the only other path that
-        // emits this property — issue #372).
+        // emits this property).
         emit_active_ammo_type(entity_id, inserted_ammo_type, tx, space_mgr).await;
     }
 }
@@ -344,21 +344,6 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
         .await;
     }
 
-    // Push AmmoTypeId whenever the active slot's contents changed —
-    // either the slot just gained a weapon (drag-equip / right-click
-    // equip / vendor-buy into bandolier) or just lost one (drag-
-    // unequip / sell). The manual slot-swap handler already does
-    // this on every swap; without the equivalent here, the in-game
-    // equip path stranded the client at the previous slot's
-    // AmmoTypeId — symptom was "fire animation doesn't play until I
-    // swap slots and back" because the swap forced a refresh
-    // (issue #372).
-    //
-    // Empty active slot → emit 0 to mirror the legacy "no weapon
-    // equipped" payload (`SGWPlayer.py:522`). Active-slot-unchanged
-    // syncs (the `"active slot unchanged — skip"` branch above) don't
-    // reach this point because both `active_slot_gained_weapon` and
-    // `active_slot_lost_weapon` are false there.
     // Push AmmoTypeId whenever the active slot's contents changed —
     // either the slot just gained a weapon (drag-equip / right-click
     // equip / vendor-buy into bandolier) or just lost one (drag-

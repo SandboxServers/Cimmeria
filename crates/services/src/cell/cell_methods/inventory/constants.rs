@@ -10,16 +10,18 @@ pub const REQUEST_AMMO_CHANGE: u16 = 42;
 
 /// `GENERICPROPERTY_AmmoTypeId` from `entities/defs/enumerations.xml`. Used as
 /// the property-id arg for `onEntityProperty` ammo-type indicator updates.
-/// Widened from `pub(super)` so the cell-side base-message handlers in
+/// Visibility is `pub(crate)` so the cell-side base-message handlers in
 /// [`crate::cell::service::base_messages::bandolier`] can emit it on the
-/// equip paths (issue #372 — right-click equip skipped the AmmoTypeId
-/// update, leaving the client unable to play the fire animation).
+/// equip paths (right-click / drag-in-game equip and chain-engine grant
+/// both need to push the active weapon's ammo subtype to the client —
+/// otherwise the fire-animation gate stays closed at the previous
+/// slot's value, typically `0` = no ammo).
 pub(crate) const GENERICPROPERTY_AMMO_TYPE_ID: i32 = 3;
 
 /// Build the `onEntityProperty(propId, value)` arg payload (8 bytes LE).
-/// Visibility widened alongside [`GENERICPROPERTY_AMMO_TYPE_ID`] above so
-/// the base-message handlers can call it directly instead of duplicating
-/// the 8-byte LE pack.
+/// Visibility is `pub(crate)` alongside [`GENERICPROPERTY_AMMO_TYPE_ID`]
+/// above so the base-message handlers can call it directly instead of
+/// duplicating the 8-byte LE pack.
 pub(crate) fn build_entity_property_args(prop_id: i32, value: i32) -> Vec<u8> {
     let mut args = Vec::with_capacity(8);
     args.extend_from_slice(&prop_id.to_le_bytes());
