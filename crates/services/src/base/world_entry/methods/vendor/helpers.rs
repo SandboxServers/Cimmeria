@@ -144,13 +144,26 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
             return;
         }
         if let Some(tx) = cell_tx {
-            let _ = tx
+            if let Err(e) = tx
                 .send(BaseToCellMsg::SyncBandolierItems {
                     entity_id,
                     active_bandolier_slot: old_active,
                     bandolier_items: Vec::new(),
                 })
-                .await;
+                .await
+            {
+                // Issue #304: cell-side cache won't drop stale entries;
+                // player keeps seeing the old bandolier set until next
+                // re-sync.
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    active_bandolier_slot = old_active,
+                    bandolier_items_count = 0,
+                    phase = "empty_bandolier",
+                    "sync_bandolier: base→cell send failed -- cell cache may hold stale items: {e}"
+                );
+            }
         }
         // Fire the appearance refresh for the empty-bandolier case too
         // (unless the caller is going to drive it from the cell — the
@@ -237,13 +250,27 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
     }
 
     if let Some(tx) = cell_tx {
-        let _ = tx
+        let item_count = bandolier_items.len();
+        if let Err(e) = tx
             .send(BaseToCellMsg::SyncBandolierItems {
                 entity_id,
                 active_bandolier_slot: active_slot,
                 bandolier_items,
             })
-            .await;
+            .await
+        {
+            // Issue #304: cell-side cache won't see the new bandolier
+            // composition; equip/holster animations may visually
+            // desync until next re-sync.
+            tracing::warn!(
+                entity_id,
+                player_id,
+                active_bandolier_slot = active_slot,
+                bandolier_items_count = item_count,
+                phase = "non_empty",
+                "sync_bandolier: base→cell send failed -- cell cache may hold stale items: {e}"
+            );
+        }
     }
 
     // Whenever the bandolier composition changes (item moved into/out of

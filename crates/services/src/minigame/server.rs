@@ -209,20 +209,39 @@ async fn handle_connection(
                                             tracing::info!(entity_id, game = %game_name, "Minigame victory");
                                             game_complete = true;
                                             // Fire victory chains
-                                            let _ = result_tx.send(CellToBaseMsg::MinigameResult {
+                                            let chain_count = on_victory_chains.len();
+                                            if let Err(e) = result_tx.send(CellToBaseMsg::MinigameResult {
                                                 entity_id,
                                                 result_code: 1, // Victory
                                                 on_victory_chains: on_victory_chains.clone(),
-                                            }).await;
+                                            }).await {
+                                                // Issue #304: lost result == player won the
+                                                // minigame but no victory chain fires; quest
+                                                // stalls with no signal.
+                                                tracing::error!(
+                                                    entity_id,
+                                                    game = %game_name,
+                                                    chain_count,
+                                                    phase = "victory_message",
+                                                    "Minigame: result delivery failed -- victory chains will not fire: {e}"
+                                                );
+                                            }
                                         }
                                         GameOutput::Failure => {
                                             tracing::info!(entity_id, game = %game_name, "Minigame failure");
                                             game_complete = true;
-                                            let _ = result_tx.send(CellToBaseMsg::MinigameResult {
+                                            if let Err(e) = result_tx.send(CellToBaseMsg::MinigameResult {
                                                 entity_id,
                                                 result_code: 2, // Defeat
                                                 on_victory_chains: vec![],
-                                            }).await;
+                                            }).await {
+                                                tracing::error!(
+                                                    entity_id,
+                                                    game = %game_name,
+                                                    phase = "failure_message",
+                                                    "Minigame: result delivery failed -- failure state will not propagate: {e}"
+                                                );
+                                            }
                                         }
                                     }
                                 }
@@ -262,20 +281,36 @@ async fn handle_connection(
                         GameOutput::Victory => {
                             tracing::info!(entity_id, game = %game_name, "Minigame victory (tick)");
                             game_complete = true;
-                            let _ = result_tx.send(CellToBaseMsg::MinigameResult {
+                            let chain_count = on_victory_chains.len();
+                            if let Err(e) = result_tx.send(CellToBaseMsg::MinigameResult {
                                 entity_id,
                                 result_code: 1,
                                 on_victory_chains: on_victory_chains.clone(),
-                            }).await;
+                            }).await {
+                                tracing::error!(
+                                    entity_id,
+                                    game = %game_name,
+                                    chain_count,
+                                    phase = "victory_tick",
+                                    "Minigame: result delivery failed -- victory chains will not fire: {e}"
+                                );
+                            }
                         }
                         GameOutput::Failure => {
                             tracing::info!(entity_id, game = %game_name, "Minigame timeout");
                             game_complete = true;
-                            let _ = result_tx.send(CellToBaseMsg::MinigameResult {
+                            if let Err(e) = result_tx.send(CellToBaseMsg::MinigameResult {
                                 entity_id,
                                 result_code: 2,
                                 on_victory_chains: vec![],
-                            }).await;
+                            }).await {
+                                tracing::error!(
+                                    entity_id,
+                                    game = %game_name,
+                                    phase = "failure_tick",
+                                    "Minigame: result delivery failed -- timeout state will not propagate: {e}"
+                                );
+                            }
                         }
                     }
                 }

@@ -48,3 +48,9 @@ proptest = { workspace = true }
 # injection (e.g. partial-fragment recovery guard). Mercury's trait
 # uses `#[async_trait]`, so any implementor must also pull it in.
 async-trait = { workspace = true }
+
+# Log-capture for negative-logging regression guards (issue #304).
+# Tests install a custom `Layer` to assert that a specific WARN/ERROR
+# event fired with the expected structured fields. Without this, a
+# reverted log change goes undetected. See `test_support::LogCapture`.
+tracing-subscriber = { workspace = true }

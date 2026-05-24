@@ -140,7 +140,18 @@ pub(super) async fn send_visible(
                 entity_id,
             }
         };
-        let _ = tx.send(msg).await;
+        if let Err(e) = tx.send(msg).await {
+            // Issue #304: a dropped visibility update during ring
+            // transport leaves a witness seeing the player as
+            // visible/invisible incorrectly. Will recover on next AoI
+            // refresh but the desync is visible.
+            tracing::warn!(
+                witness_id,
+                entity_id,
+                visible,
+                "ring send_visible: cell→base send failed -- witness will see desynced visibility: {e}"
+            );
+        }
     }
 }
 

@@ -285,10 +285,28 @@ pub(crate) async fn send_to_witness<F>(
 {
     // Extract all data from locks in a sync block so no MutexGuard crosses an await.
     let send_data = {
-        let addr = match entity_to_addr.lock().unwrap().get(&witness_id).copied() {
+        // Read addr AND map size in one lock scope so the guard is
+        // dropped before we re-enter any tracing path. Calling
+        // `.lock()` again inside the match `None` arm would deadlock —
+        // the scrutinee guard's lifetime extends through the match
+        // body (regression caught by the issue #304 helper tests).
+        let (addr_opt, map_size) = {
+            let m = entity_to_addr.lock().unwrap();
+            (m.get(&witness_id).copied(), m.len())
+        };
+        let addr = match addr_opt {
             Some(a) => a,
             None => {
-                tracing::trace!(witness_id, "AoI: no client addr for witness -- skipping");
+                // Issue #304: entity gone from address map mid-send is a
+                // player-visible bug (witness sees stale state). warn! so
+                // ops can grep this; `entity_count_in_map` gives ballpark
+                // scope of the leak.
+                tracing::warn!(
+                    witness_id,
+                    reason = "entity_to_addr_miss",
+                    entity_count_in_map = map_size,
+                    "AoI: no client addr for witness -- packet dropped"
+                );
                 return;
             }
         };
@@ -308,7 +326,16 @@ pub(crate) async fn send_to_witness<F>(
                 Some((addr, key, seq, acks))
             }
             None => {
-                tracing::trace!(witness_id, %addr, "AoI: client disconnected -- skipping");
+                // Transient disconnect: client closed mid-AoI-update.
+                // debug! (not warn) — happens during normal logoff races
+                // but should remain queryable when investigating
+                // missing-update bug reports.
+                tracing::debug!(
+                    witness_id,
+                    %addr,
+                    reason = "client_disconnected",
+                    "AoI: client disconnected mid-send -- packet dropped"
+                );
                 None
             }
         }
@@ -350,12 +377,25 @@ pub(crate) async fn send_to_witness_reliable<F>(
     F: FnOnce(&[u8; 32], u32, &[u32]) -> Vec<u8>,
 {
     let send_data = {
-        let addr = match entity_to_addr.lock().unwrap().get(&witness_id).copied() {
+        // Read addr + map_size in one lock scope; see the unreliable
+        // variant above for the deadlock-on-re-lock rationale.
+        let (addr_opt, map_size) = {
+            let m = entity_to_addr.lock().unwrap();
+            (m.get(&witness_id).copied(), m.len())
+        };
+        let addr = match addr_opt {
             Some(a) => a,
             None => {
-                tracing::trace!(
+                // Reliable path. Issue #304: dropping a reliable AoI
+                // packet means the client never sees a state-change
+                // (entity create/destroy, method call). This is the
+                // single biggest blind spot for the world-entry spawn
+                // glitches in #288.
+                tracing::warn!(
                     witness_id,
-                    "AoI reliable: no client addr for witness -- skipping"
+                    reason = "entity_to_addr_miss",
+                    entity_count_in_map = map_size,
+                    "AoI reliable: no client addr for witness -- packet dropped"
                 );
                 return;
             }
@@ -371,7 +411,12 @@ pub(crate) async fn send_to_witness_reliable<F>(
                 Some((addr, key, seq, acks))
             }
             None => {
-                tracing::trace!(witness_id, %addr, "AoI reliable: client disconnected -- skipping");
+                tracing::debug!(
+                    witness_id,
+                    %addr,
+                    reason = "client_disconnected",
+                    "AoI reliable: client disconnected mid-send -- packet dropped"
+                );
                 None
             }
         }
@@ -437,12 +482,24 @@ pub(crate) async fn send_bundle_to_witness_reliable(
     use cimmeria_mercury::packet::{FLAG_ON_CHANNEL, FLAG_RELIABLE, SEQUENCE_MASK};
 
     let send_data = {
-        let addr = match entity_to_addr.lock().unwrap().get(&witness_id).copied() {
+        // Read addr + map_size in one lock scope; see the unreliable
+        // variant for the deadlock-on-re-lock rationale.
+        let (addr_opt, map_size) = {
+            let m = entity_to_addr.lock().unwrap();
+            (m.get(&witness_id).copied(), m.len())
+        };
+        let addr = match addr_opt {
             Some(a) => a,
             None => {
-                tracing::trace!(
+                // Bundle path. Dropping a bundle drops a whole batch of
+                // AoI messages — usually worse than the single-message
+                // path. See unreliable/reliable variants above for the
+                // rationale on warn-level.
+                tracing::warn!(
                     witness_id,
-                    "AoI bundle: no client addr for witness -- skipping"
+                    reason = "entity_to_addr_miss",
+                    entity_count_in_map = map_size,
+                    "AoI bundle: no client addr for witness -- bundle dropped"
                 );
                 return;
             }
@@ -452,7 +509,12 @@ pub(crate) async fn send_bundle_to_witness_reliable(
         let c = match clients.get(&addr) {
             Some(c) => c,
             None => {
-                tracing::trace!(witness_id, %addr, "AoI bundle: client disconnected -- skipping");
+                tracing::debug!(
+                    witness_id,
+                    %addr,
+                    reason = "client_disconnected",
+                    "AoI bundle: client disconnected mid-send -- bundle dropped"
+                );
                 return;
             }
         };
@@ -552,6 +614,9 @@ pub(crate) async fn send_bundle_to_witness_reliable(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing::Level;
+    // TestTransport needed for the issue #304 log-capture guards below.
+    use crate::test_support::TestTransport;
 
     /// `to_hex` formats each byte as two uppercase hex digits, separated
     /// by single spaces. Pin the format so a refactor that swaps to
@@ -721,6 +786,132 @@ mod tests {
             wrapped, 0,
             "next call after wrap masks back to 0 — the 4 reserved high \
              bits must never leak into the seq footer"
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Issue #304 negative-logging regression guards.
+    //
+    // These tests fail if the warn/debug log level on the witness-miss
+    // and disconnect paths is reverted to the original `trace!`. Per
+    // TESTING.md, a regression guard must fail when the fix is reverted;
+    // these do that by asserting on both the level AND the `reason`
+    // structured field — so a generic level-only revert (e.g. someone
+    // demoting back to `trace`) AND a field-removing revert both trip.
+    //
+    // The bug shape this guards: a witness AoI packet silently dropped
+    // at `trace!` was the single biggest blind spot for the missing-
+    // entity-update class of bugs (#288 spawn glitches). Promoting to
+    // warn! with a stable `reason` field makes the drop greppable in
+    // ops.
+    // ──────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn send_to_witness_emits_warn_when_entity_to_addr_misses() {
+        use crate::test_support::LogCapture;
+        use std::collections::HashMap;
+        use std::net::SocketAddr;
+        use std::sync::{Arc, Mutex};
+
+        let capture = LogCapture::install();
+
+        let transport: Arc<dyn cimmeria_mercury::transport::Transport> =
+            Arc::new(TestTransport::default());
+        let connected = Arc::new(Mutex::new(
+            HashMap::<SocketAddr, ConnectedClientState>::new(),
+        ));
+        // Deliberately empty — the witness has no addr mapping.
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::<u32, SocketAddr>::new()));
+
+        send_to_witness(
+            &transport,
+            &connected,
+            &entity_to_addr,
+            999, // witness_id not in map
+            |_key, _seq, _acks| vec![],
+        )
+        .await;
+
+        let found = capture.find_event(
+            Level::WARN,
+            "no client addr for witness",
+            "entity_to_addr_miss",
+        );
+        assert!(
+            found.is_some(),
+            "issue #304: AoI witness-miss must emit WARN with reason=entity_to_addr_miss; \
+             reverting to trace!/debug! breaks ops visibility of the #288-class spawn glitches. \
+             Captured events: {:#?}",
+            capture.all()
+        );
+    }
+
+    #[tokio::test]
+    async fn send_to_witness_reliable_emits_warn_when_entity_to_addr_misses() {
+        use crate::test_support::LogCapture;
+        use std::collections::HashMap;
+        use std::net::SocketAddr;
+        use std::sync::{Arc, Mutex};
+
+        let capture = LogCapture::install();
+
+        let transport: Arc<dyn cimmeria_mercury::transport::Transport> =
+            Arc::new(TestTransport::default());
+        let connected = Arc::new(Mutex::new(
+            HashMap::<SocketAddr, ConnectedClientState>::new(),
+        ));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::<u32, SocketAddr>::new()));
+
+        send_to_witness_reliable(
+            &transport,
+            &connected,
+            &entity_to_addr,
+            42,
+            |_key, _seq, _acks| vec![],
+        )
+        .await;
+
+        assert!(
+            capture
+                .find_event(
+                    Level::WARN,
+                    "no client addr for witness",
+                    "entity_to_addr_miss"
+                )
+                .is_some(),
+            "issue #304: reliable AoI witness-miss must emit WARN with reason=entity_to_addr_miss"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_bundle_to_witness_reliable_emits_warn_when_entity_to_addr_misses() {
+        use crate::test_support::LogCapture;
+        use cimmeria_mercury::channel_bundle::ChannelBundle;
+        use std::collections::HashMap;
+        use std::net::SocketAddr;
+        use std::sync::{Arc, Mutex};
+
+        let capture = LogCapture::install();
+
+        let transport: Arc<dyn cimmeria_mercury::transport::Transport> =
+            Arc::new(TestTransport::default());
+        let connected = Arc::new(Mutex::new(
+            HashMap::<SocketAddr, ConnectedClientState>::new(),
+        ));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::<u32, SocketAddr>::new()));
+
+        let bundle = ChannelBundle::new(true);
+        send_bundle_to_witness_reliable(&transport, &connected, &entity_to_addr, 7, bundle).await;
+
+        assert!(
+            capture
+                .find_event(
+                    Level::WARN,
+                    "no client addr for witness",
+                    "entity_to_addr_miss"
+                )
+                .is_some(),
+            "issue #304: bundle AoI witness-miss must emit WARN with reason=entity_to_addr_miss"
         );
     }
 }

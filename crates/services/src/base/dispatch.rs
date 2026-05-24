@@ -137,8 +137,22 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             if let Some(entity_id) = entity_id {
                 // Tell CellService to disconnect and destroy the entity
                 if let Some(ref tx) = cell_tx {
-                    let _ = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await;
-                    let _ = tx.send(BaseToCellMsg::DestroyEntity { entity_id }).await;
+                    // Issue #304: if either send fails on logoff, the cell
+                    // leaks the entity in its space_manager. warn! so a
+                    // memory leak / "ghost player" report can be traced
+                    // back to the logoff path.
+                    if let Err(e) = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await {
+                        tracing::warn!(
+                            entity_id,
+                            "logOff: DisconnectEntity send failed -- cell may leak player state: {e}"
+                        );
+                    }
+                    if let Err(e) = tx.send(BaseToCellMsg::DestroyEntity { entity_id }).await {
+                        tracing::warn!(
+                            entity_id,
+                            "logOff: DestroyEntity send failed -- cell may leak player entity: {e}"
+                        );
+                    }
                 }
 
                 // Remove entity→addr mapping

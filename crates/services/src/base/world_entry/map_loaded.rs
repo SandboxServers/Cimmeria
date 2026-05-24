@@ -132,7 +132,21 @@ pub(crate) async fn handle_map_loaded(
             map_base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
         tracing::debug!(%addr, len = pkt_data.len(), seq = frag_seq,
             part = i + 1, total = map_packets.len(), "UDP_OUT mapLoaded entity data");
-        transport.send_to(pkt_data, addr).await?;
+        if let Err(e) = transport.send_to(pkt_data, addr).await {
+            // Issue #304: a single failed fragment leaves the client with
+            // a partial enter-world bundle — invisible NPCs, missing
+            // appearance, or stuck on the load screen. error! so a
+            // partial world-entry is greppable per fragment.
+            tracing::error!(
+                %addr,
+                fragment_idx = i + 1,
+                total_fragments = map_packets.len(),
+                fragment_seq = frag_seq,
+                map_body_len = map_body.len(),
+                "map_loaded: fragment send failed -- client will have a half-loaded world: {e}"
+            );
+            return Err(e.into());
+        }
         super::super::helpers::shadow_register_reliable_send(
             connected,
             addr,

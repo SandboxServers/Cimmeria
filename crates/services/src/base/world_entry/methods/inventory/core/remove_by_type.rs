@@ -160,12 +160,18 @@ pub async fn handle_remove_inventory_item_by_type(
 
     match result {
         Ok(r) if r.rows_affected() == 1 => {}
-        Ok(_) => {
+        Ok(r) => {
+            let rows = r.rows_affected();
             let _ = tx.rollback().await;
+            // Issue #304: include rows_affected + expected so a single
+            // ops query (rows_affected != expected) surfaces every
+            // divergence in one place.
             tracing::warn!(
                 player_id,
                 type_id,
-                "RemoveInventoryItemByType: no rows changed"
+                rows_affected = rows,
+                expected = 1,
+                "RemoveInventoryItemByType: no rows changed -- item missing or stack underflow"
             );
             return;
         }

@@ -288,9 +288,18 @@ pub(crate) async fn handle_on_client_ready(
     };
 
     if let Some(ref tx) = cell_tx {
-        let _ = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await;
+        if let Err(e) = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await {
+            // Issue #304: ConnectEntity drop leaves the cell with no
+            // record of the new player — every subsequent AoI / method
+            // call for this entity would silently drop. error! because
+            // recovery requires the player to log out and back in.
+            tracing::error!(
+                entity_id,
+                "ConnectEntity: base→cell send failed -- cell will not see this player, all AoI traffic will drop: {e}"
+            );
+        }
 
-        let _ = tx
+        if let Err(e) = tx
             .send(BaseToCellMsg::InitPlayerState {
                 entity_id,
                 player_id: pending.player_id,
@@ -301,7 +310,19 @@ pub(crate) async fn handle_on_client_ready(
                 active_bandolier_slot,
                 bandolier_items,
             })
-            .await;
+            .await
+        {
+            // Issue #304: same shape as the ConnectEntity error above —
+            // missing InitPlayerState leaves the cell with a connected
+            // entity but no mission/ability/bandolier state. Player
+            // will appear loaded but quests / hotbar will be empty.
+            tracing::error!(
+                entity_id,
+                player_id = pending.player_id,
+                world_name = %pending.world_name,
+                "InitPlayerState: base→cell send failed -- player loaded with empty mission/ability state: {e}"
+            );
+        }
 
         if let Some(region_id) = advance_ring_destination_id {
             // Wake the destination ring's FSM. Sent AFTER InitPlayerState
@@ -309,12 +330,22 @@ pub(crate) async fn handle_on_client_ready(
             // entity (player_id, missions, etc.) — `mark_player_loaded`
             // doesn't need that state directly, but downstream chain
             // events fired by the unlock cascade do.
-            let _ = tx
+            if let Err(e) = tx
                 .send(BaseToCellMsg::AdvanceRingDestination {
                     entity_id,
                     region_id,
                 })
-                .await;
+                .await
+            {
+                // Issue #304: ring-destination drop strands the player
+                // mid-transport — they arrive at the destination but
+                // the ring FSM stays in RemoteLoadWait forever.
+                tracing::error!(
+                    entity_id,
+                    region_id,
+                    "AdvanceRingDestination: base→cell send failed -- ring FSM stuck, player invisible to other ring riders: {e}"
+                );
+            }
         }
     }
 
@@ -374,17 +405,32 @@ pub(crate) async fn handle_on_client_ready(
         .await;
 
         if let Some(pool) = db_pool {
-            if let Err(e) =
-                sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
-                    .bind(pending.player_id)
-                    .execute(pool.as_ref())
-                    .await
+            match sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
+                .bind(pending.player_id)
+                .execute(pool.as_ref())
+                .await
             {
-                tracing::warn!(
-                    player_id = pending.player_id,
-                    error = %e,
-                    "Failed to clear first_login flag after cinematic dispatch; player will see intro again next login",
-                );
+                Ok(r) if r.rows_affected() == 0 => {
+                    // Issue #304: silent rows_affected==0 was the
+                    // original-Python ghost bug — UPDATE succeeds but
+                    // touches nothing, flag stays set, cinematic
+                    // re-fires every login. error! so a single ops query
+                    // (rows_affected != expected) surfaces it.
+                    tracing::error!(
+                        player_id = pending.player_id,
+                        rows_affected = 0,
+                        expected = 1,
+                        "first_login flag NOT cleared — cinematic will re-fire on next login (no matching player row?)"
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        player_id = pending.player_id,
+                        error = %e,
+                        "Failed to clear first_login flag after cinematic dispatch; player will see intro again next login",
+                    );
+                }
             }
         }
 

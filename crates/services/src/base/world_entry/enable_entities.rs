@@ -80,7 +80,21 @@ pub(crate) async fn handle_enable_entities(
         );
 
         let pkt = build_create_player(&key, seq, &acks, &entry_info, load_data.as_ref());
-        transport.send_to(&pkt, addr).await?;
+        if let Err(e) = transport.send_to(&pkt, addr).await {
+            // Issue #304: surface the failure before the early-return so
+            // ops can correlate against the staged `pending_map_loaded`
+            // state that won't be reached. Without this, a packet-send
+            // failure looked identical to a client that simply never
+            // ack'd `mapLoaded`.
+            tracing::error!(
+                %addr,
+                player_entity_id = entry_info.player_entity_id,
+                space_id = entry_info.space_id,
+                seq,
+                "Create player: socket.send_to failed before staging pending_map_loaded: {e}"
+            );
+            return Err(e.into());
+        }
         // Register this reliable send with the per-session Channel's TX
         // window so it retransmits if the ACK doesn't land.
         super::super::helpers::shadow_register_reliable_send(

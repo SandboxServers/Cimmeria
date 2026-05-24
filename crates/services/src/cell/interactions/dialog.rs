@@ -26,13 +26,24 @@ pub async fn send_dialog_display(
         dialog_id,
         "Sending onDialogDisplay"
     );
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: player_id,
             method_index: crate::mercury::method_idx::ON_DIALOG_DISPLAY,
             args,
         })
-        .await;
+        .await
+    {
+        // Issue #304: failure to deliver onDialogDisplay leaves the
+        // player stuck — they interacted with an NPC and nothing
+        // happens. warn! because it's player-visible.
+        tracing::warn!(
+            player_id,
+            npc_entity_id,
+            dialog_id,
+            "DisplayDialog: cell→base send failed -- dialog not opened on client: {e}"
+        );
+    }
 }
 
 #[cfg(test)]

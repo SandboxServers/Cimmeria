@@ -179,3 +179,203 @@ pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
         )),
     }
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// Log capture for negative-logging regression guards (issue #304).
+//
+// Regression guards for log-only changes need to assert that a specific
+// WARN/ERROR event fired with the right structured fields. Without
+// capture, reverting a `trace!` → `warn!` change goes undetected.
+// `LogCapture` is a tracing `Layer` that records each event's level,
+// target, message body, and field map into a shared `Vec<Captured>`.
+//
+// Usage:
+//
+// ```ignore
+// let capture = LogCapture::install();
+// some_function_that_logs().await;
+// assert!(capture.find_event(tracing::Level::WARN, "AoI", "entity_to_addr_miss").is_some());
+// ```
+//
+// Each test scope owns its own subscriber via
+// `tracing::subscriber::with_default`; events outside the scope are
+// ignored. Capture is process-local — tests using it must not run
+// inside `#[tokio::test(flavor = "multi_thread")]` if they care about
+// observing only their own events.
+// ──────────────────────────────────────────────────────────────────────
+
+use std::collections::HashMap as StdHashMap;
+use tracing::{
+    field::{Field, Visit},
+    span::{Attributes, Id, Record},
+    Event, Level, Subscriber,
+};
+use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
+use tracing_subscriber::Registry;
+
+/// One captured event.
+#[allow(dead_code)] // fields read via accessors in guard tests
+#[derive(Debug, Clone)]
+pub(crate) struct Captured {
+    pub level: Level,
+    pub target: String,
+    pub message: Option<String>,
+    pub fields: StdHashMap<String, String>,
+}
+
+impl Captured {
+    /// `true` if `self.message` contains the given substring or
+    /// `self.fields["message"]` does. tracing stores message bodies on
+    /// the `message` field of the event.
+    pub fn message_contains(&self, needle: &str) -> bool {
+        self.message.as_deref().is_some_and(|m| m.contains(needle))
+            || self
+                .fields
+                .get("message")
+                .is_some_and(|m| m.contains(needle))
+    }
+
+    /// `true` if the field map contains a key with the given value
+    /// (string-compared — fields are formatted via `Debug`).
+    pub fn has_field(&self, key: &str, value: &str) -> bool {
+        self.fields.get(key).is_some_and(|v| v == value)
+    }
+}
+
+/// Tracing `Layer` that records every event into a shared `Vec`. Install
+/// via [`LogCapture::install`] inside a test scope.
+pub(crate) struct LogCapture {
+    events: Arc<Mutex<Vec<Captured>>>,
+}
+
+impl LogCapture {
+    /// Build a subscriber with this layer installed, set it as the
+    /// thread-local default, and return a guard that captures into the
+    /// returned `LogCapture`.
+    ///
+    /// Holds the default-guard for the lifetime of the returned
+    /// `LogCaptureGuard`; drop the guard to restore the previous
+    /// subscriber.
+    pub(crate) fn install() -> LogCaptureGuard {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let layer = CaptureLayer {
+            events: events.clone(),
+        };
+        let subscriber = Registry::default().with(layer);
+        let default_guard = tracing::subscriber::set_default(subscriber);
+        LogCaptureGuard {
+            capture: LogCapture { events },
+            _default_guard: default_guard,
+        }
+    }
+}
+
+/// RAII guard returned by [`LogCapture::install`]. Drop to restore the
+/// previous tracing subscriber. Dereferences to [`LogCapture`] so
+/// `guard.find_event(...)` works.
+pub(crate) struct LogCaptureGuard {
+    capture: LogCapture,
+    _default_guard: tracing::subscriber::DefaultGuard,
+}
+
+impl LogCaptureGuard {
+    /// First event whose level matches and whose message contains
+    /// `message_substr` AND whose fields include the `reason` field set
+    /// to `reason_value`. Returns `None` if no match.
+    ///
+    /// Use the `reason` field convention (per CLAUDE.md / issue #304) to
+    /// pin down WHICH negative-log this is, not just any warn at the
+    /// same target.
+    pub fn find_event(
+        &self,
+        level: Level,
+        message_substr: &str,
+        reason_value: &str,
+    ) -> Option<Captured> {
+        self.capture
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|c| {
+                c.level == level
+                    && c.message_contains(message_substr)
+                    && c.has_field("reason", reason_value)
+            })
+            .cloned()
+    }
+
+    /// First event at `level` whose message contains `message_substr`.
+    /// Use when the new log doesn't carry a `reason` field.
+    #[allow(dead_code)] // helper API — used by guards in other crates / future PRs
+    pub fn find_message(&self, level: Level, message_substr: &str) -> Option<Captured> {
+        self.capture
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|c| c.level == level && c.message_contains(message_substr))
+            .cloned()
+    }
+
+    /// All captured events. Useful for debugging when an expected event
+    /// doesn't fire — `eprintln!("{:#?}", guard.all())` shows what did.
+    #[allow(dead_code)] // debug-only accessor
+    pub fn all(&self) -> Vec<Captured> {
+        self.capture.events.lock().unwrap().clone()
+    }
+}
+
+struct CaptureLayer {
+    events: Arc<Mutex<Vec<Captured>>>,
+}
+
+impl<S: Subscriber> Layer<S> for CaptureLayer {
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        let mut visitor = FieldVisitor::default();
+        event.record(&mut visitor);
+        let metadata = event.metadata();
+        self.events.lock().unwrap().push(Captured {
+            level: *metadata.level(),
+            target: metadata.target().to_string(),
+            message: visitor.fields.get("message").cloned(),
+            fields: visitor.fields,
+        });
+    }
+
+    // No-op span methods — capture doesn't care about spans, only events.
+    fn on_new_span(&self, _attrs: &Attributes<'_>, _id: &Id, _ctx: Context<'_, S>) {}
+    fn on_record(&self, _id: &Id, _values: &Record<'_>, _ctx: Context<'_, S>) {}
+}
+
+#[derive(Default)]
+struct FieldVisitor {
+    fields: StdHashMap<String, String>,
+}
+
+impl Visit for FieldVisitor {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        self.fields
+            .insert(field.name().to_string(), format!("{value:?}"));
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        self.fields
+            .insert(field.name().to_string(), value.to_string());
+    }
+
+    fn record_i64(&mut self, field: &Field, value: i64) {
+        self.fields
+            .insert(field.name().to_string(), value.to_string());
+    }
+
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        self.fields
+            .insert(field.name().to_string(), value.to_string());
+    }
+
+    fn record_bool(&mut self, field: &Field, value: bool) {
+        self.fields
+            .insert(field.name().to_string(), value.to_string());
+    }
+}
