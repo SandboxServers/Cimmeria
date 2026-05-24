@@ -68,7 +68,29 @@ pwsh setup.ps1 -Configuration Release
 
 # Wipe and reload the database:
 pwsh setup.ps1 -SkipBuild -ForceDatabase
+
+# Install the reverse-engineering toolchain (Ghidra + GhidraMCP + x64dbg +
+# x64dbg-automate + MCP venvs + .mcp.json). Opt-in; Windows-only:
+pwsh setup.ps1 -WithReToolchain -NoLaunch
 ```
+
+## RE Toolchain (optional)
+
+For contributors doing reverse-engineering work on `SGW.exe`, the bootstrap can
+also install:
+
+- Ghidra 12 in `ghidra/ghidra_12.0.4_PUBLIC/`
+- The GhidraMCP plugin deployed to `%APPDATA%\ghidra\ghidra_12.0.4_PUBLIC\Extensions\`
+- `bethington/ghidra-mcp` cloned to `external/ghidra-mcp/` for the Python bridge
+- An x64dbg snapshot extracted to `dbg/`
+- The `x64dbg-automate` plugin DLLs deployed to `dbg/release/{x32,x64}/plugins/`
+- Two Python venvs in `.venvs/` (`ghidra-mcp/` and `x64dbg-mcp/`)
+- A generated `.mcp.json` produced from `.mcp.json.example` (only if one doesn't
+  exist — never overwrites your existing config)
+
+Run with `pwsh setup.ps1 -WithReToolchain`. Idempotent: re-runs detect existing
+installs. End-to-end walkthrough including manual fallback:
+[`docs/guides/re-toolchain-setup.md`](../docs/guides/re-toolchain-setup.md).
 
 ## Cross-Platform Support
 

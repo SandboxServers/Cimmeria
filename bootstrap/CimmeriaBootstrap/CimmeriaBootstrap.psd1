@@ -8,6 +8,7 @@
 
     FunctionsToExport = @(
         'Install-CimmeriaDependencies',
+        'Install-CimmeriaReToolchain',
         'Build-CimmeriaServer',
         'Build-CimmeriaApp',
         'Build-CimmeriaLauncher',

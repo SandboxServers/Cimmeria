@@ -44,6 +44,12 @@ function Invoke-CimmeriaBootstrap {
     .PARAMETER UseDocker
         Use a Docker container for PostgreSQL instead of local binaries.
 
+    .PARAMETER WithReToolchain
+        Also install the reverse-engineering toolchain (Ghidra, the GhidraMCP
+        plugin, x64dbg, the x64dbg-automate plugin, the Python MCP venvs, and
+        a generated .mcp.json). Opt-in because most contributors only need
+        the game server. See docs/guides/re-toolchain-setup.md.
+
     .EXAMPLE
         Invoke-CimmeriaBootstrap
         # Full pipeline: check prereqs -> download PG -> build server -> database -> launch
@@ -55,6 +61,10 @@ function Invoke-CimmeriaBootstrap {
     .EXAMPLE
         Invoke-CimmeriaBootstrap -SkipBuild -ResetDatabase -NoLaunch
         # Wipe PostgreSQL and reload the database only
+
+    .EXAMPLE
+        Invoke-CimmeriaBootstrap -WithReToolchain -NoLaunch
+        # Get a fully wired RE workstation without starting the server
     #>
     [CmdletBinding()]
     param(
@@ -68,6 +78,7 @@ function Invoke-CimmeriaBootstrap {
         [switch]$ForceDatabase,
         [switch]$ResetDatabase,
         [switch]$UseDocker,
+        [switch]$WithReToolchain,
         [string]$LogLevel
     )
 
@@ -82,6 +93,7 @@ function Invoke-CimmeriaBootstrap {
     }
     $steps += "Game Data"
     $steps += "Database"
+    if ($WithReToolchain) { $steps += "RE Toolchain" }
     if (-not $NoLaunch) { $steps += "Launch" }
     $totalSteps = $steps.Count
 
@@ -208,6 +220,22 @@ function Invoke-CimmeriaBootstrap {
             Write-Host "FAILED at Step $step`: Initialize-CimmeriaDatabase" -ForegroundColor Red
             Write-Host "  $_" -ForegroundColor Red
             throw
+        }
+
+        # RE Toolchain (optional, -WithReToolchain)
+        if ($WithReToolchain) {
+            $step++
+            Write-Host ""
+            Write-Host "--- Step $step/$totalSteps`: RE Toolchain ---" -ForegroundColor Cyan
+            try {
+                Install-CimmeriaReToolchain -SkipDownload:$SkipDownload
+            } catch {
+                Write-Host ""
+                Write-Host "WARNING: Step $step (Install-CimmeriaReToolchain) failed - continuing" -ForegroundColor Yellow
+                Write-Host "  $_" -ForegroundColor Yellow
+                Write-Host "  RE toolchain is optional. The game server is unaffected." -ForegroundColor DarkGray
+                Write-Host "  See docs/guides/re-toolchain-setup.md to retry manually." -ForegroundColor DarkGray
+            }
         }
 
         # Launch
