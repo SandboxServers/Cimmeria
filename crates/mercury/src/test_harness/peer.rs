@@ -43,6 +43,35 @@ pub struct TickActions {
     pub keepalives: Vec<Bytes>,
 }
 
+/// Outcome of one `send_with_policy` policy-evaluation pass. Split out
+/// of `send_with_policy` so the lock-holding decision logic stays in a
+/// non-async function (clearer scoping, easier to reason about).
+///
+/// Duplication semantics: `extra_copies` applies **only to the
+/// current send** (the packet passed into `decide_send_policy`).
+/// Packets in `flushed_held` come from a previous send that was
+/// buffered by the reorder policy and already had their own
+/// per-send policy decisions made at the time they were buffered;
+/// re-applying duplication to them would compound the cycle.
+struct SendDecision {
+    /// True if the packet must not go on the wire (any drop policy fired).
+    drop_this: bool,
+    /// Latency to sleep before any send.
+    latency: std::time::Duration,
+    /// Extra copies beyond the primary send for the **current** packet
+    /// only (from `duplicate_every` + `duplicate_next_count` summed).
+    extra_copies: u32,
+    /// The current send's payload. `None` when the policy buffered it
+    /// (reorder hold) — nothing goes on the wire this call.
+    current_packet: Option<Bytes>,
+    /// Held packets being flushed alongside the current send. Each
+    /// emitted exactly once, **never duplicated**. Order is wire
+    /// arrival order at the peer (pair-mode: this is the previously
+    /// held packet shipped after the current; buffer-mode: the
+    /// remainder of the reversed buffer).
+    flushed_held: Vec<Bytes>,
+}
+
 /// One end of a paired Mercury session.
 pub struct LoopbackPeer {
     /// Mercury protocol state.
@@ -269,115 +298,186 @@ impl LoopbackPeer {
     /// Policy evaluation order per send:
     /// 1. Increment `send_count` (1-indexed).
     /// 2. Consume one slot of `drop_next` if non-zero, OR match against
-    ///    `drop_at_send_count` if set. If either drop fires, the bytes
-    ///    never go on the wire — RTO / retransmit consequences on the
-    ///    sender are identical to a wire-side drop.
+    ///    `drop_at_send_count` if set, OR roll `drop_probability`. If
+    ///    any drop fires, bump `drop_count` and the bytes never go on
+    ///    the wire — RTO / retransmit consequences on the sender are
+    ///    identical to a wire-side drop.
     /// 3. Apply `latency` via `tokio::time::sleep` before any send_to.
     /// 4. If `reorder_pairs` is set, hold the first of each pair and
-    ///    send `(second, first)` when the pair completes.
-    /// 5. Send (one or two copies based on `duplicate_every`).
+    ///    send `(second, first)` when the pair completes. Otherwise
+    ///    if `reorder_buffer_size > 0`, accumulate up to N and flush
+    ///    reversed when full.
+    /// 5. Send (one or more copies based on `duplicate_every` and
+    ///    `duplicate_next_count`).
     async fn send_with_policy(&self, bytes: Bytes) -> std::io::Result<()> {
-        // Pull every policy decision under one lock acquisition so the
-        // counters advance atomically with the drop/duplicate/reorder
-        // checks that consume them.
-        let (drop_this, latency, duplicate_now, reorder_paired) = {
-            let mut policy = self.policy.lock().expect("policy poisoned");
+        let decision = self.decide_send_policy(bytes.clone());
 
-            *policy.send_count.get_mut(self.direction) += 1;
-            let count = policy.send_count.get(self.direction);
-
-            // drop_next consumes one slot per call.
-            let drop_next_slot = policy.drop_next.get_mut(self.direction);
-            let drop_from_next = if *drop_next_slot > 0 {
-                *drop_next_slot -= 1;
-                true
-            } else {
-                false
-            };
-
-            // drop_at_send_count fires once when count matches, then clears.
-            let drop_at_slot = policy.drop_at_send_count.get_mut(self.direction);
-            let drop_from_at = if *drop_at_slot == Some(count) {
-                *drop_at_slot = None;
-                true
-            } else {
-                false
-            };
-
-            let drop_this = drop_from_next || drop_from_at;
-            let latency = policy.latency.get(self.direction);
-
-            // duplicate_every: emit a copy whenever the per-direction
-            // duplicate_count hits the configured N. Reset to 0 after
-            // each duplication so the next N is independent.
-            let duplicate_now = if let Some(n) = policy.duplicate_every.get(self.direction) {
-                if n > 0 {
-                    let dup_count = policy.duplicate_count.get_mut(self.direction);
-                    *dup_count += 1;
-                    if *dup_count >= n {
-                        *dup_count = 0;
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            // reorder_pairs: if active and the slot is empty, hold this
-            // packet and emit NOTHING right now. The next send finds a
-            // held packet and emits `(this, held)` — the pair-swap.
-            let reorder_paired = if policy.reorder_pairs.get(self.direction) && !drop_this {
-                let held_slot = policy.reorder_held.get_mut(self.direction);
-                match held_slot.take() {
-                    None => {
-                        // Hold this packet for the next call to pair with.
-                        *held_slot = Some(bytes.clone());
-                        // Signal "swallowed by reorder; do not send".
-                        Some(None)
-                    }
-                    Some(prev) => {
-                        // Pair complete. Send `this` first, then `prev`.
-                        Some(Some(prev))
-                    }
-                }
-            } else {
-                None
-            };
-
-            (drop_this, latency, duplicate_now, reorder_paired)
-        };
-
-        if drop_this {
+        if decision.drop_this {
             return Ok(());
         }
 
-        if !latency.is_zero() {
-            tokio::time::sleep(latency).await;
+        if !decision.latency.is_zero() {
+            tokio::time::sleep(decision.latency).await;
         }
 
-        match reorder_paired {
-            // Reorder inactive: normal send path.
-            None => {
-                self.socket.send_to(&bytes, self.peer_addr).await?;
-                if duplicate_now {
-                    self.socket.send_to(&bytes, self.peer_addr).await?;
+        // Current send: emit once + extra_copies times (the duplication
+        // semantics apply ONLY to the current send, not to any held
+        // packets being flushed alongside).
+        if let Some(current) = &decision.current_packet {
+            self.socket.send_to(current, self.peer_addr).await?;
+            for _ in 0..decision.extra_copies {
+                self.socket.send_to(current, self.peer_addr).await?;
+            }
+        }
+
+        // Held packets from reorder buffer: each exactly once, in the
+        // order the policy chose. Held packets had their own duplicate
+        // decisions made at buffer time; re-applying here would
+        // double-count the cycle.
+        for held in &decision.flushed_held {
+            self.socket.send_to(held, self.peer_addr).await?;
+        }
+        Ok(())
+    }
+
+    /// All policy decisions happen here under one lock acquisition so
+    /// counters advance atomically with the checks that consume them.
+    fn decide_send_policy(&self, bytes: Bytes) -> SendDecision {
+        let mut policy = self.policy.lock().expect("policy poisoned");
+        let dir = self.direction;
+
+        *policy.send_count.get_mut(dir) += 1;
+        let count = policy.send_count.get(dir);
+
+        // ── Drop checks (any-of) ─────────────────────────────────
+        let drop_next_slot = policy.drop_next.get_mut(dir);
+        let drop_from_next = if *drop_next_slot > 0 {
+            *drop_next_slot -= 1;
+            true
+        } else {
+            false
+        };
+
+        let drop_at_slot = policy.drop_at_send_count.get_mut(dir);
+        let drop_from_at = if *drop_at_slot == Some(count) {
+            *drop_at_slot = None;
+            true
+        } else {
+            false
+        };
+
+        let drop_from_prob = if let Some(prob) = policy.drop_probability.get(dir) {
+            prob.roll(policy.rng_mut(dir))
+        } else {
+            false
+        };
+
+        let drop_this = drop_from_next || drop_from_at || drop_from_prob;
+        if drop_this {
+            *policy.drop_count.get_mut(dir) += 1;
+        }
+
+        let latency = policy.latency.get(dir);
+
+        // ── Duplicate (cyclic + one-shot, additive) ───────────────
+        let mut extra_copies = 0u32;
+
+        if let Some(n) = policy.duplicate_every.get(dir) {
+            if n > 0 {
+                let dup_count = policy.duplicate_count.get_mut(dir);
+                *dup_count += 1;
+                if *dup_count >= n {
+                    *dup_count = 0;
+                    extra_copies += 1;
                 }
             }
-            // First of pair: held; emit nothing this call.
-            Some(None) => {}
-            // Second of pair: emit (this, held).
-            Some(Some(held)) => {
-                self.socket.send_to(&bytes, self.peer_addr).await?;
-                self.socket.send_to(&held, self.peer_addr).await?;
-                if duplicate_now {
-                    // Duplicate the second-of-pair (which went first on the wire).
-                    self.socket.send_to(&bytes, self.peer_addr).await?;
+        }
+
+        let one_shot = policy.duplicate_next_count.get_mut(dir);
+        if *one_shot > 0 {
+            extra_copies += *one_shot;
+            *one_shot = 0;
+        }
+
+        // ── Reorder (pair-mode takes precedence over buffer-mode) ─
+        //
+        // Splits the wire emit into `current_packet` (the one passed in,
+        // gets duplication applied) and `flushed_held` (previously
+        // buffered packets, each emitted exactly once). When the policy
+        // buffers this send, `current_packet` is None and nothing goes
+        // on the wire this call.
+        let (current_packet, flushed_held): (Option<Bytes>, Vec<Bytes>) = if drop_this {
+            (None, Vec::new())
+        } else if policy.reorder_pairs.get(dir) {
+            let held_slot = policy.reorder_held.get_mut(dir);
+            match held_slot.take() {
+                None => {
+                    *held_slot = Some(bytes);
+                    (None, Vec::new())
+                }
+                Some(prev) => {
+                    // Pair complete: current goes on the wire first
+                    // (with its duplications), then the previously
+                    // held packet (no duplication).
+                    (Some(bytes), vec![prev])
                 }
             }
+        } else {
+            let buf_size = policy.reorder_buffer_size.get(dir);
+            if buf_size > 0 {
+                let buf = policy.reorder_buffer.get_mut(dir);
+                buf.push(bytes);
+                if buf.len() as u32 >= buf_size {
+                    // Buffer full: drain reversed. Last-pushed (the
+                    // current send) is at the front after reverse, so
+                    // it gets duplication; the rest of the buffer
+                    // (held packets) emit once each.
+                    let mut drained: Vec<Bytes> = std::mem::take(buf);
+                    drained.reverse();
+                    let current = drained.remove(0);
+                    (Some(current), drained)
+                } else {
+                    (None, Vec::new())
+                }
+            } else {
+                // No reorder: the simple case — current packet, no held.
+                (Some(bytes), Vec::new())
+            }
+        };
+
+        SendDecision {
+            drop_this,
+            latency,
+            extra_copies,
+            current_packet,
+            flushed_held,
+        }
+    }
+
+    /// Flush any pending bytes held by reorder buffers (both pair and
+    /// multi-packet modes) on this peer's outbound direction. Used by
+    /// tests that need to assert behavior on a partially-full reorder
+    /// buffer (e.g., flushing 3 packets when `reorder_buffer_size = 4`
+    /// to prove the held packets aren't lost on session teardown).
+    /// Drained packets are sent in **reverse arrival order**, matching
+    /// the auto-flush behavior.
+    pub async fn flush_reorder_buffer(&self) -> std::io::Result<()> {
+        let drained: Vec<Bytes> = {
+            let mut policy = self.policy.lock().expect("policy poisoned");
+            let dir = self.direction;
+            let mut pair_held: Vec<Bytes> = policy
+                .reorder_held
+                .get_mut(dir)
+                .take()
+                .into_iter()
+                .collect();
+            let mut multi: Vec<Bytes> = std::mem::take(policy.reorder_buffer.get_mut(dir));
+            multi.reverse();
+            pair_held.append(&mut multi);
+            pair_held
+        };
+        for raw in drained {
+            self.socket.send_to(&raw, self.peer_addr).await?;
         }
         Ok(())
     }

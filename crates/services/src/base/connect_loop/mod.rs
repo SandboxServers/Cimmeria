@@ -12,13 +12,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::{FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE};
-use cimmeria_mercury::transport::{Transport, UdpTransport};
+use cimmeria_mercury::transport::{BidirectionalTransport, Transport};
 
 use crate::cell::messages::BaseToCellMsg;
 
@@ -35,13 +34,16 @@ pub(crate) use encrypted::handle_encrypted_datagram;
 
 /// Main receive loop -- one per running `BaseService`.
 ///
-/// Owns the concrete [`UdpSocket`] because it is the only place that reads
-/// from the wire (`recv_from`). The send side is handed to handlers as a
-/// `&Arc<dyn Transport>` — a [`UdpTransport`] wrapping the same socket,
-/// constructed once here rather than per datagram. See
-/// `docs/architecture/transport-trait.md`.
+/// Takes a [`BidirectionalTransport`] for the recv side and exposes its
+/// `Transport` super-trait projection to handlers via `&Arc<dyn Transport>`.
+/// Production wires in [`cimmeria_mercury::transport::UdpTransport`];
+/// chaos integration tests wire in
+/// [`cimmeria_mercury::lossy_transport::LossyTransport`] to exercise the
+/// real recv loop under simulated transatlantic loss / latency / duplication.
+/// See `docs/architecture/transport-trait.md` and
+/// `docs/architecture/network-chaos-testing.md`.
 pub(crate) async fn run_connect_loop(
-    socket: Arc<UdpSocket>,
+    transport: Arc<dyn BidirectionalTransport>,
     pending_logins: Arc<Mutex<HashMap<String, crate::auth::PendingLogin>>>,
     db_pool: Option<Arc<PgPool>>,
     resource_cache: Option<Arc<ResourceCache>>,
@@ -52,16 +54,17 @@ pub(crate) async fn run_connect_loop(
 ) {
     let mut buf = [0u8; 4096];
 
-    // Wrap the recv socket once for the send side. Handlers take
-    // `&Arc<dyn Transport>`, never the concrete socket.
-    let transport: Arc<dyn Transport> = Arc::new(UdpTransport::new(Arc::clone(&socket)));
+    // The `BidirectionalTransport` we own already implements the
+    // send-only `Transport` trait via supertrait coercion. Handlers
+    // take `&Arc<dyn Transport>` so the existing ADR is unchanged.
+    let send_transport: Arc<dyn Transport> = transport.clone();
 
     loop {
-        match socket.recv_from(&mut buf).await {
+        match transport.recv_from(&mut buf).await {
             Ok((len, addr)) => {
                 tracing::trace!(%addr, len, hex = %to_hex(&buf[..len]), "UDP_IN");
                 if let Err(e) = handle_datagram(
-                    &transport,
+                    &send_transport,
                     addr,
                     &buf[..len],
                     &pending_logins,

@@ -12,6 +12,7 @@
 //! - `rto` — adaptive RTO convergence on loopback.
 
 mod ack;
+mod chaos;
 mod concurrent;
 mod encryption;
 mod encryption_kat;

@@ -1,4 +1,5 @@
-//! The outbound side of the Mercury transport.
+//! The outbound side of the Mercury transport, plus an opt-in
+//! bidirectional extension for the recv loop and chaos-testing.
 //!
 //! Handler code in `cimmeria-services` emits wire bytes by calling
 //! [`Transport::send_to`]. By depending on the trait object
@@ -8,12 +9,13 @@
 //! `test-support` feature) and assert on the exact `(SocketAddr, bytes)` pairs
 //! that fanned out.
 //!
-//! The trait deliberately covers only the **outbound** direction. The recv
-//! loop in `services/src/base/connect_loop/mod.rs` keeps its concrete
-//! [`tokio::net::UdpSocket`] because handlers don't read from the socket —
-//! they only emit. End-to-end recv-side testing is the responsibility of the
-//! Tier 2 Mercury loopback harness, not this trait. See
-//! `docs/architecture/transport-trait.md` for the full rationale.
+//! For the **recv** loop, the [`BidirectionalTransport`] super-trait extends
+//! [`Transport`] with `recv_from`. Production runs [`UdpTransport`] (which
+//! implements both); chaos tests run a `LossyTransport` that applies seeded
+//! drop + latency filters in both directions (plus send-side duplicate;
+//! recv-side duplicate is a documented limitation). Handlers continue to
+//! see only `&Arc<dyn Transport>` so the send-side ADR is unchanged; the
+//! recv seam is widened just enough to let the chaos apparatus wrap it.
 
 use std::io;
 use std::net::SocketAddr;
@@ -64,6 +66,31 @@ impl Transport for UdpTransport {
 
     fn local_addr(&self) -> io::Result<SocketAddr> {
         self.socket.local_addr()
+    }
+}
+
+/// Extension of [`Transport`] that also exposes the **inbound** side
+/// of the wire. Used by the recv loop in
+/// `crates/services/src/base/connect_loop/mod.rs` and by the
+/// chaos-testing `LossyTransport`. Production handlers still take
+/// `&Arc<dyn Transport>` (send-only); only the recv loop holds a
+/// `BidirectionalTransport`.
+///
+/// The extension is opt-in so the byte-exact fan-out test seam
+/// (`TestTransport`) doesn't need to grow a `recv_from` it has no
+/// use for.
+#[async_trait]
+pub trait BidirectionalTransport: Transport {
+    /// Receive a datagram into `buf`. Returns `(bytes_written,
+    /// source_addr)`. Errors propagate from the underlying I/O.
+    /// Same shape as [`tokio::net::UdpSocket::recv_from`].
+    async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)>;
+}
+
+#[async_trait]
+impl BidirectionalTransport for UdpTransport {
+    async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
+        self.socket.recv_from(buf).await
     }
 }
 
