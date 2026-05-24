@@ -557,3 +557,51 @@ fn compose_create_entity_cascade_body_matches_build_create_entity_cascade_body()
          the wire format between bundle-migrated and un-migrated call sites"
     );
 }
+
+/// **Byte-equivalence guard for the FORCED_POSITION bundle migration
+/// (issue #360 teleport family).**
+///
+/// `compose_forced_position_body` is appended via
+/// [`cimmeria_mercury::channel_bundle::ChannelBundle::append_raw_message`]
+/// inside [`crate::base::world_entry::teleport::build_teleport_bundle`].
+/// The bundled wire bytes for that raw message MUST equal the body
+/// portion of the standalone [`build_forced_position`] packet. Divergence
+/// would split the wire format between the bundle-migrated teleport path
+/// and the standalone-packet `build_forced_position` callers (none today
+/// other than tests, but the cross-path guard prevents drift if a future
+/// caller resurrects the standalone path).
+///
+/// Verifies: decrypted standalone packet body == compose() output.
+#[test]
+fn compose_forced_position_body_matches_build_forced_position_body() {
+    use crate::mercury::compose_forced_position_body;
+
+    const ENTITY_ID: u32 = 0xDEAD_BEEF;
+    const SPACE_ID: u32 = 0x0001_0010;
+    const POS: [f32; 3] = [10.0, 20.0, 30.0];
+    const PREV_POS: [f32; 3] = [9.0, 19.0, 29.0];
+
+    let composed = compose_forced_position_body(ENTITY_ID, SPACE_ID, POS, PREV_POS);
+
+    let pkt = build_forced_position(&TEST_KEY, 1, &[], ENTITY_ID, SPACE_ID, POS, PREV_POS);
+    let enc = MercuryEncryption::from_session_key(TEST_KEY);
+    let pt = enc.decrypt(&pkt).unwrap();
+    let standalone_body = &pt[1..pt.len() - 4];
+
+    assert_eq!(
+        composed.as_slice(),
+        standalone_body,
+        "compose_forced_position_body must produce byte-identical output to \
+         build_forced_position's pre-framing body — divergence would split \
+         the wire format between bundle-migrated and standalone-packet paths"
+    );
+    // Length pin: catches a regression that adds/drops a field. The
+    // offset-based forced_position_wire_layout test pins the layout, but
+    // a length-drift hits this assertion more directly.
+    assert_eq!(
+        composed.len(),
+        50,
+        "FORCED_POSITION body is exactly 50 bytes: msg_id(1) + entity_id(4) + \
+         space_id(4) + vehicleID(4) + pos(12) + prev_pos(12) + rot(12) + flags(1)"
+    );
+}

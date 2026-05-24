@@ -11,12 +11,13 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::channel_bundle::ChannelBundle;
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use crate::mercury::{build_entity_method_packet, build_forced_position};
+use crate::mercury::compose_forced_position_body;
 
-use super::super::helpers::send_to_witness_reliable;
+use super::super::helpers::send_bundle_to_witness_reliable;
 use super::super::ConnectedClientState;
 
 /// Authoritative same-world teleport: snap the player's avatar to `position`.
@@ -68,44 +69,22 @@ pub(super) async fn handle_teleport_player(
         "TeleportPlayer: snapping avatar"
     );
 
-    // 1. Engine-level snap. `prev_pos` is the entity's last-known position
-    //    before the teleport — see `build_forced_position` and
-    //    `spec.protocol.mercury` §1.10.6 for why this is not zero.
-    send_to_witness_reliable(
-        transport,
-        connected,
-        entity_to_addr,
-        entity_id,
-        |key, seq, acks| {
-            build_forced_position(key, seq, acks, entity_id, space_id, position, prev_pos)
-        },
-    )
-    .await;
-
-    // 2. Streaming-load waiting flag (method 116). Direction is zeroed —
-    //    we don't currently rotate the avatar on ring travel.
-    let mut args = Vec::with_capacity(24);
-    for &c in &position {
-        args.extend_from_slice(&c.to_le_bytes());
-    }
-    args.extend_from_slice(&[0u8; 12]); // direction = 0,0,0
-    send_to_witness_reliable(
-        transport,
-        connected,
-        entity_to_addr,
-        entity_id,
-        |key, seq, acks| {
-            build_entity_method_packet(
-                key,
-                seq,
-                acks,
-                entity_id,
-                crate::cell::client_methods::player::ON_PLAYER_TELEPORT,
-                &args,
-            )
-        },
-    )
-    .await;
+    // Bundle the engine-level snap + streaming-load hint into one frame.
+    //
+    // **Transaction-state audit**: both messages target the player's own
+    // entity, long since created. `FORCED_POSITION` (0x31) is a property-
+    // update on an already-live entity — NOT a creation — so it doesn't
+    // enter a CREATE_ENTITY transaction. Same-entity `onPlayerTeleport`
+    // (method 116) following it in the same bundle binds to the already-
+    // live entity and is NOT HOLD-FOR-TRANSACTION dropped. See
+    // [docs/architecture/mercury-bundle.md] safe-combine catalogue.
+    //
+    // Pre-bundle: 2 reliable packets (FORCED_POSITION snap + onPlayerTeleport
+    // hint). Post-bundle: 1 reliable packet (~70 B body, well under
+    // FRAGMENT_BODY_SIZE=1300). Pinned by
+    // `teleport_bundles_forced_position_and_player_teleport_to_single_packet`.
+    let bundle = build_teleport_bundle(entity_id, space_id, position, prev_pos);
+    send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
 
     // 3. Persist. Mirrors gate_travel's fail-closed on missing active_player_id.
     if let Some(pool) = db_pool {
@@ -147,6 +126,46 @@ pub(super) async fn handle_teleport_player(
             }
         }
     }
+}
+
+/// Compose the teleport handshake into a single Mercury bundle.
+///
+/// Order matches the pre-bundle dispatch sequence:
+///   1. `FORCED_POSITION (0x31)` — engine-level snap; the avatar moves here.
+///   2. `onPlayerTeleport (method 116)` — streaming-load waiting flag;
+///      kicks the client into terrain-chunk loading at the new position.
+///
+/// `FORCED_POSITION` is appended via [`ChannelBundle::append_raw_message`]
+/// because it's a Mercury base message (0x31), not an entity-method call.
+/// The 50-byte body is composed by [`compose_forced_position_body`].
+///
+/// Extracted as a pure builder so the burst-shape regression guard
+/// [`tests::teleport_bundles_forced_position_and_player_teleport_to_single_packet`]
+/// pins the same composition the handler actually emits.
+fn build_teleport_bundle(
+    entity_id: u32,
+    space_id: u32,
+    position: [f32; 3],
+    prev_pos: [f32; 3],
+) -> ChannelBundle {
+    let mut bundle = ChannelBundle::new(true);
+    bundle.append_raw_message(&compose_forced_position_body(
+        entity_id, space_id, position, prev_pos,
+    ));
+    // Direction is zeroed — we don't currently rotate the avatar on ring
+    // travel. The wire args are 24 bytes: 12 for position, 12 for the
+    // zero direction.
+    let mut args = Vec::with_capacity(24);
+    for &c in &position {
+        args.extend_from_slice(&c.to_le_bytes());
+    }
+    args.extend_from_slice(&[0u8; 12]);
+    bundle.append_entity_method(
+        crate::cell::client_methods::player::ON_PLAYER_TELEPORT,
+        entity_id,
+        &args,
+    );
+    bundle
 }
 
 #[cfg(test)]
@@ -213,11 +232,14 @@ mod tests {
     }
 
     /// Domain B (fan-out byte test): a valid same-world teleport snaps the
-    /// player by emitting exactly two packets to the player's own addr, in
-    /// order — `FORCED_POSITION` (seq 0) then `onPlayerTeleport` (seq 1) —
-    /// byte-exact, with **zero** witness fan-out (teleport is owner-only).
-    /// Catches a regression that drops the engine-level snap, reorders the
-    /// burst, or leaks the snap to other clients.
+    /// player by emitting **one bundled packet** to the player's own addr —
+    /// FORCED_POSITION + onPlayerTeleport concatenated into a single Mercury
+    /// frame — with **zero** witness fan-out (teleport is owner-only).
+    ///
+    /// Pre-bundle this fired 2 reliable packets; after the issue #360
+    /// migration the same two records land in one fragment. The fan-out
+    /// shape (owner-only routing) and message ordering inside the bundle
+    /// are preserved.
     #[tokio::test]
     async fn teleport_emits_forced_position_then_player_teleport_to_owner_only() {
         let transport = Arc::new(TestTransport::new());
@@ -253,38 +275,74 @@ mod tests {
         let sent = transport.drain();
         assert_eq!(
             sent.len(),
-            2,
-            "exactly FORCED_POSITION + onPlayerTeleport, no witness fan-out"
+            1,
+            "post-bundle: FORCED_POSITION + onPlayerTeleport ride one Mercury \
+             frame to the owner addr (was 2 packets pre-bundle)"
         );
-        assert_eq!(sent[0].0, player_addr, "snap goes to the player's own addr");
         assert_eq!(
-            sent[1].0, player_addr,
-            "teleport hint goes to the same addr"
+            sent[0].0, player_addr,
+            "bundled teleport handshake goes to the player's own addr only"
         );
 
-        // test_default_connected_client_state starts next_seq at 0, key all-zero.
+        // The bundled packet's decrypted body must equal the concatenation of
+        // the standalone FORCED_POSITION body and the standalone
+        // onPlayerTeleport entity-method body — the two records the client
+        // processes after fragment reassembly. Decrypting the full packet
+        // and inspecting body bytes lets the test fire on any wire-format
+        // drift inside either composer.
+        use cimmeria_mercury::encryption::MercuryEncryption;
         let key = [0u8; 32];
-        assert_eq!(
-            sent[0].1,
-            build_forced_position(&key, 0, &[], entity_id, space_id, position, prev_pos),
-            "FORCED_POSITION wire bytes (seq 0)"
-        );
+        let enc = MercuryEncryption::from_session_key(key);
+        let pt = enc.decrypt(&sent[0].1).expect("decrypt bundled packet");
+        // pt[0] = flags byte; body starts at pt[1]; suffix is the seq footer
+        // (4 bytes for FLAG_HAS_SEQUENCE-bearing packets).
+        let bundled_body = &pt[1..pt.len() - 4];
+
+        let expected_forced = compose_forced_position_body(entity_id, space_id, position, prev_pos);
+        let mut expected_method = Vec::new();
         let mut args = Vec::with_capacity(24);
         for &c in &position {
             args.extend_from_slice(&c.to_le_bytes());
         }
-        args.extend_from_slice(&[0u8; 12]); // direction = 0,0,0
+        args.extend_from_slice(&[0u8; 12]);
+        crate::mercury::append_entity_method(
+            &mut expected_method,
+            crate::cell::client_methods::player::ON_PLAYER_TELEPORT,
+            entity_id,
+            &args,
+        );
+        let mut expected_body = Vec::new();
+        expected_body.extend_from_slice(&expected_forced);
+        expected_body.extend_from_slice(&expected_method);
+
         assert_eq!(
-            sent[1].1,
-            build_entity_method_packet(
-                &key,
-                1,
-                &[],
-                entity_id,
-                crate::cell::client_methods::player::ON_PLAYER_TELEPORT,
-                &args,
-            ),
-            "onPlayerTeleport wire bytes (seq 1)"
+            bundled_body,
+            expected_body.as_slice(),
+            "bundled body must equal FORCED_POSITION body || onPlayerTeleport body \
+             — a regression here means either compose_forced_position_body or \
+             append_entity_method drifted on the bundle path"
+        );
+    }
+
+    /// Burst-shape regression guard for the issue #360 teleport bundle
+    /// migration. Pin two invariants the migration depends on:
+    ///   - `num_messages == 2` — exactly FORCED_POSITION + onPlayerTeleport.
+    ///   - `estimated_packet_count() == 1` — both messages comfortably fit
+    ///     one fragment (~70 B total body). A regression that grows either
+    ///     composer past the fragment cutoff fires here.
+    #[test]
+    fn teleport_bundles_forced_position_and_player_teleport_to_single_packet() {
+        let bundle = build_teleport_bundle(0xDEAD, 5, [10.0, 20.0, 30.0], [1.0, 2.0, 3.0]);
+        assert_eq!(
+            bundle.num_messages(),
+            2,
+            "teleport handshake must contain exactly FORCED_POSITION + onPlayerTeleport"
+        );
+        assert_eq!(
+            bundle.estimated_packet_count(),
+            1,
+            "teleport handshake bundle must collapse to 1 reliable packet \
+             (was 2 pre-bundle)"
         );
     }
 }

@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::channel_bundle::ChannelBundle;
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
 
-use super::super::super::helpers::send_to_witness_reliable;
+use super::super::super::helpers::{send_bundle_to_witness_reliable, send_to_witness_reliable};
 use super::super::super::ConnectedClientState;
 use crate::mercury::{build_entity_method_packet, method_idx};
 
@@ -175,109 +176,98 @@ pub async fn handle_grant_xp(
         "GrantXP processed"
     );
 
-    send_to_witness_reliable(
-        transport,
-        connected,
-        entity_to_addr,
+    // Bundle the post-grant notifications into a single Mercury frame.
+    //
+    // **Transaction-state audit**: every message in this bundle targets the
+    // player's own `entity_id`, created in `handle_map_loaded`'s prior bundle
+    // (the CREATE_BASE_PLAYER transaction released between bundles). No
+    // CREATE_ENTITY / CELL_PLAYER fires here; the bundle is exclusively
+    // post-transaction property/method updates — canonical "safe to combine"
+    // per [docs/architecture/mercury-bundle.md].
+    //
+    // Pre-bundle burst-shape: 1 (always) + 2 × levels_gained.len() (per-level
+    // pair) + 2 (if any level gained) = 1..2N+3 packets where N = number of
+    // levels gained. Typical small grant: 1 packet. Worst case (max-level
+    // catch-up): 2N+3 packets. Post-bundle: 1 packet (body fits one fragment
+    // for any realistic N — each per-level pair is ~30 B and MAX_LEVEL=20
+    // caps the per-grant level delta, so the body stays well under
+    // FRAGMENT_BODY_SIZE = 1300 B). Pinned by
+    // `grant_xp_max_level_burst_bundles_to_single_packet`.
+    let bundle = build_grant_xp_bundle(
         entity_id,
-        |key, seq, acks| {
-            build_entity_method_packet(
-                key,
-                seq,
-                acks,
-                entity_id,
-                method_idx::ON_EXP_UPDATE,
-                // Wire format is i32; saturate so a u64 total exceeding 2^31-1
-                // doesn't wrap negative on the client display.
-                &(total_xp.min(i32::MAX as u64) as i32).to_le_bytes(),
-            )
-        },
-    )
-    .await;
+        total_xp,
+        new_level,
+        training_points,
+        &levels_gained,
+    );
+    send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+}
 
-    for &lvl in &levels_gained {
-        send_to_witness_reliable(
-            transport,
-            connected,
-            entity_to_addr,
+/// Compose the post-grant_xp notification burst into a single Mercury bundle.
+///
+/// Order matches the pre-bundle dispatch sequence so a regression that
+/// reorders two entries is caught by the order-sensitive
+/// `grant_xp_*` burst-shape regression guards in
+/// [`mod tests`]:
+///   1. `onExpUpdate`                 (always)
+///   2. per level gained, in order:
+///      a. `GIVE_XP_FOR_LEVEL`
+///      b. `onMaxExpUpdate`
+///   3. `onLevelUpdate`               (only if any level gained)
+///   4. `onEntityProperty(TRAINING_POINTS)` (only if any level gained)
+///
+/// Extracted as a pure builder so the burst-shape regression guard can pin
+/// `num_messages` and `estimated_packet_count()` against the same composition
+/// the handler emits (call-site duplication would let the test and the
+/// handler drift).
+fn build_grant_xp_bundle(
+    entity_id: u32,
+    total_xp: u64,
+    new_level: u32,
+    training_points: u32,
+    levels_gained: &[u32],
+) -> ChannelBundle {
+    let mut bundle = ChannelBundle::new(true);
+    bundle.append_entity_method(
+        method_idx::ON_EXP_UPDATE,
+        entity_id,
+        // Wire format is i32; saturate so a u64 total exceeding 2^31-1
+        // doesn't wrap negative on the client display.
+        &(total_xp.min(i32::MAX as u64) as i32).to_le_bytes(),
+    );
+
+    for &lvl in levels_gained {
+        bundle.append_entity_method(
+            method_idx::GIVE_XP_FOR_LEVEL,
             entity_id,
-            |key, seq, acks| {
-                build_entity_method_packet(
-                    key,
-                    seq,
-                    acks,
-                    entity_id,
-                    method_idx::GIVE_XP_FOR_LEVEL,
-                    &(lvl as i32).to_le_bytes(),
-                )
-            },
-        )
-        .await;
-
+            &(lvl as i32).to_le_bytes(),
+        );
         let next_threshold = if lvl >= MAX_LEVEL {
             LEVEL_XP[MAX_LEVEL as usize] as i32
         } else {
             LEVEL_XP[lvl as usize] as i32
         };
-        send_to_witness_reliable(
-            transport,
-            connected,
-            entity_to_addr,
+        bundle.append_entity_method(
+            method_idx::ON_MAX_EXP_UPDATE,
             entity_id,
-            |key, seq, acks| {
-                build_entity_method_packet(
-                    key,
-                    seq,
-                    acks,
-                    entity_id,
-                    method_idx::ON_MAX_EXP_UPDATE,
-                    &next_threshold.to_le_bytes(),
-                )
-            },
-        )
-        .await;
+            &next_threshold.to_le_bytes(),
+        );
     }
 
     if !levels_gained.is_empty() {
-        send_to_witness_reliable(
-            transport,
-            connected,
-            entity_to_addr,
+        bundle.append_entity_method(
+            method_idx::ON_LEVEL_UPDATE,
             entity_id,
-            |key, seq, acks| {
-                build_entity_method_packet(
-                    key,
-                    seq,
-                    acks,
-                    entity_id,
-                    method_idx::ON_LEVEL_UPDATE,
-                    &(new_level as i32).to_le_bytes(),
-                )
-            },
-        )
-        .await;
+            &(new_level as i32).to_le_bytes(),
+        );
 
         let mut tp_args = Vec::with_capacity(8);
         tp_args.extend_from_slice(&GENERICPROPERTY_TRAINING_POINTS.to_le_bytes());
         tp_args.extend_from_slice(&(training_points as i32).to_le_bytes());
-        send_to_witness_reliable(
-            transport,
-            connected,
-            entity_to_addr,
-            entity_id,
-            |key, seq, acks| {
-                build_entity_method_packet(
-                    key,
-                    seq,
-                    acks,
-                    entity_id,
-                    method_idx::ON_ENTITY_PROPERTY,
-                    &tp_args,
-                )
-            },
-        )
-        .await;
+        bundle.append_entity_method(method_idx::ON_ENTITY_PROPERTY, entity_id, &tp_args);
     }
+
+    bundle
 }
 
 /// Handle cash grant from CellService -- update DB and send client notification.
