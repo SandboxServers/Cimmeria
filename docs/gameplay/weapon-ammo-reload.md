@@ -97,8 +97,14 @@ Client                       Cell                                       Base / D
   │                           │   reload_complete_at = now + warmup
   │                           │   reload_slot_id = Some(active_bandolier_slot)  ← pin
   │                           │   abilities.start_ability_cooldown(596, warmup+cooldown)
-  │ ◀── onTimerUpdate (m12) ──│
-  │ ◀── onStateFieldUpdate ───│  (BSF_IN_COMBAT | clear BSF_HOLSTER)
+  │ ◀── onTimerUpdate (m12) ──│  cooldown bar starts
+  │ ◀── onEntityProperty (m7)│  ammo-type sync (cur_ammo_type)
+  │                           │
+  │  Note: handle_reload does NOT touch bStateField — BSF_IN_COMBAT is
+  │  derived from `threatened_mobs` and only flips via combat::generate_threat.
+  │  A BeingAppearance rebroadcast only fires on the reload-while-holstered
+  │  Phase A path (request_appearance_refresh draws the weapon, the actual
+  │  reload defers by UNHOLSTER_DRAW_DURATION).
   │                           │
   │  (warmup elapses, e.g. 2 s later)
   │                           │
@@ -241,7 +247,10 @@ Client                       Cell                              Base / DB
   │ requestReload(0) ─────────▶│  reload_complete_at = now + 2.0s
   │                            │  start_ability_cooldown(596, 3.0s)
   │ ◀── onTimerUpdate(m12) ────│  cooldown bar
-  │ ◀── onStateFieldUpdate ────│  +BSF_IN_COMBAT, -BSF_HOLSTER
+  │ ◀── onEntityProperty(m7) ──│  ammo-type sync
+  │                            │  (weapon already drawn from the fire above,
+  │                            │   so no BeingAppearance — and handle_reload
+  │                            │   intentionally does NOT touch bStateField)
   │
   │   (≈2 s later — next reload_completion_tick after deadline)
   │                            │  refill_active_slot()  → cur=5

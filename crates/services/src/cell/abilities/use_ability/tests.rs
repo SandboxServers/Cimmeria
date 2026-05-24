@@ -315,7 +315,7 @@ async fn attack_while_holstered_queues_and_draws_without_committing() {
     }
     // required_ammo=1 → triggers the weapon-attack queue.
     mgr.ability_defs.insert(7, make_ability(7, 1, 30));
-    let (tx, _rx) = mpsc::channel(64);
+    let (tx, mut rx) = mpsc::channel(64);
 
     let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
     assert!(
@@ -346,6 +346,38 @@ async fn attack_while_holstered_queues_and_draws_without_committing() {
     assert_eq!(
         e.bandolier_items[&0].current_ammo, 30,
         "Phase A must NOT consume ammo — ammo check happens in Phase B",
+    );
+
+    // Pin the runtime rebroadcast: Phase A must dispatch exactly one
+    // `RefreshAppearance(holstered=false)` so the base-side handler
+    // unwraps the weapon mesh in the `ComponentList` and rebroadcasts
+    // `BeingAppearance` to self + AoI witnesses. Without this assertion
+    // the test would pass even if a refactor dropped the
+    // `request_appearance_refresh` call — the bug shape this guards
+    // against (server state mutates correctly but other players still
+    // see the player in the holstered pose).
+    let refreshes: Vec<_> = drain(&mut rx)
+        .into_iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::RefreshAppearance {
+                entity_id,
+                holstered,
+                ..
+            } => Some((entity_id, holstered)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        refreshes.len(),
+        1,
+        "Phase A must dispatch exactly one RefreshAppearance — \
+         dropping it leaves AoI witnesses stuck on the holstered pose \
+         while the attacker animates an invisible draw",
+    );
+    assert_eq!(
+        refreshes[0],
+        (1, false),
+        "RefreshAppearance must target the attacker with holstered=false",
     );
 }
 

@@ -293,11 +293,15 @@ Server sends Event_NetIn_BeingAppearance {BodySet, ComponentList}
 | 4 | WEAP_Melee (confirmed as the fallback in FUN_00ec0840) |
 | others | Decoded from BeingAppearance ComponentList cooked data — not fully enumerated |
 
-### Implication for issue #249 (BSF_Holster)
+### Implication for issues #249 / #333 / #339 (BSF_Holster — resolved)
 
-**BSF_Holster (bit 8 of bStateField) does NOT write entity+0x3D2.** The posture byte is exclusively driven by the appearance pipeline. The holster animation blend in `USGWAnim_BlendByPosture` reads `entity+0x3D2` directly — the correct server behavior is to send a `BeingAppearance` with the weapon unequipped (or weapon category = relaxed/no-weapon) when the player holsters. BSF_Holster may be a persistence/query bit only (allowing new witnesses to query holster state) rather than an animation trigger.
+**BSF_Holster (bit 8 of bStateField) does NOT write entity+0x3D2.** The posture byte is exclusively driven by the appearance pipeline. The holster animation blend in `USGWAnim_BlendByPosture` reads `entity+0x3D2` directly — the correct server behavior is to send a `BeingAppearance` with the weapon visual filtered out of `ComponentList` when the player holsters. BSF_Holster is not even a persistence/query bit — the 2009 client stores the full 32-bit `bStateField` at `+0x158` but `GameBeing_OnStateFieldUpdate` (`ghidra://SGW.exe@0x00e01c90`) only dispatches on bits 0-7. See [`docs/architecture/state-field-bits.md`](../../architecture/state-field-bits.md) for the verified bit→side-effect table.
 
-This finding changes the analysis of issue #249: the fix may need to include sending an updated `BeingAppearance` to witnesses (not just an `onStateFieldUpdate` broadcast) when holster/draw occurs.
+Resolution:
+
+- **#249** (spawn-holstered) — fixed in PR #338. World-entry path emits `BeingAppearance` with `weapon_visual` filtered from `ComponentList`.
+- **#333** (BSF_HOLSTER retirement) — fixed in PR #338. Constant removed; dead clear-on-fire / clear-on-reload writes removed. Test-and-docs follow-up in PR #362 refreshed the wire-flow annotations in [`docs/gameplay/weapon-ammo-reload.md`](../../gameplay/weapon-ammo-reload.md) and added this resolution note.
+- **#339** (runtime toggle rebroadcast) — fixed in PR #338. `combatant.rs requestHolsterWeapon`, `use_ability.rs` fire-while-holstered queue, and `player/world.rs` reload-while-holstered queue all call `request_appearance_refresh` → base-side `BeingAppearance` rebroadcast to self + AoI witnesses. PR #362 closed the missing test gap (the use_ability fire path's regression guard previously discarded `rx`, so dropping the rebroadcast call would have silently passed).
 
 ### Key addresses (appearance system)
 
