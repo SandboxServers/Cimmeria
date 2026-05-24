@@ -487,12 +487,19 @@ pub(crate) async fn handle_reload(
     )
     .await;
 
-    let mut args = Vec::with_capacity(8);
-    args.extend_from_slice(&7i32.to_le_bytes());
+    // Ammo-type update after reload. propId 3 = `GENERICPROPERTY_AmmoTypeId`;
+    // propId 7 is `AccessLevel` — sending the ammo type under propId 7 plants
+    // a stray `setAccessLevel(<ammo_type_value>)` on the client (issue #168).
+    // The HUD's ammo-type indicator usually still updates because the
+    // bandolier sync path independently emits propId 3, but that's masking,
+    // not correctness.
     let ammo_type = space_mgr
         .get_entity(entity_id)
         .map_or(0, |e| e.active_ammo_type());
-    args.extend_from_slice(&ammo_type.to_le_bytes());
+    let args = crate::cell::cell_methods::inventory::build_entity_property_args(
+        crate::cell::cell_methods::inventory::GENERICPROPERTY_AMMO_TYPE_ID,
+        ammo_type,
+    );
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
