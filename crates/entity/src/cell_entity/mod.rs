@@ -416,9 +416,8 @@ pub struct CellEntity {
     /// `1` when the player grabs the Ambernol vial. Persists across kills
     /// so a stationary drone re-aggros the next player who walks in.
     ///
-    /// Distinct from `aggression_override` (UI nameplate color, tracked
-    /// separately under #330). This field drives combat behavior; that one
-    /// drives the client's friend/foe indicator.
+    /// Distinct from any UI-layer aggression-override (nameplate color);
+    /// this field drives combat behavior, not the friend/foe indicator.
     pub aggression: i32,
 
     // ── Saved mission state (for re-login) ────────────────────────────────────

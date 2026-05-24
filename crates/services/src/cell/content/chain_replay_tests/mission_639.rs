@@ -111,6 +111,23 @@ async fn chain_1032_seven_actions_match_python_ordering() {
 
     // Per-action invariants the encounter relies on:
     //
+    // - SetAggression must target the drone tag with level=1. Without the
+    //   level, auto-aggro never kicks in; without the tag, the wrong NPC
+    //   gets the behavior bit.
+    let aggression = chain
+        .actions
+        .iter()
+        .find_map(|a| match a {
+            Action::SetAggression { entity_tag, level } => Some((entity_tag.as_str(), *level)),
+            _ => None,
+        })
+        .expect("chain 1032 must include a SetAggression action");
+    assert_eq!(
+        aggression,
+        ("ArmYourself_PrisonerRetrievalUnit", 1),
+        "chain 1032 SetAggression must target the drone with level=1",
+    );
+
     // - GenerateThreat must target the drone tag with magnitude 1000 — this
     //   is what focuses the drone on the player who grabbed the vial rather
     //   than whichever player happens to be closest (auto-aggro from

@@ -135,7 +135,7 @@ fn spawn_record_with_ability_ids_skips_default_fallback() {
             .has_ability(crate::cell::combat::NPC_DEFAULT_ABILITY),
         "NPC with a template-driven ability set must NOT also pick up \
          NPC_DEFAULT_ABILITY — the bucket would otherwise contain both \
-         and the selector would round-robin",
+         and the selector would alternate based on sort order",
     );
 }
 

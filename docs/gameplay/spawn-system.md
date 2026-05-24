@@ -352,7 +352,7 @@ spawn point itself may encode the template directly via `spawn_table_name` in
 
 ## NPC Ability Bucket and Selection
 
-`spawn_npc_from_record_into` seeds the NPC's ability list from the template's `ability_set_id` via `ability_set_abilities`. The DB load in [`crates/services/src/cell/spawner/npcs.rs`](../../crates/services/src/cell/spawner/npcs.rs) `LEFT JOIN`s the table and exposes the joined IDs as `SpawnRecord::ability_ids`. When the field is empty (template has no `ability_set_id`), the spawn path falls back to `NPC_DEFAULT_ABILITY` (Pistol Shot, ability 592) — defensive default so unspeced mobs aren't defenseless.
+`spawn_npc_from_record_into` seeds the NPC's ability list from the template's `ability_set_id` via `ability_set_abilities`. The DB load in [`crates/services/src/cell/spawner/npcs.rs`](../../crates/services/src/cell/spawner/npcs.rs) pulls the per-template IDs alongside the spawn row via a correlated `array_agg` subquery (`COALESCE`d to an empty array so the Rust side always sees `Vec<i32>`) and exposes them as `SpawnRecord::ability_ids`. When the field is empty (template has no `ability_set_id`), the spawn path falls back to `NPC_DEFAULT_ABILITY` (Pistol Shot, ability 592) — defensive default so unspecified mobs aren't defenseless.
 
 Examples:
 
@@ -360,9 +360,11 @@ Examples:
 - Template 15 (Cellblock Guard) → `ability_set_id = 1` → `[579]` NID guard pistol.
 - Templates without an `ability_set_id` (most props, statics) → fall back to `NPC_DEFAULT_ABILITY = 592` and rely on `class_id` filtering to keep the AI tick from firing on non-mobs.
 
-At fight-tick time, [`crates/services/src/cell/service/npc_ai.rs`](../../crates/services/src/cell/service/npc_ai.rs) `choose_npc_ability` partitions the NPC's known abilities into three buckets — **usable**, **cooling**, **needs_ammo** — and picks the first usable. If every ability is gated, the NPC holds fire and the next 2 s tick retries. Mirrors `python/cell/SGWMob.py:chooseAbility`.
+At fight-tick time, [`crates/services/src/cell/service/npc_ai.rs`](../../crates/services/src/cell/service/npc_ai.rs) `choose_npc_ability` walks the NPC's known abilities (sorted for determinism) and returns the first one that is off cooldown. If every ability is cooling, the NPC holds fire and the next 2 s tick retries. Mirrors `python/cell/SGWMob.py:chooseAbility`. NPCs have infinite ammo, so `required_ammo` is not a gate at the selector — that check is player-only at the dispatch site.
 
-Per-ability range and minimum-range backup live in [#329](https://github.com/SandboxServers/Cimmeria/issues/329); until that lands, the selector treats any in-range/LOS-confirmed ability as fireable (the flat `NPC_ATTACK_RANGE = 30.0` gates the call before reaching the selector).
+Per-ability cooldown state lives on `CellEntity::abilities.ability_cooldowns` (the `AbilityManager` keyed by `ability_id` → `CooldownEntry { expires_at }`). The leash tick (`npc_ai_leash`) calls `clear_all_cooldowns()` when the NPC returns to spawn, so a leashed-and-re-aggrod NPC starts a fresh cooldown window.
+
+Per-ability range and minimum-range backup (the "back up when target is inside `min_range`" behavior) are tracked separately; until they land, the selector treats any in-range/LOS-confirmed ability as fireable (the flat `NPC_ATTACK_RANGE = 30.0` gates the call before reaching the selector).
 
 ## NPC Aggression (behavior bit)
 
@@ -370,7 +372,9 @@ Per-ability range and minimum-range backup live in [#329](https://github.com/San
 
 The seed is intentionally small (`1.0`) so that an explicit `generate_threat 1000` from the same chain dominates and focuses the NPC on the player who triggered the chain. Aggression persists across kills, so a stationary drone with `aggression=1` re-aggros the next player who walks in.
 
-Distinct from `aggression_override` (UI nameplate color, tracked separately under [#330](https://github.com/SandboxServers/Cimmeria/issues/330)) — this field drives combat behavior, that one drives the client friend/foe indicator.
+`CellEntity::new` initializes `aggression: 0`, so the next spawn of a respawn-eligible NPC starts passive again — the behavior bit is per-entity, not per-template. Mission chains that need the next-instance drone to wake up have to fire `set_aggression` against the fresh spawn (as chain 1032 does on the vial-grab event).
+
+Distinct from any UI-layer aggression-override (nameplate color) — this field drives combat behavior, not the friend/foe indicator.
 
 ## Known Gaps
 

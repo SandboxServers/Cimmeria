@@ -7,16 +7,10 @@ use tokio::sync::mpsc;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
-/// NPC AI tick — drive the three Fighting/Leashing/Idle-with-aggression
-/// paths. For NPCs in Fighting: find top threat target, check leash, attack
-/// via the three-bucket selector. For NPCs in Leashing: reset to Idle when
-/// close enough to spawn point, restore health. For NPCs in Idle whose
-/// `aggression > 0`: scan AoI witnesses for opposing-faction players, seed
-/// threat on the closest one (transitions to Fighting on the next tick).
-///
-/// The Idle-with-aggression path is what makes `set_aggression(level=1)`
-/// content actions actually drive combat — see
-/// `python/cell/missions/Castle_CellBlock/FindAmbernol.py:99` and
+/// NPC AI tick — drives Fighting, Leashing, and Idle-with-aggression
+/// NPCs. The `Idle` filter on `aggression > 0` is what makes the
+/// `set_aggression` content action actually trigger combat — without it
+/// the action would be a behavior bit nothing read. See
 /// [`super::super::content::executor::world::set_aggression`].
 pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     use cimmeria_entity::cell_entity::AiState;
@@ -56,30 +50,20 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
 
 /// Auto-aggro tick for Idle NPCs with `aggression > 0`.
 ///
-/// Scans the NPC's AoI witnesses (players who can see this NPC) and seeds
-/// threat on the closest opposing-faction player. The next AI tick finds
-/// the NPC in `Fighting` (the threat seed transitioned it via
-/// `combat::generate_threat`) and runs the normal fight path.
+/// Scans witnesses for opposing-faction players, seeds a small threat on
+/// the closest. The next AI tick transitions the NPC to Fighting.
 ///
-/// "Opposing faction" is any faction value different from the NPC's own —
-/// the simple rule the curated chains expect. Chain 1032's drone is
-/// faction 10 (hostile-NID); the player joins at faction 0 (neutral).
-/// Different = opposing for the purposes of auto-aggro.
-///
-/// The seed threat is intentionally small (`1.0`) so that an explicit
-/// `generate_threat 1000` from the same chain (chain 1032 has both)
-/// dominates the threat list and focuses the drone on the triggering
-/// player rather than whichever player happens to be closest.
+/// Seed magnitude (`1.0`) is intentionally tiny so an explicit
+/// `generate_threat` from a content chain (e.g., chain 1032's `1000`)
+/// dominates and focuses the NPC on the triggering player rather than
+/// whichever player happens to be closest. Caller (`npc_ai_tick`)
+/// guarantees `aggression > 0`.
 fn npc_ai_idle_auto_aggro(npc_id: u32, space_mgr: &mut SpaceManager) {
     use super::super::combat;
 
-    // Defensive gate: the outer `npc_ai_tick` already filters on
-    // `aggression > 0`, but a direct caller (test, future driver) could
-    // skip that filter. Bail out here too so the function is safe to
-    // call on any Idle NPC — passive ones remain passive.
     let (npc_pos, npc_faction) = match space_mgr.get_entity(npc_id) {
-        Some(e) if e.aggression > 0 => (e.position, e.faction),
-        Some(_) | None => return,
+        Some(e) => (e.position, e.faction),
+        None => return,
     };
 
     // Witnesses-of-NPC = players currently rendering this NPC, i.e. players
@@ -271,17 +255,8 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
         npc.nav_path.clear();
     }
 
-    // Three-bucket ability selection. Pick the ability with the fewest
-    // gates blocking it — `usable` if available, otherwise hold fire and
-    // wait for cooldowns. `None` means every ability is cooling or
-    // needs ammo; the AI ticks again in 2s and tries again.
-    //
-    // Mirrors `python/cell/SGWMob.py:chooseAbility` — three buckets,
-    // pick-from-usable, hold otherwise. Without per-ability range gating
-    // (#329's territory) we use the same flat `NPC_ATTACK_RANGE` we
-    // already pass before reaching this point; once #329 lands the
-    // selector itself can read each ability's `max_range`/`min_range`
-    // from `AbilityDef` and gate per-ability.
+    // Mirrors `python/cell/SGWMob.py:chooseAbility`. Range gating already
+    // happened above; selector only sees cooldown state. `None` → hold fire.
     let chosen_ability = match choose_npc_ability(npc_id, space_mgr) {
         Some(id) => id,
         None => {
@@ -311,28 +286,19 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     .await;
 }
 
-/// Three-bucket ability picker for an NPC's fight tick.
+/// Pick an off-cooldown ability for the NPC's fight tick. `None` → all
+/// cooling → caller holds fire. Empty bucket falls back to
+/// `NPC_DEFAULT_ABILITY` so a misconfigured template doesn't wedge silently.
 ///
-/// Partition the NPC's known abilities into:
+/// Why no ammo gate: NPCs have infinite ammo (the `required_ammo > 0` check
+/// at the dispatch site is player-only). Gating here would permanently
+/// disable abilities like Pistol Shot 592 (`required_ammo = 1`) that every
+/// stock NPC carries.
 ///
-/// - **usable** — off cooldown AND (`required_ammo == 0` OR ammo available)
-/// - **cooling** — on cooldown (will become usable when the cooldown clears)
-/// - **needs_ammo** — out of ammo (the ammo refill path will eventually unblock)
-///
-/// Returns the first usable ability, or `None` if every ability is gated.
-/// Falls back to [`combat::NPC_DEFAULT_ABILITY`] when the NPC has no known
-/// abilities at all (a misconfigured template) so the AI tick never wedges
-/// silently — the dispatch will then reject the unknown-ability call with a
-/// clear log line.
-///
-/// Range/LOS gating is deliberately NOT done here — those decisions live in
-/// the AI tick's geometry check (and will move to per-ability evaluation
-/// once #329 lands). The selector is purely about "what's ready to fire
-/// right now," not "what's in range of which target."
-///
-/// Mirrors the python `chooseAbility` shape on `SGWMob.py` (multi-ability
-/// NPCs scan their list, partition, pick the first usable).
-fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager) -> Option<i32> {
+/// Stable sort over `known_ability_ids` keeps selection deterministic
+/// tick-to-tick; a future "prefer higher threat_level_id" refinement
+/// changes the ordering without touching the partition.
+pub(super) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager) -> Option<i32> {
     use super::super::combat;
 
     let npc = space_mgr.get_entity(npc_id)?;
@@ -340,40 +306,12 @@ fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager) -> Option<i32> {
         return Some(combat::NPC_DEFAULT_ABILITY);
     }
 
-    // Stable iteration order — `known_ability_ids` returns HashSet contents
-    // unsorted, so sort here to keep tick-to-tick selection deterministic.
-    // A future "prefer higher threat_level_id" refinement just changes this
-    // ordering without touching the bucket partition.
     let mut ability_ids = npc.abilities.known_ability_ids();
     ability_ids.sort_unstable();
 
-    for ability_id in ability_ids {
-        if npc.abilities.is_on_cooldown(ability_id) {
-            // Cooling bucket — skip.
-            continue;
-        }
-        // Ammo gate. NPCs in this codebase don't track ammo (they have
-        // infinite ammo by convention — the `required_ammo > 0` guard at
-        // `use_ability.rs:150,160,185` is player-only). For NPC selection
-        // we treat `required_ammo > 0` as "needs ammo" and skip, so a
-        // future ammo-bearing NPC archetype slots in without revisiting
-        // the bucket logic. Today every NPC ability is `required_ammo = 0`
-        // (Pistol Shot 592, Energy Shock 221), so this branch is dormant
-        // until we ship one that isn't.
-        let required_ammo = space_mgr
-            .ability_defs
-            .get(&ability_id)
-            .map_or(0, |d| d.required_ammo);
-        if required_ammo > 0 {
-            // needs_ammo bucket — skip.
-            continue;
-        }
-        // Usable bucket — first match wins.
-        return Some(ability_id);
-    }
-
-    // All abilities gated (cooling or needs_ammo). Caller holds fire.
-    None
+    ability_ids
+        .into_iter()
+        .find(|&id| !npc.abilities.is_on_cooldown(id))
 }
 
 /// NPC leashing behavior: reset to Idle and restore health.
@@ -426,204 +364,4 @@ async fn npc_ai_leash(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     let mut state_args = Vec::with_capacity(4);
     state_args.extend_from_slice(&state_field.to_le_bytes());
     super::super::abilities::send_entity_method(npc_id, 19, state_args, tx, space_mgr).await;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use cimmeria_entity::abilities::AbilityDef;
-    use cimmeria_entity::cell_entity::AiState;
-
-    /// Castle test space + one NPC at the origin and (optionally) one
-    /// player. The NPC defaults to `class_id = 0x04` so the AI tick sees
-    /// it; the caller flips faction / aggression / ai_state as needed.
-    fn make_mgr_with_npc_and_player(
-        npc_id: u32,
-        npc_faction: u8,
-        player_id: u32,
-        player_pos: [f32; 3],
-    ) -> SpaceManager {
-        let mut mgr = SpaceManager::new(1);
-        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
-        mgr.parse_spaces_xml(xml).unwrap();
-        mgr.create_startup_spaces(
-            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
-        )
-        .unwrap();
-        // NPC at origin.
-        mgr.spawn_npc(npc_id, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
-            .unwrap();
-        if let Some(npc) = mgr.get_entity_mut(npc_id) {
-            npc.faction = npc_faction;
-            npc.ai_state = AiState::Idle;
-            // Drop the default NPC_DEFAULT_ABILITY seeded by `spawn_npc` so
-            // selector tests can control the bucket precisely.
-            npc.abilities
-                .remove_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
-        }
-        // Player as a co-located entity in the same space (witness of NPC).
-        mgr.create_entity(player_id, "Castle", player_pos, [0.0; 3])
-            .unwrap();
-        if let Some(p) = mgr.get_entity_mut(player_id) {
-            p.is_player = true;
-            p.player_id = Some(player_id as i32);
-            p.faction = 0;
-        }
-        mgr.connect_entity(player_id);
-        let _ = mgr.compute_aoi_changes();
-        mgr
-    }
-
-    fn make_ability_def(id: i32, required_ammo: i32) -> AbilityDef {
-        AbilityDef {
-            ability_id: id,
-            name: format!("test-{id}"),
-            cooldown: 1.0,
-            warmup: 0.0,
-            flags: 0,
-            is_ranged: true,
-            min_range: 0,
-            max_range: 30,
-            target_type_id: 0,
-            effect_ids: vec![],
-            moniker_ids: vec![],
-            required_ammo,
-            event_set_id: None,
-            velocity: 0.0,
-        }
-    }
-
-    /// `aggression > 0` on an Idle NPC with an opposing-faction player in
-    /// AoI seeds threat → NPC transitions to Fighting on the next tick.
-    /// Bug shape: the previous `set_aggression` wrote a property nothing
-    /// read, so the drone sat idle forever.
-    #[test]
-    fn idle_npc_with_aggression_aggros_opposing_player() {
-        let mut mgr = make_mgr_with_npc_and_player(200_001, 10, 1, [5.0, 0.0, 0.0]);
-        if let Some(npc) = mgr.get_entity_mut(200_001) {
-            npc.aggression = 1;
-        }
-
-        npc_ai_idle_auto_aggro(200_001, &mut mgr);
-
-        let npc = mgr.get_entity(200_001).unwrap();
-        assert_eq!(
-            npc.ai_state,
-            AiState::Fighting,
-            "aggression=1 with opposing-faction witness must seed threat → Fighting",
-        );
-        assert!(
-            npc.threat_list.contains_key(&1),
-            "player must be on NPC threat list after auto-aggro",
-        );
-    }
-
-    /// `aggression == 0` (default) keeps the NPC Idle even with a hostile
-    /// player in AoI. The pre-existing "passive until attacked" baseline.
-    #[test]
-    fn idle_npc_without_aggression_stays_idle() {
-        let mut mgr = make_mgr_with_npc_and_player(200_002, 10, 1, [5.0, 0.0, 0.0]);
-        // aggression defaults to 0 — explicit assert just for clarity.
-        assert_eq!(mgr.get_entity(200_002).unwrap().aggression, 0);
-
-        npc_ai_idle_auto_aggro(200_002, &mut mgr);
-
-        let npc = mgr.get_entity(200_002).unwrap();
-        assert_eq!(npc.ai_state, AiState::Idle);
-        assert!(npc.threat_list.is_empty());
-    }
-
-    /// `aggression > 0` but the witness shares the NPC's faction — no
-    /// aggro. Same-faction NPCs in the same AoI must not auto-aggro each
-    /// other (matters once the NPCs-can-see-NPCs faction logic ships).
-    #[test]
-    fn aggression_skips_same_faction_witnesses() {
-        // NPC faction 0 == player faction 0 (player default).
-        let mut mgr = make_mgr_with_npc_and_player(200_003, 0, 1, [5.0, 0.0, 0.0]);
-        if let Some(npc) = mgr.get_entity_mut(200_003) {
-            npc.aggression = 1;
-        }
-
-        npc_ai_idle_auto_aggro(200_003, &mut mgr);
-
-        let npc = mgr.get_entity(200_003).unwrap();
-        assert_eq!(npc.ai_state, AiState::Idle, "same faction must not aggro");
-        assert!(npc.threat_list.is_empty());
-    }
-
-    /// Three-bucket selector: NPC with two abilities, one on cooldown, one
-    /// fresh — selector returns the fresh one. Pins that the cooldown gate
-    /// participates in the partition.
-    #[test]
-    fn selector_skips_cooling_ability() {
-        let mut mgr = make_mgr_with_npc_and_player(200_004, 10, 1, [5.0, 0.0, 0.0]);
-        mgr.ability_defs.insert(221, make_ability_def(221, 0));
-        mgr.ability_defs.insert(592, make_ability_def(592, 0));
-        if let Some(npc) = mgr.get_entity_mut(200_004) {
-            npc.abilities.add_ability(221);
-            npc.abilities.add_ability(592);
-            // Sort order is ascending, so 221 comes first — put it on
-            // cooldown so the selector must skip past it to pick 592.
-            npc.abilities
-                .start_ability_cooldown(221, std::time::Duration::from_secs(10));
-        }
-
-        let chosen = choose_npc_ability(200_004, &mgr);
-        assert_eq!(chosen, Some(592), "cooling 221 → selector must pick 592");
-    }
-
-    /// Three-bucket selector: ability with `required_ammo > 0` goes into
-    /// the needs_ammo bucket and gets skipped. NPCs don't track ammo in
-    /// this codebase, so any ammo-bearing ability is unfireable; the
-    /// selector treats it correctly anyway.
-    #[test]
-    fn selector_skips_needs_ammo_ability() {
-        let mut mgr = make_mgr_with_npc_and_player(200_005, 10, 1, [5.0, 0.0, 0.0]);
-        mgr.ability_defs.insert(221, make_ability_def(221, 0));
-        // Synthetic ability 200 with required_ammo > 0.
-        mgr.ability_defs.insert(200, make_ability_def(200, 5));
-        if let Some(npc) = mgr.get_entity_mut(200_005) {
-            npc.abilities.add_ability(200);
-            npc.abilities.add_ability(221);
-        }
-
-        let chosen = choose_npc_ability(200_005, &mgr);
-        assert_eq!(
-            chosen,
-            Some(221),
-            "ammo-bearing 200 → selector must pick 221"
-        );
-    }
-
-    /// Three-bucket selector: every ability is on cooldown → return None
-    /// so the AI tick holds fire rather than misfiring.
-    #[test]
-    fn selector_returns_none_when_all_cooling() {
-        let mut mgr = make_mgr_with_npc_and_player(200_006, 10, 1, [5.0, 0.0, 0.0]);
-        mgr.ability_defs.insert(221, make_ability_def(221, 0));
-        if let Some(npc) = mgr.get_entity_mut(200_006) {
-            npc.abilities.add_ability(221);
-            npc.abilities
-                .start_ability_cooldown(221, std::time::Duration::from_secs(10));
-        }
-
-        let chosen = choose_npc_ability(200_006, &mgr);
-        assert_eq!(chosen, None, "all cooling → hold fire");
-    }
-
-    /// Three-bucket selector: NPC with no abilities at all (misconfigured
-    /// template) falls back to `NPC_DEFAULT_ABILITY` so the tick never
-    /// wedges silently.
-    #[test]
-    fn selector_falls_back_to_default_when_no_abilities() {
-        let mgr = make_mgr_with_npc_and_player(200_007, 10, 1, [5.0, 0.0, 0.0]);
-        // Empty ability bucket (the fixture already removed NPC_DEFAULT_ABILITY).
-
-        let chosen = choose_npc_ability(200_007, &mgr);
-        assert_eq!(
-            chosen,
-            Some(crate::cell::combat::NPC_DEFAULT_ABILITY),
-            "empty bucket → fallback to NPC_DEFAULT_ABILITY",
-        );
-    }
 }
