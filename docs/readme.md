@@ -233,22 +233,29 @@ Practical guidance for contributors working on the RE effort or the emulator.
 
 | Document | Description | Status |
 |----------|-------------|--------|
+| [re-toolchain-setup.md](guides/re-toolchain-setup.md) | **Start here for RE.** End-to-end setup for Ghidra, x64dbg, MCP bridges, and `.mcp.json`. Includes the `pwsh setup.ps1 -WithReToolchain` automated path. | Complete |
+| [reverse-engineering-with-claude.md](guides/reverse-engineering-with-claude.md) | Workflow doc: when to invoke `game-archaeology-specialist`, Six-Phase mapping to Claude Code sessions, evidence handoff to `documentation-writer`, what NOT to delegate | Complete |
 | [evidence-standards.md](guides/evidence-standards.md) | Confidence levels, citation format, how to document findings | Complete |
 | [reading-decompiled-code.md](guides/reading-decompiled-code.md) | Tips for reading Ghidra decompiler output, common patterns, pitfalls | Complete |
+| [sgw-live-debugging.md](guides/sgw-live-debugging.md) | Live debugging SGW.exe with x32dbg + log breakpoints — manual fallback when MCP-driven flows fail; pybag incompatibility documented | Complete |
 | [entity-def-guide.md](guides/entity-def-guide.md) | How to read and write entity XML definitions and connect them to Python scripts | Complete |
 
 ---
 
 ### `reverse-engineering/` -- Ghidra Work
 
-Annotation scripts, function naming progress, and per-system RE findings.
+Annotation scripts, function naming progress, per-system RE findings, and toolchain installation references.
+
+See [reverse-engineering/README.md](reverse-engineering/README.md) for the top-level orientation. New RE contributors should start at [guides/re-toolchain-setup.md](guides/re-toolchain-setup.md) before exploring this directory.
 
 | Document | Description | Status |
 |----------|-------------|--------|
+| [README.md](reverse-engineering/README.md) | **HUB** -- Top-level orientation for the RE tree, directory map, bible relationship | Complete |
 | [PLAN.md](reverse-engineering/PLAN.md) | RE plan: phases, targets, methodology | Complete |
 | [STATUS.md](reverse-engineering/STATUS.md) | RE status: 101,909/168,239 functions named (60.6%), all 5 phases complete | Complete |
 | [function-naming-progress.md](reverse-engineering/function-naming-progress.md) | Naming conventions, coverage metrics, per-script results | Complete |
 | [address-map.md](reverse-engineering/address-map.md) | Key address table: vtables, global objects, critical functions in sgw.exe | Complete |
+| [toolchain/install-ghidra-mcp.md](reverse-engineering/toolchain/install-ghidra-mcp.md) | GhidraMCP plugin install reference — manual + bootstrap-driven paths, port-fallback gotcha | Complete |
 
 #### `binaries/` -- Binary Analysis
 

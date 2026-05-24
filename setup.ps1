@@ -11,7 +11,8 @@
       Step 4: Build Admin      - [optional] Tauri admin panel (Node.js + Rust)
       Step 5: Build Launcher   - [optional] SGW game launcher (Tauri)
       Step 6: Database         - PostgreSQL init, schema load, seed data
-      Step 7: Launch           - Start the cimmeria-server binary
+      Step 7: RE Toolchain     - [optional] Ghidra + GhidraMCP + x64dbg + MCP venvs
+      Step 8: Launch           - Start the cimmeria-server binary
 
     Every step is idempotent. Safe to re-run -- completed work is detected and skipped.
     On failure the pipeline aborts with a clear error message.
@@ -27,6 +28,7 @@
       pwsh setup.ps1                          # Build server, init DB, launch
       pwsh setup.ps1 -UseDocker               # Same but PostgreSQL runs in Docker
       pwsh setup.ps1 -WithAdmin -WithLauncher # Build everything
+      pwsh setup.ps1 -WithReToolchain         # Add Ghidra/x64dbg/MCP toolchain
 
     ----------------------------------------------
     BUILD FLAGS
@@ -36,6 +38,12 @@
       -SkipBuild          Skip all build steps (useful for DB-only operations).
       -WithAdmin          Also build the Tauri admin panel. Requires Node.js 22+.
       -WithLauncher       Also build the SGW game launcher.
+      -WithReToolchain    Also install the reverse-engineering toolchain
+                          (Ghidra, GhidraMCP plugin, x64dbg, x64dbg-automate
+                          plugin, MCP Python venvs, and .mcp.json). Opt-in
+                          because most contributors don't need it. See
+                          docs/guides/re-toolchain-setup.md for what gets
+                          installed and where.
       -Configuration      "Debug" (default) or "Release".
       -NoLaunch           Stop after setup -- do not launch the server.
 
@@ -154,6 +162,13 @@
     the configured port (default 5433). The container persists across setup runs.
     Requires Docker Desktop (Windows/macOS) or Docker Engine (Linux).
 
+.PARAMETER WithReToolchain
+    Install the reverse-engineering toolchain alongside the server: Ghidra 12,
+    the GhidraMCP plugin (deployed to %APPDATA%\ghidra\...\Extensions\), x64dbg
+    with the x64dbg-automate plugin, two Python venvs in .venvs/ that host the
+    MCP bridges, and a generated .mcp.json (only if one doesn't already exist).
+    Idempotent and Windows-only. See docs/guides/re-toolchain-setup.md.
+
 .EXAMPLE
     pwsh setup.ps1
 
@@ -199,6 +214,7 @@ param(
     [switch]$ForceDatabase,
     [switch]$ResetDatabase,
     [switch]$UseDocker,
+    [switch]$WithReToolchain,
     [string]$LogLevel
 )
 

@@ -3,6 +3,7 @@
 > **Type**: How-to guide
 > **Audience**: Cimmeria reverse-engineers and server developers needing to confirm a client-side hypothesis against the live process.
 > **Prerequisites**: Ghidra with SGW.exe loaded and the annotation scripts run (at minimum 01_rtti and 04_event_signal). x32dbg (use `x32dbg.exe` — SGW is 32-bit). Optional: Ghidra MCP plugin for HTTP-driven static lookups.
+> **Setup**: If you haven't wired Ghidra MCP or x64dbg-automate MCP yet, do that first via [`re-toolchain-setup.md`](re-toolchain-setup.md). For the overall RE workflow (when to invoke the `game-archaeology-specialist` agent, what to verify yourself, what to hand off), see [`reverse-engineering-with-claude.md`](reverse-engineering-with-claude.md).
 
 This guide captures what we learned hunting the [right-click routing on corpse bug](../reverse-engineering/findings/right-click-routing-on-corpse.md) — specifically, the techniques that worked, the dead ends, and the gotchas. Follow this when static analysis isn't enough and you need to confirm runtime state.
 

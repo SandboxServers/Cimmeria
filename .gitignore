@@ -203,6 +203,9 @@ game/patches/*
 
 ghidra/*
 
+# Python venvs created by bootstrap (re-toolchain MCPs, etc.)
+.venvs/
+
 .scratch/*
 
 # Node.js — repo-root markdown lint tooling (see package.json). Per-Tauri-app

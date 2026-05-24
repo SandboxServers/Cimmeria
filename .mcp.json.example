@@ -1,0 +1,54 @@
+{
+  "_comment": [
+    "Cimmeria MCP server configuration template.",
+    "",
+    "Copy this file to .mcp.json (which is gitignored) and replace the",
+    "<CIMMERIA_ROOT> placeholders with the absolute path to your repo checkout.",
+    "On Windows that looks like: C:\\Users\\you\\source\\projects\\Cimmeria",
+    "",
+    "If you ran `pwsh setup.ps1 -WithReToolchain`, this file was generated for",
+    "you automatically — no manual edits required. See:",
+    "  docs/guides/re-toolchain-setup.md     -- end-to-end setup",
+    "  docs/guides/reverse-engineering-with-claude.md  -- the workflow doc",
+    "",
+    "Three servers are wired:",
+    "  cimmeria-rag : Azure-hosted RAG over the Cimmeria repo + docs + RE notes.",
+    "                 Read-only. No local dependencies. Always reachable.",
+    "  ghidra       : Static analysis of SGW.exe via the bethington/ghidra-mcp",
+    "                 bridge. Requires Ghidra GUI running with the GhidraMCP",
+    "                 plugin server started.",
+    "  x64dbg       : Dynamic analysis via dariushoule/x64dbg-automate. Requires",
+    "                 x96dbg.exe launched with the x64dbg-automate plugin loaded.",
+    "",
+    "The GHIDRA_MCP_URL port can drift on Windows when iphlpsvc holds 8089-8099.",
+    "The plugin falls back to the first free port in 8089..8104 — confirm the",
+    "actual bound port from Ghidra's console output, not the status dialog",
+    "(upstream display bug shows the configured port, not the bound one)."
+  ],
+  "mcpServers": {
+    "cimmeria-rag": {
+      "type": "http",
+      "url": "https://cimmeria-mcp.azurewebsites.net/runtime/webhooks/mcp",
+      "headers": {
+        "x-functions-key": "REPLACE_WITH_FUNCTIONS_KEY"
+      }
+    },
+    "ghidra": {
+      "type": "stdio",
+      "command": "<CIMMERIA_ROOT>\\.venvs\\ghidra-mcp\\Scripts\\python.exe",
+      "args": [
+        "<CIMMERIA_ROOT>\\external\\ghidra-mcp\\bridge_mcp_ghidra.py"
+      ],
+      "env": {
+        "GHIDRA_MCP_URL": "http://127.0.0.1:8100/"
+      }
+    },
+    "x64dbg": {
+      "type": "stdio",
+      "command": "<CIMMERIA_ROOT>\\.venvs\\x64dbg-mcp\\Scripts\\x64dbg-automate-mcp.exe",
+      "env": {
+        "X64DBG_PATH": "<CIMMERIA_ROOT>\\dbg\\release\\x96dbg.exe"
+      }
+    }
+  }
+}
