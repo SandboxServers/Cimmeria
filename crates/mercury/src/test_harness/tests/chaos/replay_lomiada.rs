@@ -24,7 +24,8 @@
 //! Channel, exact recovery tick count, byte-identical
 //! retransmits) are scoped for follow-up — they need the same
 //! `with_key` constructor on Channel that the wireclient effort
-//! (#281 successor) will eventually add. For now this test
+//! (a future `Channel::with_key` constructor + content-aware
+//! wireclient layer) will eventually add. For now this test
 //! validates the **replay infrastructure itself** is wired
 //! end-to-end against real captured bytes.
 

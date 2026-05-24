@@ -81,6 +81,11 @@ pub struct PcapEvent {
 /// recorded but don't abort the load — they typically indicate a
 /// pre-handshake packet that was sent before the session key was
 /// negotiated.
+///
+/// Intentionally does not implement `Debug` — `MercuryEncryption`
+/// holds the raw AES key and we want the key to never appear in
+/// log output. Tests that need to unwrap a `Result<PcapReplay, _>`
+/// use a match on the `Err` arm instead of `.expect()`/`.unwrap()`.
 pub struct PcapReplay {
     pcap_path: std::path::PathBuf,
     key: Option<MercuryEncryption>,
@@ -158,13 +163,24 @@ impl PcapReplay {
             .map_err(|e| std::io::Error::other(format!("pcap header parse failed: {e}")))?;
 
         // First pass: gather all UDP frames + infer server addr.
+        //
+        // Failure-mode discipline:
+        //   - Pcap record-level parse failures (truncated capture,
+        //     malformed PCAP frame) → return Err. A damaged fixture
+        //     should fail the test, not produce a partial replay
+        //     that passes weakly.
+        //   - Ethernet/IP/UDP parse failures on individual records →
+        //     skip silently. Some captures contain non-UDP frames
+        //     (ICMP, ARP) that are legitimately not part of the
+        //     Mercury session.
         let mut frames: Vec<(Duration, SocketAddr, SocketAddr, Vec<u8>)> = Vec::new();
         let mut first_ts: Option<Duration> = None;
         while let Some(rec_result) = reader.next_packet() {
-            let rec = match rec_result {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
+            let rec = rec_result.map_err(|e| {
+                std::io::Error::other(format!(
+                    "pcap record parse failed (capture may be truncated or malformed): {e}"
+                ))
+            })?;
             let ts = rec.timestamp;
             let offset = match first_ts {
                 None => {
@@ -191,6 +207,14 @@ impl PcapReplay {
             if !payload.is_empty() {
                 frames.push((offset, src, dst, payload));
             }
+        }
+
+        if frames.is_empty() {
+            // No UDP frames at all → not a Mercury capture (or pcap
+            // is empty). Return an empty event list rather than
+            // panicking in `infer_server_addr`. Tests assert on
+            // event count and will fail with a clear message.
+            return Ok(Vec::new());
         }
 
         let server_addr = match self.server_addr {
@@ -229,7 +253,15 @@ impl PcapReplay {
 /// distinct packets (client→server is typically lower-volume than
 /// server→client world updates). Falls back to the first observed
 /// destination if everything ties.
+///
+/// **Precondition**: `frames` must be non-empty. Callers check this
+/// before calling — the `events()` path returns early with an empty
+/// vec when no UDP frames were found in the capture.
 fn infer_server_addr(frames: &[(Duration, SocketAddr, SocketAddr, Vec<u8>)]) -> SocketAddr {
+    debug_assert!(
+        !frames.is_empty(),
+        "infer_server_addr called with empty frames — events() must early-return first"
+    );
     use std::collections::HashMap;
     let mut inbound_counts: HashMap<SocketAddr, usize> = HashMap::new();
     for (_, _, dst, _) in frames {
@@ -240,4 +272,92 @@ fn infer_server_addr(frames: &[(Duration, SocketAddr, SocketAddr, Vec<u8>)]) -> 
         .max_by_key(|(_, count)| *count)
         .map(|(addr, _)| addr)
         .unwrap_or_else(|| frames[0].2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unwrap_err(result: Result<PcapReplay, std::io::Error>, msg: &str) -> std::io::Error {
+        match result {
+            Ok(_) => panic!("{msg}"),
+            Err(e) => e,
+        }
+    }
+
+    #[test]
+    fn with_key_from_missing_file_returns_helpful_error() {
+        let err = unwrap_err(
+            PcapReplay::load("/dev/null/does/not/exist.pcap")
+                .with_key_from("/dev/null/does/not/exist.keys"),
+            "missing key file must surface as an Err",
+        );
+        assert!(
+            !err.to_string().contains("expected 64 hex chars"),
+            "missing-file should surface as I/O error, not a hex-length complaint; got: {err}"
+        );
+    }
+
+    #[test]
+    fn with_key_from_wrong_length_complains_specifically() {
+        let tmpdir = std::env::temp_dir().join("cimmeria-pcap-replay-test");
+        std::fs::create_dir_all(&tmpdir).unwrap();
+        let key_path = tmpdir.join("short.keys");
+        std::fs::write(&key_path, "deadbeef").unwrap();
+
+        let err = unwrap_err(
+            PcapReplay::load("ignored.pcap").with_key_from(&key_path),
+            "8-char key must be rejected",
+        );
+        assert!(
+            err.to_string().contains("expected 64 hex chars"),
+            "wrong-length must complain about hex length; got: {err}"
+        );
+
+        let _ = std::fs::remove_file(&key_path);
+    }
+
+    #[test]
+    fn with_key_from_non_hex_complains() {
+        let tmpdir = std::env::temp_dir().join("cimmeria-pcap-replay-test");
+        std::fs::create_dir_all(&tmpdir).unwrap();
+        let key_path = tmpdir.join("bad_hex.keys");
+        std::fs::write(
+            &key_path,
+            "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        )
+        .unwrap();
+
+        let err = unwrap_err(
+            PcapReplay::load("ignored.pcap").with_key_from(&key_path),
+            "non-hex key must be rejected",
+        );
+        assert!(
+            err.to_string().contains("invalid hex"),
+            "non-hex must complain about hex parsing; got: {err}"
+        );
+
+        let _ = std::fs::remove_file(&key_path);
+    }
+
+    #[test]
+    fn infer_server_addr_picks_majority_destination() {
+        let a: SocketAddr = "127.0.0.1:1000".parse().unwrap();
+        let b: SocketAddr = "127.0.0.1:2000".parse().unwrap();
+        let p: Vec<u8> = vec![1, 2, 3];
+        let frames = vec![
+            (Duration::ZERO, b, a, p.clone()), // → a
+            (Duration::ZERO, b, a, p.clone()), // → a
+            (Duration::ZERO, a, b, p.clone()), // → b
+        ];
+        assert_eq!(infer_server_addr(&frames), a);
+    }
+
+    #[test]
+    fn infer_server_addr_single_packet_returns_destination() {
+        let src: SocketAddr = "10.0.0.1:5000".parse().unwrap();
+        let dst: SocketAddr = "10.0.0.2:6000".parse().unwrap();
+        let frames = vec![(Duration::ZERO, src, dst, vec![0])];
+        assert_eq!(infer_server_addr(&frames), dst);
+    }
 }

@@ -46,18 +46,30 @@ pub struct TickActions {
 /// Outcome of one `send_with_policy` policy-evaluation pass. Split out
 /// of `send_with_policy` so the lock-holding decision logic stays in a
 /// non-async function (clearer scoping, easier to reason about).
+///
+/// Duplication semantics: `extra_copies` applies **only to the
+/// current send** (the packet passed into `decide_send_policy`).
+/// Packets in `flushed_held` come from a previous send that was
+/// buffered by the reorder policy and already had their own
+/// per-send policy decisions made at the time they were buffered;
+/// re-applying duplication to them would compound the cycle.
 struct SendDecision {
     /// True if the packet must not go on the wire (any drop policy fired).
     drop_this: bool,
     /// Latency to sleep before any send.
     latency: std::time::Duration,
-    /// Extra copies beyond the primary send (from duplicate_every +
-    /// duplicate_next_count summed).
+    /// Extra copies beyond the primary send for the **current** packet
+    /// only (from `duplicate_every` + `duplicate_next_count` summed).
     extra_copies: u32,
-    /// Packets to emit, in the order they should hit the wire. Empty
-    /// means "swallowed" (drop or held in reorder buffer); 1 entry is
-    /// the normal case; 2+ entries are reorder-buffer flushes.
-    emit_order: Vec<Bytes>,
+    /// The current send's payload. `None` when the policy buffered it
+    /// (reorder hold) — nothing goes on the wire this call.
+    current_packet: Option<Bytes>,
+    /// Held packets being flushed alongside the current send. Each
+    /// emitted exactly once, **never duplicated**. Order is wire
+    /// arrival order at the peer (pair-mode: this is the previously
+    /// held packet shipped after the current; buffer-mode: the
+    /// remainder of the reversed buffer).
+    flushed_held: Vec<Bytes>,
 }
 
 /// One end of a paired Mercury session.
@@ -308,12 +320,22 @@ impl LoopbackPeer {
             tokio::time::sleep(decision.latency).await;
         }
 
-        let total_copies = 1 + decision.extra_copies;
-
-        for raw in decision.emit_order {
-            for _ in 0..total_copies {
-                self.socket.send_to(&raw, self.peer_addr).await?;
+        // Current send: emit once + extra_copies times (the duplication
+        // semantics apply ONLY to the current send, not to any held
+        // packets being flushed alongside).
+        if let Some(current) = &decision.current_packet {
+            self.socket.send_to(current, self.peer_addr).await?;
+            for _ in 0..decision.extra_copies {
+                self.socket.send_to(current, self.peer_addr).await?;
             }
+        }
+
+        // Held packets from reorder buffer: each exactly once, in the
+        // order the policy chose. Held packets had their own duplicate
+        // decisions made at buffer time; re-applying here would
+        // double-count the cycle.
+        for held in &decision.flushed_held {
+            self.socket.send_to(held, self.peer_addr).await?;
         }
         Ok(())
     }
@@ -378,18 +400,26 @@ impl LoopbackPeer {
         }
 
         // ── Reorder (pair-mode takes precedence over buffer-mode) ─
-        let emit_order: Vec<Bytes> = if drop_this {
-            Vec::new()
+        //
+        // Splits the wire emit into `current_packet` (the one passed in,
+        // gets duplication applied) and `flushed_held` (previously
+        // buffered packets, each emitted exactly once). When the policy
+        // buffers this send, `current_packet` is None and nothing goes
+        // on the wire this call.
+        let (current_packet, flushed_held): (Option<Bytes>, Vec<Bytes>) = if drop_this {
+            (None, Vec::new())
         } else if policy.reorder_pairs.get(dir) {
             let held_slot = policy.reorder_held.get_mut(dir);
             match held_slot.take() {
                 None => {
                     *held_slot = Some(bytes);
-                    Vec::new()
+                    (None, Vec::new())
                 }
                 Some(prev) => {
-                    // Pair complete: emit (this, then held).
-                    vec![bytes.clone(), prev]
+                    // Pair complete: current goes on the wire first
+                    // (with its duplications), then the previously
+                    // held packet (no duplication).
+                    (Some(bytes), vec![prev])
                 }
             }
         } else {
@@ -398,14 +428,20 @@ impl LoopbackPeer {
                 let buf = policy.reorder_buffer.get_mut(dir);
                 buf.push(bytes);
                 if buf.len() as u32 >= buf_size {
+                    // Buffer full: drain reversed. Last-pushed (the
+                    // current send) is at the front after reverse, so
+                    // it gets duplication; the rest of the buffer
+                    // (held packets) emit once each.
                     let mut drained: Vec<Bytes> = std::mem::take(buf);
                     drained.reverse();
-                    drained
+                    let current = drained.remove(0);
+                    (Some(current), drained)
                 } else {
-                    Vec::new()
+                    (None, Vec::new())
                 }
             } else {
-                vec![bytes]
+                // No reorder: the simple case — current packet, no held.
+                (Some(bytes), Vec::new())
             }
         };
 
@@ -413,7 +449,8 @@ impl LoopbackPeer {
             drop_this,
             latency,
             extra_copies,
-            emit_order,
+            current_packet,
+            flushed_held,
         }
     }
 

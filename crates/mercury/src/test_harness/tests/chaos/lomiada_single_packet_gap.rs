@@ -7,8 +7,9 @@
 //! then a transatlantic UDP drop of server-sent packet `#1148`,
 //! followed by 210 buffered packets above the gap. Pre-retransmit
 //! work, this would have hung until the 60s inactivity timer
-//! reaped the channel. After the work in #308 + #354's
-//! deferred-send queue, the channel recovers in N ticks.
+//! reaped the channel. With server-side retransmit + the
+//! deferred-send queue now in place, the channel recovers in N
+//! ticks.
 
 use std::time::Duration;
 

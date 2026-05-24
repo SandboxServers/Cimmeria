@@ -12,9 +12,10 @@
 //! For the **recv** loop, the [`BidirectionalTransport`] super-trait extends
 //! [`Transport`] with `recv_from`. Production runs [`UdpTransport`] (which
 //! implements both); chaos tests run a `LossyTransport` that applies seeded
-//! drop / latency / reorder filters in both directions. Handlers continue to
-//! see only `&Arc<dyn Transport>` so the send-side ADR is unchanged; the recv
-//! seam is widened just enough to let the chaos apparatus wrap it.
+//! drop + latency filters in both directions (plus send-side duplicate;
+//! recv-side duplicate is a documented limitation). Handlers continue to
+//! see only `&Arc<dyn Transport>` so the send-side ADR is unchanged; the
+//! recv seam is widened just enough to let the chaos apparatus wrap it.
 
 use std::io;
 use std::net::SocketAddr;

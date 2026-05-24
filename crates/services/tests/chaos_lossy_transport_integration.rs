@@ -4,7 +4,7 @@
 //! These tests demonstrate that the chaos infrastructure plugs into
 //! the services-layer recv path without behavioral regression. The
 //! end-to-end chaos scenarios (`world_entry_survives_transatlantic_loss`,
-//! `defeat_burst_survives_5pct_loss` from the #355 spec) require a
+//! `defeat_burst_survives_5pct_loss` from the chaos spec) require a
 //! services-layer in-process harness that doesn't exist yet; those
 //! tests scope to a follow-up that builds the harness. For now we
 //! pin two things:
@@ -84,7 +84,19 @@ async fn lossy_transport_satisfies_bidirectional_transport_trait_for_recv_loop()
     assert_eq!(&buf[..len], payload);
 }
 
+/// Statistical loss assertion: gated behind `#[ignore]` because the
+/// 60ms-per-recv latency × 500 packets makes this a ~30s wall-time
+/// test that doesn't belong on every-commit CI. Run manually with
+/// `cargo test --test chaos_lossy_transport_integration -- --ignored`
+/// or via the CI nightly profile when adding one.
+///
+/// The fast-path assertions for the LossyTransport+recv-loop seam
+/// (lossless round-trip + trait coercion) cover what every-commit
+/// CI needs; this one validates statistical drop behavior under the
+/// realistic Transatlantic profile and is appropriate for a slower
+/// cadence.
 #[tokio::test]
+#[ignore = "slow: 30s due to 60ms × 500 latency; run with --ignored"]
 async fn transatlantic_profile_loss_eventually_drops_a_packet() {
     // Statistical: with seeded 0.5% loss across many sends, at
     // least one drop must fire. Validates the recv loop's

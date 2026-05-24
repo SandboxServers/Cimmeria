@@ -55,16 +55,23 @@ async fn sustained_5pct_loss_holds_safety_invariants() {
         .recv_n_bundles(160, Duration::from_millis(500))
         .await;
 
-    // Drop count must be non-zero (5% over 160 packets ≈ 8 drops
-    // expected; with the C0FFEE seed it's deterministic).
+    // Pin the EXACT drop count for the seeded run. With a fixed seed
+    // and bitwise-deterministic RNG, the drop pattern is reproducible
+    // across CI runs and platforms. The recorded count below was
+    // captured on first green run; any change to the RNG, the
+    // per-send policy ordering, or the seed will trip this.
+    //
+    // To regenerate after a deliberate policy change: run the test
+    // with the assertion commented out, observe the printed
+    // `drop_count`, and update the constant below. Document why in
+    // the commit message.
+    const EXPECTED_DROPS: u32 = 14;
     let drop_count = session.policy.lock().unwrap().drop_count.a_to_b;
-    assert!(
-        drop_count > 0,
-        "expected at least one probabilistic drop in 160 sends at 5%; got {drop_count}"
-    );
-    assert!(
-        drop_count < 160,
-        "probabilistic drop should NOT have dropped every packet; got {drop_count}/160"
+    assert_eq!(
+        drop_count, EXPECTED_DROPS,
+        "seeded sustained-loss run is deterministic; got {drop_count} drops, \
+         expected exactly {EXPECTED_DROPS}. If this is an intentional \
+         policy/RNG change, update EXPECTED_DROPS and document the cause."
     );
 
     // Safety invariants survive the sustained-chaos run.

@@ -85,9 +85,18 @@ pub fn fully_quiesced(channel: &Channel) {
     );
 }
 
-/// Run the full invariant set against a channel. Convenience for
-/// scenario end: catches anything one of the individual checks
-/// would catch, in one call.
+/// Run the **safety invariants** (the always-valid ones) against a
+/// channel — `tx_window_within_capacity` + `no_orphan_retransmits`.
+/// These hold regardless of where the scenario expects the channel
+/// to end up (recovered, timed-out, mid-stream, etc.) and are the
+/// minimum no-corruption guarantee every chaos scenario asserts.
+///
+/// **Does not include** `channel_not_about_to_reap` (which expects
+/// the channel to be alive — not true for an `asymmetric_ack_loss`-
+/// shape scenario that intentionally times out) or `fully_quiesced`
+/// (which expects an empty TX window — not true for any scenario
+/// mid-recovery). Tests that want the strictest end-state check
+/// should call those individually alongside this helper.
 pub fn all_safety_invariants(channel: &Channel) {
     tx_window_within_capacity(channel);
     no_orphan_retransmits(channel);

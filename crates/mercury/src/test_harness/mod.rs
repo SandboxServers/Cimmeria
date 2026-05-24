@@ -67,8 +67,16 @@ mod session;
 // Pcap replay depends on `pcap-file` + `etherparse` which live in
 // `[dev-dependencies]` (not available to feature-gated lib code).
 // Gate the module to `cfg(test)` so the lomiada replay tests under
-// mercury's own test suite can use it; consumer crates that want
-// pcap replay must add the same dev-deps themselves.
+// mercury's own test suite can use it.
+//
+// **Consumer-visibility limitation**: because of the `cfg(test)`
+// gate, downstream crates' integration tests CANNOT use this module
+// even with `features = ["test-harness"]`. The pcap-replay path is
+// mercury-internal-only today. If a consumer crate needs it, the
+// path is to lift `pcap-file` + `etherparse` to optional
+// `[dependencies]` tied to a new `test-harness-pcap` feature; do
+// that work in the same PR that adds the consumer use case so the
+// scope is justified.
 #[cfg(test)]
 pub mod pcap_replay;
 

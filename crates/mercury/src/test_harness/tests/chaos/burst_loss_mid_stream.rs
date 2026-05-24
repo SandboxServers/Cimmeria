@@ -3,7 +3,7 @@
 //! single isolated loss. Recovery time = max RTO of any of the 10
 //! lost packets.
 //!
-//! Pre-#308 (server-side retransmit), this scenario would have
+//! Without server-side retransmit, this scenario would have
 //! permanently lost the 10-packet window. Today, all 10 sit in
 //! the TX window awaiting retransmit; the RTO scan re-emits each
 //! on the next tick past their last-sent + RTO.

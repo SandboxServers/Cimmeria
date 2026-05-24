@@ -44,6 +44,26 @@ async fn reorder_within_rx_window_reassembles_correctly() {
         "reassembled body must be byte-identical to the original despite reorder",
     );
 
+    // Reorder-policy-fired check: the policy should have buffered
+    // all 5 fragments, then flushed them on the 5th send. If the
+    // reorder path regressed (packets shipped in order without ever
+    // being buffered), the byte-equality assertion above would
+    // still pass — this assertion catches that.
+    //
+    // After flush, reorder_buffer should be empty (drained) and
+    // send_count should equal 5 (one per fragment).
+    let policy = session.policy.lock().unwrap();
+    assert_eq!(
+        policy.send_count.a_to_b, 5,
+        "exactly 5 sends must have flowed through the policy",
+    );
+    assert!(
+        policy.reorder_buffer.a_to_b.is_empty(),
+        "reorder buffer must drain on flush (got {} held)",
+        policy.reorder_buffer.a_to_b.len(),
+    );
+    drop(policy);
+
     let channel = session.a.channel.lock().unwrap();
     all_safety_invariants(&channel);
 }

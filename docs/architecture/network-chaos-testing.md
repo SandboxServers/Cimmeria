@@ -13,7 +13,7 @@
 **Accepted** — implemented across three layers:
 
 - **L1** (Channel-level scenarios) — chaos primitives added to
-  `NetworkPolicy` + 8 scenario tests + lomiada pcap replay.
+  `NetworkPolicy` + 8 scenario tests.
 - **L2** (Lossy socket wrapper) — `BidirectionalTransport` trait +
   `LossyTransport` with seeded RNG + LAN/Domestic/Transatlantic/Mobile
   presets + services-layer integration tests.
@@ -47,8 +47,10 @@
   cover the lomiada gap, TX-window overflow, asymmetric ack loss,
   burst loss, reorder-in-RX-window, duplicate flood, sustained 5%
   probabilistic loss, and the BSF defeat burst.
-- 1 lomiada pcap replay test loads the real fixture and asserts
-  ≥500 decryptable packets + ≥95% Mercury-parse success rate.
+- 2 lomiada pcap replay tests: one asserts ≥500 decryptable packets
+  + bidirectional traffic; the other asserts ≥95% Mercury-parse
+  success rate over the decrypted payloads. Together they pin the
+  loader + decrypt + parse pipeline against the real fixture.
 - 3 services-layer integration tests pin the `LossyTransport` +
   `run_connect_loop` seam.
 
