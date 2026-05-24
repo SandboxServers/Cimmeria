@@ -145,11 +145,11 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             target_id,
             "auto_cycle_tick: re-firing"
         );
-        // Issue #367: route loop-driven re-fires through the kill-credit
-        // wrapper so killing a quest-tagged NPC via auto-shoot advances
-        // the mission's KillCount objective, matching the manual
-        // right-click path. The wrapper is a no-op when the target
-        // wasn't a live tagged NPC or when no kill happened this tick.
+        // Route loop-driven re-fires through the kill-credit wrapper
+        // so killing a quest-tagged NPC via auto-shoot advances the
+        // mission's KillCount objective, matching the manual right-
+        // click path. The wrapper is a no-op when the target wasn't a
+        // live tagged NPC or when no kill happened this tick.
         let _ = crate::cell::abilities::handle_use_ability_with_kill_credit(
             entity_id, ability_id, target_id, engine, tx, space_mgr,
         )
@@ -468,17 +468,18 @@ mod tests {
         );
     }
 
-    /// **Regression guard for issue #367.** Auto-cycle kills against a
-    /// quest-tagged NPC must fire the content-engine `EntityDeath` event
-    /// so KillCount-style mission objectives advance, exactly the way a
-    /// manual right-click kill does.
+    /// **Regression guard: auto-cycle kills must credit quest
+    /// objectives.** Auto-cycle kills against a quest-tagged NPC must
+    /// fire the content-engine `EntityDeath` event so KillCount-style
+    /// mission objectives advance, exactly the way a manual right-
+    /// click kill does.
     ///
     /// Bug shape this catches: the tick used to call bare
-    /// `handle_use_ability`, bypassing the kill-credit wrapper that the
-    /// cell-method `USE_ABILITY` dispatch site wired around manual
-    /// fires. Reverting the fix (changing the tick back to
-    /// `handle_use_ability`) leaves the counter at 0 and fails this
-    /// assertion.
+    /// `handle_use_ability`, bypassing the kill-credit wrapper that
+    /// the cell-method `USE_ABILITY` dispatch site wired around manual
+    /// fires. Reverting the tick to `handle_use_ability` (instead of
+    /// `handle_use_ability_with_kill_credit`) leaves the counter at
+    /// `None` and fails this assertion.
     ///
     /// Pinned via an end-to-end signal: register a chain that
     /// increments a counter on `EntityDeath(entity_tag=QuestTargetDrone)`
@@ -578,8 +579,8 @@ mod tests {
             mgr.get_entity(1).unwrap().counters.get(COUNTER_NAME),
             Some(&1),
             "auto-cycle kill of a quest-tagged NPC must increment the kill counter \
-             via fire_entity_death — bypassing the kill-credit wrapper (issue #367) \
-             leaves this counter at None",
+             via fire_entity_death — bypassing the kill-credit wrapper \
+             (calling bare handle_use_ability from the tick) leaves this counter at None",
         );
 
         // Sanity: the NPC actually died (proves we exercised the kill

@@ -45,7 +45,7 @@ pub async fn dispatch(
                 // Single canonical kill-credit path — see
                 // `handle_use_ability_with_kill_credit` for the
                 // alive→dead detection + `fire_entity_death` wrap that
-                // previously lived inline here. Issue #367.
+                // previously lived inline here.
                 crate::cell::abilities::handle_use_ability_with_kill_credit(
                     entity_id, ability_id, target_id, engine, tx, space_mgr,
                 )

@@ -241,11 +241,12 @@ pub(super) async fn pending_attack_tick(
             target_id,
             "pending_attack_tick: draw window elapsed, firing queued attack"
         );
-        // Issue #367: route Phase-B queued attacks through the kill-
-        // credit wrapper. Without this, a player who fires a weapon
-        // while holstered (the attack is deferred to Phase B until the
-        // draw window elapses) doesn't credit a quest objective if that
-        // queued shot makes the kill.
+        // Route Phase-B queued attacks through the kill-credit
+        // wrapper. Without this, a player who fires a weapon while
+        // holstered (the attack is deferred to Phase B until the draw
+        // window elapses) doesn't credit a quest objective if that
+        // queued shot makes the kill — same divergence the auto-cycle
+        // tick had until both paths joined the canonical helper.
         let _ = super::super::abilities::handle_use_ability_with_kill_credit(
             entity_id, ability_id, target_id, engine, tx, space_mgr,
         )
@@ -633,6 +634,133 @@ mod tests {
         );
         assert_eq!(entity.pending_attack_ability_id, Some(42));
         assert_eq!(entity.pending_attack_target_id, Some(200));
+    }
+
+    /// **Regression guard: `pending_attack_tick` Phase B fires must
+    /// credit quest kills.** A player who fires while holstered has
+    /// the attack deferred to Phase B (after the draw window
+    /// elapses). When Phase B kills a quest-tagged NPC, the
+    /// EntityDeath content event must reach the chain engine.
+    ///
+    /// Parallel coverage to
+    /// `auto_cycle_tick_credits_quest_kill_on_tagged_npc_death` (in
+    /// `service/ticks/auto_cycle.rs`) and
+    /// `set_auto_cycle_immediate_fire_credits_quest_kill_on_tagged_npc_death`
+    /// (in `cell_methods/player/world/tests.rs`). All three player-
+    /// driven re-fire paths route through
+    /// `handle_use_ability_with_kill_credit`; all three tests fail
+    /// when the caller is reverted to bare `handle_use_ability`.
+    #[tokio::test]
+    async fn pending_attack_tick_credits_quest_kill_on_tagged_npc_death() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+        use cimmeria_entity::abilities::{AbilityDef, EffectDef};
+        use cimmeria_entity::stats::HEALTH;
+
+        const QUEST_TAG: &str = "QuestTargetDrone";
+        const COUNTER_NAME: &str = "drone_kills";
+
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.spawn_npc(50, "Castle", [3.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        // Phase-B queue pre-conditions: stamp is in the past so the
+        // tick promotes it, and the queue carries the target+ability
+        // the deferred fire should pick up.
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(100);
+            p.abilities.add_ability(7);
+            p.weapon_holstered = false;
+            p.pending_attack_at =
+                Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
+            p.pending_attack_ability_id = Some(7);
+            p.pending_attack_target_id = Some(50);
+        }
+        mgr.connect_entity(1);
+        let _ = mgr.compute_aoi_changes();
+
+        // Lethal effect + ability def so the deferred fire kills the
+        // NPC outright. Same fixture shape as the auto_cycle test.
+        let mut params = std::collections::HashMap::new();
+        params.insert("HealthDamage".to_string(), "9999".to_string());
+        mgr.effect_defs.insert(
+            100,
+            EffectDef {
+                effect_id: 100,
+                ability_id: 7,
+                delay: 0,
+                effect_sequence: 0,
+                event_set_id: None,
+                script_name: None,
+                params,
+            },
+        );
+        mgr.ability_defs.insert(
+            7,
+            AbilityDef {
+                ability_id: 7,
+                name: "test".to_string(),
+                cooldown: 0.5,
+                warmup: 0.0,
+                flags: 0,
+                is_ranged: false,
+                min_range: 0,
+                max_range: 30,
+                target_type_id: 0,
+                effect_ids: vec![100],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+        if let Some(npc) = mgr.get_entity_mut(50) {
+            npc.tag = Some(QUEST_TAG.to_string());
+            if let Some(stat) = npc.stats.get_mut(HEALTH) {
+                stat.update(0, 1, 100);
+                stat.clear_dirty();
+            }
+        }
+
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 999_997,
+            name: "test: pending_attack drone kill counter".to_string(),
+            enabled: true,
+            trigger: Trigger::OnEntityDeath {
+                entity_type: None,
+                entity_tag: Some(QUEST_TAG.to_string()),
+            },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: COUNTER_NAME.to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(64);
+        pending_attack_tick(&tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            mgr.get_entity(1).unwrap().counters.get(COUNTER_NAME),
+            Some(&1),
+            "pending_attack_tick's Phase-B fire must credit a tagged-NPC kill \
+             via fire_entity_death — reverting the tick to bare \
+             handle_use_ability leaves this counter at None",
+        );
+        assert!(
+            crate::cell::combat::is_dead_state(mgr.get_entity(50).unwrap().state_field),
+            "test fixture: target must be dead after the lethal deferred fire",
+        );
     }
 
     /// Defensive path: `reload_complete_at` set but `reload_slot_id` is None

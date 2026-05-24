@@ -75,10 +75,13 @@ pub async fn dispatch(
                     // Single canonical kill-credit path — see
                     // `handle_use_ability_with_kill_credit` for the
                     // alive→dead detection + `fire_entity_death` wrap
-                    // that previously lived inline here. Routing every
-                    // player-attack path through this helper closes
-                    // issue #367 (auto-shoot kills not crediting
-                    // quest progress).
+                    // that previously lived inline here. Every player-
+                    // attack path that reaches `handle_use_ability`
+                    // for a single target routes through this helper
+                    // so quest KillCount objectives advance uniformly,
+                    // regardless of which entry point fired the shot
+                    // (manual right-click, interact, auto-cycle loop,
+                    // queued attack-while-holstered).
                     crate::cell::abilities::handle_use_ability_with_kill_credit(
                         entity_id,
                         592,

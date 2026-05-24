@@ -83,11 +83,12 @@ pub async fn dispatch(
                             target_id,
                             "setAutoCycle: immediate fire on enable (last_fired + current_target ready)"
                         );
-                        // Issue #367: the immediate-fire on auto-cycle
-                        // toggle ON is a player-driven kill path —
-                        // route through the kill-credit wrapper so a
-                        // tap of the auto-fire button that immediately
-                        // kills a quest target credits the mission.
+                        // The immediate-fire on auto-cycle toggle ON
+                        // is a player-driven kill path — route through
+                        // the kill-credit wrapper so a tap of the
+                        // auto-fire button that immediately kills a
+                        // quest target credits the mission, matching
+                        // the manual-right-click path.
                         let _ =
                             super::super::super::abilities::handle_use_ability_with_kill_credit(
                                 entity_id, ability_id, target_id, engine, tx, space_mgr,

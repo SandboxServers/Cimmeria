@@ -509,20 +509,19 @@ pub async fn handle_use_ability(
 
 /// `handle_use_ability` + content-engine kill-credit hook.
 ///
-/// **Use this from every player-driven attack path.** Calls
-/// [`handle_use_ability`] to resolve the ability, then — if the attacker
-/// is a player who just transitioned a tagged NPC from alive→dead —
-/// fires the `EntityDeath` content event so mission KillCount chains
-/// (e.g., "kill 5 Hallway_Guards") progress.
+/// **Use this from every single-target player-driven path that calls
+/// [`handle_use_ability`] directly.** Calls `handle_use_ability` to
+/// resolve the ability, then — if the attacker is a player who just
+/// transitioned a tagged NPC from alive→dead — fires the `EntityDeath`
+/// content event so mission KillCount chains (e.g., "kill 5
+/// Hallway_Guards") progress.
 ///
-/// Wrap-shape extracted from the previous in-line copies at the cell-
-/// method dispatch sites in `cell_methods/player/combat/mod.rs` and
-/// `cell_methods/player/interaction.rs`. Three other player-attack
-/// paths used to call [`handle_use_ability`] directly and bypass this
-/// hook — auto-cycle's immediate-fire on toggle, the auto-cycle tick
-/// re-fire loop, and the pending-attack tick (Phase B of
-/// attack-while-holstered). All three are now routed through here,
-/// closing issue #367 ("auto-shoot kills don't credit quest objectives").
+/// **Not** for AoE / ground-target callers: those go through
+/// [`super::handle_use_ability_on_ground`], which returns the set of
+/// every NPC that died during the cast and fires per-death
+/// `fire_entity_death` at the caller layer. The AoE path is the only
+/// other single canonical kill-credit fan-out today; collapsing them
+/// would require returning a Vec<entity_id> from this helper too.
 ///
 /// Why this isn't baked into `handle_use_ability` itself: NPC AI also
 /// calls `handle_use_ability`, and NPC kills shouldn't fire

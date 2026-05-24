@@ -84,9 +84,10 @@ pub(super) async fn run_cell_loop(
                 // current_target_id whenever its cooldown has cleared.
                 // Cooldown gate is the rate limiter; the eligibility
                 // filter short-circuits when nobody is auto-cycling.
-                // Engine is threaded for the kill-credit hook (issue
-                // #367): loop-driven kills against quest-tagged NPCs
-                // fire `EntityDeath` so KillCount missions advance.
+                // Engine is threaded for the kill-credit hook:
+                // loop-driven kills against quest-tagged NPCs fire
+                // `EntityDeath` so KillCount missions advance via the
+                // same content-engine path as manual right-click kills.
                 super::ticks::auto_cycle_tick(tx, &mut space_mgr, &engine).await;
 
                 // Promote queued bandolier slot swap: any player whose
