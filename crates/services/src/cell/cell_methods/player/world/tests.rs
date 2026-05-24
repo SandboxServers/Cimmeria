@@ -673,6 +673,85 @@ async fn handle_reload_sends_item_reload_sequence() {
     );
 }
 
+/// Reload-start must emit the ammo-type update under
+/// `GENERICPROPERTY_AmmoTypeId` (propId 3), NOT under propId 7
+/// (`GENERICPROPERTY_AccessLevel`).
+///
+/// Bug shape this catches (issue #168): the historical handler used
+/// a hardcoded `7i32` for the propId arg of `onEntityProperty`,
+/// which made the post-reload property update land on the client's
+/// `setAccessLevel` slot with the ammo type as the value. The HUD's
+/// ammo-type indicator still updated in practice because the
+/// bandolier sync path independently emits propId 3 on cur_ammo_type
+/// changes — so reverting the fix wouldn't break the visible HUD,
+/// but it would re-plant a stray `setAccessLevel(<ammo_type>)` on
+/// the wire. A refactor that goes back to `7i32.to_le_bytes()` here
+/// would fail this guard.
+#[tokio::test]
+async fn handle_reload_emits_ammo_type_under_correct_propid() {
+    use crate::cell::cell_methods::inventory::GENERICPROPERTY_AMMO_TYPE_ID;
+    use crate::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY;
+    use crate::cell::spawner::EVENT_ITEM_RELOAD;
+
+    const AMMO_TYPE: i32 = 42;
+
+    let mut mgr = make_mgr_with_player();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.archetype_id = Some(1);
+        e.weapon_holstered = false;
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 1,
+                clip_size: 30,
+                default_ammo_type: AMMO_TYPE,
+                current_ammo: 0,
+                cur_ammo_type: AMMO_TYPE,
+            },
+        );
+        e.active_bandolier_slot = 0;
+    }
+    // Seed the sequence_map so Phase B doesn't bail before reaching
+    // the propId emit — same shape as the sibling Item_Reload test.
+    mgr.sequence_map.insert((804, EVENT_ITEM_RELOAD), 1874);
+
+    let (tx, mut rx) = mpsc::channel(64);
+    handle_reload(1, &tx, &mut mgr).await;
+
+    let mut entity_property_calls = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall {
+            method_index, args, ..
+        } = msg
+        {
+            if method_index == ON_ENTITY_PROPERTY {
+                assert_eq!(args.len(), 8, "onEntityProperty payload is 8 bytes LE");
+                let prop_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let value = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                entity_property_calls.push((prop_id, value));
+            }
+        }
+    }
+
+    let ammo_call = entity_property_calls
+        .iter()
+        .find(|(_, v)| *v == AMMO_TYPE)
+        .copied();
+    assert_eq!(
+        ammo_call,
+        Some((GENERICPROPERTY_AMMO_TYPE_ID, AMMO_TYPE)),
+        "ammo-type onEntityProperty must use propId {GENERICPROPERTY_AMMO_TYPE_ID} (AmmoTypeId), \
+         not propId 7 (AccessLevel). All onEntityProperty calls observed: {entity_property_calls:?}",
+    );
+    assert!(
+        !entity_property_calls
+            .iter()
+            .any(|(p, v)| *p == 7 && *v == AMMO_TYPE),
+        "no onEntityProperty(7, <ammo_type>) — that's the pre-fix shape (issue #168). \
+         All onEntityProperty calls observed: {entity_property_calls:?}",
+    );
+}
+
 /// Reload-while-holstered Phase A: a player who's OOC and
 /// holstered presses reload. The handler defers the actual reload
 /// to give the draw animation time to play. Phase A must:
