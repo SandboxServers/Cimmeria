@@ -26,6 +26,7 @@ pub use create::{build_create_entity_base, build_create_entity_cascade};
 pub(crate) use create::{compose_create_entity_base_body, compose_create_entity_cascade_body};
 pub use leave::{build_entity_invisible, build_entity_leave};
 pub use method::build_entity_method_packet;
+pub(crate) use update::compose_forced_position_body;
 pub use update::{build_avatar_update, build_forced_position};
 
 /// `BASEMSG_CREATE_ENTITY` — create a ghost (non-player) entity on the client (0x09).

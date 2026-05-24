@@ -1,6 +1,6 @@
 # Mercury Bundle abstraction
 
-> **Last updated**: 2026-05-24
+> **Last updated**: 2026-05-25
 > **Audience**: Engineers touching Mercury send paths, AoI fanout, world-entry
 > bursts, or anything that calls `send_to_witness_reliable`
 > **Type**: Architecture decision + reference for callers
@@ -53,11 +53,52 @@ decision sits with the caller, not with a per-channel auto-accumulator.
   `on_client_ready_burst_bundles_to_single_packet` (11 → 1 packet) and a
   new compose↔build byte-equivalence guard for the entity-method bundle
   path covering both direct and extended encodings. ✅
-- **Deferred to follow-up [#360](https://github.com/SandboxServers/Cimmeria/issues/360)**:
-  remaining per-handler migrations across world-data/phases.rs, inventory/
-  vendor/mail, progression, teleport, and the remaining AoI handlers. Each
-  has its own transaction-state surface to audit and warrants a separate,
-  reviewable PR.
+- **#360 follow-up — progression + teleport migrations**:
+  - `handle_grant_xp` post-grant burst (1..2N+3 packets where N = levels
+    gained) now rides one `ChannelBundle`. Player's own entity, no CREATE
+    in-handler. Pinned by `grant_xp_max_level_burst_bundles_to_single_packet`
+    + `grant_xp_single_level_burst_bundles_to_single_packet`. ✅
+  - `handle_teleport_player` `FORCED_POSITION + onPlayerTeleport` handshake
+    (2 → 1 packet). Pinned by
+    `teleport_bundles_forced_position_and_player_teleport_to_single_packet`
+    + a new `compose_forced_position_body_matches_build_forced_position_body`
+    byte-equivalence guard for the raw-message bundle path. ✅
+- **#360 follow-up — closed unmigrated (rationale, no code change)**: every
+  remaining checkbox on issue #360 falls into one of three "no benefit"
+  buckets:
+  - **Already a single bundle** — `mercury/world_data/map_loaded.rs` is
+    already two deliberate bundles via manual `build_fragmented_bundle`.
+    Output is byte-identical to `ChannelBundle::finalize`. The caller in
+    `base/world_entry/map_loaded.rs` can't use `send_bundle_to_witness_reliable`
+    because `entity_to_addr` isn't populated until after the send (the
+    write-ordering is deliberate — see the inline comment at line 170).
+  - **No send sites** — `mercury/world_data/phases.rs` contains body
+    builders (`build_create_player`, `build_enter_world_body`, etc.), not
+    senders. The `append_entity_method` occurrences are inside body
+    composition, not wire emits. Issue text counted body ops as sends.
+  - **Single send per handler call** — these handlers each emit exactly 1
+    packet per call: `mail/mod.rs` (1 per match arm), `vendor/store.rs`,
+    `vendor/helpers.rs`, `inventory/core/mod.rs`, `inventory/grant/mod.rs`,
+    `inventory/appearance.rs`, `cell_dispatch/minigame.rs`. Bundling a
+    single send emits exactly 1 packet — no wire saving, no TX-window
+    relief. The "grant + appearance recomposite" or "vendor open + price
+    update" caller-level bursts WOULD benefit, but bundling them needs a
+    helper-return-type refactor (compose into shared bundle rather than
+    self-send), which is a separate concern.
+  - **Utility builder** — `mercury/aoi/method.rs::build_entity_method_packet`
+    is a single-packet wire builder; bundling is the caller's job, not the
+    builder's. The byte-equivalence guard added in #363
+    (`channel_bundle_append_entity_method_matches_build_entity_method_packet_body`)
+    already pins that the bundle path and standalone path produce identical
+    bytes, so caller-side migrations can swap freely.
+  - **Needs batching layer** — `cell_dispatch/aoi.rs` `EntityMethodCall`
+    fanout (per [Cadacious's scope-clarification comment on #360]) needs
+    cross-message batching at the cell→base channel drain pass, not
+    per-handler. Tracked separately; not a per-handler migration. The
+    "EnteredAoI(X) followed by EntityMethodCall(X) for same X in the same
+    drain pass" interleave requires the audit-and-split logic the
+    `flush_deferred_aoi` path already implements; lifting that pattern to
+    every drain-pass send is a separate, larger refactor.
 
 ## The transaction-state rule
 
@@ -209,6 +250,21 @@ to 20 s — 200 iterations × 2 packets = 400 reliable packets worst-case,
 now 200 packets). For a first-login cinematic that runs the full spam
 window (e.g. SGWLogo intro at 13.10 s natural end + 7 s safety buffer),
 that's a ~50% reduction in cinematic-guard TX-window pressure.
+
+Progression (`handle_grant_xp`) collapses every grant into one packet:
+
+| Grant shape | Pre-bundle | Post-bundle |
+|---|---:|---:|
+| No-level grant (steady-state XP) | 1 | 1 |
+| Single-level grant | 5 | 1 |
+| Max-level catch-up (19 levels) | 41 | 1 |
+
+Teleport (`handle_teleport_player`) collapses the engine-snap + load-hint
+handshake:
+
+| Pre-bundle | Post-bundle |
+|---:|---:|
+| FORCED_POSITION + onPlayerTeleport (2 packets) | 1 packet |
 
 Safe per the transaction-state rule because the player entity was created
 in `handle_map_loaded`'s prior bundle and its transaction released at the

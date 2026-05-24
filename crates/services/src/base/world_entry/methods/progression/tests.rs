@@ -1,12 +1,14 @@
-//! Live-DB integration tests for `handle_grant_cash`.
+//! Live-DB integration tests for `handle_grant_cash` plus pure burst-shape
+//! regression guards for `handle_grant_xp`'s post-grant bundle.
 //!
-//! Skip cleanly when `DATABASE_URL` is unset; against the bundled local
-//! Postgres they pin the WHERE-by-player_id contract that prevents
-//! multi-character accounts from leaking grants between siblings.
+//! Live-DB tests skip cleanly when `DATABASE_URL` is unset; against the
+//! bundled local Postgres they pin the WHERE-by-player_id contract that
+//! prevents multi-character accounts from leaking grants between siblings.
 
 use super::*;
 use crate::test_support::require_db_or_skip;
 use crate::test_support::TestTransport;
+use cimmeria_mercury::packet::FRAGMENT_BODY_SIZE;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -186,4 +188,103 @@ async fn does_not_credit_when_player_row_missing() {
     assert_eq!(nonexistent_count, 0, "missing-row branch must not INSERT");
 
     cleanup(&pool, account_id).await;
+}
+
+// ── Burst-shape regression guards for the handle_grant_xp bundle migration ──
+//
+// Pure assertions against `build_grant_xp_bundle` — no DB, no transport.
+// The handler builds via this same helper, so a regression that drifts
+// the bundle composition (drops a record, reorders the per-level pair,
+// or skips the level-up tail) fails here before the wire desync reaches
+// the client.
+
+/// Zero-level (steady-state) grant: only `onExpUpdate` lands in the bundle.
+/// Pre-bundle this was 1 packet → 1 packet (no wire saving), but the bundle
+/// path still atomically drains pending ACKs onto the same fragment so the
+/// reliable-stream behavior matches the multi-level path uniformly.
+#[test]
+fn grant_xp_no_level_bundle_is_single_message() {
+    let bundle = build_grant_xp_bundle(42, 500, 1, 0, &[]);
+    assert_eq!(
+        bundle.num_messages(),
+        1,
+        "zero-level grant emits exactly onExpUpdate"
+    );
+    assert_eq!(
+        bundle.estimated_packet_count(),
+        1,
+        "single message must fit one packet"
+    );
+}
+
+/// Single-level grant burst: pre-bundle was 5 packets (onExpUpdate +
+/// GIVE_XP_FOR_LEVEL + onMaxExpUpdate + onLevelUpdate + onEntityProperty).
+/// Post-bundle: 1 packet.
+#[test]
+fn grant_xp_single_level_burst_bundles_to_single_packet() {
+    let bundle = build_grant_xp_bundle(42, 2_500, 7, 8, &[7]);
+    assert_eq!(
+        bundle.num_messages(),
+        5,
+        "single-level grant must contain: onExpUpdate + GIVE_XP_FOR_LEVEL + \
+         onMaxExpUpdate + onLevelUpdate + onEntityProperty(TRAINING_POINTS)"
+    );
+    assert_eq!(
+        bundle.estimated_packet_count(),
+        1,
+        "single-level grant bundle must collapse to 1 reliable packet \
+         (was 5 pre-bundle)"
+    );
+}
+
+/// Max-level catch-up burst: simulates a grant that vaults a level-1
+/// character to MAX_LEVEL (19 levels gained). Pre-bundle that was
+/// `1 + 2*19 + 2 = 41` reliable packets — a single content-engine call
+/// would chew up a quarter of the 32-slot reliable TX window before any
+/// other state-change traffic. Post-bundle: 1 packet.
+///
+/// Pin the upper bound at `num_messages == 41` and assert the body still
+/// fits one fragment so a regression that bloats per-message wire payloads
+/// past the per-fragment cutoff is caught here.
+#[test]
+fn grant_xp_max_level_burst_bundles_to_single_packet() {
+    use cimmeria_game::player::MAX_LEVEL;
+
+    let levels_gained: Vec<u32> = (1..=MAX_LEVEL).collect();
+    assert_eq!(
+        levels_gained.len() as u32,
+        MAX_LEVEL,
+        "test invariant: covers every level transition up to MAX_LEVEL"
+    );
+
+    let bundle = build_grant_xp_bundle(
+        42, // entity_id
+        LEVEL_XP[MAX_LEVEL as usize],
+        MAX_LEVEL,
+        TRAINING_POINTS_PER_LEVEL * MAX_LEVEL,
+        &levels_gained,
+    );
+
+    let expected = 1 + 2 * levels_gained.len() + 2;
+    assert_eq!(
+        bundle.num_messages(),
+        expected,
+        "max-level grant must contain onExpUpdate + 2 per level gained + \
+         onLevelUpdate + onEntityProperty(TRAINING_POINTS) = {expected}"
+    );
+    assert!(
+        bundle.body_len() < FRAGMENT_BODY_SIZE,
+        "max-level grant body ({} B) must fit one fragment (limit {} B) — \
+         a regression here means per-message wire payloads grew, and the \
+         bundle's single-packet shape needs a re-audit",
+        bundle.body_len(),
+        FRAGMENT_BODY_SIZE
+    );
+    assert_eq!(
+        bundle.estimated_packet_count(),
+        1,
+        "max-level grant bundle must collapse to 1 reliable packet \
+         (was {} pre-bundle — would consume a quarter of the 32-slot TX window)",
+        expected
+    );
 }

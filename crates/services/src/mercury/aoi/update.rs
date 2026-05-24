@@ -79,6 +79,37 @@ pub fn build_forced_position(
     position: [f32; 3],
     prev_pos: [f32; 3],
 ) -> Vec<u8> {
+    let body = compose_forced_position_body(entity_id, space_id, position, prev_pos);
+    // Reliable — the spawn snap is one-shot state; losing it leaves the
+    // pawn at the wrong position until something else corrects (a
+    // mistimed `forced_position` is what causes the camera-clip artifact
+    // documented in the world-entry spawn-glitch findings). Channel
+    // retransmit covers loss-in-flight.
+    let flags = REPLY_FLAGS_RELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
+    encrypt_packet(&plaintext, key)
+}
+
+/// Compose the wire body for `FORCED_POSITION (0x31)` WITHOUT packet
+/// framing or encryption.
+///
+/// Same byte layout the standalone-packet [`build_forced_position`]
+/// produces; extracted so callers can append the body to a
+/// [`cimmeria_mercury::channel_bundle::ChannelBundle`] alongside other
+/// post-create messages for the same entity (the teleport handshake
+/// `FORCED_POSITION + onPlayerTeleport` pair is the canonical use case).
+///
+/// **Transaction-state contract** (see `channel_bundle` module doc):
+/// `FORCED_POSITION` does NOT enter a creation transaction the way
+/// `CREATE_ENTITY` does — it's a property-update on an already-existing
+/// entity. Safe to combine with same-entity entity-method calls in the
+/// same bundle.
+pub(crate) fn compose_forced_position_body(
+    entity_id: u32,
+    space_id: u32,
+    position: [f32; 3],
+    prev_pos: [f32; 3],
+) -> Vec<u8> {
     let mut body = Vec::with_capacity(50);
     body.push(BASEMSG_FORCED_POSITION);
     body.extend_from_slice(&entity_id.to_le_bytes());
@@ -92,13 +123,5 @@ pub fn build_forced_position(
     }
     body.extend_from_slice(&[0u8; 12]); // rotation = 0,0,0 (yaw/pitch/roll)
     body.push(0x01); // flags
-
-    // Reliable — the spawn snap is one-shot state; losing it leaves the
-    // pawn at the wrong position until something else corrects (a
-    // mistimed `forced_position` is what causes the camera-clip artifact
-    // documented in the world-entry spawn-glitch findings). Channel
-    // retransmit covers loss-in-flight.
-    let flags = REPLY_FLAGS_RELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
-    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    body
 }
