@@ -98,7 +98,12 @@ Client                       Cell                                       Base / D
   │                           │   reload_slot_id = Some(active_bandolier_slot)  ← pin
   │                           │   abilities.start_ability_cooldown(596, warmup+cooldown)
   │ ◀── onTimerUpdate (m12) ──│
-  │ ◀── onStateFieldUpdate ───│  (BSF_IN_COMBAT | clear BSF_HOLSTER)
+  │ ◀── onStateFieldUpdate ───│  (BSF_IN_COMBAT — bit 3 only)
+  │ ◀── BeingAppearance ──────│  ComponentList includes weapon_visual
+  │                           │  (if reload-while-holstered: Phase A first
+  │                           │   draws weapon via RefreshAppearance →
+  │                           │   BeingAppearance, then defers the actual
+  │                           │   reload by UNHOLSTER_DRAW_DURATION)
   │                           │
   │  (warmup elapses, e.g. 2 s later)
   │                           │
@@ -241,7 +246,10 @@ Client                       Cell                              Base / DB
   │ requestReload(0) ─────────▶│  reload_complete_at = now + 2.0s
   │                            │  start_ability_cooldown(596, 3.0s)
   │ ◀── onTimerUpdate(m12) ────│  cooldown bar
-  │ ◀── onStateFieldUpdate ────│  +BSF_IN_COMBAT, -BSF_HOLSTER
+  │ ◀── onStateFieldUpdate ────│  +BSF_IN_COMBAT (bit 3 only — see
+  │                            │   docs/architecture/state-field-bits.md;
+  │                            │   bit 8 / BSF_HOLSTER was retired in #333)
+  │ ◀── BeingAppearance ───────│  weapon mesh stays attached during reload
   │
   │   (≈2 s later — next reload_completion_tick after deadline)
   │                            │  refill_active_slot()  → cur=5
