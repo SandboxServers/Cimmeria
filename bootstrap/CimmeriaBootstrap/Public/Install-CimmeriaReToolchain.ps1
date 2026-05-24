@@ -40,10 +40,13 @@ function Install-CimmeriaReToolchain {
         Re-run every step even if the install looks complete. Does NOT overwrite
         an existing .mcp.json — that's always protected.
 
-    .PARAMETER GhidraServerKey
+    .PARAMETER CimmeriaRagKey
         Optional. If supplied, written into the cimmeria-rag block of the
-        generated .mcp.json as the x-functions-key value. Otherwise the
-        REPLACE_WITH_FUNCTIONS_KEY placeholder is left in place.
+        generated .mcp.json as the x-functions-key value (the Azure Functions
+        key issued for the cimmeria-rag MCP server — ask in the project
+        Discord / Slack if you don't have one). Otherwise the
+        REPLACE_WITH_FUNCTIONS_KEY placeholder is left in place for you to
+        substitute manually.
 
     .EXAMPLE
         Install-CimmeriaReToolchain
@@ -66,7 +69,8 @@ function Install-CimmeriaReToolchain {
         [switch]$SkipDownload,
         [switch]$SkipPrereqCheck,
         [switch]$Force,
-        [string]$GhidraServerKey
+        [Alias("GhidraServerKey")]
+        [string]$CimmeriaRagKey
     )
 
     $ErrorActionPreference = "Stop"
@@ -89,53 +93,170 @@ function Install-CimmeriaReToolchain {
     Write-Host "=============================================" -ForegroundColor Yellow
     Write-Host " Cimmeria RE Toolchain Setup" -ForegroundColor Yellow
     Write-Host " Ghidra $($Dependencies.Ghidra.Version) + GhidraMCP $($Dependencies.GhidraMcp.Version)" -ForegroundColor Yellow
-    Write-Host " x64dbg (snapshot $($Dependencies.X64Dbg.SnapshotDate)) + x64dbg-automate $($Dependencies.X64DbgAutomate.Version)" -ForegroundColor Yellow
+    Write-Host " x64dbg snapshot (manual-fetch) + x64dbg-automate $($Dependencies.X64DbgAutomate.Version)" -ForegroundColor Yellow
     Write-Host "=============================================" -ForegroundColor Yellow
     Write-Host ""
 
     New-Item -ItemType Directory -Path $DownloadDir -Force | Out-Null
     New-Item -ItemType Directory -Path $ExternalDir -Force | Out-Null
 
+    # `python` resolved once in the prereq check and reused for all venv creation
+    # below — avoids the trap where `Get-Command python` succeeds via the `py`
+    # launcher in prereqs but later `python -m venv` calls fail because `python`
+    # is not directly on PATH.
+    $script:ResolvedPython = $null
+
     # ---------------------------------------------------------------------- #
-    # Step 1: Prerequisites — JDK 21+ and Python 3.11+
+    # Step 1: Prerequisites — Git, JDK 21+, Python 3.11+
+    #   When missing on Windows we attempt `winget install` first; if winget is
+    #   unavailable or the install fails, we print a manual download URL and
+    #   abort. PATH is refreshed after each install so the freshly-installed
+    #   binary is reachable without restarting the shell.
     # ---------------------------------------------------------------------- #
     if (-not $SkipPrereqCheck) {
-        Write-Step "RE PREREQUISITES (JDK 21+, Python 3.11+)"
+        Write-Step "RE PREREQUISITES (Git, JDK 21+, Python 3.11+)"
 
-        $javaCmd = Get-Command java -ErrorAction SilentlyContinue
-        if (-not $javaCmd) {
-            Write-Status "Java not found on PATH." "Red"
-            Write-Status "  Ghidra 12 requires JDK 21+. Install Adoptium Temurin 21:" "Yellow"
-            Write-Status "    https://adoptium.net/temurin/releases/?version=21" "Cyan"
-            Write-Status "  Or any LTS distribution with JAVA_HOME set." "DarkGray"
-            throw "JDK 21+ required for Ghidra. Install and re-run, or pass -SkipPrereqCheck."
+        $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+
+        # Helper: refresh PATH from machine + user env so freshly-installed
+        # tools become reachable without a shell restart.
+        function Update-CimmeriaPath {
+            $machine = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+            $user    = [System.Environment]::GetEnvironmentVariable("Path", "User")
+            $env:PATH = ($machine, $user, $env:PATH) -join ";"
         }
-        $javaVersionOutput = (& java -version 2>&1) -join "`n"
-        Write-Status "Java: $($javaVersionOutput -split "`n" | Select-Object -First 1)" "Green"
-        if ($javaVersionOutput -notmatch '"(\d+)\.\d') {
-            Write-Status "  Could not parse Java version — proceeding anyway." "DarkGray"
-        } else {
-            $javaMajor = [int]$Matches[1]
-            if ($javaMajor -lt 21) {
-                Write-Status "  Java $javaMajor detected. Ghidra 12 requires 21+." "Red"
-                throw "JDK 21+ required. Detected $javaMajor."
+
+        # Helper: best-effort winget install with a clear fallback message.
+        function Install-ViaWinget {
+            param(
+                [string]$WingetId,
+                [string]$DisplayName,
+                [string]$ManualUrl
+            )
+            if (-not $wingetCmd) {
+                Write-Status "  winget not available — install $DisplayName manually:" "Yellow"
+                Write-Status "    $ManualUrl" "Cyan"
+                return $false
+            }
+            Write-Status "  Installing $DisplayName via winget ($WingetId)..." "White"
+            $wingetArgs = @(
+                "install", "--id", $WingetId,
+                "--silent",
+                "--accept-source-agreements",
+                "--accept-package-agreements",
+                "--scope", "user"
+            )
+            & winget @wingetArgs 2>&1 | ForEach-Object {
+                if ($_ -match 'Found|Successfully|Installing|Already installed|No applicable upgrade') {
+                    Write-Status "    $_" "DarkGray"
+                }
+            }
+            $wingetExit = $LASTEXITCODE
+            Update-CimmeriaPath
+            if ($wingetExit -ne 0) {
+                Write-Status "  winget install returned exit code $wingetExit." "Yellow"
+                Write-Status "  Manual download: $ManualUrl" "Cyan"
+                return $false
+            }
+            return $true
+        }
+
+        # Git — required to clone the ghidra-mcp bridge.
+        $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+        if (-not $gitCmd) {
+            Write-Status "Git not found on PATH." "Yellow"
+            $installed = Install-ViaWinget -WingetId "Git.Git" -DisplayName "Git" -ManualUrl "https://git-scm.com/download/win"
+            if ($installed) { $gitCmd = Get-Command git -ErrorAction SilentlyContinue }
+            if (-not $gitCmd) {
+                throw "Git required to clone ghidra-mcp. Install and re-run, or pass -SkipPrereqCheck."
             }
         }
+        Write-Status "Git: $((& git --version 2>&1) -join '')" "Green"
 
+        # JDK 21+ — required by Ghidra 12.
+        $javaCmd = Get-Command java -ErrorAction SilentlyContinue
+        $javaMajor = $null
+        if ($javaCmd) {
+            $javaVersionOutput = (& java -version 2>&1) -join "`n"
+            if ($javaVersionOutput -match '"(\d+)\.\d') { $javaMajor = [int]$Matches[1] }
+        }
+        if (-not $javaCmd -or ($javaMajor -ne $null -and $javaMajor -lt 21)) {
+            if (-not $javaCmd) {
+                Write-Status "Java not found on PATH." "Yellow"
+            } else {
+                Write-Status "Java $javaMajor detected — Ghidra 12 requires 21+." "Yellow"
+            }
+            $installed = Install-ViaWinget -WingetId "EclipseAdoptium.Temurin.21.JDK" -DisplayName "Eclipse Temurin 21 JDK" -ManualUrl "https://adoptium.net/temurin/releases/?version=21"
+            if ($installed) {
+                $javaCmd = Get-Command java -ErrorAction SilentlyContinue
+                if ($javaCmd) {
+                    $javaVersionOutput = (& java -version 2>&1) -join "`n"
+                    if ($javaVersionOutput -match '"(\d+)\.\d') { $javaMajor = [int]$Matches[1] }
+                }
+            }
+            if (-not $javaCmd -or ($javaMajor -ne $null -and $javaMajor -lt 21)) {
+                throw "JDK 21+ required for Ghidra. Install Eclipse Temurin 21 and re-run."
+            }
+        }
+        Write-Status "Java: $((& java -version 2>&1) -split "`n" | Select-Object -First 1)" "Green"
+
+        # Python 3.11+ — required by both MCP bridges.
         $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-        if (-not $pythonCmd) {
-            $pythonCmd = Get-Command py -ErrorAction SilentlyContinue
+        if (-not $pythonCmd) { $pythonCmd = Get-Command py -ErrorAction SilentlyContinue }
+        $pythonOk = $false
+        if ($pythonCmd) {
+            $pyVerOutput = (& $pythonCmd.Source --version 2>&1) -join ""
+            if ($pyVerOutput -match 'Python\s+(\d+)\.(\d+)') {
+                $pyMajor = [int]$Matches[1]; $pyMinor = [int]$Matches[2]
+                if ($pyMajor -gt 3 -or ($pyMajor -eq 3 -and $pyMinor -ge 11)) {
+                    $pythonOk = $true
+                } else {
+                    Write-Status "Python $pyMajor.$pyMinor detected — MCP bridges require 3.11+." "Yellow"
+                }
+            }
         }
-        if (-not $pythonCmd) {
-            Write-Status "Python not found on PATH." "Red"
-            Write-Status "  MCP bridges require Python 3.11+. Install from:" "Yellow"
-            Write-Status "    https://www.python.org/downloads/" "Cyan"
-            throw "Python 3.11+ required for MCP bridges. Install and re-run."
+        if (-not $pythonOk) {
+            if (-not $pythonCmd) { Write-Status "Python not found on PATH." "Yellow" }
+            $installed = Install-ViaWinget -WingetId "Python.Python.3.13" -DisplayName "Python 3.13" -ManualUrl "https://www.python.org/downloads/"
+            if ($installed) {
+                $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+                if (-not $pythonCmd) { $pythonCmd = Get-Command py -ErrorAction SilentlyContinue }
+                if ($pythonCmd) {
+                    $pyVerOutput = (& $pythonCmd.Source --version 2>&1) -join ""
+                    if ($pyVerOutput -match 'Python\s+(\d+)\.(\d+)') {
+                        $pyMajor = [int]$Matches[1]; $pyMinor = [int]$Matches[2]
+                        if ($pyMajor -gt 3 -or ($pyMajor -eq 3 -and $pyMinor -ge 11)) {
+                            $pythonOk = $true
+                        }
+                    }
+                }
+            }
+            if (-not $pythonOk) {
+                throw "Python 3.11+ required for MCP bridges. Install and re-run."
+            }
         }
-        $pythonVersion = (& $pythonCmd.Source --version 2>&1) -join ""
-        Write-Status "Python: $pythonVersion" "Green"
+        Write-Status "Python: $((& $pythonCmd.Source --version 2>&1) -join '')" "Green"
+
+        # Capture the resolved executable path. Prefer a real `python.exe`; if
+        # we only have the `py` launcher, resolve it to the actual interpreter
+        # because `py -m venv` produces venvs that other tooling may not find.
+        if ($pythonCmd.Name -eq 'py.exe' -or $pythonCmd.Name -eq 'py') {
+            $pyResolved = (& $pythonCmd.Source -3 -c "import sys; print(sys.executable)" 2>&1) -join ""
+            if ($pyResolved -and (Test-Path $pyResolved)) {
+                $script:ResolvedPython = $pyResolved
+                Write-Status "  Resolved via py launcher: $pyResolved" "DarkGray"
+            } else {
+                $script:ResolvedPython = $pythonCmd.Source
+            }
+        } else {
+            $script:ResolvedPython = $pythonCmd.Source
+        }
     } else {
         Write-Status "Prerequisite check: skipped (-SkipPrereqCheck)" "DarkGray"
+        # Still need a python to create venvs later.
+        $fallback = Get-Command python -ErrorAction SilentlyContinue
+        if (-not $fallback) { $fallback = Get-Command py -ErrorAction SilentlyContinue }
+        if ($fallback) { $script:ResolvedPython = $fallback.Source }
     }
 
     # ---------------------------------------------------------------------- #
@@ -189,12 +310,8 @@ function Install-CimmeriaReToolchain {
     if ((Test-Path $bridgePy) -and -not $Force) {
         Write-Status "ghidra-mcp: bridge already cloned at $ghidraMcpDir" "DarkGray"
     } else {
-        $gitCmd = Get-Command git -ErrorAction SilentlyContinue
-        if (-not $gitCmd) {
-            Write-Status "git not found — required to clone the ghidra-mcp bridge." "Red"
-            throw "git required. Install from https://git-scm.com/ and re-run."
-        }
-
+        # Git presence was validated (and auto-installed if needed) in the
+        # prereq step at the top of this function; nothing to do here.
         if (Test-Path $ghidraMcpDir) {
             Write-Status "ghidra-mcp: updating existing clone..." "DarkGray"
             & git -C $ghidraMcpDir fetch --tags 2>&1 | ForEach-Object { Write-Status "  $_" "DarkGray" }
@@ -265,10 +382,15 @@ function Install-CimmeriaReToolchain {
     if ((Test-Path $ghidraVenvPython) -and -not $Force) {
         Write-Status ".venvs\ghidra-mcp: already created" "DarkGray"
     } else {
+        if (-not $script:ResolvedPython) {
+            throw "No Python interpreter resolved. Re-run without -SkipPrereqCheck, or ensure python.exe is on PATH."
+        }
         if ($PSCmdlet.ShouldProcess($ghidraVenv, "Create ghidra-mcp venv")) {
             Write-Status "Creating Python venv at $ghidraVenv ..." "White"
             New-Item -ItemType Directory -Path (Split-Path $ghidraVenv -Parent) -Force | Out-Null
-            & python -m venv $ghidraVenv 2>&1 | ForEach-Object { Write-Status "  $_" "DarkGray" }
+            # Use the interpreter resolved in the prereq step rather than `python`
+            # directly — handles the case where only the `py` launcher was on PATH.
+            & $script:ResolvedPython -m venv $ghidraVenv 2>&1 | ForEach-Object { Write-Status "  $_" "DarkGray" }
 
             $reqFile = Join-Path $ghidraMcpDir "requirements.txt"
             if (Test-Path $reqFile) {
@@ -395,10 +517,14 @@ function Install-CimmeriaReToolchain {
     if ((Test-Path $x64VenvMcp) -and -not $Force) {
         Write-Status ".venvs\x64dbg-mcp: already created" "DarkGray"
     } else {
+        if (-not $script:ResolvedPython) {
+            throw "No Python interpreter resolved. Re-run without -SkipPrereqCheck, or ensure python.exe is on PATH."
+        }
         if ($PSCmdlet.ShouldProcess($x64Venv, "Create x64dbg-mcp venv")) {
             Write-Status "Creating Python venv at $x64Venv ..." "White"
             New-Item -ItemType Directory -Path (Split-Path $x64Venv -Parent) -Force | Out-Null
-            & python -m venv $x64Venv 2>&1 | ForEach-Object { Write-Status "  $_" "DarkGray" }
+            # Same as the ghidra-mcp venv above — use the resolved interpreter.
+            & $script:ResolvedPython -m venv $x64Venv 2>&1 | ForEach-Object { Write-Status "  $_" "DarkGray" }
 
             $x64Python = Join-Path $x64Venv "Scripts\python.exe"
             & $x64Python -m pip install --upgrade pip 2>&1 | Out-Null
@@ -432,13 +558,16 @@ function Install-CimmeriaReToolchain {
     } else {
         if ($PSCmdlet.ShouldProcess($mcpJsonPath, "Generate .mcp.json")) {
             $template = Get-Content $mcpExamplePath -Raw
-            $resolved = $template -replace '<CIMMERIA_ROOT>', ($ProjectRoot -replace '\\', '\\\\')
-            if ($GhidraServerKey) {
-                $resolved = $resolved -replace 'REPLACE_WITH_FUNCTIONS_KEY', $GhidraServerKey
+            # Use literal .Replace() rather than -replace: the cimmeria-rag
+            # functions key can contain `$` sequences that -replace would
+            # interpret as backreferences and silently corrupt.
+            $resolved = $template.Replace('<CIMMERIA_ROOT>', ($ProjectRoot -replace '\\', '\\\\'))
+            if ($CimmeriaRagKey) {
+                $resolved = $resolved.Replace('REPLACE_WITH_FUNCTIONS_KEY', $CimmeriaRagKey)
             }
             Set-Content -Path $mcpJsonPath -Value $resolved -Encoding UTF8
             Write-Status ".mcp.json: generated from .mcp.json.example" "Green"
-            if (-not $GhidraServerKey) {
+            if (-not $CimmeriaRagKey) {
                 Write-Status "  Note: cimmeria-rag key left as REPLACE_WITH_FUNCTIONS_KEY." "DarkGray"
                 Write-Status "  Edit .mcp.json and replace it, or delete the cimmeria-rag block if not using it." "DarkGray"
             }

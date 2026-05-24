@@ -137,6 +137,17 @@ The MCP bridges are convenient but not omnipotent. Reach for the manual flow whe
 - **The decompile is garbled.** Some functions have control-flow that the decompiler mis-renders. Read the disassembly directly (`mcp__ghidra__disassemble_function`) and walk it yourself; pattern-matching agents struggle with mangled output.
 - **The investigation is broader than one or two sessions.** Long-running campaigns (like the V5 campaign that produced 19 findings docs) need human curation across sessions — agent memory helps, but the campaign's shape is yours to maintain.
 
+## Practical constraints — context and rate limits
+
+The MCP tools amplify what a single Claude Code session can do, but the session itself still has a budget:
+
+- **Context window.** Long Ghidra dumps eat context fast. `mcp__ghidra__decompile_function` on a large function can return 5–10 KB; doing that on 20+ functions inside one investigation will push you toward compaction. Mitigations: ask the agent to summarize after each phase and drop the raw decompile before moving on; use `mcp__ghidra__get_function_signature` instead of `decompile_function` when only the shape matters; spawn subagents for parallel recon so each returns a digest instead of raw output.
+- **Rate limits.** Each Claude plan has its own per-window quota. A six-phase investigation that bounces between Ghidra MCP and x64dbg MCP many times is closer to "intensive" than "incidental." If you hit a limit mid-investigation, pause, save the evidence packet to `.claude/agent-memory/game-archaeology-specialist/`, and resume in a fresh session.
+- **Tool-call cost.** Each MCP call is a tool invocation. Batching helps — `mcp__ghidra__batch_decompile` over 10 addresses is much cheaper than 10 separate decompiles. Same for `batch_set_comments`, `batch_create_labels`.
+- **Don't paste decompiled blobs into chat.** If you need to discuss a function with another agent, hand it the address (`ghidra://SGW.exe@0x00c6fc40`) rather than the full decompile. The receiving agent can fetch what it needs.
+
+A practical pattern: scope each session to **one** Six-Phase pass on **one** subsystem. Cross-system investigations stretch context without producing better evidence.
+
 ## A typical session shape
 
 A representative half-day archaeology session, scoped to one mid-sized system:

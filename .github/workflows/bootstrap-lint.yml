@@ -1,0 +1,98 @@
+name: bootstrap-lint
+
+# Validates the artifacts that the RE-toolchain bootstrap depends on so a
+# malformed template or a syntactically broken PowerShell script doesn't
+# silently ship and waste a contributor's setup time. Gated to paths that
+# could affect either artifact.
+#
+# Two checks today:
+#   - .mcp.json.example parses as valid JSON (with all three expected
+#     mcpServers entries present so a rename or accidental delete trips CI).
+#   - Every PowerShell file under bootstrap/CimmeriaBootstrap/ parses via the
+#     PowerShell AST.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".mcp.json.example"
+      - "bootstrap/**"
+      - "setup.ps1"
+      - ".github/workflows/bootstrap-lint.yml"
+
+permissions: {}
+
+concurrency:
+  group: bootstrap-lint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: bootstrap artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: validate .mcp.json.example as JSON
+        run: |
+          set -e
+          python -c "
+          import json, sys
+          with open('.mcp.json.example') as f:
+              doc = json.load(f)
+          servers = doc.get('mcpServers', {})
+          expected = {'cimmeria-rag', 'ghidra', 'x64dbg'}
+          missing = expected - set(servers.keys())
+          if missing:
+              print(f'.mcp.json.example missing required mcpServers entries: {sorted(missing)}', file=sys.stderr)
+              sys.exit(1)
+          print(f'.mcp.json.example OK — servers: {sorted(servers.keys())}')
+          "
+
+      - name: parse all bootstrap PowerShell files
+        shell: pwsh
+        run: |
+          $files = @(
+            'setup.ps1'
+          ) + (Get-ChildItem -Recurse -Path 'bootstrap/CimmeriaBootstrap' -Include *.ps1, *.psm1, *.psd1 | ForEach-Object { $_.FullName })
+          $fail = $false
+          foreach ($f in $files) {
+            $tokens = $null; $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$tokens, [ref]$errors)
+            if ($errors) {
+              Write-Host "FAIL $f"
+              $errors | ForEach-Object { Write-Host "  $_" }
+              $fail = $true
+            } else {
+              Write-Host "OK   $f"
+            }
+          }
+          if ($fail) { exit 1 }
+
+      - name: verify bootstrap module exports expected functions
+        shell: pwsh
+        run: |
+          Import-Module ./bootstrap/CimmeriaBootstrap -Force
+          $expected = @(
+            'Install-CimmeriaDependencies',
+            'Install-CimmeriaReToolchain',
+            'Build-CimmeriaServer',
+            'Build-CimmeriaApp',
+            'Build-CimmeriaLauncher',
+            'Initialize-CimmeriaDatabase',
+            'Start-CimmeriaServer',
+            'Stop-CimmeriaServer',
+            'Update-CimmeriaClient',
+            'Invoke-CimmeriaBootstrap'
+          )
+          $actual = (Get-Command -Module CimmeriaBootstrap).Name
+          $missing = $expected | Where-Object { $_ -notin $actual }
+          if ($missing) {
+            Write-Host "Missing exports: $($missing -join ', ')"
+            exit 1
+          }
+          Write-Host "All expected exports present: $($expected -join ', ')"

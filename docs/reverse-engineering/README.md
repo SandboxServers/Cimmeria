@@ -72,13 +72,15 @@ When a bible chapter contradicts a finding doc, the bible wins by default — bu
 
 The 10 Jython scripts under [`annotation-scripts/`](annotation-scripts/) ran during Phase 1 and produced the named-function baseline that everything since has relied on. Cumulative result: **101,909 / 168,239 non-thunk functions named (60.6%)**.
 
-| Script | Functions named | Confidence | Status |
+Counts mirror [`STATUS.md`](STATUS.md), which is authoritative — update both together if you re-run a script.
+
+| Script | Functions renamed | Confidence | Status |
 |---|---:|---|---|
-| `01_rtti_annotator.py` | 5,063 (4,364 vfuncs + 8,961 vtables) | HIGH | DONE |
+| `01_rtti_annotator.py` | 4,364 (+ 8,961 vtable labels) | HIGH | DONE |
 | `02_ue3_exec_annotator.py` | 1,006 | HIGH | DONE |
 | `03_bigworld_source_annotator.py` | 23 | HIGH | DONE |
-| `04_event_signal_annotator.py` | 4,085 | HIGH | DONE |
-| `05_mercury_annotator.py` | 38 + 79 vtable xrefs | HIGH | DONE |
+| `04_event_signal_annotator.py` | 419 | HIGH | DONE |
+| `05_mercury_annotator.py` | 38 (+ 79 vtable xrefs) | HIGH | DONE |
 | `06_cme_framework_annotator.py` | 28 | HIGH | DONE |
 | `07_vtable_annotator.py` | ~9,600 | MEDIUM | DONE (partial, cancelled) |
 | `08_lua_binding_annotator.py` | 0 | — | DONE (Lua vestigial in this binary) |

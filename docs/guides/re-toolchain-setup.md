@@ -27,12 +27,14 @@ End-to-end walkthrough for getting Ghidra, x64dbg / x32dbg, and their MCP server
 |---|---|---|---|
 | Windows | 10 / 11 | The server runs on Windows next to the game client | — |
 | PowerShell | 7.0+ | Bootstrap script | [`winget install Microsoft.PowerShell`](https://github.com/PowerShell/PowerShell) |
-| Git | Any recent | Clone Cimmeria + ghidra-mcp | [git-scm.com](https://git-scm.com/) |
-| JDK 21 | LTS | Ghidra 12 | [Adoptium Temurin 21](https://adoptium.net/) |
-| Python | 3.11+ | MCP bridges | [python.org](https://www.python.org/) |
-| Disk | ~10 GB | Ghidra + x64dbg + Cimmeria + caches | — |
+| Git | Any recent | Clone Cimmeria + ghidra-mcp | [git-scm.com](https://git-scm.com/) — or let the bootstrap winget-install it |
+| JDK 21 | LTS | Ghidra 12 | [Adoptium Temurin 21](https://adoptium.net/) — or let the bootstrap winget-install it |
+| Python | 3.11+ | MCP bridges | [python.org](https://www.python.org/) — or let the bootstrap winget-install it |
+| Disk | ~10 GB | Ghidra ~1 GB, x64dbg ~50 MB, ghidra-mcp clone ~100 MB, venvs ~200 MB, the rest for caches | — |
 
 The Cimmeria game-server prerequisites (Rust, PostgreSQL, etc.) are covered separately in [bootstrap/README.md](../../bootstrap/README.md) — you don't need them just for RE.
+
+> **Auto-install.** The bootstrap (`Install-CimmeriaReToolchain`) detects missing Git / JDK 21 / Python 3.11+ and tries `winget install` first. If winget is unavailable, it prints the manual download URL and aborts. If you'd rather skip the auto-install (corporate-managed laptop, custom JDK, etc.), install them yourself before running `setup.ps1` and the bootstrap will detect them on PATH.
 
 ## Path overview
 
@@ -139,7 +141,9 @@ This installs the [`x64dbg-automate`](https://pypi.org/project/x64dbg-automate/)
 Copy-Item .mcp.json.example .mcp.json
 ```
 
-Open `.mcp.json` and replace every `<CIMMERIA_ROOT>` with the absolute path to your Cimmeria checkout (e.g. `C:\\Users\\you\\source\\projects\\Cimmeria` — Windows paths inside JSON need double backslashes). If you don't use `cimmeria-rag`, delete that block; otherwise replace `REPLACE_WITH_FUNCTIONS_KEY` with the Azure Functions key issued to you.
+Open `.mcp.json` and replace every `<CIMMERIA_ROOT>` with the absolute path to your Cimmeria checkout (e.g. `C:\\Users\\you\\source\\projects\\Cimmeria` — Windows paths inside JSON need double backslashes).
+
+For the `cimmeria-rag` block: replace `REPLACE_WITH_FUNCTIONS_KEY` with the Azure Functions key for the project's RAG MCP. The key isn't checked into git — ask in the project chat (or, if you're a contributor without access, just delete the entire `cimmeria-rag` block; the Ghidra and x64dbg MCPs work standalone). When the bootstrap generates `.mcp.json` for you it leaves the placeholder in place unless you pass `-CimmeriaRagKey <value>`.
 
 Verify the Ghidra `GHIDRA_MCP_URL` port matches the port Ghidra's plugin actually bound to (see the port-note in [install-ghidra-mcp.md](../reverse-engineering/toolchain/install-ghidra-mcp.md#3-install-the-ghidramcp-plugin)).
 
