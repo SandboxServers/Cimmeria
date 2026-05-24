@@ -35,9 +35,12 @@ use crate::base::resources::bag_max_slots;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 
-/// Container ids that this auto-equip router understands.
-const CONTAINER_MAIN: i32 = 1;
-const CONTAINER_BANDOLIER: i32 = 3;
+// Re-export the canonical container ids the auto-equip router cares
+// about. Defined once in `cimmeria_entity::inventory`; re-named locally
+// so the route conditions read naturally without the `INV_` prefix.
+use cimmeria_entity::inventory::{
+    INV_BANDOLIER as CONTAINER_BANDOLIER, INV_MAIN as CONTAINER_MAIN,
+};
 
 /// Resolve an inventory instance's design id and fire the cell-side
 /// content-engine `OnItemUse` event. **Does not consume the item.**
@@ -102,9 +105,15 @@ pub async fn handle_use_inventory_item(
         container_id: i32,
         is_bandolier_eligible: bool,
     }
+    // `$3` is the canonical bandolier container id, bound from the
+    // `CONTAINER_BANDOLIER` re-export rather than inlined in the SQL
+    // so the discriminator stays pegged to the same constant the move
+    // handler (`item_allows_container`) consults — if the constant
+    // ever moves, both sides update together rather than silently
+    // disagreeing.
     let row: InstanceRow = match sqlx::query_as::<_, InstanceRow>(
         "SELECT inv.type_id, inv.container_id, \
-                (3 = ANY(ri.container_sets)) AS is_bandolier_eligible \
+                ($3 = ANY(ri.container_sets)) AS is_bandolier_eligible \
          FROM sgw_inventory inv \
          JOIN resources.items ri ON ri.item_id = inv.type_id \
          WHERE inv.character_id = $1 AND inv.item_id = $2 \
@@ -112,6 +121,7 @@ pub async fn handle_use_inventory_item(
     )
     .bind(player_id)
     .bind(item_id)
+    .bind(CONTAINER_BANDOLIER)
     .fetch_optional(pool.as_ref())
     .await
     {

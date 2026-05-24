@@ -119,6 +119,32 @@ async fn count_item_used_outbox_rows(pool: &PgPool, entity_id: u32) -> i64 {
     .expect("count outbox rows")
 }
 
+/// Verify the seed row for `type_id` matches the test's assumption
+/// about whether the bandolier is in its `container_sets`. Runs once at
+/// test start so a future seed change fails LOUDLY here with a clear
+/// message rather than masquerading as a routing-logic failure later in
+/// the assertions.
+async fn assert_bandolier_eligibility(pool: &PgPool, type_id: i32, expected: bool) {
+    let actual: Option<bool> = sqlx::query_scalar(
+        "SELECT $2 = ANY(container_sets) FROM resources.items WHERE item_id = $1",
+    )
+    .bind(type_id)
+    .bind(cimmeria_entity::inventory::INV_BANDOLIER)
+    .fetch_optional(pool)
+    .await
+    .expect("seed-shape query");
+    let actual = actual
+        .expect("seed row must exist — items.sql out of sync with the test's hard-coded type_id");
+    assert_eq!(
+        actual, expected,
+        "seed row for type_id={type_id} no longer matches the test's \
+         bandolier-eligibility assumption (expected={expected}, actual={actual}). \
+         Update the constant or the assertion — DO NOT silently flip the \
+         expectation; the test's job is to guard the routing logic against \
+         the canonical seed shape.",
+    );
+}
+
 fn make_state(
     entity_id: u32,
 ) -> (
@@ -151,6 +177,12 @@ fn make_state(
 #[tokio::test]
 async fn slappack_use_fires_on_item_use_not_auto_equip() {
     let pool = require_db_or_skip!();
+    // Seed-shape pin: the bug shape only exists if the slappack is NOT
+    // bandolier-eligible. If a future seed change adds 3 to its
+    // container_sets, this assertion fails with a clear message rather
+    // than the routing assertions below failing for the wrong reason.
+    assert_bandolier_eligibility(&pool, SLAPPACK_TYPE_ID, false).await;
+
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
     let entity_id = (TEST_BASE + 1) as u32;
@@ -202,6 +234,12 @@ async fn slappack_use_fires_on_item_use_not_auto_equip() {
 #[tokio::test]
 async fn pistol_use_routes_to_auto_equip_not_on_item_use() {
     let pool = require_db_or_skip!();
+    // Seed-shape pin: the positive path only works if the pistol IS
+    // bandolier-eligible. If a future seed change removes 3 from its
+    // container_sets, this assertion fails with a clear message rather
+    // than the routing assertions below failing for the wrong reason.
+    assert_bandolier_eligibility(&pool, PISTOL_TYPE_ID, true).await;
+
     let account_id = TEST_BASE + 100;
     let player_id = TEST_BASE + 101;
     let entity_id = (TEST_BASE + 101) as u32;
@@ -236,6 +274,51 @@ async fn pistol_use_routes_to_auto_equip_not_on_item_use() {
         0,
         "pistol useItem must NOT enqueue `item_used` — that path fires \
          only for non-bandolier-eligible items",
+    );
+
+    cleanup(&pool, account_id, player_id).await;
+}
+
+/// Pistol in bandolier slot 0 → useItem MUST route to the move handler
+/// (auto-unequip back to main bag). Symmetric to the equip test above;
+/// pins the bandolier → main direction so a future "only main → bandolier
+/// auto-equips" regression has a guard catching it.
+#[tokio::test]
+async fn pistol_in_bandolier_use_routes_to_auto_unequip() {
+    let pool = require_db_or_skip!();
+    assert_bandolier_eligibility(&pool, PISTOL_TYPE_ID, true).await;
+
+    let account_id = TEST_BASE + 200;
+    let player_id = TEST_BASE + 201;
+    let entity_id = (TEST_BASE + 201) as u32;
+    cleanup(&pool, account_id, player_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+
+    // Pistol in bandolier, slot 0. Main bag empty so auto-unequip has
+    // a destination.
+    let item_id = insert_item(&pool, player_id, PISTOL_TYPE_ID, 3, 0).await;
+
+    let (transport, e2a, conn) = make_state(entity_id);
+    let db_pool = Some(Arc::new(pool.clone()));
+    let cell_tx: Option<mpsc::Sender<crate::cell::messages::BaseToCellMsg>> = None;
+
+    handle_use_inventory_item(
+        entity_id, player_id, item_id, 0, &db_pool, &cell_tx, &transport, &conn, &e2a,
+    )
+    .await;
+
+    assert_eq!(
+        location_of(&pool, player_id, item_id).await,
+        Some((1, 0)),
+        "pistol useItem from bandolier must auto-unequip to main bag \
+         (container=1, first empty slot=0); the bandolier→main router \
+         direction is broken",
+    );
+    assert_eq!(
+        count_item_used_outbox_rows(&pool, entity_id).await,
+        0,
+        "auto-unequip must NOT enqueue `item_used` — same OnItemUse \
+         bypass as the equip direction",
     );
 
     cleanup(&pool, account_id, player_id).await;

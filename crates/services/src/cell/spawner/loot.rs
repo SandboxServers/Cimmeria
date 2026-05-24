@@ -156,10 +156,15 @@ pub fn classify_holster_duration(visual_component: Option<&str>) -> std::time::D
 /// Load weapon stats (clip_size + default_ammo_type + allowed ammo subtypes)
 /// from `resources.items`.
 ///
-/// Filters to rows with `clip_size > 0` — actual weapons. The seed data
-/// uses `clip_size = 0` (not NULL) for non-weapons like slappacks, so a
-/// `clip_size IS NOT NULL` filter would pull them in as zero-clip
-/// "weapons" and they'd sit in the cache as dead `WeaponDef` entries.
+/// Filters to rows with `clip_size > 0` — ammo-bearing weapons (every
+/// shipped SGW weapon takes ammo, so this matches the practical "weapon"
+/// set). The seed uses `clip_size = 0` (not NULL) for non-weapons like
+/// slappacks, so the older `clip_size IS NOT NULL` filter would have
+/// pulled them in as zero-clip "weapons" sitting in the cache as dead
+/// `WeaponDef` entries. If a future ammo-less weapon archetype ever
+/// ships (a melee weapon, an unlimited-fire energy emitter, etc.), the
+/// filter needs a different discriminator — most likely a join against
+/// a "weapon-class" enum or a `flags` bit.
 /// The `default_ammo_type` conversion mirrors `BANDOLIER_ITEMS_QUERY`
 /// exactly so that values seeded here for runtime grants match the wire
 /// format the player_load path uses. `ammo_types` is unnested and each

@@ -264,24 +264,51 @@ mod live_db {
         let map = load_item_defs(&pool)
             .await
             .expect("load_item_defs must succeed against seeded DB");
-        // The loader filters `WHERE clip_size IS NOT NULL` — items with a
-        // populated clip_size column. The actual values include 0 (placeholder
-        // entries for non-loaded weapon templates), so we don't assert
-        // positivity here. The load_item_defs invariant we CAN pin is that
-        // the cache is non-empty (the seed has weapons) and that every cached
-        // entry's clip_size is non-negative (clip_size is i32 in the
-        // resources.items column; negative would indicate a sign-extend bug).
+        // The loader filters `WHERE clip_size > 0` — actual ammo-bearing
+        // weapons. Every cached entry must have a positive clip_size; the
+        // cache must not be empty (the seed has weapons).
         assert!(
             !map.is_empty(),
-            "seeded resources.items has weapons with clip_size populated"
+            "seeded resources.items has weapons with clip_size > 0"
         );
         for (item_id, def) in &map {
             assert!(
-                def.clip_size >= 0,
-                "item {item_id} surfaced from load_item_defs with negative clip_size {}",
+                def.clip_size > 0,
+                "item {item_id} surfaced from load_item_defs with non-positive \
+                 clip_size {} — the WHERE clip_size > 0 filter has regressed and \
+                 non-weapons (clip_size = 0 in the seed) are leaking into the \
+                 WeaponDef cache",
                 def.clip_size
             );
         }
+    }
+
+    /// The slappack (type 2893, `clip_size = 0` in the seed) MUST NOT be
+    /// in the WeaponDef cache. Companion to the `clip_size > 0` filter
+    /// assertion above — that test catches "any zero-clip leak"; this
+    /// test catches "the specific slappack leak that motivated the fix"
+    /// so a regression names the right culprit.
+    ///
+    /// Bug shape this guards against: reverting `WHERE clip_size > 0`
+    /// to `WHERE clip_size IS NOT NULL` would silently put every
+    /// non-weapon back into the cache as a zero-clip `WeaponDef` —
+    /// confusing the equipment-grant code, which keys off the cache for
+    /// ammo seeding (see `cell/content/executor/inventory.rs::weapon_stats`).
+    #[tokio::test]
+    async fn load_item_defs_excludes_zero_clip_consumables_like_slappack() {
+        let pool = require_db_or_skip!();
+        let map = load_item_defs(&pool)
+            .await
+            .expect("load_item_defs must succeed against seeded DB");
+
+        // 2893 = Health Slappack TC1 (db/resources/Items/Seed/items.sql).
+        // Its seed row has clip_size = 0 — the canonical non-weapon shape.
+        const SLAPPACK_TYPE_ID: i32 = 2893;
+        assert!(
+            !map.contains_key(&SLAPPACK_TYPE_ID),
+            "slappack (type {SLAPPACK_TYPE_ID}, clip_size=0 in seed) leaked into \
+             the WeaponDef cache — the `WHERE clip_size > 0` filter regressed",
+        );
     }
 
     #[tokio::test]
