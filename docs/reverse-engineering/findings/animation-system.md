@@ -300,8 +300,8 @@ Server sends Event_NetIn_BeingAppearance {BodySet, ComponentList}
 Resolution:
 
 - **#249** (spawn-holstered) — fixed in PR #338. World-entry path emits `BeingAppearance` with `weapon_visual` filtered from `ComponentList`.
-- **#333** (BSF_HOLSTER retirement) — fixed in PR #338. Constant removed; dead clear-on-fire / clear-on-reload writes removed.
-- **#339** (runtime toggle rebroadcast) — fixed in PR #338. `combatant.rs requestHolsterWeapon`, `use_ability.rs` fire-while-holstered queue, and `player/world.rs` reload-while-holstered queue all call `request_appearance_refresh` → base-side `BeingAppearance` rebroadcast to self + AoI witnesses.
+- **#333** (BSF_HOLSTER retirement) — fixed in PR #338. Constant removed; dead clear-on-fire / clear-on-reload writes removed. Test-and-docs follow-up in PR #362 refreshed the wire-flow annotations in [`docs/gameplay/weapon-ammo-reload.md`](../../gameplay/weapon-ammo-reload.md) and added this resolution note.
+- **#339** (runtime toggle rebroadcast) — fixed in PR #338. `combatant.rs requestHolsterWeapon`, `use_ability.rs` fire-while-holstered queue, and `player/world.rs` reload-while-holstered queue all call `request_appearance_refresh` → base-side `BeingAppearance` rebroadcast to self + AoI witnesses. PR #362 closed the missing test gap (the use_ability fire path's regression guard previously discarded `rx`, so dropping the rebroadcast call would have silently passed).
 
 ### Key addresses (appearance system)
 

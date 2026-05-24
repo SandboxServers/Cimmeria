@@ -348,12 +348,12 @@ async fn attack_while_holstered_queues_and_draws_without_committing() {
         "Phase A must NOT consume ammo — ammo check happens in Phase B",
     );
 
-    // Pin the runtime rebroadcast (#339): Phase A must dispatch exactly
-    // one `RefreshAppearance(holstered=false)` so the base-side handler
+    // Pin the runtime rebroadcast: Phase A must dispatch exactly one
+    // `RefreshAppearance(holstered=false)` so the base-side handler
     // unwraps the weapon mesh in the `ComponentList` and rebroadcasts
     // `BeingAppearance` to self + AoI witnesses. Without this assertion
     // the test would pass even if a refactor dropped the
-    // `request_appearance_refresh` call — the bug shape #339 was filed
+    // `request_appearance_refresh` call — the bug shape this guards
     // against (server state mutates correctly but other players still
     // see the player in the holstered pose).
     let mut refresh_count = 0;
