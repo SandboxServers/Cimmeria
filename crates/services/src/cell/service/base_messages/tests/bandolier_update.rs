@@ -397,3 +397,94 @@ async fn update_bandolier_item_in_combat_does_not_arm_holster_timer() {
          this on combat exit naturally.",
     );
 }
+
+/// **Regression guard for issue #372 (chain-engine grant path)** —
+/// `UpdateBandolierItem` lands a weapon directly into the bandolier
+/// (e.g. mission reward that grants a weapon into a still-empty
+/// active slot). The client needs `onEntityProperty(AmmoTypeId,
+/// cur_ammo_type)` to open its fire-animation gate; without it the
+/// just-granted weapon can't be fired until the player swaps
+/// bandolier slots and back.
+///
+/// Parallel coverage to `sync_bandolier_items_active_slot_gained_weapon_emits_ammo_type_id`
+/// in `bandolier_sync.rs`. Both the player-driven move path
+/// (`SyncBandolierItems`) and the chain-engine grant path
+/// (`UpdateBandolierItem`) must emit AmmoTypeId on equip.
+#[tokio::test]
+async fn update_bandolier_item_active_emits_ammo_type_id() {
+    use crate::cell::cell_methods::inventory::GENERICPROPERTY_AMMO_TYPE_ID;
+
+    const AMMO_TYPE: i32 = 3;
+
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        e.archetype_id = Some(1);
+        e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+        e.weapon_holstered = true;
+        e.combat_exit_at = None;
+    }
+    mgr.connect_entity(1);
+    mgr.sequence_map
+        .insert((804, crate::cell::spawner::EVENT_ITEM_EQUIP), 1872);
+
+    let item = BandolierItem {
+        item_id: 77,
+        clip_size: 30,
+        default_ammo_type: AMMO_TYPE,
+        current_ammo: 30,
+        cur_ammo_type: AMMO_TYPE,
+    };
+
+    let (tx, mut rx) = mpsc::channel(16);
+    let engine = ChainEngine::new();
+
+    handle_base_message(
+        BaseToCellMsg::UpdateBandolierItem {
+            entity_id: 1,
+            slot_id: 0,
+            item,
+            make_active: true,
+        },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+
+    let mut saw_ammo_type_id = false;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall {
+            method_index, args, ..
+        } = msg
+        {
+            if method_index == crate::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY
+                && args.len() == 8
+            {
+                let prop_id = i32::from_le_bytes(args[0..4].try_into().unwrap());
+                let value = i32::from_le_bytes(args[4..8].try_into().unwrap());
+                if prop_id == GENERICPROPERTY_AMMO_TYPE_ID {
+                    assert_eq!(
+                        value, AMMO_TYPE,
+                        "AmmoTypeId emit must carry the granted weapon's cur_ammo_type"
+                    );
+                    saw_ammo_type_id = true;
+                }
+            }
+        }
+    }
+    assert!(
+        saw_ammo_type_id,
+        "chain-engine grant into active bandolier slot must emit \
+         onEntityProperty(AmmoTypeId, cur_ammo_type) — without this the \
+         client's fire-animation gate stays closed until the player swaps slots",
+    );
+}
