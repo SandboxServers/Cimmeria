@@ -98,7 +98,7 @@ Client                       Cell                                       Base / D
   │                           │   reload_slot_id = Some(active_bandolier_slot)  ← pin
   │                           │   abilities.start_ability_cooldown(596, warmup+cooldown)
   │ ◀── onTimerUpdate (m12) ──│  cooldown bar starts
-  │ ◀── onEntityProperty (m25)│  ammo-type sync (cur_ammo_type)
+  │ ◀── onEntityProperty (m7)│  ammo-type sync (cur_ammo_type)
   │                           │
   │  Note: handle_reload does NOT touch bStateField — BSF_IN_COMBAT is
   │  derived from `threatened_mobs` and only flips via combat::generate_threat.
@@ -247,7 +247,7 @@ Client                       Cell                              Base / DB
   │ requestReload(0) ─────────▶│  reload_complete_at = now + 2.0s
   │                            │  start_ability_cooldown(596, 3.0s)
   │ ◀── onTimerUpdate(m12) ────│  cooldown bar
-  │ ◀── onEntityProperty(m25) ─│  ammo-type sync
+  │ ◀── onEntityProperty(m7) ──│  ammo-type sync
   │                            │  (weapon already drawn from the fire above,
   │                            │   so no BeingAppearance — and handle_reload
   │                            │   intentionally does NOT touch bStateField)

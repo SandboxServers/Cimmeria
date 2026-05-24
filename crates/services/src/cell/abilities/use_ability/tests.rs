@@ -356,27 +356,28 @@ async fn attack_while_holstered_queues_and_draws_without_committing() {
     // `request_appearance_refresh` call — the bug shape this guards
     // against (server state mutates correctly but other players still
     // see the player in the holstered pose).
-    let mut refresh_count = 0;
-    while let Ok(msg) = rx.try_recv() {
-        if let CellToBaseMsg::RefreshAppearance {
-            entity_id,
-            holstered,
-            ..
-        } = msg
-        {
-            assert_eq!(entity_id, 1, "RefreshAppearance must target the attacker");
-            assert!(
-                !holstered,
-                "Phase A must broadcast holstered=false (mesh attaches)",
-            );
-            refresh_count += 1;
-        }
-    }
+    let refreshes: Vec<_> = drain(&mut rx)
+        .into_iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::RefreshAppearance {
+                entity_id,
+                holstered,
+                ..
+            } => Some((entity_id, holstered)),
+            _ => None,
+        })
+        .collect();
     assert_eq!(
-        refresh_count, 1,
+        refreshes.len(),
+        1,
         "Phase A must dispatch exactly one RefreshAppearance — \
          dropping it leaves AoI witnesses stuck on the holstered pose \
          while the attacker animates an invisible draw",
+    );
+    assert_eq!(
+        refreshes[0],
+        (1, false),
+        "RefreshAppearance must target the attacker with holstered=false",
     );
 }
 
