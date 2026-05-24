@@ -4,9 +4,42 @@
 
 use tokio::sync::mpsc;
 
+use crate::cell::cell_methods::inventory::{
+    build_entity_property_args, GENERICPROPERTY_AMMO_TYPE_ID,
+};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_entity::cell_entity::BandolierItem;
+
+/// Push `onEntityProperty(AmmoTypeId, ammo_type)` to the client so its
+/// bandolier UI / fire-animation gate sees the correct ammo subtype for
+/// the now-active slot. Pass `0` when the active slot has no item
+/// (mirrors python `SGWPlayer.py:522`'s `activeItem.ammoType if
+/// activeItem else 0`).
+///
+/// The manual slot-swap handler
+/// ([`crate::cell::cell_methods::inventory::bandolier::handle_request_active_slot_change`])
+/// already emits this property on every swap; the in-game equip paths
+/// here (`UpdateBandolierItem`, `SyncBandolierItems`) used to skip it,
+/// which surfaced as "the fire animation doesn't play until I swap
+/// bandolier slots and back" — the client kept stale `AmmoTypeId=0`
+/// (no ammo) until the swap forced a refresh.
+async fn emit_active_ammo_type(
+    entity_id: u32,
+    ammo_type: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let args = build_entity_property_args(GENERICPROPERTY_AMMO_TYPE_ID, ammo_type);
+    crate::cell::abilities::send_entity_method(
+        entity_id,
+        crate::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY,
+        args,
+        tx,
+        space_mgr,
+    )
+    .await;
+}
 
 /// Processes a `UpdateBandolierItem` message — inserts the weapon into the
 /// bandolier, optionally draws it, arms the OOC holster timer, and fires
@@ -32,6 +65,10 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
     // when the fight ends). We skip the timer arming here to
     // avoid stamping a timer while threatened_mobs is non-empty,
     // which the holster scan doesn't (yet) gate on combat state.
+    // Capture cur_ammo_type from the inserted item so the helper below
+    // can push the AmmoTypeId update to the client when this slot is
+    // (or becomes) the active one. `item` is consumed by the insert.
+    let inserted_ammo_type = item.cur_ammo_type;
     let (play_equip_anim, drew_weapon, was_in_combat, entity_state, anim_path) =
         if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
             entity.bandolier_items.insert(slot_id, item);
@@ -114,6 +151,13 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
             space_mgr,
         )
         .await;
+        // Push AmmoTypeId so the client knows which ammo subtype the
+        // newly-equipped weapon uses. Without this the client retains
+        // AmmoTypeId=0 (no ammo) and the fire animation gate never
+        // opens until the player manually swaps bandolier slots and
+        // back (the slot-swap handler is the only other path that
+        // emits this property).
+        emit_active_ammo_type(entity_id, inserted_ammo_type, tx, space_mgr).await;
     }
 }
 
@@ -298,5 +342,31 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
             space_mgr,
         )
         .await;
+    }
+
+    // Push AmmoTypeId whenever the active slot's contents changed —
+    // either the slot just gained a weapon (drag-equip / right-click
+    // equip / vendor-buy into bandolier) or just lost one (drag-
+    // unequip / sell). The manual slot-swap handler already does
+    // this on every swap; without the equivalent here, the in-game
+    // equip path stranded the client at the previous slot's
+    // AmmoTypeId — symptom was "fire animation doesn't play until I
+    // swap slots and back" because the swap forced a refresh.
+    //
+    // Empty active slot → emit 0 to mirror the legacy "no weapon
+    // equipped" payload (`SGWPlayer.py:522`). Active-slot-unchanged
+    // syncs (the `"active slot unchanged — skip"` branch above) don't
+    // reach this point because both `active_slot_gained_weapon` and
+    // `active_slot_lost_weapon` are false there.
+    if active_slot_gained_weapon || active_slot_lost_weapon {
+        let new_ammo_type = if let Some(entity) = space_mgr.get_entity(entity_id) {
+            entity
+                .bandolier_items
+                .get(&active_bandolier_slot)
+                .map_or(0, |item| item.cur_ammo_type)
+        } else {
+            0
+        };
+        emit_active_ammo_type(entity_id, new_ammo_type, tx, space_mgr).await;
     }
 }
