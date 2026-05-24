@@ -263,23 +263,92 @@ impl LoopbackPeer {
         raw
     }
 
-    /// Apply the outbound `NetworkPolicy` and (unless dropped) call
-    /// `socket.send_to`. Handles drop / latency / duplicate. Reorder is
-    /// applied by the session driver rather than at the per-packet send
-    /// site because it spans two adjacent packets.
+    /// Apply the outbound [`NetworkPolicy`] and (unless dropped) call
+    /// `socket.send_to`. Handles drop / latency / duplicate / reorder.
+    ///
+    /// Policy evaluation order per send:
+    /// 1. Increment `send_count` (1-indexed).
+    /// 2. Consume one slot of `drop_next` if non-zero, OR match against
+    ///    `drop_at_send_count` if set. If either drop fires, the bytes
+    ///    never go on the wire — RTO / retransmit consequences on the
+    ///    sender are identical to a wire-side drop.
+    /// 3. Apply `latency` via `tokio::time::sleep` before any send_to.
+    /// 4. If `reorder_pairs` is set, hold the first of each pair and
+    ///    send `(second, first)` when the pair completes.
+    /// 5. Send (one or two copies based on `duplicate_every`).
     async fn send_with_policy(&self, bytes: Bytes) -> std::io::Result<()> {
-        let (drop_this, latency, duplicate) = {
+        // Pull every policy decision under one lock acquisition so the
+        // counters advance atomically with the drop/duplicate/reorder
+        // checks that consume them.
+        let (drop_this, latency, duplicate_now, reorder_paired) = {
             let mut policy = self.policy.lock().expect("policy poisoned");
-            let drop_slot = policy.drop_next.get_mut(self.direction);
-            let drop_this = if *drop_slot > 0 {
-                *drop_slot -= 1;
+
+            *policy.send_count.get_mut(self.direction) += 1;
+            let count = policy.send_count.get(self.direction);
+
+            // drop_next consumes one slot per call.
+            let drop_next_slot = policy.drop_next.get_mut(self.direction);
+            let drop_from_next = if *drop_next_slot > 0 {
+                *drop_next_slot -= 1;
                 true
             } else {
                 false
             };
+
+            // drop_at_send_count fires once when count matches, then clears.
+            let drop_at_slot = policy.drop_at_send_count.get_mut(self.direction);
+            let drop_from_at = if *drop_at_slot == Some(count) {
+                *drop_at_slot = None;
+                true
+            } else {
+                false
+            };
+
+            let drop_this = drop_from_next || drop_from_at;
             let latency = policy.latency.get(self.direction);
-            let duplicate = policy.duplicate_every.get(self.direction);
-            (drop_this, latency, duplicate)
+
+            // duplicate_every: emit a copy whenever the per-direction
+            // duplicate_count hits the configured N. Reset to 0 after
+            // each duplication so the next N is independent.
+            let duplicate_now = if let Some(n) = policy.duplicate_every.get(self.direction) {
+                if n > 0 {
+                    let dup_count = policy.duplicate_count.get_mut(self.direction);
+                    *dup_count += 1;
+                    if *dup_count >= n {
+                        *dup_count = 0;
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // reorder_pairs: if active and the slot is empty, hold this
+            // packet and emit NOTHING right now. The next send finds a
+            // held packet and emits `(this, held)` — the pair-swap.
+            let reorder_paired = if policy.reorder_pairs.get(self.direction) && !drop_this {
+                let held_slot = policy.reorder_held.get_mut(self.direction);
+                match held_slot.take() {
+                    None => {
+                        // Hold this packet for the next call to pair with.
+                        *held_slot = Some(bytes.clone());
+                        // Signal "swallowed by reorder; do not send".
+                        Some(None)
+                    }
+                    Some(prev) => {
+                        // Pair complete. Send `this` first, then `prev`.
+                        Some(Some(prev))
+                    }
+                }
+            } else {
+                None
+            };
+
+            (drop_this, latency, duplicate_now, reorder_paired)
         };
 
         if drop_this {
@@ -290,14 +359,24 @@ impl LoopbackPeer {
             tokio::time::sleep(latency).await;
         }
 
-        self.socket.send_to(&bytes, self.peer_addr).await?;
-        if let Some(every) = duplicate {
-            if every > 0 {
-                // Crude: duplicate every send while the policy is active.
-                // The "every Nth" counter is a Phase-4 refinement when a
-                // test actually needs it.
-                let _ = every;
+        match reorder_paired {
+            // Reorder inactive: normal send path.
+            None => {
                 self.socket.send_to(&bytes, self.peer_addr).await?;
+                if duplicate_now {
+                    self.socket.send_to(&bytes, self.peer_addr).await?;
+                }
+            }
+            // First of pair: held; emit nothing this call.
+            Some(None) => {}
+            // Second of pair: emit (this, held).
+            Some(Some(held)) => {
+                self.socket.send_to(&bytes, self.peer_addr).await?;
+                self.socket.send_to(&held, self.peer_addr).await?;
+                if duplicate_now {
+                    // Duplicate the second-of-pair (which went first on the wire).
+                    self.socket.send_to(&bytes, self.peer_addr).await?;
+                }
             }
         }
         Ok(())
@@ -442,6 +521,14 @@ fn spawn_recv_pump(
             // Drive ack processing first — acks on inbound packets free
             // TX-window slots so a retransmit-soaked channel recovers
             // before the next tick.
+            //
+            // Mercury uses cumulative-ack semantics (a single ack seq
+            // implicitly acks all predecessors), so we pass the highest
+            // value from the ack footer to `process_acks` and let it
+            // drain every TX-window entry with `seq <= highest`. The
+            // `max()` is the right operation precisely because an ack
+            // list with `[5, 3, 7]` semantically means "everything up
+            // through 7 is acked", not "exactly these three seqs".
             if pkt.has_acks() {
                 if let Some(highest) = pkt.acks.iter().copied().max() {
                     let mut ch = channel.lock().expect("channel poisoned");

@@ -89,14 +89,29 @@ impl LoopbackSession {
         session.a.send_bundle(&[], false).await?;
         session.b.send_bundle(&[], false).await?;
 
-        // Wait briefly for both empty packets to land. The recv pumps
-        // call `touch_received` on every non-fragmented arrival.
-        let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
-        while tokio::time::Instant::now() < deadline {
+        // Wait for both empty packets to land. The recv pumps call
+        // `touch_received` on every non-fragmented arrival. Panic with
+        // diagnostics if the wait deadline fires before both inboxes
+        // see their packet — a silent fall-through would let tests
+        // pass against a half-handshaked session, masking real wire
+        // failures.
+        let timeout = Duration::from_millis(500);
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
             let a_saw = session.a.inbox_len() >= 1;
             let b_saw = session.b.inbox_len() >= 1;
             if a_saw && b_saw {
                 break;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                panic!(
+                    "LoopbackSession::connected handshake timeout after {timeout:?}: \
+                     a_received={a_saw}, b_received={b_saw}. \
+                     A peer's recv pump did not observe the other side's empty \
+                     FLAG_ON_CHANNEL packet within the deadline — handshake bytes \
+                     never reached the destination. This is a real harness/wire \
+                     failure, not a test timing issue.",
+                );
             }
             tokio::time::sleep(Duration::from_millis(2)).await;
         }

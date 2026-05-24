@@ -13,16 +13,31 @@ use crate::consts;
 use crate::test_harness::LoopbackSession;
 
 /// Advance A's clock past the keepalive interval → A's tick emits a
-/// keepalive datagram → B observes it.
+/// keepalive datagram → B's recv pump observes it and bumps B's
+/// `last_received`.
 #[tokio::test]
 async fn keepalive_fires_after_idle_interval_and_peer_recognizes_it() {
     let session = LoopbackSession::connected(None).await.unwrap();
 
-    // Advance past KEEPALIVE_INTERVAL_MS so A's `keepalive_due()` is true.
+    // Snapshot B's `last_received` BEFORE the keepalive flies.
+    let b_last_received_before = session.b.channel.lock().unwrap().last_received;
+
+    // Advance A's clock past KEEPALIVE_INTERVAL_MS so A's tick
+    // schedules the keepalive.
     session
         .a
         .clock
         .advance(Duration::from_millis(consts::KEEPALIVE_INTERVAL_MS + 50));
+
+    // Also advance B's clock by a small amount so the
+    // `touch_received` call B's recv pump makes when the keepalive
+    // arrives uses a strictly-later `Instant` than the handshake
+    // touch. Without this, B's `Clock::now()` returns the same
+    // value both times and the `before != after` assertion below
+    // could pass even on regressions where the keepalive packet was
+    // silently dropped (because both touches would read the same
+    // baseline Instant).
+    session.b.clock.advance(Duration::from_millis(100));
 
     let (a_actions, _) = session.tick().await.unwrap();
     assert_eq!(
@@ -31,12 +46,32 @@ async fn keepalive_fires_after_idle_interval_and_peer_recognizes_it() {
         "tick past keepalive interval must emit exactly one keepalive"
     );
 
-    // B's recv pump bumps `last_received` on every non-fragmented arrival.
-    // The keepalive body is empty, so it doesn't show up as a bundle but
-    // it does touch B's clock-side activity. Verify by re-checking B's
-    // tx-side keepalive state hasn't fired in the same way (B's clock
-    // wasn't advanced).
-    let _ = session.b.recv_n_bundles(1, Duration::from_millis(50)).await;
+    // Drain the inbox so we know B's recv pump processed the arrival
+    // (empty body → empty bundle pushed, then drained here).
+    let bundles = session.b.recv_n_bundles(1, Duration::from_secs(1)).await;
+    assert_eq!(
+        bundles.len(),
+        1,
+        "B's recv pump must observe the keepalive packet on the wire"
+    );
+    assert!(
+        bundles[0].is_empty(),
+        "keepalive body is empty (the wake-up is the signal, not the payload)"
+    );
+
+    // After the keepalive landed, B's recv pump called
+    // `touch_received` which reads B's (now-advanced) clock. The
+    // resulting `last_received` Instant must be strictly after the
+    // pre-advance snapshot — proving the keepalive was both
+    // observed AND processed (not silently dropped during decrypt /
+    // parse / dispatch).
+    let b_last_received_after = session.b.channel.lock().unwrap().last_received;
+    assert!(
+        b_last_received_after > b_last_received_before,
+        "B's last_received must advance after keepalive arrival \
+         (before={b_last_received_before:?}, after={b_last_received_after:?}) — \
+         a silent drop in the recv pipeline would leave last_received unchanged",
+    );
 }
 
 /// A busy A→B send path means A's `last_sent` was just bumped — so

@@ -153,6 +153,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 
 **Patterns to follow:**
 
+- **Feature gate.** The harness is behind the `test-harness` Cargo feature on `cimmeria-mercury`. Tests inside `crates/mercury/src/test_harness/tests/` get it for free (the `test` cfg activates the module). A consumer crate wanting to use the harness from its own integration tests must add `cimmeria-mercury = { path = "...", features = ["test-harness"] }` as a dev-dependency.
 - Default to `LoopbackSession::connected(None)` — both peers handshaked, no encryption. Reach for `LoopbackSession::connected(Some(enc))` only when the test is about the encryption path.
 - Advance time via `peer.clock.advance(Duration::from_millis(...))` rather than `tokio::time::sleep`. The clock is a `Clock`-trait `TestClock` injected into the inner `Channel`; advancing it drives keepalive / RTO / inactivity deterministically with no wall-clock cost.
 - Drop / latency / duplicate via `session.policy.lock().unwrap().drop_next.a_to_b = N`. Applied on the sender side — the receiver-side outcome is identical to a wire-side drop, and the sender's TX-window / RTO state stays correct.

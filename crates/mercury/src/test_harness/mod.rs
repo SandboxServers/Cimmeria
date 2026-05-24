@@ -15,8 +15,8 @@
 //!   packets over real loopback sockets. Right when the question is
 //!   "does the Mercury protocol deliver these bytes under conditions X?"
 //!   — retransmit, fragment reassembly, keepalive, encryption.
-//! - The wireclient (#281) is the content-aware end-to-end driver one
-//!   floor up; it walks scripts with auth, entity mirrors, and dialog
+//! - The content-aware wireclient is the end-to-end driver one floor
+//!   up; it walks scripts with auth, entity mirrors, and dialog
 //!   state. That layer is for "does the game work?", not "does the
 //!   wire work?".
 //!
@@ -44,6 +44,19 @@
 //!   that want to assert "neither direction stalls the other" must opt
 //!   into `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]`
 //!   and document why in the test header.
+//!
+//! # Known harness simplifications vs production
+//!
+//! - **Non-fragmented packets bypass the RX window.** Production's
+//!   recv path routes reliable non-fragmented packets through
+//!   `Channel::receive_packet`, which de-duplicates by sequence and
+//!   delivers in-order. The harness recv pump pushes every arrival
+//!   straight to the inbox in wire-arrival order — so duplicates and
+//!   reorderings are observable from the test side, not silently
+//!   smoothed. This makes wire-level effect tests (the
+//!   `policy_effects` module) straightforward to assert on. Fragmented
+//!   packets DO go through the per-channel `FragmentAssembler`, which
+//!   handles its own duplicate-fragment dedup.
 
 mod clock;
 mod peer;

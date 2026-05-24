@@ -284,6 +284,17 @@ freedom to swap implementations later without breaking tests.
 - The `Clock` trait is reusable beyond the harness: any future
   `Channel` work that wants to test time-dependent behavior in
   isolation now has the seam.
+- **#355 (network chaos test apparatus) can now build on the
+  `Clock` trait for deterministic time control in chaos scenarios.**
+  Without injectable time, chaos tests would need wall-clock waits
+  to exercise RTO / keepalive / inactivity paths, which makes the
+  whole suite slow and flaky. The clock seam shipped here is the
+  prerequisite #355 was blocked on.
+- Services-layer timeout tests (session inactivity reaping, combat
+  exit grace window, auto-cycle cadence) can adopt the same
+  `Clock`-trait pattern without re-deriving the seam. Today they
+  either skip time-dependent coverage or use `tokio::time::sleep`;
+  the trait makes both alternatives obsolete.
 
 ### Negative
 

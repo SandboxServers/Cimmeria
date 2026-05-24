@@ -34,7 +34,7 @@ pub mod test_transport;
 /// enable the `test-harness` feature; excluded from production builds. See
 /// `docs/architecture/mercury-loopback-harness.md` for the rationale and
 /// for how this differs from [`test_transport`] (Tier 1, byte-exact fan-out)
-/// and from the wireclient (#281, content-aware end-to-end).
+/// and from the content-aware wireclient layer above it.
 #[cfg(any(test, feature = "test-harness"))]
 pub mod test_harness;
 

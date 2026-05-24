@@ -22,7 +22,7 @@
 //! ```
 //! and copy the constants below.
 //!
-//! **Sample shapes** chosen per issue #352's category-4 spec:
+//! **Sample shapes** chosen per the category-4 spec:
 //! - SHORT — 16-byte plaintext = exactly one AES block; PKCS7
 //!   adds a full block → 32-byte ciphertext + 16-byte tag.
 //! - MID — 257-byte plaintext = 16 full blocks + one partial;
