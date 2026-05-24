@@ -46,6 +46,7 @@ fn make_test_record(world_name: &str, tag: Option<&str>, class: &str) -> SpawnRe
         has_dynamic_properties: true,
         loot_table_id: None,
         is_stationary: false,
+        ability_ids: vec![],
     }
 }
 
@@ -104,6 +105,65 @@ fn spawn_from_records_only_in_startup_spaces() {
 
     let count = spawn_npcs_from_records(&records, &mut mgr);
     assert_eq!(count, 1); // Only Agnos (startup), not Castle_CellBlock (instanced)
+}
+
+/// A `SpawnRecord` carrying a populated `ability_ids` (template has a
+/// non-null `ability_set_id`, the join in `load_spawns_from_db` produced
+/// rows) seeds the NPC's ability bucket with those IDs and does NOT add
+/// `NPC_DEFAULT_ABILITY`. Bug shape: the previous spawn path
+/// unconditionally added the default ability, so the Castle_CellBlock
+/// drone (template 4 → ability_set 2 → [221] Energy Shock) ended up
+/// holding the wrong weapon — every NPC fired Pistol Shot regardless of
+/// template.
+#[test]
+fn spawn_record_with_ability_ids_skips_default_fallback() {
+    let mut mgr = make_manager_with_worlds();
+    let mut record = make_test_record("Agnos", Some("Drone"), "mob");
+    // Mirror the drone's row: ability_set 2 → [221].
+    record.ability_ids = vec![221];
+
+    let npc_id = mgr.allocate_npc_id();
+    mgr.spawn_npc_from_record(npc_id, &record).unwrap();
+
+    let npc = mgr.get_entity(npc_id).unwrap();
+    assert!(
+        npc.abilities.has_ability(221),
+        "template-driven ability 221 must land in the NPC's bucket"
+    );
+    assert!(
+        !npc.abilities
+            .has_ability(crate::cell::combat::NPC_DEFAULT_ABILITY),
+        "NPC with a template-driven ability set must NOT also pick up \
+         NPC_DEFAULT_ABILITY — the bucket would otherwise contain both \
+         and the selector would round-robin",
+    );
+}
+
+/// A `SpawnRecord` with empty `ability_ids` (template has no
+/// `ability_set_id`, the LEFT JOIN produced no rows) falls back to
+/// `NPC_DEFAULT_ABILITY` so the AI tick has something to fire. Without
+/// this, the auto-converted templates with no ability set would spawn
+/// defenseless NPCs.
+#[test]
+fn spawn_record_with_empty_ability_ids_falls_back_to_default() {
+    let mut mgr = make_manager_with_worlds();
+    let record = make_test_record("Agnos", Some("Unspeced"), "mob");
+    assert!(record.ability_ids.is_empty(), "fixture must start empty");
+
+    let npc_id = mgr.allocate_npc_id();
+    mgr.spawn_npc_from_record(npc_id, &record).unwrap();
+
+    let npc = mgr.get_entity(npc_id).unwrap();
+    assert!(
+        npc.abilities
+            .has_ability(crate::cell::combat::NPC_DEFAULT_ABILITY),
+        "empty ability_ids must fall back to NPC_DEFAULT_ABILITY",
+    );
+    assert_eq!(
+        npc.abilities.known_count(),
+        1,
+        "fallback must seed exactly one ability (the default)",
+    );
 }
 
 #[test]

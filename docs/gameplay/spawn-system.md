@@ -350,6 +350,28 @@ spawn point itself may encode the template directly via `spawn_table_name` in
 
 ---
 
+## NPC Ability Bucket and Selection
+
+`spawn_npc_from_record_into` seeds the NPC's ability list from the template's `ability_set_id` via `ability_set_abilities`. The DB load in [`crates/services/src/cell/spawner/npcs.rs`](../../crates/services/src/cell/spawner/npcs.rs) `LEFT JOIN`s the table and exposes the joined IDs as `SpawnRecord::ability_ids`. When the field is empty (template has no `ability_set_id`), the spawn path falls back to `NPC_DEFAULT_ABILITY` (Pistol Shot, ability 592) — defensive default so unspeced mobs aren't defenseless.
+
+Examples:
+
+- Template 4 (Prisoner retrieval unit) → `ability_set_id = 2` → `[221]` Energy Shock — the Castle_CellBlock drone fires its zat-shape projectile instead of a pistol.
+- Template 15 (Cellblock Guard) → `ability_set_id = 1` → `[579]` NID guard pistol.
+- Templates without an `ability_set_id` (most props, statics) → fall back to `NPC_DEFAULT_ABILITY = 592` and rely on `class_id` filtering to keep the AI tick from firing on non-mobs.
+
+At fight-tick time, [`crates/services/src/cell/service/npc_ai.rs`](../../crates/services/src/cell/service/npc_ai.rs) `choose_npc_ability` partitions the NPC's known abilities into three buckets — **usable**, **cooling**, **needs_ammo** — and picks the first usable. If every ability is gated, the NPC holds fire and the next 2 s tick retries. Mirrors `python/cell/SGWMob.py:chooseAbility`.
+
+Per-ability range and minimum-range backup live in [#329](https://github.com/SandboxServers/Cimmeria/issues/329); until that lands, the selector treats any in-range/LOS-confirmed ability as fireable (the flat `NPC_ATTACK_RANGE = 30.0` gates the call before reaching the selector).
+
+## NPC Aggression (behavior bit)
+
+`CellEntity::aggression` is an int set by the `set_aggression` content action (e.g., chain 1032 flips the prisoner-retrieval drone to `1` when the player grabs the Ambernol vial). When `> 0`, the AI idle tick scans the NPC's AoI witnesses for opposing-faction players and seeds a small threat — the NPC transitions to `Fighting` on the next tick.
+
+The seed is intentionally small (`1.0`) so that an explicit `generate_threat 1000` from the same chain dominates and focuses the NPC on the player who triggered the chain. Aggression persists across kills, so a stationary drone with `aggression=1` re-aggros the next player who walks in.
+
+Distinct from `aggression_override` (UI nameplate color, tracked separately under [#330](https://github.com/SandboxServers/Cimmeria/issues/330)) — this field drives combat behavior, that one drives the client friend/foe indicator.
+
 ## Known Gaps
 
 | Gap | Impact |

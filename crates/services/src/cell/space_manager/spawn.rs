@@ -127,9 +127,27 @@ impl SpaceManager {
         e.is_stationary = record.is_stationary;
         e.loot_table_id = record.loot_table_id;
 
-        // Give NPCs a default combat ability and stats so they can fight back
-        e.abilities
-            .add_ability(super::super::combat::NPC_DEFAULT_ABILITY);
+        // Per-template ability bucket. When `record.ability_ids` is
+        // populated (template has a non-null `ability_set_id` joined
+        // against `ability_set_abilities`), seed the NPC with those.
+        // Otherwise fall back to `NPC_DEFAULT_ABILITY` so unspeced mobs
+        // still have something to fire — matches the Python convention
+        // where un-assigned NPCs default to the Pistol Shot moniker.
+        //
+        // Castle_CellBlock template 4 → ability_set 2 → [221] (Energy
+        // Shock), the drone's slow zat-shape; template 15 (Cellblock
+        // Guard) → ability_set 1 → [579] (NID guard pistol). Mobs
+        // without an ability_set_id (props, statics) still receive
+        // NPC_DEFAULT_ABILITY but their AI tick never fires because
+        // they're not `class_id == 0x04`.
+        if record.ability_ids.is_empty() {
+            e.abilities
+                .add_ability(super::super::combat::NPC_DEFAULT_ABILITY);
+        } else {
+            for &ability_id in &record.ability_ids {
+                e.abilities.add_ability(ability_id);
+            }
+        }
         // Initialize NPC health based on level (simple scaling)
         use cimmeria_entity::stats::{FOCUS, HEALTH};
         let hp = 200 + (e.level as i32 * 50);

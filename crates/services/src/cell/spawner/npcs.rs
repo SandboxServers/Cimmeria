@@ -38,6 +38,12 @@ pub struct SpawnRecord {
     pub has_dynamic_properties: bool,
     pub loot_table_id: Option<i32>,
     pub is_stationary: bool,
+    /// Ability IDs the NPC starts with, loaded from the template's
+    /// `ability_set_id` via `ability_set_abilities`. Empty when the
+    /// template has no ability set — the spawn path falls back to
+    /// `NPC_DEFAULT_ABILITY` so we never spawn a defenseless mob by
+    /// accident (the Castle_CellBlock guards rely on this fallback).
+    pub ability_ids: Vec<i32>,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
@@ -62,6 +68,13 @@ pub fn class_id_for_class(class: &str) -> u8 {
 pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx::Error> {
     use sqlx::Row;
 
+    // LEFT JOIN + array_agg pulls the per-template ability bucket alongside
+    // the spawn row in one round-trip. `FILTER (WHERE ... IS NOT NULL)` keeps
+    // templates with no ability_set_id from materializing a `{NULL}` array.
+    // The COALESCE flips an empty (all-rows-filtered-out) aggregate to an
+    // empty Postgres array so Rust always sees `Vec<i32>` (possibly empty),
+    // never `None`. Templates without an ability set fall back to
+    // NPC_DEFAULT_ABILITY in `spawn_npc_from_record_into`.
     let rows = sqlx::query(
         "SELECT s.spawn_id, w.world AS world_name, s.x, s.y, s.z, s.heading, s.tag, \
                s.is_stationary, \
@@ -69,7 +82,13 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                t.components, t.flags, t.interaction_type, t.event_set_id, t.level, \
                t.alignment, t.faction, t.name_id, t.speaker_id, \
                t.static_interaction_sets, t.has_dynamic_properties, \
-               t.loot_table_id \
+               t.loot_table_id, \
+               COALESCE( \
+                 (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
+                  FROM resources.ability_set_abilities asa \
+                  WHERE asa.ability_set_id = t.ability_set_id), \
+                 ARRAY[]::int[] \
+               ) AS ability_ids \
         FROM resources.spawnlist s \
         JOIN resources.entity_templates t ON s.template_id = t.template_id \
         JOIN resources.worlds w ON s.world_id = w.world_id \
@@ -106,6 +125,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
             has_dynamic_properties: r.get("has_dynamic_properties"),
             loot_table_id: r.get("loot_table_id"),
             is_stationary: r.get("is_stationary"),
+            ability_ids: r.get::<Vec<i32>, _>("ability_ids"),
         })
         .collect();
 

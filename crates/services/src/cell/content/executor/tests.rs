@@ -635,3 +635,49 @@ async fn cross_world_teleport_action_with_unknown_entity_dispatches_gate_travel(
          cell entity is absent — base may still hold the connection"
     );
 }
+
+/// `Action::SetAggression { level: 1 }` writes the `aggression` field on
+/// the tagged NPC's `CellEntity` so the AI idle tick can wake it up. Bug
+/// shape: the previous implementation stored an unread `"aggression"`
+/// property-bag entry; this guard pins that the canonical field is now
+/// the source of truth.
+#[tokio::test]
+async fn set_aggression_level_one_writes_entity_field() {
+    let mut mgr = make_space_mgr();
+    // Tagged NPC the chain will target.
+    mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(101) {
+        npc.tag = Some("Drone".to_string());
+        assert_eq!(npc.aggression, 0, "fresh NPC must start passive");
+    }
+    // Player triggering the chain — must be co-located so
+    // `find_entity_by_tag` resolves "Drone" against the same space.
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(42);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            1032,
+            Action::SetAggression {
+                entity_tag: "Drone".to_string(),
+                level: 1,
+            },
+        )],
+    };
+
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    assert_eq!(
+        mgr.get_entity(101).unwrap().aggression,
+        1,
+        "SetAggression level=1 must write aggression=1 on the target — \
+         the AI idle tick reads this field directly, no property-bag lookup",
+    );
+}
