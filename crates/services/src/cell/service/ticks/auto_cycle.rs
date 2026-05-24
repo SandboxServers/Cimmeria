@@ -7,6 +7,7 @@
 //! cooldown gate is the rate limiter; the eligibility filter
 //! short-circuits to empty when nobody is auto-cycling.
 
+use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
@@ -46,6 +47,7 @@ use crate::cell::space_manager::SpaceManager;
 pub(in crate::cell::service) async fn auto_cycle_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) {
     // Snapshot armed players. Drop the borrow before re-invoking
     // `handle_use_ability` (takes `&mut space_mgr`).
@@ -143,8 +145,13 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             target_id,
             "auto_cycle_tick: re-firing"
         );
-        let _ = crate::cell::abilities::handle_use_ability(
-            entity_id, ability_id, target_id, tx, space_mgr,
+        // Issue #367: route loop-driven re-fires through the kill-credit
+        // wrapper so killing a quest-tagged NPC via auto-shoot advances
+        // the mission's KillCount objective, matching the manual
+        // right-click path. The wrapper is a no-op when the target
+        // wasn't a live tagged NPC or when no kill happened this tick.
+        let _ = crate::cell::abilities::handle_use_ability_with_kill_credit(
+            entity_id, ability_id, target_id, engine, tx, space_mgr,
         )
         .await;
         // Commit/reject is the handler's call. A rejected re-fire
@@ -158,6 +165,13 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
 mod tests {
     use super::*;
     use cimmeria_entity::abilities::AbilityDef;
+
+    /// Empty chain engine for tests that don't exercise content chains.
+    /// The kill-credit hook is a no-op when the resolved-action list is
+    /// empty, so these tests don't need real chain content loaded.
+    fn empty_engine() -> ChainEngine {
+        ChainEngine::new()
+    }
 
     /// Shared fixture: one connected armed player and one target NPC,
     /// both in the same Castle space. Ability 7 is a 30-unit ranged
@@ -220,7 +234,7 @@ mod tests {
         assert!(!mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7));
 
         let (tx, _rx) = mpsc::channel(64);
-        auto_cycle_tick(&tx, &mut mgr).await;
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
 
         assert!(
             mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
@@ -241,7 +255,7 @@ mod tests {
         }
 
         let (tx, mut rx) = mpsc::channel(64);
-        auto_cycle_tick(&tx, &mut mgr).await;
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
 
         assert!(
             rx.try_recv().is_err(),
@@ -266,7 +280,7 @@ mod tests {
         }
 
         let (tx, mut rx) = mpsc::channel(64);
-        auto_cycle_tick(&tx, &mut mgr).await;
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
 
         let p = mgr.get_entity(1).unwrap();
         assert!(!p.abilities.auto_cycle, "loop must be cleared");
@@ -308,7 +322,7 @@ mod tests {
         }
 
         let (tx, _rx) = mpsc::channel(64);
-        auto_cycle_tick(&tx, &mut mgr).await;
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
 
         let p = mgr.get_entity(1).unwrap();
         assert!(!p.abilities.auto_cycle);
@@ -333,7 +347,7 @@ mod tests {
             p.position = Vector3::new(0.0, 0.0, 0.0);
         }
         let (tx, _rx) = mpsc::channel(64);
-        auto_cycle_tick(&tx, &mut mgr).await;
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
 
         let npc_b = mgr.get_entity(75).expect("NPC 75 should still exist");
         assert!(
@@ -365,7 +379,7 @@ mod tests {
         }
 
         let (tx, _rx) = mpsc::channel(64);
-        auto_cycle_tick(&tx, &mut mgr).await;
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
 
         let p = mgr.get_entity(1).unwrap();
         assert!(
@@ -387,7 +401,7 @@ mod tests {
         }
 
         let (tx, _rx) = mpsc::channel(64);
-        auto_cycle_tick(&tx, &mut mgr).await;
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
 
         let p = mgr.get_entity(1).unwrap();
         assert!(
@@ -409,7 +423,7 @@ mod tests {
         }
 
         let (tx, mut rx) = mpsc::channel(64);
-        auto_cycle_tick(&tx, &mut mgr).await;
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
 
         assert!(!mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7));
         assert!(rx.try_recv().is_err());
@@ -437,7 +451,7 @@ mod tests {
         }
 
         let (tx, mut rx) = mpsc::channel(64);
-        auto_cycle_tick(&tx, &mut mgr).await;
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
 
         let p = mgr.get_entity(1).unwrap();
         assert!(
@@ -451,6 +465,134 @@ mod tests {
         assert!(
             rx.try_recv().is_err(),
             "out-of-range tick must be wire-silent — no onErrorCode, no onTimerUpdate",
+        );
+    }
+
+    /// **Regression guard for issue #367.** Auto-cycle kills against a
+    /// quest-tagged NPC must fire the content-engine `EntityDeath` event
+    /// so KillCount-style mission objectives advance, exactly the way a
+    /// manual right-click kill does.
+    ///
+    /// Bug shape this catches: the tick used to call bare
+    /// `handle_use_ability`, bypassing the kill-credit wrapper that the
+    /// cell-method `USE_ABILITY` dispatch site wired around manual
+    /// fires. Reverting the fix (changing the tick back to
+    /// `handle_use_ability`) leaves the counter at 0 and fails this
+    /// assertion.
+    ///
+    /// Pinned via an end-to-end signal: register a chain that
+    /// increments a counter on `EntityDeath(entity_tag=QuestTargetDrone)`
+    /// and assert the counter incremented on the killer entity after
+    /// the tick fires. This proves the full path — tick →
+    /// `handle_use_ability_with_kill_credit` →
+    /// `apply_damage_to_target` (kill detected) →
+    /// `fire_entity_death` → chain engine resolve + execute.
+    #[tokio::test]
+    async fn auto_cycle_tick_credits_quest_kill_on_tagged_npc_death() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+        use cimmeria_entity::abilities::EffectDef;
+        use cimmeria_entity::stats::HEALTH;
+
+        const QUEST_TAG: &str = "QuestTargetDrone";
+        const COUNTER_NAME: &str = "drone_kills";
+
+        let mut mgr = make_auto_cycle_mgr();
+
+        // Give the ability a lethal effect so the tick's re-fire
+        // actually kills the NPC. `apply_damage_to_target` reads
+        // `HealthDamage` from the ability's effect NVPs; 9999 mirrors
+        // the lethal-fixture pattern in damage_apply/tests.rs.
+        let mut params = std::collections::HashMap::new();
+        params.insert("HealthDamage".to_string(), "9999".to_string());
+        mgr.effect_defs.insert(
+            100,
+            EffectDef {
+                effect_id: 100,
+                ability_id: 7,
+                delay: 0,
+                effect_sequence: 0,
+                event_set_id: None,
+                script_name: None,
+                params,
+            },
+        );
+        if let Some(ability) = mgr.ability_defs.get_mut(&7) {
+            ability.effect_ids = vec![100];
+        }
+
+        // Tag the NPC and seed it at 1 HP so the first re-fire kills
+        // it. Without the tag, `fire_entity_death` has no `entity_tag`
+        // to match against the chain trigger — the assertion would
+        // pass even with the bug present.
+        if let Some(npc) = mgr.get_entity_mut(50) {
+            npc.tag = Some(QUEST_TAG.to_string());
+            if let Some(stat) = npc.stats.get_mut(HEALTH) {
+                stat.update(0, 1, 100);
+                stat.clear_dirty();
+            }
+        }
+
+        // Register a minimal chain that increments a counter on the
+        // tagged death. The chain's resolved actions feed directly to
+        // the executor (no DB lookup); the counter lands on the
+        // killer entity's `counters` map per the `IncrementCounter`
+        // handler at executor/counter.rs.
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 999_999,
+            name: "test: drone kill counter".to_string(),
+            enabled: true,
+            trigger: Trigger::OnEntityDeath {
+                entity_type: None,
+                entity_tag: Some(QUEST_TAG.to_string()),
+            },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: COUNTER_NAME.to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        // Sanity: counter unset before the kill so the post-tick
+        // assertion is genuinely measuring the increment, not a stale
+        // value.
+        assert!(
+            !mgr.get_entity(1)
+                .unwrap()
+                .counters
+                .contains_key(COUNTER_NAME),
+            "test invariant: counter must start unset",
+        );
+
+        let (tx, _rx) = mpsc::channel(64);
+        auto_cycle_tick(&tx, &mut mgr, &engine).await;
+
+        // Primary assertion: the kill credit landed. Reverting the
+        // tick to call `handle_use_ability` directly (the pre-fix
+        // shape) leaves this at None — the chain never resolves
+        // because `fire_entity_death` is never called.
+        assert_eq!(
+            mgr.get_entity(1).unwrap().counters.get(COUNTER_NAME),
+            Some(&1),
+            "auto-cycle kill of a quest-tagged NPC must increment the kill counter \
+             via fire_entity_death — bypassing the kill-credit wrapper (issue #367) \
+             leaves this counter at None",
+        );
+
+        // Sanity: the NPC actually died (proves we exercised the kill
+        // path, not a chain that fires on non-lethal hits). The
+        // counter assertion above only fires if both (a) the kill
+        // happened AND (b) fire_entity_death ran; this second check
+        // disambiguates a future regression where the kill path
+        // broke but the counter assertion happened to pass via some
+        // other code path.
+        let target = mgr.get_entity(50).unwrap();
+        assert!(
+            crate::cell::combat::is_dead_state(target.state_field),
+            "test fixture: target must be dead after the lethal re-fire",
         );
     }
 }

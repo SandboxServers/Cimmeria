@@ -1,6 +1,7 @@
 //! Per-frame tick handlers: AoI propagation, reload-completion promotion,
 //! and NPC movement along nav paths.
 
+use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
 use super::super::messages::CellToBaseMsg;
@@ -204,6 +205,7 @@ pub(super) async fn reload_completion_tick(
 pub(super) async fn pending_attack_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) {
     let now = std::time::Instant::now();
     // Snapshot the queue entries first — `handle_use_ability` takes
@@ -239,8 +241,13 @@ pub(super) async fn pending_attack_tick(
             target_id,
             "pending_attack_tick: draw window elapsed, firing queued attack"
         );
-        let _ = super::super::abilities::handle_use_ability(
-            entity_id, ability_id, target_id, tx, space_mgr,
+        // Issue #367: route Phase-B queued attacks through the kill-
+        // credit wrapper. Without this, a player who fires a weapon
+        // while holstered (the attack is deferred to Phase B until the
+        // draw window elapses) doesn't credit a quest objective if that
+        // queued shot makes the kill.
+        let _ = super::super::abilities::handle_use_ability_with_kill_credit(
+            entity_id, ability_id, target_id, engine, tx, space_mgr,
         )
         .await;
     }
@@ -579,7 +586,7 @@ mod tests {
         mgr.connect_entity(1);
 
         let (tx, _rx) = mpsc::channel(8);
-        pending_attack_tick(&tx, &mut mgr).await;
+        pending_attack_tick(&tx, &mut mgr, &ChainEngine::new()).await;
 
         let entity = mgr.get_entity(1).unwrap();
         assert!(
@@ -617,7 +624,7 @@ mod tests {
         mgr.connect_entity(1);
 
         let (tx, _rx) = mpsc::channel(8);
-        pending_attack_tick(&tx, &mut mgr).await;
+        pending_attack_tick(&tx, &mut mgr, &ChainEngine::new()).await;
 
         let entity = mgr.get_entity(1).unwrap();
         assert!(
