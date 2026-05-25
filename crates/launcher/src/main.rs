@@ -10,6 +10,7 @@ mod logs;
 mod manifest;
 mod patch_rdata;
 mod state;
+mod telemetry;
 mod worker;
 
 use std::sync::Arc;
@@ -71,6 +72,13 @@ fn main() -> eframe::Result<()> {
     // Logging before the eframe handoff puts the correlator in
     // early-init output where startup failures still land.
     log_telemetry_foundation();
+
+    // Re-enqueue any telemetry left on disk from a previous run that
+    // crashed before flushing. Best-effort.
+    let recovered = telemetry::recover_pending_on_startup();
+    if recovered > 0 {
+        tracing::info!(recovered, "telemetry pending events recovered");
+    }
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
