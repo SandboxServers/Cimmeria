@@ -64,18 +64,28 @@ pub struct TelemetrySettings {
     /// Opt-out switch. False ⇒ no token fetch, no tail, no upload.
     #[serde(default = "default_telemetry_enabled")]
     pub enabled: bool,
+    /// Base URL of the cimmeria-server admin API where the telemetry
+    /// auth handshake (`POST /auth/dev-session`) lives. Defaults to
+    /// the local-dev admin port; ops override for production.
+    #[serde(default = "default_telemetry_auth_url")]
+    pub auth_url: String,
 }
 
 impl Default for TelemetrySettings {
     fn default() -> Self {
         Self {
             enabled: default_telemetry_enabled(),
+            auth_url: default_telemetry_auth_url(),
         }
     }
 }
 
 fn default_telemetry_enabled() -> bool {
     true
+}
+
+fn default_telemetry_auth_url() -> String {
+    "http://localhost:8443/api".to_string()
 }
 
 fn default_schema_version() -> u32 {
@@ -160,7 +170,10 @@ mod tests {
             install_path: PathBuf::from("X"),
             server_host: "Y".into(),
             manifest_url: "Z".into(),
-            telemetry: TelemetrySettings { enabled: false },
+            telemetry: TelemetrySettings {
+                enabled: false,
+                auth_url: "http://test/api".into(),
+            },
         };
         cfg.save(&path).unwrap();
         let loaded = LauncherConfig::load(&path).unwrap();

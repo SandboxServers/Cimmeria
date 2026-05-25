@@ -4,7 +4,7 @@
 //! that emit [`Event`]s back on an unbounded channel. The egui app
 //! polls the channel each frame via `events_rx.try_recv()`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::runtime::Runtime;
@@ -15,10 +15,15 @@ use tracing::error;
 use crate::client_paths::{cache_dir, firesky_root, wipe_dir_contents, WipeReport};
 use crate::config::LauncherConfig;
 use crate::install::{adopt_existing_install, install_all, InstallContext, Progress};
-use crate::launch::{launch_atera_debug, launch_atera_fix_aslr, launch_sgw};
+use crate::launch::{
+    launch_atera_debug, launch_atera_debug_with_child, launch_atera_fix_aslr, launch_sgw,
+};
 use crate::logs::{blob_name_for, build_log_zip, compute_content_digest, upload_blob, LogError};
 use crate::manifest::{fetch_manifest, Manifest};
 use crate::state::UploadedLedger;
+use crate::telemetry::auth::DevSessionRequest;
+use crate::telemetry::runner::{run_session, SessionOutcome};
+use crate::telemetry::Telemetry;
 
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -35,6 +40,14 @@ pub enum Command {
     LaunchSgw(PathBuf),
     LaunchAteraDebug(PathBuf),
     LaunchAteraFixAslr(PathBuf),
+    /// Launch the Atera debug bat AND run the telemetry pipeline for
+    /// the lifetime of the spawned game process. The telemetry config
+    /// carries the auth handshake inputs (install_id, machine_id,
+    /// branch, git_sha) plus the cimmeria-server URL.
+    LaunchAteraDebugWithTelemetry {
+        install_dir: PathBuf,
+        telemetry: LaunchTelemetryConfig,
+    },
     UploadLogs {
         install_dir: PathBuf,
         sas_url: String,
@@ -72,6 +85,15 @@ pub enum Event {
     WipeError(String),
     Launched(String, u32),
     LaunchError(String),
+    /// Telemetry session ended cleanly with a final bundle upload.
+    /// Surfaces in the status log so the dev can confirm the upload
+    /// completed.
+    TelemetrySessionComplete(SessionOutcome),
+    /// Telemetry session aborted before bundle upload — auth failed,
+    /// chunk POST kept 5xx-ing, etc. The game launched and ran
+    /// fine; only the telemetry side died. Streamable to the status
+    /// log without blocking on the user.
+    TelemetrySessionError(String),
     UploadStarted,
     UploadSkipped(String),
     UploadComplete {
@@ -89,6 +111,22 @@ pub enum Event {
 enum WipeTarget {
     CacheOnly,
     EntireFiresky,
+}
+
+/// Everything the worker needs to bootstrap a telemetry session at
+/// game-launch time. Pre-fetched by the app from the identity file +
+/// config so the worker thread doesn't need to touch
+/// `LauncherIdentity::load_or_mint` itself.
+#[derive(Debug, Clone)]
+pub struct LaunchTelemetryConfig {
+    pub auth_base_url: String,
+    pub install_id: String,
+    pub machine_id: String,
+    pub branch: String,
+    pub git_sha: String,
+    pub launcher_version: String,
+    pub state_dir: PathBuf,
+    pub tags: Vec<String>,
 }
 
 pub struct Worker {
@@ -149,7 +187,66 @@ impl Worker {
             } => self.spawn_adopt(install_dir, manifest),
             Command::WipeClientCache => self.spawn_wipe(WipeTarget::CacheOnly),
             Command::WipeAllClientState => self.spawn_wipe(WipeTarget::EntireFiresky),
+            Command::LaunchAteraDebugWithTelemetry {
+                install_dir,
+                telemetry,
+            } => self.spawn_launch_with_telemetry(install_dir, telemetry),
         }
+    }
+
+    fn spawn_launch_with_telemetry(&self, install_dir: PathBuf, cfg: LaunchTelemetryConfig) {
+        let events_tx = self.events_tx.clone();
+        let http = self.http.clone();
+        self.runtime.spawn(async move {
+            let req = DevSessionRequest {
+                install_id: cfg.install_id,
+                machine_id: cfg.machine_id,
+                branch: cfg.branch,
+                git_sha: cfg.git_sha,
+                launcher_version: cfg.launcher_version.clone(),
+                tags: cfg.tags,
+            };
+            let telemetry = match Telemetry::start_session(
+                &http,
+                &cfg.auth_base_url,
+                req,
+                &install_dir,
+                &cfg.launcher_version,
+            )
+            .await
+            {
+                Ok(t) => Arc::new(t),
+                Err(e) => {
+                    let msg = format!("auth handshake failed: {e}");
+                    error!("telemetry session start failed: {e}");
+                    // Game still launches without telemetry — telemetry
+                    // is supplementary; never block the play action.
+                    let _ = events_tx.send(Event::TelemetrySessionError(msg));
+                    launch_legacy_atera(&install_dir, &events_tx);
+                    return;
+                }
+            };
+            let child = match launch_atera_debug_with_child(&install_dir) {
+                Ok(c) => {
+                    let _ = events_tx.send(Event::Launched("AtreaGameDebug.bat".into(), c.id()));
+                    c
+                }
+                Err(e) => {
+                    let _ = events_tx.send(Event::LaunchError(e.to_string()));
+                    return;
+                }
+            };
+            let http_arc = Arc::new(http.clone());
+            match run_session(telemetry, http_arc, child, install_dir, cfg.state_dir).await {
+                Ok(outcome) => {
+                    let _ = events_tx.send(Event::TelemetrySessionComplete(outcome));
+                }
+                Err(e) => {
+                    error!("telemetry session error: {e}");
+                    let _ = events_tx.send(Event::TelemetrySessionError(e.to_string()));
+                }
+            }
+        });
     }
 
     fn spawn_adopt(&self, install_dir: PathBuf, manifest: Manifest) {
@@ -341,6 +438,20 @@ async fn upload_logs_task(
     }
     let _ = events_tx.send(Event::UploadComplete { blob, bytes });
     Ok(())
+}
+
+/// Fallback launch path when telemetry's auth handshake fails — fire
+/// the bat normally so the dev still gets to play. Mirrors
+/// `spawn_launch`'s shape.
+fn launch_legacy_atera(install_dir: &Path, events_tx: &mpsc::UnboundedSender<Event>) {
+    match launch_atera_debug(install_dir) {
+        Ok(pid) => {
+            let _ = events_tx.send(Event::Launched("AtreaGameDebug.bat".into(), pid));
+        }
+        Err(e) => {
+            let _ = events_tx.send(Event::LaunchError(e.to_string()));
+        }
+    }
 }
 
 #[cfg(test)]

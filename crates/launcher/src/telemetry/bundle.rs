@@ -73,8 +73,8 @@ pub async fn upload_bundle(
     metadata.zip_bytes = zip.len() as u64;
 
     let url = format!("{}/upload-bundle", upload_endpoint.trim_end_matches('/'));
-    let metadata_part = Part::text(serde_json::to_string(&metadata)?)
-        .mime_str("application/json")?;
+    let metadata_part =
+        Part::text(serde_json::to_string(&metadata)?).mime_str("application/json")?;
     let zip_part = Part::bytes(zip.clone())
         .file_name("session.zip")
         .mime_str("application/zip")?;

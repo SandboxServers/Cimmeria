@@ -63,6 +63,94 @@ pub enum SessionMetaKind {
     DroppedWindow,
 }
 
+/// Parsed fields of one client log line, returned by
+/// [`parse_client_log_line`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedClientLog<'a> {
+    pub level: &'a str,
+    pub category: &'a str,
+    pub packet_no: Option<u64>,
+    pub message: &'a str,
+}
+
+/// Best-effort parse of an Atera client log line. The 2009 client
+/// writes `[ts] [level] [category] message` with optional `pkt=N` /
+/// `packet=N` / ` #N ` tokens. Unrecognized shapes fall through to
+/// `level="info" category="raw"` so no data is silently dropped.
+pub fn parse_client_log_line(line: &str) -> ParsedClientLog<'_> {
+    let trimmed = line.trim_end_matches(['\r', '\n']);
+    let after_ts = strip_bracketed_prefix(trimmed);
+    let (level, after_level) = match strip_bracketed_token(after_ts) {
+        Some((tok, rest)) => (tok, rest),
+        None => return raw_fallback(trimmed),
+    };
+    let (category, after_cat) = match strip_bracketed_token(after_level) {
+        Some((tok, rest)) => (tok, rest),
+        None => return raw_fallback(trimmed),
+    };
+    let message = after_cat.trim_start();
+    ParsedClientLog {
+        level,
+        category,
+        packet_no: extract_packet_no(message),
+        message,
+    }
+}
+
+fn strip_bracketed_prefix(s: &str) -> &str {
+    let t = s.trim_start();
+    if let Some(rest) = t.strip_prefix('[') {
+        if let Some(end) = rest.find(']') {
+            return &rest[end + 1..];
+        }
+    }
+    t
+}
+
+fn strip_bracketed_token(s: &str) -> Option<(&str, &str)> {
+    let t = s.trim_start();
+    let rest = t.strip_prefix('[')?;
+    let end = rest.find(']')?;
+    Some((&rest[..end], &rest[end + 1..]))
+}
+
+fn extract_packet_no(message: &str) -> Option<u64> {
+    for prefix in ["pkt=", "packet="] {
+        if let Some(start) = message.find(prefix) {
+            let after = &message[start + prefix.len()..];
+            let n: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if !n.is_empty() {
+                if let Ok(v) = n.parse::<u64>() {
+                    return Some(v);
+                }
+            }
+        }
+    }
+    for (idx, _) in message.match_indices('#') {
+        let before = idx == 0 || message[..idx].ends_with(|c: char| c.is_whitespace());
+        if !before {
+            continue;
+        }
+        let after = &message[idx + 1..];
+        let n: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !n.is_empty() {
+            if let Ok(v) = n.parse::<u64>() {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+fn raw_fallback(line: &str) -> ParsedClientLog<'_> {
+    ParsedClientLog {
+        level: "info",
+        category: "raw",
+        packet_no: None,
+        message: line,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,5 +243,46 @@ mod tests {
             let back: TelemetryEvent = serde_json::from_str(&text).unwrap();
             assert_eq!(back, ev);
         }
+    }
+
+    #[test]
+    fn parse_client_log_line_standard_shape() {
+        let p = parse_client_log_line("[2026-05-25 12:00:01] [info] [Mercury] sent pkt=8821 ok");
+        assert_eq!(p.level, "info");
+        assert_eq!(p.category, "Mercury");
+        assert_eq!(p.packet_no, Some(8821));
+        assert_eq!(p.message, "sent pkt=8821 ok");
+    }
+
+    #[test]
+    fn parse_client_log_line_packet_alt_spellings() {
+        let p = parse_client_log_line("[t] [w] [Net] frame packet=12 lost");
+        assert_eq!(p.packet_no, Some(12));
+        let p = parse_client_log_line("[t] [w] [Net] resend #7 after timeout");
+        assert_eq!(p.packet_no, Some(7));
+    }
+
+    // `#define` should NOT register — only whitespace-prefixed `#N`
+    // counts as a packet number.
+    #[test]
+    fn parse_client_log_line_ignores_non_packet_hash() {
+        let p = parse_client_log_line("[t] [i] [Build] use #define WIN32");
+        assert_eq!(p.packet_no, None);
+    }
+
+    // Missing brackets → raw fallback so no data is silently dropped.
+    #[test]
+    fn parse_client_log_line_falls_back_to_raw_on_unknown_shape() {
+        let p = parse_client_log_line("plain text no brackets");
+        assert_eq!(p.level, "info");
+        assert_eq!(p.category, "raw");
+        assert_eq!(p.message, "plain text no brackets");
+        assert_eq!(p.packet_no, None);
+    }
+
+    #[test]
+    fn parse_client_log_line_first_packet_match_wins() {
+        let p = parse_client_log_line("[t] [i] [Net] pkt=5 retried as #99");
+        assert_eq!(p.packet_no, Some(5));
     }
 }

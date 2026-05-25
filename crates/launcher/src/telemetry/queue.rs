@@ -116,6 +116,17 @@ impl DiskQueue {
             .unwrap_or(0)
     }
 
+    /// Clear the cumulative dropped-line counter — called by the
+    /// session runner after a successful bundle upload so the next
+    /// session's metadata reports drops attributable to *that*
+    /// session, not the union of all prior runs.
+    pub fn dropped_counter_reset(&self) -> Result<(), QueueError> {
+        if self.dropped_path.exists() {
+            std::fs::remove_file(&self.dropped_path)?;
+        }
+        Ok(())
+    }
+
     fn add_dropped(&self, n: u64) -> Result<(), QueueError> {
         let prev = self.dropped_count();
         let next = prev.saturating_add(n);

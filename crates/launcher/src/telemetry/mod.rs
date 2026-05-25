@@ -1,16 +1,12 @@
 //! Dev-session telemetry pipeline.
 
-// The `Telemetry` orchestrator and its submodules are wired by the
-// worker in the next commit (process-watch + game-launch hook).
-// Allowed here only until that wiring lands; the allow comes off in
-// the same commit that adds the call site.
-#![allow(dead_code)]
-
 pub mod auth;
 pub mod bundle;
 pub mod chunk;
 pub mod events;
+pub mod process_watch;
 pub mod queue;
+pub mod runner;
 pub mod session;
 pub mod tail;
 
@@ -46,13 +42,20 @@ pub enum TelemetryError {
 /// successful auth handshake; dropped when the game exits and the
 /// bundle has been flushed.
 pub struct Telemetry {
-    pub session: DevSessionResponse,
+    /// Live token + endpoint + chunking defaults. Mutated by
+    /// [`Telemetry::refresh_if_due`] when the proactive-refresh
+    /// policy fires.
+    pub session: tokio::sync::RwLock<DevSessionResponse>,
     pub auth_base_url: String,
     pub install_dir: PathBuf,
     pub install_id: String,
     pub machine_id: String,
     pub launcher_version: String,
     pub session_started_at_ms: i64,
+    /// ms-since-epoch when the current token was issued — feeds
+    /// `should_refresh` so the policy works without remembering the
+    /// TTL separately.
+    issued_at_ms: std::sync::atomic::AtomicI64,
     queue: DiskQueue,
     seq: Arc<Mutex<u64>>,
 }
@@ -91,13 +94,14 @@ impl Telemetry {
         };
         session::write_current_session(install_dir, &current)?;
         Ok(Self {
-            session: resp,
+            session: tokio::sync::RwLock::new(resp),
             auth_base_url: auth_base_url.to_string(),
             install_dir: install_dir.to_path_buf(),
             install_id: req.install_id,
             machine_id: req.machine_id,
             launcher_version: launcher_version.to_string(),
             session_started_at_ms: now_ms,
+            issued_at_ms: std::sync::atomic::AtomicI64::new(now_ms),
             queue: DiskQueue::new(&exe_dir()),
             seq: Arc::new(Mutex::new(0)),
         })
@@ -124,14 +128,11 @@ impl Telemetry {
             return Ok(0);
         }
         let n = events.len() as u64;
-        match chunk::post_chunk(
-            http,
-            &self.session.upload_endpoint,
-            &self.session.token,
-            &events,
-        )
-        .await
-        {
+        let (endpoint, token) = {
+            let s = self.session.read().await;
+            (s.upload_endpoint.clone(), s.token.clone())
+        };
+        match chunk::post_chunk(http, &endpoint, &token, &events).await {
             Ok(()) => Ok(n),
             Err(e) => {
                 // Best-effort re-enqueue; failures here surface to
@@ -158,8 +159,16 @@ impl Telemetry {
         event_count: u64,
         dropped_lines: u64,
     ) -> Result<bundle::BundleOutcome, TelemetryError> {
+        let (endpoint, token, session_id) = {
+            let s = self.session.read().await;
+            (
+                s.upload_endpoint.clone(),
+                s.token.clone(),
+                s.session_id.clone(),
+            )
+        };
         let metadata = bundle::BundleMetadata {
-            session_id: self.session.session_id.clone(),
+            session_id,
             install_id: self.install_id.clone(),
             machine_id: self.machine_id.clone(),
             launcher_version: self.launcher_version.clone(),
@@ -170,14 +179,27 @@ impl Telemetry {
             zip_sha256: String::new(),
             zip_bytes: 0,
         };
-        Ok(bundle::upload_bundle(
-            http,
-            &self.session.upload_endpoint,
-            &self.session.token,
-            &self.install_dir,
-            metadata,
-        )
-        .await?)
+        Ok(bundle::upload_bundle(http, &endpoint, &token, &self.install_dir, metadata).await?)
+    }
+
+    /// Run the proactive-refresh policy. Returns `Ok(true)` if a
+    /// refresh fired and the in-memory token was rotated; `Ok(false)`
+    /// when the current token still has ample lifetime.
+    pub async fn refresh_if_due(&self, http: &reqwest::Client) -> Result<bool, TelemetryError> {
+        let (expires_at_ms, current_token) = {
+            let s = self.session.read().await;
+            (s.expires_at_ms, s.token.clone())
+        };
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let issued_at_ms = self.issued_at_ms.load(std::sync::atomic::Ordering::Relaxed);
+        if !auth::should_refresh(expires_at_ms, now_ms, issued_at_ms) {
+            return Ok(false);
+        }
+        let new_resp = auth::refresh_dev_session(http, &self.auth_base_url, &current_token).await?;
+        self.issued_at_ms
+            .store(now_ms, std::sync::atomic::Ordering::Relaxed);
+        *self.session.write().await = new_resp;
+        Ok(true)
     }
 }
 

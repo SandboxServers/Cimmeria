@@ -12,7 +12,7 @@ use crate::install::Progress;
 use crate::launch::{install_dir_writable, LaunchOptions};
 use crate::manifest::Manifest;
 use crate::state::InstalledState;
-use crate::worker::{Command, Event, Worker};
+use crate::worker::{Command, Event, LaunchTelemetryConfig, Worker};
 
 /// Upper bound on the status-log history kept in memory. Display already
 /// caps at the last 100 entries; this prevents the underlying Vec from
@@ -39,6 +39,9 @@ pub struct LauncherApp {
     /// Higher-blast-radius wipe — gates the entire Firesky/ tree, not
     /// just the cache subdir — so we double-prompt before nuking.
     confirm_wipe_all_open: bool,
+    /// Loaded once at app construction so each Launch+Telemetry click
+    /// doesn't re-read install.json from disk.
+    identity: Option<crate::identity::LauncherIdentity>,
 }
 
 impl LauncherApp {
@@ -58,6 +61,8 @@ impl LauncherApp {
         };
         worker.fetch_manifest_now(config.manifest_url.clone());
         let install_path_text = config.install_path.to_string_lossy().into_owned();
+        let identity =
+            crate::identity::LauncherIdentity::load_or_mint(&crate::identity::identity_path()).ok();
         Self {
             config,
             install_path_text,
@@ -72,6 +77,7 @@ impl LauncherApp {
             last_refresh: std::time::Instant::now(),
             installing: false,
             confirm_wipe_all_open: false,
+            identity,
         }
     }
 
@@ -130,7 +136,9 @@ impl LauncherApp {
                 | Event::UploadStarted
                 | Event::UploadSkipped(_)
                 | Event::UploadComplete { .. }
-                | Event::UploadError(_) => {
+                | Event::UploadError(_)
+                | Event::TelemetrySessionComplete(_)
+                | Event::TelemetrySessionError(_) => {
                     // Status-only events — handled below.
                 }
             }
@@ -157,6 +165,29 @@ impl LauncherApp {
 /// `String::is_empty()` checks from before the PathBuf migration.
 fn path_is_empty(p: &Path) -> bool {
     p.as_os_str().is_empty()
+}
+
+fn build_telemetry_config(
+    config: &LauncherConfig,
+    identity: &crate::identity::LauncherIdentity,
+) -> LaunchTelemetryConfig {
+    LaunchTelemetryConfig {
+        auth_base_url: config.telemetry.auth_url.clone(),
+        install_id: identity.install_id.to_string(),
+        machine_id: identity.machine_id.clone(),
+        // Built-in: a packaged launcher's build env carries the
+        // branch + git_sha at compile time. For now the OptionEnv!s
+        // default to "dev"/"unknown" — the release workflow can set
+        // CIMMERIA_BUILD_BRANCH / CIMMERIA_BUILD_GIT_SHA at compile
+        // time.
+        branch: option_env!("CIMMERIA_BUILD_BRANCH").unwrap_or("dev").into(),
+        git_sha: option_env!("CIMMERIA_BUILD_GIT_SHA")
+            .unwrap_or("unknown")
+            .into(),
+        launcher_version: identity.created_by_launcher_version.clone(),
+        state_dir: crate::config::exe_dir(),
+        tags: vec![],
+    }
 }
 
 /// Whether to surface the "Adopt existing install" affordance.
@@ -199,6 +230,21 @@ fn status_line_for(event: &Event) -> Option<String> {
         Event::UploadSkipped(why) => format!("Log upload skipped: {why}"),
         Event::UploadComplete { blob, bytes } => format!("Uploaded {bytes} bytes to {blob}"),
         Event::UploadError(e) => format!("Log upload failed: {e}"),
+        Event::TelemetrySessionComplete(o) => {
+            let sha_short: String = o.bundle_sha256.chars().take(12).collect();
+            format!(
+                "Telemetry session complete — {} events, {} dropped, bundle {} (sha {})",
+                o.event_count,
+                o.dropped_lines,
+                human_bytes(o.bundle_bytes),
+                if sha_short.is_empty() {
+                    "n/a"
+                } else {
+                    sha_short.as_str()
+                }
+            )
+        }
+        Event::TelemetrySessionError(e) => format!("Telemetry session error: {e}"),
         // Progress + manifest events drive other UI state, not the
         // status log. Returning None makes that explicit.
         Event::ManifestFetched(_) | Event::ManifestError(_) | Event::Progress(_) => return None,
@@ -492,6 +538,24 @@ impl LauncherApp {
                 .clicked()
             {
                 self.worker.dispatch(Command::LaunchAteraDebug(dir.clone()));
+            }
+            // Telemetry-enabled launch needs identity + opt-in + atera
+            // available. Falls back to plain Launch Atera Debug
+            // (legacy) when telemetry is opted out or identity load
+            // failed.
+            let telemetry_ready =
+                opts.atera_available() && self.config.telemetry.enabled && self.identity.is_some();
+            if ui
+                .add_enabled(telemetry_ready, egui::Button::new("Launch + Telemetry"))
+                .clicked()
+            {
+                if let Some(id) = &self.identity {
+                    self.worker
+                        .dispatch(Command::LaunchAteraDebugWithTelemetry {
+                            install_dir: dir.clone(),
+                            telemetry: build_telemetry_config(&self.config, id),
+                        });
+                }
             }
             if ui
                 .add_enabled(

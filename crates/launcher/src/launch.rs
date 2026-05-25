@@ -11,7 +11,7 @@
 //!   off in SGW.exe so the Atera injector's hardcoded addresses resolve.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command};
 
 use thiserror::Error;
 
@@ -55,18 +55,26 @@ impl LaunchOptions {
 }
 
 pub fn launch_sgw(install_dir: &Path) -> Result<u32, LaunchError> {
-    spawn(install_dir, "SGW.exe", false)
+    spawn(install_dir, "SGW.exe", false).map(|c| c.id())
 }
 
 pub fn launch_atera_debug(install_dir: &Path) -> Result<u32, LaunchError> {
-    spawn(install_dir, "AtreaGameDebug.bat", true)
+    spawn(install_dir, "AtreaGameDebug.bat", true).map(|c| c.id())
 }
 
 pub fn launch_atera_fix_aslr(install_dir: &Path) -> Result<u32, LaunchError> {
-    spawn(install_dir, "AtreaFixASLR.bat", true)
+    spawn(install_dir, "AtreaFixASLR.bat", true).map(|c| c.id())
 }
 
-fn spawn(install_dir: &Path, file: &str, via_cmd: bool) -> Result<u32, LaunchError> {
+/// Same as [`launch_atera_debug`] but returns the [`Child`] handle so
+/// the telemetry pipeline can wait on game exit. Dropping the Child
+/// does NOT kill the child process on std::process — launcher death
+/// keeps the game alive.
+pub fn launch_atera_debug_with_child(install_dir: &Path) -> Result<Child, LaunchError> {
+    spawn(install_dir, "AtreaGameDebug.bat", true)
+}
+
+fn spawn(install_dir: &Path, file: &str, via_cmd: bool) -> Result<Child, LaunchError> {
     let path = install_dir.join(file);
     if !path.exists() {
         return Err(LaunchError::NotFound(path));
@@ -97,7 +105,7 @@ fn spawn(install_dir: &Path, file: &str, via_cmd: bool) -> Result<u32, LaunchErr
             .current_dir(&canon_install)
             .spawn()?
     };
-    Ok(child.id())
+    Ok(child)
 }
 
 /// Best-effort writability probe: tries to create + remove a tiny file
