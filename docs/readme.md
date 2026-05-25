@@ -203,7 +203,7 @@ Analysis of game client binaries, launcher tools, and client asset inventories. 
 | [facefx-lip-sync.md](client/facefx-lip-sync.md) | FaceFX lip sync system: .fxa animation files, phoneme mapping, engine integration | Complete |
 | [ui-layout-inventory.md](client/ui-layout-inventory.md) | UI layout inventory: all Scaleform .swf files, Lua bindings, screen types, HUD elements | Complete |
 
-See also: [client-tools.md](client-tools.md), [technical/launcher-exe.md](technical/launcher-exe.md), [technical/ateraloader-exe.md](technical/ateraloader-exe.md)
+See also: [client-tools.md](client-tools.md), [technical/launcher-exe.md](technical/launcher-exe.md), [technical/atrealoader-exe.md](technical/atrealoader-exe.md)
 
 ---
 
@@ -325,9 +325,9 @@ Detailed RE analysis documents created during initial investigation. These preda
 | [source-reconstruction-feasibility.md](technical/source-reconstruction-feasibility.md) | Source code reconstruction feasibility |
 | [building.md](technical/building.md) | Build process technical details |
 | [launcher-exe.md](technical/launcher-exe.md) | Launcher binary analysis |
-| [ateraloader-exe.md](technical/ateraloader-exe.md) | AtreaLoader binary analysis |
+| [atrealoader-exe.md](technical/atrealoader-exe.md) | AtreaLoader binary analysis |
 | [atrealoader-config.md](technical/atrealoader-config.md) | AtreaLoader configuration format |
-| [atrearl-loader.md](technical/atrearl-loader.md) | AtreaRL loader binary analysis |
+| [atrearl-loader.md](technical/atrearl-loader.md) | AtreaRL.dll — the runtime patcher injected into SGW.exe (hooks, sniffer, two-gate activation) |
 
 
 ## Key Data Sources
