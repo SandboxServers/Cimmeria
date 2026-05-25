@@ -114,35 +114,16 @@ async fn npc_ai_idle_auto_aggro(
             player_id,
             "NPC AI: aggression-driven auto-aggro on opposing-faction player"
         );
-        // Two paths for the `Some(new_state)` return value:
-        //
-        // - **`onStateFieldUpdate` (`BSF_IN_COMBAT`)** — intentionally
-        //   suppressed. The auto-aggro tick can fire before the player
-        //   has any reason to know they've been spotted (NPC walked
-        //   into AoI from off-camera); lighting up the combat HUD
-        //   here surfaces as a "ghost combat" UX bug. The next
-        //   explicit hit (player fires back, NPC retaliates) goes
-        //   through `damage_apply::apply_damage_to_target →
-        //   generate_threat → enter_player_combat`, which broadcasts
-        //   `onStateFieldUpdate` from the damage path with the
-        //   player visibly engaged.
-        //
-        // - **`BeingAppearance` (weapon-mesh refresh)** — REQUIRED.
-        //   `enter_player_combat` flips `weapon_holstered` to false
-        //   when the player enters combat from holstered. Without
-        //   broadcasting the appearance here, the client retains its
-        //   cached "holstered" `ComponentList` (last set by the OOC
-        //   holster's Phase 2 appearance broadcast) while the server
-        //   thinks the weapon is drawn. Next fire passes the
-        //   `needs_unholster_queue` gate (server-side
-        //   `weapon_holstered=false`), so no draw queue runs — the
-        //   client renders the fire animation with NO weapon mesh
-        //   attached. Slot-swap recovers because slot-swap broadcasts
-        //   a fresh `BeingAppearance`. Specifically reported from a
-        //   play session post-auto-reload + OOC holster, where the
-        //   sequence is: kill → auto-reload → OOC → Phase 1 +
-        //   Phase 2 holster → new NPC auto-aggros → player fires →
-        //   "hands in combat position but no weapon."
+        // Invariant: when `enter_player_combat` flips `weapon_holstered`
+        // to false on first-add, the client's cached `ComponentList`
+        // must be refreshed — otherwise the fire path passes the
+        // `needs_unholster_queue` gate (server thinks drawn) while
+        // the client still renders the holstered mesh. The
+        // `onStateFieldUpdate` half is intentionally suppressed here
+        // (auto-aggro can fire before the player has any visible
+        // reason to know — lighting up `BSF_IN_COMBAT` is the "ghost
+        // combat HUD" carve-out); the damage path broadcasts it on
+        // the next explicit hit.
         if combat::generate_threat(space_mgr, player_id, npc_id, 1.0).is_some() {
             super::super::abilities::request_appearance_refresh(player_id, tx, space_mgr).await;
         }

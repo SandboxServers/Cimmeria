@@ -422,7 +422,11 @@ async fn npc_ai_leash_emits_stat_update_then_state_field_to_witnesses() {
 /// faction / aggression as needed. The NPC's default ability bucket is
 /// left intact (Pistol Shot 592) so the fight path doesn't wedge on an
 /// empty selector.
-fn make_aggression_fixture(
+///
+/// Visibility is `pub(super)` so the sibling `npc_ai_auto_aggro`
+/// module (split out when this file crossed the 700-line cap) can
+/// reuse the same setup.
+pub(super) fn make_aggression_fixture(
     npc_id: u32,
     npc_faction: u8,
     player_id: u32,
@@ -1179,102 +1183,5 @@ async fn npc_ai_fight_stationary_does_not_back_off_inside_min_range() {
     );
 }
 
-/// Auto-aggro on a holstered player must broadcast a
-/// `RefreshAppearance` so the client's `BeingAppearance` cache picks
-/// up the server-side `weapon_holstered = false` flip from
-/// `enter_player_combat`. Without this broadcast, server-state and
-/// client-state desync: server thinks weapon is drawn, client still
-/// shows holstered. The next fire passes
-/// `needs_unholster_queue`'s `weapon_holstered=true` gate (because
-/// the server says drawn), so the draw queue never runs — client
-/// renders the fire animation with no weapon mesh attached.
-///
-/// Play-session symptom: post-auto-reload + OOC holster, the
-/// player attacks a freshly-aggroed NPC and sees "hands in combat
-/// pose but no weapon." Slot-swap recovers because slot-swap
-/// broadcasts a fresh appearance. The fix here is the
-/// broadcast-on-auto-aggro path in `npc_ai_idle_auto_aggro` —
-/// `generate_threat` returning `Some(state)` MUST be followed by
-/// `request_appearance_refresh` even though the design intent is
-/// to skip the `onStateFieldUpdate` (the "ghost combat HUD" carve-
-/// out the comment names).
-///
-/// Assertion shape: the cell→base channel sees exactly one
-/// `RefreshAppearance` message addressed at the player. The
-/// `onStateFieldUpdate` is intentionally NOT sent (covered by the
-/// negative assertion at the end).
-#[tokio::test]
-async fn auto_aggro_broadcasts_appearance_refresh_on_holstered_player() {
-    use crate::cell::messages::CellToBaseMsg;
-
-    let mut mgr = make_aggression_fixture(200_010, 10, 1, [5.0, 0.0, 0.0]);
-    if let Some(npc) = mgr.get_entity_mut(200_010) {
-        npc.aggression = 1;
-    }
-    // Pre-stage: player is holstered (post-OOC). The bug shape is
-    // specifically "weapon_holstered flips false server-side
-    // without telling the client" — to observe it, weapon must be
-    // holstered going in so the flip is observable.
-    if let Some(p) = mgr.get_entity_mut(1) {
-        p.weapon_holstered = true;
-    }
-
-    let (tx, mut rx) = mpsc::channel(16);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
-
-    // Drain the cell→base channel and count appearance refresh +
-    // state-field-update messages.
-    let mut saw_refresh = false;
-    let mut saw_state_field_update_for_player = false;
-    while let Ok(msg) = rx.try_recv() {
-        match msg {
-            CellToBaseMsg::RefreshAppearance {
-                entity_id: 1,
-                holstered,
-                ..
-            } => {
-                saw_refresh = true;
-                assert!(
-                    !holstered,
-                    "RefreshAppearance payload must carry holstered=false (drawn) — \
-                     enter_player_combat flipped the field to false; the broadcast \
-                     must mirror the server-side value"
-                );
-            }
-            CellToBaseMsg::EntityMethodCall {
-                entity_id: 1,
-                method_index,
-                ..
-            } if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE => {
-                saw_state_field_update_for_player = true;
-            }
-            _ => {}
-        }
-    }
-
-    assert!(
-        saw_refresh,
-        "auto-aggro on holstered player must broadcast RefreshAppearance \
-         — pre-fix the auto-aggro path discarded `generate_threat`'s \
-         Some(state) return and the client's weapon-mesh cache stayed \
-         desynced, producing the play-session 'no weapon mesh on fire' bug"
-    );
-    assert!(
-        !saw_state_field_update_for_player,
-        "auto-aggro MUST NOT broadcast onStateFieldUpdate to the player — \
-         the design carve-out prevents 'ghost combat HUD' (HUD lights up \
-         before the player has any reason to know they've been seen). The \
-         appearance refresh covers the weapon-mesh sync; the state field \
-         waits for an explicit hit"
-    );
-
-    // Sanity: the cell-side state did flip. If this fails, the
-    // assertion above passed for the wrong reason.
-    let player = mgr.get_entity(1).unwrap();
-    assert!(
-        !player.weapon_holstered,
-        "enter_player_combat must flip weapon_holstered=false on first-add \
-         transition — broadcast or not, the server-side state is the \
-         source of truth for subsequent fire-path gating"
-    );
-}
+// Auto-aggro broadcast tests moved to the sibling `npc_ai_auto_aggro`
+// module (this file crossed the 700-line cap).

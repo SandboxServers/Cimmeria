@@ -174,43 +174,13 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         }
     }
 
-    // Honour the `reloadOnActivate` client option on the world-entry
-    // path. `handle_init_player_state` is the cell-side hydrate site
-    // for every fresh-pawn entry: initial login, cross-world gate
-    // travel (RESET_ENTITIES → ENABLE_ENTITIES → CREATE_BASE_PLAYER →
-    // mapLoaded → onClientReady all the way down), and cross-world
-    // ring transport (which lands on gate-travel internally). In
-    // every one of those flows the client just instantiated a fresh
-    // pawn actor and is, from the player's perspective, "activating"
-    // the weapon in the active bandolier slot — exactly the
-    // semantics `SystemOptions.xml` ascribes to
-    // `reloadOnActivate` ("Reloads weapon when activated").
-    //
-    // Pre-#394 this was uncovered because the only trigger sites
-    // were F1-F4 slot swap (`cell_methods/inventory/bandolier.rs`)
-    // and in-game equip from inventory (`service/base_messages/
-    // bandolier.rs`). A player with the option enabled who logged
-    // in or gated to a new world with a partial-clip active weapon
-    // would silently NOT auto-reload until they manually swapped
-    // slots and back.
-    //
-    // Same-world respawn (`cell_methods/player/combat/respawn.rs`)
-    // is deliberately NOT a trigger site: the weapon was never
-    // deactivated on the cell side (`ReanchorPlayer` rebuilds the
-    // client-side pawn but keeps the cell entity intact), so the
-    // option's "activated" condition isn't met. Player
-    // expectations there are handled by the natural respawn-restore
-    // (health/focus to max) — clip state is intentionally NOT
-    // refilled to preserve the "you lost momentum when you died"
-    // tension.
-    //
-    // The helper bails internally on:
-    //   - option off (default),
-    //   - non-player entities (NPCs don't read system options),
-    //   - active_clip_size == 0 (melee / non-clip weapons),
-    //   - clip already full,
-    //   - in-flight reload already pending.
-    // So the unconditional call here is safe.
+    // `reloadOnActivate` activation site for the world-entry path
+    // (initial login, gate travel, cross-world ring). Same-world
+    // respawn is deliberately NOT a trigger site — `ReanchorPlayer`
+    // keeps the cell entity intact, so the weapon is never
+    // "activated" in the sense `SystemOptions.xml` defines. Helper
+    // self-gates on option-off, non-player, melee, full clip, and
+    // in-flight reload, so the unconditional call is safe.
     crate::cell::cell_methods::player::world::maybe_trigger_reload_on_activate(
         entity_id, tx, space_mgr,
     )
@@ -400,6 +370,92 @@ mod system_options_assignment_tests {
              must trigger handle_reload (gate-travel / login coverage). \
              Pre-fix the only triggers were F1-F4 swap and inventory \
              equip — login silently no-op'd."
+        );
+    }
+
+    /// Default-holstered world-entry path: the real production fixture
+    /// for login / gate-travel / cross-world ring has
+    /// `weapon_holstered = true` (the `CellEntity::new` default — the
+    /// pawn is freshly instantiated and starts with no weapon drawn).
+    /// The drawn-weapon test above isolates the trigger logic from
+    /// Phase A draw choreography; this companion guard pins that the
+    /// holstered-weapon path also queues a reload. Bug shape: a
+    /// future refactor that adds a `weapon_holstered` short-circuit to
+    /// `maybe_trigger_reload_on_activate` would silently break every
+    /// real login.
+    ///
+    /// Assertion: `pending_reload_at` is `Some` (Phase A draw deadline)
+    /// post-handler. Phase A is the correct entry path because the
+    /// weapon is still holstered and OOC — `handle_reload` defers the
+    /// real reload until the draw animation has played.
+    #[tokio::test]
+    async fn init_player_state_triggers_reload_on_activate_when_holstered() {
+        let mut mgr = make_mgr();
+        mgr.ability_defs.insert(
+            596,
+            cimmeria_entity::abilities::AbilityDef {
+                ability_id: 596,
+                is_ranged: false,
+                min_range: 0,
+                name: "Reload".into(),
+                warmup: 1.0,
+                cooldown: 0.5,
+                flags: 0,
+                max_range: 0,
+                target_type_id: 0,
+                effect_ids: vec![],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+        // Sanity: the fixture starts with the production default
+        // (holstered=true). Pin it so a future fixture change can't
+        // silently relax this test into a no-op.
+        assert!(
+            mgr.get_entity(1).unwrap().weapon_holstered,
+            "fixture sanity: CellEntity::new defaults weapon_holstered=true"
+        );
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(32);
+
+        let (archetype, abilities, slot, items, sys_opts) = init_args_with_bandolier_clip(
+            10,
+            SystemOptions {
+                auto_reload: true,
+                reload_on_activate: true,
+            },
+        );
+
+        handle_init_player_state(
+            1,
+            100,
+            "Castle_CellBlock".into(),
+            archetype,
+            vec![],
+            abilities,
+            slot,
+            items,
+            sys_opts,
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            e.pending_reload_at.is_some(),
+            "holstered world-entry with reload_on_activate=true + partial clip \
+             must queue Phase A (the draw window); pre-fix only the slot-swap \
+             trigger path covered this and login was silent"
+        );
+        assert!(
+            !e.weapon_holstered,
+            "Phase A entry must flip weapon_holstered=false so the draw \
+             animation plays — without the flip the client renders the \
+             reload with the weapon still holstered"
         );
     }
 

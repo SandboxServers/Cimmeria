@@ -763,8 +763,16 @@ impl CellEntity {
     ///   ended (death cleared `BSF_IN_COMBAT` via the threat fan-out), so
     ///   this is redundant with that path but keeps the surface clean.
     ///
-    /// Does NOT touch `weapon_holstered` itself — the death broadcast
-    /// path and the respawn `ReanchorPlayer` handle the appearance side.
+    /// Does NOT clear:
+    /// - `weapon_holstered` — the death broadcast path and the respawn
+    ///   `ReanchorPlayer` handle the appearance side.
+    /// - `threatened_mobs` — held separately and cleared by the
+    ///   same-world respawn handler (see
+    ///   `cell_methods/player/combat/respawn.rs`).
+    /// - `ai_retry_at` / `pending_ai_retries` — NPC-AI fields; the call
+    ///   site is gated on `is_player`, so these are structurally
+    ///   unreachable here. If the gate is ever relaxed, audit NPC AI
+    ///   timers separately rather than bolting them onto this helper.
     pub fn clear_weapon_action_state(&mut self) {
         self.pending_reload_at = None;
         self.reload_complete_at = None;

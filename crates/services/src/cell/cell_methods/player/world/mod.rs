@@ -601,13 +601,10 @@ pub(crate) async fn handle_reload(
     // would still elapse mid-reload, flip `weapon_holstered = true`,
     // and broadcast `BeingAppearance` with no weapon attached. The
     // user would see the reload animation play then the weapon
-    // mesh vanish on the next AoI tick. Phase A already does this
-    // clear (line 554 above); Phase B was missing it. The bug
-    // shape: player kills last threat, drains clip without
-    // auto-reload (option off), watches OOC holster Phase 1 fire
-    // (`Item_Unequip` animation), then manually presses R during
-    // the ~half-second animation window — reload plays, weapon
-    // vanishes after.
+    // mesh vanish on the next AoI tick. The Phase A block above
+    // performs the same clear at its `set_weapon_holstered(false)`
+    // call; mirror that here so Phase B reloads against an
+    // already-drawn weapon also cancel the pending holster.
     if let Some(e) = space_mgr.get_entity_mut(entity_id) {
         e.pending_reload_at = None;
         e.holster_animation_complete_at = None;
