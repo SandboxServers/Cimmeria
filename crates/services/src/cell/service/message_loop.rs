@@ -118,7 +118,8 @@ pub(super) async fn run_cell_loop(
                 // natural cadence. Healthy NPCs (no `ai_retry_at`) are
                 // skipped on the snapshot scan, so the per-tick cost
                 // here is just an `all_npc_entity_ids()` walk + the
-                // None-filter — negligible. See issue #329.
+                // pending-retry set membership — negligible. See
+                // `npc_ai::npc_ai_retry_sweep` for the rationale.
                 super::npc_ai::npc_ai_retry_sweep(tx, &mut space_mgr).await;
 
                 // Out-of-combat HP/focus regen — 1 Hz (every 10th 100ms tick).

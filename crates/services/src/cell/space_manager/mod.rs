@@ -150,6 +150,16 @@ pub struct SpaceManager {
     /// Live ring transporter state machines keyed by `region_id`.
     /// Built from `ring_regions` at startup; one entry per ring pad.
     pub ring_transporters: super::ring_transport::RingTransporterManager,
+    /// NPCs with a pending `ai_retry_at` deadline. Updated whenever
+    /// `npc_ai_fight` schedules a launch-failure retry and whenever
+    /// `npc_ai_retry_sweep` consumes one. The retry sweep iterates
+    /// THIS set instead of `all_npc_entity_ids()`, so the per-AoI-tick
+    /// (100ms) sweep cost is `O(pending)` instead of `O(total NPCs)`.
+    /// Stale entries (NPC destroyed, state-transitioned away from
+    /// Fighting, deadline not yet reached) are skipped by the sweep's
+    /// double-check filter — the set is a "candidate" pointer set, not
+    /// the source of truth.
+    pub pending_ai_retries: std::collections::HashSet<u32>,
 }
 
 impl SpaceManager {
@@ -179,6 +189,7 @@ impl SpaceManager {
             ring_regions: HashMap::new(),
             ring_point_set_to_region: HashMap::new(),
             ring_transporters: super::ring_transport::RingTransporterManager::new(),
+            pending_ai_retries: std::collections::HashSet::new(),
         }
     }
 }

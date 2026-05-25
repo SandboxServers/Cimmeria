@@ -709,7 +709,7 @@ async fn npc_ai_fight_warns_when_handle_use_ability_returns_false() {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Issue #329 — per-ability range, min-range backup, retry-on-failure.
+// Per-ability range, min-range backup, retry-on-failure.
 //
 // The AI tick previously used a flat `NPC_ATTACK_RANGE = 30.0` for the
 // "am I in range" check, ignoring each ability's own `max_range` /
@@ -806,19 +806,19 @@ async fn npc_ai_fight_with_short_max_range_holds_fire_when_target_outside() {
     // path entirely — observable via the side effects:
     //   - ability cooldown is NOT started (use_ability never ran)
     //   - `ai_retry_at` is None (no launch-failure retry was scheduled
-    //     by the issue-#329 hook because handle_use_ability never
-    //     returned false — it was never called).
+    //     by the launch-failure retry hook because handle_use_ability
+    //     never returned false — it was never called).
     //
     // Pre-fix the flat-30 constant let in_range = true at distance 20,
     // use_ability ran, its own range check rejected (max_range = 15),
-    // and the issue-#304 WARN + issue-#329 retry-schedule path fired.
+    // and the negative-logging WARN + retry-schedule path fired.
     // So `ai_retry_at == Some(...)` would be the pre-fix signature
     // here. The None assertion below is the canary.
     let npc = mgr.get_entity(200).unwrap();
     assert!(
         !npc.abilities
             .is_on_cooldown(crate::cell::combat::NPC_DEFAULT_ABILITY),
-        "issue #329: NPC with ability max_range=15 must NOT fire at distance 20 \
+        "per-ability range gate: NPC with max_range=15 must NOT fire at distance 20 \
          — pre-fix flat-30 entered the fire path and started the cooldown despite \
          use_ability rejecting. Cooldown started means we shipped the bug shape."
     );
@@ -852,7 +852,7 @@ async fn npc_ai_fight_with_short_max_range_fires_when_target_inside() {
     assert!(
         npc.abilities
             .is_on_cooldown(crate::cell::combat::NPC_DEFAULT_ABILITY),
-        "issue #329: NPC with max_range=15 must enter the fire path at distance \
+        "per-ability range gate: NPC with max_range=15 must enter the fire path at distance \
          14 (cooldown is started end-to-end). If this trips post-fix, the AI \
          range gate is over-tight and refusing in-range fires."
     );
@@ -883,7 +883,7 @@ async fn npc_ai_fight_max_range_zero_falls_back_to_npc_attack_range() {
     assert!(
         npc.abilities
             .is_on_cooldown(crate::cell::combat::NPC_DEFAULT_ABILITY),
-        "issue #329 regression: ability with max_range=0 must fall back to \
+        "max_range=0 sentinel regression: ability must fall back to \
          NPC_ATTACK_RANGE (30.0); a target at distance 25 must still enter \
          the fire path and start the cooldown end-to-end"
     );
@@ -982,7 +982,7 @@ async fn npc_ai_fight_schedules_retry_on_handle_use_ability_failure() {
     let after = std::time::Instant::now();
 
     let retry_at = mgr.get_entity(200).unwrap().ai_retry_at.expect(
-        "issue #329: handle_use_ability returning false must schedule a \
+        "launch-failure retry hook: handle_use_ability returning false must schedule a \
              retry via ai_retry_at — without this the NPC waits up to 2s for \
              the natural cadence and the player sees a 'dead frame' stutter",
     );
@@ -1030,6 +1030,12 @@ async fn npc_ai_retry_sweep_processes_due_npc_and_clears_slot() {
         // immediately, no real wall-clock delay required.
         npc.ai_retry_at = Some(std::time::Instant::now() - std::time::Duration::from_millis(10));
     }
+    // The sweep iterates `pending_ai_retries` (not all NPCs), so the
+    // test must mirror the schedule-side bookkeeping by inserting
+    // here. In production the `npc_ai_fight` failure branch handles
+    // this; here we bypass that branch and set the field directly,
+    // so we owe the set update.
+    mgr.pending_ai_retries.insert(200);
 
     let (tx, _rx) = mpsc::channel(16);
     crate::cell::service::npc_ai::npc_ai_retry_sweep(&tx, &mut mgr).await;
@@ -1041,9 +1047,134 @@ async fn npc_ai_retry_sweep_processes_due_npc_and_clears_slot() {
     let post = mgr.get_entity(200).unwrap().ai_retry_at;
     assert!(
         post.is_none_or(|t| t > std::time::Instant::now()),
-        "issue #329: retry sweep must clear the past-due ai_retry_at slot \
+        "retry sweep must clear the past-due ai_retry_at slot \
          (either to None or to a fresh future deadline from another retry \
          schedule); leaving the past-due value would re-fire the fight pass \
          every 100ms AoI tick. Got: {post:?}"
+    );
+}
+
+/// Missing `AbilityDef` (entity has the ability id in `known_abilities`
+/// but `space_mgr.ability_defs` has no entry for it) falls back to
+/// `NPC_ATTACK_RANGE`. Distinct from `max_range = 0` — that exercise
+/// is `max_range_zero_falls_back_to_npc_attack_range`. This one
+/// exercises the `None` branch of `chosen_ability.and_then(|id|
+/// space_mgr.ability_defs.get(&id))`.
+///
+/// Bug shape this guards: a future "fail closed on missing def"
+/// refactor would silently freeze every NPC whose ability isn't in
+/// the def cache (e.g. server starts before def loader finishes).
+/// Pre-#329 had no per-ability path, so this case literally couldn't
+/// regress; post-#329 it's a real branch.
+#[tokio::test]
+async fn npc_ai_fight_missing_ability_def_falls_back_to_npc_attack_range() {
+    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+    // Deliberately DO NOT seed an AbilityDef. The NPC knows the
+    // ability id (added below), but `space_mgr.ability_defs.get(...)`
+    // returns None — exercising the missing-def fallback path.
+    seed_target_with_threat(&mut mgr, 200, 100, [25.0, 0.0, 0.0]);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.abilities
+            .add_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
+    }
+
+    let (tx, _rx) = mpsc::channel(64);
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    // With no def, `ability_ranges` returns `(NPC_ATTACK_RANGE,
+    // 0.0)`. Distance 25 < 30 = in_range = true → fire path. But
+    // `handle_use_ability` ALSO needs the def for its own range
+    // check; it shares the same fallback so the cooldown should
+    // still start.
+    let npc = mgr.get_entity(200).unwrap();
+    assert!(
+        npc.abilities
+            .is_on_cooldown(crate::cell::combat::NPC_DEFAULT_ABILITY),
+        "missing-def regression: ability with no AbilityDef in the cache \
+         must fall back to NPC_ATTACK_RANGE (30.0); target at distance 25 \
+         must still enter the fire path and start the cooldown end-to-end"
+    );
+}
+
+/// `compute_backup_waypoint` returns `None` when NPC and target share
+/// a position — the target→NPC vector has no direction to step back
+/// along. Caller treats `None` as "no backup possible, fall through";
+/// pinning this avoids a future "use a default direction" refactor
+/// that would silently teleport the NPC to (0, 0, 0) or similar.
+///
+/// Pure unit test on the helper — no SpaceManager needed.
+#[test]
+fn compute_backup_waypoint_returns_none_for_co_located_target() {
+    use cimmeria_common::Vector3;
+
+    // We're calling a private fn from outside its module via the
+    // sibling tests directory — only legal because Rust allows
+    // `super`-relative paths inside test modules. If this assertion
+    // shape ever changes, expose a thin wrapper rather than going
+    // `pub`.
+    //
+    // Both at the origin. EPSILON guard fires.
+    let result = crate::cell::service::npc_ai::compute_backup_waypoint_for_test(
+        Vector3::new(0.0, 0.0, 0.0),
+        Vector3::new(0.0, 0.0, 0.0),
+        5.0,
+    );
+    assert!(
+        result.is_none(),
+        "co-located NPC+target must return None — the helper has no \
+         direction to back away along. Pre-fix returning a NaN-laden \
+         waypoint would corrupt nav_path and crash the path follower."
+    );
+
+    // Sanity: a non-degenerate input still returns Some(...) so the
+    // negative-case assertion above isn't a false positive.
+    let result = crate::cell::service::npc_ai::compute_backup_waypoint_for_test(
+        Vector3::new(3.0, 0.0, 0.0),
+        Vector3::new(0.0, 0.0, 0.0),
+        5.0,
+    );
+    assert!(
+        result.is_some(),
+        "non-degenerate input must produce a Some — verifies the helper \
+         isn't always returning None (which would make the co-located \
+         assertion trivially pass)"
+    );
+}
+
+/// Stationary NPC with `is_stationary = true` must NOT receive a
+/// min-range backup waypoint even if the target is inside the dead
+/// zone. The PR body explicitly carved this out ("Stationary NPCs
+/// skip the backup — they're pinned by design"); pin it in code so
+/// a future "always back off" refactor doesn't violate the design
+/// invariant.
+///
+/// Mirrors `npc_ai_stationary_does_not_pathfind_when_out_of_range`
+/// (the pre-existing nav-skip guard for out-of-range) but for the
+/// NEW min-range branch.
+#[tokio::test]
+async fn npc_ai_fight_stationary_does_not_back_off_inside_min_range() {
+    let mut mgr = make_ai_fixture([0.0; 3], [3.0, 0.0, 0.0]);
+    seed_default_ability(&mut mgr, /* min */ 5, /* max */ 30);
+    seed_target_with_threat(&mut mgr, 200, 100, [0.0; 3]);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.abilities
+            .add_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
+        // Pin the NPC in place. A non-stationary NPC at this same
+        // position would enqueue a backup waypoint — see
+        // `npc_ai_fight_target_inside_min_range_schedules_backup_waypoint`.
+        npc.is_stationary = true;
+    }
+
+    let (tx, _rx) = mpsc::channel(16);
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(200).unwrap();
+    assert!(
+        npc.nav_path.is_empty(),
+        "stationary NPC must NOT enqueue a min-range backup waypoint — \
+         turrets / fixed defenders are pinned by design. Pre-fix would \
+         have populated nav_path here just like a mobile NPC; the \
+         is_stationary guard is the canary. Got: {:?}",
+        npc.nav_path
     );
 }

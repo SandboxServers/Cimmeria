@@ -1,6 +1,22 @@
 //! NPC AI tick — fight (threat-target attacks + leashing), and leash recovery.
 //!
-//! Runs every 2 seconds (every 20th AoI tick).
+//! # Cadence
+//!
+//! Two passes share the AI surface, both driven from
+//! [`crate::cell::service::message_loop`]:
+//!
+//! - **[`npc_ai_tick`]** — natural cadence, every 20th AoI tick (~2s
+//!   at the 100ms AoI rate). Drives Idle-auto-aggro, Leashing, and
+//!   the baseline Fighting pass for every NPC.
+//! - **[`npc_ai_retry_sweep`]** — fast retry, every AoI tick (~100ms).
+//!   Picks up Fighting NPCs whose `ai_retry_at` deadline has passed
+//!   after a `handle_use_ability` launch failure, so the AI can
+//!   re-attempt within 500–600ms instead of waiting the full 2s
+//!   natural cadence. Iterates `space_mgr.pending_ai_retries`
+//!   (`O(pending)`), not the full NPC list.
+//!
+//! Healthy NPCs never appear in `pending_ai_retries`; the retry
+//! sweep is effectively free in that case.
 
 use tokio::sync::mpsc;
 
@@ -208,7 +224,7 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     // Range check: don't attack until target is within the chosen
     // ability's `max_range` (or `NPC_ATTACK_RANGE` if the def is missing
     // or carries the `0` sentinel meaning "use server default"). Pinned
-    // by issue #329: prior code used the flat constant and ignored
+    // Previously: prior code used the flat constant and ignored
     // per-ability `max_range`, which produced "NPC walks into firing
     // distance but stands there" for any ability with `max_range < 30`
     // (e.g., a grenade at `max_range = 15`).
@@ -365,12 +381,21 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.ai_retry_at = Some(std::time::Instant::now() + AI_LAUNCH_FAILURE_RETRY_DELAY);
         }
+        // Mirror into the SpaceManager-level pending set so the sweep
+        // can iterate `O(pending)` instead of `O(total NPCs)`. Borrow
+        // sequencing matters: the entity-mut block above ends before
+        // we re-borrow `space_mgr` for the set.
+        space_mgr.pending_ai_retries.insert(npc_id);
     }
 }
 
 /// Delay before re-running `npc_ai_fight` after a `handle_use_ability`
-/// launch failure. Pinned at 500ms per spec evidence in issue #329
-/// (`Atrea.addTimer(t + 0.5, doAiAction)`). The retry sweep tick is
+/// launch failure. Pinned at 500ms per the Python fork's
+/// `Atrea.addTimer(Atrea.getGameTime() + 0.5, lambda: self.doAiAction())`
+/// call at [`deprecated/python/cell/SGWMob.py:287`]. The fork is the
+/// closest behavioral reference we have for the original Stargate
+/// Worlds AI cadence; treat the 0.5s as canon until a Ghidra trace of
+/// the C++ AI tick says otherwise. The retry sweep tick is
 /// 100ms granular, so the actual latency lands in `[500, 600)` ms.
 const AI_LAUNCH_FAILURE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
 
@@ -418,6 +443,16 @@ fn ability_ranges(
 /// The +1.0 margin keeps the next tick's range check from oscillating
 /// at exactly `min_range`; without it floating-point jitter would push
 /// the NPC back inside the dead zone every other tick.
+///
+/// # Vertical-axis caveat
+///
+/// The returned waypoint preserves the NPC's Y-axis offset from the
+/// target — if the NPC is uphill of the target, the backup point is
+/// also uphill. This can yield a Y that the navmesh would reject (in
+/// mid-air over a ledge, or under the floor). The waypoint is fed
+/// into the same path-follower as `find_path` output, which clamps
+/// invalid Y via the navmesh on consume. Callers that bypass that
+/// path-follower must clamp themselves.
 fn compute_backup_waypoint(
     npc_pos: cimmeria_common::Vector3,
     target_pos: cimmeria_common::Vector3,
@@ -443,40 +478,87 @@ fn compute_backup_waypoint(
 /// deadline has passed and runs `npc_ai_fight` on each, clearing the
 /// retry slot afterward. Lets a launch-failure-driven re-attempt land
 /// in 500-600ms instead of waiting for the 2-second natural-cadence
-/// tick — see `AI_LAUNCH_FAILURE_RETRY_DELAY` and issue #329.
+/// tick — see `AI_LAUNCH_FAILURE_RETRY_DELAY`.
 ///
 /// The natural-cadence tick (`npc_ai_tick`, every 20th AoI tick)
 /// continues to drive Idle-auto-aggro, Leashing, and the baseline
 /// Fighting pass for NPCs without a pending retry — this sweep ONLY
 /// services the retry path. Keeping the two functions separate avoids
 /// changing the per-AoI-tick cost for healthy NPCs.
+///
+/// # Iteration cost
+///
+/// Iterates `space_mgr.pending_ai_retries` (a `HashSet<u32>` of NPCs
+/// with a scheduled retry) rather than scanning every NPC in every
+/// space. The set is maintained by `npc_ai_fight` on schedule and
+/// cleared here on consume, so the per-AoI-tick cost is
+/// `O(pending)` — typically 0 for a healthy server, bounded by the
+/// number of NPCs that just lost a target mid-launch. A prior
+/// implementation walked `all_npc_entity_ids()` every tick and was
+/// `O(total NPCs)`; that's the cost this set avoids.
+///
+/// # Filter discipline
+///
+/// The set is a "candidates for fast-retry" pointer set, not the
+/// source of truth — entries can become stale if an NPC is destroyed
+/// or transitions out of `Fighting` while a retry is pending. The
+/// double-check filter below combines `ai_retry_at.is_some_and(|t|
+/// t <= now)` with `ai_state == Fighting` and handles stale cases by
+/// skipping them and removing the entry, so the set self-heals.
 pub(super) async fn npc_ai_retry_sweep(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
     use cimmeria_entity::cell_entity::AiState;
 
-    let now = std::time::Instant::now();
-    let due: Vec<u32> = space_mgr
-        .all_npc_entity_ids()
-        .iter()
-        .filter_map(|&eid| {
-            let e = space_mgr.get_entity(eid)?;
-            let due = e.ai_retry_at.is_some_and(|t| t <= now);
-            // Only run the retry pass on Fighting NPCs — Idle / Leashing
-            // NPCs that somehow have `ai_retry_at` set are misuse; the
-            // natural-cadence tick handles them on its own.
-            (due && e.ai_state == AiState::Fighting).then_some(eid)
-        })
-        .collect();
+    if space_mgr.pending_ai_retries.is_empty() {
+        return;
+    }
 
-    for npc_id in due {
+    let now = std::time::Instant::now();
+    // Snapshot the candidate set so the entity-mut + npc_ai_fight calls
+    // below can borrow `space_mgr` mutably without aliasing the set.
+    let candidates: Vec<u32> = space_mgr.pending_ai_retries.iter().copied().collect();
+
+    let mut to_remove: Vec<u32> = Vec::new();
+    let mut to_run: Vec<u32> = Vec::new();
+    for npc_id in candidates {
+        let Some(e) = space_mgr.get_entity(npc_id) else {
+            // NPC was destroyed mid-flight — drop the stale set entry.
+            to_remove.push(npc_id);
+            continue;
+        };
+        let deadline_due = e.ai_retry_at.is_some_and(|t| t <= now);
+        let fighting = e.ai_state == AiState::Fighting;
+        if !fighting {
+            // State-transitioned out of Fighting (Idle / Leashing /
+            // Dead) — the natural-cadence tick handles those states
+            // and the retry slot is meaningless. Drop the entry.
+            to_remove.push(npc_id);
+            continue;
+        }
+        if !deadline_due {
+            // Set member but deadline still in the future — leave
+            // alone, the next sweep tick will pick it up.
+            continue;
+        }
+        to_run.push(npc_id);
+    }
+
+    for npc_id in to_remove {
+        space_mgr.pending_ai_retries.remove(&npc_id);
+    }
+
+    for npc_id in to_run {
         // Clear the retry slot BEFORE running the fight pass, so a
         // failure inside the pass can set a fresh deadline without
-        // racing this sweep's iteration.
+        // racing this sweep's iteration. Same idempotence rationale
+        // for the set — `npc_ai_fight`'s failure path will re-insert
+        // if it schedules a new retry.
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.ai_retry_at = None;
         }
+        space_mgr.pending_ai_retries.remove(&npc_id);
         npc_ai_fight(npc_id, tx, space_mgr).await;
     }
 }
@@ -559,4 +641,20 @@ async fn npc_ai_leash(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     let mut state_args = Vec::with_capacity(4);
     state_args.extend_from_slice(&state_field.to_le_bytes());
     super::super::abilities::send_entity_method(npc_id, 19, state_args, tx, space_mgr).await;
+}
+
+/// Test-only re-export of the private `compute_backup_waypoint` so
+/// the sibling `tests/npc_ai.rs` module can exercise its degenerate
+/// (co-located NPC + target) branch without making the helper `pub`.
+///
+/// The helper stays private to enforce the convention that only
+/// `npc_ai_fight` calls it (the `+1.0` margin assumption is tied to
+/// that caller); production callers must go through the fight pass.
+#[cfg(test)]
+pub(super) fn compute_backup_waypoint_for_test(
+    npc_pos: cimmeria_common::Vector3,
+    target_pos: cimmeria_common::Vector3,
+    min_range: f32,
+) -> Option<cimmeria_common::Vector3> {
+    compute_backup_waypoint(npc_pos, target_pos, min_range)
 }
