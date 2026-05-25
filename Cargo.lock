@@ -971,6 +971,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-wireclient"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "cimmeria-common",
+ "cimmeria-mercury",
+ "cimmeria-services",
+ "hex",
+ "reqwest 0.13.2",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cipher"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
