@@ -579,4 +579,109 @@ mod sync_bandolier_tests {
 
         cleanup(&pool, account_id, player_id).await;
     }
+
+    /// Negative-logging regression guard for the **empty-bandolier**
+    /// cell→base send. Same setup as
+    /// `empty_bandolier_preserves_slot_and_emits_empty_sync`, but the
+    /// cell receiver is dropped before invocation so the send returns
+    /// SendError. The handler must emit a WARN naming the
+    /// `empty_bandolier` phase; reverting to `let _ = tx.send(...)`
+    /// makes the cell-cache desync diagnosable.
+    #[tokio::test]
+    async fn empty_bandolier_warns_when_cell_to_base_channel_closed() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        let pool = require_db_or_skip!();
+        let capture = LogCapture::install();
+        let account_id = TEST_BASE + 300;
+        let player_id = TEST_BASE + 301;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id, 3).await;
+        // No bandolier rows — drives the empty-bandolier branch.
+
+        let (transport, e2a, conn) = make_state(0x7000_0E31);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        // Drop the receiver before invocation so the cell→base send fails.
+        let (cell_tx, cell_rx) = mpsc::channel::<BaseToCellMsg>(4);
+        drop(cell_rx);
+
+        sync_bandolier_after_inventory_change(
+            0x7000_0E31,
+            player_id,
+            &db_pool,
+            &Some(cell_tx),
+            &transport,
+            &conn,
+            &e2a,
+        )
+        .await;
+
+        let event = capture
+            .find_message(Level::WARN, "sync_bandolier: base→cell send failed")
+            .expect("negative-logging convention: empty-bandolier path must emit WARN");
+        assert!(
+            event.has_field("phase", "empty_bandolier"),
+            "phase field must distinguish empty-bandolier path from non-empty: {event:#?}"
+        );
+        assert!(
+            event.has_field("bandolier_items_count", "0"),
+            "bandolier_items_count must be 0 for the empty path: {event:#?}"
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// Negative-logging regression guard for the **non-empty** cell→base
+    /// send (the second site, with the populated bandolier_items
+    /// payload). Receiver is dropped; assertion pins the phase field.
+    #[tokio::test]
+    async fn non_empty_bandolier_warns_when_cell_to_base_channel_closed() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        let pool = require_db_or_skip!();
+        let capture = LogCapture::install();
+        let account_id = TEST_BASE + 400;
+        let player_id = TEST_BASE + 401;
+        cleanup(&pool, account_id, player_id).await;
+        // bandolier_slot=1; we'll seed slots 1 and 2 so the slot is
+        // valid (no UPDATE), the function flows past the active-slot
+        // check, commits, and reaches the second cell_tx.send.
+        insert_account_and_player(&pool, account_id, player_id, 1).await;
+        insert_bandolier_row(&pool, player_id, 1).await;
+        insert_bandolier_row(&pool, player_id, 2).await;
+
+        let (transport, e2a, conn) = make_state(0x7000_0E41);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        let (cell_tx, cell_rx) = mpsc::channel::<BaseToCellMsg>(4);
+        drop(cell_rx);
+
+        sync_bandolier_after_inventory_change(
+            0x7000_0E41,
+            player_id,
+            &db_pool,
+            &Some(cell_tx),
+            &transport,
+            &conn,
+            &e2a,
+        )
+        .await;
+
+        let event = capture
+            .find_message(Level::WARN, "sync_bandolier: base→cell send failed")
+            .expect("negative-logging convention: non-empty path must emit WARN");
+        assert!(
+            event.has_field("phase", "non_empty"),
+            "phase field must distinguish non-empty path from empty-bandolier: {event:#?}"
+        );
+        assert!(
+            event.has_field("bandolier_items_count", "2"),
+            "bandolier_items_count must reflect the seeded slots: {event:#?}"
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
 }

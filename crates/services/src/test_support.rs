@@ -418,3 +418,201 @@ impl Visit for FieldVisitor {
             .insert(field.name().to_string(), value.to_string());
     }
 }
+
+#[cfg(test)]
+mod log_capture_tests {
+    //! Self-tests for the LogCapture helper. Each assertion pins
+    //! behavior that the negative-log regression guards in other
+    //! modules depend on, so a refactor to LogCapture that
+    //! accidentally breaks one of these contracts trips here first.
+    use super::{Captured, LogCapture};
+    use tracing::Level;
+
+    /// A bool-only event hits the `record_bool` visitor path. The
+    /// other negative-log guards mostly emit Debug-formatted values
+    /// (covered by `record_debug` via `?expr` / `%expr`), so this
+    /// test exists to keep the typed-record fast paths exercised.
+    #[test]
+    fn captures_bool_field_via_record_bool() {
+        let capture = LogCapture::install();
+        tracing::warn!(succeeded = true, "bool test");
+        let event = capture
+            .find_message(Level::WARN, "bool test")
+            .expect("warn must be captured");
+        assert!(
+            event.has_field("succeeded", "true"),
+            "record_bool must store the boolean as 'true'/'false': {event:#?}"
+        );
+    }
+
+    /// `record_i64` is the visitor path for `i32` / `i64` fields used
+    /// without `?` formatting. Most existing guards rely on it
+    /// transparently — pin it.
+    #[test]
+    fn captures_signed_int_field_via_record_i64() {
+        let capture = LogCapture::install();
+        tracing::warn!(rows_affected = -1i64, "signed int test");
+        let event = capture
+            .find_message(Level::WARN, "signed int test")
+            .expect("warn must be captured");
+        assert!(
+            event.has_field("rows_affected", "-1"),
+            "record_i64 must format as decimal: {event:#?}"
+        );
+    }
+
+    /// `record_u64` is the visitor path for `u32` / `u64` fields
+    /// (entity_id, witness_id, seq, etc.). The existing guards all
+    /// exercise this, but pin it explicitly so a regression that
+    /// switches storage to a different format trips loudly.
+    #[test]
+    fn captures_unsigned_int_field_via_record_u64() {
+        let capture = LogCapture::install();
+        tracing::warn!(entity_id = 4242u32, "unsigned int test");
+        let event = capture
+            .find_message(Level::WARN, "unsigned int test")
+            .expect("warn must be captured");
+        assert!(
+            event.has_field("entity_id", "4242"),
+            "record_u64 must format as decimal: {event:#?}"
+        );
+    }
+
+    /// `record_str` is the visitor path for `&str` fields. The
+    /// `reason` and `phase` convention fields go through here when
+    /// emitted as bare strings — `reason = "entity_to_addr_miss"`.
+    /// `find_event` exact-matches on this, so a stored value with
+    /// wrapping quotes or whitespace would silently break every
+    /// guard.
+    #[test]
+    fn captures_string_field_unquoted_via_record_str() {
+        let capture = LogCapture::install();
+        tracing::warn!(reason = "entity_to_addr_miss", "str test");
+        let event = capture
+            .find_message(Level::WARN, "str test")
+            .expect("warn must be captured");
+        assert!(
+            event.has_field("reason", "entity_to_addr_miss"),
+            "record_str must store the bare string with no quotes: {event:#?}"
+        );
+    }
+
+    /// `find_event` returns None on level mismatch even when the
+    /// message + reason both match — exact level discipline.
+    #[test]
+    fn find_event_returns_none_on_level_mismatch() {
+        let capture = LogCapture::install();
+        tracing::debug!(reason = "test_reason", "level test");
+        assert!(
+            capture
+                .find_event(Level::WARN, "level test", "test_reason")
+                .is_none(),
+            "DEBUG event must not match a WARN find_event query"
+        );
+    }
+
+    /// `find_event` returns None on reason mismatch even when the
+    /// level + message match. Pins the exact-match contract documented
+    /// in the find_event doc.
+    #[test]
+    fn find_event_returns_none_on_reason_mismatch() {
+        let capture = LogCapture::install();
+        tracing::warn!(reason = "actual_reason", "reason test");
+        assert!(
+            capture
+                .find_event(Level::WARN, "reason test", "different_reason")
+                .is_none(),
+            "exact-match on `reason` must reject a near-miss"
+        );
+    }
+
+    /// `find_message` returns None when no message matches at the
+    /// requested level. Covers the "no event" branch.
+    #[test]
+    fn find_message_returns_none_when_no_match() {
+        let capture = LogCapture::install();
+        // Don't emit anything.
+        assert!(capture
+            .find_message(Level::WARN, "nothing was logged")
+            .is_none());
+    }
+
+    /// `all()` returns every captured event in insertion order. Used
+    /// by the existing guards as the `Captured: {:#?}` debug payload
+    /// in their assertion messages — when a guard fails, all() shows
+    /// what DID fire. Pin order so the debug output is deterministic.
+    #[test]
+    fn all_returns_events_in_emission_order() {
+        let capture = LogCapture::install();
+        tracing::info!("first");
+        tracing::warn!("second");
+        tracing::error!("third");
+
+        let events: Vec<Captured> = capture.all();
+        assert_eq!(events.len(), 3, "must capture every emission");
+        // Match the levels in order — verifies insertion-order
+        // preservation.
+        assert_eq!(events[0].level, Level::INFO);
+        assert_eq!(events[1].level, Level::WARN);
+        assert_eq!(events[2].level, Level::ERROR);
+    }
+
+    /// `Captured::has_field` returns false when the key is absent.
+    /// The find_event chain short-circuits on this; the false-branch
+    /// is otherwise un-exercised because the guards only assert on
+    /// the true-branch.
+    #[test]
+    fn has_field_returns_false_when_key_absent() {
+        let capture = LogCapture::install();
+        tracing::warn!(only_field = "x", "absent test");
+        let event = capture.find_message(Level::WARN, "absent test").unwrap();
+        assert!(!event.has_field("not_there", "anything"));
+    }
+
+    /// `Captured::message_contains` falls back to `fields["message"]`
+    /// when the dedicated `message` accessor is None. tracing stores
+    /// the body on either the `Captured::message` field or in the
+    /// fields map depending on construction; the helper must accept
+    /// both shapes so `find_message`/`find_event` are consistent.
+    #[test]
+    fn message_contains_finds_substring_via_fields_fallback() {
+        // Build a Captured directly with the body ONLY in fields[].
+        let mut fields = std::collections::HashMap::new();
+        fields.insert("message".to_string(), "fallback body here".to_string());
+        let c = Captured {
+            level: Level::WARN,
+            target: "test".to_string(),
+            message: None, // not on the dedicated field
+            fields,
+        };
+        assert!(
+            c.message_contains("fallback body"),
+            "message_contains must consult fields['message'] when the \
+             dedicated `message` accessor is None"
+        );
+        assert!(
+            !c.message_contains("absent substring"),
+            "must reject non-matching substring"
+        );
+    }
+
+    /// Multi-thread runtime detection: install() panics when called
+    /// inside a `flavor = "multi_thread"` tokio runtime. The panic
+    /// message names the fix. This guards against accidentally
+    /// removing the runtime check (which would re-introduce the
+    /// silent event-drop on worker threads).
+    #[test]
+    #[should_panic(expected = "multi-thread tokio runtime")]
+    fn install_panics_inside_multi_thread_tokio_runtime() {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("multi_thread runtime build");
+        // The panic must originate from inside install(), called via
+        // the runtime so Handle::try_current() succeeds.
+        rt.block_on(async {
+            let _ = LogCapture::install();
+        });
+    }
+}
