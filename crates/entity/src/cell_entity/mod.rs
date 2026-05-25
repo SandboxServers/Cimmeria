@@ -22,6 +22,9 @@ use crate::stats::StatList;
 
 mod bandolier;
 mod state_flags;
+mod system_options;
+
+pub use system_options::SystemOptions;
 
 #[cfg(test)]
 mod tests;
@@ -506,6 +509,23 @@ pub struct CellEntity {
     /// transient. The chain that reaches the threshold also explicitly
     /// resets the counter via `Action::ResetCounter`.
     pub counters: HashMap<String, i32>,
+
+    /// Per-session client option state populated by `updateSystemOptions`
+    /// (player method index 93). Defaults to `SystemOptions::default()` on
+    /// entity construction, then overwritten by either of two paths:
+    ///
+    /// - **Hydrate-on-login** — `InitPlayerState` carries the persisted
+    ///   values loaded from `sgw_player.auto_reload` and
+    ///   `sgw_player.reload_on_activate`.
+    /// - **Live update** — the client's `updateSystemOptions` push, which
+    ///   also fires a `CellToBaseMsg::SystemOptionsUpdate` so the row is
+    ///   written back to the DB on every toggle.
+    ///
+    /// Currently honours `autoReload` and `reloadOnActivate` — the only
+    /// two options the 2009 XML marks `serverSynch='true'`. Extending to
+    /// new server-synced options is mechanical — see
+    /// [`SystemOptions::apply`].
+    pub system_options: SystemOptions,
 }
 
 /// An item in a dead NPC's loot list, ready for display to players.
@@ -624,6 +644,7 @@ impl CellEntity {
             ring_source_id: None,
             destination_ring_id: None,
             counters: HashMap::new(),
+            system_options: SystemOptions::default(),
         }
     }
 

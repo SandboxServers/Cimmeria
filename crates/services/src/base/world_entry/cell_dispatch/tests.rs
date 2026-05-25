@@ -524,3 +524,45 @@ async fn send_bundle_to_witness_reliable_aborts_on_first_fragment_send_failure()
          got {tx_len} registered for 1 successful + 1 failed send"
     );
 }
+
+/// `SystemOptionsUpdate` is a fire-and-forget persistence message — no
+/// cell-side reply, no transport fan-out. The dispatcher must route it
+/// to the system-options handler and return cleanly; the handler in
+/// turn no-ops when `db_pool` is `None` (test / repl mode). The
+/// assertion here is "no panic, no spurious cell-bound message" —
+/// reverting the dispatch arm fails compilation, but reverting the
+/// `persist_system_options` call inside the arm would only be caught
+/// by the live-DB integration tests next to the handler. This guard
+/// pins the routing.
+#[tokio::test]
+async fn system_options_update_routes_without_panic_and_emits_nothing() {
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+    let (connected, entity_to_addr) = empty_maps();
+    let (cell_tx, mut cell_rx) = mpsc::channel::<BaseToCellMsg>(1);
+
+    handle_cell_message(
+        CellToBaseMsg::SystemOptionsUpdate {
+            player_id: 42,
+            auto_reload: false,
+            reload_on_activate: true,
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &Some(cell_tx),
+        &None, // no db_pool — exercise the silent no-op path
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    // Fire-and-forget: nothing should be sent back to the cell, and no
+    // wire packets should leave the process. Reverting the dispatch
+    // arm to anything that re-emits BaseToCellMsg or calls
+    // `transport.send_to` would fail one of these.
+    assert!(
+        cell_rx.try_recv().is_err(),
+        "SystemOptionsUpdate must not fan out a base→cell reply",
+    );
+}

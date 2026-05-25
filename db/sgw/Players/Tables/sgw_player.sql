@@ -36,6 +36,15 @@ CREATE TABLE sgw_player (
     applied_science_points integer DEFAULT 0 NOT NULL,
     blueprint_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
     known_respawners integer[] DEFAULT '{}'::integer[] NOT NULL,
+    -- System options the client checkbox panel pushes via cell method
+    -- `updateSystemOptions` (player method index 93). These are the only
+    -- two options the SGWGame/Content/XML/SystemOptions.xml marks
+    -- serverSynch='true' — the other ~140 options are client-local.
+    -- Defaults match the XML defaultBool so a fresh character behaves
+    -- the way the 2009 game did. See
+    -- crates/entity/src/cell_entity/system_options.rs.
+    auto_reload boolean DEFAULT true NOT NULL,
+    reload_on_activate boolean DEFAULT false NOT NULL,
     CONSTRAINT alignment_sanity CHECK (((alignment >= 0) AND (alignment <= 5))),
     CONSTRAINT archetype_sanity CHECK (((archetype >= 0) AND (archetype <= 8))),
     CONSTRAINT bandolier_slot_sanity CHECK (((bandolier_slot >= 0) AND (bandolier_slot <= 3))),

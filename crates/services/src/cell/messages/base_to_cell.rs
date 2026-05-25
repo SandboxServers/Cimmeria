@@ -81,6 +81,11 @@ pub enum BaseToCellMsg {
         active_bandolier_slot: i32,
         /// Bandolier slot contents loaded from `sgw_inventory` + `resources.items`.
         bandolier_items: Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>,
+        /// Server-synced client options from `sgw_player.auto_reload` and
+        /// `sgw_player.reload_on_activate`. Populates `CellEntity::system_options`
+        /// so the auto-reload and reload-on-activate triggers honour the
+        /// player's saved preferences instead of falling back to defaults.
+        system_options: cimmeria_entity::cell_entity::SystemOptions,
     },
 
     /// Update one bandolier slot after a runtime item grant.

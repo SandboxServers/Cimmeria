@@ -66,13 +66,17 @@ pub async fn query_player_load_data(
         access_level: i32,
         skin_color_id: i32,
         bandolier_slot: i32,
+        // Server-synced client options — see SystemOptions docs.
+        auto_reload: bool,
+        reload_on_activate: bool,
     }
 
     match sqlx::query_as::<_, PlayerRow>(
         "SELECT level, player_name, extra_name, alignment, archetype, gender, \
          bodyset, components, exp, naquadah, known_stargates, abilities, \
          training_points, applied_science_points, blueprint_ids, first_login, \
-         access_level, skin_color_id, bandolier_slot \
+         access_level, skin_color_id, bandolier_slot, \
+         auto_reload, reload_on_activate \
          FROM sgw_player WHERE player_id = $1 AND account_id = $2",
     )
     .bind(player_id)
@@ -222,6 +226,8 @@ pub async fn query_player_load_data(
                 bandolier_items,
                 ability_tree,
                 items,
+                auto_reload: row.auto_reload,
+                reload_on_activate: row.reload_on_activate,
             }
         }
         Ok(None) => {

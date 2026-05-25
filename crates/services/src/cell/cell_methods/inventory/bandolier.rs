@@ -401,6 +401,16 @@ pub(crate) async fn handle_request_active_slot_change(
         )
         .await;
     }
+    // Honour the `reloadOnActivate` client option — F1-F4 slot swap into
+    // a partial-clip weapon auto-tops it up. Gated inside the helper on
+    // the option being enabled (default off per SystemOptions.xml). Also
+    // fires for in-combat swaps where `draw_intent` is false: the weapon
+    // is already drawn, but the player still wanted the active slot to
+    // be the one with a full clip.
+    crate::cell::cell_methods::player::world::maybe_trigger_reload_on_activate(
+        entity_id, tx, space_mgr,
+    )
+    .await;
 }
 
 pub(super) async fn handle_request_ammo_change(

@@ -37,3 +37,6 @@ pub(crate) use messaging::{request_appearance_refresh, send_entity_method};
 // module until the first child callsite migrates — at which point the
 // migrating PR adds the re-exports it needs.
 pub use use_ability::{handle_use_ability, handle_use_ability_with_kill_credit};
+
+#[cfg(test)]
+pub(crate) use use_ability::maybe_trigger_auto_reload_for_test;

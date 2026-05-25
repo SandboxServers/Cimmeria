@@ -101,6 +101,14 @@ pub struct PlayerLoadData {
     pub ability_tree: cimmeria_entity::abilities::AbilityTreeData,
     /// Inventory items loaded from `sgw_inventory`.
     pub items: Vec<cimmeria_entity::inventory::InvItem>,
+    /// `autoReload` client option, loaded from `sgw_player.auto_reload`.
+    /// Persisted across logins because the SystemOptions.xml marks it
+    /// `serverSynch='true'`. See
+    /// `cimmeria_entity::cell_entity::SystemOptions`.
+    pub auto_reload: bool,
+    /// `reloadOnActivate` client option, loaded from
+    /// `sgw_player.reload_on_activate`.
+    pub reload_on_activate: bool,
 }
 
 impl PlayerLoadData {
@@ -156,6 +164,8 @@ mod player_load_data_tests {
             bandolier_items: vec![],
             ability_tree: Default::default(),
             items: vec![],
+            auto_reload: true,
+            reload_on_activate: false,
         }
     }
 
