@@ -15,7 +15,7 @@ egui = "0.30"
 # the default native-tls feature — cargo currently warns when overriding
 # `default-features` on a workspace dep that didn't explicitly set it.
 # rustls-tls keeps the binary independent of system OpenSSL / Schannel.
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "multipart"] }
 
 tokio = { workspace = true }
 tokio-util = "0.7"
@@ -30,6 +30,9 @@ zip = { workspace = true }
 # Per-install UUID for the telemetry identity. `v4` only — no parsing
 # of externally-supplied UUIDs.
 uuid = { version = "1", features = ["v4", "serde"] }
+
+# Gzip compression for telemetry chunk uploads.
+flate2 = "1"
 
 walkdir = "2"
 gethostname = "0.5"
