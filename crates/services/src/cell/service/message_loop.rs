@@ -111,6 +111,17 @@ pub(super) async fn run_cell_loop(
                     super::npc_ai::npc_ai_tick(tx, &mut space_mgr).await;
                 }
 
+                // Retry sweep for NPCs with a pending `ai_retry_at`
+                // deadline — runs every AoI tick (100ms) so a
+                // `handle_use_ability` launch failure can drive a 500ms
+                // retry instead of waiting up to 2 seconds for the
+                // natural cadence. Healthy NPCs (no `ai_retry_at`) are
+                // skipped on the snapshot scan, so the per-tick cost
+                // here is just an `all_npc_entity_ids()` walk + the
+                // pending-retry set membership — negligible. See
+                // `npc_ai::npc_ai_retry_sweep` for the rationale.
+                super::npc_ai::npc_ai_retry_sweep(tx, &mut space_mgr).await;
+
                 // Out-of-combat HP/focus regen — 1 Hz (every 10th 100ms tick).
                 // Cadence is wired here so the per-call delta in `regen_tick`
                 // can stay "points per second" without an internal time check.

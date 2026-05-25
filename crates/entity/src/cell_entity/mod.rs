@@ -397,6 +397,19 @@ pub struct CellEntity {
     pub spawn_position: Option<Vector3>,
     /// Ticks until next AI action (count-down from ai tick interval).
     pub ai_cooldown_ticks: u32,
+    /// Deadline for the next AI fight tick on this NPC, in service-local
+    /// `Instant`. `Some(t)` means "run `npc_ai_fight` on this NPC the
+    /// moment `now >= t`, even if the natural 2-second AI cadence hasn't
+    /// fired yet." Cleared by the retry-sweep when it consumes the entry,
+    /// or set to `Some(now + 500ms)` by `npc_ai_fight` when
+    /// `handle_use_ability` returns false (target dead between range
+    /// check and launch, animation lock, etc.). Mirrors the
+    /// `Atrea.addTimer(t + 0.5, doAiAction)` pattern from the Python
+    /// fork: the original 2-second cadence sometimes leaves the NPC
+    /// visibly idle for a full tick after a launch failure; the retry
+    /// closes that "dead frame" gap. None = follow the natural cadence
+    /// only (default for healthy NPCs).
+    pub ai_retry_at: Option<std::time::Instant>,
     /// Navmesh path waypoints the NPC is currently following.
     /// Empty = not moving. Each tick pops the next waypoint off the front.
     /// Stored as `VecDeque` so per-tick `pop_front` is O(1) instead of the
@@ -593,6 +606,7 @@ impl CellEntity {
             threat_list: HashMap::new(),
             spawn_position: None,
             ai_cooldown_ticks: 0,
+            ai_retry_at: None,
             nav_path: VecDeque::new(),
             move_speed: 0.6, // ~0.6 world units per 100ms tick = 6 units/sec
             is_stationary: false,
