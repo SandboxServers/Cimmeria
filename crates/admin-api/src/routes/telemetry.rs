@@ -196,11 +196,10 @@ async fn upload_chunk(
             continue;
         }
         parsed += 1;
-        let ev: TelemetryEvent =
-            serde_json::from_str(line).map_err(|e| IngestError::Ndjson {
-                line: idx as u64 + 1,
-                err: e.to_string(),
-            })?;
+        let ev: TelemetryEvent = serde_json::from_str(line).map_err(|e| IngestError::Ndjson {
+            line: idx as u64 + 1,
+            err: e.to_string(),
+        })?;
         replay_event(&claims, ev);
         accepted += 1;
     }
@@ -297,7 +296,9 @@ fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64
     let mut lines = 0u64;
 
     for i in 0..zip.len() {
-        let mut entry = zip.by_index(i).map_err(|e| IngestError::Zip(e.to_string()))?;
+        let mut entry = zip
+            .by_index(i)
+            .map_err(|e| IngestError::Zip(e.to_string()))?;
         if !entry.is_file() {
             continue;
         }
