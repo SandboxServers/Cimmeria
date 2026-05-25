@@ -364,7 +364,7 @@ impl Channel {
             packet.sequence,
             packet.flags.0,
             packet.body.len(),
-            &self.remote_addr.to_string(),
+            self.remote_addr,
         );
 
         let now = self.clock.now();
@@ -402,7 +402,7 @@ impl Channel {
             seq,
             packet.flags.0,
             packet.body.len(),
-            &self.remote_addr.to_string(),
+            self.remote_addr,
         );
 
         // How far ahead of our expected sequence is this packet?

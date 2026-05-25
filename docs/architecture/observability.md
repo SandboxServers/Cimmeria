@@ -177,6 +177,22 @@ analytical surface we care about, sampling defeats the purpose. If
 volume becomes an issue, the lever is `OTEL_TRACES_SAMPLER` (set per
 deployment via the compose env var), not source code changes.
 
+### Timestamps — server-receive vs. client-generate
+
+OTLP events are timestamped at the moment the tracing macro fires.
+For server-originated events (Mercury packets, internal logs) that
+*is* the event time. For launcher uploads, the tracing call fires
+when the server receives the bundle/chunk, **not** when the launcher
+captured the line. The client-side capture time is preserved in the
+`ts_ms` structured field on every `launcher.*` event.
+
+Implication for queries: SigNoz's main timeline pivot is server-
+receive-time. To plot client-generate-time, group by `ts_ms` instead
+of the default timestamp column. The two are usually within seconds
+of each other (the launcher flushes every 2s), but a launcher that
+queued events offline can produce arbitrarily large skew on the next
+upload.
+
 ## Cimmeria-MCP integration
 
 The Cimmeria-MCP C# Azure Function repo is separate from this one.
@@ -210,13 +226,19 @@ The integration plan from this side:
   structured surface to ask "what happened in the last hour" against.
 - The OTLP standard means we can swap SigNoz for any other vendor
   with a collector-config change.
-- The cosmos_log path is unchanged — we did not break existing flows.
+- Single analytical store — no parallel sinks to keep in sync, no
+  question of "which store has the data I want" at query time.
 
 ### Negative
 
 - Operators have a new docker stack to keep alive on the colo
-  (SigNoz's ~6 services). The submodule pattern keeps upgrades cheap
-  but adds a tier of containers to monitor.
+  (SigNoz's ~6 services). All vendored into one self-contained
+  `docker/compose.yml` so the deploy unit stays a single file, but
+  upgrades require a manual re-vendor of the inlined SigNoz config
+  sections alongside the image-tag bump.
+- The Cosmos write path is gone. If we ever want it back, we'd
+  re-introduce `cosmos_log.rs` alongside (not instead of) the OTLP
+  layer — they coexisted fine in earlier iterations.
 - Cloudflare Tunnel introduces vendor coupling for remote access.
   Tradeoff is accepted for the auth-at-edge story; pivoting to
   Tailscale is a one-file overlay swap.

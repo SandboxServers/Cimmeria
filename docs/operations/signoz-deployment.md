@@ -25,9 +25,11 @@ Two streams converge into the same ClickHouse-backed store:
    Schema: `target = "mercury.packet"`, fields `dir`, `transport`,
    `seq`, `flags`, `msg_id`, `len`, `peer`.
 
-The Cosmos DB sink ([`crates/server/src/cosmos_log.rs`](../../crates/server/src/cosmos_log.rs))
-keeps running in parallel and is unaffected. The two sinks are
-independent — disabling one does not affect the other.
+A previous iteration of the server also wrote logs to an Azure Cosmos
+DB sink alongside the OTLP exporter. That sink was removed when SigNoz
+became the single analytical store — the only telemetry sinks the
+server runs today are the in-process file/broadcast layers and the
+OTLP exporter.
 
 ## Architecture at a glance
 
@@ -38,7 +40,6 @@ cimmeria-server
    │     ├── console layer        → stdout
    │     ├── per-system log files → logs/*.log
    │     ├── BroadcastLayer       → admin WebSocket
-   │     ├── CosmosLogLayer       → Azure Cosmos (existing, optional)
    │     └── OpenTelemetryLayer   → OTLP gRPC :4317
    │                                       │
    │                                       ▼
@@ -162,39 +163,78 @@ lives in [docs/architecture/observability.md](../architecture/observability.md).
 
 ### Retention
 
-ClickHouse defaults to indefinite retention. To cap storage growth,
-add a TTL policy in `external/signoz/deploy/docker/clickhouse-setup/clickhouse-config.xml`
-on the relevant tables. Default suggested:
+ClickHouse defaults to **indefinite** retention, which will eventually
+fill the disk on a long-lived colo box. Recommended defaults to
+configure after first bring-up via the SigNoz UI's *Settings →
+Retention* page (per-signal TTL, applied via ClickHouse `MODIFY TTL`):
 
-- `signoz_logs` → 30 days
-- `signoz_traces` → 14 days
+| Signal | Cold storage (S3/move) | Delete |
+|---|---|---|
+| Traces | 7 days | 14 days |
+| Logs | 14 days | 30 days |
+| Metrics | 30 days | 90 days |
 
-This is an operator decision, not enforced by the Cimmeria repo.
+Adjust upward if disk capacity allows — Mercury packet rows are the
+most useful for retroactive forensics and benefit from longer
+retention. Adjust downward (or wire up S3 archival) if disk pressure
+becomes a concern.
+
+### Alert receivers
+
+The vendored `alertmanager-config` ships with a single `null` receiver
+— alerts are accepted by Alertmanager and discarded silently. Before
+relying on alerts, edit the `alertmanager-config` block in your copy
+of `compose.yml` and add a real receiver (Slack webhook, email SMTP,
+PagerDuty, etc.). Do not commit your webhook URL back to the repo;
+keep operator credentials in your colo-local copy only.
+
+### Security
+
+- SigNoz UI on port 3301 has no built-in auth. Use the
+  `--profile tunnel` Cloudflare Tunnel (see
+  [signoz-remote-access.md](signoz-remote-access.md)) or restrict to
+  LAN/VPN access. Do not publish 3301 to the public internet.
+- The OTLP collector ports (4317/4318) bind to `127.0.0.1` by default
+  via the `OTLP_BIND` interpolation in `compose.yml`. Override to a
+  specific LAN IP only behind a firewall — the collector accepts
+  unauthenticated ingest from any reachable client.
+- ClickHouse runs with an empty `default` user password. The DB is
+  only reachable on the compose internal network — if you ever expose
+  port 9000 to a host network, set a password in the
+  `clickhouse-users` config block first.
 
 ## Operational notes
 
 ### Updating SigNoz
 
-```bash
-git submodule update --remote external/signoz
-docker compose -f external/signoz/.../docker-compose.yaml \
-               -f docker/compose.signoz.yml pull
-docker compose ... up -d
-```
+The SigNoz stack is **vendored** into `docker/compose.yml`. Upgrading
+is a two-part change:
 
-A `git diff external/signoz` shows the upstream changes by submodule
-pointer. Commit the bump like any other change.
+1. Bump the image tags in the services block at the top of
+   `docker/compose.yml` (`signoz/query-service`, `signoz/frontend`,
+   `signoz/signoz-otel-collector`, `signoz/signoz-schema-migrator`,
+   `signoz/alertmanager`).
+2. Re-vendor the `configs:` blocks at the bottom of `compose.yml`
+   from a fresh clone of
+   `github.com/SigNoz/signoz/deploy/docker/clickhouse-setup/` (and
+   `deploy/docker/common/nginx-config.conf`) at the new tag.
+
+Bump them together, in one commit, with a smoke test of the OTLP
+path. The configs are tightly coupled to the image versions — image
+bumps without config re-vendoring can break silently.
 
 ### Disabling the integration
 
 Two ways to fully disable SigNoz ingestion without removing code:
 
-1. **Unset the env var.** Remove `OTEL_EXPORTER_OTLP_ENDPOINT` from
-   `cimmeria-server`'s environment. The exporter never initialises;
-   the OTLP layer is omitted from the subscriber stack. Zero cost.
-2. **Take down the stack.** `docker compose ... -f compose.signoz.yml
-   down`. The exporter will log connection-refused errors but the
-   server keeps running fine — exporter failure is non-fatal.
+1. **Unset the env var.** Set `OTEL_EXPORTER_OTLP_ENDPOINT=""` in your
+   environment override before `docker compose up`. The exporter
+   never initialises; the OTLP layer is omitted from the subscriber
+   stack. Zero cost.
+2. **Take down the SigNoz services.** `docker compose -f compose.yml
+   stop clickhouse otel-collector query-service alertmanager frontend
+   zookeeper-1`. The exporter will log connection-refused errors but
+   the game server keeps running fine — exporter failure is non-fatal.
 
 ### Backfilling missed data
 
@@ -206,8 +246,8 @@ remain the source of truth for retroactive deep-dives.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| SigNoz UI loads but "no data" | OTLP collector unreachable from `cimmeria-server` | Check container is on `signoz-net` network (`docker inspect cimmeria-server`) |
+| SigNoz UI loads but "no data" | OTLP collector unreachable from `cimmeria-server` | Verify both containers are in the same compose project (default network). `docker compose -f compose.yml ps` should show all 9 services. |
 | `otel-smoke` succeeds but server data missing | Subscriber filter dropped events | Check `init_logging` in [`crates/server/src/main.rs`](../../crates/server/src/main.rs) — OTel layer's EnvFilter |
-| ClickHouse OOM | Default `max_memory_usage` too low for ingestion burst | Edit `clickhouse-config.xml`, restart `clickhouse` container |
-| Tunnel up, browser shows 502 | Frontend not yet ready (~90s cold start) | Wait, then `docker compose logs frontend` |
+| ClickHouse OOM | Default `max_memory_usage` too low for ingestion burst | Edit the `clickhouse-users` `configs:` block in `compose.yml` (raise `max_memory_usage` in the `default` profile), restart the `clickhouse` container |
+| Tunnel up, browser shows 502 | Frontend not yet ready (~90s cold start) | Wait, then `docker compose -f compose.yml logs frontend` |
 | Server logs say "[otel] Exporter init failed" | Collector address misconfigured | Verify `OTEL_EXPORTER_OTLP_ENDPOINT` and that `:4317` is reachable |

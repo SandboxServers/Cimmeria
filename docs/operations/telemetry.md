@@ -27,12 +27,13 @@ directly on cimmeria-server, get replayed through the `tracing`
 subscriber, and reach SigNoz via the OTLP exporter. The same events
 also stream to the admin WebSocket and on-disk per-system log files.
 
-> **Historical note.** Prior to PR #396 the pipeline ran via an
-> external Cosmos-backed Functions app (`Cimmeria-MCP`). That path is
-> retired — launcher uploads now go straight to cimmeria-server's
-> admin port and flow into SigNoz. Cimmeria-MCP retains the *read*
-> side (LLM-mediated queries against SigNoz) but no longer writes
-> launcher data. See [docs/architecture/observability.md](../architecture/observability.md).
+> **Historical note.** Earlier iterations of the pipeline routed
+> launcher uploads through an external Cosmos-backed Functions app
+> (`Cimmeria-MCP`). That path is retired — launcher uploads now go
+> straight to cimmeria-server's admin port and flow into SigNoz.
+> Cimmeria-MCP retains the *read* side (LLM-mediated queries against
+> SigNoz) but no longer writes launcher data. See
+> [docs/architecture/observability.md](../architecture/observability.md).
 
 ## Secret provisioning (GitHub Actions Secrets)
 

@@ -104,10 +104,10 @@ services:
       - ZOO_SERVER_ID=1
       - ALLOW_ANONYMOUS_LOGIN=yes
       - ZOO_AUTOPURGE_INTERVAL=1
-    ports:
-      - "2181"
-      - "2888"
-      - "3888"
+    # No host-port mapping. ZooKeeper traffic stays on the compose
+    # default network — `clickhouse` reaches it by DNS (`zookeeper-1`).
+    # Publishing 2181/2888/3888 to the host would widen the surface
+    # for no operator benefit on this single-node deployment.
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.1.2-alpine
@@ -161,9 +161,18 @@ services:
       - OTEL_RESOURCE_ATTRIBUTES=host.name=signoz-host,os.type=linux
       - DOCKER_MULTI_NODE_CLUSTER=false
       - LOW_CARDINAL_EXCEPTION_GROUPING=false
+    # OTLP receiver ports bound to the loopback interface only by
+    # default. The cimmeria service reaches the collector via the
+    # compose internal network (`otel-collector:4317`) — host-side
+    # publishing is only useful for local dev where cimmeria-server
+    # runs natively. To expose to other hosts, override with
+    # `${OTLP_BIND}` (e.g. `0.0.0.0` behind a firewall/VPN, or a
+    # specific LAN IP). The collector has NO authentication, so
+    # `0.0.0.0` without a network gate is the launcher-spoof risk
+    # documented in docs/operations/signoz-deployment.md#security.
     ports:
-      - "4317:4317"     # OTLP gRPC receiver
-      - "4318:4318"     # OTLP HTTP receiver
+      - "${OTLP_BIND:-127.0.0.1}:4317:4317"   # OTLP gRPC
+      - "${OTLP_BIND:-127.0.0.1}:4318:4318"   # OTLP HTTP
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /:/hostfs:ro
@@ -543,22 +552,22 @@ configs:
                 description: "CPU load is > 0.1\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
   alertmanager-config:
+    # Minimal "null" route — alerts are accepted by alertmanager but
+    # discarded silently. Operators wire up a real receiver (Slack,
+    # email, PagerDuty, etc.) by editing this section in their copy
+    # of compose.yml after deploy. The upstream SigNoz default ships
+    # a Slack placeholder URL which (a) does nothing useful, (b) risks
+    # operators committing a real webhook by editing it in-place.
+    # Override path is docs/operations/signoz-deployment.md#alerts.
     content: |
       global:
         resolve_timeout: 1m
-        slack_api_url: 'https://hooks.slack.com/services/xxx'
 
       route:
-        receiver: 'slack-notifications'
+        receiver: 'null'
 
       receivers:
-        - name: 'slack-notifications'
-          slack_configs:
-            - channel: '#alerts'
-              send_resolved: true
-              icon_url: https://avatars3.githubusercontent.com/u/3380462
-              title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
-              text: '{{ range .Alerts }}*Alert:* {{ .Annotations.title }}{{ end }}'
+        - name: 'null'
 
   nginx-config:
     content: |

@@ -9,10 +9,10 @@ The operator-facing runbook lives in
 document is the design rationale and component map.
 
 The ingest target was previously the Cosmos-backed `Cimmeria-MCP`
-Azure Function. With the SigNoz migration (PR #396) that path is
-retired — uploads now land on cimmeria-server's admin port and flow
-into SigNoz through the OTLP exporter. See
-[observability.md](observability.md) for the broader pipeline.
+Azure Function. With the SigNoz migration that path is retired —
+uploads now land on cimmeria-server's admin port and flow into SigNoz
+through the OTLP exporter. See [observability.md](observability.md)
+for the broader pipeline.
 
 ## Goal
 

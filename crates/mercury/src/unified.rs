@@ -168,6 +168,109 @@ mod tests {
         assert_eq!(decoded.payload.as_ref(), b"test payload");
     }
 
+    /// Regression guard: `UnifiedCodec::encode` and `decode` must emit
+    /// `target = "mercury.packet"` tracing events with the correct
+    /// `dir`, `transport`, and `msg_id` fields. Without this, removing
+    /// either `record_tcp_frame` call would pass the round-trip test
+    /// silently — SigNoz would just stop seeing inter-service frames.
+    #[test]
+    fn codec_emits_mercury_packet_events_on_encode_and_decode() {
+        use std::sync::{Arc, Mutex};
+        use tracing::field::{Field, Visit};
+        use tracing::subscriber::with_default;
+        use tracing::{Event, Subscriber};
+
+        #[derive(Debug, Default, Clone)]
+        struct CapturedFields {
+            target: String,
+            dir: Option<String>,
+            transport: Option<String>,
+            msg_id: Option<u64>,
+        }
+
+        struct CaptureVisitor<'a>(&'a mut CapturedFields);
+        impl Visit for CaptureVisitor<'_> {
+            fn record_str(&mut self, field: &Field, value: &str) {
+                match field.name() {
+                    "dir" => self.0.dir = Some(value.to_string()),
+                    "transport" => self.0.transport = Some(value.to_string()),
+                    _ => {}
+                }
+            }
+            fn record_u64(&mut self, field: &Field, value: u64) {
+                if field.name() == "msg_id" {
+                    self.0.msg_id = Some(value);
+                }
+            }
+            fn record_i64(&mut self, field: &Field, value: i64) {
+                if field.name() == "msg_id" && value >= 0 {
+                    self.0.msg_id = Some(value as u64);
+                }
+            }
+            fn record_debug(&mut self, _field: &Field, _value: &dyn std::fmt::Debug) {}
+        }
+
+        struct CaptureSubscriber {
+            events: Arc<Mutex<Vec<CapturedFields>>>,
+        }
+        impl Subscriber for CaptureSubscriber {
+            fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+                true
+            }
+            fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+                tracing::span::Id::from_u64(1)
+            }
+            fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+            fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+            fn event(&self, event: &Event<'_>) {
+                let mut fields = CapturedFields {
+                    target: event.metadata().target().to_string(),
+                    ..Default::default()
+                };
+                event.record(&mut CaptureVisitor(&mut fields));
+                self.events.lock().unwrap().push(fields);
+            }
+            fn enter(&self, _: &tracing::span::Id) {}
+            fn exit(&self, _: &tracing::span::Id) {}
+        }
+
+        let events = Arc::new(Mutex::new(Vec::<CapturedFields>::new()));
+        let subscriber = CaptureSubscriber {
+            events: Arc::clone(&events),
+        };
+
+        with_default(subscriber, || {
+            let frame = UnifiedFrame::new(0x42, Bytes::from_static(b"x"));
+            let mut codec = UnifiedCodec::new();
+            let mut buf = BytesMut::new();
+            codec.encode(frame, &mut buf).unwrap();
+            let _ = codec.decode(&mut buf).unwrap().unwrap();
+        });
+
+        let captured = events.lock().unwrap();
+        let packet_events: Vec<&CapturedFields> = captured
+            .iter()
+            .filter(|e| e.target == "mercury.packet")
+            .collect();
+        assert_eq!(
+            packet_events.len(),
+            2,
+            "expected one encode + one decode event, got {captured:?}"
+        );
+
+        let dirs: Vec<_> = packet_events.iter().filter_map(|e| e.dir.clone()).collect();
+        assert!(
+            dirs.contains(&"out".to_string()),
+            "missing dir=out: {dirs:?}"
+        );
+        assert!(dirs.contains(&"in".to_string()), "missing dir=in: {dirs:?}");
+
+        for event in &packet_events {
+            assert_eq!(event.transport.as_deref(), Some("tcp"));
+            assert_eq!(event.msg_id, Some(0x42));
+        }
+    }
+
     #[test]
     fn partial_frame_returns_none() {
         let frame = UnifiedFrame::new(1, Bytes::from_static(b"hello"));

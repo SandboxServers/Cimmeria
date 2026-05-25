@@ -7,8 +7,8 @@ path: terminate auth at Cloudflare's edge, run an outbound-only
 tunnel from the colo box, never open an inbound firewall port.
 
 For why we picked Cloudflare Tunnel over Tailscale / WireGuard /
-Caddy+Authelia, see the comparison table in
-[`docker/compose.signoz-tunnel.yml`](../../docker/compose.signoz-tunnel.yml).
+Caddy+Authelia, see the comparison table inside the `cloudflared`
+service definition in [`docker/compose.yml`](../../docker/compose.yml).
 
 ## Architecture
 
@@ -94,8 +94,9 @@ ingress:
   - service: http_status:404
 ```
 
-The `frontend:3301` hostname resolves inside the docker network because
-the cloudflared container joins `signoz-net` (defined in the overlay).
+The `frontend:3301` hostname resolves inside the Docker network
+because all services in `docker/compose.yml` share the project's
+default network — no explicit network configuration needed.
 
 ### 4. Point DNS at the tunnel
 

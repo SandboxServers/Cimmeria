@@ -66,8 +66,19 @@ impl Direction {
 /// Called from [`crate::channel::Channel::send_packet`] (outbound) and
 /// [`crate::channel::Channel::receive_packet`] (inbound). Cheap when no
 /// subscriber is attached; cheap-but-batched when SigNoz/OTLP is active.
+///
+/// `peer` takes `impl std::fmt::Display` (in practice `&SocketAddr`) so
+/// the hot path doesn't allocate a `String` per packet purely to format
+/// the address. `tracing`'s `%` formatter writes the Display impl
+/// directly into the event without intermediate heap.
 #[inline]
-pub fn record_udp_packet(dir: Direction, seq: u32, flags: u8, payload_len: usize, peer: &str) {
+pub fn record_udp_packet(
+    dir: Direction,
+    seq: u32,
+    flags: u8,
+    payload_len: usize,
+    peer: impl std::fmt::Display,
+) {
     tracing::info!(
         target: "mercury.packet",
         dir = dir.as_str(),
@@ -75,7 +86,7 @@ pub fn record_udp_packet(dir: Direction, seq: u32, flags: u8, payload_len: usize
         seq,
         flags,
         len = payload_len,
-        peer,
+        peer = %peer,
         "mercury_packet"
     );
 }
@@ -120,8 +131,10 @@ mod tests {
     /// helper.)
     #[test]
     fn record_helpers_do_not_panic() {
-        record_udp_packet(Direction::In, 0, 0, 0, "");
-        record_udp_packet(Direction::Out, u32::MAX, 0xFF, usize::MAX, "127.0.0.1:0");
+        use std::net::SocketAddr;
+        let peer: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        record_udp_packet(Direction::In, 0, 0, 0, peer);
+        record_udp_packet(Direction::Out, u32::MAX, 0xFF, usize::MAX, peer);
         record_tcp_frame(Direction::In, 0, 0);
         record_tcp_frame(Direction::Out, u8::MAX, usize::MAX);
     }

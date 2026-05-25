@@ -89,7 +89,7 @@ pub struct RefreshRequest {
 
 /// Wire format pinned: any field addition or rename is a breaking
 /// change for the Functions-side verifier.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TokenClaims {
     pub iss: String,
     pub sub: String, // install_id
@@ -258,7 +258,11 @@ fn upload_endpoint_env() -> String {
         .unwrap_or_else(|_| DEFAULT_UPLOAD_ENDPOINT.to_string())
 }
 
-fn load_secret() -> Result<Vec<u8>, AuthError> {
+/// Shared HMAC secret loader. Exposed at module visibility so the
+/// telemetry ingest endpoints (which verify tokens minted here) reuse
+/// the same parsing rules — drift between mint and verify would cause
+/// every launcher upload to fail validation.
+pub(super) fn load_secret() -> Result<Vec<u8>, AuthError> {
     let raw =
         std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET").map_err(|_| AuthError::SecretMissing)?;
     let raw_trimmed = raw.trim();
@@ -336,18 +340,21 @@ pub fn decode_token(token: &str, secret: &[u8]) -> Result<TokenClaims, AuthError
     Ok(claims)
 }
 
+/// Process-wide serialization for tests that mutate
+/// `CIMMERIA_TELEMETRY_*` env vars. `cargo test` is multi-threaded by
+/// default; any module that reads/writes these vars in `#[test]`
+/// scopes must lock this before doing so. Exposed at module
+/// visibility so the sibling `telemetry` tests share the same lock —
+/// a per-module lock would still race against this one.
+#[cfg(test)]
+pub(super) fn env_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Process-wide serialization for tests that mutate
-    /// `CIMMERIA_TELEMETRY_*` env vars — same rationale as
-    /// `crate::routes::dev_session` is a shared global. cargo test
-    /// runs multi-threaded by default.
-    fn env_lock() -> &'static std::sync::Mutex<()> {
-        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-        LOCK.get_or_init(|| std::sync::Mutex::new(()))
-    }
 
     fn test_secret() -> Vec<u8> {
         vec![0x42; 64]
@@ -441,7 +448,7 @@ mod tests {
     // produces raw bytes interpreted as UTF-8.
     #[test]
     fn load_secret_accepts_hex_encoded() {
-        let _g = env_lock().lock().unwrap();
+        let _g = env_lock().lock().unwrap_or_else(|p| p.into_inner());
         let prev = std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET").ok();
         // 128 hex chars = 64 raw bytes, well above MIN_SECRET_BYTES.
         let hex_secret = "a".repeat(128);
@@ -456,7 +463,7 @@ mod tests {
 
     #[test]
     fn load_secret_accepts_raw_bytes_via_utf8() {
-        let _g = env_lock().lock().unwrap();
+        let _g = env_lock().lock().unwrap_or_else(|p| p.into_inner());
         let prev = std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET").ok();
         let raw = "this-is-a-32-byte-utf8-secret!!!";
         assert_eq!(raw.len(), 32);
@@ -472,7 +479,7 @@ mod tests {
     // Missing env → SecretMissing, with an actionable error message.
     #[test]
     fn load_secret_missing_env_returns_secret_missing() {
-        let _g = env_lock().lock().unwrap();
+        let _g = env_lock().lock().unwrap_or_else(|p| p.into_inner());
         let prev = std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET").ok();
         std::env::remove_var("CIMMERIA_TELEMETRY_HMAC_SECRET");
         let err = load_secret().unwrap_err();
@@ -487,7 +494,7 @@ mod tests {
     // rejected later as too short.
     #[test]
     fn load_secret_empty_env_returns_secret_missing() {
-        let _g = env_lock().lock().unwrap();
+        let _g = env_lock().lock().unwrap_or_else(|p| p.into_inner());
         let prev = std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET").ok();
         std::env::set_var("CIMMERIA_TELEMETRY_HMAC_SECRET", "   ");
         let err = load_secret().unwrap_err();
@@ -502,7 +509,7 @@ mod tests {
     // silently issuing tokens against a 4-byte "secret."
     #[test]
     fn load_secret_too_short_returns_secret_too_short() {
-        let _g = env_lock().lock().unwrap();
+        let _g = env_lock().lock().unwrap_or_else(|p| p.into_inner());
         let prev = std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET").ok();
         std::env::set_var("CIMMERIA_TELEMETRY_HMAC_SECRET", "short");
         let err = load_secret().unwrap_err();
@@ -523,7 +530,7 @@ mod tests {
     // other value treats it as off.
     #[test]
     fn kill_switch_respects_env() {
-        let _g = env_lock().lock().unwrap();
+        let _g = env_lock().lock().unwrap_or_else(|p| p.into_inner());
         let prev = std::env::var("CIMMERIA_TELEMETRY_KILL_SWITCH").ok();
 
         std::env::set_var("CIMMERIA_TELEMETRY_KILL_SWITCH", "1");

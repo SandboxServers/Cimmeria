@@ -10,8 +10,8 @@
 //!
 //! | Path | Body | Purpose |
 //! |---|---|---|
-//! | `POST /api/telemetry/upload-chunk`  | gzip(NDJSON) | Streaming launcher events (one event per line). Idempotent on `(session_id, seq_first, seq_last)` — duplicates are silently logged at debug. |
-//! | `POST /api/telemetry/upload-bundle` | multipart    | End-of-session zip of raw `Binaries/sgwdebuglog*` + `Binaries/sessions/**`. Unzipped server-side; each log line emits a tracing event. |
+//! | `POST /api/telemetry/upload-chunk`  | gzip(NDJSON) | Streaming launcher events (one event per line). At-least-once delivery — the launcher retries on failure but the server does NOT dedupe by `(session_id, seq)`, so a duplicate retry appears as duplicate rows in SigNoz. |
+//! | `POST /api/telemetry/upload-bundle` | multipart    | End-of-session zip of raw `Binaries/sgwdebuglog*` + `Binaries/sessions/**`. Unzipped server-side on a blocking thread; each log line emits a tracing event. |
 //!
 //! # Auth
 //!
@@ -56,6 +56,23 @@ const MAX_CHUNK_BYTES: usize = 16 * 1024 * 1024;
 /// per-session and capped to ~50 MiB pre-zip in normal flows; the
 /// cap exists purely as a defense against accidental log-cycle bombs.
 const MAX_BUNDLE_BYTES: usize = 256 * 1024 * 1024;
+
+/// Upper bound on the *uncompressed* output of a single gzip chunk.
+/// Defends against a gzip bomb where a small compressed payload
+/// expands to multi-GB output and exhausts memory. The dev-session
+/// mint accepts any caller (v1 trust model), so this cap is the
+/// load-bearing defense if an attacker forges a chunk.
+///
+/// 256 MiB = 16× the compressed `MAX_CHUNK_BYTES` cap — generous
+/// enough that legitimate event streams never approach it, tight
+/// enough that an attacker can't realistically allocate it.
+const MAX_CHUNK_DECOMPRESSED_BYTES: u64 = 256 * 1024 * 1024;
+
+/// Upper bound on the uncompressed size of a single file inside a
+/// bundle zip. Same rationale as `MAX_CHUNK_DECOMPRESSED_BYTES` —
+/// guards against a zip bomb (a single deeply-compressed entry that
+/// expands to multiple GB).
+const MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES: u64 = 256 * 1024 * 1024;
 
 /// One streamed launcher event — mirrors [`cimmeria_launcher::
 /// telemetry::events::TelemetryEvent`] byte-for-byte at the JSON
@@ -161,10 +178,15 @@ impl IntoResponse for IngestError {
 
 pub fn routes() -> Router<Arc<Orchestrator>> {
     Router::new()
-        .route("/upload-chunk", post(upload_chunk))
-        // Bundle uploads cap at MAX_BUNDLE_BYTES per request — axum's
-        // default body limit is 2 MiB which would reject any real
-        // session zip outright.
+        // Both routes override axum's 2 MiB default body limit. Our
+        // own size checks at the handler layer enforce the real cap;
+        // the DefaultBodyLimit just lets the larger payloads through
+        // to the handler so our cap message is what the client sees
+        // (instead of axum's generic 413).
+        .route(
+            "/upload-chunk",
+            post(upload_chunk).layer(DefaultBodyLimit::max(MAX_CHUNK_BYTES)),
+        )
         .route(
             "/upload-bundle",
             post(upload_bundle).layer(DefaultBodyLimit::max(MAX_BUNDLE_BYTES)),
@@ -182,12 +204,24 @@ async fn upload_chunk(
         return Err(IngestError::TooLarge(body.len(), MAX_CHUNK_BYTES));
     }
 
-    // Decompress gzip → NDJSON.
-    let mut decoder = GzDecoder::new(&body[..]);
+    // Decompress gzip → NDJSON, bounded to MAX_CHUNK_DECOMPRESSED_BYTES.
+    // A gzip bomb (e.g. all-zeros input compressing 1000:1) could
+    // otherwise expand 16 MiB of compressed input into multiple GB
+    // of allocated `String`. `Read::take` short-circuits the read at
+    // the cap; we then check whether the decoder produced anything
+    // beyond the cap (it shouldn't, but the explicit check makes the
+    // refusal mode visible).
+    let mut decoder = GzDecoder::new(&body[..]).take(MAX_CHUNK_DECOMPRESSED_BYTES + 1);
     let mut ndjson = String::new();
     decoder
         .read_to_string(&mut ndjson)
         .map_err(|e| IngestError::Gzip(e.to_string()))?;
+    if ndjson.len() as u64 > MAX_CHUNK_DECOMPRESSED_BYTES {
+        return Err(IngestError::TooLarge(
+            ndjson.len(),
+            MAX_CHUNK_DECOMPRESSED_BYTES as usize,
+        ));
+    }
 
     let mut parsed = 0u64;
     let mut accepted = 0u64;
@@ -246,15 +280,27 @@ async fn upload_bundle(
             "metadata" => {
                 // Replay the bundle metadata as a single tracing event so
                 // SigNoz queries can correlate the chunk stream with the
-                // end-of-session totals.
-                if let Ok(meta) = serde_json::from_slice::<serde_json::Value>(&bytes) {
-                    tracing::info!(
-                        target: "launcher.bundle",
-                        session_id = %claims.sid,
-                        install_id = %claims.sub,
-                        metadata = %meta,
-                        "bundle metadata"
-                    );
+                // end-of-session totals. Loud on parse failure: malformed
+                // metadata indicates a launcher/server schema drift and
+                // would silently hide the bundle's session_id correlator.
+                match serde_json::from_slice::<serde_json::Value>(&bytes) {
+                    Ok(meta) => {
+                        tracing::info!(
+                            target: "launcher.bundle",
+                            session_id = %claims.sid,
+                            install_id = %claims.sub,
+                            metadata = %meta,
+                            "bundle metadata"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            target: "launcher.bundle",
+                            session_id = %claims.sid,
+                            error = %e,
+                            "failed to parse bundle metadata JSON; correlator lost"
+                        );
+                    }
                 }
                 metadata_seen = true;
             }
@@ -262,7 +308,19 @@ async fn upload_bundle(
                 if bytes.len() > MAX_BUNDLE_BYTES {
                     return Err(IngestError::TooLarge(bytes.len(), MAX_BUNDLE_BYTES));
                 }
-                let (f, l) = unpack_and_replay(&claims, &bytes)?;
+                // Bundle unzip is CPU-bound and synchronous (the `zip`
+                // crate is blocking). A 200 MiB bundle with hundreds
+                // of thousands of log lines spends most of its time
+                // in ZIP decode + tracing event emission, both of
+                // which would stall the tokio scheduler if run
+                // directly. Move to a blocking worker thread.
+                let claims_clone = claims.clone();
+                let (f, l) =
+                    tokio::task::spawn_blocking(move || unpack_and_replay(&claims_clone, &bytes))
+                        .await
+                        .map_err(|e| {
+                            IngestError::Multipart(format!("bundle unpack join failed: {e}"))
+                        })??;
                 files += f;
                 lines += l;
             }
@@ -303,11 +361,33 @@ fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64
             continue;
         }
         let path = entry.name().to_string();
+
+        // Refuse entries whose declared uncompressed size exceeds the
+        // per-entry cap before touching them. A zip bomb advertises a
+        // small compressed size but a huge `size()` — bail loud rather
+        // than expanding the entry.
+        if entry.size() > MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES {
+            tracing::warn!(
+                target: "launcher.bundle",
+                session_id = %claims.sid,
+                path = %path,
+                declared_size = entry.size(),
+                cap = MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES,
+                "refusing bundle entry: declared size exceeds cap"
+            );
+            continue;
+        }
+
+        // Bound the actual read too — `size()` is a self-declared field
+        // and a malicious zip could lie. `Read::take` caps the bytes
+        // we'll ever allocate at the same limit.
         let mut content = String::new();
+        let mut bounded =
+            (&mut entry as &mut dyn std::io::Read).take(MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES + 1);
         // Tolerate non-UTF8 binary files (key dumps may contain
         // binary). Skip with a debug-level note rather than failing
         // the whole bundle.
-        if entry.read_to_string(&mut content).is_err() {
+        if bounded.read_to_string(&mut content).is_err() {
             tracing::debug!(
                 target: "launcher.bundle",
                 session_id = %claims.sid,
@@ -315,6 +395,17 @@ fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64
                 "skipping non-UTF8 bundle entry"
             );
             continue;
+        }
+        if content.len() as u64 > MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES {
+            tracing::warn!(
+                target: "launcher.bundle",
+                session_id = %claims.sid,
+                path = %path,
+                decompressed = content.len(),
+                cap = MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES,
+                "truncating bundle entry: decompressed size exceeded cap"
+            );
+            // Fall through — emit what we got, but don't grow further.
         }
         files += 1;
         for line in content.lines() {
@@ -348,7 +439,10 @@ fn verify_bearer(headers: &HeaderMap) -> Result<TokenClaims, IngestError> {
     if token.is_empty() {
         return Err(IngestError::MissingAuth);
     }
-    let secret = load_secret_for_ingest()?;
+    // Single source of truth for the HMAC secret — `dev_session::mint`
+    // signs with this same loader, so any drift between the two paths
+    // would cause every launcher upload to fail HMAC verification.
+    let secret = super::dev_session::load_secret().map_err(IngestError::Auth)?;
     let claims = decode_token(token, &secret).map_err(IngestError::Auth)?;
     let now = chrono::Utc::now().timestamp();
     if claims.exp <= now {
@@ -358,42 +452,6 @@ fn verify_bearer(headers: &HeaderMap) -> Result<TokenClaims, IngestError> {
         }));
     }
     Ok(claims)
-}
-
-/// Thin wrapper around `dev_session::load_secret`-like logic. The
-/// dev_session module owns the canonical secret-loading code; we
-/// re-implement here only to avoid widening its public surface.
-fn load_secret_for_ingest() -> Result<Vec<u8>, IngestError> {
-    let raw = std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET")
-        .map_err(|_| IngestError::Auth(AuthError::SecretMissing))?;
-    let raw_trimmed = raw.trim();
-    if raw_trimmed.is_empty() {
-        return Err(IngestError::Auth(AuthError::SecretMissing));
-    }
-    // Accept both hex-encoded and raw-bytes forms — matches dev_session
-    // semantics exactly.
-    let bytes = hex_decode_lenient(raw_trimmed).unwrap_or_else(|| raw_trimmed.as_bytes().to_vec());
-    if bytes.len() < 32 {
-        return Err(IngestError::Auth(AuthError::SecretTooShort {
-            got: bytes.len(),
-            min: 32,
-        }));
-    }
-    Ok(bytes)
-}
-
-fn hex_decode_lenient(s: &str) -> Option<Vec<u8>> {
-    if !s.len().is_multiple_of(2) {
-        return None;
-    }
-    let mut out = Vec::with_capacity(s.len() / 2);
-    let bytes = s.as_bytes();
-    for chunk in bytes.chunks(2) {
-        let hi = (chunk[0] as char).to_digit(16)?;
-        let lo = (chunk[1] as char).to_digit(16)?;
-        out.push(((hi << 4) | lo) as u8);
-    }
-    Some(out)
 }
 
 fn replay_event(claims: &TokenClaims, ev: TelemetryEvent) {
@@ -562,20 +620,41 @@ mod tests {
         assert!(matches!(err, IngestError::MissingAuth));
     }
 
-    /// Hex-form secret loading must round-trip — operators using
-    /// `openssl rand -hex 64` paste the hex form directly into GitHub
-    /// Secrets; the load path must accept it identically to the raw
-    /// UTF-8 path. (Mirror of `dev_session::load_secret_accepts_hex_encoded`
-    /// because we re-implemented the parser here.)
+    /// Verify-bearer round-trip via the shared `dev_session::load_secret`.
+    /// Uses the process-wide lock from `dev_session::env_lock()` so this
+    /// test can run alongside `dev_session::tests` without one stomping
+    /// the env var the other is reading.
     #[test]
-    fn load_secret_accepts_hex_form() {
-        let env_lock = std::sync::Mutex::new(());
-        let _g = env_lock.lock().unwrap();
+    fn verify_bearer_accepts_token_minted_by_dev_session() {
+        use crate::routes::dev_session::{encode_token, env_lock, TokenClaims};
+
+        let _g = env_lock().lock().unwrap_or_else(|p| p.into_inner());
         let prev = std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET").ok();
-        // 128 hex chars = 64 raw bytes, comfortably above the 32-byte minimum.
+        // 64-byte secret in hex form.
         std::env::set_var("CIMMERIA_TELEMETRY_HMAC_SECRET", "a".repeat(128));
-        let bytes = load_secret_for_ingest().unwrap();
-        assert_eq!(bytes.len(), 64);
+
+        // Mint a token using the dev_session encoder, then verify
+        // through the telemetry verify_bearer path. If the loaders
+        // ever drift, this test breaks loud.
+        let secret = vec![0xaau8; 64];
+        let claims = TokenClaims {
+            iss: "cimmeria-server".into(),
+            sub: "install-1".into(),
+            sid: "session-1".into(),
+            iat: chrono::Utc::now().timestamp(),
+            exp: chrono::Utc::now().timestamp() + 3600,
+            scope: vec!["telemetry.write".into()],
+        };
+        let token = encode_token(&claims, &secret).unwrap();
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+        );
+        let verified = verify_bearer(&headers).expect("token from dev_session must verify");
+        assert_eq!(verified.sid, "session-1");
+
         match prev {
             Some(v) => std::env::set_var("CIMMERIA_TELEMETRY_HMAC_SECRET", v),
             None => std::env::remove_var("CIMMERIA_TELEMETRY_HMAC_SECRET"),
