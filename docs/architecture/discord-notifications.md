@@ -32,8 +32,9 @@ Two emit paths feed one pipeline:
 2. **`DiscordLayer` (tracing_subscriber::Layer)** auto-harvests `warn!`
    and `error!` events into `Event::TracingEvent`, reading structured
    fields (`reason=`, `entity_id=`, …) directly into the embed. Zero
-   instrumentation needed at existing tracing emit sites — the #304
-   negative-logging convention is already doing the field-shape work.
+   instrumentation needed at existing tracing emit sites — the
+   [negative-logging convention](negative-logging-convention.md) is
+   already doing the field-shape work.
 
 ## Channels
 
@@ -141,7 +142,7 @@ cimmeria_discord::emit_mission_completed(name, mission_id, mission_name);
 
 Helpers live in [`crates/discord/src/lib.rs`](../../crates/discord/src/lib.rs); add a new one alongside the existing pattern when you add a new permanent emit seam.
 
-**For existing `warn!`/`error!` sites with structured fields**, do nothing — the tracing layer already harvests them into `Event::TracingEvent` automatically. The #304 negative-logging convention (`reason=`, `entity_id=`, `rows_affected=`, etc.) is what gives those tracing events their structure; the embed builder reads the fields into the embed's `fields` array.
+**For existing `warn!`/`error!` sites with structured fields**, do nothing — the tracing layer already harvests them into `Event::TracingEvent` automatically. The [negative-logging convention](negative-logging-convention.md) (`reason=`, `entity_id=`, `rows_affected=`, etc.) is what gives those tracing events their structure; the embed builder reads the fields into the embed's `fields` array.
 
 ## Operations
 

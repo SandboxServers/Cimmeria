@@ -23,10 +23,11 @@
 //! ops-visibility message would be a worse failure mode than the message
 //! being dropped.
 //!
-//! The drop counter is exposed via [`SenderStats`] and surfaced in the
-//! admin-api `/admin/discord/stats` endpoint. A periodic heartbeat task
-//! also posts the drop count to the lifecycle channel so operators see
-//! that drops are happening without checking the admin API.
+//! The drop counter is exposed via [`SenderStats`] (read with
+//! `DiscordRuntime::stats()`). An admin-api endpoint and periodic
+//! heartbeat task that posts the drop count to the lifecycle channel
+//! are tracked as follow-ups — wiring lives in the `cimmeria-admin-api`
+//! crate, not here.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -163,7 +164,8 @@ impl Stats {
     }
 }
 
-/// Snapshot of sender stats. Surfaced by the admin-api stats endpoint.
+/// Snapshot of sender stats. Read via `DiscordRuntime::stats()`; intended
+/// to be surfaced by an admin-api stats endpoint when one is wired up.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SenderStats {
     pub enqueued: u64,
@@ -182,6 +184,10 @@ pub struct SenderStats {
 /// Simple token bucket. `capacity` tokens refill at `refill_per_sec`.
 /// `try_acquire` returns `true` if a token is available, `false` if not.
 struct TokenBucket {
+    /// Rate this bucket was constructed for (per minute). Stored so the
+    /// sender task can detect a live-reload rate change and rebuild
+    /// without losing accumulated tokens needlessly.
+    rate_per_min: u32,
     capacity: f64,
     tokens: f64,
     refill_per_sec: f64,
@@ -195,6 +201,7 @@ impl TokenBucket {
         // matches Discord's 5-msg burst budget).
         let capacity = rate_per_min.min(5) as f64;
         Self {
+            rate_per_min,
             capacity,
             tokens: capacity,
             refill_per_sec: per_sec,
@@ -269,8 +276,20 @@ async fn run_sender_task<S: DiscordSender>(
         // Acquire token. If the bucket is empty, drop with the
         // `dropped_rate_limit` counter — better than blocking the
         // task. Drops still feed the heartbeat.
+        //
+        // Rate live-reload: rebuild the bucket when the configured
+        // rate changes. Replacing the bucket loses accumulated tokens
+        // for that channel (the next event has to wait one refill
+        // interval), which is the right policy — operators tuning
+        // the rate down expect immediate effect, not "wait for the
+        // old burst to drain."
         let acquired = {
             let mut map = buckets.lock().await;
+            // Rebuild on rate mismatch (live-reload) or first-time entry.
+            let stale = map.get(&channel).is_some_and(|b| b.rate_per_min != rate);
+            if stale {
+                map.insert(channel, TokenBucket::new(rate));
+            }
             map.entry(channel)
                 .or_insert_with(|| TokenBucket::new(rate))
                 .try_acquire()

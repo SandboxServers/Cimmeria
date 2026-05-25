@@ -54,7 +54,13 @@ use crate::event::{ChannelKind, EventKind};
 /// `Config` is the type the sender and layer read on every event. Construct
 /// via [`Config::from_toml_str`] (for tests/programmatic) or
 /// [`ConfigWatcher::new`] (for files with live reload).
-#[derive(Debug, Clone, PartialEq)]
+///
+/// **Debug redacts webhook URLs.** Webhook URLs embed a per-channel
+/// auth token; logging the raw config via `tracing::debug!(?config)`
+/// would leak credentials. The custom `Debug` impl prints `<redacted>`
+/// in place of the URL but keeps every other field intact for
+/// diagnostics. `PartialEq` and the field accessors are unaffected.
+#[derive(Clone, PartialEq)]
 pub struct Config {
     pub enabled: bool,
     pub username: Option<String>,
@@ -67,12 +73,38 @@ pub struct Config {
     pub events: EventToggles,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("enabled", &self.enabled)
+            .field("username", &self.username)
+            .field("avatar_url", &self.avatar_url)
+            .field("channels", &self.channels)
+            .field("events", &self.events)
+            .finish()
+    }
+}
+
+/// Webhook URL + rate limit for a single Discord channel.
+///
+/// **Debug redacts the URL.** See [`Config`] — printing the raw URL
+/// would leak the webhook auth token. The rate limit is kept visible
+/// because it's diagnostic-useful and not a secret.
+#[derive(Clone, PartialEq)]
 pub struct ChannelConfig {
     pub url: String,
     /// Discord allows 5 / 2 s per webhook (≈ 150 / min). Cap at this or
     /// below to leave headroom for retries.
     pub rate_limit_per_min: u32,
+}
+
+impl std::fmt::Debug for ChannelConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChannelConfig")
+            .field("url", &"<redacted>")
+            .field("rate_limit_per_min", &self.rate_limit_per_min)
+            .finish()
+    }
 }
 
 /// Per-event-kind toggle map. Stored as a dense struct rather than a
@@ -510,10 +542,13 @@ pub struct ConfigWatcher {
     config: Arc<ArcSwap<Config>>,
     _watcher: notify::RecommendedWatcher,
     _reload_task: tokio::task::JoinHandle<()>,
-    /// Send-side of the manual-reload channel. Calling `reload()` pushes
-    /// a unit message that the task drains to re-read the file. Used by
-    /// the admin-api endpoint to force a reload even when the file
-    /// mtime didn't change.
+    /// Send-side of the manual-reload channel. Calling [`reload`] pushes
+    /// a unit message that the task drains to re-read the file. Intended
+    /// for an admin-api endpoint that forces a reload even when the
+    /// file mtime didn't change — endpoint wiring lives outside this
+    /// crate.
+    ///
+    /// [`reload`]: ConfigWatcher::reload
     reload_tx: tokio::sync::mpsc::Sender<()>,
     path: PathBuf,
 }
@@ -549,9 +584,9 @@ impl ConfigWatcher {
         notify::Watcher::watch(&mut watcher, &path, notify::RecursiveMode::NonRecursive)
             .map_err(ConfigError::Watcher)?;
 
-        // Manual reload channel — admin-api POST /admin/discord/reload
-        // pushes here to force a re-read even when the file mtime hasn't
-        // changed.
+        // Manual reload channel — `ConfigWatcher::reload()` pushes here
+        // to force a re-read even when the file mtime hasn't changed
+        // (e.g. an admin-api endpoint calls it on operator demand).
         let (reload_tx, mut reload_rx) = tokio::sync::mpsc::channel::<()>(4);
 
         let config_for_task = config.clone();
@@ -709,6 +744,46 @@ rate_limit_per_min = 30
         let lc = cfg.channels.get(&ChannelKind::Lifecycle).unwrap();
         assert_eq!(lc.url, "https://discord.com/api/webhooks/1/abc");
         assert_eq!(lc.rate_limit_per_min, 30);
+    }
+
+    /// Regression guard: `Debug` formatting must never include the
+    /// webhook URL or any substring of it. Webhook URLs embed a
+    /// per-channel auth token; leaking one through `tracing::debug!`
+    /// would compromise the channel until the operator rotates it.
+    #[test]
+    fn debug_format_redacts_webhook_url() {
+        std::env::set_var(
+            "TEST_DISCORD_REDACT_WEBHOOK",
+            "https://discord.com/api/webhooks/1/SECRETTOKEN1234",
+        );
+        let toml_src = r#"
+[discord]
+enabled = true
+
+[discord.channels.lifecycle]
+url = "${TEST_DISCORD_REDACT_WEBHOOK}"
+rate_limit_per_min = 60
+"#;
+        let cfg = Config::from_toml_str(toml_src).unwrap();
+        let debug_repr = format!("{:?}", cfg);
+        assert!(
+            !debug_repr.contains("SECRETTOKEN1234"),
+            "Debug must not leak the webhook token: {}",
+            debug_repr
+        );
+        assert!(
+            !debug_repr.contains("/api/webhooks/"),
+            "Debug must not leak the webhook URL: {}",
+            debug_repr
+        );
+        assert!(
+            debug_repr.contains("<redacted>"),
+            "Debug must replace the URL with a redaction marker: {}",
+            debug_repr
+        );
+        // Non-secret fields must still be present for diagnostics.
+        assert!(debug_repr.contains("enabled: true"));
+        assert!(debug_repr.contains("rate_limit_per_min: 60"));
     }
 
     #[test]

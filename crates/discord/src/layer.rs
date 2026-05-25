@@ -2,10 +2,13 @@
 //! into [`Event::TracingEvent`] payloads and feeds them through a
 //! [`SenderHandle`].
 //!
-//! Wires the existing #304 negative-logging convention into Discord
-//! without instrumenting every emit site — any `warn!` / `error!` with
-//! structured fields (`reason`, `entity_id`, etc.) shows up in the errors
-//! channel automatically.
+//! Wires the negative-logging convention into Discord without
+//! instrumenting every emit site — any `warn!` / `error!` with
+//! structured fields (`reason`, `entity_id`, `rows_affected`, etc.)
+//! shows up in the errors channel automatically.
+//!
+//! See `docs/architecture/negative-logging-convention.md` for the field
+//! catalog the layer harvests.
 //!
 //! # Recursion safety
 //!
@@ -309,8 +312,8 @@ mod tests {
     }
 
     /// Fields are recorded in stable order — `reason` and `entity_id`
-    /// from the #304 negative-logging convention need to show up
-    /// somewhere predictable in the embed.
+    /// from the negative-logging convention need to show up somewhere
+    /// predictable in the embed.
     #[tokio::test(flavor = "current_thread")]
     async fn structured_fields_preserved_in_embed() {
         let mock = MockSender::new();

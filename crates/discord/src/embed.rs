@@ -97,10 +97,11 @@ pub fn build_embed(event: &Event) -> Value {
 
 /// Per-variant formatter. Returns `(title, description, fields, timestamp_rfc3339)`.
 ///
-/// Whisper privacy enforced here: `Chat { kind: Whisper, .. }` replaces
-/// `content` with `[hidden]` regardless of caller intent. The PR design
-/// committed to "never log whisper content" via Q1; this is the single
-/// enforcement point.
+/// **Privacy invariant.** `Chat { kind: Whisper, .. }` replaces `content`
+/// with `[hidden]` regardless of caller intent — whisper text must never
+/// leave the server. This formatter is the single enforcement point for
+/// that invariant; the test `whisper_content_is_hidden_regardless_of_input`
+/// pins it.
 fn format_event(event: &Event) -> (String, String, Vec<(String, String, bool)>, String) {
     match event {
         // ── Lifecycle ───────────────────────────────────────────────────
@@ -592,10 +593,12 @@ fn format_chat(kind: ChatKind, content: &str) -> (&'static str, String) {
         ChatKind::Guild => ("💬 [Guild]", content.to_string()),
         ChatKind::Team => ("💬 [Team]", content.to_string()),
         ChatKind::Command => ("💬 [Cmd]", content.to_string()),
-        // Privacy enforcement: whisper content is NEVER posted regardless
+        // Privacy invariant: whisper content is NEVER posted regardless
         // of how the channel is configured. The event itself still fires
         // (so moderators can see WHO whispered WHEN) but the body is
-        // replaced with the sentinel. Per the PR Q1 decision.
+        // replaced with the sentinel. Whisper text never leaves the
+        // server — see `format_event` doc comment and the regression
+        // test in this file.
         ChatKind::Whisper => ("💬 [Whisper]", "`[hidden]`".to_string()),
     };
     (label, body)
@@ -665,55 +668,83 @@ fn truncate(s: &str, max: usize) -> String {
 }
 
 /// Final pass: enforce Discord's 6000-character total budget. Trims
-/// `description` then `fields[].value` (front to back) until the total
-/// fits. Title and footer are kept full because they're already capped
-/// at 256 and 2048 respectively.
+/// `description` first, then `fields[].value` back-to-front (least
+/// important last → trimmed first), looping until the total fits or
+/// nothing further can be reclaimed. Title and footer are kept full
+/// because they're already individually capped at 256 and 2048.
+///
+/// **Postcondition**: on return, `total_chars(embed) <= MAX_TOTAL`
+/// *unless* the immutable parts (title + footer + field names) by
+/// themselves already exceed the budget — a configuration error that
+/// would need to be diagnosed by the caller. Discord would then 400
+/// the request and the failure counter would increment.
 fn enforce_total_budget(embed: &mut Value) {
-    let total = total_chars(embed);
-    if total <= MAX_TOTAL {
-        return;
-    }
-    let mut over = total - MAX_TOTAL;
-
-    // Trim description first to a *target length* — the result string
-    // includes the ellipsis, so the target accounts for it. A previous
-    // "subtract `over` chars, then append ellipsis" formulation was
-    // off by one because the appended ellipsis added a char back.
-    if let Some(desc) = embed
-        .get_mut("description")
-        .and_then(|d| d.as_str().map(str::to_string))
-    {
-        let cur = desc.chars().count();
+    // Helper: trim one string field down by up to `over` chars,
+    // returning the number of chars actually reclaimed. Inserts an
+    // ellipsis so the visible total is `target_len = cur - over`
+    // when `cur > over + ell`; otherwise reclaims as much as
+    // possible while leaving room for the ellipsis.
+    fn trim_value_in_place(slot: &mut Value, over: usize) -> usize {
+        let Some(s) = slot.as_str().map(str::to_string) else {
+            return 0;
+        };
+        let cur = s.chars().count();
         let ell = ELLIPSIS.chars().count();
-        if cur > over + ell {
-            let target_len = cur - over;
-            let keep = target_len - ell;
-            let trimmed: String = desc.chars().take(keep).collect::<String>() + ELLIPSIS;
-            embed["description"] = Value::String(trimmed);
-            over = 0;
+        if cur <= ell + 1 {
+            return 0; // can't usefully shrink
         }
-    }
-    if over == 0 {
-        return;
+        let keep = if cur > over + ell {
+            cur - over - ell
+        } else {
+            // Reclaim everything except a 1-char prefix + ellipsis.
+            1
+        };
+        let trimmed: String = s.chars().take(keep).collect::<String>() + ELLIPSIS;
+        let new_len = trimmed.chars().count();
+        *slot = Value::String(trimmed);
+        cur.saturating_sub(new_len)
     }
 
-    // Then trim fields back-to-front, same target-length math.
-    if let Some(fields) = embed.get_mut("fields").and_then(Value::as_array_mut) {
-        for f in fields.iter_mut() {
-            if over == 0 {
-                break;
-            }
-            if let Some(val) = f.get("value").and_then(Value::as_str).map(str::to_string) {
-                let cur = val.chars().count();
-                let ell = ELLIPSIS.chars().count();
-                if cur > over + ell {
-                    let target_len = cur - over;
-                    let keep = target_len - ell;
-                    let trimmed: String = val.chars().take(keep).collect::<String>() + ELLIPSIS;
-                    f["value"] = Value::String(trimmed);
-                    over = 0;
+    // Loop guard: each iteration must make progress, otherwise we'd
+    // spin forever in the pathological "title + footer alone already
+    // exceed budget" case. Bail out if a pass reclaims zero chars.
+    loop {
+        let total = total_chars(embed);
+        if total <= MAX_TOTAL {
+            return;
+        }
+        let mut over = total - MAX_TOTAL;
+        let mut reclaimed_this_pass = 0;
+
+        // Description first — usually the longest single string.
+        if let Some(desc_slot) = embed.get_mut("description") {
+            let r = trim_value_in_place(desc_slot, over);
+            reclaimed_this_pass += r;
+            over = over.saturating_sub(r);
+        }
+
+        // Then fields back-to-front so the last-added (least important)
+        // field shrinks before earlier ones.
+        if over > 0 {
+            if let Some(fields) = embed.get_mut("fields").and_then(Value::as_array_mut) {
+                for f in fields.iter_mut().rev() {
+                    if over == 0 {
+                        break;
+                    }
+                    if let Some(val_slot) = f.get_mut("value") {
+                        let r = trim_value_in_place(val_slot, over);
+                        reclaimed_this_pass += r;
+                        over = over.saturating_sub(r);
+                    }
                 }
             }
+        }
+
+        if reclaimed_this_pass == 0 {
+            // No progress possible — title+footer+field-names alone
+            // exceed the budget. Discord will reject, the failure
+            // counter will increment, and the operator will see it.
+            return;
         }
     }
 }
@@ -823,6 +854,72 @@ mod tests {
         // Confirm valid UTF-8 by re-decoding: panicking here means we
         // split a multi-byte char.
         let _ = t.chars().collect::<Vec<_>>();
+    }
+
+    /// Unicode-safe budget enforcement: trimming a multi-byte UTF-8
+    /// description must not split a code point and must keep the
+    /// resulting total under MAX_TOTAL.
+    ///
+    /// Reverting `enforce_total_budget` to the pre-fix "subtract `over`
+    /// chars then append ellipsis" formulation trips this immediately
+    /// because that path could exit with `over > 0` unchanged.
+    #[test]
+    fn total_budget_enforced_with_multibyte_utf8() {
+        // Each "😀" is 1 char but 4 bytes — sized to exceed MAX_TOTAL
+        // strictly in character count.
+        let big = "😀".repeat(MAX_DESC + 500);
+        let event = Event::TracingEvent {
+            kind: TracingEventKind::Error,
+            target: "unicode-test".into(),
+            message: big,
+            fields: (0..5)
+                .map(|i| (format!("k{}", i), "🎯".repeat(300)))
+                .collect(),
+            timestamp: now(),
+        };
+        let embed = build_embed(&event);
+        let actual = total_chars(&embed);
+        assert!(
+            actual <= MAX_TOTAL,
+            "multibyte content must respect the 6000-char budget, got {}",
+            actual
+        );
+        // Reserialise to verify the JSON is still valid UTF-8 (any
+        // mid-code-point split would corrupt it).
+        let serialized = serde_json::to_string(&embed).expect("embed must round-trip as JSON");
+        // Sanity: the ellipsis sentinel must show up somewhere (proof
+        // that at least one trim happened).
+        assert!(
+            serialized.contains(ELLIPSIS),
+            "expected at least one truncation marker"
+        );
+    }
+
+    /// Multi-field trim path: description alone isn't enough to bring
+    /// the embed under budget, so the enforcer must walk the fields
+    /// back-to-front and trim multiple of them. The pre-fix code only
+    /// trimmed one field and could exit over-budget.
+    #[test]
+    fn total_budget_enforced_when_description_alone_insufficient() {
+        let event = Event::TracingEvent {
+            kind: TracingEventKind::Error,
+            target: "x".into(),
+            // Short description.
+            message: "short".into(),
+            // Many bulky fields → must trim more than one to fit.
+            fields: (0..20)
+                .map(|i| (format!("k{}", i), "z".repeat(900)))
+                .collect(),
+            timestamp: now(),
+        };
+        let embed = build_embed(&event);
+        let actual = total_chars(&embed);
+        assert!(
+            actual <= MAX_TOTAL,
+            "multi-field trim must reach ≤ {} chars, got {}",
+            MAX_TOTAL,
+            actual
+        );
     }
 
     /// 6000-char total budget enforcement.

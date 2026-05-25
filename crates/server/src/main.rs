@@ -55,20 +55,29 @@ async fn main() {
 
     // Initialise Discord notifications BEFORE tracing — the tracing
     // layer needs the sender handle, and the panic hook needs the
-    // global runtime in place. Missing config file is a soft-fail
-    // (Discord disabled, server starts normally).
+    // global runtime in place.
+    //
+    // Failure policy: a *missing* config file is a soft-fail (Discord
+    // disabled, server starts normally — the typical local-dev case).
+    // An *invalid* config file (parse error, unknown event key, bad
+    // webhook URL) is a hard-fail with exit code 2 — the operator
+    // edited the file, the typo should not silently hide misconfig.
     let discord_config_path =
         std::env::var("DISCORD_CONFIG_PATH").unwrap_or_else(|_| "config/discord.toml".to_string());
     let discord_runtime = match cimmeria_discord::init(&discord_config_path) {
-        Ok(rt) => Some(rt),
+        Ok(rt) => rt,
         Err(e) => {
             eprintln!(
-                "[discord] config error at `{discord_config_path}`: {e} — \
-                 Discord notifications will be DISABLED for this run"
+                "[discord] config error at `{discord_config_path}`: {e}\n\
+                 Refusing to start with an invalid Discord config. Fix the file \
+                 or remove it to run with Discord disabled."
             );
-            None
+            std::process::exit(2);
         }
     };
+    // True only when the config loaded as an enabled, configured runtime
+    // (i.e. file present + parsed). Used to gate the post-Ctrl-C drain.
+    let discord_enabled = discord_runtime.config.load().enabled;
     cimmeria_discord::install_panic_hook();
 
     // Create log broadcast channel and ring buffer (for WebSocket log streaming).
@@ -189,7 +198,7 @@ async fn main() {
 
     tracing::info!("Server ready. Press Ctrl-C to stop.");
 
-    if discord_runtime.is_some() {
+    if discord_enabled {
         cimmeria_discord::emit_server_startup(
             env!("CARGO_PKG_VERSION").to_string(),
             vec![
@@ -211,10 +220,20 @@ async fn main() {
     orch.stop_all().await;
     tracing::trace!("stop_all complete");
 
-    if discord_runtime.is_some() {
+    // Gate the drain on the runtime actually being enabled and the
+    // ServerShutdown event being routable — `discord_runtime` is `Some`
+    // even when the config file was missing (we hand back a disabled
+    // runtime so the tracing layer + emit_* helpers no-op uniformly),
+    // and we don't want to pay 1 s on every Ctrl-C just for that.
+    if discord_enabled
+        && discord_runtime
+            .config
+            .load()
+            .should_post(cimmeria_discord::EventKind::ServerShutdown)
+    {
         let uptime = server_start.elapsed().as_secs();
         cimmeria_discord::emit_server_shutdown("Ctrl-C", uptime);
-        // Give the Discord sender task ~1s to drain before the runtime
+        // Give the Discord sender task ~1 s to drain before the runtime
         // shuts down. Beyond that, drop on the floor — the user is
         // waiting for shutdown to complete.
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;

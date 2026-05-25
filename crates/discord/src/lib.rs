@@ -6,9 +6,12 @@
 //! 1. **Explicit `emit_*` calls** at semantically meaningful seams (login,
 //!    world entry, mission complete, …) — the type system enforces the
 //!    payload shape.
-//! 2. **Tracing layer** that auto-harvests `warn!` and `error!` events from
-//!    the existing #304 negative-logging convention, lifting `reason`,
-//!    `entity_id`, etc. into `Event::Warning` / `Event::Error` payloads.
+//! 2. **Tracing layer** that auto-harvests `warn!` and `error!` events that
+//!    follow the [negative-logging convention] — structured fields like
+//!    `reason`, `entity_id`, `rows_affected` are lifted into
+//!    `Event::Warning` / `Event::Error` payloads automatically.
+//!
+//! [negative-logging convention]: ../../../docs/architecture/negative-logging-convention.md
 //!
 //! Architecture:
 //!
@@ -127,7 +130,8 @@ pub fn init_with_config(config: Config) -> &'static DiscordRuntime {
 }
 
 /// Snapshot of the global runtime, if `init` was called. Used by the
-/// `emit_*` helpers and the admin-api endpoint.
+/// `emit_*` helpers and by any external integrations (admin-api,
+/// supervisor, …) that want to read stats or force a reload.
 pub fn global() -> Option<&'static DiscordRuntime> {
     GLOBAL.get()
 }
