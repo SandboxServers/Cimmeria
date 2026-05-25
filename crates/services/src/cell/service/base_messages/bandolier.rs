@@ -158,6 +158,14 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
         // back (the slot-swap handler is the only other path that
         // emits this property).
         emit_active_ammo_type(entity_id, inserted_ammo_type, tx, space_mgr).await;
+        // Honour the `reloadOnActivate` client option — if the
+        // newly-equipped weapon's clip isn't full, queue a reload
+        // automatically. Gated inside the helper on the option being
+        // enabled (default off per SystemOptions.xml).
+        crate::cell::cell_methods::player::world::maybe_trigger_reload_on_activate(
+            entity_id, tx, space_mgr,
+        )
+        .await;
     }
 }
 

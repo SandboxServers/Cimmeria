@@ -22,6 +22,9 @@ use crate::stats::StatList;
 
 mod bandolier;
 mod state_flags;
+mod system_options;
+
+pub use system_options::SystemOptions;
 
 #[cfg(test)]
 mod tests;
@@ -493,6 +496,21 @@ pub struct CellEntity {
     /// transient. The chain that reaches the threshold also explicitly
     /// resets the counter via `Action::ResetCounter`.
     pub counters: HashMap<String, i32>,
+
+    /// Per-session client option state populated by `updateSystemOptions`
+    /// (player method index 93). Defaults to `SystemOptions::default()` on
+    /// entity construction, then overwritten when the client pushes its
+    /// options blob shortly after login (and again whenever the user
+    /// changes an option in the in-game menu).
+    ///
+    /// Currently honours `autoReload` and `reloadOnActivate`; extending to
+    /// the full ~100 options in `SGWGame/Content/XML/SystemOptions.xml`
+    /// is mechanical — see [`SystemOptions::apply`].
+    ///
+    /// Not yet persisted to the DB across logins. The XML marks these
+    /// options `serverSynch='true'` and the original game stored them
+    /// account-side; that hydrate path is a follow-up.
+    pub system_options: SystemOptions,
 }
 
 /// An item in a dead NPC's loot list, ready for display to players.
@@ -610,6 +628,7 @@ impl CellEntity {
             ring_source_id: None,
             destination_ring_id: None,
             counters: HashMap::new(),
+            system_options: SystemOptions::default(),
         }
     }
 
