@@ -39,7 +39,7 @@ jobs:
 
     steps:
       - name: detect missing spec touch
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             // Path → chapter_id mapping. Each entry is:
