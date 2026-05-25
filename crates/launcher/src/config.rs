@@ -25,11 +25,6 @@ pub const LOG_UPLOAD_SAS_URL: Option<&str> = option_env!("LAUNCHER_LOG_SAS_URL")
 /// Current persisted config-file schema. Bump when a breaking change to
 /// the on-disk shape lands; the load path then refuses to deserialise
 /// against the wrong schema rather than silently defaulting fields.
-///
-/// Adding `#[serde(default)]` fields is always backwards-compatible by
-/// construction and does NOT require a bump — the telemetry block
-/// added for #366 (Phase 2) is loaded into a defaulted
-/// [`TelemetrySettings`] on legacy config files.
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Error)]
@@ -56,34 +51,17 @@ pub struct LauncherConfig {
     pub install_path: PathBuf,
     pub server_host: String,
     pub manifest_url: String,
-    /// Dev-session telemetry preferences (#366). Defaulted on legacy
-    /// configs so a launcher upgrade doesn't suddenly start streaming
-    /// without an explicit user choice — the runtime "enabled by
-    /// default for dev builds" gate lives in `TelemetrySettings`
-    /// itself, not the persisted shape.
     #[serde(default)]
     pub telemetry: TelemetrySettings,
 }
 
-/// User-controllable telemetry preferences. Persists alongside the
-/// rest of `LauncherConfig`; the per-session/per-upload runtime state
-/// (auth token, last-successful-upload timestamp, cached kill-switch
-/// state) lives in a sibling [`crate::state`] file, NOT here — those
-/// fields churn on every session and conflating them with
-/// user-controllable preferences would mean the config file gets
-/// rewritten on every tick.
+/// User-controllable telemetry preferences. Lives in `LauncherConfig`
+/// (rarely-changing user choice); per-session runtime state lives in
+/// [`crate::state::TelemetryState`] so config-file rewrites don't
+/// fire on every tick.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TelemetrySettings {
-    /// User-facing opt-out checkbox. When false, the launcher does NOT
-    /// fetch a session token, NOT tail logs, NOT upload bundles — the
-    /// game launches normally and no HTTP calls are made to the auth
-    /// endpoint or the Functions endpoint.
-    ///
-    /// Default: true. The opt-out semantics is intentional — by the
-    /// time a dev clicks Launch they've already chosen to run a dev
-    /// build, which implies consent to dev-build instrumentation.
-    /// End-user release builds will flip the default off via a build-
-    /// time feature flag (Phase 6).
+    /// Opt-out switch. False ⇒ no token fetch, no tail, no upload.
     #[serde(default = "default_telemetry_enabled")]
     pub enabled: bool,
 }
@@ -144,8 +122,6 @@ pub fn ledger_path() -> PathBuf {
     exe_dir().join("uploaded.json")
 }
 
-/// Canonical path for [`crate::state::TelemetryState`] — sits next to
-/// the launcher exe alongside the other per-install state files.
 pub fn telemetry_state_path() -> PathBuf {
     exe_dir().join("telemetry-state.json")
 }

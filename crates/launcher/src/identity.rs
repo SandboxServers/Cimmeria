@@ -1,32 +1,14 @@
-//! Per-install launcher identity for dev-session telemetry (#366).
+//! Per-install launcher identity for dev-session telemetry.
 //!
-//! Two ids:
+//! `install_id` is a UUID v4 minted once into `install.json`; mint-once
+//! semantics matter because reissuing would orphan a dev's prior
+//! session history server-side.
 //!
-//! 1. **`install_id`** — UUID v4 minted on first launch. Cosmos
-//!    partition key on the server side; identifies "this copy of the
-//!    launcher on this machine" across upgrades, server restarts, and
-//!    log uploads. Mint-once: subsequent launches load the same value
-//!    so a developer's session history threads together.
-//!
-//! 2. **`machine_id`** — derived from
-//!    `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid` (a Windows-
-//!    installer-set GUID stable for the OS install's lifetime) hashed
-//!    with sha256 and truncated to 16 hex chars. Hashed before storage
-//!    so we never persist the raw GUID — telemetry data downstream
-//!    sees a privacy-preserving derived id, not the registry value.
-//!    Falls back to `sha256(hostname()):16` on Linux/macOS and on
-//!    Windows when the registry read fails.
-//!
-//! The original spec snippet (`sha256(hostname || gethostname)[:16]`)
-//! was self-referential — `hostname` is `gethostname`. Clara G4 review
-//! flagged this; MachineGuid is the canonical Windows-side stable
-//! identifier (it survives hostname changes and is what most analytics
-//! pipelines key on).
-//!
-//! Persistence: `install.json` next to the launcher exe — same
-//! convention as `launcher-config.json` and `uploaded.json`. Atomic
-//! write via [`crate::state::atomic_write`] so a power loss mid-mint
-//! either leaves the old file or the new file, never half-written.
+//! `machine_id` is `sha256(MachineGuid registry value)[:16 hex]` on
+//! Windows, hashed so the raw GUID never leaves the host. Falls back to
+//! `sha256(hostname()):16` on Unix and on Windows registry-read
+//! failure. MachineGuid (not hostname) because hostname changes
+//! produce spurious "new machine" rows in server-side analytics.
 
 use std::path::{Path, PathBuf};
 
@@ -37,11 +19,9 @@ use uuid::Uuid;
 
 use crate::state::atomic_write;
 
-/// Current persisted `install.json` schema. Bump when a breaking
-/// change to the on-disk shape lands; the load path then refuses to
-/// deserialise against the wrong schema. Adding `#[serde(default)]`
-/// fields is always backwards-compatible by construction and does NOT
-/// require a bump.
+/// Bump on breaking on-disk shape changes; load() refuses to
+/// deserialise against the wrong version rather than silently
+/// defaulting fields.
 pub const IDENTITY_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Error)]
@@ -61,34 +41,14 @@ pub enum IdentityError {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LauncherIdentity {
-    /// On-disk schema version. See [`IDENTITY_SCHEMA_VERSION`].
     pub schema_version: u32,
-    /// UUID v4. Cosmos partition key on the server side. Stable for the
-    /// lifetime of this `install.json` — if the file is deleted, the
-    /// next mint produces a different value and the dev's old sessions
-    /// become orphaned (still queryable by sid, just not by sub).
     pub install_id: Uuid,
-    /// 16 hex chars = 64 bits of derived machine identity. Source: see
-    /// the module doc. Stable across launcher upgrades on the same
-    /// Windows install; changes across OS reinstalls (MachineGuid is
-    /// regenerated).
     pub machine_id: String,
-    /// Wall-clock ms-since-epoch at which this identity was minted.
-    /// Useful for "how long has this dev been generating telemetry?"
-    /// queries server-side; never load-bearing for auth.
     pub first_seen_ms: i64,
-    /// `CARGO_PKG_VERSION` at mint time. Records which launcher build
-    /// minted the identity so a downstream session can correlate weird
-    /// behaviour back to a known-buggy launcher rev without having to
-    /// guess at deploy timestamps.
     pub created_by_launcher_version: String,
 }
 
 impl LauncherIdentity {
-    /// Mint a new identity NOW. Caller is responsible for persisting it
-    /// via [`Self::save`] — splitting mint from save lets callers
-    /// inspect the freshly-minted value (e.g. in tests) without coupling
-    /// to a particular on-disk location.
     pub fn mint() -> Self {
         Self {
             schema_version: IDENTITY_SCHEMA_VERSION,
@@ -99,13 +59,9 @@ impl LauncherIdentity {
         }
     }
 
-    /// Load `install.json` from `path`, or mint + save + return a fresh
-    /// identity if the file doesn't exist.
-    ///
-    /// **Mint-once invariant:** if the file exists but fails to parse,
-    /// this surfaces the error instead of silently re-minting — that
-    /// would orphan all of the dev's prior session telemetry. The
-    /// load_or_mint convenience is for first-launch only.
+    /// Mint-once: a parse failure on an existing file surfaces as an
+    /// error rather than silently re-minting (which would orphan
+    /// server-side session history).
     pub fn load_or_mint(path: &Path) -> Result<Self, IdentityError> {
         if path.exists() {
             return Self::load(path);
@@ -134,27 +90,10 @@ impl LauncherIdentity {
     }
 }
 
-/// Resolve the canonical `install.json` path: next to the launcher exe,
-/// alongside `launcher-config.json` and `uploaded.json`. Keeping the
-/// per-install state files co-located makes "wipe + start over" a
-/// single-directory operation.
 pub fn identity_path() -> PathBuf {
     crate::config::exe_dir().join("install.json")
 }
 
-/// Compute the `machine_id` for the current host.
-///
-/// Windows: read `HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid`,
-/// hash with sha256, take first 16 hex chars.
-///
-/// Non-Windows: hash `gethostname()` instead. The launcher only ships
-/// on Windows, so the Unix branch only fires in unit tests / dev
-/// builds on the CI Ubuntu runner.
-///
-/// If the Windows registry read fails (locked-down corporate
-/// environments, missing key on weird OS variants), falls back to
-/// hostname-hash with a tracing::warn — telemetry continues to work,
-/// the id just isn't quite as stable as ideal.
 fn derive_machine_id() -> String {
     #[cfg(windows)]
     {
@@ -173,11 +112,6 @@ fn derive_machine_id() -> String {
     hash_to_16_hex(host.to_string_lossy().as_bytes())
 }
 
-/// `sha256(input)` truncated to the first 16 lowercase hex characters
-/// = 64 bits of derived identity. Enough entropy that two random
-/// machines almost never collide (~ 1 in 2^32 at the dev-pool sizes
-/// we care about), short enough to fit comfortably in log lines and
-/// status-bar text.
 fn hash_to_16_hex(input: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(input);
@@ -198,16 +132,12 @@ fn read_machine_guid_from_registry() -> Result<String, std::io::Error> {
         KEY_WOW64_64KEY, REG_SZ,
     };
 
-    /// Encode `s` as a NUL-terminated UTF-16 string suitable for the
-    /// `*W` registry APIs.
     fn to_wide_z(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
-    // KEY_WOW64_64KEY: ensure we hit the 64-bit registry view even from
-    // a 32-bit launcher binary. The launcher is 64-bit today but
-    // pinning the view explicitly defends against a future 32-bit
-    // build silently reading a Wow6432Node-redirected key.
+    // KEY_WOW64_64KEY: defend against a future 32-bit launcher build
+    // getting a Wow6432Node-redirected key.
     let subkey = to_wide_z(r"SOFTWARE\Microsoft\Cryptography");
     let value_name = to_wide_z("MachineGuid");
 
@@ -226,9 +156,7 @@ fn read_machine_guid_from_registry() -> Result<String, std::io::Error> {
         return Err(io::Error::from_raw_os_error(status as i32));
     }
 
-    // MachineGuid is a 38-char string with braces stripped (36 + 2 for
-    // the braces in some Windows builds). 256 bytes of UTF-16 is
-    // comfortably oversized.
+    // MachineGuid is ~38 chars; 256 bytes of UTF-16 is oversized.
     let mut buf = [0u16; 128];
     let mut buf_bytes: u32 = (buf.len() * 2) as u32;
     let mut value_type: u32 = 0;

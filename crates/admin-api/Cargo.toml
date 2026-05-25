@@ -25,10 +25,7 @@ jsonwebtoken = { workspace = true }
 utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "9", features = ["axum"] }
 
-# Dev-session telemetry HMAC token mint/verify (#366 Phase 3). hmac +
-# sha2 are already in the workspace; uuid hoisted for session ids;
-# base64 used for the URL-safe-no-pad token encoding; chrono for the
-# iat/exp timestamps in the token claims.
+# Dev-session telemetry HMAC token mint/verify.
 hmac = { workspace = true }
 sha2 = { workspace = true }
 base64 = { workspace = true }

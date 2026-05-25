@@ -412,7 +412,9 @@ pub fn adopt_existing_install(
     manifest: &crate::manifest::Manifest,
 ) -> Result<InstalledState, AdoptError> {
     let exe = install_dir.join("SGW.exe");
-    if !exe.exists() {
+    // `is_file` rather than `exists` so a directory or junction named
+    // SGW.exe doesn't fool us into adopting a non-install.
+    if !exe.is_file() {
         return Err(AdoptError::NoGameExe(install_dir.to_path_buf()));
     }
     if InstalledState::path(install_dir).exists() {
@@ -621,6 +623,17 @@ mod tests {
             AdoptError::NoGameExe(p) => assert_eq!(p, dir.path()),
             other => panic!("expected NoGameExe, got {other:?}"),
         }
+    }
+
+    // SGW.exe as a directory (or junction) must not trick adopt into
+    // marking a non-install as managed. is_file() is the gate.
+    #[test]
+    fn adopt_existing_install_rejects_when_sgw_exe_is_a_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("SGW.exe")).unwrap();
+        let manifest = fake_manifest("h");
+        let err = adopt_existing_install(dir.path(), &manifest).unwrap_err();
+        assert!(matches!(err, AdoptError::NoGameExe(_)));
     }
 
     // Adopt-over-managed: the second call refuses because overwriting

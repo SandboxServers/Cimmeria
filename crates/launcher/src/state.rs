@@ -90,47 +90,20 @@ impl InstalledState {
     }
 }
 
-/// Persistent runtime state for the dev-session telemetry pipeline
-/// (#366). Lives in `telemetry-state.json` next to the launcher exe,
-/// alongside `launcher-config.json` / `install.json` / `uploaded.json`.
-///
-/// **Why this is separate from `LauncherConfig`:** `LauncherConfig`
-/// holds user-controllable preferences (opt-out checkbox, install
-/// path, server host) that change rarely and should survive every
-/// edit. This file holds churning runtime state — last successful
-/// upload timestamp, cached kill-switch decision, last seen
-/// `upload_endpoint` — that gets rewritten every few minutes during
-/// an active session. Conflating them would mean a power-loss during
-/// telemetry could corrupt the user's config; keeping them apart
-/// means an atomic rewrite of the runtime state never touches
-/// `launcher-config.json`.
-///
-/// All fields use `#[serde(default)]` so a corrupt or partially-
-/// written file loads as a zero-state instead of an error — losing
-/// telemetry state is never load-bearing (worst case is one extra
-/// auth refresh and one resend of the last few seconds of events).
+/// Per-session runtime state for the telemetry pipeline. Separate
+/// from `LauncherConfig` so frequent saves don't churn the user-
+/// facing config file. All fields default so a corrupt file loads as
+/// zero-state — telemetry state is never load-bearing.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TelemetryState {
-    /// ms-since-epoch of the last successfully-completed bundle upload.
-    /// Surfaced in the UI as "Last upload: 3m ago" so devs can verify
-    /// telemetry is alive at a glance.
     #[serde(default)]
     pub last_upload_ms: Option<i64>,
-    /// Cached server-side kill-switch decision from the last
-    /// `/api/upload-enabled` poll. ms-since-epoch when we last checked;
-    /// the boolean tells us whether telemetry was paused at that check.
-    /// Used to skip auth handshakes when we already know the server
-    /// has paused ingest — avoids spamming `/auth/dev-session` during
-    /// extended outages.
     #[serde(default)]
     pub last_kill_switch_check_ms: Option<i64>,
     #[serde(default)]
     pub kill_switch_active: bool,
-    /// Last `upload_endpoint` returned by `/auth/dev-session`. Cached
-    /// so the launcher can flush a final bundle even if the auth
-    /// endpoint is unreachable at game-exit time — the bundle goes
-    /// to the same endpoint as the last successful one. `None` means
-    /// "no successful auth handshake yet."
+    /// Cached so a final bundle can flush even if the auth endpoint
+    /// is unreachable at game-exit time.
     #[serde(default)]
     pub last_upload_endpoint: Option<String>,
 }
@@ -141,19 +114,6 @@ impl TelemetryState {
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default()
-    }
-
-    /// Persist via [`atomic_write`] so a crash mid-save can never
-    /// corrupt the file. Write callers land in Phase 5 (worker hooks
-    /// for end-of-session bundle completion) and Phase 4 (auth
-    /// handshake caching `last_upload_endpoint`); kept defined here at
-    /// Phase 2 so the persistence shape is reviewable as one unit
-    /// with the load path and the unit tests.
-    #[allow(dead_code)] // wired in Phase 4/5; see TelemetryState doc.
-    pub fn save(&self, path: &Path) -> Result<(), StateError> {
-        let bytes = serde_json::to_vec_pretty(self)?;
-        atomic_write(path, &bytes)?;
-        Ok(())
     }
 }
 
@@ -297,6 +257,8 @@ mod tests {
         assert_eq!(s.last_upload_endpoint, None);
     }
 
+    // load() roundtrip via direct JSON write — save() will land
+    // alongside the actual write callers in a later commit.
     #[test]
     fn telemetry_state_roundtrip_preserves_all_fields() {
         let dir = tempfile::tempdir().unwrap();
@@ -307,7 +269,7 @@ mod tests {
             kill_switch_active: true,
             last_upload_endpoint: Some("https://func.example.net/api".into()),
         };
-        s.save(&path).unwrap();
+        std::fs::write(&path, serde_json::to_vec_pretty(&s).unwrap()).unwrap();
         let loaded = TelemetryState::load(&path);
         assert_eq!(loaded, s);
     }
@@ -335,6 +297,23 @@ mod tests {
         std::fs::write(&path, b"{ not valid json").unwrap();
         let s = TelemetryState::load(&path);
         assert_eq!(s, TelemetryState::default());
+    }
+
+    // Forward-compat: a future launcher writing extra fields must not
+    // break an older launcher loading the same file — serde ignores
+    // unknown fields by default. Pin that behaviour so a stray
+    // `deny_unknown_fields` attribute would surface as a test diff.
+    #[test]
+    fn telemetry_state_load_ignores_unknown_future_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("telemetry-state.json");
+        std::fs::write(
+            &path,
+            r#"{"kill_switch_active":true,"future_field_v2":"some-value","another_future":42}"#,
+        )
+        .unwrap();
+        let s = TelemetryState::load(&path);
+        assert!(s.kill_switch_active);
     }
 
     // Partial JSON with only some fields set must load with the

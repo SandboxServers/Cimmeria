@@ -67,12 +67,9 @@ fn main() -> eframe::Result<()> {
     let runtime = Arc::new(Runtime::new().expect("failed to create tokio runtime"));
     let runtime_for_app = runtime.clone();
 
-    // Telemetry foundation (#366 Phase 2): mint install_id on first
-    // launch, load any previously-persisted runtime state. Doing this
-    // BEFORE the eframe::run_native handoff means the log line carrying
-    // install_id always appears in early-init logs — useful for
-    // correlating a launcher run with server-side ingest before the
-    // full telemetry pipeline (Phase 5+) is wired in.
+    // Mint install_id on first launch; subsequent launches reuse it.
+    // Logging before the eframe handoff puts the correlator in
+    // early-init output where startup failures still land.
     log_telemetry_foundation();
 
     let options = eframe::NativeOptions {
@@ -98,24 +95,24 @@ fn main() -> eframe::Result<()> {
     result
 }
 
-/// Telemetry-foundation startup hook (#366 Phase 2). Mints the per-
-/// install identity on first launch, reuses the persisted value on
-/// subsequent launches, and logs the install_id at startup so a
-/// human-readable correlator is in the early-init logs before the
-/// full telemetry pipeline (Phase 5+) is wired.
-///
-/// Best-effort: a mint failure does NOT block launcher startup —
-/// telemetry is supplementary; the game must launch regardless.
+/// Best-effort identity load — a mint failure must not block the
+/// game from launching.
 fn log_telemetry_foundation() {
     let id_path = identity_path();
     match LauncherIdentity::load_or_mint(&id_path) {
         Ok(id) => {
+            // Persistent identifiers stay at debug-level so they don't
+            // leak into log uploads.
             tracing::info!(
-                install_id = %id.install_id,
-                machine_id = %id.machine_id,
+                install_short = %short_correlator(&id.install_id.to_string()),
                 launcher_version = %id.created_by_launcher_version,
                 first_seen_ms = id.first_seen_ms,
                 "Loaded launcher identity"
+            );
+            tracing::debug!(
+                install_id = %id.install_id,
+                machine_id = %id.machine_id,
+                "Launcher identity (debug-only)"
             );
         }
         Err(e) => {
@@ -133,6 +130,10 @@ fn log_telemetry_foundation() {
         last_upload_endpoint = ?tel_state.last_upload_endpoint,
         "Loaded telemetry runtime state"
     );
+}
+
+fn short_correlator(id: &str) -> String {
+    id.chars().take(8).collect()
 }
 
 /// Surface a fatal startup error to the user before exiting. On Windows

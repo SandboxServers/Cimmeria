@@ -169,7 +169,7 @@ fn path_is_empty(p: &Path) -> bool {
 /// `show_install_panel` so the boolean decision is unit-testable
 /// without spinning up an egui frame.
 fn should_show_adopt_button(install_path: &Path) -> bool {
-    install_path.join("SGW.exe").exists()
+    install_path.join("SGW.exe").is_file()
         && !crate::state::InstalledState::path(install_path).exists()
 }
 
@@ -181,9 +181,9 @@ fn should_show_adopt_button(install_path: &Path) -> bool {
 /// progress ticks).
 fn status_line_for(event: &Event) -> Option<String> {
     Some(match event {
-        Event::AdoptComplete => "Adopted existing install — patches will apply on top \
-             (seed bytes not verified)."
-            .into(),
+        Event::AdoptComplete => {
+            "Adopted existing install — patches will apply on top (seed bytes not verified).".into()
+        }
         Event::AdoptError(e) => format!("Adopt failed: {e}"),
         Event::Wiped { kind, report } => format!(
             "Wiped {kind}: {} item(s), {} freed",

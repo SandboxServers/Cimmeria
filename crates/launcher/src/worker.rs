@@ -183,13 +183,21 @@ impl Worker {
                 ));
                 return;
             };
-            match wipe_dir_contents(&path) {
-                Ok(report) => {
+            // Recursive remove_dir_all + size walk is blocking IO —
+            // offload off the async worker pool so a slow disk doesn't
+            // starve concurrent download/upload tasks.
+            let result = tokio::task::spawn_blocking(move || wipe_dir_contents(&path)).await;
+            match result {
+                Ok(Ok(report)) => {
                     let _ = events_tx.send(Event::Wiped { kind, report });
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     error!(target = ?target, "wipe failed: {e}");
                     let _ = events_tx.send(Event::WipeError(format!("Wipe {kind} failed: {e}")));
+                }
+                Err(join_err) => {
+                    error!(target = ?target, "wipe task panicked: {join_err}");
+                    let _ = events_tx.send(Event::WipeError(format!("Wipe {kind} panicked")));
                 }
             }
         });

@@ -1,12 +1,11 @@
-//! Dev-session telemetry auth endpoint (#366 Phase 3).
+//! Dev-session telemetry auth endpoint.
 //!
 //! Mints a short-lived HMAC-SHA256 token the launcher uses to talk to
-//! the Cimmeria-MCP Functions ingest endpoint. The launcher fetches
-//! one token per session at game-launch time and refreshes before
-//! expiry; the Functions side independently verifies the token using
-//! the same shared `CIMMERIA_TELEMETRY_HMAC_SECRET`.
+//! the telemetry ingest Functions app. The Functions side verifies the
+//! token independently using the same shared
+//! `CIMMERIA_TELEMETRY_HMAC_SECRET`.
 //!
-//! **Token format** (compact, HMAC-only, no algorithm negotiation):
+//! Token shape:
 //!
 //! ```text
 //! payload = base64url(JSON {iss, sub, sid, iat, exp, scope})
@@ -14,22 +13,12 @@
 //! token   = payload || "." || sig
 //! ```
 //!
-//! **Secret source:** `CIMMERIA_TELEMETRY_HMAC_SECRET` env var, 64
-//! random bytes (any length ≥ 32 accepted at runtime; the deploy
-//! workflow is responsible for setting a strong value). Per #366
-//! Phase 7 the secret is provisioned via a GitHub Actions repo (or
-//! org-level) secret injected into the deploy env — no Azure KeyVault.
+//! v1 trust model: any caller is trusted. The token only grants
+//! `scope: ["telemetry.write"]` and is single-session-scoped, so the
+//! worst an attacker can do is upload garbage telemetry.
 //!
-//! **v1 trust model:** any caller is trusted. The token only grants
-//! `scope: ["telemetry.write"]` and is scoped to a single session, so
-//! the worst an attacker can do is upload garbage telemetry. Tighter
-//! auth (team key, account binding, device code) is a v2 concern per
-//! the spec.
-//!
-//! **Kill switch:** `CIMMERIA_TELEMETRY_KILL_SWITCH=1` makes every
-//! mint return 503 with `Retry-After: 60`. Lets ops pause ingest
-//! without redeploying; the launcher's auth-503 handler logs a warn
-//! and continues launching the game without telemetry.
+//! `CIMMERIA_TELEMETRY_KILL_SWITCH=1` makes every mint return 503
+//! with `Retry-After: 60`.
 
 use std::sync::Arc;
 
@@ -46,29 +35,19 @@ use sha2::Sha256;
 
 use cimmeria_services::orchestrator::Orchestrator;
 
-/// Token lifetime. 8 hours = long enough for any reasonable dev
-/// session, short enough that a leaked token expires before it can be
-/// abused at scale. The launcher refreshes at 75% lifetime (Phase 4)
-/// so long-running sessions never hit the expiry edge.
 pub const TOKEN_TTL_SECONDS: i64 = 8 * 60 * 60;
 
-/// Minimum acceptable HMAC-secret length in raw bytes. Anything
-/// shorter is operator misconfiguration — refusing to mint is safer
-/// than silently issuing tokens against a 4-byte "secret."
+/// Anything shorter is operator misconfiguration; refusing to mint is
+/// safer than issuing tokens against a weak key.
 pub const MIN_SECRET_BYTES: usize = 32;
 
-/// Default `upload_endpoint` if `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT`
-/// is unset. The launcher uses this to know where to POST chunks +
-/// bundles. Documented in `docs/operations/telemetry.md` (Phase 7).
 const DEFAULT_UPLOAD_ENDPOINT: &str = "https://cimmeria-mcp.azurewebsites.net/api";
-
-/// Default per-chunk upload cap. ~1 MiB matches the spec.
 const DEFAULT_CHUNK_MAX_BYTES: u64 = 1_048_576;
-
-/// Default tail-flush interval the launcher should aim for. 2s gives
-/// the dev a "near real-time" feel server-side while keeping HTTP
-/// volume manageable.
 const DEFAULT_FLUSH_INTERVAL_MS: u64 = 2_000;
+
+/// Generous vs. a realistic ~400-byte token, low enough to refuse a
+/// DoS-via-huge-payload on the public refresh endpoint.
+const MAX_TOKEN_LEN: usize = 4096;
 
 #[derive(Debug, Deserialize)]
 pub struct DevSessionRequest {
@@ -96,8 +75,8 @@ pub struct RefreshRequest {
     pub token: String,
 }
 
-/// JSON payload encoded into the token. Format pinned: any field
-/// addition or rename is a wire-format breaking change.
+/// Wire format pinned: any field addition or rename is a breaking
+/// change for the Functions-side verifier.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TokenClaims {
     pub iss: String,
@@ -158,9 +137,6 @@ impl IntoResponse for AuthError {
     }
 }
 
-/// Build dev-session routes. Mounted by `auth::routes()` so the public
-/// paths are `POST /api/auth/dev-session` and
-/// `POST /api/auth/dev-session/refresh`.
 pub fn routes() -> Router<Arc<Orchestrator>> {
     Router::new()
         .route("/dev-session", post(mint))
@@ -187,15 +163,21 @@ pub async fn mint(
         scope: vec!["telemetry.write".into()],
     };
     let token = encode_token(&claims, &secret)?;
+    // install_id / machine_id stay at debug to avoid leaking
+    // persistent fingerprints into info-level pipelines.
     tracing::info!(
         session_id = %session_id,
-        sub = %claims.sub,
-        machine_id = %req.machine_id,
         branch = %req.branch,
         git_sha = %req.git_sha,
         launcher_version = %req.launcher_version,
         exp,
         "Minted dev-session telemetry token"
+    );
+    tracing::debug!(
+        session_id = %session_id,
+        install_id = %claims.sub,
+        machine_id = %req.machine_id,
+        "dev-session caller identifiers (debug-only)"
     );
     Ok(Json(DevSessionResponse {
         session_id,
@@ -238,7 +220,6 @@ pub async fn refresh(
     let token = encode_token(&new_claims, &secret)?;
     tracing::info!(
         session_id = %new_claims.sid,
-        sub = %new_claims.sub,
         old_exp = claims.exp,
         new_exp,
         "Refreshed dev-session telemetry token"
@@ -318,6 +299,11 @@ pub fn encode_token(claims: &TokenClaims, secret: &[u8]) -> Result<String, AuthE
 }
 
 pub fn decode_token(token: &str, secret: &[u8]) -> Result<TokenClaims, AuthError> {
+    if token.len() > MAX_TOKEN_LEN {
+        return Err(AuthError::BadPayload(format!(
+            "token exceeds {MAX_TOKEN_LEN}-byte cap"
+        )));
+    }
     let (payload_b64, sig_b64) = token
         .split_once('.')
         .ok_or_else(|| AuthError::BadPayload("missing '.' separator".into()))?;
@@ -420,6 +406,21 @@ mod tests {
     fn decode_rejects_token_missing_separator() {
         let err = decode_token("not-a-token", &test_secret()).unwrap_err();
         assert!(matches!(err, AuthError::BadPayload(_)));
+    }
+
+    // Reject tokens larger than MAX_TOKEN_LEN before the base64 decode
+    // path can allocate. Defends the public refresh endpoint from
+    // memory/CPU exhaustion via an oversized payload.
+    #[test]
+    fn decode_rejects_oversized_token() {
+        let huge = "a".repeat(MAX_TOKEN_LEN + 1);
+        let err = decode_token(&huge, &test_secret()).unwrap_err();
+        match err {
+            AuthError::BadPayload(msg) => {
+                assert!(msg.contains("cap"), "should explain the cap, got: {msg}");
+            }
+            other => panic!("expected BadPayload, got {other:?}"),
+        }
     }
 
     // load_secret accepts both hex-encoded and raw-bytes secret forms.

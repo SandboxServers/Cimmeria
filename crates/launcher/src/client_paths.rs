@@ -19,8 +19,8 @@
 //!    User-facing confirm dialog gated.
 //!
 //! Both functions are best-effort: missing directories are treated as
-//! "already clean" (`Ok(0)`), not an error. IO failures bubble up so the
-//! UI can surface what went wrong.
+//! "already clean" (`Ok(WipeReport::default())`), not an error. IO
+//! failures bubble up so the UI can surface what went wrong.
 //!
 //! The full path is computed from `USERPROFILE` (Windows) or `HOME`
 //! (Unix). The Unix fallback is for unit tests on the CI Ubuntu runner
@@ -69,10 +69,13 @@ pub fn cache_dir() -> Option<PathBuf> {
 /// If the client is writing to `%USERPROFILE%\Documents\...` and the
 /// launcher wipes `<redirected>\...`, we wipe the wrong tree.
 fn user_documents() -> Option<PathBuf> {
-    if let Ok(profile) = std::env::var("USERPROFILE") {
+    // Treat empty values as unset — an empty USERPROFILE would join
+    // to "Documents" relative to cwd and the wipe commands would
+    // target the wrong tree.
+    if let Some(profile) = std::env::var("USERPROFILE").ok().filter(|s| !s.is_empty()) {
         return Some(PathBuf::from(profile).join("Documents"));
     }
-    if let Ok(home) = std::env::var("HOME") {
+    if let Some(home) = std::env::var("HOME").ok().filter(|s| !s.is_empty()) {
         return Some(PathBuf::from(home).join("Documents"));
     }
     None
@@ -219,6 +222,27 @@ mod tests {
         }
         if let Some(v) = prev_home {
             std::env::set_var("HOME", v);
+        }
+    }
+
+    // Empty USERPROFILE / HOME must be treated as unset — otherwise
+    // user_documents would join "Documents" relative to cwd and the
+    // wipe commands would target the wrong tree.
+    #[test]
+    fn firesky_root_returns_none_when_both_env_vars_empty() {
+        let _g = env_test_lock().lock().unwrap();
+        let prev_profile = std::env::var("USERPROFILE").ok();
+        let prev_home = std::env::var("HOME").ok();
+        std::env::set_var("USERPROFILE", "");
+        std::env::set_var("HOME", "");
+        assert!(firesky_root().is_none());
+        match prev_profile {
+            Some(v) => std::env::set_var("USERPROFILE", v),
+            None => std::env::remove_var("USERPROFILE"),
+        }
+        match prev_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
         }
     }
 
