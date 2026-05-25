@@ -1,93 +1,33 @@
-# Cimmeria ↔ SigNoz integration overlay.
+# Cimmeria ↔ SigNoz utilities.
 #
-# This file does NOT define the SigNoz stack itself — that lives
-# upstream and is pinned by a git submodule (or a one-shot clone) at
-# `external/signoz/`. We layer two changes on top:
+# This file holds the optional smoke-test container that verifies the
+# OTLP wire path between cimmeria-server and the SigNoz collector
+# before the game server boots its game services.
 #
-#   1. Add cimmeria-server to the `signoz-net` network so it can reach
-#      the OTEL collector by name (`otel-collector:4317`).
-#   2. Set `OTEL_EXPORTER_OTLP_ENDPOINT` so the Rust OTLP exporter knows
-#      where to ship logs/traces/metrics.
+# The OTEL_* environment overrides on the cimmeria service live in
+# [`compose.colo.yml`](./compose.colo.yml) directly — Docker Compose's
+# `include:` directive (used by `docker/compose.yml`) does not allow
+# same-name services across included files to be merged, so the env
+# overlay has to be in the file that originally defines the service.
+# The OTEL env vars there default to the in-network collector address
+# but no-op cleanly when SigNoz isn't running alongside.
 #
-# # Why we don't fork SigNoz's compose
-#
-# SigNoz iterates fast (versions every ~2 weeks). Inlining their
-# 6-service stack here means every SigNoz release is a manual sync.
-# Treating their compose as upstream and overlaying just our additions
-# means a `git submodule update --remote external/signoz` is the whole
-# upgrade story — and a `git diff` on the submodule pointer is the
-# change log.
-#
-# # Bring it up
-#
-# First clone SigNoz once (or update the submodule):
-#
-#   git submodule update --init --recursive external/signoz
-#
-# Then run the three composes together:
-#
-#   docker compose \
-#     -f docker/compose.colo.yml \
-#     -f external/signoz/deploy/docker/clickhouse-setup/docker-compose.yaml \
-#     -f docker/compose.signoz.yml \
-#     up -d
-#
-# Or via the helper script — see `docker/signoz-up.sh`.
-#
-# After ~90 seconds (ClickHouse boot dominates), the SigNoz UI is on
-# http://localhost:3301 and `cimmeria-server` is shipping telemetry.
-#
-# # Remote access
-#
-# Port 3301 is HTTP with no auth in front of it — DO NOT publish it to
-# the public internet. Add `docker/compose.signoz-tunnel.yml` to layer
-# Cloudflare Tunnel + Cloudflare Access (zero-trust auth) on top. See
-# docs/operations/signoz-remote-access.md.
-
-networks:
-  # Defined upstream in SigNoz's compose as the default network for its
-  # services. We declare it as `external: true` so cimmeria-server can
-  # join an already-running SigNoz network without compose trying to
-  # re-create it.
-  signoz-net:
-    name: clickhouse-setup_default
-    external: true
+# The SigNoz stack itself is defined upstream at
+# `external/signoz/deploy/docker/clickhouse-setup/docker-compose.yaml`
+# — cloned by setup.ps1 at a pinned tag, brought into the same Compose
+# project by `docker/compose.yml`'s `include:` directive.
 
 services:
-  cimmeria:
-    # Cimmeria's own image — defined in docker/compose.colo.yml. We
-    # just extend its config here.
-    networks:
-      - default          # keep watchtower + the in-image services working
-      - signoz-net       # add reachability to otel-collector
-    environment:
-      # Tell the Rust OTLP exporter where to ship telemetry. The
-      # exporter is a no-op when this env var is unset, so unsetting it
-      # cleanly disables the integration without code changes.
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
-      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
-      # Service identity — shows up as `service.name` in SigNoz's
-      # service map and log filters.
-      OTEL_SERVICE_NAME: "cimmeria-server"
-      # Resource attributes piped through to every span/log/metric.
-      # `deployment.environment` is the conventional way to slice
-      # prod vs dev vs colo in dashboards.
-      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=colo,service.namespace=cimmeria"
-      # Sample 100% of spans by default — the Mercury packet stream is
-      # the load-bearing analytical surface here, sampling it would
-      # defeat the purpose. ClickHouse can take the volume.
-      OTEL_TRACES_SAMPLER: "always_on"
-
   # An optional one-shot "sanity check" container that fires a single
-  # OTLP event after compose startup so we can confirm the wire path is
-  # live before cimmeria-server boots its game services. Surface in
-  # `docker compose logs otel-smoke`. Disabled by default — enable via:
-  #     docker compose --profile smoke up -d otel-smoke
+  # OTLP event after compose startup so we can confirm the wire path
+  # is live before cimmeria-server is ready. Surface in
+  # `docker compose -f docker/compose.yml --profile smoke logs otel-smoke`.
+  # Disabled by default — enable via:
+  #     docker compose -f docker/compose.yml --profile smoke up otel-smoke
   otel-smoke:
     image: alpine/curl:3.14
     container_name: cimmeria-otel-smoke
     profiles: [smoke]
-    networks: [signoz-net]
     depends_on:
       - cimmeria
     command:
@@ -97,5 +37,5 @@ services:
         echo "Sending smoke event to otel-collector:4318..." &&
         curl -sf -X POST http://otel-collector:4318/v1/logs
         -H 'Content-Type: application/json'
-        -d '{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"cimmeria-smoke"}}]},"scopeLogs":[{"logRecords":[{"body":{"stringValue":"SigNoz wire path smoke"},"severityText":"INFO"}]}]}]}' &&
+        -d '{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"cimmeria-smoke"}}]}, "scopeLogs":[{"logRecords":[{"body":{"stringValue":"SigNoz wire path smoke"},"severityText":"INFO"}]}]}]}' &&
         echo "Smoke OK — check http://localhost:3301 → Logs"

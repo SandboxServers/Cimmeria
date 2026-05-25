@@ -122,13 +122,14 @@ In the Cloudflare Zero Trust dashboard:
 ### 6. Bring up the stack
 
 ```bash
-docker compose \
-  -f docker/compose.colo.yml \
-  -f external/signoz/deploy/docker/clickhouse-setup/docker-compose.yaml \
-  -f docker/compose.signoz.yml \
-  -f docker/compose.signoz-tunnel.yml \
-  up -d
+docker compose -f docker/compose.yml --profile tunnel up -d
 ```
+
+The single-entry compose file already `include:`s the tunnel overlay
+([`docker/compose.signoz-tunnel.yml`](../../docker/compose.signoz-tunnel.yml));
+`--profile tunnel` flips on the `cloudflared` service that's
+otherwise dormant. Without the flag, the rest of the stack (game
+server + SigNoz) comes up without any outbound tunnel.
 
 The cloudflared container starts, dials Cloudflare's edge, and the
 tunnel becomes routable. Hit `https://signoz.<your-domain>` —
@@ -212,10 +213,17 @@ These tools are implemented in the separate `Cimmeria-MCP` repository
 
 ## Disabling remote access
 
-Take down only the tunnel overlay — the SigNoz stack keeps running:
+Stop just the cloudflared service; the rest of the stack keeps
+running:
 
 ```bash
-docker compose -f docker/compose.signoz-tunnel.yml down
+docker compose -f docker/compose.yml stop cloudflared
+```
+
+Or bring the whole stack back up without `--profile tunnel`:
+
+```bash
+docker compose -f docker/compose.yml up -d
 ```
 
 The local-machine UI at `http://localhost:3301` (or an SSH tunnel

@@ -364,5 +364,46 @@ function Install-CimmeriaDependencies {
         }
     }
 
+    # ── SigNoz observability stack (Docker compose source) ────────────
+    # Cloned (not downloaded as a tarball) so `git submodule`-style
+    # version pinning is one `git checkout <tag>` away. The single-
+    # entry docker compose at docker/compose.yml `include:`s the
+    # upstream compose from this path, so the bring-up fails fast
+    # with a clear file-not-found error if this step never ran.
+    Write-Step "SIGNOZ OBSERVABILITY STACK (DOCKER COMPOSE SOURCE)"
+
+    $signozDir = Join-Path $ExternalDir "signoz"
+    $signozCompose = Join-Path $signozDir "deploy" "docker" "clickhouse-setup" "docker-compose.yaml"
+    # Pinned tag — bump deliberately, in a commit, with a re-test of
+    # the OTLP path. Floating to `main` would make every fresh setup
+    # a roll-of-the-dice on whether SigNoz upstream broke our wiring.
+    $signozTag = "v0.55.0"
+
+    if (Test-Path $signozCompose) {
+        Write-Status "SigNoz: already present at external/signoz" "DarkGray"
+    } else {
+        $git = Get-Command git -ErrorAction SilentlyContinue
+        if (-not $git) {
+            Write-Status "SigNoz: git not found in PATH — skipping clone." "Yellow"
+            Write-Status "  Install git and re-run setup, or clone manually:" "Yellow"
+            Write-Status "    git clone --depth=1 --branch $signozTag https://github.com/SigNoz/signoz $signozDir" "Yellow"
+        } else {
+            Write-Status "SigNoz: cloning $signozTag into external/signoz..." "White"
+            # Remove any stale partial clone so the retry on failure is
+            # always from a known state.
+            if (Test-Path $signozDir) {
+                Remove-Item $signozDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            & git clone --depth=1 --branch $signozTag `
+                https://github.com/SigNoz/signoz `
+                $signozDir 2>&1 | Out-Host
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $signozCompose)) {
+                Write-Status "SigNoz: done (tag $signozTag)" "Green"
+            } else {
+                Write-Status "SigNoz: clone failed (exit $LASTEXITCODE). Verify network access to github.com and re-run." "Yellow"
+            }
+        }
+    }
+
     Write-Status "Install-CimmeriaDependencies complete." "Green"
 }

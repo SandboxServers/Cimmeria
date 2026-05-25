@@ -31,6 +31,18 @@ services:
       BASE_EXTERNAL: "127.0.0.1"
       # Uncomment for verbose logs while debugging:
       # RUST_LOG: "debug"
+      # OpenTelemetry exporter — points at the SigNoz collector when
+      # the top-level docker/compose.yml entry brings SigNoz up
+      # alongside this service. When this file is brought up alone
+      # (no SigNoz stack), the exporter fails to resolve the
+      # otel-collector hostname, logs "[otel] Exporter init failed",
+      # and the server runs without telemetry shipping — non-fatal.
+      # Override with an empty string to disable the exporter cleanly.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_SERVICE_NAME: "cimmeria-server"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=colo,service.namespace=cimmeria"
+      OTEL_TRACES_SAMPLER: "always_on"
     # Intentionally NO `volumes:` for /var/lib/postgresql/data — Docker
     # creates a fresh anonymous volume on every `docker run`, populated
     # from the image's baked pgdata layer. When watchtower replaces this

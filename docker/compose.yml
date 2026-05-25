@@ -1,0 +1,70 @@
+# Cimmeria — single-entry docker compose.
+#
+# Brings up the full colo deployment: cimmeria-server, watchtower
+# auto-update, the SigNoz observability stack (ClickHouse + OTel
+# collector + query service + alertmanager + frontend), and the
+# launcher upload ingest path.
+#
+# # Usage
+#
+#   # Standard colo bring-up (no remote access tunnel):
+#   docker compose -f docker/compose.yml up -d
+#
+#   # Add the Cloudflare Tunnel for remote browser + Cimmeria-MCP access:
+#   docker compose -f docker/compose.yml --profile tunnel up -d
+#
+# That's the whole story. No multi-`-f` chaining, no remembering
+# include order. The single command pulls in:
+#
+#   1. compose.colo.yml                       — cimmeria-server + watchtower
+#   2. external/signoz/.../docker-compose.yaml — upstream SigNoz stack (cloned at setup)
+#   3. compose.signoz.yml                     — OTEL env on cimmeria-server
+#   4. compose.signoz-tunnel.yml              — cloudflared (gated by profile: tunnel)
+#
+# # Prerequisite: external/signoz must exist
+#
+# The upstream SigNoz compose is referenced by relative path from this
+# file. setup.ps1 populates `external/signoz` by cloning the SigNoz
+# repo at a pinned tag (see Install-CimmeriaDependencies — search for
+# "SIGNOZ OBSERVABILITY STACK"). If you bring this stack up before
+# running setup, docker compose will fail with:
+#
+#   open external/signoz/...: no such file or directory
+#
+# Resolution: run `pwsh setup.ps1 -SkipBuild -NoLaunch` once, or clone
+# manually:
+#
+#   git clone --depth=1 --branch v0.55.0 \
+#     https://github.com/SigNoz/signoz external/signoz
+#
+# # Local development (no Docker)
+#
+# For local dev where `cimmeria-server.exe` runs natively, you only
+# need the SigNoz stack itself — not the cimmeria container. Use the
+# upstream compose directly:
+#
+#   docker compose \
+#     -f external/signoz/deploy/docker/clickhouse-setup/docker-compose.yaml \
+#     up -d
+#
+# Then run `cimmeria-server.exe` with `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`.
+
+include:
+  # The base colo deployment. Defines `cimmeria` (the game server
+  # container) and `watchtower` (auto-updater). All other includes
+  # layer onto these.
+  - path: ./compose.colo.yml
+
+  # SigNoz upstream stack — defines clickhouse, otel-collector,
+  # query-service, alertmanager, frontend, and their config-loaders.
+  # Pinned via setup.ps1 (currently v0.55.0); bump deliberately.
+  - path: ../external/signoz/deploy/docker/clickhouse-setup/docker-compose.yaml
+
+  # Cimmeria-specific glue: OTEL env vars on the cimmeria container
+  # and an optional `--profile smoke` curl-based wire-path verifier.
+  - path: ./compose.signoz.yml
+
+  # Cloudflare Tunnel for secure remote access. The cloudflared
+  # service is guarded by `profiles: [tunnel]` so it only starts when
+  # `--profile tunnel` is passed. Default bring-up is local-only.
+  - path: ./compose.signoz-tunnel.yml
