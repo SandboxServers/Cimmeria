@@ -27,6 +27,7 @@ members = [
     "crates/upk",
     "crates/upk-objects",
     "crates/wireclient",
+    "crates/discord",
 ]
 default-members = [
     "crates/common",
@@ -41,6 +42,7 @@ default-members = [
     "crates/server",
     "crates/supervisor",
     "crates/wireclient",
+    "crates/discord",
 ]
 
 # Optimize dependencies and strip their debug info in dev builds.
@@ -86,6 +88,21 @@ rand_chacha = "0.10"
 
 # HTTP client
 reqwest = { version = "0.13", features = ["json"] }
+
+# Config file parsing
+toml = "0.9"
+
+# Filesystem watch (Discord config live-reload)
+notify = { version = "8", default-features = false, features = ["macos_kqueue"] }
+
+# Lock-free atomic config swap (Discord notifications + future feature flags)
+arc-swap = "1"
+
+# Date/time formatting (Discord embed RFC3339 timestamps)
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+# HTTP mocking for tests (Discord webhook integration)
+wiremock = "0.6"
 
 # Hashing
 sha2 = "0.10"
@@ -147,6 +164,7 @@ cimmeria-server = { path = "crates/server" }
 cimmeria-upk = { path = "crates/upk" }
 cimmeria-upk-objects = { path = "crates/upk-objects" }
 cimmeria-wireclient = { path = "crates/wireclient" }
+cimmeria-discord = { path = "crates/discord" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed

@@ -56,6 +56,35 @@ mod otel;
 
 #[tokio::main]
 async fn main() {
+    let server_start = std::time::Instant::now();
+
+    // Initialise Discord notifications BEFORE tracing — the tracing
+    // layer needs the sender handle, and the panic hook needs the
+    // global runtime in place.
+    //
+    // Failure policy: a *missing* config file is a soft-fail (Discord
+    // disabled, server starts normally — the typical local-dev case).
+    // An *invalid* config file (parse error, unknown event key, bad
+    // webhook URL) is a hard-fail with exit code 2 — the operator
+    // edited the file, the typo should not silently hide misconfig.
+    let discord_config_path =
+        std::env::var("DISCORD_CONFIG_PATH").unwrap_or_else(|_| "config/discord.toml".to_string());
+    let discord_runtime = match cimmeria_discord::init(&discord_config_path) {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!(
+                "[discord] config error at `{discord_config_path}`: {e}\n\
+                 Refusing to start with an invalid Discord config. Fix the file \
+                 or remove it to run with Discord disabled."
+            );
+            std::process::exit(2);
+        }
+    };
+    // True only when the config loaded as an enabled, configured runtime
+    // (i.e. file present + parsed). Used to gate the post-Ctrl-C drain.
+    let discord_enabled = discord_runtime.config.load().enabled;
+    cimmeria_discord::install_panic_hook();
+
     // Create log broadcast channel and ring buffer (for WebSocket log streaming).
     let (log_tx, _) = broadcast::channel::<LogEntry>(2048);
     let log_buffer = LogBuffer::new();
@@ -99,6 +128,10 @@ async fn main() {
     );
 
     let admin_port = config.admin_port;
+    // Capture ports for the Discord startup embed before `config` moves
+    // into the orchestrator.
+    let (auth_port_for_discord, base_port_for_discord, cell_port_for_discord) =
+        (config.auth_port, config.base_port, config.cell_port);
 
     tracing::trace!("Creating orchestrator");
     let mut orch = Orchestrator::new(config);
@@ -152,6 +185,18 @@ async fn main() {
 
     tracing::info!("Server ready. Press Ctrl-C to stop.");
 
+    if discord_enabled {
+        cimmeria_discord::emit_server_startup(
+            env!("CARGO_PKG_VERSION").to_string(),
+            vec![
+                format!("auth :{}", auth_port_for_discord),
+                format!("base :{}", base_port_for_discord),
+                format!("cell :{}", cell_port_for_discord),
+                format!("admin :{}", admin_port),
+            ],
+        );
+    }
+
     // Wait for Ctrl-C.
     tokio::signal::ctrl_c()
         .await
@@ -161,6 +206,26 @@ async fn main() {
     tracing::trace!("Calling stop_all");
     orch.stop_all().await;
     tracing::trace!("stop_all complete");
+
+    // Gate the drain on the runtime actually being enabled and the
+    // ServerShutdown event being routable — `discord_runtime` is `Some`
+    // even when the config file was missing (we hand back a disabled
+    // runtime so the tracing layer + emit_* helpers no-op uniformly),
+    // and we don't want to pay 1 s on every Ctrl-C just for that.
+    if discord_enabled
+        && discord_runtime
+            .config
+            .load()
+            .should_post(cimmeria_discord::EventKind::ServerShutdown)
+    {
+        let uptime = server_start.elapsed().as_secs();
+        cimmeria_discord::emit_server_shutdown("Ctrl-C", uptime);
+        // Give the Discord sender task ~1 s to drain before the runtime
+        // shuts down. Beyond that, drop on the floor — the user is
+        // waiting for shutdown to complete.
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+
     tracing::info!("Goodbye.");
     tracing::trace!(pid = std::process::id(), "Process exiting with code 0");
 }
@@ -460,11 +525,27 @@ fn init_logging(
         )),
     ));
 
+    // ── Discord notifications (optional — config-gated) ──────────────
+    // The layer harvests `warn!`/`error!` events with structured fields
+    // and posts them to the configured Discord channels. Disabled events
+    // and missing channels short-circuit before the queue, so the layer
+    // is cheap when Discord is off.
+    if let Some(rt) = cimmeria_discord::global() {
+        layers.push(Box::new(
+            cimmeria_discord::DiscordLayer::new(rt.handle.clone(), rt.config.handle())
+                // Layer applies its own per-event toggle gating inside
+                // on_event — no env-filter needed here. Keep the
+                // env-filter wide so we don't pre-filter out events the
+                // user might want to enable at runtime via toggle.
+                .with_filter(EnvFilter::new("warn")),
+        ));
+    }
+
     // ── OpenTelemetry → SigNoz (optional) ─────────────────────────────
-    // Same filter shape as Cosmos: ship debug+ from our crates but drop
-    // the chatty HTTP middleware noise. The Mercury packet target
-    // (`mercury.packet`) flows through at info level — it's the load-
-    // bearing analytical surface, sampling would defeat the purpose.
+    // Ship debug+ from our crates but drop the chatty HTTP middleware
+    // noise. The Mercury packet target (`mercury.packet`) flows through
+    // at info level — it's the load-bearing analytical surface, sampling
+    // would defeat the purpose.
     if let Some(layer) = otel_layer {
         layers.push(Box::new(layer.with_filter(EnvFilter::new(
             "info,\

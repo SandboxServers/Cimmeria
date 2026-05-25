@@ -1,0 +1,152 @@
+# Cimmeria Discord notifications — example config.
+#
+# Copy to `config/discord.toml`, fill in webhook URLs (or env vars), and
+# the server will start posting events to your Discord channels.
+#
+# This file IS committed (it's an example). The real `config/discord.toml`
+# you point at via `DISCORD_CONFIG_PATH` should reference webhook URLs via
+# `${ENV_VAR}` and the env vars should be set out-of-band (CI secrets,
+# .env file, etc.) so the URLs themselves never enter version control.
+#
+# Live reload: the server watches this file. Edit + save → toggles take
+# effect on the next event. The file path is set via `DISCORD_CONFIG_PATH`
+# (defaults to `config/discord.toml`).
+#
+# ── How webhooks work ───────────────────────────────────────────────────
+#
+# In Discord: Server Settings → Integrations → Webhooks → New Webhook.
+# Pick the channel, name the bot, copy the URL. Paste the URL into the env
+# var (or directly into this file if you prefer — but please don't commit
+# real URLs).
+
+[discord]
+
+# Master switch. Set to false to disable Discord notifications without
+# touching the rest of the config.
+enabled = true
+
+# Optional bot identity overrides. If unset, Discord uses whatever name
+# was configured on the webhook itself.
+username = "Cimmeria"
+# avatar_url = "https://example.com/avatar.png"
+
+# ─── Channels ──────────────────────────────────────────────────────────
+#
+# Each channel here maps to one Discord webhook URL. Eight channels max;
+# only the ones you configure will be used. Channels with no entry are
+# silently disabled — events routed to them are dropped pre-queue.
+#
+# `rate_limit_per_min` defaults to 60 (one per second). Discord enforces
+# 5 messages per 2 seconds per webhook (≈150/min burst); the value here
+# is capped at 150. Keep it conservative for low-volume channels so
+# bursts don't trigger 429s and downgrade the user experience.
+
+[discord.channels.lifecycle]
+url = "${DISCORD_LIFECYCLE_WEBHOOK}"
+rate_limit_per_min = 30
+
+[discord.channels.auth]
+url = "${DISCORD_AUTH_WEBHOOK}"
+rate_limit_per_min = 60
+
+[discord.channels.world]
+url = "${DISCORD_WORLD_WEBHOOK}"
+rate_limit_per_min = 60
+
+[discord.channels.chat]
+url = "${DISCORD_CHAT_WEBHOOK}"
+rate_limit_per_min = 120
+
+[discord.channels.gameplay]
+url = "${DISCORD_GAMEPLAY_WEBHOOK}"
+rate_limit_per_min = 60
+
+[discord.channels.gm]
+url = "${DISCORD_GM_WEBHOOK}"
+rate_limit_per_min = 60
+
+[discord.channels.errors]
+url = "${DISCORD_ERRORS_WEBHOOK}"
+rate_limit_per_min = 60
+
+[discord.channels.ops]
+url = "${DISCORD_OPS_WEBHOOK}"
+rate_limit_per_min = 30
+
+# ─── Event toggles ─────────────────────────────────────────────────────
+#
+# Every event type has a toggle. Missing entries use the documented
+# defaults (see comments below each section). Set to `false` to silence;
+# `true` to enable.
+#
+# Unknown keys in this section are REJECTED at parse time — typo'd
+# `playr_login = false` will fail to load. The file watcher leaves the
+# previous (working) config in place on parse failure, so a typo while
+# editing won't kill notifications.
+
+[discord.events]
+
+# ─── Lifecycle (default: all ON) ───────────────────────────────────────
+server_startup = true
+server_shutdown = true
+server_panic = true
+
+# ─── Auth (default: all ON) ────────────────────────────────────────────
+player_login = true
+player_logout = true
+player_disconnect = true
+player_auth_failed = true
+
+# ─── World (default: all ON) ───────────────────────────────────────────
+player_world_entry = true
+player_world_exit = true
+
+# ─── Chat (default: only global ON, others OFF) ────────────────────────
+#
+# `chat_whisper` is special: even when set to `true`, the message content
+# is replaced with `[hidden]` in the embed (see the privacy decision in
+# the Discord notifications design doc). The fact that a whisper occurred
+# is visible; the contents are not.
+chat_global = true
+chat_say = false
+chat_whisper = false
+chat_guild = false
+chat_team = false
+chat_command = false
+
+# ─── Gameplay (default: signal ON, noise OFF) ──────────────────────────
+player_level_up = true
+player_death = false
+player_respawn = false
+mission_accepted = true
+mission_completed = true
+mission_failed = false
+mission_reward_granted = false
+loot_generated = false
+item_used = false
+
+# ─── GM (default: all ON — privileged actions need visibility) ─────────
+gm_command = true
+gm_teleport = true
+gm_spawn = true
+gm_item_grant = true
+
+# ─── Errors (default: error ON, warning OFF) ───────────────────────────
+#
+# `warning` is OFF by default because it's potentially noisy. Turn on
+# while debugging a specific issue, off otherwise. The other variants
+# are rare-but-actionable and stay on by default.
+warning = false
+error = true
+wire_format_error = true
+db_error = true
+assertion_failure = true
+mercury_timeout = true
+
+# ─── Ops (default: all ON — alerts) ────────────────────────────────────
+high_latency = true
+packet_loss_spike = true
+memory_warning = true
+tick_stall = true
+aoi_burst_warning = true
+outbox_lag = true
