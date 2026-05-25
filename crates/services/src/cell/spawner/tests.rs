@@ -311,6 +311,57 @@ mod live_db {
         );
     }
 
+    /// Health Slappack TC1 (item 2893) + its TC-18 craftable duplicate
+    /// (item 4735) must seed with `max_stack_size = 10` and the
+    /// `set:ItemIcon001 image:Medkit` icon. The original 2009 seed
+    /// shipped `max_stack_size = 1` + `set:CoreWidgets image:IconMissing`
+    /// (a placeholder), so each looted slappack ate its own bag slot
+    /// and rendered as a generic broken-icon square. This guard pins
+    /// the corrected values across both rows so a revert that drops
+    /// the migration (or the seed change) is caught at CI before
+    /// players see broken icons + 5 slappacks taking 5 slots again.
+    ///
+    /// Both rows are checked because the inventory UI displays by
+    /// item-id, not by name — having 4735 still at the placeholder
+    /// would surface as "the slappack I crafted looks different
+    /// from the one I looted" even though both are named identically.
+    #[tokio::test]
+    async fn health_slappack_seeds_with_stack_10_and_medkit_icon() {
+        let pool = require_db_or_skip!();
+        const SLAPPACK_ITEM_IDS: [i32; 2] = [2893, 4735];
+
+        for item_id in SLAPPACK_ITEM_IDS {
+            let row: (i32, String) = sqlx::query_as(
+                "SELECT max_stack_size, icon_location \
+                 FROM resources.items \
+                 WHERE item_id = $1",
+            )
+            .bind(item_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or_else(|e| {
+                panic!("slappack item {item_id} must exist in seeded resources.items: {e}")
+            });
+
+            let (max_stack_size, icon_location) = row;
+            assert_eq!(
+                max_stack_size, 10,
+                "Health Slappack TC1 (item {item_id}) must seed with \
+                 max_stack_size = 10 so consumables stack instead of each \
+                 eating a bag slot; pre-fix value was 1 — a regression to \
+                 the placeholder would surface as 5 looted slappacks \
+                 occupying 5 different inventory rows"
+            );
+            assert_eq!(
+                icon_location, "set:ItemIcon001 image:Medkit",
+                "Health Slappack TC1 (item {item_id}) must seed with the \
+                 Medkit icon; pre-fix value was the 'set:CoreWidgets \
+                 image:IconMissing' placeholder which renders as a broken \
+                 square in the inventory UI"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn load_item_containers_projects_first_element_of_container_sets() {
         let pool = require_db_or_skip!();
