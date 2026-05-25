@@ -130,7 +130,7 @@ The Atera debug build requires ASLR disabled on `SGW.exe`. Click
 every subsequent launch.
 
 For what Atera actually does at runtime see
-[../technical/ateraloader-exe.md](../technical/ateraloader-exe.md) and
+[../technical/atrealoader-exe.md](../technical/atrealoader-exe.md) and
 [../technical/atrealoader-config.md](../technical/atrealoader-config.md).
 
 ### Uploading debug logs

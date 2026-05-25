@@ -1,20 +1,38 @@
 # AtreaLoader.config.xml — Binary Patch Definitions
 
-Complete analysis of the AtreaRL configuration file that defines all binary patches, symbol hooks, and runtime settings applied to SGW.exe at load time.
+> **Last updated**: 2026-05-25
+> **Audience**: reverse engineers + emulator developers touching the SGW.exe patch surface
+> **Doc type**: reference (transcription of the patch/symbol/NVP tables with binary-level annotations)
+> **Status**: revised against the Wave 2 byte-verified Editor-group table in [atrea-editor.md](../reverse-engineering/findings/atrea-editor.md)
+> **Source of truth**: `binaries/AtreaLoader.config.xml` (editable XML) — but see "Runtime read vs. editable source" below
 
-## Configuration Structure
+Complete analysis of the AtreaRL configuration that defines all binary patches, symbol hooks, and runtime settings applied to `SGW.exe` at load time.
 
-The XML config has four sections:
-1. **Patches** — Binary byte replacements at specific addresses
-2. **Symbols** — Named function/data addresses for hooking
-3. **NVPs** (Name-Value Pairs) — Runtime settings
-4. **PathSubstitutions** — File path redirection
+## Runtime read vs. editable source
 
-## Patch Groups
+The loader reads the *binary* file `binaries/AtreaLoader.config` at runtime. The companion `AtreaLoader.config.xml` is the editable source — changes to the XML do **not** take effect until the binary form is regenerated. On at least one observed installation the binary `.config` predated the XML by over a year (binary 2013-05-20 vs. XML 2014-06-23), and the two had drifted on the `Sniffer` NVP (see [mercury-wire-format.md §S9](../drafts/spec/mercury-wire-format.md)). When editing patches, regenerate the binary or your changes will appear to do nothing.
 
-Patches are organized into groups, selectable via AteraLoader.exe command line:
-- `--enable-group=<name>` enables a group
-- `--disable-group=<name>` disables a group
+## Modern-Windows prerequisite — `AtreaFixASLR.bat`
+
+Every absolute virtual address in this config assumes `SGW.exe` loads at its PE-declared preferred base `0x00400000`. On modern Windows, the image instead loads at an ASLR-randomized base because the PE header has `IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE` (the `0x40` bit at file offset `0x186`). Under ASLR, all `OriginalBytes` patterns miss and the session log shows `0 patch(es) of N applied`.
+
+Run `AtreaFixASLR.bat` once before first use. It flips the single byte at file offset `0x186` from `0x40` to `0x00`, clearing `DYNAMIC_BASE` so the image loads at `0x00400000` and the absolute addresses resolve. Full analysis: [mercury-wire-format.md §S9](../drafts/spec/mercury-wire-format.md).
+
+## Configuration structure
+
+The XML has four sections:
+
+1. **Patches** — Binary byte replacements at specific addresses.
+2. **Symbols** — Named function/data addresses for hooking.
+3. **NVPs** (Name-Value Pairs) — Runtime settings.
+4. **PathSubstitutions** — File path redirection.
+
+## Patch groups
+
+Patches are organized into groups, selectable via `AtreaLoader.exe` command line:
+
+- `--enable-group=<name>` enables a group.
+- `--disable-group=<name>` disables a group.
 
 | Group | Purpose | Default |
 |-------|---------|---------|
@@ -27,55 +45,57 @@ Patches are organized into groups, selectable via AteraLoader.exe command line:
 | Silent | Hide editor UI panes | Apply=false |
 | Editor-Disabled | Extra editor patches (chunk limit, My Games dir) | Apply=false |
 
-### Batch Files
+### Batch files
 
-```
-AtreaEditor.bat:     AtreaLoader --enable-group=Editor -SHOWLOG
+```text
+AtreaEditor.bat:     AtreaLoader --enable-group=Editor
 AtreaFixASLR.bat:    AtreaLoader --fix-aslr
 AtreaGameDebug.bat:  AtreaLoader --enable-group=Mercury -SHOWLOG -LOG
 ```
 
-## Binary Patches (19 total)
+`AtreaEditor.bat` does **not** pass `-SHOWLOG` (only `AtreaGameDebug.bat` does). Earlier revisions of this doc claimed it did; that was wrong.
 
-### Debug/Logging Patches
+## Binary patches (18 total)
+
+The XML contains 18 `<Patch>` entries. All Editor-group patches in the table below have been byte-verified at their target addresses (Wave 2 verification pass). The "Function" column cites the Ghidra-recovered containing function in `SGW.exe`; the RVA + image base `0x00400000` gives the absolute VA used by the loader.
+
+### Debug / logging patches
 
 | Patch | Address | Description |
 |-------|---------|-------------|
-| **EnableUnicodeLogger** | 0x01AF2224 | `00→01` — Enables BigWorld Mercury message logging |
-| **EnableLocalizedDebug** | 0x01AF28C0 | `00→01` — Enables localization token debug parsing |
-| **EnableAppearanceLogger** | 0x01AF22F4 | `00→01` — Enables character appearance job logging |
+| **EnableUnicodeLogger** | `0x01AF2224` | `00→01` — Enables BigWorld Mercury message logging. |
+| **EnableLocalizedDebug** | `0x01AF28C0` | `00→01` — Enables localization token debug parsing. |
+| **EnableAppearanceLogger** | `0x01AF22F4` | `00→01` — Enables character appearance job logging. |
 
-These are simple boolean flag toggles in SGW.exe's .data section.
+These are simple boolean flag toggles in `SGW.exe`'s `.data` section.
 
-### Editor Mode Patch (GIsServer/GIsEditor/GIsUCC/GIsGame)
+### Editor-group patches (byte-verified)
 
-**Address**: 0x00018AF0 (relative to image base)
+Image-relative RVAs; absolute VA = RVA + `0x00400000`. Editor-group patches apply when `--enable-group=Editor` is passed (default for `AtreaEditor.bat`). Sourced from the Wave 2 verified table in [atrea-editor.md](../reverse-engineering/findings/atrea-editor.md) §"Patch reference (Editor group)".
 
-This patch modifies the UE3 global flag initialization to enable UnrealEd:
+| Patch | RVA | Containing function | Effect |
+|---|---|---|---|
+| **EditorMode** | `0x00018AF0` | `FUN_004185e0` (ParseCommandLine/InitGlobals) | Swap MOV-source bytes (`89 35 BC D7 EA 01` ↔ `89 1D AC D7 EA 01` etc.) so `GIsServer=1`, `GIsEditor=1`, `GIsGame=0`. ESI=1, EBX=0 at this point. |
+| **EditorCallbacks** | `0x000186D2` | inside `FUN_004185e0` | Swap 4 `PUSH imm32` args to engine init so it installs editor-flavored `FCallbackEventDeviceEditor`, `FCallbackQueryDeviceEditor`, `FFeedbackContextEditor`, `FOutputDeviceFile`. |
+| **EditorCallbackVMT** | `0x0198F52C` | `.data` VMT slot | Rewrite VMT ptr from game (`0x017F8D80`) to editor (`0x017F8DD8`) variant. |
+| **EditorCurrentPackage** | `0x0198F4A0` | `.data` UTF-16 string | Replace `L"Launch"` with `L"UnrealEd"`. Drives `UObject::CreatePackage`, `FOutputDeviceFile` log naming. |
+| **EditorSettings** | `0x001757BA` | `FUN_00575730` (config-string parser) | `SETZ DL` → `SETNZ DL` — inverts the `wcsicmp(cfg, L"EDITOR")` test so the editor-settings bool at struct offset `+0x28` is set regardless of config. |
+| **EditorUnknownUi** | `0x00166919` | `FUN_00566910` | `CMP [ESP+0x4], 0` immediate `00 → 01` — forces editor-UI branch even when called with arg=0. |
+| **DisablePrefabSerialize** | `0x001CE8E1` | `FUN_005CE7E0` (prefab serializer) | `JGE 0x005CE9B6` → `NOP; JMP` unconditional — always skips the prefab `Serialize()` loop, preventing partial re-serialization on map open. |
+| **EditorSplash** | `0x013FA350` | `.data` UTF-16 string (`Splash` group) | Replace `PC\EdSplash.bmp` with `PC\Splash.bmp` (despite the patch name, this *removes* the editor splash). |
+| **EditorChunkLimit** | `0x007FDA41` | editor map-load engine method | `Editor-Disabled` group — `JLE` → `JMP` removes the "chunk count ≤ 100" guard. |
+| **EditorMyGamesDir** | `0x0008D1E8` | `FUN_0048D080` | `Editor-Disabled` group — NOP the `chdir` into `My Games\FireSky\SGWGame` so packages save next to the binary. |
+| **HideEditorBrowserPane** | `0x00AD56BA` | `WxUnrealEdApp::vfunc_25` chain | `Silent` group — NOP `BrowserPane::Show(true)` virtual call. |
+| **HideEditorBrowserPane2** | `0x00B5E789` | `WxUnrealEdApp::vfunc_25` chain | `Silent` group — NOP second `BrowserPane::Show(true)` virtual call. |
+| **HideEditorWindow** | `0x00B5F639` | `FUN_00F5F580` | `Silent` group — NOP `WxEditorFrame::Show(true)`. |
 
-| Offset | Original | Patched | Effect |
-|--------|----------|---------|--------|
-| +0x00 (GIsClient) | `89 35` (mov [GIsClient], esi=1) | `89 35` (unchanged) | Client=1 |
-| +0x06 (GIsServer) | `89 1D` (mov [GIsServer], ebx=0) | `89 35` (mov [GIsServer], esi=1) | Server=0→**1** |
-| +0x0C (GIsEditor) | `89 1D` (mov [GIsEditor], ebx=0) | `89 35` (mov [GIsEditor], esi=1) | Editor=0→**1** |
-| +0x12 (GIsUCC) | `89 1D` (mov [GIsUCC], ebx=0) | `89 1D` (unchanged) | UCC=0 |
-| +0x18 (GIsGame) | `89 35` (mov [GIsGame], esi=1) | `89 1D` (mov [GIsGame], ebx=0) | Game=1→**0** |
+After all Editor-group patches apply: `GIsClient=1, GIsServer=1, GIsEditor=1, GIsUCC=0, GIsGame=0`. The engine self-identifies as a single-process editor (client + server + editor, not game).
 
-The trick: ESI=1 and EBX=0 at this point. Swapping `89 1D` (store EBX=0) with `89 35` (store ESI=1) flips the flag. Net result:
+### UCC commandlet mode patch
 
-| Flag | Normal | Editor Mode |
-|------|--------|-------------|
-| GIsClient | 1 | 1 |
-| GIsServer | 0 | **1** |
-| GIsEditor | 0 | **1** |
-| GIsUCC | 0 | 0 |
-| GIsGame | 1 | **0** |
+**Address**: `0x00018AF0` (same EditorMode location, different byte pattern applied when `--enable-group=UCC` is passed)
 
-### UCC Commandlet Mode Patch
-
-**Address**: 0x00018AF0 (same location, different byte pattern)
-
-| Flag | Normal | UCC Mode |
+| Flag | Normal | UCC mode |
 |------|--------|----------|
 | GIsClient | 1 | **0** |
 | GIsServer | 0 | 0 |
@@ -83,121 +103,76 @@ The trick: ESI=1 and EBX=0 at this point. Swapping `89 1D` (store EBX=0) with `8
 | GIsUCC | 0 | **1** |
 | GIsGame | 1 | **0** |
 
-### UCC Console Fix
+### ConsoleStdHandle (UCC console fix)
 
-**Address**: 0x000CC91F
+**Address**: `0x000CC91F` (absolute VA `0x004CC91F`)
 
-Fixes the console stdout handle for UCC commandlet mode:
-- Replaces the original console setup code with `PUSH -5; CALL GetStdHandle` (STD_OUTPUT_HANDLE = -11 → uses -5 for STD_ERROR_HANDLE)
-- NOPs out the remaining original bytes
-- Allows console output to work correctly in commandlet mode
+Fixes the console handle passed to `GetStdHandle()` so console output works correctly in UCC commandlet mode.
 
-### Editor Settings Flag
+**Patch bytes**: `6A F5` followed by NOPs. `6A imm8` is `PUSH imm8` with the byte sign-extended to 32 bits; `F5h` sign-extended is `0xFFFFFFF5`, which is **`-11` as a signed 32-bit integer**.
 
-**Address**: 0x001757BA
+The standard handle constants in `winbase.h`:
 
-Changes `SETZ DL` (0F 94) to `SETNZ DL` (0F 95) — inverts the result of a `wcsicmp("EDITOR")` comparison, enabling editor-specific system configuration.
+| Handle | Value |
+|---|---|
+| `STD_INPUT_HANDLE` | `-10` (`0xFFFFFFF6`) |
+| `STD_OUTPUT_HANDLE` | `-11` (`0xFFFFFFF5`) |
+| `STD_ERROR_HANDLE` | `-12` (`0xFFFFFFF4`) |
 
-### Editor Callback VMT
+So `PUSH -11` selects `STD_OUTPUT_HANDLE`. The patch substitutes a `GetStdHandle(STD_OUTPUT_HANDLE)` call sequence in place of whatever the original code path emitted (the original bytes pushed a different handle constant — likely `STD_INPUT_HANDLE` (`-10`, `6A F6`), which would have been wrong for a console-write context). Trailing NOPs pad out the remainder of the original instructions so subsequent control flow stays aligned. The net effect: UCC commandlet output flows to the console instead of being silently dropped.
 
-**Address**: 0x0198F52C
+Earlier revisions of this doc said "STD_OUTPUT_HANDLE = -11 → uses -5 for STD_ERROR_HANDLE" — that was wrong twice over. `STD_ERROR_HANDLE` is `-12`, not `-5`; and the patched value is `-11`, which **is** `STD_OUTPUT_HANDLE`, not a substitution away from it.
 
-Replaces the GCallback vtable pointer from 0x017F8DXX to 0x017F8DD8, switching to the editor-specific callback implementations (`FCallbackEventDeviceEditor`, `FCallbackQueryDeviceEditor`, `FFeedbackContextEditor`).
+### Engine-mode globals (UE3 standard, confirmed in this build)
 
-### Editor Callbacks
+| Flag | VA | Editor value | Notes |
+|---|---|---|---|
+| `GIsClient` | `0x01EAD7BC` | 1 | UClass/UObject readers, ~50 xrefs |
+| `GIsServer` | `0x01EAD7C0` | 1 | UGameEngine readers, gated server path |
+| `GIsEditor` | `0x01EAD7AC` | 1 | Atrea patch target |
+| `GIsUCC` | `0x01EAD7B0` | 0 | UnrealScript compiler mode (off in editor); asserted at `0x0049F714` |
+| `GIsGame` | `0x01EB0830` | 0 | FEdObjectPropagator toggles, ACoverLink/FTerrainObject readers |
 
-**Address**: 0x000186D2
+## Symbol hooks (13 total)
 
-Replaces the pushed addresses for callback/feedback context objects:
-- Original: game-mode callback objects at 0x01D8F534, 0x01EA4B70, 0x01EA4874, 0x01EA4818
-- Patched: editor-mode objects at 0x01D8F52C, 0x01EA4898, 0x01EA4874, 0x01EA4848
+AtreaRL.dll hooks these functions/addresses in `SGW.exe`:
 
-### Editor Chunk Limit
-
-**Address**: 0x007FDA41
-
-Changes `JLE` (7E) to `JMP` (EB) — removes the 100-chunk upper limit for opening chunked maps in the editor.
-
-### Editor My Games Dir
-
-**Address**: 0x0008D1E8
-
-NOPs out `CALL EDX` (FF D2) — prevents the game from changing the working directory to `My Games\FireSky\SGWGame`, keeping packages saved relative to the install directory.
-
-### Editor Unknown UI
-
-**Address**: 0x00166919
-
-Changes a CMP operand from 0x00 to 0x01, enabling an editor UI element.
-
-### Editor Current Package
-
-**Address**: 0x0198F4A0
-
-Replaces the Unicode string `"Launch"` with `"UnrealEd"` — changes the current package name from the game launcher to the editor.
-
-### Disable Prefab Serialize
-
-**Address**: 0x001CE8E1
-
-Changes `JGE rel32` (0F 8D) to `NOP; JMP rel32` (90 E9) — skips prefab serialization in `UEditor::LoadPrefabs`. Prevents editor crashes when loading maps with prefabs.
-
-### Editor Splash
-
-**Address**: 0x013FA350
-
-Replaces Unicode path `"PC\EdSplash.bmp"` with `"PC\Splash.bmp"` — redirects the editor splash screen to the game splash.
-
-### Hide Editor Browser/Window Panes
-
-| Patch | Address | Effect |
-|-------|---------|--------|
-| HideEditorBrowserPane2 | 0x00B5E789 | NOPs out `PUSH 1; CALL EAX` (ShowWindow) |
-| HideEditorBrowserPane | 0x00AD56BA | NOPs out `PUSH ESI; CALL EAX` (ShowWindow) |
-| HideEditorWindow | 0x00B5F639 | NOPs out `PUSH 1; CALL EAX` (ShowWindow) |
-
-These suppress editor window creation for "Silent" mode (headless editor).
-
-## Symbol Hooks (13 total)
-
-AtreaRL.dll hooks these functions/addresses in SGW.exe:
-
-| Symbol Name | Address | Group | Patch | Purpose |
+| Symbol name | Address | Group | Patch | Purpose |
 |-------------|---------|-------|-------|---------|
-| **UnicodeLoggerStart** | 0x00866860 | (default) | true | BigWorld entity event logging — start |
-| **UnicodeLoggerParam** | 0x00866880 | (default) | true | BigWorld entity event logging — parameter |
-| **UnicodeLoggerEnd** | 0x00866870 | (default) | true | BigWorld entity event logging — end |
-| **AppearanceLoggerWchar** | 0x000250D0 | AppearanceLogging | false | Character appearance (wchar) |
-| **AppearanceLoggerWstring** | 0x00304750 | AppearanceLogging | false | Character appearance (wstring) |
-| **AnsiLogger** | 0x00635210 | (default) | true | SGW generic ANSI logger |
-| **MercuryLogger** | 0x0041C2E0 | Mercury | false | BigWorld Mercury protocol debug |
-| **UnrealAssertionLogger** | 0x00086000 | (default) | true | UE3 `check()`/`verify()` handler |
-| **FFileManager::MoveFile** | 0x000C43A0 | Editor | false | File move intercept (editor fix) |
-| **UPrefab::Serialize** | 0x00812D30 | EditorDebugPrefab | false | Prefab debug (unused) |
-| **FArchive::PostLoad** | 0x000E9870 | EditorPartialSerializePrefabs | false | Post-load hook (OLD, DO NOT USE) |
-| **UObject::Serialize** | 0x000A42F0 | EditorDebugPrefab | false | Object serialization debug (huge logs) |
-| **FName::GNames** | 0x01ACADE0 | — | — | Global name table (data address, not function) |
+| **UnicodeLoggerStart** | `0x00866860` | (default) | true | BigWorld entity event logging — start |
+| **UnicodeLoggerParam** | `0x00866880` | (default) | true | BigWorld entity event logging — parameter |
+| **UnicodeLoggerEnd** | `0x00866870` | (default) | true | BigWorld entity event logging — end |
+| **AppearanceLoggerWchar** | `0x000250D0` | AppearanceLogging | false | Character appearance (wchar) |
+| **AppearanceLoggerWstring** | `0x00304750` | AppearanceLogging | false | Character appearance (wstring) |
+| **AnsiLogger** | `0x00635210` | (default) | true | SGW generic ANSI logger |
+| **MercuryLogger** | `0x0041C2E0` | Mercury | false | BigWorld Mercury protocol debug |
+| **UnrealAssertionLogger** | `0x00086000` | (default) | true | UE3 `check()`/`verify()` handler |
+| **FFileManager::MoveFile** | `0x000C43A0` | Editor | false | File move intercept (editor fix) |
+| **UPrefab::Serialize** | `0x00812D30` | EditorDebugPrefab | false | Prefab debug (unused) |
+| **FArchive::PostLoad** | `0x000E9870` | EditorPartialSerializePrefabs | false | Post-load hook (OLD, DO NOT USE) |
+| **UObject::Serialize** | `0x000A42F0` | EditorDebugPrefab | false | Object serialization debug (huge logs) |
+| **FName::GNames** | `0x01ACADE0` | — | — | Global name table (data address, not function) |
 
-**Patch=true** means AtreaRL replaces the function with its own implementation. **Patch=false** means AtreaRL hooks (wraps) the function, calling the original after logging.
+`Patch=true` means AtreaRL replaces the function with its own implementation. `Patch=false` means AtreaRL hooks (wraps) the function, calling the original after logging.
 
-### Notable Addresses for RE
+### Notable addresses for RE
 
-- **0x00866860-0x00866880**: BigWorld entity event logging functions — these are the CME-added wrappers around BigWorld's event system
-- **0x00635210**: SGW's main ANSI debug logger
-- **0x0041C2E0**: Mercury protocol debug output function
-- **0x00086000**: UE3 assertion handler (`appFailAssertFunc` equivalent)
-- **0x01ACADE0**: `FName::GNames` — the global UE3 name hash table
+- `0x00866860`–`0x00866880` — BigWorld entity event logging functions; these are the CME-added wrappers around BigWorld's event system.
+- `0x00635210` — SGW's main ANSI debug logger.
+- `0x0041C2E0` — Mercury protocol debug output function.
+- `0x00086000` — UE3 assertion handler (`appFailAssertFunc` equivalent).
+- `0x01ACADE0` — `FName::GNames`, the global UE3 name hash table.
 
-## NVP Settings
+## NVP settings
 
 | Name | Default | Purpose |
 |------|---------|---------|
-| **Sniffer** | `true` | Enable packet sniffer (PCAP + AES key capture) |
-| **ExitOnAssert** | `false` | Terminate process on assertion failure |
-| **IgnoreBulkDataErrors** | `false` | Suppress assertion dialog on bulk data serialization errors |
-| **DisableErrorReporting** | `false` | Suppress Windows Error Reporting dialog on crash |
+| **Sniffer** | `true` | Enable packet sniffer (PCAP + AES key capture). See [mercury-wire-format.md §S9](../drafts/spec/mercury-wire-format.md) for the gate that prevents this from taking effect on modern Windows without an extra `AtreaRL.dll` patch. |
+| **ExitOnAssert** | `false` | Terminate process on assertion failure. |
+| **IgnoreBulkDataErrors** | `false` | Suppress assertion dialog on bulk data serialization errors. |
+| **DisableErrorReporting** | `false` | Suppress Windows Error Reporting dialog on crash. |
 
-## Path Substitutions
+## Path substitutions
 
 ```xml
 <PathSubstitutions>
@@ -205,13 +180,22 @@ AtreaRL.dll hooks these functions/addresses in SGW.exe:
 </PathSubstitutions>
 ```
 
-Commented out, but reveals the mechanism: AtreaRL can redirect file system paths at runtime, allowing developers to load UI content from a development directory (`D:\Dev\WUI\UI`) instead of the game installation. The `CreateFileA`/`CreateFileW` hooks in AtreaRL implement this redirection.
+Commented out, but the mechanism is documented in source: AtreaRL can redirect filesystem paths at runtime, allowing developers to load UI content from a development directory (`D:\Dev\WUI\UI`) instead of the game installation. The `CreateFileA` / `CreateFileW` hooks in AtreaRL implement this redirection.
 
-## Emulator Implications
+## Emulator implications
 
-1. **Editor mode is fully unlockable**: The GIsEditor patch enables the wxWidgets-based UnrealEd, allowing map viewing/editing with SGW's content
-2. **UCC commandlet mode**: Enables Unreal command-line tools for content cooking, package inspection, etc.
-3. **Mercury logging**: The `MercuryLogger` hook at 0x0041C2E0 provides BigWorld protocol debug output — extremely valuable for protocol RE
-4. **All addresses are absolute**: Patches assume SGW.exe loads at its preferred base address (ASLR must be disabled via `AtreaLoader --fix-aslr`)
-5. **Path substitution**: Could be used to redirect content loading to modded/emulator-specific files
-6. **Sniffer enabled by default**: Every AtreaRL-loaded session captures PCAP traffic and AES keys to the `sessions/` directory
+1. **Editor mode is fully unlockable.** The `EditorMode` + companion patches enable the wxWidgets-based UnrealEd, allowing map viewing/editing with SGW's content. For what the Editor group of patches actually unlocks (UnrealEd inside `SGW.exe`), see [atrea-editor.md](../reverse-engineering/findings/atrea-editor.md). For the SGW.exe addresses targeted by editor-group patches, see [editor-source-mapping.md](../reverse-engineering/editor-source-mapping.md).
+2. **UCC commandlet mode** enables Unreal command-line tools for content cooking, package inspection, etc.
+3. **Mercury logging.** The `MercuryLogger` hook at `0x0041C2E0` provides BigWorld protocol debug output — extremely valuable for protocol RE.
+4. **All addresses are absolute.** Patches assume `SGW.exe` loads at its preferred base address. ASLR must be disabled via `AtreaFixASLR.bat` once per install; see prerequisite note above.
+5. **Path substitution** could be used to redirect content loading to modded or emulator-specific files.
+6. **Sniffer enabled by default** — but does not actually capture on modern Windows without the `AtreaRL.dll` runtime patch documented in [mercury-wire-format.md §S9](../drafts/spec/mercury-wire-format.md).
+
+## Cross-references
+
+- [docs/reverse-engineering/findings/atrea-editor.md](../reverse-engineering/findings/atrea-editor.md) — what the Editor group of patches actually unlocks (UnrealEd inside `SGW.exe`); top-level editor archaeology.
+- [docs/reverse-engineering/editor-source-mapping.md](../reverse-engineering/editor-source-mapping.md) — function-by-function VA-to-source map for the SGW.exe addresses targeted by editor-group patches.
+- [docs/drafts/spec/mercury-wire-format.md §S9](../drafts/spec/mercury-wire-format.md) — ASLR prerequisite (`AtreaFixASLR.bat`) and the sniffer-gate runtime patch in `AtreaRL.dll`.
+- [docs/technical/atrealoader-exe.md](atrealoader-exe.md) — AtreaLoader.exe injector analysis.
+- [docs/technical/atrearl-loader.md](atrearl-loader.md) — AtreaRL.dll loader analysis.
+- Source of truth (runtime-read binary): `binaries/AtreaLoader.config` (regenerated from `AtreaLoader.config.xml`).

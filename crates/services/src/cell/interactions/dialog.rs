@@ -26,17 +26,57 @@ pub async fn send_dialog_display(
         dialog_id,
         "Sending onDialogDisplay"
     );
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: player_id,
             method_index: crate::mercury::method_idx::ON_DIALOG_DISPLAY,
             args,
         })
-        .await;
+        .await
+    {
+        // failure to deliver onDialogDisplay leaves the
+        // player stuck — they interacted with an NPC and nothing
+        // happens. warn! because it's player-visible.
+        tracing::warn!(
+            player_id,
+            npc_entity_id,
+            dialog_id,
+            "DisplayDialog: cell→base send failed -- dialog not opened on client: {e}"
+        );
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::test_support::LogCapture;
+    use tokio::sync::mpsc;
+    use tracing::Level;
+
+    /// dropped onDialogDisplay leaves the player stuck. The
+    /// guard drops the receiver before calling the helper so the send
+    /// fails synchronously; assertion pins both the WARN level and the
+    /// message body, so a revert to `let _ = tx.send(…)` trips it.
+    #[tokio::test]
+    async fn send_dialog_display_warns_when_cell_to_base_channel_closed() {
+        let capture = LogCapture::install();
+        let (tx, rx) = mpsc::channel(1);
+        drop(rx);
+
+        send_dialog_display(
+            /* player_id */ 1, /* npc_entity_id */ 100, /* dialog_id */ 42, &tx,
+        )
+        .await;
+
+        assert!(
+            capture
+                .find_message(Level::WARN, "DisplayDialog: cell→base send failed")
+                .is_some(),
+            "negative-logging convention: send_dialog_display must WARN when cell→base channel is closed; \
+             reverting to `let _` breaks player-stuck-on-NPC diagnosability"
+        );
+    }
+
     #[test]
     fn dialog_display_args_format() {
         let mut args = Vec::new();

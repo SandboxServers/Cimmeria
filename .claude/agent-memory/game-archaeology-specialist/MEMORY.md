@@ -44,6 +44,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [Auto-cycle system findings](auto-cycle-findings.md) — **[PROMOTE → spec.combat.auto-cycle or doc-reference from gameplay/combat-system.md]** — Full wire path confirmed: cell method 83, 2-byte payload, server-driven loop, `BSF_AutoCycling` bit 1, cooldown-expiry re-fire pattern. Implementation gap identified.
 
+## SGWHomeless full recovery (2026-05-25)
+
+- [SGWHomeless full recovery](sgwhomeless-full-recovery.md) — **[PROMOTE → docs/reverse-engineering/findings/atrea-editor.md §SGWHomeless]** — Complete v5 RE: 30 CME subscriptions confirmed, all handler VAs, singleton at `0x01ef23fc` (CORRECTS prior `cme-anomalies-resolved.md`), GLevel ToD/Wind/Weather layout, Ghidra renames applied.
+
 ## Phase −0.5 maintenance notes (2026-05-13)
 
 - This MEMORY.md was merged from two trees during Phase −0.5 agent surgery (orchestrator commit `1917d20`). The previous index referenced several files that didn't exist (`findings_cover_system_s4.md`, `findings_respawn_lifecycle_s7.md`, `findings_mission_state_s4b.md`, `findings_world_entry_s4b.md`, `findings_mercury_layer_s5b.md`, `mercury-protocol-internals.md`) — those were hallucinated references. The triage step (this commit) resolves them by either annotating present files with bucket tags or noting their absence here.

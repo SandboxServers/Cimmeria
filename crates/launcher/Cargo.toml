@@ -9,7 +9,7 @@ description = "Stargate Worlds launcher — installs the game from a seed + patc
 # Native window + immediate-mode UI. Default-features off so we don't pull in
 # `persistence` (we manage our own JSON state file) or accesskit.
 eframe = { version = "0.30", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
-egui = "0.30"
+egui = "0.34"
 
 # HTTP. Declared directly (not via `workspace = true`) so we can disable
 # the default native-tls feature — cargo currently warns when overriding
@@ -35,7 +35,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 flate2 = "1"
 
 walkdir = "2"
-gethostname = "0.5"
+gethostname = "1.1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 # Maintained fork of `fs2`. Used for the single-instance file lock — a
 # second launcher process opening the same lock fails `try_lock_exclusive`

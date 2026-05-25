@@ -141,7 +141,7 @@ The Atera batch files are **not** shipped by the launcher. Players who
 want the debug build drop the Atera tarball into the install directory
 themselves; the launcher detects the files and surfaces the buttons.
 The catalogue of what each bat does lives in
-[docs/technical/ateraloader-exe.md](../technical/ateraloader-exe.md)
+[docs/technical/atrealoader-exe.md](../technical/atrealoader-exe.md)
 and [docs/technical/atrealoader-config.md](../technical/atrealoader-config.md).
 
 Atera debug requires ASLR disabled on SGW.exe. The launcher does not

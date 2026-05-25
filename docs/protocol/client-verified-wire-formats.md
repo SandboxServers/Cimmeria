@@ -232,7 +232,7 @@ Server → Client: LOGGED_OFF (0x37)  [reason:u8]
 | 0x08 | ENABLE_ENTITIES | CONSTANT | 8 | Entity system ready |
 | 0x09 | VIEWPORT_ACK | CONSTANT | 8 | Viewport acknowledged |
 | 0x0A | VEHICLE_ACK | CONSTANT | 8 | Vehicle acknowledged |
-| 0x0B | RESTORE_CLIENT_ACK | WORD_LENGTH | var | Restore acknowledged |
+| 0x0B | RESTORE_CLIENT_ACK | CONSTANT | 4 | Restore acknowledged (literal `i32 = 0` from `ghidra://SGW.exe@0x00dd8bc9`; spec §2.5.2) |
 | 0x0C | DISCONNECT | CONSTANT | 1 | Client disconnect |
 
 ---

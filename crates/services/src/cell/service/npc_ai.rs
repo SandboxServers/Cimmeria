@@ -276,7 +276,7 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
         distance = dist_to_target,
         "NPC AI: attacking top threat target"
     );
-    super::super::abilities::handle_use_ability(
+    let fired = super::super::abilities::handle_use_ability(
         npc_id,
         chosen_ability,
         target_id as i32,
@@ -284,6 +284,22 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
         space_mgr,
     )
     .await;
+    if !fired {
+        // handle_use_ability returns false when the
+        // pre-consume guard rejected the call (entity missing/dead, no
+        // ability, on cooldown, reload in flight, no ammo, or
+        // out-of-range). For NPC AI ticks this is normally a cooldown
+        // race against the pick logic; warn! so player-visible "mob
+        // standing still" can be diagnosed without attaching a profiler.
+        tracing::warn!(
+            npc_id,
+            target = target_id,
+            ability_id = chosen_ability,
+            distance = dist_to_target,
+            reason = "handle_use_ability_returned_false",
+            "NPC AI: attack tick produced no ability fire -- mob may appear stuck"
+        );
+    }
 }
 
 /// Pick an off-cooldown ability for the NPC's fight tick. `None` → all

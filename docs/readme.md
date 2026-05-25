@@ -185,6 +185,7 @@ How the Cimmeria emulator itself is structured. 14 documents.
 | [integration-test-infra.md](architecture/integration-test-infra.md) | Live-DB test infrastructure: why no testcontainers, why no `sqlx::test`, local setup, isolation patterns | Complete |
 | [transport-trait.md](architecture/transport-trait.md) | ADR: `Transport` trait for the Mercury send side — `UdpTransport`/`TestTransport`, the send/recv asymmetric split, why `Nub` I/O (#57) was retired, and the fan-out byte test seam | Complete |
 | [mercury-bundle.md](architecture/mercury-bundle.md) | `ChannelBundle` accumulator: cross-entity bundling rule, transaction-state hazard, AoI burst migration (#356), follow-up migration playbook | Complete |
+| [negative-logging-convention.md](architecture/negative-logging-convention.md) | Negative-logging convention (issue #304): three patterns, field-naming rules, level discipline, defensible silent sends, `LogCapture` regression-guard helper | Complete |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
 
@@ -203,7 +204,7 @@ Analysis of game client binaries, launcher tools, and client asset inventories. 
 | [facefx-lip-sync.md](client/facefx-lip-sync.md) | FaceFX lip sync system: .fxa animation files, phoneme mapping, engine integration | Complete |
 | [ui-layout-inventory.md](client/ui-layout-inventory.md) | UI layout inventory: all Scaleform .swf files, Lua bindings, screen types, HUD elements | Complete |
 
-See also: [client-tools.md](client-tools.md), [technical/launcher-exe.md](technical/launcher-exe.md), [technical/ateraloader-exe.md](technical/ateraloader-exe.md)
+See also: [client-tools.md](client-tools.md), [technical/launcher-exe.md](technical/launcher-exe.md), [technical/atrealoader-exe.md](technical/atrealoader-exe.md)
 
 ---
 
@@ -325,9 +326,9 @@ Detailed RE analysis documents created during initial investigation. These preda
 | [source-reconstruction-feasibility.md](technical/source-reconstruction-feasibility.md) | Source code reconstruction feasibility |
 | [building.md](technical/building.md) | Build process technical details |
 | [launcher-exe.md](technical/launcher-exe.md) | Launcher binary analysis |
-| [ateraloader-exe.md](technical/ateraloader-exe.md) | AtreaLoader binary analysis |
+| [atrealoader-exe.md](technical/atrealoader-exe.md) | AtreaLoader binary analysis |
 | [atrealoader-config.md](technical/atrealoader-config.md) | AtreaLoader configuration format |
-| [atrearl-loader.md](technical/atrearl-loader.md) | AtreaRL loader binary analysis |
+| [atrearl-loader.md](technical/atrearl-loader.md) | AtreaRL.dll — the runtime patcher injected into SGW.exe (hooks, sniffer, two-gate activation) |
 
 
 ## Key Data Sources

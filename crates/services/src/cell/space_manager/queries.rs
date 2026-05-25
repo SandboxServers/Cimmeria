@@ -52,6 +52,14 @@ impl SpaceManager {
         Some(space.world_name.clone())
     }
 
+    /// Get the `space_id` for an entity's current space.
+    ///
+    /// Use this when constructing a `CellToBaseMsg` (or other space-keyed
+    /// payload) for an entity outside the normal AoI tick path.
+    pub fn get_entity_space_id(&self, entity_id: u32) -> Option<u32> {
+        self.entity_space.get(&entity_id).copied()
+    }
+
     /// Get the objectives for a given step from the step_objectives cache.
     ///
     /// Returns an empty vec if the step has no objectives in the cache.
