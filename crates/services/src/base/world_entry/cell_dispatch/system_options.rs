@@ -212,18 +212,47 @@ mod tests {
     }
 
     /// Missing-row contract: persisting against a non-existent player_id
-    /// must not error out — it just no-ops and logs a warning. Mirrors
+    /// must not error out — it just no-ops and logs a `warn!`. Mirrors
     /// the bandolier-slot handler's behavior so a stale player_id
     /// (race with character deletion) doesn't crash the dispatcher.
+    /// The `LogCapture` assertion is the actual regression guard —
+    /// without it, the test would pass even if the function silently
+    /// swallowed the no-rows path. The fix-revert shape is removing
+    /// the explicit `rows_affected == 0` arm; that arm's `warn!`
+    /// emission is what the capture pins.
     #[tokio::test]
     async fn persist_no_row_is_silent_warn() {
+        use crate::test_support::LogCapture;
         let pool = require_db_or_skip!();
         let pool_opt = Some(Arc::new(pool.clone()));
         // ID guaranteed to not exist — same sentinel range, but a
-        // shifted offset that the other tests never use.
+        // shifted offset that the other tests never use. Explicitly
+        // clean it first so a previous test failure that left rows
+        // around can't change the result here.
         let phantom_id = TEST_BASE + 0x20;
-        // Should NOT panic / err; the warn is logged but the function
-        // returns Ok-equivalent (unit). No DB row to clean up.
+        let _ = sqlx::query("DELETE FROM sgw_player WHERE player_id = $1")
+            .bind(phantom_id)
+            .execute(&pool)
+            .await;
+
+        let capture = LogCapture::install();
         persist_system_options(phantom_id, true, true, &pool_opt).await;
+
+        // The handler's "no rows updated" arm must emit exactly the
+        // warn we expect — message substring pinned per the
+        // negative-logging convention.
+        let event = capture
+            .find_message(tracing::Level::WARN, "SystemOptionsUpdate: no rows updated")
+            .expect(
+                "missing-row persist must emit the documented warn — \
+                 reverting the rows_affected==0 arm fails this guard",
+            );
+        // The phantom id should be on the event so an operator can
+        // identify the stale character without a DB query.
+        assert!(
+            event.has_field("player_id", &phantom_id.to_string()),
+            "warn must carry player_id field; got {:?}",
+            event
+        );
     }
 }

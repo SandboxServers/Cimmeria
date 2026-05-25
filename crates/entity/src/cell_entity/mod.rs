@@ -499,17 +499,19 @@ pub struct CellEntity {
 
     /// Per-session client option state populated by `updateSystemOptions`
     /// (player method index 93). Defaults to `SystemOptions::default()` on
-    /// entity construction, then overwritten when the client pushes its
-    /// options blob shortly after login (and again whenever the user
-    /// changes an option in the in-game menu).
+    /// entity construction, then overwritten by either of two paths:
     ///
-    /// Currently honours `autoReload` and `reloadOnActivate`; extending to
-    /// the full ~100 options in `SGWGame/Content/XML/SystemOptions.xml`
-    /// is mechanical — see [`SystemOptions::apply`].
+    /// - **Hydrate-on-login** — `InitPlayerState` carries the persisted
+    ///   values loaded from `sgw_player.auto_reload` and
+    ///   `sgw_player.reload_on_activate`.
+    /// - **Live update** — the client's `updateSystemOptions` push, which
+    ///   also fires a `CellToBaseMsg::SystemOptionsUpdate` so the row is
+    ///   written back to the DB on every toggle.
     ///
-    /// Not yet persisted to the DB across logins. The XML marks these
-    /// options `serverSynch='true'` and the original game stored them
-    /// account-side; that hydrate path is a follow-up.
+    /// Currently honours `autoReload` and `reloadOnActivate` — the only
+    /// two options the 2009 XML marks `serverSynch='true'`. Extending to
+    /// new server-synced options is mechanical — see
+    /// [`SystemOptions::apply`].
     pub system_options: SystemOptions,
 }
 

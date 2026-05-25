@@ -287,3 +287,136 @@ async fn reload_on_activate_skips_for_npc() {
         "non-player must never trigger reload-on-activate"
     );
 }
+
+// ── maybe_trigger_auto_reload (direct unit tests) ─────────────────────────
+//
+// The fire path (`handle_use_ability`) calls this helper at both
+// exit-success points. These tests pin the gate decisions directly
+// rather than driving through the full fire pipeline — the integration
+// path is already covered by the existing use_ability tests.
+//
+// Path under test: `use_ability::maybe_trigger_auto_reload`. The helper
+// is private but exposed in tests via the `super::*` import (test_helpers
+// for `use_ability` live in its own module; we replicate the gates here
+// to pin the option's behavioural contract).
+
+#[tokio::test]
+async fn auto_reload_triggers_when_clip_drains_to_zero_with_option_on() {
+    let mut mgr = make_player_with_ability();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.system_options.auto_reload = true;
+        p.set_slot_ammo(0, 0); // simulate clip just emptied by fire
+    }
+    let (tx, _rx) = mpsc::channel(32);
+    // Call via the use_ability re-export to exercise the actual
+    // production helper, not a re-derived copy.
+    crate::cell::abilities::maybe_trigger_auto_reload_for_test(1, true, 100, &tx, &mut mgr).await;
+    let e = mgr.get_entity(1).unwrap();
+    assert!(
+        e.reload_complete_at.is_some(),
+        "ammo=0 + autoReload=on must start a reload"
+    );
+}
+
+#[tokio::test]
+async fn auto_reload_skips_when_option_off() {
+    let mut mgr = make_player_with_ability();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.system_options.auto_reload = false; // user turned it off
+        p.set_slot_ammo(0, 0);
+    }
+    let (tx, _rx) = mpsc::channel(32);
+    crate::cell::abilities::maybe_trigger_auto_reload_for_test(1, true, 100, &tx, &mut mgr).await;
+    let e = mgr.get_entity(1).unwrap();
+    assert!(
+        e.reload_complete_at.is_none(),
+        "user turned the option off — must not auto-reload even at ammo=0"
+    );
+}
+
+#[tokio::test]
+async fn auto_reload_skips_when_ammo_remaining() {
+    let mut mgr = make_player_with_ability();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.system_options.auto_reload = true;
+        p.set_slot_ammo(0, 1); // one bullet left — don't reload yet
+    }
+    let (tx, _rx) = mpsc::channel(32);
+    crate::cell::abilities::maybe_trigger_auto_reload_for_test(1, true, 100, &tx, &mut mgr).await;
+    let e = mgr.get_entity(1).unwrap();
+    assert!(
+        e.reload_complete_at.is_none(),
+        "ammo>0 must not auto-reload (Phase A of handle_reload would no-op anyway, but skipping saves the call)"
+    );
+}
+
+#[tokio::test]
+async fn auto_reload_skips_when_reload_already_in_flight() {
+    let mut mgr = make_player_with_ability();
+    let now = std::time::Instant::now();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.system_options.auto_reload = true;
+        p.set_slot_ammo(0, 0);
+        p.reload_complete_at = Some(now + std::time::Duration::from_secs(2));
+    }
+    let (tx, _rx) = mpsc::channel(32);
+    crate::cell::abilities::maybe_trigger_auto_reload_for_test(1, true, 100, &tx, &mut mgr).await;
+    let e = mgr.get_entity(1).unwrap();
+    // Stamp untouched — in-flight reload must not be restarted.
+    assert_eq!(
+        e.reload_complete_at,
+        Some(now + std::time::Duration::from_secs(2)),
+        "auto-reload during in-flight reload must not restart it"
+    );
+}
+
+#[tokio::test]
+async fn auto_reload_skips_when_ammo_was_not_consumed() {
+    // Self-buff / no-target casts hit `maybe_trigger_auto_reload` with
+    // `ammo_was_consumed = false` because their gate inside
+    // `handle_use_ability` cleared the flag. Make sure that bypass works
+    // even when the player is technically at ammo=0 from some other
+    // path — the helper trusts the consumption signal as the gate.
+    let mut mgr = make_player_with_ability();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.system_options.auto_reload = true;
+        p.set_slot_ammo(0, 0);
+    }
+    let (tx, _rx) = mpsc::channel(32);
+    crate::cell::abilities::maybe_trigger_auto_reload_for_test(1, false, 100, &tx, &mut mgr).await;
+    let e = mgr.get_entity(1).unwrap();
+    assert!(
+        e.reload_complete_at.is_none(),
+        "ammo_was_consumed=false must short-circuit before the gate check"
+    );
+}
+
+#[tokio::test]
+async fn auto_reload_skips_for_melee_weapon_with_zero_clip_size() {
+    // A melee weapon reports `active_clip_size() == 0` AND
+    // `active_ammo() == 0` — without the clip-size gate the helper
+    // would queue a no-op reload that handle_reload's "already at max
+    // ammo" branch catches. The gate skips the wasted call.
+    let mut mgr = make_player_with_ability();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.system_options.auto_reload = true;
+        // Replace the bandolier slot with a melee weapon (clip_size=0).
+        p.bandolier_items.insert(
+            0,
+            cimmeria_entity::cell_entity::BandolierItem {
+                item_id: 99,
+                clip_size: 0,
+                default_ammo_type: 0,
+                current_ammo: 0,
+                cur_ammo_type: 0,
+            },
+        );
+    }
+    let (tx, _rx) = mpsc::channel(32);
+    crate::cell::abilities::maybe_trigger_auto_reload_for_test(1, true, 100, &tx, &mut mgr).await;
+    let e = mgr.get_entity(1).unwrap();
+    assert!(
+        e.reload_complete_at.is_none(),
+        "melee weapon (clip_size=0) must not trigger auto-reload"
+    );
+}

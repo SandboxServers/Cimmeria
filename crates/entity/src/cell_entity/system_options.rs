@@ -9,12 +9,15 @@
 //! <option name='reloadOnActivate'   defaultBool='false' serverSynch='true' />
 //! ```
 //!
-//! Persistence to the database is a follow-up; this struct lives on
-//! `CellEntity` and resets to defaults on every login. Server-synched
-//! semantics in the original game meant the option was stored against the
-//! account and pushed back at character-select; we will need a DB column
-//! plus a hydrate-on-login pass when we wire that. The behavioural change
-//! that makes the checkboxes *do anything* is the immediate gap.
+//! Persistence is DB-backed via `sgw_player.auto_reload` and
+//! `sgw_player.reload_on_activate`. The values are hydrated into the
+//! cell entity at world-entry through `InitPlayerState`, and any live
+//! toggle from `updateSystemOptions` (player method 93) fires a
+//! `CellToBaseMsg::SystemOptionsUpdate` so the next login sees the
+//! same values. The server-synched semantics from the original game
+//! are preserved without involving the account layer — `sgw_player` is
+//! per-character, which is the granularity the in-game checkbox panel
+//! actually offers.
 
 /// Single source of truth for the two reload-related client options.
 ///

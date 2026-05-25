@@ -376,5 +376,18 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
             0
         };
         emit_active_ammo_type(entity_id, new_ammo_type, tx, space_mgr).await;
+        // Drag/right-click equip into the active slot is just as much
+        // an "activate" event as the single-slot `UpdateBandolierItem`
+        // path (which calls this helper at the bottom of
+        // `handle_update_bandolier_item`). Without this, the
+        // `reloadOnActivate` option works for grant-driven equips but
+        // silently no-ops for inventory-window drags — the very most
+        // common case players use.
+        if active_slot_gained_weapon {
+            crate::cell::cell_methods::player::world::maybe_trigger_reload_on_activate(
+                entity_id, tx, space_mgr,
+            )
+            .await;
+        }
     }
 }

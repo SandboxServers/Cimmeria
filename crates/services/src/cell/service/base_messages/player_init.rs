@@ -12,7 +12,6 @@ use crate::cell::space_manager::SpaceManager;
 
 /// Handles the `InitPlayerState` message: restores player missions, abilities,
 /// bandolier items, and fires the content-engine `player_loaded` trigger.
-#[allow(clippy::too_many_arguments)]
 pub(in crate::cell::service) async fn handle_init_player_state(
     entity_id: u32,
     player_id: i32,
@@ -176,4 +175,112 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     }
 
     content::fire_player_loaded(entity_id, player_id, &world_name, engine, tx, space_mgr).await;
+}
+
+#[cfg(test)]
+mod system_options_assignment_tests {
+    //! The InitPlayerState handler is the hydrate-on-login site for
+    //! `CellEntity::system_options`. These guards pin that the
+    //! incoming `SystemOptions` actually lands on the entity — without
+    //! this, a regression that drops the field assignment would let
+    //! the cell fall back to `SystemOptions::default()` every login
+    //! and the user's saved checkbox values would silently revert
+    //! after every reconnect.
+
+    use super::*;
+    use cimmeria_entity::cell_entity::SystemOptions;
+
+    fn make_mgr() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+        mgr
+    }
+
+    /// The hydrated SystemOptions block must replace the entity's
+    /// default. Bug shape: a refactor that drops the assignment
+    /// silently leaves auto_reload=true / reload_on_activate=false
+    /// regardless of what the DB returned.
+    #[tokio::test]
+    async fn init_player_state_assigns_system_options() {
+        let mut mgr = make_mgr();
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(32);
+        // Hydrate values DIFFERENT from `SystemOptions::default()` so a
+        // missed assignment is observable. Defaults are auto_reload=true,
+        // reload_on_activate=false; flip both.
+        let hydrated = SystemOptions {
+            auto_reload: false,
+            reload_on_activate: true,
+        };
+
+        handle_init_player_state(
+            1,
+            100,
+            "Castle_CellBlock".into(),
+            1,
+            vec![],
+            vec![],
+            0,
+            vec![],
+            hydrated.clone(),
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.system_options, hydrated,
+            "InitPlayerState must overwrite the entity's default \
+             SystemOptions with the DB-hydrated values",
+        );
+    }
+
+    /// Hydrating with the same value as the default still has to
+    /// assign (not skip) — otherwise a hand-edited row that explicitly
+    /// stores the defaults could be silently treated as "unset" if
+    /// somebody added a "skip if equals default" optimisation.
+    #[tokio::test]
+    async fn init_player_state_assigns_default_values_explicitly() {
+        let mut mgr = make_mgr();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            // Pre-stuff the entity with non-defaults so the assignment
+            // is observable even when the hydrated value is default.
+            p.system_options.auto_reload = false;
+            p.system_options.reload_on_activate = true;
+        }
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(32);
+
+        handle_init_player_state(
+            1,
+            100,
+            "Castle_CellBlock".into(),
+            1,
+            vec![],
+            vec![],
+            0,
+            vec![],
+            SystemOptions::default(),
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.system_options,
+            SystemOptions::default(),
+            "InitPlayerState must always overwrite — even an explicit \
+             default-equal hydrate must reset prior in-memory state",
+        );
+    }
 }

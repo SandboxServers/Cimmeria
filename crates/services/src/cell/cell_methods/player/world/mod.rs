@@ -362,11 +362,15 @@ pub(super) fn parse_name_value_pairs(buf: &[u8]) -> Result<Vec<(String, String)>
         ));
     }
     let count = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
-    // Bound the count against the remaining buffer so a corrupt
-    // count field can't cause us to allocate gigabytes; each pair
-    // is at least 8 bytes (two empty WSTRINGs). 64 is plenty for the
-    // ~100-option dial in SystemOptions.xml, but we want to fail
-    // loud rather than guess on absurd values.
+    // Hard cap against a corrupt or hostile count field that would
+    // otherwise drive `Vec::with_capacity` into a multi-gigabyte
+    // allocation. SystemOptions.xml has ~140 options total (only 2 of
+    // them server-synced), so a real client never sends more than a
+    // few dozen at once; 256 is well past that with no expectation of
+    // tightness. The per-pair `read_wstring` calls below also bounds-
+    // check against the buffer, so we don't need a separate
+    // remaining-buffer check here — a corrupt count that gets past
+    // this cap will still surface as a typed read error.
     if count > 256 {
         return Err(format!(
             "ARRAY<NameValuePair>: implausible count {count} (cap 256)"

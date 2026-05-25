@@ -243,10 +243,13 @@ pub(crate) async fn handle_on_client_ready(
     };
 
     // Query active bandolier slot, items, and server-synced system
-    // options from DB (Bug #1: don't hardcode empty state). Distinguish
-    // DB error from "no row" so a connection blip doesn't silently
-    // default a real player to empty bandolier state. The two booleans
-    // come from the same SELECT so we make one round-trip not three.
+    // options from DB — don't hardcode empty state, that previously
+    // shipped two regressions where players spawned with bandolier
+    // slot 0 + empty options regardless of their persisted values.
+    // Distinguish DB error from "no row" so a connection blip doesn't
+    // silently default a real player to empty bandolier state. The
+    // two booleans come from the same SELECT so we make one
+    // round-trip not three.
     let (active_bandolier_slot, bandolier_items, system_options) = if let Some(pool) = db_pool {
         #[derive(sqlx::FromRow)]
         struct PlayerInitRow {
