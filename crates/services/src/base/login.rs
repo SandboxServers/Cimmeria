@@ -20,6 +20,16 @@ use super::tick_sync::run_tick_loop;
 use super::ConnectedClientState;
 
 /// Validate ticket, send Phase 3 reply + time-sync, register the encrypted channel.
+///
+/// `level = "info"` because login is low-frequency and high-signal —
+/// every successful auth shows up in SigNoz as a span you can drill
+/// into for ticket lookup, duplicate-eviction, and tick-loop spawn.
+#[tracing::instrument(
+    name = "base.login",
+    level = "info",
+    skip_all,
+    fields(peer = %addr, request_id, account_id = tracing::field::Empty),
+)]
 pub(crate) async fn handle_login(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
@@ -45,6 +55,12 @@ pub(crate) async fn handle_login(
             return Ok(());
         }
     };
+
+    // Backfill account_id onto the parent span now that the ticket has
+    // resolved — every nested call below (duplicate eviction, channel
+    // register, tick-loop spawn) gets correlated under the same
+    // account in SigNoz.
+    tracing::Span::current().record("account_id", login.account_id);
 
     let key = decode_session_key(&login.session_key)?;
 
@@ -86,7 +102,14 @@ pub(crate) async fn handle_login(
             };
             let pkt = build_logged_off(&old_key, seq, &acks);
             let _ = transport.send_to(&pkt, old_addr).await;
-            destroy_client_entities(connected, entity_manager, old_addr, cell_tx, entity_to_addr);
+            destroy_client_entities(
+                connected,
+                entity_manager,
+                old_addr,
+                cell_tx,
+                entity_to_addr,
+                "duplicate_login",
+            );
         }
     }
 
@@ -308,7 +331,14 @@ pub(crate) async fn handle_log_off(
     tracing::debug!(%addr, seq, "Sent LOGGED_OFF (0x37)");
 
     // Destroy entities and remove from connected map.
-    destroy_client_entities(connected, entity_manager, addr, cell_tx, entity_to_addr);
+    destroy_client_entities(
+        connected,
+        entity_manager,
+        addr,
+        cell_tx,
+        entity_to_addr,
+        "logoff",
+    );
 
     Ok(())
 }

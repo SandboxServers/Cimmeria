@@ -23,6 +23,12 @@ use super::super::ConnectedClientState;
 use super::methods::{query_player_load_data, query_world_entry};
 
 /// Send RESET_ENTITIES when the client calls `playCharacter` to begin world entry.
+#[tracing::instrument(
+    name = "world_entry.play_character",
+    level = "info",
+    skip_all,
+    fields(peer = %addr, account_id, player_id),
+)]
 pub(crate) async fn handle_play_character(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,

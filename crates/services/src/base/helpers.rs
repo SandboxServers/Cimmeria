@@ -230,12 +230,19 @@ pub(crate) fn get_active_entity_id(
 ///
 /// Always sets `cancelled` on the session before removal so the tick-sync loop
 /// exits promptly instead of running until the 60-second inactivity timeout.
+///
+/// `reason` is a short, stable label naming why the disconnect fired
+/// (`"client_disconnect"`, `"inactivity_timeout"`, `"duplicate_login"`,
+/// `"logoff"`). Pin it across every call site so SigNoz can pivot on
+/// `disconnect_reason` to answer "what kind of disconnect am I
+/// looking at?" without inferring from message text.
 pub(crate) fn destroy_client_entities(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
     addr: SocketAddr,
     cell_tx: &Option<tokio::sync::mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    reason: &'static str,
 ) {
     let (account_eid, player_eid) = {
         let mut clients = match connected.lock() {
@@ -243,7 +250,7 @@ pub(crate) fn destroy_client_entities(
             Err(_) => return,
         };
         let Some(c) = clients.get(&addr) else {
-            tracing::debug!(%addr, "destroy_client_entities: no session, already cleaned up");
+            tracing::debug!(%addr, disconnect_reason = reason, "destroy_client_entities: no session, already cleaned up");
             return;
         };
         // Signal the tick-sync loop to exit before we remove the session.
@@ -273,7 +280,13 @@ pub(crate) fn destroy_client_entities(
             });
         }
     }
-    tracing::info!(%addr, "Client entities cleaned up");
+    tracing::info!(
+        %addr,
+        disconnect_reason = reason,
+        account_entity_id = account_eid,
+        player_entity_id = ?player_eid,
+        "Client entities cleaned up"
+    );
 }
 
 /// Send an AoI packet to a specific witness's client — **unreliable**

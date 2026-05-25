@@ -61,6 +61,12 @@ async fn send_state_field(
 /// ability, on cooldown, reload in flight, no ammo, or out-of-range
 /// for an explicit target). Ground-target AoE callers gate
 /// secondary-target damage on this return value.
+#[tracing::instrument(
+    name = "combat.use_ability",
+    level = "info",
+    skip_all,
+    fields(entity_id, ability_id, target_id)
+)]
 pub async fn handle_use_ability(
     entity_id: u32,
     ability_id: i32,

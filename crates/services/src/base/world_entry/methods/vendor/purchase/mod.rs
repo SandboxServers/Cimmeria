@@ -22,6 +22,12 @@ mod tests;
 const INV_MAIN: i32 = 1;
 
 /// Transactionally purchase vendor-list entries and refresh inventory/cash.
+#[tracing::instrument(
+    name = "vendor.purchase",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, vendor_entity_id, vendor_template_id, items_len = items.len()),
+)]
 pub async fn handle_purchase_vendor_items(
     entity_id: u32,
     player_id: i32,

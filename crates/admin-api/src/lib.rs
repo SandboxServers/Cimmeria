@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use axum::{Extension, Router};
 use tokio::sync::broadcast;
+use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -120,5 +121,16 @@ pub fn build_router(
         .layer(Extension(login_tx))
         .layer(Extension(login_buffer))
         .layer(middleware::cors_layer())
+        // Per-request tracing — every HTTP request becomes a span named
+        // `http.request` with the standard tower-http fields (method,
+        // uri, status, latency_ms). Pairs with the OTLP layers in
+        // `cimmeria-server::otel` to give SigNoz a full waterfall of
+        // admin-panel actions, including DB queries downstream.
+        //
+        // Default `TraceLayer::new_for_http()` emits at DEBUG, which is
+        // off in the default `info` filter. The on_response/on_failure
+        // hooks log at INFO/WARN respectively so the request_id and
+        // latency end up in SigNoz without overriding RUST_LOG.
+        .layer(TraceLayer::new_for_http())
         .with_state(orchestrator)
 }

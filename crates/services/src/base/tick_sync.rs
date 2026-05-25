@@ -158,5 +158,12 @@ pub(crate) async fn run_tick_loop(
     }
 
     // Clean up entities for this disconnected client.
-    destroy_client_entities(&connected, &entity_manager, addr, &cell_tx, &entity_to_addr);
+    destroy_client_entities(
+        &connected,
+        &entity_manager,
+        addr,
+        &cell_tx,
+        &entity_to_addr,
+        "inactivity_timeout",
+    );
 }

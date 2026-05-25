@@ -28,6 +28,23 @@ use super::super::ConnectedClientState;
 use super::{account_arms, cell_arms, read_constant_payload, read_word_length_payload};
 
 /// Handle an encrypted datagram from a known connected client.
+///
+/// This is the load-bearing dispatch seam for established sessions —
+/// every encrypted UDP packet from a logged-in client passes through
+/// here. The `#[instrument]` parents Mercury packet events, account
+/// ID, and any downstream method calls under one trace, so SigNoz
+/// shows "what did this packet do?" as a single tree per datagram.
+///
+/// `level = "debug"` because the recv-loop sibling [`handle_datagram`]
+/// already pays the per-packet span cost at debug; this nested span
+/// adds the account_id correlation field and keeps the trace coherent
+/// across the decrypt → parse → dispatch chain.
+#[tracing::instrument(
+    name = "base.encrypted_datagram",
+    level = "debug",
+    skip_all,
+    fields(peer = %addr, account_id, raw_len = raw.len()),
+)]
 pub(crate) async fn handle_encrypted_datagram(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
@@ -46,7 +63,16 @@ pub(crate) async fn handle_encrypted_datagram(
     let plaintext = match enc.decrypt(raw) {
         Ok(p) => p,
         Err(e) => {
-            tracing::warn!(%addr, "Decryption failed (bad HMAC?): {e}");
+            // Not a session teardown — the next packet may decrypt
+            // fine. Stable `reason` field makes "spike in HMAC fails"
+            // a one-query alarm in SigNoz (key rollover gone wrong,
+            // MITM attempt, replay attack window).
+            tracing::warn!(
+                %addr,
+                disconnect_reason = "decrypt_fail",
+                error = %e,
+                "Decryption failed (bad HMAC?)"
+            );
             return Ok(());
         }
     };
@@ -256,7 +282,14 @@ pub(crate) async fn handle_encrypted_datagram(
             // DISCONNECT (0x0C)
             0x0C => {
                 tracing::info!(%addr, "Client sent DISCONNECT");
-                destroy_client_entities(connected, entity_manager, addr, cell_tx, entity_to_addr);
+                destroy_client_entities(
+                    connected,
+                    entity_manager,
+                    addr,
+                    cell_tx,
+                    entity_to_addr,
+                    "client_disconnect",
+                );
             }
             // VIEWPORT_ACK (0x09)
             0x09 => {

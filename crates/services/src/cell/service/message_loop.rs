@@ -52,9 +52,31 @@ pub(super) async fn run_cell_loop(
                 }
             }
             _ = tick_interval.tick() => {
-                super::ticks::run_aoi_tick(tx, &mut space_mgr).await;
+                // One span per 100ms tick. All per-tick work (AoI diff,
+                // reload completion, holster timer, pending attack/reload
+                // promotion, auto-cycle, ring transport, NPC movement,
+                // NPC AI sub-tick, regen) becomes children of this
+                // span. SigNoz shows "what happened on tick N?" as one
+                // trace; without this, each sub-tick event is a
+                // root-level orphan with no shared correlation field.
+                //
+                // debug level — at 10 Hz the volume would drown the
+                // default-info SigNoz view. Flip on with
+                // `RUST_LOG=cimmeria_services::cell::service::message_loop=debug`.
+                //
+                // `.instrument()` wrapping an `async { ... }.await` —
+                // the tick body awaits, and a plain `.entered()` guard
+                // would silently fall off the moving task across the
+                // tokio runtime's thread switches.
+                use tracing::Instrument;
+                let tick_span = tracing::debug_span!(
+                    "cell.tick",
+                    tick = aoi_tick_counter,
+                );
+                async {
+                    super::ticks::run_aoi_tick(tx, &mut space_mgr).await;
 
-                aoi_tick_counter = aoi_tick_counter.wrapping_add(1);
+                    aoi_tick_counter = aoi_tick_counter.wrapping_add(1);
 
                 // Promote pending reloads whose warmup deadline has elapsed.
                 // Runs before NPC movement so any onStatUpdate from the refill
@@ -128,6 +150,9 @@ pub(super) async fn run_cell_loop(
                 if aoi_tick_counter.is_multiple_of(10) {
                     super::ticks::regen_tick(tx, &mut space_mgr).await;
                 }
+                }
+                .instrument(tick_span)
+                .await;
             }
         }
     }

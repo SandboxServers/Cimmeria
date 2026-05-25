@@ -31,6 +31,18 @@ use super::messaging::send_entity_method;
 /// Ordering and side effects are described at the module level. `target_state`
 /// is the corpse's already-mutated `state_field` (with `BSF_Dead` set), passed
 /// in by the caller because the caller already had a mutable borrow.
+///
+/// `level = "info"` because death is low-frequency, high-signal, and the
+/// pipeline is multi-step (reticle clear, threat fanout, state-field
+/// broadcast, loot drop, respawn arm). One span surfacing all five
+/// stages makes regressions like "NPC died but loot didn't drop"
+/// debuggable from a single SigNoz trace instead of grepping logs.
+#[tracing::instrument(
+    name = "combat.death",
+    level = "info",
+    skip_all,
+    fields(target_eid, attacker_id, attacker_is_player, target_is_player,)
+)]
 pub(super) async fn apply_death_transition(
     target_eid: u32,
     attacker_id: u32,

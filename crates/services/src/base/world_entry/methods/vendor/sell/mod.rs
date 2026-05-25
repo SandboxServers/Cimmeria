@@ -30,6 +30,12 @@ struct SellInventoryRow {
 }
 
 /// Transactionally sell owned items to a vendor and refresh inventory/cash.
+#[tracing::instrument(
+    name = "vendor.sell",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, vendor_entity_id, vendor_template_id, items_len = items.len()),
+)]
 pub async fn handle_sell_vendor_items(
     entity_id: u32,
     player_id: i32,

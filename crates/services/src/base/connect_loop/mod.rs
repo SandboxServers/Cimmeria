@@ -96,6 +96,24 @@ pub(crate) async fn run_connect_loop(
 }
 
 /// Dispatch a single incoming UDP datagram.
+///
+/// The `#[instrument]` here creates a per-datagram span — that's the
+/// load-bearing seam for SigNoz: every UDP packet entering the server
+/// becomes one trace, and the `mercury.packet` events fired downstream
+/// from `Channel::receive_packet` automatically nest as span events
+/// under it. Without this span, those events would be root-level
+/// orphans that only the log signal captures (no trace context, no
+/// per-packet view).
+///
+/// `level = "debug"` keeps these out of the SigNoz default-info filter
+/// — they're high-volume; turn them on at the operator's discretion
+/// (`RUST_LOG=cimmeria_services::base::connect_loop=debug`).
+#[tracing::instrument(
+    name = "base.datagram",
+    level = "debug",
+    skip_all,
+    fields(peer = %addr, len = raw.len()),
+)]
 async fn handle_datagram(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,

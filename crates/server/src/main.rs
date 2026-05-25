@@ -94,16 +94,23 @@ async fn main() {
     let login_buffer = LoginEventBuffer::new();
 
     // OTLP exporter (optional — requires OTEL_EXPORTER_OTLP_ENDPOINT).
+    // Two layers come back: a trace layer (spans + span events) and a
+    // log layer (root-level events like the `mercury.packet` stream).
     // The guard is bound at this scope so it drops *after* the
-    // orchestrator's stop_all returns, flushing the in-flight batch on
-    // clean shutdown.
-    let (otel_layer, _otel_guard) = match otel::init() {
-        Some((layer, guard)) => (Some(layer), Some(guard)),
-        None => (None, None),
+    // orchestrator's stop_all returns, flushing both in-flight batches
+    // on clean shutdown.
+    let (otel_trace_layer, otel_log_layer, _otel_guard) = match otel::init() {
+        Some((trace, log, guard)) => (Some(trace), Some(log), Some(guard)),
+        None => (None, None, None),
     };
 
     // Initialise layered tracing — guards must live until shutdown.
-    let _guards = init_logging(log_tx.clone(), log_buffer.clone(), otel_layer);
+    let _guards = init_logging(
+        log_tx.clone(),
+        log_buffer.clone(),
+        otel_trace_layer,
+        otel_log_layer,
+    );
 
     tracing::trace!(pid = std::process::id(), "Process spawned");
 
@@ -383,7 +390,8 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 fn init_logging(
     log_tx: broadcast::Sender<LogEntry>,
     log_buffer: LogBuffer,
-    otel_layer: Option<otel::OtelLayer>,
+    otel_trace_layer: Option<otel::OtelTraceLayer>,
+    otel_log_layer: Option<otel::OtelLogLayer>,
 ) -> Vec<WorkerGuard> {
     // Move previous session's logs into archive/.
     archive_previous_logs();
@@ -542,18 +550,34 @@ fn init_logging(
     }
 
     // ── OpenTelemetry → SigNoz (optional) ─────────────────────────────
-    // Ship debug+ from our crates but drop the chatty HTTP middleware
-    // noise. The Mercury packet target (`mercury.packet`) flows through
-    // at info level — it's the load-bearing analytical surface, sampling
+    // Two layers come through together when OTLP is enabled:
+    //
+    //   * `trace_layer` — captures `tracing::span!` spans (and events
+    //     fired *inside* them) as OpenTelemetry spans. Shows up in the
+    //     SigNoz Traces view.
+    //   * `log_layer`   — captures every `tracing::*` event as an OTLP
+    //     log record, including root-level events that have no parent
+    //     span. The Mercury packet stream lives here. Shows up in the
+    //     SigNoz Logs view.
+    //
+    // Both layers share the same env-filter so the operator only has to
+    // tune visibility once. Filters ship `debug+` from our crates and
+    // drop the chatty HTTP middleware noise; `mercury.packet` is kept
+    // at info — it's the load-bearing analytical surface, sampling
     // would defeat the purpose.
-    if let Some(layer) = otel_layer {
-        layers.push(Box::new(layer.with_filter(EnvFilter::new(
-            "info,\
-                 cimmeria_services=debug,\
-                 cimmeria_mercury=debug,\
-                 mercury.packet=info,\
-                 tungstenite=off,tokio_tungstenite=off,hyper=off",
-        ))));
+    let otel_filter = "info,\
+                cimmeria_services=debug,\
+                cimmeria_mercury=debug,\
+                mercury.packet=info,\
+                sqlx::query=debug,\
+                tungstenite=off,tokio_tungstenite=off,hyper=off,\
+                h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";
+
+    if let Some(layer) = otel_trace_layer {
+        layers.push(Box::new(layer.with_filter(EnvFilter::new(otel_filter))));
+    }
+    if let Some(layer) = otel_log_layer {
+        layers.push(Box::new(layer.with_filter(EnvFilter::new(otel_filter))));
     }
 
     // Assemble the subscriber — one `.with()` call on the whole Vec.
