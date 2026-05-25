@@ -7,6 +7,7 @@ pub mod audit;
 pub mod auth;
 pub mod config;
 pub mod content;
+pub mod dev_session;
 pub mod editor;
 pub mod entities;
 pub mod players;

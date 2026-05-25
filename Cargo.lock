@@ -704,14 +704,18 @@ name = "cimmeria-admin-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
+ "chrono",
  "cimmeria-commands",
  "cimmeria-common",
  "cimmeria-content-engine",
  "cimmeria-entity",
  "cimmeria-services",
+ "hmac",
  "jsonwebtoken",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "thiserror 2.0.18",
  "tokio",
@@ -721,6 +725,7 @@ dependencies = [
  "tracing-subscriber",
  "utoipa",
  "utoipa-swagger-ui",
+ "uuid",
 ]
 
 [[package]]
