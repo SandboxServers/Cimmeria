@@ -16,7 +16,7 @@ use sqlx::PgPool;
 
 use super::super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::super::ConnectedClientState;
-use crate::mercury::{build_entity_method_packet, method_idx};
+use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 mod remove_by_type;
 mod remove_instance;
@@ -131,7 +131,14 @@ pub async fn send_full_inventory_update(
         entity_to_addr,
         entity_id,
         |key, seq, acks| {
-            build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_UPDATE_ITEM, &args)
+            build_player_entity_method_packet(
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_idx::ON_UPDATE_ITEM,
+                &args,
+            )
         },
     )
     .await;
@@ -165,7 +172,14 @@ pub(super) async fn send_on_remove_item(
         entity_to_addr,
         entity_id,
         |key, seq, acks| {
-            build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_REMOVE_ITEM, &args)
+            build_player_entity_method_packet(
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_idx::ON_REMOVE_ITEM,
+                &args,
+            )
         },
     )
     .await;

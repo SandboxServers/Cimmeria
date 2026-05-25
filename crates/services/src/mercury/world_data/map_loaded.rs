@@ -1,6 +1,7 @@
 //! `mapLoaded()` multi-packet builder: assembles all entity method calls for
 //! client game state initialization, then fragments into encrypted Mercury packets.
 
+use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
 use cimmeria_mercury::packet::build_fragmented_bundle;
 
 use super::stats::{archetype_stats, level_exp};
@@ -97,10 +98,12 @@ fn build_map_loaded_body_inner(
     world_entry: &WorldEntryInfo,
     stats: &super::ArchetypeStats,
 ) {
-    // Helper: append an entity method call to the body.
+    // Helper: append an entity method call to the body. Entity is the
+    // local player, so `IDBASE_SGW_PLAYER` (61) governs the sub-slot
+    // threshold for every method in this body.
     macro_rules! append_method {
         ($method_idx:expr, $args:expr) => {{
-            append_entity_method(body, $method_idx, entity_id, $args);
+            append_entity_method(body, $method_idx, IDBASE_SGW_PLAYER, entity_id, $args);
         }};
     }
 

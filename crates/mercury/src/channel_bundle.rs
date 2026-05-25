@@ -79,26 +79,85 @@
 
 use crate::packet::FRAGMENT_BODY_SIZE;
 
-/// Method-index boundary between direct and extended entity-method
-/// encoding. Indices `< 61` use direct encoding (msg_id = index | 0x80),
-/// indices `>= 61` use extended encoding (msg_id = 0xBD, sub_index byte
-/// after entity_id).
+/// Per-entity sub-slot threshold (`idBase`) for SGWPlayer.
 ///
-/// **Single source of truth** for the entity-method encoding boundary —
-/// both `ChannelBundle::append_entity_method` and the services-layer
-/// `crates/services/src/mercury/mod.rs::append_entity_method` import
-/// this constant so they cannot silently drift. A divergence between
-/// the two encoders would split the wire format between bundle-migrated
-/// and un-migrated call sites (pinned by the byte-equivalence tests
-/// `compose_create_entity_*_body_matches_*` in
-/// `crates/services/src/mercury/aoi/tests.rs`, but the shared constant
-/// removes the failure mode entirely).
-pub const EXTENDED_ENCODING_THRESHOLD: u16 = 61;
+/// SGWPlayer exposes 157 client methods, which plugged into the formula
+/// [`idbase_from_exposed_method_count`] gives `idBase = 61`. Every
+/// server→player method call uses this value: indices `0..61` direct-
+/// encode (msg_id = `index | 0x80`), indices `61..157` extended-encode
+/// (marker `0xBD`, then sub_index byte = `index - 61`).
+///
+/// **The threshold is per-entity-type, NOT a global constant.** Different
+/// entity types have different exposed-method counts and therefore
+/// different idbases. Pass the correct idbase for the target entity to
+/// every encoder call. For entities with `nExposedCount <= 62`, idbase
+/// is `62` — see [`idbase_from_exposed_method_count`] for the formula
+/// (`EntityDescription_AssignClientMethodIds @
+/// ghidra://SGW.exe@0x01590df0`).
+///
+/// Spec: [docs/drafts/spec/entity-property-sync.md §1.4][1] §1.17 S1,
+/// §1.18 R2.
+///
+/// [1]: ../../../../docs/drafts/spec/entity-property-sync.md
+pub const IDBASE_SGW_PLAYER: u8 = 61;
 
-/// Extended-encoding marker byte. Cannot be used as a direct msg_id.
-/// Shared with `services` for the same anti-drift reason as
-/// [`EXTENDED_ENCODING_THRESHOLD`].
+/// Per-entity sub-slot threshold for SGW non-player entities (SGWMob,
+/// SGWPet, SGWBeing-derived NPCs, etc.). Every such entity type in the
+/// current SGW schema exposes ≤62 client methods, so the formula
+/// [`idbase_from_exposed_method_count`] returns `62` (the maximum). Use
+/// this for any method call targeting a non-player entity until a
+/// per-class lookup is wired up.
+pub const IDBASE_NPC_DEFAULT: u8 = 62;
+
+/// Extended-encoding marker byte. Cannot be used as a direct msg_id for
+/// SGWPlayer (whose `idbase = 61`) because the direct range stops at
+/// `0xBC = 60 | 0x80`. For entities with a higher idbase the byte `0xBD`
+/// can mean "direct method 61" rather than "extended marker" — the
+/// client decoder distinguishes by knowing the receiving entity's idbase.
 pub const EXTENDED_ENCODING_MARKER: u8 = 0xBD;
+
+/// Compute the per-entity sub-slot threshold (`idBase`) from the entity
+/// type's exposed-client-method count, per `EntityDescription_AssignClient
+/// MethodIds @ ghidra://SGW.exe@0x01590df0`:
+///
+/// ```text
+///   idBase = 0x3E - (nExposedCount + 0xC0) / 0xFF
+/// ```
+///
+/// Method indices `0..idbase` use single-byte direct encoding (wire byte
+/// `(index | 0x80)`). Method indices `idbase..` use the two-byte extended
+/// encoding (marker `0xBD` + sub_index byte = `index - idbase`).
+///
+/// - `nExposedCount = 157` (SGWPlayer) → `idBase = 61`. The constant
+///   [`IDBASE_SGW_PLAYER`] pre-computes this for the common case.
+/// - `nExposedCount <= 62` → `idBase = 62`. The whole namespace fits in
+///   single-byte direct encoding; the wildcard `0xBD` byte is then a
+///   valid direct msg_id for method 61 on that entity rather than the
+///   extended marker.
+/// - `nExposedCount = 318` → `idBase = 60`. Method 60 starts extended-
+///   encoding territory.
+///
+/// # Input range
+///
+/// `n_exposed_count` is the count of `<Exposed/>` client methods on a
+/// flattened entity type — realistically 0–500. The formula's domain is
+/// `0..=15_807`: above that, `(n + 0xC0) / 0xFF > 62` and the subtraction
+/// would underflow. Out-of-range inputs **saturate to 0** rather than
+/// wrap. Such a count would imply ~12_500 method indices in the extended
+/// range alone, which exceeds the sub-index byte (`u8`, max 255) — so an
+/// entity that large cannot actually be encoded by this wire format and
+/// the saturated `0` is a defensive sentinel, not a usable idbase.
+///
+/// Spec: `docs/drafts/spec/entity-property-sync.md` §1.4, §1.17 S1,
+/// §1.18 R2.
+pub const fn idbase_from_exposed_method_count(n_exposed_count: usize) -> u8 {
+    let i_var2 = (n_exposed_count + 0xC0) / 0xFF;
+    if i_var2 > 0x3E {
+        0
+    } else {
+        (0x3E - i_var2) as u8
+    }
+}
 
 /// Accumulator for one logical bundle of application-level messages.
 ///
@@ -159,6 +218,13 @@ impl ChannelBundle {
 
     /// Append a server→client entity-method call to the bundle body.
     ///
+    /// `idbase` is the per-entity-type sub-slot threshold for the target
+    /// entity — see [`idbase_from_exposed_method_count`]. For methods
+    /// targeting SGWPlayer pass [`IDBASE_SGW_PLAYER`] (`61`). For entities
+    /// with ≤62 exposed methods, pass `62`. The threshold is **not** a
+    /// global constant; encoding with the wrong idbase produces a wire
+    /// byte the client decodes as a different method.
+    ///
     /// Wire format matches
     /// [`crates/services/src/mercury/mod.rs`]'s `append_entity_method`
     /// byte-for-byte — see the module doc for the encoding.
@@ -169,19 +235,25 @@ impl ChannelBundle {
     ///
     /// **Field-width contract:** panics on inputs the Mercury wire format
     /// cannot represent:
-    /// - `method_index >= EXTENDED_ENCODING_THRESHOLD + 256` (extended
-    ///   sub-index byte overflow — max representable extended index is
-    ///   `61 + 255 = 316`)
+    /// - `method_index >= idbase + 256` (extended sub-index byte
+    ///   overflow — for SGWPlayer's `idbase = 61` that's `61 + 255 = 316`)
     /// - `args.len()` such that the per-message length field would exceed
     ///   `u16::MAX` (~65 KB body)
     ///
     /// A panic is preferable to a silent narrowing cast: the latter would
     /// emit a packet with a corrupt method/length field that the client
     /// parses incorrectly, producing a hard-to-diagnose downstream bug.
-    pub fn append_entity_method(&mut self, method_index: u16, entity_id: u32, args: &[u8]) {
-        if method_index >= EXTENDED_ENCODING_THRESHOLD {
-            let sub_index = u8::try_from(method_index - EXTENDED_ENCODING_THRESHOLD).expect(
-                "method_index exceeds Mercury extended-encoding range (max 61 + 255 = 316)",
+    pub fn append_entity_method(
+        &mut self,
+        method_index: u16,
+        idbase: u8,
+        entity_id: u32,
+        args: &[u8],
+    ) {
+        let threshold = u16::from(idbase);
+        if method_index >= threshold {
+            let sub_index = u8::try_from(method_index - threshold).expect(
+                "method_index exceeds Mercury extended-encoding range (idbase + 255 = max)",
             );
             let payload_len = u16::try_from(4 + 1 + args.len())
                 .expect("entity-method payload exceeds Mercury u16 length field (~65 KB max)");
@@ -192,9 +264,9 @@ impl ChannelBundle {
         } else {
             let payload_len = u16::try_from(4 + args.len())
                 .expect("entity-method payload exceeds Mercury u16 length field (~65 KB max)");
-            // Safe: method_index < 61 < 128 < u8::MAX, so `as u8` cannot
-            // truncate. The high bit is then set via `| 0x80` as the
-            // direct-encoding marker.
+            // Safe: method_index < idbase <= 62 < u8::MAX, so `as u8`
+            // cannot truncate. The high bit is then set via `| 0x80` as
+            // the direct-encoding marker.
             self.body.push((method_index as u8) | 0x80);
             self.body.extend_from_slice(&payload_len.to_le_bytes());
             self.body.extend_from_slice(&entity_id.to_le_bytes());
@@ -328,6 +400,165 @@ mod tests {
         parse_incoming, FLAG_FRAGMENTED, FLAG_HAS_ACKS, FLAG_HAS_SEQUENCE, FLAG_RELIABLE,
     };
 
+    // ── idbase formula tests ────────────────────────────────────────────
+
+    /// SGWPlayer exposes 157 client methods; formula must reduce to the
+    /// observed wire idbase of 61. Audit Appendix C.6 wire-captured 35
+    /// `0xBD` sub-slot bytes for SGWPlayer-targeted methods — those only
+    /// align if the threshold is 61.
+    #[test]
+    fn idbase_formula_sgw_player_157_methods() {
+        assert_eq!(idbase_from_exposed_method_count(157), 61);
+        // Constant must match the formula for the documented input — drift
+        // would mean the SGWPlayer-targeted wire encoder uses a different
+        // boundary than the formula advertises.
+        assert_eq!(IDBASE_SGW_PLAYER, idbase_from_exposed_method_count(157));
+    }
+
+    /// Entities with ≤62 exposed methods all land on `idbase = 62` (the
+    /// maximum). Covers the integer-division corner: `iVar2 = (n + 0xC0) /
+    /// 0xFF` is 0 for `n ≤ 62` because `n + 192 ≤ 254 < 255`.
+    #[test]
+    fn idbase_formula_small_method_count_is_62() {
+        for n in 0..=62 {
+            assert_eq!(
+                idbase_from_exposed_method_count(n),
+                62,
+                "n={n} expected idbase=62, formula returned otherwise"
+            );
+        }
+        // Sanity-check the documented `IDBASE_NPC_DEFAULT` matches.
+        assert_eq!(IDBASE_NPC_DEFAULT, 62);
+    }
+
+    /// The boundary lives between 62 and 63 exposed methods: `n = 63`
+    /// already drops idbase to 61 because `(63 + 192) / 255 = 1`.
+    #[test]
+    fn idbase_formula_drops_to_61_at_63_methods() {
+        assert_eq!(idbase_from_exposed_method_count(62), 62);
+        assert_eq!(idbase_from_exposed_method_count(63), 61);
+    }
+
+    /// Step at every multiple of 255 exposed methods + 63. Documents the
+    /// staircase shape of the formula — each step subtracts 1 from idbase.
+    #[test]
+    fn idbase_formula_staircase_at_each_255_step() {
+        // (n+192)/255 transitions: at n=63 → 1, at n=318 → 2, at n=573 → 3.
+        assert_eq!(idbase_from_exposed_method_count(317), 61); // (317+192)/255 = 509/255 = 1
+        assert_eq!(idbase_from_exposed_method_count(318), 60); // (318+192)/255 = 510/255 = 2
+        assert_eq!(idbase_from_exposed_method_count(572), 60); // (572+192)/255 = 764/255 = 2
+        assert_eq!(idbase_from_exposed_method_count(573), 59); // (573+192)/255 = 765/255 = 3
+    }
+
+    /// Out-of-domain inputs saturate to `0` rather than wrapping. The
+    /// formula's domain is `0..=15_807`; above that, `(n+0xC0)/0xFF`
+    /// exceeds `0x3E` and the subtraction would underflow. The guard
+    /// returns `0` as a defensive sentinel — `idbase = 0` means every
+    /// method index uses extended encoding, which the sub_index byte
+    /// can only address up to method 255, so an entity that hits this
+    /// branch is unencodable anyway. The point of the test is to pin
+    /// the no-panic / no-wrap behaviour on out-of-range input.
+    #[test]
+    fn idbase_formula_saturates_to_zero_on_overflow() {
+        assert_eq!(idbase_from_exposed_method_count(15_807), 0);
+        assert_eq!(idbase_from_exposed_method_count(16_000), 0);
+        assert_eq!(idbase_from_exposed_method_count(usize::MAX / 2), 0);
+        assert_eq!(idbase_from_exposed_method_count(usize::MAX - 0xC0), 0);
+    }
+
+    // ── Per-idbase encoder pins ─────────────────────────────────────────
+
+    /// Method index 60 always lands in direct encoding regardless of
+    /// idbase — well below both SGWPlayer's 61 and any NPC's 62.
+    #[test]
+    fn encoder_method_60_direct_for_both_idbases() {
+        for &idbase in &[IDBASE_SGW_PLAYER, IDBASE_NPC_DEFAULT] {
+            let mut bundle = ChannelBundle::new(true);
+            bundle.append_entity_method(60, idbase, 1, &[]);
+            let (packets, _) = bundle.finalize(0, 0, passthrough);
+            // First byte after the flags is the msg_id.
+            assert_eq!(
+                packets[0][1],
+                0x80 | 60,
+                "method 60 must direct-encode (msg_id = 0xBC) for idbase {idbase}",
+            );
+        }
+    }
+
+    /// Method index 61 for SGWPlayer extended-encodes (marker `0xBD`,
+    /// sub_index 0) — issue #315 worked example.
+    #[test]
+    fn encoder_method_61_extended_for_sgw_player() {
+        let mut bundle = ChannelBundle::new(true);
+        bundle.append_entity_method(61, IDBASE_SGW_PLAYER, 7, &[]);
+        let (packets, _) = bundle.finalize(0, 0, passthrough);
+        assert_eq!(
+            packets[0][1], EXTENDED_ENCODING_MARKER,
+            "method 61 must extended-encode under SGWPlayer's idbase=61"
+        );
+        // Wire after marker: u16 word_len = 5, u32 entity_id = 7, u8 sub_index = 0.
+        assert_eq!(u16::from_le_bytes([packets[0][2], packets[0][3]]), 5);
+        assert_eq!(
+            u32::from_le_bytes([packets[0][4], packets[0][5], packets[0][6], packets[0][7]]),
+            7
+        );
+        assert_eq!(packets[0][8], 0, "sub_index = 61 - 61 = 0");
+    }
+
+    /// Method index 61 for an NPC (idbase=62) takes the DIRECT path — the
+    /// wire byte is `0xBD` (same byte as the SGWPlayer extended marker)
+    /// but as a direct msg_id, NOT a sub-slot trigger. This is the
+    /// per-entity divergence the threshold parameterisation makes visible.
+    /// If encoded with the wrong idbase the client would dispatch to a
+    /// different method.
+    #[test]
+    fn encoder_method_61_direct_for_npc_default_idbase() {
+        let mut bundle = ChannelBundle::new(true);
+        bundle.append_entity_method(61, IDBASE_NPC_DEFAULT, 7, &[]);
+        let (packets, _) = bundle.finalize(0, 0, passthrough);
+        // Same wire byte (0xBD), DIFFERENT semantics: direct, not marker.
+        // Body has NO sub_index byte — payload is just the entity_id.
+        assert_eq!(
+            packets[0][1],
+            0x80 | 61,
+            "method 61 must direct-encode under NPC idbase=62 — wire byte is 0xBD as a direct msg_id"
+        );
+        assert_eq!(
+            u16::from_le_bytes([packets[0][2], packets[0][3]]),
+            4,
+            "direct encoding payload is entity_id only (4 bytes)"
+        );
+        assert_eq!(
+            u32::from_le_bytes([packets[0][4], packets[0][5], packets[0][6], packets[0][7]]),
+            7,
+            "entity_id immediately follows the length prefix — no sub_index"
+        );
+    }
+
+    /// SGWPlayer method 156 (one below the 157-method cap; near the top
+    /// of the range) extended-encodes with sub_index = 156 - 61 = 95.
+    #[test]
+    fn encoder_method_156_extended_sub_index_95_for_sgw_player() {
+        let mut bundle = ChannelBundle::new(true);
+        bundle.append_entity_method(156, IDBASE_SGW_PLAYER, 1, &[]);
+        let (packets, _) = bundle.finalize(0, 0, passthrough);
+        assert_eq!(packets[0][1], EXTENDED_ENCODING_MARKER);
+        assert_eq!(packets[0][8], 95, "sub_index = 156 - 61 = 95");
+    }
+
+    /// setupWorldParameters (SGWPlayer method 122) — audit Appendix C.6
+    /// wire-capture confirms this encodes as [0xBD][len][entity_id][61].
+    /// Named landmark method (its method-index 122 == idbase 61 + sub_index
+    /// 61, the only such alignment in the SGWPlayer schema).
+    #[test]
+    fn encoder_setup_world_parameters_122_extended_sub_index_61() {
+        let mut bundle = ChannelBundle::new(true);
+        bundle.append_entity_method(122, IDBASE_SGW_PLAYER, 1, &[]);
+        let (packets, _) = bundle.finalize(0, 0, passthrough);
+        assert_eq!(packets[0][1], EXTENDED_ENCODING_MARKER);
+        assert_eq!(packets[0][8], 61, "sub_index = 122 - 61 = 61");
+    }
+
     /// Identity encrypt for tests — packet bytes pass through unmodified
     /// so `parse_incoming` can verify the wire layout without needing
     /// session-key plumbing.
@@ -346,7 +577,7 @@ mod tests {
     #[test]
     fn append_entity_method_direct_encoding_matches_services_layer_byte_for_byte() {
         let mut bundle = ChannelBundle::new(true);
-        bundle.append_entity_method(12, 0xDEAD_BEEF, &[0xAA, 0xBB]);
+        bundle.append_entity_method(12, IDBASE_SGW_PLAYER, 0xDEAD_BEEF, &[0xAA, 0xBB]);
 
         // Body should be exactly the bytes the services-layer
         // append_entity_method would emit for the same inputs.
@@ -368,7 +599,7 @@ mod tests {
     #[test]
     fn append_entity_method_extended_encoding_matches_services_layer_byte_for_byte() {
         let mut bundle = ChannelBundle::new(true);
-        bundle.append_entity_method(122, 1, &[]);
+        bundle.append_entity_method(122, IDBASE_SGW_PLAYER, 1, &[]);
 
         let expected: &[u8] = &[
             0xBD, // extended marker
@@ -389,7 +620,7 @@ mod tests {
     #[test]
     fn append_entity_method_boundary_between_direct_and_extended_encoding() {
         let mut direct = ChannelBundle::new(false);
-        direct.append_entity_method(60, 1, &[]);
+        direct.append_entity_method(60, IDBASE_SGW_PLAYER, 1, &[]);
         assert_eq!(
             direct.body[0],
             60 | 0x80,
@@ -397,7 +628,7 @@ mod tests {
         );
 
         let mut extended = ChannelBundle::new(false);
-        extended.append_entity_method(61, 1, &[]);
+        extended.append_entity_method(61, IDBASE_SGW_PLAYER, 1, &[]);
         assert_eq!(
             extended.body[0], EXTENDED_ENCODING_MARKER,
             "index 61 must flip to extended encoding"
@@ -413,7 +644,7 @@ mod tests {
     fn bundle_packs_multiple_cross_entity_messages_into_one_packet() {
         let mut bundle = ChannelBundle::new(true);
         for (i, entity_id) in [10u32, 20, 30, 40, 50].iter().enumerate() {
-            bundle.append_entity_method(12, *entity_id, &[i as u8]);
+            bundle.append_entity_method(12, IDBASE_SGW_PLAYER, *entity_id, &[i as u8]);
         }
         assert_eq!(bundle.num_messages(), 5);
         assert!(
@@ -459,7 +690,7 @@ mod tests {
         // 30 appends ≈ 3210 bytes → 3 fragments (1300 + 1300 + 610).
         let args = [0xAB; 100];
         for entity_id in 0u32..30 {
-            bundle.append_entity_method(12, entity_id, &args);
+            bundle.append_entity_method(12, IDBASE_SGW_PLAYER, entity_id, &args);
         }
         assert!(
             bundle.body_len() > 2 * FRAGMENT_BODY_SIZE,
@@ -511,7 +742,7 @@ mod tests {
         // Force fragmentation so we have multiple packets to inspect.
         let args = [0xCD; 100];
         for entity_id in 0u32..30 {
-            bundle.append_entity_method(12, entity_id, &args);
+            bundle.append_entity_method(12, IDBASE_SGW_PLAYER, entity_id, &args);
         }
 
         let (packets, _) = bundle.finalize(FLAG_RELIABLE, 500, passthrough);
@@ -591,8 +822,8 @@ mod tests {
     fn bundle_body_byte_exact_against_manual_construction() {
         // Bundle path
         let mut bundle = ChannelBundle::new(true);
-        bundle.append_entity_method(12, 0x0000_0042, &[0x11, 0x22, 0x33]);
-        bundle.append_entity_method(141, 0x0000_0099, &[0xFE, 0xED]);
+        bundle.append_entity_method(12, IDBASE_SGW_PLAYER, 0x0000_0042, &[0x11, 0x22, 0x33]);
+        bundle.append_entity_method(141, IDBASE_SGW_PLAYER, 0x0000_0099, &[0xFE, 0xED]);
         let bundle_body = bundle.body.clone();
 
         // Manual path — same wire format the services-layer builders use.
@@ -765,7 +996,12 @@ mod tests {
     #[should_panic(expected = "extended-encoding range")]
     fn append_entity_method_panics_on_extended_sub_index_overflow() {
         let mut bundle = ChannelBundle::new(true);
-        bundle.append_entity_method(EXTENDED_ENCODING_THRESHOLD + 256, 1, &[]);
+        bundle.append_entity_method(
+            u16::from(IDBASE_SGW_PLAYER) + 256,
+            IDBASE_SGW_PLAYER,
+            1,
+            &[],
+        );
     }
 
     /// Field-width contract: payload_len overflow MUST panic. A 65_536-byte
@@ -777,6 +1013,6 @@ mod tests {
     fn append_entity_method_panics_on_payload_length_overflow() {
         let mut bundle = ChannelBundle::new(true);
         let huge_args = vec![0u8; u16::MAX as usize - 3]; // 4 + (u16::MAX - 3) > u16::MAX
-        bundle.append_entity_method(12, 1, &huge_args);
+        bundle.append_entity_method(12, IDBASE_SGW_PLAYER, 1, &huge_args);
     }
 }

@@ -10,7 +10,7 @@ use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
-use crate::mercury::build_entity_method_packet;
+use crate::mercury::build_player_entity_method_packet;
 
 use super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::ConnectedClientState;
@@ -72,7 +72,7 @@ pub(super) async fn start_minigame(
                 entity_to_addr,
                 entity_id,
                 |key, seq, acks| {
-                    build_entity_method_packet(key, seq, acks, entity_id, method, &args)
+                    build_player_entity_method_packet(key, seq, acks, entity_id, method, &args)
                 },
             )
             .await;
@@ -104,7 +104,7 @@ pub(super) async fn minigame_result(
         connected,
         entity_to_addr,
         entity_id,
-        |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method, &[]),
+        |key, seq, acks| build_player_entity_method_packet(key, seq, acks, entity_id, method, &[]),
     )
     .await;
     // Forward to CellApp for victory chain processing

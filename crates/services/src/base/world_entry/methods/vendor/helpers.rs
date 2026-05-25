@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 use super::super::player_load::meta::query_bandolier_items_tx;
 use crate::base::{helpers, ConnectedClientState};
 use crate::cell::messages::BaseToCellMsg;
-use crate::mercury::{build_entity_method_packet, method_idx};
+use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 pub async fn send_cash_changed_to_client(
     entity_id: u32,
@@ -24,7 +24,7 @@ pub async fn send_cash_changed_to_client(
         entity_to_addr,
         entity_id,
         |key, seq, acks| {
-            build_entity_method_packet(
+            build_player_entity_method_packet(
                 key,
                 seq,
                 acks,
@@ -236,7 +236,7 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
             entity_to_addr,
             entity_id,
             |key, seq, acks| {
-                build_entity_method_packet(
+                build_player_entity_method_packet(
                     key,
                     seq,
                     acks,

@@ -14,7 +14,7 @@ use super::data::{
 use super::serializers::{
     serialize_empty_store_open, serialize_store_open, serialize_store_update, StoreItemCostUpdate,
 };
-use crate::mercury::{build_entity_method_packet, method_idx};
+use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 #[derive(sqlx::FromRow)]
 pub struct VendorTemplateLists {
@@ -156,7 +156,14 @@ pub async fn send_store_open_to_client(
         entity_to_addr,
         entity_id,
         |key, seq, acks| {
-            build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_STORE_OPEN, &args)
+            build_player_entity_method_packet(
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_idx::ON_STORE_OPEN,
+                &args,
+            )
         },
     )
     .await;
@@ -182,7 +189,7 @@ pub async fn send_store_update_to_client(
         entity_to_addr,
         entity_id,
         |key, seq, acks| {
-            build_entity_method_packet(
+            build_player_entity_method_packet(
                 key,
                 seq,
                 acks,
