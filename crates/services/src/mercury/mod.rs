@@ -255,6 +255,17 @@ pub mod method_idx {
 /// - **Direct** (`method_index < idbase`): `[(index | 0x80): u8][word_len: u16][entity_id: u32][args...]`
 /// - **Extended** (`method_index >= idbase`): `[0xBD: u8][word_len: u16][entity_id: u32][(index - idbase): u8][args...]`
 ///
+/// # Field-width contract
+///
+/// Mirrors the panics from `ChannelBundle::append_entity_method` so the two
+/// encoders are behaviorally aligned — a silent narrowing cast here would
+/// emit corrupt wire bytes the client cannot recover from. Panics on inputs
+/// the wire format cannot represent:
+/// - `method_index - idbase >= 256` (extended sub-index byte overflow — for
+///   SGWPlayer's `idbase = 61` that's max representable `61 + 255 = 316`)
+/// - `args.len()` such that the per-message length field would exceed
+///   `u16::MAX` (~65 KB body)
+///
 /// [1]: ../../../../docs/drafts/spec/entity-property-sync.md
 pub fn append_entity_method(
     body: &mut Vec<u8>,
@@ -268,15 +279,22 @@ pub fn append_entity_method(
     let threshold = u16::from(idbase);
     if method_index >= threshold {
         // Extended encoding: marker 0xBD + sub_index
+        let sub_index = u8::try_from(method_index - threshold)
+            .expect("method_index exceeds Mercury extended-encoding range (idbase + 255 = max)");
+        let payload_len = u16::try_from(4 + 1 + args.len())
+            .expect("entity-method payload exceeds Mercury u16 length field (~65 KB max)");
         body.push(EXTENDED_ENCODING_MARKER);
-        let payload_len = (4 + 1 + args.len()) as u16; // entity_id + sub_index + args
         body.extend_from_slice(&payload_len.to_le_bytes());
         body.extend_from_slice(&entity_id.to_le_bytes());
-        body.push((method_index - threshold) as u8);
+        body.push(sub_index);
     } else {
         // Direct encoding: msg_id = index | 0x80
+        let payload_len = u16::try_from(4 + args.len())
+            .expect("entity-method payload exceeds Mercury u16 length field (~65 KB max)");
+        // Safe: method_index < idbase <= 62 < u8::MAX, so `as u8` cannot
+        // truncate. The high bit is then set via `| 0x80` as the direct-
+        // encoding marker.
         body.push((method_index as u8) | 0x80);
-        let payload_len = (4 + args.len()) as u16; // entity_id + args
         body.extend_from_slice(&payload_len.to_le_bytes());
         body.extend_from_slice(&entity_id.to_le_bytes());
     }

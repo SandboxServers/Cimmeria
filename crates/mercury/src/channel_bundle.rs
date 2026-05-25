@@ -137,11 +137,26 @@ pub const EXTENDED_ENCODING_MARKER: u8 = 0xBD;
 /// - `nExposedCount = 318` → `idBase = 60`. Method 60 starts extended-
 ///   encoding territory.
 ///
+/// # Input range
+///
+/// `n_exposed_count` is the count of `<Exposed/>` client methods on a
+/// flattened entity type — realistically 0–500. The formula's domain is
+/// `0..=15_807`: above that, `(n + 0xC0) / 0xFF > 62` and the subtraction
+/// would underflow. Out-of-range inputs **saturate to 0** rather than
+/// wrap. Such a count would imply ~12_500 method indices in the extended
+/// range alone, which exceeds the sub-index byte (`u8`, max 255) — so an
+/// entity that large cannot actually be encoded by this wire format and
+/// the saturated `0` is a defensive sentinel, not a usable idbase.
+///
 /// Spec: `docs/drafts/spec/entity-property-sync.md` §1.4, §1.17 S1,
 /// §1.18 R2.
 pub const fn idbase_from_exposed_method_count(n_exposed_count: usize) -> u8 {
     let i_var2 = (n_exposed_count + 0xC0) / 0xFF;
-    (0x3E - i_var2) as u8
+    if i_var2 > 0x3E {
+        0
+    } else {
+        (0x3E - i_var2) as u8
+    }
 }
 
 /// Accumulator for one logical bundle of application-level messages.
@@ -385,7 +400,7 @@ mod tests {
         parse_incoming, FLAG_FRAGMENTED, FLAG_HAS_ACKS, FLAG_HAS_SEQUENCE, FLAG_RELIABLE,
     };
 
-    // ── idbase formula tests (issue #315) ───────────────────────────────
+    // ── idbase formula tests ────────────────────────────────────────────
 
     /// SGWPlayer exposes 157 client methods; formula must reduce to the
     /// observed wire idbase of 61. Audit Appendix C.6 wire-captured 35
@@ -435,7 +450,23 @@ mod tests {
         assert_eq!(idbase_from_exposed_method_count(573), 59); // (573+192)/255 = 765/255 = 3
     }
 
-    // ── Per-idbase encoder pins (issue #315) ────────────────────────────
+    /// Out-of-domain inputs saturate to `0` rather than wrapping. The
+    /// formula's domain is `0..=15_807`; above that, `(n+0xC0)/0xFF`
+    /// exceeds `0x3E` and the subtraction would underflow. The guard
+    /// returns `0` as a defensive sentinel — `idbase = 0` means every
+    /// method index uses extended encoding, which the sub_index byte
+    /// can only address up to method 255, so an entity that hits this
+    /// branch is unencodable anyway. The point of the test is to pin
+    /// the no-panic / no-wrap behaviour on out-of-range input.
+    #[test]
+    fn idbase_formula_saturates_to_zero_on_overflow() {
+        assert_eq!(idbase_from_exposed_method_count(15_807), 0);
+        assert_eq!(idbase_from_exposed_method_count(16_000), 0);
+        assert_eq!(idbase_from_exposed_method_count(usize::MAX / 2), 0);
+        assert_eq!(idbase_from_exposed_method_count(usize::MAX - 0xC0), 0);
+    }
+
+    // ── Per-idbase encoder pins ─────────────────────────────────────────
 
     /// Method index 60 always lands in direct encoding regardless of
     /// idbase — well below both SGWPlayer's 61 and any NPC's 62.
@@ -477,8 +508,9 @@ mod tests {
     /// Method index 61 for an NPC (idbase=62) takes the DIRECT path — the
     /// wire byte is `0xBD` (same byte as the SGWPlayer extended marker)
     /// but as a direct msg_id, NOT a sub-slot trigger. This is the
-    /// per-entity divergence issue #315 makes visible. If encoded with
-    /// the wrong idbase the client would dispatch to a different method.
+    /// per-entity divergence the threshold parameterisation makes visible.
+    /// If encoded with the wrong idbase the client would dispatch to a
+    /// different method.
     #[test]
     fn encoder_method_61_direct_for_npc_default_idbase() {
         let mut bundle = ChannelBundle::new(true);
@@ -505,7 +537,6 @@ mod tests {
 
     /// SGWPlayer method 156 (one below the 157-method cap; near the top
     /// of the range) extended-encodes with sub_index = 156 - 61 = 95.
-    /// Issue #315 specifically asks for this case.
     #[test]
     fn encoder_method_156_extended_sub_index_95_for_sgw_player() {
         let mut bundle = ChannelBundle::new(true);
@@ -517,7 +548,8 @@ mod tests {
 
     /// setupWorldParameters (SGWPlayer method 122) — audit Appendix C.6
     /// wire-capture confirms this encodes as [0xBD][len][entity_id][61].
-    /// Issue #315 names this as the canary.
+    /// Named landmark method (its method-index 122 == idbase 61 + sub_index
+    /// 61, the only such alignment in the SGWPlayer schema).
     #[test]
     fn encoder_setup_world_parameters_122_extended_sub_index_61() {
         let mut bundle = ChannelBundle::new(true);

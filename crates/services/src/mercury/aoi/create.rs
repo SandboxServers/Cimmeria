@@ -13,6 +13,15 @@ use crate::mercury::{
 /// Select per-target idbase for the AoI cascade. The cascade target is
 /// the entity entering the witness's AoI: an NPC when `npc_data` is
 /// `Some(_)`, otherwise another player ghost.
+///
+/// Returns `IDBASE_NPC_DEFAULT` (62) for the NPC branch because every
+/// current schema NPC type has ≤62 exposed methods. Once any NPC type
+/// gains >62 exposed methods, this fallback becomes incorrect — the
+/// fix is to thread the entity's `class_id` through `NpcAoIData` and
+/// look up the precomputed idbase per class instead of the blanket
+/// default. The cascade today emits only methods at indices well
+/// below 61 so the value is unobservable on the wire, but the lookup
+/// is the long-term shape.
 fn cascade_idbase(npc_data: Option<&NpcAoIData>) -> u8 {
     if npc_data.is_some() {
         IDBASE_NPC_DEFAULT
@@ -365,5 +374,23 @@ fn append_appearance(body: &mut Vec<u8>, entity_id: u32, idbase: u8, d: &NpcAoID
             // onStaticMeshNameUpdate is method index 0
             append_entity_method(body, 0, idbase, entity_id, &args);
         }
+    }
+}
+
+#[cfg(test)]
+mod cascade_idbase_tests {
+    use super::*;
+
+    /// NPC cascade — `npc_data` present → NPC idbase.
+    #[test]
+    fn cascade_idbase_npc_branch_returns_npc_default() {
+        let npc = NpcAoIData::default();
+        assert_eq!(cascade_idbase(Some(&npc)), IDBASE_NPC_DEFAULT);
+    }
+
+    /// Player-ghost cascade — `npc_data` absent → SGWPlayer idbase.
+    #[test]
+    fn cascade_idbase_player_branch_returns_sgw_player() {
+        assert_eq!(cascade_idbase(None), IDBASE_SGW_PLAYER);
     }
 }
