@@ -1,13 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod client_paths;
 mod config;
+mod identity;
 mod install;
 mod launch;
 mod logs;
 mod manifest;
 mod patch_rdata;
 mod state;
+mod telemetry;
 mod worker;
 
 use std::sync::Arc;
@@ -18,7 +21,9 @@ use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
 use app::LauncherApp;
-use config::exe_dir;
+use config::{exe_dir, telemetry_state_path};
+use identity::{identity_path, LauncherIdentity};
+use state::TelemetryState;
 
 fn main() -> eframe::Result<()> {
     tracing_subscriber::fmt()
@@ -63,6 +68,18 @@ fn main() -> eframe::Result<()> {
     let runtime = Arc::new(Runtime::new().expect("failed to create tokio runtime"));
     let runtime_for_app = runtime.clone();
 
+    // Mint install_id on first launch; subsequent launches reuse it.
+    // Logging before the eframe handoff puts the correlator in
+    // early-init output where startup failures still land.
+    log_telemetry_foundation();
+
+    // Re-enqueue any telemetry left on disk from a previous run that
+    // crashed before flushing. Best-effort.
+    let recovered = telemetry::recover_pending_on_startup();
+    if recovered > 0 {
+        tracing::info!(recovered, "telemetry pending events recovered");
+    }
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([760.0, 540.0])
@@ -84,6 +101,47 @@ fn main() -> eframe::Result<()> {
     // would release the lock when the binding goes out of scope anyway.
     drop(lock_file);
     result
+}
+
+/// Best-effort identity load — a mint failure must not block the
+/// game from launching.
+fn log_telemetry_foundation() {
+    let id_path = identity_path();
+    match LauncherIdentity::load_or_mint(&id_path) {
+        Ok(id) => {
+            // Persistent identifiers stay at debug-level so they don't
+            // leak into log uploads.
+            tracing::info!(
+                install_short = %short_correlator(&id.install_id.to_string()),
+                launcher_version = %id.created_by_launcher_version,
+                first_seen_ms = id.first_seen_ms,
+                "Loaded launcher identity"
+            );
+            tracing::debug!(
+                install_id = %id.install_id,
+                machine_id = %id.machine_id,
+                "Launcher identity (debug-only)"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                path = %id_path.display(),
+                "Failed to load/mint launcher identity — telemetry will be inert this session"
+            );
+        }
+    }
+    let tel_state = TelemetryState::load(&telemetry_state_path());
+    tracing::info!(
+        last_upload_ms = ?tel_state.last_upload_ms,
+        kill_switch_active = tel_state.kill_switch_active,
+        last_upload_endpoint = ?tel_state.last_upload_endpoint,
+        "Loaded telemetry runtime state"
+    );
+}
+
+fn short_correlator(id: &str) -> String {
+    id.chars().take(8).collect()
 }
 
 /// Surface a fatal startup error to the user before exiting. On Windows

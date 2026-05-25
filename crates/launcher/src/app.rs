@@ -12,7 +12,7 @@ use crate::install::Progress;
 use crate::launch::{install_dir_writable, LaunchOptions};
 use crate::manifest::Manifest;
 use crate::state::InstalledState;
-use crate::worker::{Command, Event, Worker};
+use crate::worker::{Command, Event, LaunchTelemetryConfig, Worker};
 
 /// Upper bound on the status-log history kept in memory. Display already
 /// caps at the last 100 entries; this prevents the underlying Vec from
@@ -35,6 +35,13 @@ pub struct LauncherApp {
     launch_opts: LaunchOptions,
     last_refresh: std::time::Instant,
     installing: bool,
+    /// True while a confirm modal for "Reset all client state" is open.
+    /// Higher-blast-radius wipe — gates the entire Firesky/ tree, not
+    /// just the cache subdir — so we double-prompt before nuking.
+    confirm_wipe_all_open: bool,
+    /// Loaded once at app construction so each Launch+Telemetry click
+    /// doesn't re-read install.json from disk.
+    identity: Option<crate::identity::LauncherIdentity>,
 }
 
 impl LauncherApp {
@@ -54,6 +61,8 @@ impl LauncherApp {
         };
         worker.fetch_manifest_now(config.manifest_url.clone());
         let install_path_text = config.install_path.to_string_lossy().into_owned();
+        let identity =
+            crate::identity::LauncherIdentity::load_or_mint(&crate::identity::identity_path()).ok();
         Self {
             config,
             install_path_text,
@@ -67,6 +76,8 @@ impl LauncherApp {
             launch_opts,
             last_refresh: std::time::Instant::now(),
             installing: false,
+            confirm_wipe_all_open: false,
+            identity,
         }
     }
 
@@ -90,44 +101,49 @@ impl LauncherApp {
 
     fn drain_events(&mut self, ctx: &egui::Context) {
         while let Ok(ev) = self.worker.events_rx.try_recv() {
-            match ev {
+            // Events that drive *non-status* UI state (manifest panel,
+            // progress bars, the installing/managed-install flags) get
+            // their side effects applied here. The status-log line — if
+            // any — comes from `status_line_for`, which is the single
+            // source of truth for ev-to-text translation and is unit
+            // tested directly.
+            match &ev {
                 Event::ManifestFetched(m) => {
-                    self.manifest = Some(m);
+                    self.manifest = Some(m.clone());
                     self.manifest_error = None;
                 }
                 Event::ManifestError(e) => {
-                    self.manifest_error = Some(e);
+                    self.manifest_error = Some(e.clone());
                 }
                 Event::Progress(p) => {
-                    self.last_progress = Some(p);
+                    self.last_progress = Some(p.clone());
                 }
                 Event::InstallComplete => {
                     self.installing = false;
-                    self.push_status("Install complete.".into());
                     self.refresh_install_state();
                 }
-                Event::InstallError(e) => {
+                Event::InstallError(_) => {
                     self.installing = false;
-                    self.push_status(format!("Install failed: {e}"));
                 }
-                Event::Launched(name, pid) => {
-                    self.push_status(format!("Launched {name} (pid {pid})"));
+                Event::AdoptComplete => {
+                    self.refresh_install_state();
                 }
-                Event::LaunchError(e) => {
-                    self.push_status(format!("Launch failed: {e}"));
+                Event::AdoptError(_)
+                | Event::Wiped { .. }
+                | Event::WipeError(_)
+                | Event::Launched(..)
+                | Event::LaunchError(_)
+                | Event::UploadStarted
+                | Event::UploadSkipped(_)
+                | Event::UploadComplete { .. }
+                | Event::UploadError(_)
+                | Event::TelemetrySessionComplete(_)
+                | Event::TelemetrySessionError(_) => {
+                    // Status-only events — handled below.
                 }
-                Event::UploadStarted => {
-                    self.push_status("Uploading logs…".into());
-                }
-                Event::UploadSkipped(why) => {
-                    self.push_status(format!("Log upload skipped: {why}"));
-                }
-                Event::UploadComplete { blob, bytes } => {
-                    self.push_status(format!("Uploaded {bytes} bytes to {blob}"));
-                }
-                Event::UploadError(e) => {
-                    self.push_status(format!("Log upload failed: {e}"));
-                }
+            }
+            if let Some(line) = status_line_for(&ev) {
+                self.push_status(line);
             }
             ctx.request_repaint();
         }
@@ -149,6 +165,90 @@ impl LauncherApp {
 /// `String::is_empty()` checks from before the PathBuf migration.
 fn path_is_empty(p: &Path) -> bool {
     p.as_os_str().is_empty()
+}
+
+fn build_telemetry_config(
+    config: &LauncherConfig,
+    identity: &crate::identity::LauncherIdentity,
+) -> LaunchTelemetryConfig {
+    LaunchTelemetryConfig {
+        auth_base_url: config.telemetry.auth_url.clone(),
+        install_id: identity.install_id.to_string(),
+        machine_id: identity.machine_id.clone(),
+        // Built-in: a packaged launcher's build env carries the
+        // branch + git_sha at compile time. For now the OptionEnv!s
+        // default to "dev"/"unknown" — the release workflow can set
+        // CIMMERIA_BUILD_BRANCH / CIMMERIA_BUILD_GIT_SHA at compile
+        // time.
+        branch: option_env!("CIMMERIA_BUILD_BRANCH").unwrap_or("dev").into(),
+        git_sha: option_env!("CIMMERIA_BUILD_GIT_SHA")
+            .unwrap_or("unknown")
+            .into(),
+        launcher_version: identity.created_by_launcher_version.clone(),
+        state_dir: crate::config::exe_dir(),
+        tags: vec![],
+    }
+}
+
+/// Whether to surface the "Adopt existing install" affordance.
+///
+/// True iff `install_path` contains `SGW.exe` AND does NOT contain a
+/// `launcher-installed.json` marker file. The first condition rules
+/// out empty directories (those should go through the normal Install
+/// path); the second condition rules out installs the launcher
+/// already manages (those have nothing to adopt). Extracted from
+/// `show_install_panel` so the boolean decision is unit-testable
+/// without spinning up an egui frame.
+fn should_show_adopt_button(install_path: &Path) -> bool {
+    install_path.join("SGW.exe").is_file()
+        && !crate::state::InstalledState::path(install_path).exists()
+}
+
+/// Render a worker [`Event`] into the human-readable status-log line
+/// the UI appends to its scrollback. Pure formatting — extracted from
+/// `drain_events` so each Event arm has at least minimal coverage
+/// without needing an egui context. Returns `None` for events that
+/// don't translate to a status line on their own (manifest updates,
+/// progress ticks).
+fn status_line_for(event: &Event) -> Option<String> {
+    Some(match event {
+        Event::AdoptComplete => {
+            "Adopted existing install — patches will apply on top (seed bytes not verified).".into()
+        }
+        Event::AdoptError(e) => format!("Adopt failed: {e}"),
+        Event::Wiped { kind, report } => format!(
+            "Wiped {kind}: {} item(s), {} freed",
+            report.entries_removed,
+            human_bytes(report.bytes_freed)
+        ),
+        Event::WipeError(e) => format!("Wipe failed: {e}"),
+        Event::InstallComplete => "Install complete.".into(),
+        Event::InstallError(e) => format!("Install failed: {e}"),
+        Event::Launched(name, pid) => format!("Launched {name} (pid {pid})"),
+        Event::LaunchError(e) => format!("Launch failed: {e}"),
+        Event::UploadStarted => "Uploading logs…".into(),
+        Event::UploadSkipped(why) => format!("Log upload skipped: {why}"),
+        Event::UploadComplete { blob, bytes } => format!("Uploaded {bytes} bytes to {blob}"),
+        Event::UploadError(e) => format!("Log upload failed: {e}"),
+        Event::TelemetrySessionComplete(o) => {
+            let sha_short: String = o.bundle_sha256.chars().take(12).collect();
+            format!(
+                "Telemetry session complete — {} events, {} dropped, bundle {} (sha {})",
+                o.event_count,
+                o.dropped_lines,
+                human_bytes(o.bundle_bytes),
+                if sha_short.is_empty() {
+                    "n/a"
+                } else {
+                    sha_short.as_str()
+                }
+            )
+        }
+        Event::TelemetrySessionError(e) => format!("Telemetry session error: {e}"),
+        // Progress + manifest events drive other UI state, not the
+        // status log. Returning None makes that explicit.
+        Event::ManifestFetched(_) | Event::ManifestError(_) | Event::Progress(_) => return None,
+    })
 }
 
 impl eframe::App for LauncherApp {
@@ -177,8 +277,11 @@ impl eframe::App for LauncherApp {
             ui.separator();
             self.show_log_upload_panel(ui);
             ui.separator();
+            self.show_client_state_panel(ui);
+            ui.separator();
             self.show_status_log(ui);
         });
+        self.show_confirm_wipe_all_modal(ctx);
     }
 }
 
@@ -259,6 +362,42 @@ impl LauncherApp {
         if path_is_empty(&self.config.install_path) {
             ui.label("Set an install directory to enable install / update.");
             return;
+        }
+
+        // Adoption affordance: an install directory that contains
+        // SGW.exe but has no launcher-installed.json is an unmanaged
+        // pre-existing copy (typically a CME-shipped client a user
+        // pointed us at). Offer the one-click adopt path BEFORE the
+        // destructive Install / Update flow surfaces — otherwise the
+        // first thing the user sees is "Seed not installed — will
+        // download seed first" and clicking Install would overwrite
+        // ~3 GB of existing files with a fresh seed download.
+        if should_show_adopt_button(&self.config.install_path) {
+            ui.label(
+                egui::RichText::new(
+                    "Existing SGW.exe found in this directory but the launcher hasn't \
+                     adopted it yet. Adopt skips the seed download and lets patches \
+                     apply on top. Seed bytes are NOT verified — if these files don't \
+                     match the published seed, patches may misbehave.",
+                )
+                .small()
+                .italics(),
+            );
+            if ui.button("Adopt existing install").clicked() {
+                self.worker.dispatch(Command::AdoptExisting {
+                    install_dir: self.config.install_path.clone(),
+                    manifest: manifest.clone(),
+                });
+                self.push_status("Adopt requested…".into());
+            }
+            ui.separator();
+        }
+
+        if self.installed.seed_adopted {
+            ui.colored_label(
+                egui::Color32::LIGHT_YELLOW,
+                "ℹ Seed marked as adopted (unverified). Patches apply on top.",
+            );
         }
 
         let seed_ok = self.installed.seed_sha256.as_deref() == Some(manifest.seed.sha256.as_str());
@@ -400,6 +539,24 @@ impl LauncherApp {
             {
                 self.worker.dispatch(Command::LaunchAteraDebug(dir.clone()));
             }
+            // Telemetry-enabled launch needs identity + opt-in + atera
+            // available. Falls back to plain Launch Atera Debug
+            // (legacy) when telemetry is opted out or identity load
+            // failed.
+            let telemetry_ready =
+                opts.atera_available() && self.config.telemetry.enabled && self.identity.is_some();
+            if ui
+                .add_enabled(telemetry_ready, egui::Button::new("Launch + Telemetry"))
+                .clicked()
+            {
+                if let Some(id) = &self.identity {
+                    self.worker
+                        .dispatch(Command::LaunchAteraDebugWithTelemetry {
+                            install_dir: dir.clone(),
+                            telemetry: build_telemetry_config(&self.config, id),
+                        });
+                }
+            }
             if ui
                 .add_enabled(
                     opts.atera_fix_aslr_bat_present,
@@ -460,6 +617,105 @@ impl LauncherApp {
         );
     }
 
+    /// "Client state" panel — surfaces the two reset buttons backed by
+    /// [`crate::client_paths`].
+    ///
+    /// **Why this exists:** the SGW client unconditionally writes its
+    /// runtime cache (server-pushed PAK overrides) into
+    /// `%USERPROFILE%\Documents\My Games\Firesky\SGWGame\Cache.en-US\`
+    /// and consults that cache **before** the bundled PAKs in the
+    /// install directory (docs/architecture/mission-pak-overrides.md).
+    /// A stale cache from a previous shard silently shadows the
+    /// launcher-managed PAKs until it's wiped — these buttons are the
+    /// supported recovery path, mirroring the doc'd recipe in
+    /// docs/client-tools.md for cache corruption.
+    fn show_client_state_panel(&mut self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new("Client state").strong());
+        ui.label(
+            egui::RichText::new(
+                "The client writes its cache + per-user settings to \
+                 Documents\\My Games\\Firesky\\. The cache is consulted \
+                 before the launcher-managed PAKs, so stale entries from \
+                 a previous server can win silently.",
+            )
+            .small(),
+        );
+        ui.horizontal(|ui| {
+            if ui.button("Reset client cache").clicked() {
+                self.worker.dispatch(Command::WipeClientCache);
+                self.push_status("Wiping Cache.en-US…".into());
+            }
+            // Higher blast radius → confirm-dialog gate. The first click
+            // arms the modal; the second-click confirmation is what
+            // actually dispatches the wipe.
+            if ui.button("Reset all client state…").clicked() {
+                self.confirm_wipe_all_open = true;
+            }
+        });
+        ui.label(
+            egui::RichText::new(
+                "Reset client cache: wipes Cache.en-US/ (server-pushed PAK overrides). \
+                 Safe whenever you switch server hosts or pull a new manifest.\n\
+                 Reset all client state: wipes the full Firesky/ tree, including any \
+                 per-user settings the client saved. Use only if the client crashes \
+                 immediately on launch (the doc'd cache-corruption recovery).",
+            )
+            .small()
+            .italics(),
+        );
+    }
+
+    /// Modal confirmation for "Reset all client state…". egui's modal
+    /// support is `egui::Modal::new(…).show(ctx, …)` — a centered popup
+    /// that captures input until Confirm or Cancel.
+    fn show_confirm_wipe_all_modal(&mut self, ctx: &egui::Context) {
+        if !self.confirm_wipe_all_open {
+            return;
+        }
+        let modal = egui::Modal::new(egui::Id::new("confirm-wipe-all-client-state"));
+        let response = modal.show(ctx, |ui| {
+            ui.heading("Reset all client state?");
+            ui.label(
+                "This will permanently delete every file under:\n\
+                 \n\
+                 Documents\\My Games\\Firesky\\\n\
+                 \n\
+                 Including any per-user settings, keybinds, or screenshots \
+                 the client saved there. The cache will regenerate on next \
+                 launch; user settings will reset to defaults.\n\
+                 \n\
+                 This is the documented recovery path for cache corruption \
+                 (e.g. the client crashes immediately on launch). For a \
+                 less-destructive option, use \"Reset client cache\" instead — \
+                 that wipes only the server-pushed PAK overrides.",
+            );
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    self.confirm_wipe_all_open = false;
+                }
+                if ui
+                    .add(egui::Button::new(
+                        egui::RichText::new("Delete everything")
+                            .color(egui::Color32::WHITE)
+                            .background_color(egui::Color32::DARK_RED),
+                    ))
+                    .clicked()
+                {
+                    self.worker.dispatch(Command::WipeAllClientState);
+                    self.push_status("Wiping Firesky/ tree…".into());
+                    self.confirm_wipe_all_open = false;
+                }
+            });
+        });
+        // Click-outside-modal-to-dismiss: the response.should_close()
+        // check covers Esc + clicking the dimmed backdrop without
+        // re-implementing either.
+        if response.should_close() {
+            self.confirm_wipe_all_open = false;
+        }
+    }
+
     fn show_status_log(&self, ui: &mut egui::Ui) {
         ui.label(egui::RichText::new("Status").strong());
         egui::ScrollArea::vertical()
@@ -498,7 +754,9 @@ fn human_bytes(n: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{human_bytes, MAX_STATUS_LINES};
+    use super::{human_bytes, should_show_adopt_button, status_line_for, MAX_STATUS_LINES};
+    use crate::client_paths::WipeReport;
+    use crate::worker::Event;
 
     #[test]
     fn human_bytes_formats_units() {
@@ -542,5 +800,94 @@ mod tests {
         }
         assert_eq!(buf.len(), 10);
         assert_eq!(buf.first().unwrap(), "0");
+    }
+
+    // Empty install dir: no SGW.exe + no marker → the Install panel
+    // should NOT surface the Adopt affordance (nothing to adopt).
+    #[test]
+    fn should_show_adopt_button_false_on_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!should_show_adopt_button(dir.path()));
+    }
+
+    // SGW.exe present + no marker → adopt is the user's least-destructive
+    // path forward. This is the trigger condition.
+    #[test]
+    fn should_show_adopt_button_true_when_unmanaged_install_present() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("SGW.exe"), b"").unwrap();
+        assert!(should_show_adopt_button(dir.path()));
+    }
+
+    // Marker file already present → install is launcher-managed; adopt
+    // is a no-op (and would refuse with AlreadyManaged anyway). Hiding
+    // the button keeps the UI honest.
+    #[test]
+    fn should_show_adopt_button_false_when_already_managed() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("SGW.exe"), b"").unwrap();
+        std::fs::write(
+            crate::state::InstalledState::path(dir.path()),
+            r#"{"applied_patches":[],"seed_sha256":"h"}"#,
+        )
+        .unwrap();
+        assert!(!should_show_adopt_button(dir.path()));
+    }
+
+    // status_line_for covers every Event variant that produces a
+    // status entry. Wiped is the only one with non-trivial formatting
+    // (bytes-freed → human_bytes) — pin its exact shape against a
+    // realistic report.
+    #[test]
+    fn status_line_for_formats_adopt_complete() {
+        let line = status_line_for(&Event::AdoptComplete).unwrap();
+        assert!(line.contains("Adopted"), "got: {line}");
+        assert!(
+            line.contains("not verified"),
+            "must surface the trust trade-off, got: {line}"
+        );
+    }
+
+    #[test]
+    fn status_line_for_formats_adopt_error() {
+        let line = status_line_for(&Event::AdoptError("boom".into())).unwrap();
+        assert_eq!(line, "Adopt failed: boom");
+    }
+
+    #[test]
+    fn status_line_for_formats_wiped_with_human_bytes() {
+        let line = status_line_for(&Event::Wiped {
+            kind: "Cache.en-US".into(),
+            report: WipeReport {
+                entries_removed: 3,
+                bytes_freed: 5 * 1024 * 1024,
+            },
+        })
+        .unwrap();
+        // Pin both the item count and the human-bytes rendering so a
+        // future change to either thread shows up as a test diff.
+        assert_eq!(line, "Wiped Cache.en-US: 3 item(s), 5.00 MB freed");
+    }
+
+    #[test]
+    fn status_line_for_formats_wipe_error() {
+        let line = status_line_for(&Event::WipeError("permission denied".into())).unwrap();
+        assert_eq!(line, "Wipe failed: permission denied");
+    }
+
+    #[test]
+    fn status_line_for_returns_none_for_progress_and_manifest_events() {
+        // These drive UI state directly (progress bars, manifest
+        // summary panel) — they don't belong in the scrolling status
+        // log. Returning None enforces that at the type level.
+        assert!(status_line_for(&Event::ManifestError("x".into())).is_none());
+        assert!(
+            status_line_for(&Event::Progress(crate::install::Progress::Downloading {
+                label: "seed".into(),
+                downloaded: 0,
+                total: 0,
+            },))
+            .is_none()
+        );
     }
 }

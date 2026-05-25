@@ -52,6 +52,17 @@ pub struct InstalledState {
     /// for installs predating this field (treated as "patched host unknown").
     #[serde(default)]
     pub patched_host: Option<String>,
+    /// True when the seed entry was recorded by an "Adopt existing
+    /// install" flow rather than a real seed download + extract. The
+    /// hash on `seed_sha256` was copied from the manifest, NOT computed
+    /// over the on-disk bytes — so for adopted installs we trust the
+    /// user's assertion that the files match what the manifest's seed
+    /// would have produced. Patches still apply on top normally; the
+    /// flag exists so the UI can surface "(adopted — unverified)" next
+    /// to the install state and so a future hash audit can find these
+    /// rows.
+    #[serde(default)]
+    pub seed_adopted: bool,
 }
 
 impl InstalledState {
@@ -76,6 +87,33 @@ impl InstalledState {
 
     pub fn has_applied(&self, patch_id: &str) -> bool {
         self.applied_patches.iter().any(|p| p == patch_id)
+    }
+}
+
+/// Per-session runtime state for the telemetry pipeline. Separate
+/// from `LauncherConfig` so frequent saves don't churn the user-
+/// facing config file. All fields default so a corrupt file loads as
+/// zero-state — telemetry state is never load-bearing.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TelemetryState {
+    #[serde(default)]
+    pub last_upload_ms: Option<i64>,
+    #[serde(default)]
+    pub last_kill_switch_check_ms: Option<i64>,
+    #[serde(default)]
+    pub kill_switch_active: bool,
+    /// Cached so a final bundle can flush even if the auth endpoint
+    /// is unreachable at game-exit time.
+    #[serde(default)]
+    pub last_upload_endpoint: Option<String>,
+}
+
+impl TelemetryState {
+    pub fn load(path: &Path) -> Self {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
     }
 }
 
@@ -136,14 +174,50 @@ mod tests {
             applied_patches: vec!["a".into(), "b".into()],
             seed_sha256: Some("h".into()),
             patched_host: Some("play.cimmeria.gg".into()),
+            seed_adopted: false,
         };
         s.save(dir.path()).unwrap();
         let loaded = InstalledState::load(dir.path());
         assert_eq!(loaded.applied_patches, vec!["a", "b"]);
         assert_eq!(loaded.seed_sha256.as_deref(), Some("h"));
         assert_eq!(loaded.patched_host.as_deref(), Some("play.cimmeria.gg"));
+        assert!(!loaded.seed_adopted);
         assert!(loaded.has_applied("a"));
         assert!(!loaded.has_applied("c"));
+    }
+
+    // Adopt-existing-install path writes `seed_adopted: true` alongside
+    // the manifest-copied seed hash. The flag must roundtrip so the UI
+    // can surface "(adopted)" on subsequent launches.
+    #[test]
+    fn installed_state_roundtrip_adopted() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = InstalledState {
+            applied_patches: vec![],
+            seed_sha256: Some("manifest-seed-hash".into()),
+            patched_host: None,
+            seed_adopted: true,
+        };
+        s.save(dir.path()).unwrap();
+        let loaded = InstalledState::load(dir.path());
+        assert!(loaded.seed_adopted);
+        assert_eq!(loaded.seed_sha256.as_deref(), Some("manifest-seed-hash"));
+    }
+
+    // Legacy state files written before `seed_adopted` existed must
+    // default the field to false (real install, not adopted) so the
+    // UI doesn't suddenly start flagging healthy installs.
+    #[test]
+    fn installed_state_legacy_without_seed_adopted_defaults_false() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            InstalledState::path(dir.path()),
+            r#"{"applied_patches":["a"],"seed_sha256":"h","patched_host":"play.cimmeria.gg"}"#,
+        )
+        .unwrap();
+        let loaded = InstalledState::load(dir.path());
+        assert!(!loaded.seed_adopted);
+        assert_eq!(loaded.seed_sha256.as_deref(), Some("h"));
     }
 
     // Forwards-compat: state files written before the patched_host field
@@ -169,6 +243,92 @@ mod tests {
         let s = InstalledState::load(dir.path());
         assert!(s.applied_patches.is_empty());
         assert!(s.seed_sha256.is_none());
+    }
+
+    // Default-state semantics: zero-value of every field, including
+    // kill_switch_active = false. This is the in-memory shape used
+    // before the first save and after a corrupt load.
+    #[test]
+    fn telemetry_state_default_is_zero_value() {
+        let s = TelemetryState::default();
+        assert_eq!(s.last_upload_ms, None);
+        assert_eq!(s.last_kill_switch_check_ms, None);
+        assert!(!s.kill_switch_active);
+        assert_eq!(s.last_upload_endpoint, None);
+    }
+
+    // load() roundtrip via direct JSON write — save() will land
+    // alongside the actual write callers in a later commit.
+    #[test]
+    fn telemetry_state_roundtrip_preserves_all_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("telemetry-state.json");
+        let s = TelemetryState {
+            last_upload_ms: Some(1_700_000_000_000),
+            last_kill_switch_check_ms: Some(1_700_000_005_000),
+            kill_switch_active: true,
+            last_upload_endpoint: Some("https://func.example.net/api".into()),
+        };
+        std::fs::write(&path, serde_json::to_vec_pretty(&s).unwrap()).unwrap();
+        let loaded = TelemetryState::load(&path);
+        assert_eq!(loaded, s);
+    }
+
+    // Missing file is "no state yet" — the load path returns default
+    // instead of an error. This is intentional: telemetry state is
+    // never load-bearing (worst case is one extra auth handshake), so
+    // a fresh install / first launch shouldn't have to special-case
+    // "file doesn't exist."
+    #[test]
+    fn telemetry_state_load_missing_file_returns_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("never-existed.json");
+        let s = TelemetryState::load(&path);
+        assert_eq!(s, TelemetryState::default());
+    }
+
+    // Corrupt file is also "no state yet" — same rationale. A
+    // half-written file from a crash mid-save shouldn't block the
+    // next launch.
+    #[test]
+    fn telemetry_state_load_corrupt_file_returns_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("telemetry-state.json");
+        std::fs::write(&path, b"{ not valid json").unwrap();
+        let s = TelemetryState::load(&path);
+        assert_eq!(s, TelemetryState::default());
+    }
+
+    // Forward-compat: a future launcher writing extra fields must not
+    // break an older launcher loading the same file — serde ignores
+    // unknown fields by default. Pin that behaviour so a stray
+    // `deny_unknown_fields` attribute would surface as a test diff.
+    #[test]
+    fn telemetry_state_load_ignores_unknown_future_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("telemetry-state.json");
+        std::fs::write(
+            &path,
+            r#"{"kill_switch_active":true,"future_field_v2":"some-value","another_future":42}"#,
+        )
+        .unwrap();
+        let s = TelemetryState::load(&path);
+        assert!(s.kill_switch_active);
+    }
+
+    // Partial JSON with only some fields set must load with the
+    // unspecified fields defaulted. This is the cross-version
+    // compatibility story: a future launcher adding a new field
+    // shouldn't break old launchers that load the same file (they'll
+    // just ignore the new field thanks to serde's permissive default).
+    #[test]
+    fn telemetry_state_load_partial_json_defaults_missing_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("telemetry-state.json");
+        std::fs::write(&path, r#"{"kill_switch_active":true}"#).unwrap();
+        let s = TelemetryState::load(&path);
+        assert!(s.kill_switch_active);
+        assert_eq!(s.last_upload_ms, None);
     }
 
     #[test]

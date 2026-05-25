@@ -10,7 +10,7 @@
 //!    string. Idempotent.
 
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -106,6 +106,7 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
             seed_sha256: Some(ctx.manifest.seed.sha256.clone()),
             applied_patches: Vec::new(),
             patched_host: None,
+            seed_adopted: false,
         };
         state.save(ctx.install_dir)?;
     }
@@ -362,6 +363,78 @@ fn extract_zip(
     Ok(())
 }
 
+/// Outcome of an "Adopt existing install" attempt — the launcher
+/// inspects the install directory and decides whether the user's
+/// pre-existing copy of the game looks plausible enough to mark as
+/// managed (skipping the full seed re-download) and let patches apply
+/// on top.
+#[derive(Debug, Error)]
+pub enum AdoptError {
+    /// The install directory doesn't contain `SGW.exe`. Either the path
+    /// is wrong or this is a genuinely empty install — the user should
+    /// run a normal Install / Update instead.
+    #[error(
+        "No SGW.exe found in {0} — this directory doesn't look like a Stargate Worlds install. \
+         Point the install path at a directory containing SGW.exe and try again, \
+         or run Install / Update to download a fresh copy."
+    )]
+    NoGameExe(PathBuf),
+    /// `launcher-installed.json` already exists. Adopt is a one-way
+    /// transition from "unmanaged by the launcher" → "managed"; once
+    /// the launcher has state for this install we don't need to adopt
+    /// it again.
+    #[error("Install at {0} is already managed by the launcher — nothing to adopt.")]
+    AlreadyManaged(PathBuf),
+    /// Persisting the marker file failed.
+    #[error("State error: {0}")]
+    State(#[from] StateError),
+}
+
+/// Mark a pre-existing game install as managed by the launcher without
+/// downloading / re-extracting the seed.
+///
+/// **Trust model:** we record `manifest.seed.sha256` as the install's
+/// `seed_sha256` *without* hashing on-disk bytes. The seed blob is
+/// gigabytes; rehashing it at adopt-time would freeze the UI for
+/// minutes. Instead we set `seed_adopted = true` so the install state
+/// carries an "unverified" flag that the UI surfaces. If the user's
+/// existing files don't match what the manifest's seed would have
+/// produced, patches may corrupt them or no-op surprisingly — the
+/// confirm dialog in the UI makes this trade-off explicit.
+///
+/// Idempotency: refuses to overwrite an existing `launcher-installed.json`
+/// (returns [`AdoptError::AlreadyManaged`]). The user must remove the
+/// state file by hand to re-adopt, which is the right behaviour because
+/// adopt-over-managed would silently discard the real `applied_patches`
+/// list and the recorded `patched_host`.
+pub fn adopt_existing_install(
+    install_dir: &Path,
+    manifest: &crate::manifest::Manifest,
+) -> Result<InstalledState, AdoptError> {
+    let exe = install_dir.join("SGW.exe");
+    // `is_file` rather than `exists` so a directory or junction named
+    // SGW.exe doesn't fool us into adopting a non-install.
+    if !exe.is_file() {
+        return Err(AdoptError::NoGameExe(install_dir.to_path_buf()));
+    }
+    if InstalledState::path(install_dir).exists() {
+        return Err(AdoptError::AlreadyManaged(install_dir.to_path_buf()));
+    }
+    let state = InstalledState {
+        seed_sha256: Some(manifest.seed.sha256.clone()),
+        applied_patches: Vec::new(),
+        patched_host: None,
+        seed_adopted: true,
+    };
+    state.save(install_dir)?;
+    info!(
+        install_dir = %install_dir.display(),
+        seed_sha = %manifest.seed.sha256,
+        "Adopted existing install (unverified — seed bytes not hashed)"
+    );
+    Ok(state)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,5 +571,82 @@ mod tests {
         // so this only matters for malformed manifests; reject those
         // separately via the all-hex check rather than a length check.
         assert_eq!(safe_sha_prefix("abc").unwrap(), "abc");
+    }
+
+    fn fake_manifest(seed_hash: &str) -> crate::manifest::Manifest {
+        crate::manifest::Manifest {
+            schema: 1,
+            seed: crate::manifest::SeedEntry {
+                blob: "seed/x.zip".into(),
+                size: 1,
+                sha256: seed_hash.into(),
+            },
+            patches: vec![],
+        }
+    }
+
+    // Happy path: directory has SGW.exe, no prior launcher-installed.json
+    // → adopt writes the marker file with seed_adopted=true and copies
+    // the manifest seed hash. Subsequent Install/Update would then apply
+    // patches on top without re-downloading the seed.
+    #[test]
+    fn adopt_existing_install_writes_marker_when_sgw_exe_present() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("SGW.exe"), b"fake-game-binary").unwrap();
+        let manifest = fake_manifest("seed-hash-from-manifest");
+        let state = adopt_existing_install(dir.path(), &manifest).unwrap();
+        assert!(state.seed_adopted);
+        assert_eq!(
+            state.seed_sha256.as_deref(),
+            Some("seed-hash-from-manifest")
+        );
+        assert!(state.applied_patches.is_empty());
+        // Persistence path: load-back must produce the same shape so a
+        // restart of the launcher sees the adopted install.
+        let loaded = InstalledState::load(dir.path());
+        assert!(loaded.seed_adopted);
+        assert_eq!(
+            loaded.seed_sha256.as_deref(),
+            Some("seed-hash-from-manifest")
+        );
+    }
+
+    // Empty directory: NoGameExe rejects with a path-naming error so the
+    // UI can surface "this isn't a game install" instead of silently
+    // marking an empty directory as adopted.
+    #[test]
+    fn adopt_existing_install_rejects_empty_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = fake_manifest("h");
+        let err = adopt_existing_install(dir.path(), &manifest).unwrap_err();
+        match err {
+            AdoptError::NoGameExe(p) => assert_eq!(p, dir.path()),
+            other => panic!("expected NoGameExe, got {other:?}"),
+        }
+    }
+
+    // SGW.exe as a directory (or junction) must not trick adopt into
+    // marking a non-install as managed. is_file() is the gate.
+    #[test]
+    fn adopt_existing_install_rejects_when_sgw_exe_is_a_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("SGW.exe")).unwrap();
+        let manifest = fake_manifest("h");
+        let err = adopt_existing_install(dir.path(), &manifest).unwrap_err();
+        assert!(matches!(err, AdoptError::NoGameExe(_)));
+    }
+
+    // Adopt-over-managed: the second call refuses because overwriting
+    // a real install's state would silently discard the applied-patches
+    // list and the recorded patched_host. User must delete the marker
+    // by hand to re-adopt.
+    #[test]
+    fn adopt_existing_install_rejects_already_managed_install() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("SGW.exe"), b"").unwrap();
+        let manifest = fake_manifest("h");
+        adopt_existing_install(dir.path(), &manifest).unwrap();
+        let err = adopt_existing_install(dir.path(), &manifest).unwrap_err();
+        assert!(matches!(err, AdoptError::AlreadyManaged(_)));
     }
 }

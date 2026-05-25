@@ -22,6 +22,10 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
         .route("/login", post(login))
         .route("/logout", post(logout))
         .route("/me", get(current_user))
+        // Dev-session telemetry endpoints share the /auth prefix but
+        // live in their own module — distinct concern from admin JWT
+        // auth, no shared state.
+        .merge(super::dev_session::routes())
 }
 
 /// Authenticate with the admin API and receive a JWT token.

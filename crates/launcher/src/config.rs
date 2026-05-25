@@ -51,6 +51,41 @@ pub struct LauncherConfig {
     pub install_path: PathBuf,
     pub server_host: String,
     pub manifest_url: String,
+    #[serde(default)]
+    pub telemetry: TelemetrySettings,
+}
+
+/// User-controllable telemetry preferences. Lives in `LauncherConfig`
+/// (rarely-changing user choice); per-session runtime state lives in
+/// [`crate::state::TelemetryState`] so config-file rewrites don't
+/// fire on every tick.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TelemetrySettings {
+    /// Opt-out switch. False ⇒ no token fetch, no tail, no upload.
+    #[serde(default = "default_telemetry_enabled")]
+    pub enabled: bool,
+    /// Base URL of the cimmeria-server admin API where the telemetry
+    /// auth handshake (`POST /auth/dev-session`) lives. Defaults to
+    /// the local-dev admin port; ops override for production.
+    #[serde(default = "default_telemetry_auth_url")]
+    pub auth_url: String,
+}
+
+impl Default for TelemetrySettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_telemetry_enabled(),
+            auth_url: default_telemetry_auth_url(),
+        }
+    }
+}
+
+fn default_telemetry_enabled() -> bool {
+    true
+}
+
+fn default_telemetry_auth_url() -> String {
+    "http://localhost:8443/api".to_string()
 }
 
 fn default_schema_version() -> u32 {
@@ -64,6 +99,7 @@ impl Default for LauncherConfig {
             install_path: default_install_path(),
             server_host: DEFAULT_SERVER_HOST.to_string(),
             manifest_url: DEFAULT_MANIFEST_URL.to_string(),
+            telemetry: TelemetrySettings::default(),
         }
     }
 }
@@ -94,6 +130,10 @@ pub fn config_path() -> PathBuf {
 
 pub fn ledger_path() -> PathBuf {
     exe_dir().join("uploaded.json")
+}
+
+pub fn telemetry_state_path() -> PathBuf {
+    exe_dir().join("telemetry-state.json")
 }
 
 pub fn exe_dir() -> PathBuf {
@@ -130,12 +170,44 @@ mod tests {
             install_path: PathBuf::from("X"),
             server_host: "Y".into(),
             manifest_url: "Z".into(),
+            telemetry: TelemetrySettings {
+                enabled: false,
+                auth_url: "http://test/api".into(),
+            },
         };
         cfg.save(&path).unwrap();
         let loaded = LauncherConfig::load(&path).unwrap();
         assert_eq!(loaded.install_path, PathBuf::from("X"));
         assert_eq!(loaded.server_host, "Y");
         assert_eq!(loaded.manifest_url, "Z");
+        assert!(!loaded.telemetry.enabled, "opt-out must roundtrip");
+    }
+
+    // New field on the same schema_version: legacy config files written
+    // before `telemetry` existed must load cleanly with the field
+    // defaulted to enabled=true. Adding `#[serde(default)]` makes this
+    // backwards-compatible without bumping CONFIG_SCHEMA_VERSION.
+    #[test]
+    fn load_legacy_config_without_telemetry_field_defaults_to_enabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c.json");
+        std::fs::write(
+            &path,
+            r#"{"schema_version":1,"install_path":"X","server_host":"Y","manifest_url":"Z"}"#,
+        )
+        .unwrap();
+        let cfg = LauncherConfig::load(&path).unwrap();
+        assert!(
+            cfg.telemetry.enabled,
+            "legacy config must default telemetry.enabled to true so an upgrade \
+             doesn't silently change behaviour"
+        );
+    }
+
+    #[test]
+    fn telemetry_settings_default_is_enabled() {
+        let t = TelemetrySettings::default();
+        assert!(t.enabled);
     }
 
     #[test]
