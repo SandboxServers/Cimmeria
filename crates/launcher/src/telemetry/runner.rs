@@ -158,12 +158,21 @@ async fn tick_once(
         });
     }
     let lines = tailer.tick();
+    let line_count = lines.len();
     let mut enqueued = 0u64;
     for tl in lines {
         let ev = line_to_event(tl);
         if telemetry.enqueue(ev).await.is_ok() {
             enqueued += 1;
         }
+    }
+    if line_count > 0 {
+        tracing::debug!(
+            watched_files = tailer.watched_count(),
+            lines = line_count,
+            enqueued,
+            "telemetry tail tick"
+        );
     }
     // Proactive token refresh before the chunk POST so an expired
     // token never causes the first failed-flush of the session.
