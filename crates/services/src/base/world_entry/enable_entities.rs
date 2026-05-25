@@ -256,4 +256,128 @@ mod tests {
         assert!(entity_to_addr.lock().unwrap().is_empty());
         assert!(transport.is_empty(), "early return must not send UDP");
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Issue #304 negative-logging regression guards.
+    //
+    // The create-player step calls `transport.send_to` and then stages
+    // `pending_map_loaded` so the `mapLoaded` reply runs the enter-
+    // world emit. Pre-#304 a send failure bubbled via `?` with no log
+    // — the next ENABLE_ENTITIES retry was indistinguishable from a
+    // client that simply never ack'd `mapLoaded`. The change adds an
+    // ERROR log with `player_entity_id` / `space_id` / `seq` and
+    // returns Err BEFORE staging `pending_map_loaded`. The guards
+    // below pin: (a) ERROR fires, (b) result.is_err(), (c) state was
+    // NOT mutated.
+    // ──────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn create_player_step_errors_and_logs_when_transport_send_fails() {
+        use crate::test_support::LogCapture;
+        use async_trait::async_trait;
+        use cimmeria_mercury::transport::Transport as TransportTrait;
+        use tracing::Level;
+
+        /// Transport that fails every send_to. Mirrors the FailingTransport
+        /// pattern in `cell_dispatch/tests.rs`.
+        struct AlwaysFailingTransport {
+            local: SocketAddr,
+        }
+
+        #[async_trait]
+        impl TransportTrait for AlwaysFailingTransport {
+            async fn send_to(&self, _bytes: &[u8], _addr: SocketAddr) -> std::io::Result<usize> {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::WouldBlock,
+                    "synthetic-test-failure",
+                ))
+            }
+            fn local_addr(&self) -> std::io::Result<SocketAddr> {
+                Ok(self.local)
+            }
+        }
+
+        let capture = LogCapture::install();
+        let transport: Arc<dyn Transport> = Arc::new(AlwaysFailingTransport {
+            local: "127.0.0.1:0".parse().unwrap(),
+        });
+        let addr: SocketAddr = "127.0.0.1:55501".parse().unwrap();
+
+        // Set up a client state in the "create-player" branch: both
+        // `pending_player_entity_id` AND `pending_world_entry` are
+        // Some. The handler clones `pending_world_entry` (peek) and
+        // builds the CREATE_BASE_PLAYER packet; the send_to call
+        // then fails.
+        let mut client = crate::test_support::test_default_connected_client_state();
+        client.pending_player_entity_id = Some(4242);
+        client.pending_world_entry = Some(crate::mercury::types::WorldEntryInfo {
+            player_entity_id: 4242,
+            space_id: 0x0001_0042,
+            pos: [10.0, 20.0, 30.0],
+            rot: [0.0, 0.0, 0.0],
+            world_name: "Agnos".to_string(),
+            class_id: 2, // SGWPLAYER_CLASS_ID
+            world_stargates: Vec::new(),
+        });
+        client.pending_map_loaded = None;
+
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new({
+                let mut m = HashMap::new();
+                m.insert(addr, client);
+                m
+            }));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+        let key = [0u8; 32];
+
+        let result = handle_enable_entities(
+            &transport,
+            addr,
+            key,
+            1,
+            &connected,
+            &None,
+            &entity_manager,
+            &None,
+            &entity_to_addr,
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "transport send failure must propagate as Err"
+        );
+        assert!(
+            capture
+                .find_message(
+                    Level::ERROR,
+                    "Create player: socket.send_to failed before staging pending_map_loaded"
+                )
+                .is_some(),
+            "issue #304: ERROR log with player_entity_id/space_id/seq must fire \
+             before the early-return so the failure correlates against the \
+             not-yet-staged pending_map_loaded. Captured: {:#?}",
+            capture.all()
+        );
+        // State must NOT be mutated — the original `pending_world_entry`
+        // and `pending_player_entity_id` are still present so a retry
+        // sees the same state.
+        let clients = connected.lock().unwrap();
+        let c = clients.get(&addr).unwrap();
+        assert!(
+            c.pending_world_entry.is_some(),
+            "pending_world_entry must NOT be taken on send failure (retry sees same state)"
+        );
+        assert!(
+            c.pending_player_entity_id.is_some(),
+            "pending_player_entity_id must NOT be taken on send failure"
+        );
+        assert!(
+            c.pending_map_loaded.is_none(),
+            "pending_map_loaded must NOT be staged when the send failed — \
+             original bug: state was committed despite send failure, hiding \
+             the error as a never-acked-mapLoaded"
+        );
+    }
 }

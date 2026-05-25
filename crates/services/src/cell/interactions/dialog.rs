@@ -48,6 +48,35 @@ pub async fn send_dialog_display(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::test_support::LogCapture;
+    use tokio::sync::mpsc;
+    use tracing::Level;
+
+    /// Issue #304: dropped onDialogDisplay leaves the player stuck. The
+    /// guard drops the receiver before calling the helper so the send
+    /// fails synchronously; assertion pins both the WARN level and the
+    /// message body, so a revert to `let _ = tx.send(…)` trips it.
+    #[tokio::test]
+    async fn send_dialog_display_warns_when_cell_to_base_channel_closed() {
+        let capture = LogCapture::install();
+        let (tx, rx) = mpsc::channel(1);
+        drop(rx);
+
+        send_dialog_display(
+            /* player_id */ 1, /* npc_entity_id */ 100, /* dialog_id */ 42, &tx,
+        )
+        .await;
+
+        assert!(
+            capture
+                .find_message(Level::WARN, "DisplayDialog: cell→base send failed")
+                .is_some(),
+            "issue #304: send_dialog_display must WARN when cell→base channel is closed; \
+             reverting to `let _` breaks player-stuck-on-NPC diagnosability"
+        );
+    }
+
     #[test]
     fn dialog_display_args_format() {
         let mut args = Vec::new();

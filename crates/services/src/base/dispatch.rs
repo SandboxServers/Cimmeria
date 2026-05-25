@@ -222,3 +222,85 @@ pub(crate) async fn dispatch_sgw_player_base_method(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
+    use tracing::Level;
+
+    /// Issue #304: logOff with a closed cell→base channel must surface
+    /// the dropped DisconnectEntity / DestroyEntity sends so a "ghost
+    /// player in space_manager" report can be traced back to the
+    /// logoff path. Reverting either `if let Err` to `let _ = tx.send`
+    /// trips this guard.
+    ///
+    /// Uses `disconnect=0` (return-to-char-select) so the path runs
+    /// through both cell-tx sends and then the RESET_ENTITIES wire
+    /// emit. TestTransport captures the wire send; the cell-tx sends
+    /// fail because the receiver was dropped.
+    #[tokio::test]
+    async fn logoff_warns_when_cell_to_base_channel_closed_for_both_sends() {
+        let capture = LogCapture::install();
+
+        let addr: SocketAddr = "127.0.0.1:54321".parse().unwrap();
+        let entity_id: u32 = 4242;
+        let key = [0u8; 32];
+
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
+
+        let mut state = test_default_connected_client_state();
+        state.player_entity_id = Some(entity_id);
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+
+        // CLOSED channel.
+        let (tx, rx) = mpsc::channel::<BaseToCellMsg>(8);
+        drop(rx);
+        let cell_tx: Option<mpsc::Sender<BaseToCellMsg>> = Some(tx);
+
+        // payload[0] == 0 => return-to-char-select branch. Skips the
+        // loggedOff packet but still runs the RESET_ENTITIES path,
+        // which uses transport.send_to (TestTransport swallows it).
+        let payload = [0u8];
+
+        dispatch_sgw_player_base_method(
+            sgw_player_base::LOG_OFF,
+            &payload,
+            &None,
+            addr,
+            &transport,
+            key,
+            &connected,
+            &entity_manager,
+            &cell_tx,
+            &entity_to_addr,
+        )
+        .await
+        .expect("logOff dispatch should not propagate Err for closed cell_tx");
+
+        // Both sends fail independently — assert each produces its own
+        // WARN so a partial revert (only one of two) is also caught.
+        assert!(
+            capture
+                .find_message(Level::WARN, "logOff: DisconnectEntity send failed")
+                .is_some(),
+            "DisconnectEntity WARN missing. Captured: {:#?}",
+            capture.all()
+        );
+        assert!(
+            capture
+                .find_message(Level::WARN, "logOff: DestroyEntity send failed")
+                .is_some(),
+            "DestroyEntity WARN missing. Captured: {:#?}",
+            capture.all()
+        );
+
+        // entity_to_addr cleanup still runs regardless of cell_tx failure.
+        assert!(
+            entity_to_addr.lock().unwrap().get(&entity_id).is_none(),
+            "logOff must still clean up entity_to_addr even when cell_tx is closed"
+        );
+    }
+}

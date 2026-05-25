@@ -558,3 +558,36 @@ async fn select_destination_self_rejected() {
     assert_eq!(mgr.ring_transporters.get(1).unwrap().state, State::Idle);
     assert!(rx.try_recv().is_err());
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// Issue #304 negative-logging regression guard — ring visibility loop.
+// ──────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn send_visible_warns_when_cell_to_base_channel_closed() {
+    use super::wire_helpers::send_visible;
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(7, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+
+    let (tx, rx) = mpsc::channel(8);
+    drop(rx);
+
+    // Both `visible=true` and `visible=false` flow through the same
+    // witness loop; exercising one covers the let _ promotion.
+    send_visible(7, /* visible */ true, &tx, &mgr).await;
+
+    assert!(
+        capture
+            .find_message(Level::WARN, "ring send_visible: cell→base send failed")
+            .is_some(),
+        "issue #304: ring send_visible witness loop must WARN when cell→base \
+         is closed; reverting to `let _ = tx.send(msg)` breaks visibility-desync \
+         diagnosability. Captured: {:#?}",
+        capture.all()
+    );
+}

@@ -266,4 +266,120 @@ mod tests {
             "unexpected error: {err}"
         );
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Issue #304 negative-logging regression guard.
+    //
+    // The pre-#304 code did `transport.send_to(pkt_data, addr).await?;`
+    // per fragment with no log. A partial enter-world bundle is a
+    // player-visible bug class (invisible NPCs, missing appearance,
+    // stuck-on-load) so the change promotes per-fragment failures to
+    // ERROR with fragment_idx + total + body_len. The guard pins:
+    //   1. Result is Err (preserved propagation).
+    //   2. ERROR fires naming "fragment send failed".
+    //   3. fragment_idx field carries the failing fragment index (1).
+    //   4. No fragments past the failing one were attempted.
+    // ──────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn map_loaded_fragment_send_failure_errors_and_logs() {
+        use crate::test_support::LogCapture;
+        use async_trait::async_trait;
+        use cimmeria_mercury::transport::Transport as TransportTrait;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tracing::Level;
+
+        /// Succeed for `fail_after` sends, then fail every subsequent
+        /// send_to. Mirrors the FailingTransport pattern in
+        /// `cell_dispatch/tests.rs`.
+        struct FailAfter {
+            sent: AtomicUsize,
+            fail_after: usize,
+            local: SocketAddr,
+        }
+
+        #[async_trait]
+        impl TransportTrait for FailAfter {
+            async fn send_to(&self, bytes: &[u8], _addr: SocketAddr) -> std::io::Result<usize> {
+                let n = self.sent.fetch_add(1, Ordering::SeqCst);
+                if n < self.fail_after {
+                    Ok(bytes.len())
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::WouldBlock,
+                        "synthetic-test-failure",
+                    ))
+                }
+            }
+            fn local_addr(&self) -> std::io::Result<SocketAddr> {
+                Ok(self.local)
+            }
+        }
+
+        let capture = LogCapture::install();
+
+        // Succeed the standalone enter-world send (index 0), fail every
+        // fragment send after that.
+        let typed = Arc::new(FailAfter {
+            sent: AtomicUsize::new(0),
+            fail_after: 1,
+            local: "127.0.0.1:0".parse().unwrap(),
+        });
+        let transport: Arc<dyn Transport> = typed.clone();
+
+        let addr: SocketAddr = "127.0.0.1:55502".parse().unwrap();
+        let mut client = crate::test_support::test_default_connected_client_state();
+        client.pending_map_loaded = Some(crate::mercury::types::WorldEntryInfo {
+            player_entity_id: 7777,
+            space_id: 0x0001_0042,
+            pos: [0.0; 3],
+            rot: [0.0; 3],
+            world_name: "Agnos".to_string(),
+            class_id: 2,
+            world_stargates: Vec::new(),
+        });
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new({
+                let mut m = HashMap::new();
+                m.insert(addr, client);
+                m
+            }));
+        let key = [0u8; 32];
+
+        let result = handle_map_loaded(
+            &transport,
+            addr,
+            key,
+            &connected,
+            &None,
+            &Arc::new(Mutex::new(HashMap::new())),
+            &None,
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "fragment send failure must propagate as Err"
+        );
+        let frag_err = capture
+            .find_message(Level::ERROR, "map_loaded: fragment send failed")
+            .expect("issue #304: per-fragment ERROR must fire — captured: see all()");
+        // Sanity-check the structured fields carry the failing fragment
+        // identity (idx + total) so an ops grep can pin down which
+        // fragment was lost.
+        assert!(
+            frag_err.has_field("fragment_idx", "1"),
+            "fragment_idx field must point at the failing fragment (1-indexed): {:#?}",
+            frag_err
+        );
+        // Send-attempt count: 1 (standalone success) + 1 (first
+        // fragment failure) — no fragments past the failing one were
+        // attempted. Same abort-on-first-failure shape as the bundle
+        // guard in `cell_dispatch/tests.rs`.
+        assert_eq!(
+            typed.sent.load(Ordering::SeqCst),
+            2,
+            "abort-on-first-failure: standalone enter-world + 1 fragment = 2 sends"
+        );
+    }
 }

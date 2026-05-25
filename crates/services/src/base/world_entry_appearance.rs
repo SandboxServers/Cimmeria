@@ -927,6 +927,98 @@ mod tests {
              (was 2 pre-bundle, called per-iter of the 100 ms × 200 spam loop)"
         );
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Issue #304 negative-logging regression guards: onClientReady
+    // cell_tx sends. ConnectEntity / InitPlayerState / AdvanceRing-
+    // Destination are critical handoffs from base to cell — dropping
+    // any of them strands the player in a half-loaded state. The
+    // guards drive `handle_on_client_ready` with a closed cell→base
+    // channel and assert each of the three ERROR logs fires
+    // independently so a partial revert (only one of three) is also
+    // caught.
+    // ──────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn on_client_ready_errors_each_cell_tx_send_independently_when_closed() {
+        use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
+        use tracing::Level;
+
+        let capture = LogCapture::install();
+        let addr: SocketAddr = "127.0.0.1:55600".parse().unwrap();
+        let entity_id: u32 = 8888;
+        let key = [0u8; 32];
+
+        // Pre-stage pending_client_ready + pending_destination_ring_id
+        // so the function reaches all three cell_tx send sites.
+        let mut state = test_default_connected_client_state();
+        state.player_entity_id = Some(entity_id);
+        state.pending_client_ready = Some(super::super::PendingClientReadyInfo {
+            entity_id,
+            player_id: 42,
+            world_name: "Agnos".to_string(),
+            appearance_args: vec![0xAB],
+            tint_args: vec![0xCD],
+            first_login: 0, // skip the cinematic + DB UPDATE branch
+        });
+        // Non-None forces the AdvanceRingDestination send to fire.
+        state.pending_destination_ring_id = Some(17);
+        state.player_name = Some("Tester".to_string());
+
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new({
+                let mut m = HashMap::new();
+                m.insert(addr, state);
+                m
+            }));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
+
+        // Closed cell→base channel: all three sends will SendError.
+        let (tx, rx) = mpsc::channel::<BaseToCellMsg>(8);
+        drop(rx);
+        let cell_tx: Option<mpsc::Sender<BaseToCellMsg>> = Some(tx);
+
+        // db_pool=None so DB-querying branches return empty/default
+        // without needing a live Postgres.
+        let _ = handle_on_client_ready(
+            addr,
+            key,
+            &connected,
+            &cell_tx,
+            &transport,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+
+        // All three ERRORs must fire — assert each independently so a
+        // partial revert (e.g. only one of three reverted to `let _`)
+        // is also caught.
+        assert!(
+            capture
+                .find_message(Level::ERROR, "ConnectEntity: base→cell send failed")
+                .is_some(),
+            "issue #304: ConnectEntity ERROR missing. Captured: {:#?}",
+            capture.all()
+        );
+        assert!(
+            capture
+                .find_message(Level::ERROR, "InitPlayerState: base→cell send failed")
+                .is_some(),
+            "issue #304: InitPlayerState ERROR missing"
+        );
+        assert!(
+            capture
+                .find_message(
+                    Level::ERROR,
+                    "AdvanceRingDestination: base→cell send failed"
+                )
+                .is_some(),
+            "issue #304: AdvanceRingDestination ERROR missing (requires \
+             pending_destination_ring_id to be Some; check test staging)"
+        );
+    }
 }
 
 // Chat-channel registration helpers (`DEFAULT_CHAT_CHANNELS`, `CHAN_TELL`,

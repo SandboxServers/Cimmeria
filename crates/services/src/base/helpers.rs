@@ -914,4 +914,119 @@ mod tests {
             "issue #304: bundle AoI witness-miss must emit WARN with reason=entity_to_addr_miss"
         );
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Issue #304 disconnect/debug-path guards: addr is mapped but the
+    // client is not in `connected` (the post-handshake disconnect race
+    // window). The unreliable / reliable / bundle helpers all log this
+    // at `debug!` with `reason="client_disconnected"`. Promoting back
+    // to `trace!` would silence the path; the guards pin both the
+    // level AND the reason.
+    // ──────────────────────────────────────────────────────────────────
+
+    /// Helper: build an (entity_to_addr, connected) pair where the
+    /// witness has an addr mapping but no `ConnectedClientState`. This
+    /// is exactly the post-handshake disconnect window the debug log
+    /// guards.
+    fn staged_disconnect_maps(
+        witness_id: u32,
+        addr: SocketAddr,
+    ) -> (
+        Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+        Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    ) {
+        let connected = Arc::new(Mutex::new(
+            HashMap::<SocketAddr, ConnectedClientState>::new(),
+        ));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(witness_id, addr)])));
+        (connected, entity_to_addr)
+    }
+
+    #[tokio::test]
+    async fn send_to_witness_emits_debug_when_client_disconnected() {
+        use crate::test_support::LogCapture;
+
+        let capture = LogCapture::install();
+        let transport: Arc<dyn cimmeria_mercury::transport::Transport> =
+            Arc::new(TestTransport::default());
+        let witness_addr: SocketAddr = "127.0.0.1:55101".parse().unwrap();
+        let (connected, entity_to_addr) = staged_disconnect_maps(111, witness_addr);
+
+        send_to_witness(
+            &transport,
+            &connected,
+            &entity_to_addr,
+            111,
+            |_key, _seq, _acks| vec![],
+        )
+        .await;
+
+        assert!(
+            capture
+                .find_event(
+                    Level::DEBUG,
+                    "client disconnected mid-send",
+                    "client_disconnected"
+                )
+                .is_some(),
+            "issue #304: unreliable disconnect path must emit DEBUG with reason=client_disconnected"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_to_witness_reliable_emits_debug_when_client_disconnected() {
+        use crate::test_support::LogCapture;
+
+        let capture = LogCapture::install();
+        let transport: Arc<dyn cimmeria_mercury::transport::Transport> =
+            Arc::new(TestTransport::default());
+        let witness_addr: SocketAddr = "127.0.0.1:55102".parse().unwrap();
+        let (connected, entity_to_addr) = staged_disconnect_maps(222, witness_addr);
+
+        send_to_witness_reliable(
+            &transport,
+            &connected,
+            &entity_to_addr,
+            222,
+            |_key, _seq, _acks| vec![],
+        )
+        .await;
+
+        assert!(
+            capture
+                .find_event(
+                    Level::DEBUG,
+                    "client disconnected mid-send",
+                    "client_disconnected"
+                )
+                .is_some(),
+            "issue #304: reliable disconnect path must emit DEBUG with reason=client_disconnected"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_bundle_to_witness_reliable_emits_debug_when_client_disconnected() {
+        use crate::test_support::LogCapture;
+        use cimmeria_mercury::channel_bundle::ChannelBundle;
+
+        let capture = LogCapture::install();
+        let transport: Arc<dyn cimmeria_mercury::transport::Transport> =
+            Arc::new(TestTransport::default());
+        let witness_addr: SocketAddr = "127.0.0.1:55103".parse().unwrap();
+        let (connected, entity_to_addr) = staged_disconnect_maps(333, witness_addr);
+
+        let bundle = ChannelBundle::new(true);
+        send_bundle_to_witness_reliable(&transport, &connected, &entity_to_addr, 333, bundle).await;
+
+        assert!(
+            capture
+                .find_event(
+                    Level::DEBUG,
+                    "client disconnected mid-send",
+                    "client_disconnected"
+                )
+                .is_some(),
+            "issue #304: bundle disconnect path must emit DEBUG with reason=client_disconnected"
+        );
+    }
 }

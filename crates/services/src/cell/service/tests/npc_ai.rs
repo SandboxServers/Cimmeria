@@ -644,3 +644,66 @@ async fn selector_picks_ammo_bearing_ability_for_npc() {
          infinite ammo and the dispatch-site ammo check is player-only",
     );
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// Issue #304 negative-logging regression guard: handle_use_ability
+// returning false.
+//
+// The bug shape: NPC AI ticks but the ability never fires (mob picked
+// an ability that the pre-consume guard then rejected on cooldown, no
+// ammo, or any other reason). Pre-#304 this was silent — the mob would
+// appear stuck. The guard pins WARN level + reason field so removing
+// either trips the test.
+// ──────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn npc_ai_fight_warns_when_handle_use_ability_returns_false() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    // Stage: NPC in Fighting with a live in-range player on the threat
+    // list. The NPC has NO ability_defs loaded at all, so
+    // `handle_use_ability` will reject the call ("ability missing")
+    // and return false — exactly the rejection shape the WARN guards.
+    let mut mgr = make_ai_fixture([0.0; 3], [10.0, 0.0, 0.0]);
+    mgr.create_entity(100, "Castle", [11.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(100) {
+        p.is_player = true;
+        p.player_id = Some(1);
+        if let Some(h) = p.stats.get_mut(HEALTH) {
+            h.update(0, 100, 100);
+            h.clear_dirty();
+        }
+    }
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.threat_list.insert(100, 1.0);
+        // Stage the rejection shape that triggers the WARN:
+        // - `npc.abilities` is empty (no `add_ability` call).
+        // - `choose_npc_ability` documents an empty-bucket fallback to
+        //   NPC_DEFAULT_ABILITY ("so a misconfigured template doesn't
+        //   wedge silently") — so the selector returns Some.
+        // - `handle_use_ability` then rejects on the
+        //   `entity.abilities.has_ability(ability_id)` check (the
+        //   entity doesn't know the fallback ability) and returns
+        //   false. That false-return is the seam the new WARN guards.
+    }
+
+    let capture = LogCapture::install();
+    let (tx, _rx) = mpsc::channel(8);
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    assert!(
+        capture
+            .find_event(
+                Level::WARN,
+                "NPC AI: attack tick produced no ability fire",
+                "handle_use_ability_returned_false"
+            )
+            .is_some(),
+        "issue #304: NPC AI must WARN when handle_use_ability returns false; \
+         reverting to bare `.await` (ignoring the bool) breaks mob-stuck \
+         diagnosability. Captured: {:#?}",
+        capture.all()
+    );
+}
