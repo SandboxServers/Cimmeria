@@ -42,6 +42,12 @@ jobs:
       # Generation + rotation procedure: see
       # docs/client/launcher-distribution-setup.md.
       LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
+      # Build-stamp inputs read by app::build_telemetry_config via
+      # option_env!. Default to "dev"/"unknown" when unset so PR builds
+      # keep working without secrets. The release job sets them so
+      # uploaded telemetry can correlate sessions with the launcher rev.
+      CIMMERIA_BUILD_BRANCH: main
+      CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
     steps:
       # Actions pinned to immutable commit SHAs (with version comments) per
       # GitHub's secure-use guide. This job is privileged — it builds with a

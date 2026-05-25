@@ -20,6 +20,9 @@
 //! | `PROTOCOL_DIGEST` | `58AFA196...` | 32-char hex digest sent in auth response |
 //! | `DEVELOPER_MODE` | `true` | Enable relaxed auth / multi-login |
 //! | `RUST_LOG` | `info` | Log filter (e.g. `debug`, `cimmeria_services=trace`) |
+//! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the launcher dev-session token mint at `/api/auth/dev-session`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset ⇒ endpoint returns 500. |
+//! | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `https://cimmeria-mcp.azurewebsites.net/api` | Telemetry ingest URL handed to the launcher in the dev-session response. |
+//! | `CIMMERIA_TELEMETRY_KILL_SWITCH` | unset | Set to `1` to pause telemetry ingest (every mint returns 503 + Retry-After). |
 //!
 //! # Example
 //!

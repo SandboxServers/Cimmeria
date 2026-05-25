@@ -37,6 +37,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | [Building the Server](building.md) | How to build and run the Cimmeria server emulator |
 | [Container Distribution](operations/container.md) | `docker run` the published `ghcr.io/sandboxservers/cimmeria-server` image — env reference, volume layout, reset workflow |
 | [Colo Auto-Update Deployment](operations/colo-deploy.md) | Self-maintaining single-host deploy: Watchtower auto-pulls `latest-prerelease`, fresh DB on every swap, sample compose at [`docker/compose.colo.yml`](../docker/compose.colo.yml) |
+| [Dev-Session Telemetry](operations/telemetry.md) | `CIMMERIA_TELEMETRY_HMAC_SECRET` provisioning + rotation, kill switch, storage layout. Design lives in [architecture/dev-session-telemetry.md](architecture/dev-session-telemetry.md). |
 | [Testing Guide](../TESTING.md) | Test types, picker for which to use when, gotchas mined from PR reviews |
 | [Test Inventory](testing/inventory/README.md) | Catalogue of every test in the workspace, one file per crate, with kind / system / first-commit date / what-it-tests |
 | [Game Systems](game-systems.md) | Survey of every game feature: combat, abilities, stargates, missions, crafting |
