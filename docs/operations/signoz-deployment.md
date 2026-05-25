@@ -56,87 +56,91 @@ unset, the layer is never instantiated and the OTLP code path never
 runs. This is the "off by default" stance — the integration only
 activates when an operator explicitly points it at a collector.
 
-## One-time setup: populate `external/signoz`
+## Colo deployment (single file, single command)
 
-The single-entry compose file references the upstream SigNoz compose
-by relative path under `external/signoz/`. That tree is **not** in
-git — `setup.ps1` populates it by cloning the SigNoz repo at a
-pinned tag.
-
-```powershell
-pwsh setup.ps1 -SkipBuild -NoLaunch
-```
-
-The setup step is idempotent: if `external/signoz/.../docker-compose.yaml`
-already exists, the clone is skipped. To upgrade SigNoz, bump the
-pinned tag inside
-[`Install-CimmeriaDependencies.ps1`](../../bootstrap/CimmeriaBootstrap/Public/Install-CimmeriaDependencies.ps1)
-(search for `$signozTag`), `rm -rf external/signoz`, re-run setup.
-
-If git is unavailable in your shell, clone manually:
+[`docker/compose.yml`](../../docker/compose.yml) is fully
+self-contained. The whole deployment unit is that one file. Copy it
+to the colo box and bring it up — no companion config files, no
+external repos, no setup script:
 
 ```bash
-git clone --depth=1 --branch v0.55.0 \
-  https://github.com/SigNoz/signoz external/signoz
+scp docker/compose.yml colo:/opt/cimmeria/
+ssh colo "cd /opt/cimmeria && docker compose -f compose.yml up -d"
 ```
 
-## Colo deployment (single command)
+That single file contains:
 
-The colo runs the full stack — cimmeria-server (watchtower-managed),
-the SigNoz observability stack, and optionally the Cloudflare Tunnel
-for remote access — under one Compose project entry point at
-[`docker/compose.yml`](../../docker/compose.yml). That file uses
-Compose's `include:` directive to pull in three overlays plus the
-upstream SigNoz compose so callers don't have to remember the
-correct chain of `-f` flags.
+- The `cimmeria` + `watchtower` services (game server with auto-update).
+- The full vendored SigNoz stack (zookeeper-1, clickhouse,
+  otel-collector-migrator, otel-collector, query-service,
+  alertmanager, frontend) — pinned at SigNoz v0.55.0.
+- Profile-gated `cloudflared` (Cloudflare Tunnel) and `otel-smoke`
+  (wire-path verifier).
+- All SigNoz config files (users.xml, cluster.xml, otel-collector
+  config, prometheus.yml, alertmanager.yml, nginx-config.conf,
+  alerts.yml) inlined as Docker Compose `configs:` blocks.
+
+Profile flags:
 
 ```bash
-# Standard bring-up (no remote-access tunnel):
-docker compose -f docker/compose.yml up -d
-
-# Bring up with the Cloudflare Tunnel for remote browser + MCP access:
-docker compose -f docker/compose.yml --profile tunnel up -d
+docker compose -f compose.yml up -d                          # core: game + signoz
+docker compose -f compose.yml --profile tunnel up -d         # + cloudflare tunnel
+docker compose -f compose.yml --profile smoke up otel-smoke  # wire-path verify
 ```
 
 Wait ~90 seconds for ClickHouse to finish initialising
-(`docker compose -f docker/compose.yml logs clickhouse | grep "Ready"`).
-The SigNoz UI is then at `http://localhost:3301`. With
+(`docker compose -f compose.yml logs clickhouse | grep "Ready"`).
+SigNoz UI is then at `http://<colo-host>:3301`. With
 `--profile tunnel` the UI is also reachable via your Cloudflare
 domain — see [signoz-remote-access.md](signoz-remote-access.md).
 
 ### Verify the wire path
 
-The optional `--profile smoke` brings up a one-shot curl container
-that fires a synthetic OTLP event so you can confirm the collector
-is reachable before the game server boots:
-
 ```bash
-docker compose -f docker/compose.yml --profile smoke up otel-smoke
+docker compose -f compose.yml --profile smoke up otel-smoke
 ```
 
 Then in the SigNoz UI → Logs → filter `service.name = cimmeria-smoke`
 and confirm the "SigNoz wire path smoke" body appears within ~10s.
 
-## Local dev (no Docker, just SigNoz)
+## Local dev (running cimmeria-server natively, only SigNoz in Docker)
 
-When running `cimmeria-server.exe` natively (not in Docker), you only
-need the SigNoz stack itself in containers. Skip the top-level entry
-point and bring up just the upstream compose:
+When developing locally with `cimmeria-server.exe` running natively
+(not in Docker), bring up only the SigNoz half of the same file by
+listing the SigNoz service names:
 
 ```bash
-docker compose \
-  -f external/signoz/deploy/docker/clickhouse-setup/docker-compose.yaml \
-  up -d
+docker compose -f docker/compose.yml up -d \
+  zookeeper-1 clickhouse otel-collector-migrator \
+  otel-collector query-service alertmanager frontend
 ```
 
 Then run the server natively with the OTLP endpoint pointed at the
-collector:
+exposed collector:
 
 ```powershell
 $env:OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4317"
 $env:OTEL_SERVICE_NAME = "cimmeria-server"
 .\cimmeria-server.exe
 ```
+
+## Upgrading SigNoz
+
+The vendored config sections at the bottom of `docker/compose.yml`
+correspond to a pinned SigNoz release (currently v0.55.0). To
+upgrade:
+
+1. Bump the image tags in the services block (`signoz/query-service`,
+   `signoz/frontend`, `signoz/signoz-otel-collector`,
+   `signoz/signoz-schema-migrator`, `signoz/alertmanager`).
+2. Re-vendor the `configs:` content from a fresh clone of
+   `github.com/SigNoz/signoz/deploy/docker/clickhouse-setup/` and
+   `deploy/docker/common/nginx-config.conf` at the new tag.
+3. Commit + push. The next watchtower poll picks up the cimmeria
+   image; redeploying `compose.yml` swaps the SigNoz tags.
+
+The SigNoz images and configs are tightly coupled — bump them
+together, not separately.
 
 ### Resource budget
 

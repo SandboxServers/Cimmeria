@@ -34,14 +34,21 @@ For stream (1):
 
 - **Storage backend: SigNoz** (Apache 2.0, ClickHouse-backed, OTLP-native).
 - **Transport: OpenTelemetry Protocol** (gRPC :4317, with HTTP :4318 fallback).
-- **Self-hosted** on the colo Docker host. SigNoz upstream compose is
-  pulled in as a git submodule at `external/signoz/`; Cimmeria layers
-  a small overlay on top
-  ([`docker/compose.signoz.yml`](../../docker/compose.signoz.yml)).
+- **Self-hosted** on the colo Docker host. The entire deployment —
+  cimmeria-server, watchtower, the full SigNoz stack (ZooKeeper +
+  ClickHouse + OTel collector + query service + alertmanager +
+  frontend), and all SigNoz config files — lives in a single
+  self-contained [`docker/compose.yml`](../../docker/compose.yml).
+  No external repos, no submodules, no companion files: ship one
+  file, run `docker compose up -d`. SigNoz config files are inlined
+  as Docker Compose `configs:` blocks; upgrades are a manual
+  re-vendor (acceptable trade for true single-file deployability).
 - **Remote access via Cloudflare Tunnel + Cloudflare Access**
-  ([`docker/compose.signoz-tunnel.yml`](../../docker/compose.signoz-tunnel.yml)) —
-  service tokens for machine clients, identity providers for browsers,
-  no inbound firewall ports.
+  (the `cloudflared` service in the same compose file, guarded by
+  `profiles: [tunnel]`) — service tokens for machine clients,
+  identity providers for browsers, no inbound firewall ports.
+  Optional; skip the profile flag if you'd rather open the SigNoz UI
+  port directly behind a VPN or LAN gate.
 
 For stream (2): the launcher now uploads to cimmeria-server's own
 `/api/telemetry/upload-{chunk,bundle}` endpoints. The server validates

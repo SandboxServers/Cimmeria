@@ -1,70 +1,620 @@
-# Cimmeria — single-entry docker compose.
+# Cimmeria — single-file colo deployment.
 #
-# Brings up the full colo deployment: cimmeria-server, watchtower
-# auto-update, the SigNoz observability stack (ClickHouse + OTel
-# collector + query service + alertmanager + frontend), and the
-# launcher upload ingest path.
+# This compose file is fully self-contained. The whole deployment unit
+# is THIS FILE — `scp compose.yml colo:/opt/cimmeria/ && docker compose
+# -f compose.yml up -d`. No repo, no submodules, no companion configs,
+# no setup script. The vendored SigNoz config files are inlined below
+# as Docker Compose `configs:` blocks.
+#
+# # What's in the box
+#
+#   - cimmeria-server (the game server) + watchtower auto-update
+#   - SigNoz observability stack (vendored from SigNoz/signoz v0.55.0):
+#       zookeeper-1, clickhouse, otel-collector-migrator, otel-collector,
+#       query-service, alertmanager, frontend
+#   - Optional smoke-test container (--profile smoke)
+#   - Optional Cloudflare Tunnel (--profile tunnel)
 #
 # # Usage
 #
-#   # Standard colo bring-up (no remote access tunnel):
-#   docker compose -f docker/compose.yml up -d
+#   # Standard bring-up (game + SigNoz, no remote tunnel):
+#   docker compose -f compose.yml up -d
 #
-#   # Add the Cloudflare Tunnel for remote browser + Cimmeria-MCP access:
-#   docker compose -f docker/compose.yml --profile tunnel up -d
+#   # Add Cloudflare Tunnel for browser + Cimmeria-MCP remote access:
+#   docker compose -f compose.yml --profile tunnel up -d
 #
-# That's the whole story. No multi-`-f` chaining, no remembering
-# include order. The single command pulls in:
+#   # Fire a wire-path smoke test through the OTLP collector:
+#   docker compose -f compose.yml --profile smoke up otel-smoke
 #
-#   1. compose.colo.yml                       — cimmeria-server + watchtower
-#   2. external/signoz/.../docker-compose.yaml — upstream SigNoz stack (cloned at setup)
-#   3. compose.signoz.yml                     — OTEL env on cimmeria-server
-#   4. compose.signoz-tunnel.yml              — cloudflared (gated by profile: tunnel)
+# # Persistence
 #
-# # Prerequisite: external/signoz must exist
+# ClickHouse, SigNoz query-service, ZooKeeper, and Alertmanager use
+# named Docker volumes (`clickhouse-data`, `signoz-data`, etc.) so
+# observability state persists across container restarts. Watchtower
+# is configured to keep its hands off these volumes — it only cleans
+# up the anonymous postgres volume on the cimmeria service.
 #
-# The upstream SigNoz compose is referenced by relative path from this
-# file. setup.ps1 populates `external/signoz` by cloning the SigNoz
-# repo at a pinned tag (see Install-CimmeriaDependencies — search for
-# "SIGNOZ OBSERVABILITY STACK"). If you bring this stack up before
-# running setup, docker compose will fail with:
+# The cimmeria service intentionally has NO postgres volume — fresh
+# DB on every watchtower swap, per the colo's design.
 #
-#   open external/signoz/...: no such file or directory
+# # Upgrades
 #
-# Resolution: run `pwsh setup.ps1 -SkipBuild -NoLaunch` once, or clone
-# manually:
-#
-#   git clone --depth=1 --branch v0.55.0 \
-#     https://github.com/SigNoz/signoz external/signoz
-#
-# # Local development (no Docker)
-#
-# For local dev where `cimmeria-server.exe` runs natively, you only
-# need the SigNoz stack itself — not the cimmeria container. Use the
-# upstream compose directly:
-#
-#   docker compose \
-#     -f external/signoz/deploy/docker/clickhouse-setup/docker-compose.yaml \
-#     up -d
-#
-# Then run `cimmeria-server.exe` with `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`.
+# SigNoz version is pinned via image tags below. To upgrade:
+# (1) bump the image tags to the next SigNoz release,
+# (2) re-vendor the config sections at the bottom from a fresh clone
+# of github.com/SigNoz/signoz/deploy/docker/clickhouse-setup/,
+# (3) commit + push + watchtower picks up the new cimmeria image while
+# you re-deploy this file to swap the SigNoz tags.
 
-include:
-  # The base colo deployment. Defines `cimmeria` (the game server
-  # container) and `watchtower` (auto-updater). All other includes
-  # layer onto these.
-  - path: ./compose.colo.yml
+services:
+  # ── Cimmeria game server ─────────────────────────────────────────────
+  cimmeria:
+    image: ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
+    container_name: cimmeria
+    restart: unless-stopped
+    ports:
+      - "13001:13001"        # auth (TCP) — game client login
+      - "32832:32832/udp"    # BaseApp
+      - "50000:50000/udp"    # CellApp
+      - "8081:8081"          # SOAP login (TCP)
+      - "8443:8443"          # admin REST API (TCP) — telemetry ingest lives here
+      - "30000:30000"        # minigame SmartFoxServer (TCP)
+    environment:
+      # MUST be overridden for any client that isn't on this host.
+      BASE_EXTERNAL: "127.0.0.1"
+      # OTEL exporter — points at the SigNoz collector defined below.
+      # If you take down the SigNoz services but keep cimmeria up, the
+      # exporter logs "[otel] Exporter init failed" and the game server
+      # runs without telemetry shipping. Non-fatal.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_SERVICE_NAME: "cimmeria-server"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=colo,service.namespace=cimmeria"
+      OTEL_TRACES_SAMPLER: "always_on"
+    # Intentionally NO `volumes:` for postgres data — Docker creates a
+    # fresh anonymous volume on every `docker run`, populated from the
+    # image's baked pgdata layer. Watchtower swap = brand-new DB.
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
-  # SigNoz upstream stack — defines clickhouse, otel-collector,
-  # query-service, alertmanager, frontend, and their config-loaders.
-  # Pinned via setup.ps1 (currently v0.55.0); bump deliberately.
-  - path: ../external/signoz/deploy/docker/clickhouse-setup/docker-compose.yaml
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_POLL_INTERVAL: "300"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_REMOVE_VOLUMES: "true"   # anon pgdata volume cleanup; named SigNoz volumes are kept
+      WATCHTOWER_LABEL_ENABLE: "true"     # only manage containers with the label above
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
 
-  # Cimmeria-specific glue: OTEL env vars on the cimmeria container
-  # and an optional `--profile smoke` curl-based wire-path verifier.
-  - path: ./compose.signoz.yml
+  # ── SigNoz observability stack (vendored from SigNoz/signoz v0.55.0) ─
 
-  # Cloudflare Tunnel for secure remote access. The cloudflared
-  # service is guarded by `profiles: [tunnel]` so it only starts when
-  # `--profile tunnel` is passed. Default bring-up is local-only.
-  - path: ./compose.signoz-tunnel.yml
+  zookeeper-1:
+    image: bitnami/zookeeper:3.7.1
+    container_name: signoz-zookeeper-1
+    user: root
+    hostname: zookeeper-1
+    restart: on-failure
+    volumes:
+      - zookeeper-data:/bitnami/zookeeper
+    environment:
+      - ZOO_SERVER_ID=1
+      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_AUTOPURGE_INTERVAL=1
+    ports:
+      - "2181"
+      - "2888"
+      - "3888"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.1.2-alpine
+    container_name: signoz-clickhouse
+    restart: on-failure
+    tty: true
+    depends_on:
+      - zookeeper-1
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "0.0.0.0:8123/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      options:
+        max-size: 50m
+        max-file: "3"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    configs:
+      - source: clickhouse-users
+        target: /etc/clickhouse-server/users.xml
+      - source: clickhouse-cluster
+        target: /etc/clickhouse-server/config.d/cluster.xml
+
+  otel-collector-migrator:
+    image: signoz/signoz-schema-migrator:0.102.10
+    container_name: signoz-otel-migrator
+    command:
+      - "--dsn=tcp://clickhouse:9000"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  otel-collector:
+    image: signoz/signoz-otel-collector:0.102.10
+    container_name: signoz-otel-collector
+    command:
+      - "--config=/etc/otel-collector-config.yaml"
+      - "--manager-config=/etc/manager-config.yaml"
+      - "--copy-path=/var/tmp/collector-config.yaml"
+      - "--feature-gates=-pkg.translator.prometheus.NormalizeName"
+    user: root
+    restart: on-failure
+    environment:
+      - OTEL_RESOURCE_ATTRIBUTES=host.name=signoz-host,os.type=linux
+      - DOCKER_MULTI_NODE_CLUSTER=false
+      - LOW_CARDINAL_EXCEPTION_GROUPING=false
+    ports:
+      - "4317:4317"     # OTLP gRPC receiver
+      - "4318:4318"     # OTLP HTTP receiver
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /:/hostfs:ro
+    configs:
+      - source: otel-collector-config
+        target: /etc/otel-collector-config.yaml
+      - source: otel-opamp-config
+        target: /etc/manager-config.yaml
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      otel-collector-migrator:
+        condition: service_completed_successfully
+      query-service:
+        condition: service_healthy
+
+  query-service:
+    image: signoz/query-service:0.55.0
+    container_name: signoz-query-service
+    command:
+      - "-config=/root/config/prometheus.yml"
+      - "--use-logs-new-schema=true"
+    restart: on-failure
+    environment:
+      - ClickHouseUrl=tcp://clickhouse:9000
+      - ALERTMANAGER_API_PREFIX=http://alertmanager:9093/api/
+      - SIGNOZ_LOCAL_DB_PATH=/var/lib/signoz/signoz.db
+      - STORAGE=clickhouse
+      - GODEBUG=netdns=go
+      - TELEMETRY_ENABLED=true
+      - DEPLOYMENT_TYPE=docker-standalone-amd
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - signoz-data:/var/lib/signoz
+    configs:
+      - source: prometheus-config
+        target: /root/config/prometheus.yml
+      - source: alerts-config
+        target: /root/config/alerts.yml
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      otel-collector-migrator:
+        condition: service_completed_successfully
+
+  alertmanager:
+    image: signoz/alertmanager:0.23.5
+    container_name: signoz-alertmanager
+    restart: on-failure
+    volumes:
+      - alertmanager-data:/data
+    command:
+      - --queryService.url=http://query-service:8085
+      - --storage.path=/data
+    configs:
+      - source: alertmanager-config
+        target: /prometheus/alertmanager.yml
+    depends_on:
+      query-service:
+        condition: service_healthy
+
+  frontend:
+    image: signoz/frontend:0.55.0
+    container_name: signoz-frontend
+    restart: on-failure
+    ports:
+      - "3301:3301"
+    configs:
+      - source: nginx-config
+        target: /etc/nginx/conf.d/default.conf
+    depends_on:
+      - alertmanager
+      - query-service
+
+  # ── Optional profile-gated services ──────────────────────────────────
+
+  # Smoke test — fires a single OTLP event so you can verify the wire
+  # path before booting the game server. Run with `--profile smoke up otel-smoke`.
+  otel-smoke:
+    image: alpine/curl:3.14
+    container_name: cimmeria-otel-smoke
+    profiles: [smoke]
+    depends_on:
+      - otel-collector
+    command:
+      - sh
+      - -c
+      - >
+        echo "Sending smoke event to otel-collector:4318..." &&
+        curl -sf -X POST http://otel-collector:4318/v1/logs
+        -H 'Content-Type: application/json'
+        -d '{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"cimmeria-smoke"}}]}, "scopeLogs":[{"logRecords":[{"body":{"stringValue":"SigNoz wire path smoke"},"severityText":"INFO"}]}]}]}' &&
+        echo "Smoke OK — check http://localhost:3301 → Logs"
+
+  # Cloudflare Tunnel — secure remote browser + Cimmeria-MCP access
+  # without opening firewall ports. Run with `--profile tunnel up -d`.
+  # One-time setup is documented in docs/operations/signoz-remote-access.md.
+  cloudflared:
+    image: cloudflare/cloudflared:2024.10.1
+    container_name: cimmeria-cloudflared
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --config /etc/cloudflared/config.yml cimmeria-signoz
+    volumes:
+      - /etc/cloudflared:/etc/cloudflared:ro
+    depends_on:
+      - frontend
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "info", "cimmeria-signoz"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+# ── Named volumes (SigNoz state, persists across container restarts) ───
+volumes:
+  clickhouse-data:
+  signoz-data:
+  zookeeper-data:
+  alertmanager-data:
+
+# ── Inlined SigNoz config files ────────────────────────────────────────
+# Vendored from github.com/SigNoz/signoz @ v0.55.0
+# deploy/docker/clickhouse-setup/* and deploy/docker/common/*
+# These are the only files SigNoz services need at runtime; everything
+# else (the database schemas, the UI assets) is baked into the SigNoz
+# Docker images.
+configs:
+
+  clickhouse-users:
+    content: |
+      <?xml version="1.0"?>
+      <clickhouse>
+          <profiles>
+              <default>
+                  <max_memory_usage>10000000000</max_memory_usage>
+                  <load_balancing>random</load_balancing>
+              </default>
+              <readonly>
+                  <readonly>1</readonly>
+              </readonly>
+          </profiles>
+          <users>
+              <default>
+                  <password></password>
+                  <networks>
+                      <ip>::/0</ip>
+                  </networks>
+                  <profile>default</profile>
+                  <quota>default</quota>
+              </default>
+          </users>
+          <quotas>
+              <default>
+                  <interval>
+                      <duration>3600</duration>
+                      <queries>0</queries>
+                      <errors>0</errors>
+                      <result_rows>0</result_rows>
+                      <read_rows>0</read_rows>
+                      <execution_time>0</execution_time>
+                  </interval>
+              </default>
+          </quotas>
+      </clickhouse>
+
+  clickhouse-cluster:
+    content: |
+      <?xml version="1.0"?>
+      <clickhouse>
+          <zookeeper>
+              <node index="1">
+                  <host>zookeeper-1</host>
+                  <port>2181</port>
+              </node>
+          </zookeeper>
+          <remote_servers>
+              <cluster>
+                  <shard>
+                      <replica>
+                          <host>clickhouse</host>
+                          <port>9000</port>
+                      </replica>
+                  </shard>
+              </cluster>
+          </remote_servers>
+          <macros>
+              <shard>01</shard>
+              <replica>example01-01-1</replica>
+          </macros>
+      </clickhouse>
+
+  otel-collector-config:
+    content: |
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+        jaeger:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:14250
+            thrift_http:
+              endpoint: 0.0.0.0:14268
+        hostmetrics:
+          collection_interval: 30s
+          root_path: /hostfs
+          scrapers:
+            cpu: {}
+            load: {}
+            memory: {}
+            disk: {}
+            filesystem: {}
+            network: {}
+        prometheus:
+          config:
+            global:
+              scrape_interval: 60s
+            scrape_configs:
+              - job_name: otel-collector
+                static_configs:
+                  - targets:
+                      - localhost:8888
+                    labels:
+                      job_name: otel-collector
+
+      processors:
+        batch:
+          send_batch_size: 10000
+          send_batch_max_size: 11000
+          timeout: 10s
+        signozspanmetrics/cumulative:
+          metrics_exporter: clickhousemetricswrite
+          metrics_flush_interval: 60s
+          latency_histogram_buckets: [100us, 1ms, 2ms, 6ms, 10ms, 50ms, 100ms, 250ms, 500ms, 1000ms, 1400ms, 2000ms, 5s, 10s, 20s, 40s, 60s]
+          dimensions_cache_size: 100000
+          dimensions:
+            - name: service.namespace
+              default: default
+            - name: deployment.environment
+              default: default
+            - name: signoz.collector.id
+            - name: service.version
+            - name: browser.platform
+            - name: browser.mobile
+            - name: k8s.cluster.name
+            - name: k8s.node.name
+            - name: k8s.namespace.name
+            - name: host.name
+            - name: host.type
+            - name: container.name
+        resourcedetection:
+          detectors: [env, system]
+          timeout: 2s
+        signozspanmetrics/delta:
+          metrics_exporter: clickhousemetricswrite
+          metrics_flush_interval: 60s
+          latency_histogram_buckets: [100us, 1ms, 2ms, 6ms, 10ms, 50ms, 100ms, 250ms, 500ms, 1000ms, 1400ms, 2000ms, 5s, 10s, 20s, 40s, 60s]
+          dimensions_cache_size: 100000
+          aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
+          enable_exp_histogram: true
+          dimensions:
+            - name: service.namespace
+              default: default
+            - name: deployment.environment
+              default: default
+            - name: signoz.collector.id
+            - name: service.version
+            - name: browser.platform
+            - name: browser.mobile
+            - name: k8s.cluster.name
+            - name: k8s.node.name
+            - name: k8s.namespace.name
+            - name: host.name
+            - name: host.type
+            - name: container.name
+
+      extensions:
+        health_check:
+          endpoint: 0.0.0.0:13133
+        zpages:
+          endpoint: 0.0.0.0:55679
+        pprof:
+          endpoint: 0.0.0.0:1777
+
+      exporters:
+        clickhousetraces:
+          datasource: tcp://clickhouse:9000/signoz_traces
+          docker_multi_node_cluster: ${DOCKER_MULTI_NODE_CLUSTER}
+          low_cardinal_exception_grouping: ${LOW_CARDINAL_EXCEPTION_GROUPING}
+        clickhousemetricswrite:
+          endpoint: tcp://clickhouse:9000/signoz_metrics
+          resource_to_telemetry_conversion:
+            enabled: true
+        clickhousemetricswrite/prometheus:
+          endpoint: tcp://clickhouse:9000/signoz_metrics
+        clickhouselogsexporter:
+          dsn: tcp://clickhouse:9000/signoz_logs
+          docker_multi_node_cluster: ${DOCKER_MULTI_NODE_CLUSTER}
+          timeout: 10s
+          use_new_schema: true
+
+      service:
+        telemetry:
+          logs:
+            encoding: json
+          metrics:
+            address: 0.0.0.0:8888
+        extensions:
+          - health_check
+          - zpages
+          - pprof
+        pipelines:
+          traces:
+            receivers: [jaeger, otlp]
+            processors: [signozspanmetrics/cumulative, signozspanmetrics/delta, batch]
+            exporters: [clickhousetraces]
+          metrics:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [clickhousemetricswrite]
+          metrics/generic:
+            receivers: [hostmetrics]
+            processors: [resourcedetection, batch]
+            exporters: [clickhousemetricswrite]
+          metrics/prometheus:
+            receivers: [prometheus]
+            processors: [batch]
+            exporters: [clickhousemetricswrite/prometheus]
+          logs:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [clickhouselogsexporter]
+
+  otel-opamp-config:
+    content: |
+      server_endpoint: ws://query-service:4320/v1/opamp
+
+  prometheus-config:
+    content: |
+      global:
+        scrape_interval: 5s
+        evaluation_interval: 15s
+
+      alerting:
+        alertmanagers:
+          - static_configs:
+              - targets:
+                  - alertmanager:9093
+
+      rule_files:
+        - 'alerts.yml'
+
+      scrape_configs: []
+
+      remote_read:
+        - url: tcp://clickhouse:9000/signoz_metrics
+
+  alerts-config:
+    content: |
+      groups:
+        - name: ExampleCPULoadGroup
+          rules:
+            - alert: HighCpuLoad
+              expr: system_cpu_load_average_1m > 0.1
+              for: 0m
+              labels:
+                severity: warning
+              annotations:
+                summary: High CPU load
+                description: "CPU load is > 0.1\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+  alertmanager-config:
+    content: |
+      global:
+        resolve_timeout: 1m
+        slack_api_url: 'https://hooks.slack.com/services/xxx'
+
+      route:
+        receiver: 'slack-notifications'
+
+      receivers:
+        - name: 'slack-notifications'
+          slack_configs:
+            - channel: '#alerts'
+              send_resolved: true
+              icon_url: https://avatars3.githubusercontent.com/u/3380462
+              title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+              text: '{{ range .Alerts }}*Alert:* {{ .Annotations.title }}{{ end }}'
+
+  nginx-config:
+    content: |
+      map $http_upgrade $connection_upgrade {
+          default upgrade;
+          ''      close;
+      }
+
+      server {
+          listen       3301;
+          server_name  _;
+
+          gzip on;
+          gzip_static on;
+          gzip_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript;
+          gzip_proxied  any;
+          gzip_vary on;
+          gzip_comp_level 6;
+          gzip_buffers 16 8k;
+          gzip_http_version 1.1;
+
+          client_max_body_size 24M;
+          large_client_header_buffers 8 128k;
+
+          location / {
+              if ( $uri = '/index.html' ) {
+                  add_header Cache-Control no-store always;
+              }
+              root   /usr/share/nginx/html;
+              index  index.html index.htm;
+              try_files $uri $uri/ /index.html;
+          }
+
+          location ~ ^/api/(v1|v3)/logs/(tail|livetail){
+              proxy_pass http://query-service:8080;
+              proxy_http_version 1.1;
+              proxy_read_timeout 600s;
+              proxy_buffering off;
+              proxy_cache off;
+          }
+
+          location /api {
+              proxy_pass http://query-service:8080/api;
+              proxy_read_timeout 600s;
+          }
+
+          location /ws {
+              proxy_pass http://query-service:8080/ws;
+              proxy_http_version 1.1;
+              proxy_set_header Upgrade "websocket";
+              proxy_set_header Connection "upgrade";
+              proxy_read_timeout 86400;
+          }
+
+          error_page   500 502 503 504  /50x.html;
+          location = /50x.html {
+              root   /usr/share/nginx/html;
+          }
+      }

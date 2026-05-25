@@ -125,10 +125,9 @@ In the Cloudflare Zero Trust dashboard:
 docker compose -f docker/compose.yml --profile tunnel up -d
 ```
 
-The single-entry compose file already `include:`s the tunnel overlay
-([`docker/compose.signoz-tunnel.yml`](../../docker/compose.signoz-tunnel.yml));
-`--profile tunnel` flips on the `cloudflared` service that's
-otherwise dormant. Without the flag, the rest of the stack (game
+The single self-contained compose file already defines the
+`cloudflared` service guarded by `profiles: [tunnel]`; `--profile
+tunnel` flips it on. Without the flag, the rest of the stack (game
 server + SigNoz) comes up without any outbound tunnel.
 
 The cloudflared container starts, dials Cloudflare's edge, and the

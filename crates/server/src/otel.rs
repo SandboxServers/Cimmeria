@@ -188,7 +188,7 @@ mod tests {
     /// without `#[tokio::test]` the builder panics inside hyper-util.
     /// The realistic init path is exercised by booting cimmeria-server
     /// with `OTEL_EXPORTER_OTLP_ENDPOINT` set and the `otel-smoke`
-    /// docker profile from `compose.signoz.yml` (smoke test, not unit).
+    /// docker profile from `docker/compose.yml` (smoke test, not unit).
     #[test]
     fn init_returns_none_when_endpoint_unset() {
         let _lock = ENV_LOCK
