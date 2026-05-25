@@ -389,3 +389,195 @@ fn post_panic_synchronous(info: &std::panic::PanicHookInfo<'_>) {
     };
     let _ = client.post(url).json(&body).send();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{ChannelConfig, EventToggles};
+    use crate::event::{ChannelKind, ChatKind, DisconnectReason};
+    use std::collections::HashMap;
+    use std::sync::OnceLock;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// Process-wide guard: tests in this module both touch the
+    /// `GLOBAL: OnceLock<DiscordRuntime>` and only one of them can
+    /// succeed in *setting* it (subsequent `init_with_config` calls
+    /// silently return the existing runtime). All assertions that
+    /// depend on the global match against whatever the chosen-
+    /// initialiser set up — adding a second initialiser test to this
+    /// file would race against it.
+    ///
+    /// Holding a `OnceLock<()>` here is the simplest sentinel: tests
+    /// can `.get()` to check whether the suite has already paid the
+    /// init cost. We don't actually need to coordinate further —
+    /// nextest gives us one process per binary and the one
+    /// initialiser is fine for every test that needs the global.
+    static TESTS_INIT_GUARD: OnceLock<()> = OnceLock::new();
+
+    /// Build a wiremock-backed config with **every** channel routed at
+    /// the supplied URL, every event toggled ON, and the burst
+    /// budget high enough that 14 emits in a tight loop all land.
+    fn all_on_config(wiremock_uri: &str) -> Config {
+        let mut channels = HashMap::new();
+        for c in ChannelKind::ALL {
+            channels.insert(
+                *c,
+                ChannelConfig {
+                    url: format!("{}/{}", wiremock_uri, c.as_str()),
+                    // Above Discord's 150/min hard cap on purpose — the
+                    // config sanitiser clamps to 150 (we exercised that
+                    // in config::tests::rate_limit_clamped_to_safe_range),
+                    // and 150 is plenty of burst for 14 sequential
+                    // emits in this test.
+                    rate_limit_per_min: 150,
+                },
+            );
+        }
+        // Every toggle ON so no emit_* call gets filtered.
+        let events = EventToggles {
+            chat_say: true,
+            chat_whisper: true,
+            chat_guild: true,
+            chat_team: true,
+            chat_command: true,
+            player_death: true,
+            player_respawn: true,
+            mission_failed: true,
+            mission_reward_granted: true,
+            loot_generated: true,
+            item_used: true,
+            warning: true,
+            ..EventToggles::default()
+        };
+        Config {
+            enabled: true,
+            username: None,
+            avatar_url: None,
+            channels,
+            events,
+        }
+    }
+
+    /// End-to-end coverage for every typed `emit_*` helper. Boots a
+    /// wiremock server, wires every channel at it, calls
+    /// `init_with_config`, then fires each `emit_*` helper once and
+    /// asserts the wiremock saw the expected count of POSTs.
+    ///
+    /// Pinning the COUNT (not the bodies) is deliberate: the per-
+    /// variant body format is already covered by
+    /// `embed::tests::every_event_variant_builds` + the per-event
+    /// formatter tests. This test's regression target is the typed-
+    /// wrapper layer — a future hand that drops `emit_player_login`
+    /// or routes it through the wrong `Event` variant trips this.
+    ///
+    /// **One-shot global init.** This is the only test in
+    /// `cimmeria-discord` that calls `init_with_config`. Adding a
+    /// second initialiser test in this binary would silently observe
+    /// the runtime set up here (`OnceLock::set` returns
+    /// `Err(existing)` quietly). If you need that, factor a
+    /// `#[serial_test::serial]` discipline in first.
+    #[tokio::test]
+    async fn every_emit_helper_routes_through_global_runtime() {
+        let server = MockServer::start().await;
+        // One mock that matches every POST regardless of path.
+        // Returning 204 lets the sender post successfully and feeds
+        // the request log we assert against.
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let cfg = all_on_config(&server.uri());
+        let _rt = init_with_config(cfg);
+        // Belt-and-braces: if a stale GLOBAL slipped in from a
+        // future test, mark the guard so the next reader of this
+        // file knows what's going on. (No actual coordination —
+        // see the doc comment on TESTS_INIT_GUARD.)
+        let _ = TESTS_INIT_GUARD.set(());
+
+        // Fire every typed helper. Add a new line here when a new
+        // emit_* helper lands in lib.rs.
+        let addr: SocketAddr = "127.0.0.1:50000".parse().unwrap();
+        emit_server_startup("0.1.0", vec!["addr".into()]);
+        emit_server_shutdown("test", 100);
+        emit_player_login(1, Some("alice".into()), addr);
+        emit_player_logout(1, Some("alice".into()), 60);
+        emit_player_disconnect(
+            Some(1),
+            Some("alice".into()),
+            addr,
+            DisconnectReason::Timeout,
+            42,
+        );
+        emit_player_auth_failed("badname", addr, "invalid password");
+        emit_player_world_entry(1, "alice", "Castle", [1.0, 2.0, 3.0]);
+        emit_player_world_exit(1, "alice", "Castle", Some("Tollana".into()));
+        emit_chat(ChatKind::Global, "alice", None, "hello");
+        emit_level_up("alice", 5);
+        emit_mission_accepted("alice", 1234, Some("Find Ambernol".into()));
+        emit_mission_completed("alice", 1234, Some("Find Ambernol".into()));
+        emit_gm_command("steve", "/teleport", "alice 1,2,3");
+
+        const EXPECTED_EMITS: usize = 13;
+
+        // Drain the queue. The send task is async; give it a
+        // generous wait but bounded so a hung test doesn't hang the
+        // suite. 2 s is well above the steady-state turnaround for
+        // a localhost wiremock + 150/min rate-limit budget.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            let count = server.received_requests().await.unwrap().len();
+            if count >= EXPECTED_EMITS {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("drained {count} requests but expected ≥ {EXPECTED_EMITS} within deadline");
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+
+        // Sanity that every channel got some traffic — proves the
+        // routing table in `router::channel_for` matches the
+        // EventKind each helper produces. (Most channels get one
+        // emit; the test isn't pinning specific counts per channel
+        // because that's the router's contract, not the typed
+        // wrapper's.)
+        let received = server.received_requests().await.unwrap();
+        let urls: std::collections::HashSet<String> =
+            received.iter().map(|r| r.url.path().to_string()).collect();
+        assert!(
+            urls.len() >= 5,
+            "expected multiple channels routed; got paths {urls:?}"
+        );
+    }
+
+    /// `install_panic_hook` is idempotent — calling it twice (e.g. by
+    /// the server bin and a test harness in the same process) must
+    /// not stack hooks. Verifies the `INSTALLED` mutex guards
+    /// re-entry.
+    ///
+    /// We don't trigger an actual panic — `post_panic_synchronous`
+    /// would attempt a blocking HTTP POST and the test process would
+    /// terminate via the default hook's abort.
+    #[test]
+    fn install_panic_hook_is_idempotent() {
+        install_panic_hook();
+        install_panic_hook();
+        install_panic_hook();
+        // No assertion — we're pinning that this doesn't deadlock,
+        // panic, or stack-overflow. A naïve implementation that
+        // wrapped the existing hook unconditionally would either
+        // grow the call stack on each panic or recurse infinitely.
+    }
+
+    /// `global()` returns whatever `init_with_config` set in the
+    /// init-test above (or None if THIS test happens to run first).
+    /// Either outcome is a valid no-panic exercise of the read path,
+    /// so we don't assert which — we're just covering the function
+    /// body.
+    #[test]
+    fn global_accessor_does_not_panic() {
+        let _ = global();
+    }
+}

@@ -346,4 +346,63 @@ mod tests {
         assert_eq!(TracingEventKind::Warn.event_kind(), EventKind::Warning);
         assert_eq!(TracingEventKind::Error.event_kind(), EventKind::Error);
     }
+
+    /// Field-visitor coverage for every primitive type the
+    /// `FieldCollector` implements. tracing emits structured fields
+    /// by calling one of `record_str`, `record_i64`, `record_u64`,
+    /// `record_bool`, `record_f64`, or `record_debug` depending on
+    /// the value's type. The existing tests only cover string +
+    /// debug; this pins the numeric and boolean arms so future
+    /// refactors don't quietly drop a primitive type from the
+    /// embed's fields list.
+    ///
+    /// Reverting any `record_*` arm to `unimplemented!()` (or to a
+    /// `panic!`) trips this immediately because tracing macros
+    /// dispatch to the visitor by value type at compile time.
+    #[tokio::test(flavor = "current_thread")]
+    async fn field_collector_records_all_primitive_types() {
+        let mock = MockSender::new();
+        let calls = mock.calls_handle();
+        let cfg = errors_only_config(true, true);
+        let (handle, _task) = spawn(mock, cfg.clone());
+
+        let subscriber = tracing_subscriber::registry().with(DiscordLayer::new(handle, cfg));
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        tracing::error!(
+            // i64 (record_i64)
+            signed_field = -42_i64,
+            // u64 (record_u64)
+            unsigned_field = 99_u64,
+            // bool (record_bool)
+            bool_field = true,
+            // f64 (record_f64). Not an approx-pi value — clippy
+            // would flag that as `approx_constant`.
+            float_field = 2.5_f64,
+            // &str (record_str)
+            string_field = "hello",
+            "primitive harvest"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let recorded = calls.lock().await;
+        assert_eq!(recorded.len(), 1, "exactly one post recorded");
+        let body = recorded[0].1.to_string();
+
+        // Every field name + every formatted value must appear in
+        // the body. Each pair pins a distinct `record_*` arm.
+        for (key, val) in [
+            ("signed_field", "-42"),
+            ("unsigned_field", "99"),
+            ("bool_field", "true"),
+            ("float_field", "2.5"),
+            ("string_field", "hello"),
+        ] {
+            assert!(body.contains(key), "key `{key}` missing in body: {body}");
+            assert!(
+                body.contains(val),
+                "value `{val}` for key `{key}` missing in body: {body}"
+            );
+        }
+    }
 }
