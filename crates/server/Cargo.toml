@@ -11,19 +11,20 @@ path = "src/main.rs"
 
 [dependencies]
 axum = { workspace = true }
-base64 = { workspace = true }
 cimmeria-admin-api = { workspace = true }
 cimmeria-common = { workspace = true }
 cimmeria-discord = { workspace = true }
 cimmeria-services = { workspace = true }
-hmac = "0.12"
-rand = { workspace = true }
-reqwest = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-sha2 = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
+# OpenTelemetry exporter — ships logs/traces/metrics to SigNoz (or any
+# OTLP collector) via gRPC. The integration is opt-in via the standard
+# `OTEL_EXPORTER_OTLP_ENDPOINT` env var; with it unset the exporter is
+# a no-op and these crates' code never executes.
+opentelemetry = "0.27"
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "http-proto", "reqwest-blocking-client"] }
+tracing-opentelemetry = "0.28"

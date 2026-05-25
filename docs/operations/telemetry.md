@@ -7,35 +7,49 @@ ingest, and reading the data downstream.
 ## Architecture at a glance
 
 ```text
-launcher                  cimmeria-server                Functions ingest
-────────────────          ──────────────                ──────────────
-sgw-launcher.exe          /auth/dev-session             /api/upload-chunk
-   ├─ identity.json       POST → HMAC token             POST → Cosmos
+launcher                            cimmeria-server
+────────────────                    ────────────────
+sgw-launcher.exe                    /api/auth/dev-session
+   ├─ identity.json                 POST → HMAC token
    ├─ tail Binaries/sessions/*.log
-   ├─ POST upload-chunk  ─────────────────────────────▶
-   ├─ game exits
-   └─ POST upload-bundle ─────────────────────────────▶ /api/upload-bundle
-                                                       POST → Blob Storage
+   ├─ POST /api/telemetry/upload-chunk  ───┐
+   ├─ game exits                            ▼
+   └─ POST /api/telemetry/upload-bundle ──┐ tracing::* replay
+                                          ▼
+                                          OTLP layer ────▶ SigNoz / ClickHouse
+                                          file sinks ────▶ logs/*.log on disk
+                                          WebSocket  ────▶ admin UI live stream
 ```
 
-Two binaries share one secret: `cimmeria-server` mints HMAC-SHA256
-tokens, the Functions app verifies them. The launcher itself holds no
-secret — it gets a short-lived token from cimmeria-server at game-
-launch and presents it to Functions.
+cimmeria-server holds the HMAC secret and verifies tokens it minted
+itself — no external Functions app in the loop. Launcher uploads land
+directly on cimmeria-server, get replayed through the `tracing`
+subscriber, and reach SigNoz via the OTLP exporter. The same events
+also stream to the admin WebSocket and on-disk per-system log files.
+
+> **Historical note.** Earlier iterations of the pipeline routed
+> launcher uploads through an external Cosmos-backed Functions app
+> (`Cimmeria-MCP`). That path is retired — launcher uploads now go
+> straight to cimmeria-server's admin port and flow into SigNoz.
+> Cimmeria-MCP retains the *read* side (LLM-mediated queries against
+> SigNoz) but no longer writes launcher data. See
+> [docs/architecture/observability.md](../architecture/observability.md).
 
 ## Secret provisioning (GitHub Actions Secrets)
 
-Single shared secret, **64 random bytes**, named
+Single secret, **64 random bytes**, named
 `CIMMERIA_TELEMETRY_HMAC_SECRET`. Configured as a GitHub Actions
-repo (or org-level) secret in both repos:
+repo (or org-level) secret on `SandboxServers/Cimmeria`. The deploy
+workflow injects it as env on the running cimmeria-server process.
+The server reads `std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET")` at
+mint and upload-verify time
+(`crates/admin-api/src/routes/dev_session.rs::load_secret` and
+`crates/admin-api/src/routes/telemetry.rs::load_secret_for_ingest`).
 
-- **`SandboxServers/Cimmeria`** — deploy workflow injects it as env
-  on the running cimmeria-server process. The server reads
-  `std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET")` at mint/refresh
-  time (`crates/admin-api/src/routes/dev_session.rs::load_secret`).
-- **`SandboxServers/Cimmeria-MCP`** — Functions deploy reads the
-  same value as a Functions app setting; middleware verifies the
-  token signature on every `/api/upload-*` request.
+The `SandboxServers/Cimmeria-MCP` repo previously held a mirror copy
+of this secret for token verification on its end of the upload flow.
+With Cimmeria-MCP out of the write path, that secret is no longer
+required there — remove it during the next secret rotation.
 
 ### Generating the value
 
@@ -43,11 +57,10 @@ repo (or org-level) secret in both repos:
 openssl rand -hex 64
 ```
 
-Produces 128 hex chars = 64 raw bytes. `load_secret` accepts both
-the hex form and a raw-bytes UTF-8 form (any length ≥ 32 bytes).
-Anything shorter is rejected with `AuthError::SecretTooShort` —
-operator misconfiguration, not silent token issuance against a
-weak key.
+Produces 128 hex chars = 64 raw bytes. The verifier accepts both the
+hex form and a raw-bytes UTF-8 form (any length ≥ 32 bytes). Anything
+shorter is rejected with `AuthError::SecretTooShort` — operator
+misconfiguration, not silent token issuance against a weak key.
 
 ### Setting the secret
 
@@ -55,43 +68,46 @@ weak key.
 gh secret set CIMMERIA_TELEMETRY_HMAC_SECRET \
     --repo SandboxServers/Cimmeria \
     --body "$(openssl rand -hex 64)"
-
-gh secret set CIMMERIA_TELEMETRY_HMAC_SECRET \
-    --repo SandboxServers/Cimmeria-MCP \
-    --body "<same value as above>"
-```
-
-For org-level secrets (single source of truth across both repos):
-
-```bash
-gh secret set CIMMERIA_TELEMETRY_HMAC_SECRET \
-    --org SandboxServers \
-    --visibility selected \
-    --repos Cimmeria,Cimmeria-MCP
 ```
 
 ### Rotation
 
 1. Generate new value: `openssl rand -hex 64`.
-2. Update both GitHub Secrets simultaneously (or the one org-level
-   secret).
+2. Update the GitHub Secret.
 3. Redeploy cimmeria-server.
-4. Redeploy the Functions app.
-5. Existing in-flight tokens become invalid mid-flight; affected
+4. Existing in-flight tokens become invalid mid-flight; affected
    launchers retry through `auth::fetch_dev_session` and get a fresh
    token within seconds. No user-visible disruption beyond a single
    `Telemetry session error` log line.
 
 **Cadence:** rotate every ~90 days or immediately on any suspicion of
-exposure. No KeyVault binding — the secret lives only in GitHub
-Actions secret store + the running process envs.
+exposure. The secret lives only in GitHub Actions secret store + the
+running cimmeria-server process env.
+
+## Pointing the launcher at a non-localhost server
+
+The dev-session mint hands the launcher a `upload_endpoint` URL.
+Default is `http://localhost:8443/api/telemetry` — fine when the
+launcher and the server share a host. For any other topology, set:
+
+```bash
+CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT="https://signoz.<your-domain>/api/telemetry"
+```
+
+on the cimmeria-server process. If you're routing through the
+Cloudflare Tunnel that exposes the SigNoz UI (see
+[signoz-remote-access.md](signoz-remote-access.md)), add another
+`ingress` rule to your `cloudflared` config pointing
+`signoz.<your-domain>/api/telemetry` at the admin-port backend.
 
 ## Kill switch
 
 `CIMMERIA_TELEMETRY_KILL_SWITCH=1` on the cimmeria-server process →
-every `/auth/dev-session` call returns 503 with `Retry-After: 60`.
+every `/api/auth/dev-session` call returns 503 with `Retry-After: 60`.
 The launcher logs a warn and continues launching the game without
-telemetry.
+telemetry. In-flight upload requests are NOT rejected by the kill
+switch — they complete using the token they already hold — but new
+sessions can't start until the switch is released.
 
 ```bash
 # Pause ingest without redeploy
@@ -108,15 +124,23 @@ are treated as off (intentional crispness of contract).
 
 ## Where the data lives
 
-| Artifact | Storage | Retention |
-|---|---|---|
-| Per-event NDJSON chunks | Cosmos DB `sessions` container | 30 days (TTL) |
-| End-of-session bundles (zip) | Blob Storage `session-bundles` container | 90 days |
-| `install_id` partition key | Cosmos DB document `id` | Inherits container TTL |
+Every event ends up in one place: SigNoz / ClickHouse, indexed by:
 
-Per-event events carry `session_id` + monotonic `seq`; bundles carry
-`(install_id, machine_id, launcher_version, branch, git_sha,
-event_count, dropped_lines, zip_sha256)`.
+- `service.name = "cimmeria-server"` (the host that ingested it)
+- `target` distinguishes producers:
+  - `launcher.client_log` — parsed Atera client log lines
+  - `launcher.debug_log` — debug-channel launcher events
+  - `launcher.key_dump` — encryption key material (debug level — not
+    written to public sinks at info)
+  - `launcher.session_meta` — session boundaries and rotation events
+  - `launcher.bundle` — per-bundle metadata and per-line replay from
+    end-of-session zips
+  - `launcher.ingest` — server-side accept/reject counters
+- `session_id` — the launcher session UUID minted by dev-session
+- `install_id` — stable per-install identifier
+
+Retention is whatever the ClickHouse TTL says (see
+[signoz-deployment.md](signoz-deployment.md#retention)).
 
 ## User opt-out
 
@@ -124,7 +148,7 @@ The launcher's TelemetrySettings config (`telemetry.enabled`,
 default `true`) controls whether the "Launch + Telemetry" button is
 enabled. When `false`:
 
-- No `/auth/dev-session` POST fires.
+- No `/api/auth/dev-session` POST fires.
 - No log tailing.
 - No bundle upload.
 - The legacy "Launch Atera Debug" button still works (no
@@ -138,5 +162,23 @@ enabled. When `false`:
 - `machine_id` is `sha256(HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid)`
   truncated to 16 hex chars — the raw GUID never leaves the dev's
   machine.
+- KeyDump events carry encryption key material from the client. They
+  ship at **debug** level only — the default file sinks and admin
+  WebSocket drop them; only SigNoz (when configured for debug ingest)
+  retains them. Use this lever to keep raw keys off long-lived
+  on-disk storage.
 - Per-event PII redaction is explicitly out of scope (dev-only data;
   the developer is the device owner).
+
+## Endpoints
+
+| Path | Method | Auth | Purpose |
+|---|---|---|---|
+| `/api/auth/dev-session` | POST | none (anyone can mint) | Mint a token for a launcher session. |
+| `/api/auth/dev-session/refresh` | POST | bearer (own token) | Extend an almost-expired token. |
+| `/api/telemetry/upload-chunk` | POST | bearer | Streaming events (gzip(NDJSON)). |
+| `/api/telemetry/upload-bundle` | POST | bearer | End-of-session zip (multipart). |
+
+A 503 with `Retry-After` on any of these means the kill switch is on.
+A 401 on upload endpoints means the token expired (refresh) or was
+never valid (mint a fresh session).

@@ -12,6 +12,7 @@ pub mod editor;
 pub mod entities;
 pub mod players;
 pub mod spaces;
+pub mod telemetry;
 
 use std::sync::Arc;
 
@@ -32,4 +33,5 @@ pub fn api_routes() -> Router<Arc<Orchestrator>> {
         .nest("/editor", editor::routes())
         .nest("/auth", auth::routes())
         .nest("/audit", audit::routes())
+        .nest("/telemetry", telemetry::routes())
 }

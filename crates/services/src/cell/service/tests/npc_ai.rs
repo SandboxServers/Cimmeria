@@ -422,7 +422,11 @@ async fn npc_ai_leash_emits_stat_update_then_state_field_to_witnesses() {
 /// faction / aggression as needed. The NPC's default ability bucket is
 /// left intact (Pistol Shot 592) so the fight path doesn't wedge on an
 /// empty selector.
-fn make_aggression_fixture(
+///
+/// Visibility is `pub(super)` so the sibling `npc_ai_auto_aggro`
+/// module (split out when this file crossed the 700-line cap) can
+/// reuse the same setup.
+pub(super) fn make_aggression_fixture(
     npc_id: u32,
     npc_faction: u8,
     player_id: u32,
@@ -1178,3 +1182,6 @@ async fn npc_ai_fight_stationary_does_not_back_off_inside_min_range() {
         npc.nav_path
     );
 }
+
+// Auto-aggro broadcast tests moved to the sibling `npc_ai_auto_aggro`
+// module (this file crossed the 700-line cap).

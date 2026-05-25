@@ -442,3 +442,76 @@ async fn player_attacker_does_more_damage_than_npc_attacker() {
             "player attacker must deal strictly more damage than NPC attacker; player={player_dmg}, npc={npc_dmg}"
         );
 }
+
+/// Player dying mid-reload / mid-draw / mid-slot-swap must clear
+/// every pending weapon-action timer. Same-world respawn
+/// (`ReanchorPlayer`) reuses the cell entity, so any timer that
+/// survives death will fire its tick during the Defeat Window or
+/// post-respawn — phantom reload animations, queued attacks
+/// against stale targets, slot-swap choreography on a corpse.
+///
+/// This guard stages a player with EVERY pending weapon field set
+/// to `Some`, lethally damages them, and asserts each field is
+/// `None` afterward.
+#[tokio::test]
+async fn player_death_clears_pending_weapon_action_state() {
+    use std::time::{Duration, Instant};
+
+    let mut mgr = make_mgr_player_vs_npc();
+    // Make entity 2 the attacker (NPC) and entity 1 the target (player).
+    // The fixture sets player at id=1 already; we just give the NPC an
+    // ability so its damage_apply call has effects to resolve.
+    let lethal = make_ability(99, vec![777]);
+    mgr.effect_defs.insert(777, make_effect(777, 9_999));
+    mgr.ability_defs.insert(99, lethal.clone());
+    if let Some(p) = mgr.get_entity_mut(1) {
+        // Pre-stage every pending timer with arbitrary future deadlines
+        // so the post-death assertion is observable.
+        let future = Some(Instant::now() + Duration::from_secs(60));
+        p.pending_reload_at = future;
+        p.reload_complete_at = future;
+        p.reload_slot_id = Some(0);
+        p.pending_attack_at = future;
+        p.pending_attack_ability_id = Some(7);
+        p.pending_attack_target_id = Some(42);
+        p.pending_slot_swap_at = future;
+        p.pending_slot_swap_target = Some(3);
+        p.holster_animation_complete_at = future;
+        p.combat_exit_at = Some(Instant::now());
+        // Set HP to a single point so the test's 9999 damage kills.
+        if let Some(h) = p.stats.get_mut(HEALTH) {
+            h.update(0, 1, 100);
+            h.clear_dirty();
+        }
+    }
+
+    let (tx, _rx) = mpsc::channel(64);
+    // NPC attacker (id=2) hits player target (id=1). The effect chain
+    // delivers 9999 damage, dropping HP from 1 to <0 → target_died = true.
+    apply_damage_to_target(2, 1, 99, &Some(lethal), 0, false, &tx, &mut mgr).await;
+
+    let player = mgr
+        .get_entity(1)
+        .expect("player entity must survive death — same-world respawn reuses it");
+    assert_eq!(
+        player.pending_reload_at, None,
+        "pending_reload_at must clear on death — otherwise the next \
+         pending_reload_tick fires Phase B mid-Defeat-Window, starting \
+         a phantom reload"
+    );
+    assert_eq!(player.reload_complete_at, None);
+    assert_eq!(player.reload_slot_id, None);
+    assert_eq!(
+        player.pending_attack_at, None,
+        "pending_attack_at must clear on death — otherwise \
+         pending_attack_tick re-fires `useAbility` against the cached \
+         target post-respawn, producing a queued shot the player \
+         never asked for"
+    );
+    assert_eq!(player.pending_attack_ability_id, None);
+    assert_eq!(player.pending_attack_target_id, None);
+    assert_eq!(player.pending_slot_swap_at, None);
+    assert_eq!(player.pending_slot_swap_target, None);
+    assert_eq!(player.holster_animation_complete_at, None);
+    assert_eq!(player.combat_exit_at, None);
+}
