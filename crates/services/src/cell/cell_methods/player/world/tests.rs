@@ -1171,3 +1171,84 @@ async fn set_auto_cycle_immediate_fire_credits_quest_kill_on_tagged_npc_death() 
         "test fixture: target must be dead after the lethal immediate fire",
     );
 }
+
+/// `handle_reload` Phase B must cancel any in-flight OOC holster
+/// Phase 2 (`holster_animation_complete_at`). Reload semantics imply
+/// "the weapon stays drawn"; without this cancel, the Phase 2
+/// deadline still elapses mid-reload and broadcasts a fresh
+/// `BeingAppearance` with no weapon attached. The user sees the
+/// reload animation play, then the weapon mesh vanishes on the
+/// next AoI tick.
+///
+/// Bug shape: player drains clip with `autoReload = false`,
+/// watches OOC holster Phase 1 fire (`Item_Unequip` animation),
+/// then manually presses R during the ~half-second animation
+/// window before Phase 2 elapses. Pre-fix Phase B was missing the
+/// `holster_animation_complete_at = None` clear that Phase A
+/// already had (line 554), so the holster timer kept running.
+///
+/// Pin: stage `holster_animation_complete_at = Some(future)`,
+/// drain the clip, call `handle_reload` with the weapon drawn
+/// (forcing the Phase B path), assert the field is `None`
+/// afterward AND a fresh reload deadline is armed.
+#[tokio::test]
+async fn handle_reload_phase_b_cancels_in_flight_holster_phase_2() {
+    use std::time::{Duration, Instant};
+
+    let mut mgr = make_mgr_with_player();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        // Weapon drawn — forces Phase B (drawn-reload) path, not
+        // Phase A (reload-while-holstered).
+        e.weapon_holstered = false;
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 1,
+                clip_size: 30,
+                default_ammo_type: 2,
+                current_ammo: 0, // empty → reload will arm
+                cur_ammo_type: 2,
+            },
+        );
+        e.active_bandolier_slot = 0;
+        // Stage the in-flight Phase 2 holster — Phase 1 fired
+        // moments ago, animation is playing, mesh-drop deadline is
+        // ~half a second out.
+        e.holster_animation_complete_at = Some(Instant::now() + Duration::from_millis(500));
+    }
+    mgr.ability_defs.insert(
+        596,
+        AbilityDef {
+            ability_id: 596,
+            name: "reload".to_string(),
+            cooldown: 1.0,
+            warmup: 0.5,
+            flags: 0,
+            is_ranged: false,
+            min_range: 0,
+            max_range: 0,
+            target_type_id: 0,
+            effect_ids: vec![],
+            moniker_ids: vec![],
+            required_ammo: 0,
+            event_set_id: None,
+            velocity: 0.0,
+        },
+    );
+
+    let (tx, _rx) = mpsc::channel(16);
+    handle_reload(1, &tx, &mut mgr).await;
+
+    let e = mgr.get_entity(1).unwrap();
+    assert!(
+        e.holster_animation_complete_at.is_none(),
+        "Phase B must clear holster_animation_complete_at — reload \
+         semantics imply weapon stays drawn. Pre-fix, Phase 2 would \
+         still elapse mid-reload and drop the weapon mesh."
+    );
+    assert!(
+        e.reload_complete_at.is_some(),
+        "fixture sanity: Phase B must arm reload_complete_at — if this \
+         fails, the test isn't exercising the Phase B branch"
+    );
+}

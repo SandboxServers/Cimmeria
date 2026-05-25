@@ -57,7 +57,7 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
                 npc_ai_leash(npc_id, tx, space_mgr).await;
             }
             AiState::Idle => {
-                npc_ai_idle_auto_aggro(npc_id, space_mgr);
+                npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await;
             }
             _ => {}
         }
@@ -74,7 +74,11 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
 /// dominates and focuses the NPC on the triggering player rather than
 /// whichever player happens to be closest. Caller (`npc_ai_tick`)
 /// guarantees `aggression > 0`.
-fn npc_ai_idle_auto_aggro(npc_id: u32, space_mgr: &mut SpaceManager) {
+async fn npc_ai_idle_auto_aggro(
+    npc_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
     use super::super::combat;
 
     let (npc_pos, npc_faction) = match space_mgr.get_entity(npc_id) {
@@ -110,14 +114,19 @@ fn npc_ai_idle_auto_aggro(npc_id: u32, space_mgr: &mut SpaceManager) {
             player_id,
             "NPC AI: aggression-driven auto-aggro on opposing-faction player"
         );
-        // Discard the optional new-state — the auto-aggro path doesn't
-        // broadcast `onStateFieldUpdate` to the player here. The next
-        // explicit hit (player fires back, NPC retaliates, etc.) will go
-        // through the normal generate_threat → enter_player_combat path
-        // which does the BSF_IN_COMBAT broadcast. Doing it here would
-        // light up the combat HUD before the player has any reason to
-        // know they've been seen — surfacing as a "ghost combat" UX bug.
-        let _ = combat::generate_threat(space_mgr, player_id, npc_id, 1.0);
+        // Invariant: when `enter_player_combat` flips `weapon_holstered`
+        // to false on first-add, the client's cached `ComponentList`
+        // must be refreshed — otherwise the fire path passes the
+        // `needs_unholster_queue` gate (server thinks drawn) while
+        // the client still renders the holstered mesh. The
+        // `onStateFieldUpdate` half is intentionally suppressed here
+        // (auto-aggro can fire before the player has any visible
+        // reason to know — lighting up `BSF_IN_COMBAT` is the "ghost
+        // combat HUD" carve-out); the damage path broadcasts it on
+        // the next explicit hit.
+        if combat::generate_threat(space_mgr, player_id, npc_id, 1.0).is_some() {
+            super::super::abilities::request_appearance_refresh(player_id, tx, space_mgr).await;
+        }
     }
 }
 

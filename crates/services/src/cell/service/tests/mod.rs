@@ -17,6 +17,7 @@ use crate::cell::space_manager::SpaceManager;
 
 mod bandolier;
 mod npc_ai;
+mod npc_ai_auto_aggro;
 mod regen;
 mod reload;
 

@@ -169,7 +169,24 @@ pub(super) async fn apply_damage_to_target(
     if target_died {
         target.set_state_flag(combat::BSF_DEAD);
         target.set_state_flag(combat::BSF_MOVEMENT_LOCK); // prevent movement while dead
-                                                          // Transition NPC AI to Dead so it stops fighting and moving
+
+        // Player corpses keep the cell entity alive across same-world
+        // respawn (`ReanchorPlayer` reuses the entity instead of
+        // destroying and re-creating). Any in-flight weapon-action
+        // timer survives unless cleared here, and the per-tick
+        // sweeps fire deferred actions regardless of `BSF_DEAD`.
+        // Pre-fix surface: a player who dies mid-reload would have
+        // `reload_completion_tick` refill their clip during the
+        // Defeat Window (free reload during the dead state); a
+        // player who dies during the fire-while-holstered draw
+        // queue would have `pending_attack_tick` fire `useAbility`
+        // against the cached target post-respawn (re-fire against
+        // a possibly-dead-or-departed entity). NPCs are destroyed
+        // outright on death, so the cleanup is player-only.
+        if target.is_player {
+            target.clear_weapon_action_state();
+        }
+        // Transition NPC AI to Dead so it stops fighting and moving
         if !target.is_player {
             target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
             // Do NOT clear `threat_list` here: `apply_death_transition`
