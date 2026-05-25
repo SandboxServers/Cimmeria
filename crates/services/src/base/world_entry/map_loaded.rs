@@ -132,7 +132,21 @@ pub(crate) async fn handle_map_loaded(
             map_base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
         tracing::debug!(%addr, len = pkt_data.len(), seq = frag_seq,
             part = i + 1, total = map_packets.len(), "UDP_OUT mapLoaded entity data");
-        transport.send_to(pkt_data, addr).await?;
+        if let Err(e) = transport.send_to(pkt_data, addr).await {
+            // a single failed fragment leaves the client with
+            // a partial enter-world bundle — invisible NPCs, missing
+            // appearance, or stuck on the load screen. error! so a
+            // partial world-entry is greppable per fragment.
+            tracing::error!(
+                %addr,
+                fragment_idx = i + 1,
+                total_fragments = map_packets.len(),
+                fragment_seq = frag_seq,
+                map_body_len = map_body.len(),
+                "map_loaded: fragment send failed -- client will have a half-loaded world: {e}"
+            );
+            return Err(e.into());
+        }
         super::super::helpers::shadow_register_reliable_send(
             connected,
             addr,
@@ -250,6 +264,124 @@ mod tests {
         assert!(
             err.to_string().contains("no pending world entry"),
             "unexpected error: {err}"
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Negative-logging regression guard.
+    //
+    // Per-fragment `transport.send_to(...).await?;` propagation with
+    // no log left a partial enter-world bundle as a silent player-
+    // visible bug (invisible NPCs, missing appearance, stuck-on-load).
+    // The handler now emits an ERROR per failing fragment with
+    // fragment_idx + total + body_len. The guard pins:
+    //   1. Result is Err (preserved propagation).
+    //   2. ERROR fires naming "fragment send failed".
+    //   3. fragment_idx field carries the failing fragment index (1).
+    //   4. No fragments past the failing one were attempted.
+    // ──────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn map_loaded_fragment_send_failure_errors_and_logs() {
+        use crate::test_support::LogCapture;
+        use async_trait::async_trait;
+        use cimmeria_mercury::transport::Transport as TransportTrait;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use tracing::Level;
+
+        /// Succeed for `fail_after` sends, then fail every subsequent
+        /// send_to. Mirrors the FailingTransport pattern in
+        /// `cell_dispatch/tests.rs`.
+        struct FailAfter {
+            sent: AtomicUsize,
+            fail_after: usize,
+            local: SocketAddr,
+        }
+
+        #[async_trait]
+        impl TransportTrait for FailAfter {
+            async fn send_to(&self, bytes: &[u8], _addr: SocketAddr) -> std::io::Result<usize> {
+                let n = self.sent.fetch_add(1, Ordering::SeqCst);
+                if n < self.fail_after {
+                    Ok(bytes.len())
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::WouldBlock,
+                        "synthetic-test-failure",
+                    ))
+                }
+            }
+            fn local_addr(&self) -> std::io::Result<SocketAddr> {
+                Ok(self.local)
+            }
+        }
+
+        let capture = LogCapture::install();
+
+        // Succeed the standalone enter-world send (index 0), fail every
+        // fragment send after that.
+        let typed = Arc::new(FailAfter {
+            sent: AtomicUsize::new(0),
+            fail_after: 1,
+            local: "127.0.0.1:0".parse().unwrap(),
+        });
+        let transport: Arc<dyn Transport> = typed.clone();
+
+        let addr: SocketAddr = "127.0.0.1:55502".parse().unwrap();
+        let mut client = crate::test_support::test_default_connected_client_state();
+        client.pending_map_loaded = Some(crate::mercury::types::WorldEntryInfo {
+            player_entity_id: 7777,
+            space_id: 0x0001_0042,
+            pos: [0.0; 3],
+            rot: [0.0; 3],
+            world_name: "Agnos".to_string(),
+            class_id: 2,
+            world_stargates: Vec::new(),
+        });
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new({
+                let mut m = HashMap::new();
+                m.insert(addr, client);
+                m
+            }));
+        let key = [0u8; 32];
+
+        let result = handle_map_loaded(
+            &transport,
+            addr,
+            key,
+            &connected,
+            &None,
+            &Arc::new(Mutex::new(HashMap::new())),
+            &None,
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "fragment send failure must propagate as Err"
+        );
+        let frag_err = capture
+            .find_message(Level::ERROR, "map_loaded: fragment send failed")
+            .expect(
+                "negative-logging convention: per-fragment ERROR must fire — captured: see all()",
+            );
+        // Sanity-check the structured fields carry the failing fragment
+        // identity (idx + total) so an ops grep can pin down which
+        // fragment was lost.
+        assert!(
+            frag_err.has_field("fragment_idx", "1"),
+            "fragment_idx field must point at the failing fragment (1-indexed): {:#?}",
+            frag_err
+        );
+        // Send-attempt count: 1 (standalone success) + 1 (first
+        // fragment failure) — no fragments past the failing one were
+        // attempted. Same abort-on-first-failure shape as the bundle
+        // guard in `cell_dispatch/tests.rs`.
+        assert_eq!(
+            typed.sent.load(Ordering::SeqCst),
+            2,
+            "abort-on-first-failure: standalone enter-world + 1 fragment = 2 sends"
         );
     }
 }

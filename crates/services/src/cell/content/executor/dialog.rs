@@ -135,14 +135,28 @@ pub(super) async fn remove_dialog_set(
                 .unwrap_or(0);
             let merged = base_flags | removed_flags.unwrap_or(0);
 
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::WitnessEntityMethod {
                     witness_id: entity_id,
                     entity_id: target_id,
                     method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                     args: (merged as u64).to_le_bytes().to_vec(),
                 })
-                .await;
+                .await
+            {
+                // dropped interaction-type push leaves the
+                // NPC with stale flags on the client (showing/hiding the
+                // wrong interaction prompt).
+                tracing::warn!(
+                    entity_id,
+                    target_id,
+                    dialog_set_id,
+                    slot,
+                    chain_id,
+                    phase = "remove",
+                    "RemoveDialogSet: cell→base interaction-type send failed -- NPC interaction prompt stale: {e}"
+                );
+            }
         }
     }
 }
@@ -244,14 +258,27 @@ async fn send_interaction_update_if_visible(
                 label
             );
 
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::WitnessEntityMethod {
                     witness_id: entity_id,
                     entity_id: target_id,
                     method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                     args: (merged as u64).to_le_bytes().to_vec(),
                 })
-                .await;
+                .await
+            {
+                // same shape as remove_dialog_set —
+                // dropped interaction-type push leaves the NPC with
+                // stale flags.
+                tracing::warn!(
+                    entity_id,
+                    target_id,
+                    dialog_id = entry.dialog_id,
+                    slot,
+                    phase = label,
+                    "interaction-type send failed -- NPC prompt stale: {e}"
+                );
+            }
         } else {
             tracing::debug!(
                 entity_id,
