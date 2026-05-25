@@ -16,6 +16,7 @@ use super::super::{chat, dispatch, spawner};
 
 mod bandolier;
 mod player_init;
+mod request_entity_update;
 
 #[cfg(test)]
 mod tests;
@@ -363,6 +364,13 @@ pub(super) async fn handle_base_message(
                 space_mgr,
             )
             .await;
+        }
+
+        BaseToCellMsg::RequestEntityUpdate {
+            witness_id,
+            entity_ids,
+        } => {
+            request_entity_update::handle(witness_id, entity_ids, tx, space_mgr).await;
         }
     }
 }

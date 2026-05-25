@@ -262,6 +262,74 @@ pub(crate) async fn handle_encrypted_datagram(
             0x09 => {
                 tracing::trace!(%addr, "Client sent VIEWPORT_ACK");
             }
+            // REQUEST_ENTITY_UPDATE (0x07) -- client wants re-sync for one or
+            // more entities it thinks it's missing or has stale state for.
+            //
+            // Wire (spec §2.5.2): `[u32 header][N × u32 entity_id]`. The
+            // header semantic is unknown (likely flags or last-known-revision);
+            // payload is safe to decode by skipping the first 4 bytes and
+            // reading u32 ids until the length is exhausted.
+            //
+            // Without a handler, this request is silently dropped (audit
+            // finding N3 / issue #289). Forward to the cell, which re-emits a
+            // synthetic `EnteredAoI` per requested entity that is currently
+            // in the witness's AoI. Out-of-AoI requests are dropped on the
+            // cell side -- the client must not be able to probe arbitrary ids.
+            0x07 => {
+                let entity_ids = parse_request_entity_update(payload);
+                if entity_ids.is_empty() {
+                    tracing::debug!(
+                        %addr,
+                        payload_len = payload.len(),
+                        "REQUEST_ENTITY_UPDATE with no decoded entity ids -- ignoring"
+                    );
+                } else {
+                    let witness_id = connected
+                        .lock()
+                        .unwrap()
+                        .get(&addr)
+                        .and_then(|c| c.player_entity_id);
+                    if let Some(witness_id) = witness_id {
+                        if let Some(tx) = cell_tx {
+                            let count = entity_ids.len();
+                            tracing::info!(
+                                %addr,
+                                witness_id,
+                                count,
+                                "REQUEST_ENTITY_UPDATE -> cell::RequestEntityUpdate"
+                            );
+                            if let Err(e) = tx
+                                .send(BaseToCellMsg::RequestEntityUpdate {
+                                    witness_id,
+                                    entity_ids,
+                                })
+                                .await
+                            {
+                                tracing::warn!(
+                                    %addr,
+                                    witness_id,
+                                    count,
+                                    "REQUEST_ENTITY_UPDATE: cell send failed -- request dropped: {e}"
+                                );
+                            }
+                        } else {
+                            tracing::debug!(
+                                %addr,
+                                witness_id,
+                                count = entity_ids.len(),
+                                "REQUEST_ENTITY_UPDATE: no cell channel -- ignoring"
+                            );
+                        }
+                    } else {
+                        tracing::warn!(
+                            %addr,
+                            count = entity_ids.len(),
+                            reason = "no_player_entity",
+                            "REQUEST_ENTITY_UPDATE before player entity is connected -- dropping"
+                        );
+                    }
+                }
+            }
 
             // ── Protocol-level cooked-data messages ──
             //
@@ -415,6 +483,25 @@ fn read_client_message_payload<'a>(
         // audit doc §2.11 row `0x0D` for the disposition.
         _ => read_word_length_payload(body, offset),
     }
+}
+
+/// Parse a `requestEntityUpdate` (msg `0x07`) payload.
+///
+/// Wire layout (spec §2.5.2): `[u32 header][N × u32 entity_id]`. The header's
+/// exact semantic (flags? last-known-revision?) is not documented; the spec
+/// notes the payload is safe to decode by skipping the first 4 bytes and
+/// reading consecutive u32s. Trailing bytes that don't form a complete u32
+/// are dropped.
+///
+/// Returns an empty `Vec` when the payload is shorter than the 4-byte header.
+fn parse_request_entity_update(payload: &[u8]) -> Vec<u32> {
+    if payload.len() < 4 {
+        return Vec::new();
+    }
+    payload[4..]
+        .chunks_exact(4)
+        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect()
 }
 
 #[cfg(test)]
@@ -618,5 +705,75 @@ mod tests {
             "truncated WORD_LENGTH prefix must return None — silently advancing \
              past the end of `body` would corrupt every downstream offset."
         );
+    }
+
+    // --- parse_request_entity_update parser pins (msg 0x07 body) ---
+
+    /// Three ids round-trip cleanly with a zero header.
+    #[test]
+    fn parses_header_plus_three_ids() {
+        // [u32 header = 0][u32 100][u32 200][u32 300] = 16 bytes
+        let mut body = Vec::new();
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.extend_from_slice(&100u32.to_le_bytes());
+        body.extend_from_slice(&200u32.to_le_bytes());
+        body.extend_from_slice(&300u32.to_le_bytes());
+        assert_eq!(parse_request_entity_update(&body), vec![100, 200, 300]);
+    }
+
+    /// Header-only payload (4 bytes) decodes to an empty id list — that's
+    /// the no-op case, not an error.
+    #[test]
+    fn header_only_payload_decodes_empty() {
+        let body = [0u8; 4];
+        assert_eq!(parse_request_entity_update(&body), Vec::<u32>::new());
+    }
+
+    /// Sub-header payloads (< 4 bytes) defensively return empty. The dispatch
+    /// arm relies on this to no-op without panicking when the client (or a
+    /// fuzzer) sends a malformed body.
+    #[test]
+    fn truncated_payload_returns_empty() {
+        for len in 0..4 {
+            let body = vec![0u8; len];
+            assert!(
+                parse_request_entity_update(&body).is_empty(),
+                "expected empty result for {len}-byte body"
+            );
+        }
+    }
+
+    /// Trailing bytes that don't form a complete u32 are dropped — the parser
+    /// reads as many whole ids as the length allows.
+    #[test]
+    fn trailing_partial_id_is_dropped() {
+        // header + one full id (8 bytes) + 3 trailing bytes that can't form a u32
+        let mut body = Vec::new();
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.extend_from_slice(&42u32.to_le_bytes());
+        body.extend_from_slice(&[0xAA, 0xBB, 0xCC]);
+        assert_eq!(parse_request_entity_update(&body), vec![42]);
+    }
+
+    /// Header value is opaque — non-zero header bytes do NOT change which ids
+    /// are decoded. Documents the "skip 4, then read ids" contract.
+    #[test]
+    fn non_zero_header_does_not_affect_id_decode() {
+        let mut body = Vec::new();
+        body.extend_from_slice(&0xDEADBEEFu32.to_le_bytes());
+        body.extend_from_slice(&7u32.to_le_bytes());
+        body.extend_from_slice(&8u32.to_le_bytes());
+        assert_eq!(parse_request_entity_update(&body), vec![7, 8]);
+    }
+
+    /// Endianness: little-endian u32s only.
+    #[test]
+    fn ids_are_little_endian() {
+        // header(0) + bytes for id = 0x01020304 little-endian = [04, 03, 02, 01]
+        let body = [
+            0, 0, 0, 0, // header
+            0x04, 0x03, 0x02, 0x01, // id = 0x01020304
+        ];
+        assert_eq!(parse_request_entity_update(&body), vec![0x01020304]);
     }
 }
