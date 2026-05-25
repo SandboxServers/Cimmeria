@@ -1,4 +1,4 @@
-//! Tests for `BaseToCellMsg::RequestEntityUpdate` — issue #289 / audit N3.
+//! Tests for `BaseToCellMsg::RequestEntityUpdate`.
 //!
 //! Bug shape these guards prevent: client sends `requestEntityUpdate` for an
 //! entity it's missing (because `createEntity` was dropped on the wire past
@@ -224,5 +224,63 @@ async fn request_entity_update_drops_when_witness_missing() {
     assert_eq!(
         count, 0,
         "unknown witness must produce no cell→base traffic"
+    );
+}
+
+/// DoS guard: a payload larger than `MAX_REQUEST_ENTITIES` (64) is truncated
+/// to the cap. Asserts the handler never processes more than the cap, even
+/// when every requested id is legitimately in the witness's AoI. Regression
+/// for the spam-1000-ids-per-packet shape Clara called out.
+#[tokio::test]
+async fn request_entity_update_truncates_request_above_cap() {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+
+    // Spawn 200 NPCs in this player's witness set so EVERY requested id
+    // would, in the absence of the cap, generate one EnteredAoI.
+    const CAP: usize = 64;
+    const SPAM_COUNT: usize = 200;
+    if let Some(w) = mgr.get_entity_mut(1) {
+        w.is_player = true;
+        w.player_id = Some(100);
+        for i in 0..SPAM_COUNT as u32 {
+            w.witnesses.insert(EntityId(2000 + i as i32));
+        }
+    }
+    for i in 0..SPAM_COUNT as u32 {
+        mgr.create_entity(2000 + i, "Castle_CellBlock", [1.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+    }
+
+    let (tx, mut rx) = mpsc::channel(SPAM_COUNT + 16);
+    let engine = ChainEngine::new();
+    let entity_ids: Vec<u32> = (0..SPAM_COUNT as u32).map(|i| 2000 + i).collect();
+
+    handle_base_message(
+        BaseToCellMsg::RequestEntityUpdate {
+            witness_id: 1,
+            entity_ids,
+        },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+
+    let mut entered = 0usize;
+    while let Ok(msg) = rx.try_recv() {
+        if matches!(msg, CellToBaseMsg::EnteredAoI { .. }) {
+            entered += 1;
+        }
+    }
+    assert_eq!(
+        entered, CAP,
+        "request of {SPAM_COUNT} ids must be truncated to the {CAP}-id cap, got {entered}"
     );
 }

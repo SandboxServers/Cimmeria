@@ -54,9 +54,8 @@ impl SpaceManager {
 
     /// Get the `space_id` for an entity's current space.
     ///
-    /// Used by handlers that need to construct a `CellToBaseMsg::EnteredAoI`
-    /// (or similar) for an entity outside the normal AoI tick path —
-    /// `RequestEntityUpdate` is the current caller.
+    /// Use this when constructing a `CellToBaseMsg` (or other space-keyed
+    /// payload) for an entity outside the normal AoI tick path.
     pub fn get_entity_space_id(&self, entity_id: u32) -> Option<u32> {
         self.entity_space.get(&entity_id).copied()
     }

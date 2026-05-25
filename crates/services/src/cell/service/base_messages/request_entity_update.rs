@@ -5,12 +5,14 @@
 //! when it suspects it is missing or has stale state for one or more entities.
 //! This is the canonical recovery path when a `createEntity` (`0x09`) for an
 //! NPC was dropped on the wire past the 20-retry lifetime cap — without the
-//! re-emit, the NPC stays permanently invisible on that client. See issue
-//! #289 and audit finding N3.
+//! re-emit, the NPC stays permanently invisible on that client.
 //!
 //! Security: only entities currently in the witness's AoI are re-emitted.
 //! Out-of-AoI requests are dropped silently — the client must not be able to
 //! probe arbitrary entity ids.
+//!
+//! A spammed request is truncated to [`MAX_REQUEST_ENTITIES`] to bound the
+//! per-call cost (witness-set lookup + entity copy + cell→base send per id).
 
 use cimmeria_common::EntityId;
 use tokio::sync::mpsc;
@@ -18,15 +20,34 @@ use tokio::sync::mpsc;
 use super::super::super::messages::{CellToBaseMsg, NpcAoIData};
 use super::super::super::space_manager::SpaceManager;
 
+/// Cap on entity ids honoured per `RequestEntityUpdate` payload.
+///
+/// Sized for realistic recovery bursts — even a 28-NPC Castle_CellBlock
+/// instance fits well inside this. Above the cap the surplus is dropped;
+/// the legitimate use case (recover from a small handful of dropped
+/// CREATE_ENTITYs) can retry next tick if it needs more.
+const MAX_REQUEST_ENTITIES: usize = 64;
+
 /// Re-emit `EnteredAoI` for each `entity_id` that's currently in
 /// `witness_id`'s witness set. Unknown / out-of-AoI ids are skipped.
 pub(super) async fn handle(
     witness_id: u32,
-    entity_ids: Vec<u32>,
+    mut entity_ids: Vec<u32>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
     let requested = entity_ids.len();
+    let truncated = requested > MAX_REQUEST_ENTITIES;
+    if truncated {
+        tracing::warn!(
+            witness_id,
+            requested,
+            cap = MAX_REQUEST_ENTITIES,
+            reason = "request_too_large",
+            "RequestEntityUpdate: payload exceeds cap — truncating"
+        );
+        entity_ids.truncate(MAX_REQUEST_ENTITIES);
+    }
 
     // The witness must exist in some space and be a player — otherwise no
     // AoI bookkeeping exists to authorise against.
@@ -54,14 +75,16 @@ pub(super) async fn handle(
         witness.witnesses.iter().copied().collect();
 
     let mut emitted = 0usize;
+    // `skipped_unknown` = id is in the witness's recorded AoI but the entity
+    // is missing from any space (vanished between AoI tick and this handler).
+    // `skipped_not_in_aoi` = id is NOT in the witness's AoI at all — either
+    // raced an AoI-leave or the client is probing.
     let mut skipped_unknown = 0usize;
     let mut skipped_not_in_aoi = 0usize;
 
     for entity_id in entity_ids {
         let target_eid = EntityId(entity_id as i32);
         if !witnesses.contains(&target_eid) {
-            // Either the client raced an AoI-leave or it's probing an id it
-            // shouldn't see. Either way: drop.
             skipped_not_in_aoi += 1;
             continue;
         }
@@ -110,6 +133,7 @@ pub(super) async fn handle(
     tracing::info!(
         witness_id,
         requested,
+        truncated,
         emitted,
         skipped_not_in_aoi,
         skipped_unknown,

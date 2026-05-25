@@ -270,11 +270,10 @@ pub(crate) async fn handle_encrypted_datagram(
             // payload is safe to decode by skipping the first 4 bytes and
             // reading u32 ids until the length is exhausted.
             //
-            // Without a handler, this request is silently dropped (audit
-            // finding N3 / issue #289). Forward to the cell, which re-emits a
-            // synthetic `EnteredAoI` per requested entity that is currently
-            // in the witness's AoI. Out-of-AoI requests are dropped on the
-            // cell side -- the client must not be able to probe arbitrary ids.
+            // Forward to the cell, which re-emits a synthetic `EnteredAoI`
+            // per requested entity that is currently in the witness's AoI.
+            // Out-of-AoI requests are dropped on the cell side -- the client
+            // must not be able to probe arbitrary ids.
             0x07 => {
                 let entity_ids = parse_request_entity_update(payload);
                 if entity_ids.is_empty() {
