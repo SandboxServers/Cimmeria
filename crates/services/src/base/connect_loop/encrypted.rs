@@ -141,36 +141,7 @@ pub(crate) async fn handle_encrypted_datagram(
 
         // Determine payload length based on message format.
         // System messages (0x00-0x0D) have defined formats; entity methods use WORD_LENGTH.
-        let payload_result = match msg_id {
-            // --- System messages with CONSTANT_LENGTH ---
-            // 0x02: AVATAR_UPD_IMPLICIT (CONSTANT_LENGTH = 36)
-            0x02 => read_constant_payload(body, &mut offset, 36),
-            // 0x03: AVATAR_UPDATE_EXPLICIT (CONSTANT_LENGTH = 40)
-            0x03 => read_constant_payload(body, &mut offset, 40),
-            // 0x04: AVATAR_UPDW_IMPLICIT (CONSTANT_LENGTH = 36)
-            0x04 => read_constant_payload(body, &mut offset, 36),
-            // 0x05: AVATAR_UPDW_EXPLICIT (CONSTANT_LENGTH = 40)
-            0x05 => read_constant_payload(body, &mut offset, 40),
-            // 0x06: SWITCH_INTERFACE (CONSTANT_LENGTH = 0)
-            0x06 => read_constant_payload(body, &mut offset, 0),
-            // 0x08: ENABLE_ENTITIES (CONSTANT_LENGTH = 8)
-            0x08 => read_constant_payload(body, &mut offset, 8),
-            // 0x09: VIEWPORT_ACK (CONSTANT_LENGTH = 8)
-            0x09 => read_constant_payload(body, &mut offset, 8),
-            // 0x0A: VEHICLE_ACK (CONSTANT_LENGTH = 8)
-            0x0A => read_constant_payload(body, &mut offset, 8),
-            // 0x0C: DISCONNECT (CONSTANT_LENGTH = 1)
-            0x0C => read_constant_payload(body, &mut offset, 1),
-
-            // --- System messages with WORD_LENGTH ---
-            // 0x07: REQUEST_ENTITY_UPDATE (WORD_LENGTH)
-            0x07 => read_word_length_payload(body, &mut offset),
-            // 0x0B: RESTORE_CLIENT_ACK (WORD_LENGTH)
-            0x0B => read_word_length_payload(body, &mut offset),
-
-            // --- Entity method calls (0xC0+): always WORD_LENGTH ---
-            _ => read_word_length_payload(body, &mut offset),
-        };
+        let payload_result = read_client_message_payload(msg_id, body, &mut offset);
 
         let payload = match payload_result {
             Some(p) => p,
@@ -375,4 +346,207 @@ pub(crate) async fn handle_encrypted_datagram(
     }
 
     Ok(())
+}
+
+/// Per-msg_id payload-length dispatch for the inbound client bundle.
+///
+/// Reads exactly one message's payload starting at `*offset` and
+/// advances `*offset` past it. Returns `None` only on truncation —
+/// the caller breaks the bundle scan in that case.
+///
+/// Two framing flavors per `messages.cpp::ClientMessageList`:
+///
+/// - **CONSTANT_LENGTH**: fixed-size payload with no length prefix.
+///   Width pinned per message in the table below. `read_constant_payload`
+///   advances by exactly that many bytes.
+/// - **WORD_LENGTH**: payload prefixed by `u16` little-endian length.
+///   `read_word_length_payload` reads the prefix, advances 2 bytes,
+///   then advances by `prefix` bytes.
+///
+/// **0x0B (`restoreClientAck`) is CONSTANT_LENGTH = 4**, per
+/// spec §2.5.2 and the sole emitter at
+/// `ghidra://SGW.exe@0x00dd8bc9` (writes literal `i32 = 0`).
+/// Parsing it as WORD_LENGTH reads the first two ack bytes as a
+/// `u16` length = 0, then misinterprets the remaining two ack bytes
+/// as the next msg_id (`0x00 0x00` → dispatches to `baseAppLogin`),
+/// cascade-failing every subsequent message in the bundle. The
+/// regression guard `restore_client_ack_consumes_exactly_four_bytes`
+/// pins this.
+fn read_client_message_payload<'a>(
+    msg_id: u8,
+    body: &'a [u8],
+    offset: &mut usize,
+) -> Option<&'a [u8]> {
+    match msg_id {
+        // --- System messages with CONSTANT_LENGTH ---
+        // 0x02: AVATAR_UPD_IMPLICIT (CONSTANT_LENGTH = 36)
+        0x02 => read_constant_payload(body, offset, 36),
+        // 0x03: AVATAR_UPDATE_EXPLICIT (CONSTANT_LENGTH = 40)
+        0x03 => read_constant_payload(body, offset, 40),
+        // 0x04: AVATAR_UPDW_IMPLICIT (CONSTANT_LENGTH = 36)
+        0x04 => read_constant_payload(body, offset, 36),
+        // 0x05: AVATAR_UPDW_EXPLICIT (CONSTANT_LENGTH = 40)
+        0x05 => read_constant_payload(body, offset, 40),
+        // 0x06: SWITCH_INTERFACE (CONSTANT_LENGTH = 0)
+        0x06 => read_constant_payload(body, offset, 0),
+        // 0x08: ENABLE_ENTITIES (CONSTANT_LENGTH = 8)
+        0x08 => read_constant_payload(body, offset, 8),
+        // 0x09: VIEWPORT_ACK (CONSTANT_LENGTH = 8)
+        0x09 => read_constant_payload(body, offset, 8),
+        // 0x0A: VEHICLE_ACK (CONSTANT_LENGTH = 8)
+        0x0A => read_constant_payload(body, offset, 8),
+        // 0x0B: RESTORE_CLIENT_ACK (CONSTANT_LENGTH = 4 — see doc above)
+        0x0B => read_constant_payload(body, offset, 4),
+        // 0x0C: DISCONNECT (CONSTANT_LENGTH = 1)
+        0x0C => read_constant_payload(body, offset, 1),
+
+        // --- System messages with WORD_LENGTH ---
+        // 0x07: REQUEST_ENTITY_UPDATE (WORD_LENGTH)
+        0x07 => read_word_length_payload(body, offset),
+
+        // --- Entity method calls (0xC0+): always WORD_LENGTH ---
+        _ => read_word_length_payload(body, offset),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pin the framing of `restoreClientAck` (msg 0x0B) at
+    /// CONSTANT_LENGTH = 4. Spec §2.5.2 names this — the sole
+    /// emitter at `ghidra://SGW.exe@0x00dd8bc9` writes a literal
+    /// `i32 = 0`, with no `u16` length prefix in front of it.
+    ///
+    /// Bug shape: parsing it as WORD_LENGTH would read the first
+    /// two ack bytes as a length prefix (`0x00 0x00` → length 0),
+    /// advance only 2 bytes past the msg_id, then read the
+    /// remaining two ack bytes as the NEXT msg_id (`0x00 0x00` →
+    /// `baseAppLogin`) and cascade-fail. This guard reproduces the
+    /// exact bundle layout the bug fires on:
+    ///
+    /// ```text
+    ///   [0x0B][0x00 0x00 0x00 0x00][0x07][0x05 0x00][...5-byte body]
+    ///    ack         payload         next msg_id  u16 len
+    /// ```
+    ///
+    /// Correct behavior: after reading the 0x0B + its 4-byte body,
+    /// `offset` lands at 5, pointing exactly at the next msg_id
+    /// (`0x07`, REQUEST_ENTITY_UPDATE). Reverting to
+    /// `read_word_length_payload` lands at 3 (1 msg_id + 2 length
+    /// prefix), reads `0x00` as next msg_id, and the assertion at
+    /// the bottom trips.
+    #[test]
+    fn restore_client_ack_consumes_exactly_four_bytes() {
+        // Bundle: 0x0B + 4-byte ack body + a real 0x07 message
+        // (WORD_LENGTH) with a 5-byte payload. The framing-bug fix
+        // is observable as "we read 0x07 as the next msg_id, not
+        // 0x00", which only holds when 0x0B consumes 4 bytes.
+        let bundle = [
+            0x0B, // restoreClientAck
+            0x00, 0x00, 0x00, 0x00, // ack body (i32 = 0)
+            0x07, // REQUEST_ENTITY_UPDATE
+            0x05, 0x00, // u16 length = 5
+            0xDE, 0xAD, 0xBE, 0xEF, 0x42, // payload
+        ];
+
+        // First message: consume the ack.
+        let mut offset = 1; // past msg_id 0x0B
+        let ack_payload = read_client_message_payload(0x0B, &bundle, &mut offset)
+            .expect("0x0B must produce a payload — it's CONSTANT_LENGTH = 4");
+        assert_eq!(
+            ack_payload,
+            &[0x00, 0x00, 0x00, 0x00],
+            "ack payload must be the literal i32 = 0 (four zero bytes)"
+        );
+        assert_eq!(
+            offset, 5,
+            "offset must advance to exactly 5 (1 msg_id + 4 body). \
+             Pre-fix WORD_LENGTH parse advances to 3 (1 + 2 prefix + 0 length), \
+             leaving two ack bytes unconsumed and misaligning every following message."
+        );
+
+        // Second message: confirm we land on 0x07 (the canary).
+        let next_msg_id = bundle[offset];
+        assert_eq!(
+            next_msg_id, 0x07,
+            "next msg_id must be 0x07 (REQUEST_ENTITY_UPDATE). Pre-fix this \
+             would be 0x00 (baseAppLogin) because the WORD_LENGTH bug skips \
+             only 2 bytes of the 4-byte ack, leaking 0x00 0x00 into the next \
+             msg_id slot."
+        );
+
+        offset += 1;
+        let req_payload = read_client_message_payload(0x07, &bundle, &mut offset)
+            .expect("0x07 must produce a payload");
+        assert_eq!(
+            req_payload,
+            &[0xDE, 0xAD, 0xBE, 0xEF, 0x42],
+            "downstream message must round-trip cleanly: if 0x0B framing is \
+             right, the parser arrives at 0x07's length prefix and reads the \
+             5-byte payload as expected"
+        );
+        assert_eq!(
+            offset,
+            bundle.len(),
+            "final offset must consume the entire bundle"
+        );
+    }
+
+    /// Negative pin: a 0x0B payload truncated below 4 bytes must
+    /// return `None`, signalling the bundle scan to break — NOT a
+    /// silent advance past the end of `body`.
+    #[test]
+    fn restore_client_ack_truncation_returns_none() {
+        let bundle = [0x0B, 0x00, 0x00, 0x00]; // only 3 ack bytes, not 4
+        let mut offset = 1;
+        assert!(
+            read_client_message_payload(0x0B, &bundle, &mut offset).is_none(),
+            "truncated 0x0B body must return None so the caller breaks the \
+             bundle loop with a 'truncated' trace — silently advancing past \
+             the end would corrupt all downstream offset arithmetic."
+        );
+    }
+
+    /// Round-trip pin for the unchanged CONSTANT_LENGTH entries —
+    /// catches a future refactor that swaps the dispatch arms with
+    /// each other. Pre-fix this passed; the bug was the missing
+    /// 0x0B row, not these.
+    #[test]
+    fn constant_length_dispatch_widths_match_spec() {
+        let cases: &[(u8, usize)] = &[
+            (0x02, 36), // AVATAR_UPD_IMPLICIT
+            (0x03, 40), // AVATAR_UPDATE_EXPLICIT
+            (0x04, 36), // AVATAR_UPDW_IMPLICIT
+            (0x05, 40), // AVATAR_UPDW_EXPLICIT
+            (0x06, 0),  // SWITCH_INTERFACE
+            (0x08, 8),  // ENABLE_ENTITIES
+            (0x09, 8),  // VIEWPORT_ACK
+            (0x0A, 8),  // VEHICLE_ACK
+            (0x0B, 4),  // RESTORE_CLIENT_ACK
+            (0x0C, 1),  // DISCONNECT
+        ];
+        for &(msg_id, expected_width) in cases {
+            // Construct a fresh body with exactly `expected_width`
+            // bytes of payload after the (implicit) msg_id slot.
+            let body: Vec<u8> = vec![0xAA; expected_width];
+            let mut offset = 0;
+            let payload =
+                read_client_message_payload(msg_id, &body, &mut offset).unwrap_or_else(|| {
+                    panic!(
+                        "msg {msg_id:#04x} CONSTANT_LENGTH should accept a body of \
+                         exactly {expected_width} bytes"
+                    )
+                });
+            assert_eq!(
+                payload.len(),
+                expected_width,
+                "msg {msg_id:#04x} produced wrong payload width"
+            );
+            assert_eq!(
+                offset, expected_width,
+                "msg {msg_id:#04x} must advance offset by exactly {expected_width}"
+            );
+        }
+    }
 }
