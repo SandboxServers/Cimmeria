@@ -173,6 +173,54 @@ pub(super) async fn handle_respawn(
             rotation: [0.0; 3],
         })
         .await;
+
+    // Re-push the full inventory snapshot after the reanchor.
+    //
+    // CREATE_BASE_PLAYER above re-instantiates the client-side pawn
+    // actor, and the new pawn's `InventoryComponent` is empty — the
+    // ragdolled pawn (and its inventory cache) was just destroyed by
+    // the pawn-recreate hook. The bandolier visual survives because
+    // it's part of the cached `BeingAppearance.ComponentList`
+    // replayed above, but the actual `sgw_inventory` rows
+    // (consumables, mission items like Frost's Letter, anything in
+    // the main bag) live in a separate `onUpdateItem` snapshot that
+    // the server only pushes when the client asks via `listItems`.
+    //
+    // On initial login the client invokes `listItems` itself after
+    // pawn-creation; on respawn it doesn't (it thinks it's the same
+    // pawn identity). Without this push, the bag panel renders
+    // empty until relog AND subsequent pickups silently no-op
+    // because their incremental `onUpdateItem` lands against an
+    // empty client-side cache.
+    //
+    // Cross-world respawn (handled in the early-return branch above
+    // via GateTravel) doesn't need this because it re-runs the full
+    // world-entry handshake, during which the client invokes
+    // `listItems` of its own accord.
+    let player_id = space_mgr.get_entity(entity_id).and_then(|e| e.player_id);
+    if let Some(player_id) = player_id {
+        if let Err(e) = tx
+            .send(CellToBaseMsg::ListInventoryItems {
+                entity_id,
+                player_id,
+            })
+            .await
+        {
+            tracing::warn!(
+                entity_id,
+                player_id,
+                error = %e,
+                "respawn: ListInventoryItems send failed -- inventory will not repopulate \
+                 post-respawn (bag panel will stay empty until relog)"
+            );
+        }
+    } else {
+        tracing::warn!(
+            entity_id,
+            "respawn: entity has no player_id; skipping post-reanchor inventory snapshot \
+             (NPC respawn? this branch should be player-only)"
+        );
+    }
 }
 
 /// Resolve `(world, position)` for the respawn target.

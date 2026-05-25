@@ -390,3 +390,98 @@ fn resolve_respawn_target_uses_in_place_for_other_worlds_without_respawners() {
         "must respawn in place, not at Castle default"
     );
 }
+
+/// Same-world respawn must dispatch `ListInventoryItems` AFTER
+/// `ReanchorPlayer` so the client's bag panel repopulates.
+///
+/// Bug shape this guards (play-session report 2026-05-25): the
+/// `CREATE_BASE_PLAYER` inside the reanchor re-instantiates the
+/// client-side pawn actor; the new pawn's `InventoryComponent` is
+/// empty. The bandolier visual survives because it's part of the
+/// cached `BeingAppearance.ComponentList` replayed alongside, but
+/// `sgw_inventory` rows (Frost's Letter, slappack, anything in the
+/// main bag) live in a separate `onUpdateItem` snapshot the server
+/// only pushes when the client asks via `listItems`. On initial
+/// login the client asks; on respawn it doesn't. Without this
+/// push the bag stays empty until relog AND subsequent pickups
+/// silently no-op against an empty cache.
+///
+/// Cross-world respawn doesn't need the push — it falls through to
+/// `GateTravel`, which re-runs the full world-entry handshake and
+/// the client invokes `listItems` of its own accord. The negative
+/// pin in `handle_respawn_cross_world_falls_back_to_gate_travel`
+/// already covers that branch.
+#[tokio::test]
+async fn handle_respawn_same_world_dispatches_list_inventory_after_reanchor() {
+    let mut mgr = make_mgr_with_player("Castle_CellBlock");
+    if let Some(e) = mgr.get_entity_mut(1) {
+        if let Some(h) = e.stats.get_mut(HEALTH) {
+            h.update(0, 1, 100);
+            h.clear_dirty();
+        }
+    }
+
+    let (tx, mut rx) = mpsc::channel(16);
+    handle_respawn(1, -1, &tx, &mut mgr).await;
+
+    let mut reanchor_at: Option<usize> = None;
+    let mut list_inventory_at: Option<usize> = None;
+    let mut list_inventory_player_id: Option<i32> = None;
+    let mut list_inventory_entity_id: Option<u32> = None;
+
+    let mut idx: usize = 0;
+    while let Ok(m) = rx.try_recv() {
+        match m {
+            CellToBaseMsg::ReanchorPlayer { entity_id: 1, .. } => {
+                if reanchor_at.is_none() {
+                    reanchor_at = Some(idx);
+                }
+            }
+            CellToBaseMsg::ListInventoryItems {
+                entity_id,
+                player_id,
+            } => {
+                if list_inventory_at.is_none() {
+                    list_inventory_at = Some(idx);
+                    list_inventory_entity_id = Some(entity_id);
+                    list_inventory_player_id = Some(player_id);
+                }
+            }
+            _ => {}
+        }
+        idx += 1;
+    }
+
+    let reanchor_idx = reanchor_at.expect(
+        "fixture sanity: same-world respawn must emit ReanchorPlayer (covered by the \
+         primary burst-shape test; this assertion is just to anchor the ordering check)",
+    );
+    let list_idx = list_inventory_at.expect(
+        "play-session regression: same-world respawn must follow ReanchorPlayer with a \
+         ListInventoryItems snapshot — without it the client's bag panel renders empty \
+         after respawn until relog (slappack / mission items / Frost's Letter vanish, \
+         subsequent pickups silently no-op against the empty cache)",
+    );
+
+    assert!(
+        reanchor_idx < list_idx,
+        "ordering: ReanchorPlayer (#{reanchor_idx}) must precede ListInventoryItems \
+         (#{list_idx}) so the client's pawn-recreate hook fires first; the inventory \
+         snapshot lands on the freshly-instantiated pawn, not the ragdoll about to be \
+         torn down"
+    );
+
+    assert_eq!(
+        list_inventory_entity_id,
+        Some(1),
+        "ListInventoryItems must carry the respawning entity's id so the base-side \
+         dispatcher routes the onUpdateItem snapshot to the right client session"
+    );
+    assert_eq!(
+        list_inventory_player_id,
+        Some(100),
+        "ListInventoryItems must carry the persistent player_id (read from \
+         space_mgr.get_entity(...).player_id) — that's the key the inventory \
+         table is sharded by, NOT the entity_id"
+    );
+}
