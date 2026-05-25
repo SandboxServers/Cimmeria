@@ -33,6 +33,12 @@ use super::super::ConnectedClientState;
 /// - **Create player** (has `pending_player_entity_id`): After world entry RESET_ENTITIES.
 ///   Sends `CREATE_BASE_PLAYER` + `onClientMapLoad`. The client loads terrain and
 ///   then sends `mapLoaded`, which triggers the enter-world step.
+#[tracing::instrument(
+    name = "world_entry.enable_entities",
+    level = "info",
+    skip_all,
+    fields(peer = %addr, account_id),
+)]
 pub(crate) async fn handle_enable_entities(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,

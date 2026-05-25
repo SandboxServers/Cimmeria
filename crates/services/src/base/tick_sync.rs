@@ -76,13 +76,16 @@ pub(crate) async fn run_tick_loop(
 
     tracing::debug!(%addr, "Tick-sync loop started");
 
-    loop {
+    let disconnect_reason: &'static str = loop {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        // Check if the session was torn down by handle_log_off.
+        // The cancelled flag is set by `handle_log_off`, which has
+        // already called `destroy_client_entities` itself — return
+        // before the post-loop cleanup runs so we don't double-stamp
+        // a second disconnect event under a misleading reason.
         if cancelled.load(Ordering::Relaxed) {
             tracing::info!(%addr, "Tick-sync stopping: session cancelled (logOff)");
-            break;
+            return;
         }
 
         let idle = last_recv.lock().unwrap().elapsed();
@@ -93,7 +96,7 @@ pub(crate) async fn run_tick_loop(
                 "Tick-sync stopping: client inactive for {}s",
                 idle.as_secs()
             );
-            break;
+            break "inactivity_timeout";
         }
 
         let acks: Vec<u32> = {
@@ -125,7 +128,7 @@ pub(crate) async fn run_tick_loop(
         let (seq_id, pkt) = tick_sync_packet(&next_seq_unreliable, &key, tick, &acks);
         if let Err(e) = transport.send_to(&pkt, addr).await {
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
-            break;
+            break "send_error";
         }
 
         // Drive the per-session Channel's retransmit scan. Any reliable
@@ -155,8 +158,15 @@ pub(crate) async fn run_tick_loop(
         }
 
         tick = tick.wrapping_add(1);
-    }
+    };
 
     // Clean up entities for this disconnected client.
-    destroy_client_entities(&connected, &entity_manager, addr, &cell_tx, &entity_to_addr);
+    destroy_client_entities(
+        &connected,
+        &entity_manager,
+        addr,
+        &cell_tx,
+        &entity_to_addr,
+        disconnect_reason,
+    );
 }

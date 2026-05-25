@@ -16,6 +16,8 @@ use std::sync::Arc;
 
 use axum::{Extension, Router};
 use tokio::sync::broadcast;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer};
+use tracing::Level;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -120,5 +122,20 @@ pub fn build_router(
         .layer(Extension(login_tx))
         .layer(Extension(login_buffer))
         .layer(middleware::cors_layer())
+        // Per-request tracing — every HTTP request becomes a span with
+        // tower-http's standard fields (method, uri, status,
+        // latency_ms). Pairs with the OTLP layers in
+        // `cimmeria-server::otel` so admin actions show in SigNoz with
+        // their downstream DB queries nested.
+        //
+        // Explicit INFO/WARN levels override tower-http's DEBUG/ERROR
+        // defaults so the events make it through the default `info`
+        // filter without requiring `RUST_LOG` tuning by operators.
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO))
+                .on_failure(DefaultOnFailure::new().level(Level::WARN)),
+        )
         .with_state(orchestrator)
 }

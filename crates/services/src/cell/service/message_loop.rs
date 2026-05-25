@@ -52,9 +52,18 @@ pub(super) async fn run_cell_loop(
                 }
             }
             _ = tick_interval.tick() => {
-                super::ticks::run_aoi_tick(tx, &mut space_mgr).await;
+                // `.instrument()` wrapping `async { … }.await` — the tick
+                // body awaits, so a thread-local guard from `.entered()`
+                // would silently fall off across runtime thread switches.
+                use tracing::Instrument;
+                let tick_span = tracing::debug_span!(
+                    "cell.tick",
+                    tick = aoi_tick_counter,
+                );
+                async {
+                    super::ticks::run_aoi_tick(tx, &mut space_mgr).await;
 
-                aoi_tick_counter = aoi_tick_counter.wrapping_add(1);
+                    aoi_tick_counter = aoi_tick_counter.wrapping_add(1);
 
                 // Promote pending reloads whose warmup deadline has elapsed.
                 // Runs before NPC movement so any onStatUpdate from the refill
@@ -128,6 +137,9 @@ pub(super) async fn run_cell_loop(
                 if aoi_tick_counter.is_multiple_of(10) {
                     super::ticks::regen_tick(tx, &mut space_mgr).await;
                 }
+                }
+                .instrument(tick_span)
+                .await;
             }
         }
     }

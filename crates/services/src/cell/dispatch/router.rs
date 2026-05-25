@@ -14,6 +14,22 @@ use super::super::space_manager::SpaceManager;
 /// Each interface's dispatch function returns `true` if it handled the method,
 /// `false` if the index is outside its range. We try each interface in
 /// inheritance order and stop at the first match.
+///
+/// The `#[instrument]` here is the canonical "what method did the
+/// player just invoke?" span. Every interface-level dispatch inside
+/// becomes a child of this span, and any DB query / chain action /
+/// witness fan-out further down the call tree inherits the span
+/// context automatically. SigNoz groups them by `method_index` so the
+/// service map shows method-call hot spots at a glance.
+///
+/// `level = "debug"` because the rate is bounded by player count × tick;
+/// flip `RUST_LOG=cimmeria_services::cell::dispatch=debug` to turn on.
+#[tracing::instrument(
+    name = "cell.dispatch",
+    level = "debug",
+    skip_all,
+    fields(entity_id, method_index, args_len = args.len()),
+)]
 pub async fn dispatch_cell_method(
     entity_id: u32,
     method_index: u16,

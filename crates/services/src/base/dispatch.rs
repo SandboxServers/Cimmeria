@@ -34,6 +34,16 @@ pub(crate) mod sgw_player_base {
 ///
 /// The entity type switches from Account to SGWPlayer when the player enters the
 /// world. The same msg_id values (0xC0+) map to different methods.
+///
+/// `level = "debug"` — these are per-player-message-rate, similar to
+/// the cell dispatch span. The `msg_id` field lets SigNoz group chat
+/// vs. logoff vs. ready-state separately.
+#[tracing::instrument(
+    name = "base.player_method",
+    level = "debug",
+    skip_all,
+    fields(peer = %addr, msg_id, payload_len = payload.len()),
+)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_sgw_player_base_method(
     msg_id: u8,

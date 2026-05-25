@@ -162,6 +162,12 @@ pub async fn advance_step(
 }
 
 /// Accept a mission: create a MissionInstance and send initial state to client.
+#[tracing::instrument(
+    name = "mission.accept",
+    level = "info",
+    skip_all,
+    fields(entity_id, mission_id, step_id, objectives_len = objectives.len()),
+)]
 pub async fn accept_mission(
     entity_id: u32,
     mission_id: i32,
@@ -257,6 +263,12 @@ pub async fn accept_mission(
 }
 
 /// Abandon a mission: remove it and send removal to client.
+#[tracing::instrument(
+    name = "mission.abandon",
+    level = "info",
+    skip_all,
+    fields(entity_id, mission_id)
+)]
 pub async fn abandon_mission(
     entity_id: u32,
     mission_id: i32,
@@ -369,6 +381,12 @@ pub async fn complete_objective(
 ///
 /// Used by the content engine when a chain action completes a mission
 /// without stepping through individual objectives.
+#[tracing::instrument(
+    name = "mission.complete_direct",
+    level = "info",
+    skip_all,
+    fields(entity_id, mission_id)
+)]
 pub async fn complete_mission_direct(
     entity_id: u32,
     mission_id: i32,

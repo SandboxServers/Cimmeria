@@ -43,6 +43,17 @@ mod tests;
 pub(super) use inventory::item_container;
 
 /// Execute resolved actions from the content engine against the game state.
+///
+/// `level = "info"` because chain firings are low-rate and high-signal
+/// — every "player did X, missions did Y" sequence shows up as one
+/// span containing the action vector. The `actions_len` field gives a
+/// quick "how complex is this chain?" view in SigNoz.
+#[tracing::instrument(
+    name = "content.execute_actions",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, actions_len = resolved.actions.len()),
+)]
 pub(super) async fn execute_actions(
     resolved: ResolvedActions,
     entity_id: u32,

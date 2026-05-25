@@ -242,6 +242,12 @@ fn row_to_message(row: &OutboxRow) -> Option<BaseToCellMsg> {
 /// On success, marks the row delivered. On failure, leaves the row for the
 /// drainer to retry. Errors are logged, never propagated — the durability
 /// guarantee is "row exists in DB", not "send succeeded".
+#[tracing::instrument(
+    name = "outbox.dispatch_now",
+    level = "debug",
+    skip_all,
+    fields(outbox_id = id, entity_id),
+)]
 pub async fn try_dispatch_now(
     pool: &PgPool,
     cell_tx: &mpsc::Sender<BaseToCellMsg>,
@@ -328,6 +334,17 @@ pub(crate) struct DrainStats {
 /// rather than just `rows.len()` — the loop breaks early on a closed cell
 /// channel, so a raw row count would overstate progress. Exposed
 /// `pub(crate)` so the periodic loop and tests can both call it.
+#[tracing::instrument(
+    name = "outbox.drain",
+    level = "debug",
+    skip_all,
+    fields(
+        batch_size = DRAIN_BATCH_SIZE,
+        delivered = tracing::field::Empty,
+        skipped_bad = tracing::field::Empty,
+        send_failed = tracing::field::Empty,
+    ),
+)]
 pub(crate) async fn drain_undelivered(
     pool: &PgPool,
     cell_tx: &mpsc::Sender<BaseToCellMsg>,
@@ -398,6 +415,12 @@ pub(crate) async fn drain_undelivered(
             }
         }
     }
+    // Backfill the outcome counts onto the parent span so SigNoz can
+    // filter for `send_failed > 0` or chart `delivered` per pass.
+    let span = tracing::Span::current();
+    span.record("delivered", stats.delivered);
+    span.record("skipped_bad", stats.skipped_bad);
+    span.record("send_failed", stats.send_failed);
     Ok(stats)
 }
 

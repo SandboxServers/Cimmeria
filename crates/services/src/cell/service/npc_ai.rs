@@ -48,19 +48,31 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
         })
         .collect();
 
+    use tracing::Instrument;
+
     for (npc_id, ai_state, _) in npc_snapshot {
-        match ai_state {
-            AiState::Fighting => {
+        // `.instrument()` (not `.entered()`) — the handler bodies await,
+        // so a thread-local guard would silently fall off across runtime
+        // thread switches.
+        let ai_span = tracing::debug_span!(
+            "npc_ai.decision",
+            npc_id,
+            ai_state = ?ai_state,
+        );
+        // Snapshot filter above admits only Fighting | Leashing | Idle —
+        // express that contract as an if/else if/else rather than a
+        // match-with-wildcard.
+        async {
+            if ai_state == AiState::Fighting {
                 npc_ai_fight(npc_id, tx, space_mgr).await;
-            }
-            AiState::Leashing => {
+            } else if ai_state == AiState::Leashing {
                 npc_ai_leash(npc_id, tx, space_mgr).await;
-            }
-            AiState::Idle => {
+            } else {
                 npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await;
             }
-            _ => {}
         }
+        .instrument(ai_span)
+        .await;
     }
 }
 

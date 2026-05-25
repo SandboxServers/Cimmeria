@@ -59,6 +59,17 @@ use crate::cell::space_manager::SpaceManager;
 /// Cross-world respawn (different world from where the player died) still
 /// falls through to `GateTravel` because the player is genuinely leaving
 /// the space. Instance teardown is unavoidable in that case.
+#[tracing::instrument(
+    name = "combat.respawn",
+    level = "info",
+    skip_all,
+    fields(
+        entity_id,
+        respawner_id,
+        target_world = tracing::field::Empty,
+        same_world = tracing::field::Empty,
+    ),
+)]
 pub(super) async fn handle_respawn(
     entity_id: u32,
     respawner_id: i32,
@@ -77,6 +88,14 @@ pub(super) async fn handle_respawn(
 
     let current_world = space_mgr.get_entity_world_name(entity_id);
     let same_world = current_world.as_deref() == Some(target_world.as_str());
+
+    // Backfill the parent span — these resolve via the respawner DB
+    // table + current cell, so they only become known after the
+    // lookup. Pinning them now means "respawn took the cross-world
+    // gate path" is queryable in SigNoz without parsing log text.
+    let span = tracing::Span::current();
+    span.record("target_world", target_world.as_str());
+    span.record("same_world", same_world);
 
     // Close the Defeat Window first.
     let _ = tx
