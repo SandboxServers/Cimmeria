@@ -14,6 +14,7 @@ pub mod channel_bundle;
 pub mod clock;
 pub mod codec;
 pub mod encryption;
+pub mod instrumentation;
 pub mod messages;
 pub mod packet;
 pub mod transport;

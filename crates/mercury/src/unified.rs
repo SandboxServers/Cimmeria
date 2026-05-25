@@ -109,6 +109,12 @@ impl Decoder for UnifiedCodec {
         let payload_len = length - 1;
         let payload = src.split_to(payload_len).freeze();
 
+        crate::instrumentation::record_tcp_frame(
+            crate::instrumentation::Direction::In,
+            message_id,
+            payload_len,
+        );
+
         Ok(Some(UnifiedFrame {
             length: length as u32,
             message_id,
@@ -134,6 +140,12 @@ impl Encoder<UnifiedFrame> for UnifiedCodec {
         dst.put_u32_le(length);
         dst.put_u8(frame.message_id);
         dst.put_slice(&frame.payload);
+
+        crate::instrumentation::record_tcp_frame(
+            crate::instrumentation::Direction::Out,
+            frame.message_id,
+            frame.payload.len(),
+        );
 
         Ok(())
     }

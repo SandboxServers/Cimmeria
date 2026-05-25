@@ -1,0 +1,92 @@
+# Cloudflare Tunnel overlay — secure remote access to the SigNoz UI
+# without opening any firewall ports on the colo box.
+#
+# Cloudflare runs an outbound-only TLS tunnel from cloudflared to
+# Cloudflare's edge. Requests to `https://<your-subdomain>.<your-domain>`
+# arrive at Cloudflare, get authenticated by Cloudflare Access (zero-
+# trust auth: GitHub OAuth, Google, email magic link, IP allowlist, or
+# service tokens for machine clients), then proxied through the tunnel
+# to the SigNoz frontend on the colo box. The frontend itself stays on
+# `127.0.0.1:3301` — no public port, no DDoS surface, no Let's Encrypt
+# renewal scripts to babysit.
+#
+# # Why Cloudflare Tunnel over the alternatives
+#
+# | Option          | Setup time | Cost | LLM access path |
+# |---|---|---|---|
+# | Cloudflare Tunnel + Access | 30 min | $0 | Service token in MCP env |
+# | Tailscale                  | 15 min | $0 | Tailscale auth key — but LLM box needs Tailscale client too |
+# | VPN (WireGuard)            | 60 min | $0 | Same as Tailscale; more setup |
+# | Caddy + Let's Encrypt + Authelia | 2 hrs | $0 | Cookie-based auth + a separate API key per machine client |
+#
+# Cloudflare wins because it terminates auth at the edge, supports
+# service tokens for machine clients (the Cimmeria-MCP server is one),
+# and requires zero firewall changes on the colo. The downside is
+# vendor lock-in to Cloudflare, but the tunnel is a single docker
+# service — pivoting to Tailscale or WireGuard later is a one-file swap.
+#
+# # One-time setup
+#
+# 1. Cloudflare account (free tier is fine — Access is free up to 50
+#    users; you almost certainly need ≤ 5).
+# 2. `cloudflared tunnel login` on your dev machine — opens a browser
+#    to associate cloudflared with your Cloudflare account.
+# 3. `cloudflared tunnel create cimmeria-signoz` — produces a tunnel
+#    UUID and writes credentials to `~/.cloudflared/<uuid>.json`.
+# 4. Copy that JSON to the colo box at `/etc/cloudflared/credentials.json`.
+# 5. In the Cloudflare Zero Trust dashboard:
+#    - Access → Applications → Add → Self-hosted.
+#    - Subdomain `signoz.<your-domain>`, path `/`.
+#    - Policy: "Allow if email matches @yourcompany.com" or
+#      "Allow if service token = cimmeria-mcp-prod".
+# 6. Drop the route in your Cloudflare DNS pointing
+#    `signoz.<your-domain>` at the tunnel (`<uuid>.cfargotunnel.com`).
+# 7. Bring the stack up:
+#
+#      docker compose \
+#        -f docker/compose.colo.yml \
+#        -f external/signoz/deploy/docker/clickhouse-setup/docker-compose.yaml \
+#        -f docker/compose.signoz.yml \
+#        -f docker/compose.signoz-tunnel.yml \
+#        up -d
+#
+# Full step-by-step in docs/operations/signoz-remote-access.md.
+#
+# # LLM / Cimmeria-MCP access
+#
+# Cloudflare Access supports "service tokens" — long-lived (CF-Access-
+# Client-Id / CF-Access-Client-Secret) header pairs that bypass
+# interactive auth but ARE auditable per-token. The MCP server's env
+# config gets one pair, presents it on every SigNoz API request, and
+# Cloudflare lets it through without the browser hop. Revoking access
+# is a one-click "delete service token" in the Cloudflare dashboard.
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:2024.10.1
+    container_name: cimmeria-cloudflared
+    restart: unless-stopped
+    # Run the tunnel in connector mode using the credentials file.
+    # `--no-autoupdate` because watchtower will swap the image; we
+    # don't want cloudflared self-updating mid-stream.
+    command: tunnel --no-autoupdate run --config /etc/cloudflared/config.yml cimmeria-signoz
+    volumes:
+      # Credentials JSON produced by `cloudflared tunnel create`.
+      # Mounted read-only — cloudflared never writes here.
+      - /etc/cloudflared:/etc/cloudflared:ro
+    networks:
+      - signoz-net
+    depends_on:
+      - frontend     # SigNoz UI must be up before we accept tunnel traffic
+    # NO published ports — that's the entire point. All traffic enters
+    # via Cloudflare's edge, not via the host's network interface.
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "info", "cimmeria-signoz"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+networks:
+  signoz-net:
+    name: clickhouse-setup_default
+    external: true

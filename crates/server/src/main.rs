@@ -23,6 +23,11 @@
 //! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the launcher dev-session token mint at `/api/auth/dev-session`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset ⇒ endpoint returns 500. |
 //! | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `https://cimmeria-mcp.azurewebsites.net/api` | Telemetry ingest URL handed to the launcher in the dev-session response. |
 //! | `CIMMERIA_TELEMETRY_KILL_SWITCH` | unset | Set to `1` to pause telemetry ingest (every mint returns 503 + Retry-After). |
+//! | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | OTLP collector endpoint (e.g. `http://otel-collector:4317`). Unset ⇒ OTLP exporter disabled; logs and Mercury packet events never leave the process via OTLP. See [docs/operations/signoz-deployment.md](../../../docs/operations/signoz-deployment.md). |
+//! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` (default) or `http/protobuf`. |
+//! | `OTEL_SERVICE_NAME` | `cimmeria-server` | Shown as `service.name` in SigNoz's service map. |
+//! | `OTEL_RESOURCE_ATTRIBUTES` | unset | Comma-separated `k=v` resource attrs piped onto every span. Common: `deployment.environment=colo,service.namespace=cimmeria`. |
+//! | `OTEL_TRACES_SAMPLER` | `always_on` | `always_on`, `always_off`, or `traceidratio` with `OTEL_TRACES_SAMPLER_ARG`. |
 //!
 //! # Example
 //!
@@ -48,6 +53,7 @@ use cimmeria_services::audit::{LoginEvent, LoginEventBuffer};
 use cimmeria_services::orchestrator::Orchestrator;
 
 mod cosmos_log;
+mod otel;
 
 #[tokio::main]
 async fn main() {
@@ -80,8 +86,22 @@ async fn main() {
         None => (None, None),
     };
 
+    // OTLP exporter (optional — requires OTEL_EXPORTER_OTLP_ENDPOINT).
+    // Separated like cosmos: layer goes into the subscriber; guard is
+    // bound at this scope so it drops *after* the orchestrator's
+    // stop_all returns, flushing the in-flight batch on clean shutdown.
+    let (otel_layer, _otel_guard) = match otel::init() {
+        Some((layer, guard)) => (Some(layer), Some(guard)),
+        None => (None, None),
+    };
+
     // Initialise layered tracing — guards must live until shutdown.
-    let _guards = init_logging(log_tx.clone(), log_buffer.clone(), cosmos_layer);
+    let _guards = init_logging(
+        log_tx.clone(),
+        log_buffer.clone(),
+        cosmos_layer,
+        otel_layer,
+    );
 
     // Spawn the Cosmos DB writer task now that the subscriber is active.
     if let Some((receiver, endpoint, key)) = cosmos_writer_parts {
@@ -332,6 +352,7 @@ fn init_logging(
     log_tx: broadcast::Sender<LogEntry>,
     log_buffer: LogBuffer,
     cosmos_layer: Option<cosmos_log::CosmosLogLayer>,
+    otel_layer: Option<otel::OtelLayer>,
 ) -> Vec<WorkerGuard> {
     // Move previous session's logs into archive/.
     archive_previous_logs();
@@ -480,6 +501,21 @@ fn init_logging(
                  cimmeria_services::base::connect_loop=info,\
                  cimmeria_mercury::encryption=info,\
                  cimmeria_services::base::tick_sync=info,\
+                 tungstenite=off,tokio_tungstenite=off,hyper=off",
+        ))));
+    }
+
+    // ── OpenTelemetry → SigNoz (optional) ─────────────────────────────
+    // Same filter shape as Cosmos: ship debug+ from our crates but drop
+    // the chatty HTTP middleware noise. The Mercury packet target
+    // (`mercury.packet`) flows through at info level — it's the load-
+    // bearing analytical surface, sampling would defeat the purpose.
+    if let Some(layer) = otel_layer {
+        layers.push(Box::new(layer.with_filter(EnvFilter::new(
+            "info,\
+                 cimmeria_services=debug,\
+                 cimmeria_mercury=debug,\
+                 mercury.packet=info,\
                  tungstenite=off,tokio_tungstenite=off,hyper=off",
         ))));
     }

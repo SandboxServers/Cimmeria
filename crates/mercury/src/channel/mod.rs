@@ -353,6 +353,20 @@ impl Channel {
         packet.sequence = self.next_tx_seq & crate::packet::SEQUENCE_MASK;
         self.next_tx_seq = self.next_tx_seq.wrapping_add(1) & crate::packet::SEQUENCE_MASK;
 
+        // Instrument: outbound UDP packet bookkeeping. Emitted post-seq
+        // stamping so the recorded `seq` matches what'll go on the wire.
+        // (Note: the bytes haven't actually been sent yet — caller still
+        // needs to encrypt + transmit — but they will, and the wire-side
+        // retransmit is keyed off this same `Packet`, so this is the
+        // single source-of-truth seam for "we attempted to send seq=X".)
+        crate::instrumentation::record_udp_packet(
+            crate::instrumentation::Direction::Out,
+            packet.sequence,
+            packet.flags.0,
+            packet.body.len(),
+            &self.remote_addr.to_string(),
+        );
+
         let now = self.clock.now();
         self.tx_window.push_back(TxEntry {
             packet,
@@ -376,6 +390,20 @@ impl Channel {
     pub fn receive_packet(&mut self, packet: Packet) -> Result<Option<Vec<Packet>>> {
         let seq = packet.sequence;
         self.last_received = self.clock.now();
+
+        // Instrument: inbound UDP packet observed. We record EVERY
+        // received packet here — including duplicates and packets
+        // beyond the window — because those are exactly the kind of
+        // anomalies the analytical store needs to surface. Filtering
+        // duplicates out at the record site would hide them in the
+        // SigNoz "incoming packet rate" plot.
+        crate::instrumentation::record_udp_packet(
+            crate::instrumentation::Direction::In,
+            seq,
+            packet.flags.0,
+            packet.body.len(),
+            &self.remote_addr.to_string(),
+        );
 
         // How far ahead of our expected sequence is this packet?
         // Wrapping subtraction handles sequence wraparound.
