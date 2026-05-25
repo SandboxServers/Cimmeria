@@ -57,7 +57,7 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
                 npc_ai_leash(npc_id, tx, space_mgr).await;
             }
             AiState::Idle => {
-                npc_ai_idle_auto_aggro(npc_id, space_mgr);
+                npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await;
             }
             _ => {}
         }
@@ -74,7 +74,11 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
 /// dominates and focuses the NPC on the triggering player rather than
 /// whichever player happens to be closest. Caller (`npc_ai_tick`)
 /// guarantees `aggression > 0`.
-fn npc_ai_idle_auto_aggro(npc_id: u32, space_mgr: &mut SpaceManager) {
+async fn npc_ai_idle_auto_aggro(
+    npc_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
     use super::super::combat;
 
     let (npc_pos, npc_faction) = match space_mgr.get_entity(npc_id) {
@@ -110,14 +114,38 @@ fn npc_ai_idle_auto_aggro(npc_id: u32, space_mgr: &mut SpaceManager) {
             player_id,
             "NPC AI: aggression-driven auto-aggro on opposing-faction player"
         );
-        // Discard the optional new-state — the auto-aggro path doesn't
-        // broadcast `onStateFieldUpdate` to the player here. The next
-        // explicit hit (player fires back, NPC retaliates, etc.) will go
-        // through the normal generate_threat → enter_player_combat path
-        // which does the BSF_IN_COMBAT broadcast. Doing it here would
-        // light up the combat HUD before the player has any reason to
-        // know they've been seen — surfacing as a "ghost combat" UX bug.
-        let _ = combat::generate_threat(space_mgr, player_id, npc_id, 1.0);
+        // Two paths for the `Some(new_state)` return value:
+        //
+        // - **`onStateFieldUpdate` (`BSF_IN_COMBAT`)** — intentionally
+        //   suppressed. The auto-aggro tick can fire before the player
+        //   has any reason to know they've been spotted (NPC walked
+        //   into AoI from off-camera); lighting up the combat HUD
+        //   here surfaces as a "ghost combat" UX bug. The next
+        //   explicit hit (player fires back, NPC retaliates) goes
+        //   through `damage_apply::apply_damage_to_target →
+        //   generate_threat → enter_player_combat`, which broadcasts
+        //   `onStateFieldUpdate` from the damage path with the
+        //   player visibly engaged.
+        //
+        // - **`BeingAppearance` (weapon-mesh refresh)** — REQUIRED.
+        //   `enter_player_combat` flips `weapon_holstered` to false
+        //   when the player enters combat from holstered. Without
+        //   broadcasting the appearance here, the client retains its
+        //   cached "holstered" `ComponentList` (last set by the OOC
+        //   holster's Phase 2 appearance broadcast) while the server
+        //   thinks the weapon is drawn. Next fire passes the
+        //   `needs_unholster_queue` gate (server-side
+        //   `weapon_holstered=false`), so no draw queue runs — the
+        //   client renders the fire animation with NO weapon mesh
+        //   attached. Slot-swap recovers because slot-swap broadcasts
+        //   a fresh `BeingAppearance`. Specifically reported from a
+        //   play session post-auto-reload + OOC holster, where the
+        //   sequence is: kill → auto-reload → OOC → Phase 1 +
+        //   Phase 2 holster → new NPC auto-aggros → player fires →
+        //   "hands in combat position but no weapon."
+        if combat::generate_threat(space_mgr, player_id, npc_id, 1.0).is_some() {
+            super::super::abilities::request_appearance_refresh(player_id, tx, space_mgr).await;
+        }
     }
 }
 
