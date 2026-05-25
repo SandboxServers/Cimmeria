@@ -432,20 +432,16 @@ async fn handle_respawn_same_world_dispatches_list_inventory_after_reanchor() {
     let mut idx: usize = 0;
     while let Ok(m) = rx.try_recv() {
         match m {
-            CellToBaseMsg::ReanchorPlayer { entity_id: 1, .. } => {
-                if reanchor_at.is_none() {
-                    reanchor_at = Some(idx);
-                }
+            CellToBaseMsg::ReanchorPlayer { entity_id: 1, .. } if reanchor_at.is_none() => {
+                reanchor_at = Some(idx);
             }
             CellToBaseMsg::ListInventoryItems {
                 entity_id,
                 player_id,
-            } => {
-                if list_inventory_at.is_none() {
-                    list_inventory_at = Some(idx);
-                    list_inventory_entity_id = Some(entity_id);
-                    list_inventory_player_id = Some(player_id);
-                }
+            } if list_inventory_at.is_none() => {
+                list_inventory_at = Some(idx);
+                list_inventory_entity_id = Some(entity_id);
+                list_inventory_player_id = Some(player_id);
             }
             _ => {}
         }
