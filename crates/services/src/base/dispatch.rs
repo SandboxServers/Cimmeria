@@ -42,7 +42,7 @@ pub(crate) mod sgw_player_base {
     name = "base.player_method",
     level = "debug",
     skip_all,
-    fields(peer = %addr, msg_id = format!("{:#04x}", msg_id), payload_len = payload.len()),
+    fields(peer = %addr, msg_id, payload_len = payload.len()),
 )]
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_sgw_player_base_method(

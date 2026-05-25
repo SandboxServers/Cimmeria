@@ -165,14 +165,12 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
     let log_exporter = match log_exporter_result {
         Ok(e) => e,
         Err(err) => {
-            eprintln!(
-                "[otel] Log exporter init failed ({err}); spans will ship but logs (incl. mercury.packet) will be dropped"
-            );
-            // Returning None entirely here would silently disable spans
-            // too — instead, return only the trace layer with a sentinel
-            // bridge that no-ops. But the bridge type isn't trivially
-            // constructable as a no-op, so we fail-loud and bail; the
-            // operator can fix the config rather than ship partial data.
+            // Fail-loud and bail entirely — the bridge layer type isn't
+            // trivially constructable as a no-op, so partial telemetry
+            // (traces only) would require keeping a parallel "log layer
+            // is `Option<...>`" path through the rest of init. Cleaner
+            // to ship full-or-nothing and let the operator fix config.
+            eprintln!("[otel] Log exporter init failed ({err}); telemetry will not ship");
             return None;
         }
     };

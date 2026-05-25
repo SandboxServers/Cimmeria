@@ -52,22 +52,9 @@ pub(super) async fn run_cell_loop(
                 }
             }
             _ = tick_interval.tick() => {
-                // One span per 100ms tick. All per-tick work (AoI diff,
-                // reload completion, holster timer, pending attack/reload
-                // promotion, auto-cycle, ring transport, NPC movement,
-                // NPC AI sub-tick, regen) becomes children of this
-                // span. SigNoz shows "what happened on tick N?" as one
-                // trace; without this, each sub-tick event is a
-                // root-level orphan with no shared correlation field.
-                //
-                // debug level — at 10 Hz the volume would drown the
-                // default-info SigNoz view. Flip on with
-                // `RUST_LOG=cimmeria_services::cell::service::message_loop=debug`.
-                //
-                // `.instrument()` wrapping an `async { ... }.await` —
-                // the tick body awaits, and a plain `.entered()` guard
-                // would silently fall off the moving task across the
-                // tokio runtime's thread switches.
+                // `.instrument()` wrapping `async { … }.await` — the tick
+                // body awaits, so a thread-local guard from `.entered()`
+                // would silently fall off across runtime thread switches.
                 use tracing::Instrument;
                 let tick_span = tracing::debug_span!(
                     "cell.tick",
