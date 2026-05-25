@@ -481,3 +481,41 @@ async fn handle_respawn_same_world_dispatches_list_inventory_after_reanchor() {
          table is sharded by, NOT the entity_id"
     );
 }
+
+/// Same-world respawn must clear `threatened_mobs` so the
+/// `BSF_IN_COMBAT ↔ threatened_mobs.is_empty()` invariant survives.
+/// `clear_all_state_flags` zeroes `state_field` but threatened_mobs
+/// is a separate HashSet; without an explicit clear the player
+/// respawns with stale entries from the mobs that killed them,
+/// leaving the OOC holster timer permanently disarmed (it only
+/// arms when `exit_player_combat` drops the set to empty) and the
+/// `needs_unholster_queue` gate permanently false (it requires
+/// `threatened_mobs.is_empty()`). Cross-world respawn destroys
+/// the entity so the set is implicitly cleared there.
+#[tokio::test]
+async fn handle_respawn_same_world_clears_threatened_mobs() {
+    let mut mgr = make_mgr_with_player("Castle_CellBlock");
+    if let Some(e) = mgr.get_entity_mut(1) {
+        if let Some(h) = e.stats.get_mut(HEALTH) {
+            h.update(0, 1, 100);
+            h.clear_dirty();
+        }
+        // Player died with two mobs aggroed.
+        e.threatened_mobs.insert(50);
+        e.threatened_mobs.insert(51);
+    }
+
+    let (tx, _rx) = mpsc::channel(16);
+    handle_respawn(1, -1, &tx, &mut mgr).await;
+
+    let entity = mgr
+        .get_entity(1)
+        .expect("cell entity survives same-world respawn");
+    assert!(
+        entity.threatened_mobs.is_empty(),
+        "same-world respawn must clear threatened_mobs so the invariant \
+         `BSF_IN_COMBAT ↔ !threatened_mobs.is_empty()` holds — leaving stale \
+         entries makes the OOC holster timer never arm and breaks \
+         `needs_unholster_queue`"
+    );
+}

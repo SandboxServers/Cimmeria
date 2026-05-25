@@ -185,6 +185,25 @@ pub(crate) async fn handle_request_active_slot_change(
         if let Some(e) = space_mgr.get_entity_mut(entity_id) {
             e.pending_slot_swap_at = Some(std::time::Instant::now() + duration);
             e.pending_slot_swap_target = Some(slot_id);
+            // Discard any in-flight reload-Phase-A draw or queued attack
+            // from the OUTGOING weapon. By committing to the swap the
+            // player has abandoned the previous slot — letting the Phase
+            // A tick re-enter `handle_reload` after the swap would refill
+            // the NEW slot (Phase B pins `reload_slot_id` to the
+            // currently-active slot, not the slot reload started on), and
+            // letting `pending_attack_tick` re-fire the queued ability
+            // would consume the NEW slot's ammo with the OLD slot's
+            // ability id (e.g. queued Pistol Shot → swap to Staff →
+            // tick fires Pistol Shot off the Staff's ammo bar).
+            //
+            // `reload_complete_at` / `reload_slot_id` are cancelled below
+            // in the immediate-swap path; we don't touch them here
+            // because Phase B is gated on `pending_reload_at.is_none()`
+            // and stays dormant until the tick fires.
+            e.pending_reload_at = None;
+            e.pending_attack_at = None;
+            e.pending_attack_ability_id = None;
+            e.pending_attack_target_id = None;
         }
         tracing::info!(
             entity_id,
@@ -261,6 +280,20 @@ pub(crate) async fn handle_request_active_slot_change(
                 new_slot = slot_id,
                 "active slot change cancelled in-flight reload"
             );
+        }
+        // Mirror the choreography branch: a real slot change discards
+        // any in-flight reload Phase A draw and queued attack from the
+        // outgoing weapon. Same-slot calls (no-ops / replayed packets)
+        // leave them alone — the player hasn't expressed intent to
+        // change weapons, so the queued action should still resolve.
+        // This branch catches the no-choreography paths (one slot
+        // empty) and the tick re-entry path (which clears
+        // `pending_slot_swap_at` above and falls through to here).
+        if slot_id != prev_slot {
+            entity.pending_reload_at = None;
+            entity.pending_attack_at = None;
+            entity.pending_attack_ability_id = None;
+            entity.pending_attack_target_id = None;
         }
         entity.active_bandolier_slot = slot_id;
         let new_ammo_type = entity

@@ -325,3 +325,204 @@ async fn slot_swap_cancels_in_flight_reload() {
     // succeeded (slot-swap emits ActiveSlotUpdate and onEntityProperty).
     while rx.try_recv().is_ok() {}
 }
+
+/// A real slot change (slot_id != prev_slot) must discard any pending
+/// queued attack from the outgoing weapon. Otherwise
+/// `pending_attack_tick` re-fires the OLD slot's ability id against
+/// the NEW slot's ammo bar — the player presses fire on Pistol while
+/// holstered, swaps to Staff during the unholster draw window, and
+/// the Phase B tick consumes Staff ammo with Pistol's ability id.
+/// Pin the cancellation: swapping commits to a weapon change, so the
+/// queued attack from the previous weapon must die with it.
+#[tokio::test]
+async fn slot_swap_cancels_pending_attack_queue() {
+    use crate::cell::content::build_engine;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        // Re-entry-from-tick path: pending_slot_swap_at already set so
+        // the choreography branch is skipped and the immediate-swap
+        // path runs. Verifies the cancellation in the post-choreography
+        // branch where the slot actually changes.
+        e.pending_slot_swap_at = Some(std::time::Instant::now());
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 10,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 30,
+                cur_ammo_type: 1,
+            },
+        );
+        e.bandolier_items.insert(
+            1,
+            BandolierItem {
+                item_id: 11,
+                clip_size: 12,
+                default_ammo_type: 7,
+                current_ammo: 12,
+                cur_ammo_type: 7,
+            },
+        );
+        e.active_bandolier_slot = 0;
+        // Queued attack from slot 0's weapon — Pistol Shot mid-draw.
+        e.pending_attack_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(10));
+        e.pending_attack_ability_id = Some(5001);
+        e.pending_attack_target_id = Some(200);
+    }
+    mgr.connect_entity(1);
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let engine = build_engine(None).await;
+
+    let mut swap = Vec::with_capacity(8);
+    swap.extend_from_slice(&3i32.to_le_bytes());
+    swap.extend_from_slice(&2i32.to_le_bytes()); // wire slot 2 → server slot 1
+    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &swap, &tx, &mut mgr, &engine).await;
+
+    let entity = mgr.get_entity(1).unwrap();
+    assert!(
+        entity.pending_attack_at.is_none(),
+        "real slot change must clear queued attack deadline"
+    );
+    assert!(
+        entity.pending_attack_ability_id.is_none(),
+        "real slot change must clear queued ability id (otherwise Phase B \
+         tick fires OLD weapon ability against NEW slot ammo)"
+    );
+    assert!(
+        entity.pending_attack_target_id.is_none(),
+        "real slot change must clear queued target id"
+    );
+    assert_eq!(entity.active_bandolier_slot, 1);
+
+    while rx.try_recv().is_ok() {}
+}
+
+/// A real slot change must also discard `pending_reload_at` — the
+/// reload-Phase-A draw deadline. Otherwise the Phase A tick fires
+/// after the swap, falls through to Phase B which pins
+/// `reload_slot_id` to the currently-active slot (slot 1, the new
+/// one), and refills the new weapon's clip from a reload the player
+/// started on the OLD weapon. The player pressed R for Pistol, then
+/// swapped to Staff mid-draw — the reload should die, not redirect.
+#[tokio::test]
+async fn slot_swap_cancels_pending_reload_phase_a() {
+    use crate::cell::content::build_engine;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        // Re-entry path so the immediate swap runs.
+        e.pending_slot_swap_at = Some(std::time::Instant::now());
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 10,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 0,
+                cur_ammo_type: 1,
+            },
+        );
+        e.bandolier_items.insert(
+            1,
+            BandolierItem {
+                item_id: 11,
+                clip_size: 12,
+                default_ammo_type: 7,
+                current_ammo: 12,
+                cur_ammo_type: 7,
+            },
+        );
+        e.active_bandolier_slot = 0;
+        // Reload Phase A in flight (drawing the weapon).
+        e.pending_reload_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(1));
+    }
+    mgr.connect_entity(1);
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let engine = build_engine(None).await;
+
+    let mut swap = Vec::with_capacity(8);
+    swap.extend_from_slice(&3i32.to_le_bytes());
+    swap.extend_from_slice(&2i32.to_le_bytes());
+    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &swap, &tx, &mut mgr, &engine).await;
+
+    let entity = mgr.get_entity(1).unwrap();
+    assert!(
+        entity.pending_reload_at.is_none(),
+        "real slot change must clear Phase A draw deadline (otherwise the \
+         tick falls through to Phase B and refills the NEW slot from a \
+         reload started on the OLD slot)"
+    );
+    assert_eq!(entity.active_bandolier_slot, 1);
+
+    while rx.try_recv().is_ok() {}
+}
+
+/// A SAME-slot "swap" (no-op, replayed packet, or wire echo) must
+/// NOT cancel any pending state — the player hasn't expressed
+/// intent to change weapons, so a queued attack from the unholster
+/// draw should still resolve. Mirrors the existing reload-cancel
+/// guard at `slot_id != prev_slot`.
+#[tokio::test]
+async fn same_slot_no_op_preserves_pending_attack_queue() {
+    use crate::cell::content::build_engine;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+
+    let queued_at = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        e.pending_slot_swap_at = Some(std::time::Instant::now());
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 10,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 30,
+                cur_ammo_type: 1,
+            },
+        );
+        e.active_bandolier_slot = 0;
+        e.pending_attack_at = Some(queued_at);
+        e.pending_attack_ability_id = Some(5001);
+        e.pending_attack_target_id = Some(200);
+    }
+    mgr.connect_entity(1);
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let engine = build_engine(None).await;
+
+    // Same slot 0 (wire 1) — no-op swap.
+    let mut swap = Vec::with_capacity(8);
+    swap.extend_from_slice(&3i32.to_le_bytes());
+    swap.extend_from_slice(&1i32.to_le_bytes()); // wire slot 1 → server slot 0
+    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &swap, &tx, &mut mgr, &engine).await;
+
+    let entity = mgr.get_entity(1).unwrap();
+    assert_eq!(
+        entity.pending_attack_at,
+        Some(queued_at),
+        "same-slot no-op must preserve queued attack deadline"
+    );
+    assert_eq!(entity.pending_attack_ability_id, Some(5001));
+    assert_eq!(entity.pending_attack_target_id, Some(200));
+
+    while rx.try_recv().is_ok() {}
+}

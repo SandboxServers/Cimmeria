@@ -594,8 +594,23 @@ pub(crate) async fn handle_reload(
     // Phase B (or a normal already-drawn reload). When entered from the
     // `pending_reload_tick`, clear the deferred-reload stamp so a
     // racing tick won't re-fire phase B.
+    //
+    // Also cancel any in-flight OOC holster Phase 2
+    // (`holster_animation_complete_at`). Reload semantics imply the
+    // weapon stays drawn — without this clear, the Phase 2 deadline
+    // would still elapse mid-reload, flip `weapon_holstered = true`,
+    // and broadcast `BeingAppearance` with no weapon attached. The
+    // user would see the reload animation play then the weapon
+    // mesh vanish on the next AoI tick. Phase A already does this
+    // clear (line 554 above); Phase B was missing it. The bug
+    // shape: player kills last threat, drains clip without
+    // auto-reload (option off), watches OOC holster Phase 1 fire
+    // (`Item_Unequip` animation), then manually presses R during
+    // the ~half-second animation window — reload plays, weapon
+    // vanishes after.
     if let Some(e) = space_mgr.get_entity_mut(entity_id) {
         e.pending_reload_at = None;
+        e.holster_animation_complete_at = None;
     }
 
     let entity = match space_mgr.get_entity_mut(entity_id) {

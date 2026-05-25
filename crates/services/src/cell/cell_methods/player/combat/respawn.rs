@@ -136,6 +136,27 @@ pub(super) async fn handle_respawn(
     entity.clear_all_state_flags();
     entity.abilities.clear_all_cooldowns();
 
+    // Re-establish the BSF_IN_COMBAT ↔ threatened_mobs invariant. The
+    // state-flag reset above zeroed `state_field` (including
+    // BSF_IN_COMBAT), but `threatened_mobs` is a separate set and
+    // survives same-world respawn unless explicitly cleared. Leaving
+    // it populated means:
+    //   - The HUD says OOC (state_field=0) while
+    //     `threatened_mobs.is_empty()` is false — `needs_unholster_queue`
+    //     skips, `enter_player_combat` no-ops on the next aggro because
+    //     the set is still non-empty, and the OOC holster timer never
+    //     arms (it gates on the set becoming empty via
+    //     `exit_player_combat`).
+    //   - The first real `exit_player_combat` after the bogus mobs
+    //     "die" (or get evicted) drops the set to empty but with
+    //     `state_field & BSF_IN_COMBAT == 0` already, so the
+    //     transition broadcast is suppressed — no harm there, but
+    //     until that drain happens the player is permanently in the
+    //     stuck-drawn-weapon state.
+    // Cross-world respawn destroys + recreates the entity, so the
+    // set is implicitly reset there; same-world has to do it manually.
+    entity.threatened_mobs.clear();
+
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
 
     // Push the refreshed HEALTH/FOCUS to the HUD via onStatUpdate.

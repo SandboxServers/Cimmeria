@@ -737,6 +737,46 @@ impl CellEntity {
     pub fn sync_holster_to_combat(&mut self, in_combat: bool) -> bool {
         self.set_weapon_holstered(!in_combat)
     }
+
+    /// Clear every pending weapon-action timer in one shot.
+    ///
+    /// Called when the entity transitions to a state where running any of
+    /// the deferred weapon flows would be wrong. The current call site is
+    /// player death: the cell-side entity survives same-world respawn
+    /// (`ReanchorPlayer` keeps it intact), so stale `pending_*_at` fields
+    /// would otherwise fire deferred ticks during the Defeat Window or
+    /// post-respawn — surfacing as phantom reload animations, queued
+    /// attacks against unrelated targets, or slot-swap choreography
+    /// running on a corpse.
+    ///
+    /// Specifically resets:
+    /// - `pending_reload_at` — reload-while-holstered Phase A draw window.
+    /// - `reload_complete_at` + `reload_slot_id` — reload-while-drawn
+    ///   Phase B warmup deadline + pinned slot.
+    /// - `pending_attack_at` + `pending_attack_ability_id` +
+    ///   `pending_attack_target_id` — fire-while-holstered queued attack.
+    /// - `pending_slot_swap_at` + `pending_slot_swap_target` — bandolier
+    ///   slot-swap choreography (`Item_Unequip` → wait → `Item_Equip`).
+    /// - `holster_animation_complete_at` — OOC holster Phase 2 mesh-drop
+    ///   deadline.
+    /// - `combat_exit_at` — OOC holster Phase 1 deadline. Combat already
+    ///   ended (death cleared `BSF_IN_COMBAT` via the threat fan-out), so
+    ///   this is redundant with that path but keeps the surface clean.
+    ///
+    /// Does NOT touch `weapon_holstered` itself — the death broadcast
+    /// path and the respawn `ReanchorPlayer` handle the appearance side.
+    pub fn clear_weapon_action_state(&mut self) {
+        self.pending_reload_at = None;
+        self.reload_complete_at = None;
+        self.reload_slot_id = None;
+        self.pending_attack_at = None;
+        self.pending_attack_ability_id = None;
+        self.pending_attack_target_id = None;
+        self.pending_slot_swap_at = None;
+        self.pending_slot_swap_target = None;
+        self.holster_animation_complete_at = None;
+        self.combat_exit_at = None;
+    }
 }
 
 impl std::fmt::Debug for CellEntity {
