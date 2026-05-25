@@ -235,6 +235,132 @@ jobs:
           docker tag "${IMAGE}:${VERSION}" "${IMAGE}:latest-prerelease"
           docker push "${IMAGE}:latest-prerelease"
 
+      # Render the Discord-notifications colo overlay. The template at
+      # docker/compose.discord.yml carries `__DISCORD_*_WEBHOOK__`
+      # sentinels which we substitute with the corresponding GitHub
+      # Actions secrets here. Channels whose secret is unset are
+      # stripped entirely from the rendered TOML (an empty URL would
+      # trip cimmeria-discord's URL validation at startup — silently
+      # dropping the channel is the right behaviour for "the colo
+      # only cares about lifecycle, not errors").
+      #
+      # If BOTH secrets are unset we skip producing the artifact
+      # altogether; the colo just won't have Discord notifications.
+      # That's also the default for forks that don't have the org's
+      # webhook secrets configured.
+      - name: render Discord-notifications overlay
+        id: discord_overlay
+        env:
+          # Empty strings if the secret is not configured on this
+          # repo. The render step downstream is responsible for
+          # handling those uniformly (drop the channel block).
+          DISCORD_LIFECYCLE_WEBHOOK: ${{ secrets.DISCORD_LIFECYCLE_WEBHOOK }}
+          DISCORD_ERRORS_WEBHOOK: ${{ secrets.DISCORD_ERRORS_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          if [[ -z "${DISCORD_LIFECYCLE_WEBHOOK}" && -z "${DISCORD_ERRORS_WEBHOOK}" ]]; then
+              echo "::notice::No Discord webhook secrets are set on this repo — skipping compose.discord.yml render."
+              echo "rendered=false" >> "$GITHUB_OUTPUT"
+              exit 0
+          fi
+
+          # Per-channel render with awk so we can both substitute the
+          # webhook URL AND drop the entire `[discord.channels.X]`
+          # TOML block when the secret is empty. A two-stage sed
+          # cannot do block-delete cleanly across the blank lines we
+          # rely on for readability inside `content: |`.
+          awk \
+              -v lifecycle="${DISCORD_LIFECYCLE_WEBHOOK}" \
+              -v errors="${DISCORD_ERRORS_WEBHOOK}" \
+              '
+              # Per-channel toml block (`[discord.channels.X]`
+              # through the next blank line). When the corresponding
+              # secret is empty, swallow the block; otherwise emit it
+              # with the placeholder substituted.
+              function emit_block(channel, secret, lines, n,    i) {
+                  if (secret == "") return
+                  for (i = 1; i <= n; i++) {
+                      gsub("__DISCORD_" toupper(channel) "_WEBHOOK__", secret, lines[i])
+                      print lines[i]
+                  }
+              }
+
+              /\[discord\.channels\.lifecycle\]/ {
+                  # Capture this and the next two non-empty lines (url, rate_limit).
+                  n = 0; lines[++n] = $0
+                  while ((getline ln) > 0 && ln != "") lines[++n] = ln
+                  emit_block("lifecycle", lifecycle, lines, n)
+                  # Re-emit the terminating blank line only when we
+                  # kept the block (so the YAML stays grammatical).
+                  if (lifecycle != "") print ""
+                  next
+              }
+
+              /\[discord\.channels\.errors\]/ {
+                  n = 0; lines[++n] = $0
+                  while ((getline ln) > 0 && ln != "") lines[++n] = ln
+                  emit_block("errors", errors, lines, n)
+                  if (errors != "") print ""
+                  next
+              }
+
+              # Default: pass through untouched.
+              { print }
+              ' docker/compose.discord.yml > dist/compose.discord.yml
+
+          # Strip the leading commented preamble (template warning +
+          # in-repo authoring notes) and replace it with a rendered-
+          # overlay header. The original preamble warns operators not
+          # to use the in-repo file directly — that's exactly the file
+          # we're producing here, so the warning is wrong on the
+          # rendered artifact. Deterministic strip: delete every
+          # line until just before the first `services:` document key.
+          awk '
+              BEGIN { in_preamble = 1 }
+              in_preamble && /^services:/ { in_preamble = 0 }
+              !in_preamble { print }
+          ' dist/compose.discord.yml > dist/compose.discord.yml.body
+          cat > dist/compose.discord.yml <<HEADER
+          # Cimmeria — Discord-notifications colo overlay
+          #
+          # Rendered by .github/workflows/release-container.yml from
+          # docker/compose.discord.yml with webhook URLs substituted
+          # from GitHub Actions secrets. Channels whose secret was
+          # unset at render time were dropped from the TOML.
+          #
+          # Deploy on the colo (alongside docker/compose.yml):
+          #
+          #   docker compose -f compose.yml -f compose.discord.yml up -d
+          #
+          # See docs/operations/colo-deploy.md for full ops notes.
+          HEADER
+          # The here-doc indents each line by 10 spaces (to match
+          # workflow YAML indentation). Strip that back out so the
+          # rendered file is left-margin clean.
+          sed -i 's/^          //' dist/compose.discord.yml
+          cat dist/compose.discord.yml.body >> dist/compose.discord.yml
+          rm dist/compose.discord.yml.body
+
+          # Sanity check: no sentinels survived. A surviving sentinel
+          # means the awk above lost track of a block — fail the
+          # release rather than ship a broken overlay.
+          if grep -q '__DISCORD_.*_WEBHOOK__' dist/compose.discord.yml; then
+              echo "::error::Unrendered sentinel(s) left in dist/compose.discord.yml — render step is broken."
+              grep -n '__DISCORD_.*_WEBHOOK__' dist/compose.discord.yml || true
+              exit 1
+          fi
+
+          echo "::group::rendered compose.discord.yml"
+          # Mask the URLs in the workflow log — the GH Actions secret
+          # registry already masks the exact strings, but we belt-and-
+          # braces it by redacting the entire `url = "..."` line.
+          sed 's|url = ".*"|url = "<redacted>"|' dist/compose.discord.yml
+          echo "::endgroup::"
+
+          echo "rendered=true" >> "$GITHUB_OUTPUT"
+
       - name: create GitHub pre-release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -250,3 +376,17 @@ jobs:
             --title "Cimmeria server ${{ steps.ver.outputs.version }}" \
             --notes-file /tmp/release-notes.md \
             --target "${{ github.sha }}"
+
+      # Upload the Discord overlay (when rendered) AFTER the release
+      # exists. This is the artifact operators `curl` from the release
+      # page; without it the overlay isn't reachable. Use `--clobber`
+      # so retried releases overwrite stale overlays in place.
+      - name: attach Discord overlay to release
+        if: steps.discord_overlay.outputs.rendered == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ steps.ver.outputs.tag }}" \
+            dist/compose.discord.yml \
+            --clobber

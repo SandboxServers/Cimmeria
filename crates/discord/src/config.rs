@@ -786,6 +786,104 @@ rate_limit_per_min = 60
         assert!(debug_repr.contains("rate_limit_per_min: 60"));
     }
 
+    /// Regression guard: the TOML shape produced by the colo overlay
+    /// (rendered from `docker/compose.discord.yml` by the release
+    /// workflow) must round-trip cleanly through `Config::from_toml_str`.
+    ///
+    /// If a future schema change to the crate breaks this shape, the
+    /// colo deployment goes down on the next watchtower swap — and the
+    /// failure is silent unless an operator is watching startup logs.
+    /// Pinning the rendered shape here means schema changes that drop
+    /// this contract trip CI instead of production.
+    ///
+    /// The TOML below is byte-identical to the rendered output of
+    /// `awk render | colo-deploy upload`, with two webhook URLs
+    /// substituted. Update both places in lockstep when you change
+    /// either side.
+    #[test]
+    fn rendered_colo_overlay_toml_parses() {
+        let toml_src = r#"
+[discord]
+enabled = true
+username = "Cimmeria (colo)"
+
+[discord.channels.lifecycle]
+url = "https://discord.com/api/webhooks/1/lifeABC"
+rate_limit_per_min = 30
+
+[discord.channels.errors]
+url = "https://discord.com/api/webhooks/2/errXYZ"
+rate_limit_per_min = 60
+
+[discord.events]
+warning = true
+"#;
+        let cfg = Config::from_toml_str(toml_src).expect("colo overlay TOML must parse");
+        assert!(cfg.enabled);
+        assert_eq!(cfg.username.as_deref(), Some("Cimmeria (colo)"));
+
+        // Two channels configured, both webhook URLs preserved.
+        assert_eq!(cfg.channels.len(), 2);
+        let lc = cfg
+            .channels
+            .get(&ChannelKind::Lifecycle)
+            .expect("lifecycle present");
+        assert_eq!(lc.url, "https://discord.com/api/webhooks/1/lifeABC");
+        assert_eq!(lc.rate_limit_per_min, 30);
+        let err = cfg
+            .channels
+            .get(&ChannelKind::Errors)
+            .expect("errors present");
+        assert_eq!(err.url, "https://discord.com/api/webhooks/2/errXYZ");
+        assert_eq!(err.rate_limit_per_min, 60);
+
+        // The overlay's `warning = true` override took effect; other
+        // toggles inherited defaults.
+        assert!(cfg.events.warning, "colo overlay opts into warning");
+        assert!(cfg.events.error, "default-on retained");
+        assert!(cfg.events.server_startup, "default-on retained");
+        assert!(!cfg.events.chat_whisper, "default-off retained");
+
+        // `should_post` returns true for lifecycle/errors events and
+        // false for channels we deliberately didn't render (auth,
+        // world, etc. — no channel block, so they drop).
+        assert!(cfg.should_post(EventKind::ServerStartup));
+        assert!(cfg.should_post(EventKind::Error));
+        assert!(
+            !cfg.should_post(EventKind::PlayerLogin),
+            "PlayerLogin routes to 'auth' channel, which isn't configured in the overlay"
+        );
+    }
+
+    /// Single-channel variant: only `DISCORD_LIFECYCLE_WEBHOOK` set on
+    /// the GH Actions secrets. The render step drops the entire
+    /// `[discord.channels.errors]` block. Pin that the resulting TOML
+    /// still parses cleanly with just one channel.
+    #[test]
+    fn rendered_colo_overlay_single_channel_parses() {
+        let toml_src = r#"
+[discord]
+enabled = true
+username = "Cimmeria (colo)"
+
+[discord.channels.lifecycle]
+url = "https://discord.com/api/webhooks/1/lifeABC"
+rate_limit_per_min = 30
+
+[discord.events]
+warning = true
+"#;
+        let cfg = Config::from_toml_str(toml_src).expect("single-channel overlay must parse");
+        assert_eq!(cfg.channels.len(), 1);
+        assert!(cfg.channels.contains_key(&ChannelKind::Lifecycle));
+        assert!(!cfg.channels.contains_key(&ChannelKind::Errors));
+        // Errors-routed events become should_post=false because the
+        // channel isn't configured. The toggle is still `true` (it's
+        // the default) but routing-level gating drops it.
+        assert!(!cfg.should_post(EventKind::Error));
+        assert!(cfg.should_post(EventKind::ServerStartup));
+    }
+
     #[test]
     fn default_toggles_match_documented_defaults() {
         let t = EventToggles::default();
