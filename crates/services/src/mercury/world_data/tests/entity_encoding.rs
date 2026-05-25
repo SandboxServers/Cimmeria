@@ -2,6 +2,7 @@
 //! onEntityTint) emitted as part of the world-entry packet stream.
 
 use super::super::*;
+use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
 
 /// Verify BeingAppearance wire encoding matches C++ reference:
 ///   msg_id=0x9A (index 26, direct: 26|0x80)
@@ -28,7 +29,13 @@ fn being_appearance_wire_encoding() {
     }
 
     let mut body = Vec::new();
-    append_entity_method(&mut body, method_idx::BEING_APPEARANCE, entity_id, &args);
+    append_entity_method(
+        &mut body,
+        method_idx::BEING_APPEARANCE,
+        IDBASE_SGW_PLAYER,
+        entity_id,
+        &args,
+    );
 
     // method_index=26 < 61 -> direct: msg_id = 26 | 0x80 = 0x9A
     assert_eq!(
@@ -121,7 +128,13 @@ fn entity_tint_wire_encoding() {
     args.extend_from_slice(&skin.to_le_bytes());
 
     let mut body = Vec::new();
-    append_entity_method(&mut body, method_idx::ON_ENTITY_TINT, entity_id, &args);
+    append_entity_method(
+        &mut body,
+        method_idx::ON_ENTITY_TINT,
+        IDBASE_SGW_PLAYER,
+        entity_id,
+        &args,
+    );
 
     // method_index=10 < 61 -> direct: msg_id = 10 | 0x80 = 0x8A
     assert_eq!(

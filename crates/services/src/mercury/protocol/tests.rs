@@ -609,9 +609,10 @@ fn logged_off_with_acks_includes_ack_flag() {
 #[test]
 fn append_entity_method_direct_index_0() {
     use super::super::append_entity_method;
+    use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
 
     let mut body = Vec::new();
-    append_entity_method(&mut body, 0, 42, &[]);
+    append_entity_method(&mut body, 0, IDBASE_SGW_PLAYER, 42, &[]);
     // msg_id = 0 | 0x80 = 0x80, word_len = 4, entity_id = 42
     assert_eq!(body[0], 0x80);
     assert_eq!(u16::from_le_bytes([body[1], body[2]]), 4);
@@ -622,10 +623,11 @@ fn append_entity_method_direct_index_0() {
 #[test]
 fn append_entity_method_direct_index_60() {
     use super::super::append_entity_method;
+    use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
 
     // Index 60 is the last direct-encoded index (msg_id 0x80-0xBC)
     let mut body = Vec::new();
-    append_entity_method(&mut body, 60, 1, &[0xAA, 0xBB]);
+    append_entity_method(&mut body, 60, IDBASE_SGW_PLAYER, 1, &[0xAA, 0xBB]);
     // msg_id = 60 | 0x80 = 0xBC, word_len = 6, entity_id = 1, args
     assert_eq!(body[0], 0xBC);
     assert_eq!(u16::from_le_bytes([body[1], body[2]]), 6);
@@ -636,10 +638,11 @@ fn append_entity_method_direct_index_60() {
 #[test]
 fn append_entity_method_extended_index_61() {
     use super::super::append_entity_method;
+    use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
 
     // Index 61 is the first extended-encoded index (0xBD marker)
     let mut body = Vec::new();
-    append_entity_method(&mut body, 61, 99, &[]);
+    append_entity_method(&mut body, 61, IDBASE_SGW_PLAYER, 99, &[]);
     // marker = 0xBD, word_len = 5 (entity_id + sub_index), entity_id = 99,
     // sub_index = 61 - 61 = 0
     assert_eq!(body[0], 0xBD);
@@ -652,9 +655,10 @@ fn append_entity_method_extended_index_61() {
 #[test]
 fn append_entity_method_extended_index_128() {
     use super::super::append_entity_method;
+    use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
 
     let mut body = Vec::new();
-    append_entity_method(&mut body, 128, 99, &[]);
+    append_entity_method(&mut body, 128, IDBASE_SGW_PLAYER, 99, &[]);
     // marker = 0xBD, word_len = 5 (entity_id + sub_index), entity_id = 99,
     // sub_index = 128 - 61 = 67 (0x43)
     assert_eq!(body[0], 0xBD);
@@ -667,11 +671,12 @@ fn append_entity_method_extended_index_128() {
 #[test]
 fn append_entity_method_extended_index_141() {
     use super::super::append_entity_method;
+    use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
 
     // onAbilityTreeInfo = 141 → sub_index = 141 - 61 = 80 (0x50)
     let mut body = Vec::new();
     let args = [0x01, 0x02, 0x03];
-    append_entity_method(&mut body, 141, 5, &args);
+    append_entity_method(&mut body, 141, IDBASE_SGW_PLAYER, 5, &args);
     assert_eq!(body[0], 0xBD);
     assert_eq!(u16::from_le_bytes([body[1], body[2]]), 8); // 4 + 1 + 3
     assert_eq!(body[7], 80); // 0x50
@@ -681,9 +686,10 @@ fn append_entity_method_extended_index_141() {
 #[test]
 fn append_entity_method_preserves_existing_body() {
     use super::super::append_entity_method;
+    use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
 
     let mut body = vec![0xDE, 0xAD];
-    append_entity_method(&mut body, 0, 1, &[]);
+    append_entity_method(&mut body, 0, IDBASE_SGW_PLAYER, 1, &[]);
     assert_eq!(&body[..2], &[0xDE, 0xAD]); // prefix preserved
     assert_eq!(body[2], 0x80); // method appended after
 }

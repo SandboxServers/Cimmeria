@@ -40,6 +40,7 @@ pub use protocol::{
 pub use aoi::{
     build_avatar_update, build_create_entity_base, build_create_entity_cascade,
     build_entity_invisible, build_entity_leave, build_entity_method_packet, build_forced_position,
+    build_player_entity_method_packet,
 };
 pub(crate) use aoi::{
     compose_create_entity_base_body, compose_create_entity_cascade_body,
@@ -240,28 +241,38 @@ pub mod method_idx {
 
 /// Append a server→client entity method call to a Mercury message body.
 ///
-/// Handles two encoding schemes per C++ `Bundle::beginEntityMessage()`:
-/// - **Direct** (method_index 0–127): `[(index | 0x80): u8][word_len: u16][entity_id: u32][args...]`
-/// - **Extended** (method_index >= 128): `[0xBD: u8][word_len: u16][entity_id: u32][(index - 61): u8][args...]`
+/// `idbase` is the per-entity-type sub-slot threshold for the target entity —
+/// see [`cimmeria_mercury::channel_bundle::idbase_from_exposed_method_count`].
+/// For methods targeting SGWPlayer pass
+/// [`cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER`] (`61`); for entities
+/// with ≤62 exposed methods pass `62`. The threshold is **not** a global
+/// constant — it is computed per entity type per
+/// `EntityDescription_AssignClientMethodIds @ ghidra://SGW.exe@0x01590df0`:
+/// `idBase = 0x3E - (nExposedCount + 0xC0) / 0xFF`. Spec:
+/// [docs/drafts/spec/entity-property-sync.md §1.4][1].
 ///
-/// The C++ server conservatively uses extended at >= 61, but the client accepts
-/// direct encoding through index 127 (verified with setupWorldParameters=122
-/// and onPlayerDataLoaded=115). We use the simpler boundary at 128.
-pub fn append_entity_method(body: &mut Vec<u8>, method_index: u16, entity_id: u32, args: &[u8]) {
-    use cimmeria_mercury::channel_bundle::{EXTENDED_ENCODING_MARKER, EXTENDED_ENCODING_THRESHOLD};
+/// Wire encodings per C++ `Bundle::beginEntityMessage()`:
+/// - **Direct** (`method_index < idbase`): `[(index | 0x80): u8][word_len: u16][entity_id: u32][args...]`
+/// - **Extended** (`method_index >= idbase`): `[0xBD: u8][word_len: u16][entity_id: u32][(index - idbase): u8][args...]`
+///
+/// [1]: ../../../../docs/drafts/spec/entity-property-sync.md
+pub fn append_entity_method(
+    body: &mut Vec<u8>,
+    method_index: u16,
+    idbase: u8,
+    entity_id: u32,
+    args: &[u8],
+) {
+    use cimmeria_mercury::channel_bundle::EXTENDED_ENCODING_MARKER;
 
-    // BigWorld uses direct encoding for indices 0-60 (msg_id 0x80-0xBC) and
-    // extended encoding for indices 61+ (msg_id 0xBD with sub_index byte).
-    // 0xBD is the marker — it cannot be used as a direct msg_id.
-    // Boundary + marker imported from cimmeria-mercury so this encoder
-    // and `ChannelBundle::append_entity_method` cannot drift.
-    if method_index >= EXTENDED_ENCODING_THRESHOLD {
-        // Extended encoding: marker 0xBD
+    let threshold = u16::from(idbase);
+    if method_index >= threshold {
+        // Extended encoding: marker 0xBD + sub_index
         body.push(EXTENDED_ENCODING_MARKER);
         let payload_len = (4 + 1 + args.len()) as u16; // entity_id + sub_index + args
         body.extend_from_slice(&payload_len.to_le_bytes());
         body.extend_from_slice(&entity_id.to_le_bytes());
-        body.push((method_index - EXTENDED_ENCODING_THRESHOLD) as u8);
+        body.push((method_index - threshold) as u8);
     } else {
         // Direct encoding: msg_id = index | 0x80
         body.push((method_index as u8) | 0x80);
@@ -355,7 +366,13 @@ mod tests {
         let mut body = Vec::new();
         let args = [0xAA, 0xBB, 0xCC];
         // Pick index 12 (onTimerUpdate). 12 | 0x80 = 0x8C.
-        append_entity_method(&mut body, 12, 0xDEAD_BEEF, &args);
+        append_entity_method(
+            &mut body,
+            12,
+            cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER,
+            0xDEAD_BEEF,
+            &args,
+        );
 
         assert_eq!(body[0], 0x8C, "msg_id must be (index | 0x80)");
         let word_len = u16::from_le_bytes([body[1], body[2]]);
@@ -375,7 +392,13 @@ mod tests {
     #[test]
     fn append_entity_method_extended_encoding_at_index_122() {
         let mut body = Vec::new();
-        append_entity_method(&mut body, 122, 1, &[]);
+        append_entity_method(
+            &mut body,
+            122,
+            cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER,
+            1,
+            &[],
+        );
 
         assert_eq!(body[0], 0xBD);
         let word_len = u16::from_le_bytes([body[1], body[2]]);

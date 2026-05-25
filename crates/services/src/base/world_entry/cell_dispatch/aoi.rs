@@ -6,9 +6,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_NPC_DEFAULT, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::transport::Transport;
-
-use cimmeria_mercury::channel_bundle::ChannelBundle;
 
 use crate::cell::messages::NpcAoIData;
 use crate::mercury::{
@@ -300,12 +299,26 @@ pub(super) async fn entity_method_call(
     // RELIABLE — entity method calls are state-change traffic (interaction
     // triggers, quest updates, mission state, dialog opens, content engine
     // events). Loss = permanent damage.
+    //
+    // `entity_id` here is the entity the cell wants to address and is also
+    // the routing key in `entity_to_addr` — that map only holds player
+    // entries, so `entity_id` is always a SGWPlayer. Use that idbase.
     send_to_witness_reliable(
         transport,
         connected,
         entity_to_addr,
         entity_id,
-        |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method_index, &args),
+        |key, seq, acks| {
+            build_entity_method_packet(
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_index,
+                IDBASE_SGW_PLAYER,
+                &args,
+            )
+        },
     )
     .await;
 }
@@ -329,12 +342,29 @@ pub(super) async fn witness_entity_method(
     );
     // RELIABLE — witness-broadcast entity methods are state-change traffic,
     // same shape as the owning-client `entity_method_call` above.
+    //
+    // `entity_id` here is the *target* (ghost) entity in the witness's AoI,
+    // NOT the witness itself. Targets are NPCs (or rarely other player
+    // ghosts) — use `IDBASE_NPC_DEFAULT` since the current schema's NPC
+    // types all have ≤62 exposed methods. The wire-byte difference vs
+    // `IDBASE_SGW_PLAYER` only matters for method indices ≥61; today's
+    // witness methods (InteractionType, etc.) are all far below that.
     send_to_witness_reliable(
         transport,
         connected,
         entity_to_addr,
         witness_id,
-        |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method_index, &args),
+        |key, seq, acks| {
+            build_entity_method_packet(
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_index,
+                IDBASE_NPC_DEFAULT,
+                &args,
+            )
+        },
     )
     .await;
 }

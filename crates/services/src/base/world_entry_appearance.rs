@@ -8,12 +8,12 @@ use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use cimmeria_mercury::channel_bundle::ChannelBundle;
+use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
-use crate::mercury::{build_entity_method_packet, method_idx, write_wstring, SKIN_TINTS};
+use crate::mercury::{build_player_entity_method_packet, method_idx, write_wstring, SKIN_TINTS};
 
 use super::helpers::{send_bundle_to_witness_reliable, send_to_witness_reliable};
 use super::world_entry::handle_map_loaded;
@@ -80,13 +80,33 @@ fn build_on_client_ready_burst_bundle(
     welcome_args: &[u8],
 ) -> ChannelBundle {
     let mut bundle = ChannelBundle::new(true);
-    bundle.append_entity_method(method_idx::BEING_APPEARANCE, entity_id, appearance_args);
-    bundle.append_entity_method(method_idx::ON_ENTITY_TINT, entity_id, tint_args);
+    bundle.append_entity_method(
+        method_idx::BEING_APPEARANCE,
+        IDBASE_SGW_PLAYER,
+        entity_id,
+        appearance_args,
+    );
+    bundle.append_entity_method(
+        method_idx::ON_ENTITY_TINT,
+        IDBASE_SGW_PLAYER,
+        entity_id,
+        tint_args,
+    );
     for &(channel_name, channel_id) in DEFAULT_CHAT_CHANNELS {
         let args = build_chat_joined_args(channel_name, channel_id);
-        bundle.append_entity_method(method_idx::ON_CHAT_JOINED, entity_id, &args);
+        bundle.append_entity_method(
+            method_idx::ON_CHAT_JOINED,
+            IDBASE_SGW_PLAYER,
+            entity_id,
+            &args,
+        );
     }
-    bundle.append_entity_method(method_idx::ON_PLAYER_COMMUNICATION, entity_id, welcome_args);
+    bundle.append_entity_method(
+        method_idx::ON_PLAYER_COMMUNICATION,
+        IDBASE_SGW_PLAYER,
+        entity_id,
+        welcome_args,
+    );
     bundle
 }
 
@@ -503,7 +523,7 @@ pub(crate) async fn send_cinematic(
         entity_to_addr,
         entity_id,
         |key, seq, acks| {
-            build_entity_method_packet(
+            build_player_entity_method_packet(
                 key,
                 seq,
                 acks,
@@ -647,8 +667,18 @@ fn build_appearance_resend_bundle(
     tint_args: &[u8],
 ) -> ChannelBundle {
     let mut bundle = ChannelBundle::new(true);
-    bundle.append_entity_method(method_idx::BEING_APPEARANCE, entity_id, appearance_args);
-    bundle.append_entity_method(method_idx::ON_ENTITY_TINT, entity_id, tint_args);
+    bundle.append_entity_method(
+        method_idx::BEING_APPEARANCE,
+        IDBASE_SGW_PLAYER,
+        entity_id,
+        appearance_args,
+    );
+    bundle.append_entity_method(
+        method_idx::ON_ENTITY_TINT,
+        IDBASE_SGW_PLAYER,
+        entity_id,
+        tint_args,
+    );
     bundle
 }
 

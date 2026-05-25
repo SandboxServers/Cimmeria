@@ -12,7 +12,7 @@ use super::core::send_full_inventory_update;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::base::{helpers, ConnectedClientState};
 use crate::cell::messages::BaseToCellMsg;
-use crate::mercury::{build_entity_method_packet, method_idx};
+use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 #[cfg(test)]
 mod tests;
@@ -328,7 +328,7 @@ pub async fn handle_grant_item(
                 entity_to_addr,
                 entity_id,
                 |key, seq, acks| {
-                    build_entity_method_packet(
+                    build_player_entity_method_packet(
                         key,
                         seq,
                         acks,

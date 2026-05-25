@@ -317,7 +317,12 @@ async fn send_bundle_to_witness_reliable_is_noop_for_unknown_witness() {
     let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
 
     let mut bundle = ChannelBundle::new(true);
-    bundle.append_entity_method(12, 1, &[0xAA]);
+    bundle.append_entity_method(
+        12,
+        cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER,
+        1,
+        &[0xAA],
+    );
     send_bundle_to_witness_reliable(&transport, &connected, &entity_to_addr, 999, bundle).await;
 
     let clients = connected.lock().unwrap();

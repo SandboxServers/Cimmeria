@@ -25,7 +25,7 @@ use sqlx::PgPool;
 
 use super::super::player_load::core::query_player_load_data;
 use crate::base::{helpers, world_entry_appearance, ConnectedClientState};
-use crate::mercury::{build_entity_method_packet, method_idx};
+use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 /// Re-run the player's appearance assembly and broadcast `BEING_APPEARANCE`.
 ///
@@ -100,7 +100,7 @@ pub async fn refresh_player_appearance(
         entity_to_addr,
         entity_id,
         |key, seq, acks| {
-            build_entity_method_packet(
+            build_player_entity_method_packet(
                 key,
                 seq,
                 acks,

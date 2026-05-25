@@ -1,5 +1,6 @@
 //! World entry builders: create player, enter world, and standalone entity method packets.
 
+use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
 use super::{
@@ -69,6 +70,7 @@ pub fn build_create_player(
         append_entity_method(
             &mut body,
             method_idx::BEING_APPEARANCE,
+            IDBASE_SGW_PLAYER,
             info.player_entity_id,
             &appearance_args,
         );
@@ -85,6 +87,7 @@ pub fn build_create_player(
         append_entity_method(
             &mut body,
             method_idx::ON_ENTITY_TINT,
+            IDBASE_SGW_PLAYER,
             info.player_entity_id,
             &tint_args,
         );
@@ -112,6 +115,7 @@ pub fn build_create_player(
         append_entity_method(
             &mut body,
             method_idx::ON_CLIENT_MAP_LOAD,
+            IDBASE_SGW_PLAYER,
             info.player_entity_id,
             &args,
         );
@@ -170,6 +174,7 @@ pub fn build_enter_world_body(info: &WorldEntryInfo, load: Option<&PlayerLoadDat
         append_entity_method(
             &mut body,
             method_idx::BEING_APPEARANCE,
+            IDBASE_SGW_PLAYER,
             info.player_entity_id,
             &appearance_args,
         );
@@ -186,6 +191,7 @@ pub fn build_enter_world_body(info: &WorldEntryInfo, load: Option<&PlayerLoadDat
         append_entity_method(
             &mut body,
             method_idx::ON_ENTITY_TINT,
+            IDBASE_SGW_PLAYER,
             info.player_entity_id,
             &tint_args,
         );
@@ -267,7 +273,13 @@ pub fn build_on_player_data_loaded(
     entity_id: u32,
 ) -> Vec<u8> {
     let mut body = Vec::new();
-    append_entity_method(&mut body, method_idx::ON_PLAYER_DATA_LOADED, entity_id, &[]);
+    append_entity_method(
+        &mut body,
+        method_idx::ON_PLAYER_DATA_LOADED,
+        IDBASE_SGW_PLAYER,
+        entity_id,
+        &[],
+    );
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq), acks, None);
@@ -289,6 +301,7 @@ pub fn build_setup_world_parameters(
     append_entity_method(
         &mut body,
         method_idx::SETUP_WORLD_PARAMETERS,
+        IDBASE_SGW_PLAYER,
         entity_id,
         &args,
     );

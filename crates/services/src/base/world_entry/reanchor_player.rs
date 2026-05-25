@@ -39,8 +39,8 @@ use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 use cimmeria_mercury::transport::Transport;
 
 use crate::mercury::{
-    build_enter_world_body, build_entity_method_packet, encrypt_packet, method_idx, WorldEntryInfo,
-    BASEMSG_CREATE_BASE_PLAYER, REPLY_FLAGS, SGWPLAYER_CLASS_ID,
+    build_enter_world_body, build_player_entity_method_packet, encrypt_packet, method_idx,
+    WorldEntryInfo, BASEMSG_CREATE_BASE_PLAYER, REPLY_FLAGS, SGWPLAYER_CLASS_ID,
 };
 
 use super::super::ConnectedClientState;
@@ -96,7 +96,7 @@ fn build_reanchor_packets(
     // Both must be cached. A partial replay would re-create the pawn with
     // body geometry but no skin tint (or vice versa), worse than no replay.
     if let (Some(appearance), Some(tint)) = (appearance_args, tint_args) {
-        packets.push(build_entity_method_packet(
+        packets.push(build_player_entity_method_packet(
             key,
             base_seq + 1,
             &[],
@@ -104,7 +104,7 @@ fn build_reanchor_packets(
             method_idx::BEING_APPEARANCE,
             appearance,
         ));
-        packets.push(build_entity_method_packet(
+        packets.push(build_player_entity_method_packet(
             key,
             base_seq + 2,
             &[],
@@ -407,7 +407,7 @@ mod tests {
     /// that increments by the wrong stride.
     #[test]
     fn build_reanchor_packets_uses_consecutive_seqs() {
-        use crate::mercury::{build_entity_method_packet, method_idx};
+        use crate::mercury::{build_player_entity_method_packet, method_idx};
 
         let info = sample_info(0x1234);
         let appearance = vec![0xAA, 0xBB];
@@ -424,7 +424,7 @@ mod tests {
             &[],
         );
 
-        let expected_appearance = build_entity_method_packet(
+        let expected_appearance = build_player_entity_method_packet(
             &TEST_KEY,
             base_seq + 1,
             &[],
@@ -432,7 +432,7 @@ mod tests {
             method_idx::BEING_APPEARANCE,
             &appearance,
         );
-        let expected_tint = build_entity_method_packet(
+        let expected_tint = build_player_entity_method_packet(
             &TEST_KEY,
             base_seq + 2,
             &[],

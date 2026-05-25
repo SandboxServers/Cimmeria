@@ -9,7 +9,7 @@ use super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::ConnectedClientState;
 use crate::cell::mail;
 use crate::cell::messages::MailOp;
-use crate::mercury::{build_entity_method_packet, method_idx};
+use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 #[cfg(test)]
 mod tests;
@@ -125,7 +125,7 @@ pub async fn handle_mail_request(
                 entity_to_addr,
                 entity_id,
                 |key, seq, acks| {
-                    build_entity_method_packet(
+                    build_player_entity_method_packet(
                         key,
                         seq,
                         acks,
@@ -207,7 +207,7 @@ pub async fn handle_mail_request(
                 entity_to_addr,
                 entity_id,
                 |key, seq, acks| {
-                    build_entity_method_packet(
+                    build_player_entity_method_packet(
                         key,
                         seq,
                         acks,
@@ -250,7 +250,7 @@ pub async fn handle_mail_request(
                 entity_to_addr,
                 entity_id,
                 |key, seq, acks| {
-                    build_entity_method_packet(
+                    build_player_entity_method_packet(
                         key,
                         seq,
                         acks,
@@ -290,7 +290,7 @@ pub async fn handle_mail_request(
                 entity_to_addr,
                 entity_id,
                 |key, seq, acks| {
-                    build_entity_method_packet(
+                    build_player_entity_method_packet(
                         key,
                         seq,
                         acks,

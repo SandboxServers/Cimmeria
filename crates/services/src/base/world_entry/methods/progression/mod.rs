@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use cimmeria_mercury::channel_bundle::ChannelBundle;
+use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
@@ -10,7 +10,7 @@ use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
 
 use super::super::super::helpers::{send_bundle_to_witness_reliable, send_to_witness_reliable};
 use super::super::super::ConnectedClientState;
-use crate::mercury::{build_entity_method_packet, method_idx};
+use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 const LEVEL_XP: [u64; 21] = [
     0, 100, 200, 300, 600, 1_000, 1_600, 2_500, 4_000, 6_000, 9_000, 14_000, 18_000, 25_000,
@@ -230,6 +230,7 @@ fn build_grant_xp_bundle(
     let mut bundle = ChannelBundle::new(true);
     bundle.append_entity_method(
         method_idx::ON_EXP_UPDATE,
+        IDBASE_SGW_PLAYER,
         entity_id,
         // Wire format is i32; saturate so a u64 total exceeding 2^31-1
         // doesn't wrap negative on the client display.
@@ -239,6 +240,7 @@ fn build_grant_xp_bundle(
     for &lvl in levels_gained {
         bundle.append_entity_method(
             method_idx::GIVE_XP_FOR_LEVEL,
+            IDBASE_SGW_PLAYER,
             entity_id,
             &(lvl as i32).to_le_bytes(),
         );
@@ -249,6 +251,7 @@ fn build_grant_xp_bundle(
         };
         bundle.append_entity_method(
             method_idx::ON_MAX_EXP_UPDATE,
+            IDBASE_SGW_PLAYER,
             entity_id,
             &next_threshold.to_le_bytes(),
         );
@@ -257,6 +260,7 @@ fn build_grant_xp_bundle(
     if !levels_gained.is_empty() {
         bundle.append_entity_method(
             method_idx::ON_LEVEL_UPDATE,
+            IDBASE_SGW_PLAYER,
             entity_id,
             &(new_level as i32).to_le_bytes(),
         );
@@ -264,7 +268,12 @@ fn build_grant_xp_bundle(
         let mut tp_args = Vec::with_capacity(8);
         tp_args.extend_from_slice(&GENERICPROPERTY_TRAINING_POINTS.to_le_bytes());
         tp_args.extend_from_slice(&(training_points as i32).to_le_bytes());
-        bundle.append_entity_method(method_idx::ON_ENTITY_PROPERTY, entity_id, &tp_args);
+        bundle.append_entity_method(
+            method_idx::ON_ENTITY_PROPERTY,
+            IDBASE_SGW_PLAYER,
+            entity_id,
+            &tp_args,
+        );
     }
 
     bundle
@@ -332,7 +341,7 @@ pub async fn handle_grant_cash(
             entity_to_addr,
             entity_id,
             |key, seq, acks| {
-                build_entity_method_packet(
+                build_player_entity_method_packet(
                     key,
                     seq,
                     acks,

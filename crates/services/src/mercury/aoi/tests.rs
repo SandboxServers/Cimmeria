@@ -430,7 +430,7 @@ fn compose_create_entity_base_body_matches_build_create_entity_base_body() {
 /// **Load-bearing byte-equivalence guard for the entity-method bundle path.**
 ///
 /// `ChannelBundle::append_entity_method` (in `cimmeria-mercury`) and
-/// `build_entity_method_packet`'s body (via `services::mercury::append_entity_method`)
+/// `build_player_entity_method_packet`'s body (via `services::mercury::append_entity_method`)
 /// must emit byte-identical wire bytes. They live in two different crates
 /// and the encoder is duplicated for performance — the only thing keeping
 /// them in lock-step is the shared `EXTENDED_ENCODING_THRESHOLD` /
@@ -456,8 +456,8 @@ fn compose_create_entity_base_body_matches_build_create_entity_base_body() {
 /// test fires before the wire divergence reaches a real client.
 #[test]
 fn channel_bundle_append_entity_method_matches_build_entity_method_packet_body() {
-    use crate::mercury::{build_entity_method_packet, method_idx};
-    use cimmeria_mercury::channel_bundle::ChannelBundle;
+    use crate::mercury::{build_player_entity_method_packet, method_idx};
+    use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 
     const ENTITY_ID: u32 = 0xCAFE_BABE;
 
@@ -473,7 +473,7 @@ fn channel_bundle_append_entity_method_matches_build_entity_method_packet_body()
     for &(method_index, args) in direct_cases {
         // Bundle path: append one method and grab the accumulated body.
         let mut bundle = ChannelBundle::new(true);
-        bundle.append_entity_method(method_index, ENTITY_ID, args);
+        bundle.append_entity_method(method_index, IDBASE_SGW_PLAYER, ENTITY_ID, args);
         // body is private — finalize without acks/flags to recover the
         // bytes. With body_len() < FRAGMENT_BODY_SIZE this emits 1 packet,
         // and the plaintext closure is identity so we get the body back.
@@ -489,7 +489,8 @@ fn channel_bundle_append_entity_method_matches_build_entity_method_packet_body()
         let bundle_body = &packets[0][1..packets[0].len() - 4];
 
         // Standalone-packet path: decrypt and strip flags+seq footer.
-        let pkt = build_entity_method_packet(&TEST_KEY, 1, &[], ENTITY_ID, method_index, args);
+        let pkt =
+            build_player_entity_method_packet(&TEST_KEY, 1, &[], ENTITY_ID, method_index, args);
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
         let pt = enc.decrypt(&pkt).unwrap();
         let standalone_body = &pt[1..pt.len() - 4];
@@ -508,12 +509,13 @@ fn channel_bundle_append_entity_method_matches_build_entity_method_packet_body()
         let method_index = method_idx::ON_PLAY_MOVIE;
         let args = b"\x10\x00\x00\x00Cine-Test.Cine\x00\x01".as_slice();
         let mut bundle = ChannelBundle::new(true);
-        bundle.append_entity_method(method_index, ENTITY_ID, args);
+        bundle.append_entity_method(method_index, IDBASE_SGW_PLAYER, ENTITY_ID, args);
         let (packets, _seqs) = bundle.finalize(0, 0, |plaintext| plaintext.to_vec());
         assert_eq!(packets.len(), 1);
         let bundle_body = &packets[0][1..packets[0].len() - 4];
 
-        let pkt = build_entity_method_packet(&TEST_KEY, 1, &[], ENTITY_ID, method_index, args);
+        let pkt =
+            build_player_entity_method_packet(&TEST_KEY, 1, &[], ENTITY_ID, method_index, args);
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
         let pt = enc.decrypt(&pkt).unwrap();
         let standalone_body = &pt[1..pt.len() - 4];

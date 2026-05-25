@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use cimmeria_mercury::channel_bundle::ChannelBundle;
+use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
@@ -162,6 +162,7 @@ fn build_teleport_bundle(
     args.extend_from_slice(&[0u8; 12]);
     bundle.append_entity_method(
         crate::cell::client_methods::player::ON_PLAYER_TELEPORT,
+        IDBASE_SGW_PLAYER,
         entity_id,
         &args,
     );
@@ -308,6 +309,7 @@ mod tests {
         crate::mercury::append_entity_method(
             &mut expected_method,
             crate::cell::client_methods::player::ON_PLAYER_TELEPORT,
+            IDBASE_SGW_PLAYER,
             entity_id,
             &args,
         );
