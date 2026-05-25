@@ -239,6 +239,19 @@ pub enum CellToBaseMsg {
         slot_id: i32,
     },
 
+    /// Persist the player's server-synced client options after a cell-side
+    /// `updateSystemOptions` (player method 93) applies. Mirrors the same
+    /// "cell mutates in-memory state, base persists to DB" split as
+    /// `ActiveSlotUpdate`. Only the columns the client sent get the
+    /// updated values; defaults are pre-merged on the cell side so we
+    /// always send the *full* SystemOptions block (a partial update
+    /// would require column-aware SQL we don't need at scale today).
+    SystemOptionsUpdate {
+        player_id: i32,
+        auto_reload: bool,
+        reload_on_activate: bool,
+    },
+
     /// Re-broadcast `BeingAppearance` to the player's AoI with a fresh
     /// holster state. Used by the combat enter/exit path (and any other
     /// runtime holster toggle, e.g. the `requestHolsterWeapon` button)

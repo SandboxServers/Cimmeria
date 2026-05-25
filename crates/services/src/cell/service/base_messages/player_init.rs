@@ -12,6 +12,7 @@ use crate::cell::space_manager::SpaceManager;
 
 /// Handles the `InitPlayerState` message: restores player missions, abilities,
 /// bandolier items, and fires the content-engine `player_loaded` trigger.
+#[allow(clippy::too_many_arguments)]
 pub(in crate::cell::service) async fn handle_init_player_state(
     entity_id: u32,
     player_id: i32,
@@ -21,6 +22,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     abilities: Vec<i32>,
     active_bandolier_slot: i32,
     bandolier_items: Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>,
+    system_options: cimmeria_entity::cell_entity::SystemOptions,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
@@ -48,6 +50,19 @@ pub(in crate::cell::service) async fn handle_init_player_state(
             active_bandolier_slot,
             bandolier_item_count = entity.bandolier_items.len(),
             "Applied bandolier state to cell entity"
+        );
+
+        // Apply server-synced client options. Without this assignment
+        // the entity would silently fall back to `SystemOptions::default()`
+        // on every login — the user could toggle the checkbox in-game,
+        // see it appear to save (we persist to DB), then find it back
+        // on default after a relog. The hydrate path closes that loop.
+        entity.system_options = system_options;
+        tracing::debug!(
+            entity_id,
+            auto_reload = entity.system_options.auto_reload,
+            reload_on_activate = entity.system_options.reload_on_activate,
+            "Applied system options to cell entity"
         );
 
         // Stage B: Seed each populated bandolier slot's AmmoSlot{N} stat

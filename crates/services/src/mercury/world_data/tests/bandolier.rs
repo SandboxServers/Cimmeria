@@ -65,6 +65,8 @@ fn build_map_loaded_seeds_ammo_slot_stats_from_bandolier_items() {
                 },
             ),
         ],
+        auto_reload: true,
+        reload_on_activate: false,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,
@@ -169,6 +171,8 @@ fn build_map_loaded_seeds_active_slot_indicator_from_persisted_slot() {
                 cur_ammo_type: 1,
             },
         )],
+        auto_reload: true,
+        reload_on_activate: false,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,

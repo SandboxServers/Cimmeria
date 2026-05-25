@@ -51,6 +51,8 @@ fn build_map_loaded_produces_multiple_packets() {
         items: vec![],
         active_bandolier_slot: 0,
         bandolier_items: vec![],
+        auto_reload: true,
+        reload_on_activate: false,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 42,
@@ -185,6 +187,8 @@ fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
         items,
         active_bandolier_slot: 0,
         bandolier_items: vec![],
+        auto_reload: true,
+        reload_on_activate: false,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,
@@ -243,6 +247,8 @@ fn build_map_loaded_each_packet_decrypts_within_limit() {
         items: vec![],
         active_bandolier_slot: 0,
         bandolier_items: vec![],
+        auto_reload: true,
+        reload_on_activate: false,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,
@@ -296,6 +302,8 @@ fn build_map_loaded_contains_setup_world_params_and_player_data_loaded() {
         items: vec![],
         active_bandolier_slot: 0,
         bandolier_items: vec![],
+        auto_reload: true,
+        reload_on_activate: false,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,
@@ -363,6 +371,8 @@ fn build_map_loaded_uses_mercury_fragmentation() {
         items: vec![],
         active_bandolier_slot: 0,
         bandolier_items: vec![],
+        auto_reload: true,
+        reload_on_activate: false,
     };
     let entry = WorldEntryInfo {
         player_entity_id: 100,

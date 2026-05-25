@@ -168,6 +168,7 @@ pub(super) async fn handle_base_message(
             abilities,
             active_bandolier_slot,
             bandolier_items,
+            system_options,
         } => {
             player_init::handle_init_player_state(
                 entity_id,
@@ -178,6 +179,7 @@ pub(super) async fn handle_base_message(
                 abilities,
                 active_bandolier_slot,
                 bandolier_items,
+                system_options,
                 tx,
                 space_mgr,
                 engine,

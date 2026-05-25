@@ -233,7 +233,7 @@ pub async fn dispatch(
         }
 
         UPDATE_SYSTEM_OPTIONS => {
-            handle_update_system_options(entity_id, args, space_mgr);
+            handle_update_system_options(entity_id, args, tx, space_mgr).await;
             true
         }
 
@@ -259,7 +259,12 @@ pub async fn dispatch(
 /// option surface is in `SGWGame/Content/XML/SystemOptions.xml`; extending
 /// is mechanical — add a field on `SystemOptions` and a match arm in
 /// [`cimmeria_entity::cell_entity::SystemOptions::apply`].
-fn handle_update_system_options(entity_id: u32, args: &[u8], space_mgr: &mut SpaceManager) {
+async fn handle_update_system_options(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
     let pairs = match parse_name_value_pairs(args) {
         Ok(pairs) => pairs,
         Err(e) => {
@@ -276,38 +281,72 @@ fn handle_update_system_options(entity_id: u32, args: &[u8], space_mgr: &mut Spa
         }
     };
 
-    let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
-        tracing::warn!(
+    // Snapshot post-apply state inside the mutable borrow so we can
+    // release the borrow before the `.send()` await — `tx.send` is
+    // async and `space_mgr.get_entity_mut` returns a non-Send guard.
+    let persist = {
+        let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
+            tracing::warn!(
+                entity_id,
+                "updateSystemOptions: entity not found; options dropped"
+            );
+            return;
+        };
+
+        let mut applied = 0usize;
+        let mut unknown: Vec<String> = Vec::new();
+        for (name, value) in &pairs {
+            if entity.system_options.apply(name, value) {
+                applied += 1;
+            } else {
+                unknown.push(name.clone());
+            }
+        }
+
+        tracing::info!(
             entity_id,
-            "updateSystemOptions: entity not found; options dropped"
+            count = pairs.len(),
+            applied,
+            auto_reload = entity.system_options.auto_reload,
+            reload_on_activate = entity.system_options.reload_on_activate,
+            "updateSystemOptions: applied"
         );
-        return;
+        if !unknown.is_empty() {
+            tracing::debug!(
+                entity_id,
+                ?unknown,
+                "updateSystemOptions: unknown option names (not yet supported)"
+            );
+        }
+
+        // Only fire the persist message if (a) we have a player_id (NPCs
+        // and unattached entities shouldn't persist) AND (b) at least one
+        // known option actually applied (skip the wire round-trip on a
+        // pure no-op payload of all-unknown options).
+        if applied > 0 {
+            entity.player_id.map(|pid| {
+                (
+                    pid,
+                    entity.system_options.auto_reload,
+                    entity.system_options.reload_on_activate,
+                )
+            })
+        } else {
+            None
+        }
     };
 
-    let mut applied = 0usize;
-    let mut unknown: Vec<String> = Vec::new();
-    for (name, value) in &pairs {
-        if entity.system_options.apply(name, value) {
-            applied += 1;
-        } else {
-            unknown.push(name.clone());
-        }
-    }
-
-    tracing::info!(
-        entity_id,
-        count = pairs.len(),
-        applied,
-        auto_reload = entity.system_options.auto_reload,
-        reload_on_activate = entity.system_options.reload_on_activate,
-        "updateSystemOptions: applied"
-    );
-    if !unknown.is_empty() {
-        tracing::debug!(
-            entity_id,
-            ?unknown,
-            "updateSystemOptions: unknown option names (not yet supported)"
-        );
+    if let Some((player_id, auto_reload, reload_on_activate)) = persist {
+        // Fire-and-forget. Mirrors `ActiveSlotUpdate`'s pattern — the
+        // base-side handler logs `warn!` on DB write failure; we don't
+        // block the cell tick on the round-trip.
+        let _ = tx
+            .send(CellToBaseMsg::SystemOptionsUpdate {
+                player_id,
+                auto_reload,
+                reload_on_activate,
+            })
+            .await;
     }
 }
 

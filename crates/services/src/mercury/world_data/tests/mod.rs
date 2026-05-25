@@ -40,6 +40,8 @@ fn sample_player_load_data() -> PlayerLoadData {
         items: vec![],
         active_bandolier_slot: 0,
         bandolier_items: vec![],
+        auto_reload: true,
+        reload_on_activate: false,
     }
 }
 

@@ -242,26 +242,44 @@ pub(crate) async fn handle_on_client_ready(
         0
     };
 
-    // Query active bandolier slot and items from DB (Bug #1: don't hardcode empty state).
-    // Distinguish DB error from "no row" so a connection blip doesn't silently default
-    // a real player to empty bandolier state.
-    let (active_bandolier_slot, bandolier_items) = if let Some(pool) = db_pool {
-        let slot: i32 = match sqlx::query_scalar::<_, Option<i32>>(
-            "SELECT bandolier_slot FROM sgw_player WHERE player_id = $1",
+    // Query active bandolier slot, items, and server-synced system
+    // options from DB (Bug #1: don't hardcode empty state). Distinguish
+    // DB error from "no row" so a connection blip doesn't silently
+    // default a real player to empty bandolier state. The two booleans
+    // come from the same SELECT so we make one round-trip not three.
+    let (active_bandolier_slot, bandolier_items, system_options) = if let Some(pool) = db_pool {
+        #[derive(sqlx::FromRow)]
+        struct PlayerInitRow {
+            bandolier_slot: i32,
+            auto_reload: bool,
+            reload_on_activate: bool,
+        }
+        let row: Option<PlayerInitRow> = match sqlx::query_as::<_, PlayerInitRow>(
+            "SELECT bandolier_slot, auto_reload, reload_on_activate \
+             FROM sgw_player WHERE player_id = $1",
         )
         .bind(pending.player_id)
         .fetch_optional(pool.as_ref())
         .await
         {
-            Ok(Some(Some(s))) => s,
-            Ok(Some(None)) | Ok(None) => 0,
+            Ok(r) => r,
             Err(e) => {
                 tracing::error!(
                     player_id = pending.player_id,
-                    "Bandolier slot read failed; defaulting to 0 but logging error: {e}"
+                    "Player init read failed; defaulting to XML defaults but logging error: {e}"
                 );
-                0
+                None
             }
+        };
+        let (slot, opts) = match row {
+            Some(r) => (
+                r.bandolier_slot,
+                cimmeria_entity::cell_entity::SystemOptions {
+                    auto_reload: r.auto_reload,
+                    reload_on_activate: r.reload_on_activate,
+                },
+            ),
+            None => (0, cimmeria_entity::cell_entity::SystemOptions::default()),
         };
 
         let items = super::world_entry::methods::player_load::meta::query_bandolier_items(
@@ -270,9 +288,13 @@ pub(crate) async fn handle_on_client_ready(
         )
         .await;
 
-        (slot, items)
+        (slot, items, opts)
     } else {
-        (0, Vec::new())
+        (
+            0,
+            Vec::new(),
+            cimmeria_entity::cell_entity::SystemOptions::default(),
+        )
     };
 
     // Cross-world ring transport carry-through: take the pending ring id
@@ -309,6 +331,7 @@ pub(crate) async fn handle_on_client_ready(
                 abilities,
                 active_bandolier_slot,
                 bandolier_items,
+                system_options,
             })
             .await
         {

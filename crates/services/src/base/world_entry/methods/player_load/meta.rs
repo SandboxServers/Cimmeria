@@ -39,6 +39,11 @@ pub fn default_player_load_data() -> PlayerLoadData {
         bandolier_items: vec![],
         ability_tree: archetype_ability_tree(1),
         items: vec![],
+        // Defaults from SystemOptions.xml when the row can't be loaded —
+        // keeps the in-memory `SystemOptions::default()` value and the
+        // wire defaults in agreement.
+        auto_reload: true,
+        reload_on_activate: false,
     }
 }
 

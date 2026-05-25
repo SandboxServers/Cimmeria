@@ -37,6 +37,7 @@ use super::teleport::handle_teleport_player;
 mod aoi;
 mod bandolier;
 mod minigame;
+mod system_options;
 
 pub(crate) use aoi::flush_deferred_aoi;
 
@@ -694,6 +695,19 @@ pub(crate) async fn handle_cell_message(
                 transport,
                 connected,
                 entity_to_addr,
+            )
+            .await;
+        }
+        CellToBaseMsg::SystemOptionsUpdate {
+            player_id,
+            auto_reload,
+            reload_on_activate,
+        } => {
+            system_options::persist_system_options(
+                player_id,
+                auto_reload,
+                reload_on_activate,
+                db_pool,
             )
             .await;
         }
