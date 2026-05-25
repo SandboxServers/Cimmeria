@@ -60,7 +60,7 @@ license = "MIT"
 tokio = { version = "1", features = ["full"] }
 
 # Web framework
-axum = { version = "0.8", features = ["ws"] }
+axum = { version = "0.8", features = ["ws", "multipart"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors"] }
 
@@ -98,6 +98,10 @@ futures-util = "0.3"
 
 # Archive reading (CookedCharCreation.pak is a ZIP)
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# Streaming compression — used by the launcher chunk uploader and by
+# the admin-api ingest endpoint that unwraps those chunks.
+flate2 = "1"
 
 # Auth
 jsonwebtoken = "9"

@@ -2,7 +2,7 @@
 
 Self-contained Docker image: server binary + cooked game data + pre-loaded Postgres + s6-overlay supervisor, in one published artifact. The goal is `docker run` and you have a working Cimmeria server — no Rust toolchain, no MSVC, no PowerShell bootstrap, no `.sql` files to load.
 
-> Looking to deploy this to a colo / single-host box with auto-update on every new release? See [Colo Auto-Update Deployment](colo-deploy.md) and the sample compose at [`docker/compose.colo.yml`](../../docker/compose.colo.yml).
+> Looking to deploy this to a colo / single-host box with auto-update on every new release? See [Colo Auto-Update Deployment](colo-deploy.md) and the self-contained compose at [`docker/compose.yml`](../../docker/compose.yml) (single file — includes the SigNoz observability stack inlined).
 
 ## Release model
 

@@ -20,9 +20,14 @@
 //! | `PROTOCOL_DIGEST` | `58AFA196...` | 32-char hex digest sent in auth response |
 //! | `DEVELOPER_MODE` | `true` | Enable relaxed auth / multi-login |
 //! | `RUST_LOG` | `info` | Log filter (e.g. `debug`, `cimmeria_services=trace`) |
-//! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the launcher dev-session token mint at `/api/auth/dev-session`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset ⇒ endpoint returns 500. |
-//! | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `https://cimmeria-mcp.azurewebsites.net/api` | Telemetry ingest URL handed to the launcher in the dev-session response. |
+//! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the launcher dev-session token mint at `/api/auth/dev-session` and the launcher upload endpoints at `/api/telemetry/upload-{chunk,bundle}`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset ⇒ endpoint returns 500. |
+//! | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload endpoint URL handed back to the launcher in the dev-session response. The default works when the launcher and server share a host; cross-host deployments MUST override (e.g. to a public LAN URL, or through the Cloudflare Tunnel). See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). |
 //! | `CIMMERIA_TELEMETRY_KILL_SWITCH` | unset | Set to `1` to pause telemetry ingest (every mint returns 503 + Retry-After). |
+//! | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | OTLP collector endpoint (e.g. `http://otel-collector:4317`). Unset ⇒ OTLP exporter disabled; logs and Mercury packet events never leave the process via OTLP. See [docs/operations/signoz-deployment.md](../../../docs/operations/signoz-deployment.md). |
+//! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` (default) or `http/protobuf`. |
+//! | `OTEL_SERVICE_NAME` | `cimmeria-server` | Shown as `service.name` in SigNoz's service map. |
+//! | `OTEL_RESOURCE_ATTRIBUTES` | unset | Comma-separated `k=v` resource attrs piped onto every span. Common: `deployment.environment=colo,service.namespace=cimmeria`. |
+//! | `OTEL_TRACES_SAMPLER` | `always_on` | `always_on`, `always_off`, or `traceidratio` with `OTEL_TRACES_SAMPLER_ARG`. |
 //!
 //! # Example
 //!
@@ -47,7 +52,7 @@ use cimmeria_common::ServerConfig;
 use cimmeria_services::audit::{LoginEvent, LoginEventBuffer};
 use cimmeria_services::orchestrator::Orchestrator;
 
-mod cosmos_log;
+mod otel;
 
 #[tokio::main]
 async fn main() {
@@ -59,35 +64,17 @@ async fn main() {
     let (login_tx, _) = broadcast::channel::<LoginEvent>(256);
     let login_buffer = LoginEventBuffer::new();
 
-    // Generate a session ID for this server run.
-    let session_id = generate_session_id();
-
-    // Cosmos DB log sink (optional — requires COSMOS_LOG_ENDPOINT + COSMOS_LOG_KEY).
-    let cosmos_parts = match (
-        std::env::var("COSMOS_LOG_ENDPOINT"),
-        std::env::var("COSMOS_LOG_KEY"),
-    ) {
-        (Ok(endpoint), Ok(key)) => {
-            let (layer, receiver) = cosmos_log::create_cosmos_log_sink(session_id.clone());
-            Some((layer, receiver, endpoint, key))
-        }
-        _ => None,
-    };
-
-    // Split out the layer (needed for subscriber) from the receiver (spawned after).
-    let (cosmos_layer, cosmos_writer_parts) = match cosmos_parts {
-        Some((layer, receiver, endpoint, key)) => (Some(layer), Some((receiver, endpoint, key))),
+    // OTLP exporter (optional — requires OTEL_EXPORTER_OTLP_ENDPOINT).
+    // The guard is bound at this scope so it drops *after* the
+    // orchestrator's stop_all returns, flushing the in-flight batch on
+    // clean shutdown.
+    let (otel_layer, _otel_guard) = match otel::init() {
+        Some((layer, guard)) => (Some(layer), Some(guard)),
         None => (None, None),
     };
 
     // Initialise layered tracing — guards must live until shutdown.
-    let _guards = init_logging(log_tx.clone(), log_buffer.clone(), cosmos_layer);
-
-    // Spawn the Cosmos DB writer task now that the subscriber is active.
-    if let Some((receiver, endpoint, key)) = cosmos_writer_parts {
-        tokio::spawn(cosmos_log::cosmos_log_writer(receiver, endpoint, key));
-        eprintln!("[cosmos-log] Streaming to Cosmos DB (session: {session_id})");
-    }
+    let _guards = init_logging(log_tx.clone(), log_buffer.clone(), otel_layer);
 
     tracing::trace!(pid = std::process::id(), "Process spawned");
 
@@ -331,7 +318,7 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 fn init_logging(
     log_tx: broadcast::Sender<LogEntry>,
     log_buffer: LogBuffer,
-    cosmos_layer: Option<cosmos_log::CosmosLogLayer>,
+    otel_layer: Option<otel::OtelLayer>,
 ) -> Vec<WorkerGuard> {
     // Move previous session's logs into archive/.
     archive_previous_logs();
@@ -473,13 +460,17 @@ fn init_logging(
         )),
     ));
 
-    // ── Cosmos DB (optional, filtered to useful events only) ─────────
-    if let Some(layer) = cosmos_layer {
+    // ── OpenTelemetry → SigNoz (optional) ─────────────────────────────
+    // Same filter shape as Cosmos: ship debug+ from our crates but drop
+    // the chatty HTTP middleware noise. The Mercury packet target
+    // (`mercury.packet`) flows through at info level — it's the load-
+    // bearing analytical surface, sampling would defeat the purpose.
+    if let Some(layer) = otel_layer {
         layers.push(Box::new(layer.with_filter(EnvFilter::new(
-            "debug,\
-                 cimmeria_services::base::connect_loop=info,\
-                 cimmeria_mercury::encryption=info,\
-                 cimmeria_services::base::tick_sync=info,\
+            "info,\
+                 cimmeria_services=debug,\
+                 cimmeria_mercury=debug,\
+                 mercury.packet=info,\
                  tungstenite=off,tokio_tungstenite=off,hyper=off",
         ))));
     }
@@ -491,17 +482,6 @@ fn init_logging(
 }
 
 // ── Config ───────────────────────────────────────────────────────────────────
-
-/// Generate a human-readable session ID: `2026-03-13T22-56-15_a3f1`.
-///
-/// Combines the archive timestamp format with a short random suffix to
-/// avoid collisions on rapid restarts. Used as the Cosmos DB partition key.
-fn generate_session_id() -> String {
-    use rand::RngExt;
-    let ts = chrono_timestamp();
-    let suffix: u16 = rand::rng().random();
-    format!("{}_{:04x}", ts, suffix)
-}
 
 /// Build a [`ServerConfig`] from environment variables, falling back to defaults.
 fn config_from_env() -> ServerConfig {

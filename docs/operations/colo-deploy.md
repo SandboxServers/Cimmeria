@@ -31,7 +31,7 @@ This is **not** a production hosting story. The image is a self-contained demo (
 
 ## One-time setup
 
-1. Drop [`docker/compose.colo.yml`](../../docker/compose.colo.yml) onto the box (any path — `/opt/cimmeria/compose.yml` is a reasonable convention).
+1. Drop [`docker/compose.yml`](../../docker/compose.yml) onto the box (any path — `/opt/cimmeria/compose.yml` is a reasonable convention). The file is self-contained: it includes the cimmeria server, watchtower auto-update, and the full vendored SigNoz observability stack with all its config files inlined. No companion files needed.
 2. Edit the `BASE_EXTERNAL` environment variable to the public/LAN IP your players will connect to. **This is the single mandatory edit.** The image default of `127.0.0.1` only works for clients on the same host as the container.
 3. Bring it up:
    ```bash
