@@ -1,10 +1,18 @@
 # Dev-Session Telemetry — Architecture
 
 How the launcher streams a developer's session (Atera client log,
-BigWorld `sgwdebuglog*`, end-of-session bundle) to the Cimmeria-MCP
-ingest endpoint. The operator-facing runbook lives in
+BigWorld `sgwdebuglog*`, end-of-session bundle) to the cimmeria-server
+ingest endpoint, which replays it through `tracing` so it lands in
+SigNoz alongside the server's own logs and Mercury packet stream.
+The operator-facing runbook lives in
 [`docs/operations/telemetry.md`](../operations/telemetry.md); this
 document is the design rationale and component map.
+
+The ingest target was previously the Cosmos-backed `Cimmeria-MCP`
+Azure Function. With the SigNoz migration (PR #396) that path is
+retired — uploads now land on cimmeria-server's admin port and flow
+into SigNoz through the OTLP exporter. See
+[observability.md](observability.md) for the broader pipeline.
 
 ## Goal
 
@@ -16,16 +24,19 @@ cannot observe.
 
 ## Trust model
 
-Path A: launcher-mediated credentials, HMAC-token auth.
+Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 
 - The launcher holds **no** static secret. It fetches a per-session
   HMAC-SHA256 token from cimmeria-server at game-launch.
 - cimmeria-server holds the **only** static secret
-  (`CIMMERIA_TELEMETRY_HMAC_SECRET`), shared with the Functions ingest
-  app so Functions can verify tokens independently.
-- v1 trusts any caller of `/auth/dev-session`. Tokens are scoped to
-  `telemetry.write` and single-session — the worst an attacker can do
-  is upload garbage telemetry. Account-bound auth is a v2 concern.
+  (`CIMMERIA_TELEMETRY_HMAC_SECRET`) and is the only party that
+  verifies tokens — the upload-chunk and upload-bundle endpoints live
+  on the same server that mints them. No cross-service secret
+  synchronization (the prior Cimmeria-MCP write path required mirror
+  copies of the secret in two repos; that's gone).
+- v1 trusts any caller of `/api/auth/dev-session`. Tokens are scoped
+  to `telemetry.write` and single-session — the worst an attacker can
+  do is upload garbage telemetry. Account-bound auth is a v2 concern.
 
 ## Component map
 
@@ -42,7 +53,8 @@ Path A: launcher-mediated credentials, HMAC-token auth.
 | `crates/launcher/src/telemetry/process_watch.rs` | `spawn_blocking child.wait()` — game-exit signal without burning an async worker. |
 | `crates/launcher/src/telemetry/runner.rs` | Per-session loop: tail → enqueue → flush → on-exit bundle. |
 | `crates/launcher/src/telemetry/mod.rs` | `Telemetry` orchestrator (`start_session` / `enqueue` / `flush` / `refresh_if_due` / `upload_bundle`). |
-| `crates/admin-api/src/routes/dev_session.rs` | Server-side `/api/auth/dev-session` + `/refresh` endpoints. |
+| `crates/admin-api/src/routes/dev_session.rs` | Server-side `/api/auth/dev-session` + `/refresh` endpoints (mint + verify). |
+| `crates/admin-api/src/routes/telemetry.rs` | Server-side `/api/telemetry/upload-{chunk,bundle}` ingest. Validates the HMAC token, decompresses gzip(NDJSON) or unzips bundle, replays each event through `tracing::*` so the OTLP layer ships it to SigNoz. |
 
 ## Session lifecycle
 

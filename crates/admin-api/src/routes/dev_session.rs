@@ -41,7 +41,19 @@ pub const TOKEN_TTL_SECONDS: i64 = 8 * 60 * 60;
 /// safer than issuing tokens against a weak key.
 pub const MIN_SECRET_BYTES: usize = 32;
 
-const DEFAULT_UPLOAD_ENDPOINT: &str = "https://cimmeria-mcp.azurewebsites.net/api";
+/// Default upload endpoint: the cimmeria-server's own admin port,
+/// localhost. For deployments where the launcher runs on a different
+/// host than the server, operators MUST set
+/// `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to the publicly-reachable
+/// URL (e.g. via the Cloudflare Tunnel that exposes the SigNoz UI,
+/// or directly via the LAN address).
+///
+/// Note: this points launcher uploads at cimmeria-server itself,
+/// which then replays the events through `tracing` so the OTLP layer
+/// ships them to SigNoz. The previous default was the Cosmos-backed
+/// Cimmeria-MCP Azure Function endpoint; that path is decommissioned
+/// in favor of single-store-of-truth (SigNoz) analytical retrieval.
+const DEFAULT_UPLOAD_ENDPOINT: &str = "http://localhost:8443/api/telemetry";
 const DEFAULT_CHUNK_MAX_BYTES: u64 = 1_048_576;
 const DEFAULT_FLUSH_INTERVAL_MS: u64 = 2_000;
 

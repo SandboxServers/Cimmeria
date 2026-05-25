@@ -4,14 +4,16 @@
 //!
 //! # Architecture
 //!
-//! Mirrors [`super::cosmos_log`]'s shape: a [`tracing_subscriber::Layer`]
-//! that the main subscriber composes alongside the file/broadcast
-//! layers. The OTLP exporter itself runs in a background task spawned
-//! by [`init`]; the layer is a thin "is this enabled" wrapper.
+//! A [`tracing_subscriber::Layer`] that the main subscriber composes
+//! alongside the file/broadcast layers. The OTLP exporter itself runs
+//! in a background task spawned by [`init`]; the layer is a thin
+//! "is this enabled" wrapper.
 //!
-//! The two sinks coexist intentionally — Cosmos is for ad-hoc query +
-//! 24h retention, SigNoz is for analytical workloads + dashboards +
-//! LLM-mediated retrieval. Enabling one does not disable the other.
+//! Launcher logs land here too — the
+//! `/api/telemetry/upload-{chunk,bundle}` endpoints (see
+//! [`cimmeria_admin_api::routes::telemetry`]) replay each launcher
+//! event through `tracing::*` so the OTLP layer ships it to the same
+//! SigNoz store as the server's own logs and Mercury packet events.
 //!
 //! # Environment variables
 //!

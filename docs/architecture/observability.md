@@ -5,7 +5,8 @@
 
 ## Context
 
-Cimmeria emits two telemetry streams at runtime:
+Cimmeria emits two telemetry streams at runtime, and both now converge
+on the same analytical store:
 
 1. **Server-side logs and Mercury packets.** Every `tracing::*` call
    in the server crates plus per-packet wire-level events recorded
@@ -13,17 +14,19 @@ Cimmeria emits two telemetry streams at runtime:
    Volume scales with concurrent player count; at dev volumes
    (single-digit players) it's ~3–5 KB/sec uncompressed.
 
-2. **Launcher dev-session telemetry.** Client-side session metadata
-   (FPS, crash reports, dev-mode events) batched and uploaded by the
-   launcher to the Cimmeria-MCP Azure Function via the dev-session
-   HMAC-token mint. Documented in
+2. **Launcher dev-session telemetry.** Client-side session metadata,
+   parsed Atera client logs, debug-channel events, key dumps, and the
+   end-of-session zipped log bundle. Uploaded by the launcher to
+   cimmeria-server itself, replayed through the same `tracing`
+   subscriber, and shipped to the same SigNoz store. Documented in
    [dev-session-telemetry.md](dev-session-telemetry.md) and
    [docs/operations/telemetry.md](../operations/telemetry.md).
 
-Stream (1) needed a sink optimised for analytical retrieval — the
+Both streams need a sink optimised for analytical retrieval — the
 downstream consumer is an LLM (the Cimmeria-MCP server, eventually
-augmented by Claude in interactive dev sessions). Stream (2) is
-already happily ingested by Cosmos DB and stays where it is.
+augmented by Claude in interactive dev sessions). Keeping them in one
+store means one query language, one access path, one retention
+policy, one place to look.
 
 ## Decision
 
@@ -40,13 +43,15 @@ For stream (1):
   service tokens for machine clients, identity providers for browsers,
   no inbound firewall ports.
 
-For stream (2): no change. Cosmos DB remains the launcher's sink.
+For stream (2): the launcher now uploads to cimmeria-server's own
+`/api/telemetry/upload-{chunk,bundle}` endpoints. The server validates
+the HMAC token (same dev-session flow as before), replays each event
+through `tracing::*`, and the OTLP layer ships to SigNoz alongside
+the server's own events. The Cosmos-backed Cimmeria-MCP write path is
+retired.
 
-The existing Cosmos DB log layer
-([`crates/server/src/cosmos_log.rs`](../../crates/server/src/cosmos_log.rs))
-stays wired up but is now one of two optional log sinks; both are
-gated on env-var presence and either can be turned off without
-affecting the other.
+The previous Cosmos DB log layer is removed entirely — single source
+of truth for the analytical store, no parallel sinks to keep in sync.
 
 ## Alternatives considered
 
@@ -120,7 +125,13 @@ backend") is the load-bearing decision here. OTLP is:
 ### Wire path
 
 1. `tracing::info!(target: "mercury.packet", ...)` (or any other
-   tracing macro) emits an event.
+   tracing macro) emits an event. Producers include:
+   - Server crates (every existing `tracing::*` call).
+   - Mercury wire seams (UDP `Channel::{send,receive}_packet`, TCP
+     `UnifiedCodec::{encode,decode}`).
+   - Launcher uploads — replayed through tracing by
+     `crates/admin-api/src/routes/telemetry.rs` after HMAC
+     verification of the dev-session token.
 2. The OpenTelemetry layer
    ([`crates/server/src/otel.rs`](../../crates/server/src/otel.rs))
    serialises it to an OTLP Span and pushes onto a batch channel.
@@ -221,5 +232,5 @@ The integration plan from this side:
 - Remote access runbook: [signoz-remote-access.md](../operations/signoz-remote-access.md)
 - Instrumentation helpers: [`crates/mercury/src/instrumentation.rs`](../../crates/mercury/src/instrumentation.rs)
 - OTLP exporter: [`crates/server/src/otel.rs`](../../crates/server/src/otel.rs)
-- Cosmos DB sink (existing, parallel path): [`crates/server/src/cosmos_log.rs`](../../crates/server/src/cosmos_log.rs)
-- Launcher telemetry (separate concern): [dev-session-telemetry.md](dev-session-telemetry.md)
+- Launcher ingest endpoint: [`crates/admin-api/src/routes/telemetry.rs`](../../crates/admin-api/src/routes/telemetry.rs)
+- Launcher telemetry pipeline (dev-session flow + secret rotation): [dev-session-telemetry.md](dev-session-telemetry.md), [docs/operations/telemetry.md](../operations/telemetry.md)
