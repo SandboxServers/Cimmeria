@@ -137,6 +137,20 @@ fn dir_size_best_effort(path: &Path) -> u64 {
     walk(path)
 }
 
+/// Process-wide serialization for tests that mutate `USERPROFILE` /
+/// `HOME` — `std::env::set_var` is process-global and cargo runs tests
+/// multi-threaded by default, so without this lock two env-mutating
+/// tests can trash each other's expected values mid-assertion. Shared
+/// between the unit tests in this file and `worker::tests::spawn_wipe_*`.
+///
+/// `#[cfg(test)]` so it doesn't leak into release builds, but
+/// `pub(crate)` so siblings can lock it.
+#[cfg(test)]
+pub(crate) fn env_test_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -182,6 +196,7 @@ mod tests {
     // (Documents\My Games\Firesky\SGWGame\Cache.en-US).
     #[test]
     fn firesky_root_uses_userprofile_when_set() {
+        let _g = env_test_lock().lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let prev = std::env::var("USERPROFILE").ok();
         let prev_home = std::env::var("HOME").ok();
@@ -190,7 +205,10 @@ mod tests {
         std::env::remove_var("HOME");
 
         let root = firesky_root().expect("USERPROFILE was set");
-        assert!(root.ends_with("Documents/My Games/Firesky") || root.ends_with("Documents\\My Games\\Firesky"));
+        assert!(
+            root.ends_with("Documents/My Games/Firesky")
+                || root.ends_with("Documents\\My Games\\Firesky")
+        );
         let cache = cache_dir().expect("USERPROFILE was set");
         assert!(cache.ends_with("Cache.en-US"));
 
@@ -206,6 +224,7 @@ mod tests {
 
     #[test]
     fn firesky_root_falls_back_to_home_when_userprofile_unset() {
+        let _g = env_test_lock().lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let prev_userprofile = std::env::var("USERPROFILE").ok();
         let prev_home = std::env::var("HOME").ok();

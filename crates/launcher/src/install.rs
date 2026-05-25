@@ -594,7 +594,10 @@ mod tests {
         let manifest = fake_manifest("seed-hash-from-manifest");
         let state = adopt_existing_install(dir.path(), &manifest).unwrap();
         assert!(state.seed_adopted);
-        assert_eq!(state.seed_sha256.as_deref(), Some("seed-hash-from-manifest"));
+        assert_eq!(
+            state.seed_sha256.as_deref(),
+            Some("seed-hash-from-manifest")
+        );
         assert!(state.applied_patches.is_empty());
         // Persistence path: load-back must produce the same shape so a
         // restart of the launcher sees the adopted install.

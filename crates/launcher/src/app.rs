@@ -95,65 +95,47 @@ impl LauncherApp {
 
     fn drain_events(&mut self, ctx: &egui::Context) {
         while let Ok(ev) = self.worker.events_rx.try_recv() {
-            match ev {
+            // Events that drive *non-status* UI state (manifest panel,
+            // progress bars, the installing/managed-install flags) get
+            // their side effects applied here. The status-log line — if
+            // any — comes from `status_line_for`, which is the single
+            // source of truth for ev-to-text translation and is unit
+            // tested directly.
+            match &ev {
                 Event::ManifestFetched(m) => {
-                    self.manifest = Some(m);
+                    self.manifest = Some(m.clone());
                     self.manifest_error = None;
                 }
                 Event::ManifestError(e) => {
-                    self.manifest_error = Some(e);
+                    self.manifest_error = Some(e.clone());
                 }
                 Event::Progress(p) => {
-                    self.last_progress = Some(p);
+                    self.last_progress = Some(p.clone());
                 }
                 Event::InstallComplete => {
                     self.installing = false;
-                    self.push_status("Install complete.".into());
                     self.refresh_install_state();
                 }
-                Event::InstallError(e) => {
+                Event::InstallError(_) => {
                     self.installing = false;
-                    self.push_status(format!("Install failed: {e}"));
-                }
-                Event::Launched(name, pid) => {
-                    self.push_status(format!("Launched {name} (pid {pid})"));
-                }
-                Event::LaunchError(e) => {
-                    self.push_status(format!("Launch failed: {e}"));
-                }
-                Event::UploadStarted => {
-                    self.push_status("Uploading logs…".into());
-                }
-                Event::UploadSkipped(why) => {
-                    self.push_status(format!("Log upload skipped: {why}"));
-                }
-                Event::UploadComplete { blob, bytes } => {
-                    self.push_status(format!("Uploaded {bytes} bytes to {blob}"));
-                }
-                Event::UploadError(e) => {
-                    self.push_status(format!("Log upload failed: {e}"));
                 }
                 Event::AdoptComplete => {
-                    self.push_status(
-                        "Adopted existing install — patches will apply on top \
-                         (seed bytes not verified)."
-                            .into(),
-                    );
                     self.refresh_install_state();
                 }
-                Event::AdoptError(e) => {
-                    self.push_status(format!("Adopt failed: {e}"));
+                Event::AdoptError(_)
+                | Event::Wiped { .. }
+                | Event::WipeError(_)
+                | Event::Launched(..)
+                | Event::LaunchError(_)
+                | Event::UploadStarted
+                | Event::UploadSkipped(_)
+                | Event::UploadComplete { .. }
+                | Event::UploadError(_) => {
+                    // Status-only events — handled below.
                 }
-                Event::Wiped { kind, report } => {
-                    self.push_status(format!(
-                        "Wiped {kind}: {} item(s), {} freed",
-                        report.entries_removed,
-                        human_bytes(report.bytes_freed)
-                    ));
-                }
-                Event::WipeError(e) => {
-                    self.push_status(format!("Wipe failed: {e}"));
-                }
+            }
+            if let Some(line) = status_line_for(&ev) {
+                self.push_status(line);
             }
             ctx.request_repaint();
         }
@@ -175,6 +157,52 @@ impl LauncherApp {
 /// `String::is_empty()` checks from before the PathBuf migration.
 fn path_is_empty(p: &Path) -> bool {
     p.as_os_str().is_empty()
+}
+
+/// Whether to surface the "Adopt existing install" affordance.
+///
+/// True iff `install_path` contains `SGW.exe` AND does NOT contain a
+/// `launcher-installed.json` marker file. The first condition rules
+/// out empty directories (those should go through the normal Install
+/// path); the second condition rules out installs the launcher
+/// already manages (those have nothing to adopt). Extracted from
+/// `show_install_panel` so the boolean decision is unit-testable
+/// without spinning up an egui frame.
+fn should_show_adopt_button(install_path: &Path) -> bool {
+    install_path.join("SGW.exe").exists()
+        && !crate::state::InstalledState::path(install_path).exists()
+}
+
+/// Render a worker [`Event`] into the human-readable status-log line
+/// the UI appends to its scrollback. Pure formatting — extracted from
+/// `drain_events` so each Event arm has at least minimal coverage
+/// without needing an egui context. Returns `None` for events that
+/// don't translate to a status line on their own (manifest updates,
+/// progress ticks).
+fn status_line_for(event: &Event) -> Option<String> {
+    Some(match event {
+        Event::AdoptComplete => "Adopted existing install — patches will apply on top \
+             (seed bytes not verified)."
+            .into(),
+        Event::AdoptError(e) => format!("Adopt failed: {e}"),
+        Event::Wiped { kind, report } => format!(
+            "Wiped {kind}: {} item(s), {} freed",
+            report.entries_removed,
+            human_bytes(report.bytes_freed)
+        ),
+        Event::WipeError(e) => format!("Wipe failed: {e}"),
+        Event::InstallComplete => "Install complete.".into(),
+        Event::InstallError(e) => format!("Install failed: {e}"),
+        Event::Launched(name, pid) => format!("Launched {name} (pid {pid})"),
+        Event::LaunchError(e) => format!("Launch failed: {e}"),
+        Event::UploadStarted => "Uploading logs…".into(),
+        Event::UploadSkipped(why) => format!("Log upload skipped: {why}"),
+        Event::UploadComplete { blob, bytes } => format!("Uploaded {bytes} bytes to {blob}"),
+        Event::UploadError(e) => format!("Log upload failed: {e}"),
+        // Progress + manifest events drive other UI state, not the
+        // status log. Returning None makes that explicit.
+        Event::ManifestFetched(_) | Event::ManifestError(_) | Event::Progress(_) => return None,
+    })
 }
 
 impl eframe::App for LauncherApp {
@@ -298,10 +326,7 @@ impl LauncherApp {
         // first thing the user sees is "Seed not installed — will
         // download seed first" and clicking Install would overwrite
         // ~3 GB of existing files with a fresh seed download.
-        let installed_state_exists =
-            crate::state::InstalledState::path(&self.config.install_path).exists();
-        let has_sgw_exe = self.config.install_path.join("SGW.exe").exists();
-        if has_sgw_exe && !installed_state_exists {
+        if should_show_adopt_button(&self.config.install_path) {
             ui.label(
                 egui::RichText::new(
                     "Existing SGW.exe found in this directory but the launcher hasn't \
@@ -665,7 +690,9 @@ fn human_bytes(n: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{human_bytes, MAX_STATUS_LINES};
+    use super::{human_bytes, should_show_adopt_button, status_line_for, MAX_STATUS_LINES};
+    use crate::client_paths::WipeReport;
+    use crate::worker::Event;
 
     #[test]
     fn human_bytes_formats_units() {
@@ -709,5 +736,94 @@ mod tests {
         }
         assert_eq!(buf.len(), 10);
         assert_eq!(buf.first().unwrap(), "0");
+    }
+
+    // Empty install dir: no SGW.exe + no marker → the Install panel
+    // should NOT surface the Adopt affordance (nothing to adopt).
+    #[test]
+    fn should_show_adopt_button_false_on_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!should_show_adopt_button(dir.path()));
+    }
+
+    // SGW.exe present + no marker → adopt is the user's least-destructive
+    // path forward. This is the trigger condition.
+    #[test]
+    fn should_show_adopt_button_true_when_unmanaged_install_present() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("SGW.exe"), b"").unwrap();
+        assert!(should_show_adopt_button(dir.path()));
+    }
+
+    // Marker file already present → install is launcher-managed; adopt
+    // is a no-op (and would refuse with AlreadyManaged anyway). Hiding
+    // the button keeps the UI honest.
+    #[test]
+    fn should_show_adopt_button_false_when_already_managed() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("SGW.exe"), b"").unwrap();
+        std::fs::write(
+            crate::state::InstalledState::path(dir.path()),
+            r#"{"applied_patches":[],"seed_sha256":"h"}"#,
+        )
+        .unwrap();
+        assert!(!should_show_adopt_button(dir.path()));
+    }
+
+    // status_line_for covers every Event variant that produces a
+    // status entry. Wiped is the only one with non-trivial formatting
+    // (bytes-freed → human_bytes) — pin its exact shape against a
+    // realistic report.
+    #[test]
+    fn status_line_for_formats_adopt_complete() {
+        let line = status_line_for(&Event::AdoptComplete).unwrap();
+        assert!(line.contains("Adopted"), "got: {line}");
+        assert!(
+            line.contains("not verified"),
+            "must surface the trust trade-off, got: {line}"
+        );
+    }
+
+    #[test]
+    fn status_line_for_formats_adopt_error() {
+        let line = status_line_for(&Event::AdoptError("boom".into())).unwrap();
+        assert_eq!(line, "Adopt failed: boom");
+    }
+
+    #[test]
+    fn status_line_for_formats_wiped_with_human_bytes() {
+        let line = status_line_for(&Event::Wiped {
+            kind: "Cache.en-US".into(),
+            report: WipeReport {
+                entries_removed: 3,
+                bytes_freed: 5 * 1024 * 1024,
+            },
+        })
+        .unwrap();
+        // Pin both the item count and the human-bytes rendering so a
+        // future change to either thread shows up as a test diff.
+        assert_eq!(line, "Wiped Cache.en-US: 3 item(s), 5.00 MB freed");
+    }
+
+    #[test]
+    fn status_line_for_formats_wipe_error() {
+        let line = status_line_for(&Event::WipeError("permission denied".into())).unwrap();
+        assert_eq!(line, "Wipe failed: permission denied");
+    }
+
+    #[test]
+    fn status_line_for_returns_none_for_progress_and_manifest_events() {
+        // These drive UI state directly (progress bars, manifest
+        // summary panel) — they don't belong in the scrolling status
+        // log. Returning None enforces that at the type level.
+        assert!(status_line_for(&Event::ManifestError("x".into())).is_none());
+        assert!(
+            status_line_for(&Event::Progress(crate::install::Progress::Downloading {
+                label: "seed".into(),
+                downloaded: 0,
+                total: 0,
+            },))
+            .is_none()
+        );
     }
 }
