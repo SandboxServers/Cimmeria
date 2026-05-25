@@ -19,22 +19,24 @@
 //!
 //! ## Why
 //!
-//! Issue #281 spells out the gap this layer closes: ~half of the integration
-//! bugs caught in PR reviews #131+ have lived in the slice between *"server
-//! accepts a call"* and *"a real client could have sent that call."* Every
-//! existing test type injects events at or below the dispatcher; nothing
-//! proves the wire path leading up to the event would have fired.
+//! Every other test type in the workspace injects events at or below the
+//! dispatcher: a server-side unit test calls a handler, a wire-format test
+//! pins a single serializer, a chain-replay test fakes the trigger that
+//! would have come over the wire. None of them prove that the wire path
+//! leading up to the event would have fired. That slice — *"server accepts
+//! a call"* vs *"a real client could have sent that call"* — is where
+//! integration bugs accumulate undetected.
 //!
-//! Wireclient enforces the client-authoritative invariants — equipped weapon,
-//! ammo, cooldown, range, LOS — *client-side* before sending, so it can only
-//! send sequences a real client could have sent. That makes it a stronger
-//! oracle than any server-side test for shape regressions.
+//! Wireclient enforces the client-authoritative invariants — equipped
+//! weapon, ammo, cooldown, range, LOS — *client-side* before sending, so it
+//! can only send sequences a real client could have sent. That makes it a
+//! stronger oracle than any server-side test for shape regressions.
 //!
 //! ## Trace-driven testing
 //!
 //! Wireclient is paired with the [`session_trace`] module, which loads a
-//! decrypted capture produced by `tools/pcap_dissect.py` against a recorded
-//! `.pcap` + AES `keys.txt`. The Castle Cellblock corpus
+//! decrypted capture produced by `tools/pcap_to_session.py` against a
+//! recorded `.pcap` + AES `keys.txt`. The Castle Cellblock corpus
 //! (`docs/architecture/wireclient.md` § Test corpora) is the canonical
 //! ground-truth fixture: every client→server packet the real client sent
 //! during a full 32-minute Castle Cellblock playthrough.
@@ -45,15 +47,15 @@
 //!   exercises server-side.
 //! - [`handshake`] — Mercury phase-3 `baseAppLogin` builder + reply parser
 //!   for the three packets that establish encryption.
-//! - [`session_trace`] — deserialisable trace types matching the JSONL output
-//!   of `tools/pcap_dissect.py --json`.
+//! - [`session_trace`] — deserialisable trace types matching the JSONL
+//!   output of `tools/pcap_to_session.py`.
 //! - [`Client`] — top-level driver; today it stitches auth → handshake;
 //!   future phases add the entity mirror, step driver, combat enforcement,
 //!   and the Castle Cellblock script.
 //!
-//! Phases 2–7 (entity mirror, step driver, combat, minigame force-victory
-//! hook, nextest profile, CI) are tracked in issue #281 and arrive in
-//! follow-up PRs.
+//! Later phases (entity mirror, step driver, combat, minigame force-victory
+//! hook, nextest profile, CI) arrive in follow-up PRs; see
+//! `docs/architecture/wireclient.md` for the phased rollout.
 
 pub mod auth;
 pub mod error;

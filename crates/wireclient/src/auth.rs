@@ -40,6 +40,7 @@
 //! would be caught before it reached us.
 
 use std::net::{IpAddr, SocketAddr};
+use std::time::Duration;
 
 use cimmeria_mercury::encryption::MercuryEncryption;
 use reqwest::header::{HeaderValue, SET_COOKIE};
@@ -76,7 +77,10 @@ impl Credentials {
     }
 }
 
-/// What Phase 2 returned. Carries everything the Mercury handshake needs.
+/// What auth Phases 1 + 2 returned. Carries everything the Mercury
+/// handshake needs in one record, including the account_id parsed from
+/// the Phase 1 `<AccountInfo AccountId="…" />` element so downstream
+/// callers don't have to thread it out of band.
 #[derive(Debug, Clone)]
 pub struct AuthSession {
     /// BaseApp UDP endpoint to dial.
@@ -85,6 +89,11 @@ pub struct AuthSession {
     pub ticket: String,
     /// 32-byte AES-256 key for Mercury encryption.
     pub session_key: [u8; 32],
+    /// Account ID from Phase 1's `<AccountInfo AccountId="…">` — required
+    /// by `build_baseapp_login`. The server cross-checks the value
+    /// against its pending-logins map on receipt of `baseAppLogin`;
+    /// mismatch = silent reject.
+    pub account_id: u32,
 }
 
 impl AuthSession {
@@ -93,6 +102,12 @@ impl AuthSession {
         MercuryEncryption::from_session_key(self.session_key)
     }
 }
+
+/// Default per-request timeout for SOAP calls. The auth server replies
+/// in milliseconds in the happy path; 10 seconds is generous enough to
+/// absorb a one-off GC pause but short enough that a hung endpoint fails
+/// the test instead of wedging the suite.
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// SOAP auth client.
 ///
@@ -106,9 +121,17 @@ pub struct AuthClient {
 impl AuthClient {
     /// Construct a client targeting `base_url` (e.g. `http://127.0.0.1:8081`).
     /// No trailing slash; the driver appends `/SGWLogin/...` itself.
+    ///
+    /// The shared HTTP client carries a 10-second per-request timeout
+    /// ([`DEFAULT_REQUEST_TIMEOUT`]) — a stalled auth endpoint fails
+    /// fast rather than wedging `phase1()`/`phase2()` indefinitely.
     pub fn new(base_url: impl Into<String>) -> Self {
+        let http = reqwest::Client::builder()
+            .timeout(DEFAULT_REQUEST_TIMEOUT)
+            .build()
+            .expect("default reqwest::Client builder must succeed");
         Self {
-            http: reqwest::Client::new(),
+            http,
             base_url: base_url.into(),
         }
     }
@@ -117,12 +140,16 @@ impl AuthClient {
     /// named shard. Returns the [`AuthSession`] needed by the Mercury
     /// handshake.
     pub async fn login(&self, creds: &Credentials, shard: &str) -> Result<AuthSession> {
-        let sid = self.phase1(creds).await?;
-        self.phase2(&sid, shard).await
+        let (sid, account_id) = self.phase1(creds).await?;
+        self.phase2(&sid, account_id, shard).await
     }
 
-    /// Phase 1 — POST `/SGWLogin/UserAuth`. Returns the SID cookie.
-    pub async fn phase1(&self, creds: &Credentials) -> Result<String> {
+    /// Phase 1 — POST `/SGWLogin/UserAuth`. Returns the SID cookie and
+    /// the server-assigned `account_id` parsed from
+    /// `<AccountInfo AccountId="…" />`. The `account_id` is required by
+    /// the Mercury phase-3 handshake; surfacing it here keeps the
+    /// auth → handshake flow self-contained.
+    pub async fn phase1(&self, creds: &Credentials) -> Result<(String, u32)> {
         const ENDPOINT: &str = "/SGWLogin/UserAuth";
         let body = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -153,15 +180,23 @@ impl AuthClient {
             .and_then(parse_sid_from_set_cookie)
             .ok_or(Error::NoSidCookie)?;
 
-        // Drain the body to free the connection for keep-alive reuse, but
-        // we don't need its contents — Phase 2's response carries
-        // everything load-bearing.
-        let _xml = resp.text().await?;
-        Ok(sid)
+        // Parse account_id out of the response body — `<AccountInfo
+        // AccountId="42" />`. The auth server emits this on every
+        // successful login; absence implies an error envelope we should
+        // surface rather than silently masking.
+        let xml = resp.text().await?;
+        let account_id_s =
+            extract_attr(&xml, "AccountId").ok_or(Error::MissingAttribute("AccountId"))?;
+        let account_id: u32 = account_id_s
+            .parse()
+            .map_err(|_| Error::MissingAttribute("AccountId"))?;
+        Ok((sid, account_id))
     }
 
     /// Phase 2 — POST `/SGWLogin/ServerSelection` with the SID cookie.
-    pub async fn phase2(&self, sid: &str, shard: &str) -> Result<AuthSession> {
+    /// Takes the `account_id` from Phase 1 and threads it onto the
+    /// returned [`AuthSession`].
+    pub async fn phase2(&self, sid: &str, account_id: u32, shard: &str) -> Result<AuthSession> {
         const ENDPOINT: &str = "/SGWLogin/ServerSelection";
         let body = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -185,7 +220,12 @@ impl AuthClient {
         }
 
         let xml = resp.text().await?;
-        if !xml.contains("ServerLocation") {
+        // Both success and error responses wrap in `<…SGWServerLocationResponse>`,
+        // so substring-matching "ServerLocation" alone reports false success
+        // on `<ServerSelectionError>`. Detect the error envelope explicitly,
+        // and require the success element `<ServerLocation ` with its
+        // trailing space (the wrapping `SGWServerLocationResponse` lacks one).
+        if xml.contains("ServerSelectionError") || !xml.contains("<ServerLocation ") {
             return Err(Error::NoServerLocation);
         }
 
@@ -216,6 +256,7 @@ impl AuthClient {
             base_addr: SocketAddr::new(ip_addr, port),
             ticket,
             session_key,
+            account_id,
         })
     }
 }

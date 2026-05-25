@@ -12,6 +12,7 @@ use std::net::TcpListener as StdTcpListener;
 use cimmeria_common::ServerConfig;
 use cimmeria_services::auth::{AuthService, ShardInfo};
 use cimmeria_wireclient::auth::{AuthClient, Credentials};
+use cimmeria_wireclient::Error;
 
 const SHARD: &str = "WireclientSmoke";
 const SHARD_HOST: &str = "127.0.0.1";
@@ -80,6 +81,16 @@ async fn wireclient_drives_phase1_phase2_against_inprocess_auth() {
     assert_eq!(session.base_addr.ip().to_string(), SHARD_HOST);
     assert_eq!(session.base_addr.port(), SHARD_PORT);
 
+    // account_id is parsed from Phase 1's `<AccountInfo AccountId="…">`
+    // and threaded onto the session — `build_baseapp_login` reads it
+    // here, not from a caller-supplied parameter.
+    // Developer-mode auth assigns account_id=1.
+    assert_eq!(
+        session.account_id, 1,
+        "developer_mode auth must return account_id=1 (got {})",
+        session.account_id
+    );
+
     // The encryption context derived from the session key must use the
     // same key for AES and HMAC (zero-IV) per C++ `EncryptionFilter::setKey`.
     // Smoke-check by encrypting a known 16-byte plaintext and asserting
@@ -103,7 +114,7 @@ async fn wireclient_phase1_returns_sid_cookie() {
     let base_url = format!("http://127.0.0.1:{port}");
     let client = AuthClient::new(&base_url);
 
-    let sid = client
+    let (sid, account_id) = client
         .phase1(&Credentials::test_account())
         .await
         .expect("Phase 1 should succeed");
@@ -113,6 +124,7 @@ async fn wireclient_phase1_returns_sid_cookie() {
         sid.chars().all(|c| c.is_ascii_alphanumeric()),
         "SID must be ASCII alphanumeric (got {sid:?})"
     );
+    assert_eq!(account_id, 1, "developer_mode account_id is 1");
 
     auth.stop().await;
 }
@@ -123,17 +135,18 @@ async fn wireclient_phase2_replay_with_same_sid_errors() {
     let base_url = format!("http://127.0.0.1:{port}");
     let client = AuthClient::new(&base_url);
 
-    let sid = client.phase1(&Credentials::test_account()).await.unwrap();
-    let _ok = client.phase2(&sid, SHARD).await.unwrap();
+    let (sid, account_id) = client.phase1(&Credentials::test_account()).await.unwrap();
+    let _ok = client.phase2(&sid, account_id, SHARD).await.unwrap();
     // Sessions are single-use. A second Phase 2 with the same SID must
     // not produce a fresh AuthSession — the server returns
-    // `ServerSelectionError`, which our parser surfaces as
-    // `Error::NoServerLocation`.
-    let err = client.phase2(&sid, SHARD).await.unwrap_err();
-    let msg = err.to_string();
+    // `ServerSelectionError`, which our parser surfaces as the
+    // typed `Error::NoServerLocation` variant. Assert the variant
+    // directly so a regression that surfaces a different (still-
+    // string-matching) error doesn't pass.
+    let err = client.phase2(&sid, account_id, SHARD).await.unwrap_err();
     assert!(
-        msg.contains("ServerLocation") || msg.contains("Phase 2"),
-        "replay must error with a recognisable variant; got: {msg}"
+        matches!(err, Error::NoServerLocation),
+        "reused SID must fail with Error::NoServerLocation, got: {err:?}"
     );
 
     auth.stop().await;

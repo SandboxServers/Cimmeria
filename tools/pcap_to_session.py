@@ -36,6 +36,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
+import struct
 import sys
 from pathlib import Path
 
@@ -48,9 +50,62 @@ from pcap_dissect import (  # noqa: E402  (import after sys.path tweak)
     decrypt_aes256_cbc,
     parse_mercury_footer,
     parse_messages,
-    read_pcap,
     strip_pkcs7,
 )
+
+_DESCRIPTION = (
+    "Convert a Mercury .pcap + AES keys.txt to a JSONL session trace "
+    "consumable by wireclient."
+)
+
+
+def read_pcap_with_ips(path):
+    """Variant of ``pcap_dissect.read_pcap`` that also yields source/dest IPs.
+
+    Needed because the trace header records both endpoints as
+    ``ip:port`` strings, and the upstream helper only exposes UDP ports.
+    Logic is otherwise identical — Ethernet + IPv4 + UDP, drop everything
+    else.
+    """
+    with open(path, "rb") as f:
+        magic, _ver_maj, _ver_min, _tz, _sig, _snaplen, linktype = struct.unpack(
+            "<IHHiiII", f.read(24)
+        )
+        if magic not in (0xA1B2C3D4, 0xD4C3B2A1):
+            raise ValueError(f"Not a pcap file (magic={magic:#x})")
+        while True:
+            hdr = f.read(16)
+            if len(hdr) < 16:
+                break
+            ts_sec, ts_usec, incl_len, _orig_len = struct.unpack("<IIII", hdr)
+            pkt_data = f.read(incl_len)
+            if len(pkt_data) < incl_len:
+                break
+            if linktype != 1:
+                # Loopback (DLT_NULL=0, DLT_LOOP=108) captures are observed
+                # in the wild but not used for SGW work — skip cleanly.
+                continue
+            if len(pkt_data) < 14:
+                continue
+            eth_type = struct.unpack(">H", pkt_data[12:14])[0]
+            if eth_type != 0x0800:
+                continue
+            ip_start = 14
+            if len(pkt_data) < ip_start + 20:
+                continue
+            ihl = (pkt_data[ip_start] & 0x0F) * 4
+            protocol = pkt_data[ip_start + 9]
+            if protocol != 17:
+                continue
+            src_ip = socket.inet_ntoa(pkt_data[ip_start + 12 : ip_start + 16])
+            dst_ip = socket.inet_ntoa(pkt_data[ip_start + 16 : ip_start + 20])
+            udp_start = ip_start + ihl
+            if len(pkt_data) < udp_start + 8:
+                continue
+            src_port, dst_port = struct.unpack(">HH", pkt_data[udp_start : udp_start + 4])
+            payload = pkt_data[udp_start + 8 :]
+            ts = ts_sec + ts_usec / 1_000_000
+            yield (ts, src_ip, src_port, dst_ip, dst_port, payload)
 
 
 def message_name(msg_id: int, is_server: bool) -> str | None:
@@ -68,7 +123,7 @@ def message_name(msg_id: int, is_server: bool) -> str | None:
 
 
 def render_event(
-    pkt_num: int,
+    capture_pkt_no: int,
     rel_ts: float,
     is_server: bool,
     seq: int | None,
@@ -76,6 +131,13 @@ def render_event(
     acks: list[int],
     body: bytes,
 ) -> dict:
+    """Build the JSONL event envelope for one decoded Mercury packet.
+
+    ``capture_pkt_no`` is the **raw capture index** (1-based, counted
+    across every Ethernet frame the file holds), not the index within
+    the filtered Mercury stream — that lines up with ``pcap_dissect.py``
+    output for cross-referencing.
+    """
     direction = "s2c" if is_server else "c2s"
     messages = []
     if body:
@@ -91,7 +153,7 @@ def render_event(
     return {
         "event": {
             "t_seconds": round(rel_ts, 6),
-            "packet_no": pkt_num,
+            "packet_no": capture_pkt_no,
             "direction": direction,
             "seq": seq,
             "flags": flags,
@@ -102,7 +164,7 @@ def render_event(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=_DESCRIPTION)
     parser.add_argument("pcap_file")
     parser.add_argument("keys_file")
     parser.add_argument(
@@ -130,28 +192,35 @@ def main() -> int:
 
     out_fh = open(args.out, "w", encoding="utf-8") if args.out else sys.stdout
 
-    # ── First pass: emit packets, capture endpoints + count ─────────────
     events: list[dict] = []
     client_addr_seen: str | None = None
     server_addr_seen: str | None = None
     first_ts: float | None = None
-    pkt_num = 0
 
-    for ts, src_port, dst_port, payload in read_pcap(args.pcap_file):
-        if first_ts is None:
-            first_ts = ts
+    # Raw-capture packet index — counts every Ethernet frame, including
+    # filtered-out ones, so ``packet_no`` lines up with the raw .pcap
+    # ordering and with ``pcap_dissect.py`` output.
+    capture_pkt_no = 0
+
+    for ts, src_ip, src_port, dst_ip, dst_port, payload in read_pcap_with_ips(args.pcap_file):
+        capture_pkt_no += 1
         is_server = src_port == server_port
         if src_port != server_port and dst_port != server_port:
             continue
-        rel_ts = ts - first_ts
-        pkt_num += 1
 
-        # Client UDP port floats; capture the first observed port for the
-        # header. Server port is fixed via --server-port.
+        # Anchor the time origin to the first Mercury packet, not the
+        # first arbitrary capture frame — keeps replay timing stable
+        # across captures that have non-Mercury preamble traffic.
+        if first_ts is None:
+            first_ts = ts
+        rel_ts = ts - first_ts
+
+        # Capture real endpoint addresses from the wire (extracted from
+        # IPv4 src/dst, not hardcoded to loopback).
         if not is_server and client_addr_seen is None:
-            client_addr_seen = f"127.0.0.1:{src_port}"
-        if server_addr_seen is None:
-            server_addr_seen = f"127.0.0.1:{server_port}"
+            client_addr_seen = f"{src_ip}:{src_port}"
+        if is_server and server_addr_seen is None:
+            server_addr_seen = f"{src_ip}:{src_port}"
 
         # Unencrypted client path (Phase 3 baseAppLogin).
         if len(payload) > 0 and payload[0] in (0x41, 0x01):
@@ -160,7 +229,9 @@ def main() -> int:
                 flags, seq, _fb, _fe, _req_off, body, acks = parsed
                 if not is_server and flags == 0x41 and len(body) > 10:
                     events.append(
-                        render_event(pkt_num, rel_ts, is_server, seq, flags, acks, body)
+                        render_event(
+                            capture_pkt_no, rel_ts, is_server, seq, flags, acks, body
+                        )
                     )
                     continue
 
@@ -176,15 +247,26 @@ def main() -> int:
         if parsed is None:
             continue
         flags, seq, _fb, _fe, _req_off, body, acks = parsed
-        events.append(render_event(pkt_num, rel_ts, is_server, seq, flags, acks, body))
+        events.append(
+            render_event(capture_pkt_no, rel_ts, is_server, seq, flags, acks, body)
+        )
+
+    if client_addr_seen is None or server_addr_seen is None:
+        # A trace with no Mercury packets cannot be replayed; fail loudly
+        # rather than emitting placeholder endpoints the consumer can't
+        # interpret.
+        raise SystemExit(
+            f"no Mercury packets observed on port {server_port}; "
+            "check --server-port and that the capture covers a live session"
+        )
 
     header = {
         "header": {
             "label": label,
             "source_pcap": os.fspath(Path(args.pcap_file).name),
             "session_key_hex": key_hex,
-            "client_addr": client_addr_seen or f"0.0.0.0:0",
-            "server_addr": server_addr_seen or f"127.0.0.1:{server_port}",
+            "client_addr": client_addr_seen,
+            "server_addr": server_addr_seen,
             "packet_count": len(events),
             "schema_version": 1,
         }

@@ -17,10 +17,10 @@
 //!   first_req_offset = 0                           (footer)
 //!
 //!   The 2-byte gap at body[7..9] matches the server's parser at
-//!   `crates/services/src/base/login.rs:parse_baseapp_login` (reads
-//!   account_id from body[9..13], not body[7..11]). The gap is observable
-//!   in any captured `baseAppLogin` byte dump — e.g. the Castle Cellblock
-//!   capture: `00 19 00 25 9d 01 00 [00 00] 01 00 00 00 14 …`.
+//!   `crates/services/src/base/login.rs::parse_baseapp_login` (reads
+//!   `account_id` from `body[9..13]` at line 218, not body[7..11]). The
+//!   gap is observable in any captured `baseAppLogin` byte dump — e.g.
+//!   `00 19 00 25 9d 01 00 [00 00] 01 00 00 00 14 …`.
 //!
 //! ─────────── server → client (encrypted) ───────────
 //!   seq=1   BASEMSG_REPLY_MESSAGE (0xFF) echoing baseAppLogin
@@ -187,8 +187,10 @@ pub fn parse_baseapp_reply(
         return Err(Error::UnexpectedReplyMsg(body[0]));
     }
     // Body: [0xFF][DWORD_LENGTH=25 u32 LE][request_id u32 LE][ticket_len u8 = 20][ticket 20]
-    // = 1 + 4 + 4 + 1 + 20 = 30 bytes.
-    if body.len() < 30 {
+    // = 1 + 4 + 4 + 1 + 20 = 30 bytes. Reject trailing bytes — silent
+    // tolerance would mask wire-format drift that the replay assertion
+    // is supposed to catch.
+    if body.len() != 30 {
         return Err(Error::InvalidReplyLength(body.len()));
     }
     let dword_len = u32::from_le_bytes([body[1], body[2], body[3], body[4]]);
@@ -203,7 +205,7 @@ pub fn parse_baseapp_reply(
         });
     }
     let ticket_len = body[9] as usize;
-    if ticket_len != TICKET_LEN || body.len() < 10 + ticket_len {
+    if ticket_len != TICKET_LEN {
         return Err(Error::InvalidReplyLength(body.len()));
     }
     let ticket = std::str::from_utf8(&body[10..10 + ticket_len])
@@ -239,6 +241,12 @@ pub fn parse_time_sync(raw: &[u8], enc: &MercuryEncryption) -> Result<TimeSyncRe
     let plaintext = decrypt_packet(raw, enc)?;
     let parsed = parse_incoming(&plaintext).map_err(|e| Error::MercuryParse(e.to_string()))?;
 
+    if parsed.flags != FLAGS_REPLY {
+        return Err(Error::MercuryParse(format!(
+            "time-sync: unexpected flags 0x{:02x} (want 0x{:02x})",
+            parsed.flags, FLAGS_REPLY
+        )));
+    }
     if parsed.seq_id != Some(2) {
         return Err(Error::MercuryParse(format!(
             "time-sync: expected seq=2, got seq={:?}",
@@ -247,8 +255,10 @@ pub fn parse_time_sync(raw: &[u8], enc: &MercuryEncryption) -> Result<TimeSyncRe
     }
 
     let body = parsed.body.as_ref();
-    // 1 (msg) + 1 (freq) + 1 (msg) + 8 (tickSync) + 1 (msg) + 4 (setGameTime) = 16
-    if body.len() < 16 {
+    // 1 (msg) + 1 (freq) + 1 (msg) + 8 (tickSync) + 1 (msg) + 4 (setGameTime) = 16.
+    // Reject trailing bytes — masking extra submessages here would let
+    // wire-format drift slip past the byte-exact handshake guard.
+    if body.len() != 16 {
         return Err(Error::InvalidReplyLength(body.len()));
     }
 
@@ -437,6 +447,29 @@ mod tests {
         ));
     }
 
+    /// Regression guard: trailing bytes past the 30-byte reply body must
+    /// fail. A loose `body.len() < 30` check would mask wire drift where
+    /// the server appended a new field.
+    #[test]
+    fn parse_baseapp_reply_rejects_trailing_bytes() {
+        let key = [0u8; 32];
+        let enc = MercuryEncryption::from_session_key(key);
+        let mut body = Vec::with_capacity(31);
+        body.push(MSG_BASEMSG_REPLY);
+        body.extend_from_slice(&REPLY_BODY_LENGTH.to_le_bytes());
+        body.extend_from_slice(&0xCAFEF00Du32.to_le_bytes());
+        body.push(TICKET_LEN as u8);
+        body.extend_from_slice(TICKET_SAMPLE.as_bytes());
+        body.push(0xFF); // 1 extra byte past the canonical 30
+        let plaintext = build_outgoing(FLAGS_REPLY, &body, Some(1), &[], None);
+        let wire = enc.encrypt(&plaintext).expect("encrypt");
+        let err = parse_baseapp_reply(&wire, &enc, 0xCAFEF00D, TICKET_SAMPLE).unwrap_err();
+        assert!(
+            matches!(err, Error::InvalidReplyLength(31)),
+            "trailing-byte reply must fail with InvalidReplyLength(31); got {err:?}"
+        );
+    }
+
     #[test]
     fn parse_time_sync_decodes_all_three_subfields() {
         let key = [0u8; 32];
@@ -459,5 +492,55 @@ mod tests {
         assert_eq!(out.tick, 42);
         assert_eq!(out.tick_rate, 100);
         assert_eq!(out.game_time_tick, 7);
+    }
+
+    /// Regression guard: trailing bytes past the 16-byte time-sync bundle
+    /// must fail. The fixed-shape bundle has no spec'd extension point;
+    /// silently accepting trailing bytes would mask wire drift.
+    #[test]
+    fn parse_time_sync_rejects_trailing_bytes() {
+        let key = [0u8; 32];
+        let enc = MercuryEncryption::from_session_key(key);
+        let mut body = Vec::with_capacity(17);
+        body.push(MSG_UPDATE_FREQ_NOTIFICATION);
+        body.push(10);
+        body.push(MSG_TICK_SYNC);
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.extend_from_slice(&100u32.to_le_bytes());
+        body.push(MSG_SET_GAME_TIME);
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.push(0xAB); // 1 extra byte past the canonical 16
+        let plaintext = build_outgoing(FLAGS_REPLY, &body, Some(2), &[], None);
+        let wire = enc.encrypt(&plaintext).expect("encrypt");
+        let err = parse_time_sync(&wire, &enc).unwrap_err();
+        assert!(
+            matches!(err, Error::InvalidReplyLength(17)),
+            "trailing-byte time-sync must fail with InvalidReplyLength(17); got {err:?}"
+        );
+    }
+
+    /// Regression guard: wrong flags on a seq=2 packet must fail. Mirrors
+    /// the flags check the seq=1 parser already performs.
+    #[test]
+    fn parse_time_sync_rejects_wrong_flags() {
+        let key = [0u8; 32];
+        let enc = MercuryEncryption::from_session_key(key);
+        let mut body = Vec::with_capacity(16);
+        body.push(MSG_UPDATE_FREQ_NOTIFICATION);
+        body.push(10);
+        body.push(MSG_TICK_SYNC);
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.extend_from_slice(&100u32.to_le_bytes());
+        body.push(MSG_SET_GAME_TIME);
+        body.extend_from_slice(&0u32.to_le_bytes());
+        // Wrong flags: drop FLAG_RELIABLE.
+        let wrong_flags = FLAG_ON_CHANNEL | FLAG_HAS_SEQUENCE;
+        let plaintext = build_outgoing(wrong_flags, &body, Some(2), &[], None);
+        let wire = enc.encrypt(&plaintext).expect("encrypt");
+        let err = parse_time_sync(&wire, &enc).unwrap_err();
+        assert!(
+            matches!(err, Error::MercuryParse(ref m) if m.contains("unexpected flags")),
+            "wrong-flags time-sync must fail with MercuryParse; got {err:?}"
+        );
     }
 }

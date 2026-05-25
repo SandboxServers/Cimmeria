@@ -25,8 +25,8 @@
 //!
 //! - **One source of truth** for the wire-format decoder — the existing
 //!   Python dissector is already cross-checked against `crates/mercury`'s
-//!   `parse_incoming` (issue #352's loopback harness pins byte-exactness on
-//!   both ends).
+//!   `parse_incoming` (the loopback harness pins byte-exactness on both
+//!   ends).
 //! - **Hermeticity** — the Rust replay path never touches `libpcap`; it only
 //!   reads the JSONL fixture. Tests are deterministic.
 //!
@@ -58,6 +58,7 @@ use crate::error::{Error, Result};
 /// pairs. Adding a JSON output mode to the dissector is a one-line change;
 /// see `tools/pcap_to_session.py`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TraceEvent {
     /// Wall-clock offset from the start of the capture, in seconds.
     /// Used for keepalive-cadence assertions and replay pacing, not for
@@ -96,6 +97,7 @@ pub enum Direction {
 
 /// One Mercury message extracted from a packet body.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TraceMessage {
     /// Mercury message ID byte. `0x00`–`0x7F` are static base messages
     /// (`baseAppLogin`, `tickSync`, `enableEntities`, …); `0x80`–`0xFE` are
@@ -132,6 +134,7 @@ impl TraceMessage {
 /// every subsequent line is a [`TraceEvent`]. The producer always writes the
 /// header line first; the reader assumes that ordering.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TraceHeader {
     /// Human-readable label for the capture (e.g. `"castle-cellblock-full-run"`).
     pub label: String,
@@ -158,8 +161,17 @@ pub struct TraceHeader {
     pub schema_version: u32,
 }
 
+/// Currently-supported on-disk schema version. Bump in lockstep with any
+/// breaking change to the JSONL shape, and add the previous version to
+/// `SUPPORTED_SCHEMA_VERSIONS` if backwards compatibility is required.
+pub const TRACE_SCHEMA_VERSION: u32 = 1;
+
+/// Schema versions the loader will accept. Today, exactly one — extend
+/// once a v2 is shipped with documented migration semantics.
+const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[TRACE_SCHEMA_VERSION];
+
 fn default_schema() -> u32 {
-    1
+    TRACE_SCHEMA_VERSION
 }
 
 /// Loaded trace — header + ordered events.
@@ -191,11 +203,32 @@ impl Trace {
         let header_envelope: HeaderEnvelope = serde_json::from_str(header_line)?;
         let header = header_envelope.header;
 
+        // Reject unknown schema versions — a v2 trace silently loading as
+        // v1 is a class of regression the schema field exists to prevent.
+        if !SUPPORTED_SCHEMA_VERSIONS.contains(&header.schema_version) {
+            return Err(Error::TraceIo(std::io::Error::other(format!(
+                "unsupported schema_version: {} (supported: {:?})",
+                header.schema_version, SUPPORTED_SCHEMA_VERSIONS,
+            ))));
+        }
+
         let mut events = Vec::with_capacity(header.packet_count as usize);
         for line in lines {
             let env: EventEnvelope = serde_json::from_str(line)?;
             events.push(env.event);
         }
+
+        // Enforce the header's packet_count — a truncated JSONL that
+        // claims more events than it carries would otherwise pass
+        // silently and surface as a mid-replay assertion failure.
+        if events.len() != header.packet_count as usize {
+            return Err(Error::TraceIo(std::io::Error::other(format!(
+                "packet_count mismatch: header={} events={}",
+                header.packet_count,
+                events.len(),
+            ))));
+        }
+
         Ok(Trace { header, events })
     }
 
@@ -212,11 +245,13 @@ impl Trace {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct HeaderEnvelope {
     header: TraceHeader,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct EventEnvelope {
     event: TraceEvent,
 }
@@ -262,13 +297,18 @@ impl ComparisonPolicy for DefaultPolicy {
                 observed.msg_id, observed.name, recorded.msg_id, recorded.name
             ));
         }
-        if observed.body_hex == recorded.body_hex {
+        // Case-insensitive byte comparison — the Python producer emits
+        // lowercase hex but a hand-edited or future-Rust-derived fixture
+        // could use uppercase; both round-trip to the same bytes.
+        if observed.body_hex.eq_ignore_ascii_case(&recorded.body_hex) {
             return Diff::Exact;
         }
         // Entity-method dynamic IDs (`0x80..=0xFE`) commonly embed
         // server-assigned IDs; treat a length match as structural drift,
-        // length mismatch as regression.
-        if observed.msg_id >= 0x80 {
+        // length mismatch as regression. `0xFF` is the static
+        // `BASEMSG_REPLY_MESSAGE` — exclude it from the drift band so a
+        // wire-format change there fails loudly.
+        if (0x80..=0xFE).contains(&observed.msg_id) {
             if observed.body_len() == recorded.body_len() {
                 return Diff::Drift(format!(
                     "entity-method body bytes differ but length matches ({}B)",
@@ -393,6 +433,127 @@ mod tests {
             pol.compare(&observed, &recorded),
             Diff::Regression(_)
         ));
+    }
+
+    /// Regression guard: `0xFF` is the static `BASEMSG_REPLY_MESSAGE`
+    /// (not a dynamic entity-method slot), so a byte drift on it must
+    /// fail. A loose `msg_id >= 0x80` check would misclassify this as
+    /// drift and let wire-format regressions slip through.
+    #[test]
+    fn default_policy_msg_0xff_byte_drift_is_regression() {
+        let pol = DefaultPolicy;
+        let observed = TraceMessage {
+            msg_id: 0xFF,
+            name: Some("replyMessage".into()),
+            body_hex: "01020304".into(),
+        };
+        let recorded = TraceMessage {
+            msg_id: 0xFF,
+            name: Some("replyMessage".into()),
+            body_hex: "feedbeef".into(),
+        };
+        assert!(matches!(
+            pol.compare(&observed, &recorded),
+            Diff::Regression(_)
+        ));
+    }
+
+    /// Regression guard: producer drift between lowercase and uppercase
+    /// hex must not surface as a diff. Both decode to identical bytes.
+    #[test]
+    fn default_policy_case_insensitive_hex_match() {
+        let pol = DefaultPolicy;
+        let observed = TraceMessage {
+            msg_id: 0x05,
+            name: None,
+            body_hex: "deadbeef".into(),
+        };
+        let recorded = TraceMessage {
+            msg_id: 0x05,
+            name: None,
+            body_hex: "DEADBEEF".into(),
+        };
+        assert_eq!(pol.compare(&observed, &recorded), Diff::Exact);
+    }
+
+    /// Regression guard: header.packet_count must equal the actual event
+    /// count. A truncated JSONL that claims more would slip past load.
+    #[test]
+    fn trace_load_rejects_packet_count_mismatch() {
+        let header = TraceHeader {
+            label: "mismatch".into(),
+            source_pcap: "x.pcap".into(),
+            session_key_hex: "00".repeat(32),
+            client_addr: "127.0.0.1:1".into(),
+            server_addr: "127.0.0.1:2".into(),
+            packet_count: 99,
+            schema_version: TRACE_SCHEMA_VERSION,
+        };
+        let event = TraceEvent {
+            t_seconds: 0.0,
+            packet_no: 1,
+            direction: Direction::C2s,
+            seq: None,
+            flags: 0,
+            acks: vec![],
+            messages: vec![],
+        };
+        let mut jsonl = String::new();
+        jsonl.push_str(&serde_json::to_string(&HeaderJ { header }).unwrap());
+        jsonl.push('\n');
+        jsonl.push_str(&serde_json::to_string(&EventJ { event }).unwrap());
+        let err = Trace::from_jsonl_str(&jsonl).unwrap_err();
+        assert!(
+            matches!(&err, Error::TraceIo(e) if e.to_string().contains("packet_count mismatch")),
+            "expected packet_count mismatch error, got: {err}"
+        );
+    }
+
+    /// Regression guard: an unsupported `schema_version` must fail at
+    /// load time, not silently load as if it were a known version.
+    #[test]
+    fn trace_load_rejects_unknown_schema_version() {
+        let header = TraceHeader {
+            label: "future".into(),
+            source_pcap: "x.pcap".into(),
+            session_key_hex: "00".repeat(32),
+            client_addr: "127.0.0.1:1".into(),
+            server_addr: "127.0.0.1:2".into(),
+            packet_count: 0,
+            schema_version: 999,
+        };
+        let jsonl = serde_json::to_string(&HeaderJ { header }).unwrap();
+        let err = Trace::from_jsonl_str(&jsonl).unwrap_err();
+        assert!(
+            matches!(&err, Error::TraceIo(e) if e.to_string().contains("unsupported schema_version")),
+            "expected schema_version error, got: {err}"
+        );
+    }
+
+    /// Regression guard: an unknown top-level field on an event must
+    /// fail at deserialisation. `deny_unknown_fields` makes producer
+    /// drift surface here rather than at replay time.
+    #[test]
+    fn trace_load_rejects_unknown_event_field() {
+        let header = TraceHeader {
+            label: "drift".into(),
+            source_pcap: "x.pcap".into(),
+            session_key_hex: "00".repeat(32),
+            client_addr: "127.0.0.1:1".into(),
+            server_addr: "127.0.0.1:2".into(),
+            packet_count: 1,
+            schema_version: TRACE_SCHEMA_VERSION,
+        };
+        let mut jsonl = String::new();
+        jsonl.push_str(&serde_json::to_string(&HeaderJ { header }).unwrap());
+        jsonl.push('\n');
+        // Synthetic event with an unknown field `extra_future_field`.
+        jsonl.push_str(r#"{"event":{"t_seconds":0,"packet_no":1,"direction":"c2s","seq":null,"flags":0,"acks":[],"messages":[],"extra_future_field":42}}"#);
+        let err = Trace::from_jsonl_str(&jsonl).unwrap_err();
+        assert!(
+            matches!(&err, Error::TraceJson(_)),
+            "expected TraceJson rejection for unknown field, got: {err}"
+        );
     }
 
     #[derive(Serialize)]

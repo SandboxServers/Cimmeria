@@ -50,29 +50,26 @@ impl Client {
     }
 
     /// Construct the unencrypted `baseAppLogin` UDP datagram from a
-    /// completed Phase 2 session.
+    /// completed Phase 2 session. Pulls `account_id` and the ticket
+    /// from the session itself — no out-of-band threading required.
     ///
     /// The caller is responsible for the actual UDP `send_to` — Phase 1 of
     /// the wireclient deliberately stops at "produce the bytes" so that
     /// tests can byte-diff against the recorded capture before any UDP
     /// socket is involved. Phase 1.5 wires the socket loop.
-    pub fn build_login_packet(
-        session: &AuthSession,
-        account_id: u32,
-        request_id: u32,
-    ) -> Result<Vec<u8>> {
-        handshake::build_baseapp_login(request_id, account_id, &session.ticket)
+    pub fn build_login_packet(session: &AuthSession, request_id: u32) -> Result<Vec<u8>> {
+        handshake::build_baseapp_login(request_id, session.account_id, &session.ticket)
     }
 
     /// Construct a `Client` from a completed handshake. Intended for tests
     /// that drive the bytes themselves; the production path is
     /// `connect()` (not yet implemented — Phase 1.5).
-    pub fn from_handshake(session: AuthSession, account_id: u32, request_id: u32) -> Self {
+    pub fn from_handshake(session: &AuthSession, request_id: u32) -> Self {
         let encryption = session.encryption();
         Self {
             base_addr: session.base_addr,
             encryption,
-            account_id,
+            account_id: session.account_id,
             request_id,
         }
     }

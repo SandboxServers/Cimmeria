@@ -19,10 +19,6 @@ serde_json = { workspace = true }
 # SOAP/HTTP — auth Phase 1+2.
 reqwest = { workspace = true }
 
-# XML response parsing (Phase 1 + Phase 2 responses use the same XML shape
-# already exercised by cimmeria-services' auth handlers).
-quick-xml = { workspace = true }
-
 # Hex-encoded session keys come down from the auth server as 64-char strings;
 # decode here before handing to `cimmeria_mercury::MercuryEncryption`.
 hex = "0.4"
