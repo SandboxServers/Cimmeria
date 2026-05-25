@@ -181,7 +181,7 @@ pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Log capture for negative-logging regression guards (issue #304).
+// Log capture for negative-logging regression guards.
 //
 // Regression guards for log-only changes need to assert that a specific
 // WARN/ERROR event fired with the right structured fields. Without
@@ -197,11 +197,19 @@ pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
 // assert!(capture.find_event(tracing::Level::WARN, "AoI", "entity_to_addr_miss").is_some());
 // ```
 //
-// Each test scope owns its own subscriber via
-// `tracing::subscriber::with_default`; events outside the scope are
-// ignored. Capture is process-local — tests using it must not run
-// inside `#[tokio::test(flavor = "multi_thread")]` if they care about
-// observing only their own events.
+// # Threading model — IMPORTANT
+//
+// `LogCapture::install` calls `tracing::subscriber::set_default`, which
+// installs the subscriber as the **current thread's** default. Events
+// emitted on other threads are **NOT** captured.
+//
+// In practice: do NOT use `#[tokio::test(flavor = "multi_thread")]`
+// with `LogCapture`. The default `#[tokio::test]` flavor is
+// `current_thread`, which keeps every awaited future on the test's
+// thread — that's what the existing guards rely on. `install()`
+// asserts this at runtime: if a tokio multi-thread runtime is
+// active when you call `install()`, it panics with a hint, so the
+// footgun fails loudly instead of silently dropping events.
 // ──────────────────────────────────────────────────────────────────────
 
 use std::collections::HashMap as StdHashMap;
@@ -250,13 +258,35 @@ pub(crate) struct LogCapture {
 
 impl LogCapture {
     /// Build a subscriber with this layer installed, set it as the
-    /// thread-local default, and return a guard that captures into the
-    /// returned `LogCapture`.
+    /// current thread's default via [`tracing::subscriber::set_default`],
+    /// and return a guard that captures into the returned `LogCapture`.
     ///
     /// Holds the default-guard for the lifetime of the returned
-    /// `LogCaptureGuard`; drop the guard to restore the previous
+    /// [`LogCaptureGuard`]; drop the guard to restore the previous
     /// subscriber.
+    ///
+    /// # Panics
+    ///
+    /// Panics if called from inside a tokio multi-thread runtime —
+    /// `set_default` is thread-local, so events emitted on worker
+    /// threads would be silently dropped. Use the default
+    /// `#[tokio::test]` (current-thread) flavor.
     pub(crate) fn install() -> LogCaptureGuard {
+        // Multi-thread runtime detection. `Handle::try_current()` only
+        // succeeds inside a runtime; we then ask the flavor and bail
+        // if MultiThread. Outside any runtime (sync tests), the check
+        // is a no-op.
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread {
+                panic!(
+                    "LogCapture::install called inside a multi-thread tokio runtime. \
+                     LogCapture uses thread-local set_default, so events from worker \
+                     threads are NOT captured. Switch the test to the default \
+                     `#[tokio::test]` (current_thread) flavor."
+                );
+            }
+        }
+
         let events = Arc::new(Mutex::new(Vec::new()));
         let layer = CaptureLayer {
             events: events.clone(),
@@ -283,9 +313,19 @@ impl LogCaptureGuard {
     /// `message_substr` AND whose fields include the `reason` field set
     /// to `reason_value`. Returns `None` if no match.
     ///
-    /// Use the `reason` field convention (per CLAUDE.md / issue #304) to
-    /// pin down WHICH negative-log this is, not just any warn at the
+    /// Use the `reason` field convention (per CLAUDE.md and
+    /// `docs/architecture/negative-logging-convention.md`) to pin
+    /// down WHICH negative-log this is, not just any warn at the
     /// same target.
+    ///
+    /// # Field stability
+    ///
+    /// `reason_value` is matched by **exact string equality**. Treat
+    /// `reason` field values as stable API: renaming a value (even a
+    /// typo fix) will trip every guard pinned to the old string.
+    /// Coordinate via the convention doc when adding a new `reason`
+    /// or renaming an existing one. For substring matching, see
+    /// [`Self::find_message`] (no `reason` filter).
     pub fn find_event(
         &self,
         level: Level,
@@ -307,7 +347,6 @@ impl LogCaptureGuard {
 
     /// First event at `level` whose message contains `message_substr`.
     /// Use when the new log doesn't carry a `reason` field.
-    #[allow(dead_code)] // helper API — used by guards in other crates / future PRs
     pub fn find_message(&self, level: Level, message_substr: &str) -> Option<Captured> {
         self.capture
             .events

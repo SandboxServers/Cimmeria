@@ -117,7 +117,7 @@ pub(super) async fn execute_actions(
                     })
                     .await
                 {
-                    // Issue #304: cell→base channel drop swallows the
+                    // cell→base channel drop swallows the
                     // cinematic — player misses the visual cue for the
                     // chain action. warn! so a missing kismet correlates
                     // with a log line.
@@ -204,7 +204,7 @@ pub(super) async fn execute_actions(
                     })
                     .await
                 {
-                    // Issue #304: drop here means the minigame never
+                    // drop here means the minigame never
                     // launches but the player click already fired —
                     // chain stalls with no signal.
                     tracing::warn!(
@@ -353,7 +353,7 @@ pub(super) async fn execute_actions(
                     })
                     .await
                 {
-                    // Issue #304: same shape as PlaySequence/StartMinigame;
+                    // same shape as PlaySequence/StartMinigame;
                     // a dropped active-slot update leaves the client showing
                     // the wrong bandolier slot until the next equip toggle.
                     tracing::warn!(

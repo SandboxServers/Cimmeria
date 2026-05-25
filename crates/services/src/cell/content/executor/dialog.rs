@@ -144,7 +144,7 @@ pub(super) async fn remove_dialog_set(
                 })
                 .await
             {
-                // Issue #304: dropped interaction-type push leaves the
+                // dropped interaction-type push leaves the
                 // NPC with stale flags on the client (showing/hiding the
                 // wrong interaction prompt).
                 tracing::warn!(
@@ -267,7 +267,7 @@ async fn send_interaction_update_if_visible(
                 })
                 .await
             {
-                // Issue #304: same shape as remove_dialog_set —
+                // same shape as remove_dialog_set —
                 // dropped interaction-type push leaves the NPC with
                 // stale flags.
                 tracing::warn!(

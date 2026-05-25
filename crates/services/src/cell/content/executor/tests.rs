@@ -683,7 +683,7 @@ async fn set_aggression_level_one_writes_entity_field() {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Issue #304 negative-logging regression guards — content executor.
+// Negative-logging regression guards — content executor.
 //
 // Each test drops the mpsc receiver before invoking the executor, so
 // the cell→base channel returns SendError on every `.send()`. The
@@ -719,7 +719,7 @@ async fn play_sequence_warns_when_cell_to_base_channel_closed() {
         capture
             .find_message(Level::WARN, "PlaySequence: cell→base send failed")
             .is_some(),
-        "issue #304: PlaySequence must WARN when cell→base channel is closed; \
+        "negative-logging convention: PlaySequence must WARN when cell→base channel is closed; \
          reverting to `let _ = tx.send` breaks chain-stall diagnosability. \
          Captured events: {:#?}",
         capture.all()
@@ -759,7 +759,7 @@ async fn start_minigame_warns_when_cell_to_base_channel_closed() {
         capture
             .find_message(Level::WARN, "StartMinigame: cell→base send failed")
             .is_some(),
-        "issue #304: StartMinigame must WARN when cell→base channel is closed"
+        "negative-logging convention: StartMinigame must WARN when cell→base channel is closed"
     );
 }
 
@@ -790,7 +790,7 @@ async fn set_active_slot_warns_when_cell_to_base_channel_closed() {
         capture
             .find_message(Level::WARN, "SetActiveSlot: cell→base send failed")
             .is_some(),
-        "issue #304: SetActiveSlot must WARN when cell→base channel is closed"
+        "negative-logging convention: SetActiveSlot must WARN when cell→base channel is closed"
     );
 }
 
@@ -866,7 +866,7 @@ async fn remove_dialog_set_warns_when_cell_to_base_channel_closed() {
                 "RemoveDialogSet: cell→base interaction-type send failed"
             )
             .is_some(),
-        "issue #304: RemoveDialogSet must WARN when its InteractionType push fails; \
+        "negative-logging convention: RemoveDialogSet must WARN when its InteractionType push fails; \
          reverting to `let _ = tx.send` breaks stale-prompt diagnosability. \
          Captured: {:#?}",
         capture.all()
@@ -921,7 +921,7 @@ async fn add_dialog_set_warns_when_cell_to_base_channel_closed() {
         capture
             .find_message(Level::WARN, "interaction-type send failed")
             .is_some(),
-        "issue #304: AddDialogSet's send_interaction_update_if_visible helper \
+        "negative-logging convention: AddDialogSet's send_interaction_update_if_visible helper \
          must WARN when cell→base is closed (covers the :247 path). Captured: {:#?}",
         capture.all()
     );

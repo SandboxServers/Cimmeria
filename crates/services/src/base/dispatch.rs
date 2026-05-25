@@ -137,10 +137,17 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             if let Some(entity_id) = entity_id {
                 // Tell CellService to disconnect and destroy the entity
                 if let Some(ref tx) = cell_tx {
-                    // Issue #304: if either send fails on logoff, the cell
-                    // leaks the entity in its space_manager. warn! so a
-                    // memory leak / "ghost player" report can be traced
-                    // back to the logoff path.
+                    // If either send fails on logoff, the cell leaks
+                    // the entity in its space_manager. warn! so a
+                    // memory leak / "ghost player" report can be
+                    // traced back to the logoff path.
+                    //
+                    // Failure mode: this is `mpsc::Sender::send().await`
+                    // (NOT `try_send`), so it backpressures rather than
+                    // failing on a full channel. The only Err path is
+                    // the receiver having been dropped — i.e. cell
+                    // service is shut down. That makes WARN safe at
+                    // any load (no spam during normal backpressure).
                     if let Err(e) = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await {
                         tracing::warn!(
                             entity_id,
@@ -229,7 +236,7 @@ mod tests {
     use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
     use tracing::Level;
 
-    /// Issue #304: logOff with a closed cell→base channel must surface
+    /// logOff with a closed cell→base channel must surface
     /// the dropped DisconnectEntity / DestroyEntity sends so a "ghost
     /// player in space_manager" report can be traced back to the
     /// logoff path. Reverting either `if let Err` to `let _ = tx.send`

@@ -40,7 +40,19 @@
 //! See `spec.protocol.mercury-wire-format` §1.7 for the wire-level
 //! receiver model.
 //!
+//! # Negative-logging convention
+//!
+//! All three witness-send helpers below emit structured `warn!`
+//! (entity-to-addr miss — player-visible drop) and `debug!`
+//! (client-disconnected — transient race) events with a stable
+//! `reason` field. Regression guards live in this file's `mod tests`
+//! using `LogCapture`. See
+//! [`docs/architecture/negative-logging-convention.md`] for the field
+//! naming rules and level discipline that other negative-log seams
+//! must also follow.
+//!
 //! [`Channel`]: cimmeria_mercury::channel::Channel
+//! [`docs/architecture/negative-logging-convention.md`]: ../../../../docs/architecture/negative-logging-convention.md
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -289,7 +301,12 @@ pub(crate) async fn send_to_witness<F>(
         // dropped before we re-enter any tracing path. Calling
         // `.lock()` again inside the match `None` arm would deadlock —
         // the scrutinee guard's lifetime extends through the match
-        // body (regression caught by the issue #304 helper tests).
+        // body (regression caught by the negative-logging helper tests).
+        //
+        // `map_size` is a SNAPSHOT taken at this read. By the time the
+        // warn! below fires, another thread may have added or removed
+        // entries; the logged count is for ballpark-scope diagnosis,
+        // not a load-bearing invariant.
         let (addr_opt, map_size) = {
             let m = entity_to_addr.lock().unwrap();
             (m.get(&witness_id).copied(), m.len())
@@ -297,10 +314,10 @@ pub(crate) async fn send_to_witness<F>(
         let addr = match addr_opt {
             Some(a) => a,
             None => {
-                // Issue #304: entity gone from address map mid-send is a
+                // entity gone from address map mid-send is a
                 // player-visible bug (witness sees stale state). warn! so
-                // ops can grep this; `entity_count_in_map` gives ballpark
-                // scope of the leak.
+                // ops can grep this; `entity_count_in_map` is the
+                // snapshot taken above.
                 tracing::warn!(
                     witness_id,
                     reason = "entity_to_addr_miss",
@@ -378,7 +395,8 @@ pub(crate) async fn send_to_witness_reliable<F>(
 {
     let send_data = {
         // Read addr + map_size in one lock scope; see the unreliable
-        // variant above for the deadlock-on-re-lock rationale.
+        // variant above for the deadlock-on-re-lock rationale and the
+        // map_size snapshot caveat.
         let (addr_opt, map_size) = {
             let m = entity_to_addr.lock().unwrap();
             (m.get(&witness_id).copied(), m.len())
@@ -386,11 +404,10 @@ pub(crate) async fn send_to_witness_reliable<F>(
         let addr = match addr_opt {
             Some(a) => a,
             None => {
-                // Reliable path. Issue #304: dropping a reliable AoI
-                // packet means the client never sees a state-change
-                // (entity create/destroy, method call). This is the
-                // single biggest blind spot for the world-entry spawn
-                // glitches in #288.
+                // Reliable path. Dropping a reliable AoI packet means
+                // the client never sees a state-change (entity create/
+                // destroy, method call) — the single biggest blind
+                // spot for the world-entry spawn-glitch class.
                 tracing::warn!(
                     witness_id,
                     reason = "entity_to_addr_miss",
@@ -483,7 +500,8 @@ pub(crate) async fn send_bundle_to_witness_reliable(
 
     let send_data = {
         // Read addr + map_size in one lock scope; see the unreliable
-        // variant for the deadlock-on-re-lock rationale.
+        // variant for the deadlock-on-re-lock rationale and the
+        // map_size snapshot caveat.
         let (addr_opt, map_size) = {
             let m = entity_to_addr.lock().unwrap();
             (m.get(&witness_id).copied(), m.len())
@@ -615,7 +633,7 @@ pub(crate) async fn send_bundle_to_witness_reliable(
 mod tests {
     use super::*;
     use tracing::Level;
-    // TestTransport needed for the issue #304 log-capture guards below.
+    // TestTransport needed for the negative-logging log-capture guards below.
     use crate::test_support::TestTransport;
 
     /// `to_hex` formats each byte as two uppercase hex digits, separated
@@ -790,7 +808,7 @@ mod tests {
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Issue #304 negative-logging regression guards.
+    // Negative-logging regression guards.
     //
     // These tests fail if the warn/debug log level on the witness-miss
     // and disconnect paths is reverted to the original `trace!`. Per
@@ -839,7 +857,7 @@ mod tests {
         );
         assert!(
             found.is_some(),
-            "issue #304: AoI witness-miss must emit WARN with reason=entity_to_addr_miss; \
+            "negative-logging convention: AoI witness-miss must emit WARN with reason=entity_to_addr_miss; \
              reverting to trace!/debug! breaks ops visibility of the #288-class spawn glitches. \
              Captured events: {:#?}",
             capture.all()
@@ -879,7 +897,7 @@ mod tests {
                     "entity_to_addr_miss"
                 )
                 .is_some(),
-            "issue #304: reliable AoI witness-miss must emit WARN with reason=entity_to_addr_miss"
+            "negative-logging convention: reliable AoI witness-miss must emit WARN with reason=entity_to_addr_miss"
         );
     }
 
@@ -911,12 +929,12 @@ mod tests {
                     "entity_to_addr_miss"
                 )
                 .is_some(),
-            "issue #304: bundle AoI witness-miss must emit WARN with reason=entity_to_addr_miss"
+            "negative-logging convention: bundle AoI witness-miss must emit WARN with reason=entity_to_addr_miss"
         );
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Issue #304 disconnect/debug-path guards: addr is mapped but the
+    // Disconnect/debug-path guards: addr is mapped but the
     // client is not in `connected` (the post-handshake disconnect race
     // window). The unreliable / reliable / bundle helpers all log this
     // at `debug!` with `reason="client_disconnected"`. Promoting back
@@ -969,7 +987,7 @@ mod tests {
                     "client_disconnected"
                 )
                 .is_some(),
-            "issue #304: unreliable disconnect path must emit DEBUG with reason=client_disconnected"
+            "negative-logging convention: unreliable disconnect path must emit DEBUG with reason=client_disconnected"
         );
     }
 
@@ -1000,7 +1018,7 @@ mod tests {
                     "client_disconnected"
                 )
                 .is_some(),
-            "issue #304: reliable disconnect path must emit DEBUG with reason=client_disconnected"
+            "negative-logging convention: reliable disconnect path must emit DEBUG with reason=client_disconnected"
         );
     }
 
@@ -1026,7 +1044,7 @@ mod tests {
                     "client_disconnected"
                 )
                 .is_some(),
-            "issue #304: bundle disconnect path must emit DEBUG with reason=client_disconnected"
+            "negative-logging convention: bundle disconnect path must emit DEBUG with reason=client_disconnected"
         );
     }
 }

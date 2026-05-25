@@ -560,7 +560,7 @@ async fn select_destination_self_rejected() {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Issue #304 negative-logging regression guard — ring visibility loop.
+// Negative-logging regression guard — ring visibility loop.
 // ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -585,7 +585,7 @@ async fn send_visible_warns_when_cell_to_base_channel_closed() {
         capture
             .find_message(Level::WARN, "ring send_visible: cell→base send failed")
             .is_some(),
-        "issue #304: ring send_visible witness loop must WARN when cell→base \
+        "negative-logging convention: ring send_visible witness loop must WARN when cell→base \
          is closed; reverting to `let _ = tx.send(msg)` breaks visibility-desync \
          diagnosability. Captured: {:#?}",
         capture.all()

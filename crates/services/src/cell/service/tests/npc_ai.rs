@@ -646,13 +646,13 @@ async fn selector_picks_ammo_bearing_ability_for_npc() {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Issue #304 negative-logging regression guard: handle_use_ability
+// Negative-logging regression guard: handle_use_ability
 // returning false.
 //
 // The bug shape: NPC AI ticks but the ability never fires (mob picked
 // an ability that the pre-consume guard then rejected on cooldown, no
-// ammo, or any other reason). Pre-#304 this was silent — the mob would
-// appear stuck. The guard pins WARN level + reason field so removing
+// ammo, or any other reason). Historically this was silent — the mob
+// would appear stuck. The guard pins WARN level + reason field so removing
 // either trips the test.
 // ──────────────────────────────────────────────────────────────────────
 
@@ -701,7 +701,7 @@ async fn npc_ai_fight_warns_when_handle_use_ability_returns_false() {
                 "handle_use_ability_returned_false"
             )
             .is_some(),
-        "issue #304: NPC AI must WARN when handle_use_ability returns false; \
+        "negative-logging convention: NPC AI must WARN when handle_use_ability returns false; \
          reverting to bare `.await` (ignoring the bool) breaks mob-stuck \
          diagnosability. Captured: {:#?}",
         capture.all()

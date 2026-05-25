@@ -133,7 +133,7 @@ pub(crate) async fn handle_map_loaded(
         tracing::debug!(%addr, len = pkt_data.len(), seq = frag_seq,
             part = i + 1, total = map_packets.len(), "UDP_OUT mapLoaded entity data");
         if let Err(e) = transport.send_to(pkt_data, addr).await {
-            // Issue #304: a single failed fragment leaves the client with
+            // a single failed fragment leaves the client with
             // a partial enter-world bundle — invisible NPCs, missing
             // appearance, or stuck on the load screen. error! so a
             // partial world-entry is greppable per fragment.
@@ -268,13 +268,13 @@ mod tests {
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Issue #304 negative-logging regression guard.
+    // Negative-logging regression guard.
     //
-    // The pre-#304 code did `transport.send_to(pkt_data, addr).await?;`
-    // per fragment with no log. A partial enter-world bundle is a
-    // player-visible bug class (invisible NPCs, missing appearance,
-    // stuck-on-load) so the change promotes per-fragment failures to
-    // ERROR with fragment_idx + total + body_len. The guard pins:
+    // Per-fragment `transport.send_to(...).await?;` propagation with
+    // no log left a partial enter-world bundle as a silent player-
+    // visible bug (invisible NPCs, missing appearance, stuck-on-load).
+    // The handler now emits an ERROR per failing fragment with
+    // fragment_idx + total + body_len. The guard pins:
     //   1. Result is Err (preserved propagation).
     //   2. ERROR fires naming "fragment send failed".
     //   3. fragment_idx field carries the failing fragment index (1).
@@ -363,7 +363,9 @@ mod tests {
         );
         let frag_err = capture
             .find_message(Level::ERROR, "map_loaded: fragment send failed")
-            .expect("issue #304: per-fragment ERROR must fire — captured: see all()");
+            .expect(
+                "negative-logging convention: per-fragment ERROR must fire — captured: see all()",
+            );
         // Sanity-check the structured fields carry the failing fragment
         // identity (idx + total) so an ops grep can pin down which
         // fragment was lost.

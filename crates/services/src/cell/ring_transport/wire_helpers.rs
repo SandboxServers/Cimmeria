@@ -141,7 +141,7 @@ pub(super) async fn send_visible(
             }
         };
         if let Err(e) = tx.send(msg).await {
-            // Issue #304: a dropped visibility update during ring
+            // a dropped visibility update during ring
             // transport leaves a witness seeing the player as
             // visible/invisible incorrectly. Will recover on next AoI
             // refresh but the desync is visible.

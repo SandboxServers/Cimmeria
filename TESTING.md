@@ -213,6 +213,29 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 
 **Examples**: `crates/wireclient/tests/auth_smoke.rs` (SOAP round-trip against in-process `AuthService`); `crates/wireclient/src/handshake.rs` (byte-exact `baseAppLogin` + reply parsers); follow-up phases land the Castle Cellblock e2e smoke against a spawned server.
 
+### 12. Negative-log regression guards
+
+**Where**: Co-located with the production code (same `mod tests` or a sibling `tests.rs`). Uses `crate::test_support::LogCapture` to record events and `find_event(level, message_substr, reason_value)` / `find_message(level, message_substr)` to assert.
+
+**For**: Any change that promotes a silent error swallow (`let _ = tx.send(...)`, `let _ = query.execute(...)`, `trace!`-level miss) to a queryable structured log per [docs/architecture/negative-logging-convention.md](docs/architecture/negative-logging-convention.md). Without a guard, a future revert to `let _` or `trace!` is invisible.
+
+**The failure modes it catches:**
+
+- **Silent revert of a level promotion** — a `warn!` that quietly becomes `trace!` again (pinning the level traps it).
+- **Silent removal of a structured field** — `reason="entity_to_addr_miss"` dropped during a refactor (pinning the `reason` value via `find_event` traps it).
+- **Silent revert of the `if let Err` wrap** — going back to `let _ = tx.send(...)` (the test fails because the event no longer fires).
+
+**Patterns to follow:**
+
+- **Install before the action.** `let capture = LogCapture::install();` MUST happen before the function under test runs, so the per-thread subscriber is in place when the log fires.
+- **Pin level AND field.** Use `find_event(Level::WARN, "<message_substr>", "<reason_value>")` to trip on both a level-only revert and a field-removing revert. For paths where the new log doesn't carry a `reason` field, `find_message(Level::WARN, "<substr>")` is the fallback.
+- **Force the failure path.** For `mpsc::Sender::send().await`, drop the receiver before invoking the function (`let (tx, rx) = mpsc::channel(8); drop(rx);`). For `transport.send_to`, supply an inline `FailingTransport` impl (see `crates/services/src/base/world_entry/cell_dispatch/tests.rs` and `enable_entities.rs::tests`). For `rows_affected == 0`, use a live-DB test that binds a non-existent id.
+- **Default `#[tokio::test]` (current_thread).** `LogCapture::install()` PANICS if called inside a `multi_thread` runtime — `set_default` is thread-local, and events on worker threads would be silently dropped. The panic message names the fix.
+- **Treat `reason` values as stable API.** `find_event` matches `reason` by exact string equality. Renaming a value (even a typo fix) trips every guard pinned to the old string — coordinate via the convention doc.
+- **One test per seam.** Don't multiplex unrelated negative paths in one test — when one assertion fails, you want to know which seam broke.
+
+**Examples**: `crates/services/src/base/helpers.rs::tests` (3× witness-miss WARN + 3× client-disconnect DEBUG), `crates/services/src/base/world_entry/map_loaded.rs::tests::map_loaded_fragment_send_failure_errors_and_logs` (FailAfter transport + state-not-mutated invariant), `crates/services/src/base/world_entry_appearance.rs::tests::on_client_ready_errors_each_cell_tx_send_independently_when_closed` (3 ERROR sites in one test with closed receiver).
+
 ---
 
 ## Choosing a test type
@@ -229,6 +252,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 | Mercury protocol-layer behavior (reliable delivery under loss, fragment reassembly, keepalive cadence, encryption round-trip, RTO convergence) | Mercury session test |
 | A protocol-state recovery shape (single-packet drop in a long stream, burst loss, asymmetric ack loss, sustained probabilistic loss, lossy-socket integration), or a pcap-replay regression against a captured production session | Network chaos test |
 | An end-to-end client-intent + server-behaviour pair (full Castle Cellblock playthrough, wire-path drift, client-invariant violations on `useAbility`) | Wire-level replay test (wireclient) |
+| Promoting a silent error swallow (`let _ = tx.send(...)`, `let _ = query.execute(...)`, `trace!`-level miss) to a queryable structured log | Negative-log regression guard |
 
 ### When one feature needs more than one test
 

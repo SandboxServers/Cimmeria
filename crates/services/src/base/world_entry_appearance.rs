@@ -289,7 +289,7 @@ pub(crate) async fn handle_on_client_ready(
 
     if let Some(ref tx) = cell_tx {
         if let Err(e) = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await {
-            // Issue #304: ConnectEntity drop leaves the cell with no
+            // ConnectEntity drop leaves the cell with no
             // record of the new player — every subsequent AoI / method
             // call for this entity would silently drop. error! because
             // recovery requires the player to log out and back in.
@@ -312,7 +312,7 @@ pub(crate) async fn handle_on_client_ready(
             })
             .await
         {
-            // Issue #304: same shape as the ConnectEntity error above —
+            // same shape as the ConnectEntity error above —
             // missing InitPlayerState leaves the cell with a connected
             // entity but no mission/ability/bandolier state. Player
             // will appear loaded but quests / hotbar will be empty.
@@ -337,7 +337,7 @@ pub(crate) async fn handle_on_client_ready(
                 })
                 .await
             {
-                // Issue #304: ring-destination drop strands the player
+                // ring-destination drop strands the player
                 // mid-transport — they arrive at the destination but
                 // the ring FSM stays in RemoteLoadWait forever.
                 tracing::error!(
@@ -411,7 +411,7 @@ pub(crate) async fn handle_on_client_ready(
                 .await
             {
                 Ok(r) if r.rows_affected() == 0 => {
-                    // Issue #304: silent rows_affected==0 was the
+                    // silent rows_affected==0 was the
                     // original-Python ghost bug — UPDATE succeeds but
                     // touches nothing, flag stays set, cinematic
                     // re-fires every login. error! so a single ops query
@@ -929,7 +929,7 @@ mod tests {
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Issue #304 negative-logging regression guards: onClientReady
+    // Negative-logging regression guards: onClientReady
     // cell_tx sends. ConnectEntity / InitPlayerState / AdvanceRing-
     // Destination are critical handoffs from base to cell — dropping
     // any of them strands the player in a half-loaded state. The
@@ -999,14 +999,14 @@ mod tests {
             capture
                 .find_message(Level::ERROR, "ConnectEntity: base→cell send failed")
                 .is_some(),
-            "issue #304: ConnectEntity ERROR missing. Captured: {:#?}",
+            "negative-logging convention: ConnectEntity ERROR missing. Captured: {:#?}",
             capture.all()
         );
         assert!(
             capture
                 .find_message(Level::ERROR, "InitPlayerState: base→cell send failed")
                 .is_some(),
-            "issue #304: InitPlayerState ERROR missing"
+            "negative-logging convention: InitPlayerState ERROR missing"
         );
         assert!(
             capture
@@ -1015,7 +1015,7 @@ mod tests {
                     "AdvanceRingDestination: base→cell send failed"
                 )
                 .is_some(),
-            "issue #304: AdvanceRingDestination ERROR missing (requires \
+            "negative-logging convention: AdvanceRingDestination ERROR missing (requires \
              pending_destination_ring_id to be Some; check test staging)"
         );
     }

@@ -24,7 +24,7 @@ const MAX_MESSAGE_LEN: usize = 0x1000;
 /// Extracted from the inline call sites in [`handle_connection`] so
 /// the four (game-driven / tick-driven × victory / failure) variants
 /// share one error-handling path. `phase` names which call site fired
-/// so the ops log distinguishes them. Issue #304: pre-#304 these were
+/// so the ops log distinguishes them. Historically these were
 /// `let _ = result_tx.send(...).await`, silently swallowing the loss
 /// of a minigame outcome — chains never fired, quest stalled.
 async fn send_minigame_result(
@@ -493,7 +493,7 @@ mod tests {
     use crate::test_support::LogCapture;
     use tracing::Level;
 
-    /// Issue #304: `send_minigame_result` is the shared helper extracted
+    /// `send_minigame_result` is the shared helper extracted
     /// from the four inline call sites in `handle_connection` (game-
     /// driven victory/failure + tick-driven victory/failure). Dropping
     /// the receiver simulates a downed cell↔base channel; the guard
@@ -517,7 +517,7 @@ mod tests {
 
         let event = capture
             .find_message(Level::ERROR, "Minigame: result delivery failed")
-            .expect("issue #304: closed result_tx must emit ERROR");
+            .expect("negative-logging convention: closed result_tx must emit ERROR");
         assert!(
             event.has_field("phase", "victory_message"),
             "phase field must be carried so all four call sites \

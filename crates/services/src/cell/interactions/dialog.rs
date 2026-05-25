@@ -34,7 +34,7 @@ pub async fn send_dialog_display(
         })
         .await
     {
-        // Issue #304: failure to deliver onDialogDisplay leaves the
+        // failure to deliver onDialogDisplay leaves the
         // player stuck — they interacted with an NPC and nothing
         // happens. warn! because it's player-visible.
         tracing::warn!(
@@ -53,7 +53,7 @@ mod tests {
     use tokio::sync::mpsc;
     use tracing::Level;
 
-    /// Issue #304: dropped onDialogDisplay leaves the player stuck. The
+    /// dropped onDialogDisplay leaves the player stuck. The
     /// guard drops the receiver before calling the helper so the send
     /// fails synchronously; assertion pins both the WARN level and the
     /// message body, so a revert to `let _ = tx.send(…)` trips it.
@@ -72,7 +72,7 @@ mod tests {
             capture
                 .find_message(Level::WARN, "DisplayDialog: cell→base send failed")
                 .is_some(),
-            "issue #304: send_dialog_display must WARN when cell→base channel is closed; \
+            "negative-logging convention: send_dialog_display must WARN when cell→base channel is closed; \
              reverting to `let _` breaks player-stuck-on-NPC diagnosability"
         );
     }

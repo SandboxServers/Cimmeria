@@ -81,7 +81,7 @@ pub(crate) async fn handle_enable_entities(
 
         let pkt = build_create_player(&key, seq, &acks, &entry_info, load_data.as_ref());
         if let Err(e) = transport.send_to(&pkt, addr).await {
-            // Issue #304: surface the failure before the early-return so
+            // surface the failure before the early-return so
             // ops can correlate against the staged `pending_map_loaded`
             // state that won't be reached. Without this, a packet-send
             // failure looked identical to a client that simply never
@@ -91,7 +91,7 @@ pub(crate) async fn handle_enable_entities(
                 player_entity_id = entry_info.player_entity_id,
                 space_id = entry_info.space_id,
                 seq,
-                "Create player: socket.send_to failed before staging pending_map_loaded: {e}"
+                "Create player: transport.send_to failed before staging pending_map_loaded: {e}"
             );
             return Err(e.into());
         }
@@ -258,13 +258,13 @@ mod tests {
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Issue #304 negative-logging regression guards.
+    // Negative-logging regression guards.
     //
     // The create-player step calls `transport.send_to` and then stages
     // `pending_map_loaded` so the `mapLoaded` reply runs the enter-
-    // world emit. Pre-#304 a send failure bubbled via `?` with no log
-    // — the next ENABLE_ENTITIES retry was indistinguishable from a
-    // client that simply never ack'd `mapLoaded`. The change adds an
+    // world emit. A bare `?` propagation with no log was historically
+    // indistinguishable from a client that simply never ack'd
+    // `mapLoaded`. The handler now emits an
     // ERROR log with `player_entity_id` / `space_id` / `seq` and
     // returns Err BEFORE staging `pending_map_loaded`. The guards
     // below pin: (a) ERROR fires, (b) result.is_err(), (c) state was
@@ -352,10 +352,10 @@ mod tests {
             capture
                 .find_message(
                     Level::ERROR,
-                    "Create player: socket.send_to failed before staging pending_map_loaded"
+                    "Create player: transport.send_to failed before staging pending_map_loaded"
                 )
                 .is_some(),
-            "issue #304: ERROR log with player_entity_id/space_id/seq must fire \
+            "negative-logging convention: ERROR log with player_entity_id/space_id/seq must fire \
              before the early-return so the failure correlates against the \
              not-yet-staged pending_map_loaded. Captured: {:#?}",
             capture.all()

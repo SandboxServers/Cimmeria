@@ -285,7 +285,7 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     )
     .await;
     if !fired {
-        // Issue #304: handle_use_ability returns false when the
+        // handle_use_ability returns false when the
         // pre-consume guard rejected the call (entity missing/dead, no
         // ability, on cooldown, reload in flight, no ammo, or
         // out-of-range). For NPC AI ticks this is normally a cooldown
@@ -294,7 +294,7 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
         tracing::warn!(
             npc_id,
             target = target_id,
-            ability = chosen_ability,
+            ability_id = chosen_ability,
             distance = dist_to_target,
             reason = "handle_use_ability_returned_false",
             "NPC AI: attack tick produced no ability fire -- mob may appear stuck"

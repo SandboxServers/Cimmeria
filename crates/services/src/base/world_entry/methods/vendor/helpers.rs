@@ -152,7 +152,7 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
                 })
                 .await
             {
-                // Issue #304: cell-side cache won't drop stale entries;
+                // cell-side cache won't drop stale entries;
                 // player keeps seeing the old bandolier set until next
                 // re-sync.
                 tracing::warn!(
@@ -259,7 +259,7 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
             })
             .await
         {
-            // Issue #304: cell-side cache won't see the new bandolier
+            // cell-side cache won't see the new bandolier
             // composition; equip/holster animations may visually
             // desync until next re-sync.
             tracing::warn!(
