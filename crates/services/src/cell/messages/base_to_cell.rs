@@ -173,4 +173,20 @@ pub enum BaseToCellMsg {
         result_code: u8,
         on_victory_chains: Vec<i64>,
     },
+
+    /// Client→server `requestEntityUpdate` (msg `0x07`): the client believes it
+    /// is missing or has stale state for one or more entities and is asking the
+    /// server to re-emit them. This is the canonical recovery path when a
+    /// `createEntity` (`0x09`) for an NPC gets dropped on the wire past the
+    /// 20-retry lifetime cap — otherwise the NPC stays permanently invisible
+    /// on that client.
+    ///
+    /// The cell re-emits a synthetic `CellToBaseMsg::EnteredAoI` for each
+    /// requested `entity_id` that is currently in `witness_id`'s AoI. Entities
+    /// not in the witness's witness set are dropped silently — the client must
+    /// not be able to probe arbitrary entity ids.
+    RequestEntityUpdate {
+        witness_id: u32,
+        entity_ids: Vec<u32>,
+    },
 }

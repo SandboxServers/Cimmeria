@@ -5,3 +5,4 @@ use cimmeria_entity::cell_entity::BandolierItem;
 mod bandolier_sync;
 mod bandolier_update;
 mod general;
+mod request_entity_update;
