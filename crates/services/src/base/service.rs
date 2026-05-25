@@ -154,11 +154,14 @@ impl BaseService {
         let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
-        // The cell→base message handler emits to clients via the send-side
-        // trait, so it gets a `UdpTransport` wrapping the recv socket. The
-        // recv loop below keeps the concrete socket for `recv_from`.
-        let transport_for_cell: Arc<dyn Transport> =
+        // Wrap the recv socket as a `BidirectionalTransport` once. The
+        // recv loop owns it for `recv_from`; the cell→base handler gets
+        // a clone projected to the send-only `Transport` super-trait.
+        // Chaos integration tests substitute a `LossyTransport` wrapping
+        // the same UDP socket without touching call sites.
+        let bidi_transport: Arc<dyn cimmeria_mercury::transport::BidirectionalTransport> =
             Arc::new(UdpTransport::new(Arc::clone(&socket)));
+        let transport_for_cell: Arc<dyn Transport> = bidi_transport.clone();
         let connected_for_cell = Arc::clone(&connected);
         let entity_to_addr_for_cell = Arc::clone(&entity_to_addr);
         let cell_tx_for_cell = cell_tx.clone();
@@ -175,7 +178,7 @@ impl BaseService {
         tokio::spawn(async move {
             tracing::trace!("Base service UDP receive loop started");
             run_connect_loop(
-                socket,
+                bidi_transport,
                 pending_logins,
                 db_pool,
                 resource_cache,

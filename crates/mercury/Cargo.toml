@@ -13,6 +13,17 @@ bytes = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }
+# ChaCha20 RNG — bitwise-deterministic across platforms (unlike StdRng).
+# Used by `test_harness::policy::DropProbability` and by
+# `lossy_transport::LossyTransport`. Kept as a regular dependency
+# (not optional) so the bare `cargo test -p cimmeria-mercury`
+# invocation works without `--features` plumbing. The modules
+# themselves are `#[cfg(any(test, feature = "..."))]`-gated, so
+# `rand_chacha` is only linked into binaries that actually need it
+# (test executables + consumer crates that opt into the chaos
+# features); production builds exclude both the modules and the
+# dep's code via dead-code elimination.
+rand_chacha = { workspace = true }
 async-trait = { workspace = true }
 
 # Cryptography (AES-256-CBC + HMAC-MD5 — must be byte-identical to C++ implementation)
@@ -28,16 +39,20 @@ digest = "0.10"
 
 [features]
 # Exposes `test_transport::TestTransport`, a recording `Transport` impl for
-# byte-exact fan-out assertions. Consumer crates pull it in via a
-# dev-dependency: `cimmeria-mercury = { path = "../mercury", features =
-# ["test-support"] }`. Kept off by default so production builds never include
-# the recorder. See docs/architecture/transport-trait.md.
+# byte-exact fan-out assertions, and `lossy_transport::LossyTransport`, the
+# chaos-testing wrapper. Both pull in `rand_chacha` for seeded determinism.
+# Consumer crates pull it in via a dev-dependency: `cimmeria-mercury = {
+# path = "../mercury", features = ["test-support"] }`. Kept off by default
+# so production builds never include the recorder or the RNG state. See
+# docs/architecture/transport-trait.md and
+# docs/architecture/network-chaos-testing.md.
 test-support = []
 
 # Exposes `test_harness`, the Tier 2 loopback Mercury session harness for
 # end-to-end paired-channel tests (reliable delivery under simulated loss,
 # fragment reassembly, keepalive cadence, encryption round-trip, handshake,
-# ack aggregation, RTO convergence). Consumer crates pull it in via a
+# ack aggregation, RTO convergence). Pulls in `rand_chacha` for the
+# chaos-primitives' seeded RNG. Consumer crates pull it in via a
 # dev-dependency: `cimmeria-mercury = { path = "../mercury", features =
 # ["test-harness"] }`. Kept off by default so production builds never include
 # the harness, its `TestClock`, or its `tokio::net::UdpSocket` recv pumps.
@@ -50,3 +65,13 @@ test-harness = []
 # packet/replay_smoke.rs; proptest widens that coverage to the full
 # valid input space.
 proptest = { workspace = true }
+# Pcap file parsing for the network-chaos pcap-replay regression
+# harness. Pure-Rust, supports both classic pcap and pcap-ng.
+# Used by `test_harness::pcap_replay` to load the lomiada fixture
+# from debug/lomiada-broke-in-hallway02/ and replay it against a
+# synthetic Channel for the deterministic regression test.
+pcap-file = "2.0"
+# Ethernet + IPv4 + UDP frame parser used to extract Mercury UDP
+# payloads from pcap records. Cross-platform, no system libpcap
+# needed.
+etherparse = "0.20"

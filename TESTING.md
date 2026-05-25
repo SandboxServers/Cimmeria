@@ -165,7 +165,34 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 
 **Examples**: `crates/mercury/src/test_harness/tests/reliable.rs` (drop → RTO → retransmit → ack pipeline), `fragment.rs` (3-fragment reassembly under latency policy), `keepalive.rs` (clock-advance past `KEEPALIVE_INTERVAL_MS`), `encryption.rs` (multi-bundle keystream + retransmit-cached-bytes), `rto.rs` (floor engagement on zero-latency loopback).
 
-### 10. Wire-level replay tests (`cimmeria-wireclient`)
+### 10. Network chaos tests
+
+**Where**: `crates/mercury/src/test_harness/tests/chaos/` for protocol-state scenarios; `crates/services/tests/chaos_*.rs` for `LossyTransport` integration; the pcap-replay infrastructure lives at `crates/mercury/src/test_harness/pcap_replay.rs`. Behind the `test-harness` Cargo feature for the L1 scenarios; behind `test-support` for `LossyTransport`.
+
+**For**: Reproducing a real protocol-state recovery shape — single-packet drop mid-stream, burst loss, asymmetric ack loss, sustained probabilistic loss, lossy-socket integration, or a pcap replay of a captured production session. Pins regressions in the Mercury retransmit / TX-window / RTO / inactivity-timeout paths. The lomiada-class regression (a single transatlantic UDP drop that kills the session 60s later because the TX window can't drain) is the canonical bug shape this catches.
+
+**The three layers** (see [docs/architecture/network-chaos-testing.md](docs/architecture/network-chaos-testing.md) for the full ADR):
+
+- **L1 — Channel-level scenarios** under `tests/chaos/`. Use `LoopbackSession` + `NetworkPolicy.drop_at_send_count` / `drop_probability` / `duplicate_next_count` / `reorder_buffer_size` to construct the failure shape. Assert recovery with `peer.recv_n_bundles` + `invariants::all_safety_invariants`.
+- **L2 — `LossyTransport`** wrapping `BidirectionalTransport`. Use `LossyConfig::from_profile(LossyProfile::Transatlantic)` for the canonical "real wire" profile. Integration tests in `crates/services/tests/chaos_*.rs` wrap a real UDP socket and exercise the services-layer recv loop under chaos.
+- **L3 — Pcap replay** via `PcapReplay::load(...).with_key_from(...)`. Loads a real pcap (e.g. `debug/lomiada-broke-in-hallway02/`), decrypts via the saved session key, yields ordered events. Tests should skip silently if the fixture isn't present so dev environments without `debug/` still pass.
+
+**Patterns to follow:**
+
+- **Use seeded RNG.** Any probabilistic drop (`DropProbability::pct(N)`) or `LossyTransport` config must explicitly set the seed (`rng_seed: Some(0xC0FFEE)`) so the test is bitwise-reproducible across CI runs and platforms.
+- **`reset_counters` between phases.** Tests that combine handshake + chaos primitives should call `policy.reset_counters()` after the harness handshake completes so `send_count`-indexed primitives (`drop_at_send_count`) align to the test's sends only.
+- **Respect `RETRANSMIT_BUDGET_PER_TICK = 5`.** A burst that exceeds the budget needs multiple ticks to fully retransmit, and between ticks the clock must advance enough to exceed the (potentially doubled) RTO. The `lomiada_single_packet_gap` test stays inside the budget; `burst_loss_mid_stream` exercises the multi-tick drain explicitly.
+- **Assert safety invariants at scenario end.** Call `invariants::all_safety_invariants(&channel)` to catch any silent tx_window overflow / orphan-retransmit blowup the scenario might have left behind.
+- **Pcap-replay tests should skip-not-fail when fixtures are missing.** Some dev environments exclude `debug/`; gate the test body on `if !pcap.exists() || !keys.exists() { return; }`.
+- **L2 integration tests are slow.** A `Transatlantic` profile run over 500 packets takes ~30s wall time because of the 60ms-per-recv latency. Use a smaller send count for quick smoke; reserve full-volume runs for a slower CI tier if one exists.
+
+**Examples**:
+
+- L1: `crates/mercury/src/test_harness/tests/chaos/lomiada_single_packet_gap.rs` (the canonical recovery shape), `sustained_5pct_loss_60s.rs` (seeded Monte Carlo), `asymmetric_ack_loss.rs` (lomiada-shape silent peer).
+- L2: `crates/services/tests/chaos_lossy_transport_integration.rs` (round-trip through `LossyTransport`, transatlantic-profile loss).
+- L3: `crates/mercury/src/test_harness/tests/chaos/replay_lomiada.rs` (real pcap fixture).
+
+### 11. Wire-level replay tests (`cimmeria-wireclient`)
 
 **Where**: `crates/wireclient/tests/*.rs`. Uses [`cimmeria_wireclient::session_trace::Trace`](crates/wireclient/src/session_trace.rs) to load a JSONL trace produced by [`tools/pcap_to_session.py`](tools/pcap_to_session.py) from a decrypted `.pcap` + AES `keys.txt`. See the [wireclient ADR](docs/architecture/wireclient.md).
 
@@ -200,6 +227,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 | Content seed correctness (chains, triggers, action wiring) | Chain-replay test |
 | A BaseApp handler's outbound fan-out (which addrs, in what order, with which bytes) | Fan-out byte test |
 | Mercury protocol-layer behavior (reliable delivery under loss, fragment reassembly, keepalive cadence, encryption round-trip, RTO convergence) | Mercury session test |
+| A protocol-state recovery shape (single-packet drop in a long stream, burst loss, asymmetric ack loss, sustained probabilistic loss, lossy-socket integration), or a pcap-replay regression against a captured production session | Network chaos test |
 | An end-to-end client-intent + server-behaviour pair (full Castle Cellblock playthrough, wire-path drift, client-invariant violations on `useAbility`) | Wire-level replay test (wireclient) |
 
 ### When one feature needs more than one test
