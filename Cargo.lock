@@ -763,7 +763,7 @@ name = "cimmeria-common"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "quick-xml 0.38.4",
+ "quick-xml 0.39.4",
  "serde",
  "thiserror 2.0.18",
  "tracing",
@@ -774,7 +774,7 @@ name = "cimmeria-content-editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "quick-xml 0.38.4",
+ "quick-xml 0.39.4",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
@@ -806,7 +806,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "cimmeria-common",
- "quick-xml 0.38.4",
+ "quick-xml 0.39.4",
  "serde",
  "thiserror 2.0.18",
 ]
@@ -923,7 +923,7 @@ dependencies = [
  "cimmeria-game",
  "cimmeria-mercury",
  "proptest",
- "quick-xml 0.38.4",
+ "quick-xml 0.39.4",
  "rand 0.10.1",
  "rand_chacha 0.10.0",
  "rand_distr",
