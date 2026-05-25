@@ -27,6 +27,12 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 zip = { workspace = true }
 
+# Per-install UUID minting for the telemetry identity (#366). Only the
+# `v4` feature is needed — we don't parse externally-supplied UUIDs.
+# Already in the workspace lockfile as a transitive dep, just hoisted
+# to a direct dep here.
+uuid = { version = "1", features = ["v4", "serde"] }
+
 walkdir = "2"
 gethostname = "0.5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
@@ -51,7 +57,11 @@ thiserror = { workspace = true }
 # windows-sys already in the workspace lockfile to avoid pulling a 5th
 # copy of the sys bindings.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+# Win32_System_Registry: reading HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid
+# for telemetry machine_id derivation (#366, addresses Clara G4 —
+# `hostname || gethostname` was self-referential; MachineGuid is the
+# canonical Windows-side stable-per-install identifier).
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Registry"] }
 
 [build-dependencies]
 # Embeds icons/icon.ico into the .exe as a Win32 resource when targeting

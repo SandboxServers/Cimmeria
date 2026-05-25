@@ -25,6 +25,11 @@ pub const LOG_UPLOAD_SAS_URL: Option<&str> = option_env!("LAUNCHER_LOG_SAS_URL")
 /// Current persisted config-file schema. Bump when a breaking change to
 /// the on-disk shape lands; the load path then refuses to deserialise
 /// against the wrong schema rather than silently defaulting fields.
+///
+/// Adding `#[serde(default)]` fields is always backwards-compatible by
+/// construction and does NOT require a bump — the telemetry block
+/// added for #366 (Phase 2) is loaded into a defaulted
+/// [`TelemetrySettings`] on legacy config files.
 pub const CONFIG_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Error)]
@@ -51,6 +56,48 @@ pub struct LauncherConfig {
     pub install_path: PathBuf,
     pub server_host: String,
     pub manifest_url: String,
+    /// Dev-session telemetry preferences (#366). Defaulted on legacy
+    /// configs so a launcher upgrade doesn't suddenly start streaming
+    /// without an explicit user choice — the runtime "enabled by
+    /// default for dev builds" gate lives in `TelemetrySettings`
+    /// itself, not the persisted shape.
+    #[serde(default)]
+    pub telemetry: TelemetrySettings,
+}
+
+/// User-controllable telemetry preferences. Persists alongside the
+/// rest of `LauncherConfig`; the per-session/per-upload runtime state
+/// (auth token, last-successful-upload timestamp, cached kill-switch
+/// state) lives in a sibling [`crate::state`] file, NOT here — those
+/// fields churn on every session and conflating them with
+/// user-controllable preferences would mean the config file gets
+/// rewritten on every tick.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TelemetrySettings {
+    /// User-facing opt-out checkbox. When false, the launcher does NOT
+    /// fetch a session token, NOT tail logs, NOT upload bundles — the
+    /// game launches normally and no HTTP calls are made to the auth
+    /// endpoint or the Functions endpoint.
+    ///
+    /// Default: true. The opt-out semantics is intentional — by the
+    /// time a dev clicks Launch they've already chosen to run a dev
+    /// build, which implies consent to dev-build instrumentation.
+    /// End-user release builds will flip the default off via a build-
+    /// time feature flag (Phase 6).
+    #[serde(default = "default_telemetry_enabled")]
+    pub enabled: bool,
+}
+
+impl Default for TelemetrySettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_telemetry_enabled(),
+        }
+    }
+}
+
+fn default_telemetry_enabled() -> bool {
+    true
 }
 
 fn default_schema_version() -> u32 {
@@ -64,6 +111,7 @@ impl Default for LauncherConfig {
             install_path: default_install_path(),
             server_host: DEFAULT_SERVER_HOST.to_string(),
             manifest_url: DEFAULT_MANIFEST_URL.to_string(),
+            telemetry: TelemetrySettings::default(),
         }
     }
 }
@@ -94,6 +142,12 @@ pub fn config_path() -> PathBuf {
 
 pub fn ledger_path() -> PathBuf {
     exe_dir().join("uploaded.json")
+}
+
+/// Canonical path for [`crate::state::TelemetryState`] — sits next to
+/// the launcher exe alongside the other per-install state files.
+pub fn telemetry_state_path() -> PathBuf {
+    exe_dir().join("telemetry-state.json")
 }
 
 pub fn exe_dir() -> PathBuf {
@@ -130,12 +184,41 @@ mod tests {
             install_path: PathBuf::from("X"),
             server_host: "Y".into(),
             manifest_url: "Z".into(),
+            telemetry: TelemetrySettings { enabled: false },
         };
         cfg.save(&path).unwrap();
         let loaded = LauncherConfig::load(&path).unwrap();
         assert_eq!(loaded.install_path, PathBuf::from("X"));
         assert_eq!(loaded.server_host, "Y");
         assert_eq!(loaded.manifest_url, "Z");
+        assert!(!loaded.telemetry.enabled, "opt-out must roundtrip");
+    }
+
+    // New field on the same schema_version: legacy config files written
+    // before `telemetry` existed must load cleanly with the field
+    // defaulted to enabled=true. Adding `#[serde(default)]` makes this
+    // backwards-compatible without bumping CONFIG_SCHEMA_VERSION.
+    #[test]
+    fn load_legacy_config_without_telemetry_field_defaults_to_enabled() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c.json");
+        std::fs::write(
+            &path,
+            r#"{"schema_version":1,"install_path":"X","server_host":"Y","manifest_url":"Z"}"#,
+        )
+        .unwrap();
+        let cfg = LauncherConfig::load(&path).unwrap();
+        assert!(
+            cfg.telemetry.enabled,
+            "legacy config must default telemetry.enabled to true so an upgrade \
+             doesn't silently change behaviour"
+        );
+    }
+
+    #[test]
+    fn telemetry_settings_default_is_enabled() {
+        let t = TelemetrySettings::default();
+        assert!(t.enabled);
     }
 
     #[test]
