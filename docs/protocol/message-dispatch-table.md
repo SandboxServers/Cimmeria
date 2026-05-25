@@ -165,7 +165,7 @@ Table size: `0x0D` (13 entries, indices 0x00-0x0C). Defined in `ClientMessageLis
 | 0x08 | enableEntities | CONSTANT | 8 | Yes | Notify server that client entity system is ready |
 | 0x09 | viewportAck | CONSTANT | 8 | No | Acknowledge viewport change |
 | 0x0A | vehicleAck | CONSTANT | 8 | No | Acknowledge vehicle update |
-| 0x0B | restoreClientAck | WORD | — | No | Acknowledge client restoration |
+| 0x0B | restoreClientAck | CONSTANT | 4 | No | Acknowledge client restoration (literal `i32 = 0`, emitted by `ghidra://SGW.exe@0x00dd8bc9`). Pre-#291 mistakenly listed as WORD here; the wire is fixed-width — parsing as WORD desyncs the bundle offset and cascade-fails downstream messages. |
 | 0x0C | disconnect | CONSTANT | 1 | No | Client-initiated disconnection (1-byte reason) |
 
 ### Client Entity Method Messages (0x80-0xFF)

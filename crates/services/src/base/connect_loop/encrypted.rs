@@ -405,6 +405,14 @@ fn read_client_message_payload<'a>(
         0x07 => read_word_length_payload(body, offset),
 
         // --- Entity method calls (0xC0+): always WORD_LENGTH ---
+        //
+        // 0x0D `entityMessage` is intentionally NOT in the table:
+        // its wire byte is `0x80..0xFE` (cell method `m | 0x80`,
+        // base method `m | 0xC0`), NEVER the literal 0x0D. The
+        // wildcard arm catches both ranges as WORD_LENGTH per
+        // `ServerConnection_startEntityMessage` (0x00dd6a60) and
+        // `ServerConnection_startProxyMessage` (0x00dd6980). See
+        // audit doc §2.11 row `0x0D` for the disposition.
         _ => read_word_length_payload(body, offset),
     }
 }
@@ -548,5 +556,67 @@ mod tests {
                 "msg {msg_id:#04x} must advance offset by exactly {expected_width}"
             );
         }
+    }
+
+    /// Pin the WORD_LENGTH default arm by msg_id family. Two
+    /// distinct classes share the wildcard path:
+    ///
+    /// - **0x07** — `requestEntityUpdate`, the only system msg_id
+    ///   in the WORD_LENGTH group. An explicit arm so the test
+    ///   catches a regression where it slips into a different
+    ///   width by accident.
+    /// - **0xC2** — sample base-method msg_id from the `0xC0+`
+    ///   entity-method range. `messages.cpp` documents every
+    ///   `0x80..0xFE` byte as WORD_LENGTH per
+    ///   `ServerConnection_startEntityMessage` (0x00dd6a60) and
+    ///   `ServerConnection_startProxyMessage` (0x00dd6980). The
+    ///   `_ => read_word_length_payload` wildcard arm handles
+    ///   the whole range, so one representative msg_id is enough
+    ///   to pin the contract.
+    ///
+    /// Together these guard against a future refactor that adds
+    /// a special-case `0x07` arm with the wrong width, or that
+    /// changes the wildcard arm to CONSTANT (which would
+    /// catastrophically break every entity-method call).
+    #[test]
+    fn word_length_dispatch_arms_consume_u16_prefix_then_payload() {
+        // Sweep both 0x07 (named arm) and 0xC2 (wildcard sample) so
+        // a single test trips when EITHER arm regresses.
+        for &msg_id in &[0x07u8, 0xC2u8] {
+            // body: [len_lo, len_hi, payload...]
+            let payload_bytes: &[u8] = &[0xDE, 0xAD, 0xBE, 0xEF];
+            let mut body = Vec::with_capacity(2 + payload_bytes.len());
+            body.extend_from_slice(&(payload_bytes.len() as u16).to_le_bytes());
+            body.extend_from_slice(payload_bytes);
+
+            let mut offset = 0;
+            let read = read_client_message_payload(msg_id, &body, &mut offset)
+                .unwrap_or_else(|| panic!("msg {msg_id:#04x} WORD_LENGTH must produce a payload"));
+            assert_eq!(
+                read, payload_bytes,
+                "msg {msg_id:#04x} WORD_LENGTH must return the post-prefix payload bytes"
+            );
+            assert_eq!(
+                offset,
+                2 + payload_bytes.len(),
+                "msg {msg_id:#04x} WORD_LENGTH must advance offset by 2 (prefix) + payload_len"
+            );
+        }
+    }
+
+    /// Truncated WORD_LENGTH prefix (only one byte of the u16) on
+    /// the wildcard arm must return None so the bundle loop
+    /// breaks cleanly. Symmetric to the CONSTANT-truncation guard
+    /// above; ensures every dispatch arm refuses to silently
+    /// over-read.
+    #[test]
+    fn word_length_truncated_prefix_returns_none() {
+        let body = [0x05u8]; // missing the high byte of the u16 prefix
+        let mut offset = 0;
+        assert!(
+            read_client_message_payload(0xC2, &body, &mut offset).is_none(),
+            "truncated WORD_LENGTH prefix must return None — silently advancing \
+             past the end of `body` would corrupt every downstream offset."
+        );
     }
 }
