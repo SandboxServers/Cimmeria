@@ -35,6 +35,10 @@ pub struct LauncherApp {
     launch_opts: LaunchOptions,
     last_refresh: std::time::Instant,
     installing: bool,
+    /// True while a confirm modal for "Reset all client state" is open.
+    /// Higher-blast-radius wipe — gates the entire Firesky/ tree, not
+    /// just the cache subdir — so we double-prompt before nuking.
+    confirm_wipe_all_open: bool,
 }
 
 impl LauncherApp {
@@ -67,6 +71,7 @@ impl LauncherApp {
             launch_opts,
             last_refresh: std::time::Instant::now(),
             installing: false,
+            confirm_wipe_all_open: false,
         }
     }
 
@@ -128,6 +133,27 @@ impl LauncherApp {
                 Event::UploadError(e) => {
                     self.push_status(format!("Log upload failed: {e}"));
                 }
+                Event::AdoptComplete => {
+                    self.push_status(
+                        "Adopted existing install — patches will apply on top \
+                         (seed bytes not verified)."
+                            .into(),
+                    );
+                    self.refresh_install_state();
+                }
+                Event::AdoptError(e) => {
+                    self.push_status(format!("Adopt failed: {e}"));
+                }
+                Event::Wiped { kind, report } => {
+                    self.push_status(format!(
+                        "Wiped {kind}: {} item(s), {} freed",
+                        report.entries_removed,
+                        human_bytes(report.bytes_freed)
+                    ));
+                }
+                Event::WipeError(e) => {
+                    self.push_status(format!("Wipe failed: {e}"));
+                }
             }
             ctx.request_repaint();
         }
@@ -177,8 +203,11 @@ impl eframe::App for LauncherApp {
             ui.separator();
             self.show_log_upload_panel(ui);
             ui.separator();
+            self.show_client_state_panel(ui);
+            ui.separator();
             self.show_status_log(ui);
         });
+        self.show_confirm_wipe_all_modal(ctx);
     }
 }
 
@@ -259,6 +288,45 @@ impl LauncherApp {
         if path_is_empty(&self.config.install_path) {
             ui.label("Set an install directory to enable install / update.");
             return;
+        }
+
+        // Adoption affordance: an install directory that contains
+        // SGW.exe but has no launcher-installed.json is an unmanaged
+        // pre-existing copy (typically a CME-shipped client a user
+        // pointed us at). Offer the one-click adopt path BEFORE the
+        // destructive Install / Update flow surfaces — otherwise the
+        // first thing the user sees is "Seed not installed — will
+        // download seed first" and clicking Install would overwrite
+        // ~3 GB of existing files with a fresh seed download.
+        let installed_state_exists =
+            crate::state::InstalledState::path(&self.config.install_path).exists();
+        let has_sgw_exe = self.config.install_path.join("SGW.exe").exists();
+        if has_sgw_exe && !installed_state_exists {
+            ui.label(
+                egui::RichText::new(
+                    "Existing SGW.exe found in this directory but the launcher hasn't \
+                     adopted it yet. Adopt skips the seed download and lets patches \
+                     apply on top. Seed bytes are NOT verified — if these files don't \
+                     match the published seed, patches may misbehave.",
+                )
+                .small()
+                .italics(),
+            );
+            if ui.button("Adopt existing install").clicked() {
+                self.worker.dispatch(Command::AdoptExisting {
+                    install_dir: self.config.install_path.clone(),
+                    manifest: manifest.clone(),
+                });
+                self.push_status("Adopt requested…".into());
+            }
+            ui.separator();
+        }
+
+        if self.installed.seed_adopted {
+            ui.colored_label(
+                egui::Color32::LIGHT_YELLOW,
+                "ℹ Seed marked as adopted (unverified). Patches apply on top.",
+            );
         }
 
         let seed_ok = self.installed.seed_sha256.as_deref() == Some(manifest.seed.sha256.as_str());
@@ -458,6 +526,105 @@ impl LauncherApp {
             )
             .small(),
         );
+    }
+
+    /// "Client state" panel — surfaces the two reset buttons backed by
+    /// [`crate::client_paths`].
+    ///
+    /// **Why this exists:** the SGW client unconditionally writes its
+    /// runtime cache (server-pushed PAK overrides) into
+    /// `%USERPROFILE%\Documents\My Games\Firesky\SGWGame\Cache.en-US\`
+    /// and consults that cache **before** the bundled PAKs in the
+    /// install directory (docs/architecture/mission-pak-overrides.md).
+    /// A stale cache from a previous shard silently shadows the
+    /// launcher-managed PAKs until it's wiped — these buttons are the
+    /// supported recovery path, mirroring the doc'd recipe in
+    /// docs/client-tools.md for cache corruption.
+    fn show_client_state_panel(&mut self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new("Client state").strong());
+        ui.label(
+            egui::RichText::new(
+                "The client writes its cache + per-user settings to \
+                 Documents\\My Games\\Firesky\\. The cache is consulted \
+                 before the launcher-managed PAKs, so stale entries from \
+                 a previous server can win silently.",
+            )
+            .small(),
+        );
+        ui.horizontal(|ui| {
+            if ui.button("Reset client cache").clicked() {
+                self.worker.dispatch(Command::WipeClientCache);
+                self.push_status("Wiping Cache.en-US…".into());
+            }
+            // Higher blast radius → confirm-dialog gate. The first click
+            // arms the modal; the second-click confirmation is what
+            // actually dispatches the wipe.
+            if ui.button("Reset all client state…").clicked() {
+                self.confirm_wipe_all_open = true;
+            }
+        });
+        ui.label(
+            egui::RichText::new(
+                "Reset client cache: wipes Cache.en-US/ (server-pushed PAK overrides). \
+                 Safe whenever you switch server hosts or pull a new manifest.\n\
+                 Reset all client state: wipes the full Firesky/ tree, including any \
+                 per-user settings the client saved. Use only if the client crashes \
+                 immediately on launch (the doc'd cache-corruption recovery).",
+            )
+            .small()
+            .italics(),
+        );
+    }
+
+    /// Modal confirmation for "Reset all client state…". egui's modal
+    /// support is `egui::Modal::new(…).show(ctx, …)` — a centered popup
+    /// that captures input until Confirm or Cancel.
+    fn show_confirm_wipe_all_modal(&mut self, ctx: &egui::Context) {
+        if !self.confirm_wipe_all_open {
+            return;
+        }
+        let modal = egui::Modal::new(egui::Id::new("confirm-wipe-all-client-state"));
+        let response = modal.show(ctx, |ui| {
+            ui.heading("Reset all client state?");
+            ui.label(
+                "This will permanently delete every file under:\n\
+                 \n\
+                 Documents\\My Games\\Firesky\\\n\
+                 \n\
+                 Including any per-user settings, keybinds, or screenshots \
+                 the client saved there. The cache will regenerate on next \
+                 launch; user settings will reset to defaults.\n\
+                 \n\
+                 This is the documented recovery path for cache corruption \
+                 (e.g. the client crashes immediately on launch). For a \
+                 less-destructive option, use \"Reset client cache\" instead — \
+                 that wipes only the server-pushed PAK overrides.",
+            );
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancel").clicked() {
+                    self.confirm_wipe_all_open = false;
+                }
+                if ui
+                    .add(egui::Button::new(
+                        egui::RichText::new("Delete everything")
+                            .color(egui::Color32::WHITE)
+                            .background_color(egui::Color32::DARK_RED),
+                    ))
+                    .clicked()
+                {
+                    self.worker.dispatch(Command::WipeAllClientState);
+                    self.push_status("Wiping Firesky/ tree…".into());
+                    self.confirm_wipe_all_open = false;
+                }
+            });
+        });
+        // Click-outside-modal-to-dismiss: the response.should_close()
+        // check covers Esc + clicking the dimmed backdrop without
+        // re-implementing either.
+        if response.should_close() {
+            self.confirm_wipe_all_open = false;
+        }
     }
 
     fn show_status_log(&self, ui: &mut egui::Ui) {

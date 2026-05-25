@@ -52,6 +52,17 @@ pub struct InstalledState {
     /// for installs predating this field (treated as "patched host unknown").
     #[serde(default)]
     pub patched_host: Option<String>,
+    /// True when the seed entry was recorded by an "Adopt existing
+    /// install" flow rather than a real seed download + extract. The
+    /// hash on `seed_sha256` was copied from the manifest, NOT computed
+    /// over the on-disk bytes — so for adopted installs we trust the
+    /// user's assertion that the files match what the manifest's seed
+    /// would have produced. Patches still apply on top normally; the
+    /// flag exists so the UI can surface "(adopted — unverified)" next
+    /// to the install state and so a future hash audit can find these
+    /// rows.
+    #[serde(default)]
+    pub seed_adopted: bool,
 }
 
 impl InstalledState {
@@ -136,14 +147,50 @@ mod tests {
             applied_patches: vec!["a".into(), "b".into()],
             seed_sha256: Some("h".into()),
             patched_host: Some("play.cimmeria.gg".into()),
+            seed_adopted: false,
         };
         s.save(dir.path()).unwrap();
         let loaded = InstalledState::load(dir.path());
         assert_eq!(loaded.applied_patches, vec!["a", "b"]);
         assert_eq!(loaded.seed_sha256.as_deref(), Some("h"));
         assert_eq!(loaded.patched_host.as_deref(), Some("play.cimmeria.gg"));
+        assert!(!loaded.seed_adopted);
         assert!(loaded.has_applied("a"));
         assert!(!loaded.has_applied("c"));
+    }
+
+    // Adopt-existing-install path writes `seed_adopted: true` alongside
+    // the manifest-copied seed hash. The flag must roundtrip so the UI
+    // can surface "(adopted)" on subsequent launches.
+    #[test]
+    fn installed_state_roundtrip_adopted() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = InstalledState {
+            applied_patches: vec![],
+            seed_sha256: Some("manifest-seed-hash".into()),
+            patched_host: None,
+            seed_adopted: true,
+        };
+        s.save(dir.path()).unwrap();
+        let loaded = InstalledState::load(dir.path());
+        assert!(loaded.seed_adopted);
+        assert_eq!(loaded.seed_sha256.as_deref(), Some("manifest-seed-hash"));
+    }
+
+    // Legacy state files written before `seed_adopted` existed must
+    // default the field to false (real install, not adopted) so the
+    // UI doesn't suddenly start flagging healthy installs.
+    #[test]
+    fn installed_state_legacy_without_seed_adopted_defaults_false() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            InstalledState::path(dir.path()),
+            r#"{"applied_patches":["a"],"seed_sha256":"h","patched_host":"play.cimmeria.gg"}"#,
+        )
+        .unwrap();
+        let loaded = InstalledState::load(dir.path());
+        assert!(!loaded.seed_adopted);
+        assert_eq!(loaded.seed_sha256.as_deref(), Some("h"));
     }
 
     // Forwards-compat: state files written before the patched_host field

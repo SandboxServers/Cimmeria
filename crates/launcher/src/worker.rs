@@ -12,8 +12,9 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
+use crate::client_paths::{cache_dir, firesky_root, wipe_dir_contents, WipeReport};
 use crate::config::LauncherConfig;
-use crate::install::{install_all, InstallContext, Progress};
+use crate::install::{adopt_existing_install, install_all, InstallContext, Progress};
 use crate::launch::{launch_atera_debug, launch_atera_fix_aslr, launch_sgw};
 use crate::logs::{blob_name_for, build_log_zip, compute_content_digest, upload_blob, LogError};
 use crate::manifest::{fetch_manifest, Manifest};
@@ -25,6 +26,12 @@ pub enum Command {
         config: LauncherConfig,
         manifest: Manifest,
     },
+    /// Mark a pre-existing game install as managed by the launcher
+    /// without re-downloading the seed. See [`adopt_existing_install`].
+    AdoptExisting {
+        install_dir: PathBuf,
+        manifest: Manifest,
+    },
     LaunchSgw(PathBuf),
     LaunchAteraDebug(PathBuf),
     LaunchAteraFixAslr(PathBuf),
@@ -33,6 +40,16 @@ pub enum Command {
         sas_url: String,
         ledger_path: PathBuf,
     },
+    /// Wipe `Documents\My Games\Firesky\SGWGame\Cache.en-US\` — the
+    /// server-pushed PAK override cache. Safe to run any time the user
+    /// wants the launcher-managed PAKs to win over previously-cached
+    /// server pushes.
+    WipeClientCache,
+    /// Wipe the full `Documents\My Games\Firesky\` tree — the recovery
+    /// recipe for cache corruption per docs/client-tools.md. Higher
+    /// blast radius (also nukes per-user settings, keybinds, screenshots
+    /// if any) — UI must confirm-dialog gate this.
+    WipeAllClientState,
     Cancel,
 }
 
@@ -43,12 +60,32 @@ pub enum Event {
     Progress(Progress),
     InstallComplete,
     InstallError(String),
+    AdoptComplete,
+    AdoptError(String),
+    /// Reports per-second visible feedback after the wipe finishes —
+    /// `kind` is "Cache.en-US" vs "Firesky" so the UI can render the
+    /// right caption.
+    Wiped {
+        kind: String,
+        report: WipeReport,
+    },
+    WipeError(String),
     Launched(String, u32),
     LaunchError(String),
     UploadStarted,
     UploadSkipped(String),
     UploadComplete { blob: String, bytes: usize },
     UploadError(String),
+}
+
+/// Which user-data tree a `WipeClient*` command targets. Internal enum
+/// so the public `Command` API splits the two operations into separate
+/// variants — easier for the UI to grep for "WipeAll…" when reviewing
+/// the destructive paths.
+#[derive(Debug, Clone, Copy)]
+enum WipeTarget {
+    CacheOnly,
+    EntireFiresky,
 }
 
 pub struct Worker {
@@ -103,7 +140,57 @@ impl Worker {
                 sas_url,
                 ledger_path,
             } => self.spawn_upload(install_dir, sas_url, ledger_path),
+            Command::AdoptExisting {
+                install_dir,
+                manifest,
+            } => self.spawn_adopt(install_dir, manifest),
+            Command::WipeClientCache => self.spawn_wipe(WipeTarget::CacheOnly),
+            Command::WipeAllClientState => self.spawn_wipe(WipeTarget::EntireFiresky),
         }
+    }
+
+    fn spawn_adopt(&self, install_dir: PathBuf, manifest: Manifest) {
+        let events_tx = self.events_tx.clone();
+        // Adopt is a single filesystem write — synchronous in the worker
+        // task so we don't need a separate progress channel. Keep it on
+        // the runtime anyway so a slow-disk write doesn't block the UI.
+        self.runtime.spawn(async move {
+            match adopt_existing_install(&install_dir, &manifest) {
+                Ok(_) => {
+                    let _ = events_tx.send(Event::AdoptComplete);
+                }
+                Err(e) => {
+                    error!("adopt failed: {e}");
+                    let _ = events_tx.send(Event::AdoptError(format!("{e}")));
+                }
+            }
+        });
+    }
+
+    fn spawn_wipe(&self, target: WipeTarget) {
+        let events_tx = self.events_tx.clone();
+        self.runtime.spawn(async move {
+            let (kind, resolved) = match target {
+                WipeTarget::CacheOnly => ("Cache.en-US".to_string(), cache_dir()),
+                WipeTarget::EntireFiresky => ("Firesky".to_string(), firesky_root()),
+            };
+            let Some(path) = resolved else {
+                let _ = events_tx.send(Event::WipeError(
+                    "Could not resolve %USERPROFILE% or $HOME — no user profile to wipe."
+                        .into(),
+                ));
+                return;
+            };
+            match wipe_dir_contents(&path) {
+                Ok(report) => {
+                    let _ = events_tx.send(Event::Wiped { kind, report });
+                }
+                Err(e) => {
+                    error!(target = ?target, "wipe failed: {e}");
+                    let _ = events_tx.send(Event::WipeError(format!("Wipe {kind} failed: {e}")));
+                }
+            }
+        });
     }
 
     pub fn fetch_manifest_now(&self, url: String) {
