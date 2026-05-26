@@ -52,6 +52,18 @@ pub(super) async fn apply_death_transition(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    // Phase J: any channelled effects the dying target was running die
+    // with them. `cancel_channels_from_attacker` walks every entity's
+    // active_effects list looking for entries sourced by this target,
+    // which is the canonical "channeller died, drop their channels"
+    // semantics. Runs BEFORE the targeting/threat/loot bursts so the
+    // channel-cleared wire packets land before the death sequence.
+    let _ = crate::cell::effects::cancel_channels_from_attacker(
+        target_eid, None, // cancel all — they're dead
+        tx, space_mgr,
+    )
+    .await;
+
     // 1. Attacker side: clear targeting reticle.
     if attacker_is_player {
         send_entity_method(

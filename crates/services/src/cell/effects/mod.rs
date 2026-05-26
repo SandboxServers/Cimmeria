@@ -54,7 +54,7 @@ pub mod pulsing;
 pub mod registry;
 pub mod scripts;
 
-pub use pulsing::{effect_pulse_tick, register_active_effect};
+pub use pulsing::{cancel_channels_from_attacker, effect_pulse_tick, register_active_effect};
 
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_entity::abilities::EffectDef;
@@ -82,14 +82,24 @@ pub struct EffectContext<'a> {
 /// [`scripts`] and register themselves via the [`registry::dispatch`]
 /// static table.
 ///
-/// The `on_apply` method is called exactly once per effect invocation
-/// in v1. Returns `Ok(())` on success or `Err(msg)` for diagnostic
-/// logging (the caller logs at `warn!`; the error doesn't propagate to
-/// the client). Scripts MUST be infallible from the gameplay
-/// perspective — they handle missing entities, missing stats, etc.
-/// internally and produce sensible no-ops on bad input.
+/// The `on_apply` method is called once per pulse fire (initial or
+/// re-pulse from the per-tick scheduler). Scripts MUST be infallible
+/// from the gameplay perspective — they handle missing entities,
+/// missing stats, etc. internally and produce sensible no-ops.
+///
+/// The `on_remove` method is called once when an active-effect instance
+/// is swept (remaining_pulses reaches 0, target dies, attacker cancels
+/// a channel, etc.). Default impl is a no-op — only scripts that
+/// mutated persistent state on apply (Stun's state-flag, AbsorbShield's
+/// pool capacity) need to override.
 pub trait EffectScript: Send + Sync {
     fn on_apply(&self, ctx: &mut EffectContext);
+    /// Called exactly once when the owning instance is removed from
+    /// the entity's `active_effects`. Use for stateful cleanup —
+    /// clear flags, restore stats, drain residual buffs. Skipped for
+    /// single-shot effects (`pulse_count == 1`) since they never
+    /// register an active instance.
+    fn on_remove(&self, _ctx: &mut EffectContext) {}
 }
 
 /// Dispatch an effect by name. Returns `true` when a registered script
@@ -124,5 +134,28 @@ pub fn dispatch_by_name(name: &str, ctx: &mut EffectContext) -> bool {
             );
             false
         }
+    }
+}
+
+/// Look up the script for `name` and call `on_remove`. Returns `true`
+/// when a script was found. No-ops (returns `false`) for effects that
+/// don't have a script_name OR whose script isn't registered — these
+/// don't need cleanup.
+pub fn dispatch_on_remove(name: &str, ctx: &mut EffectContext) -> bool {
+    match registry::lookup(name) {
+        Some(script) => {
+            tracing::debug!(
+                target: "abilities",
+                event = "effect_script_remove",
+                script = name,
+                source_id = ctx.source_id,
+                target_id = ctx.target_id,
+                effect_id = ctx.effect.effect_id,
+                "Dispatching effect script on_remove"
+            );
+            script.on_remove(ctx);
+            true
+        }
+        None => false,
     }
 }

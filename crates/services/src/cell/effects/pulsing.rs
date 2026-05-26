@@ -17,19 +17,19 @@
 //! - Sends a follow-up `onStatUpdate` to the target so the client
 //!   updates their stat bars.
 //!
-//! ## What's NOT here (v1 scope)
+//! ## v1 scope notes
 //!
-//! - **No stacking dedup.** Two casters DoT-ing the same target both
-//!   register their own instances and both pulse. Same caster casting
-//!   the same DoT twice creates two instances — refresh-vs-stack semantics
-//!   land in Phase E (stacking rules).
-//! - **No channelled effects.** `pulse_count == 0` (infinite until
-//!   removed) is recognised but not registered; the cell has no channel-
-//!   release path yet (interrupt, movement, ability switch). Channelled
-//!   abilities currently fire one initial pulse and stop.
-//! - **No interrupt cancellation.** If the target dies, the instance
-//!   sticks until the next pulse tick clears it via the dead-entity
-//!   guard. Mid-tick burst interrupt (e.g. stun) is a Phase G follow-up.
+//! - **Stacking** (Phase E): same-source = refresh, multi-source = stack.
+//!   See `register_active_effect` for the dedup logic.
+//! - **Channelled effects** (Phase J): `pulse_count == 0` is treated as
+//!   "channel until cancelled" by registering with a safety cap
+//!   ([`MAX_CHANNEL_PULSES`]) and cancelling proactively via
+//!   [`cancel_channels_from_attacker`] when the channeller fires a
+//!   different ability, dies, or the safety cap elapses. Movement-based
+//!   interrupt is a follow-up — needs per-ability `AF_INTERRUPT_ON_MOVE`
+//!   data the canonical seed doesn't carry yet.
+//! - **Dead-target pulse** is a no-op (the per-pulse guard returns
+//!   without applying), but the instance still ages out via the schedule.
 
 use std::time::Instant;
 
@@ -45,6 +45,13 @@ use crate::cell::abilities::send_entity_method;
 use crate::cell::client_methods::being::ON_TIMER_UPDATE;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+
+/// Maximum pulses for a `pulse_count == 0` channelled effect. Acts as
+/// a safety cap so a missed cancellation event can't leave a channel
+/// running forever. At a typical `pulse_duration = 0.5s`, this caps a
+/// channel at 30 seconds — well past any reasonable in-game channel
+/// duration (Sustained Sweep is 10s / 20 pulses, the longest in seed).
+const MAX_CHANNEL_PULSES: i32 = 60;
 
 /// Register a pulsing effect on a target. Called once per effect right
 /// after the initial pulse fires in `damage_apply`. Returns `true` if
@@ -78,24 +85,18 @@ pub async fn register_active_effect(
     if !effect.is_pulsing() {
         return false;
     }
-    // pulse_count == 0 means "channel until removed" — we don't have a
-    // remove path yet, so skip registration. The initial pulse already
-    // fired so the player saw something happen; the rest of the channel
-    // is a Phase G follow-up.
-    if effect.pulse_count == 0 {
-        tracing::debug!(
-            target: "abilities",
-            event = "channelled_effect_skipped_registration",
-            target_id,
-            invoker_id,
-            effect_id = effect.effect_id,
-            "Channelled effect (pulse_count=0) — channel-release path not yet wired; one pulse fired and stopping"
-        );
-        return false;
-    }
-
+    // pulse_count == 0 → channelled. Register with a safety-cap of
+    // MAX_CHANNEL_PULSES; cancellation comes from
+    // `cancel_channels_from_attacker` (different ability fire, death).
+    // Without a cancellation event, the safety cap still terminates
+    // the channel after ~30s at a 0.5s pulse cadence.
+    let total_pulses = if effect.pulse_count == 0 {
+        MAX_CHANNEL_PULSES
+    } else {
+        effect.pulse_count
+    };
     // remaining_pulses = total - 1 (the initial pulse already fired).
-    let remaining = effect.pulse_count - 1;
+    let remaining = total_pulses - 1;
     if remaining <= 0 {
         return false;
     }
@@ -127,7 +128,7 @@ pub async fn register_active_effect(
                 ability_id: effect.ability_id,
                 invoker_id,
                 remaining_pulses: remaining,
-                total_pulses: effect.pulse_count,
+                total_pulses,
                 next_pulse_at: next_at,
                 pulse_interval_secs: pulse_secs,
             });
@@ -143,8 +144,9 @@ pub async fn register_active_effect(
         effect_id = effect.effect_id,
         ability_id = effect.ability_id,
         remaining_pulses = remaining,
-        total_pulses = effect.pulse_count,
+        total_pulses,
         pulse_interval = pulse_secs,
+        is_channeled = effect.pulse_count == 0,
         "Active effect registered/refreshed"
     );
 
@@ -163,6 +165,121 @@ pub async fn register_active_effect(
     send_entity_method(target_id, ON_TIMER_UPDATE, timer_bytes, tx, space_mgr).await;
 
     true
+}
+
+/// Cancel every channelled effect (effect def `pulse_count == 0`) that
+/// was sourced by `attacker_id`, optionally excluding effects whose
+/// `ability_id` matches `keep_ability_id` (used by the same-ability
+/// re-fire path to refresh rather than cancel).
+///
+/// Used by:
+///   - `handle_use_ability` when an attacker fires a different ability
+///     (any in-flight channel from this attacker stops)
+///   - the death-transition path when an attacker dies (their channels
+///     across all targets clear)
+///
+/// For each cancelled instance, dispatches the script's `on_remove`
+/// hook (so Stun-on-channel-cancel clears the lock) and fires the
+/// timer-clear wire packet so the client removes the buff icon.
+///
+/// Returns the number of instances cancelled (zero is the common case).
+pub async fn cancel_channels_from_attacker(
+    attacker_id: u32,
+    keep_ability_id: Option<i32>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> usize {
+    // Snapshot (target_id, effect_id, invoker_id) for every channel to
+    // cancel — we can't hold a mutable borrow across awaits.
+    let to_cancel: Vec<(u32, i32, u32)> = {
+        let target_eids = space_mgr.all_entity_ids();
+        let mut out = Vec::new();
+        for target_eid in target_eids {
+            let Some(entity) = space_mgr.get_entity(target_eid) else {
+                continue;
+            };
+            for inst in &entity.active_effects {
+                if inst.invoker_id != attacker_id {
+                    continue;
+                }
+                // Only cancel channelled effects (registered from a
+                // `pulse_count == 0` source) — finite DoTs from this
+                // attacker keep ticking even if the attacker switches
+                // weapons. The effect-def is the source of truth.
+                let Some(effect_def) = space_mgr.effect_defs.get(&inst.effect_id) else {
+                    continue;
+                };
+                if effect_def.pulse_count != 0 {
+                    continue;
+                }
+                if keep_ability_id == Some(inst.ability_id) {
+                    continue;
+                }
+                out.push((target_eid, inst.effect_id, inst.invoker_id));
+            }
+        }
+        out
+    };
+
+    if to_cancel.is_empty() {
+        return 0;
+    }
+    let cancelled_count = to_cancel.len();
+    tracing::info!(
+        target: "abilities",
+        event = "channel_cancel_sweep",
+        attacker_id,
+        keep_ability_id = ?keep_ability_id,
+        cancelled = cancelled_count,
+        "Cancelling channels from attacker"
+    );
+
+    for (target_eid, effect_id, invoker_id) in to_cancel {
+        // Remove the instance from the target.
+        if let Some(target) = space_mgr.get_entity_mut(target_eid) {
+            target
+                .active_effects
+                .retain(|inst| !(inst.effect_id == effect_id && inst.invoker_id == invoker_id));
+        }
+        // Dispatch on_remove for script-driven cleanup.
+        if let Some(effect_def) = space_mgr.effect_defs.get(&effect_id).cloned() {
+            if let Some(script_name) = effect_def.script_name.clone() {
+                let mut ctx = super::EffectContext {
+                    source_id: invoker_id,
+                    target_id: target_eid,
+                    effect: &effect_def,
+                    space_mgr,
+                };
+                super::dispatch_on_remove(&script_name, &mut ctx);
+            }
+            // Flush stat dirty bits from on_remove.
+            if let Some(target) = space_mgr.get_entity_mut(target_eid) {
+                let dirty = target.stats.serialize_dirty();
+                target.stats.clear_dirty();
+                if !dirty.is_empty() {
+                    send_entity_method(
+                        target_eid,
+                        crate::mercury::method_idx::ON_STAT_UPDATE,
+                        dirty,
+                        tx,
+                        space_mgr,
+                    )
+                    .await;
+                }
+            }
+        }
+        // Wire-clear the buff timer.
+        let zero_timer = serialize_timer_update(
+            effect_id,
+            TIMER_DURATION_EFFECT,
+            invoker_id as i32,
+            0.0,
+            0.0,
+        );
+        send_entity_method(target_eid, ON_TIMER_UPDATE, zero_timer, tx, space_mgr).await;
+    }
+
+    cancelled_count
 }
 
 /// Per-cell tick — fire any due pulses on any entity's active-effect
@@ -260,6 +377,39 @@ pub async fn effect_pulse_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut
             cleared
         };
         for (cleared_effect, invoker) in cleared_ids {
+            // Phase I: script on_remove first so stateful effects (Stun
+            // clearing BSF_MOVEMENT_LOCK, AbsorbShield draining residual
+            // pool) get their cleanup. The effect-def lookup needs to
+            // happen here because the active-effect Vec only stores
+            // effect_id, not the full def.
+            if let Some(effect_def) = space_mgr.effect_defs.get(&cleared_effect).cloned() {
+                if let Some(script_name) = effect_def.script_name.clone() {
+                    let mut ctx = super::EffectContext {
+                        source_id: invoker,
+                        target_id: entity_id,
+                        effect: &effect_def,
+                        space_mgr,
+                    };
+                    super::dispatch_on_remove(&script_name, &mut ctx);
+                }
+                // Flush any stat dirty bits the on_remove produced (e.g.
+                // ABSORB_PHYSICAL drained by AbsorbShield::on_remove) so
+                // the client picks up the change.
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    let dirty = entity.stats.serialize_dirty();
+                    entity.stats.clear_dirty();
+                    if !dirty.is_empty() {
+                        send_entity_method(
+                            entity_id,
+                            crate::mercury::method_idx::ON_STAT_UPDATE,
+                            dirty,
+                            tx,
+                            space_mgr,
+                        )
+                        .await;
+                    }
+                }
+            }
             let zero_timer = serialize_timer_update(
                 cleared_effect,
                 TIMER_DURATION_EFFECT,
@@ -437,12 +587,84 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_channelled_effect_skipped_until_release_path_lands() {
+    async fn register_channelled_effect_uses_safety_cap_total_pulses() {
+        // Phase J: pulse_count=0 → register with MAX_CHANNEL_PULSES cap.
         let mut mgr = make_mgr();
-        let effect = make_dot_effect(0, 1.0, 10);
+        let effect = make_dot_effect(0, 0.5, 10);
         let (tx, _rx) = mpsc::channel(64);
         let registered = register_active_effect(&mut mgr, 2, 1, &effect, Instant::now(), &tx).await;
-        assert!(!registered, "pulse_count=0 (channelled) skipped in v1");
+        assert!(
+            registered,
+            "channelled effect now registers with safety cap"
+        );
+        let active = &mgr.get_entity(2).unwrap().active_effects;
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].total_pulses, MAX_CHANNEL_PULSES);
+        assert_eq!(active[0].remaining_pulses, MAX_CHANNEL_PULSES - 1);
+    }
+
+    #[tokio::test]
+    async fn cancel_channels_from_attacker_drops_channeled_keeps_finite_dot() {
+        // Phase J: when an attacker fires a different ability, channels
+        // get cancelled but finite DoTs from the same attacker keep ticking.
+        let mut mgr = make_mgr();
+        let (tx, _rx) = mpsc::channel(64);
+        let now = Instant::now();
+        // Effect 1: pulse_count=0 → channelled
+        let mut channel_effect = make_dot_effect(0, 0.5, 10);
+        channel_effect.effect_id = 9001;
+        channel_effect.ability_id = 100;
+        mgr.effect_defs.insert(9001, channel_effect.clone());
+        // Effect 2: pulse_count=5 → finite DoT
+        let mut dot_effect = make_dot_effect(5, 1.0, 10);
+        dot_effect.effect_id = 9002;
+        dot_effect.ability_id = 200;
+        mgr.effect_defs.insert(9002, dot_effect.clone());
+
+        register_active_effect(&mut mgr, 2, 1, &channel_effect, now, &tx).await;
+        register_active_effect(&mut mgr, 2, 1, &dot_effect, now, &tx).await;
+        assert_eq!(mgr.get_entity(2).unwrap().active_effects.len(), 2);
+
+        // Attacker fires a totally different ability (id 300). Channel
+        // should die; DoT should survive.
+        let cancelled = cancel_channels_from_attacker(1, Some(300), &tx, &mut mgr).await;
+        assert_eq!(cancelled, 1, "exactly one channel cancelled");
+        let active = &mgr.get_entity(2).unwrap().active_effects;
+        assert_eq!(active.len(), 1, "DoT survived");
+        assert_eq!(active[0].effect_id, 9002, "finite DoT kept");
+    }
+
+    #[tokio::test]
+    async fn cancel_channels_from_attacker_with_keep_ability_id_skips_matching() {
+        // Phase J: same-ability re-fire keeps the channel alive (refresh path).
+        let mut mgr = make_mgr();
+        let (tx, _rx) = mpsc::channel(64);
+        let mut channel_effect = make_dot_effect(0, 0.5, 10);
+        channel_effect.effect_id = 9003;
+        channel_effect.ability_id = 100;
+        mgr.effect_defs.insert(9003, channel_effect.clone());
+        register_active_effect(&mut mgr, 2, 1, &channel_effect, Instant::now(), &tx).await;
+
+        // Re-fire the SAME ability — cancel sweep should keep this channel.
+        let cancelled = cancel_channels_from_attacker(1, Some(100), &tx, &mut mgr).await;
+        assert_eq!(cancelled, 0, "same-ability re-fire keeps channel");
+        assert_eq!(mgr.get_entity(2).unwrap().active_effects.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn cancel_channels_from_attacker_no_keep_cancels_all() {
+        // Phase J: cancel-all path (called from death-transition) drops
+        // every channel regardless of ability.
+        let mut mgr = make_mgr();
+        let (tx, _rx) = mpsc::channel(64);
+        let mut channel_effect = make_dot_effect(0, 0.5, 10);
+        channel_effect.effect_id = 9004;
+        channel_effect.ability_id = 100;
+        mgr.effect_defs.insert(9004, channel_effect.clone());
+        register_active_effect(&mut mgr, 2, 1, &channel_effect, Instant::now(), &tx).await;
+
+        let cancelled = cancel_channels_from_attacker(1, None, &tx, &mut mgr).await;
+        assert_eq!(cancelled, 1);
         assert!(mgr.get_entity(2).unwrap().active_effects.is_empty());
     }
 

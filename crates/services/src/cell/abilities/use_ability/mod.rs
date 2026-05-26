@@ -500,6 +500,14 @@ pub async fn handle_use_ability(
         return true;
     }
 
+    // Phase J: cancel any channelled effects this attacker started
+    // with a DIFFERENT ability. Same-ability re-fire keeps the channel
+    // alive (it'll refresh via `register_active_effect`'s same-source
+    // rule). Cancellation MUST happen before the new damage applies so
+    // the wire ordering reads "old channel cleared, new ability fired".
+    crate::cell::effects::cancel_channels_from_attacker(entity_id, Some(ability_id), tx, space_mgr)
+        .await;
+
     super::damage_apply::apply_damage_to_target(
         entity_id,
         target_id as u32,

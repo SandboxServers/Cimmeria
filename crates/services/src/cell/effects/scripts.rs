@@ -206,6 +206,19 @@ impl EffectScript for MeleeDamage {
 /// pulse fires once on apply, then the instance ages out at expiry.
 pub struct AbsorbShield;
 
+/// Resolve which ABSORB_* pool a `ShieldType` NVP maps to. Centralises
+/// the match so `on_apply` and `on_remove` agree on the target pool.
+fn shield_pool_id(damage_type: i8) -> i32 {
+    match damage_type {
+        DT_PHYSICAL => ABSORB_PHYSICAL,
+        DT_ENERGY => ABSORB_ENERGY,
+        DT_HAZMAT => ABSORB_HAZMAT,
+        DT_PSIONIC => ABSORB_PSIONIC,
+        DT_UNTYPED => ABSORB_UNTYPED,
+        _ => ABSORB_UNTYPED,
+    }
+}
+
 impl EffectScript for AbsorbShield {
     fn on_apply(&self, ctx: &mut EffectContext) {
         let amount = ctx.effect.param_i32("ShieldAmount");
@@ -213,14 +226,7 @@ impl EffectScript for AbsorbShield {
             return;
         }
         let damage_type = ctx.effect.param_i32("ShieldType") as i8;
-        let pool_id = match damage_type {
-            DT_PHYSICAL => ABSORB_PHYSICAL,
-            DT_ENERGY => ABSORB_ENERGY,
-            DT_HAZMAT => ABSORB_HAZMAT,
-            DT_PSIONIC => ABSORB_PSIONIC,
-            DT_UNTYPED => ABSORB_UNTYPED,
-            _ => ABSORB_UNTYPED,
-        };
+        let pool_id = shield_pool_id(damage_type);
         let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
             return;
         };
@@ -240,18 +246,47 @@ impl EffectScript for AbsorbShield {
             );
         }
     }
+
+    /// Drain any residual shield capacity granted by this effect when
+    /// the active-effect instance expires. Uses `ShieldAmount` as the
+    /// upper bound — we don't over-subtract if damage already chewed
+    /// through most of the pool. The drain is capped at the current
+    /// pool value via `stat.change()` clamping (min == 0 keeps it
+    /// non-negative).
+    fn on_remove(&self, ctx: &mut EffectContext) {
+        let amount = ctx.effect.param_i32("ShieldAmount");
+        if amount <= 0 {
+            return;
+        }
+        let pool_id = shield_pool_id(ctx.effect.param_i32("ShieldType") as i8);
+        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
+            return;
+        };
+        if let Some(pool) = target.stats.get_mut(pool_id) {
+            let to_drain = amount.min(pool.cur);
+            if to_drain > 0 {
+                pool.change(-to_drain);
+            }
+            tracing::info!(
+                target: "abilities",
+                event = "shield_expired",
+                target_id = ctx.target_id,
+                effect_id = ctx.effect.effect_id,
+                drained = to_drain,
+                pool_after = pool.cur,
+                "AbsorbShield expired — residual capacity drained"
+            );
+        }
+    }
 }
 
 // ── Stun ─────────────────────────────────────────────────────────────────
 
 /// Locks the target's movement + actions for the effect's duration.
 ///
-/// Sets `BSF_MOVEMENT_LOCK` on apply. Pair with a pulsing registration
-/// (`pulse_count` × `pulse_duration` = lockdown seconds) — at expiry,
-/// the active-effect sweep removes the instance; a separate Phase G
-/// follow-up will hook the sweep to clear the bit. Today the bit
-/// sticks until another action explicitly clears it (death, manual
-/// unstun chain), which is OK for v1 since Stun is rarely sub-second.
+/// Sets `BSF_MOVEMENT_LOCK` on apply, clears it on `on_remove` when
+/// the active-effect instance expires (Phase I). Pair with a pulsing
+/// registration (`pulse_count` × `pulse_duration` = lockdown seconds).
 ///
 /// No NVPs — duration comes from the owning effect's pulse_count ×
 /// pulse_duration.
@@ -271,6 +306,31 @@ impl EffectScript for Stun {
             effect_id = ctx.effect.effect_id,
             was_already_set = !was_set,
             "Stun applied — BSF_MOVEMENT_LOCK set"
+        );
+    }
+
+    /// Clear `BSF_MOVEMENT_LOCK` when the stun instance expires.
+    ///
+    /// **Limitation acknowledged**: if the target has TWO stun instances
+    /// active (from different invokers — multi-source stack), the first
+    /// expiry will release movement even though the second stun is still
+    /// pulsing. A proper fix needs a "reason-counted" lock (mirrors
+    /// `BSF_IN_COMBAT`'s threatened_mobs counter) — flagged as a Phase J2
+    /// follow-up. For v1 this is acceptable: Stun is rare enough that
+    /// concurrent multi-source stuns on the same target are an edge case,
+    /// and the alternative (the bit sticks forever) is worse.
+    fn on_remove(&self, ctx: &mut EffectContext) {
+        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
+            return;
+        };
+        let was_set = target.unset_state_flag(BSF_MOVEMENT_LOCK);
+        tracing::info!(
+            target: "abilities",
+            event = "stun_expired",
+            target_id = ctx.target_id,
+            effect_id = ctx.effect.effect_id,
+            cleared = was_set,
+            "Stun expired — BSF_MOVEMENT_LOCK cleared"
         );
     }
 }
@@ -561,6 +621,89 @@ mod tests {
             .unwrap()
             .cur;
         assert_eq!(untyped, 100);
+    }
+
+    #[test]
+    fn stun_on_remove_clears_movement_lock_state_flag() {
+        // Phase I: stun apply → movement lock set; stun remove → cleared.
+        let mut mgr = make_mgr_with_target();
+        let effect = EffectDef {
+            effect_id: 601,
+            ability_id: 1,
+            ..Default::default()
+        };
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        Stun.on_apply(&mut ctx);
+        assert!(
+            ctx.space_mgr
+                .get_entity(1)
+                .unwrap()
+                .has_state_flag(BSF_MOVEMENT_LOCK),
+            "Stun apply must set lock"
+        );
+        Stun.on_remove(&mut ctx);
+        assert!(
+            !ctx.space_mgr
+                .get_entity(1)
+                .unwrap()
+                .has_state_flag(BSF_MOVEMENT_LOCK),
+            "Stun on_remove must clear lock"
+        );
+    }
+
+    #[test]
+    fn absorb_shield_on_remove_drains_residual_pool() {
+        // Phase I: shield with 200 amount drains 200 from pool on remove,
+        // capped by current pool value (no overdrain).
+        let mut mgr = make_mgr_with_target();
+        let mut params = HashMap::new();
+        params.insert("ShieldAmount".to_string(), "200".to_string());
+        params.insert("ShieldType".to_string(), DT_PHYSICAL.to_string());
+        let effect = EffectDef {
+            effect_id: 557,
+            ability_id: 1,
+            params,
+            ..Default::default()
+        };
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        AbsorbShield.on_apply(&mut ctx);
+        // Pool grew by 200
+        let before = ctx
+            .space_mgr
+            .get_entity(1)
+            .unwrap()
+            .stats
+            .get(ABSORB_PHYSICAL)
+            .unwrap()
+            .cur;
+        assert_eq!(before, 200);
+        // Pretend damage drained 50 from the pool before expiry
+        if let Some(t) = ctx.space_mgr.get_entity_mut(1) {
+            if let Some(stat) = t.stats.get_mut(ABSORB_PHYSICAL) {
+                stat.change(-50);
+            }
+        }
+        AbsorbShield.on_remove(&mut ctx);
+        // Pool drains by min(200, 150) = 150 → back to 0
+        let after = ctx
+            .space_mgr
+            .get_entity(1)
+            .unwrap()
+            .stats
+            .get(ABSORB_PHYSICAL)
+            .unwrap()
+            .cur;
+        assert_eq!(after, 0, "on_remove drains residual without going negative");
     }
 
     #[test]
