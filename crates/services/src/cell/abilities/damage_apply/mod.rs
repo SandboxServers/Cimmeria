@@ -102,6 +102,12 @@ pub(super) async fn apply_damage_to_target(
     // drains, heals, buff-only abilities) we keep health_base_damage at 0
     // so the ability doesn't accidentally read as a 15-HP physical hit.
     // The 15-HP fallback is reserved for the unknown-ability case.
+    //
+    // Effects with a `script_name` are collected here and dispatched after
+    // the legacy NVP damage path completes (so heals/buffs see the
+    // post-hit state). See `cell::effects` for the dispatcher and the
+    // registered scripts (#331).
+    let mut script_effect_ids: Vec<i32> = Vec::new();
     let (health_base_damage, focus_base_damage) = if let Some(def) = ability_def {
         let mut h_dmg = 0i32;
         let mut f_dmg = 0i32;
@@ -114,6 +120,9 @@ pub(super) async fn apply_damage_to_target(
                 }
                 if fd > 0 {
                     f_dmg = fd;
+                }
+                if effect.script_name.is_some() {
+                    script_effect_ids.push(eid);
                 }
             }
         }
@@ -458,6 +467,52 @@ pub(super) async fn apply_damage_to_target(
                 space_mgr,
             )
             .await;
+        }
+    }
+
+    // ── Effect scripts (#331) ──
+    //
+    // Dispatch any effects on this ability that have a `script_name` set.
+    // Scripts run AFTER the legacy damage path so heals see the post-hit
+    // state. They mutate the target via the shared `space_mgr` borrow;
+    // any stat changes are flushed in a follow-up onStatUpdate so the
+    // client picks up the heal/buff/debuff alongside the damage packet.
+    //
+    // Scripts that need wire-side fan-out (effect anims, buff icons) own
+    // their own send calls — v1 only ships HealHealth / HealFocus /
+    // MeleeDamage which are stat-mutation-only.
+    if !script_effect_ids.is_empty() {
+        for eid in &script_effect_ids {
+            let effect_def = match space_mgr.effect_defs.get(eid) {
+                Some(e) => e.clone(),
+                None => continue,
+            };
+            let Some(script_name) = effect_def.script_name.clone() else {
+                continue;
+            };
+            let mut ctx = crate::cell::effects::EffectContext {
+                source_id: entity_id,
+                target_id: target_eid,
+                effect: &effect_def,
+                space_mgr,
+            };
+            crate::cell::effects::dispatch_by_name(&script_name, &mut ctx);
+        }
+        // Flush any stat changes the scripts produced so the client sees
+        // the heal/buff alongside the existing damage update.
+        if let Some(target) = space_mgr.get_entity_mut(target_eid) {
+            let dirty = target.stats.serialize_dirty();
+            target.stats.clear_dirty();
+            if !dirty.is_empty() {
+                send_entity_method(
+                    target_eid,
+                    crate::mercury::method_idx::ON_STAT_UPDATE,
+                    dirty,
+                    tx,
+                    space_mgr,
+                )
+                .await;
+            }
         }
     }
 }
