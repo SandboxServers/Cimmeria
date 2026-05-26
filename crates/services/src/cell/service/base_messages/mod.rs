@@ -5,6 +5,8 @@
 //! - [`player_init`] — `InitPlayerState` (mission/ability/bandolier restore)
 //! - [`bandolier`] — `UpdateBandolierItem` + `SyncBandolierItems` (weapon display)
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use tokio::sync::mpsc;
 
 use cimmeria_content_engine::chain::ChainEngine;
@@ -20,6 +22,18 @@ mod request_entity_update;
 
 #[cfg(test)]
 mod tests;
+
+/// 1-in-N sampling rate for player position updates. Player movement
+/// works (mostly) — the goal here is "occasionally confirm the
+/// position-update channel is alive and the values look sane,"
+/// not "trace every step." 50 = ~5 seconds between samples at the
+/// 10 Hz client update rate.
+const PLAYER_MOVE_LOG_SAMPLE: u64 = 50;
+
+/// Process-wide counter for player-move sampling. Atomic so multi-cell
+/// (future) doesn't need refactoring; single-cell (today) is just an
+/// inc + modulo.
+static PLAYER_MOVE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Handle a single message from BaseApp.
 pub(super) async fn handle_base_message(
@@ -128,6 +142,27 @@ pub(super) async fn handle_base_message(
             velocity,
         } => {
             tracing::trace!(entity_id, ?position, "EntityMove");
+            // 1-in-N sampled debug log on the canonical player-move
+            // target. Player movement is high volume (~10 Hz per
+            // active player) and rarely the bug source, so sampling
+            // gives operators "this player is alive and moving"
+            // confirmation without flooding the log stream.
+            let sample = PLAYER_MOVE_COUNTER.fetch_add(1, Ordering::Relaxed);
+            if sample.is_multiple_of(PLAYER_MOVE_LOG_SAMPLE) {
+                tracing::debug!(
+                    target: "movement.player",
+                    event = "position_update",
+                    entity_id,
+                    x = position[0],
+                    y = position[1],
+                    z = position[2],
+                    vx = velocity[0],
+                    vy = velocity[1],
+                    vz = velocity[2],
+                    sample_index = sample,
+                    "player position update (sampled)"
+                );
+            }
             space_mgr.update_entity_position(entity_id, position, direction, velocity);
         }
 
