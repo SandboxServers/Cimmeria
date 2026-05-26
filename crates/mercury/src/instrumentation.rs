@@ -39,6 +39,23 @@
 //! attached, the event is queued onto the batch exporter's channel —
 //! the actual OTLP send happens on a background tokio task. Net cost
 //! on the hot send/receive path: a handful of nanoseconds.
+//!
+//! # Where these helpers actually fire
+//!
+//! `record_udp_packet` is called from [`crate::channel::Channel::send_packet`]
+//! and [`crate::channel::Channel::receive_packet`]. **In production
+//! those Channel methods are unused** — the hot wire path bypasses
+//! Channel and calls `UdpTransport::send_to` / `BidirectionalTransport::recv_from`
+//! directly. The production `mercury.packet` events are emitted
+//! *inline* in the transport impl (see [`crate::transport`]) rather
+//! than through this helper, because the transport layer doesn't
+//! have `seq`/`flags` to pass — those live inside the encrypted
+//! packet body.
+//!
+//! Keeping these helpers for the Channel-side fire is intentional:
+//! the test suite exercises Channel directly, and if a future
+//! refactor routes production traffic through Channel (e.g. to
+//! instrument retransmit ordering), the recording is already there.
 
 /// Direction of a packet relative to the server.
 #[derive(Copy, Clone, Debug)]

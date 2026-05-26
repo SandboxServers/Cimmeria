@@ -61,7 +61,23 @@ impl UdpTransport {
 #[async_trait]
 impl Transport for UdpTransport {
     async fn send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
-        self.socket.send_to(bytes, addr).await
+        let result = self.socket.send_to(bytes, addr).await;
+        // mercury.packet recording lives here (the actual production
+        // hot path) rather than in `Channel::send_packet`. The richer
+        // recording in Channel records `seq`/`flags` but Channel
+        // isn't called in production — only in tests. Without this
+        // helper at the transport layer, the entire `mercury.packet`
+        // log stream is empty in SigNoz.
+        tracing::info!(
+            target: "mercury.packet",
+            dir = "out",
+            transport = "udp",
+            len = bytes.len(),
+            peer = %addr,
+            ok = result.is_ok(),
+            "mercury_packet"
+        );
+        result
     }
 
     fn local_addr(&self) -> io::Result<SocketAddr> {
@@ -90,7 +106,19 @@ pub trait BidirectionalTransport: Transport {
 #[async_trait]
 impl BidirectionalTransport for UdpTransport {
     async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        self.socket.recv_from(buf).await
+        let result = self.socket.recv_from(buf).await;
+        if let Ok((len, addr)) = &result {
+            // See the send_to comment above — production hot path.
+            tracing::info!(
+                target: "mercury.packet",
+                dir = "in",
+                transport = "udp",
+                len = *len,
+                peer = %addr,
+                "mercury_packet"
+            );
+        }
+        result
     }
 }
 
