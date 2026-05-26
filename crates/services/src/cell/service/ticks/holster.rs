@@ -52,6 +52,12 @@ use super::super::super::space_manager::SpaceManager;
 pub(crate) const HOLSTER_ANIMATION_DURATION: std::time::Duration =
     std::time::Duration::from_millis(600);
 
+#[tracing::instrument(
+    name = "holster.timer_tick",
+    level = "debug",
+    skip_all,
+    fields(phase1_count = tracing::field::Empty, phase2_count = tracing::field::Empty),
+)]
 pub(in crate::cell::service) async fn holster_timer_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -75,6 +81,7 @@ pub(in crate::cell::service) async fn holster_timer_tick(
             })
         })
         .collect();
+    tracing::Span::current().record("phase1_count", phase1.len());
     for entity_id in phase1 {
         // Per-weapon duration: longarms (P90, AR, LMG) take longer
         // to stow than sidearms (pistol). Look up the active
@@ -137,6 +144,7 @@ pub(in crate::cell::service) async fn holster_timer_tick(
                 .is_some_and(|e| e.holster_animation_complete_at.is_some_and(|t| now >= t))
         })
         .collect();
+    tracing::Span::current().record("phase2_count", phase2.len());
     for entity_id in phase2 {
         let should_rebroadcast = match space_mgr.get_entity_mut(entity_id) {
             Some(e) => {
@@ -171,6 +179,12 @@ pub(in crate::cell::service) async fn holster_timer_tick(
 ///
 /// Cadence: every 100ms AoI tick. Cost is one filter pass; the
 /// inner re-invocation only fires on transition.
+#[tracing::instrument(
+    name = "bandolier.pending_slot_swap_tick",
+    level = "debug",
+    skip_all,
+    fields(ready_count = tracing::field::Empty),
+)]
 pub(in crate::cell::service) async fn pending_slot_swap_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -189,6 +203,7 @@ pub(in crate::cell::service) async fn pending_slot_swap_tick(
             Some((eid, target))
         })
         .collect();
+    tracing::Span::current().record("ready_count", ready.len());
 
     for (entity_id, target_slot) in ready {
         tracing::info!(

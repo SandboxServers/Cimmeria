@@ -63,6 +63,18 @@ impl SpaceManager {
                 for &eid in &current_aoi {
                     if !previous_aoi.contains(&eid) {
                         if let Some(other) = space.entities.get(&eid) {
+                            // Stable AoI-enter log — `aoi.entity_enter` event
+                            // name lets SigNoz answer "did entity X enter
+                            // player Y's view?" without grepping for the
+                            // EnteredAoI message text.
+                            tracing::debug!(
+                                target: "aoi.entity_enter",
+                                witness_id = player_id,
+                                entity_id = eid,
+                                space_id = space.space_id,
+                                is_player = other.is_player,
+                                "AoI: entity entered witness view"
+                            );
                             let npc_data = if !other.is_player {
                                 Some(super::super::messages::NpcAoIData {
                                     name_id: other.name_id,
@@ -151,6 +163,13 @@ impl SpaceManager {
                 // Left AoI: in previous but not in current
                 for &eid in &previous_aoi {
                     if !current_aoi.contains(&eid) {
+                        tracing::debug!(
+                            target: "aoi.entity_leave",
+                            witness_id = player_id,
+                            entity_id = eid,
+                            space_id = space.space_id,
+                            "AoI: entity left witness view"
+                        );
                         events.push(CellToBaseMsg::LeftAoI {
                             witness_id: player_id,
                             entity_id: eid,

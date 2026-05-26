@@ -595,6 +595,19 @@ impl Channel {
             budget -= 1;
             entry.retransmit_count += 1;
             entry.last_sent = now;
+            // Stable retransmit event for SigNoz: lets operators ask
+            // "is the network actually lossy?" by counting events with
+            // `target = "mercury.retransmit"` per peer / per minute.
+            // info level — these are rare in a healthy channel; a
+            // sustained rate indicates real loss or a stalled peer.
+            tracing::info!(
+                target: "mercury.retransmit",
+                peer = %self.remote_addr,
+                seq = entry.packet.sequence,
+                retransmit_count = entry.retransmit_count,
+                rto_ms = timeout.as_millis() as u64,
+                "Mercury: reliable packet retransmit"
+            );
             if !entry.raw_bytes.is_empty() {
                 retransmits.push(entry.raw_bytes.clone());
             }

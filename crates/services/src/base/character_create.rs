@@ -16,6 +16,12 @@ use super::resources::{bag_max_slots, bag_min_slot, BAG_FILL_ORDER};
 use super::ConnectedClientState;
 
 /// Handle `createCharacter` (0xC4) -- parse args and INSERT into sgw_player.
+#[tracing::instrument(
+    name = "character.create",
+    level = "info",
+    skip_all,
+    fields(peer = %addr, account_id, payload_len = payload.len()),
+)]
 pub(crate) async fn handle_create_character(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,

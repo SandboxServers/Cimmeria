@@ -569,6 +569,9 @@ fn init_logging(
                 cimmeria_services=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
+                mercury.retransmit=info,\
+                aoi.entity_enter=debug,aoi.entity_leave=debug,\
+                movement.npc=debug,movement.player=debug,\
                 sqlx::query=debug,\
                 tungstenite=off,tokio_tungstenite=off,hyper=off,\
                 h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";

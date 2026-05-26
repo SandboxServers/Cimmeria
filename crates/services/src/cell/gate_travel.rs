@@ -26,6 +26,12 @@ use super::space_manager::SpaceManager;
 /// Reference: `python/cell/SGWPlayer.py:onDialGate()` — the Python version
 /// starts a 4-second dial timer; we skip the timer and travel immediately
 /// for simplicity.
+#[tracing::instrument(
+    name = "gate_travel.dial",
+    level = "info",
+    skip_all,
+    fields(entity_id, target_address_id)
+)]
 pub async fn handle_dial_gate(
     entity_id: u32,
     target_address_id: i32,

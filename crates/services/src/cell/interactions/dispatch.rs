@@ -26,6 +26,12 @@ const MAX_INTERACT_DISTANCE: f32 = 5.0;
 /// 4. Send appropriate client method response
 ///
 /// Returns `Some(dialog_id)` if a dialog was opened (for content engine events).
+#[tracing::instrument(
+    name = "interaction.interact",
+    level = "info",
+    skip_all,
+    fields(entity_id, target_entity_id, space_id = tracing::field::Empty)
+)]
 pub async fn handle_interact(
     entity_id: u32,
     target_entity_id: u32,
@@ -33,13 +39,14 @@ pub async fn handle_interact(
     space_mgr: &mut SpaceManager,
 ) -> Option<i32> {
     // Validate player exists
-    let player_pos = match space_mgr.get_entity(entity_id) {
-        Some(e) => e.position,
+    let (player_pos, player_space_id) = match space_mgr.get_entity(entity_id) {
+        Some(e) => (e.position, e.space_id.0),
         None => {
             tracing::warn!(entity_id, "interact: player entity not found");
             return None;
         }
     };
+    tracing::Span::current().record("space_id", player_space_id);
 
     // Validate target exists and get interaction data
     let (target_pos, interaction_type, npc_name, target_template_id) =
@@ -161,6 +168,12 @@ pub async fn handle_interact(
 ///
 /// Called when the client sends an `initialResponse` cell method, typically
 /// after clicking an NPC whose InteractionType was set by a content chain.
+#[tracing::instrument(
+    name = "dialog.initial_response",
+    level = "info",
+    skip_all,
+    fields(entity_id, interaction_set_map_id)
+)]
 pub async fn handle_initial_response(
     entity_id: u32,
     interaction_set_map_id: i32,

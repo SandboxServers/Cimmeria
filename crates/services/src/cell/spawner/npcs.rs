@@ -138,6 +138,12 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
 /// Only spawns records whose `world_name` matches a space that already exists
 /// in the SpaceManager (i.e., non-instanced startup spaces). Instanced spaces
 /// are handled by `spawn_instance_npcs_from_records`.
+#[tracing::instrument(
+    name = "spawner.spawn_startup",
+    level = "info",
+    skip_all,
+    fields(record_count = records.len(), spawned = tracing::field::Empty),
+)]
 pub fn spawn_npcs_from_records(records: &[SpawnRecord], space_mgr: &mut SpaceManager) -> usize {
     let mut count = 0;
     for record in records {
@@ -165,6 +171,7 @@ pub fn spawn_npcs_from_records(records: &[SpawnRecord], space_mgr: &mut SpaceMan
             }
         }
     }
+    tracing::Span::current().record("spawned", count);
     tracing::info!(count, "DB-driven NPC population spawned (startup spaces)");
     count
 }
@@ -175,6 +182,12 @@ pub fn spawn_npcs_from_records(records: &[SpawnRecord], space_mgr: &mut SpaceMan
 /// SGC_W1). Each instance gets its own set of NPCs. The `space_id` parameter is the
 /// space that was just created — NPCs are spawned directly into it rather than going
 /// through `find_or_create_space` (which would create yet another new instance).
+#[tracing::instrument(
+    name = "spawner.spawn_instance",
+    level = "info",
+    skip_all,
+    fields(world_name, space_id, record_count = records.len(), spawned = tracing::field::Empty),
+)]
 pub fn spawn_instance_npcs_from_records(
     records: &[SpawnRecord],
     world_name: &str,
@@ -204,5 +217,6 @@ pub fn spawn_instance_npcs_from_records(
             }
         }
     }
+    tracing::Span::current().record("spawned", count);
     count
 }

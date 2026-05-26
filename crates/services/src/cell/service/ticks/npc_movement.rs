@@ -1,5 +1,17 @@
 use super::super::super::space_manager::SpaceManager;
 
+/// 1-in-N sampling rate for in-between NPC movement steps. State
+/// transitions (waypoint consumed, path complete) are always logged
+/// — only the per-tick interpolated position updates are sampled,
+/// since those are the high-volume noise. 10 = ~10% of step events.
+///
+/// Tunable knob: the right rate is "enough to see the motion shape
+/// for one NPC over a few seconds, not enough to drown the log
+/// stream when 100 NPCs are pathing simultaneously." Bump up
+/// (1-in-5) when actively debugging NPC pathing; back off (1-in-50)
+/// when the field is quiet.
+const NPC_STEP_LOG_SAMPLE: u32 = 10;
+
 /// NPC movement along nav paths — runs every AoI tick (100ms) for smooth pathing.
 ///
 /// For each NPC with a non-empty `nav_path`, move it toward the next waypoint
@@ -84,10 +96,30 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 [0, 0, 0],
                 velocity,
             );
-            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            let remaining_after = if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.nav_path.pop_front();
                 npc.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);
-            }
+                npc.nav_path.len()
+            } else {
+                0
+            };
+            // Always-log: NPC reached a waypoint. State transitions are
+            // low-volume (once per waypoint, not per tick) and the most
+            // diagnostic event for "NPC pathing looks wrong" bug
+            // reports. `path_complete = remaining_after == 0` is the
+            // signal SigNoz operators look for when checking
+            // "did the NPC actually finish its path?"
+            tracing::debug!(
+                target: "movement.npc",
+                event = "waypoint_reached",
+                npc_id,
+                wp_x = next_wp.x,
+                wp_y = next_wp.y,
+                wp_z = next_wp.z,
+                remaining_waypoints = remaining_after,
+                path_complete = (remaining_after == 0),
+                "NPC reached waypoint"
+            );
         } else {
             // Move toward waypoint by move_speed units
             let t = move_speed / dist;
@@ -110,14 +142,22 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 dz / dist * speed_per_sec,
             ];
 
-            if (npc_id % 10000) < 5 {
-                // log a few NPCs
+            // Sampled per-tick movement log. Stable `target:
+            // "movement.npc"` so SigNoz can filter by the canonical
+            // movement view (and the operator can dial the sampling
+            // by tuning `NPC_STEP_LOG_SAMPLE`). State transitions
+            // above are always-on; only these interpolated steps
+            // are sampled.
+            if npc_id.is_multiple_of(NPC_STEP_LOG_SAMPLE) {
                 tracing::debug!(
+                    target: "movement.npc",
+                    event = "step",
                     npc_id,
-                    cur = format_args!("({:.1},{:.1},{:.1})", cur_pos.x, cur_pos.y, cur_pos.z),
-                    new = format_args!("({:.1},{:.1},{:.1})", new_x, new_y, new_z),
-                    wp = format_args!("({:.1},{:.1},{:.1})", next_wp.x, next_wp.y, next_wp.z),
-                    "NPC movement step"
+                    cur_x = cur_pos.x, cur_y = cur_pos.y, cur_z = cur_pos.z,
+                    new_x, new_y, new_z,
+                    wp_x = next_wp.x, wp_y = next_wp.y, wp_z = next_wp.z,
+                    dist_remaining = dist - move_speed,
+                    "NPC movement step (sampled)"
                 );
             }
 

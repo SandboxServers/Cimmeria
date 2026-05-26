@@ -15,6 +15,12 @@ use super::super::executor;
 use super::super::mission_context::populate_mission_context;
 
 /// Fire the `DialogOpen` event when a dialog is displayed to a player.
+#[tracing::instrument(
+    name = "dialog.event_open",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, dialog_id, matched_actions = tracing::field::Empty),
+)]
 pub async fn fire_dialog_open(
     entity_id: u32,
     player_id: i32,
@@ -38,6 +44,7 @@ pub async fn fire_dialog_open(
     };
 
     let resolved = engine.resolve_event(&event, &ctx);
+    tracing::Span::current().record("matched_actions", resolved.actions.len());
     if !resolved.actions.is_empty() {
         tracing::info!(
             entity_id,
@@ -53,6 +60,12 @@ pub async fn fire_dialog_open(
 }
 
 /// Fire `OnDialogChoice` event when a player clicks a dialog button.
+#[tracing::instrument(
+    name = "dialog.event_choice",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, dialog_id, button_id, matched_actions = tracing::field::Empty),
+)]
 pub async fn fire_dialog_choice(
     entity_id: u32,
     player_id: i32,
@@ -78,6 +91,7 @@ pub async fn fire_dialog_choice(
     };
 
     let resolved = engine.resolve_event(&event, &ctx);
+    tracing::Span::current().record("matched_actions", resolved.actions.len());
     if !resolved.actions.is_empty() {
         tracing::info!(
             entity_id,

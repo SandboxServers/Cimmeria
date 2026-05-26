@@ -61,6 +61,12 @@ pub async fn item_allows_container(pool: &Arc<PgPool>, type_id: i32, container_i
 }
 
 /// Persist an item grant to inventory and sync client appearance.
+#[tracing::instrument(
+    name = "inventory.grant_item",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, item_id, container_id, count)
+)]
 pub async fn handle_grant_item(
     entity_id: u32,
     player_id: i32,

@@ -28,6 +28,12 @@ fn resolve_mail_player_id(entity_id: u32, space_mgr: &SpaceManager, op: &str) ->
 }
 
 /// Forward a `requestMailHeaders` call to BaseApp for DB execution.
+#[tracing::instrument(
+    name = "mail.request_headers",
+    level = "info",
+    skip_all,
+    fields(entity_id, b_archive)
+)]
 pub async fn handle_request_mail_headers(
     entity_id: u32,
     b_archive: u8,
@@ -47,6 +53,12 @@ pub async fn handle_request_mail_headers(
 }
 
 /// Forward a `requestMailBody` call to BaseApp for DB execution.
+#[tracing::instrument(
+    name = "mail.request_body",
+    level = "info",
+    skip_all,
+    fields(entity_id, mail_id)
+)]
 pub async fn handle_request_mail_body(
     entity_id: u32,
     mail_id: i32,
@@ -66,6 +78,12 @@ pub async fn handle_request_mail_body(
 }
 
 /// Forward a `deleteMailMessage` call to BaseApp for DB execution.
+#[tracing::instrument(
+    name = "mail.delete",
+    level = "info",
+    skip_all,
+    fields(entity_id, mail_id)
+)]
 pub async fn handle_delete_mail(
     entity_id: u32,
     mail_id: i32,
@@ -85,6 +103,12 @@ pub async fn handle_delete_mail(
 }
 
 /// Forward an `archiveMailMessage` call to BaseApp for DB execution.
+#[tracing::instrument(
+    name = "mail.archive",
+    level = "info",
+    skip_all,
+    fields(entity_id, mail_id)
+)]
 pub async fn handle_archive_mail(
     entity_id: u32,
     mail_id: i32,

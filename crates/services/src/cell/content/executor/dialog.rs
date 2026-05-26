@@ -9,6 +9,12 @@ use crate::cell::space_manager::SpaceManager;
 /// `Action::DisplayDialog` and `Action::StartDialog` — both render a dialog
 /// to the player. They take different field names but the same id semantics,
 /// merged into one handler.
+#[tracing::instrument(
+    name = "dialog.display",
+    level = "info",
+    skip_all,
+    fields(entity_id, dialog_id, chain_id)
+)]
 pub(super) async fn display(
     dialog_id: i32,
     entity_id: u32,
@@ -23,6 +29,12 @@ pub(super) async fn display(
 /// `Action::AddDialogSet` — register a dialog set on the player's
 /// `available_interactions` for the given template slot, and push an
 /// InteractionType update for any matching NPC already in AoI.
+#[tracing::instrument(
+    name = "dialog.add_set",
+    level = "info",
+    skip_all,
+    fields(entity_id, dialog_set_id, slot, chain_id)
+)]
 pub(super) async fn add_dialog_set(
     dialog_set_id: i32,
     slot: i32,
@@ -88,6 +100,12 @@ pub(super) async fn add_dialog_set(
 /// `available_interactions[slot]` and push an InteractionType update to
 /// every entity sharing the template (with the per-entity base flags
 /// merged in).
+#[tracing::instrument(
+    name = "dialog.remove_set",
+    level = "info",
+    skip_all,
+    fields(entity_id, dialog_set_id, slot, chain_id)
+)]
 pub(super) async fn remove_dialog_set(
     dialog_set_id: i32,
     slot: i32,
@@ -164,6 +182,12 @@ pub(super) async fn remove_dialog_set(
 /// `Action::AddDialog` — like `AddDialogSet` but the slot comes from the
 /// action's `entity_template` field instead of a separate `slot` field.
 /// Skips with a warning when `entity_template` is `None`.
+#[tracing::instrument(
+    name = "dialog.add",
+    level = "info",
+    skip_all,
+    fields(entity_id, dialog_set_id, entity_template = ?entity_template, chain_id),
+)]
 pub(super) async fn add_dialog(
     dialog_set_id: i32,
     entity_template: Option<i32>,

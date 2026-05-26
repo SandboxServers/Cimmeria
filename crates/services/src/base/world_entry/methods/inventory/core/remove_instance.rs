@@ -17,6 +17,12 @@ use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 
 /// Remove an inventory item from player inventory and sync client.
+#[tracing::instrument(
+    name = "inventory.remove_item",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, item_id, quantity)
+)]
 pub async fn handle_remove_inventory_item(
     entity_id: u32,
     player_id: i32,

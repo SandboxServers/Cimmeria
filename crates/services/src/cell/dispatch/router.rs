@@ -28,7 +28,7 @@ use super::super::space_manager::SpaceManager;
     name = "cell.dispatch",
     level = "debug",
     skip_all,
-    fields(entity_id, method_index, args_len = args.len()),
+    fields(entity_id, method_index, args_len = args.len(), space_id = tracing::field::Empty),
 )]
 pub async fn dispatch_cell_method(
     entity_id: u32,
@@ -38,6 +38,10 @@ pub async fn dispatch_cell_method(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
+    // Backfill space_id so SigNoz can pivot dispatches by world/instance.
+    if let Some(e) = space_mgr.get_entity(entity_id) {
+        tracing::Span::current().record("space_id", e.space_id.0);
+    }
     // SGWBeing interface (0–1)
     if cell_methods::being::dispatch(entity_id, method_index, args, tx, space_mgr).await {
         return;

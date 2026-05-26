@@ -78,6 +78,12 @@ pub(super) async fn send_loot_display(
 /// 5. If loot is now empty, clear INT_NormalLoot on the NPC
 ///
 /// Reference: `python/cell/interactions/Lootable.py:onLootItem()`
+#[tracing::instrument(
+    name = "loot.take_item",
+    level = "info",
+    skip_all,
+    fields(entity_id, index)
+)]
 pub async fn handle_loot_item(
     entity_id: u32,
     index: i32,
