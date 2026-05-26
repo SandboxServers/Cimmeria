@@ -138,6 +138,74 @@ async fn npc_ai_dead_target_is_removed_but_other_threats_remain() {
     );
 }
 
+/// **Diagnostic regression guard for the Ambernol-drone-doesn't-fire bug.**
+///
+/// Pre-fix, a stationary NPC with `!in_range || !has_los` returned
+/// silently from `npc_ai_fight` — no log, no span event, no visibility.
+/// SigNoz logs for the Ambernol drone (entity 100115, instance 65552)
+/// showed 54s of aggro with zero `npc_ai.decision` events because every
+/// tick landed in this branch and emitted nothing. Reproducing the
+/// outage in code requires the structured `decision_outcome="stationary_holds"`
+/// log to fire — without it, the only observable signal is "nothing
+/// happens for an entire encounter."
+///
+/// This guard pins the log: same fixture as
+/// `npc_ai_stationary_does_not_pathfind_when_out_of_range`, plus a
+/// `LogCapture` assertion that the new INFO event fires with the
+/// expected structured fields. Reverting the `tracing::info!` call to
+/// the pre-fix silent `return` trips this test.
+#[tokio::test]
+async fn stationary_no_los_or_range_emits_structured_decision_log() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+    // Target at distance 40 (within LEASH=50 but past NPC_ATTACK_RANGE=30)
+    // so `in_range` is false. Range alone is enough — no need to mock
+    // LoS as a separate condition.
+    mgr.create_entity(100, "Castle", [40.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(100) {
+        p.is_player = true;
+        if let Some(h) = p.stats.get_mut(HEALTH) {
+            h.update(0, 100, 100);
+            h.clear_dirty();
+        }
+    }
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.threat_list.insert(100, 1.0);
+        npc.is_stationary = true;
+    }
+    let (tx, _rx) = mpsc::channel(8);
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let event = capture
+        .find_message(Level::INFO, "stationary mob holding fire")
+        .unwrap_or_else(|| {
+            panic!(
+                "stationary out-of-range NPC must emit a structured \
+                 `decision_outcome=stationary_holds` INFO log so the \
+                 silent-skip branch is observable in SigNoz. A revert \
+                 to the pre-fix bare `return;` makes this test fail \
+                 because no event with this message is captured. \
+                 Captured: {:#?}",
+                capture.all()
+            )
+        });
+    assert!(
+        event.has_field("decision_outcome", "stationary_holds"),
+        "log must carry decision_outcome=stationary_holds for \
+         SigNoz `groupBy=decision_outcome` queries to surface the \
+         silent-skip rate; got {event:#?}"
+    );
+    assert!(
+        event.has_field("npc_id", "200"),
+        "log must carry npc_id so the operator can pivot per-mob; \
+         got {event:#?}"
+    );
+}
+
 /// Stationary NPC out of attack range / LOS does NOT pathfind. Pin
 /// so a refactor that runs the pathfinder unconditionally doesn't
 /// turn turrets into chasers.

@@ -269,6 +269,28 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     // LEASH_DISTANCE.
     if !in_range || !has_los {
         if is_stationary {
+            // Stationary NPC out of range OR with no LoS — silently
+            // skipped pre-fix. Emit a structured info log so this
+            // branch is observable in SigNoz without code spelunking.
+            // The Ambernol drone (template 4, ability_set 2 / Energy
+            // Shock) sat in this branch for 54 s of aggro on every
+            // tick because the navmesh raycast fail-closed on
+            // off-mesh flyer positions — and no log line surfaced
+            // it. Same pattern that the existing `no_path` log
+            // catches for non-stationary NPCs.
+            tracing::info!(
+                target: "npc_ai",
+                event = "decision",
+                decision_outcome = "stationary_holds",
+                npc_id,
+                target_id,
+                in_range,
+                has_los,
+                dist_to_target,
+                max_range,
+                "NPC AI: stationary mob holding fire (out of range or no LoS) — \
+                 verify position is on the navmesh and target is reachable"
+            );
             return;
         }
         let needs_repath = {

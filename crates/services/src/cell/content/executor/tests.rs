@@ -682,6 +682,148 @@ async fn set_aggression_level_one_writes_entity_field() {
     );
 }
 
+/// Chain-driven `Action::GenerateThreat` must broadcast `RefreshAppearance`
+/// BEFORE `onStateFieldUpdate` when the player just entered combat.
+/// `combat::generate_threat` flips `weapon_holstered = false` via
+/// `enter_player_combat`; without the appearance refresh the client's
+/// cached `ComponentList` keeps rendering the holstered/empty-hand mesh
+/// while the server thinks the weapon is drawn — every subsequent fire
+/// animation plays against empty hands and the in-combat pose shows no
+/// weapon.
+///
+/// Bug shape from the play-session report on chain 1032 (Ambernol vial
+/// pickup triggers drone aggro): "the players fists go into the combat
+/// position even though that's not the active bandolier slot, the
+/// player then shoots without having a weapon in their hands, and the
+/// fists holsters when aggro drops when the drone dies." Three callers
+/// of `combat::generate_threat` — `npc_ai_idle_auto_aggro` (NPC sees
+/// player), `damage_apply::apply_damage_to_target` (player hits NPC),
+/// and this content-action path — must all refresh appearance on
+/// first-add. Pre-fix, only the first two did.
+///
+/// Order matters: appearance BEFORE state-field per the documented
+/// "splinch" guard (the client's draw animation socket-attaches the
+/// weapon mesh from the current `BeingAppearance`; flipping
+/// `BSF_InCombat` first starts the draw animation against an empty
+/// socket and the mesh snaps in mid-frame).
+#[tokio::test]
+async fn generate_threat_action_refreshes_appearance_before_state_field_on_first_aggro() {
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(101) {
+        npc.tag = Some("Drone".to_string());
+    }
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(42);
+        // Pre-stage: player is holstered + OOC. The bug shape is
+        // specifically the first-add `enter_player_combat` transition
+        // flipping `weapon_holstered=false` without broadcasting
+        // appearance — fixture must start at the holstered state for
+        // the flip to be observable.
+        p.weapon_holstered = true;
+        assert!(
+            p.threatened_mobs.is_empty(),
+            "fixture sanity: player starts with no aggroed mobs so \
+             `enter_player_combat` takes the first-add transition path \
+             (returns Some(state)) — without that, the appearance + \
+             state-field broadcasts are both skipped and this test \
+             passes for the wrong reason"
+        );
+    }
+    mgr.connect_entity(1);
+
+    let (tx, mut rx) = mpsc::channel(32);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            1032,
+            Action::GenerateThreat {
+                entity_tag: Some("Drone".to_string()),
+                threat_level: 1000,
+            },
+        )],
+    };
+
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    // Drain the cell→base channel and capture the order of the two
+    // load-bearing messages.
+    let mut refresh_at: Option<usize> = None;
+    let mut state_field_at: Option<usize> = None;
+    let mut idx: usize = 0;
+    while let Ok(msg) = rx.try_recv() {
+        match msg {
+            CellToBaseMsg::RefreshAppearance {
+                entity_id: 1,
+                player_id: 42,
+                holstered,
+            } => {
+                assert!(
+                    !holstered,
+                    "RefreshAppearance must carry holstered=false — \
+                     enter_player_combat flipped the field; the wire \
+                     must mirror the server-side value"
+                );
+                refresh_at.get_or_insert(idx);
+            }
+            CellToBaseMsg::EntityMethodCall {
+                entity_id: 1,
+                method_index,
+                ..
+            } if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE => {
+                state_field_at.get_or_insert(idx);
+            }
+            _ => {}
+        }
+        idx += 1;
+    }
+
+    let refresh_idx = refresh_at.expect(
+        "generate_threat content action MUST broadcast RefreshAppearance \
+         on the first-add `enter_player_combat` transition — pre-fix the \
+         action handler only sent onStateFieldUpdate and the client kept \
+         the holstered/empty-hand BeingAppearance cached, producing the \
+         play-session 'fists in combat pose, shoots without a weapon' bug \
+         specifically from chain 1032 (Ambernol pickup triggers drone aggro)",
+    );
+    let state_field_idx = state_field_at.expect(
+        "generate_threat must STILL broadcast onStateFieldUpdate so the \
+         in-combat HUD / targeting cursor / state-bit-derived UI flips. \
+         A regression that drops this packet leaves the player visually \
+         drawn but UI-OOC",
+    );
+    assert!(
+        refresh_idx < state_field_idx,
+        "ordering: RefreshAppearance (#{refresh_idx}) must precede \
+         onStateFieldUpdate (#{state_field_idx}). Both flow through the \
+         same client-side state-machine entry point, but only the \
+         appearance path triggers the socket re-attach that writes the \
+         weapon-category byte. If `BSF_InCombat` flips first, the \
+         unholster animation starts before the mesh is attached — the \
+         documented 'splinch' bug shape from PR #395"
+    );
+
+    // Sanity: the cell-side state did flip. If this fails, the
+    // assertions above passed for the wrong reason.
+    let player = mgr.get_entity(1).unwrap();
+    assert!(
+        !player.weapon_holstered,
+        "enter_player_combat must flip weapon_holstered=false on the \
+         first-add transition — broadcast or not, the server-side state \
+         is the source of truth for subsequent fire-path gating"
+    );
+    assert!(
+        player.threatened_mobs.contains(&101),
+        "drone must be in the player's threatened_mobs set after \
+         generate_threat — this is what `enter_player_combat`'s \
+         was_empty → Some(state) gate keys on"
+    );
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Negative-logging regression guards — content executor.
 //
