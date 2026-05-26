@@ -28,14 +28,23 @@
 //! writing all 240 would take ~40 hours; codegen is ~6-hour build
 //! plus per-method tuning. Tracked as a separate work stream.
 
+mod generated;
 mod inbound;
 mod outbound;
 mod primitives;
 
 /// Decode an outbound entity-method payload. Returns `None` when no
 /// decoder is registered for the method index or the parse fails.
+///
+/// Lookup order:
+///   1. Hand-written decoders in [`outbound`] — overrides codegen for
+///      methods where we want richer semantic fields (BSF bits on
+///      onStateFieldUpdate, etc.).
+///   2. Codegen decoders in [`generated`] — covers ~120 methods with
+///      pure-primitive schemas, parsed from the dispatch table doc.
+///   3. `None` — caller falls back to the always-on `args_hex` field.
 pub fn decode_outbound(method_index: u16, args: &[u8]) -> Option<serde_json::Value> {
-    outbound::decode(method_index, args)
+    outbound::decode(method_index, args).or_else(|| generated::decode_generated(method_index, args))
 }
 
 /// Decode an inbound bundle message payload. Returns `None` when no
