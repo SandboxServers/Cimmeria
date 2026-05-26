@@ -71,6 +71,12 @@ use cimmeria_entity::inventory::{
 /// handler is idempotent — chain conditions self-gate on
 /// `step_status = active` so a duplicate fire from a drainer retry is
 /// harmless.
+#[tracing::instrument(
+    name = "inventory.use_item",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, item_id, target_id)
+)]
 pub async fn handle_use_inventory_item(
     entity_id: u32,
     player_id: i32,

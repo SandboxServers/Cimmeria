@@ -52,6 +52,16 @@ const ON_PLAYER_COMMUNICATION: u16 = 28;
 /// - say/emote/yell: broadcast to witnesses
 /// - Client does NOT echo say (channel 0) — server must send it back
 /// - Client DOES echo emote/yell — but Python sends it anyway (no harm)
+/// `text_len` is recorded but the message body itself is intentionally
+/// excluded from the span — chat content is user-private and shouldn't
+/// land in the SigNoz log/trace store. Operators get "who sent how
+/// many bytes on which channel" without sniffing message bodies.
+#[tracing::instrument(
+    name = "chat.send",
+    level = "info",
+    skip_all,
+    fields(entity_id, channel, text_len = text.len()),
+)]
 pub async fn handle_chat_message(
     entity_id: u32,
     speaker_name: &str,

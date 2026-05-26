@@ -34,6 +34,12 @@ mod tests;
 /// The CellService has already removed the entity from its old space.
 /// We tell it to create the entity in the new space, then send the client
 /// the full world-entry + mapLoaded sequence for the destination.
+#[tracing::instrument(
+    name = "gate_travel.execute",
+    level = "info",
+    skip_all,
+    fields(entity_id, target_world_name, destination_ring_id)
+)]
 pub(crate) async fn handle_gate_travel(
     entity_id: u32,
     target_world_name: &str,

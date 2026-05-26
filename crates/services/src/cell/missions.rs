@@ -166,7 +166,7 @@ pub async fn advance_step(
     name = "mission.accept",
     level = "info",
     skip_all,
-    fields(entity_id, mission_id, step_id, objectives_len = objectives.len()),
+    fields(entity_id, mission_id, step_id, objectives_len = objectives.len(), player_id = tracing::field::Empty),
 )]
 pub async fn accept_mission(
     entity_id: u32,
@@ -180,6 +180,10 @@ pub async fn accept_mission(
         Some(e) => e,
         None => return,
     };
+    // Backfill the DB player_id for session correlation in SigNoz.
+    if let Some(pid) = entity.player_id {
+        tracing::Span::current().record("player_id", pid);
+    }
 
     // Carry forward `repeats` from any prior instance of this mission --
     // `add_mission` overwrites by mission_id, and a fresh `MissionInstance::new`
@@ -267,7 +271,7 @@ pub async fn accept_mission(
     name = "mission.abandon",
     level = "info",
     skip_all,
-    fields(entity_id, mission_id)
+    fields(entity_id, mission_id, player_id = tracing::field::Empty)
 )]
 pub async fn abandon_mission(
     entity_id: u32,
@@ -279,6 +283,9 @@ pub async fn abandon_mission(
         Some(e) => e,
         None => return,
     };
+    if let Some(pid) = entity.player_id {
+        tracing::Span::current().record("player_id", pid);
+    }
 
     if entity.missions.remove_mission(mission_id).is_some() {
         tracing::info!(entity_id, mission_id, "Mission abandoned");
@@ -385,7 +392,7 @@ pub async fn complete_objective(
     name = "mission.complete_direct",
     level = "info",
     skip_all,
-    fields(entity_id, mission_id)
+    fields(entity_id, mission_id, player_id = tracing::field::Empty)
 )]
 pub async fn complete_mission_direct(
     entity_id: u32,
@@ -397,6 +404,9 @@ pub async fn complete_mission_direct(
         Some(e) => e,
         None => return,
     };
+    if let Some(pid) = entity.player_id {
+        tracing::Span::current().record("player_id", pid);
+    }
 
     let mission = match entity.missions.get_mission_mut(mission_id) {
         Some(m) => m,

@@ -118,6 +118,19 @@ fn build_reanchor_packets(
 }
 
 /// Handle a re-anchor request from CellService.
+///
+/// `level = "info"` — reanchor is low-frequency (respawn, gate travel
+/// within-world) and high-signal. Operators look at this span to
+/// answer "did the reanchor broadcast everything the client needs to
+/// rebuild its model?" A trace that shows reanchor with no child
+/// inventory/mission/appearance broadcasts is the signature of the
+/// post-respawn inventory-desync bug class.
+#[tracing::instrument(
+    name = "world_entry.reanchor_player",
+    level = "info",
+    skip_all,
+    fields(entity_id, space_id, x = position[0], y = position[1], z = position[2]),
+)]
 pub(crate) async fn handle_reanchor_player(
     entity_id: u32,
     space_id: u32,

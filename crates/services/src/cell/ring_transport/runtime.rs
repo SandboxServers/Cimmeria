@@ -179,6 +179,12 @@ fn mission_gate_satisfied(space_mgr: &SpaceManager, entity_id: u32, mission_id: 
 
 /// `interact()` entry point — called by the `TriggerTransporter` action
 /// executor. Sets `ringSourceId` on the player and sends the destination list.
+#[tracing::instrument(
+    name = "ring_transport.interact",
+    level = "info",
+    skip_all,
+    fields(region_id, entity_id)
+)]
 pub async fn handle_interact(
     region_id: i32,
     entity_id: u32,
@@ -229,6 +235,12 @@ pub async fn handle_interact(
 
 /// `selectDestination()` — called by the `setRingTransporterDestination`
 /// inbound cell method handler.
+#[tracing::instrument(
+    name = "ring_transport.select_destination",
+    level = "info",
+    skip_all,
+    fields(source_region_id, destination_region_id, entity_id)
+)]
 pub async fn handle_select_destination(
     source_region_id: i32,
     destination_region_id: i32,

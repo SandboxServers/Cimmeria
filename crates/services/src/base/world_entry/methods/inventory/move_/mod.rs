@@ -27,6 +27,19 @@ struct InventoryInstanceRow {
 }
 
 /// Move an inventory item between containers/slots, optionally swapping with occupant.
+#[tracing::instrument(
+    name = "inventory.move_item",
+    level = "info",
+    skip_all,
+    fields(
+        entity_id,
+        player_id,
+        item_id,
+        target_container_id,
+        target_slot_id,
+        quantity
+    )
+)]
 pub async fn handle_move_inventory_item(
     entity_id: u32,
     player_id: i32,
