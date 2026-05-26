@@ -520,7 +520,7 @@ pub async fn handle_use_ability(
     )
     .await;
 
-    // Cone AoE fan-out (#61, #419) — once the primary takes damage,
+    // Cone AoE fan-out — once the primary takes damage,
     // sweep every effect on this ability for `TCM_AECone` and apply
     // damage to any additional hostiles caught in the cone. Returns
     // alive→dead transitions so the caller's kill-credit wrapper can

@@ -1,4 +1,4 @@
-//! Effect-script dispatcher (#331 Phase 1).
+//! Effect-script dispatcher.
 //!
 //! `EffectDef.script_name: Option<String>` has been loaded from the DB for
 //! some time but never dispatched — the field was dead. This module wires
@@ -85,16 +85,19 @@ pub struct EffectContext<'a> {
 /// [`scripts`] and register themselves via the [`registry::dispatch`]
 /// static table.
 ///
-/// The `on_apply` method is called once per pulse fire (initial or
-/// re-pulse from the per-tick scheduler). Scripts MUST be infallible
-/// from the gameplay perspective — they handle missing entities,
-/// missing stats, etc. internally and produce sensible no-ops.
+/// `on_apply` is called once per pulse fire (initial or re-pulse from
+/// the per-tick scheduler) — it returns `()`, not a `Result`. Scripts
+/// MUST be infallible from the gameplay perspective: they handle
+/// missing entities, missing stats, and unparseable NVPs internally
+/// and produce sensible no-ops rather than panicking or propagating
+/// errors. Bad input is surfaced via `tracing::warn!` so operators
+/// see it without the call stack unwinding.
 ///
-/// The `on_remove` method is called once when an active-effect instance
-/// is swept (remaining_pulses reaches 0, target dies, attacker cancels
-/// a channel, etc.). Default impl is a no-op — only scripts that
-/// mutated persistent state on apply (Stun's state-flag, AbsorbShield's
-/// pool capacity) need to override.
+/// `on_remove` is called once when an active-effect instance is swept
+/// (remaining_pulses reaches 0, target dies, attacker cancels a
+/// channel). Default impl is a no-op — only scripts that mutated
+/// persistent state on apply (Stun's state-flag, AbsorbShield's pool
+/// capacity) need to override.
 pub trait EffectScript: Send + Sync {
     fn on_apply(&self, ctx: &mut EffectContext);
     /// Called exactly once when the owning instance is removed from

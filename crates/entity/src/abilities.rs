@@ -124,7 +124,7 @@ pub struct AbilityDef {
 /// `resources.effect_nvps`. The dispatch-relevant fields (`pulse_count`,
 /// `pulse_duration`, `is_channeled`, `target_collection_method`,
 /// `tcm_param1/2`, `flags`) were added to support pulsing, cone AoE, and
-/// flag-driven script categories — see #47 / #61 / #419.
+/// flag-driven script categories.
 #[derive(Debug, Clone)]
 pub struct EffectDef {
     pub effect_id: i32,
@@ -848,5 +848,75 @@ mod tests {
         let mut mgr = AbilityManager::new();
         mgr.add_ability(597);
         assert_eq!(mgr.first_known_ability(), Some(597));
+    }
+
+    // ── EffectDef helpers ────────────────────────────────────────────────
+
+    #[test]
+    fn effect_def_default_is_single_target_single_pulse() {
+        let e = EffectDef::default();
+        assert_eq!(e.pulse_count, 1, "default pulse_count=1");
+        assert_eq!(e.target_collection_method, TCM_SINGLE);
+        assert!(!e.is_pulsing(), "single-pulse is not pulsing");
+    }
+
+    #[test]
+    fn effect_def_is_pulsing_matches_pulse_count() {
+        let mut e = EffectDef::default();
+        e.pulse_count = 0; // channelled
+        assert!(e.is_pulsing());
+        e.pulse_count = 1; // single shot
+        assert!(!e.is_pulsing());
+        e.pulse_count = 5; // DoT
+        assert!(e.is_pulsing());
+    }
+
+    #[test]
+    fn effect_def_total_duration_skips_single_shot_and_channelled() {
+        let mut e = EffectDef::default();
+        e.pulse_count = 1;
+        e.pulse_duration = 5.0;
+        assert_eq!(e.total_duration(), 0.0, "single-shot has 0 duration");
+
+        e.pulse_count = 0;
+        assert_eq!(
+            e.total_duration(),
+            0.0,
+            "channelled has 0 duration (unbounded)"
+        );
+
+        e.pulse_count = 5;
+        e.pulse_duration = 1.5;
+        assert_eq!(e.total_duration(), 7.5, "DoT: 5 * 1.5 = 7.5");
+    }
+
+    #[test]
+    fn tcm_range_meters_known_tiers_resolve_to_expected_distances() {
+        assert_eq!(EffectDef::tcm_range_meters("Melee"), 2.5);
+        assert_eq!(EffectDef::tcm_range_meters("Short"), 5.0);
+        assert_eq!(EffectDef::tcm_range_meters("Medium"), 8.0);
+        assert_eq!(EffectDef::tcm_range_meters("Long"), 14.0);
+        assert_eq!(EffectDef::tcm_range_meters("Weapon"), 20.0);
+    }
+
+    #[test]
+    fn tcm_range_meters_unknown_tier_falls_back_to_medium() {
+        // Unknown tier defaults to Medium=8.0 with a warn log.
+        assert_eq!(EffectDef::tcm_range_meters("NoSuchTier"), 8.0);
+        assert_eq!(EffectDef::tcm_range_meters(""), 8.0);
+    }
+
+    #[test]
+    fn tcm_half_angle_radians_known_tiers_resolve() {
+        use std::f32::consts::{FRAC_PI_4, FRAC_PI_8};
+        assert!((EffectDef::tcm_half_angle_radians("Narrow") - FRAC_PI_8).abs() < 1e-6);
+        assert!((EffectDef::tcm_half_angle_radians("Medium") - FRAC_PI_4).abs() < 1e-6);
+        assert!((EffectDef::tcm_half_angle_radians("Wide") - 3.0 * FRAC_PI_8).abs() < 1e-6);
+    }
+
+    #[test]
+    fn tcm_half_angle_radians_unknown_tier_falls_back_to_medium() {
+        use std::f32::consts::FRAC_PI_4;
+        assert!((EffectDef::tcm_half_angle_radians("NoSuchTier") - FRAC_PI_4).abs() < 1e-6);
     }
 }

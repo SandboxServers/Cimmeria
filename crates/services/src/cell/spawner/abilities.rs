@@ -162,7 +162,7 @@ pub struct ArchetypeAbilityTreeEntry {
 /// player's known set.
 ///
 /// Today the table has 169 rows total: Soldier (84) and Commando (85)
-/// each have full trees; the other 7 archetypes are empty pending #419
+/// each have full trees; the other 7 archetypes are empty pending
 /// Phase 7 content authoring. Validation will reject train attempts
 /// for those archetypes — they can still get baseline abilities via
 /// `char_creation_abilities` (Phase 2) but can't deepen the tree.
@@ -222,7 +222,7 @@ pub async fn load_archetype_ability_trees(
 /// Today there's exactly one populated list (`list_id=1`, "Debug ability
 /// list") referenced by template_id=25 ("Interaction Debug NPC"). The other
 /// 152 templates have NULL `trainer_ability_list_id` so they're not trainers.
-/// More trainers + lists are #419 Phase 7 content work.
+/// More trainers + lists are Phase 7 content work.
 pub async fn load_trainer_abilities(
     pool: &PgPool,
 ) -> Result<std::collections::HashMap<(i32, i32), Vec<i32>>, sqlx::Error> {
@@ -306,7 +306,7 @@ pub async fn load_template_trainer_lists(
 /// Attack"; P90/SMG item 21 maps the same event to ability 559
 /// "Automatic Weapon Auto Attack"). The previous server hardcoded
 /// `592` (Pistol Shot) for every weapon's auto-attack, ignoring this
-/// table — see issue #419, fixed in this commit.
+/// table — see , fixed in this commit.
 ///
 /// Returns `Err` on DB failure; the startup wiring in
 /// `cell/service/startup.rs` logs the error and leaves
@@ -319,18 +319,28 @@ pub async fn load_item_event_set_abilities(
 ) -> Result<std::collections::HashMap<(i32, i32), i32>, sqlx::Error> {
     use sqlx::Row;
 
-    let rows = sqlx::query("SELECT item_id, event_id, ability_id FROM resources.items_event_sets")
-        .fetch_all(pool)
-        .await?;
+    // ORDER BY item_id, event_id, ability_id pins the duplicate
+    // resolution: without it Postgres returns rows in physical (heap)
+    // order, which can shift between runs after VACUUM/INSERT. Pairing
+    // with `or_insert` below gives the lowest-id ability deterministic
+    // priority when duplicate (item_id, event_id) rows exist in seed.
+    let rows = sqlx::query(
+        "SELECT item_id, event_id, ability_id FROM resources.items_event_sets \
+         ORDER BY item_id, event_id, ability_id",
+    )
+    .fetch_all(pool)
+    .await?;
 
     let mut map = std::collections::HashMap::with_capacity(rows.len());
     for r in &rows {
         let item_id: i32 = r.get("item_id");
         let event_id: i32 = r.get("event_id");
         let ability_id: i32 = r.get("ability_id");
-        // First binding wins on duplicates. The seed data has duplicates
-        // for some items (e.g., quest items that appear in multiple
-        // sets) but per-event_id the binding is unique in practice.
+        // Lowest-ability-id binding wins on duplicates. The seed data
+        // has duplicates for some items (e.g., quest items that appear
+        // in multiple sets) but per-event_id the binding is unique in
+        // practice. ORDER BY ability_id above pins determinism so the
+        // same DB content always resolves to the same ability.
         map.entry((item_id, event_id)).or_insert(ability_id);
     }
 

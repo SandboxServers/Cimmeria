@@ -380,7 +380,7 @@ pub async fn handle_grant_cash(
 
 /// Persist a trained ability + debit one training point.
 ///
-/// Cell pre-validates archetype tree + prereqs (see #419 Phase 5b);
+/// Cell pre-validates archetype tree + prereqs (see Phase 5b);
 /// base only validates training_points >= 1 and the DB UPDATE returning
 /// `rows_affected == 1`. On success, sends
 /// `BaseToCellMsg::AbilityGranted` so the cell can add to
@@ -397,7 +397,6 @@ pub async fn handle_grant_cash(
     skip_all,
     fields(entity_id, player_id, ability_id)
 )]
-#[allow(clippy::too_many_arguments)]
 pub async fn handle_train_ability(
     entity_id: u32,
     player_id: i32,
@@ -447,15 +446,20 @@ pub async fn handle_train_ability(
         }
     }
 
-    // Atomic: append ability_id + debit, but ONLY if training_points > 0.
-    // The cell pre-validated already-known; `||` appends unconditionally,
-    // and entity.abilities is a HashSet on the read side, so a rare
-    // race-introduced duplicate is absorbed without state corruption.
+    // Atomic: append ability_id + debit, but ONLY if training_points > 0
+    // AND the ability isn't already present. The `NOT (abilities @> ARRAY[$1])`
+    // clause prevents double-debit if two concurrent or replayed
+    // TrainAbility messages for the same ability arrive: the second
+    // returns 0 rows and the cell-side path treats that as a no-op.
+    // Without this, a player who clicks Train twice fast could lose two
+    // training points for one ability.
     let result = sqlx::query_scalar::<_, i32>(
         "UPDATE sgw_player \
             SET abilities = abilities || $1::integer, \
                 training_points = training_points - 1 \
-          WHERE player_id = $2 AND training_points > 0 \
+          WHERE player_id = $2 \
+            AND training_points > 0 \
+            AND NOT (abilities @> ARRAY[$1::integer]) \
         RETURNING training_points",
     )
     .bind(ability_id)

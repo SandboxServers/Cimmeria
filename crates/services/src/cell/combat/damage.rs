@@ -191,7 +191,7 @@ pub fn calculate_damage(
     let qr_damage = (res_damage * (1.0 + qr_result.qr)).round() as i32;
     let af_damage = (qr_damage - af_mitigation).max(0);
 
-    // Absorption shield (#47 Phase F): drain the matching ABSORB_*
+    // Absorption shield: drain the matching ABSORB_*
     // stat pool by `min(remaining_damage, pool_cur)` so shields are
     // genuinely consumable, not just a flat subtraction. Each damage
     // type drains its own pool. Health stat-id absorbs first; non-
@@ -697,7 +697,7 @@ mod tests {
         assert_eq!(results[0].delta, -10);
     }
 
-    // ── Absorption shield (#47 Phase F) ──────────────────────────────────
+    // ── Absorption shield ──────────────────────────────────
 
     #[test]
     fn absorption_drains_shield_pool_and_passes_overflow_to_health() {

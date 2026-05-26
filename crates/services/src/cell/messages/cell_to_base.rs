@@ -146,7 +146,7 @@ pub enum CellToBaseMsg {
     /// On success, base responds with
     /// [`crate::cell::messages::BaseToCellMsg::AbilityGranted`] so the
     /// cell can add to `entity.abilities` and broadcast
-    /// `onKnownAbilitiesUpdate`. See issue #419 Phase 5b.
+    /// `onKnownAbilitiesUpdate`.
     TrainAbility {
         entity_id: u32,
         player_id: i32,

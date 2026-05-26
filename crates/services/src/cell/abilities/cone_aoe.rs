@@ -1,4 +1,4 @@
-//! Cone-shaped AoE target collection (#61, #419).
+//! Cone-shaped AoE target collection.
 //!
 //! 99 effects in the DB carry `target_collection_method = 'TCM_AECone'`,
 //! but until this module landed they only damaged the primary target —
@@ -233,51 +233,50 @@ pub async fn fan_out_cone_effects(
         return Vec::new();
     };
 
-    // Collect (cone_length, half_angle) per cone-effect, deduplicating
-    // by geometry so two cone effects with identical reach + spread
-    // share one target collection pass.
-    let mut cone_specs: Vec<(f32, f32)> = Vec::new();
-    for &eid in &def.effect_ids {
-        let Some(effect) = space_mgr.effect_defs.get(&eid) else {
-            continue;
-        };
-        if !is_cone_effect(effect) {
-            continue;
-        }
-        let length = EffectDef::tcm_range_meters(&effect.tcm_param1);
-        let half = EffectDef::tcm_half_angle_radians(&effect.tcm_param2);
-        if !cone_specs
-            .iter()
-            .any(|(l, a)| (*l - length).abs() < 0.01 && (*a - half).abs() < 0.001)
-        {
-            cone_specs.push((length, half));
-        }
-    }
+    // Per-effect cone specs — each cone effect carries its own length +
+    // half-angle AND its own NVP damage values. We CANNOT union targets
+    // across effects and then apply the whole `ability_def`: that would
+    // damage every secondary with every cone effect's NVP, even when
+    // they only geometrically matched one cone. Instead we collect
+    // (effect_id, targets) per cone effect and apply each effect
+    // independently using a scoped-down `AbilityDef` carrying only that
+    // one effect's id (so the NVP-pick loop inside `apply_damage_to_target`
+    // sees only this cone's damage values).
+    let cone_effect_ids: Vec<i32> = def
+        .effect_ids
+        .iter()
+        .copied()
+        .filter(|eid| space_mgr.effect_defs.get(eid).is_some_and(is_cone_effect))
+        .collect();
 
-    if cone_specs.is_empty() {
+    if cone_effect_ids.is_empty() {
         return Vec::new();
     }
 
-    // Union the targets from each cone spec — an entity in a Narrow
-    // cone is also in any wider cone with same length, so the union is
-    // dominated by the widest+longest, but we compute per-spec so
-    // exotic spec combinations (e.g. short-narrow + long-wide on the
-    // same ability) work correctly.
-    let mut union_targets: Vec<u32> = Vec::new();
-    for &(length, half) in &cone_specs {
-        for eid in collect_cone_targets(space_mgr, entity_id, primary_target_id, length, half) {
-            if !union_targets.contains(&eid) {
-                union_targets.push(eid);
+    // Resolve geometry per cone effect.
+    let mut per_effect_targets: Vec<(i32, Vec<u32>)> = Vec::with_capacity(cone_effect_ids.len());
+    let mut union_for_death_snapshot: Vec<u32> = Vec::new();
+    for &eid in &cone_effect_ids {
+        let Some(effect) = space_mgr.effect_defs.get(&eid) else {
+            continue;
+        };
+        let length = EffectDef::tcm_range_meters(&effect.tcm_param1);
+        let half = EffectDef::tcm_half_angle_radians(&effect.tcm_param2);
+        let targets = collect_cone_targets(space_mgr, entity_id, primary_target_id, length, half);
+        for &t in &targets {
+            if !union_for_death_snapshot.contains(&t) {
+                union_for_death_snapshot.push(t);
             }
         }
+        per_effect_targets.push((eid, targets));
     }
 
-    if union_targets.is_empty() {
+    if union_for_death_snapshot.is_empty() {
         tracing::debug!(
             entity_id,
             primary_target_id,
             ability_id,
-            cone_count = cone_specs.len(),
+            cone_count = cone_effect_ids.len(),
             "cone_aoe: no secondaries in any cone spec — primary-only damage"
         );
         return Vec::new();
@@ -287,14 +286,16 @@ pub async fn fan_out_cone_effects(
         entity_id,
         primary_target_id,
         ability_id,
-        cone_count = cone_specs.len(),
-        secondary_count = union_targets.len(),
-        "cone_aoe: fanning out to cone secondaries"
+        cone_count = cone_effect_ids.len(),
+        unique_secondary_count = union_for_death_snapshot.len(),
+        "cone_aoe: fanning out to cone secondaries (per-effect)"
     );
 
-    // Snapshot HEALTH for every secondary so we can detect alive→dead
-    // transitions after damage commits.
-    let alive_before: Vec<(u32, bool)> = union_targets
+    // Snapshot HEALTH for the UNION of all cone targets — we need this
+    // pre-damage to detect alive→dead transitions afterward. Done once
+    // (not per-effect) because an entity hit by two effects on the same
+    // tick that was alive_before should still count as one kill.
+    let alive_before: Vec<(u32, bool)> = union_for_death_snapshot
         .iter()
         .map(|&eid| {
             let alive = space_mgr.get_entity(eid).is_some_and(|e| {
@@ -306,24 +307,40 @@ pub async fn fan_out_cone_effects(
         })
         .collect();
 
-    for &secondary_eid in &union_targets {
-        let secondary_seq = space_mgr
-            .get_entity_mut(entity_id)
-            .map(|e| e.abilities.next_effect_id())
-            .unwrap_or(0);
-        apply_damage_to_target(
-            entity_id,
-            secondary_eid,
-            ability_id,
-            ability_def,
-            secondary_seq as u32,
-            // Primary already flushed; secondaries must not re-flush
-            // or the wire-packet log shows N+1 ammo updates per fire.
-            false,
-            tx,
-            space_mgr,
-        )
-        .await;
+    // Apply damage per-effect: for each cone effect, build a scoped
+    // `AbilityDef` carrying ONLY that effect's id, then apply to that
+    // effect's geometrically-matched targets. The scoped-down def causes
+    // `apply_damage_to_target`'s NVP scan to read only this cone effect's
+    // `HealthDamage` / `FocusDamage` / `script_name`, isolating per-effect
+    // damage from cross-pollination across cone effects on the same ability.
+    for (effect_id, targets) in &per_effect_targets {
+        if targets.is_empty() {
+            continue;
+        }
+        let scoped_def = AbilityDef {
+            effect_ids: vec![*effect_id],
+            ..def.clone()
+        };
+        let scoped_def_opt = Some(scoped_def);
+        for &secondary_eid in targets {
+            let secondary_seq = space_mgr
+                .get_entity_mut(entity_id)
+                .map(|e| e.abilities.next_effect_id())
+                .unwrap_or(0);
+            apply_damage_to_target(
+                entity_id,
+                secondary_eid,
+                ability_id,
+                &scoped_def_opt,
+                secondary_seq as u32,
+                // Primary already flushed; secondaries must not re-flush
+                // or the wire-packet log shows N+1 ammo updates per fire.
+                false,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
     }
 
     // Collect alive→dead transitions so the caller can fire entity_death
@@ -488,5 +505,241 @@ mod tests {
         assert!(is_cone_effect(&cone));
         assert!(!is_cone_effect(&single));
         assert!(!is_cone_effect(&radius));
+    }
+
+    #[test]
+    fn log_effect_flag_categories_no_op_on_zero_flags() {
+        // Sanity: zero-flag effects don't emit a category log; the
+        // function early-returns. We can't easily assert on tracing
+        // output without a LogCapture; instead pin the behavior by
+        // calling and confirming no panic.
+        let effect = EffectDef {
+            effect_id: 1,
+            ability_id: 1,
+            flags: 0,
+            ..Default::default()
+        };
+        log_effect_flag_categories(10, 20, 30, &effect);
+    }
+
+    #[test]
+    fn log_effect_flag_categories_recognizes_each_category_bit() {
+        // Exercise each EF_* path so the match arms aren't dark code.
+        // The assertion is structural — the function returns without
+        // panic when each flag is set in isolation.
+        use cimmeria_entity::abilities::{
+            EF_DOT, EF_INTERRUPT_CHANCE, EF_MENTAL_RESIST_ROLL, EF_STUN, EF_SUPPRESSION,
+        };
+        for flag in [
+            EF_STUN,
+            EF_INTERRUPT_CHANCE,
+            EF_MENTAL_RESIST_ROLL,
+            EF_SUPPRESSION,
+            EF_DOT,
+        ] {
+            let effect = EffectDef {
+                effect_id: 1,
+                ability_id: 1,
+                flags: flag,
+                ..Default::default()
+            };
+            log_effect_flag_categories(10, 20, 30, &effect);
+        }
+    }
+
+    // ── fan_out_cone_effects integration tests ──────────────────────────────
+
+    use cimmeria_entity::abilities::{AbilityDef, EffectDef};
+    use cimmeria_entity::cell_entity::BandolierItem;
+    use cimmeria_entity::stats::{AMMO_SLOT_1, HEALTH};
+    use std::collections::HashMap;
+    use tokio::sync::mpsc;
+
+    fn make_cone_ability_with_effect(
+        mgr: &mut SpaceManager,
+        ability_id: i32,
+        effect_id: i32,
+        damage: i32,
+        range_tier: &str,
+        width_tier: &str,
+    ) {
+        let mut params = HashMap::new();
+        params.insert("HealthDamage".to_string(), damage.to_string());
+        mgr.effect_defs.insert(
+            effect_id,
+            EffectDef {
+                effect_id,
+                ability_id,
+                target_collection_method: TCM_AE_CONE.to_string(),
+                tcm_param1: range_tier.to_string(),
+                tcm_param2: width_tier.to_string(),
+                params,
+                ..Default::default()
+            },
+        );
+        mgr.ability_defs.insert(
+            ability_id,
+            AbilityDef {
+                ability_id,
+                name: format!("ConeAbility{ability_id}"),
+                cooldown: 0.0,
+                warmup: 0.0,
+                flags: 0,
+                is_ranged: true,
+                min_range: 0,
+                max_range: 50,
+                target_type_id: 0,
+                effect_ids: vec![effect_id],
+                moniker_ids: vec![],
+                required_ammo: 1,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+    }
+
+    fn seed_attacker_for_fan_out(mgr: &mut SpaceManager) {
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.weapon_holstered = false;
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 30,
+                    cur_ammo_type: 2,
+                },
+            );
+            if let Some(stat) = e.stats.get_mut(AMMO_SLOT_1) {
+                stat.update(0, 30, 30);
+                stat.clear_dirty();
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn fan_out_cone_effects_damages_each_secondary_inside_cone() {
+        // Attacker at origin, primary at (10,0,0), one secondary at
+        // (5,0,3) (inside Medium/Medium cone), one outside.
+        let mut mgr = make_mgr_with_attacker();
+        seed_attacker_for_fan_out(&mut mgr);
+        make_cone_ability_with_effect(&mut mgr, 7000, 7001, 30, "Medium", "Medium");
+        // Primary
+        spawn_npc(&mut mgr, 100, "W", [10.0, 0.0, 0.0]);
+        if let Some(npc) = mgr.get_entity_mut(100) {
+            npc.stats.get_mut(HEALTH).unwrap().update(0, 200, 200);
+            npc.stats.clear_dirty();
+        }
+        // Secondary INSIDE cone
+        spawn_npc(&mut mgr, 101, "W", [5.0, 0.0, 3.0]);
+        if let Some(npc) = mgr.get_entity_mut(101) {
+            npc.stats.get_mut(HEALTH).unwrap().update(0, 200, 200);
+            npc.stats.clear_dirty();
+        }
+        // OUTSIDE cone (behind attacker)
+        spawn_npc(&mut mgr, 102, "W", [-5.0, 0.0, 0.0]);
+        if let Some(npc) = mgr.get_entity_mut(102) {
+            npc.stats.get_mut(HEALTH).unwrap().update(0, 200, 200);
+            npc.stats.clear_dirty();
+        }
+
+        let ability_def = mgr.ability_defs.get(&7000).cloned();
+        let (tx, _rx) = mpsc::channel(256);
+        let deaths = fan_out_cone_effects(1, 100, 7000, &ability_def, &tx, &mut mgr).await;
+        assert!(deaths.is_empty(), "no one died from 30 damage on 200 HP");
+
+        // Inside-cone secondary took damage; behind-attacker NPC did not.
+        let secondary_hp = mgr.get_entity(101).unwrap().stats.get(HEALTH).unwrap().cur;
+        assert!(
+            secondary_hp < 200,
+            "in-cone secondary took damage; hp={secondary_hp}"
+        );
+        let behind_hp = mgr.get_entity(102).unwrap().stats.get(HEALTH).unwrap().cur;
+        assert_eq!(behind_hp, 200, "outside-cone NPC untouched");
+    }
+
+    #[tokio::test]
+    async fn fan_out_cone_effects_returns_alive_to_dead_transitions() {
+        // Secondaries at low HP should die from the cone hit; survivor
+        // should not be in the deaths Vec.
+        let mut mgr = make_mgr_with_attacker();
+        seed_attacker_for_fan_out(&mut mgr);
+        make_cone_ability_with_effect(&mut mgr, 7100, 7101, 50, "Medium", "Medium");
+        spawn_npc(&mut mgr, 200, "W", [10.0, 0.0, 0.0]); // primary
+        if let Some(npc) = mgr.get_entity_mut(200) {
+            npc.stats.get_mut(HEALTH).unwrap().update(0, 200, 200);
+            npc.stats.clear_dirty();
+        }
+        spawn_npc(&mut mgr, 201, "W", [5.0, 0.0, 3.0]); // dies
+        if let Some(npc) = mgr.get_entity_mut(201) {
+            npc.stats.get_mut(HEALTH).unwrap().update(0, 10, 200);
+            npc.stats.clear_dirty();
+        }
+        spawn_npc(&mut mgr, 202, "W", [4.0, 0.0, -3.0]); // survives
+        if let Some(npc) = mgr.get_entity_mut(202) {
+            npc.stats.get_mut(HEALTH).unwrap().update(0, 1000, 1000);
+            npc.stats.clear_dirty();
+        }
+
+        let ability_def = mgr.ability_defs.get(&7100).cloned();
+        let (tx, _rx) = mpsc::channel(256);
+        let deaths = fan_out_cone_effects(1, 200, 7100, &ability_def, &tx, &mut mgr).await;
+        assert!(deaths.contains(&201), "201 should be in deaths Vec");
+        assert!(
+            !deaths.contains(&202),
+            "202 survived, must not be in deaths"
+        );
+    }
+
+    #[tokio::test]
+    async fn fan_out_cone_effects_no_cone_effects_returns_empty() {
+        // Ability with only a TCM_Single effect — no cone fan-out.
+        let mut mgr = make_mgr_with_attacker();
+        let mut params = HashMap::new();
+        params.insert("HealthDamage".to_string(), "10".to_string());
+        mgr.effect_defs.insert(
+            7200,
+            EffectDef {
+                effect_id: 7200,
+                ability_id: 7201,
+                target_collection_method: cimmeria_entity::abilities::TCM_SINGLE.to_string(),
+                params,
+                ..Default::default()
+            },
+        );
+        mgr.ability_defs.insert(
+            7201,
+            AbilityDef {
+                ability_id: 7201,
+                name: "SingleOnly".to_string(),
+                cooldown: 0.0,
+                warmup: 0.0,
+                flags: 0,
+                is_ranged: true,
+                min_range: 0,
+                max_range: 50,
+                target_type_id: 0,
+                effect_ids: vec![7200],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+        spawn_npc(&mut mgr, 300, "W", [10.0, 0.0, 0.0]);
+        let ability_def = mgr.ability_defs.get(&7201).cloned();
+        let (tx, _rx) = mpsc::channel(256);
+        let deaths = fan_out_cone_effects(1, 300, 7201, &ability_def, &tx, &mut mgr).await;
+        assert!(deaths.is_empty(), "no cone effects = no fan-out");
+    }
+
+    #[tokio::test]
+    async fn fan_out_cone_effects_handles_missing_ability_def() {
+        let mut mgr = make_mgr_with_attacker();
+        spawn_npc(&mut mgr, 400, "W", [10.0, 0.0, 0.0]);
+        let (tx, _rx) = mpsc::channel(256);
+        let deaths = fan_out_cone_effects(1, 400, 9999, &None, &tx, &mut mgr).await;
+        assert!(deaths.is_empty(), "missing ability def = no fan-out");
     }
 }

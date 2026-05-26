@@ -76,6 +76,14 @@ ignore:
   # actually reaches SigNoz — an integration-level signal, not a unit-test
   # concern. Treat as binary-entry-point bootstrap like main.rs above.
   - "crates/server/src/otel.rs"
+  # DB-binding glue for the cell — `cell/spawner/abilities.rs` is a wall
+  # of `sqlx::query_as` / `sqlx::query` loaders; `cell/service/startup.rs`
+  # wires them into `SpaceManager` at boot. Unit tests can't exercise
+  # either without a live DB, and the live-DB job runs the entire spawn
+  # path end-to-end (every loader fires before the smoke shoot). Treat
+  # like `connect_loop/**` above — integration-test territory.
+  - "crates/services/src/cell/spawner/abilities.rs"
+  - "crates/services/src/cell/service/startup.rs"
   # Deferred per issue #205 (fixture cost exceeds value-per-line)
   #
   # The connect_loop directory hosts the BaseService UDP receive loop and the

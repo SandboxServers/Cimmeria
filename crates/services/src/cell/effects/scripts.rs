@@ -1,17 +1,19 @@
 //! Effect script implementations.
 //!
-//! v1 (#331 Phase 1) — single-shot stat scripts:
+//! v1 — single-shot stat scripts:
 //! - [`HealHealth`] / [`HealFocus`] — heal by `HealPercentage` × max
 //! - [`MeleeDamage`] — `HealthDamage` raw damage
 //!
-//! v2 (#47 / #419 Phase F+G) — buff/debuff scripts:
+//! v2 — buff/debuff scripts:
 //! - [`AbsorbShield`] — adds `ShieldAmount` to the matching ABSORB_*
 //!   pool so subsequent damage of that type is consumed from the
-//!   shield before HEALTH
-//! - [`Stun`] — sets `BSF_MOVEMENT_LOCK` on the target; cleared by
-//!   the active-effect expiry sweep
-//! - [`Suppression`] — flat reduction to movement speed via the
-//!   `MOVE_SPEED_MOD` stat
+//!   shield before HEALTH. Drains residual capacity on `on_remove`.
+//! - [`Stun`] — sets `BSF_MOVEMENT_LOCK` on the target; cleared on
+//!   `on_remove` when the active-effect instance expires.
+//! - [`Suppression`] — per-pulse HEALTH chip via the `HealthDamage`
+//!   NVP. Full movement-speed reduction (the original game's other
+//!   half of "suppression") waits for a `MOVE_SPEED_MOD` stat the
+//!   cell-entity layer doesn't expose yet.
 //!
 //! ## Adding a new script
 //!

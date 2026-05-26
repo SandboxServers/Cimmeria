@@ -33,8 +33,12 @@ SET script_name = 'Stun'
 WHERE effect_id = 1422
   AND (script_name IS NULL OR script_name = 'Stun');
 
+-- Effect 1475 is labeled "Cover Fire Cone Suppression" but ships with
+-- target_collection_method = 'TCM_Single' in the original seed — fix the
+-- mismatch so the cone fan-out actually engages.
 UPDATE resources.effects
-SET script_name = 'Suppression'
+SET script_name = 'Suppression',
+    target_collection_method = 'TCM_AECone'
 WHERE effect_id = 1475
   AND (script_name IS NULL OR script_name = 'Suppression');
 

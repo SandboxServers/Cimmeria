@@ -516,4 +516,56 @@ mod tests {
             "dying player must receive an onStateFieldUpdate clearing BSF_AUTO_CYCLING",
         );
     }
+
+    /// Regression: when the dying entity was channelling an effect on a
+    /// target, `apply_death_transition` must cancel the channel so the
+    /// target stops taking pulses from a dead caster. Without the
+    /// cancellation hook in death.rs, the channel would tick until its
+    /// safety cap (60 pulses) or the target died.
+    #[tokio::test]
+    async fn channeller_death_cancels_active_channels() {
+        use cimmeria_entity::abilities::EffectDef;
+        use cimmeria_entity::cell_entity::ActiveEffectInstance;
+
+        let mut mgr = make_mgr_with_player_and_npc();
+
+        // Register a channelled effect on entity 2 (the dying target),
+        // sourced by entity 1 (the killer). We bypass register_active_effect
+        // so we don't have to dispatch over the network for the registration.
+        let channel_effect = EffectDef {
+            effect_id: 12345,
+            ability_id: 9999,
+            pulse_count: 0,
+            pulse_duration: 0.5,
+            ..Default::default()
+        };
+        mgr.effect_defs
+            .insert(channel_effect.effect_id, channel_effect.clone());
+        if let Some(target) = mgr.get_entity_mut(2) {
+            target.active_effects.push(ActiveEffectInstance {
+                effect_id: 12345,
+                ability_id: 9999,
+                invoker_id: 2, // dying entity is its own channel source
+                remaining_pulses: 30,
+                total_pulses: 60,
+                next_pulse_at: std::time::Instant::now(),
+                pulse_interval_secs: 0.5,
+                invoker_position_at_register: None,
+            });
+        }
+        assert_eq!(
+            mgr.get_entity(2).unwrap().active_effects.len(),
+            1,
+            "pre-condition: channel registered"
+        );
+
+        let (tx, mut _rx) = mpsc::channel(64);
+        apply_death_transition(2, 1, DEAD_STATE, true, true, &tx, &mut mgr).await;
+
+        let active_after = &mgr.get_entity(2).unwrap().active_effects;
+        assert!(
+            active_after.is_empty(),
+            "channel from dead invoker must be cancelled; got {active_after:?}"
+        );
+    }
 }

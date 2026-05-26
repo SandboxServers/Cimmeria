@@ -145,7 +145,7 @@ pub struct SpaceManager {
     /// Loaded from `resources.archetype_ability_tree` at startup. Used by
     /// the `train_ability` cell method to validate that a requested
     /// ability is in the player's archetype tree, level requirement is
-    /// met, and all prerequisite abilities are known. See issue #419
+    /// met, and all prerequisite abilities are known. See
     /// Phase 5b.
     pub archetype_ability_trees: HashMap<i32, Vec<super::spawner::ArchetypeAbilityTreeEntry>>,
     /// Trainer NPC ability lists: `(list_id, archetype_id) → Vec<ability_id>`.

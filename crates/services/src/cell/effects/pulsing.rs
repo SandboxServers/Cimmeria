@@ -1,4 +1,4 @@
-//! Active-effect pulsing for DoT, HoT, and timed-buff effects (#47, #419).
+//! Active-effect pulsing for DoT, HoT, and timed-buff effects.
 //!
 //! When an effect's `pulse_count > 1`, the initial apply in
 //! `damage_apply` fires the first pulse and then registers an
@@ -17,17 +17,19 @@
 //! - Sends a follow-up `onStatUpdate` to the target so the client
 //!   updates their stat bars.
 //!
-//! ## v1 scope notes
+//! ## Scope notes
 //!
-//! - **Stacking** (Phase E): same-source = refresh, multi-source = stack.
-//!   See `register_active_effect` for the dedup logic.
-//! - **Channelled effects** (Phase J): `pulse_count == 0` is treated as
+//! - **Stacking**: same-source = refresh, multi-source = stack.
+//!   See [`register_active_effect`] for the dedup logic.
+//! - **Channelled effects**: `pulse_count == 0` is treated as
 //!   "channel until cancelled" by registering with a safety cap
 //!   ([`MAX_CHANNEL_PULSES`]) and cancelling proactively via
 //!   [`cancel_channels_from_attacker`] when the channeller fires a
 //!   different ability, dies, or the safety cap elapses. Movement-based
-//!   interrupt is a follow-up — needs per-ability `AF_INTERRUPT_ON_MOVE`
-//!   data the canonical seed doesn't carry yet.
+//!   interrupt fires via [`channel_interrupt_on_movement_tick`] — any
+//!   channel whose invoker drifts more than [`CHANNEL_INTERRUPT_DISTANCE`]
+//!   from their channel-start anchor cancels, unless the owning ability
+//!   carries the `AF_CHANNEL_ALLOWS_MOVEMENT` flag.
 //! - **Dead-target pulse** is a no-op (the per-pulse guard returns
 //!   without applying), but the instance still ages out via the schedule.
 
@@ -214,9 +216,14 @@ pub async fn cancel_channels_from_attacker(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> usize {
-    // Snapshot (target_id, effect_id, invoker_id) for every channel to
-    // cancel — we can't hold a mutable borrow across awaits.
-    let to_cancel: Vec<(u32, i32, u32)> = {
+    // Snapshot (target_id, effect_id, ability_id, invoker_id) for every
+    // channel to cancel — we can't hold a mutable borrow across awaits.
+    // `ability_id` is part of the key (not just effect_id + invoker_id)
+    // because a single invoker could have two channel instances sharing
+    // the same effect_id under different abilities (rare but possible if
+    // two abilities reference the same effect template). Without the
+    // ability_id pin, cancelling one would over-delete the other.
+    let to_cancel: Vec<(u32, i32, i32, u32)> = {
         let target_eids = space_mgr.all_entity_ids();
         let mut out = Vec::new();
         for target_eid in target_eids {
@@ -240,7 +247,7 @@ pub async fn cancel_channels_from_attacker(
                 if keep_ability_id == Some(inst.ability_id) {
                     continue;
                 }
-                out.push((target_eid, inst.effect_id, inst.invoker_id));
+                out.push((target_eid, inst.effect_id, inst.ability_id, inst.invoker_id));
             }
         }
         out
@@ -259,12 +266,15 @@ pub async fn cancel_channels_from_attacker(
         "Cancelling channels from attacker"
     );
 
-    for (target_eid, effect_id, invoker_id) in to_cancel {
-        // Remove the instance from the target.
+    for (target_eid, effect_id, ability_id, invoker_id) in to_cancel {
+        // Remove the instance from the target — three-key match
+        // (effect_id + ability_id + invoker_id) so we don't over-delete.
         if let Some(target) = space_mgr.get_entity_mut(target_eid) {
-            target
-                .active_effects
-                .retain(|inst| !(inst.effect_id == effect_id && inst.invoker_id == invoker_id));
+            target.active_effects.retain(|inst| {
+                !(inst.effect_id == effect_id
+                    && inst.ability_id == ability_id
+                    && inst.invoker_id == invoker_id)
+            });
         }
         // Dispatch on_remove for script-driven cleanup.
         if let Some(effect_def) = space_mgr.effect_defs.get(&effect_id).cloned() {
@@ -440,9 +450,11 @@ pub async fn cancel_channels_for_invoker_ability(
     let cancelled_count = to_cancel.len();
     for (target_eid, effect_id, inv_id) in to_cancel {
         if let Some(target) = space_mgr.get_entity_mut(target_eid) {
-            target
-                .active_effects
-                .retain(|inst| !(inst.effect_id == effect_id && inst.invoker_id == inv_id));
+            target.active_effects.retain(|inst| {
+                !(inst.effect_id == effect_id
+                    && inst.ability_id == ability_id
+                    && inst.invoker_id == inv_id)
+            });
         }
         if let Some(effect_def) = space_mgr.effect_defs.get(&effect_id).cloned() {
             if let Some(script_name) = effect_def.script_name.clone() {

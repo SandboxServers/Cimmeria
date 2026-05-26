@@ -314,7 +314,7 @@ pub(crate) async fn handle_request_active_slot_change(
     };
     // Observability: log the resolved weapon ability for the new slot so
     // SigNoz can verify Phase 1's per-weapon resolution is firing
-    // correctly on swap. Pre-#419 every weapon resolved to ability 592
+    // correctly on swap. Pre- every weapon resolved to ability 592
     // (Pistol Shot hardcode); now the resolution is per-item via
     // items_event_sets. Log carries enough context to spot regressions:
     // "swapped to slot N, item M, resolved to ability A" — a missing
@@ -502,7 +502,7 @@ pub(crate) async fn handle_request_active_slot_change(
 /// consumed from inventory — the clip-based ammo model (refill on reload)
 /// is decoupled from ammo type.
 ///
-/// Implementation contract (closes Phase 6 of #419):
+/// Implementation contract (closes Phase 6 of):
 /// - Validates `ammo_type` is in the weapon's `allowed_ammo_types`
 ///   whitelist (`crates/entity/src/inventory.rs:81`) so a forged
 ///   request can't persist an arbitrary subtype the client UI can't
@@ -634,7 +634,12 @@ pub(super) async fn handle_request_ammo_change(
     };
 
     // Phase 2: persist + (if active) refresh the client's ammo-type indicator.
-    if let Some(player_id) = player_id {
+    //
+    // `persistence` tracks the outcome so the observability log below
+    // distinguishes "enqueued for persist" from "send failed" from
+    // "no player_id, skipped." Without this distinction the operator
+    // sees "ammo type changed" and assumes the slot stuck.
+    let persistence: &'static str = if let Some(player_id) = player_id {
         let (slot_id, expected_item_id, current_ammo, cur_ammo_type) = persist;
         match tx
             .send(CellToBaseMsg::BandolierAmmoUpdate {
@@ -650,6 +655,7 @@ pub(super) async fn handle_request_ammo_change(
                 if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                     entity.bandolier_ammo_dirty.remove(&slot_id);
                 }
+                "enqueued"
             }
             Err(e) => {
                 tracing::warn!(
@@ -657,6 +663,7 @@ pub(super) async fn handle_request_ammo_change(
                     error = %e,
                     "BandolierAmmoUpdate (ammo change) send failed; dirty marker preserved for retry"
                 );
+                "send_failed"
             }
         }
     } else {
@@ -664,7 +671,8 @@ pub(super) async fn handle_request_ammo_change(
             entity_id,
             "requestAmmoChange: entity has no player_id — skipping persist"
         );
-    }
+        "skipped_no_player_id"
+    };
 
     if is_active {
         let property_args = build_entity_property_args(GENERICPROPERTY_AMMO_TYPE_ID, ammo_type);
@@ -680,10 +688,17 @@ pub(super) async fn handle_request_ammo_change(
 
     // Structured observability event for the swap. Stable
     // `target: "bandolier"` so SigNoz can `groupBy=event` across the
-    // bandolier event family (matches the active_slot_change emitter
-    // added in #419 Phase 4). Operators can pivot on item_id +
-    // ammo_type to see which subtypes players are picking per weapon —
-    // useful data for balance + content gap detection.
+    // bandolier event family (matches the active_slot_change emitter).
+    // Operators can pivot on item_id + ammo_type to see which subtypes
+    // players are picking per weapon — useful data for balance + content
+    // gap detection.
+    //
+    // `persistence` field distinguishes the path: `enqueued` when the
+    // BandolierAmmoUpdate send to base succeeded, `skipped_no_player_id`
+    // when the entity has no player_id (NPC/non-persisting), or
+    // `send_failed` when the channel send returned Err. Without this,
+    // operators see "ammo type changed" and assume it stuck, then can't
+    // explain why post-relog the slot reverts.
     tracing::info!(
         target: "bandolier",
         event = "ammo_type_change",
@@ -691,6 +706,7 @@ pub(super) async fn handle_request_ammo_change(
         item_id,
         ammo_type,
         is_active_slot = is_active,
-        "Bandolier ammo type changed (persisted)"
+        persistence,
+        "Bandolier ammo type changed"
     );
 }

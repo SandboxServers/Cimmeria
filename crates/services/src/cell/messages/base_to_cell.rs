@@ -151,7 +151,7 @@ pub enum BaseToCellMsg {
     /// to send to the client as a `feedback` line ("You have N training
     /// points left").
     ///
-    /// See issue #419 Phase 5b.
+    ///
     AbilityGranted {
         entity_id: u32,
         ability_id: i32,

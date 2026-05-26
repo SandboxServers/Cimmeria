@@ -175,9 +175,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     // populates immediately at world entry. Without this, the client's
     // hotbar stays empty until the next `addAbility` call (which doesn't
     // happen unless the player visits a trainer), so even players with
-    // 3+ starter abilities couldn't see or click any of them. (#419
-    // Phase 3 — mirror of Python's `SGWPlayer.addAbility` which calls
-    // `onKnownAbilitiesUpdate` on every add.)
+    // 3+ starter abilities couldn't see or click any of them.
     send_known_abilities_update(entity_id, tx, space_mgr).await;
 
     // Send addClientHintedGenericRegion for each client-hinted region in
@@ -267,7 +265,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
 
 /// Send `onKnownAbilitiesUpdate(ARRAY<INT32> abilities)` to the player so the
 /// hotbar UI populates at world entry. Without this, characters with starter
-/// abilities (every char_def_id after #419 Phase 2) still showed an empty
+/// abilities (every char_def_id after Phase 2) still showed an empty
 /// hotbar because the client only gets ability state via this RPC and the
 /// previous code never sent it on login.
 ///
@@ -293,18 +291,33 @@ pub(super) async fn send_known_abilities_update(
         args.extend_from_slice(&id.to_le_bytes());
     }
 
-    let _ = tx
+    let send_result = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: crate::cell::client_methods::player::ON_KNOWN_ABILITIES_UPDATE,
             args,
         })
         .await;
-    tracing::info!(
-        entity_id,
-        count = ability_ids.len(),
-        "Sent onKnownAbilitiesUpdate (hotbar seed)"
-    );
+    match send_result {
+        Ok(()) => {
+            tracing::info!(
+                entity_id,
+                count = ability_ids.len(),
+                "Sent onKnownAbilitiesUpdate (hotbar seed)"
+            );
+        }
+        Err(e) => {
+            // Channel closed — the player's hotbar will be empty until
+            // they reconnect. Log at error so the symptom ("no abilities
+            // on the bar") has a corresponding server-side log entry.
+            tracing::error!(
+                entity_id,
+                count = ability_ids.len(),
+                error = %e,
+                "Failed to send onKnownAbilitiesUpdate (hotbar seed) — cell→base channel closed"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

@@ -154,7 +154,7 @@ pub async fn dispatch(
                 // generic dialog. A trainer is any NPC whose template_id has
                 // a non-NULL `trainer_ability_list_id` (loaded once at
                 // startup into `space_mgr.template_trainer_lists`). See
-                // issue #419 Phase 5b.
+                // issue Phase 5b.
                 let mut handled = trainer_interaction::try_open_trainer(
                     entity_id,
                     target_entity_u32,

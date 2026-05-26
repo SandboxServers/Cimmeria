@@ -65,8 +65,8 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1422, 1252, 0, 'Stun: 7 seconds', 0, 12, 'set:CoreWidgets image:IconMissing', 1, 7, 'Long', 'Medium', 'TCM_Single', true, false, 'Dragon Fist Debuff: Stun', 0, NULL, 'Stun');
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1475, 720, 0, 'Medium Cone
-Suppression: 15 Seconds', 1, 76, 'set:CoreWidgets image:IconMissing', 1, 15, 'Medium', 'Medium', 'TCM_Single', true, false, 'Cover Fire Cone Suppression', 0, NULL, 'Suppression');
+INSERT INTO effects (effect_id, ability_id, delay, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name, effect_desc) VALUES (1475, 720, 0, 1, 76, 'set:CoreWidgets image:IconMissing', 1, 15, 'Medium', 'Medium', 'TCM_AECone', true, false, 'Cover Fire Cone Suppression', 0, NULL, 'Suppression', 'Medium Cone
+Suppression: 15 Seconds');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1476, 720, 0, 'Medium Cone
 Mental Resist Roll', 1, 64, 'set:CoreWidgets image:IconMissing', 1, 0, 'Medium', 'Medium', 'TCM_Single', true, false, 'Mental Resist Roll', 0, NULL, NULL);

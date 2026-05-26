@@ -106,7 +106,7 @@ pub(super) async fn apply_damage_to_target(
     // Effects with a `script_name` are collected here and dispatched after
     // the legacy NVP damage path completes (so heals/buffs see the
     // post-hit state). See `cell::effects` for the dispatcher and the
-    // registered scripts (#331).
+    // registered scripts.
     let mut script_effect_ids: Vec<i32> = Vec::new();
     let (health_base_damage, focus_base_damage) = if let Some(def) = ability_def {
         let mut h_dmg = 0i32;
@@ -470,7 +470,7 @@ pub(super) async fn apply_damage_to_target(
         }
     }
 
-    // ── Effect scripts (#331) ──
+    // ── Effect scripts ──
     //
     // Dispatch any effects on this ability that have a `script_name` set.
     // Scripts run AFTER the legacy damage path so heals see the post-hit
@@ -516,7 +516,7 @@ pub(super) async fn apply_damage_to_target(
         }
     }
 
-    // ── Register pulsing effects (#47 — DoT/HoT/timed debuff) ──
+    // ── Register pulsing effects ──
     //
     // Walk the ability's effects again — for any with `pulse_count > 1`
     // and a positive `pulse_duration`, register an `ActiveEffectInstance`

@@ -4,7 +4,7 @@
 //!
 //! A trainer is any NPC whose `entity_templates.trainer_ability_list_id` is
 //! non-NULL. Today the seed has exactly one (template_id=25, "Interaction
-//! Debug NPC", `trainer_ability_list_id=1`). More are #419 Phase 7 content.
+//! Debug NPC", `trainer_ability_list_id=1`). More are Phase 7 content.
 //!
 //! Per-archetype filtering: `trainer_abilities` is keyed by
 //! `(list_id, archetype_id)` so a single trainer can offer different abilities
@@ -23,11 +23,9 @@
 
 use tokio::sync::mpsc;
 
+use crate::cell::client_methods::player::ON_TRAINER_OPEN;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
-
-/// `onTrainerOpen` method index on the player. See dispatch table.
-const ON_TRAINER_OPEN: u16 = 113;
 
 /// Default respec cost in Naquadah. The Python TODO at
 /// `AbilityTrainer.py:42` shipped `1000` as a placeholder; we preserve it.
@@ -174,7 +172,7 @@ pub(super) async fn try_open_trainer(
     }
     args.extend_from_slice(&DEFAULT_RESPEC_COST.to_le_bytes()); // CostToRespec
 
-    let _ = tx
+    let send_result = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: player_entity_id,
             method_index: ON_TRAINER_OPEN,
@@ -182,18 +180,38 @@ pub(super) async fn try_open_trainer(
         })
         .await;
 
-    tracing::info!(
-        target: "abilities",
-        event = "trainer_open",
-        player_entity_id,
-        trainer_entity_id = target_entity_id,
-        trainer_template_id,
-        list_id,
-        archetype_id = player_archetype,
-        offered = entries.len(),
-        trainable_count = entries.iter().filter(|(_, t)| *t == 1).count(),
-        "Sent onTrainerOpen"
-    );
+    match send_result {
+        Ok(()) => {
+            tracing::info!(
+                target: "abilities",
+                event = "trainer_open",
+                player_entity_id,
+                trainer_entity_id = target_entity_id,
+                trainer_template_id,
+                list_id,
+                archetype_id = player_archetype,
+                offered = entries.len(),
+                trainable_count = entries.iter().filter(|(_, t)| *t == 1).count(),
+                "Sent onTrainerOpen"
+            );
+        }
+        Err(e) => {
+            // Channel closed mid-send — log loudly so operators don't see
+            // a phantom "open" with no client-visible UI. Returning `true`
+            // still suppresses the dialog fall-through; the player's
+            // interact is effectively dropped but the recovery path is
+            // "retry by clicking again" which the cell-tick will accept.
+            tracing::error!(
+                target: "abilities",
+                event = "trainer_open_send_failed",
+                player_entity_id,
+                trainer_entity_id = target_entity_id,
+                trainer_template_id,
+                error = %e,
+                "Failed to send onTrainerOpen — cell→base channel closed"
+            );
+        }
+    }
 
     true
 }

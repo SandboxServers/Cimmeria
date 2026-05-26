@@ -7,7 +7,7 @@
 //! hardcoded `592` (Pistol Shot) regardless of the equipped weapon,
 //! so a player wielding a P90 still fired Pistol Shot animations and
 //! the SMG's per-weapon binding (ability 559 "Automatic Weapon Auto
-//! Attack") was never used — bug landed in issue #419.
+//! Attack") was never used — bug landed in .
 //!
 //! Resolution flow:
 //!
@@ -108,7 +108,7 @@ mod tests {
     fn pistol_ranged_returns_pistol_auto_attack() {
         // Pin: pistol (item 55) ranged event (7) → ability 579
         // "Pistol Auto Attack" per seed data. This guards the bug from
-        // issue #419 — pre-fix, any item resolved to ability 592.
+        //  — pre-fix, any item resolved to ability 592.
         let mut mgr = mgr_with_one_player(55, 0);
         mgr.item_event_set_abilities.insert((55, 7), 579);
         assert_eq!(ability_for_item(&mgr, 55, 7), Some(579));
