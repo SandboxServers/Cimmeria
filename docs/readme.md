@@ -182,6 +182,7 @@ How the Cimmeria emulator itself is structured. 12 documents.
 | [state-flag-conventions.md](architecture/state-flag-conventions.md) | Reference for state-flag write conventions: refcounted vs raw, who can clear, auth flow | Complete |
 | [state-field-bits.md](architecture/state-field-bits.md) | Verified `bStateField` bit layout (bits 0-7 only), client dispatch table, BSF_Holster retirement notice with Ghidra anchors | Complete |
 | [integration-test-infra.md](architecture/integration-test-infra.md) | Live-DB test infrastructure: why no testcontainers, why no `sqlx::test`, local setup, isolation patterns | Complete |
+| [negative-logging-convention.md](architecture/negative-logging-convention.md) | When to log on the failure path: three patterns (silent send, `rows_affected == 0`, witness/lookup miss), field-naming rules, level discipline, regression-guard test patterns. Closes the audit in #304. | Complete |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
 
