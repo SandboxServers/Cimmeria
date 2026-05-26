@@ -366,26 +366,39 @@ impl NavMesh {
     ///
     /// Returns `true` if the ray can travel from start to end without hitting
     /// a navmesh boundary (i.e. there is clear line of sight).
+    ///
+    /// **Off-mesh start projection.** The raycast requires a start polygon
+    /// for Detour to walk the edges from. If `start` is off the navmesh
+    /// (a flying NPC hovering above the floor; a player on a ledge
+    /// barely outside the walkable surface), the tight `START_EXTENTS`
+    /// lookup fails, `start_ref == 0`, and the function would return
+    /// `false` — appearing to the caller as "LoS blocked" even when no
+    /// geometry actually intervenes. We retry with the more generous
+    /// `DEST_EXTENTS` (3-unit cube), and on success we raycast from the
+    /// **projected** point (the nearest valid polygon point) rather
+    /// than the original off-mesh coordinate. This recovers LoS for
+    /// `is_stationary = true` flyer NPCs whose `npc_ai_fight` tick
+    /// silently skipped them every cycle.
+    ///
+    /// Reverting either fallback re-introduces the "drone in Fighting
+    /// state never fires" bug shape observed in the SigNoz logs for
+    /// the Ambernol encounter (entity 100115, instance 65552): 54s of
+    /// aggro with zero `npc_ai.decision` events because every tick
+    /// landed in the stationary-no-LoS silent return.
     pub fn raycast(&self, start: &Vector3, end: &Vector3) -> bool {
-        let start_pos = [start.x, start.y, start.z];
         let end_pos = [end.x, end.y, end.z];
 
-        // Find the starting polygon
-        let mut start_ref: u32 = 0;
-        let mut _start_pt = [0.0f32; 3];
-        let status = unsafe {
-            detour_ffi::detour_find_nearest_poly(
-                self.query,
-                start_pos.as_ptr(),
-                START_EXTENTS.as_ptr(),
-                &mut start_ref,
-                _start_pt.as_mut_ptr(),
-            )
+        // Try the tight extents first (matches the existing walking-NPC
+        // shape — agent stands on the polygon, original position == the
+        // polygon's closest point within 0.5u). Most NPCs and players
+        // satisfy this and we save the wider lookup.
+        let (start_ref, projected_start) = match self.project_to_polygon(start, &START_EXTENTS) {
+            Some(v) => v,
+            None => match self.project_to_polygon(start, &DEST_EXTENTS) {
+                Some(v) => v,
+                None => return false, // truly off-mesh; nothing to raycast from
+            },
         };
-
-        if dt_status_failed(status) || start_ref == 0 {
-            return false;
-        }
 
         let mut hit_normal = [0.0f32; 3];
         let mut t: f32 = 0.0;
@@ -394,7 +407,7 @@ impl NavMesh {
             detour_ffi::detour_raycast(
                 self.query,
                 start_ref,
-                start_pos.as_ptr(),
+                projected_start.as_ptr(),
                 end_pos.as_ptr(),
                 hit_normal.as_mut_ptr(),
                 &mut t,
@@ -403,6 +416,29 @@ impl NavMesh {
 
         // result == 1 means ray reached endPos unblocked
         result == 1
+    }
+
+    /// Helper: find a polygon containing or near `pos`, return its ref
+    /// and the projected-to-polygon point. Returns `None` if Detour
+    /// can't find one within the requested extents box.
+    fn project_to_polygon(&self, pos: &Vector3, extents: &[f32; 3]) -> Option<(u32, [f32; 3])> {
+        let center = [pos.x, pos.y, pos.z];
+        let mut poly_ref: u32 = 0;
+        let mut projected = [0.0f32; 3];
+        let status = unsafe {
+            detour_ffi::detour_find_nearest_poly(
+                self.query,
+                center.as_ptr(),
+                extents.as_ptr(),
+                &mut poly_ref,
+                projected.as_mut_ptr(),
+            )
+        };
+        if dt_status_failed(status) || poly_ref == 0 {
+            None
+        } else {
+            Some((poly_ref, projected))
+        }
     }
 
     /// Find a path from `start` to `end` across the navigation mesh.
@@ -584,6 +620,52 @@ mod tests {
         // We can't assert this is true without knowing the mesh geometry,
         // but at least verify it doesn't crash
         tracing::info!("Raycast result: {has_los}");
+    }
+
+    /// Regression guard: a start position raised above the navmesh
+    /// (a "flyer" NPC hovering ≥0.5u over the walkable surface) must
+    /// still resolve to a valid polygon for the raycast. Pre-fix, the
+    /// tight `START_EXTENTS = [0.5, 0.5, 0.5]` lookup failed for any
+    /// hover height beyond ~half a unit and `raycast` returned
+    /// `false` without ever shooting the ray — surfacing as
+    /// stationary flyer NPCs (e.g., the Ambernol drone, body_set
+    /// `BS_MOB_DroneFlyer`) never firing their abilities because
+    /// `npc_ai_fight`'s `!has_los` branch silent-skipped every
+    /// tick.
+    ///
+    /// Without the navmesh fixture (CI), the test self-skips per the
+    /// repo's standard `if !path.exists()` pattern.
+    #[test]
+    fn raycast_with_off_mesh_start_projects_to_polygon() {
+        let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
+        if !path.exists() {
+            return;
+        }
+        let mesh = NavMesh::load(path).expect("Failed to load castle_cellblock.nav");
+
+        // Pick a known-on-navmesh ground reference (same one the
+        // sibling tests use) then lift the start up by 2.5 units —
+        // well past `START_EXTENTS = 0.5` but within `DEST_EXTENTS = 3.0`.
+        // A flyer drone at body_set hover offset typically sits 0.2–
+        // 1.5u above the floor; 2.5u is a deliberately pessimistic
+        // case to prove the wider fallback also catches it.
+        let ground = Vector3::new(-289.465, 68.542, -154.276);
+        let off_mesh = Vector3::new(ground.x, ground.y + 2.5, ground.z);
+        let nearby_target = Vector3::new(-280.0, 68.0, -150.0);
+
+        // Pre-fix bug: this returns `false` even though the ground point
+        // RIGHT BELOW `off_mesh` has clear LoS to `nearby_target`. The
+        // projection-to-polygon retry recovers the correct result.
+        let los_off_mesh = mesh.raycast(&off_mesh, &nearby_target);
+        let los_on_mesh = mesh.raycast(&ground, &nearby_target);
+        assert_eq!(
+            los_off_mesh, los_on_mesh,
+            "off-mesh start ({:?}) must produce the same LoS result as the \
+             on-mesh point directly below it ({:?}) — the projection-to-polygon \
+             retry was added to recover from the START_EXTENTS=0.5 lookup \
+             failing on flyer NPC positions",
+            off_mesh, ground
+        );
     }
 
     #[test]
