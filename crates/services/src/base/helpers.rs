@@ -289,10 +289,18 @@ where
 {
     // Extract all data from locks in a sync block so no MutexGuard crosses an await.
     let send_data = {
-        let addr = match entity_to_addr.lock().unwrap().get(&witness_id).copied() {
+        // Snap both the addr lookup AND the entity_count_in_map under a
+        // single guard, so the warn arm doesn't re-lock the same mutex —
+        // the scrutinee's MutexGuard lives until the end of the surrounding
+        // `match`, and a recursive `.lock()` on a std::sync::Mutex would
+        // deadlock (issue #304 regression-guard fail mode).
+        let (addr_opt, entity_count_in_map) = {
+            let guard = entity_to_addr.lock().unwrap();
+            (guard.get(&witness_id).copied(), guard.len())
+        };
+        let addr = match addr_opt {
             Some(a) => a,
             None => {
-                let entity_count_in_map = entity_to_addr.lock().unwrap().len();
                 tracing::warn!(
                     witness_id,
                     entity_id,
@@ -371,14 +379,19 @@ pub(crate) async fn send_to_witness_reliable<F>(
     F: FnOnce(&[u8; 32], u32, &[u32]) -> Vec<u8>,
 {
     let send_data = {
-        let addr = match entity_to_addr.lock().unwrap().get(&witness_id).copied() {
+        // Same single-guard snap as `send_to_witness` — avoids the
+        // recursive-lock deadlock when the warn arm needs the map's size.
+        let (addr_opt, entity_count_in_map) = {
+            let guard = entity_to_addr.lock().unwrap();
+            (guard.get(&witness_id).copied(), guard.len())
+        };
+        let addr = match addr_opt {
             Some(a) => a,
             None => {
                 // Promoted from trace! per #304 (Pattern C — witness/lookup miss).
-                // Field parity with `send_to_witness` (entity_id, action,
-                // entity_count_in_map) needs a signature change; deferred to the
-                // Tier 2/3 follow-up because 51 call sites need updating.
-                let entity_count_in_map = entity_to_addr.lock().unwrap().len();
+                // Field parity with `send_to_witness` (entity_id, action) needs
+                // a signature change; deferred to the Tier 2/3 follow-up
+                // because 51 call sites need updating.
                 tracing::warn!(
                     witness_id,
                     entity_count_in_map,
