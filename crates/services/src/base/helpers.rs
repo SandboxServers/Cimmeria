@@ -598,4 +598,111 @@ mod tests {
              bits must never leak into the seq footer"
         );
     }
+
+    // ── T1-1 / T1-2 regression guards (issue #304) ────────────────────
+    //
+    // The fix: `send_to_witness` returns `Err("no_client_addr")` when the
+    // witness entity isn't in `entity_to_addr`, and `Err("client_disconnected")`
+    // when the addr is mapped but the client state is gone. Both paths used
+    // to silently `trace!`-then-return-Ok, hiding lost AoI packets behind a
+    // log level no production deployment captures.
+    //
+    // These tests are true regression guards (per TESTING.md) — reverting
+    // the fix to the prior `Ok(())` silent-return makes them fail.
+
+    use std::collections::HashMap as StdHashMap;
+    use std::net::SocketAddr as StdSocketAddr;
+    use std::sync::Arc as StdArc;
+    use std::sync::Mutex as StdMutex;
+    use tokio::net::UdpSocket as TokioUdpSocket;
+    use tracing_test::traced_test;
+
+    /// **Regression guard for T1-1**: empty `entity_to_addr` MUST produce a
+    /// distinguishable `Err`. Bug shape: silent `Ok(())` return masks every
+    /// lost AoI packet — a player teleports out of an observer's witness
+    /// list and the observer's client never gets told.
+    #[tokio::test]
+    #[traced_test]
+    async fn send_to_witness_returns_no_client_addr_when_witness_missing() {
+        let socket = StdArc::new(TokioUdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let connected: StdArc<StdMutex<StdHashMap<StdSocketAddr, ConnectedClientState>>> =
+            StdArc::new(StdMutex::new(StdHashMap::new()));
+        let entity_to_addr: StdArc<StdMutex<StdHashMap<u32, StdSocketAddr>>> =
+            StdArc::new(StdMutex::new(StdHashMap::new()));
+
+        // Witness 42 is not in entity_to_addr — the lookup must fail loudly.
+        let result = send_to_witness(
+            &socket,
+            &connected,
+            &entity_to_addr,
+            /* witness_id */ 42,
+            /* entity_id  */ 100,
+            "CREATE",
+            |_key, _seq, _acks| vec![0u8; 16],
+        )
+        .await;
+
+        assert_eq!(
+            result,
+            Err("no_client_addr"),
+            "missing witness MUST produce a distinguishable Err so callers can fan-out their own logging",
+        );
+        assert!(
+            logs_contain("AoI: no client addr for witness -- skipping"),
+            "warn! must fire with the canonical message — regression guard for the trace!→warn! promotion",
+        );
+        assert!(
+            logs_contain("entity_id=100"),
+            "structured `entity_id` field must appear — the issue #304 spec names it as required",
+        );
+        assert!(
+            logs_contain("action=\"CREATE\"") || logs_contain("action=CREATE"),
+            "structured `action` field must appear — distinguishes CREATE/METHOD/LEAVE for ops",
+        );
+        assert!(
+            logs_contain("entity_count_in_map=0"),
+            "structured `entity_count_in_map` field must appear — disambiguates 'empty map' from 'mismatched witness id'",
+        );
+    }
+
+    /// **Regression guard for T1-2**: witness has a mapped addr but no
+    /// `ConnectedClientState` (transient disconnect race). MUST produce a
+    /// distinguishable `Err`. Bug shape: silent `Ok(())` lets the caller
+    /// believe AoI propagation succeeded mid-disconnect.
+    #[tokio::test]
+    #[traced_test]
+    async fn send_to_witness_returns_client_disconnected_when_addr_unmapped() {
+        let socket = StdArc::new(TokioUdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let ghost_addr: StdSocketAddr = "127.0.0.1:65500".parse().unwrap();
+        let connected: StdArc<StdMutex<StdHashMap<StdSocketAddr, ConnectedClientState>>> =
+            StdArc::new(StdMutex::new(StdHashMap::new()));
+        let entity_to_addr: StdArc<StdMutex<StdHashMap<u32, StdSocketAddr>>> = StdArc::new(
+            StdMutex::new({
+                let mut m = StdHashMap::new();
+                m.insert(99u32, ghost_addr);
+                m
+            }),
+        );
+
+        let result = send_to_witness(
+            &socket,
+            &connected,
+            &entity_to_addr,
+            /* witness_id */ 99,
+            /* entity_id  */ 100,
+            "METHOD",
+            |_key, _seq, _acks| vec![0u8; 16],
+        )
+        .await;
+
+        assert_eq!(
+            result,
+            Err("client_disconnected"),
+            "addr mapped without ConnectedClientState MUST return Err(client_disconnected) — distinguishes it from no_client_addr",
+        );
+        assert!(
+            logs_contain("AoI: client disconnected -- skipping"),
+            "debug! must fire — regression guard for the trace!→debug! promotion (transient is debug, missing addr is warn)",
+        );
+    }
 }

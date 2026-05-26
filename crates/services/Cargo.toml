@@ -36,3 +36,9 @@ reqwest = { workspace = true }
 # random entity walks across many ticks and verify that the per-event
 # diff-accumulated witness set always equals the actual witness set.
 proptest = { workspace = true }
+
+# Tracing capture for negative-logging regression guards (issue #304).
+# `#[traced_test]` installs a per-test subscriber and exposes the
+# `logs_contain` / `logs_assert` helpers — the smallest surface that
+# lets each guard assert "this warn fires when the fix is removed".
+tracing-test = "0.2"

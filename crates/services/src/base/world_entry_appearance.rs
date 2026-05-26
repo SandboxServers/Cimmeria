@@ -412,34 +412,7 @@ pub(crate) async fn handle_on_client_ready(
         .await;
 
         if let Some(pool) = db_pool {
-            // T1-5 finisher (#304): the existing `Err` warn catches DB errors
-            // but a zero-row UPDATE (player_id missing or already cleared) was
-            // silently treated as success. Pair `rows_affected` with `expected`
-            // so the ops query `rows_affected != expected` surfaces the
-            // divergence — without this, the cinematic re-fires on every
-            // login for affected players with no log to grep on.
-            match sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
-                .bind(pending.player_id)
-                .execute(pool.as_ref())
-                .await
-            {
-                Err(e) => {
-                    tracing::warn!(
-                        player_id = pending.player_id,
-                        error = %e,
-                        "Failed to clear first_login flag after cinematic dispatch; player will see intro again next login",
-                    );
-                }
-                Ok(r) if r.rows_affected() == 0 => {
-                    tracing::error!(
-                        player_id = pending.player_id,
-                        rows_affected = 0,
-                        expected = 1,
-                        "first_login flag NOT cleared -- cinematic will re-fire on next login (player_id missing from sgw_player?)",
-                    );
-                }
-                Ok(_) => {}
-            }
+            clear_first_login(pool.as_ref(), pending.player_id).await;
         }
 
         tracing::info!(%addr, entity_id, "First-login cinematic dispatched after onClientReady gate");
@@ -676,6 +649,43 @@ pub(crate) async fn handle_cancel_movie(
     tracing::info!(%addr, entity_id, "cancelMovie: BeingAppearance + onEntityTint resent; spam guard signalled to stop");
 }
 
+/// Clear the `first_login` flag on `sgw_player` for `player_id`.
+///
+/// Extracted from [`handle_on_client_ready`] so the T1-5 negative-logging
+/// guard can exercise the match arms in isolation (issue #304). The
+/// behaviour is unchanged: log on DB error, **log at `error!` when the
+/// UPDATE returned zero rows** (player_id missing or already cleared),
+/// silent on the happy path.
+///
+/// The level discipline matches the rest of the negative-logging convention
+/// in [`docs/architecture/negative-logging-convention.md`]: zero-row UPDATE
+/// on a flag the client gates on is unrecoverable corruption, so `error!`
+/// rather than `warn!`.
+pub(crate) async fn clear_first_login(pool: &sqlx::PgPool, player_id: i32) {
+    match sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
+        .bind(player_id)
+        .execute(pool)
+        .await
+    {
+        Err(e) => {
+            tracing::warn!(
+                player_id,
+                error = %e,
+                "Failed to clear first_login flag after cinematic dispatch; player will see intro again next login",
+            );
+        }
+        Ok(r) if r.rows_affected() == 0 => {
+            tracing::error!(
+                player_id,
+                rows_affected = 0,
+                expected = 1,
+                "first_login flag NOT cleared -- cinematic will re-fire on next login (player_id missing from sgw_player?)",
+            );
+        }
+        Ok(_) => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -788,3 +798,136 @@ mod tests {
 // byte-exact tests live in `super::world_entry_chat`. They're imported
 // at the top of this file and used inside `handle_on_client_ready` for
 // the post-`onClientReady` `ChannelManager.playerLoggedIn` flow.
+
+#[cfg(test)]
+mod first_login_tests {
+    //! Regression guards for T1-5 (issue #304): the `first_login` UPDATE
+    //! emits an `error!` with `rows_affected = 0, expected = 1` when the
+    //! UPDATE matches no rows. The bug shape: someone reverts the match
+    //! arms to `let _ = sqlx::query(...).await` (the original silent path),
+    //! and the cinematic re-fires on every login for affected players with
+    //! no log to grep on.
+    //!
+    //! Each test is a true regression guard per [TESTING.md] — it fails
+    //! when the fix is removed, not just when the happy path is broken.
+
+    use super::*;
+    use crate::test_support::require_db_or_skip;
+    use sqlx::Row;
+    use tracing_test::traced_test;
+
+    /// Sentinel range — picked to avoid collision with other live-DB tests
+    /// that share `sgw_player` (character.rs uses `0x7000_1000` upwards).
+    const T1_5_BASE: i32 = 0x7000_2000;
+
+    async fn cleanup(pool: &sqlx::PgPool, account_id: i32) {
+        let _ = sqlx::query("DELETE FROM sgw_player WHERE account_id = $1")
+            .bind(account_id)
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(account_id)
+            .execute(pool)
+            .await;
+    }
+
+    async fn insert_account(pool: &sqlx::PgPool, account_id: i32) {
+        sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
+            .bind(account_id)
+            .bind(format!("first-login-{account_id}"))
+            .execute(pool)
+            .await
+            .expect("insert account");
+    }
+
+    async fn insert_player(pool: &sqlx::PgPool, account_id: i32, player_id: i32, first_login: i32) {
+        sqlx::query(
+            "INSERT INTO sgw_player (\
+                account_id, player_id, level, alignment, archetype, gender, \
+                player_name, extra_name, world_location, bodyset, \
+                pos_x, pos_y, pos_z, skin_color_id, naquadah, bandolier_slot, first_login\
+             ) VALUES ($1, $2, 1, 1, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+                       0.0, 0.0, 0.0, 0, 0, 0, $4)",
+        )
+        .bind(account_id)
+        .bind(player_id)
+        .bind(format!("p{player_id}"))
+        .bind(first_login)
+        .execute(pool)
+        .await
+        .expect("insert player");
+    }
+
+    async fn read_first_login(pool: &sqlx::PgPool, player_id: i32) -> i32 {
+        sqlx::query("SELECT first_login FROM sgw_player WHERE player_id = $1")
+            .bind(player_id)
+            .fetch_one(pool)
+            .await
+            .expect("select first_login")
+            .get("first_login")
+    }
+
+    /// Happy path: an existing player with `first_login = 1` is updated to
+    /// `0`. No `error!` log fires (one row was matched). Pins the contract
+    /// that ordinary first-login clears stay quiet on the ops dashboard.
+    #[tokio::test]
+    #[traced_test]
+    async fn clear_first_login_updates_existing_player_silently() {
+        let pool = require_db_or_skip!();
+        let account = T1_5_BASE;
+        let player = T1_5_BASE + 1;
+        cleanup(&pool, account).await;
+        insert_account(&pool, account).await;
+        insert_player(&pool, account, player, /* first_login */ 1).await;
+
+        clear_first_login(&pool, player).await;
+
+        assert_eq!(
+            read_first_login(&pool, player).await,
+            0,
+            "happy path must flip first_login from 1 → 0",
+        );
+        assert!(
+            !logs_contain("first_login flag NOT cleared"),
+            "no error! must fire when one row is matched",
+        );
+
+        cleanup(&pool, account).await;
+    }
+
+    /// **Regression guard.** Player ID doesn't exist (e.g., stale
+    /// `pending_client_ready` after a DB-side delete, or the player_id
+    /// field drifted away from the `account.account_id` table). The UPDATE
+    /// matches zero rows. The fix is the `Ok(r) if r.rows_affected() == 0
+    /// => error!()` arm — without it, the cinematic re-fires on every
+    /// login forever with no log to grep on. Asserts the `error!` fires
+    /// with the structured `rows_affected = 0` field that ops dashboards
+    /// alert on. Revert the match arm to `let _ = sqlx::query(...).await`
+    /// and this test fails immediately.
+    #[tokio::test]
+    #[traced_test]
+    async fn clear_first_login_logs_error_when_player_missing() {
+        let pool = require_db_or_skip!();
+        let account = T1_5_BASE + 100;
+        let missing_player = T1_5_BASE + 101;
+        cleanup(&pool, account).await;
+        // Intentionally no insert_player — the row genuinely doesn't exist.
+
+        clear_first_login(&pool, missing_player).await;
+
+        assert!(
+            logs_contain("first_login flag NOT cleared"),
+            "error! must fire for zero-row UPDATE — bug shape: silent re-fire of cinematic",
+        );
+        assert!(
+            logs_contain("rows_affected=0"),
+            "structured field `rows_affected = 0` must appear so ops queries surface the divergence",
+        );
+        assert!(
+            logs_contain("expected=1"),
+            "structured field `expected = 1` must accompany rows_affected so the comparison is unambiguous",
+        );
+
+        cleanup(&pool, account).await;
+    }
+}
