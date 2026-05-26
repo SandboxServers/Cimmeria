@@ -452,6 +452,26 @@ pub struct CellEntity {
     /// Reference: `python/cell/SGWPlayer.py:setLooting()`
     pub looting_entity: Option<u32>,
 
+    /// Entity ID of the NPC the player most recently interacted with
+    /// (player entities only).
+    ///
+    /// Set on every successful `handle_interact`. Read by paths that need
+    /// to know "which NPC is on the other side of this conversation" but
+    /// don't get that ID through their own wire frame — notably
+    /// `handle_initial_response` (the client sends only
+    /// `interaction_set_map_id`, mirroring python's
+    /// `SGWPlayer.initialResponse` which used `self.lastInteractionTarget`)
+    /// and content-engine `display_dialog` / `start_dialog` actions fired
+    /// from chains that don't carry `target_entity_id` in params (e.g. a
+    /// follow-up dialog triggered by `OnDialogChoice`).
+    ///
+    /// The wire `EntityId` field of `onDialogDisplay` must be the NPC's
+    /// entity ID, not the player's — the client looks it up in the AoI
+    /// listener table via `LookupEntityListenerEntry` to bind the dialog
+    /// portrait actor (see
+    /// `docs/reverse-engineering/findings/dialog-portrait-lookup.md`).
+    pub last_interaction_target: Option<u32>,
+
     /// Entity ID of the currently-open vendor (only for player entities).
     pub vendor_entity: Option<u32>,
 
@@ -636,6 +656,7 @@ impl CellEntity {
             loot: Vec::new(),
             next_loot_index: 1,
             looting_entity: None,
+            last_interaction_target: None,
             vendor_entity: None,
             current_target_id: None,
             active_bandolier_slot: 0,

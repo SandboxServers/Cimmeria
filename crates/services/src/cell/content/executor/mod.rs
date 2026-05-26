@@ -102,7 +102,7 @@ pub(super) async fn execute_actions(
             | Action::StartDialog {
                 dialog_set_id: dialog_id,
             } => {
-                dialog::display(dialog_id, entity_id, chain_id, tx).await;
+                dialog::display(dialog_id, entity_id, chain_id, &params, tx, space_mgr).await;
             }
             Action::PlaySequence { sequence_id } => {
                 tracing::info!(

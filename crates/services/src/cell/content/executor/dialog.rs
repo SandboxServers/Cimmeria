@@ -9,21 +9,73 @@ use crate::cell::space_manager::SpaceManager;
 /// `Action::DisplayDialog` and `Action::StartDialog` — both render a dialog
 /// to the player. They take different field names but the same id semantics,
 /// merged into one handler.
+///
+/// The wire `EntityId` field of `onDialogDisplay` MUST be the NPC the
+/// player is talking to — the client uses it as the key into
+/// `LookupEntityListenerEntry` to bind the dialog portrait actor and the
+/// per-screen speaker entity (see
+/// `docs/reverse-engineering/findings/dialog-portrait-lookup.md`).
+/// Resolution order, from most to least direct:
+///
+/// 1. Chain `params["target_entity_id"]` — present when the chain was
+///    fired from an `InteractTag` / `InteractTemplate` trigger
+///    (`fire_interact_*` stamps it into the context).
+/// 2. Player's `last_interaction_target` — the per-player pin set by
+///    `handle_interact`. Covers follow-up chains (e.g. an
+///    `OnDialogChoice` trigger that fires another `display_dialog` on
+///    the same NPC) where the trigger event itself carries no NPC.
+/// 3. Abort with a `warn` — falling back to the player's own entity ID
+///    here is the bug this commit fixed: the client would bind the
+///    player as the dialog speaker, blanking the portrait and
+///    rendering the player's name for every screen.
 #[tracing::instrument(
     name = "dialog.display",
     level = "info",
     skip_all,
-    fields(entity_id, dialog_id, chain_id)
+    fields(entity_id, dialog_id, chain_id, npc_entity_id = tracing::field::Empty)
 )]
 pub(super) async fn display(
     dialog_id: i32,
     entity_id: u32,
     chain_id: i64,
+    params: &std::collections::HashMap<String, serde_json::Value>,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
-    tracing::info!(entity_id, dialog_id, chain_id, "Content: displaying dialog");
-    crate::cell::interactions::send_dialog_display(entity_id, entity_id as i32, dialog_id, tx)
-        .await;
+    let npc_entity_id = params
+        .get("target_entity_id")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as i32)
+        .or_else(|| {
+            space_mgr
+                .get_entity(entity_id)
+                .and_then(|p| p.last_interaction_target)
+                .map(|id| id as i32)
+        });
+
+    let npc_entity_id = match npc_entity_id {
+        Some(id) => id,
+        None => {
+            tracing::warn!(
+                entity_id,
+                dialog_id,
+                chain_id,
+                "DisplayDialog: no NPC entity id in chain params or last_interaction_target -- \
+                 cannot send onDialogDisplay (would bind player as speaker and blank portrait)"
+            );
+            return;
+        }
+    };
+
+    tracing::Span::current().record("npc_entity_id", npc_entity_id);
+    tracing::info!(
+        entity_id,
+        dialog_id,
+        npc_entity_id,
+        chain_id,
+        "Content: displaying dialog"
+    );
+    crate::cell::interactions::send_dialog_display(entity_id, npc_entity_id, dialog_id, tx).await;
 }
 
 /// `Action::AddDialogSet` — register a dialog set on the player's
@@ -310,5 +362,105 @@ async fn send_interaction_update_if_visible(
                 "NPC not yet in player AoI — deferring InteractionType to AoI create"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{make_space_manager, LogCapture};
+    use std::collections::HashMap;
+    use tracing::Level;
+
+    fn empty_params() -> HashMap<String, serde_json::Value> {
+        HashMap::new()
+    }
+
+    /// Chain `params["target_entity_id"]` is the most direct source — it's
+    /// stamped by `fire_interact_*` for chains fired off an interact. The
+    /// wire `EntityId` of `onDialogDisplay` must match that, not the
+    /// player's id.
+    #[tokio::test]
+    async fn display_uses_target_entity_id_from_chain_params() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+
+        const NPC_ID: u32 = 0xABCD;
+        let mut params = empty_params();
+        params.insert("target_entity_id".into(), serde_json::json!(NPC_ID as u64));
+
+        let (tx, mut rx) = mpsc::channel(4);
+        display(
+            /* dialog_id */ 4001, /* entity_id */ 1, /* chain_id */ 99, &params,
+            &tx, &mgr,
+        )
+        .await;
+
+        let msg = rx.try_recv().expect("must emit onDialogDisplay");
+        match msg {
+            CellToBaseMsg::EntityMethodCall { args, .. } => {
+                let wire_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                assert_eq!(
+                    wire_entity_id as u32, NPC_ID,
+                    "params.target_entity_id must win over any fallback; got {wire_entity_id}, expected {NPC_ID}"
+                );
+            }
+            other => panic!("expected EntityMethodCall, got {other:?}"),
+        }
+    }
+
+    /// When the chain didn't stamp `target_entity_id` (e.g. an
+    /// `OnDialogChoice`-triggered follow-up dialog), fall back to the
+    /// player's `last_interaction_target` pin.
+    #[tokio::test]
+    async fn display_falls_back_to_last_interaction_target() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        const NPC_ID: u32 = 0xBEEF;
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.last_interaction_target = Some(NPC_ID);
+        }
+
+        let params = empty_params();
+        let (tx, mut rx) = mpsc::channel(4);
+        display(2299, 1, 1021, &params, &tx, &mgr).await;
+
+        let msg = rx.try_recv().expect("must emit onDialogDisplay");
+        match msg {
+            CellToBaseMsg::EntityMethodCall { args, .. } => {
+                let wire_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                assert_eq!(wire_entity_id as u32, NPC_ID);
+            }
+            other => panic!("expected EntityMethodCall, got {other:?}"),
+        }
+    }
+
+    /// With neither `target_entity_id` in params nor a
+    /// `last_interaction_target` pin, the handler must abort with a warn
+    /// rather than emit a wire frame that binds the player as the
+    /// speaker. The warn level is load-bearing — operators rely on it
+    /// to correlate "dialog never opened" with a chain that wasn't
+    /// fired off an interact path.
+    #[tokio::test]
+    async fn display_aborts_with_warn_when_no_npc_id_available() {
+        let capture = LogCapture::install();
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        // last_interaction_target intentionally None.
+
+        let params = empty_params();
+        let (tx, mut rx) = mpsc::channel(4);
+        display(4001, 1, 9999, &params, &tx, &mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "must not emit onDialogDisplay when no NPC id can be resolved"
+        );
+        assert!(
+            capture
+                .find_message(Level::WARN, "DisplayDialog: no NPC entity id")
+                .is_some(),
+            "abort must surface a WARN — silent return masks the chain-author bug"
+        );
     }
 }
