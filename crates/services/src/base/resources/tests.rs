@@ -360,3 +360,159 @@ fn overridden_elements_returns_empty_slice_for_unknown_category() {
         "unknown category must yield empty slice",
     );
 }
+
+// ── apply_item_overrides on hand-built CategoryData ──────────────
+// Mirrors the apply_mission_overrides tests above. The PAK-load path
+// is integration-tested by running the real server; this exercises
+// the in-memory mutation logic without ZIP IO.
+
+/// Minimal Server-Build COOKED_ITEM that satisfies the
+/// `apply_override` patcher's anchors (`IconLocation="..."` and
+/// `<InventorySet ... MaxStackSize="..." .../>`). Each item gets a
+/// distinct id so the test can pin per-id overrides.
+fn fake_item_xml(item_id: u32, icon: &str, max_stack: u32) -> Vec<u8> {
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+         <COOKED_ITEM ID=\"{item_id}\" \
+         IconLocation=\"{icon}\" \
+         Name=\"Item {item_id}\" Tier=\"1\">\
+         <InventorySet IsDeletable=\"true\" MaxStackSize=\"{max_stack}\" />\
+         </COOKED_ITEM>"
+    )
+    .into_bytes()
+}
+
+fn items_category_with(entries: &[(u32, &str, u32)], metadata: u32) -> CategoryData {
+    let mut elements = HashMap::new();
+    for (item_id, icon, max_stack) in entries {
+        elements.insert(*item_id, fake_item_xml(*item_id, icon, *max_stack));
+    }
+    CategoryData { metadata, elements }
+}
+
+/// Post-condition pin: every registered item override mutates its
+/// entry, the category metadata is bumped, and the overridden-ids
+/// map names the patched items.
+#[test]
+fn apply_item_overrides_patches_entries_and_bumps_metadata() {
+    let starting_metadata = 7542;
+    let mut categories: HashMap<u32, CategoryData> = HashMap::new();
+    // Slappack pre-fix shape (IconMissing + MaxStackSize=1) so the
+    // patcher has something to rewrite. Other entries are present
+    // to verify the patcher doesn't touch them.
+    categories.insert(
+        CATEGORY_ITEMS,
+        items_category_with(
+            &[
+                (2893, "set:CoreWidgets image:IconMissing", 1),
+                (4735, "set:CoreWidgets image:IconMissing", 1),
+                (9999, "set:ItemIcon001 image:SomeOther", 5),
+            ],
+            starting_metadata,
+        ),
+    );
+
+    let overridden = ResourceCache::apply_item_overrides(&mut categories);
+
+    let items = categories
+        .get(&CATEGORY_ITEMS)
+        .expect("items category must remain after apply");
+
+    assert_ne!(
+        items.metadata, starting_metadata,
+        "apply must bump the items metadata so the client invalidates and refetches",
+    );
+    let bump = items.metadata.wrapping_sub(starting_metadata);
+    assert_eq!(bump & 0x1, 0x1, "low bit of bump must be set");
+
+    // Slappack entries patched.
+    for &id in &[2893u32, 4735u32] {
+        let patched = std::str::from_utf8(
+            items
+                .elements
+                .get(&id)
+                .unwrap_or_else(|| panic!("item {id} missing")),
+        )
+        .unwrap();
+        assert!(
+            patched.contains("IconLocation=\"set:ItemIcon001 image:Medkit\""),
+            "item {id} must carry the Medkit icon after override; got: {patched}",
+        );
+        assert!(
+            patched.contains("MaxStackSize=\"10\""),
+            "item {id} must carry MaxStackSize=10 after override; got: {patched}",
+        );
+    }
+
+    // Untouched entry retains its original values byte-for-byte.
+    let other = std::str::from_utf8(items.elements.get(&9999).unwrap()).unwrap();
+    assert!(
+        other.contains("IconLocation=\"set:ItemIcon001 image:SomeOther\""),
+        "unrelated item 9999 must not be touched by item overrides"
+    );
+    assert!(
+        other.contains("MaxStackSize=\"5\""),
+        "unrelated item 9999 must keep its MaxStackSize=5"
+    );
+
+    let ids = overridden
+        .get(&CATEGORY_ITEMS)
+        .expect("items must appear in returned map");
+    assert_eq!(
+        ids.as_slice(),
+        &[2893u32, 4735u32],
+        "overridden_elements must name both slappack ids in ascending order",
+    );
+}
+
+/// Defensive path: items category absent (PAK missing) → no-op
+/// return, server startup keeps going. Mirrors the analogous
+/// missions test.
+#[test]
+fn apply_item_overrides_no_op_when_category_missing() {
+    let mut categories: HashMap<u32, CategoryData> = HashMap::new();
+    let overridden = ResourceCache::apply_item_overrides(&mut categories);
+    assert!(
+        overridden.is_empty(),
+        "missing items category must not produce override entries"
+    );
+}
+
+/// `compute_item_metadata_bump` is deterministic across calls and
+/// always sets the low bit. Companion of the mission-side pin
+/// `compute_metadata_bump_low_bit_is_always_set`.
+#[test]
+fn compute_item_metadata_bump_is_deterministic_and_low_bit_set() {
+    use super::super::item_overrides::ItemOverride;
+    let overrides = [ItemOverride {
+        item_id: 2893,
+        new_icon_location: Some("set:ItemIcon001 image:Medkit"),
+        new_max_stack_size: Some(10),
+    }];
+    let a = compute_item_metadata_bump(&overrides);
+    let b = compute_item_metadata_bump(&overrides);
+    assert_eq!(a, b, "same overrides must hash to the same bump");
+    assert_eq!(a & 0x1, 0x1, "low bit must be set");
+
+    // A change to either field changes the bump (so the client refetches).
+    let different_icon = [ItemOverride {
+        item_id: 2893,
+        new_icon_location: Some("set:ItemIcon001 image:Spray_Injector"),
+        new_max_stack_size: Some(10),
+    }];
+    assert_ne!(
+        compute_item_metadata_bump(&overrides),
+        compute_item_metadata_bump(&different_icon),
+        "icon edit must change the bump",
+    );
+    let different_stack = [ItemOverride {
+        item_id: 2893,
+        new_icon_location: Some("set:ItemIcon001 image:Medkit"),
+        new_max_stack_size: Some(99),
+    }];
+    assert_ne!(
+        compute_item_metadata_bump(&overrides),
+        compute_item_metadata_bump(&different_stack),
+        "stack-size edit must change the bump",
+    );
+}
