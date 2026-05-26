@@ -75,6 +75,12 @@ pub async fn query_saved_missions(
     }
 }
 
+#[tracing::instrument(
+    name = "mission.persist",
+    level = "info",
+    skip_all,
+    fields(player_id, mission_id, status, ?current_step_id, repeats),
+)]
 pub async fn handle_mission_update(
     player_id: i32,
     mission_id: i32,

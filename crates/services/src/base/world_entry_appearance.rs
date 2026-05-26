@@ -118,6 +118,12 @@ fn build_on_client_ready_burst_bundle(
 /// mapLoaded bundle but may have been dropped because the entity was still in a
 /// "transaction" during bundle processing. The C++ server sends BeingAppearance
 /// 3-5 times via createCacheStamp replays; this second send mimics that.
+#[tracing::instrument(
+    name = "world_entry.on_client_ready",
+    level = "info",
+    skip_all,
+    fields(peer = %addr),
+)]
 pub(crate) async fn handle_on_client_ready(
     addr: SocketAddr,
     key: [u8; 32],
