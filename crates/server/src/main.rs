@@ -570,6 +570,7 @@ fn init_logging(
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
+                wire.in=info,wire.out=info,\
                 aoi.entity_enter=debug,aoi.entity_leave=debug,\
                 movement.npc=debug,movement.player=debug,\
                 sqlx::query=debug,\

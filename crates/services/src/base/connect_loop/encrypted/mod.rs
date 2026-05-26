@@ -179,6 +179,8 @@ pub(crate) async fn handle_encrypted_datagram(
 
         tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), payload_len = payload.len(), "Client bundle message");
 
+        crate::wire_log::log_inbound(addr, msg_id, payload);
+
         // Dispatch message.
         //
         // The client cache methods are protocol-level messages that keep the
