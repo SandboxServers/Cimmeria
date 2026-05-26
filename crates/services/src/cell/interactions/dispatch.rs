@@ -80,6 +80,19 @@ pub async fn handle_interact(
         return None;
     }
 
+    // Pin the interaction target on the player. Downstream dispatchers
+    // that don't get the NPC entity ID on their own wire frame
+    // (`handle_initial_response`, content-engine `display_dialog`
+    // fired from a follow-up trigger like `OnDialogChoice`) read this
+    // to fill the wire `EntityId` field of `onDialogDisplay`. The
+    // dialog portrait widget binds its actor by that ID via
+    // `LookupEntityListenerEntry`, so passing the player's ID there
+    // (the prior bug) made the dialog speak as the player. Mirrors
+    // python's `SGWPlayer.lastInteractionTarget` write in `interact()`.
+    if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+        player.last_interaction_target = Some(target_entity_id);
+    }
+
     // Check per-player available interactions (from add_dialog_set content actions).
     // These take priority over static interaction_type.
     if let Some(tmpl_id) = target_template_id {
@@ -210,13 +223,39 @@ pub async fn handle_initial_response(
                 return;
             }
         };
+        // Wire `EntityId` of `onDialogDisplay` must be the NPC the player
+        // is talking to — the client passes it through
+        // `LookupEntityListenerEntry` to bind the dialog portrait actor.
+        // `last_interaction_target` was set by the preceding `handle_interact`
+        // (the client only sends `interactionSetMapId` here, so the NPC ID
+        // has to come from the per-player pin). Falling back to `entity_id`
+        // (the player) makes the dialog speak as the player and blanks the
+        // portrait — same shape as python's `SGWPlayer.initialResponse`
+        // returning early when `lastInteractionTarget` is unset.
+        let npc_entity_id = match space_mgr
+            .get_entity(entity_id)
+            .and_then(|p| p.last_interaction_target)
+        {
+            Some(id) => id as i32,
+            None => {
+                tracing::warn!(
+                    entity_id,
+                    interaction_set_map_id,
+                    dialog_id,
+                    "handle_initial_response: no last_interaction_target on player; \
+                     aborting dialog open -- portrait would render blank against the player"
+                );
+                return;
+            }
+        };
         tracing::info!(
             entity_id,
             interaction_set_map_id,
             dialog_id,
+            npc_entity_id,
             "handle_initial_response: found dialog, sending onDialogDisplay"
         );
-        send_dialog_display(entity_id, entity_id as i32, dialog_id, tx).await;
+        send_dialog_display(entity_id, npc_entity_id, dialog_id, tx).await;
         crate::cell::content::fire_dialog_open(
             entity_id, player_id, dialog_id, engine, tx, space_mgr,
         )
@@ -298,11 +337,170 @@ mod tests {
                 assert_eq!(entity_id, 1); // sent to player
                 assert_eq!(method_index, crate::mercury::method_idx::ON_DIALOG_DISPLAY);
                 assert_eq!(args.len(), 17);
+                // Wire `EntityId` (args[0..4]) MUST be the NPC's entity id, not
+                // the player's. The client uses it as the key into
+                // `LookupEntityListenerEntry` to bind the dialog portrait actor;
+                // passing the player here makes the dialog speak as the player
+                // and blanks the portrait. See
+                // `docs/reverse-engineering/findings/dialog-portrait-lookup.md`.
+                let wire_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                assert_eq!(
+                    wire_entity_id as u32, npc_id,
+                    "onDialogDisplay wire EntityId must be the NPC id (got {wire_entity_id}, expected {npc_id})"
+                );
                 let dialog_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 assert_eq!(dialog_id, 42);
             }
             _ => panic!("Expected EntityMethodCall"),
         }
+    }
+
+    /// `handle_interact` must pin `last_interaction_target` on the player so
+    /// the subsequent `handle_initial_response` (which only gets
+    /// `interactionSetMapId` on the wire) can recover the NPC entity id to
+    /// stamp into `onDialogDisplay`. Without this pin, the chain-fired
+    /// dialog path bound the player as the speaker.
+    #[tokio::test]
+    async fn interact_pins_last_interaction_target_on_player() {
+        let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(spaces_xml).unwrap();
+        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            npc.interaction_type = Some(NpcInteractionType::Dialog { dialog_id: 42 });
+        }
+
+        let (tx, _rx) = mpsc::channel(16);
+        handle_interact(1, npc_id, &tx, &mut mgr).await;
+
+        assert_eq!(
+            mgr.get_entity(1).and_then(|p| p.last_interaction_target),
+            Some(npc_id),
+            "handle_interact must pin last_interaction_target = NPC id on the player"
+        );
+    }
+
+    /// Out-of-range interact must NOT pin `last_interaction_target` — a
+    /// stale pin from a too-far click would then misroute a subsequent
+    /// `initialResponse` (or chain-fired dialog) at the wrong NPC.
+    #[tokio::test]
+    async fn out_of_range_interact_does_not_pin_target() {
+        let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(spaces_xml).unwrap();
+        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [100.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+
+        let (tx, _rx) = mpsc::channel(16);
+        handle_interact(1, npc_id, &tx, &mut mgr).await;
+
+        assert_eq!(
+            mgr.get_entity(1).and_then(|p| p.last_interaction_target),
+            None,
+            "out-of-range interact must leave last_interaction_target untouched"
+        );
+    }
+
+    /// `handle_initial_response` must stamp the NPC entity id (from
+    /// `last_interaction_target`) into the wire `EntityId` field of
+    /// `onDialogDisplay`, not the player's id. Regression for the bug
+    /// where the dialog opened with the player bound as the speaker
+    /// actor (blank portrait, player name on every screen).
+    #[tokio::test]
+    async fn initial_response_uses_last_interaction_target_for_wire_entity_id() {
+        let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(spaces_xml).unwrap();
+        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+
+        const TEMPLATE_ID: i32 = 7;
+        const DIALOG_SET_MAP_ID: i32 = 99;
+        const DIALOG_ID: i32 = 4001;
+        const NPC_ID: u32 = 0x1234;
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(42);
+            p.last_interaction_target = Some(NPC_ID);
+            p.available_interactions
+                .insert(TEMPLATE_ID, vec![(DIALOG_SET_MAP_ID, DIALOG_ID, 0)]);
+        }
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let engine = ChainEngine::new();
+        handle_initial_response(1, DIALOG_SET_MAP_ID, &engine, &tx, &mut mgr).await;
+
+        let msg = rx.try_recv().expect("must emit onDialogDisplay");
+        match msg {
+            CellToBaseMsg::EntityMethodCall {
+                method_index, args, ..
+            } => {
+                assert_eq!(method_index, crate::mercury::method_idx::ON_DIALOG_DISPLAY);
+                let wire_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                assert_eq!(
+                    wire_entity_id as u32, NPC_ID,
+                    "initial_response must stamp last_interaction_target as wire EntityId, \
+                     not the player's id (got {wire_entity_id}, expected {NPC_ID})"
+                );
+                let dialog_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                assert_eq!(dialog_id, DIALOG_ID);
+            }
+            other => panic!("expected EntityMethodCall, got {other:?}"),
+        }
+    }
+
+    /// `handle_initial_response` must abort (not fire onDialogDisplay) when
+    /// `last_interaction_target` is unset. Falling back to the player here
+    /// is exactly the prior bug shape.
+    #[tokio::test]
+    async fn initial_response_aborts_when_last_interaction_target_missing() {
+        let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(spaces_xml).unwrap();
+        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+
+        const TEMPLATE_ID: i32 = 7;
+        const DIALOG_SET_MAP_ID: i32 = 99;
+        const DIALOG_ID: i32 = 4001;
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(42);
+            // last_interaction_target intentionally left as None.
+            p.available_interactions
+                .insert(TEMPLATE_ID, vec![(DIALOG_SET_MAP_ID, DIALOG_ID, 0)]);
+        }
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let engine = ChainEngine::new();
+        handle_initial_response(1, DIALOG_SET_MAP_ID, &engine, &tx, &mut mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "initial_response must NOT emit onDialogDisplay when last_interaction_target \
+             is unset -- falling back to the player blanks the portrait"
+        );
     }
 
     #[tokio::test]
