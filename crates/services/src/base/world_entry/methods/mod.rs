@@ -15,7 +15,7 @@ pub mod world_entry_db;
 // Re-export all public functions for backward compatibility
 pub use inventory::{
     handle_grant_item, handle_move_inventory_item, handle_remove_inventory_item,
-    handle_remove_inventory_item_by_type, handle_use_inventory_item, send_full_inventory_update,
+    handle_remove_inventory_item_by_type, handle_use_inventory_item, send_full_inventory_resync,
 };
 pub use mail::handle_mail_request;
 pub use missions::{handle_mission_update, query_saved_missions};
