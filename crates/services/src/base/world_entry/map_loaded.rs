@@ -32,6 +32,12 @@ use super::methods::default_player_load_data;
 /// In C++, this is triggered by the CellApp's `onCellPlayerCreateAck` callback
 /// (which itself fires after `connected()` sends `onClientMapLoad`) and the
 /// Python `onClientReady()` -> `mapLoaded()` callback chain.
+#[tracing::instrument(
+    name = "world_entry.map_loaded",
+    level = "info",
+    skip_all,
+    fields(peer = %addr),
+)]
 pub(crate) async fn handle_map_loaded(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,

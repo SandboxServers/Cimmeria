@@ -32,6 +32,12 @@ use super::super::ConnectedClientState;
 /// 3. Persist new pos to `sgw_player` so a relog mid-ceremony doesn't
 ///    teleport the player back to the source pad. We fail closed on missing
 ///    `active_player_id` for the same reason as `gate_travel.rs`.
+#[tracing::instrument(
+    name = "world_entry.teleport_player",
+    level = "info",
+    skip_all,
+    fields(entity_id, space_id)
+)]
 pub(super) async fn handle_teleport_player(
     entity_id: u32,
     space_id: u32,

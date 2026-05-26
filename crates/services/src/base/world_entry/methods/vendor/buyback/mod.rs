@@ -25,6 +25,12 @@ struct BuybackInventoryRow {
 }
 
 /// Transactionally buy back recently sold items and refresh inventory/cash/store.
+#[tracing::instrument(
+    name = "vendor.buyback",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, vendor_entity_id, vendor_template_id, item_count = items.len()),
+)]
 pub async fn handle_buyback_vendor_items(
     entity_id: u32,
     player_id: i32,

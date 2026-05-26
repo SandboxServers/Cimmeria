@@ -32,6 +32,12 @@ const GENERICPROPERTY_TRAINING_POINTS: i32 = 1;
 /// Matches the Python `giveExperience()` flow: add XP, send updates, fire
 /// level-up events. Persists exp/level/training_points to `sgw_player` before
 /// emitting wire packets so a relog after a grant doesn't roll the player back.
+#[tracing::instrument(
+    name = "progression.grant_xp",
+    level = "info",
+    skip_all,
+    fields(entity_id, xp_amount)
+)]
 pub async fn handle_grant_xp(
     entity_id: u32,
     xp_amount: u64,
@@ -280,6 +286,12 @@ fn build_grant_xp_bundle(
 }
 
 /// Handle cash grant from CellService -- update DB and send client notification.
+#[tracing::instrument(
+    name = "progression.grant_cash",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, amount)
+)]
 pub async fn handle_grant_cash(
     entity_id: u32,
     player_id: i32,

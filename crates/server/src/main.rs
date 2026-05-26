@@ -576,6 +576,9 @@ fn init_logging(
                 movement.npc=debug,movement.player=debug,\
                 npc_ai=debug,\
                 threat=info,\
+                auth=info,\
+                world_entry=info,\
+                vendor=info,mail=info,progression=info,inventory=info,mission=info,\
                 sqlx::query=debug,\
                 tungstenite=off,tokio_tungstenite=off,hyper=off,\
                 h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";
