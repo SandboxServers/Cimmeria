@@ -28,7 +28,7 @@ use super::methods::{
     handle_open_vendor_store, handle_purchase_vendor_items, handle_recharge_inventory_items,
     handle_remove_inventory_item, handle_remove_inventory_item_by_type,
     handle_repair_inventory_item, handle_repair_inventory_items, handle_sell_vendor_items,
-    handle_use_inventory_item, send_full_inventory_update,
+    handle_use_inventory_item, send_full_inventory_resync,
 };
 use super::reanchor_player::handle_reanchor_player;
 use super::space_registry::register_space;
@@ -538,8 +538,15 @@ pub(crate) async fn handle_cell_message(
             entity_id,
             player_id,
         } => {
+            // `ListInventoryItems` is the post-`ReanchorPlayer` resync
+            // path. Run the FULL re-init bundle (bag info + active slot
+            // + cash + items), not just the item snapshot — the new
+            // pawn's `InventoryComponent` is empty after pawn-recreate
+            // and needs the bag list registered before `onUpdateItem`
+            // entries can slot. See `send_full_inventory_resync` doc
+            // for the bug shape this guards against.
             if let Some(pool) = &db_pool {
-                send_full_inventory_update(
+                send_full_inventory_resync(
                     entity_id,
                     player_id,
                     pool,

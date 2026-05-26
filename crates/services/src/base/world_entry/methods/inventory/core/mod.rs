@@ -20,6 +20,8 @@ use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 mod remove_by_type;
 mod remove_instance;
+#[cfg(test)]
+mod resync_tests;
 mod use_instance;
 #[cfg(test)]
 mod use_instance_tests;
@@ -78,6 +80,163 @@ pub(super) struct InventoryInstanceWithIdRow {
     pub stack_size: i32,
     pub container_id: i32,
     pub slot_id: i32,
+}
+
+/// Send a *full client-side inventory re-init* — the same bundle the
+/// world-entry path sends in `map_loaded.rs:336-371`, minus the
+/// blueprint and entity-property packets that aren't part of
+/// inventory specifically.
+///
+/// Why this exists separate from [`send_full_inventory_update`]:
+/// after `ReanchorPlayer` fires `CREATE_BASE_PLAYER`, the client
+/// destroys the pawn actor and instantiates a fresh one with an
+/// empty `InventoryComponent`. The new component has no bag list
+/// registered, so any subsequent `onUpdateItem` targets a component
+/// with no containers and the entries silently fail to slot. The
+/// inventory UI stays blank — every existing item is missing, and
+/// every new pickup also no-ops because its `onUpdateItem` lands
+/// against the same broken state.
+///
+/// The bundle order mirrors the world-entry sequence:
+/// 1. `onBagInfo` — declare the container set on the new
+///    `InventoryComponent` so subsequent `onUpdateItem` calls have
+///    somewhere to deposit entries.
+/// 2. `onActiveSlotUpdate` — seed the bandolier slot indicator from
+///    the persisted `bandolier_slot`. Without this the client
+///    defaults to slot 1 and the LUA `getActiveSlotForContainer`
+///    guard silently drops keypresses for the real persisted slot.
+/// 3. `onCashChanged` — naquadah balance. Survives in the DB but
+///    the client's `Inventory.cash` is whatever the new pawn
+///    defaulted to (zero).
+/// 4. `onUpdateItem` — all items, via the shared
+///    [`send_full_inventory_update`].
+///
+/// Cross-world respawn re-runs the full world-entry handshake (the
+/// `map_loaded.rs` path above), so it doesn't need this helper —
+/// only the same-world `ReanchorPlayer` path does, because the
+/// in-place re-anchor intentionally skips the `RESET_ENTITIES` +
+/// `onClientMapLoad` reload to preserve client-side kismet state
+/// (open doors, completed encounters).
+///
+/// Called from the `CellToBaseMsg::ListInventoryItems` handler
+/// after same-world respawn.
+pub async fn send_full_inventory_resync(
+    entity_id: u32,
+    player_id: i32,
+    pool: &Arc<PgPool>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    // 1. onBagInfo — declare containers on the fresh InventoryComponent.
+    //    Bag set is identity-per-player (every player has the same set
+    //    of containers, sized by `BAG_SIZES`); we just need the wire
+    //    bytes, no DB lookup required.
+    {
+        let inv = cimmeria_entity::inventory::Inventory::new(0);
+        let bag_info = inv.serialize_bag_info();
+        send_to_witness_reliable(
+            transport,
+            connected,
+            entity_to_addr,
+            entity_id,
+            |key, seq, acks| {
+                build_player_entity_method_packet(
+                    key,
+                    seq,
+                    acks,
+                    entity_id,
+                    method_idx::ON_BAG_INFO,
+                    &bag_info,
+                )
+            },
+        )
+        .await;
+    }
+
+    // 2. onActiveSlotUpdate + 3. onCashChanged — pull from sgw_player.
+    //    One round-trip for both. If the row is missing (data corruption
+    //    on the player_id), log and skip; the inventory update still
+    //    fires so the UI at least shows items.
+    let player_meta: Option<(i32, i32)> = match sqlx::query_as::<_, (i32, i32)>(
+        "SELECT bandolier_slot, naquadah FROM sgw_player WHERE player_id = $1",
+    )
+    .bind(player_id)
+    .fetch_optional(pool.as_ref())
+    .await
+    {
+        Ok(row) => row,
+        Err(e) => {
+            tracing::warn!(
+                player_id,
+                "send_full_inventory_resync: sgw_player lookup failed: {e}"
+            );
+            None
+        }
+    };
+
+    if let Some((bandolier_slot, naquadah)) = player_meta {
+        // Wire: `(bag_id:i32, wire_slot:i32)` where wire_slot is the
+        // 1-indexed server slot (matches `Bag.py:369` and the live
+        // `handle_request_active_slot_change` send shape).
+        const CONTAINER_BANDOLIER: i32 = 3;
+        let mut args = Vec::with_capacity(8);
+        args.extend_from_slice(&CONTAINER_BANDOLIER.to_le_bytes());
+        args.extend_from_slice(&(bandolier_slot + 1).to_le_bytes());
+        send_to_witness_reliable(
+            transport,
+            connected,
+            entity_to_addr,
+            entity_id,
+            |key, seq, acks| {
+                build_player_entity_method_packet(
+                    key,
+                    seq,
+                    acks,
+                    entity_id,
+                    method_idx::ON_ACTIVE_SLOT_UPDATE,
+                    &args,
+                )
+            },
+        )
+        .await;
+
+        let cash_args = naquadah.to_le_bytes().to_vec();
+        send_to_witness_reliable(
+            transport,
+            connected,
+            entity_to_addr,
+            entity_id,
+            |key, seq, acks| {
+                build_player_entity_method_packet(
+                    key,
+                    seq,
+                    acks,
+                    entity_id,
+                    method_idx::ON_CASH_CHANGED,
+                    &cash_args,
+                )
+            },
+        )
+        .await;
+    }
+
+    // 4. onUpdateItem — the existing item-snapshot path.
+    let total = send_full_inventory_update(
+        entity_id,
+        player_id,
+        pool,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+    tracing::info!(
+        entity_id,
+        player_id,
+        item_count = total,
+        "Sent full inventory resync (onBagInfo + onActiveSlotUpdate + onCashChanged + onUpdateItem)"
+    );
 }
 
 /// Send full inventory update to player, refreshing all items on the client.
