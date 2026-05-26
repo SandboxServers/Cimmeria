@@ -511,6 +511,32 @@ pub async fn handle_use_ability(
         space_mgr,
     )
     .await;
+
+    // Cone AoE fan-out (#61, #419) — once the primary takes damage,
+    // sweep every effect on this ability for `TCM_AECone` and apply
+    // damage to any additional hostiles caught in the cone. Returns
+    // alive→dead transitions so the caller's kill-credit wrapper can
+    // fire entity_death for each. `target_id > 0` already enforced
+    // because we'd have early-returned with no-target above.
+    let cone_deaths = super::cone_aoe::fan_out_cone_effects(
+        entity_id,
+        target_id as u32,
+        ability_id,
+        &ability_def,
+        tx,
+        space_mgr,
+    )
+    .await;
+    // Stash the cone deaths on the attacker so
+    // `handle_use_ability_with_kill_credit` can pick them up after
+    // we return. Persisting via a per-attacker scratchpad keeps the
+    // function signature stable for non-kill-credit callers.
+    if !cone_deaths.is_empty() {
+        if let Some(att) = space_mgr.get_entity_mut(entity_id) {
+            att.last_aoe_deaths.extend(cone_deaths);
+        }
+    }
+
     maybe_trigger_auto_reload(entity_id, needs_ammo_stat_send, ability_id, tx, space_mgr).await;
     true
 }
@@ -674,6 +700,22 @@ pub async fn handle_use_ability_with_kill_credit(
 
     crate::cell::content::fire_entity_death(entity_id, player_id, &tag, engine, tx, space_mgr)
         .await;
+
+    // Cone AoE kill credit: drain the per-attacker scratchpad that
+    // `handle_use_ability` populated with cone-secondary deaths and
+    // fire `entity_death` for each tagged kill. Matches the same
+    // discipline as `handle_use_ability_on_ground`.
+    let cone_dead_ids: Vec<u32> = space_mgr
+        .get_entity_mut(entity_id)
+        .map(|att| std::mem::take(&mut att.last_aoe_deaths))
+        .unwrap_or_default();
+    for dead_eid in cone_dead_ids {
+        let dead_tag = space_mgr.get_entity(dead_eid).and_then(|t| t.tag.clone());
+        if let Some(t) = dead_tag {
+            crate::cell::content::fire_entity_death(entity_id, player_id, &t, engine, tx, space_mgr)
+                .await;
+        }
+    }
     committed
 }
 

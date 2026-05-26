@@ -300,6 +300,7 @@ mod tests {
                 event_set_id: None,
                 script_name: None,
                 params: effect_params,
+                ..Default::default()
             },
         );
 
@@ -354,6 +355,7 @@ mod tests {
                 event_set_id: None,
                 script_name: None,
                 params: effect_params,
+                ..Default::default()
             },
         );
 
@@ -456,6 +458,7 @@ mod tests {
                 event_set_id: None,
                 script_name: None,
                 params: effect_params,
+                ..Default::default()
             },
         );
 

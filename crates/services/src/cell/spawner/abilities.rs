@@ -342,12 +342,18 @@ pub async fn load_item_event_set_abilities(
 }
 
 /// Load all effect definitions from `resources.effects` + `resources.effect_nvps`.
+///
+/// The columns beyond `script_name` (pulse_count, pulse_duration,
+/// is_channeled, target_collection_method, tcm_param1/2, flags) drive
+/// the cone-AoE collection and the active-effect pulsing loop — see
+/// `cell::effects` for the dispatcher that reads them.
 pub async fn load_effect_defs(
     pool: &PgPool,
 ) -> Result<std::collections::HashMap<i32, cimmeria_entity::abilities::EffectDef>, sqlx::Error> {
-    // Load effects
     let rows = sqlx::query_as::<_, EffectRow>(
-        "SELECT effect_id, ability_id, delay, effect_sequence, event_set_id, script_name \
+        "SELECT effect_id, ability_id, delay, effect_sequence, event_set_id, script_name, \
+                pulse_count, pulse_duration, is_channeled, target_collection_method, \
+                tcm_param1, tcm_param2, flags \
          FROM resources.effects",
     )
     .fetch_all(pool)
@@ -365,6 +371,17 @@ pub async fn load_effect_defs(
                 effect_sequence: r.effect_sequence,
                 event_set_id: r.event_set_id,
                 script_name: r.script_name,
+                pulse_count: r.pulse_count,
+                pulse_duration: r.pulse_duration,
+                is_channeled: r.is_channeled,
+                // Default to single-target when the DB cell is empty.
+                target_collection_method: r
+                    .target_collection_method
+                    .unwrap_or_else(|| cimmeria_entity::abilities::TCM_SINGLE.to_string()),
+                tcm_param1: r.tcm_param1.unwrap_or_default(),
+                tcm_param2: r.tcm_param2.unwrap_or_default(),
+                // `flags` is `integer` in the schema; cast through i32 → u32.
+                flags: r.flags as u32,
                 params: std::collections::HashMap::new(),
             },
         );
@@ -395,6 +412,13 @@ struct EffectRow {
     effect_sequence: i32,
     event_set_id: Option<i32>,
     script_name: Option<String>,
+    pulse_count: i32,
+    pulse_duration: f32,
+    is_channeled: bool,
+    target_collection_method: Option<String>,
+    tcm_param1: Option<String>,
+    tcm_param2: Option<String>,
+    flags: i32,
 }
 
 #[derive(sqlx::FromRow)]

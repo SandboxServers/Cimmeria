@@ -18,6 +18,7 @@
 //!
 //! Reference: `python/cell/AbilityManager.py:1004-1056`
 
+mod cone_aoe;
 mod damage_apply;
 mod death;
 mod dispatch;
@@ -31,6 +32,7 @@ mod use_ability;
 mod tests;
 
 // Public re-exports — keep `crate::cell::abilities::Foo` paths stable for callers.
+pub use cone_aoe::{collect_cone_targets, fan_out_cone_effects, log_effect_flag_categories};
 pub use dispatch::handle_use_ability_on_ground;
 pub(crate) use loot_drop::INT_NORMAL_LOOT;
 pub(crate) use messaging::{request_appearance_refresh, send_entity_method};

@@ -67,6 +67,7 @@ fn make_effect(id: i32, health_damage: i32) -> EffectDef {
         event_set_id: None,
         script_name: None,
         params,
+        ..Default::default()
     }
 }
 

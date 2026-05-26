@@ -25,6 +25,34 @@ pub const TARGET_SELF: i32 = 1;
 pub const TARGET_TARGET: i32 = 2;
 pub const TARGET_GROUND: i32 = 3;
 
+// ── Target collection methods (TCM) — per-effect dispatch shape ──────────
+//
+// Authored in the original game's data as string literals. We keep them as
+// strings on `EffectDef` (rather than mapping to an enum) so unknown
+// values from new content surface as a `tracing::warn!` instead of
+// silently coercing to a default. The three values that occur in seed:
+//   - TCM_Single    (2795 rows) — primary target only
+//   - TCM_AERadius  (300 rows)  — every entity within `Radius` of the
+//                                 source/ground point
+//   - TCM_AECone    (99 rows)   — every entity inside a cone anchored at
+//                                 the source, oriented toward the primary
+//                                 target, with length+width tiers from
+//                                 `tcm_param1` and `tcm_param2`
+pub const TCM_SINGLE: &str = "TCM_Single";
+pub const TCM_AE_RADIUS: &str = "TCM_AERadius";
+pub const TCM_AE_CONE: &str = "TCM_AECone";
+
+// ── Effect flags (subset of `resources.effects.flags` bitmask) ───────────
+//
+// Authored as a packed integer per-effect. The bits we honor today:
+pub const EF_INTERRUPT_CHANCE: u32 = 16; // category: interrupt roll
+pub const EF_STUN: u32 = 12; // category: stun on apply (target loses controls)
+pub const EF_DONT_USE_QR: u32 = 32; // category: bypass QR (always-hit)
+pub const EF_MENTAL_RESIST_ROLL: u32 = 64; // category: target rolls resist
+pub const EF_SUPPRESSION: u32 = 76; // category: movement slow + accuracy debuff
+pub const EF_EXTRA_DAMAGE: u32 = 512; // category: bonus damage on second pulse
+pub const EF_DOT: u32 = 516; // category: damage-over-time (pulses)
+
 // ── Timer types (sent via onTimerUpdate) ──────────────────────────────────
 
 pub const TIMER_ABILITY_WARMUP: i8 = 1;
@@ -81,6 +109,12 @@ pub struct AbilityDef {
 }
 
 /// A single effect within an ability (damage, heal, buff, etc).
+///
+/// Mirrors the columns on `resources.effects` plus the NVP bag from
+/// `resources.effect_nvps`. The dispatch-relevant fields (`pulse_count`,
+/// `pulse_duration`, `is_channeled`, `target_collection_method`,
+/// `tcm_param1/2`, `flags`) were added to support pulsing, cone AoE, and
+/// flag-driven script categories — see #47 / #61 / #419.
 #[derive(Debug, Clone)]
 pub struct EffectDef {
     pub effect_id: i32,
@@ -89,8 +123,57 @@ pub struct EffectDef {
     pub effect_sequence: i32,
     pub event_set_id: Option<i32>,
     pub script_name: Option<String>,
+    /// Total pulses to fire. `1` = single shot (most effects). `> 1` = DoT/HoT.
+    /// `0` = pulse-until-removed (channelled holdable abilities).
+    pub pulse_count: i32,
+    /// Seconds between pulses. Ignored when `pulse_count == 1`.
+    pub pulse_duration: f32,
+    /// `true` when the source must maintain channel state (cancellable
+    /// by movement, interrupt, etc.). Pulse-loop respects this; v1
+    /// treats interrupt and channel-cancel as TODO.
+    pub is_channeled: bool,
+    /// `TCM_Single` / `TCM_AERadius` / `TCM_AECone`. See module-level
+    /// `TCM_*` constants. Unknown values fall through to single-target
+    /// with a warn log so new content surfaces as a missing dispatch.
+    pub target_collection_method: String,
+    /// Range tier — one of the string tier names the original content
+    /// authoring used (Melee, Short, Medium, Long, Weapon). `Weapon`
+    /// means "use the equipped weapon's range". Pulled through to
+    /// cone/radius computation via `tcm_range_meters`.
+    pub tcm_param1: String,
+    /// Width tier for cone (Narrow, Medium, Wide); secondary range
+    /// tier for radius. Same tier-string discipline as `tcm_param1`.
+    pub tcm_param2: String,
+    /// Packed flag bitmask. See `EF_*` constants. Drives category
+    /// dispatch (Stun, Suppression, DoT, etc.).
+    pub flags: u32,
     /// Name-value pairs: e.g. "HealthDamage" → "15"
     pub params: std::collections::HashMap<String, String>,
+}
+
+impl Default for EffectDef {
+    /// Single-shot, single-target, no flags — the most common shape.
+    /// Test code and synthetic construction sites use this with struct
+    /// update syntax to set only the fields they care about, e.g.
+    /// `EffectDef { effect_id: 999, ability_id: 1, ..Default::default() }`.
+    fn default() -> Self {
+        Self {
+            effect_id: 0,
+            ability_id: 0,
+            delay: 0,
+            effect_sequence: 0,
+            event_set_id: None,
+            script_name: None,
+            pulse_count: 1,
+            pulse_duration: 0.0,
+            is_channeled: false,
+            target_collection_method: TCM_SINGLE.to_string(),
+            tcm_param1: String::new(),
+            tcm_param2: String::new(),
+            flags: 0,
+            params: std::collections::HashMap::new(),
+        }
+    }
 }
 
 impl EffectDef {
@@ -108,6 +191,71 @@ impl EffectDef {
             .get(name)
             .and_then(|v| v.parse().ok())
             .unwrap_or(0.0)
+    }
+
+    /// `true` when the effect should pulse over time (DoT/HoT/channelled).
+    /// Single-shot effects (`pulse_count == 1`) return `false`.
+    pub fn is_pulsing(&self) -> bool {
+        self.pulse_count == 0 || self.pulse_count > 1
+    }
+
+    /// Total duration of a pulsing effect in seconds. `0.0` for
+    /// single-shot or channelled-until-released (`pulse_count == 0`).
+    pub fn total_duration(&self) -> f32 {
+        if self.pulse_count <= 1 {
+            0.0
+        } else {
+            self.pulse_count as f32 * self.pulse_duration.max(0.0)
+        }
+    }
+
+    /// Translate a TCM range/width tier name to meters. The fan-server's
+    /// tier names come from the original 2009 content authoring — we map
+    /// them to concrete distances tuned against the radius defaults
+    /// already used elsewhere in combat (e.g. `DEFAULT_GROUND_TARGET_RADIUS = 5.0`).
+    ///
+    /// Unknown tiers fall back to `Medium = 8.0m` with a warn so new
+    /// content surfaces as a tier we need to calibrate.
+    pub fn tcm_range_meters(tier: &str) -> f32 {
+        match tier {
+            "Melee" => 2.5,
+            "Short" => 5.0,
+            "Medium" => 8.0,
+            "Long" => 14.0,
+            "Weapon" => 20.0, // matches the canonical weapon-range cap
+            other => {
+                tracing::warn!(
+                    target: "abilities",
+                    event = "tcm_unknown_range_tier",
+                    tier = other,
+                    "Unknown TCM range tier; defaulting to Medium=8.0m"
+                );
+                8.0
+            }
+        }
+    }
+
+    /// Translate a TCM width tier to a cone half-angle in radians.
+    /// Narrow / Medium / Wide are the only width tiers in seed.
+    pub fn tcm_half_angle_radians(tier: &str) -> f32 {
+        // Half-angles chosen so:
+        //   Narrow = 22.5° half-angle (45° full cone) — shotgun spread
+        //   Medium = 45°               (90° full)     — grenade arc
+        //   Wide   = 67.5°             (135° full)    — flamethrower-class
+        match tier {
+            "Narrow" => std::f32::consts::FRAC_PI_8, // 22.5° = π/8
+            "Medium" => std::f32::consts::FRAC_PI_4, // 45° = π/4
+            "Wide" => 3.0 * std::f32::consts::FRAC_PI_8, // 67.5° = 3π/8
+            other => {
+                tracing::warn!(
+                    target: "abilities",
+                    event = "tcm_unknown_width_tier",
+                    tier = other,
+                    "Unknown TCM width tier; defaulting to Medium=45°"
+                );
+                std::f32::consts::FRAC_PI_4
+            }
+        }
     }
 }
 

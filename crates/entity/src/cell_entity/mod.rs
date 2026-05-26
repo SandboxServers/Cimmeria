@@ -391,6 +391,15 @@ pub struct CellEntity {
     /// by `pending_slot_swap_tick` when it finalizes the swap.
     pub pending_slot_swap_target: Option<i32>,
 
+    /// Entity ids that died as cone-AoE secondaries during the most
+    /// recent `handle_use_ability` call on this attacker. Drained
+    /// immediately afterward by `handle_use_ability_with_kill_credit`
+    /// to fire `entity_death` content events for each. Kept on the
+    /// attacker (instead of returned through the call signature) so
+    /// `handle_use_ability` can stay infallible-friendly for the many
+    /// callers that don't care about kill credit (NPC AI fire, etc.).
+    pub last_aoe_deaths: Vec<u32>,
+
     // ── NPC AI state ──────────────────────────────────────────────────────────
     /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
     pub ai_state: AiState,
@@ -641,6 +650,7 @@ impl CellEntity {
             pending_attack_target_id: None,
             pending_slot_swap_at: None,
             pending_slot_swap_target: None,
+            last_aoe_deaths: Vec::new(),
             holster_animation_complete_at: None,
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),
