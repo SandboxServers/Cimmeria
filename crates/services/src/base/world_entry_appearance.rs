@@ -412,17 +412,33 @@ pub(crate) async fn handle_on_client_ready(
         .await;
 
         if let Some(pool) = db_pool {
-            if let Err(e) =
-                sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
-                    .bind(pending.player_id)
-                    .execute(pool.as_ref())
-                    .await
+            // T1-5 finisher (#304): the existing `Err` warn catches DB errors
+            // but a zero-row UPDATE (player_id missing or already cleared) was
+            // silently treated as success. Pair `rows_affected` with `expected`
+            // so the ops query `rows_affected != expected` surfaces the
+            // divergence — without this, the cinematic re-fires on every
+            // login for affected players with no log to grep on.
+            match sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
+                .bind(pending.player_id)
+                .execute(pool.as_ref())
+                .await
             {
-                tracing::warn!(
-                    player_id = pending.player_id,
-                    error = %e,
-                    "Failed to clear first_login flag after cinematic dispatch; player will see intro again next login",
-                );
+                Err(e) => {
+                    tracing::warn!(
+                        player_id = pending.player_id,
+                        error = %e,
+                        "Failed to clear first_login flag after cinematic dispatch; player will see intro again next login",
+                    );
+                }
+                Ok(r) if r.rows_affected() == 0 => {
+                    tracing::error!(
+                        player_id = pending.player_id,
+                        rows_affected = 0,
+                        expected = 1,
+                        "first_login flag NOT cleared -- cinematic will re-fire on next login (player_id missing from sgw_player?)",
+                    );
+                }
+                Ok(_) => {}
             }
         }
 

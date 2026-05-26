@@ -44,10 +44,7 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     let (top_target, spawn_pos, npc_pos, is_stationary) = {
         let npc = match space_mgr.get_entity(npc_id) {
             Some(e) => e,
-            None => {
-                tracing::warn!(npc_id, "NPC AI: entity vanished after spawn succeeded");
-                return;
-            }
+            None => return,
         };
 
         // Find highest-threat target
@@ -65,15 +62,9 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
         None => {
             // No threat targets left — reset to idle
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                let previous_target = top_target;
                 npc.ai_state = AiState::Idle;
                 npc.threat_list.clear();
-                tracing::warn!(
-                    npc_id,
-                    mob_template_id = npc.template_id.unwrap_or(0),
-                    ?previous_target,
-                    "NPC AI: no threat targets, resetting to Idle"
-                );
+                tracing::debug!(npc_id, "NPC AI: no threat targets, resetting to Idle");
             }
             return;
         }
@@ -177,12 +168,9 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
                     );
                 }
             } else {
-                tracing::warn!(
+                tracing::debug!(
                     npc_id,
                     target = target_id,
-                    ?npc_pos,
-                    ?target_pos,
-                    distance = dist_to_target,
                     in_range,
                     has_los,
                     "NPC AI: no path to target"
@@ -238,21 +226,11 @@ async fn npc_ai_leash(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
         // Snap back to spawn position
         if let Some(spawn_pos) = npc.spawn_position {
             npc.position = spawn_pos;
-        } else {
-            tracing::warn!(
-                npc_id,
-                "NPC AI: spawn_position is none — mob cannot snap home"
-            );
         }
 
         // Restore health to max
         if let Some(health) = npc.stats.get_mut(cimmeria_entity::stats::HEALTH) {
             health.set_current(health.max);
-        } else {
-            tracing::error!(
-                npc_id,
-                "NPC AI: health restore failed during leash — mob has no health stat"
-            );
         }
 
         npc.ai_state = AiState::Idle;

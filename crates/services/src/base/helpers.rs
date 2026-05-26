@@ -374,8 +374,14 @@ pub(crate) async fn send_to_witness_reliable<F>(
         let addr = match entity_to_addr.lock().unwrap().get(&witness_id).copied() {
             Some(a) => a,
             None => {
-                tracing::trace!(
+                // Promoted from trace! per #304 (Pattern C — witness/lookup miss).
+                // Field parity with `send_to_witness` (entity_id, action,
+                // entity_count_in_map) needs a signature change; deferred to the
+                // Tier 2/3 follow-up because 51 call sites need updating.
+                let entity_count_in_map = entity_to_addr.lock().unwrap().len();
+                tracing::warn!(
                     witness_id,
+                    entity_count_in_map,
                     "AoI reliable: no client addr for witness -- skipping"
                 );
                 return;
@@ -392,7 +398,10 @@ pub(crate) async fn send_to_witness_reliable<F>(
                 Some((addr, key, seq, acks))
             }
             None => {
-                tracing::trace!(witness_id, %addr, "AoI reliable: client disconnected -- skipping");
+                // Promoted from trace! per #304: transient disconnect is
+                // expected but should be queryable. `debug!` (not `warn!`)
+                // matches the level discipline applied to `send_to_witness`.
+                tracing::debug!(witness_id, %addr, "AoI reliable: client disconnected -- skipping");
                 None
             }
         }
