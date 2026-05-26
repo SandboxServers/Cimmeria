@@ -35,6 +35,12 @@ pub(super) async fn run_aoi_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &m
 /// Stage C: this is the sole refill path. The fire-path eager-promotion has
 /// been removed; `handle_use_ability` reads ammo through `entity.active_ammo()`
 /// and the bandolier UI updates on every fire via the AmmoSlot{N} stat.
+#[tracing::instrument(
+    name = "combat.reload_completion_tick",
+    level = "debug",
+    skip_all,
+    fields(ready_count = tracing::field::Empty),
+)]
 pub(super) async fn reload_completion_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -53,6 +59,7 @@ pub(super) async fn reload_completion_tick(
                 .is_some_and(|t| now >= t)
         })
         .collect();
+    tracing::Span::current().record("ready_count", ready.len());
 
     for entity_id in ready {
         // Phase 1: mutate entity state, capture stat-update payload + the
@@ -273,6 +280,12 @@ pub(super) async fn pending_attack_tick(
 ///
 /// Cadence: every 100ms AoI tick. Cost is one filter pass; the inner
 /// `handle_reload` re-invocation only fires on transition.
+#[tracing::instrument(
+    name = "combat.pending_reload_tick",
+    level = "debug",
+    skip_all,
+    fields(ready_count = tracing::field::Empty),
+)]
 pub(super) async fn pending_reload_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -289,6 +302,7 @@ pub(super) async fn pending_reload_tick(
                 .is_some_and(|t| now >= t)
         })
         .collect();
+    tracing::Span::current().record("ready_count", ready.len());
 
     for entity_id in ready {
         tracing::info!(

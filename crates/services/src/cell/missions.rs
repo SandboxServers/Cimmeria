@@ -50,6 +50,12 @@ pub async fn resend_missions(
 }
 
 /// Advance a mission to a new step: complete old objectives, set new step, load new objectives.
+#[tracing::instrument(
+    name = "mission.advance_step",
+    level = "info",
+    skip_all,
+    fields(entity_id, mission_id, new_step_id)
+)]
 pub async fn advance_step(
     entity_id: u32,
     mission_id: i32,
@@ -306,6 +312,12 @@ pub async fn abandon_mission(
 }
 
 /// Complete a mission objective and check if the mission advances.
+#[tracing::instrument(
+    name = "mission.complete_objective",
+    level = "info",
+    skip_all,
+    fields(entity_id, mission_id, objective_id)
+)]
 pub async fn complete_objective(
     entity_id: u32,
     mission_id: i32,

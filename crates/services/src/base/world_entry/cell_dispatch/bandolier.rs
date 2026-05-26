@@ -15,6 +15,12 @@ use super::super::methods::inventory::update_bandolier_ammo;
 /// selection, then re-query the appearance so the BEING_APPEARANCE broadcast
 /// swaps the visible weapon on the model. Skips the appearance refresh if
 /// the UPDATE didn't land (DB row missing or write failure).
+#[tracing::instrument(
+    name = "bandolier.active_slot_update",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, slot_id)
+)]
 pub(super) async fn active_slot_update(
     entity_id: u32,
     player_id: i32,
@@ -90,6 +96,12 @@ pub(super) async fn active_slot_update(
 /// triggers the client's unholster animation, leaving the second
 /// combat enter's draw silent. The wire cost is one packet per
 /// combat transition — well within budget.
+#[tracing::instrument(
+    name = "bandolier.refresh_appearance",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, holstered)
+)]
 pub(super) async fn refresh_appearance(
     entity_id: u32,
     player_id: i32,
@@ -156,6 +168,12 @@ pub(super) async fn refresh_appearance(
 /// from the cell. Validates bounds (slot in 0..5, ammo / type non-negative,
 /// expected_item_id positive) at the service boundary so out-of-range
 /// values can't become durable corruption.
+#[tracing::instrument(
+    name = "bandolier.ammo_update",
+    level = "debug",
+    skip_all,
+    fields(player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type)
+)]
 pub(super) async fn bandolier_ammo_update(
     player_id: i32,
     slot_id: i32,

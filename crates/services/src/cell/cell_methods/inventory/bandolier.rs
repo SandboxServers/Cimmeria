@@ -63,6 +63,12 @@ pub async fn flush_dirty_bandolier_ammo(
     }
 }
 
+#[tracing::instrument(
+    name = "bandolier.request_active_slot_change",
+    level = "info",
+    skip_all,
+    fields(entity_id, args_len = args.len()),
+)]
 pub(crate) async fn handle_request_active_slot_change(
     entity_id: u32,
     args: &[u8],
@@ -446,6 +452,12 @@ pub(crate) async fn handle_request_active_slot_change(
     .await;
 }
 
+#[tracing::instrument(
+    name = "bandolier.request_ammo_change",
+    level = "info",
+    skip_all,
+    fields(entity_id, args_len = args.len()),
+)]
 pub(super) async fn handle_request_ammo_change(
     entity_id: u32,
     args: &[u8],
