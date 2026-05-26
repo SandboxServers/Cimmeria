@@ -233,6 +233,45 @@ pub(crate) async fn handle_cell_message(
             )
             .await;
         }
+        CellToBaseMsg::EntityMethodCallBatch { entity_id, calls } => {
+            // Same wire-log + deferred-buffer pattern as EntityMethodCall,
+            // applied per-method so the SigNoz `wire.out` stream sees every
+            // method exactly once even when they ride the same packet.
+            for (method_index, args) in &calls {
+                crate::wire_log::log_outbound_entity_method(
+                    entity_id,
+                    entity_id,
+                    *method_index,
+                    args,
+                );
+            }
+            let target_addr = entity_to_addr
+                .lock()
+                .ok()
+                .and_then(|m| m.get(&entity_id).copied());
+            if let Some(addr) = target_addr {
+                if super::super::deferred_aoi::should_defer(connected, addr) {
+                    // Buffer each call individually so the existing
+                    // single-method flush path replays them; we lose the
+                    // batching benefit during deferred replay but
+                    // preserve the at-most-once delivery guarantee.
+                    for (method_index, args) in calls {
+                        super::super::deferred_aoi::push_deferred(
+                            connected,
+                            addr,
+                            super::super::deferred_aoi::DeferredAoiMsg::EntityMethodCall {
+                                entity_id,
+                                method_index,
+                                args,
+                            },
+                        );
+                    }
+                    return;
+                }
+            }
+            aoi::entity_method_call_batch(entity_id, calls, transport, connected, entity_to_addr)
+                .await;
+        }
         CellToBaseMsg::GateTravel {
             entity_id,
             target_world_name,

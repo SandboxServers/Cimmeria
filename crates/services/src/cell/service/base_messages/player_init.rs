@@ -152,19 +152,38 @@ pub(in crate::cell::service) async fn handle_init_player_state(
             );
         }
         entity.saved_missions_loaded = true;
+
+        // Reset all ability cooldowns on world entry. Original server
+        // behavior was that cooldowns wiped on relog; we match that here
+        // explicitly so the client doesn't sit waiting on a stale cooldown
+        // timer that the server has no record of (or vice versa). Also
+        // avoids shipping per-ability `onTimerUpdate` packets for stale
+        // cooldown state during the initial-load burst — one less thing
+        // the client has to chew on. (PR #410)
+        entity.abilities.clear_all_cooldowns();
     }
+
+    // Resend active mission state to the client so the journal UI is
+    // populated with the player's in-progress missions immediately on
+    // world entry. `serialize_resend` filters to active+visible only,
+    // so completed missions don't ride this path. Critical for relog
+    // usability — without it, the client's journal is empty until the
+    // next mission state change fires onMissionUpdate. (PR #410)
+    crate::cell::missions::resend_missions(entity_id, tx, space_mgr).await;
 
     // Send addClientHintedGenericRegion for each client-hinted region in
     // this world. Matches Python Space.playerEntered() → queryRegions():
     // clearClientHintedGenericRegions was already sent in mapLoaded body,
     // now register all regions so the client can fire triggerRegion events.
     //
-    // BURST WARNING: this loop can fire 20+ packets within ~1ms with no
-    // throttling. Combined with mission-replay + appearance burst that
-    // precedes it, this has been observed to stall some clients on
-    // existing-character login (freeze investigation, 2026-05-26). The
-    // span around it captures the burst size + duration so freezes can
-    // be correlated to specific bursts in SigNoz.
+    // PR #410 fix: previously this loop fired 20+ separate EntityMethodCall
+    // messages, each becoming an individual reliable Mercury packet. On
+    // existing-character login the combined ACK pressure stalled some
+    // clients past their render-thread budget (freeze investigation
+    // 2026-05-26 — see issue #408 / `world_entry.region_burst` span). Now
+    // we collect all hints into a single `EntityMethodCallBatch` so the
+    // base side packs them into ONE Mercury packet body. Client sees the
+    // same method-call sequence; transport collapses 22 datagrams into 1.
     {
         use crate::cell::space_manager::REGION_FLAG_CLIENT_HINTED;
         let world_regions: Vec<_> = space_mgr
@@ -183,6 +202,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         );
         let _burst_guard = burst_span.enter();
         let burst_start = std::time::Instant::now();
+        let mut batch: Vec<(u16, Vec<u8>)> = Vec::with_capacity(region_count);
         for (rid, height, radius, flags, points) in world_regions {
             let mut args = Vec::with_capacity(16 + points.len() * 12);
             args.extend_from_slice(&(rid as i32).to_le_bytes());
@@ -195,11 +215,16 @@ pub(in crate::cell::service) async fn handle_init_player_state(
                 args.extend_from_slice(&p[1].to_le_bytes()); // y
                 args.extend_from_slice(&p[2].to_le_bytes()); // z
             }
+            batch.push((
+                crate::mercury::method_idx::ADD_CLIENT_HINTED_GENERIC_REGION,
+                args,
+            ));
+        }
+        if !batch.is_empty() {
             let _ = tx
-                .send(CellToBaseMsg::EntityMethodCall {
+                .send(CellToBaseMsg::EntityMethodCallBatch {
                     entity_id,
-                    method_index: crate::mercury::method_idx::ADD_CLIENT_HINTED_GENERIC_REGION,
-                    args,
+                    calls: batch,
                 })
                 .await;
         }
@@ -210,6 +235,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
                 entity_id, player_id, world = %world_name,
                 count = region_count,
                 burst_micros = burst_elapsed.as_micros() as u64,
+                packed_into_one_packet = true,
                 "Sent region registrations"
             );
         }

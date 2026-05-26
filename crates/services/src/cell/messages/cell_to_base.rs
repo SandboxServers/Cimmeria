@@ -52,6 +52,30 @@ pub enum CellToBaseMsg {
         args: Vec<u8>,
     },
 
+    /// Send a batch of entity-method calls to the **same** target entity's
+    /// client, packed into a single Mercury packet body via [`ChannelBundle`].
+    ///
+    /// Use when the cell emits a burst of small same-target methods on a
+    /// single tick (e.g., world-entry region registrations, initial stat
+    /// seed). The base side packs all methods into one packet body, so the
+    /// client sees a single UDP datagram with N method-call records instead
+    /// of N separate datagrams to ACK.
+    ///
+    /// Wire format on the client side is identical to N separate
+    /// `EntityMethodCall`s — only the transport layer collapses the burst.
+    /// Reliable channel; ordering within the batch is preserved.
+    ///
+    /// Introduced for the freeze fix (PR #410, 2026-05-26): the world-entry
+    /// region-hint burst was firing 22 separate UDP packets in <1 ms, each
+    /// needing an individual ACK. The combined ACK pressure stalled some
+    /// clients past their render-thread budget. Bundling drops it to one
+    /// datagram → one ACK.
+    EntityMethodCallBatch {
+        entity_id: u32,
+        /// Ordered list of `(method_index, args)` to pack into one packet.
+        calls: Vec<(u16, Vec<u8>)>,
+    },
+
     /// Request mail headers for a player entity (forwarded to BaseApp for DB query).
     MailRequest {
         entity_id: u32,
