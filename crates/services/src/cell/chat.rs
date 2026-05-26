@@ -126,30 +126,24 @@ async fn broadcast_to_witnesses(
 
     // Send to each witness
     for witness_id in witnesses {
-        if let Err(e) = tx
+        let _ = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id: witness_id,
                 method_index: ON_PLAYER_COMMUNICATION,
                 args: args.clone(),
             })
-            .await
-        {
-            tracing::warn!(entity_id, witness_id, "EntityMethodCall send failed: {e}");
-        }
+            .await;
     }
 
     // Also send to the sender themselves (client needs server echo for say channel,
     // and sending for all spatial channels is harmless)
-    if let Err(e) = tx
+    let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: sender_id,
             method_index: ON_PLAYER_COMMUNICATION,
             args,
         })
-        .await
-    {
-        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
-    }
+        .await;
 }
 
 /// Serialize `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)` args.

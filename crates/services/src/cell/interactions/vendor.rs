@@ -56,17 +56,14 @@ pub(super) async fn send_store_open(
         ?vendor_template_id,
         "Opening vendor store"
     );
-    if let Err(e) = tx
+    let _ = tx
         .send(CellToBaseMsg::OpenVendorStore {
             entity_id: player_id,
             player_id: player_db_id,
             vendor_entity_id: vendor_entity_id_i32,
             vendor_template_id,
         })
-        .await
-    {
-        tracing::warn!(entity_id, player_id, "OpenVendorStore send failed: {e}");
-    }
+        .await;
 }
 
 #[cfg(test)]

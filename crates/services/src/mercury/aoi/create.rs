@@ -145,11 +145,6 @@ pub fn build_create_entity_cascade(
 
     // 7. onVisible(1) — CRITICAL: registers entity with the client's viewport
     append_entity_method(&mut body, method_idx::ON_VISIBLE, entity_id, &[1u8]);
-    tracing::debug!(
-        entity_id,
-        class_id,
-        "ON_VISIBLE(1) appended to create_entity bundle"
-    );
 
     // ── SGWBeing.createOnClient ──
     if class_id != 0x00 {

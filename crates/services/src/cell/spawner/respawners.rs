@@ -60,13 +60,6 @@ pub async fn load_respawners(pool: &PgPool) -> Result<Vec<RespawnerDef>, sqlx::E
 
     let respawners: Vec<RespawnerDef> = rows.into_iter().map(RespawnerDef::from).collect();
 
-    if respawners.is_empty() {
-        tracing::warn!(
-            count = 0,
-            "Loaded respawner definitions: zero respawn points — defeat will fallback to default, possibly causing teleport loops"
-        );
-    } else {
-        tracing::info!(count = respawners.len(), "Loaded respawner definitions");
-    }
+    tracing::info!(count = respawners.len(), "Loaded respawner definitions");
     Ok(respawners)
 }

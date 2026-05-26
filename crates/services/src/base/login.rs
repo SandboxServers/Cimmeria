@@ -85,9 +85,7 @@ pub(crate) async fn handle_login(
                 }
             };
             let pkt = build_logged_off(&old_key, seq, &acks);
-            if let Err(e) = socket.send_to(&pkt, old_addr).await {
-                tracing::warn!(%old_addr, "Kick logged-off send failed: {e}");
-            }
+            let _ = socket.send_to(&pkt, old_addr).await;
             destroy_client_entities(connected, entity_manager, old_addr, cell_tx, entity_to_addr);
         }
     }

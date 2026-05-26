@@ -37,16 +37,13 @@ pub async fn handle_request_mail_headers(
     let Some(player_id) = resolve_mail_player_id(entity_id, space_mgr, "requestMailHeaders") else {
         return;
     };
-    if let Err(e) = tx
+    let _ = tx
         .send(CellToBaseMsg::MailRequest {
             entity_id,
             player_id,
             op: MailOp::RequestHeaders { b_archive },
         })
-        .await
-    {
-        tracing::warn!(entity_id, player_id, "MailRequest send failed: {e}");
-    }
+        .await;
 }
 
 /// Forward a `requestMailBody` call to BaseApp for DB execution.
@@ -59,16 +56,13 @@ pub async fn handle_request_mail_body(
     let Some(player_id) = resolve_mail_player_id(entity_id, space_mgr, "requestMailBody") else {
         return;
     };
-    if let Err(e) = tx
+    let _ = tx
         .send(CellToBaseMsg::MailRequest {
             entity_id,
             player_id,
             op: MailOp::RequestBody { mail_id },
         })
-        .await
-    {
-        tracing::warn!(entity_id, player_id, "MailRequest send failed: {e}");
-    }
+        .await;
 }
 
 /// Forward a `deleteMailMessage` call to BaseApp for DB execution.
@@ -81,16 +75,13 @@ pub async fn handle_delete_mail(
     let Some(player_id) = resolve_mail_player_id(entity_id, space_mgr, "deleteMailMessage") else {
         return;
     };
-    if let Err(e) = tx
+    let _ = tx
         .send(CellToBaseMsg::MailRequest {
             entity_id,
             player_id,
             op: MailOp::Delete { mail_id },
         })
-        .await
-    {
-        tracing::warn!(entity_id, player_id, "MailRequest send failed: {e}");
-    }
+        .await;
 }
 
 /// Forward an `archiveMailMessage` call to BaseApp for DB execution.
@@ -103,16 +94,13 @@ pub async fn handle_archive_mail(
     let Some(player_id) = resolve_mail_player_id(entity_id, space_mgr, "archiveMailMessage") else {
         return;
     };
-    if let Err(e) = tx
+    let _ = tx
         .send(CellToBaseMsg::MailRequest {
             entity_id,
             player_id,
             op: MailOp::Archive { mail_id },
         })
-        .await
-    {
-        tracing::warn!(entity_id, player_id, "MailRequest send failed: {e}");
-    }
+        .await;
 }
 
 // ── Wire format helpers for BaseApp to build mail response packets ───────────

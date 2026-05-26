@@ -59,16 +59,13 @@ pub(super) async fn send_loot_display(
         initial,
         "Sending onLootDisplay"
     );
-    if let Err(e) = tx
+    let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: player_id,
             method_index: crate::mercury::method_idx::ON_LOOT_DISPLAY,
             args,
         })
-        .await
-    {
-        tracing::warn!(entity_id, player_id, "EntityMethodCall send failed: {e}");
-    }
+        .await;
 }
 
 /// Handle `lootItem(index)` cell method call.
@@ -156,7 +153,7 @@ pub async fn handle_loot_item(
             .get(&design_id)
             .copied()
             .unwrap_or(1);
-        if let Err(e) = tx
+        let _ = tx
             .send(CellToBaseMsg::GrantItem {
                 entity_id,
                 player_id,
@@ -164,22 +161,16 @@ pub async fn handle_loot_item(
                 container_id,
                 count: removed_item.quantity,
             })
-            .await
-        {
-            tracing::warn!(entity_id, player_id, "GrantItem send failed: {e}");
-        }
+            .await;
     } else {
         // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
-        if let Err(e) = tx
+        let _ = tx
             .send(CellToBaseMsg::GrantCash {
                 entity_id,
                 player_id,
                 amount: removed_item.quantity,
             })
-            .await
-        {
-            tracing::warn!(entity_id, player_id, "GrantCash send failed: {e}");
-        }
+            .await;
     }
 
     // Check if loot is now empty

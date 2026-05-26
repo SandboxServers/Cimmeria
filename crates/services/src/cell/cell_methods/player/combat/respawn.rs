@@ -75,28 +75,17 @@ pub(super) async fn handle_respawn(
 
     let (target_world, spawn_pos) = resolve_respawn_target(respawner_id, entity_id, space_mgr);
 
-    if respawner_id == 0 {
-        tracing::warn!(
-            player_id = entity_id,
-            respawner_id,
-            "respawn: invalid respawner id — falling back to default"
-        );
-    }
-
     let current_world = space_mgr.get_entity_world_name(entity_id);
     let same_world = current_world.as_deref() == Some(target_world.as_str());
 
     // Close the Defeat Window first.
-    if let Err(e) = tx
+    let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: crate::mercury::method_idx::ON_END_AID_WAIT,
             args: Vec::new(),
         })
-        .await
-    {
-        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
-    }
+        .await;
 
     if !same_world {
         // Cross-world: full gate-travel reload (player is leaving the space).
@@ -114,7 +103,7 @@ pub(super) async fn handle_respawn(
             to = %target_world,
             "Respawn: cross-world via GateTravel"
         );
-        if let Err(e) = tx
+        let _ = tx
             .send(CellToBaseMsg::GateTravel {
                 entity_id,
                 target_world_name: target_world,
@@ -122,10 +111,7 @@ pub(super) async fn handle_respawn(
                 rotation: [0.0; 3],
                 destination_ring_id: None,
             })
-            .await
-        {
-            tracing::warn!(entity_id, "GateTravel send failed: {e}");
-        }
+            .await;
         return;
     }
 
@@ -135,7 +121,6 @@ pub(super) async fn handle_respawn(
     let entity = space_mgr
         .get_entity_mut(entity_id)
         .expect("entity existence checked above");
-    let old_state_flags = entity.state_field;
     if let Some(h) = entity.stats.get_mut(HEALTH) {
         h.set_current(h.max);
     }
@@ -150,13 +135,6 @@ pub(super) async fn handle_respawn(
     // ref-counted unset would interpret as still-positive.
     entity.clear_all_state_flags();
     entity.abilities.clear_all_cooldowns();
-    tracing::debug!(
-        player_id = entity_id,
-        ?spawn_pos,
-        old_state_flags,
-        new_state_flags = entity.state_field,
-        "same-world respawn: stats reset, state flags cleared"
-    );
 
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
 
@@ -187,17 +165,14 @@ pub(super) async fn handle_respawn(
     // FORCED_POSITION + cached BeingAppearance/onEntityTint replay.
     // CREATE_BASE_PLAYER is the load-bearing piece — it triggers the
     // client's pawn-recreate hook, dropping the ragdoll state.
-    if let Err(e) = tx
+    let _ = tx
         .send(CellToBaseMsg::ReanchorPlayer {
             entity_id,
             space_id,
             position: spawn_pos,
             rotation: [0.0; 3],
         })
-        .await
-    {
-        tracing::warn!(entity_id, "ReanchorPlayer send failed: {e}");
-    }
+        .await;
 }
 
 /// Resolve `(world, position)` for the respawn target.

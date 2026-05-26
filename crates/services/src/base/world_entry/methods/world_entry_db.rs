@@ -239,9 +239,7 @@ mod tests {
             .expect("CreateEntity receive must not hang")
             .expect("CreateEntity message expected");
         if let BaseToCellMsg::CreateEntity { reply_tx, .. } = msg {
-            if let Err(e) = reply_tx.send(DEFAULT_SPACE_ID) {
-                tracing::warn!("CreateEntity test reply failed: {e}");
-            }
+            let _ = reply_tx.send(DEFAULT_SPACE_ID);
         } else {
             panic!("expected CreateEntity message");
         }

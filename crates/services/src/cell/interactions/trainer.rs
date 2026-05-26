@@ -37,16 +37,13 @@ pub(super) async fn send_trainer_open(
         count,
         "Sending onTrainerOpen"
     );
-    if let Err(e) = tx
+    let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: player_id,
             method_index: crate::mercury::method_idx::ON_TRAINER_OPEN,
             args,
         })
-        .await
-    {
-        tracing::warn!(entity_id, player_id, "EntityMethodCall send failed: {e}");
-    }
+        .await;
 }
 
 #[cfg(test)]

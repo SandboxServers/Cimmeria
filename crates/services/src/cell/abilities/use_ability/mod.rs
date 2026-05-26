@@ -169,16 +169,13 @@ pub async fn handle_use_ability(
         err_args.push(0u8); // SystemID
         err_args.extend_from_slice(&ability_id.to_le_bytes()); // InstanceID
         err_args.extend_from_slice(&42u16.to_le_bytes()); // ErrorCodeID
-        if let Err(e) = tx
+        let _ = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index: 121, // ON_ERROR_CODE
                 args: err_args,
             })
-            .await
-        {
-            tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
-        }
+            .await;
         return false;
     }
 
@@ -309,13 +306,6 @@ pub async fn handle_use_ability(
             .as_ref()
             .map_or(2.0, |d| if d.cooldown > 0.0 { d.cooldown } else { 0.5 });
     let cooldown_duration = std::time::Duration::from_secs_f32(cooldown_secs);
-    if entity.abilities.is_on_cooldown(ability_id) {
-        tracing::warn!(
-            entity_id,
-            ability_id,
-            "useAbility: cooldown restarted while already active -- double-fire canary"
-        );
-    }
     entity
         .abilities
         .start_ability_cooldown(ability_id, cooldown_duration);
@@ -358,15 +348,6 @@ pub async fn handle_use_ability(
     let mut needs_ammo_stat_send = false;
     if required_ammo > 0 && entity.is_player {
         let new_ammo = entity.active_ammo() - required_ammo;
-        if new_ammo < 0 {
-            tracing::warn!(
-                entity_id,
-                ability_id,
-                current_ammo = entity.active_ammo(),
-                required_ammo,
-                "useAbility: ammo decrement invariant violated -- post-decrement negative"
-            );
-        }
         let slot = entity.active_bandolier_slot;
         entity.set_slot_ammo(slot, new_ammo);
         needs_ammo_stat_send = true;

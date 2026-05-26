@@ -209,24 +209,20 @@ async fn handle_connection(
                                             tracing::info!(entity_id, game = %game_name, "Minigame victory");
                                             game_complete = true;
                                             // Fire victory chains
-                                            if let Err(e) = result_tx.send(CellToBaseMsg::MinigameResult {
+                                            let _ = result_tx.send(CellToBaseMsg::MinigameResult {
                                                 entity_id,
                                                 result_code: 1, // Victory
                                                 on_victory_chains: on_victory_chains.clone(),
-                                            }).await {
-                                                tracing::warn!(entity_id, result_code = 1, "MinigameResult (victory) send failed: {e}");
-                                            }
+                                            }).await;
                                         }
                                         GameOutput::Failure => {
                                             tracing::info!(entity_id, game = %game_name, "Minigame failure");
                                             game_complete = true;
-                                            if let Err(e) = result_tx.send(CellToBaseMsg::MinigameResult {
+                                            let _ = result_tx.send(CellToBaseMsg::MinigameResult {
                                                 entity_id,
                                                 result_code: 2, // Defeat
                                                 on_victory_chains: vec![],
-                                            }).await {
-                                                tracing::warn!(entity_id, result_code = 2, "MinigameResult (defeat) send failed: {e}");
-                                            }
+                                            }).await;
                                         }
                                     }
                                 }
@@ -266,24 +262,20 @@ async fn handle_connection(
                         GameOutput::Victory => {
                             tracing::info!(entity_id, game = %game_name, "Minigame victory (tick)");
                             game_complete = true;
-                            if let Err(e) = result_tx.send(CellToBaseMsg::MinigameResult {
+                            let _ = result_tx.send(CellToBaseMsg::MinigameResult {
                                 entity_id,
                                 result_code: 1,
                                 on_victory_chains: on_victory_chains.clone(),
-                            }).await {
-                                tracing::warn!(entity_id, result_code = 1, "MinigameResult (tick victory) send failed: {e}");
-                            }
+                            }).await;
                         }
                         GameOutput::Failure => {
                             tracing::info!(entity_id, game = %game_name, "Minigame timeout");
                             game_complete = true;
-                            if let Err(e) = result_tx.send(CellToBaseMsg::MinigameResult {
+                            let _ = result_tx.send(CellToBaseMsg::MinigameResult {
                                 entity_id,
                                 result_code: 2,
                                 on_victory_chains: vec![],
-                            }).await {
-                                tracing::warn!(entity_id, result_code = 2, "MinigameResult (timeout) send failed: {e}");
-                            }
+                            }).await;
                         }
                     }
                 }

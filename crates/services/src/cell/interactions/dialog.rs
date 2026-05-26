@@ -26,16 +26,13 @@ pub async fn send_dialog_display(
         dialog_id,
         "Sending onDialogDisplay"
     );
-    if let Err(e) = tx
+    let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: player_id,
             method_index: crate::mercury::method_idx::ON_DIALOG_DISPLAY,
             args,
         })
-        .await
-    {
-        tracing::warn!(entity_id, player_id, "EntityMethodCall send failed: {e}");
-    }
+        .await;
 }
 
 #[cfg(test)]

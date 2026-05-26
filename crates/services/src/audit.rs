@@ -106,7 +106,5 @@ pub fn emit_login_event(
     };
 
     buffer.push(event.clone());
-    if let Err(e) = tx.send(event) {
-        tracing::warn!(account_id, phase, outcome, "Audit event send failed: {e}");
-    }
+    let _ = tx.send(event);
 }

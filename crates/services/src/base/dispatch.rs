@@ -88,7 +88,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
 
             if let Some(player_eid) = player_eid {
                 if let Some(ref tx) = cell_tx {
-                    if let Err(e) = tx
+                    let _ = tx
                         .send(BaseToCellMsg::ChatMessage {
                             entity_id: player_eid,
                             speaker_name: speaker.to_string(),
@@ -96,10 +96,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                             channel,
                             text,
                         })
-                        .await
-                    {
-                        tracing::warn!(entity_id, "ChatMessage send failed: {e}");
-                    }
+                        .await;
                 }
             }
         }
@@ -140,12 +137,8 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             if let Some(entity_id) = entity_id {
                 // Tell CellService to disconnect and destroy the entity
                 if let Some(ref tx) = cell_tx {
-                    if let Err(e) = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await {
-                        tracing::warn!(entity_id, "DisconnectEntity send failed: {e}");
-                    }
-                    if let Err(e) = tx.send(BaseToCellMsg::DestroyEntity { entity_id }).await {
-                        tracing::warn!(entity_id, "DestroyEntity send failed: {e}");
-                    }
+                    let _ = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await;
+                    let _ = tx.send(BaseToCellMsg::DestroyEntity { entity_id }).await;
                 }
 
                 // Remove entity→addr mapping
@@ -201,7 +194,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
         }
 
         _ => {
-            tracing::warn!(
+            tracing::trace!(
                 %addr,
                 msg_id = format_args!("{:#04x}", msg_id),
                 base_method_index = msg_id.wrapping_sub(0xC0),

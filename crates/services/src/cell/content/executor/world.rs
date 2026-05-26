@@ -43,21 +43,14 @@ pub(super) async fn set_interaction_type(
         if let Some(flags) = new_flags {
             let witnesses = space_mgr.get_witnesses_of(target_id);
             for witness_id in witnesses {
-                if let Err(e) = tx
+                let _ = tx
                     .send(CellToBaseMsg::WitnessEntityMethod {
                         witness_id,
                         entity_id: target_id,
                         method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                         args: (flags as u64).to_le_bytes().to_vec(),
                     })
-                    .await
-                {
-                    tracing::warn!(
-                        entity_id,
-                        witness_id,
-                        "WitnessEntityMethod send failed: {e}"
-                    );
-                }
+                    .await;
             }
         }
     } else {
@@ -162,16 +155,13 @@ pub(super) async fn set_visible(
     if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
         tracing::debug!(entity_id, %entity_tag, target_id, visible, chain_id, "Content: set visible");
         let vis_byte: u8 = if visible { 1 } else { 0 };
-        if let Err(e) = tx
+        let _ = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id: target_id,
                 method_index: crate::mercury::method_idx::ON_VISIBLE,
                 args: vec![vis_byte],
             })
-            .await
-        {
-            tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
-        }
+            .await;
     }
 }
 

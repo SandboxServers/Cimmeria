@@ -72,7 +72,7 @@ pub async fn dispatch_cell_method(
         return;
     }
 
-    tracing::warn!(
+    tracing::info!(
         entity_id,
         method_index,
         args_len = args.len(),

@@ -104,9 +104,7 @@ pub async fn handle_paid_recharge_inventory_items(
     {
         Ok(rows) => rows,
         Err(e) => {
-            if let Err(e) = tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = tx.rollback().await;
             tracing::error!(
                 entity_id,
                 player_id,
@@ -122,9 +120,7 @@ pub async fn handle_paid_recharge_inventory_items(
     let mut total_cost = 0i32;
     for item_id in &item_ids {
         let Some(row) = rows_by_id.get(item_id) else {
-            if let Err(e) = tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = tx.rollback().await;
             tracing::warn!(
                 entity_id,
                 player_id,
@@ -137,9 +133,7 @@ pub async fn handle_paid_recharge_inventory_items(
         total_cost = match total_cost.checked_add(row.cost) {
             Some(total) => total,
             None => {
-                if let Err(e) = tx.rollback().await {
-                    tracing::error!("DB rollback failed: {e}");
-                }
+                let _ = tx.rollback().await;
                 tracing::warn!(
                     entity_id,
                     player_id,
@@ -158,9 +152,7 @@ pub async fn handle_paid_recharge_inventory_items(
         {
             Ok(balance) => balance,
             Err(e) => {
-                if let Err(e) = tx.rollback().await {
-                    tracing::error!("DB rollback failed: {e}");
-                }
+                let _ = tx.rollback().await;
                 tracing::error!(
                     entity_id,
                     player_id,
@@ -171,9 +163,7 @@ pub async fn handle_paid_recharge_inventory_items(
         };
 
     let Some(balance) = balance else {
-        if let Err(e) = tx.rollback().await {
-            tracing::error!("DB rollback failed: {e}");
-        }
+        let _ = tx.rollback().await;
         tracing::warn!(
             entity_id,
             player_id,
@@ -183,9 +173,7 @@ pub async fn handle_paid_recharge_inventory_items(
     };
 
     if balance < total_cost {
-        if let Err(e) = tx.rollback().await {
-            tracing::error!("DB rollback failed: {e}");
-        }
+        let _ = tx.rollback().await;
         tracing::warn!(
             entity_id,
             player_id,
@@ -207,9 +195,7 @@ pub async fn handle_paid_recharge_inventory_items(
     {
         Ok(Some(total)) => total,
         Ok(None) => {
-            if let Err(e) = tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = tx.rollback().await;
             tracing::warn!(
                 entity_id,
                 player_id,
@@ -218,9 +204,7 @@ pub async fn handle_paid_recharge_inventory_items(
             return;
         }
         Err(e) => {
-            if let Err(e) = tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = tx.rollback().await;
             tracing::error!(
                 entity_id,
                 player_id,
@@ -251,9 +235,7 @@ pub async fn handle_paid_recharge_inventory_items(
     match result {
         Ok(r) if r.rows_affected() == item_ids.len() as u64 => {}
         Ok(r) => {
-            if let Err(e) = tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = tx.rollback().await;
             tracing::warn!(
                 entity_id,
                 player_id,
@@ -264,9 +246,7 @@ pub async fn handle_paid_recharge_inventory_items(
             return;
         }
         Err(e) => {
-            if let Err(e) = tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = tx.rollback().await;
             tracing::error!(
                 entity_id,
                 player_id,

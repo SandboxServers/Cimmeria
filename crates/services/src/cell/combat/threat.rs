@@ -58,12 +58,6 @@ pub fn generate_threat(
                 attacker = attacker_id,
                 "NPC aggro: Idle -> Fighting"
             );
-        } else if target.ai_state == AiState::Fighting {
-            tracing::warn!(
-                npc_id = target_id,
-                attacker = attacker_id,
-                "NPC aggro: threat added while already Fighting -- race-condition canary"
-            );
         }
         *target.threat_list.entry(attacker_id).or_insert(0.0) += threat_amount;
         true
@@ -96,11 +90,6 @@ pub fn enter_player_combat(
     let was_empty = player.threatened_mobs.is_empty();
     if !player.threatened_mobs.insert(mob_id) {
         // Already in the set — no transition.
-        tracing::warn!(
-            player_id,
-            mob_id,
-            "enter_player_combat: same mob re-added -- race-condition canary"
-        );
         return None;
     }
     // Re-entering combat within the OOC grace window cancels both

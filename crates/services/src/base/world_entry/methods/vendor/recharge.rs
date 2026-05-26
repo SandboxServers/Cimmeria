@@ -90,9 +90,7 @@ pub async fn handle_recharge_inventory_items(
     .execute(&mut *tx)
     .await
     {
-        if let Err(e) = tx.rollback().await {
-            tracing::error!("DB rollback failed: {e}");
-        }
+        let _ = tx.rollback().await;
         tracing::error!(
             entity_id,
             player_id,
@@ -122,9 +120,7 @@ pub async fn handle_recharge_inventory_items(
     let recharged = match result {
         Ok(r) => r.rows_affected(),
         Err(e) => {
-            if let Err(e) = tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = tx.rollback().await;
             tracing::error!(
                 entity_id,
                 player_id,

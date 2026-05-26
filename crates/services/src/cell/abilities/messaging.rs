@@ -46,16 +46,13 @@ pub(crate) async fn send_entity_method(
     let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
 
     if is_player {
-        if let Err(e) = tx
+        let _ = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index,
                 args,
             })
-            .await
-        {
-            tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
-        }
+            .await;
     } else {
         let witnesses = space_mgr.get_witnesses_of(entity_id);
         if witnesses.is_empty() {
@@ -72,21 +69,14 @@ pub(crate) async fn send_entity_method(
                 method_index,
                 "send_entity_method: routing NPC method to witness"
             );
-            if let Err(e) = tx
+            let _ = tx
                 .send(CellToBaseMsg::WitnessEntityMethod {
                     witness_id,
                     entity_id,
                     method_index,
                     args: args.clone(),
                 })
-                .await
-            {
-                tracing::warn!(
-                    entity_id,
-                    witness_id,
-                    "WitnessEntityMethod send failed: {e}"
-                );
-            }
+                .await;
         }
     }
 }

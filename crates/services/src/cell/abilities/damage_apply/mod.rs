@@ -143,16 +143,6 @@ pub(super) async fn apply_damage_to_target(
         }
     };
 
-    // Defensive: target already dead before this damage (ammo double-spend or wire-lag)
-    if target.stats.get(HEALTH).is_some_and(|s| s.cur <= 0) {
-        tracing::debug!(
-            entity_id,
-            target_eid,
-            ability_id,
-            "apply_damage_to_target: target already dead before this damage"
-        );
-    }
-
     let (effect_results, _total_health_damage) = combat::calculate_damage(
         &qr_result,
         health_base_damage,

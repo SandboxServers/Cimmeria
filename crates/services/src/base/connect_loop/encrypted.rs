@@ -270,17 +270,14 @@ pub(crate) async fn handle_encrypted_datagram(
                                 ?pos,
                                 "AVATAR_UPDATE_EXPLICIT -> CellService"
                             );
-                            if let Err(e) = tx
+                            let _ = tx
                                 .send(BaseToCellMsg::EntityMove {
                                     entity_id,
                                     position: pos,
                                     direction: dir,
                                     velocity: vel,
                                 })
-                                .await
-                            {
-                                tracing::warn!(entity_id, "EntityMove send failed: {e}");
-                            }
+                                .await;
                         }
                     }
                 }
