@@ -50,8 +50,28 @@ pub use world_data::{
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-/// Server→client reply flags (HAS_SEQUENCE | ON_CHANNEL | RELIABLE = 0x58).
-pub(crate) const REPLY_FLAGS: u8 = FLAG_HAS_SEQUENCE | FLAG_ON_CHANNEL | FLAG_RELIABLE;
+/// Server→client reply flags for **reliable** packets (HAS_SEQUENCE |
+/// ON_CHANNEL | RELIABLE = 0x58). Use for state-change messages where
+/// loss is permanent damage: entity create/destroy, property updates,
+/// mission state, inventory, interaction triggers, almost all
+/// server-initiated entity method calls. Loss is recovered by the
+/// per-session `Channel`'s retransmit driver.
+pub(crate) const REPLY_FLAGS_RELIABLE: u8 = FLAG_HAS_SEQUENCE | FLAG_ON_CHANNEL | FLAG_RELIABLE;
+
+/// Server→client reply flags for **unreliable** packets (HAS_SEQUENCE |
+/// ON_CHANNEL = 0x48 — `FLAG_RELIABLE` cleared). Use for self-correcting
+/// / ephemeral messages where loss recovers naturally on the next emit:
+/// avatar position updates (`UPDATE_AVATAR` family — the next position
+/// frame supersedes any lost one), tick sync (continuous 100ms
+/// heartbeat). Per-packet flag, not per-channel; this lets a single
+/// channel carry both reliability classes.
+pub(crate) const REPLY_FLAGS_UNRELIABLE: u8 = FLAG_HAS_SEQUENCE | FLAG_ON_CHANNEL;
+
+/// **Deprecated alias** for `REPLY_FLAGS_RELIABLE` — keeps existing call
+/// sites compiling while the per-site reliability audit migrates them
+/// to the explicit `_RELIABLE` / `_UNRELIABLE` constants. New code MUST
+/// pick one of the explicit variants.
+pub(crate) const REPLY_FLAGS: u8 = REPLY_FLAGS_RELIABLE;
 
 // ── Message IDs ───────────────────────────────────────────────────────────────
 

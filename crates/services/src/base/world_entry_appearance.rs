@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use tokio::net::UdpSocket;
@@ -13,8 +14,11 @@ use tokio::sync::mpsc;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx, write_wstring, SKIN_TINTS};
 
-use super::helpers::send_to_witness;
+use super::helpers::send_to_witness_reliable;
 use super::world_entry::handle_map_loaded;
+use super::world_entry_chat::{
+    build_chat_joined_args, build_welcome_message_args, DEFAULT_CHAT_CHANNELS,
+};
 use super::ConnectedClientState;
 
 // ── Appearance data builders ────────────────────────────────────────────────
@@ -132,11 +136,17 @@ pub(crate) async fn handle_on_client_ready(
         }
     }
 
-    let pending = {
+    // Take the pending finalization AND copy out the player_name in the
+    // same lock so the welcome-message send below doesn't need a second
+    // round-trip. `player_name` is set during `playCharacter` and stays
+    // for the session, so reading it here is safe.
+    let (pending, player_name) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        clients
-            .get_mut(&addr)
-            .and_then(|c| c.pending_client_ready.take())
+        let entry = clients.get_mut(&addr);
+        match entry {
+            Some(c) => (c.pending_client_ready.take(), c.player_name.clone()),
+            None => (None, None),
+        }
     };
 
     let Some(pending) = pending else {
@@ -167,6 +177,33 @@ pub(crate) async fn handle_on_client_ready(
             .unwrap_or_default()
     } else {
         vec![]
+    };
+
+    // Query archetype id from DB. Carried through to the cell so the
+    // `Item_*` event-set lookup (reload-sequence path) can
+    // resolve. Defaults to 0 on error / missing row — the cell
+    // `archetype_item_event_set` falls through to "no animation" rather
+    // than crashing, which matches the python behavior.
+    let archetype_id: i32 = if let Some(pool) = db_pool {
+        match sqlx::query_scalar::<_, Option<i32>>(
+            "SELECT archetype FROM sgw_player WHERE player_id = $1",
+        )
+        .bind(pending.player_id)
+        .fetch_optional(pool.as_ref())
+        .await
+        {
+            Ok(Some(Some(a))) => a,
+            Ok(Some(None)) | Ok(None) => 0,
+            Err(e) => {
+                tracing::error!(
+                    player_id = pending.player_id,
+                    "Archetype read failed; defaulting to 0 but logging error: {e}"
+                );
+                0
+            }
+        }
+    } else {
+        0
     };
 
     // Query active bandolier slot and items from DB (Bug #1: don't hardcode empty state).
@@ -215,28 +252,20 @@ pub(crate) async fn handle_on_client_ready(
     };
 
     if let Some(ref tx) = cell_tx {
-        if let Err(e) = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await {
-            tracing::warn!(entity_id, "ConnectEntity send failed: {e}");
-        }
+        let _ = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await;
 
-        if let Err(e) = tx
+        let _ = tx
             .send(BaseToCellMsg::InitPlayerState {
                 entity_id,
                 player_id: pending.player_id,
                 world_name: pending.world_name.clone(),
+                archetype_id,
                 saved_missions,
                 abilities,
                 active_bandolier_slot,
                 bandolier_items,
             })
-            .await
-        {
-            tracing::warn!(
-                entity_id,
-                player_id = pending.player_id,
-                "InitPlayerState send failed: {e}"
-            );
-        }
+            .await;
 
         if let Some(region_id) = advance_ring_destination_id {
             // Wake the destination ring's FSM. Sent AFTER InitPlayerState
@@ -244,32 +273,23 @@ pub(crate) async fn handle_on_client_ready(
             // entity (player_id, missions, etc.) — `mark_player_loaded`
             // doesn't need that state directly, but downstream chain
             // events fired by the unlock cascade do.
-            if let Err(e) = tx
+            let _ = tx
                 .send(BaseToCellMsg::AdvanceRingDestination {
                     entity_id,
                     region_id,
                 })
-                .await
-            {
-                tracing::warn!(
-                    entity_id,
-                    region_id,
-                    "AdvanceRingDestination send failed: {e}"
-                );
-            }
+                .await;
         }
     }
 
     // Resend BeingAppearance + onEntityTint now that the entity is fully ready.
     let appearance_args = pending.appearance_args;
     let tint_args = pending.tint_args;
-    if let Err(e) = send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -281,17 +301,12 @@ pub(crate) async fn handle_on_client_ready(
             )
         },
     )
-    .await
-    {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-    }
-    if let Err(e) = send_to_witness(
+    .await;
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -303,22 +318,265 @@ pub(crate) async fn handle_on_client_ready(
             )
         },
     )
-    .await
+    .await;
+
+    // Chat-channel joins + welcome message. Original C++ path is
+    // `python/base/SGWPlayer.py onClientReady -> ChannelManager.playerLoggedIn`,
+    // so onClientReady (here) is the canonical fire-point. These used to
+    // live in the mapLoaded bundle and padded ~311 B onto the worst-case
+    // fragment burst before being moved out. Routed via
+    // `send_to_witness_reliable`: the player is a witness of their own
+    // entity, so this targets the connected client and keeps the bytes
+    // on the reliable channel.
+    //
+    // Arg-building is split into pure helpers (`build_chat_joined_args` /
+    // `build_welcome_message_args`) so they're independently unit-tested;
+    // this loop is the wire side that the test suite can't reach without
+    // a full async harness.
+    for &(channel_name, channel_id) in DEFAULT_CHAT_CHANNELS {
+        let args = build_chat_joined_args(channel_name, channel_id);
+        send_to_witness_reliable(
+            socket,
+            connected,
+            entity_to_addr,
+            entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key,
+                    seq,
+                    acks,
+                    entity_id,
+                    method_idx::ON_CHAT_JOINED,
+                    &args,
+                )
+            },
+        )
+        .await;
+    }
+
+    // Welcome message — `onPlayerCommunication(speaker, flags, channel, text)`
+    // on CHAN_TELL (9). Matches python `SGWPlayer.py:541`. Cosmetic-only;
+    // dropping it has no correctness impact, but it's the moment-of-arrival
+    // visible signal that the channel registration above actually landed.
+    //
+    // `player_name` is normally set during `playCharacter` and stays for
+    // the session; falling back to a generic "Server" speaker keeps the
+    // welcome line visible even when the name didn't propagate (race
+    // during a synthesised cross-world `onClientReady`, or a future
+    // refactor that defers the name read). The warn log surfaces the
+    // unexpected case without dropping the message on the floor.
+    let speaker = player_name.as_deref().unwrap_or_else(|| {
+        tracing::warn!(
+            %addr,
+            entity_id,
+            "onClientReady: player_name not set on connected state — \
+             sending welcome with generic Server speaker"
+        );
+        "Server"
+    });
     {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+        let args = build_welcome_message_args(speaker, entity_id);
+        send_to_witness_reliable(
+            socket,
+            connected,
+            entity_to_addr,
+            entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key,
+                    seq,
+                    acks,
+                    entity_id,
+                    method_idx::ON_PLAYER_COMMUNICATION,
+                    &args,
+                )
+            },
+        )
+        .await;
+    }
+
+    // First-login cinematic — fires AFTER appearance is bound to the now-live
+    // possessed pawn. Sending it inside the mapLoaded bundle (before this
+    // gate) lets the cinematic-exit CollectGarbage reclaim the in-flight
+    // appearance asset and produces a "dev cube" flash. Issue #288.
+    if pending.first_login != 0 {
+        send_cinematic(
+            socket,
+            addr,
+            entity_id,
+            "Cine-SGWLogo.SGWLogo",
+            true, // fullscreen
+            connected,
+            entity_to_addr,
+        )
+        .await;
+
+        if let Some(pool) = db_pool {
+            if let Err(e) =
+                sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
+                    .bind(pending.player_id)
+                    .execute(pool.as_ref())
+                    .await
+            {
+                tracing::warn!(
+                    player_id = pending.player_id,
+                    error = %e,
+                    "Failed to clear first_login flag after cinematic dispatch; player will see intro again next login",
+                );
+            }
+        }
+
+        tracing::info!(%addr, entity_id, "First-login cinematic dispatched after onClientReady gate");
     }
 
     tracing::info!(%addr, entity_id, "World entry finalized (BeingAppearance resent)");
     Ok(())
 }
 
-/// Resend BeingAppearance + onEntityTint after the first-login cinematic finishes.
+/// Send an `onPlayMovie` cinematic and arm the post-cinematic appearance guard.
 ///
-/// The client sends `cancelMovie` (exposed cell method index 108) when the intro
-/// cinematic ends. By this point both previous BeingAppearance sends (in the
-/// mapLoaded bundle and after onClientReady) may have been lost because the
-/// cinematic was rendering full-screen. This third send ensures the model loads.
-pub(crate) async fn handle_cancel_movie(
+/// The cinematic-exit `CollectGarbage` reclaims the player's appearance asset
+/// regardless of how the cinematic exits (natural end or Esc / Lua
+/// `cancelMovie`), leaving the player's pawn rendering as a dev-cube
+/// placeholder until the appearance is rebound. The race window varies — on
+/// natural end it's ~one frame to several seconds; on Esc it can be a single
+/// frame depending on network latency.
+///
+/// To eliminate the cube regardless of cinematic-exit mode:
+///
+/// 1. Send the `onPlayMovie` packet.
+/// 2. Reset `cinematic_spam_cancel` to `false` on the connected state and
+///    spawn a tokio task that resends BeingAppearance + onEntityTint every
+///    `RESEND_INTERVAL` for up to `RESEND_DURATION`.
+/// 3. The spam loop polls `cinematic_spam_cancel` each iteration. When the
+///    client emits a real `cancelMovie` (Esc / Lua), `handle_cancel_movie`
+///    flips the flag and the loop exits early — saving the remaining
+///    bandwidth for the user's session.
+///
+/// **Callers** must ensure `cached_appearance_args` + `cached_tint_args` are
+/// populated on the connected state before invoking (the spam reads from
+/// those). That's done during `handle_map_loaded`.
+///
+/// **Future cinematics** (mission cutscenes, gate transitions, dialog
+/// overlays, etc.) should go through this function rather than emitting
+/// `onPlayMovie` directly — the GC race is a property of every cinematic,
+/// not just the first-login intro. Issue #288.
+pub(crate) async fn send_cinematic(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    entity_id: u32,
+    cinematic_asset: &str,
+    fullscreen: bool,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    // 1. Send the cinematic packet. Reliable — `onPlayMovie` is one-shot
+    // state-change; loss leaves the cinematic un-triggered with no
+    // self-correcting follow-up.
+    let mut movie_args = Vec::with_capacity(32);
+    write_wstring(&mut movie_args, cinematic_asset);
+    movie_args.push(if fullscreen { 1u8 } else { 0u8 });
+    send_to_witness_reliable(
+        socket,
+        connected,
+        entity_to_addr,
+        entity_id,
+        |key, seq, acks| {
+            build_entity_method_packet(
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_idx::ON_PLAY_MOVIE,
+                &movie_args,
+            )
+        },
+    )
+    .await;
+
+    // 2. Arm the appearance-spam guard. Tunable via the two constants below.
+    //    100 ms × 200 iters = 20 s; cinematic-exit cancellation short-circuits.
+    //
+    // 20 s comfortably covers `Cine-SGWLogo` (314 frames @ 23.976 fps =
+    // 13.10 s natural end) plus a ~7 s post-cinematic safety buffer for GC
+    // and asset-rebind latency. Every BIK cinematic's duration is knowable:
+    // parse the embedded BIK header out of the corresponding
+    // `game/sgw/.../CookedPC/Packages/Cine-*.upk` — the `BIKi` magic is
+    // followed by `file_size`, `num_frames`, then `fps_dividend /
+    // fps_divisor` at offset +24 / +28. If a future caller needs a tighter
+    // window per cinematic, promote `RESEND_DURATION` to a `send_cinematic`
+    // parameter and look it up from a build-time-generated table.
+    const RESEND_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+    const RESEND_DURATION: std::time::Duration = std::time::Duration::from_secs(20);
+    let resend_count = (RESEND_DURATION.as_millis() / RESEND_INTERVAL.as_millis()).max(1) as usize;
+
+    // Reset the cancel flag (could be left `true` by a previous cinematic in
+    // the same session — e.g. mission cutscene after first-login intro) and
+    // clone the Arc so the spawned task can poll it without re-locking.
+    let cancel_flag = {
+        let clients = connected.lock().unwrap();
+        let Some(c) = clients.get(&addr) else {
+            tracing::warn!(
+                %addr,
+                entity_id,
+                "send_cinematic: client state vanished before spam armed -- skipping guard"
+            );
+            return;
+        };
+        c.cinematic_spam_cancel.store(false, Ordering::Relaxed);
+        Arc::clone(&c.cinematic_spam_cancel)
+    };
+
+    let resend_socket = Arc::clone(socket);
+    let resend_connected = Arc::clone(connected);
+    let resend_entity_to_addr = Arc::clone(entity_to_addr);
+    let cinematic_label = cinematic_asset.to_string();
+    tokio::spawn(async move {
+        tracing::info!(
+            entity_id,
+            cinematic = %cinematic_label,
+            resend_count,
+            interval_ms = RESEND_INTERVAL.as_millis() as u64,
+            "Cinematic-guard appearance spam: starting"
+        );
+        for i in 0..resend_count {
+            tokio::time::sleep(RESEND_INTERVAL).await;
+            if cancel_flag.load(Ordering::Relaxed) {
+                tracing::info!(
+                    entity_id,
+                    cinematic = %cinematic_label,
+                    sent = i,
+                    skipped = resend_count - i,
+                    "Cinematic-guard appearance spam: cancelMovie received -- stopping early"
+                );
+                return;
+            }
+            resend_appearance_after_cinematic(
+                &resend_socket,
+                addr,
+                entity_id,
+                &resend_connected,
+                &resend_entity_to_addr,
+            )
+            .await;
+        }
+        tracing::info!(
+            entity_id,
+            cinematic = %cinematic_label,
+            sent = resend_count,
+            "Cinematic-guard appearance spam: complete (full duration elapsed)"
+        );
+    });
+}
+
+/// Resend BeingAppearance + onEntityTint from `addr`'s cached args.
+///
+/// Internal helper used by both:
+/// - `handle_cancel_movie` (real client cancelMovie — single resend), and
+/// - `send_cinematic`'s spam loop (each iteration).
+///
+/// Pure side-effect (sends two packets); does NOT touch `cinematic_spam_cancel`.
+async fn resend_appearance_after_cinematic(
     socket: &Arc<UdpSocket>,
     addr: SocketAddr,
     entity_id: u32,
@@ -336,17 +594,15 @@ pub(crate) async fn handle_cancel_movie(
     };
 
     let Some((appearance_args, tint_args)) = cached else {
-        tracing::debug!(%addr, entity_id, "cancelMovie: no cached appearance data -- skipping resend");
+        tracing::debug!(%addr, entity_id, "resend_appearance_after_cinematic: no cached appearance data -- skipping");
         return;
     };
 
-    if let Err(e) = send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -358,17 +614,12 @@ pub(crate) async fn handle_cancel_movie(
             )
         },
     )
-    .await
-    {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-    }
-    if let Err(e) = send_to_witness(
+    .await;
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -380,12 +631,33 @@ pub(crate) async fn handle_cancel_movie(
             )
         },
     )
-    .await
+    .await;
+}
+
+/// Handle the client's `cancelMovie` (exposed cell method index 108): the
+/// cinematic was dismissed (Esc or Lua-stop). Resends BeingAppearance +
+/// onEntityTint to recover from the cinematic-exit GC, and flips
+/// `cinematic_spam_cancel` so `send_cinematic`'s spam loop stops early.
+pub(crate) async fn handle_cancel_movie(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    entity_id: u32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    // Stop the in-flight cinematic-guard spam (if any). The client just told
+    // us it dismissed the cinematic, so we no longer need to brute-force a
+    // post-GC appearance refresh — one resend below handles it.
     {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+        let clients = connected.lock().unwrap();
+        if let Some(c) = clients.get(&addr) {
+            c.cinematic_spam_cancel.store(true, Ordering::Relaxed);
+        }
     }
 
-    tracing::info!(%addr, entity_id, "cancelMovie: BeingAppearance + onEntityTint resent after cinematic");
+    resend_appearance_after_cinematic(socket, addr, entity_id, connected, entity_to_addr).await;
+
+    tracing::info!(%addr, entity_id, "cancelMovie: BeingAppearance + onEntityTint resent; spam guard signalled to stop");
 }
 
 #[cfg(test)]
@@ -494,3 +766,9 @@ mod tests {
         assert_eq!(tint, SKIN_TINTS[0]);
     }
 }
+
+// Chat-channel registration helpers (`DEFAULT_CHAT_CHANNELS`, `CHAN_TELL`,
+// `build_chat_joined_args`, `build_welcome_message_args`) and their
+// byte-exact tests live in `super::world_entry_chat`. They're imported
+// at the top of this file and used inside `handle_on_client_ready` for
+// the post-`onClientReady` `ChannelManager.playerLoggedIn` flow.

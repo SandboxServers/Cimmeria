@@ -14,7 +14,7 @@ use crate::mercury::{
     build_entity_invisible, build_entity_leave, build_entity_method_packet,
 };
 
-use super::super::super::helpers::send_to_witness;
+use super::super::super::helpers::{send_to_witness, send_to_witness_reliable};
 use super::super::super::ConnectedClientState;
 
 /// `CellToBaseMsg::EnteredAoI` — entity entered a witness's range.
@@ -39,35 +39,24 @@ pub(super) async fn entered_aoi(
         level,
         "AoI: entity entered witness range"
     );
-    // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate)
-    if let Err(e) = send_to_witness(
+    // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate) — RELIABLE.
+    // NPC spawn into player AoI; loss = NPC permanently invisible.
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         witness_id,
-        entity_id,
-        "CREATE",
         |key, seq, acks| {
             build_create_entity_base(key, seq, acks, entity_id, class_id, position, direction)
         },
     )
-    .await
-    {
-        tracing::warn!(
-            witness_id,
-            entity_id,
-            phase = "create_base",
-            "AoI create_entity send failed: {e}"
-        );
-    }
-    // Packet 2: createOnClient() property cascade (CellApp round-trip)
-    if let Err(e) = send_to_witness(
+    .await;
+    // Packet 2: createOnClient() property cascade (CellApp round-trip) — RELIABLE
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         witness_id,
-        entity_id,
-        "CREATE",
         |key, seq, acks| {
             build_create_entity_cascade(
                 key,
@@ -80,15 +69,7 @@ pub(super) async fn entered_aoi(
             )
         },
     )
-    .await
-    {
-        tracing::warn!(
-            witness_id,
-            entity_id,
-            phase = "cascade",
-            "AoI create_entity_cascade send failed: {e}"
-        );
-    }
+    .await;
 }
 
 /// `CellToBaseMsg::LeftAoI` — entity left a witness's range.
@@ -101,24 +82,14 @@ pub(super) async fn left_aoi(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(witness_id, entity_id, "AoI: entity left witness range");
-    if let Err(e) = send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         witness_id,
-        entity_id,
-        "LEAVE",
         |key, seq, acks| build_entity_leave(key, seq, acks, entity_id),
     )
-    .await
-    {
-        tracing::warn!(
-            witness_id,
-            entity_id,
-            action = "LEAVE",
-            "send_to_witness failed: {e}"
-        );
-    }
+    .await;
 }
 
 /// `CellToBaseMsg::EntityMoved` — per-tick position relay for a ghost
@@ -134,26 +105,19 @@ pub(super) async fn entity_moved(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::trace!(witness_id, entity_id, "AoI: entity position update");
-    if let Err(e) = send_to_witness(
+    // UNRELIABLE — avatar position updates are continuous and self-correcting;
+    // the next position frame supersedes any lost one within a tick or two.
+    // Stays on the no-Channel-tracking path.
+    send_to_witness(
         socket,
         connected,
         entity_to_addr,
         witness_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_avatar_update(key, seq, acks, entity_id, position, velocity, direction)
         },
     )
-    .await
-    {
-        tracing::warn!(
-            witness_id,
-            entity_id,
-            action = "METHOD",
-            "send_to_witness failed: {e}"
-        );
-    }
+    .await;
 }
 
 /// `CellToBaseMsg::EntityMethodCall` — server→client entity method call to
@@ -172,19 +136,17 @@ pub(super) async fn entity_method_call(
         args_len = args.len(),
         "CellService->client entity method call"
     );
-    if let Err(e) = send_to_witness(
+    // RELIABLE — entity method calls are state-change traffic (interaction
+    // triggers, quest updates, mission state, dialog opens, content engine
+    // events). Loss = permanent damage.
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method_index, &args),
     )
-    .await
-    {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-    }
+    .await;
 }
 
 /// `CellToBaseMsg::WitnessEntityMethod` — broadcast a server-driven entity
@@ -204,24 +166,16 @@ pub(super) async fn witness_entity_method(
         method_index,
         "Broadcast entity method to witness"
     );
-    if let Err(e) = send_to_witness(
+    // RELIABLE — witness-broadcast entity methods are state-change traffic,
+    // same shape as the owning-client `entity_method_call` above.
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         witness_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method_index, &args),
     )
-    .await
-    {
-        tracing::warn!(
-            witness_id,
-            entity_id,
-            action = "METHOD",
-            "send_to_witness failed: {e}"
-        );
-    }
+    .await;
 }
 
 /// `CellToBaseMsg::EntityInvisible` — temporary visual hide that keeps the
@@ -235,22 +189,14 @@ pub(super) async fn entity_invisible(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(witness_id, entity_id, "Send ENTITY_INVISIBLE to witness");
-    if let Err(e) = send_to_witness(
+    // RELIABLE — visibility-state change. Loss leaves the entity rendered
+    // when it should be hidden.
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         witness_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| build_entity_invisible(key, seq, acks, entity_id),
     )
-    .await
-    {
-        tracing::warn!(
-            witness_id,
-            entity_id,
-            action = "METHOD",
-            "send_to_witness failed: {e}"
-        );
-    }
+    .await;
 }

@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use cimmeria_common::EntityId;
+use cimmeria_mercury::channel::Channel;
 use cimmeria_mercury::encryption::MercuryEncryption;
 
 use serde::Serialize;
@@ -31,6 +32,7 @@ mod service;
 pub(crate) mod tick_sync;
 pub(crate) mod world_entry;
 pub(crate) mod world_entry_appearance;
+pub(crate) mod world_entry_chat;
 
 #[cfg(test)]
 mod smoke_tests;
@@ -92,6 +94,11 @@ pub(crate) struct PendingClientReadyInfo {
     pub world_name: String,
     pub appearance_args: Vec<u8>,
     pub tint_args: Vec<u8>,
+    /// Non-zero if this is the player's first-ever login. Drives the
+    /// deferred `onPlayMovie` (intro cinematic) send in
+    /// `handle_on_client_ready` — see issue #288. Type mirrors the DB
+    /// column (`sgw_player.first_login INT`) and `PlayerLoadData::first_login`.
+    pub first_login: i32,
 }
 
 /// State held for each client that has completed the Phase 3 handshake.
@@ -106,6 +113,18 @@ pub(crate) struct ConnectedClientState {
     pub pending_player_entity_id: Option<u32>,
     pub player_entity_id: Option<u32>,
     pub next_seq: Arc<AtomicU32>,
+    /// Sequence counter for **unreliable** outbound packets — kept separate
+    /// from `next_seq` to preserve the contiguous reliable seq stream the
+    /// SGW BigWorld client's `UnAckedHandler::queueAckForPacket`
+    /// (`ghidra://SGW.exe@0x0158cba0`) requires. The receiver's `inSeqAt`
+    /// advances by exactly 1 per reliable arrival; sharing the counter
+    /// with unreliable emissions creates gaps the receiver cannot fill,
+    /// stalling delivery of every subsequent reliable packet. The receiver
+    /// has separate dedup state at `+0x128` for unreliable packets, so two
+    /// independent monotonic streams (one reliable, one unreliable) are
+    /// the wire-format-correct shape. See `spec.protocol.mercury-wire-format`
+    /// §1.7 + the `FUN_0158bb50` decompile.
+    pub next_seq_unreliable: Arc<AtomicU32>,
     pub pending_acks: Arc<Mutex<Vec<u32>>>,
     pub last_recv: Arc<Mutex<Instant>>,
     pub account_entity_id: u32,
@@ -116,7 +135,25 @@ pub(crate) struct ConnectedClientState {
     pub pending_client_ready: Option<PendingClientReadyInfo>,
     pub cached_appearance_args: Option<Vec<u8>>,
     pub cached_tint_args: Option<Vec<u8>>,
+    /// Tracks whether the player is currently rendering holstered (no
+    /// weapon visual in the wire `ComponentList`) or drawn (weapon visible).
+    /// Mirrored from the cell's `CellEntity::weapon_holstered` via
+    /// [`crate::cell::messages::CellToBaseMsg::RefreshAppearance`]. All
+    /// `BeingAppearance`-emit sites read this so they keep the holster
+    /// state consistent across spawn, inventory refresh, AoI rebroadcast,
+    /// and combat enter/exit.
+    ///
+    /// Defaults to `true` so a freshly-connected client spawns weapon-down
+    /// (matches the Phase 1 design and
+    /// `docs/architecture/state-field-bits.md`).
+    pub weapon_holstered: bool,
     pub cancelled: Arc<AtomicBool>,
+    /// Cancellation flag for the post-cinematic appearance-spam guard
+    /// (issue #288). `world_entry_appearance::send_cinematic` resets this
+    /// to `false` and spawns a spam loop that polls it each iteration;
+    /// `handle_cancel_movie` flips it to `true` when the client emits a
+    /// real cancelMovie so the spam stops short of its full duration.
+    pub cinematic_spam_cancel: Arc<AtomicBool>,
     pub player_name: Option<String>,
     pub player_level: Option<i32>,
     pub player_archetype: Option<i32>,
@@ -138,6 +175,40 @@ pub(crate) struct ConnectedClientState {
     /// FSM can leave `RemoteLoadWait`. Stays `None` for stargate dial
     /// gate-travel.
     pub pending_destination_ring_id: Option<i32>,
+
+    /// Reliable-UDP channel state. Tracks the TX window of in-flight
+    /// reliable packets, processes incoming ACKs from the client,
+    /// maintains the per-peer adaptive RTO, and drives retransmits.
+    ///
+    /// The legacy send path still assigns sequences via [`next_seq`]
+    /// and calls `socket.send_to` directly; reliable sends mirror their
+    /// encrypted bytes into this `Channel` via `register_sent_packet`
+    /// after the socket send succeeds. ACK consumption + RTO sampling
+    /// happen on every received packet (`connect_loop/encrypted.rs`);
+    /// retransmits fire from the per-session `tick_sync` loop every
+    /// 100 ms, capped at `RETRANSMIT_BUDGET_PER_TICK` entries per scan.
+    ///
+    /// Wrapped in `Mutex` because `process_acks`, `register_sent_packet`,
+    /// and `check_timeouts` all need `&mut self` and run from different
+    /// code paths (receive loop, per-send-site call sites, retransmit tick).
+    pub channel: Mutex<Channel>,
+}
+
+impl ConnectedClientState {
+    /// Next sequence number for an **unreliable** outbound packet —
+    /// fetch-add on the unreliable counter, masked to the 28-bit Mercury
+    /// sequence space. Use this from any code path that sends a packet
+    /// without `FLAG_RELIABLE`; the reliable path uses `next_seq` directly
+    /// because reliable seqs are also tracked by the per-session Channel's
+    /// TX window. Encapsulated so a future caller can't accidentally drop
+    /// the `SEQUENCE_MASK` clamp and overflow into the 4-bit reserved
+    /// flag space (see issue #292 for the previous instance of that
+    /// class of bug).
+    pub fn next_unreliable_seq(&self) -> u32 {
+        self.next_seq_unreliable
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK
+    }
 }
 
 #[cfg(test)]

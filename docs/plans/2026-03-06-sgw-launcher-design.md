@@ -1,5 +1,12 @@
 # SGW Game Launcher — Design Decisions
 
+> **⚠️ SUPERSEDED 2026-05-20.** Decisions captured here informed the Tauri
+> prototype that has since been replaced by the egui + seed/patch
+> manifest design. The live design lives at
+> [docs/client/sgw-launcher.md](../client/sgw-launcher.md). Kept here for
+> historical context only — do not act on any decision below without
+> reconciling against the current design doc.
+
 Supplements [`docs/client/sgw-launcher.md`](../client/sgw-launcher.md) with architecture decisions made during brainstorming.
 
 ---

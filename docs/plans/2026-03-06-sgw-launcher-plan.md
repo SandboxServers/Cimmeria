@@ -1,5 +1,12 @@
 # SGW Game Launcher Implementation Plan
 
+> **⚠️ SUPERSEDED 2026-05-20.** This plan was the task-by-task companion
+> to the Tauri-based design that has been replaced. The live launcher
+> lives at [`crates/launcher/`](../../crates/launcher/) and follows
+> [docs/client/sgw-launcher.md](../client/sgw-launcher.md). Do not
+> implement from the tasks below — they describe a tools/SGWLauncher
+> Tauri layout that no longer exists.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Build a standalone Tauri 2 game launcher that downloads, installs, patches, and launches the Stargate Worlds client, with delta patching and self-update support.

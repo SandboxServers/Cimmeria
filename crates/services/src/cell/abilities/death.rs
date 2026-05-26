@@ -61,21 +61,78 @@ pub(super) async fn apply_death_transition(
     if !target_is_player {
         let to_broadcast =
             crate::cell::combat::clear_dead_npc_from_all_player_threat(space_mgr, target_eid);
-        if to_broadcast.is_empty() {
+        for (player_entity_id, new_state) in to_broadcast {
             tracing::debug!(
-                npc_id = target_eid,
-                "no threatened players to clear -- mob died with empty threat table"
-            );
-        }
-        for (player_id, new_state) in to_broadcast {
-            tracing::debug!(
-                player_id,
+                player_entity_id,
                 dying_npc = target_eid,
                 new_state,
                 "death: clearing player BSF_InCombat (last threatened mob died)"
             );
             send_entity_method(
-                player_id,
+                player_entity_id,
+                crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                new_state.to_le_bytes().to_vec(),
+                tx,
+                space_mgr,
+            )
+            .await;
+            // No immediate appearance refresh: `exit_player_combat`
+            // stamped the OOC timer instead of flipping the holster.
+            // The deferred `holster_timer_tick` re-broadcasts
+            // `BeingAppearance` after the grace window so chaining
+            // mobs doesn't flicker the model (Phase 3).
+        }
+    }
+
+    // 2b. Auto-cycle stop on target-death — sweep every player auto-firing
+    //     at the dying entity and clear their loop. Mirrors the threat
+    //     fanout above: multiple players can be auto-cycling at the same
+    //     mob; one death must clear `BSF_AUTO_CYCLING` for all of them so
+    //     the gun-icon button un-highlights. Applies to player targets too
+    //     — a PvP scenario where one player is auto-firing at another
+    //     should also stop on the target's death.
+    let auto_cycle_broadcasts =
+        crate::cell::combat::clear_auto_cycle_for_target(space_mgr, target_eid);
+    for (player_entity_id, new_state) in auto_cycle_broadcasts {
+        tracing::info!(
+            player_entity_id,
+            dying_target = target_eid,
+            new_state,
+            "death: clearing player auto-cycle loop (target died)"
+        );
+        send_entity_method(
+            player_entity_id,
+            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+            new_state.to_le_bytes().to_vec(),
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
+
+    // 2c. Dying player's OWN auto-cycle clears. The sweep above only
+    //     catches players TARGETING the dying entity. If the dying entity
+    //     is itself an auto-cycling player (e.g., they got killed mid-
+    //     loop), their `auto_cycle` flag + stash + `BSF_AUTO_CYCLING`
+    //     stay armed. The tick will keep trying to re-fire on each
+    //     cooldown tick — every invocation gets rejected by the
+    //     `is_dead_state` guard in `handle_use_ability`, so it's wasted
+    //     work. Worse: on respawn the player's `auto_cycle` is still
+    //     true and the loop auto-resumes against the stashed target
+    //     even though the player had no chance to consent.
+    //
+    //     Clear here so the dying player's button un-highlights on death
+    //     and the post-respawn state is clean. NPCs don't have an
+    //     `AbilityManager.auto_cycle`, so this branch is player-only.
+    if target_is_player {
+        if let Some(new_state) = crate::cell::combat::clear_auto_cycle(space_mgr, target_eid) {
+            tracing::info!(
+                player_entity_id = target_eid,
+                new_state,
+                "death: clearing dying player's own auto-cycle loop"
+            );
+            send_entity_method(
+                target_eid,
                 crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
                 new_state.to_le_bytes().to_vec(),
                 tx,
@@ -370,6 +427,69 @@ mod tests {
         assert_eq!(
             u32::from_le_bytes(final_state_args.try_into().unwrap()),
             target_state
+        );
+    }
+
+    /// When the dying entity is itself an auto-cycling player, their OWN
+    /// `auto_cycle` + stash + `BSF_AUTO_CYCLING` must clear in the same
+    /// death burst — not just the loops of OTHER players targeting them.
+    ///
+    /// Bug shape this catches (the symptom that drove the fix): player
+    /// dies mid-auto-fire → respawns → the `auto_cycle` flag and stash
+    /// are still set → the tick auto-resumes the loop against the old
+    /// target without the player consenting. The death path is the right
+    /// place to wipe this state since `is_dead_state` becomes true here.
+    #[tokio::test]
+    async fn dying_player_own_auto_cycle_clears_and_broadcasts() {
+        use crate::cell::combat::BSF_AUTO_CYCLING;
+        let mut mgr = make_mgr_with_player_and_npc();
+        // Promote entity 2 to a player who is auto-cycling at someone else.
+        if let Some(t) = mgr.get_entity_mut(2) {
+            t.is_player = true;
+            t.player_id = Some(200);
+            t.abilities.auto_cycle = true;
+            t.abilities.auto_cycle_ability_id = Some(592);
+            t.state_field |= BSF_AUTO_CYCLING;
+        }
+        let (tx, mut rx) = mpsc::channel(32);
+
+        apply_death_transition(2, 1, DEAD_STATE, true, true, &tx, &mut mgr).await;
+
+        let dying = mgr.get_entity(2).unwrap();
+        assert!(
+            !dying.abilities.auto_cycle,
+            "dying player's auto_cycle must clear so respawn doesn't resume the loop",
+        );
+        assert!(dying.abilities.auto_cycle_ability_id.is_none());
+        assert_eq!(
+            dying.state_field & BSF_AUTO_CYCLING,
+            0,
+            "BSF_AUTO_CYCLING must clear so the dying player's button un-highlights",
+        );
+
+        // Verify the broadcast went out to the dying player. There will
+        // be multiple onStateFieldUpdate messages targeting entity 2 in
+        // this burst (the auto-cycle clear and the corpse dead-state
+        // flip); the auto-cycle one is identifiable because its payload
+        // has BSF_AUTO_CYCLING (0x02) CLEARED and the corpse one carries
+        // the DEAD_STATE bits (0x41).
+        let msgs = drain(&mut rx);
+        let auto_cycle_broadcast = msgs.iter().any(|m| match m {
+            CellToBaseMsg::EntityMethodCall {
+                entity_id: 2,
+                method_index,
+                args,
+            } if *method_index == method_idx::ON_STATE_FIELD_UPDATE => {
+                let state = u32::from_le_bytes(args.clone().try_into().unwrap_or([0; 4]));
+                // Auto-cycle clear: BSF_AUTO_CYCLING bit cleared,
+                // BSF_DEAD not yet set (that's the LATER broadcast).
+                state & BSF_AUTO_CYCLING == 0 && state & BSF_DEAD == 0
+            }
+            _ => false,
+        });
+        assert!(
+            auto_cycle_broadcast,
+            "dying player must receive an onStateFieldUpdate clearing BSF_AUTO_CYCLING",
         );
     }
 }

@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use sqlx::PgPool;
 use tokio::net::UdpSocket;
 
-use super::super::super::super::helpers::send_to_witness;
+use super::super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::super::ConnectedClientState;
 use super::data::{
     load_store_buy_items, load_vendor_buyback_prices, load_vendor_recharge_prices,
@@ -150,21 +150,16 @@ pub async fn send_store_open_to_client(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    if let Err(e) = send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_STORE_OPEN, &args)
         },
     )
-    .await
-    {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-    }
+    .await;
     tracing::trace!(entity_id, vendor_entity_id, "Sent onStoreOpen");
 }
 
@@ -181,13 +176,11 @@ pub async fn send_store_update_to_client(
     }
 
     let args = serialize_store_update(updates);
-    if let Err(e) = send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -199,8 +192,5 @@ pub async fn send_store_update_to_client(
             )
         },
     )
-    .await
-    {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-    }
+    .await;
 }

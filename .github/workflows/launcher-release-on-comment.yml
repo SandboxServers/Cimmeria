@@ -1,0 +1,130 @@
+name: launcher-release-on-comment
+
+# ChatOps trigger for launcher-release.yml. A maintainer comments
+# `/release-launcher` on a merged PR and this workflow validates the
+# comment and dispatches the launcher release workflow.
+#
+# Mirrors the structure of release-on-comment.yml (which handles the
+# server container `/release` command). The two are intentionally
+# separate so a server release and a launcher release can happen
+# independently.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  group: launcher-release-comment-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: validate + dispatch launcher-release
+    if: |
+      github.event.issue.pull_request != null
+      && startsWith(github.event.comment.body, '/release-launcher')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      actions: write
+      contents: read
+    timeout-minutes: 10
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: validate command shape
+        id: cmd
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          FIRST_LINE=$(printf '%s' "$BODY" | head -n1)
+          if printf '%s' "$FIRST_LINE" | grep -Eq '^/release-launcher([[:space:]]|$)'; then
+            echo "matched=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Comment starts with '/release-launcher' but isn't an exact command — skipping."
+            echo "matched=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 👀 acknowledge receipt
+        if: steps.cmd.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          gh api -X POST \
+            "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content=eyes >/dev/null
+
+      - name: validate commenter has write access
+        if: steps.cmd.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.event.comment.user.login }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          PERM=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" --jq '.permission')
+          echo "actor=${ACTOR} permission=${PERM}"
+          case "$PERM" in
+            admin|maintain|write) echo "ok" ;;
+            *)
+              gh api -X POST \
+                "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+                -f content=-1 >/dev/null
+              gh pr comment "$PR" \
+                --body "@${ACTOR} \`/release-launcher\` requires repo write permission. (You have \`${PERM}\`.)"
+              exit 1
+              ;;
+          esac
+
+      - name: ensure PR is merged
+        if: steps.cmd.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          MERGED=$(gh api "repos/${REPO}/pulls/${PR}" --jq '.merged')
+          if [ "$MERGED" != "true" ]; then
+            gh api -X POST \
+              "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+              -f content=-1 >/dev/null
+            gh pr comment "$PR" \
+              --body "Can't \`/release-launcher\` from an open PR. Merge first, then comment \`/release-launcher\` again — the launcher release workflow always builds from \`main\` HEAD, so it needs the merge to be in main."
+            exit 1
+          fi
+
+      - name: dispatch launcher-release.yml
+        if: steps.cmd.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          gh workflow run launcher-release.yml \
+            --ref main \
+            -f "triggering_pr=${PR}"
+
+      - name: 🚀 acknowledge dispatch
+        if: steps.cmd.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          PR: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.event.comment.user.login }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          gh api -X POST \
+            "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content=rocket >/dev/null
+          gh pr comment "$PR" \
+            --body "🚀 Launcher release dispatched by @${ACTOR}. Watch [launcher-release runs](${SERVER_URL}/${REPO}/actions/workflows/launcher-release.yml)."

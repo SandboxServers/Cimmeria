@@ -21,8 +21,8 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
 | Documentation files | 152 |
-| Rust tests (`#[test]` / `#[tokio::test]`) | 1088 across 167 files |
-| Live-DB regression guards | 110 |
+| Rust tests (`#[test]` / `#[tokio::test]`) | 1351 across 215 files |
+| Live-DB regression guards | 151 |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 
@@ -166,7 +166,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 10 documents.
+How the Cimmeria emulator itself is structured. 12 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -180,6 +180,7 @@ How the Cimmeria emulator itself is structured. 10 documents.
 | [tauri-rewrite.md](architecture/tauri-rewrite.md) | Tauri desktop app rewrite analysis: replacing Qt ServerEd with a modern Rust+TypeScript stack | Complete |
 | [migration-roadmap.md](architecture/migration-roadmap.md) | Dependency migration roadmap (PostgreSQL ✅, MSVC ✅, OpenSSL pending) and per-migration agent definitions | Complete |
 | [state-flag-conventions.md](architecture/state-flag-conventions.md) | Reference for state-flag write conventions: refcounted vs raw, who can clear, auth flow | Complete |
+| [state-field-bits.md](architecture/state-field-bits.md) | Verified `bStateField` bit layout (bits 0-7 only), client dispatch table, BSF_Holster retirement notice with Ghidra anchors | Complete |
 | [integration-test-infra.md](architecture/integration-test-infra.md) | Live-DB test infrastructure: why no testcontainers, why no `sqlx::test`, local setup, isolation patterns | Complete |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
@@ -188,11 +189,13 @@ See also: [building.md](building.md), [connection-flow.md](connection-flow.md), 
 
 ### `client/` -- Game Client Analysis
 
-Analysis of game client binaries, launcher tools, and client asset inventories. 4 documents.
+Analysis of game client binaries, launcher tools, and client asset inventories. 6 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [sgw-launcher.md](client/sgw-launcher.md) | Custom launcher design: install pipeline, login redirect, implementation tech stacks | Complete |
+| [sgw-launcher.md](client/sgw-launcher.md) | Launcher design: seed + patch manifest install, Atera-detection launch, single-PUT log upload, hostname patch | Complete |
+| [launcher-guide.md](client/launcher-guide.md) | User-facing guide: how the launcher works for players, how operators prepare and publish patches | Complete |
+| [launcher-distribution-setup.md](client/launcher-distribution-setup.md) | Operational runbook: GitHub Releases publish flow for content, Ed25519 manifest signing setup, Azure Blob SAS for log uploads | Complete |
 | [audio-voice-inventory.md](client/audio-voice-inventory.md) | Complete FMOD audio inventory: 280 .fev + 566 .fsb files, zone ambience, music, weapons, abilities, UI, dialog VO gap analysis | Complete |
 | [facefx-lip-sync.md](client/facefx-lip-sync.md) | FaceFX lip sync system: .fxa animation files, phoneme mapping, engine integration | Complete |
 | [ui-layout-inventory.md](client/ui-layout-inventory.md) | UI layout inventory: all Scaleform .swf files, Lua bindings, screen types, HUD elements | Complete |

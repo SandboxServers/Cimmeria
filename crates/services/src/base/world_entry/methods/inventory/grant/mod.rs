@@ -73,6 +73,15 @@ pub async fn handle_grant_item(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    tracing::debug!(
+        entity_id,
+        player_id,
+        item_id,
+        container_id,
+        count,
+        cell_tx_present = cell_tx.is_some(),
+        "handle_grant_item: entered"
+    );
     let pool = match db_pool {
         Some(p) => p,
         None => {
@@ -96,9 +105,7 @@ pub async fn handle_grant_item(
             Ok(Some(slots)) => match slots.into_iter().next() {
                 Some(s) => s,
                 None => {
-                    if let Err(e) = db_tx.rollback().await {
-                        tracing::error!("DB rollback failed: {e}");
-                    }
+                    let _ = db_tx.rollback().await;
                     tracing::warn!(
                         player_id,
                         item_id,
@@ -109,9 +116,7 @@ pub async fn handle_grant_item(
                 }
             },
             Ok(None) => {
-                if let Err(e) = db_tx.rollback().await {
-                    tracing::error!("DB rollback failed: {e}");
-                }
+                let _ = db_tx.rollback().await;
                 tracing::warn!(
                     player_id,
                     item_id,
@@ -121,9 +126,7 @@ pub async fn handle_grant_item(
                 return;
             }
             Err(e) => {
-                if let Err(e) = db_tx.rollback().await {
-                    tracing::error!("DB rollback failed: {e}");
-                }
+                let _ = db_tx.rollback().await;
                 tracing::error!(
                     player_id,
                     item_id,
@@ -147,15 +150,8 @@ pub async fn handle_grant_item(
         Ok(Some(Some(c))) => c,
         Ok(Some(None)) | Ok(None) => 0,
         Err(e) => {
-            if let Err(e) = db_tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = db_tx.rollback().await;
             tracing::error!(player_id, item_id, "GrantItem: charges lookup failed: {e}");
-            tracing::error!(
-                player_id,
-                item_id,
-                "GrantItem: grant aborted after rollback"
-            );
             return;
         }
     };
@@ -196,9 +192,7 @@ pub async fn handle_grant_item(
             "Item persisted to inventory"
         ),
         Err(e) => {
-            if let Err(e) = db_tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = db_tx.rollback().await;
             tracing::error!(player_id, item_id, "Failed to persist item: {e}");
             return;
         }
@@ -248,14 +242,11 @@ pub async fn handle_grant_item(
                 );
             }
             Err(e) => {
-                if let Err(e) = db_tx.rollback().await {
-                    tracing::error!("DB rollback failed: {e}");
-                }
+                let _ = db_tx.rollback().await;
                 tracing::error!(
                     player_id,
                     slot_id = next_slot,
-                    expected_swap = true,
-                    "GrantItem: bandolier_slot UPDATE failed mid-tx -- rollback: {e}"
+                    "GrantItem: bandolier_slot UPDATE failed inside tx, aborting grant: {e}"
                 );
                 return;
             }
@@ -279,9 +270,7 @@ pub async fn handle_grant_item(
             // an inventory mutation we can't durably notify the cell about.
             // The player retries the grant trigger, which is idempotent at
             // the chain level.
-            if let Err(e) = db_tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = db_tx.rollback().await;
             tracing::error!(
                 player_id,
                 item_id,
@@ -333,13 +322,11 @@ pub async fn handle_grant_item(
             let mut args = Vec::with_capacity(8);
             args.extend_from_slice(&container_id.to_le_bytes());
             args.extend_from_slice(&(next_slot + 1).to_le_bytes());
-            if let Err(e) = helpers::send_to_witness(
+            helpers::send_to_witness_reliable(
                 socket,
                 connected,
                 entity_to_addr,
                 entity_id,
-                entity_id,
-                "METHOD",
                 |key, seq, acks| {
                     build_entity_method_packet(
                         key,
@@ -351,10 +338,7 @@ pub async fn handle_grant_item(
                     )
                 },
             )
-            .await
-            {
-                tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-            }
+            .await;
         }
 
         if let Some(tx) = cell_tx {
@@ -461,13 +445,26 @@ pub async fn handle_grant_item(
         }
     };
 
-    if visual.is_some() {
+    // Bandolier items (container_id 3) get their appearance refresh
+    // from the cell side: `BaseToCellMsg::UpdateBandolierItem`'s
+    // handler dispatches `RefreshAppearance` back to base after
+    // flipping `weapon_holstered` correctly. Calling
+    // `refresh_player_appearance` here too races the cell side and
+    // can broadcast a stale "no weapon" appearance (cached state is
+    // still `holstered=true` because the cell hasn't processed the
+    // update yet) — that's why initial weapon equips appeared to
+    // not show the weapon in playtest.
+    //
+    // Non-bandolier equipment (helmet, armor, accessories — slot 4
+    // and up) doesn't go through the cell side, so we still need
+    // this call for those.
+    if visual.is_some() && container_id != 3 {
         tracing::info!(
             entity_id,
             player_id,
             item_id,
             container_id,
-            "Equipped item has visual — resending BeingAppearance"
+            "Equipped non-bandolier item has visual — resending BeingAppearance"
         );
         refresh_player_appearance(
             entity_id,

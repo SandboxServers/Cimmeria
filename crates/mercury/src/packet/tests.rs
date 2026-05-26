@@ -245,3 +245,61 @@ fn round_trip_with_piggyback_in_full_matrix() {
     assert_eq!(pkt.acks, vec![301u32]);
     assert_eq!(pkt.body.as_ref(), b"piggy-payload");
 }
+
+// ── 28-bit sequence space + sentinel rejection ────────────────────────
+
+/// `NULL_SEQUENCE` (`0x10000000`) is the spec'd "unset" sentinel and
+/// must NEVER appear on the wire as a real packet sequence. A packet
+/// arriving with `seq_id = NULL_SEQUENCE` is dropped at parse with an
+/// R4-class error. Per `mercury-wire-format` spec §2.4 R4.
+#[test]
+fn parse_incoming_rejects_null_sequence_sentinel() {
+    let raw = build_outgoing(
+        FLAG_HAS_SEQUENCE | FLAG_RELIABLE,
+        b"hello",
+        Some(NULL_SEQUENCE),
+        &[],
+        None,
+    );
+    let err = parse_incoming(&raw).expect_err("NULL_SEQUENCE must be rejected");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("outside valid range"),
+        "error must mention out-of-range sequence: {msg}"
+    );
+}
+
+/// Any sequence beyond the 28-bit valid space (`> 0x0FFFFFFF`) is also
+/// rejected. Pin `0xFFFFFFFE` as the issue body specifies — a hostile
+/// or buggy peer could emit a u32-max-adjacent seq, and the parser
+/// must drop it before it pollutes channel state.
+#[test]
+fn parse_incoming_rejects_out_of_range_sequence_high_bits() {
+    let raw = build_outgoing(
+        FLAG_HAS_SEQUENCE | FLAG_RELIABLE,
+        b"hi",
+        Some(0xFFFF_FFFE),
+        &[],
+        None,
+    );
+    let err = parse_incoming(&raw).expect_err("out-of-range seq must be rejected");
+    let msg = format!("{err}");
+    assert!(msg.contains("outside valid range"), "got: {msg}");
+}
+
+/// The maximum legal sequence (`0x0FFFFFFF`) parses successfully — the
+/// boundary case, just under the sentinel. Pin so an off-by-one in the
+/// rejection condition (`> NULL_SEQUENCE` vs `>= NULL_SEQUENCE`) is
+/// caught.
+#[test]
+fn parse_incoming_accepts_max_28_bit_sequence() {
+    let raw = build_outgoing(
+        FLAG_HAS_SEQUENCE | FLAG_RELIABLE,
+        b"max",
+        Some(SEQUENCE_MASK),
+        &[],
+        None,
+    );
+    let pkt = parse_incoming(&raw).expect("0x0FFFFFFF is the highest legal seq");
+    assert_eq!(pkt.seq_id, Some(SEQUENCE_MASK));
+}

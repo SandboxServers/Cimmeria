@@ -3,12 +3,19 @@
 
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
-use crate::mercury::{encrypt_packet, BASEMSG_FORCED_POSITION, REPLY_FLAGS};
+use crate::mercury::{
+    encrypt_packet, BASEMSG_FORCED_POSITION, REPLY_FLAGS_RELIABLE, REPLY_FLAGS_UNRELIABLE,
+};
 
 use super::{pack_angle, pack_velocity_xyz, BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR};
 
 /// Build and encrypt `UPDATE_AVATAR_NO_ALIAS_FULL_POS_YAW_PITCH_ROLL (0x10)` for
 /// relaying position updates to AoI witnesses.
+///
+/// **Unreliable** — position updates are continuous
+/// and self-correcting; the next update supersedes any lost one within
+/// a tick or two, so retransmit overhead would buy nothing.
+/// `FLAG_RELIABLE` is cleared in the outbound flags.
 ///
 /// Matches C++ `ClientHandler::moveEntity()` from `client_handler.cpp:542-556`.
 pub fn build_avatar_update(
@@ -37,7 +44,7 @@ pub fn build_avatar_update(
     body.push(pack_angle(direction[0])); // pitch
     body.push(pack_angle(direction[2])); // roll
 
-    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let flags = REPLY_FLAGS_UNRELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
     encrypt_packet(&plaintext, key)
 }
@@ -51,8 +58,17 @@ pub fn build_avatar_update(
 /// waiting state — it does not move the avatar. See SGWPlayer.def's comment
 /// on `onPlayerTeleport` and docs/protocol/position-updates.md.
 ///
+/// `prev_pos` is the **previous-position reference vector** (offsets 24-35 of
+/// the 49-byte payload — NOT velocity). The client's
+/// `ProcessForcedEntityPosition` (Ghidra `0x00dd9ee0`) copies this verbatim
+/// into `pPrevPos`, which the camera-attach path then interpolates from on the
+/// first frame. Pass the entity's last-known position before the snap (or the
+/// destination position itself to force a zero-distance interpolation). See
+/// `spec.protocol.mercury` §1.10.6 + §1.16 Q3 closure and
+/// `spec.protocol.position-updates` §1.4.2.
+///
 /// Wire layout matches `build_enter_world_body`:
-/// `[entityID:u32][spaceID:u32][vehicleID:u32=0][pos:3×f32][vel:3×f32=0]
+/// `[entityID:u32][spaceID:u32][vehicleID:u32=0][pos:3×f32][prevPos:3×f32]
 ///  [rot:3×f32][flags:u8=0x01]`.
 pub fn build_forced_position(
     key: &[u8; 32],
@@ -61,6 +77,7 @@ pub fn build_forced_position(
     entity_id: u32,
     space_id: u32,
     position: [f32; 3],
+    prev_pos: [f32; 3],
 ) -> Vec<u8> {
     let mut body = Vec::with_capacity(50);
     body.push(BASEMSG_FORCED_POSITION);
@@ -70,11 +87,18 @@ pub fn build_forced_position(
     for &c in &position {
         body.extend_from_slice(&c.to_le_bytes());
     }
-    body.extend_from_slice(&[0u8; 12]); // velocity = 0,0,0
+    for &c in &prev_pos {
+        body.extend_from_slice(&c.to_le_bytes());
+    }
     body.extend_from_slice(&[0u8; 12]); // rotation = 0,0,0 (yaw/pitch/roll)
     body.push(0x01); // flags
 
-    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    // Reliable — the spawn snap is one-shot state; losing it leaves the
+    // pawn at the wrong position until something else corrects (a
+    // mistimed `forced_position` is what causes the camera-clip artifact
+    // documented in the world-entry spawn-glitch findings). Channel
+    // retransmit covers loss-in-flight.
+    let flags = REPLY_FLAGS_RELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
     encrypt_packet(&plaintext, key)
 }

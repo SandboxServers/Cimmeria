@@ -45,11 +45,14 @@ cargo check -p cimmeria-services
 # Single-crate test
 cargo test -p cimmeria-services
 
-# Full workspace check — skip the Tauri apps so the linker doesn't OOM
+# Full workspace check — skip the GUI apps (Tauri editors and the egui
+# launcher) so the linker doesn't OOM and Linux dev hosts don't need
+# xkbcommon/xcb dev packages.
 cargo check --workspace \
   --exclude cimmeria-app \
   --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor
+  --exclude cimmeria-scene-editor \
+  --exclude sgw-launcher
 
 # Kill stale builds
 pkill -f "cargo|rustc"
@@ -133,7 +136,7 @@ The map of "what changed → what to update":
 | The pre-PR checklist, build commands, or repo invariants | [CLAUDE.md](CLAUDE.md) and [.github/copilot-instructions.md](.github/copilot-instructions.md) |
 | Test conventions, types, or gotchas | [TESTING.md](TESTING.md) (and re-link from README if a new section is added) |
 | Markdown lint rules, exclusions, or the wrapper scripts | [.markdownlint-cli2.yaml](.markdownlint-cli2.yaml), [tools/lint-md.sh](tools/lint-md.sh), [tools/lint-md.ps1](tools/lint-md.ps1), and the workflow at [.github/workflows/markdownlint.yml](.github/workflows/markdownlint.yml) |
-| Add or remove ≥5% of workspace tests in one PR (~55 tests at current 1071 baseline) | [docs/testing/inventory/<crate>.md](docs/testing/inventory/) — and the totals in [docs/testing/inventory/README.md](docs/testing/inventory/README.md). Smaller drifts roll up via periodic sweep updates rather than per-PR churn. |
+| Add or remove ≥5% of workspace tests in one PR (~68 tests at current 1351 baseline) | [docs/testing/inventory/<crate>.md](docs/testing/inventory/) — and the totals in [docs/testing/inventory/README.md](docs/testing/inventory/README.md). Smaller drifts roll up via periodic sweep updates rather than per-PR churn. |
 | Live-DB infra or local setup | [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) |
 | Crate layout, dependency graph, or new crate | [crates/README.md](crates/README.md) and the crate diagram in [README.md](README.md) |
 | Wire format, method indices, or message catalog | [docs/protocol/client-method-dispatch-table.md](docs/protocol/client-method-dispatch-table.md), [docs/protocol/message-catalog.md](docs/protocol/message-catalog.md), the rest of [docs/protocol/](docs/protocol/), the canonical entity definitions under [entities/defs/](entities/defs/), and `crates/services/src/mercury/method_idx.rs` constants |

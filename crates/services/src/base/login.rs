@@ -77,7 +77,8 @@ pub(crate) async fn handle_login(
                     let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
                     let seq = c
                         .next_seq
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                        & cimmeria_mercury::packet::SEQUENCE_MASK;
                     (acks, seq)
                 } else {
                     (vec![], 0)
@@ -107,15 +108,20 @@ pub(crate) async fn handle_login(
     socket.send_to(&sync, addr).await?;
 
     // Register for Phase 4 encrypted traffic.
-    let (pending_acks_arc, last_recv_arc, next_seq_arc, cancelled_arc) = {
+    let (pending_acks_arc, last_recv_arc, next_seq_unreliable_arc, cancelled_arc) = {
         let next_seq = Arc::new(AtomicU32::new(3));
+        let next_seq_unreliable = Arc::new(AtomicU32::new(0));
         let pending_acks = Arc::new(Mutex::new(Vec::new()));
         let last_recv = Arc::new(Mutex::new(Instant::now()));
         let cancelled = Arc::new(AtomicBool::new(false));
+        // `next_seq` (reliable) is consumed by `ConnectedClientState` below and by
+        // application-packet paths that pull from `clients[addr].next_seq`; the
+        // tick-loop only needs `next_seq_unreliable`, so the reliable counter
+        // does not appear in the spawn-argument tuple.
         let arcs = (
             Arc::clone(&pending_acks),
             Arc::clone(&last_recv),
-            Arc::clone(&next_seq),
+            Arc::clone(&next_seq_unreliable),
             Arc::clone(&cancelled),
         );
 
@@ -132,6 +138,7 @@ pub(crate) async fn handle_login(
                 pending_player_entity_id: None,
                 player_entity_id: None,
                 next_seq,
+                next_seq_unreliable,
                 pending_acks,
                 last_recv,
                 account_entity_id: entity_manager.lock().unwrap().create_entity("Account").0 as u32,
@@ -142,7 +149,9 @@ pub(crate) async fn handle_login(
                 pending_client_ready: None,
                 cached_appearance_args: None,
                 cached_tint_args: None,
+                weapon_holstered: true,
                 cancelled,
+                cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
                 player_name: None,
                 player_level: None,
                 player_archetype: None,
@@ -151,6 +160,7 @@ pub(crate) async fn handle_login(
                 player_training_points: None,
                 active_player_id: None,
                 pending_destination_ring_id: None,
+                channel: Mutex::new(cimmeria_mercury::channel::Channel::new(addr)),
             },
         );
         arcs
@@ -167,7 +177,7 @@ pub(crate) async fn handle_login(
         Arc::clone(socket),
         addr,
         key,
-        next_seq_arc,
+        next_seq_unreliable_arc,
         pending_acks_arc,
         last_recv_arc,
         cancelled_arc,
@@ -286,7 +296,8 @@ pub(crate) async fn handle_log_off(
         let acks: Vec<u32> = client.pending_acks.lock().unwrap().drain(..).collect();
         let seq = client
             .next_seq
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK;
         (acks, seq)
     };
 

@@ -152,7 +152,7 @@ Defined at [actions.rs:20-237](../../crates/content-engine/src/actions.rs#L20-L2
 
 End-to-end trace, using `OnItemUse(2893)` (Health Slappack) as the worked example.
 
-1. **Gameplay observes the event.** Player double-clicks the Slappack. `crate::cell::content::fire_item_use(...)` is called from [base_messages.rs:452](../../crates/services/src/cell/service/base_messages.rs#L452).
+1. **Gameplay observes the event.** Player double-clicks the Slappack. `crate::cell::content::fire_item_use(...)` is called from [base_messages/mod.rs](../../crates/services/src/cell/service/base_messages/mod.rs).
 2. **The bridge builds an `ExecutionContext`.** [event_dispatch.rs:393-415](../../crates/services/src/cell/content/event_dispatch.rs#L393-L415):
    - sets `item_id`, `instance_id`
    - calls `populate_mission_context` — writes every `mission_<id>_status`, `mission_<id>_step_<step>_status`, and `counter_<name>` from the source `CellEntity`

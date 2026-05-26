@@ -46,12 +46,15 @@ pub(crate) async fn handle_enable_entities(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Peek at pending world entry without consuming it: we only commit (take)
     // after the create-player send_to succeeds, so a transient send failure
-    // leaves login state intact for the next ENABLE_ENTITIES retry.
+    // leaves login state intact for the next ENABLE_ENTITIES retry. Cloning
+    // `pending_player_load_data` here so we can pre-warm the body model in
+    // the same packet. The cost (a few hundred bytes of inventory +
+    // abilities data clone) only fires once per world-entry.
     let pending = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         if let Some(c) = clients.get(&addr) {
             match (c.pending_player_entity_id, c.pending_world_entry.clone()) {
-                (Some(eid), Some(entry)) => Some((eid, entry)),
+                (Some(eid), Some(entry)) => Some((eid, entry, c.pending_player_load_data.clone())),
                 _ => None,
             }
         } else {
@@ -59,8 +62,8 @@ pub(crate) async fn handle_enable_entities(
         }
     };
 
-    if let Some((_eid, entry_info)) = pending {
-        // -- Create player step: CREATE_BASE_PLAYER + onClientMapLoad --
+    if let Some((_eid, entry_info, load_data)) = pending {
+        // -- Create player step: CREATE_BASE_PLAYER + appearance pre-warm + onClientMapLoad --
         // Send only the base entity and terrain load notification. The client
         // will load geometry and respond with `mapLoaded` (cell method index 25,
         // msg_id 0x99). The enter-world step (viewport + cell + position + entity data)
@@ -72,10 +75,11 @@ pub(crate) async fn handle_enable_entities(
             player_entity_id = entry_info.player_entity_id,
             space_id = entry_info.space_id,
             seq,
+            appearance_prewarm = load_data.is_some(),
             "Create player: sending CREATE_BASE_PLAYER + onClientMapLoad (waiting for mapLoaded)"
         );
 
-        let pkt = build_create_player(&key, seq, &acks, &entry_info);
+        let pkt = build_create_player(&key, seq, &acks, &entry_info, load_data.as_ref());
         if let Err(e) = socket.send_to(&pkt, addr).await {
             tracing::error!(
                 player_entity_id = entry_info.player_entity_id,
@@ -85,6 +89,14 @@ pub(crate) async fn handle_enable_entities(
             );
             return Err(e.into());
         }
+        // Register this reliable send with the per-session Channel's TX
+        // window so it retransmits if the ACK doesn't land.
+        super::super::helpers::shadow_register_reliable_send(
+            connected,
+            addr,
+            seq,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+        );
 
         // Send succeeded — now commit: take pending state and stage map_loaded data.
         {
@@ -137,6 +149,13 @@ pub(crate) async fn handle_enable_entities(
     let pkt = build_char_list(&key, seq, &acks, &characters, account_eid);
     tracing::trace!(%addr, len = pkt.len(), seq, hex = %super::super::helpers::to_hex(&pkt), "UDP_OUT char_list");
     socket.send_to(&pkt, addr).await?;
+    // Char list is a one-shot state delivery; retransmit on loss.
+    super::super::helpers::shadow_register_reliable_send(
+        connected,
+        addr,
+        seq,
+        cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+    );
 
     // Send succeeded -- mark char list as sent so we don't re-send on subsequent ENABLE_ENTITIES.
     {

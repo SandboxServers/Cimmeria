@@ -63,7 +63,7 @@ pub async fn flush_dirty_bandolier_ammo(
     }
 }
 
-pub(super) async fn handle_request_active_slot_change(
+pub(crate) async fn handle_request_active_slot_change(
     entity_id: u32,
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -135,6 +135,83 @@ pub(super) async fn handle_request_active_slot_change(
             None
         }
     };
+
+    // Swap-with-choreography case: when both the current and target
+    // slots hold weapons, play `Item_Unequip` first, then defer the
+    // actual slot change until the holster animation has played out.
+    // `pending_slot_swap_tick` re-invokes this handler with the
+    // target slot once the animation window elapses; the re-entry
+    // is gated by `pending_slot_swap_at.is_some()` so it skips this
+    // branch and runs the normal swap path.
+    //
+    // The choreography fires regardless of combat state. Swapping
+    // weapons mid-fight is supposed to cost real time — the
+    // animation duration plus the ability lockout (weapon attacks
+    // are rejected while `pending_slot_swap_at` is set; see
+    // `handle_use_ability`). Without that penalty, weapons would
+    // teleport in and out of the player's hands and the swap would
+    // be free, defeating the bandolier as a real loadout choice.
+    //
+    // Skipped when:
+    // - Already mid-choreography (re-entry from the tick)
+    // - Same slot (no-op or replayed packet)
+    // - Source slot empty (no weapon to holster)
+    // - Target slot empty (handled by the normal path's empty-slot
+    //   branch — Item_Unequip there is the right next step, not the
+    //   weapon-to-weapon choreography)
+    let needs_holster_first = match space_mgr.get_entity(entity_id) {
+        Some(e) => {
+            e.pending_slot_swap_at.is_none()
+                && e.active_bandolier_slot != slot_id
+                && e.bandolier_items.contains_key(&e.active_bandolier_slot)
+                && e.bandolier_items.contains_key(&slot_id)
+        }
+        None => false,
+    };
+    if needs_holster_first {
+        // Per-weapon holster duration: longarms (P90, AR, LMG) take
+        // longer to stow than sidearms (pistol). Using a single
+        // constant cuts the longarm animation off mid-flight and
+        // the new weapon's draw starts on top of the still-playing
+        // holster — the user's playtest glitch on P90→pistol.
+        let outgoing_item_id = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.bandolier_items.get(&e.active_bandolier_slot))
+            .map(|item| item.item_id);
+        let duration = outgoing_item_id
+            .and_then(|id| space_mgr.item_defs.get(&id))
+            .map(|d| d.holster_animation_duration)
+            .unwrap_or(crate::cell::service::ticks::HOLSTER_ANIMATION_DURATION);
+        if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+            e.pending_slot_swap_at = Some(std::time::Instant::now() + duration);
+            e.pending_slot_swap_target = Some(slot_id);
+        }
+        tracing::info!(
+            entity_id,
+            target_slot = slot_id,
+            outgoing_item_id,
+            duration_ms = duration.as_millis() as u64,
+            "requestActiveSlotChange: weapon→weapon swap, firing Item_Unequip + deferring slot change"
+        );
+        crate::cell::cell_methods::player::world::fire_item_sequence(
+            entity_id,
+            crate::cell::spawner::EVENT_ITEM_UNEQUIP,
+            tx,
+            space_mgr,
+        )
+        .await;
+        return;
+    }
+    // Re-entry from the tick: pending state was kept set so the
+    // choreography check above could short-circuit. Now that we're
+    // past the gate, clear it — the normal slot-change path below
+    // takes over.
+    if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+        if e.pending_slot_swap_at.is_some() {
+            e.pending_slot_swap_at = None;
+            e.pending_slot_swap_target = None;
+        }
+    }
 
     // Phase 1: capture the previous slot's pending-flush state
     // and the new slot's `cur_ammo_type` while we have a
@@ -277,6 +354,53 @@ pub(super) async fn handle_request_active_slot_change(
         space_mgr,
     )
     .await;
+
+    // Display the newly-active weapon + arm the OOC re-holster timer.
+    // Same mechanism as `UpdateBandolierItem` (initial equip): if the
+    // player is OOC, draw the weapon (so the wire `ComponentList`
+    // includes it) and stamp `combat_exit_at` so the holster timer
+    // re-holsters it after `OOC_HOLSTER_DELAY`. The base side's
+    // `active_slot_update` calls `refresh_player_appearance` after
+    // persisting the slot — by sending `RefreshAppearance` from here
+    // FIRST we update the base's cached `weapon_holstered`, so the
+    // base's subsequent refresh reads the correct (drawn) state.
+    //
+    // Three outcomes:
+    //
+    //  1. New slot has a weapon + OOC: draw it, fire `Item_Equip`,
+    //     arm OOC timer.
+    //  2. New slot has NO weapon (empty slot): refresh appearance so
+    //     the wire `ComponentList` reflects the empty slot (the old
+    //     weapon visual goes away), but do NOT fire `Item_Equip` —
+    //     there's nothing to equip. Don't arm the OOC timer either;
+    //     there's no weapon to re-holster. The base's subsequent
+    //     `refresh_player_appearance` from `active_slot_update` will
+    //     still re-emit the empty `ComponentList` from the persisted
+    //     bandolier_slot, so the visual change lands either way; we
+    //     skip the cell-side `request_appearance_refresh` to avoid
+    //     a redundant packet.
+    //  3. In-combat slot swap: weapon's already drawn, no state
+    //     changes needed.
+    let new_slot_has_weapon = new_ammo_type.is_some();
+    let draw_intent = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) if e.threatened_mobs.is_empty() && new_slot_has_weapon => {
+            e.set_weapon_holstered(false);
+            e.combat_exit_at = Some(std::time::Instant::now());
+            e.holster_animation_complete_at = None;
+            true
+        }
+        _ => false,
+    };
+    if draw_intent {
+        crate::cell::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
+        crate::cell::cell_methods::player::world::fire_item_sequence(
+            entity_id,
+            crate::cell::spawner::EVENT_ITEM_EQUIP,
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
 }
 
 pub(super) async fn handle_request_ammo_change(

@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use sqlx::PgPool;
 use tokio::net::UdpSocket;
 
-use super::super::super::super::helpers::send_to_witness;
+use super::super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::super::ConnectedClientState;
 use crate::mercury::{build_entity_method_packet, method_idx};
 
@@ -123,21 +123,16 @@ pub async fn send_full_inventory_update(
         item.serialize(&mut args);
     }
 
-    if let Err(e) = send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_UPDATE_ITEM, &args)
         },
     )
-    .await
-    {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-    }
+    .await;
 
     all_items.len()
 }
@@ -162,19 +157,14 @@ pub(super) async fn send_on_remove_item(
     let mut args = Vec::with_capacity(8);
     args.extend_from_slice(&1u32.to_le_bytes()); // ARRAY<INT32> count
     args.extend_from_slice(&item_id.to_le_bytes());
-    if let Err(e) = send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_REMOVE_ITEM, &args)
         },
     )
-    .await
-    {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-    }
+    .await;
 }

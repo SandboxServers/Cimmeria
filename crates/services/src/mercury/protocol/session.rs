@@ -10,6 +10,7 @@ use cimmeria_mercury::packet::FLAG_HAS_ACKS;
 use super::{
     encrypt_packet, BASEMSG_LOGGED_OFF, BASEMSG_REPLY_MESSAGE, BASEMSG_RESET_ENTITIES,
     BASEMSG_SET_GAME_TIME, BASEMSG_TICK_SYNC, BASEMSG_UPDATE_FREQUENCY_NOTIFICATION, REPLY_FLAGS,
+    REPLY_FLAGS_UNRELIABLE,
 };
 
 /// Build and encrypt the `BASEMSG_REPLY_MESSAGE` packet.
@@ -61,6 +62,40 @@ pub fn build_time_sync(key: &[u8; 32], seq_id: u32) -> Vec<u8> {
 }
 
 /// Build and encrypt a single `BASEMSG_TICK_SYNC` heartbeat packet.
+///
+/// **Unreliable, on the dedicated unreliable seq counter.** Tick sync
+/// rides the per-session `next_seq_unreliable` stream on
+/// `ConnectedClientState`, separate from the reliable counter that
+/// carries application packets. The SGW BigWorld client's recv-side
+/// `UnAckedHandler::queueAckForPacket` (`ghidra://SGW.exe@0x0158cba0`)
+/// only advances `inSeqAt` on reliable arrivals; unreliable packets go
+/// through a separate dedup path (`FUN_0158bb50`) that never touches
+/// `inSeqAt`. Because tickSync is on its own counter, it cannot consume
+/// slots in the reliable seq stream — so the client's reliable-stream
+/// expectation of contiguity (a lost reliable seq stalls all subsequent
+/// reliable delivery) is satisfied regardless of how many ticks fire.
+///
+/// Why not reliable: tickSync fires at 10 Hz. The world-entry burst sends
+/// ~27–30 reliable packets before the first ACK returns; any concurrent
+/// reliable tickSync emission during that window would push the in-flight
+/// count past the 32-slot TX-window cap and back-pressure downstream emits.
+/// Loss tolerance: a dropped tick is superseded by the next tick 100 ms
+/// later, on the next unreliable seq — the receiver's unreliable dedup
+/// window absorbs occasional gaps and the `gameTime` field self-corrects
+/// on the next successful arrival.
+///
+/// **ACK piggybacking on an unreliable packet is intentional and safe.**
+/// ACKs are idempotent on the receiver (its cumulative-ack bitmap absorbs
+/// duplicates), and if a tickSync carrying ACKs is lost, the next
+/// tickSync 100 ms later carries any still-pending ACKs (they re-queue
+/// on the server until the round-trip clears them). Meanwhile the
+/// retransmit driver keeps re-sending the original reliable packet if
+/// its RTO fires before any ACK arrives, so the un-acked sender doesn't
+/// stall on a lost tickSync. The unreliable channel is fine for ACK
+/// transport precisely because ACKs are self-correcting on both sides.
+///
+/// See `spec.protocol.mercury-wire-format` §1.7 + the disassembly of
+/// `queueAckForPacket` for the receiver model.
 pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u32]) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
@@ -71,7 +106,7 @@ pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u
     body.extend_from_slice(&tick.to_le_bytes());
     body.extend_from_slice(&TICK_RATE.to_le_bytes());
 
-    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let flags = REPLY_FLAGS_UNRELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
     encrypt_packet(&plaintext, key)
 }

@@ -262,3 +262,223 @@ fn refill_active_slot_unequipped_returns_none() {
     let result = entity.refill_active_slot();
     assert_eq!(result, None);
 }
+
+// ── Holster / appearance-components tests ──────────────────────────────
+//
+// These pin the wire-format contract: `BeingAppearance`'s
+// `ComponentList` is what the SGW client picks the holster pose from
+// (`CompositedAppearanceProxy::ApplyToPawn` at
+// `ghidra://SGW.exe@0x00ec0840` — keys on whichever weapon-shaped entry
+// it finds in the list, defaults to `WEAP_Melee = 4` when none), not
+// any bit of `bStateField`. The receiver-side dispatch
+// `GameBeing_OnStateFieldUpdate` at `ghidra://SGW.exe@0x00e01c90`
+// confirms it tests only bits 0-7. So the entire holster mechanism on
+// the server side reduces to "do or don't include `weapon_visual` in
+// the `appearance_components()` output."
+
+#[test]
+fn appearance_components_no_weapon_is_components_unchanged() {
+    let mut entity = make_entity();
+    entity.components = vec!["torso".into(), "head".into(), "boots".into()];
+    entity.weapon_visual = None;
+
+    // Holstered or not, with no weapon there's nothing to filter.
+    entity.weapon_holstered = true;
+    assert_eq!(entity.appearance_components(), entity.components);
+
+    entity.weapon_holstered = false;
+    assert_eq!(entity.appearance_components(), entity.components);
+}
+
+#[test]
+fn appearance_components_holstered_filters_weapon_visual() {
+    let mut entity = make_entity();
+    entity.components = vec![
+        "torso".into(),
+        "pistol".into(), // the weapon
+        "head".into(),
+    ];
+    entity.weapon_visual = Some("pistol".into());
+    entity.weapon_holstered = true;
+
+    let wire = entity.appearance_components();
+    assert!(
+        !wire.contains(&"pistol".to_string()),
+        "weapon visual must be filtered out when holstered"
+    );
+    assert!(wire.contains(&"torso".to_string()));
+    assert!(wire.contains(&"head".to_string()));
+    assert_eq!(wire.len(), 2);
+}
+
+#[test]
+fn appearance_components_drawn_includes_weapon_visual() {
+    let mut entity = make_entity();
+    entity.components = vec!["torso".into(), "pistol".into(), "head".into()];
+    entity.weapon_visual = Some("pistol".into());
+    entity.weapon_holstered = false;
+
+    let wire = entity.appearance_components();
+    assert_eq!(
+        wire, entity.components,
+        "weapon visual must be present in the wire ComponentList when drawn"
+    );
+}
+
+#[test]
+fn set_weapon_holstered_signals_rebroadcast_only_when_relevant() {
+    let mut entity = make_entity();
+    entity.weapon_visual = Some("pistol".into());
+    entity.weapon_holstered = false;
+
+    // Real state change with a weapon present — caller should rebroadcast.
+    assert!(
+        entity.set_weapon_holstered(true),
+        "holster transition with weapon visual present must signal a rebroadcast"
+    );
+    assert!(entity.weapon_holstered);
+
+    // No-op call (already in the requested state).
+    assert!(
+        !entity.set_weapon_holstered(true),
+        "no-op call must not request a rebroadcast"
+    );
+
+    // Toggle back — another real transition.
+    assert!(entity.set_weapon_holstered(false));
+    assert!(!entity.weapon_holstered);
+}
+
+#[test]
+fn sync_holster_to_combat_inverts_combat_flag() {
+    // The whole point of Phase 2: the entity's `weapon_holstered`
+    // is the inverse of "in combat." Pin it so a future change to the
+    // policy is a visible test-level edit, not a silent regression
+    // (`enter_player_combat` and `exit_player_combat` both rely on this).
+    let mut entity = make_entity();
+    entity.weapon_visual = Some("pistol".into());
+    entity.weapon_holstered = true;
+
+    // Entering combat draws the weapon.
+    assert!(
+        entity.sync_holster_to_combat(true),
+        "in_combat=true must transition holster=false and signal rebroadcast"
+    );
+    assert!(!entity.weapon_holstered, "in combat ⇒ weapon drawn");
+
+    // Leaving combat holsters the weapon.
+    assert!(
+        entity.sync_holster_to_combat(false),
+        "in_combat=false must transition holster=true and signal rebroadcast"
+    );
+    assert!(entity.weapon_holstered, "out of combat ⇒ weapon holstered");
+
+    // Calling twice in a row is a no-op (no rebroadcast needed).
+    assert!(
+        !entity.sync_holster_to_combat(false),
+        "repeated same-state sync must NOT request rebroadcast"
+    );
+}
+
+#[test]
+fn set_weapon_holstered_signals_rebroadcast_even_without_cell_side_weapon_visual() {
+    // Regression guard for a bug introduced in Phase 3: the
+    // cell entity's `weapon_visual` is `None` in production (only the
+    // base side populates it from `PlayerLoadData`), so the previous
+    // implementation used to gate the rebroadcast signal on
+    // `weapon_visual.is_some()` and silently dropped every holster
+    // transition. The base side has its own change-detection on the
+    // `RefreshAppearance` path, so the caller-side gate was a footgun.
+    //
+    // Bug shape: a refactor re-adds the `weapon_visual.is_some()` gate
+    // and the holster_timer_tick silently does nothing in production.
+    let mut entity = make_entity();
+    entity.weapon_visual = None;
+    entity.weapon_holstered = false;
+
+    assert!(
+        entity.set_weapon_holstered(true),
+        "state change must signal rebroadcast regardless of cell-side weapon_visual — \
+         the base side knows the real weapon visual via PlayerLoadData",
+    );
+    assert!(entity.weapon_holstered, "and the bool flips");
+}
+
+#[test]
+fn appearance_components_filters_all_duplicate_weapon_entries() {
+    // Defensive: if `components` somehow contains the weapon visual
+    // multiple times (a stale row, a content-author mistake, an
+    // appearance-merge bug), the holster filter must remove every
+    // occurrence — leaving even one would leak the weapon visual to
+    // the client and re-arm the pose. The filter is `iter().filter()`,
+    // which is total over the input, so this is pinning behavior the
+    // current implementation already has.
+    let mut entity = make_entity();
+    entity.components = vec![
+        "torso".into(),
+        "pistol".into(),
+        "pistol".into(), // duplicate
+        "head".into(),
+        "pistol".into(), // another duplicate, out of order
+    ];
+    entity.weapon_visual = Some("pistol".into());
+    entity.weapon_holstered = true;
+
+    let wire = entity.appearance_components();
+    assert!(
+        !wire.iter().any(|c| c == "pistol"),
+        "every occurrence of the weapon visual must be filtered out — \
+         leaving any would re-arm the pose on the client"
+    );
+    assert_eq!(wire, vec!["torso".to_string(), "head".to_string()]);
+}
+
+#[test]
+fn appearance_components_follows_weapon_swap_while_holstered() {
+    // Swap the active bandolier slot while holstered: the new weapon
+    // visual must also be filtered, and the old one must NOT be
+    // (it's no longer the active weapon — if it ever ends up in
+    // `components` it should ride to the wire as a normal entry).
+    let mut entity = make_entity();
+    entity.components = vec![
+        "torso".into(),
+        "pistol".into(),
+        "rifle".into(), // a second weapon-shaped entry
+        "head".into(),
+    ];
+    entity.weapon_visual = Some("pistol".into());
+    entity.weapon_holstered = true;
+
+    let pre_swap = entity.appearance_components();
+    assert!(!pre_swap.contains(&"pistol".to_string()));
+    assert!(pre_swap.contains(&"rifle".to_string()));
+
+    // Simulate a bandolier-slot swap: a different weapon is active now.
+    entity.weapon_visual = Some("rifle".into());
+
+    let post_swap = entity.appearance_components();
+    assert!(
+        !post_swap.contains(&"rifle".to_string()),
+        "after swap, the new active weapon must be filtered — \
+         the holster filter follows weapon_visual, not the first \
+         weapon-shaped entry in the list"
+    );
+    assert!(
+        post_swap.contains(&"pistol".to_string()),
+        "the previously-active weapon is no longer the active weapon, \
+         so it must NOT be filtered — it rides the wire like any other component"
+    );
+}
+
+#[test]
+fn new_entity_defaults_to_holstered_with_no_weapon() {
+    // Spawn invariant: a fresh entity has no weapon and is "holstered"
+    // by default. When a player loads in with a populated active
+    // bandolier slot, `weapon_visual` gets set to the weapon's visual
+    // component and `weapon_holstered = true` keeps it out of the wire
+    // ComponentList until a fire/reload/explicit-draw event flips it.
+    let entity = make_entity();
+    assert_eq!(entity.weapon_visual, None);
+    assert!(entity.weapon_holstered);
+    assert_eq!(entity.appearance_components(), entity.components);
+}

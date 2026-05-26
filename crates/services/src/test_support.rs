@@ -137,6 +137,7 @@ pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
         pending_player_entity_id: None,
         player_entity_id: None,
         next_seq: Arc::new(AtomicU32::new(0)),
+        next_seq_unreliable: Arc::new(AtomicU32::new(0)),
         pending_acks: Arc::new(Mutex::new(Vec::new())),
         last_recv: Arc::new(Mutex::new(Instant::now())),
         account_entity_id: 0,
@@ -147,7 +148,9 @@ pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
         pending_client_ready: None,
         cached_appearance_args: None,
         cached_tint_args: None,
+        weapon_holstered: true,
         cancelled: Arc::new(AtomicBool::new(false)),
+        cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
         player_name: None,
         player_level: None,
         player_archetype: None,
@@ -156,5 +159,8 @@ pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
         player_training_points: None,
         active_player_id: None,
         pending_destination_ring_id: None,
+        channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
+            "127.0.0.1:9999".parse().unwrap(),
+        )),
     }
 }

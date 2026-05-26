@@ -110,6 +110,10 @@ async fn consume_ammo_writes_ammoslot_stat_and_marks_dirty() {
     if let Some(e) = mgr.get_entity_mut(1) {
         e.is_player = true;
         e.player_id = Some(100);
+        // Weapon already drawn so the attack-while-holstered queue
+        // doesn't intercept this test (which is about ammo
+        // bookkeeping, not the unholster choreography).
+        e.weapon_holstered = false;
         e.abilities.add_ability(ability_id);
         e.bandolier_items.insert(
             0,

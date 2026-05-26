@@ -33,6 +33,7 @@ fn stub_pending_ready() -> PendingClientReadyInfo {
         world_name: "Stale".to_string(),
         appearance_args: vec![0xAB],
         tint_args: vec![0xCD],
+        first_login: 0,
     }
 }
 
@@ -47,6 +48,7 @@ fn make_state() -> ConnectedClientState {
         pending_player_entity_id: Some(42),
         player_entity_id: Some(42),
         next_seq: Arc::new(AtomicU32::new(10)),
+        next_seq_unreliable: Arc::new(AtomicU32::new(0)),
         pending_acks: Arc::new(Mutex::new(Vec::new())),
         last_recv: Arc::new(Mutex::new(Instant::now())),
         account_entity_id: 1,
@@ -60,7 +62,9 @@ fn make_state() -> ConnectedClientState {
         pending_client_ready: Some(stub_pending_ready()),
         cached_appearance_args: None,
         cached_tint_args: None,
+        weapon_holstered: true,
         cancelled: Arc::new(AtomicBool::new(false)),
+        cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
         player_name: Some("Tester".to_string()),
         player_level: Some(5),
         player_archetype: Some(1),
@@ -69,6 +73,9 @@ fn make_state() -> ConnectedClientState {
         player_training_points: Some(0),
         active_player_id: Some(7),
         pending_destination_ring_id: None,
+        channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
+            "127.0.0.1:9999".parse().unwrap(),
+        )),
     }
 }
 

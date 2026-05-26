@@ -25,7 +25,7 @@ common ──┬──► mercury ──► entity ──► game ────�
 | `admin-api` | `cimmeria-admin-api` | REST API for server administration |
 | `supervisor` | `cimmeria-supervisor` | Process supervision and service lifecycle |
 | `server` | `cimmeria-server` | **Binary entry point.** `cargo run -p cimmeria-server` |
-| `launcher` | `sgw-launcher` | SGW game launcher (separate binary) |
+| `launcher` | `sgw-launcher` | Player-facing game launcher. egui native window, installs from a seed + patch manifest on Azure Blob, launches `SGW.exe` or the Atera debug bat, uploads debug logs back to storage. See [docs/client/sgw-launcher.md](../docs/client/sgw-launcher.md). |
 | `upk` | `cimmeria-upk` | UPK (Unreal Package) file parser |
 | `upk-objects` | `cimmeria-upk-objects` | UPK object type definitions |
 
@@ -52,7 +52,7 @@ See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
 
 ## Testing
 
-The workspace currently carries **1071 `#[test]` / `#[tokio::test]` cases across 166 files**, of which 110 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+The workspace currently carries **1351 `#[test]` / `#[tokio::test]` cases across 215 files**, of which 151 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
 
 ```bash
 # Unit + non-DB integration (covers ~961 tests):

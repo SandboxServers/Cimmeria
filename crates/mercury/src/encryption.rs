@@ -17,7 +17,7 @@
 
 use aes::Aes256;
 use cbc::{Decryptor, Encryptor};
-use cipher::{BlockDecryptMut, BlockEncryptMut, KeyIvInit};
+use cipher::{BlockModeDecrypt, BlockModeEncrypt, KeyIvInit};
 use hmac::{Hmac, Mac};
 use md5::Md5;
 
@@ -91,14 +91,14 @@ impl MercuryEncryption {
         // PKCS7 pad the plaintext to a multiple of AES_BLOCK_SIZE.
         let padded = pkcs7_pad(plaintext);
 
-        // Encrypt with AES-256-CBC.
-        let encryptor = Aes256CbcEnc::new_from_slices(&self.aes_key, &self.iv)
-            .map_err(|e| CimmeriaError::Encryption(format!("AES init failed: {e}")))?;
+        // Encrypt with AES-256-CBC. Key/IV are fixed-size arrays, so the
+        // `KeyIvInit::new` constructor is infallible — no Result to unwrap.
+        let encryptor = Aes256CbcEnc::new(&self.aes_key.into(), &self.iv.into());
 
         let mut buf = padded;
         let n = buf.len();
         encryptor
-            .encrypt_padded_mut::<cipher::block_padding::NoPadding>(&mut buf, n)
+            .encrypt_padded::<cipher::block_padding::NoPadding>(&mut buf, n)
             .map_err(|e| CimmeriaError::Encryption(format!("AES encrypt failed: {e}")))?;
         let ciphertext = buf;
 
@@ -160,13 +160,12 @@ impl MercuryEncryption {
             CimmeriaError::Encryption("HMAC-MD5 verification failed".into())
         })?;
 
-        // Decrypt with AES-256-CBC.
-        let decryptor = Aes256CbcDec::new_from_slices(&self.aes_key, &self.iv)
-            .map_err(|e| CimmeriaError::Encryption(format!("AES init failed: {e}")))?;
+        // Decrypt with AES-256-CBC. Fixed-size key/IV make `new` infallible.
+        let decryptor = Aes256CbcDec::new(&self.aes_key.into(), &self.iv.into());
 
         let mut buf = ciphertext.to_vec();
         decryptor
-            .decrypt_padded_mut::<cipher::block_padding::NoPadding>(&mut buf)
+            .decrypt_padded::<cipher::block_padding::NoPadding>(&mut buf)
             .map_err(|e| CimmeriaError::Encryption(format!("AES decrypt failed: {e}")))?;
 
         // Strip PKCS7 padding.

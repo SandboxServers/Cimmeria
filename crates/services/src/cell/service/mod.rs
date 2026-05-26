@@ -21,7 +21,7 @@ mod base_messages;
 mod message_loop;
 mod npc_ai;
 mod startup;
-mod ticks;
+pub(crate) mod ticks;
 
 #[cfg(test)]
 mod tests;

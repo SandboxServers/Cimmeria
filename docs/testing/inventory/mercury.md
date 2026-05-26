@@ -2,14 +2,14 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-05-04  
-> **Total tests**: 97  
+> **Last updated**: 2026-05-21  
+> **Total tests**: 101  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
 Mercury reliable UDP protocol plus AES-256-CBC / HMAC-MD5 encryption. Includes packet framing, sequencing, and the byte-level codec that the BigWorld client must accept verbatim.
 
-## All tests (97)
+## All tests (101)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
@@ -37,9 +37,9 @@ Mercury reliable UDP protocol plus AES-256-CBC / HMAC-MD5 encryption. Includes p
 | [reassemble_parsed_passes_through_non_fragmented](../../../crates/mercury/src/channel/tests.rs#L306) | unit | Channel | 2026-05-03 | Asserts equality on `body.as_ref()` |  |
 | [reassemble_parsed_completes_3_fragment_bundle](../../../crates/mercury/src/channel/tests.rs#L320) | unit | Channel | 2026-05-03 | Asserts on `ch.reassemble_parsed(&f0).unwrap().is_none()` |  |
 | [reassemble_parsed_bumps_last_received](../../../crates/mercury/src/channel/tests.rs#L336) | unit | Channel | 2026-05-03 | Reassemble parsed bumps last received |  |
-| [reassemble_parsed_isolates_per_channel_state](../../../crates/mercury/src/channel/tests.rs#L360) | unit | Channel | 2026-05-03 | Reassemble parsed isolates per channel state |  |
-| [cleanup_stale_fragments_drops_partial_bundles](../../../crates/mercury/src/channel/tests.rs#L389) | unit | Channel | 2026-05-03 | Asserts on `ch.reassemble_parsed(&f0).unwrap().is_none()` |  |
-| [sliding_window_rejects_overflow](../../../crates/mercury/src/channel/tests.rs#L411) | unit | Channel | 2026-05-03 | Asserts equality on `ch.tx_window.len()` |  |
+| [reassemble_parsed_isolates_per_channel_state](../../../crates/mercury/src/channel/tests.rs#L614) | unit | Channel | 2026-05-03 | Reassemble parsed isolates per channel state |  |
+| [channel_keeps_orphan_partial_reassembly_indefinitely](../../../crates/mercury/src/channel/tests.rs#L682) | unit | Channel | 2026-05-17 | Inverse contract of the deleted `cleanup_stale_fragments_drops_partial_bundles` — SGW client has no periodic reassembly sweep (spec §2.4.1 R13); orphan partials must persist until channel teardown |  |
+| [sliding_window_rejects_overflow](../../../crates/mercury/src/channel/tests.rs#L713) | unit | Channel | 2026-05-03 | Asserts equality on `ch.tx_window.len()` |  |
 | [round_trip_plaintext](../../../crates/mercury/src/codec.rs#L121) | unit | Codec | 2026-03-03 | Round trip plaintext |  |
 | [round_trip_encrypted](../../../crates/mercury/src/codec.rs#L142) | unit | Codec | 2026-03-03 | Round trip encrypted |  |
 | [empty_body_round_trip](../../../crates/mercury/src/codec.rs#L164) | unit | Codec | 2026-03-03 | Asserts on `decoded.body.is_empty()` |  |
@@ -68,7 +68,7 @@ Mercury reliable UDP protocol plus AES-256-CBC / HMAC-MD5 encryption. Includes p
 | [tick_collects_retransmits_per_addr](../../../crates/mercury/src/nub.rs#L284) | unit | Nub | 2026-05-03 | Tick collects retransmits per addr |  |
 | [tick_does_not_reap_channel_on_same_tick_max_retries_hit](../../../crates/mercury/src/nub.rs#L308) | unit | Nub | 2026-05-03 | Tick does not reap channel on same tick max retries hit |  |
 | [tick_reaps_channel_after_max_retries_plus_one_timeout](../../../crates/mercury/src/nub.rs#L340) | unit | Nub | 2026-05-03 | Asserts equality on `actions.dead_channels.len()` |  |
-| [tick_sweeps_stale_fragment_reassembly](../../../crates/mercury/src/nub.rs#L357) | unit | Nub | 2026-05-03 | Tick sweeps stale fragment reassembly |  |
+| [tick_does_not_touch_fragment_reassembly_state](../../../crates/mercury/src/nub.rs#L378) | unit | Nub | 2026-05-17 | Tick must NOT touch in-progress reassembly state — pins the inverse of the deleted `tick_sweeps_stale_fragment_reassembly`; orphan partials persist across ticks |  |
 | [tick_prunes_silent_peer_and_does_not_emit_for_it](../../../crates/mercury/src/nub.rs#L405) | unit | Nub | 2026-05-03 | Tick prunes silent peer and does not emit for it |  |
 | [parse_baseapp_login_packet](../../../crates/mercury/src/packet.rs#L501) | unit | Packet | 2026-03-03 | Parse baseapp login packet |  |
 | [build_and_parse_reply_packet](../../../crates/mercury/src/packet.rs#L532) | unit | Packet | 2026-03-03 | Asserts equality on `pkt.flags` |  |
@@ -94,19 +94,23 @@ Mercury reliable UDP protocol plus AES-256-CBC / HMAC-MD5 encryption. Includes p
 | [empty_payload](../../../crates/mercury/src/unified.rs#L173) | unit | Unified | 2026-03-03 | Asserts equality on `decoded.message_id` |  |
 | [zero_length_frame_errors](../../../crates/mercury/src/unified.rs#L186) | unit | Unified | 2026-03-03 | Asserts on `matches!(err, CimmeriaError::Protocol(_))` |  |
 | [oversized_frame_errors](../../../crates/mercury/src/unified.rs#L196) | unit | Unified | 2026-03-03 | Asserts on `matches!(err, CimmeriaError::Protocol(_))` |  |
-| [single_fragment_completes_immediately](../../../crates/mercury/src/unpacker.rs#L270) | unit | Unpacker | 2026-03-03 | Asserts equality on `result.unwrap().as_ref()` |  |
-| [multi_fragment_assembly](../../../crates/mercury/src/unpacker.rs#L280) | unit | Unpacker | 2026-03-03 | Asserts on `r.is_none()` |  |
-| [invalid_frag_index](../../../crates/mercury/src/unpacker.rs#L304) | unit | Unpacker | 2026-03-03 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
-| [zero_total_frags](../../../crates/mercury/src/unpacker.rs#L313) | unit | Unpacker | 2026-03-03 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
-| [process_parsed_passes_through_non_fragmented](../../../crates/mercury/src/unpacker.rs#L338) | unit | Unpacker | 2026-05-02 | Asserts equality on `body.as_ref()` |  |
-| [process_parsed_reassembles_in_order_3_fragment_bundle](../../../crates/mercury/src/unpacker.rs#L357) | unit | Unpacker | 2026-05-02 | Asserts on `asm.process_parsed(&f0).unwrap().is_none()` |  |
-| [process_parsed_reassembles_out_of_order](../../../crates/mercury/src/unpacker.rs#L376) | unit | Unpacker | 2026-05-02 | Asserts on `asm.process_parsed(&f2).unwrap().is_none()` |  |
-| [process_parsed_handles_duplicate_fragments](../../../crates/mercury/src/unpacker.rs#L395) | unit | Unpacker | 2026-05-02 | Asserts on `asm.process_parsed(&f0).unwrap().is_none()` |  |
-| [process_parsed_times_out_incomplete_set](../../../crates/mercury/src/unpacker.rs#L414) | unit | Unpacker | 2026-05-02 | Asserts on `asm.process_parsed(&f0).unwrap().is_none()` |  |
-| [process_parsed_rejects_fragment_count_above_max](../../../crates/mercury/src/unpacker.rs#L427) | unit | Unpacker | 2026-05-02 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
-| [process_parsed_rejects_seq_outside_range](../../../crates/mercury/src/unpacker.rs#L445) | unit | Unpacker | 2026-05-02 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
-| [process_parsed_handles_u32_max_range_without_overflow](../../../crates/mercury/src/unpacker.rs#L458) | unit | Unpacker | 2026-05-02 | Process parsed handles u32 max range without overflow |  |
-| [process_parsed_rejects_inverted_range](../../../crates/mercury/src/unpacker.rs#L486) | unit | Unpacker | 2026-05-02 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
-| [cleanup_stale_entries](../../../crates/mercury/src/unpacker.rs#L497) | unit | Unpacker | 2026-03-03 | Asserts equality on `asm.pending_count()` |  |
-| [add_fragment_rejects_conflicting_total_fragments](../../../crates/mercury/src/unpacker.rs#L515) | unit | Unpacker | 2026-05-04 | Two fragments arriving for the same `first_seq` must agree on `total_frags` |  |
-| [cleanup_stale_reaps_only_old_entries_keeps_fresh_ones](../../../crates/mercury/src/unpacker.rs#L539) | unit | Unpacker | 2026-05-04 | `cleanup_stale` removes ONLY entries older than `max_age`, not the whole map |  |
+| [single_fragment_completes_immediately](../../../crates/mercury/src/unpacker.rs#L385) | unit | Unpacker | 2026-03-03 | Asserts equality on `result.unwrap().as_ref()` |  |
+| [multi_fragment_assembly](../../../crates/mercury/src/unpacker.rs#L395) | unit | Unpacker | 2026-03-03 | Asserts on `r.is_none()` |  |
+| [invalid_frag_index](../../../crates/mercury/src/unpacker.rs#L419) | unit | Unpacker | 2026-03-03 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
+| [zero_total_frags](../../../crates/mercury/src/unpacker.rs#L428) | unit | Unpacker | 2026-03-03 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
+| [process_parsed_passes_through_non_fragmented](../../../crates/mercury/src/unpacker.rs#L453) | unit | Unpacker | 2026-05-02 | Asserts equality on `body.as_ref()` |  |
+| [process_parsed_reassembles_in_order_3_fragment_bundle](../../../crates/mercury/src/unpacker.rs#L472) | unit | Unpacker | 2026-05-02 | Asserts on `asm.process_parsed(&f0).unwrap().is_none()` |  |
+| [process_parsed_reassembles_out_of_order](../../../crates/mercury/src/unpacker.rs#L491) | unit | Unpacker | 2026-05-02 | Asserts on `asm.process_parsed(&f2).unwrap().is_none()` |  |
+| [process_parsed_handles_duplicate_fragments](../../../crates/mercury/src/unpacker.rs#L510) | unit | Unpacker | 2026-05-02 | Asserts on `asm.process_parsed(&f0).unwrap().is_none()` |  |
+| [process_parsed_rejects_fragment_count_above_max](../../../crates/mercury/src/unpacker.rs#L529) | unit | Unpacker | 2026-05-02 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
+| [process_parsed_rejects_seq_outside_range](../../../crates/mercury/src/unpacker.rs#L547) | unit | Unpacker | 2026-05-02 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
+| [process_parsed_handles_u32_max_range_without_overflow](../../../crates/mercury/src/unpacker.rs#L562) | unit | Unpacker | 2026-05-02 | Pathological begin=0, end=u32::MAX would overflow `(end - begin + 1)` in u32 — modular cap rejects it |  |
+| [process_parsed_rejects_bogus_range_via_max_fragments_cap](../../../crates/mercury/src/unpacker.rs#L590) | unit | Unpacker | 2026-05-21 | Non-wrap garbage range (e.g. begin=10, end=4) implies a ~268M-fragment wrap under modular arithmetic — rejected via the MAX_FRAGMENTS cap that `add_fragment` already enforces |  |
+| [process_parsed_accepts_28_bit_wrapped_range](../../../crates/mercury/src/unpacker.rs#L613) | unit | Unpacker | 2026-05-21 | Regression guard: a wire-arriving bundle whose range straddles the 28-bit sequence-space wrap MUST be accepted (pre-fix the `frag_end < frag_begin` gate dropped every wrapped bundle before reaching the modular helpers) |  |
+| [add_fragment_rejects_conflicting_total_fragments](../../../crates/mercury/src/unpacker.rs#L643) | unit | Unpacker | 2026-05-04 | Two fragments arriving for the same `first_seq` must agree on `total_frags` |  |
+| [arrival_of_overlapping_bundle_evicts_in_progress_reassembly](../../../crates/mercury/src/unpacker.rs#L668) | unit | Unpacker | 2026-05-17 | Arrival-triggered eviction (spec §2.4.1 R13 / §2.10 S6): a new fragmented bundle whose sequence range overlaps an in-progress reassembly with an older `first_seq` evicts the in-progress one |  |
+| [arrival_of_non_overlapping_bundle_leaves_in_progress_alone](../../../crates/mercury/src/unpacker.rs#L707) | unit | Unpacker | 2026-05-17 | Non-overlapping bundles coexist — eviction is "older overlapping abandoned" signal only, not "any new fragment resets everything" |  |
+| [orphan_partial_reassembly_persists_indefinitely](../../../crates/mercury/src/unpacker.rs#L724) | unit | Unpacker | 2026-05-17 | Inverse of the deleted `process_parsed_times_out_incomplete_set` — an in-progress reassembly that never sees its remaining fragments must persist (no periodic sweep) |  |
+| [late_fragment_from_evicted_older_bundle_does_not_displace_newer](../../../crates/mercury/src/unpacker.rs#L747) | unit | Unpacker | 2026-05-17 | Eviction is asymmetric: a late straggler from an already-evicted older bundle must NOT displace the newer bundle that took over |  |
+| [incoming_overlapping_multiple_with_any_newer_existing_drops_stale](../../../crates/mercury/src/unpacker.rs#L801) | unit | Unpacker | 2026-05-17 | Incoming bundle whose range straddles multiple existing bundles must be dropped as stale if ANY existing is strictly newer |  |
+| [overlap_detection_handles_28_bit_sequence_wraparound](../../../crates/mercury/src/unpacker.rs#L836) | unit | Unpacker | 2026-05-17 | Wraparound case for the modular overlap test — ranges that straddle the 28-bit sequence-space boundary must still detect overlap correctly |  |

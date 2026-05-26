@@ -1,14 +1,30 @@
 //! `handle_use_inventory_item` — fire the cell-side `OnItemUse` event for
 //! an inventory instance the player owns. Does not consume the stack;
 //! per-item consumption is the chain's responsibility via `Action::RemoveItem`.
+//!
+//! As of the right-click-to-equip work: weapon instances (rows with
+//! `clip_size IS NOT NULL` in `resources.items`) bypass the `OnItemUse`
+//! event and route to the move path instead — `useItem` on a weapon means
+//! "equip" (main bag → bandolier) or "unequip" (bandolier → main bag)
+//! depending on the source container.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 
 use sqlx::PgPool;
+use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
+use super::super::move_::handle_move_inventory_item;
 use crate::base::outbox::{self, CellOutboxPayload};
+use crate::base::resources::bag_max_slots;
+use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
+
+/// Container ids that this auto-equip router understands.
+const CONTAINER_MAIN: i32 = 1;
+const CONTAINER_BANDOLIER: i32 = 3;
 
 /// Resolve an inventory instance's design id and fire the cell-side
 /// content-engine `OnItemUse` event. **Does not consume the item.**
@@ -46,6 +62,9 @@ pub async fn handle_use_inventory_item(
     target_id: i32,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let pool = match db_pool {
         Some(p) => p,
@@ -55,19 +74,31 @@ pub async fn handle_use_inventory_item(
         }
     };
 
-    // Read-only ownership lookup. No FOR UPDATE — we don't mutate. The
-    // simple SELECT also avoids the per-call transaction overhead the
-    // pre-#95 consume-on-use code paid.
-    let type_id: i32 = match sqlx::query_scalar::<_, i32>(
-        "SELECT type_id FROM sgw_inventory \
-         WHERE character_id = $1 AND item_id = $2 LIMIT 1",
+    // Resolve the inventory instance — type id, current location, and
+    // whether the resource row marks it as a weapon (clip_size IS NOT
+    // NULL). The single query keeps us at one DB round-trip for the
+    // common "is this a weapon?" check that gates the equip/unequip
+    // routing below.
+    #[derive(sqlx::FromRow)]
+    struct InstanceRow {
+        type_id: i32,
+        container_id: i32,
+        is_weapon: bool,
+    }
+    let row: InstanceRow = match sqlx::query_as::<_, InstanceRow>(
+        "SELECT inv.type_id, inv.container_id, \
+                (ri.clip_size IS NOT NULL) AS is_weapon \
+         FROM sgw_inventory inv \
+         JOIN resources.items ri ON ri.item_id = inv.type_id \
+         WHERE inv.character_id = $1 AND inv.item_id = $2 \
+         LIMIT 1",
     )
     .bind(player_id)
     .bind(item_id)
     .fetch_optional(pool.as_ref())
     .await
     {
-        Ok(Some(tid)) => tid,
+        Ok(Some(r)) => r,
         Ok(None) => {
             tracing::warn!(
                 player_id, item_id,
@@ -80,6 +111,79 @@ pub async fn handle_use_inventory_item(
             return;
         }
     };
+    let type_id = row.type_id;
+
+    // Right-click auto-equip / auto-unequip: weapons bypass
+    // the `OnItemUse` event entirely and route to the move path
+    // instead. Direction is keyed off `container_id`:
+    //
+    // - Bandolier (3) → Main (1): unequip back to first empty bag slot
+    // - Main (1)     → Bandolier (3): equip to first empty bandolier
+    //   slot, or replace the active slot if all 4 are full
+    //
+    // Other source containers (equipment slots, mission bag, etc.)
+    // fall through to the normal `OnItemUse` event — auto-equip only
+    // makes sense between the inventory↔bandolier pair.
+    if row.is_weapon
+        && (row.container_id == CONTAINER_BANDOLIER || row.container_id == CONTAINER_MAIN)
+    {
+        let target =
+            match resolve_auto_equip_target(pool.as_ref(), player_id, row.container_id).await {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::error!(
+                        player_id,
+                        item_id,
+                        type_id,
+                        source_container = row.container_id,
+                        "UseInventoryItem: auto-equip target resolve failed: {e}"
+                    );
+                    return;
+                }
+            };
+        let (target_container, target_slot) = match target {
+            Some(t) => t,
+            None => {
+                // Main-bag full: nowhere to put the unequipped weapon.
+                // The user-visible failure mode is silent rejection —
+                // we don't have a wire channel for "bag full" feedback
+                // beyond the move handler's existing reject paths, so
+                // log loudly server-side and let the player notice the
+                // weapon is still equipped.
+                tracing::warn!(
+                    player_id, item_id, type_id,
+                    source_container = row.container_id,
+                    "UseInventoryItem: no destination slot for auto-equip/unequip — request ignored"
+                );
+                return;
+            }
+        };
+        tracing::info!(
+            entity_id,
+            player_id,
+            item_id,
+            type_id,
+            source_container = row.container_id,
+            target_container,
+            target_slot,
+            "UseInventoryItem: routing weapon to move handler (auto-equip/unequip)"
+        );
+        handle_move_inventory_item(
+            entity_id,
+            player_id,
+            item_id,
+            target_container,
+            target_slot,
+            1, // quantity — weapons are stack=1
+            db_pool,
+            cell_tx,
+            socket,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+        return;
+    }
 
     tracing::info!(
         entity_id,
@@ -122,5 +226,69 @@ pub async fn handle_use_inventory_item(
             outbox_id,
             "UseInventoryItem: no cell channel; row left for drainer"
         );
+    }
+}
+
+/// Pick the destination slot for an auto-equip / auto-unequip.
+///
+/// - Source = Bandolier (3) → returns `(1, first_empty_main_slot)`.
+///   Returns `None` only when the main bag is full (40 slots — rare in
+///   practice but possible).
+/// - Source = Main (1) → returns `(3, first_empty_bandolier_slot)`.
+///   When all 4 bandolier slots are full, falls back to the player's
+///   currently-active `bandolier_slot` — that's the intuitive
+///   "replace what I'm holding" behavior the user asked for.
+/// - Any other source returns `None` (caller skips the auto-equip
+///   route and falls back to the normal `OnItemUse` event).
+async fn resolve_auto_equip_target(
+    pool: &PgPool,
+    player_id: i32,
+    source_container: i32,
+) -> Result<Option<(i32, i32)>, sqlx::Error> {
+    // Find the lowest empty slot in `dest_container` by joining
+    // generate_series(0, capacity-1) against sgw_inventory. The
+    // capacity comes from `bag_max_slots` so a future bandolier or
+    // main-bag resize lands here automatically — no hard-coded
+    // ranges to drift.
+    async fn first_empty_slot(
+        pool: &PgPool,
+        player_id: i32,
+        dest_container: i32,
+    ) -> Result<Option<i32>, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT s.slot \
+             FROM generate_series(0, $1::int - 1) AS s(slot) \
+             LEFT JOIN sgw_inventory inv \
+               ON inv.character_id = $2 \
+              AND inv.container_id = $3 \
+              AND inv.slot_id = s.slot \
+             WHERE inv.item_id IS NULL \
+             ORDER BY s.slot ASC \
+             LIMIT 1",
+        )
+        .bind(bag_max_slots(dest_container))
+        .bind(player_id)
+        .bind(dest_container)
+        .fetch_optional(pool)
+        .await
+    }
+
+    match source_container {
+        CONTAINER_BANDOLIER => Ok(first_empty_slot(pool, player_id, CONTAINER_MAIN)
+            .await?
+            .map(|s| (CONTAINER_MAIN, s))),
+        CONTAINER_MAIN => {
+            if let Some(s) = first_empty_slot(pool, player_id, CONTAINER_BANDOLIER).await? {
+                return Ok(Some((CONTAINER_BANDOLIER, s)));
+            }
+            // All bandolier slots full — replace the active one.
+            let active: Option<i32> =
+                sqlx::query_scalar("SELECT bandolier_slot FROM sgw_player WHERE player_id = $1")
+                    .bind(player_id)
+                    .fetch_optional(pool)
+                    .await?;
+            Ok(active.map(|s| (CONTAINER_BANDOLIER, s)))
+        }
+        _ => Ok(None),
     }
 }

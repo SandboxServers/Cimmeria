@@ -1,0 +1,38 @@
+%%{init: {"theme": "base", "flowchart": {"htmlLabels": false}}}%%
+flowchart TD
+    START(["EntityDescription_AssignClientMethodIds\n@ ghidra://SGW.exe@0x01590df0\nencode method index i"])
+
+    START --> COMPUTE
+    COMPUTE["Compute per-entity threshold:\nnExposedCount = (ptr24 - ptr20) / 4\niVar2 = (nExposedCount + 0xC0) / 0xFF\nidBase = 0x3E - iVar2"]
+
+    COMPUTE --> SGW_EXAMPLE
+    SGW_EXAMPLE["Worked example — SGWPlayer\nnExposedCount = 157\niVar2 = (157 + 0xC0) / 0xFF\n      = 0x15D / 0xFF = 1\nidBase = 0x3E - 1 = 61"]
+
+    SGW_EXAMPLE --> DECIDE
+    DECIDE{"Is i &lt; idBase ?"}
+
+    DECIDE -- "yes (i &lt; 61)" --> SINGLE
+    DECIDE -- "no (i &gt;= 61)" --> TWOBYTE
+
+    SINGLE["Single-byte encoding\nMethodDescription+0x44 = i\nMethodDescription+0x48 = 0xFFFFFFFF\nwire: [1 byte: i]"]
+
+    TWOBYTE["Two-byte encoding\nhigh = (i - idBase) &gt;&gt; 8\nlow  = (i - idBase) &amp; 0xFF\nMethodDescription+0x44 = high + idBase\nMethodDescription+0x48 = low\nwire: [1 byte: high+idBase] [1 byte: low]"]
+
+    SINGLE --> EX1
+    EX1["SGWPlayer index 60 → single byte\n(last single-byte method;\nMinigamePlayer.minigameSetMaxScore-ish region)"]
+
+    TWOBYTE --> EX2
+    EX2["SGWPlayer index 61 → first two-byte\n= minigameCallDisplay\n(MinigamePlayer.def, 10th ClientMethod entry,\nzero-based offset 9 inside indices 52..64)"]
+
+    TWOBYTE --> EX3
+    EX3["SGWPlayer index 156 → last method\n(SGWPlayer.def own, end of cascade)\nstill two-byte"]
+
+    style START fill:#e8f4fb,stroke:#5599cc
+    style COMPUTE fill:#fff4d6,stroke:#cc9933
+    style SGW_EXAMPLE fill:#ddeeff,stroke:#5599cc
+    style DECIDE fill:#fff,stroke:#666
+    style SINGLE fill:#ddffdd,stroke:#5fb15f
+    style TWOBYTE fill:#ffeedd,stroke:#cc9933
+    style EX1 fill:#f0fff0
+    style EX2 fill:#fff5e0
+    style EX3 fill:#fff5e0

@@ -18,13 +18,11 @@ pub async fn send_cash_changed_to_client(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    if let Err(e) = helpers::send_to_witness(
+    helpers::send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -36,10 +34,7 @@ pub async fn send_cash_changed_to_client(
             )
         },
     )
-    .await
-    {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-    }
+    .await;
 }
 
 pub async fn sync_bandolier_after_inventory_change(
@@ -50,6 +45,41 @@ pub async fn sync_bandolier_after_inventory_change(
     socket: &Arc<UdpSocket>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    sync_bandolier_after_inventory_change_with_options(
+        entity_id,
+        player_id,
+        db_pool,
+        cell_tx,
+        socket,
+        connected,
+        entity_to_addr,
+        false,
+    )
+    .await;
+}
+
+/// Like [`sync_bandolier_after_inventory_change`] but allows the caller
+/// to defer the `refresh_player_appearance` broadcast.
+///
+/// Used by the unequip path (move from bandolier→main bag, container
+/// 3 → 1): the cell-side handler fires `Item_Unequip` and schedules
+/// a Phase 2 broadcast via `holster_animation_complete_at` so the
+/// mesh stays attached for the duration of the animation. If we
+/// broadcast immediately here, the base yanks the mesh before the
+/// animation plays — the user sees no holster animation, the weapon
+/// just vanishes (or, when unequipping the last weapon, doesn't
+/// vanish at all because the empty-bandolier branch below used to
+/// skip the broadcast).
+pub async fn sync_bandolier_after_inventory_change_with_options(
+    entity_id: u32,
+    player_id: i32,
+    db_pool: &Option<Arc<PgPool>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    defer_appearance_refresh: bool,
 ) {
     // The DB reconciliation must run whenever a pool is available, regardless
     // of whether the cell-sync channel is up — otherwise a `cell_tx == None`
@@ -78,9 +108,7 @@ pub async fn sync_bandolier_after_inventory_change(
     {
         Ok(v) => v.unwrap_or(0),
         Err(e) => {
-            if let Err(e) = db_tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = db_tx.rollback().await;
             tracing::error!(
                 entity_id,
                 player_id,
@@ -95,9 +123,7 @@ pub async fn sync_bandolier_after_inventory_change(
     let bandolier_items = match query_bandolier_items_tx(&mut db_tx, player_id).await {
         Ok(items) => items,
         Err(e) => {
-            if let Err(e) = db_tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = db_tx.rollback().await;
             tracing::error!(
                 entity_id,
                 player_id,
@@ -118,16 +144,31 @@ pub async fn sync_bandolier_after_inventory_change(
             return;
         }
         if let Some(tx) = cell_tx {
-            if let Err(e) = tx
+            let _ = tx
                 .send(BaseToCellMsg::SyncBandolierItems {
                     entity_id,
                     active_bandolier_slot: old_active,
                     bandolier_items: Vec::new(),
                 })
-                .await
-            {
-                tracing::warn!(entity_id, "SyncBandolierItems send failed: {e}");
-            }
+                .await;
+        }
+        // Fire the appearance refresh for the empty-bandolier case too
+        // (unless the caller is going to drive it from the cell — the
+        // unequip path defers so the holster animation can play
+        // first). The original code returned here unconditionally,
+        // which left the weapon mesh visible on the client whenever
+        // a player unequipped their LAST weapon — the witness never
+        // received a BeingAppearance with the empty ComponentList.
+        if !defer_appearance_refresh {
+            super::super::inventory::refresh_player_appearance(
+                entity_id,
+                player_id,
+                db_pool,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
         return;
     }
@@ -148,9 +189,7 @@ pub async fn sync_bandolier_after_inventory_change(
                 .execute(&mut *db_tx)
                 .await
         {
-            if let Err(e) = db_tx.rollback().await {
-                tracing::error!("DB rollback failed: {e}");
-            }
+            let _ = db_tx.rollback().await;
             tracing::error!(
                 entity_id,
                 player_id,
@@ -178,13 +217,11 @@ pub async fn sync_bandolier_after_inventory_change(
         let mut args = Vec::with_capacity(8);
         args.extend_from_slice(&CONTAINER_BANDOLIER.to_le_bytes());
         args.extend_from_slice(&(active_slot + 1).to_le_bytes());
-        if let Err(e) = helpers::send_to_witness(
+        helpers::send_to_witness_reliable(
             socket,
             connected,
             entity_to_addr,
             entity_id,
-            entity_id,
-            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,
@@ -196,23 +233,17 @@ pub async fn sync_bandolier_after_inventory_change(
                 )
             },
         )
-        .await
-        {
-            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-        }
+        .await;
     }
 
     if let Some(tx) = cell_tx {
-        if let Err(e) = tx
+        let _ = tx
             .send(BaseToCellMsg::SyncBandolierItems {
                 entity_id,
                 active_bandolier_slot: active_slot,
                 bandolier_items,
             })
-            .await
-        {
-            tracing::warn!(entity_id, "SyncBandolierItems send failed: {e}");
-        }
+            .await;
     }
 
     // Whenever the bandolier composition changes (item moved into/out of
@@ -226,15 +257,23 @@ pub async fn sync_bandolier_after_inventory_change(
     // Mirrors the refresh in `handle_grant_item` and the `ActiveSlotUpdate`
     // handler. Idempotent on the wire — witnesses just receive the same
     // packet they would have on next login.
-    super::super::inventory::refresh_player_appearance(
-        entity_id,
-        player_id,
-        db_pool,
-        socket,
-        connected,
-        entity_to_addr,
-    )
-    .await;
+    //
+    // Caller can defer this (e.g., the unequip path) so the cell-side
+    // holster animation has time to play before the mesh removal
+    // broadcasts. In that case the cell's `holster_timer_tick` Phase 2
+    // fires `RefreshAppearance` after `HOLSTER_ANIMATION_DURATION`, which
+    // routes back through `refresh_player_appearance` from the base side.
+    if !defer_appearance_refresh {
+        super::super::inventory::refresh_player_appearance(
+            entity_id,
+            player_id,
+            db_pool,
+            socket,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+    }
 }
 
 #[cfg(test)]

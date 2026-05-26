@@ -60,7 +60,10 @@ fn build_reanchor_burst_body(entity_id: u32, info: &WorldEntryInfo) -> Vec<u8> {
     body.extend_from_slice(&entity_id.to_le_bytes());
     body.push(SGWPLAYER_CLASS_ID);
     body.push(0x00); // propertyCount = 0
-    body.extend_from_slice(&build_enter_world_body(info));
+                     // Reanchor passes None for `load`: the appearance/tint replay is sent
+                     // as separate packets after the burst (see `build_reanchor_packets`),
+                     // matching the original wire shape.
+    body.extend_from_slice(&build_enter_world_body(info, None));
     body
 }
 
@@ -167,7 +170,8 @@ pub(crate) async fn handle_reanchor_player(
         let mut pending = pending_acks_arc.lock().unwrap();
         pending.drain(..).collect()
     };
-    let base_seq = next_seq.fetch_add(total_seqs, Ordering::Relaxed);
+    let base_seq =
+        next_seq.fetch_add(total_seqs, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
 
     let packets = build_reanchor_packets(
         &key,
@@ -179,8 +183,19 @@ pub(crate) async fn handle_reanchor_player(
         &acks,
     );
 
-    for pkt in &packets {
+    for (i, pkt) in packets.iter().enumerate() {
         socket.send_to(pkt, addr).await?;
+        // Reanchor burst is state-change traffic — register each packet
+        // with the Channel for retransmit on loss. Derived seqs are masked
+        // to the 28-bit space so the contiguous range stays in-band even
+        // when `base_seq + i` would otherwise cross `NULL_SEQUENCE`.
+        let pkt_seq = base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
+        super::super::helpers::shadow_register_reliable_send(
+            connected,
+            addr,
+            pkt_seq,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt),
+        );
     }
 
     if has_replay {
@@ -253,8 +268,8 @@ mod tests {
         // forced-position flags) flows through Reanchor unchanged.
         assert_eq!(
             &body[9..],
-            build_enter_world_body(&info).as_slice(),
-            "tail must equal build_enter_world_body(info) verbatim — Reanchor and gate-travel must stay in lockstep on space/viewport/position"
+            build_enter_world_body(&info, None).as_slice(),
+            "tail must equal build_enter_world_body(info, None) verbatim — Reanchor and gate-travel must stay in lockstep on space/viewport/position"
         );
     }
 

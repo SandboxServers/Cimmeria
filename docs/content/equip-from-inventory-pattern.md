@@ -48,7 +48,7 @@ When the player drops the weapon into the bandolier:
 | Condition | `step_status` of the new "Equip the X" step must be `active` (the step gates the chain so it only fires once, in the right context) |
 | Actions | Whatever the original chain was going to do — `advance_step` to the next step, `play_sequence`, `complete_mission`, etc. |
 
-The `item_equipped` trigger fires from `crates/services/src/cell/service/base_messages.rs` whenever a bandolier-targeted move lands. See [docs/content/extending-the-engine.md](extending-the-engine.md) for the trigger plumbing.
+The `item_equipped` trigger fires from `crates/services/src/cell/service/base_messages/mod.rs` whenever a bandolier-targeted move lands. See [docs/content/extending-the-engine.md](extending-the-engine.md) for the trigger plumbing.
 
 ## Worked example: mission 622 (Frost pistol)
 

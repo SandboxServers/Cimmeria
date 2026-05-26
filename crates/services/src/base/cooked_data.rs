@@ -13,6 +13,24 @@ use super::helpers::{drain_acks_and_seq, get_active_entity_id};
 use super::resources::{CategoryData, ResourceCache};
 use super::ConnectedClientState;
 
+/// Maximum XML bytes per `BASEMSG_RESOURCE_FRAGMENT` packet.
+///
+/// Mercury `MAX_BODY_LENGTH` is **1411 bytes**. The first fragment of a
+/// resource transfer carries 16 bytes of overhead inside the body — that
+/// is, `BASEMSG`(1) plus `WORD_LEN`(2) plus `data_id`(2) plus
+/// `chunk_id`(1) plus `frag_flags`(1) plus `msg_type`(1) plus
+/// `category_id`(4) plus `element_id`(4). Non-first fragments carry only
+/// 7 bytes (`BASEMSG` + `WORD_LEN` + `data_id` + `chunk_id` + `frag_flags`).
+///
+/// Picking 1390 leaves a 5-byte safety margin against the tighter
+/// first-fragment cap (1395) and packs the XML body at 99.6% utilization;
+/// the historical value of 1000 wasted ~28% of every packet.
+///
+/// The fragment-size guard test in `mercury::protocol::tests` pins this
+/// against `MercuryEncryption::decrypt(...)` for both first and non-first
+/// fragment shapes; bump in tandem if the wire-format overhead changes.
+const MAX_CHUNK: usize = 1390;
+
 /// Handle `versionInfoRequest` (0xC0).
 ///
 /// Client payload: [categoryId: u32][version: u32]
@@ -99,6 +117,13 @@ pub(crate) async fn handle_version_info_request(
         active_eid,
     );
     socket.send_to(&pkt, addr).await?;
+    // versionInfo response is one-shot state — register for retransmit.
+    super::helpers::shadow_register_reliable_send(
+        connected,
+        addr,
+        seq,
+        cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+    );
 
     // Push the patched XML proactively for each overridden element. The
     // version-info reply already named these in InvalidKeys; the client
@@ -138,8 +163,6 @@ async fn push_overridden_elements(
     cache: &ResourceCache,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    const MAX_CHUNK: usize = 1000;
-
     for &element_id in element_ids {
         let xml_data = match cache.get(category_id, element_id) {
             Some(data) => data,
@@ -191,6 +214,12 @@ async fn push_overridden_elements(
                 &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat, elem, chunk,
             );
             socket.send_to(&pkt, addr).await?;
+            super::helpers::shadow_register_reliable_send(
+                connected,
+                addr,
+                seq,
+                cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+            );
         }
     }
 
@@ -212,8 +241,6 @@ pub(crate) async fn send_category_resources(
     cat: &CategoryData,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    const MAX_CHUNK: usize = 1000;
-
     // Sort element IDs for deterministic ordering.
     let mut element_ids: Vec<u32> = cat.elements.keys().copied().collect();
     element_ids.sort();
@@ -258,6 +285,12 @@ pub(crate) async fn send_category_resources(
                 &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat_id, elem, chunk,
             );
             socket.send_to(&pkt, addr).await?;
+            super::helpers::shadow_register_reliable_send(
+                connected,
+                addr,
+                seq,
+                cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+            );
         }
     }
 
@@ -307,18 +340,9 @@ pub(crate) async fn handle_element_data_request(
         }
     };
 
-    // Promote the log to INFO when we're shipping a Cimmeria-overridden
-    // element — operationally the load-bearing question is "did the
-    // patched mission XML actually go out to this client", and that
-    // answer is too important to bury at debug level on a noisy DB.
+    // Override status drives log level below: every patched-XML push is
+    // load-bearing for cache consistency, so it deserves INFO. Reads only.
     let is_override = cache.overridden_elements(category_id).contains(&element_id);
-    if is_override {
-        tracing::info!(
-            %addr, category_id, element_id,
-            bytes = xml_data.len(),
-            "Shipping overridden element to client"
-        );
-    }
 
     // Allocate a data_id for this transfer
     let data_id = {
@@ -332,19 +356,31 @@ pub(crate) async fn handle_element_data_request(
         }
     };
 
-    // Fragment into 1000-byte chunks
-    const MAX_CHUNK: usize = 1000;
     let chunks: Vec<&[u8]> = xml_data.chunks(MAX_CHUNK).collect();
     let total_chunks = chunks.len();
 
-    tracing::debug!(
-        %addr,
-        element_id,
-        total_size = xml_data.len(),
-        total_chunks,
-        data_id,
-        "Fragmenting resource data"
-    );
+    // INFO matches `push_overridden_elements`: every patched-XML push is
+    // load-bearing for cache consistency, and the per-element byte count
+    // is what surfaces a future PAK element crossing a chunk boundary
+    // and adding fragments to the cold-cache login burst.
+    if is_override {
+        tracing::info!(
+            %addr, category_id, element_id,
+            bytes = xml_data.len(),
+            total_chunks,
+            data_id,
+            "Fragmenting overridden resource data"
+        );
+    } else {
+        tracing::debug!(
+            %addr,
+            element_id,
+            total_size = xml_data.len(),
+            total_chunks,
+            data_id,
+            "Fragmenting resource data"
+        );
+    }
 
     for (i, chunk) in chunks.iter().enumerate() {
         let frag_flags = match (i == 0, i == total_chunks - 1) {
@@ -366,9 +402,33 @@ pub(crate) async fn handle_element_data_request(
             &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat, elem, chunk,
         );
         socket.send_to(&pkt, addr).await?;
+        super::helpers::shadow_register_reliable_send(
+            connected,
+            addr,
+            seq,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+        );
     }
 
     tracing::debug!(%addr, element_id, total_chunks, "Resource fragments sent");
 
     Ok(())
 }
+
+/// Compile-time lower-bound guard for `MAX_CHUNK`. The wire-level tests in
+/// `mercury::protocol::tests` decrypt a resource fragment at the current
+/// `MAX_CHUNK` and assert it fits Mercury's body cap — but they'd happily
+/// pass at `MAX_CHUNK = 1000` too, since 1000-byte chunks also fit. This
+/// const assertion pins the lower bound at compile time: a future revert
+/// that drops `MAX_CHUNK` below 1390 fails to build instead of silently
+/// restoring the wasted ~28% per-packet headroom and re-widening the
+/// cold-cache login burst against the 32-slot reliable TX window.
+///
+/// Bump in tandem if a deliberate retreat from 1390 is ever needed (and
+/// document the reason in `MAX_CHUNK`'s docstring above).
+const _: () = assert!(
+    MAX_CHUNK >= 1390,
+    "MAX_CHUNK dropped below the 1390 floor — see the doc comment above \
+     for the cold-cache burst rationale; update the docstring + this \
+     guard together if the retreat is intentional."
+);

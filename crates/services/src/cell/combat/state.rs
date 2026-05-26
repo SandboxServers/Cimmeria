@@ -17,6 +17,24 @@ pub const BSF_DEAD_BIT: u32 = 0;
 /// the ref-counted entity helpers consistently with the other BSF_* flags.
 pub const BSF_DEAD: u32 = 1 << BSF_DEAD_BIT;
 
+/// `BSF_AutoCycling` mask. The client emits `Event_UI_AutoCycle` on every
+/// transition of this bit (verified via the XOR-delta dispatcher at
+/// `ghidra://SGW.exe@0x00e01c90` — `TEST BL, 0x2` → `EmitAutoCycleStateChanged`
+/// at `0x00e05fb0`). `USGWTargetIndicator` listens to the resulting CME event
+/// to highlight the gun-icon button.
+///
+/// Server-side, the flag is set the moment the player presses the
+/// auto-cycle button (`setAutoCycle(1)`) so the client gets immediate
+/// visual feedback, independent of whether the loop has had its first
+/// ability commit yet. Cleared on stop: `setAutoCycle(0)`, target death,
+/// manual fire of a different ability, an
+/// `AF_DEACTIVATE_AUTO_CYCLE`-flagged ability firing, target deselect,
+/// or dead/despawned target during the loop. See
+/// [`crate::cell::service::ticks::auto_cycle_tick`] for the driver loop.
+///
+/// From python `Atrea.enums.BSF_AutoCycling = 1`.
+pub const BSF_AUTO_CYCLING: u32 = 1 << 1;
+
 /// `BSF_InCombat` mask. The client uses this bit to route right-click on
 /// selected entities to `useAbility` (auto-attack) instead of `interact`.
 /// From python `Atrea.enums.BSF_InCombat = 3`.
@@ -31,11 +49,6 @@ pub const BSF_IN_COMBAT: u32 = 1 << 3;
 /// helpers means clearing one source doesn't drop the others.
 /// From python `Atrea.enums.BSF_MovementLock = 6`.
 pub const BSF_MOVEMENT_LOCK: u32 = 1 << 6;
-
-/// `BSF_Holster` mask. Set while the weapon is holstered. Cleared when the
-/// player enters combat-ready (e.g., on reload or first attack).
-/// From python `Atrea.enums.BSF_Holster = 8`.
-pub const BSF_HOLSTER: u32 = 1 << 8;
 
 /// Check if a state field indicates the entity is dead. Reads are fine
 /// against the raw `state_field` bitmask — it's the writes that need to
@@ -53,6 +66,14 @@ mod tests {
     fn entity() -> CellEntity {
         CellEntity::new(EntityId(1), SpaceId(0), Vector3::new(0.0, 0.0, 0.0))
     }
+
+    /// Stand-in test flag used to exercise the generic ref-counted helpers
+    /// against a flag that's neither `BSF_DEAD` nor `BSF_MOVEMENT_LOCK`.
+    /// Bit 12 sits in the wire-dead range (bits 8-31; client only
+    /// dispatches on bits 0-7 per `docs/architecture/state-field-bits.md`),
+    /// so these tests pin the counter map's bounded-growth invariants
+    /// without affecting any client-visible behavior.
+    const BSF_TEST_UNUSED_BIT_12: u32 = 1 << 12;
 
     #[test]
     fn dead_state_via_entity_helpers() {
@@ -121,7 +142,7 @@ mod tests {
         for _ in 0..100 {
             e.unset_state_flag(BSF_DEAD);
             e.unset_state_flag(BSF_MOVEMENT_LOCK);
-            e.unset_state_flag(BSF_HOLSTER);
+            e.unset_state_flag(BSF_TEST_UNUSED_BIT_12);
         }
         assert!(
             e.state_flag_counts.is_empty(),
@@ -160,14 +181,13 @@ mod tests {
 
     #[test]
     fn independent_flags_dont_share_counters() {
-        // Pin: counter map is keyed by mask, so BSF_DEAD and BSF_HOLSTER
-        // each have their own counter. Clearing one must not affect the
-        // other.
+        // Pin: counter map is keyed by mask, so each flag has its own
+        // counter. Clearing one must not affect the other.
         let mut e = entity();
         e.set_state_flag(BSF_DEAD);
-        e.set_state_flag(BSF_HOLSTER);
+        e.set_state_flag(BSF_TEST_UNUSED_BIT_12);
         e.unset_state_flag(BSF_DEAD);
         assert!(!e.has_state_flag(BSF_DEAD));
-        assert!(e.has_state_flag(BSF_HOLSTER));
+        assert!(e.has_state_flag(BSF_TEST_UNUSED_BIT_12));
     }
 }

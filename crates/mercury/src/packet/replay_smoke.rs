@@ -122,8 +122,12 @@ fn frames() -> Vec<Frame> {
             label: "all-footers-no-fragments",
             flags: FLAG_HAS_REQUESTS | FLAG_HAS_SEQUENCE | FLAG_HAS_ACKS,
             body: b"the quick brown fox jumps over".to_vec(),
-            seq_id: Some(0xFFFF_0000),
-            acks: vec![0x1000_0001, 0x1000_0002],
+            // High-but-valid 28-bit seq — exercises upper sequence bits
+            // without crossing `NULL_SEQUENCE`. A value above the 28-bit
+            // range (e.g. `0xFFFF_0000`) would be dropped at parse as an
+            // R4 violation.
+            seq_id: Some(0x0FFF_0000),
+            acks: vec![0x0F00_0001, 0x0F00_0002],
             first_req_offset: Some(13),
         },
     ]
@@ -260,7 +264,7 @@ fn fragmented_packet_round_trips_frag_footers() {
     let raw = build_outgoing_fragmented(
         FLAG_RELIABLE,
         body,
-        0xABCD_1234, // seq_id
+        0x0BCD_1234, // seq_id (28-bit; was 0xABCD_1234 before #292 #7 rejection)
         100,         // frag_begin
         103,         // frag_end (4-fragment range)
         &[],         // acks: bare-fragment shape (matches fragments 1+ of a bundle)
@@ -276,7 +280,7 @@ fn fragmented_packet_round_trips_frag_footers() {
         "build_outgoing_fragmented forces FLAG_HAS_SEQUENCE; bit must round-trip"
     );
     assert_eq!(parsed.body.as_ref(), body, "body must round-trip");
-    assert_eq!(parsed.seq_id, Some(0xABCD_1234), "seq_id must round-trip");
+    assert_eq!(parsed.seq_id, Some(0x0BCD_1234), "seq_id must round-trip");
     assert_eq!(parsed.frag_begin, Some(100), "frag_begin must round-trip");
     assert_eq!(parsed.frag_end, Some(103), "frag_end must round-trip");
     assert!(

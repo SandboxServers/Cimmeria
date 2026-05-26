@@ -1,0 +1,42 @@
+(defattrs :plain {:font-size 14})
+(defattrs :label {:font-size 12})
+(defattrs :note {:font-size 11 :fill "#cc9933"})
+(defattrs :hdr {:font-size 13 :fill "#5599cc" :font-style "bold"})
+
+(draw-column-headers)
+
+; === createBasePlayer (msg_id 0x05) — variable-length, WORD framed ===
+(draw-box (text "createBasePlayer  msg_id 0x05  [WORD-length framed]" :hdr) {:span 16 :fill "#e8f4fb"})
+(draw-gap)
+(draw-bottom)
+
+(draw-box (text "entityId  [u32 LE]" :label) {:span 4 :fill "#bdd7ee"})
+(draw-box (text "typeId  [u16 LE]" :label) {:span 2 :fill "#ddeeff"})
+(draw-box (text "property stream — variable, filtered (CLIENT_DATA | BASE_DATA)\nsequential propID order, no propID prefix" :label) {:span 10 :fill "#fff4d6" :borders {:all true}})
+(draw-gap)
+(draw-bottom)
+
+(draw-box (text "After header read: stored at ServerConnection+0x16c (playerEntityId);\nthen if buffered createCellPlayer at +0xfe0 has pending content (remainingLength()>0),\nthe handler immediately replays createCellPlayer on the buffered bytes." :note) {:span 16 :fill "#fafafa"})
+(draw-gap)
+(draw-bottom)
+
+; === createCellPlayer (msg_id 0x06) — fixed 32 bytes ===
+(draw-box (text "createCellPlayer  msg_id 0x06  [fixed 32 bytes]" :hdr) {:span 16 :fill "#e8f4fb"})
+(draw-gap)
+(draw-bottom)
+
+(draw-box (text "spaceId  [u32 LE]" :label) {:span 4 :fill "#bdd7ee"})
+(draw-box (text "vehicleId  [u32 LE]" :label) {:span 4 :fill "#ddeeff"})
+(draw-box (text "posX  [f32 LE]" :label) {:span 4 :fill "#ddffdd"})
+(draw-box (text "posY  [f32 LE]" :label) {:span 4 :fill "#ddffdd"})
+(draw-gap)
+(draw-bottom)
+
+(draw-box (text "posZ  [f32 LE]" :label) {:span 4 :fill "#ddffdd"})
+(draw-box (text "rotX  [f32 LE]" :label) {:span 4 :fill "#fff4d6"})
+(draw-box (text "rotZ  [f32 LE]  ** Y/Z SWAP **" :label) {:span 4 :fill "#ffcccc"})
+(draw-box (text "rotY  [f32 LE]  ** Y/Z SWAP **" :label) {:span 4 :fill "#ffcccc"})
+(draw-gap)
+(draw-bottom)
+
+(draw-box (text "Rotation triplet wire order is X, Z, Y (not X, Y, Z) — applied by FUN_015846a0.\nNo property stream here; cell-entity props ride the createBasePlayer stream.\nBuffering rule: if playerEntityId at +0x16c is 0 on arrival, message is buffered\ninto ServerConnection+0xfe0 and replayed after createBasePlayer sets the id." :note) {:span 16 :fill "#fafafa"})

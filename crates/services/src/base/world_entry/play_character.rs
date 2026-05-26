@@ -106,10 +106,17 @@ pub(crate) async fn handle_play_character(
     // The C++ server sends RESET_ENTITIES in its own flushed bundle. The client
     // tears down all entities, then sends ENABLE_ENTITIES, which triggers
     // the create-player step (CREATE_BASE_PLAYER + viewport + cell + forced position).
-    let seq = next_seq.fetch_add(1, Ordering::Relaxed);
+    let seq = next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     let pkt = build_reset_entities(&key, seq, &acks);
     tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT RESET_ENTITIES (entity teardown)");
     socket.send_to(&pkt, addr).await?;
+    // Kick-off RESET_ENTITIES is reliable state-change.
+    super::super::helpers::shadow_register_reliable_send(
+        connected,
+        addr,
+        seq,
+        cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+    );
 
     // Store the world entry info and player load data for the create-player step.
     {
@@ -176,6 +183,7 @@ mod tests {
             pending_player_entity_id: None,
             player_entity_id: None,
             next_seq: Arc::new(AtomicU32::new(3)),
+            next_seq_unreliable: Arc::new(AtomicU32::new(0)),
             pending_acks: Arc::new(Mutex::new(Vec::new())),
             last_recv: Arc::new(Mutex::new(Instant::now())),
             account_entity_id: 1,
@@ -186,7 +194,9 @@ mod tests {
             pending_client_ready: None,
             cached_appearance_args: None,
             cached_tint_args: None,
+            weapon_holstered: true,
             cancelled: Arc::new(AtomicBool::new(false)),
+            cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
             player_name: None,
             player_level: None,
             player_archetype: None,
@@ -195,6 +205,9 @@ mod tests {
             player_training_points: None,
             active_player_id: None,
             pending_destination_ring_id: None,
+            channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
+                "127.0.0.1:9999".parse().unwrap(),
+            )),
         }
     }
 

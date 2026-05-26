@@ -140,7 +140,18 @@ LABEL org.opencontainers.image.title="cimmeria-server" \
 # Runtime native deps:
 #   xz-utils, ca-certificates — needed to extract s6-overlay.
 #   curl                       — required for the s6-overlay download below.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+#
+# `apt-get upgrade -y` ahead of the install pulls Debian security
+# patches that postdate the pinned `postgres:17.9-bookworm` digest.
+# Without this, a CVE-fixed package (libgnutls30, libc6, etc.) doesn't
+# enter the image until the upstream postgres tag is rebuilt and
+# Dependabot bumps the digest in this Dockerfile — a window measured
+# in weeks. The release-pipeline Trivy scan is gating on `CRITICAL`,
+# so any unpatched CVE in the inherited base layer fails the release;
+# the apt upgrade closes that window at build time.
+RUN apt-get update \
+    && apt-get -y upgrade \
+    && apt-get install -y --no-install-recommends \
         xz-utils \
         ca-certificates \
         curl \
@@ -260,7 +271,7 @@ ENV AUTH_HOST=0.0.0.0 \
 # Ports actually bound by the Rust server. The legacy Python console
 # (port 8989 in the original C++ BaseApp) is not implemented in Rust,
 # so we don't EXPOSE it.
-EXPOSE 13001 32832/udp 50000/udp 8081 8443
+EXPOSE 13001 32832/udp 50000/udp 8081 8443 30000
 
 VOLUME ["/var/lib/postgresql/data", "/var/log/cimmeria"]
 

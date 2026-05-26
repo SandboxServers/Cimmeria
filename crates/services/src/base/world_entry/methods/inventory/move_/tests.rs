@@ -358,3 +358,245 @@ async fn source_item_not_found_makes_no_changes() {
 
     cleanup(&pool, account_id, player_id).await;
 }
+
+/// Pick `count` distinct item_ids from resources.items whose
+/// container_sets includes `container_id` AND have a non-null
+/// `visual_component`. Symmetric to [`pick_main_bag_type_ids`] but for
+/// a specific equipment slot. The visual filter matters because the
+/// production refresh gate requires it — picking a non-visual
+/// equipment item (e.g. helmet 2998, `visual_component IS NULL`) would
+/// make the equip/unequip tests silently no-op the assertion they're
+/// trying to guard.
+async fn pick_type_ids_for_container(pool: &PgPool, container_id: i32, count: usize) -> Vec<i32> {
+    let ids: Vec<i32> = sqlx::query_scalar::<_, i32>(
+        "SELECT item_id FROM resources.items \
+         WHERE container_sets IS NOT NULL \
+           AND $1 = ANY(container_sets) \
+           AND visual_component IS NOT NULL \
+         ORDER BY item_id LIMIT $2",
+    )
+    .bind(container_id)
+    .bind(count as i64)
+    .fetch_all(pool)
+    .await
+    .expect("pick item_ids by container");
+    assert_eq!(
+        ids.len(),
+        count,
+        "resources.items has fewer than {count} visual items allowed in container {container_id} — \
+         the bundled seed must be loaded before running live-DB tests",
+    );
+    ids
+}
+
+/// Variant of [`make_state`] that populates the connected-client map with
+/// a placeholder state so a `refresh_player_appearance` invocation can
+/// resolve the addr → state lookup and write `cached_appearance_args`.
+/// Returns the placeholder addr so the test can re-read state from `conn`.
+fn make_state_with_connected(
+    entity_id: u32,
+    account_id: u32,
+) -> (
+    Arc<UdpSocket>,
+    Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    SocketAddr,
+) {
+    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
+    std_sock.set_nonblocking(true).unwrap();
+    let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+    let fake_addr: SocketAddr = "127.0.0.1:65534".parse().unwrap();
+    let entity_to_addr = Arc::new(Mutex::new({
+        let mut m = HashMap::new();
+        m.insert(entity_id, fake_addr);
+        m
+    }));
+    let connected = Arc::new(Mutex::new({
+        let mut m = HashMap::new();
+        let mut s = crate::test_support::test_default_connected_client_state();
+        s.account_id = account_id;
+        m.insert(fake_addr, s);
+        m
+    }));
+    (socket, entity_to_addr, connected, fake_addr)
+}
+
+/// Regression for the equip-visual gap: dragging armor from a bag slot
+/// into an equipment slot must trigger `refresh_player_appearance`,
+/// which the helper records by populating `cached_appearance_args` on
+/// the connected-client state. Without the equipment-container branch
+/// in the move handler, the DB row updates but the player-visible
+/// model on every client keeps the pre-move components — weapons
+/// (which go through the bandolier branch) showed up but armor did
+/// not.
+#[tokio::test]
+async fn move_into_equipment_slot_refreshes_appearance() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 900;
+    let player_id = TEST_BASE + 901;
+    cleanup(&pool, account_id, player_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+
+    // Container 4 = head slot. Helper restricts to items with a
+    // non-null visual_component (matches the production refresh gate).
+    let head_type = pick_type_ids_for_container(&pool, 4, 1).await[0];
+    let helmet = insert_item(&pool, player_id, head_type, 1, 0, 1).await;
+
+    let entity_id = 9_999_015;
+    let (socket, e2a, conn, addr) = make_state_with_connected(entity_id, account_id as u32);
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    // Sanity: cache starts empty so the post-move assertion is meaningful.
+    assert!(
+        conn.lock()
+            .unwrap()
+            .get(&addr)
+            .unwrap()
+            .cached_appearance_args
+            .is_none(),
+        "test setup invariant: cache must start empty"
+    );
+
+    handle_move_inventory_item(
+        entity_id, player_id, helmet, 4, 0, 1, &db_pool, &None, &socket, &conn, &e2a,
+    )
+    .await;
+
+    assert_eq!(
+        slot_of(&pool, player_id, helmet).await,
+        Some((4, 0, 1)),
+        "helmet must persist to container 4 slot 0"
+    );
+    assert!(
+        conn.lock()
+            .unwrap()
+            .get(&addr)
+            .unwrap()
+            .cached_appearance_args
+            .is_some(),
+        "move into equipment container must invoke refresh_player_appearance \
+         (cached_appearance_args populated as the observable side effect)"
+    );
+
+    cleanup(&pool, account_id, player_id).await;
+}
+
+/// Reverse direction: unequip from an equipment slot back to a bag slot
+/// must also refresh appearance. The witness model otherwise keeps
+/// rendering the previously-equipped piece until the player relogs.
+#[tokio::test]
+async fn move_out_of_equipment_slot_refreshes_appearance() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 1000;
+    let player_id = TEST_BASE + 1001;
+    cleanup(&pool, account_id, player_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+
+    let head_type = pick_type_ids_for_container(&pool, 4, 1).await[0];
+    // Start equipped: helmet already in the head slot.
+    let helmet = insert_item(&pool, player_id, head_type, 4, 0, 1).await;
+
+    let entity_id = 9_999_016;
+    let (socket, e2a, conn, addr) = make_state_with_connected(entity_id, account_id as u32);
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    handle_move_inventory_item(
+        entity_id, player_id, helmet, 1, 5, 1, &db_pool, &None, &socket, &conn, &e2a,
+    )
+    .await;
+
+    assert_eq!(slot_of(&pool, player_id, helmet).await, Some((1, 5, 1)));
+    assert!(
+        conn.lock()
+            .unwrap()
+            .get(&addr)
+            .unwrap()
+            .cached_appearance_args
+            .is_some(),
+        "unequip (equipment slot → bag) must also refresh appearance",
+    );
+
+    cleanup(&pool, account_id, player_id).await;
+}
+
+/// Negative control: a plain bag-to-bag move with no equipment slot
+/// involved must NOT trigger the appearance refresh. Otherwise every
+/// inventory reshuffle would generate witness traffic.
+/// The SGW client sends `quantity = -1` on drag-to-equip /
+/// drag-to-bag interactions, meaning "move the whole stack" (legacy
+/// convention from `SGWPlayer.py:moveItem`). A naive `<= 0` reject
+/// in `handle_move_inventory_item` breaks every drag interaction.
+///
+/// Pin the whole-stack sentinel: passing `quantity = -1` (or any
+/// non-positive value) must relocate the full source row to the
+/// target slot, not reject. Bug shape this catches: a refactor that
+/// re-adds the `quantity <= 0` early reject regresses every drag,
+/// including the right-click auto-equip path that goes through
+/// this same handler.
+#[tokio::test]
+async fn negative_quantity_is_whole_stack_sentinel() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 1200;
+    let player_id = TEST_BASE + 1201;
+    cleanup(&pool, account_id, player_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+
+    let types = pick_main_bag_type_ids(&pool, 1).await;
+    // Use a stack of 5 so we can detect the difference between
+    // "moved the whole stack" and "moved a single item" (a split
+    // would leave 4 at the source).
+    let item = insert_item(&pool, player_id, types[0], 1, 0, 5).await;
+
+    let entity_id = 9_999_020;
+    let (socket, e2a, conn) = make_state(entity_id);
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    handle_move_inventory_item(
+        entity_id, player_id, item, 1, 7, -1, &db_pool, &None, &socket, &conn, &e2a,
+    )
+    .await;
+
+    assert_eq!(
+        slot_of(&pool, player_id, item).await,
+        Some((1, 7, 5)),
+        "quantity=-1 must move the WHOLE stack (size 5) to slot 7, \
+         not split it or reject — the SGW client sends -1 for every \
+         drag-to-equip interaction",
+    );
+
+    cleanup(&pool, account_id, player_id).await;
+}
+
+#[tokio::test]
+async fn bag_to_bag_move_does_not_refresh_appearance() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 1100;
+    let player_id = TEST_BASE + 1101;
+    cleanup(&pool, account_id, player_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+
+    let types = pick_main_bag_type_ids(&pool, 1).await;
+    let item = insert_item(&pool, player_id, types[0], 1, 0, 1).await;
+
+    let entity_id = 9_999_017;
+    let (socket, e2a, conn, addr) = make_state_with_connected(entity_id, account_id as u32);
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    handle_move_inventory_item(
+        entity_id, player_id, item, 1, 10, 1, &db_pool, &None, &socket, &conn, &e2a,
+    )
+    .await;
+
+    assert_eq!(slot_of(&pool, player_id, item).await, Some((1, 10, 1)));
+    assert!(
+        conn.lock()
+            .unwrap()
+            .get(&addr)
+            .unwrap()
+            .cached_appearance_args
+            .is_none(),
+        "bag-to-bag moves must not invoke refresh_player_appearance",
+    );
+
+    cleanup(&pool, account_id, player_id).await;
+}

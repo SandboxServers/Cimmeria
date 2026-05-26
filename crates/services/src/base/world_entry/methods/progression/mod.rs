@@ -7,7 +7,7 @@ use tokio::net::UdpSocket;
 
 use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
 
-use super::super::super::helpers::send_to_witness;
+use super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::ConnectedClientState;
 use crate::mercury::{build_entity_method_packet, method_idx};
 
@@ -175,13 +175,11 @@ pub async fn handle_grant_xp(
         "GrantXP processed"
     );
 
-    if let Err(e) = send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -195,19 +193,14 @@ pub async fn handle_grant_xp(
             )
         },
     )
-    .await
-    {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-    }
+    .await;
 
     for &lvl in &levels_gained {
-        if let Err(e) = send_to_witness(
+        send_to_witness_reliable(
             socket,
             connected,
             entity_to_addr,
             entity_id,
-            entity_id,
-            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,
@@ -219,23 +212,18 @@ pub async fn handle_grant_xp(
                 )
             },
         )
-        .await
-        {
-            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-        }
+        .await;
 
         let next_threshold = if lvl >= MAX_LEVEL {
             LEVEL_XP[MAX_LEVEL as usize] as i32
         } else {
             LEVEL_XP[lvl as usize] as i32
         };
-        if let Err(e) = send_to_witness(
+        send_to_witness_reliable(
             socket,
             connected,
             entity_to_addr,
             entity_id,
-            entity_id,
-            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,
@@ -247,20 +235,15 @@ pub async fn handle_grant_xp(
                 )
             },
         )
-        .await
-        {
-            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-        }
+        .await;
     }
 
     if !levels_gained.is_empty() {
-        if let Err(e) = send_to_witness(
+        send_to_witness_reliable(
             socket,
             connected,
             entity_to_addr,
             entity_id,
-            entity_id,
-            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,
@@ -272,21 +255,16 @@ pub async fn handle_grant_xp(
                 )
             },
         )
-        .await
-        {
-            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-        }
+        .await;
 
         let mut tp_args = Vec::with_capacity(8);
         tp_args.extend_from_slice(&GENERICPROPERTY_TRAINING_POINTS.to_le_bytes());
         tp_args.extend_from_slice(&(training_points as i32).to_le_bytes());
-        if let Err(e) = send_to_witness(
+        send_to_witness_reliable(
             socket,
             connected,
             entity_to_addr,
             entity_id,
-            entity_id,
-            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,
@@ -298,10 +276,7 @@ pub async fn handle_grant_xp(
                 )
             },
         )
-        .await
-        {
-            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-        }
+        .await;
     }
 }
 
@@ -361,13 +336,11 @@ pub async fn handle_grant_cash(
         let total = new_total;
         tracing::info!(entity_id, amount, total, "GrantCash: updated naquadah");
 
-        if let Err(e) = send_to_witness(
+        send_to_witness_reliable(
             socket,
             connected,
             entity_to_addr,
             entity_id,
-            entity_id,
-            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,
@@ -379,10 +352,7 @@ pub async fn handle_grant_cash(
                 )
             },
         )
-        .await
-        {
-            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-        }
+        .await;
     } else {
         // No-DB-pool mode: we have no authoritative balance to send. Drop the
         // grant entirely rather than emitting onCashChanged with the *delta*

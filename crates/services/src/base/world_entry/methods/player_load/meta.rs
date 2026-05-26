@@ -24,6 +24,7 @@ pub fn default_player_load_data() -> PlayerLoadData {
         gender: 1,
         bodyset: "BS_HumanMale.BS_HumanMale".into(),
         components: vec![],
+        weapon_visual: None,
         exp: 0,
         naquadah: 0,
         known_stargates: vec![],

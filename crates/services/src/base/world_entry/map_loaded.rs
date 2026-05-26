@@ -19,9 +19,7 @@ use crate::mercury::{
     build_enter_world, build_map_loaded_body, fragment_count, fragment_map_loaded,
 };
 
-use super::super::world_entry_appearance::{
-    build_appearance_args, build_tint_args, handle_cancel_movie,
-};
+use super::super::world_entry_appearance::{build_appearance_args, build_tint_args};
 use super::super::{ConnectedClientState, PendingClientReadyInfo};
 use super::methods::default_player_load_data;
 
@@ -41,7 +39,7 @@ pub(crate) async fn handle_map_loaded(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     _cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-    db_pool: &Option<Arc<PgPool>>,
+    _db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Take the pending data (consumes it -- enter-world only runs once per mapLoaded)
     let (entry_info, player_data) = {
@@ -89,18 +87,36 @@ pub(crate) async fn handle_map_loaded(
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
         let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
-        let seq = c.next_seq.fetch_add(total_seqs, Ordering::Relaxed);
+        let seq = c.next_seq.fetch_add(total_seqs, Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK;
         (acks, seq)
     };
 
-    // Packet 1: VIEWPORT + CELL_PLAYER + FORCED_POSITION (standalone, ~99 bytes)
-    let enter_world_pkt = build_enter_world(&key, base_seq, &acks, &entry_info);
+    // Packet 1: VIEWPORT + (BeingAppearance + onEntityTint) + CELL_PLAYER + FORCED_POSITION.
+    // The appearance methods sit before createCellPlayer so the client's
+    // cell-entity-creation handler picks up the bodyset during its internal
+    // appearance evaluation, eliminating the dev-cube placeholder flash.
+    let enter_world_pkt = build_enter_world(&key, base_seq, &acks, &entry_info, Some(&player_data));
     tracing::debug!(%addr, len = enter_world_pkt.len(), seq = base_seq,
         "UDP_OUT enter world: VIEWPORT+CELL+FORCED (standalone)");
     socket.send_to(&enter_world_pkt, addr).await?;
+    // Register this reliable send with the per-session Channel's TX
+    // window. ACK consumption + RTO sampling are live, and the
+    // retransmit driver in `tick_sync.rs` will resend the cached bytes
+    // if the RTO fires before the client acks.
+    super::super::helpers::shadow_register_reliable_send(
+        connected,
+        addr,
+        base_seq,
+        cimmeria_mercury::packet::Bytes::copy_from_slice(&enter_world_pkt),
+    );
 
-    // Packet 2+: Entity methods (mapLoaded body, possibly fragmented)
-    let map_base_seq = base_seq + 1;
+    // Packet 2+: Entity methods (mapLoaded body, possibly fragmented).
+    // Mask `map_base_seq` and each derived seq to the 28-bit space —
+    // `base_seq + 1` (or `base_seq + i`) can land on `NULL_SEQUENCE`
+    // when `base_seq` is near `SEQUENCE_MASK`, which would be rejected
+    // by the peer's parser and break ACK draining.
+    let map_base_seq = base_seq.wrapping_add(1) & cimmeria_mercury::packet::SEQUENCE_MASK;
     let (map_packets, map_seqs) = fragment_map_loaded(&key, map_base_seq, &[], &map_body);
     debug_assert_eq!(map_seqs, map_frags);
     tracing::info!(
@@ -112,16 +128,27 @@ pub(crate) async fn handle_map_loaded(
         "mapLoaded: split send (standalone VIEWPORT+CELL + separate entity methods)"
     );
     for (i, pkt_data) in map_packets.iter().enumerate() {
-        tracing::debug!(%addr, len = pkt_data.len(), seq = map_base_seq + i as u32,
+        let frag_seq =
+            map_base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
+        tracing::debug!(%addr, len = pkt_data.len(), seq = frag_seq,
             part = i + 1, total = map_packets.len(), "UDP_OUT mapLoaded entity data");
         if let Err(e) = socket.send_to(pkt_data, addr).await {
             tracing::warn!(
                 fragment_idx = i,
                 total_fragments = map_packets.len(),
                 map_body_len = map_body.len(),
-                "map_loaded: fragment send failed: {e}"
+                "map_loaded: fragment send failed -- retransmit driver will retry: {e}"
             );
         }
+        // Register for retransmit regardless: if the initial send failed at
+        // the OS level the RTO driver will resend the cached bytes; if it
+        // succeeded the registration is what gates ACK consumption.
+        super::super::helpers::shadow_register_reliable_send(
+            connected,
+            addr,
+            frag_seq,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt_data),
+        );
     }
 
     let total_bytes: usize =
@@ -132,72 +159,19 @@ pub(crate) async fn handle_map_loaded(
         packets = pkt_count,
         "World entry complete ({} bytes across {} packets)", total_bytes, pkt_count);
 
-    // Clear first_login flag in DB after sending the intro movie
-    if player_data.first_login != 0 {
-        if let Some(ref pool) = db_pool {
-            match sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
-                .bind(player_data.player_id)
-                .execute(pool.as_ref())
-                .await
-            {
-                Err(e) => {
-                    tracing::warn!(
-                        player_id = player_data.player_id,
-                        "clear first_login failed: {e}"
-                    );
-                }
-                Ok(r) if r.rows_affected() == 0 => {
-                    tracing::error!(
-                        player_id = player_data.player_id,
-                        rows_affected = 0,
-                        expected = 1,
-                        "first_login flag NOT cleared — cinematic will re-fire on next login"
-                    );
-                }
-                Ok(_) => {}
-            }
-        }
-
-        // The first-login cinematic (onPlayMovie) blocks the client from
-        // processing BeingAppearance. cancelMovie fires if the player presses
-        // Escape, but NOT if the cinematic plays to completion.
-        // Spawn a delayed resend to cover the natural-end case.
-        // Duplicates with cancelMovie are harmless -- client just re-applies.
-        let delay_socket = Arc::clone(socket);
-        let delay_connected = Arc::clone(connected);
-        let delay_entity_to_addr = Arc::clone(entity_to_addr);
-        let delay_entity_id = entry_info.player_entity_id;
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-            tracing::info!(
-                entity_id = delay_entity_id,
-                "Cinematic timer: resending BeingAppearance after 10s delay"
-            );
-            let delay_addr = {
-                let map = delay_entity_to_addr.lock().unwrap();
-                match map.get(&delay_entity_id).copied() {
-                    Some(a) => a,
-                    None => {
-                        tracing::warn!(
-                            delay_entity_id,
-                            elapsed_secs = 10,
-                            reason = "entity_to_addr_miss",
-                            "delayed cinematic resend skipped — entity vanished from address map"
-                        );
-                        return;
-                    }
-                }
-            };
-            handle_cancel_movie(
-                &delay_socket,
-                delay_addr,
-                delay_entity_id,
-                &delay_connected,
-                &delay_entity_to_addr,
-            )
-            .await;
-        });
-    }
+    // first_login DB clear is deferred to `handle_on_client_ready` so the
+    // flag only clears after we've actually fired `onPlayMovie` — if the
+    // client disconnects between mapLoaded and onClientReady, they correctly
+    // see the cinematic again on their next attempt.
+    //
+    // The previous implementation also spawned a 10-second timer that fired
+    // a synthetic `cancelMovie` to resend BeingAppearance, working around a
+    // dev-cube flash on first-login cinematic exit. That hack is gone: the
+    // root cause was firing onPlayMovie inside the mapLoaded bundle (before
+    // the model is bound to a possessed pawn), which let the cinematic-exit
+    // CollectGarbage reclaim the in-flight appearance asset. The cinematic
+    // is now fired from `handle_on_client_ready` after the appearance is
+    // rooted to a live actor. See issue #288.
 
     // Register entity_id -> addr before the final onClientReady gate so any
     // resource responses and future client-targeted traffic can resolve the
@@ -213,7 +187,14 @@ pub(crate) async fn handle_map_loaded(
     // still in a "transaction" during bundle processing (all messages in a reassembled
     // bundle are processed in one frame). The C++ server sends BeingAppearance 3-5
     // times via createCacheStamp replays; this second send mimics that.
-    let appearance_args = build_appearance_args(&player_data.bodyset, &player_data.components);
+    // Player spawns weapon-holstered. The wire `ComponentList` therefore
+    // omits the active bandolier weapon visual; the client's appearance
+    // compositor falls back to `WEAP_Melee = 4` for the animation pose
+    // key at `entity+0x3D2` (`ghidra://SGW.exe@0x00ec0840`).
+    let appearance_args = build_appearance_args(
+        &player_data.bodyset,
+        &player_data.appearance_components(true),
+    );
     let tint_args = build_tint_args(player_data.skin_color_id);
 
     // The C++ server waits for the exposed SGWPlayer base method
@@ -233,6 +214,7 @@ pub(crate) async fn handle_map_loaded(
             world_name: entry_info.world_name.clone(),
             appearance_args,
             tint_args,
+            first_login: player_data.first_login,
         });
     }
 

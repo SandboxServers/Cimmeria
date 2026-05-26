@@ -246,6 +246,72 @@ async fn lethal_hit_drains_threatened_mobs_and_clears_bsf_in_combat() {
     );
 }
 
+/// One-shot kill regression guard: a single lethal hit against an NPC
+/// must NOT leave the attacker stranded with BSF_InCombat set. The
+/// previous bug: `use_ability` set the bit raw before damage_apply
+/// ran, but `generate_threat` (which is what calls
+/// `enter_player_combat` to populate `threatened_mobs` and broadcast
+/// the bit) is gated on `!target_died` (mod.rs:413). So a one-shot
+/// kill set the bit and never cleared it — the corpse's `threat_list`
+/// stayed empty, `clear_dead_npc_from_all_player_threat` found
+/// nothing to drain, and the bit stuck forever.
+///
+/// After the funnel fix, use_ability doesn't set the bit raw; the
+/// kill path never sets the bit; the assertion below pins that
+/// outcome.
+#[tokio::test]
+async fn one_shot_kill_does_not_strand_attacker_bsf_in_combat() {
+    use crate::cell::abilities::handle_use_ability;
+    use crate::cell::combat::state::BSF_IN_COMBAT;
+
+    let mut mgr = make_mgr_player_vs_npc();
+    let ability = make_ability(7, vec![100]);
+    mgr.ability_defs.insert(7, ability);
+    // Overkill damage on a 1-HP NPC — guarantees target_died = true
+    // and `generate_threat` is skipped entirely on this hit.
+    mgr.effect_defs.insert(100, make_effect(100, 9999));
+    if let Some(player) = mgr.get_entity_mut(1) {
+        // `handle_use_ability` validates the attacker owns the ability
+        // before the damage path runs; the previous `apply_damage_to_target`
+        // shortcut bypassed this check.
+        player.abilities.add_ability(7);
+    }
+    if let Some(npc) = mgr.get_entity_mut(2) {
+        npc.level = 5;
+        if let Some(stat) = npc.stats.get_mut(cimmeria_entity::stats::HEALTH) {
+            stat.update(0, 1, 100);
+            stat.clear_dirty();
+        }
+    }
+    // Pre-condition: attacker is NOT in combat (fresh).
+    assert_eq!(mgr.get_entity(1).unwrap().state_field & BSF_IN_COMBAT, 0);
+
+    let (tx, _rx) = mpsc::channel(64);
+    // Drive the full public entry point — the previous regression
+    // path was a raw `state_field |= BSF_IN_COMBAT` inside
+    // `handle_use_ability` *before* `apply_damage_to_target`
+    // decided to skip `generate_threat` on `target_died=true`.
+    // Bypassing into `apply_damage_to_target` directly would have
+    // hidden the regression. Use the public entrypoint instead.
+    let committed = handle_use_ability(1, 7, 2, &tx, &mut mgr).await;
+    assert!(committed, "use_ability should commit on a valid one-shot");
+
+    let attacker = mgr.get_entity(1).unwrap();
+    assert_eq!(
+        attacker.state_field & BSF_IN_COMBAT,
+        0,
+        "one-shot kill must not strand BSF_InCombat on the attacker — \
+         the previous raw setter in use_ability set the bit before \
+         generate_threat decided to skip on target_died=true, and no \
+         clear path ever ran"
+    );
+    assert!(
+        attacker.threatened_mobs.is_empty(),
+        "one-shot kill must leave threatened_mobs empty — the gate the \
+         out-of-combat regen tick reads"
+    );
+}
+
 /// Player target dying: onBeginAidWait must fire so the client shows
 /// the Defeat Window. Carries a TimeToAid prefix and a respawner array.
 #[tokio::test]

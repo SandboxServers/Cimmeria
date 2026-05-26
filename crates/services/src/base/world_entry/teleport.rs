@@ -16,7 +16,7 @@ use tokio::net::UdpSocket;
 
 use crate::mercury::{build_entity_method_packet, build_forced_position};
 
-use super::super::helpers::send_to_witness;
+use super::super::helpers::send_to_witness_reliable;
 use super::super::ConnectedClientState;
 
 /// Authoritative same-world teleport: snap the player's avatar to `position`.
@@ -35,6 +35,7 @@ pub(super) async fn handle_teleport_player(
     entity_id: u32,
     space_id: u32,
     position: [f32; 3],
+    prev_pos: [f32; 3],
     socket: &Arc<UdpSocket>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -67,20 +68,19 @@ pub(super) async fn handle_teleport_player(
         "TeleportPlayer: snapping avatar"
     );
 
-    // 1. Engine-level snap.
-    if let Err(e) = send_to_witness(
+    // 1. Engine-level snap. `prev_pos` is the entity's last-known position
+    //    before the teleport — see `build_forced_position` and
+    //    `spec.protocol.mercury` §1.10.6 for why this is not zero.
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
-        |key, seq, acks| build_forced_position(key, seq, acks, entity_id, space_id, position),
+        |key, seq, acks| {
+            build_forced_position(key, seq, acks, entity_id, space_id, position, prev_pos)
+        },
     )
-    .await
-    {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-    }
+    .await;
 
     // 2. Streaming-load waiting flag (method 116). Direction is zeroed —
     //    we don't currently rotate the avatar on ring travel.
@@ -89,13 +89,11 @@ pub(super) async fn handle_teleport_player(
         args.extend_from_slice(&c.to_le_bytes());
     }
     args.extend_from_slice(&[0u8; 12]); // direction = 0,0,0
-    if let Err(e) = send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        entity_id,
-        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -107,10 +105,7 @@ pub(super) async fn handle_teleport_player(
             )
         },
     )
-    .await
-    {
-        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
-    }
+    .await;
 
     // 3. Persist. Mirrors gate_travel's fail-closed on missing active_player_id.
     if let Some(pool) = db_pool {
@@ -138,15 +133,11 @@ pub(super) async fn handle_teleport_player(
         .await;
         match res {
             Ok(r) if r.rows_affected() == 0 => {
-                tracing::error!(
+                tracing::warn!(
                     entity_id,
                     pid,
                     account_id,
-                    rows_affected = 0,
-                    expected = 1,
-                    world_name = ?current_world,
-                    space_id,
-                    "TeleportPlayer: persistence UPDATE matched 0 rows -- player snap-back on relog"
+                    "TeleportPlayer: persistence UPDATE matched 0 rows"
                 );
             }
             Ok(_) => {}
@@ -188,6 +179,7 @@ mod tests {
             999,
             65536,
             [10.0, 20.0, 30.0],
+            [5.0, 20.0, 30.0],
             &socket,
             &connected,
             &entity_to_addr,
@@ -216,6 +208,7 @@ mod tests {
             1,
             65536,
             [10.0, 20.0, 30.0],
+            [5.0, 20.0, 30.0],
             &socket,
             &connected,
             &entity_to_addr,

@@ -31,5 +31,9 @@ mod tests;
 // Public re-exports — keep `crate::cell::abilities::Foo` paths stable for callers.
 pub use dispatch::handle_use_ability_on_ground;
 pub(crate) use loot_drop::INT_NORMAL_LOOT;
-pub(crate) use messaging::send_entity_method;
+pub(crate) use messaging::{request_appearance_refresh, send_entity_method};
+// `send_entity_method_to_witnesses` and `send_entity_method_to_self_and_witnesses`
+// land here for #278 child PRs to adopt. They stay private to the `messaging`
+// module until the first child callsite migrates — at which point the
+// migrating PR adds the re-exports it needs.
 pub use use_ability::handle_use_ability;
