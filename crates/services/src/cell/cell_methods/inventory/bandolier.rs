@@ -248,7 +248,11 @@ pub(crate) async fn handle_request_active_slot_change(
     // drains the active slot when reloads finish; this catches
     // mid-magazine swaps where the player swaps weapons before
     // reloading the empty one.
-    let (prev_persist, new_ammo_type): (Option<(i32, i32, i32, i32)>, Option<i32>) = {
+    let (prev_persist, new_ammo_type, prev_slot_for_log): (
+        Option<(i32, i32, i32, i32)>,
+        Option<i32>,
+        i32,
+    ) = {
         let entity = match space_mgr.get_entity_mut(entity_id) {
             Some(e) => e,
             None => return,
@@ -306,8 +310,38 @@ pub(crate) async fn handle_request_active_slot_change(
             .bandolier_items
             .get(&slot_id)
             .map(|i| i.cur_ammo_type);
-        (prev_persist, new_ammo_type)
+        (prev_persist, new_ammo_type, prev_slot)
     };
+    // Observability: log the resolved weapon ability for the new slot so
+    // SigNoz can verify Phase 1's per-weapon resolution is firing
+    // correctly on swap. Pre-#419 every weapon resolved to ability 592
+    // (Pistol Shot hardcode); now the resolution is per-item via
+    // items_event_sets. Log carries enough context to spot regressions:
+    // "swapped to slot N, item M, resolved to ability A" — a missing
+    // ability id (None) flags an unbound item that the right-click
+    // fallback would route to 592, which is the canary for a content gap.
+    {
+        let item_id = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.bandolier_items.get(&slot_id).map(|b| b.item_id));
+        let resolved_ranged_ability = item_id.and_then(|iid| {
+            crate::cell::abilities::ability_for_item(
+                space_mgr,
+                iid,
+                crate::cell::spawner::EVENT_ITEM_RANGED,
+            )
+        });
+        tracing::info!(
+            target: "bandolier",
+            event = "active_slot_change",
+            entity_id,
+            slot_id,
+            prev_slot = prev_slot_for_log,
+            item_id = ?item_id,
+            resolved_ranged_ability = ?resolved_ranged_ability,
+            "Active bandolier slot changed — auto-attack ability resolved"
+        );
+    }
 
     // Phase 2: send messages now that the borrow is released. Clear the
     // dirty marker for the previously-active slot only after the persist
