@@ -225,11 +225,18 @@ pub(crate) async fn dispatch_sgw_player_base_method(
         }
 
         _ => {
-            tracing::trace!(
+            // Promoted from trace! per #311 (Tier 4 follow-up to #304).
+            // Below-ops-filter trace! masked unimplemented client→server
+            // method indices: when the client called a base method we had
+            // no handler for, the server silently returned Ok and the
+            // client's session would behave as if the method had run. A
+            // greppable warn turns every unimplemented method into an ops
+            // signal that maps directly to a missing handler.
+            tracing::warn!(
                 %addr,
                 msg_id = format_args!("{:#04x}", msg_id),
                 base_method_index = msg_id.wrapping_sub(0xC0),
-                "Unhandled SGWPlayer base method"
+                "Unhandled SGWPlayer base method -- no registered handler for this index; client behaviour may diverge silently"
             );
         }
     }
@@ -318,6 +325,77 @@ mod tests {
         assert!(
             entity_to_addr.lock().unwrap().get(&entity_id).is_none(),
             "logOff must still clean up entity_to_addr even when cell_tx is closed"
+        );
+    }
+
+    /// **Regression guard for issue #311** (Tier 4 follow-up to #304).
+    ///
+    /// An SGWPlayer base-method dispatch with no registered handler must
+    /// fire `warn!` (not `trace!`) so that an unimplemented method index
+    /// appears on the standard ops dashboard rather than vanishing below
+    /// the default filter. Reverting the fall-through arm to `trace!`
+    /// fails this test on the level check.
+    ///
+    /// Bug shape: when the client calls a base method the server hasn't
+    /// implemented, the original `trace!` swallowed the signal — the
+    /// server silently returned `Ok` and the client's session would
+    /// behave as if the method had run. This guard pins the level
+    /// promotion AND the structured `msg_id` / `base_method_index`
+    /// fields ops queries pivot on.
+    #[tokio::test]
+    async fn unhandled_base_method_warns_with_msg_id_and_base_index() {
+        let capture = LogCapture::install();
+
+        let addr: SocketAddr = "127.0.0.1:54322".parse().unwrap();
+        let key = [0u8; 32];
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
+
+        let state = test_default_connected_client_state();
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::<u32, SocketAddr>::new()));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+
+        // cell_tx isn't exercised by the unhandled-method fall-through arm;
+        // pass None to keep the test minimal.
+        let cell_tx: Option<mpsc::Sender<BaseToCellMsg>> = None;
+
+        // 0xFF is past the last defined SGWPlayer base method (ON_CLIENT_READY
+        // = 0xD8). Guaranteed to land in the fall-through arm regardless of
+        // future handler additions in the 0xC0–0xD8 range.
+        let unhandled_msg_id: u8 = 0xFF;
+
+        dispatch_sgw_player_base_method(
+            unhandled_msg_id,
+            /* payload */ &[],
+            /* player_name */ &None,
+            addr,
+            &transport,
+            key,
+            &connected,
+            &entity_manager,
+            &cell_tx,
+            &entity_to_addr,
+        )
+        .await
+        .expect("unhandled method must not propagate Err — just log");
+
+        let event = capture
+            .find_message(Level::WARN, "Unhandled SGWPlayer base method")
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected WARN for unhandled SGWPlayer base method; \
+                     a revert to `trace!` makes this test fail because the \
+                     event is captured at a level below WARN. Captured: {:#?}",
+                    capture.all()
+                )
+            });
+
+        // Pin the structured field shape so an ops query for
+        // `base_method_index` continues to surface the gap. A refactor that
+        // drops either field would let the warn fire but break the query.
+        assert!(
+            event.has_field("base_method_index", "63"),
+            "base_method_index must be 0xFF - 0xC0 = 63; got {event:#?}",
         );
     }
 }

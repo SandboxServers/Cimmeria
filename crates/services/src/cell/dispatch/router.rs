@@ -92,10 +92,86 @@ pub async fn dispatch_cell_method(
         return;
     }
 
-    tracing::info!(
+    // Promoted from info! per #311 (Tier 4 follow-up to #304).
+    // `info!` was noisy at the volume of cell methods that traverse the
+    // router and lacked actionable framing; `warn!` is greppable as the
+    // direct signal for "client called a method we don't implement".
+    // Reverting to `info!` makes the dispatcher gap invisible on a
+    // warn-filtered ops dashboard.
+    tracing::warn!(
         entity_id,
         method_index,
         args_len = args.len(),
-        "Unhandled cell method call"
+        "Unhandled cell method call -- no registered handler for this index; client behaviour may diverge silently"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{make_space_manager, LogCapture};
+    use tracing::Level;
+
+    /// **Regression guard for issue #311** (Tier 4 follow-up to #304).
+    ///
+    /// A cell-method dispatch with no registered handler must fire `warn!`
+    /// (not `info!`) so the dispatcher gap appears on a warn-filtered ops
+    /// dashboard. Reverting to `info!` fails the level check below.
+    ///
+    /// Bug shape: the previous `info!` was noisy and lacked actionable
+    /// framing — when a player triggered an unimplemented cell method
+    /// (often the case as new client features ship), the silent
+    /// behavioural divergence required a player ticket to surface. This
+    /// guard also pins the structured `method_index` and `args_len`
+    /// fields so an ops query like `level=warn message="Unhandled cell"
+    /// method_index=$N` keeps working after refactors.
+    #[tokio::test]
+    async fn unhandled_cell_method_warns_with_method_index_and_args_len() {
+        let capture = LogCapture::install();
+
+        let mut mgr = make_space_manager();
+        let (tx, _rx) = mpsc::channel::<CellToBaseMsg>(8);
+        let engine = ChainEngine::new();
+
+        // 0xFFFF is past every cell-interface range (the highest is SGWPlayer's
+        // 67–108). Guaranteed to land in the fall-through warn arm regardless
+        // of future handler additions.
+        let unhandled_method_index: u16 = 0xFFFF;
+        let entity_id: u32 = 4242; // not present in space_mgr — span backfill skips, fall-through still runs
+        let args: &[u8] = &[0x01, 0x02, 0x03];
+
+        dispatch_cell_method(
+            entity_id,
+            unhandled_method_index,
+            args,
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        let event = capture
+            .find_message(Level::WARN, "Unhandled cell method call")
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected WARN for unhandled cell method; a revert to \
+                     `info!` makes this test fail because the event is \
+                     captured at a level below WARN. Captured: {:#?}",
+                    capture.all()
+                )
+            });
+
+        assert!(
+            event.has_field("method_index", "65535"),
+            "method_index must round-trip as the u16 we passed; got {event:#?}",
+        );
+        assert!(
+            event.has_field("args_len", "3"),
+            "args_len must be the byte count of the supplied args; got {event:#?}",
+        );
+        assert!(
+            event.has_field("entity_id", "4242"),
+            "entity_id must round-trip so ops can pivot per-player; got {event:#?}",
+        );
+    }
 }
