@@ -712,8 +712,10 @@ pub async fn handle_use_ability_with_kill_credit(
     for dead_eid in cone_dead_ids {
         let dead_tag = space_mgr.get_entity(dead_eid).and_then(|t| t.tag.clone());
         if let Some(t) = dead_tag {
-            crate::cell::content::fire_entity_death(entity_id, player_id, &t, engine, tx, space_mgr)
-                .await;
+            crate::cell::content::fire_entity_death(
+                entity_id, player_id, &t, engine, tx, space_mgr,
+            )
+            .await;
         }
     }
     committed

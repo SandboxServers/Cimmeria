@@ -243,8 +243,8 @@ impl EffectDef {
         //   Medium = 45°               (90° full)     — grenade arc
         //   Wide   = 67.5°             (135° full)    — flamethrower-class
         match tier {
-            "Narrow" => std::f32::consts::FRAC_PI_8, // 22.5° = π/8
-            "Medium" => std::f32::consts::FRAC_PI_4, // 45° = π/4
+            "Narrow" => std::f32::consts::FRAC_PI_8,     // 22.5° = π/8
+            "Medium" => std::f32::consts::FRAC_PI_4,     // 45° = π/4
             "Wide" => 3.0 * std::f32::consts::FRAC_PI_8, // 67.5° = 3π/8
             other => {
                 tracing::warn!(

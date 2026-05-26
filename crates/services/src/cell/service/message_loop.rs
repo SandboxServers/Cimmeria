@@ -137,6 +137,15 @@ pub(super) async fn run_cell_loop(
                 if aoi_tick_counter.is_multiple_of(10) {
                     super::ticks::regen_tick(tx, &mut space_mgr).await;
                 }
+
+                // Active-effect pulsing — DoT / HoT / timed debuff
+                // pulses fire whenever their per-instance schedule
+                // elapses. Runs every AoI tick (100ms) so pulse
+                // intervals down to 0.1s resolve correctly. The
+                // entity filter inside the tick short-circuits when
+                // nobody has any active effects — cheap on idle
+                // worlds.
+                super::super::effects::effect_pulse_tick(tx, &mut space_mgr).await;
                 }
                 .instrument(tick_span)
                 .await;

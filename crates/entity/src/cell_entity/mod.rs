@@ -20,6 +20,35 @@ use crate::base_entity::PropertyValue;
 use crate::missions::MissionManager;
 use crate::stats::StatList;
 
+/// One active pulsing-effect instance on an entity (DoT, HoT, timed
+/// debuff). Created by `cimmeria_services::cell::effects::register_active_effect`
+/// after the initial pulse fires on a `pulse_count > 1` effect, then
+/// scheduled per-pulse by `effect_pulse_tick`.
+///
+/// Lives here (not in services) so the entity field can be typed
+/// directly without a circular-dep mirror struct. The scheduling
+/// fields are plain stdlib types so no services-side types leak into
+/// the entity crate.
+#[derive(Debug, Clone)]
+pub struct ActiveEffectInstance {
+    /// Effect template id (services-side `space_mgr.effect_defs` lookup).
+    pub effect_id: i32,
+    /// Owning ability id — used for observability and replay.
+    pub ability_id: i32,
+    /// Entity that applied the effect (drives source attribution).
+    pub invoker_id: u32,
+    /// Pulses left to fire. Decremented after each pulse; instance is
+    /// removed when this hits zero.
+    pub remaining_pulses: i32,
+    /// Original `pulse_count` from the effect def (observability only).
+    pub total_pulses: i32,
+    /// When the next pulse should fire (server-local clock).
+    pub next_pulse_at: std::time::Instant,
+    /// Seconds between pulses. Cached at registration so the per-tick
+    /// fire path doesn't re-look up the effect def just to reschedule.
+    pub pulse_interval_secs: f32,
+}
+
 mod bandolier;
 mod state_flags;
 mod system_options;
@@ -400,6 +429,15 @@ pub struct CellEntity {
     /// callers that don't care about kill credit (NPC AI fire, etc.).
     pub last_aoe_deaths: Vec<u32>,
 
+    /// Pulsing effects currently active on this entity (DoT, HoT,
+    /// timed debuffs). Each instance carries its own scheduling, so
+    /// the per-cell `effect_pulse_tick` walks this Vec to fire due
+    /// pulses and remove completed instances. Empty Vec for the vast
+    /// majority of entities (only those who've been hit with a
+    /// `pulse_count > 1` effect carry any). See
+    /// [`ActiveEffectInstance`] for the per-instance state.
+    pub active_effects: Vec<ActiveEffectInstance>,
+
     // ── NPC AI state ──────────────────────────────────────────────────────────
     /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
     pub ai_state: AiState,
@@ -651,6 +689,7 @@ impl CellEntity {
             pending_slot_swap_at: None,
             pending_slot_swap_target: None,
             last_aoe_deaths: Vec::new(),
+            active_effects: Vec::new(),
             holster_animation_complete_at: None,
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),

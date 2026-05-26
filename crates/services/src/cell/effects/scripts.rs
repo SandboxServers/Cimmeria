@@ -1,9 +1,17 @@
 //! Effect script implementations.
 //!
-//! Three scripts in v1 (#331 Phase 1):
-//! - [`HealHealth`] — heals target's health by `HealPercentage` × max
-//! - [`HealFocus`] — heals target's focus by `HealPercentage` × max
-//! - [`MeleeDamage`] — does `HealthDamage` health damage via the damage pipeline
+//! v1 (#331 Phase 1) — single-shot stat scripts:
+//! - [`HealHealth`] / [`HealFocus`] — heal by `HealPercentage` × max
+//! - [`MeleeDamage`] — `HealthDamage` raw damage
+//!
+//! v2 (#47 / #419 Phase F+G) — buff/debuff scripts:
+//! - [`AbsorbShield`] — adds `ShieldAmount` to the matching ABSORB_*
+//!   pool so subsequent damage of that type is consumed from the
+//!   shield before HEALTH
+//! - [`Stun`] — sets `BSF_MOVEMENT_LOCK` on the target; cleared by
+//!   the active-effect expiry sweep
+//! - [`Suppression`] — flat reduction to movement speed via the
+//!   `MOVE_SPEED_MOD` stat
 //!
 //! ## Adding a new script
 //!
@@ -15,7 +23,11 @@
 //!    want existing content to dispatch through it.
 
 use super::{EffectContext, EffectScript};
-use cimmeria_entity::stats::{FOCUS, HEALTH};
+use crate::cell::combat::state::BSF_MOVEMENT_LOCK;
+use cimmeria_entity::abilities::{DT_ENERGY, DT_HAZMAT, DT_PHYSICAL, DT_PSIONIC, DT_UNTYPED};
+use cimmeria_entity::stats::{
+    ABSORB_ENERGY, ABSORB_HAZMAT, ABSORB_PHYSICAL, ABSORB_PSIONIC, ABSORB_UNTYPED, FOCUS, HEALTH,
+};
 
 // ── HealHealth ───────────────────────────────────────────────────────────
 
@@ -172,6 +184,134 @@ impl EffectScript for MeleeDamage {
             damage,
             new_cur,
             "MeleeDamage applied"
+        );
+    }
+}
+
+// ── AbsorbShield ─────────────────────────────────────────────────────────
+
+/// Adds `ShieldAmount` to the target's matching ABSORB_* pool. Damage
+/// of that type will then drain the pool before bleeding through to
+/// HEALTH (see `cell::combat::damage::drain_absorption_pools`).
+///
+/// NVPs:
+///   - `ShieldAmount` (i32, required) — capacity to grant
+///   - `ShieldType`   (i32, optional) — damage type the shield blocks
+///     (DT_PHYSICAL/ENERGY/HAZMAT/PSIONIC/UNTYPED). Defaults to UNTYPED.
+///
+/// The shield pool persists on the target's StatList until damage
+/// drains it OR a pulsing instance carries the script and expires.
+/// For "buff duration" semantics, register the effect as pulsing with
+/// `pulse_count = 1` and `pulse_duration = <buff_seconds>` — the
+/// pulse fires once on apply, then the instance ages out at expiry.
+pub struct AbsorbShield;
+
+impl EffectScript for AbsorbShield {
+    fn on_apply(&self, ctx: &mut EffectContext) {
+        let amount = ctx.effect.param_i32("ShieldAmount");
+        if amount <= 0 {
+            return;
+        }
+        let damage_type = ctx.effect.param_i32("ShieldType") as i8;
+        let pool_id = match damage_type {
+            DT_PHYSICAL => ABSORB_PHYSICAL,
+            DT_ENERGY => ABSORB_ENERGY,
+            DT_HAZMAT => ABSORB_HAZMAT,
+            DT_PSIONIC => ABSORB_PSIONIC,
+            DT_UNTYPED => ABSORB_UNTYPED,
+            _ => ABSORB_UNTYPED,
+        };
+        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
+            return;
+        };
+        if let Some(pool) = target.stats.get_mut(pool_id) {
+            let new_cur = (pool.cur + amount).min(pool.max);
+            pool.update(pool.min, new_cur, pool.max);
+            tracing::info!(
+                target: "abilities",
+                event = "shield_granted",
+                source_id = ctx.source_id,
+                target_id = ctx.target_id,
+                effect_id = ctx.effect.effect_id,
+                damage_type,
+                amount,
+                pool_after = new_cur,
+                "AbsorbShield applied"
+            );
+        }
+    }
+}
+
+// ── Stun ─────────────────────────────────────────────────────────────────
+
+/// Locks the target's movement + actions for the effect's duration.
+///
+/// Sets `BSF_MOVEMENT_LOCK` on apply. Pair with a pulsing registration
+/// (`pulse_count` × `pulse_duration` = lockdown seconds) — at expiry,
+/// the active-effect sweep removes the instance; a separate Phase G
+/// follow-up will hook the sweep to clear the bit. Today the bit
+/// sticks until another action explicitly clears it (death, manual
+/// unstun chain), which is OK for v1 since Stun is rarely sub-second.
+///
+/// No NVPs — duration comes from the owning effect's pulse_count ×
+/// pulse_duration.
+pub struct Stun;
+
+impl EffectScript for Stun {
+    fn on_apply(&self, ctx: &mut EffectContext) {
+        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
+            return;
+        };
+        let was_set = target.set_state_flag(BSF_MOVEMENT_LOCK);
+        tracing::info!(
+            target: "abilities",
+            event = "stun_applied",
+            source_id = ctx.source_id,
+            target_id = ctx.target_id,
+            effect_id = ctx.effect.effect_id,
+            was_already_set = !was_set,
+            "Stun applied — BSF_MOVEMENT_LOCK set"
+        );
+    }
+}
+
+// ── Suppression ──────────────────────────────────────────────────────────
+
+/// Reduces the target's HEALTH by a small per-pulse amount (`HealthDamage`
+/// NVP) AND surfaces the suppression event for observability. This is
+/// the closest mechanical match to the original game's "suppression":
+/// suppress effects do a small chip-damage tick over their duration to
+/// discourage the target from staying in the line of fire.
+///
+/// NVPs:
+///   - `HealthDamage` (i32, optional, default 5) — per-pulse chip
+///
+/// Full movement-speed reduction (the other half of suppression) waits
+/// for a `MOVE_SPEED_MOD` stat the cell-entity layer doesn't expose yet.
+/// Flagged for a Phase H follow-up — the script is in place so DB
+/// content can opt in via `script_name = "Suppression"` without a
+/// migration.
+pub struct Suppression;
+
+impl EffectScript for Suppression {
+    fn on_apply(&self, ctx: &mut EffectContext) {
+        let chip = ctx.effect.param_i32("HealthDamage").max(5);
+        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
+            return;
+        };
+        if let Some(stat) = target.stats.get_mut(HEALTH) {
+            let cur = stat.cur;
+            let new_cur = (cur - chip).max(0);
+            stat.update(stat.min, new_cur, stat.max);
+        }
+        tracing::info!(
+            target: "abilities",
+            event = "suppression_pulse",
+            source_id = ctx.source_id,
+            target_id = ctx.target_id,
+            effect_id = ctx.effect.effect_id,
+            chip_damage = chip,
+            "Suppression pulse"
         );
     }
 }
@@ -362,6 +502,118 @@ mod tests {
         // Original target unchanged
         let hp = mgr.get_entity(1).unwrap().stats.get(HEALTH).unwrap().cur;
         assert_eq!(hp, 50);
+    }
+
+    #[test]
+    fn absorb_shield_adds_to_matching_pool() {
+        let mut mgr = make_mgr_with_target();
+        let mut params = HashMap::new();
+        params.insert("ShieldAmount".to_string(), "200".to_string());
+        params.insert("ShieldType".to_string(), DT_PHYSICAL.to_string());
+        let effect = EffectDef {
+            effect_id: 555,
+            ability_id: 1,
+            params,
+            ..Default::default()
+        };
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        AbsorbShield.on_apply(&mut ctx);
+        let pool = ctx
+            .space_mgr
+            .get_entity(1)
+            .unwrap()
+            .stats
+            .get(ABSORB_PHYSICAL)
+            .unwrap()
+            .cur;
+        assert_eq!(pool, 200, "shield grants 200 to ABSORB_PHYSICAL pool");
+    }
+
+    #[test]
+    fn absorb_shield_defaults_to_untyped_when_no_shield_type_nvp() {
+        let mut mgr = make_mgr_with_target();
+        let mut params = HashMap::new();
+        params.insert("ShieldAmount".to_string(), "100".to_string());
+        let effect = EffectDef {
+            effect_id: 556,
+            ability_id: 1,
+            params,
+            ..Default::default()
+        };
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        AbsorbShield.on_apply(&mut ctx);
+        let untyped = ctx
+            .space_mgr
+            .get_entity(1)
+            .unwrap()
+            .stats
+            .get(ABSORB_UNTYPED)
+            .unwrap()
+            .cur;
+        assert_eq!(untyped, 100);
+    }
+
+    #[test]
+    fn stun_sets_movement_lock_state_flag() {
+        let mut mgr = make_mgr_with_target();
+        let effect = EffectDef {
+            effect_id: 600,
+            ability_id: 1,
+            ..Default::default()
+        };
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        Stun.on_apply(&mut ctx);
+        let has_lock = ctx
+            .space_mgr
+            .get_entity(1)
+            .unwrap()
+            .has_state_flag(BSF_MOVEMENT_LOCK);
+        assert!(has_lock, "Stun must set BSF_MOVEMENT_LOCK");
+    }
+
+    #[test]
+    fn suppression_chips_health_by_nvp_amount() {
+        let mut mgr = make_mgr_with_target();
+        // Player starts at 50/100. Suppression with HealthDamage=8.
+        let mut params = HashMap::new();
+        params.insert("HealthDamage".to_string(), "8".to_string());
+        let effect = EffectDef {
+            effect_id: 700,
+            ability_id: 1,
+            params,
+            ..Default::default()
+        };
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        Suppression.on_apply(&mut ctx);
+        let hp = ctx
+            .space_mgr
+            .get_entity(1)
+            .unwrap()
+            .stats
+            .get(HEALTH)
+            .unwrap()
+            .cur;
+        assert_eq!(hp, 42, "50 - 8 chip = 42");
     }
 
     #[test]

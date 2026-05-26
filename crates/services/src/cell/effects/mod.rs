@@ -50,8 +50,11 @@
 //!   `effect.params` HashMap is already loaded from `resources.effect_nvps`
 //!   by `load_effect_defs`. Scripts read it directly via `ctx.effect.param_*`.
 
+pub mod pulsing;
 pub mod registry;
 pub mod scripts;
+
+pub use pulsing::{effect_pulse_tick, register_active_effect};
 
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_entity::abilities::EffectDef;

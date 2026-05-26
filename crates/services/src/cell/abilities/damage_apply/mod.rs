@@ -515,6 +515,33 @@ pub(super) async fn apply_damage_to_target(
             }
         }
     }
+
+    // ── Register pulsing effects (#47 — DoT/HoT/timed debuff) ──
+    //
+    // Walk the ability's effects again — for any with `pulse_count > 1`
+    // and a positive `pulse_duration`, register an `ActiveEffectInstance`
+    // on the target. The initial pulse already fired (above, via NVP
+    // damage or script dispatch); registration carries the remaining
+    // pulses. See `cell::effects::pulsing::effect_pulse_tick` for the
+    // per-tick fire loop.
+    if let Some(def) = ability_def {
+        let now = std::time::Instant::now();
+        for &eid in &def.effect_ids {
+            let effect_clone = match space_mgr.effect_defs.get(&eid) {
+                Some(e) if e.is_pulsing() => e.clone(),
+                _ => continue,
+            };
+            let _ = crate::cell::effects::register_active_effect(
+                space_mgr,
+                target_eid,
+                entity_id,
+                &effect_clone,
+                now,
+                tx,
+            )
+            .await;
+        }
+    }
 }
 
 #[cfg(test)]

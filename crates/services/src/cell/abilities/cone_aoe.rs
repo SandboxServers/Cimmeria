@@ -88,7 +88,11 @@ pub fn collect_cone_targets(
         None => return Vec::new(),
     };
     let attacker_space = attacker.space_id;
-    let apex = [attacker.position.x, attacker.position.y, attacker.position.z];
+    let apex = [
+        attacker.position.x,
+        attacker.position.y,
+        attacker.position.z,
+    ];
 
     // Direction vector from attacker to primary target in the X/Z plane
     // (Y is up in this engine). A vertical-only offset between attacker
@@ -449,13 +453,8 @@ mod tests {
         spawn_npc(&mut mgr, 3, "W", [5.0, 0.0, 4.0]); // ~38° off axis
 
         // Wide cone (67.5° half-angle) includes it
-        let wide = collect_cone_targets(
-            &mgr,
-            1,
-            2,
-            10.0,
-            EffectDef::tcm_half_angle_radians("Wide"),
-        );
+        let wide =
+            collect_cone_targets(&mgr, 1, 2, 10.0, EffectDef::tcm_half_angle_radians("Wide"));
         assert!(wide.contains(&3), "Wide (67.5°) cone includes 38° entity");
 
         // Narrow cone (22.5° half-angle) excludes it
