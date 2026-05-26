@@ -492,6 +492,29 @@ pub(crate) async fn handle_request_active_slot_change(
     skip_all,
     fields(entity_id, args_len = args.len()),
 )]
+/// Handle `requestAmmoChange(item_id, ammo_type)` — the player's per-slot
+/// ammo-type swap.
+///
+/// The bandolier's per-slot `cur_ammo_type` field carries an **ammo subtype
+/// id**, which drives damage-type variation (different ammo types do
+/// different damage profiles against different enemy types). Players swap
+/// to optimize their loadout against the current encounter; ammo is NOT
+/// consumed from inventory — the clip-based ammo model (refill on reload)
+/// is decoupled from ammo type.
+///
+/// Implementation contract (closes Phase 6 of #419):
+/// - Validates `ammo_type` is in the weapon's `allowed_ammo_types`
+///   whitelist (`crates/entity/src/inventory.rs:81`) so a forged
+///   request can't persist an arbitrary subtype the client UI can't
+///   render.
+/// - Rejects ambiguous matches when the player has the same item_id in
+///   multiple bandolier slots — the wire request doesn't carry a slot
+///   id, so guessing would mis-attribute the swap.
+/// - Persists via `BandolierAmmoUpdate` to `sgw_inventory.cur_ammo_type`
+///   so the swap survives relog.
+/// - If the swapped slot is the **active** weapon, broadcasts
+///   `onEntityProperty(GENERICPROPERTY_AMMO_TYPE_ID, ammo_type)` so the
+///   client's ammo-type indicator UI refreshes immediately.
 pub(super) async fn handle_request_ammo_change(
     entity_id: u32,
     args: &[u8],
@@ -654,4 +677,20 @@ pub(super) async fn handle_request_ammo_change(
         )
         .await;
     }
+
+    // Structured observability event for the swap. Stable
+    // `target: "bandolier"` so SigNoz can `groupBy=event` across the
+    // bandolier event family (matches the active_slot_change emitter
+    // added in #419 Phase 4). Operators can pivot on item_id +
+    // ammo_type to see which subtypes players are picking per weapon —
+    // useful data for balance + content gap detection.
+    tracing::info!(
+        target: "bandolier",
+        event = "ammo_type_change",
+        entity_id,
+        item_id,
+        ammo_type,
+        is_active_slot = is_active,
+        "Bandolier ammo type changed (persisted)"
+    );
 }
