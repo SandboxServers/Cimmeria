@@ -25,6 +25,12 @@ pub struct VendorTemplateLists {
 }
 
 /// Open a vendor store for a player, loading all item lists and pricing.
+#[tracing::instrument(
+    name = "vendor.open_store",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, vendor_entity_id, ?vendor_template_id),
+)]
 pub async fn handle_open_vendor_store(
     entity_id: u32,
     player_id: i32,

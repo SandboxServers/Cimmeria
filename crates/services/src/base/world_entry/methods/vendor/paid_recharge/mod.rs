@@ -25,6 +25,12 @@ struct StoreItemCostRow {
 }
 
 /// Transactionally recharge items for payment and refresh inventory/cash.
+#[tracing::instrument(
+    name = "vendor.paid_recharge",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, vendor_template_id, item_count = item_ids.len()),
+)]
 pub async fn handle_paid_recharge_inventory_items(
     entity_id: u32,
     player_id: i32,

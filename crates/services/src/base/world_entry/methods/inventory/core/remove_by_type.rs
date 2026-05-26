@@ -26,6 +26,12 @@ use crate::cell::messages::BaseToCellMsg;
 /// deleted) → full inventory refresh → `BaseToCellMsg::InventoryItemRemoved`
 /// (when the row is deleted). Bandolier sync runs when the source row was
 /// in container 3.
+#[tracing::instrument(
+    name = "inventory.remove_by_type",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, type_id, count)
+)]
 pub async fn handle_remove_inventory_item_by_type(
     entity_id: u32,
     player_id: i32,

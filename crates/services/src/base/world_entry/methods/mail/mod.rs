@@ -15,6 +15,12 @@ use crate::mercury::{build_player_entity_method_packet, method_idx};
 mod tests;
 
 /// Handle a mail request from CellService by querying the DB and sending results to the client.
+#[tracing::instrument(
+    name = "mail.request",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, op = ?op),
+)]
 pub async fn handle_mail_request(
     entity_id: u32,
     player_id: i32,

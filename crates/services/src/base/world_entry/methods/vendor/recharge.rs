@@ -13,6 +13,12 @@ use super::super::inventory::grant::normalize_item_ids;
 /// equipment slots, and quick bars. Bank, mail attachments, and loot are excluded.
 use super::VENDOR_FILTER_BAGS;
 
+#[tracing::instrument(
+    name = "vendor.recharge",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, ?vendor_template_id, item_count = item_ids.len()),
+)]
 pub async fn handle_recharge_inventory_items(
     entity_id: u32,
     player_id: i32,
