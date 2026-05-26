@@ -217,9 +217,12 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
                 npc.ai_state = AiState::Leashing;
                 npc.threat_list.clear();
                 tracing::info!(
+                    target: "npc_ai",
+                    event = "decision",
+                    decision_outcome = "leashed",
                     npc_id,
-                    target = target_id,
-                    distance = dist_to_spawn,
+                    target_id,
+                    dist_to_spawn,
                     "NPC AI: target too far from spawn, leashing"
                 );
             }
@@ -292,20 +295,33 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
                         npc.nav_path = waypoints;
                     }
                     tracing::debug!(
+                        target: "npc_ai",
+                        event = "decision",
+                        decision_outcome = "chase",
                         npc_id,
-                        target = target_id,
+                        target_id,
                         in_range,
                         has_los,
+                        dist_to_target,
                         "NPC AI: pathfinding toward target"
                     );
                 }
             } else {
-                tracing::debug!(
+                // No-path is the diagnostic signal for "navmesh missing in
+                // this zone" — see issue #407. The parent `npc_ai.decision`
+                // span already carries `space_id`, so SigNoz can group
+                // `groupBy=decision_outcome` across the npc_ai target and
+                // pivot per zone via the span's space_id attribute.
+                tracing::info!(
+                    target: "npc_ai",
+                    event = "decision",
+                    decision_outcome = "no_path",
                     npc_id,
-                    target = target_id,
+                    target_id,
                     in_range,
                     has_los,
-                    "NPC AI: no path to target"
+                    dist_to_target,
+                    "NPC AI: no path to target (zone may need navmesh)"
                 );
             }
         }
@@ -328,10 +344,13 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
                 npc.nav_path.push_back(backup);
             }
             tracing::debug!(
+                target: "npc_ai",
+                event = "decision",
+                decision_outcome = "min_range_backup",
                 npc_id,
-                target = target_id,
+                target_id,
                 ability_id = chosen_ability,
-                distance = dist_to_target,
+                dist_to_target,
                 min_range,
                 backup_x = backup.x,
                 backup_z = backup.z,
@@ -352,8 +371,12 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
         Some(id) => id,
         None => {
             tracing::debug!(
+                target: "npc_ai",
+                event = "decision",
+                decision_outcome = "no_ability",
                 npc_id,
-                target = target_id,
+                target_id,
+                dist_to_target,
                 "NPC AI: no usable ability (all cooling or needs-ammo), holding fire"
             );
             return;
@@ -361,10 +384,13 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     };
 
     tracing::debug!(
+        target: "npc_ai",
+        event = "decision",
+        decision_outcome = "attack_in_place",
         npc_id,
-        target = target_id,
+        target_id,
         ability_id = chosen_ability,
-        distance = dist_to_target,
+        dist_to_target,
         max_range,
         min_range,
         "NPC AI: attacking top threat target"

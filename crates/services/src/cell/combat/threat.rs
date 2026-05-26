@@ -41,7 +41,7 @@ pub const OOC_HOLSTER_DELAY: std::time::Duration = std::time::Duration::from_sec
 #[must_use]
 #[tracing::instrument(
     name = "threat.generate",
-    level = "debug",
+    level = "trace",
     skip_all,
     fields(attacker_id, target_id, threat_amount)
 )]
@@ -84,7 +84,13 @@ pub fn generate_threat(
 /// is the first one and `BSF_IN_COMBAT` flips on; the caller broadcasts.
 ///
 /// Reference: `python/cell/SGWPlayer.py:onAddedToThreatList` (944-953).
-#[tracing::instrument(name = "threat.enter_combat", level = "debug", skip_all)]
+///
+/// The span is at `trace` level so it doesn't generate one SigNoz event
+/// per call (per-damage-tick this gets called many times per actual aggro
+/// transition). The `info!` event below — gated on the actual
+/// `was_empty && state changed` transition — is the queryable signal
+/// for "this is the moment of aggro". See issue #408.
+#[tracing::instrument(name = "threat.enter_combat", level = "trace", skip_all)]
 pub fn enter_player_combat(
     space_mgr: &mut crate::cell::space_manager::SpaceManager,
     player_id: u32,
@@ -116,7 +122,13 @@ pub fn enter_player_combat(
             // (the rebroadcast decision lives at the cell→base message
             // dispatch site, which already has `space_mgr` in hand).
             let _ = player.sync_holster_to_combat(true);
-            tracing::debug!(
+            // Promoted from debug! to info! with stable `target: "threat"`
+            // so SigNoz `groupBy event` counts real combat-enter
+            // transitions (one per actual aggro, not one per damage tick).
+            // See issue #408.
+            tracing::info!(
+                target: "threat",
+                event = "enter_combat",
                 player_id,
                 mob_id,
                 new_state = player.state_field,
@@ -137,7 +149,7 @@ pub fn enter_player_combat(
 /// Reference: `python/cell/SGWPlayer.py:onRemovedFromThreatList` (957-965).
 #[tracing::instrument(
     name = "threat.exit_combat",
-    level = "debug",
+    level = "trace",
     skip_all,
     fields(player_id, mob_id)
 )]
@@ -165,6 +177,8 @@ pub fn exit_player_combat(
             // immediately on the wire so HUD/cursor flips don't lag.
             player.combat_exit_at = Some(std::time::Instant::now());
             tracing::info!(
+                target: "threat",
+                event = "exit_combat",
                 player_id,
                 mob_id,
                 new_state = player.state_field,
@@ -188,7 +202,7 @@ pub fn exit_player_combat(
 /// keep it for damage attribution (XP, loot tagging) or wipe it.
 #[tracing::instrument(
     name = "threat.clear_dead_npc",
-    level = "debug",
+    level = "trace",
     skip_all,
     fields(npc_id)
 )]

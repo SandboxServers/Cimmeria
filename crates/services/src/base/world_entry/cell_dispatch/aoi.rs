@@ -282,6 +282,36 @@ pub(super) async fn entity_moved(
 
 /// `CellToBaseMsg::EntityMethodCall` — server→client entity method call to
 /// the entity's owning client.
+/// Batched variant of [`entity_method_call`] — packs N method calls into a
+/// single Mercury packet body via [`ChannelBundle`]. All methods target the
+/// same player entity; bundle is RELIABLE (matches the per-call variant's
+/// channel semantics). See [`crate::cell::messages::CellToBaseMsg::EntityMethodCallBatch`]
+/// for the motivating bug (world-entry region-hint flood, PR #410).
+pub(super) async fn entity_method_call_batch(
+    entity_id: u32,
+    calls: Vec<(u16, Vec<u8>)>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    if calls.is_empty() {
+        return;
+    }
+    tracing::debug!(
+        entity_id,
+        batch_size = calls.len(),
+        "CellService->client entity method call batch"
+    );
+    let mut bundle = ChannelBundle::new(true);
+    for (method_index, args) in &calls {
+        bundle.append_entity_method(*method_index, IDBASE_SGW_PLAYER, entity_id, args);
+    }
+    // entity_id is the routing key (the player entity owning the session)
+    // AND the witness — entity-method calls are dispatched to the entity's
+    // own client, identical to the per-call variant.
+    send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+}
+
 pub(super) async fn entity_method_call(
     entity_id: u32,
     method_index: u16,

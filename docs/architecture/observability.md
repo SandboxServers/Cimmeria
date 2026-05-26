@@ -165,6 +165,41 @@ the downstream "show me packets" query has a single stable shape to
 filter on (`target = "mercury.packet"`), regardless of which seam
 emitted the event.
 
+### Stable target catalog
+
+Every event with a stable `target:` is a queryable surface in SigNoz —
+filter by `scope_name = '<target>'` to count occurrences, pivot on
+field values, plot rate-over-time. Adding a new target is cheap; the
+discipline is that targets should be **stable strings** (not subject
+to crate-rename churn) and **named for the question they answer**.
+
+| `target` | Level | Emitted from | What it counts |
+|---|---|---|---|
+| `mercury.packet` | INFO | `Channel::{send,receive}_packet`, `UnifiedCodec::{encode,decode}` | Every byte in/out of the server |
+| `mercury.retransmit` | INFO | `Channel::check_timeouts` | Reliable-channel retransmits |
+| `mercury.backpressure` | WARN | `Channel::send_packet` when TX window ≥ 50% full | Send-window saturation — early warning for stalled clients |
+| `wire.in` / `wire.out` | INFO | `wire_log::{log_inbound, log_outbound_entity_method}` | Decoded entity-method calls |
+| `aoi.entity_enter` / `aoi.entity_leave` | DEBUG | AoI tick witness fanout | Per-entity AoI transitions |
+| `movement.player` | DEBUG (1-in-10 sampled) | `cell::service::base_messages` position-update path | Player avatar position updates |
+| `movement.npc` | DEBUG (1-in-10 sampled `step`, always `waypoint_reached`) | `cell::service::ticks::npc_movement` | NPC nav-path movement |
+| `npc_ai` | DEBUG / INFO | `cell::service::npc_ai_fight` | NPC AI tick outcomes — see `decision_outcome` |
+| `threat` | INFO | `cell::combat::threat::{enter,exit}_player_combat` | Player combat-enter / combat-exit transitions (gated on actual state change) |
+
+#### `npc_ai.decision_outcome` enum
+
+The `npc_ai.decision` event carries a `decision_outcome` field with
+one of these values, letting SigNoz answer "which zones / NPCs are
+failing to engage and why" via a single `groupBy=decision_outcome`:
+
+| `decision_outcome` | Meaning |
+|---|---|
+| `attack_in_place` | In range + LOS + ability ready — NPC fires |
+| `chase` | Out of range / LOS — pathfinding toward target |
+| `no_path` | Pathfinder returned no path (typically: zone missing navmesh) |
+| `min_range_backup` | Target inside ability `min_range` — stepping back |
+| `no_ability` | Every known ability on cooldown / needs ammo |
+| `leashed` | Target moved past `LEASH_DISTANCE` from spawn |
+
 ### Cost on the hot path
 
 `tracing::info!` with no subscriber attached: a single atomic load +
