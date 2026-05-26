@@ -143,10 +143,22 @@ impl Inventory {
     /// Serialize bag info for `onBagInfo(ARRAY<BagInfo>)`.
     ///
     /// Wire: `count:u32`, per bag: `bagId:i32, numberOfSlots:i32`.
+    ///
+    /// Bags are emitted in ascending `bag_id` order. The client doesn't
+    /// care about iteration order (it just registers each entry by id),
+    /// but the deterministic order keeps the on-wire bytes stable so
+    /// wire-level regression tests and pcap-replay guards can compare
+    /// exact byte sequences across runs — `HashMap::values()` order
+    /// varies between `HashMap` instances even with identical contents
+    /// when their RandomState diverges, which surfaced in CI as
+    /// non-deterministic bag-order failures in the post-respawn
+    /// resync guard.
     pub fn serialize_bag_info(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(4 + self.bags.len() * 8);
         buf.extend_from_slice(&(self.bags.len() as u32).to_le_bytes());
-        for bag in self.bags.values() {
+        let mut bags: Vec<&Bag> = self.bags.values().collect();
+        bags.sort_by_key(|b| b.bag_id);
+        for bag in bags {
             buf.extend_from_slice(&bag.bag_id.to_le_bytes());
             buf.extend_from_slice(&bag.slots.to_le_bytes());
         }
