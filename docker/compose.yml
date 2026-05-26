@@ -71,9 +71,15 @@ services:
       OTEL_SERVICE_NAME: "cimmeria-server"
       OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=colo,service.namespace=cimmeria"
       OTEL_TRACES_SAMPLER: "always_on"
-    # Intentionally NO `volumes:` for postgres data — Docker creates a
-    # fresh anonymous volume on every `docker run`, populated from the
-    # image's baked pgdata layer. Watchtower swap = brand-new DB.
+    # Intentionally NO `volumes:` for postgres data. The entrypoint
+    # (`docker/entrypoint.sh`) reseeds /var/lib/postgresql/data from
+    # the image-baked /var/lib/postgresql/initial-data on every
+    # container start — that's what actually gives us "fresh DB per
+    # deploy." Earlier versions relied on the anonymous volume being
+    # dropped by `WATCHTOWER_REMOVE_VOLUMES=true`, but watchtower
+    # attaches the same anon volume to the new container before
+    # removing the old one (so Docker refuses the volume removal).
+    # The entrypoint-level reseed sidesteps that mechanic entirely.
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 
@@ -86,7 +92,7 @@ services:
     environment:
       WATCHTOWER_POLL_INTERVAL: "300"
       WATCHTOWER_CLEANUP: "true"
-      WATCHTOWER_REMOVE_VOLUMES: "true"   # anon pgdata volume cleanup; named SigNoz volumes are kept
+      WATCHTOWER_REMOVE_VOLUMES: "true"   # belt-and-suspenders (entrypoint does the real reseed); named SigNoz volumes are kept either way
       WATCHTOWER_LABEL_ENABLE: "true"     # only manage containers with the label above
       WATCHTOWER_INCLUDE_RESTARTING: "true"
 
