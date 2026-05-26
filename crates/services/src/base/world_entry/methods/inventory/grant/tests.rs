@@ -252,4 +252,241 @@ mod handle_grant_item_tests {
 
         cleanup(&pool, account_id, player_id, entity_id).await;
     }
+
+    /// Health Slappack TC1 (item 2893). The canonical seed gives it
+    /// `max_stack_size = 10` and `container_sets = '{1,17}'`, which
+    /// makes it the obvious stackable consumable to pin the merge
+    /// path against. Hardcoding the id (instead of a SELECT) ties
+    /// the test to the actual on-disk seed shape — a regression
+    /// that drops the slappack's `max_stack_size` back to 1 would
+    /// trip these tests with a clear "merge expected, allocation
+    /// observed" message.
+    const SLAPPACK_TYPE_ID: i32 = 2893;
+    /// Mirrors the seed value. Used by the "full stack rejects
+    /// merge" guard.
+    const SLAPPACK_MAX_STACK: i32 = 10;
+
+    /// Two consecutive grants of the same stackable item must
+    /// produce ONE row with the combined `stack_size`, not two
+    /// rows occupying two slots. The merge fast path is what makes
+    /// looted slappacks stop eating one bag slot per pickup —
+    /// pre-fix every grant unconditionally reserved a fresh slot.
+    #[tokio::test]
+    async fn stackable_item_grants_merge_into_one_row() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 200;
+        let player_id = TEST_BASE + 201;
+        let entity_id: u32 = 0x7000_0303;
+        cleanup(&pool, account_id, player_id, entity_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+
+        let (transport, e2a, conn) = make_state(entity_id);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        // First grant: 2 slappacks into main bag (container 1).
+        // Second grant: 3 more.  Expect one row at stack_size = 5.
+        handle_grant_item(
+            entity_id,
+            player_id,
+            SLAPPACK_TYPE_ID,
+            1,
+            2,
+            &db_pool,
+            &None,
+            &transport,
+            &conn,
+            &e2a,
+        )
+        .await;
+        handle_grant_item(
+            entity_id,
+            player_id,
+            SLAPPACK_TYPE_ID,
+            1,
+            3,
+            &db_pool,
+            &None,
+            &transport,
+            &conn,
+            &e2a,
+        )
+        .await;
+
+        let rows: Vec<(i32, i32)> = sqlx::query_as(
+            "SELECT slot_id, stack_size FROM sgw_inventory \
+             WHERE character_id = $1 AND container_id = 1 \
+               AND type_id = $2 \
+             ORDER BY slot_id",
+        )
+        .bind(player_id)
+        .bind(SLAPPACK_TYPE_ID)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            rows.len(),
+            1,
+            "two grants of slappack (max_stack_size=10) must merge into ONE row — \
+             pre-fix the grant path reserved a fresh slot per pickup and produced \
+             two rows for what should be one stack of 5"
+        );
+        assert_eq!(
+            rows[0],
+            (0, 5),
+            "merged stack must occupy the first reserved slot with \
+             combined stack_size = 2 + 3 = 5"
+        );
+
+        cleanup(&pool, account_id, player_id, entity_id).await;
+    }
+
+    /// When the existing stack has no room for the full new count,
+    /// the merge path must REFUSE and allocate a fresh slot
+    /// instead. Partial-merge "fill the current stack, spill the
+    /// remainder" would produce a multi-row outbox payload from
+    /// one grant, which the cell side isn't shaped to consume.
+    /// Pinning the all-or-nothing rule here means the simpler
+    /// invariant — one grant = one row write — survives.
+    #[tokio::test]
+    async fn full_stack_falls_back_to_new_slot() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 210;
+        let player_id = TEST_BASE + 211;
+        let entity_id: u32 = 0x7000_0304;
+        cleanup(&pool, account_id, player_id, entity_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+
+        let (transport, e2a, conn) = make_state(entity_id);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        // Fill a full stack (10 slappacks) into slot 0.
+        handle_grant_item(
+            entity_id,
+            player_id,
+            SLAPPACK_TYPE_ID,
+            1,
+            SLAPPACK_MAX_STACK,
+            &db_pool,
+            &None,
+            &transport,
+            &conn,
+            &e2a,
+        )
+        .await;
+        // One more — the existing stack is at max, so this must
+        // allocate slot 1 rather than try to push the existing
+        // row past its `max_stack_size`.
+        handle_grant_item(
+            entity_id,
+            player_id,
+            SLAPPACK_TYPE_ID,
+            1,
+            1,
+            &db_pool,
+            &None,
+            &transport,
+            &conn,
+            &e2a,
+        )
+        .await;
+
+        let rows: Vec<(i32, i32)> = sqlx::query_as(
+            "SELECT slot_id, stack_size FROM sgw_inventory \
+             WHERE character_id = $1 AND container_id = 1 \
+               AND type_id = $2 \
+             ORDER BY slot_id",
+        )
+        .bind(player_id)
+        .bind(SLAPPACK_TYPE_ID)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            rows.len(),
+            2,
+            "full stack must NOT accept a merge — the second grant has \
+             to land in a fresh slot. Pre-fix bug shape: the merge \
+             gate `stack_size + count <= max_stack_size` regresses to \
+             `stack_size < max_stack_size` and a single +1 squeezes \
+             into a 10/10 stack, exceeding the cap."
+        );
+        assert_eq!(rows[0], (0, SLAPPACK_MAX_STACK));
+        assert_eq!(rows[1], (1, 1));
+
+        cleanup(&pool, account_id, player_id, entity_id).await;
+    }
+
+    /// Two grants for two DIFFERENT type_ids must not merge —
+    /// stacking is keyed on the type_id, not the container. Pin
+    /// this so a future refactor that drops the `inv.type_id = $3`
+    /// clause from the merge query doesn't silently start
+    /// merging a slappack pickup into the wrong stack.
+    #[tokio::test]
+    async fn different_type_ids_do_not_merge() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 220;
+        let player_id = TEST_BASE + 221;
+        let entity_id: u32 = 0x7000_0305;
+        cleanup(&pool, account_id, player_id, entity_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+
+        let (transport, e2a, conn) = make_state(entity_id);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        // Slappack (2893) and an arbitrary non-stackable item in
+        // the same bag. `pick_main_bag_type_id` returns the
+        // lowest item_id with container_sets containing 1 —
+        // distinct from 2893 by construction.
+        let other_type_id = pick_main_bag_type_id(&pool).await;
+        assert_ne!(
+            other_type_id, SLAPPACK_TYPE_ID,
+            "fixture sanity: pick_main_bag_type_id must return a \
+             type_id different from the slappack so this test \
+             actually exercises the different-type path"
+        );
+
+        handle_grant_item(
+            entity_id,
+            player_id,
+            SLAPPACK_TYPE_ID,
+            1,
+            1,
+            &db_pool,
+            &None,
+            &transport,
+            &conn,
+            &e2a,
+        )
+        .await;
+        handle_grant_item(
+            entity_id,
+            player_id,
+            other_type_id,
+            1,
+            1,
+            &db_pool,
+            &None,
+            &transport,
+            &conn,
+            &e2a,
+        )
+        .await;
+
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sgw_inventory \
+             WHERE character_id = $1 AND container_id = 1",
+        )
+        .bind(player_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            count, 2,
+            "different type_ids must each take their own slot — \
+             merging across type_ids would corrupt inventory by \
+             increasing a slappack stack with an unrelated item"
+        );
+
+        cleanup(&pool, account_id, player_id, entity_id).await;
+    }
 }

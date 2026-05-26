@@ -104,6 +104,184 @@ pub async fn handle_grant_item(
         }
     };
 
+    // Acquire the per-(player, container) advisory lock up front so the
+    // merge probe and the eventual reserve/INSERT see the same snapshot.
+    // `reserve_free_inventory_slots` re-acquires the same lock internally;
+    // `pg_advisory_xact_lock` is idempotent within a single transaction,
+    // so doing it here too is a no-op safety belt rather than a double
+    // wait. Without this, two concurrent grants for the same stackable
+    // item could each decide "no existing stack, allocate a new slot"
+    // and produce two single-stack rows instead of merging into one.
+    if let Err(e) = sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+        .bind(player_id)
+        .bind(container_id)
+        .execute(&mut *db_tx)
+        .await
+    {
+        let _ = db_tx.rollback().await;
+        tracing::error!(
+            player_id,
+            item_id,
+            container_id,
+            "GrantItem: advisory lock failed: {e}"
+        );
+        return;
+    }
+
+    // ── Stack-merge fast path ────────────────────────────────────────
+    //
+    // Before reserving a fresh slot, look for an existing
+    // same-type row in the same container with room for the full
+    // count. When the row exists, UPDATE its `stack_size` and
+    // short-circuit — no slot reservation, no INSERT, no
+    // bandolier_slot reconcile (the merge target is already the
+    // active slot if it ever was). This is what makes consumables
+    // like the Health Slappack stack to their `max_stack_size`
+    // instead of eating one inventory slot per pickup.
+    //
+    // Gating predicates the WHERE clause enforces:
+    //   - `bound = false` — bound items are 1:1 with their owner
+    //     (no merging across two bound rows of the same type).
+    //   - `ri.max_stack_size > 1` — non-stackable item defs stay
+    //     on the one-row-per-pickup path even if a stale identical
+    //     row exists.
+    //   - `inv.stack_size + $count <= ri.max_stack_size` — refuse
+    //     partial merges. A pickup of 3 against a stack at 8/10
+    //     skips merge and allocates a new slot rather than
+    //     splitting (8 stays, 2 go to one new slot, 1 leftover);
+    //     the simpler "all-or-nothing into a single stack" rule
+    //     keeps the wire-level `onUpdateItem` set predictable and
+    //     dodges a tricky "two rows from one grant" outbox
+    //     enqueue. A future enhancement can split if needed.
+    //   - Charges and ammo_type are intentionally NOT in the
+    //     match criteria. Consumable charges are typically 0
+    //     (server tracks the count via stack_size, not via per-
+    //     instance charges); ammo_type only matters for weapons,
+    //     which are non-stackable.
+    //
+    // `FOR UPDATE` locks the target row for the rest of the
+    // transaction so the subsequent UPDATE can't race with a
+    // concurrent vendor sell of the same stack. The advisory
+    // lock above already serialises grants per container, but a
+    // vendor sell takes a different lock (per-item), so the row
+    // lock is the belt-and-braces.
+    #[derive(sqlx::FromRow)]
+    struct MergeCandidate {
+        item_id: i32,
+        slot_id: i32,
+    }
+    let merge_candidate: Option<MergeCandidate> = match sqlx::query_as(
+        "SELECT inv.item_id, inv.slot_id \
+           FROM sgw_inventory inv \
+           JOIN resources.items ri ON inv.type_id = ri.item_id \
+          WHERE inv.character_id = $1 \
+            AND inv.container_id = $2 \
+            AND inv.type_id = $3 \
+            AND inv.bound = false \
+            AND ri.max_stack_size > 1 \
+            AND inv.stack_size + $4 <= ri.max_stack_size \
+          ORDER BY inv.slot_id \
+          LIMIT 1 \
+          FOR UPDATE",
+    )
+    .bind(player_id)
+    .bind(container_id)
+    .bind(item_id)
+    .bind(count)
+    .fetch_optional(&mut *db_tx)
+    .await
+    {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = db_tx.rollback().await;
+            tracing::error!(
+                player_id,
+                item_id,
+                container_id,
+                "GrantItem: merge candidate lookup failed: {e}"
+            );
+            return;
+        }
+    };
+
+    if let Some(target) = merge_candidate {
+        // Merge into the existing stack. The UPDATE is keyed by
+        // item_id (the primary key of sgw_inventory) so it can
+        // only touch the exact row we locked above.
+        if let Err(e) =
+            sqlx::query("UPDATE sgw_inventory SET stack_size = stack_size + $1 WHERE item_id = $2")
+                .bind(count)
+                .bind(target.item_id)
+                .execute(&mut *db_tx)
+                .await
+        {
+            let _ = db_tx.rollback().await;
+            tracing::error!(
+                player_id,
+                item_id,
+                target_item_id = target.item_id,
+                "GrantItem: stack merge UPDATE failed: {e}"
+            );
+            return;
+        }
+        tracing::info!(
+            player_id,
+            item_id,
+            container_id,
+            slot = target.slot_id,
+            count,
+            "GrantItem: merged into existing stack"
+        );
+
+        // Stackable items are non-bandolier consumables in
+        // practice (weapons have `max_stack_size = 1`), so the
+        // bandolier-active-slot reconcile is irrelevant on the
+        // merge path. Skip straight to outbox enqueue + commit +
+        // inventory resync.
+        let outbox_payload = CellOutboxPayload::InventoryItemGranted {
+            item_id,
+            container_id,
+            slot_id: target.slot_id,
+            quantity: count,
+        };
+        let outbox_id = match outbox::enqueue_in_tx(&mut db_tx, entity_id, &outbox_payload).await {
+            Ok(id) => id,
+            Err(e) => {
+                let _ = db_tx.rollback().await;
+                tracing::error!(
+                    player_id,
+                    item_id,
+                    "GrantItem (merge): outbox enqueue failed, aborting: {e}"
+                );
+                return;
+            }
+        };
+        if let Err(e) = db_tx.commit().await {
+            tracing::error!(player_id, item_id, "GrantItem (merge): commit failed: {e}");
+            return;
+        }
+        let total_items = send_full_inventory_update(
+            entity_id,
+            player_id,
+            pool,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+        tracing::debug!(
+            entity_id,
+            player_id,
+            item_id,
+            total_items,
+            "GrantItem (merge): sent full onUpdateItem to client"
+        );
+        if let Some(tx) = cell_tx {
+            outbox::try_dispatch_now(pool.as_ref(), tx, outbox_id, entity_id, outbox_payload).await;
+        }
+        return;
+    }
+
     // Reserve a free slot via the same hole-filling helper used by vendor purchase.
     // (reserve_free_inventory_slots takes a per-(player, container) advisory lock.)
     let next_slot: i32 =

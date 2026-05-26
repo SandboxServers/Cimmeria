@@ -107,6 +107,11 @@ pub(crate) const CATEGORY_PAKS: &[(u32, &str)] = &[
 /// Category id for `CookedDataMissions.pak` (see [`CATEGORY_PAKS`]).
 const CATEGORY_MISSIONS: u32 = 3;
 
+/// Category id for `CookedDataItems.pak` (see [`CATEGORY_PAKS`]).
+/// Source: the original C++ server's `resource.cpp` category map.
+/// Per-item icon, name, max-stack lookups land here on the client.
+const CATEGORY_ITEMS: u32 = 4;
+
 /// Compute the deterministic metadata bump for a set of overrides.
 ///
 /// The bump is hashed from every field that affects what the client sees:
@@ -133,6 +138,20 @@ fn compute_metadata_bump(
         ov.mission_id.hash(&mut hasher);
         ov.step_id.hash(&mut hasher);
         ov.new_step_display_log_text.hash(&mut hasher);
+    }
+    ((hasher.finish() as u32) & 0xFFFF) | 0x1
+}
+
+/// Companion of [`compute_metadata_bump`] for the items category.
+/// Same deterministic-hash + low-bit-set discipline so two server
+/// starts on identical override content produce identical bumps.
+fn compute_item_metadata_bump(overrides: &[super::item_overrides::ItemOverride]) -> u32 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for ov in overrides {
+        ov.item_id.hash(&mut hasher);
+        ov.new_icon_location.hash(&mut hasher);
+        ov.new_max_stack_size.hash(&mut hasher);
     }
     ((hasher.finish() as u32) & 0xFFFF) | 0x1
 }
@@ -172,12 +191,90 @@ impl ResourceCache {
             "Resource cache loaded"
         );
 
-        let overridden_elements = Self::apply_mission_overrides(&mut categories);
+        let mut overridden_elements = Self::apply_mission_overrides(&mut categories);
+        // Apply item overrides into the same overridden-elements map.
+        // `extend` over disjoint category keys means each call owns its
+        // own category id (missions=3, items=4) and there's no risk of
+        // one wiping the other's invalid-keys list. Cross-pollination
+        // between categories would surface as the client invalidating
+        // the wrong PAK category on handshake; the categories live in
+        // separate XML files on disk so it can't physically conflict,
+        // but keep both writes disjoint anyway in case a future
+        // override module starts producing entries for an existing
+        // category.
+        let item_overridden = Self::apply_item_overrides(&mut categories);
+        overridden_elements.extend(item_overridden);
 
         Ok(Self {
             categories: Arc::new(categories),
             overridden_elements: Arc::new(overridden_elements),
         })
+    }
+
+    /// Patch the freshly-loaded `CookedDataItems` category with
+    /// Cimmeria's icon + stack-size overrides, bumping the category
+    /// metadata so the client's next `versionInfoRequest` sees a
+    /// fresh value and triggers the per-key invalidation handshake.
+    ///
+    /// Same shape as [`Self::apply_mission_overrides`] — the cooked
+    /// data wire path is category-agnostic; only the per-category
+    /// override registry differs.
+    fn apply_item_overrides(categories: &mut HashMap<u32, CategoryData>) -> HashMap<u32, Vec<u32>> {
+        use super::item_overrides::{apply_override, ITEM_OVERRIDES};
+
+        let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
+        let Some(items) = categories.get_mut(&CATEGORY_ITEMS) else {
+            tracing::warn!(
+                category = CATEGORY_ITEMS,
+                "CookedDataItems not loaded; skipping item overrides"
+            );
+            return overridden;
+        };
+
+        let mut applied: Vec<u32> = Vec::with_capacity(ITEM_OVERRIDES.len());
+        for ov in ITEM_OVERRIDES {
+            let Some(original) = items.elements.get(&ov.item_id) else {
+                tracing::warn!(
+                    item_id = ov.item_id,
+                    "item override skipped: entry not present in PAK",
+                );
+                continue;
+            };
+            match apply_override(original, ov) {
+                Some(patched) => {
+                    items.elements.insert(ov.item_id, patched);
+                    applied.push(ov.item_id);
+                    tracing::info!(
+                        item_id = ov.item_id,
+                        new_icon = ?ov.new_icon_location,
+                        new_max_stack_size = ?ov.new_max_stack_size,
+                        "Applied Cimmeria item override",
+                    );
+                }
+                None => {
+                    tracing::warn!(
+                        item_id = ov.item_id,
+                        "item override skipped: XML shape did not match — keeping unpatched entry",
+                    );
+                }
+            }
+        }
+
+        if !applied.is_empty() {
+            let bump = compute_item_metadata_bump(ITEM_OVERRIDES);
+            items.metadata = items.metadata.wrapping_add(bump);
+            applied.sort_unstable();
+            tracing::info!(
+                category = CATEGORY_ITEMS,
+                count = applied.len(),
+                bump,
+                bumped_metadata = items.metadata,
+                "Cimmeria item overrides applied; metadata bumped",
+            );
+            overridden.insert(CATEGORY_ITEMS, applied);
+        }
+
+        overridden
     }
 
     /// Mutate the freshly-loaded `CookedDataMissions` category to include
