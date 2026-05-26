@@ -44,6 +44,18 @@ use crate::cell::space_manager::SpaceManager;
 ///   manual shots.
 ///
 /// Cadence: every 100 ms AoI tick.
+///
+/// `level = "debug"` — fires 10×/sec but the inner `ready` snapshot is
+/// often empty (nobody armed). When armed, each fire decision becomes
+/// a child event, so SigNoz operators can answer "why didn't auto-fire
+/// trigger this tick?" by drilling into the span attributes (cooldown,
+/// range, target alive) without grepping log text.
+#[tracing::instrument(
+    name = "combat.auto_cycle_tick",
+    level = "debug",
+    skip_all,
+    fields(ready_count = tracing::field::Empty),
+)]
 pub(in crate::cell::service) async fn auto_cycle_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -116,6 +128,11 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             Some((eid, ability_id, target_id, true))
         })
         .collect();
+
+    // Backfill the snapshot size so SigNoz can chart "how many auto-
+    // cyclers ran per tick" — the operator-facing answer to "is auto-
+    // attack actually firing?" Empty snapshots dominate but cost ~0.
+    tracing::Span::current().record("ready_count", ready.len());
 
     for (entity_id, ability_id, target_id, target_alive) in ready {
         if !target_alive {

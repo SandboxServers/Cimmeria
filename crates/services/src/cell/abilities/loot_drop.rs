@@ -20,6 +20,12 @@ pub(crate) const INT_NORMAL_LOOT: i64 = 4611686018427387904;
 /// entity's interaction_type_flags to INT_NormalLoot and adds a Loot interaction.
 ///
 /// Reference: `python/cell/SGWMob.py:onDead()`, `python/cell/interactions/Lootable.py`
+#[tracing::instrument(
+    name = "loot.drop",
+    level = "info",
+    skip_all,
+    fields(target_eid, loot_table_id = tracing::field::Empty),
+)]
 pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManager) {
     // Read loot_table_id before mutable borrow
     let loot_table_id = space_mgr
@@ -30,6 +36,7 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
         Some(id) => id,
         None => return, // No loot table — NPC drops nothing
     };
+    tracing::Span::current().record("loot_table_id", loot_table_id);
 
     // Look up loot entries (clone to avoid borrow conflict with space_mgr)
     let entries = match space_mgr.loot_tables.get(&loot_table_id) {

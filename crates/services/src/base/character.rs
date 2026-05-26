@@ -97,6 +97,12 @@ pub(crate) async fn send_char_create_failed(
 }
 
 /// Handle `deleteCharacter` (0xC5) -- delete a character and send updated list.
+#[tracing::instrument(
+    name = "character.delete",
+    level = "info",
+    skip_all,
+    fields(peer = %addr, account_id, player_id),
+)]
 pub(crate) async fn handle_delete_character(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,

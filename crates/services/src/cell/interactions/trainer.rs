@@ -8,6 +8,12 @@ use crate::cell::messages::CellToBaseMsg;
 ///
 /// Wire: `trainerEntityId:i32, abilities:ARRAY<{abilityId:i32, trainable:u8}>,
 ///        costToRespec:i32`.
+#[tracing::instrument(
+    name = "trainer.open",
+    level = "info",
+    skip_all,
+    fields(player_id, npc_entity_id, archetype_id)
+)]
 pub(super) async fn send_trainer_open(
     player_id: u32,
     npc_entity_id: i32,

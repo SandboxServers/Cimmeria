@@ -30,7 +30,7 @@ const MAX_INTERACT_DISTANCE: f32 = 5.0;
     name = "interaction.interact",
     level = "info",
     skip_all,
-    fields(entity_id, target_entity_id)
+    fields(entity_id, target_entity_id, space_id = tracing::field::Empty)
 )]
 pub async fn handle_interact(
     entity_id: u32,
@@ -39,13 +39,14 @@ pub async fn handle_interact(
     space_mgr: &mut SpaceManager,
 ) -> Option<i32> {
     // Validate player exists
-    let player_pos = match space_mgr.get_entity(entity_id) {
-        Some(e) => e.position,
+    let (player_pos, player_space_id) = match space_mgr.get_entity(entity_id) {
+        Some(e) => (e.position, e.space_id.0),
         None => {
             tracing::warn!(entity_id, "interact: player entity not found");
             return None;
         }
     };
+    tracing::Span::current().record("space_id", player_space_id);
 
     // Validate target exists and get interaction data
     let (target_pos, interaction_type, npc_name, target_template_id) =

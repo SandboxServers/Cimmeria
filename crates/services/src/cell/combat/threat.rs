@@ -39,6 +39,12 @@ pub const OOC_HOLSTER_DELAY: std::time::Duration = std::time::Duration::from_sec
 /// own client) so their in-combat HUD/cursor flips. Returns `None` when
 /// no send is needed.
 #[must_use]
+#[tracing::instrument(
+    name = "threat.generate",
+    level = "debug",
+    skip_all,
+    fields(attacker_id, target_id, threat_amount)
+)]
 pub fn generate_threat(
     space_mgr: &mut crate::cell::space_manager::SpaceManager,
     attacker_id: u32,
@@ -78,6 +84,7 @@ pub fn generate_threat(
 /// is the first one and `BSF_IN_COMBAT` flips on; the caller broadcasts.
 ///
 /// Reference: `python/cell/SGWPlayer.py:onAddedToThreatList` (944-953).
+#[tracing::instrument(name = "threat.enter_combat", level = "debug", skip_all)]
 pub fn enter_player_combat(
     space_mgr: &mut crate::cell::space_manager::SpaceManager,
     player_id: u32,
@@ -128,6 +135,12 @@ pub fn enter_player_combat(
 /// to broadcast.
 ///
 /// Reference: `python/cell/SGWPlayer.py:onRemovedFromThreatList` (957-965).
+#[tracing::instrument(
+    name = "threat.exit_combat",
+    level = "debug",
+    skip_all,
+    fields(player_id, mob_id)
+)]
 pub fn exit_player_combat(
     space_mgr: &mut crate::cell::space_manager::SpaceManager,
     player_id: u32,
@@ -173,6 +186,12 @@ pub fn exit_player_combat(
 ///
 /// Does NOT clear the NPC's own `threat_list` — caller decides whether to
 /// keep it for damage attribution (XP, loot tagging) or wipe it.
+#[tracing::instrument(
+    name = "threat.clear_dead_npc",
+    level = "debug",
+    skip_all,
+    fields(npc_id)
+)]
 pub fn clear_dead_npc_from_all_player_threat(
     space_mgr: &mut crate::cell::space_manager::SpaceManager,
     npc_id: u32,

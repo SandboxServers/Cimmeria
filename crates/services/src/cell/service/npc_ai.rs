@@ -54,10 +54,12 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
         // `.instrument()` (not `.entered()`) — the handler bodies await,
         // so a thread-local guard would silently fall off across runtime
         // thread switches.
+        let space_id = space_mgr.get_entity(npc_id).map(|e| e.space_id.0);
         let ai_span = tracing::debug_span!(
             "npc_ai.decision",
             npc_id,
             ai_state = ?ai_state,
+            space_id = space_id.unwrap_or(0),
         );
         // Snapshot filter above admits only Fighting | Leashing | Idle —
         // express that contract as an if/else if/else rather than a
