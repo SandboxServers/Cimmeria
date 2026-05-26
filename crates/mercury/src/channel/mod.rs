@@ -345,6 +345,28 @@ impl Channel {
             )));
         }
 
+        // Backpressure observability — warn at 50% / 75% / 90% window
+        // saturation so SigNoz surfaces stalled clients before the TX
+        // window is fully exhausted. The freeze investigation (2026-05-26)
+        // showed an existing-character login flood that filled the
+        // window faster than the client could ACK; this gives operators
+        // a pre-fail signal. Stable `target: "mercury.backpressure"` so
+        // `groupBy peer` immediately shows which clients are struggling.
+        let unacked = self.tx_window.len();
+        let warn_threshold = consts::TX_WINDOW_SIZE / 2;
+        if unacked >= warn_threshold {
+            let pct = (unacked * 100) / consts::TX_WINDOW_SIZE;
+            tracing::warn!(
+                target: "mercury.backpressure",
+                peer = %self.remote_addr,
+                unacked,
+                window_size = consts::TX_WINDOW_SIZE,
+                fill_pct = pct,
+                next_seq = self.next_tx_seq,
+                "send window deep — client may be stalled or RTT spiking"
+            );
+        }
+
         // Stamp the outgoing sequence number onto the packet. Mask with
         // `SEQUENCE_MASK` (28 bits) so the counter can't overflow into
         // the `NULL_SEQUENCE` sentinel range. The wrap-and-mask combo

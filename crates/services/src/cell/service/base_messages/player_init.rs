@@ -12,6 +12,28 @@ use crate::cell::space_manager::SpaceManager;
 
 /// Handles the `InitPlayerState` message: restores player missions, abilities,
 /// bandolier items, and fires the content-engine `player_loaded` trigger.
+///
+/// Wrapped in a `world_entry.init_player_state` span with all the per-burst
+/// counts (saved_missions, abilities, bandolier_items, regions) as fields
+/// so SigNoz can correlate freeze symptoms against initial-load burst size.
+/// See the freeze investigation in the 15:50:49Z session — bursts > N
+/// regions or > M missions are the suspected client-stall trigger.
+#[tracing::instrument(
+    name = "world_entry.init_player_state",
+    level = "info",
+    skip(saved_missions, abilities, bandolier_items, system_options, tx, space_mgr, engine),
+    fields(
+        entity_id,
+        player_id,
+        archetype_id,
+        world = %world_name,
+        saved_missions = saved_missions.len(),
+        abilities = abilities.len(),
+        bandolier_items = bandolier_items.len(),
+        active_bandolier_slot,
+        regions = tracing::field::Empty,
+    ),
+)]
 pub(in crate::cell::service) async fn handle_init_player_state(
     entity_id: u32,
     player_id: i32,
@@ -136,6 +158,13 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     // this world. Matches Python Space.playerEntered() → queryRegions():
     // clearClientHintedGenericRegions was already sent in mapLoaded body,
     // now register all regions so the client can fire triggerRegion events.
+    //
+    // BURST WARNING: this loop can fire 20+ packets within ~1ms with no
+    // throttling. Combined with mission-replay + appearance burst that
+    // precedes it, this has been observed to stall some clients on
+    // existing-character login (freeze investigation, 2026-05-26). The
+    // span around it captures the burst size + duration so freezes can
+    // be correlated to specific bursts in SigNoz.
     {
         use crate::cell::space_manager::REGION_FLAG_CLIENT_HINTED;
         let world_regions: Vec<_> = space_mgr
@@ -146,6 +175,14 @@ pub(in crate::cell::service) async fn handle_init_player_state(
             .collect();
 
         let region_count = world_regions.len();
+        let burst_span = tracing::info_span!(
+            "world_entry.region_burst",
+            entity_id,
+            world = %world_name,
+            count = region_count,
+        );
+        let _burst_guard = burst_span.enter();
+        let burst_start = std::time::Instant::now();
         for (rid, height, radius, flags, points) in world_regions {
             let mut args = Vec::with_capacity(16 + points.len() * 12);
             args.extend_from_slice(&(rid as i32).to_le_bytes());
@@ -166,10 +203,14 @@ pub(in crate::cell::service) async fn handle_init_player_state(
                 })
                 .await;
         }
+        let burst_elapsed = burst_start.elapsed();
+        tracing::Span::current().record("regions", region_count);
         if region_count > 0 {
             tracing::info!(
                 entity_id, player_id, world = %world_name,
-                count = region_count, "Sent region registrations"
+                count = region_count,
+                burst_micros = burst_elapsed.as_micros() as u64,
+                "Sent region registrations"
             );
         }
     }

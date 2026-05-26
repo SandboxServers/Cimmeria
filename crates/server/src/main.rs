@@ -570,9 +570,12 @@ fn init_logging(
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\
                 mercury.retransmit=info,\
+                mercury.backpressure=warn,\
                 wire.in=info,wire.out=info,\
                 aoi.entity_enter=debug,aoi.entity_leave=debug,\
                 movement.npc=debug,movement.player=debug,\
+                npc_ai=debug,\
+                threat=info,\
                 sqlx::query=debug,\
                 tungstenite=off,tokio_tungstenite=off,hyper=off,\
                 h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";

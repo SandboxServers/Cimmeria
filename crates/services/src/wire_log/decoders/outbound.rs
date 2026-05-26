@@ -49,6 +49,17 @@ fn decode_on_sequence(args: &[u8]) -> Option<Value> {
     let primary_target = c.i8()?;
     let impact_time = c.f32_le()?;
     let nvp_count = c.u32_le()?;
+    // Skip past the NVP payload (each pair is var-length WSTRINGs); we
+    // don't decode the pairs themselves, but we DO want ViewType
+    // (the byte right after the NVP array) so SigNoz can filter onSequence
+    // packets by camera-control mode. EKismetViewType values per
+    // `docs/gameplay/cinematic-system.md`:
+    //   0 = Witness, 1 = NonWitness, 2 = Finish,
+    //   3 = EventInvoker (ring transport, gate),
+    //   4 = EventWitness.
+    // Because NVPs are var-length we can only reliably read ViewType
+    // when nvp_count == 0 (the common case). Otherwise we omit it.
+    let view_type = if nvp_count == 0 { c.u8() } else { None };
     Some(json!({
         "kismet_event_set_seq_id": seq_id,
         "source_id": source_id,
@@ -56,6 +67,7 @@ fn decode_on_sequence(args: &[u8]) -> Option<Value> {
         "primary_target": primary_target,
         "impact_time": impact_time,
         "nvp_count": nvp_count,
+        "view_type": view_type,
     }))
 }
 

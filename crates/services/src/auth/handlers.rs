@@ -24,6 +24,17 @@ use super::{
 // ── Axum handlers ────────────────────────────────────────────────────────────
 
 /// Phase 1: `POST /SGWLogin/UserAuth`
+#[tracing::instrument(
+    name = "auth.user_auth",
+    level = "info",
+    skip(state, body),
+    fields(
+        peer = %addr,
+        account_name = tracing::field::Empty,
+        account_id = tracing::field::Empty,
+        result = tracing::field::Empty,
+    ),
+)]
 pub(super) async fn handle_user_auth(
     State(state): State<Arc<HandlerState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -37,10 +48,12 @@ pub(super) async fn handle_user_auth(
     let req = match parse_login_request(&body) {
         Ok(r) => r,
         Err(e) => {
+            tracing::Span::current().record("result", "bad_request");
             tracing::warn!("Bad login request: {e}");
             return login_error(13, "Internal error.");
         }
     };
+    tracing::Span::current().record("account_name", req.account_name.as_str());
 
     // Helper macro to emit audit events concisely.
     macro_rules! audit {
@@ -151,6 +164,8 @@ pub(super) async fn handle_user_auth(
         );
     }
 
+    tracing::Span::current().record("account_id", account_id);
+    tracing::Span::current().record("result", "success");
     tracing::info!(user = %req.account_name, account_id, access_level, ip = %client_ip, "Phase 1 success");
     audit!("success", id = account_id);
 
@@ -167,6 +182,17 @@ pub(super) async fn handle_user_auth(
 }
 
 /// Phase 2: `POST /SGWLogin/ServerSelection`
+#[tracing::instrument(
+    name = "auth.server_selection",
+    level = "info",
+    skip(state, headers, body),
+    fields(
+        peer = %addr,
+        account_id = tracing::field::Empty,
+        shard = tracing::field::Empty,
+        result = tracing::field::Empty,
+    ),
+)]
 pub(super) async fn handle_server_selection(
     State(state): State<Arc<HandlerState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -235,11 +261,15 @@ pub(super) async fn handle_server_selection(
         );
     }
 
+    tracing::Span::current().record("account_id", session.account_id);
+    tracing::Span::current().record("shard", shard.name.as_str());
+    tracing::Span::current().record("result", "success");
     tracing::info!(
         user = %session.account_name,
         shard = %shard.name,
         ip = %client_ip,
-        "Phase 2 success"
+        ticket_prefix = %&ticket[..6],
+        "Phase 2 success — ticket issued"
     );
 
     if let (Some(tx), Some(buf)) = (&state.login_tx, &state.login_buffer) {
