@@ -17,6 +17,7 @@ pub mod minigame;
 pub mod orchestrator;
 mod orchestrator_postgres;
 mod orchestrator_shards;
+pub mod wire_log;
 
 #[cfg(test)]
 pub(crate) mod test_support;

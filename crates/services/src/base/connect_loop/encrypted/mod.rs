@@ -179,6 +179,12 @@ pub(crate) async fn handle_encrypted_datagram(
 
         tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), payload_len = payload.len(), "Client bundle message");
 
+        // wire.in capture — every inbound bundle message gets logged
+        // with its msg_name + args_hex + schema-decoded fields (when
+        // a decoder is registered). See `crate::wire_log` for the
+        // capture contract.
+        crate::wire_log::log_inbound(addr, msg_id, payload);
+
         // Dispatch message.
         //
         // The client cache methods are protocol-level messages that keep the
