@@ -311,14 +311,12 @@ impl EffectScript for Stun {
 
     /// Clear `BSF_MOVEMENT_LOCK` when the stun instance expires.
     ///
-    /// **Limitation acknowledged**: if the target has TWO stun instances
-    /// active (from different invokers — multi-source stack), the first
-    /// expiry will release movement even though the second stun is still
-    /// pulsing. A proper fix needs a "reason-counted" lock (mirrors
-    /// `BSF_IN_COMBAT`'s threatened_mobs counter) — flagged as a Phase J2
-    /// follow-up. For v1 this is acceptable: Stun is rare enough that
-    /// concurrent multi-source stuns on the same target are an edge case,
-    /// and the alternative (the bit sticks forever) is worse.
+    /// Multi-source stuns stack correctly because
+    /// `set_state_flag` / `unset_state_flag` are refcounted via
+    /// `state_flag_counts`: two stuns from different invokers bump
+    /// the counter to 2, the first expiry decrements to 1 with the
+    /// bit STILL set, the second clears it. See
+    /// `cell_entity/state_flags.rs` for the counter implementation.
     fn on_remove(&self, ctx: &mut EffectContext) {
         let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
             return;
@@ -621,6 +619,80 @@ mod tests {
             .unwrap()
             .cur;
         assert_eq!(untyped, 100);
+    }
+
+    #[test]
+    fn stun_multi_source_keeps_lock_until_all_release() {
+        // Phase K: two concurrent stuns from different invokers share
+        // one `BSF_MOVEMENT_LOCK` bit via the refcounted state-flag
+        // helpers. First release must NOT drop the bit while the second
+        // is still pulsing.
+        let mut mgr = make_mgr_with_target();
+        let effect_a = EffectDef {
+            effect_id: 700,
+            ability_id: 100,
+            ..Default::default()
+        };
+        let effect_b = EffectDef {
+            effect_id: 701,
+            ability_id: 101,
+            ..Default::default()
+        };
+
+        // Apply both stuns (different invokers) in scoped blocks so the
+        // mutable borrows on `mgr` don't overlap between EffectContexts.
+        {
+            let mut ctx_a = EffectContext {
+                source_id: 1,
+                target_id: 1,
+                effect: &effect_a,
+                space_mgr: &mut mgr,
+            };
+            Stun.on_apply(&mut ctx_a);
+        }
+        {
+            let mut ctx_b = EffectContext {
+                source_id: 99,
+                target_id: 1,
+                effect: &effect_b,
+                space_mgr: &mut mgr,
+            };
+            Stun.on_apply(&mut ctx_b);
+        }
+        assert!(
+            mgr.get_entity(1).unwrap().has_state_flag(BSF_MOVEMENT_LOCK),
+            "both stuns set the lock"
+        );
+
+        // First expiry — bit must STAY set (refcount drops 2 → 1)
+        {
+            let mut ctx_a = EffectContext {
+                source_id: 1,
+                target_id: 1,
+                effect: &effect_a,
+                space_mgr: &mut mgr,
+            };
+            Stun.on_remove(&mut ctx_a);
+        }
+        assert!(
+            mgr.get_entity(1).unwrap().has_state_flag(BSF_MOVEMENT_LOCK),
+            "lock must stay while second stun still active"
+        );
+
+        // Second expiry — now bit clears (refcount drops 1 → 0)
+        {
+            let mut ctx_b = EffectContext {
+                source_id: 99,
+                target_id: 1,
+                effect: &effect_b,
+                space_mgr: &mut mgr,
+            };
+            Stun.on_remove(&mut ctx_b);
+        }
+        assert!(
+            !mgr.get_entity(1).unwrap().has_state_flag(BSF_MOVEMENT_LOCK),
+            "lock clears when last reason expires"
+        );
     }
 
     #[test]

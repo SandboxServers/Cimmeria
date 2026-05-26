@@ -17,6 +17,16 @@ pub const AF_DEACTIVATE_AUTO_CYCLE: u32 = 1024;
 pub const AF_SPEED_GRENADE: u32 = 2048;
 pub const AF_SPEED_DEPLOY: u32 = 4096;
 pub const AF_SPEED_ATTACK: u32 = 8192;
+/// Channelled abilities normally cancel when the channeller moves more
+/// than `CHANNEL_INTERRUPT_DISTANCE` from their channel-start position.
+/// Setting this flag exempts the ability — useful for "channels while
+/// running" content (sustained beam abilities the player can walk with).
+///
+/// Default for every authored ability today is 0 (cancel-on-move). Flip
+/// the bit per-ability as content lands that should be movement-tolerant.
+/// Reserved bit 14 — not in any python reference; original game's
+/// canonical name unknown, this is the Cimmeria-side name.
+pub const AF_CHANNEL_ALLOWS_MOVEMENT: u32 = 16384;
 
 // ── Target types ──────────────────────────────────────────────────────────
 

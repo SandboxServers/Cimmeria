@@ -54,7 +54,10 @@ pub mod pulsing;
 pub mod registry;
 pub mod scripts;
 
-pub use pulsing::{cancel_channels_from_attacker, effect_pulse_tick, register_active_effect};
+pub use pulsing::{
+    cancel_channels_for_invoker_ability, cancel_channels_from_attacker,
+    channel_interrupt_on_movement_tick, effect_pulse_tick, register_active_effect,
+};
 
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_entity::abilities::EffectDef;

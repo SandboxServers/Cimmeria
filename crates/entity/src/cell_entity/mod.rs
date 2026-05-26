@@ -47,6 +47,13 @@ pub struct ActiveEffectInstance {
     /// Seconds between pulses. Cached at registration so the per-tick
     /// fire path doesn't re-look up the effect def just to reschedule.
     pub pulse_interval_secs: f32,
+    /// Invoker's position at the moment this channel was registered.
+    /// `Some` only for channelled effects (`pulse_count == 0`); finite
+    /// DoTs leave this `None` because they don't interrupt on caster
+    /// movement. The per-tick channel-interrupt sweep diffs this against
+    /// `invoker.position` and cancels the channel if the caster moved
+    /// more than `CHANNEL_INTERRUPT_DISTANCE` from this anchor.
+    pub invoker_position_at_register: Option<Vector3>,
 }
 
 mod bandolier;

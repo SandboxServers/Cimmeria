@@ -138,6 +138,16 @@ pub(super) async fn run_cell_loop(
                     super::ticks::regen_tick(tx, &mut space_mgr).await;
                 }
 
+                // Channel-interrupt-on-movement sweep — BEFORE the
+                // pulse tick so cancelled channels don't fire one
+                // last pulse on this same tick. Short-circuits when
+                // no entity has any active channels.
+                super::super::effects::channel_interrupt_on_movement_tick(
+                    tx,
+                    &mut space_mgr,
+                )
+                .await;
+
                 // Active-effect pulsing — DoT / HoT / timed debuff
                 // pulses fire whenever their per-instance schedule
                 // elapses. Runs every AoI tick (100ms) so pulse
