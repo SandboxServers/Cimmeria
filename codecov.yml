@@ -58,6 +58,24 @@ ignore:
   - "crates/supervisor/src/main.rs"
   - "crates/upk-objects/src/bin/**"
   - "crates/upk/src/bin/**"
+  # Generated code. crates/services/src/wire_log/decoders/generated.rs is
+  # produced by tools/wire_decoder_codegen.py from
+  # docs/protocol/client-method-dispatch-table.md. Hand-written counterparts
+  # in decoders/outbound.rs carry the byte-exact assertions; testing the
+  # generated walker would prove the codegen template substituted, not
+  # that any hand-written code is correct.
+  - "crates/services/src/wire_log/decoders/generated.rs"
+  # UPK + UPK-objects: UE3 cooked-asset parsers, consumed only by `bin/`
+  # tools and the (already-ignored) Tauri editors. Not on the runtime
+  # server path. Real-data validation runs via the bin/ tooling against
+  # external/CookedPC/; synthetic-header unit tests don't catch the bug
+  # shapes that live in the LZO + property-tag matrix.
+  - "crates/upk/**"
+  - "crates/upk-objects/**"
+  # OTLP exporter bootstrap. The behaviour we'd assert is whether telemetry
+  # actually reaches SigNoz — an integration-level signal, not a unit-test
+  # concern. Treat as binary-entry-point bootstrap like main.rs above.
+  - "crates/server/src/otel.rs"
   # Deferred per issue #205 (fixture cost exceeds value-per-line)
   #
   # The connect_loop directory hosts the BaseService UDP receive loop and the
