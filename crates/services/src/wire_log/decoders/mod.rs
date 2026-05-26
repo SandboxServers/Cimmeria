@@ -10,14 +10,15 @@
 //!
 //! # Phase 1 coverage (this PR)
 //!
-//! Ten priority decoders covering the methods that immediately matter
-//! for active debugging:
+//! Outbound hand-decoders: `BeingAppearance`, `onSequence`,
+//! `onDialogDisplay`, `onEffectResults`, `onStateFieldUpdate`,
+//! `onStatUpdate`, `onTimerUpdate`. Plus ~120 auto-generated decoders
+//! covering pure-primitive methods (see [`generated`]).
 //!
-//! * Outbound: `BeingAppearance`, `onSequence`, `onDialogDisplay`,
-//!   `onEffectResults`, `onStateFieldUpdate`, `onStatUpdate`,
-//!   `onTimerUpdate`
-//! * Inbound: `avatarUpdateExplicit`, `requestActiveSlotChange`,
-//!   `useAbility`
+//! Inbound hand-decoders: `avatarUpdateExplicit` (0x03). Entity-method
+//! calls (msg_id 0xC0+) arrive at the wire-log capture site with the
+//! raw payload but no per-method decoder — they fall through to the
+//! `args_hex` fallback. Inbound codegen is Phase 2 follow-up.
 //!
 //! # Phase 2 plan (deferred)
 //!

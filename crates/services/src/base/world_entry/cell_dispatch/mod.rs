@@ -197,11 +197,9 @@ pub(crate) async fn handle_cell_message(
             method_index,
             args,
         } => {
-            // wire.out capture — log the method call before the
-            // deferred-buffer check so even buffered calls (pre-
-            // onClientReady) get captured. Recovery via deferred
-            // replay does NOT re-log; the original send is the wire
-            // truth.
+            // Logged before the deferred-buffer check so pre-
+            // onClientReady buffered calls still appear once on the
+            // wire log; deferred-replay does NOT re-emit.
             crate::wire_log::log_outbound_entity_method(entity_id, entity_id, method_index, &args);
             // Gate on the TARGET entity's session — entity-method calls
             // are dispatched to the entity_id's owning client (see
@@ -377,10 +375,9 @@ pub(crate) async fn handle_cell_message(
             method_index,
             args,
         } => {
-            // wire.out capture — AoI-fanout entity-method calls. The
-            // observer (`witness_id`) and observee (`entity_id`) differ
-            // here, so both ride on the event for "show me everything
-            // entity X broadcast to its witnesses" queries.
+            // observer (witness_id) and observee (entity_id) differ
+            // on the AoI fanout — both are recorded so SigNoz can
+            // answer "what did entity X broadcast to its witnesses?"
             crate::wire_log::log_outbound_entity_method(witness_id, entity_id, method_index, &args);
             aoi::witness_entity_method(
                 witness_id,
