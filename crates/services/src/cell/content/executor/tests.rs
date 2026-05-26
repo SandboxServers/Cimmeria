@@ -768,18 +768,14 @@ async fn generate_threat_action_refreshes_appearance_before_state_field_on_first
                      enter_player_combat flipped the field; the wire \
                      must mirror the server-side value"
                 );
-                if refresh_at.is_none() {
-                    refresh_at = Some(idx);
-                }
+                refresh_at.get_or_insert(idx);
             }
             CellToBaseMsg::EntityMethodCall {
                 entity_id: 1,
                 method_index,
                 ..
             } if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE => {
-                if state_field_at.is_none() {
-                    state_field_at = Some(idx);
-                }
+                state_field_at.get_or_insert(idx);
             }
             _ => {}
         }
