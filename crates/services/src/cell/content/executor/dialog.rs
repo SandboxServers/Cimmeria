@@ -71,6 +71,7 @@ pub(super) async fn add_dialog_set(
             entity_id,
             slot,
             &entry,
+            chain_id,
             tx,
             space_mgr,
             "add_dialog_set",
@@ -208,8 +209,16 @@ pub(super) async fn add_dialog(
                 .push((dialog_set_id, entry.dialog_id, entry.interaction_flags));
         }
 
-        send_interaction_update_if_visible(entity_id, slot, &entry, tx, space_mgr, "add_dialog")
-            .await;
+        send_interaction_update_if_visible(
+            entity_id,
+            slot,
+            &entry,
+            chain_id,
+            tx,
+            space_mgr,
+            "add_dialog",
+        )
+        .await;
     } else {
         tracing::warn!(
             dialog_set_id,
@@ -229,6 +238,7 @@ async fn send_interaction_update_if_visible(
     entity_id: u32,
     slot: i32,
     entry: &crate::cell::spawner::DialogSetMapEntry,
+    chain_id: i64,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
     label: &str,

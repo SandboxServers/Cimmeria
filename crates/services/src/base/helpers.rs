@@ -676,13 +676,12 @@ mod tests {
         let ghost_addr: StdSocketAddr = "127.0.0.1:65500".parse().unwrap();
         let connected: StdArc<StdMutex<StdHashMap<StdSocketAddr, ConnectedClientState>>> =
             StdArc::new(StdMutex::new(StdHashMap::new()));
-        let entity_to_addr: StdArc<StdMutex<StdHashMap<u32, StdSocketAddr>>> = StdArc::new(
-            StdMutex::new({
+        let entity_to_addr: StdArc<StdMutex<StdHashMap<u32, StdSocketAddr>>> =
+            StdArc::new(StdMutex::new({
                 let mut m = StdHashMap::new();
                 m.insert(99u32, ghost_addr);
                 m
-            }),
-        );
+            }));
 
         let result = send_to_witness(
             &socket,

@@ -108,11 +108,20 @@ pub(super) async fn entity_moved(
     // UNRELIABLE — avatar position updates are continuous and self-correcting;
     // the next position frame supersedes any lost one within a tick or two.
     // Stays on the no-Channel-tracking path.
-    send_to_witness(
+    //
+    // `let _ =`: the per-tick driver re-emits the next frame within ~100 ms
+    // even when one update lands in an empty witness map. `send_to_witness`
+    // logs the missing-addr warn internally (T1-1 / #304) so no caller-side
+    // log is needed; we just discard the `Err("no_client_addr")` /
+    // `Err("client_disconnected")` distinction here because both have the
+    // same recovery (next tick).
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
         witness_id,
+        entity_id,
+        "POSITION",
         |key, seq, acks| {
             build_avatar_update(key, seq, acks, entity_id, position, velocity, direction)
         },
