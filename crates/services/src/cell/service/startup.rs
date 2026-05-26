@@ -181,6 +181,14 @@ impl CellService {
                     tracing::warn!("Failed to load item containers: {e}");
                 }
             }
+            match spawner::load_item_event_set_abilities(pool).await {
+                Ok(map) => {
+                    space_mgr.item_event_set_abilities = map;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load items_event_sets abilities: {e}");
+                }
+            }
             match spawner::load_item_defs(pool).await {
                 Ok(map) => {
                     space_mgr.item_defs = map;

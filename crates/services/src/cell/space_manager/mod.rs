@@ -130,6 +130,17 @@ pub struct SpaceManager {
     /// Loaded at startup so runtime item grants go into the correct inventory bag
     /// (e.g. mission items into INV_Mission, weapons into bandolier).
     pub item_containers: HashMap<i32, i32>,
+    /// Per-item ability bindings: `(item_id, event_id) → ability_id`.
+    /// Loaded from `resources.items_event_sets` at startup. Resolves the
+    /// correct ability for a weapon's ranged/melee/use action — e.g., the
+    /// pistol (item 55) fires ability 579 on `EVENT_ITEM_RANGED`, while
+    /// the P90 (item 21) fires ability 559 for the same event. Previously
+    /// the server hardcoded `592` (Pistol Shot) regardless of equipped
+    /// weapon — see issue #419, Phase 1. Use
+    /// [`crate::cell::abilities::ability_for_item`] for lookups so the
+    /// fallback semantics (no binding → caller-supplied default) stay
+    /// consistent across call sites.
+    pub item_event_set_abilities: HashMap<(i32, i32), i32>,
     /// Weapon defs (clip_size + default_ammo_type) keyed by item_id.
     /// Loaded from `resources.items` at startup. Used by the content engine's
     /// GrantItem path to seed bandolier slots when a weapon is granted at
@@ -183,6 +194,7 @@ impl SpaceManager {
             effect_defs: HashMap::new(),
             sequence_map: HashMap::new(),
             item_containers: HashMap::new(),
+            item_event_set_abilities: HashMap::new(),
             item_defs: HashMap::new(),
             loot_tables: HashMap::new(),
             respawners: Vec::new(),

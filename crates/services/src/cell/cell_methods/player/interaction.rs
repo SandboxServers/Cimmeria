@@ -72,6 +72,36 @@ pub async fn dispatch(
                         return true;
                     }
 
+                    // Resolve the ability for the equipped weapon via
+                    // `items_event_sets` (EVENT_ITEM_RANGED=7). Pre-fix
+                    // this was a hardcoded `592` (Pistol Shot), which
+                    // fired regardless of the weapon — so a P90 player
+                    // still got Pistol Shot animations and the SMG's
+                    // proper `559 Automatic Weapon Auto Attack` binding
+                    // was dead code. See issue #419 Phase 1.
+                    //
+                    // Fallback to `592` is preserved so a fresh checkout
+                    // without seeded `items_event_sets` (or an item the
+                    // seed never covered) still produces a responsive
+                    // right-click — matches the pre-fix behavior in the
+                    // degenerate case while making the seeded happy path
+                    // correct.
+                    const RIGHT_CLICK_FALLBACK_ABILITY: i32 = 592;
+                    let resolved_ability = crate::cell::abilities::ability_for_active_weapon(
+                        space_mgr,
+                        entity_id,
+                        crate::cell::spawner::EVENT_ITEM_RANGED,
+                    )
+                    .unwrap_or_else(|| {
+                        tracing::debug!(
+                            entity_id,
+                            target_entity_id,
+                            "interact: no items_event_sets binding for active weapon — \
+                                 falling back to ability 592 (Pistol Shot)"
+                        );
+                        RIGHT_CLICK_FALLBACK_ABILITY
+                    });
+
                     // Single canonical kill-credit path — see
                     // `handle_use_ability_with_kill_credit` for the
                     // alive→dead detection + `fire_entity_death` wrap
@@ -84,7 +114,7 @@ pub async fn dispatch(
                     // queued attack-while-holstered).
                     crate::cell::abilities::handle_use_ability_with_kill_credit(
                         entity_id,
-                        592,
+                        resolved_ability,
                         target_entity_id,
                         engine,
                         tx,

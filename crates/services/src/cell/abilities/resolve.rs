@@ -1,0 +1,150 @@
+//! Per-weapon ability resolution.
+//!
+//! The cell receives `useAbility` calls with a specific `ability_id`
+//! from the client, but the **server-driven right-click on a hostile
+//! NPC** path in [`super::super::cell_methods::player::interaction`]
+//! needs to pick the ability itself. Before this module, that site
+//! hardcoded `592` (Pistol Shot) regardless of the equipped weapon,
+//! so a player wielding a P90 still fired Pistol Shot animations and
+//! the SMG's per-weapon binding (ability 559 "Automatic Weapon Auto
+//! Attack") was never used — bug landed in issue #419.
+//!
+//! Resolution order:
+//!
+//! 1. Look up the player's **active bandolier slot** → get the weapon
+//!    `item_id`.
+//! 2. Query `space_mgr.item_event_set_abilities` for
+//!    `(item_id, event_id)` where `event_id` is one of the
+//!    `EVENT_ITEM_*` constants (RANGED=7, MELEE=6, USE=5).
+//! 3. If found, return that ability id.
+//! 4. If no binding exists, fall through to a caller-supplied default
+//!    (typically `594 Strike` for melee, `592 Pistol Shot` for ranged
+//!    legacy compatibility). The default keeps the click responsive
+//!    even when `items_event_sets` hasn't been seeded yet (fresh
+//!    checkout, content gap, or a weapon the seed never covered).
+//!
+//! Reference: [`docs/protocol/item-sequence-lookup.md`](../../../../../docs/protocol/item-sequence-lookup.md),
+//! `deprecated/python/cell/SGWBeing.py:517-523` (`getItemSequence`).
+
+use super::super::space_manager::SpaceManager;
+
+/// Resolve the ability bound to `item_id` for `event_id`, or `None` if
+/// no binding exists in `resources.items_event_sets`. Pure lookup; no
+/// fallback decision — caller picks the default per call site.
+pub fn ability_for_item(space_mgr: &SpaceManager, item_id: i32, event_id: i32) -> Option<i32> {
+    space_mgr
+        .item_event_set_abilities
+        .get(&(item_id, event_id))
+        .copied()
+}
+
+/// Resolve the ability that fires when the player wielding the active
+/// bandolier slot triggers `event_id` (typically `EVENT_ITEM_RANGED`).
+///
+/// Returns `None` when:
+/// - The entity has no active bandolier slot occupied (unarmed)
+/// - The slotted item has no `items_event_sets` row for `event_id`
+///
+/// Callers MUST decide what to do with `None` — for the right-click
+/// hostile-NPC path the previous behavior was "fire Pistol Shot 592",
+/// which is now preserved as the explicit `default_ability` argument
+/// in [`ability_for_active_weapon_or_default`].
+pub fn ability_for_active_weapon(
+    space_mgr: &SpaceManager,
+    entity_id: u32,
+    event_id: i32,
+) -> Option<i32> {
+    let item_id = space_mgr.get_entity(entity_id).and_then(|e| {
+        let slot = e.active_bandolier_slot;
+        e.bandolier_items.get(&slot).map(|b| b.item_id)
+    })?;
+    ability_for_item(space_mgr, item_id, event_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cell::space_manager::SpaceManager;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    fn mgr_with_one_player(item_id: i32, slot: i32) -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.create_entity(1, "W", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.active_bandolier_slot = slot;
+            e.bandolier_items.insert(
+                slot,
+                BandolierItem {
+                    item_id,
+                    clip_size: 30,
+                    default_ammo_type: 0,
+                    current_ammo: 30,
+                    cur_ammo_type: 0,
+                },
+            );
+        }
+        mgr
+    }
+
+    #[test]
+    fn unbound_item_returns_none() {
+        let mgr = mgr_with_one_player(55, 0);
+        // No bindings seeded.
+        assert_eq!(ability_for_item(&mgr, 55, 7), None);
+        assert_eq!(ability_for_active_weapon(&mgr, 1, 7), None);
+    }
+
+    #[test]
+    fn pistol_ranged_returns_pistol_auto_attack() {
+        // Pin: pistol (item 55) ranged event (7) → ability 579
+        // "Pistol Auto Attack" per seed data. This guards the bug from
+        // issue #419 — pre-fix, any item resolved to ability 592.
+        let mut mgr = mgr_with_one_player(55, 0);
+        mgr.item_event_set_abilities.insert((55, 7), 579);
+        assert_eq!(ability_for_item(&mgr, 55, 7), Some(579));
+        assert_eq!(ability_for_active_weapon(&mgr, 1, 7), Some(579));
+    }
+
+    #[test]
+    fn p90_ranged_returns_smg_auto_attack() {
+        // Pin: P90/SMG (item 21) ranged → ability 559 "Automatic Weapon
+        // Auto Attack". Different ability than pistol — this is the
+        // specific bug shape the user observed: same Pistol Shot
+        // animation for both weapons.
+        let mut mgr = mgr_with_one_player(21, 0);
+        mgr.item_event_set_abilities.insert((21, 7), 559);
+        assert_eq!(ability_for_active_weapon(&mgr, 1, 7), Some(559));
+    }
+
+    #[test]
+    fn unarmed_player_returns_none() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.create_entity(1, "W", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.active_bandolier_slot = 0;
+            // No bandolier items.
+        }
+        assert_eq!(ability_for_active_weapon(&mgr, 1, 7), None);
+    }
+
+    #[test]
+    fn melee_lookup_separate_from_ranged() {
+        // Pistol has different melee (708) vs ranged (579) bindings —
+        // ensure event_id discrimination works.
+        let mut mgr = mgr_with_one_player(55, 0);
+        mgr.item_event_set_abilities.insert((55, 7), 579);
+        mgr.item_event_set_abilities.insert((55, 6), 708);
+        assert_eq!(ability_for_active_weapon(&mgr, 1, 7), Some(579));
+        assert_eq!(ability_for_active_weapon(&mgr, 1, 6), Some(708));
+    }
+}

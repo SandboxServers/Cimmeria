@@ -18,6 +18,15 @@ pub const EVENT_ITEM_UNEQUIP: i32 = 4001;
 pub const EVENT_ITEM_RELOAD: i32 = 4002;
 pub const EVENT_ITEM_USE: i32 = 4003;
 
+/// Per-item-instance ability-binding event IDs (from `Atrea.enums.EVENT_Item*`).
+/// Used to look up the correct ability for a given weapon + event in
+/// `resources.items_event_sets`. Reference:
+/// `deprecated/python/Atrea/enums.py:456` and
+/// `docs/protocol/item-sequence-lookup.md`.
+pub const EVENT_ITEM_USE_ABILITY: i32 = 5;
+pub const EVENT_ITEM_MELEE: i32 = 6;
+pub const EVENT_ITEM_RANGED: i32 = 7;
+
 /// Archetype → "Item handling" event set id, mirrored from
 /// `python/common/Constants.py:ARCHETYPE_ITEM_EVENT_SETS`. Every human
 /// archetype shares event set 804 (`"Item handling generic event set"`,
@@ -127,6 +136,50 @@ struct AbilityRow {
     required_ammo: i32,
     event_set_id: Option<i32>,
     velocity: f32,
+}
+
+/// Load per-item-instance ability bindings from `resources.items_event_sets`.
+///
+/// Builds a `(item_id, event_id) → ability_id` lookup so the cell can
+/// resolve "what ability fires when this player wields THIS specific
+/// weapon and triggers EVENT_X" without the per-call DB round trip.
+///
+/// Per [`docs/protocol/item-sequence-lookup.md`](../../../../docs/protocol/item-sequence-lookup.md),
+/// these bindings cover **combat ability overrides per weapon** (e.g.,
+/// pistol item 55 maps EVENT_ItemRanged=7 → ability 579 "Pistol Auto
+/// Attack"; P90/SMG item 21 maps the same event to ability 559
+/// "Automatic Weapon Auto Attack"). The previous server hardcoded
+/// `592` (Pistol Shot) for every weapon's auto-attack, ignoring this
+/// table — see issue #419, fixed in this commit.
+///
+/// Returns an empty map on DB failure; callers must treat absence as
+/// "use the archetype default fallback" rather than panicking, so a
+/// fresh checkout without seeded data still boots.
+pub async fn load_item_event_set_abilities(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<(i32, i32), i32>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query("SELECT item_id, event_id, ability_id FROM resources.items_event_sets")
+        .fetch_all(pool)
+        .await?;
+
+    let mut map = std::collections::HashMap::with_capacity(rows.len());
+    for r in &rows {
+        let item_id: i32 = r.get("item_id");
+        let event_id: i32 = r.get("event_id");
+        let ability_id: i32 = r.get("ability_id");
+        // First binding wins on duplicates. The seed data has duplicates
+        // for some items (e.g., quest items that appear in multiple
+        // sets) but per-event_id the binding is unique in practice.
+        map.entry((item_id, event_id)).or_insert(ability_id);
+    }
+
+    tracing::info!(
+        count = map.len(),
+        "Loaded items_event_sets ability bindings"
+    );
+    Ok(map)
 }
 
 /// Load all effect definitions from `resources.effects` + `resources.effect_nvps`.

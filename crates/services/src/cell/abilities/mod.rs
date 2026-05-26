@@ -13,6 +13,7 @@
 //! - `death` — ordered wire protocol burst when a target dies.
 //! - `messaging` — entity-method routing (player vs witness) + dirty-stat flush.
 //! - `loot_drop` — on-death loot generation + interaction-flag updates.
+//! - `resolve` — per-weapon ability resolution (items_event_sets lookup).
 //! - `rng` — deterministic pseudo-random for combat rolls.
 //!
 //! Reference: `python/cell/AbilityManager.py:1004-1056`
@@ -22,6 +23,7 @@ mod death;
 mod dispatch;
 mod loot_drop;
 mod messaging;
+mod resolve;
 mod rng;
 mod use_ability;
 
@@ -36,6 +38,7 @@ pub(crate) use messaging::{request_appearance_refresh, send_entity_method};
 // land here for #278 child PRs to adopt. They stay private to the `messaging`
 // module until the first child callsite migrates — at which point the
 // migrating PR adds the re-exports it needs.
+pub use resolve::{ability_for_active_weapon, ability_for_item};
 pub use use_ability::{handle_use_ability, handle_use_ability_with_kill_credit};
 
 #[cfg(test)]
