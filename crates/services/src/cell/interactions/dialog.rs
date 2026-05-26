@@ -7,6 +7,19 @@ use crate::cell::messages::CellToBaseMsg;
 /// Send `onDialogDisplay` (flat index 105) to the player.
 ///
 /// Wire: `entityId:i32, dialogId:i32, missionFlags:i32, isImmediate:u8, missionId:i32`.
+///
+/// `npc_entity_id` becomes `args[0..4]` — the wire `EntityId` the
+/// client uses as the lookup key for the dialog portrait actor and
+/// the per-screen speaker entity (see PR #401, ghidra finding
+/// `dialog-portrait-lookup.md`). Recording it as a span field on
+/// every send lets operators verify "did the right NPC id reach
+/// the wire?" without a packet capture.
+#[tracing::instrument(
+    name = "dialog.send_display",
+    level = "info",
+    skip_all,
+    fields(player_id, npc_entity_id, dialog_id)
+)]
 pub async fn send_dialog_display(
     player_id: u32,
     npc_entity_id: i32,
