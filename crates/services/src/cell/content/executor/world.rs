@@ -127,8 +127,48 @@ pub(super) async fn generate_threat(
                 target_id, // target = the NPC
                 threat_level as f32,
             ) {
-                // Player just entered combat — broadcast state
-                // change so the client flips in-combat HUD.
+                // Player just entered combat. `enter_player_combat`
+                // (inside `combat::generate_threat`) flipped
+                // `weapon_holstered = false` via
+                // `sync_holster_to_combat(true)`. We must broadcast
+                // BOTH:
+                //
+                //   - `BeingAppearance` refresh, so the client's
+                //     cached `ComponentList` picks up the now-drawn
+                //     weapon mesh. Without this the client keeps
+                //     rendering the holstered/empty-hand mesh while
+                //     the server thinks the weapon is drawn — fire
+                //     animations play against empty hands and the
+                //     in-combat pose shows no weapon. Pre-fix
+                //     symptom from chain 1032 (Ambernol pickup
+                //     triggers drone aggro): "fists go into combat
+                //     position, player shoots without a weapon,
+                //     fists holster when aggro drops."
+                //
+                //   - `onStateFieldUpdate`, so the in-combat HUD /
+                //     targeting cursor / state-bit-derived UI flips.
+                //
+                // **Order matters**: appearance BEFORE state field.
+                // Both flow through the same client-side state-machine
+                // entry point (`FUN_00e7b4c0`) but only the appearance
+                // path triggers the socket re-attach (`FUN_00e7b7c0`)
+                // that writes the weapon-category byte. If
+                // `BSF_InCombat` flips first, the unholster animation
+                // starts before the weapon mesh is attached — hand
+                // reaches for the holster, grabs air, mesh snaps in
+                // mid-animation (the "splinch" documented in
+                // `apply_damage_to_target` and reproduced here for the
+                // chain-driven aggro path).
+                //
+                // This mirrors the existing belt-and-braces in
+                // `damage_apply::apply_damage_to_target` and the
+                // appearance-only broadcast in
+                // `npc_ai::npc_ai_idle_auto_aggro` (which intentionally
+                // suppresses the state field to avoid the "ghost
+                // combat HUD" carve-out). Three callers of
+                // `combat::generate_threat`; this is the third to
+                // gain the appearance refresh.
+                crate::cell::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
                 crate::cell::abilities::send_entity_method(
                     entity_id,
                     crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
