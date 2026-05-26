@@ -378,5 +378,152 @@ pub async fn handle_grant_cash(
     }
 }
 
+/// Persist a trained ability + debit one training point.
+///
+/// Cell pre-validates archetype tree + prereqs (see #419 Phase 5b);
+/// base only validates training_points >= 1 and the DB UPDATE returning
+/// `rows_affected == 1`. On success, sends
+/// `BaseToCellMsg::AbilityGranted` so the cell can add to
+/// `entity.abilities` and broadcast `onKnownAbilitiesUpdate`.
+///
+/// Persistence shape: `UPDATE sgw_player SET abilities = abilities || $1,
+/// training_points = training_points - 1 WHERE player_id = $2 AND
+/// training_points > 0`. The `training_points > 0` guard is the DB-side
+/// authority — even if the in-memory training_points view is stale, the
+/// row update only fires when actual rowstate allows.
+#[tracing::instrument(
+    name = "progression.train_ability",
+    level = "info",
+    skip_all,
+    fields(entity_id, player_id, ability_id)
+)]
+#[allow(clippy::too_many_arguments)]
+pub async fn handle_train_ability(
+    entity_id: u32,
+    player_id: i32,
+    ability_id: i32,
+    db_pool: &Option<Arc<PgPool>>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
+    _transport: &Arc<dyn Transport>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::warn!(entity_id, player_id, ability_id, "TrainAbility: no DB pool");
+            return;
+        }
+    };
+
+    let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
+        Some(a) => a,
+        None => {
+            tracing::warn!(entity_id, "TrainAbility: no address for entity");
+            return;
+        }
+    };
+
+    // Fast-path check: the UPDATE's `training_points > 0` guard is the
+    // authoritative gate (atomic against the DB row), but a stale-cache
+    // pre-check spares a DB round-trip on the common "out of TP" case.
+    {
+        let map = match connected.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let tp_in_memory = map
+            .get(&addr)
+            .and_then(|s| s.player_training_points)
+            .unwrap_or(0);
+        if tp_in_memory == 0 {
+            tracing::info!(
+                entity_id,
+                player_id,
+                ability_id,
+                "TrainAbility: rejected — no training points available (in-memory)"
+            );
+            return;
+        }
+    }
+
+    // Atomic: append ability_id + debit, but ONLY if training_points > 0.
+    // The cell pre-validated already-known; `||` appends unconditionally,
+    // and entity.abilities is a HashSet on the read side, so a rare
+    // race-introduced duplicate is absorbed without state corruption.
+    let result = sqlx::query_scalar::<_, i32>(
+        "UPDATE sgw_player \
+            SET abilities = abilities || $1::integer, \
+                training_points = training_points - 1 \
+          WHERE player_id = $2 AND training_points > 0 \
+        RETURNING training_points",
+    )
+    .bind(ability_id)
+    .bind(player_id)
+    .fetch_optional(pool.as_ref())
+    .await;
+
+    let training_points_remaining = match result {
+        Ok(Some(tp)) => tp,
+        Ok(None) => {
+            tracing::info!(
+                entity_id,
+                player_id,
+                ability_id,
+                "TrainAbility: UPDATE matched 0 rows (player_id missing or no training_points)"
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::error!(
+                entity_id,
+                player_id,
+                ability_id,
+                "TrainAbility: UPDATE failed: {e}"
+            );
+            return;
+        }
+    };
+
+    // Sync in-memory training_points so the next train attempt sees the
+    // post-debit value without a DB read.
+    {
+        let mut map = match connected.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        if let Some(state) = map.get_mut(&addr) {
+            state.player_training_points = Some(training_points_remaining as u32);
+        }
+    }
+
+    tracing::info!(
+        entity_id,
+        player_id,
+        ability_id,
+        training_points_remaining,
+        "TrainAbility: persisted + debited"
+    );
+
+    // Notify cell so it adds the ability + broadcasts onKnownAbilitiesUpdate.
+    // If the channel is gone, the player's hotbar will be one ability behind
+    // until next relog — log loudly so SigNoz surfaces the desync.
+    if let Some(tx) = cell_tx {
+        if let Err(e) = tx
+            .send(crate::cell::messages::BaseToCellMsg::AbilityGranted {
+                entity_id,
+                ability_id,
+                training_points_remaining,
+            })
+            .await
+        {
+            tracing::error!(
+                entity_id, ability_id, error = %e,
+                "TrainAbility: base→cell AbilityGranted send failed; hotbar will desync until relog"
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

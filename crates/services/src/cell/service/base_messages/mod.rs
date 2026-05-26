@@ -360,6 +360,46 @@ pub(super) async fn handle_base_message(
             );
         }
 
+        BaseToCellMsg::AbilityGranted {
+            entity_id,
+            ability_id,
+            training_points_remaining,
+        } => {
+            // Base persisted + debited; mirror onto the cell entity and
+            // refresh the client hotbar. See #419 Phase 5b for the
+            // round-trip design.
+            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                entity.abilities.add_ability(ability_id);
+            }
+            tracing::info!(
+                target: "abilities",
+                event = "granted",
+                entity_id,
+                ability_id,
+                training_points_remaining,
+                "AbilityGranted: cell mirrored + hotbar refresh"
+            );
+            // Rebuild + send the full known-abilities list so the hotbar
+            // shows the new ability immediately. Format mirrors the
+            // Phase 3 send_known_abilities_update helper.
+            let ability_ids: Vec<i32> = match space_mgr.get_entity(entity_id) {
+                Some(e) => e.abilities.known_ability_ids(),
+                None => return,
+            };
+            let mut args = Vec::with_capacity(4 + ability_ids.len() * 4);
+            args.extend_from_slice(&(ability_ids.len() as u32).to_le_bytes());
+            for id in &ability_ids {
+                args.extend_from_slice(&id.to_le_bytes());
+            }
+            let _ = tx
+                .send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: crate::cell::client_methods::player::ON_KNOWN_ABILITIES_UPDATE,
+                    args,
+                })
+                .await;
+        }
+
         BaseToCellMsg::ItemUsed {
             entity_id,
             instance_id,

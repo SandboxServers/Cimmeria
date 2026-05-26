@@ -4,6 +4,7 @@ pub mod crafting;
 mod dispatch;
 pub mod interaction;
 pub mod social;
+mod trainer_interaction;
 pub mod vendor;
 pub mod world;
 

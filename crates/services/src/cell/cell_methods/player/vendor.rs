@@ -133,7 +133,13 @@ pub async fn dispatch(
         TRAIN_ABILITY => {
             if args.len() >= 4 {
                 let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::debug!(entity_id, ability_id, "trainAbility (not yet implemented)");
+                handle_train_ability(entity_id, ability_id, tx, space_mgr).await;
+            } else {
+                tracing::warn!(
+                    entity_id,
+                    args_len = args.len(),
+                    "trainAbility: truncated args (need 4 bytes ability_id)"
+                );
             }
             true
         }
@@ -457,4 +463,181 @@ mod vendor_context_tests {
         }
         assert_session(vendor_context(1, &mgr), 4242, 123456, None);
     }
+}
+
+/// Train an ability — full validation + base-side persistence + debit.
+///
+/// Cell-side validation (#419 Phase 5b):
+/// 1. Ability id exists in `space_mgr.ability_defs` (rejects typos)
+/// 2. Player has a `player_id` (no orphan-entity grants)
+/// 3. Player not already known the ability (no-op duplicate)
+/// 4. Ability is in player's `archetype_ability_tree` (no cross-class
+///    training)
+/// 5. Player level meets the tree entry's `level` requirement
+/// 6. Every `prerequisite_abilities` entry is in `entity.abilities`
+///
+/// On all checks passing, sends `CellToBaseMsg::TrainAbility` to the
+/// base. The base does the `training_points` debit + DB UPDATE +
+/// responds with `BaseToCellMsg::AbilityGranted`, which the cell's
+/// dispatcher handles (in `service/base_messages/mod.rs`) by adding
+/// the ability to `entity.abilities` and sending
+/// `onKnownAbilitiesUpdate` for the hotbar refresh.
+///
+/// For archetypes without a tree (Scientist/Asgard/Goa'uld/etc. — see
+/// #419 Phase 7 content gap), step 4 fails immediately. This is the
+/// correct behavior: training is gated on content existing, and the
+/// player can still get starter abilities via `char_creation_abilities`
+/// (Phase 2).
+async fn handle_train_ability(
+    entity_id: u32,
+    ability_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    // Step 1: ability exists
+    if !space_mgr.ability_defs.contains_key(&ability_id) {
+        tracing::warn!(
+            entity_id,
+            ability_id,
+            "trainAbility: ability_id not found in ability_defs — rejecting"
+        );
+        return;
+    }
+
+    // Snapshot the player's state for validation; no mutation here.
+    let (player_id, archetype_id, player_level, already_known) = {
+        let entity = match space_mgr.get_entity(entity_id) {
+            Some(e) => e,
+            None => return,
+        };
+        (
+            entity.player_id,
+            entity.archetype_id,
+            entity.level as i32,
+            entity.abilities.has_ability(ability_id),
+        )
+    };
+
+    // Step 2: player must have a player_id (rules out orphan entities,
+    // GM grants on NPCs, etc.)
+    let player_id = match player_id {
+        Some(pid) => pid,
+        None => {
+            tracing::warn!(
+                entity_id,
+                ability_id,
+                "trainAbility: entity has no player_id — rejecting"
+            );
+            return;
+        }
+    };
+
+    // Step 3: already-known is a silent no-op (replayed packet, UI
+    // double-click)
+    if already_known {
+        tracing::debug!(
+            entity_id,
+            player_id,
+            ability_id,
+            "trainAbility: ability already known — no-op"
+        );
+        return;
+    }
+
+    // Step 4: ability must be in the player's archetype training tree
+    let archetype_id = match archetype_id {
+        Some(a) => a,
+        None => {
+            tracing::warn!(
+                entity_id,
+                player_id,
+                ability_id,
+                "trainAbility: entity has no archetype_id — rejecting"
+            );
+            return;
+        }
+    };
+    let tree_entry = space_mgr
+        .archetype_ability_trees
+        .get(&archetype_id)
+        .and_then(|tree| tree.iter().find(|e| e.ability_id == ability_id));
+    let tree_entry = match tree_entry {
+        Some(e) => e,
+        None => {
+            tracing::info!(
+                target: "abilities",
+                event = "train_rejected",
+                reason = "not_in_archetype_tree",
+                entity_id,
+                player_id,
+                archetype_id,
+                ability_id,
+                "trainAbility: ability not in player's archetype tree — rejecting \
+                 (likely an unsupported archetype until #419 Phase 7 content lands)"
+            );
+            return;
+        }
+    };
+
+    // Step 5: level requirement
+    if player_level < tree_entry.level {
+        tracing::info!(
+            target: "abilities",
+            event = "train_rejected",
+            reason = "level_too_low",
+            entity_id,
+            player_id,
+            ability_id,
+            player_level,
+            required_level = tree_entry.level,
+            "trainAbility: player level below required — rejecting"
+        );
+        return;
+    }
+
+    // Step 6: prerequisites
+    let prereqs = tree_entry.prerequisite_abilities.clone();
+    let missing_prereq = {
+        let entity = match space_mgr.get_entity(entity_id) {
+            Some(e) => e,
+            None => return,
+        };
+        prereqs
+            .iter()
+            .find(|&&pid| !entity.abilities.has_ability(pid))
+            .copied()
+    };
+    if let Some(missing) = missing_prereq {
+        tracing::info!(
+            target: "abilities",
+            event = "train_rejected",
+            reason = "missing_prerequisite",
+            entity_id,
+            player_id,
+            ability_id,
+            missing_prereq = missing,
+            "trainAbility: prerequisite ability not known — rejecting"
+        );
+        return;
+    }
+
+    // All validation passed. Hand off to base for the training_points
+    // debit + DB persist. The cell-side state change happens when base
+    // responds with AbilityGranted (see service/base_messages/mod.rs).
+    tracing::info!(
+        target: "abilities",
+        event = "train_requested",
+        entity_id,
+        player_id,
+        ability_id,
+        archetype_id,
+        "trainAbility: validation passed, requesting base persist + debit"
+    );
+    let _ = tx
+        .send(CellToBaseMsg::TrainAbility {
+            entity_id,
+            player_id,
+            ability_id,
+        })
+        .await;
 }

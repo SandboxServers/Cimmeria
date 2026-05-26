@@ -189,6 +189,30 @@ impl CellService {
                     tracing::warn!("Failed to load items_event_sets abilities: {e}");
                 }
             }
+            match spawner::load_archetype_ability_trees(pool).await {
+                Ok(map) => {
+                    space_mgr.archetype_ability_trees = map;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load archetype ability trees: {e}");
+                }
+            }
+            match spawner::load_trainer_abilities(pool).await {
+                Ok(map) => {
+                    space_mgr.trainer_abilities = map;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load trainer abilities: {e}");
+                }
+            }
+            match spawner::load_template_trainer_lists(pool).await {
+                Ok(map) => {
+                    space_mgr.template_trainer_lists = map;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load template trainer lists: {e}");
+                }
+            }
             match spawner::load_item_defs(pool).await {
                 Ok(map) => {
                     space_mgr.item_defs = map;

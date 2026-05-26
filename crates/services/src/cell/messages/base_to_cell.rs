@@ -139,6 +139,25 @@ pub enum BaseToCellMsg {
         quantity: i32,
     },
 
+    /// Base confirmed: ability trained, training point debited, persisted
+    /// to `sgw_player.abilities`. Sent in response to
+    /// [`crate::cell::messages::CellToBaseMsg::TrainAbility`] after the
+    /// DB UPDATE succeeded with `rows_affected == 1` and the
+    /// `ConnectedClientState.player_training_points` was decremented.
+    ///
+    /// On receipt, the cell adds `ability_id` to `entity.abilities` and
+    /// broadcasts `onKnownAbilitiesUpdate` so the player's hotbar
+    /// refreshes. `training_points_remaining` is informational — useful
+    /// to send to the client as a `feedback` line ("You have N training
+    /// points left").
+    ///
+    /// See issue #419 Phase 5b.
+    AbilityGranted {
+        entity_id: u32,
+        ability_id: i32,
+        training_points_remaining: i32,
+    },
+
     /// Inventory item was used by the player (in response to
     /// `CellToBaseMsg::UseInventoryItem` after base verified ownership).
     /// The cell fires the `OnItemUse` content event with `type_id` (item

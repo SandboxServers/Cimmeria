@@ -4,6 +4,7 @@ use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
 use super::constants::*;
+use super::trainer_interaction;
 
 pub async fn dispatch(
     entity_id: u32,
@@ -124,40 +125,55 @@ pub async fn dispatch(
                     return true;
                 }
 
-                let mut handled = false;
-                if let Some(target) = space_mgr.get_entity(target_entity_u32) {
-                    let tag = target.tag.clone();
-                    let template_name = target.npc_name.clone();
-                    let player_id = space_mgr
-                        .get_entity(entity_id)
-                        .and_then(|e| e.player_id)
-                        .unwrap_or(0);
+                // Trainer NPC check — runs BEFORE the tag/template chain
+                // dispatch so a trainer's UI opens directly rather than the
+                // generic dialog. A trainer is any NPC whose template_id has
+                // a non-NULL `trainer_ability_list_id` (loaded once at
+                // startup into `space_mgr.template_trainer_lists`). See
+                // issue #419 Phase 5b.
+                let mut handled = trainer_interaction::try_open_trainer(
+                    entity_id,
+                    target_entity_u32,
+                    tx,
+                    space_mgr,
+                )
+                .await;
 
-                    if let Some(ref tag) = tag {
-                        handled = crate::cell::content::fire_interact_tag(
-                            entity_id,
-                            player_id,
-                            tag,
-                            target_entity_u32,
-                            engine,
-                            tx,
-                            space_mgr,
-                        )
-                        .await;
-                    }
+                if !handled {
+                    if let Some(target) = space_mgr.get_entity(target_entity_u32) {
+                        let tag = target.tag.clone();
+                        let template_name = target.npc_name.clone();
+                        let player_id = space_mgr
+                            .get_entity(entity_id)
+                            .and_then(|e| e.player_id)
+                            .unwrap_or(0);
 
-                    if !handled {
-                        if let Some(ref name) = template_name {
-                            handled = crate::cell::content::fire_interact_template(
+                        if let Some(ref tag) = tag {
+                            handled = crate::cell::content::fire_interact_tag(
                                 entity_id,
                                 player_id,
-                                name,
+                                tag,
                                 target_entity_u32,
                                 engine,
                                 tx,
                                 space_mgr,
                             )
                             .await;
+                        }
+
+                        if !handled {
+                            if let Some(ref name) = template_name {
+                                handled = crate::cell::content::fire_interact_template(
+                                    entity_id,
+                                    player_id,
+                                    name,
+                                    target_entity_u32,
+                                    engine,
+                                    tx,
+                                    space_mgr,
+                                )
+                                .await;
+                            }
                         }
                     }
                 }

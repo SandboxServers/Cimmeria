@@ -132,6 +132,27 @@ pub enum CellToBaseMsg {
     /// notifications.
     GrantXP { entity_id: u32, xp_amount: u64 },
 
+    /// Train a new ability for a player — debit one training point and
+    /// persist the new ability to `sgw_player.abilities`. The base side
+    /// owns `training_points` (it lives on `ConnectedClientState`) and
+    /// the DB UPDATE, so this round-trip is the only correct path.
+    ///
+    /// Cell pre-validates: ability exists, ability is in player's
+    /// archetype tree, level requirement met, prereqs known, not already
+    /// known. Base only validates training_points >= 1 (the cell's
+    /// per-player state isn't authoritative for that) and the DB UPDATE
+    /// returning `rows_affected == 1`.
+    ///
+    /// On success, base responds with
+    /// [`crate::cell::messages::BaseToCellMsg::AbilityGranted`] so the
+    /// cell can add to `entity.abilities` and broadcast
+    /// `onKnownAbilitiesUpdate`. See issue #419 Phase 5b.
+    TrainAbility {
+        entity_id: u32,
+        player_id: i32,
+        ability_id: i32,
+    },
+
     /// Grant an item to a player and persist to `sgw_inventory`.
     GrantItem {
         entity_id: u32,

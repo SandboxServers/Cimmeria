@@ -138,6 +138,162 @@ struct AbilityRow {
     velocity: f32,
 }
 
+/// One ability entry in an archetype's training tree.
+///
+/// Mirrors `resources.archetype_ability_tree` row. Used to validate that a
+/// player can train a given ability:
+/// - `level` is the player level required to train this ability
+/// - `prerequisite_abilities` must all be already-known by the player
+/// - `tree_index` is 0/1/2 (each archetype has three skill trees)
+#[derive(Debug, Clone)]
+pub struct ArchetypeAbilityTreeEntry {
+    pub ability_id: i32,
+    pub tree_index: i32,
+    pub level: i32,
+    pub prerequisite_abilities: Vec<i32>,
+}
+
+/// Load `resources.archetype_ability_tree` into a per-archetype lookup.
+///
+/// Returns `HashMap<archetype_id, Vec<entries>>`. Used cell-side for
+/// `train_ability` validation: check the requested ability is in the
+/// player's archetype tree, the player level meets the entry's `level`
+/// requirement, and every `prerequisite_abilities` entry is in the
+/// player's known set.
+///
+/// Today the table has 169 rows total: Soldier (84) and Commando (85)
+/// each have full trees; the other 7 archetypes are empty pending #419
+/// Phase 7 content authoring. Validation will reject train attempts
+/// for those archetypes — they can still get baseline abilities via
+/// `char_creation_abilities` (Phase 2) but can't deepen the tree.
+///
+/// Archetype id encoding matches the `EArchetype` enum position
+/// (0=Any, 1=Soldier, 2=Commando, 3=Scientist, 4=Archeologist, 5=Asgard,
+/// 6=Goauld, 7=Sholva, 8=Jaffa) — confirmed by the existing
+/// `archetype_count_matches_earchetype_enum_cardinality` test.
+pub async fn load_archetype_ability_trees(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<i32, Vec<ArchetypeAbilityTreeEntry>>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT \
+             array_position(enum_range(NULL::resources.\"EArchetype\"), archetype) - 1 \
+                 AS archetype_id, \
+             ability_id, tree_index, level, prerequisite_abilities \
+         FROM resources.archetype_ability_tree \
+         ORDER BY archetype, tree_index, ability_index",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut map: std::collections::HashMap<i32, Vec<ArchetypeAbilityTreeEntry>> =
+        std::collections::HashMap::new();
+    for r in &rows {
+        let archetype_id: i32 = r.get("archetype_id");
+        let ability_id: i32 = r.get("ability_id");
+        let tree_index: i32 = r.get("tree_index");
+        let level: i32 = r.get("level");
+        let prerequisite_abilities: Vec<i32> = r.get("prerequisite_abilities");
+        map.entry(archetype_id)
+            .or_default()
+            .push(ArchetypeAbilityTreeEntry {
+                ability_id,
+                tree_index,
+                level,
+                prerequisite_abilities,
+            });
+    }
+
+    tracing::info!(
+        archetypes = map.len(),
+        total_entries = rows.len(),
+        "Loaded archetype ability trees"
+    );
+    Ok(map)
+}
+
+/// Load `resources.trainer_abilities` keyed by `(list_id, archetype_id)`.
+///
+/// Returns `HashMap<(list_id, archetype_id), Vec<ability_id>>`. Used by the
+/// trainer NPC interaction (`sendAbilityList`) to enumerate which abilities a
+/// specific trainer NPC offers to a player of a given archetype.
+///
+/// Today there's exactly one populated list (`list_id=1`, "Debug ability
+/// list") referenced by template_id=25 ("Interaction Debug NPC"). The other
+/// 152 templates have NULL `trainer_ability_list_id` so they're not trainers.
+/// More trainers + lists are #419 Phase 7 content work.
+pub async fn load_trainer_abilities(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<(i32, i32), Vec<i32>>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT \
+             list_id, \
+             array_position(enum_range(NULL::resources.\"EArchetype\"), archetype) - 1 \
+                 AS archetype_id, \
+             ability_id \
+         FROM resources.trainer_abilities",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut map: std::collections::HashMap<(i32, i32), Vec<i32>> = std::collections::HashMap::new();
+    for r in &rows {
+        let list_id: i32 = r.get("list_id");
+        let archetype_id: i32 = r.get("archetype_id");
+        let ability_id: i32 = r.get("ability_id");
+        map.entry((list_id, archetype_id))
+            .or_default()
+            .push(ability_id);
+    }
+
+    tracing::info!(
+        rows = rows.len(),
+        unique_lists = map
+            .keys()
+            .map(|k| k.0)
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        "Loaded trainer ability lists"
+    );
+    Ok(map)
+}
+
+/// Load entity_templates `trainer_ability_list_id` for templates that ARE
+/// trainers. Returns `HashMap<template_id, list_id>`.
+///
+/// Most templates have NULL trainer_ability_list_id — the query filters
+/// those out so the runtime check is a fast HashMap miss for non-trainer
+/// NPCs (the overwhelming majority).
+pub async fn load_template_trainer_lists(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<i32, i32>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT template_id, trainer_ability_list_id \
+         FROM resources.entity_templates \
+         WHERE trainer_ability_list_id IS NOT NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut map = std::collections::HashMap::with_capacity(rows.len());
+    for r in &rows {
+        let template_id: i32 = r.get("template_id");
+        let list_id: i32 = r.get("trainer_ability_list_id");
+        map.insert(template_id, list_id);
+    }
+
+    tracing::info!(
+        count = map.len(),
+        "Loaded trainer-template → ability-list mappings"
+    );
+    Ok(map)
+}
+
 /// Load per-item-instance ability bindings from `resources.items_event_sets`.
 ///
 /// Builds a `(item_id, event_id) → ability_id` lookup so the cell can
