@@ -308,9 +308,12 @@ pub async fn load_template_trainer_lists(
 /// `592` (Pistol Shot) for every weapon's auto-attack, ignoring this
 /// table — see issue #419, fixed in this commit.
 ///
-/// Returns an empty map on DB failure; callers must treat absence as
-/// "use the archetype default fallback" rather than panicking, so a
-/// fresh checkout without seeded data still boots.
+/// Returns `Err` on DB failure; the startup wiring in
+/// `cell/service/startup.rs` logs the error and leaves
+/// `space_mgr.item_event_set_abilities` as the empty default map, so a
+/// fresh checkout without seeded data still boots. Callers must treat
+/// a missing `(item_id, event_id)` lookup as "use the caller-supplied
+/// default" rather than panicking.
 pub async fn load_item_event_set_abilities(
     pool: &PgPool,
 ) -> Result<std::collections::HashMap<(i32, i32), i32>, sqlx::Error> {

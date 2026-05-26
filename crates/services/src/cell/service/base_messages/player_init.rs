@@ -277,7 +277,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
 ///
 /// Wire format: `ARRAY<INT32> AbilityData` → `u32 count` + N × `i32 ability_id`.
 /// Method index 101 (`ON_KNOWN_ABILITIES_UPDATE`).
-async fn send_known_abilities_update(
+pub(super) async fn send_known_abilities_update(
     entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,

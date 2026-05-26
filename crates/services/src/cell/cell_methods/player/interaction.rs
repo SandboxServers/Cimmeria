@@ -79,29 +79,53 @@ pub async fn dispatch(
                     // fired regardless of the weapon — so a P90 player
                     // still got Pistol Shot animations and the SMG's
                     // proper `559 Automatic Weapon Auto Attack` binding
-                    // was dead code. See issue #419 Phase 1.
+                    // was dead code.
                     //
-                    // Fallback to `592` is preserved so a fresh checkout
-                    // without seeded `items_event_sets` (or an item the
-                    // seed never covered) still produces a responsive
-                    // right-click — matches the pre-fix behavior in the
-                    // degenerate case while making the seeded happy path
-                    // correct.
-                    const RIGHT_CLICK_FALLBACK_ABILITY: i32 = 592;
-                    let resolved_ability = crate::cell::abilities::ability_for_active_weapon(
-                        space_mgr,
-                        entity_id,
-                        crate::cell::spawner::EVENT_ITEM_RANGED,
-                    )
-                    .unwrap_or_else(|| {
-                        tracing::debug!(
-                            entity_id,
-                            target_entity_id,
-                            "interact: no items_event_sets binding for active weapon — \
-                                 falling back to ability 592 (Pistol Shot)"
-                        );
-                        RIGHT_CLICK_FALLBACK_ABILITY
+                    // Two fallback paths:
+                    // - **Unarmed** (no item in the active bandolier slot)
+                    //   → `594 Strike`. Firing a gun animation while
+                    //   empty-handed renders nonsense; Strike is the
+                    //   correct melee primitive.
+                    // - **Item present but no `items_event_sets` row**
+                    //   (content gap) → `592 Pistol Shot`. Logged at
+                    //   `warn!` with stable `target: "abilities"` so SigNoz
+                    //   surfaces unbound items via
+                    //   `event = "weapon_unbound"` — operators can grep
+                    //   for content rows missing their RANGED binding.
+                    const RIGHT_CLICK_FALLBACK_RANGED: i32 = 592;
+                    const RIGHT_CLICK_FALLBACK_MELEE: i32 = 594;
+                    let active_item_id = space_mgr.get_entity(entity_id).and_then(|e| {
+                        let slot = e.active_bandolier_slot;
+                        e.bandolier_items.get(&slot).map(|b| b.item_id)
                     });
+                    let resolved_ability = match active_item_id {
+                        None => {
+                            tracing::debug!(
+                                entity_id,
+                                target_entity_id,
+                                "interact: unarmed → ability 594 (Strike)"
+                            );
+                            RIGHT_CLICK_FALLBACK_MELEE
+                        }
+                        Some(item_id) => crate::cell::abilities::ability_for_item(
+                            space_mgr,
+                            item_id,
+                            crate::cell::spawner::EVENT_ITEM_RANGED,
+                        )
+                        .unwrap_or_else(|| {
+                            tracing::warn!(
+                                target: "abilities",
+                                event = "weapon_unbound",
+                                entity_id,
+                                target_entity_id,
+                                item_id,
+                                "interact: no items_event_sets binding for active \
+                                 weapon (EVENT_ITEM_RANGED=7) — content gap; \
+                                 falling back to ability 592 (Pistol Shot)"
+                            );
+                            RIGHT_CLICK_FALLBACK_RANGED
+                        }),
+                    };
 
                     // Single canonical kill-credit path — see
                     // `handle_use_ability_with_kill_credit` for the

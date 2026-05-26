@@ -53,12 +53,15 @@ INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (11, 597);
 INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (12, 597);
 
 
--- Issue #419 Phase 2: starter abilities for the 14 char_def_ids that were
--- shipping with EMPTY ability lists (Scientist, Archeologist, Asgard,
--- Goa'uld, Sholva, Jaffa — all alignments + genders). Baseline matches
--- Soldier/Commando: 592 Pistol Shot + 594 Strike + 597 Heal Focus.
--- See db/scripts/seed_starter_abilities_all_archetypes.sql for the
--- post-deploy migration that lifts these into already-deployed DBs.
+-- Starter abilities for the 15 char_def_ids that were shipping with EMPTY
+-- ability lists. Before this change only char_def_ids 1-4 and 11-14
+-- (Soldier M/F and Commando M/F across both alignments) had starter
+-- abilities. The 15 covered here are Scientist, Archeologist, Asgard,
+-- Goa'uld, Sholva, and Jaffa — note that Asgard is M-only (SGU) and
+-- Goa'uld/Jaffa are Praxis-only, matching the char_creation seed shape.
+-- Baseline matches Soldier/Commando: 592 Pistol Shot + 594 Strike + 597
+-- Heal Focus. See db/scripts/seed_starter_abilities_all_archetypes.sql
+-- for the post-deploy migration that lifts these into deployed DBs.
 
 INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (5, 592);
 INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (5, 594);

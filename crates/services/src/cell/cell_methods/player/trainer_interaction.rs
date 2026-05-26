@@ -91,6 +91,24 @@ pub(super) async fn try_open_trainer(
         .get(&(list_id, player_archetype))
         .cloned()
         .unwrap_or_default();
+    if offered.is_empty() {
+        // The client opens the trainer UI with an empty list cleanly,
+        // but for operators this is a content-config canary: either
+        // the trainer's list_id is missing rows for this archetype, or
+        // the archetype isn't in `trainer_abilities` at all. Stable
+        // `target: "abilities"` so SigNoz can `groupBy=event` across
+        // the abilities event family.
+        tracing::warn!(
+            target: "abilities",
+            event = "trainer_empty_offering",
+            player_entity_id,
+            trainer_entity_id = target_entity_id,
+            trainer_template_id,
+            list_id,
+            archetype_id = player_archetype,
+            "Trainer has no abilities for this archetype — content gap"
+        );
+    }
 
     // For each offered ability, compute `trainable` (1 if the player can
     // train it now, 0 otherwise). Mirrors AbilityTrainer.canTrainAbility:
@@ -122,7 +140,22 @@ pub(super) async fn try_open_trainer(
             } else {
                 // Offered but not in the archetype tree — content gap.
                 // Show as untrainable rather than hiding so operators can
-                // see the inconsistency in-client.
+                // see the inconsistency in-client. Stable `target:
+                // "abilities"` so SigNoz can pivot on
+                // `event = "trainer_offered_unbound"` to surface
+                // misconfigured trainer-list entries.
+                tracing::warn!(
+                    target: "abilities",
+                    event = "trainer_offered_unbound",
+                    player_entity_id,
+                    trainer_entity_id = target_entity_id,
+                    list_id,
+                    archetype_id = player_archetype,
+                    ability_id,
+                    "Trainer offers ability not in player's archetype tree — \
+                     content gap (trainer_abilities row without matching \
+                     archetype_ability_tree entry)"
+                );
                 0
             };
             (ability_id, trainable)

@@ -9,19 +9,22 @@
 //! the SMG's per-weapon binding (ability 559 "Automatic Weapon Auto
 //! Attack") was never used — bug landed in issue #419.
 //!
-//! Resolution order:
+//! Resolution flow:
 //!
 //! 1. Look up the player's **active bandolier slot** → get the weapon
 //!    `item_id`.
 //! 2. Query `space_mgr.item_event_set_abilities` for
 //!    `(item_id, event_id)` where `event_id` is one of the
 //!    `EVENT_ITEM_*` constants (RANGED=7, MELEE=6, USE=5).
-//! 3. If found, return that ability id.
-//! 4. If no binding exists, fall through to a caller-supplied default
-//!    (typically `594 Strike` for melee, `592 Pistol Shot` for ranged
-//!    legacy compatibility). The default keeps the click responsive
-//!    even when `items_event_sets` hasn't been seeded yet (fresh
-//!    checkout, content gap, or a weapon the seed never covered).
+//! 3. Return `Some(ability_id)` on hit, `None` on miss.
+//!
+//! These helpers do NOT pick a fallback — callers do. The right-click
+//! hostile-NPC path uses `592 Pistol Shot` as its fallback so an unbound
+//! item still produces a responsive click; other call sites pick what
+//! makes sense for their context (e.g., `594 Strike` for a melee path).
+//! Centralising the lookup means the call sites can rely on a single
+//! `(item_id, event_id) → Option<i32>` shape without each one
+//! re-implementing the lookup-plus-default pattern.
 //!
 //! Reference: [`docs/protocol/item-sequence-lookup.md`](../../../../../docs/protocol/item-sequence-lookup.md),
 //! `deprecated/python/cell/SGWBeing.py:517-523` (`getItemSequence`).
@@ -47,8 +50,10 @@ pub fn ability_for_item(space_mgr: &SpaceManager, item_id: i32, event_id: i32) -
 ///
 /// Callers MUST decide what to do with `None` — for the right-click
 /// hostile-NPC path the previous behavior was "fire Pistol Shot 592",
-/// which is now preserved as the explicit `default_ability` argument
-/// in [`ability_for_active_weapon_or_default`].
+/// which is preserved as an explicit fallback at the call site rather
+/// than baked into this helper. See
+/// `crates/services/src/cell/cell_methods/player/interaction.rs` for
+/// the canonical pattern.
 pub fn ability_for_active_weapon(
     space_mgr: &SpaceManager,
     entity_id: u32,

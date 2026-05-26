@@ -1,19 +1,28 @@
 -- =============================================================================
--- Seed starter abilities for the 14 char_def_ids that were shipping with EMPTY
--- ability lists. Before this migration only char_def_ids 1-4 (Soldier M/F,
--- Commando M/F) had starter abilities; everyone else (Scientist, Archeologist,
--- Asgard, Goa'uld, Sholva, Jaffa - both alignments, both genders) spawned with
--- `sgw_player.abilities = '{}'` and could do nothing combat-relevant.
+-- Seed starter abilities for the 15 char_def_ids that were shipping with EMPTY
+-- ability lists. Before this migration only char_def_ids 1-4, 11-14 (Soldier
+-- M/F and Commando M/F across both alignments) had starter abilities;
+-- everyone else spawned with `sgw_player.abilities = '{}'` and could do
+-- nothing combat-relevant.
+--
+-- The 15 covered here:
+--   * Archeologist M/F across both alignments  (5, 6, 15, 16)
+--   * Scientist M/F across both alignments     (20, 21, 22, 23)
+--   * Jaffa M/F (Praxis only)                  (7, 17)
+--   * Sholva M/F (SGU only)                    (8, 18)
+--   * Goa'uld M/F (Praxis only)                (10, 19)
+--   * Asgard M (SGU only)                      (9)
+-- The char_creation seed does not have all archetypes for both alignments
+-- and genders (e.g., Asgard has only one row); the list above matches what
+-- actually exists in resources.char_creation.
 --
 -- Baseline loadout matches Soldier/Commando: Pistol Shot (592), Strike (594),
 -- Heal Focus (597). This is a pragmatic minimum so every archetype is playable
--- end-to-end. Per-class flavorful loadouts (e.g., Goa'uld hand-device, Jaffa
--- staff weapon) are tracked in #419 Phase 7 (content authoring).
+-- end-to-end. Per-class flavorful loadouts (Goa'uld hand-device, Jaffa
+-- staff weapon, etc.) are tracked as content-authoring follow-up.
 --
 -- Idempotent: `ON CONFLICT DO NOTHING` so re-running the migration is safe
 -- even after a content pass adds more abilities to these char_defs.
---
--- Reference: issue #419, docs/protocol/item-sequence-lookup.md
 -- =============================================================================
 
 INSERT INTO resources.char_creation_abilities (char_def_id, ability_id) VALUES

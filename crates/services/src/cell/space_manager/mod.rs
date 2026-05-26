@@ -136,10 +136,10 @@ pub struct SpaceManager {
     /// pistol (item 55) fires ability 579 on `EVENT_ITEM_RANGED`, while
     /// the P90 (item 21) fires ability 559 for the same event. Previously
     /// the server hardcoded `592` (Pistol Shot) regardless of equipped
-    /// weapon — see issue #419, Phase 1. Use
-    /// [`crate::cell::abilities::ability_for_item`] for lookups so the
-    /// fallback semantics (no binding → caller-supplied default) stay
-    /// consistent across call sites.
+    /// weapon. Use [`crate::cell::abilities::ability_for_item`] for the
+    /// lookup; it returns `Option<i32>` and callers decide their fallback
+    /// (e.g., the right-click handler falls back to `592` so a fresh
+    /// checkout without seeded bindings stays responsive).
     pub item_event_set_abilities: HashMap<(i32, i32), i32>,
     /// Per-archetype ability training tree: `archetype_id → Vec<entry>`.
     /// Loaded from `resources.archetype_ability_tree` at startup. Used by
