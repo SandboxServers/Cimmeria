@@ -171,6 +171,15 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     // next mission state change fires onMissionUpdate. (PR #410)
     crate::cell::missions::resend_missions(entity_id, tx, space_mgr).await;
 
+    // Push the player's known-abilities list to the client so the hotbar
+    // populates immediately at world entry. Without this, the client's
+    // hotbar stays empty until the next `addAbility` call (which doesn't
+    // happen unless the player visits a trainer), so even players with
+    // 3+ starter abilities couldn't see or click any of them. (#419
+    // Phase 3 — mirror of Python's `SGWPlayer.addAbility` which calls
+    // `onKnownAbilitiesUpdate` on every add.)
+    send_known_abilities_update(entity_id, tx, space_mgr).await;
+
     // Send addClientHintedGenericRegion for each client-hinted region in
     // this world. Matches Python Space.playerEntered() → queryRegions():
     // clearClientHintedGenericRegions was already sent in mapLoaded body,
@@ -254,6 +263,48 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     .await;
 
     content::fire_player_loaded(entity_id, player_id, &world_name, engine, tx, space_mgr).await;
+}
+
+/// Send `onKnownAbilitiesUpdate(ARRAY<INT32> abilities)` to the player so the
+/// hotbar UI populates at world entry. Without this, characters with starter
+/// abilities (every char_def_id after #419 Phase 2) still showed an empty
+/// hotbar because the client only gets ability state via this RPC and the
+/// previous code never sent it on login.
+///
+/// Mirrors Python `SGWPlayer.addAbility` which calls `onKnownAbilitiesUpdate`
+/// on every add (`deprecated/python/cell/SGWPlayer.py:861`). We send the full
+/// list once at world entry so the in-game add path can stay event-driven.
+///
+/// Wire format: `ARRAY<INT32> AbilityData` → `u32 count` + N × `i32 ability_id`.
+/// Method index 101 (`ON_KNOWN_ABILITIES_UPDATE`).
+async fn send_known_abilities_update(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let ability_ids: Vec<i32> = match space_mgr.get_entity(entity_id) {
+        Some(e) => e.abilities.known_ability_ids(),
+        None => return,
+    };
+
+    let mut args = Vec::with_capacity(4 + ability_ids.len() * 4);
+    args.extend_from_slice(&(ability_ids.len() as u32).to_le_bytes());
+    for id in &ability_ids {
+        args.extend_from_slice(&id.to_le_bytes());
+    }
+
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: crate::cell::client_methods::player::ON_KNOWN_ABILITIES_UPDATE,
+            args,
+        })
+        .await;
+    tracing::info!(
+        entity_id,
+        count = ability_ids.len(),
+        "Sent onKnownAbilitiesUpdate (hotbar seed)"
+    );
 }
 
 #[cfg(test)]
