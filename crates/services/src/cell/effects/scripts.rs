@@ -355,7 +355,19 @@ pub struct Suppression;
 
 impl EffectScript for Suppression {
     fn on_apply(&self, ctx: &mut EffectContext) {
-        let chip = ctx.effect.param_i32("HealthDamage").max(5);
+        // Default chip = 5 when the effect doesn't specify a `HealthDamage`
+        // NVP. `param_i32` already returns 0 for missing keys, so we test
+        // for presence and supply the default explicitly — `.max(5)` would
+        // floor every Suppression hit at 5 even when content authored
+        // `HealthDamage = 1`, which silently breaks chip-damage tuning.
+        let chip = if ctx.effect.params.contains_key("HealthDamage") {
+            ctx.effect.param_i32("HealthDamage").max(0)
+        } else {
+            5
+        };
+        if chip == 0 {
+            return;
+        }
         let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
             return;
         };

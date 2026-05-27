@@ -23,7 +23,7 @@
 //!   See [`register_active_effect`] for the dedup logic.
 //! - **Channelled effects**: `pulse_count == 0` is treated as
 //!   "channel until cancelled" by registering with a safety cap
-//!   ([`MAX_CHANNEL_PULSES`]) and cancelling proactively via
+//!   ([`MAX_CHANNEL_DURATION_SECS`]) and cancelling proactively via
 //!   [`cancel_channels_from_attacker`] when the channeller fires a
 //!   different ability, dies, or the safety cap elapses. Movement-based
 //!   interrupt fires via [`channel_interrupt_on_movement_tick`] — any
@@ -49,12 +49,16 @@ use crate::cell::client_methods::being::ON_TIMER_UPDATE;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-/// Maximum pulses for a `pulse_count == 0` channelled effect. Acts as
-/// a safety cap so a missed cancellation event can't leave a channel
-/// running forever. At a typical `pulse_duration = 0.5s`, this caps a
-/// channel at 30 seconds — well past any reasonable in-game channel
-/// duration (Sustained Sweep is 10s / 20 pulses, the longest in seed).
-const MAX_CHANNEL_PULSES: i32 = 60;
+/// Hard time cap for a `pulse_count == 0` channelled effect. Acts as
+/// a safety backstop so a missed cancellation event can't leave a
+/// channel running forever. Well past any reasonable in-game channel
+/// duration — Sustained Sweep is 10s / 20 pulses (the longest authored
+/// channel in seed).
+///
+/// Stored as seconds (not pulse count) so a channel with a 0.1s
+/// `pulse_duration` still caps at 30 s of real time rather than the
+/// 3 s a fixed pulse-count would give it.
+const MAX_CHANNEL_DURATION_SECS: f32 = 30.0;
 
 /// Distance (world units / metres) the channeller can drift from their
 /// channel-start position before the channel interrupts. Tuned for
@@ -98,13 +102,16 @@ pub async fn register_active_effect(
     if !effect.is_pulsing() {
         return false;
     }
-    // pulse_count == 0 → channelled. Register with a safety-cap of
-    // MAX_CHANNEL_PULSES; cancellation comes from
-    // `cancel_channels_from_attacker` (different ability fire, death).
-    // Without a cancellation event, the safety cap still terminates
-    // the channel after ~30s at a 0.5s pulse cadence.
+    // pulse_count == 0 → channelled. Compute the cap as
+    // `ceil(MAX_CHANNEL_DURATION_SECS / pulse_duration)` so a fast-
+    // pulsing channel (0.1 s) still gets 30 s of safety runway rather
+    // than the ~3 s a fixed pulse-count cap would give it.
+    // Cancellation comes from `cancel_channels_from_attacker` (different
+    // ability fire, death) or `channel_interrupt_on_movement_tick`;
+    // the safety cap only triggers when ALL of those fail.
     let total_pulses = if effect.pulse_count == 0 {
-        MAX_CHANNEL_PULSES
+        let interval = effect.pulse_duration.max(0.1);
+        (MAX_CHANNEL_DURATION_SECS / interval).ceil() as i32
     } else {
         effect.pulse_count
     };
@@ -141,7 +148,11 @@ pub async fn register_active_effect(
             .iter_mut()
             .find(|i| i.effect_id == effect.effect_id && i.invoker_id == invoker_id)
         {
-            existing.remaining_pulses = remaining;
+            // Preserve the higher remaining pulse count — a 10-pulse DoT
+            // at 8 remaining, refreshed by a 5-pulse cast of the same
+            // effect, should NOT drop to 4. Matches the Python
+            // reference's "refresh extends, never shortens" rule.
+            existing.remaining_pulses = existing.remaining_pulses.max(remaining);
             existing.next_pulse_at = next_at;
             existing.pulse_interval_secs = pulse_secs;
             // Refresh also re-anchors the channel-start position so
@@ -355,10 +366,14 @@ pub async fn channel_interrupt_on_movement_tick(
                 // ability handler. Skip to avoid double-cancel.
                 continue;
             };
+            // 2D planar (X/Z) distance to match the cone-collection
+            // convention in `cone_aoe::collect_cone_targets`. Jumping
+            // in place or being lifted by terrain shouldn't interrupt
+            // a channel — only horizontal movement counts. Mixing 3D
+            // here with 2D in cone collection would be confusing.
             let dx = invoker.position.x - anchor.x;
-            let dy = invoker.position.y - anchor.y;
             let dz = invoker.position.z - anchor.z;
-            let dist = (dx * dx + dy * dy + dz * dz).sqrt();
+            let dist = (dx * dx + dz * dz).sqrt();
             if dist < CHANNEL_INTERRUPT_DISTANCE {
                 continue;
             }
@@ -518,24 +533,30 @@ pub async fn effect_pulse_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut
         .collect();
 
     for entity_id in entities_with_effects {
-        // Identify which effects are due and clone enough to fire without
-        // holding the borrow across awaits. Each due fire is followed by
-        // a re-acquire to commit the schedule update.
-        let due: Vec<(usize, ActiveEffectInstance, EffectDef)> = {
+        // Identify which effects are due and clone enough to fire
+        // without holding the borrow across awaits.
+        //
+        // **Key by (effect_id, invoker_id) rather than Vec index.** The
+        // earlier version re-acquired the entity by Vec index after the
+        // await — but `cancel_channels_from_attacker` / `_for_invoker_ability`
+        // can `retain()` between the await and the re-acquire, which
+        // shifts indices and lands the post-pulse decrement on the wrong
+        // effect. Keying by the instance's stable identity tuple avoids
+        // the race.
+        let due: Vec<(ActiveEffectInstance, EffectDef)> = {
             let Some(entity) = space_mgr.get_entity(entity_id) else {
                 continue;
             };
             entity
                 .active_effects
                 .iter()
-                .enumerate()
-                .filter(|(_, inst)| inst.next_pulse_at <= now && inst.remaining_pulses > 0)
-                .filter_map(|(idx, inst)| {
+                .filter(|inst| inst.next_pulse_at <= now && inst.remaining_pulses > 0)
+                .filter_map(|inst| {
                     space_mgr
                         .effect_defs
                         .get(&inst.effect_id)
                         .cloned()
-                        .map(|def| (idx, inst.clone(), def))
+                        .map(|def| (inst.clone(), def))
                 })
                 .collect()
         };
@@ -546,18 +567,20 @@ pub async fn effect_pulse_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut
 
         // Fire each due pulse. We re-look up the entity every iteration
         // because between awaits another tick could mutate.
-        for (idx, inst, effect_def) in &due {
+        for (inst, effect_def) in &due {
             fire_pulse(entity_id, inst, effect_def, tx, space_mgr).await;
-            // Update schedule + decrement on the matching instance.
+            // Update schedule + decrement on the matching instance,
+            // located by (effect_id, invoker_id) — index would be unsafe.
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-                if let Some(active) = entity.active_effects.get_mut(*idx) {
-                    // Defensive: someone else may have already cleaned it.
-                    if active.effect_id == inst.effect_id && active.invoker_id == inst.invoker_id {
-                        active.remaining_pulses = active.remaining_pulses.saturating_sub(1);
-                        if active.remaining_pulses > 0 {
-                            active.next_pulse_at = now
-                                + std::time::Duration::from_secs_f32(active.pulse_interval_secs);
-                        }
+                if let Some(active) = entity
+                    .active_effects
+                    .iter_mut()
+                    .find(|a| a.effect_id == inst.effect_id && a.invoker_id == inst.invoker_id)
+                {
+                    active.remaining_pulses = active.remaining_pulses.saturating_sub(1);
+                    if active.remaining_pulses > 0 {
+                        active.next_pulse_at =
+                            now + std::time::Duration::from_secs_f32(active.pulse_interval_secs);
                     }
                 }
             }
@@ -665,13 +688,67 @@ async fn fire_pulse(
         };
         super::dispatch_by_name(&script_name, &mut ctx);
     } else {
-        // Legacy path — read HealthDamage / FocusDamage NVPs and
-        // mutate the target's stats directly. No QR roll per pulse
-        // (the initial cast's QR result already determined hit type;
-        // re-rolling per pulse would make DoT unpredictable).
+        // Legacy NVP path — read HealthDamage / FocusDamage and route
+        // through `calculate_damage` so armor + absorption + stat
+        // resistance apply per pulse. Without this routing, a target
+        // with full ABSORB_PHYSICAL would still take DoT physical
+        // damage as raw stat mutation — bypassing the shield mechanic.
+        //
+        // QR is held fixed at neutral (qr=0, qr_rand=1.0, RC_HIT) so
+        // DoT pulses don't re-roll hit/crit per tick — the initial
+        // cast's QR is the authoritative roll; subsequent pulses
+        // deliver consistent base damage with full mitigation applied.
         let h_dmg = effect.param_i32("HealthDamage");
         let f_dmg = effect.param_i32("FocusDamage");
-        if let Some(target) = space_mgr.get_entity_mut(target_id) {
+        let attacker_stats = space_mgr
+            .get_entity(inst.invoker_id)
+            .map(|e| e.stats.clone());
+        // qr_rand = 0.5 cancels the internal `QR_DAMAGE_MULTIPLIER = 2.0`
+        // in calculate_damage so `HealthDamage = 10` actually delivers
+        // ~10 base damage per pulse (matching what content authors wrote
+        // in the NVP). Without this cancellation, every DoT tick would
+        // double the intended damage. qr = 0.0 zeroes the (1 + qr)
+        // multiplier so the pipeline is `base × damage_bonus × (1 - resist)
+        // - armor - absorption` for DoT — same shape, no QR amplification.
+        let neutral_qr = crate::cell::combat::QrResult {
+            qr_rand: 0.5,
+            result_code: cimmeria_entity::abilities::RC_HIT,
+            qr: 0.0,
+        };
+        // Default damage type to PHYSICAL when not otherwise specified.
+        // Per-effect damage type (DT_ENERGY for staff weapons, etc.)
+        // requires plumbing a damage_type column onto effects — flagged
+        // as a follow-up; today's content authoring relies on the
+        // attacker's weapon type rather than a per-effect override.
+        let dmg_type = cimmeria_entity::abilities::DT_PHYSICAL;
+        if let (Some(attacker), Some(target)) =
+            (attacker_stats, space_mgr.get_entity_mut(target_id))
+        {
+            if h_dmg > 0 {
+                let _ = crate::cell::combat::calculate_damage(
+                    &neutral_qr,
+                    h_dmg,
+                    dmg_type,
+                    HEALTH,
+                    &attacker,
+                    &mut target.stats,
+                );
+            }
+            if f_dmg > 0 {
+                let _ = crate::cell::combat::calculate_damage(
+                    &neutral_qr,
+                    f_dmg,
+                    dmg_type,
+                    FOCUS,
+                    &attacker,
+                    &mut target.stats,
+                );
+            }
+        } else if let Some(target) = space_mgr.get_entity_mut(target_id) {
+            // Invoker vanished mid-DoT (NPC despawned, etc.). Apply
+            // raw damage as a degraded fallback — better than dropping
+            // the pulse entirely, which would let DoT victims survive
+            // forever after their attacker died.
             if h_dmg > 0 {
                 if let Some(stat) = target.stats.get_mut(HEALTH) {
                     let cur = stat.cur;
@@ -793,8 +870,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn register_channelled_effect_uses_safety_cap_total_pulses() {
-        // Phase J: pulse_count=0 → register with MAX_CHANNEL_PULSES cap.
+    async fn register_channelled_effect_uses_time_based_safety_cap() {
+        // pulse_count=0 → register with ceil(MAX_CHANNEL_DURATION_SECS /
+        // pulse_duration) pulses. At 0.5s/pulse over 30s: 60 pulses.
         let mut mgr = make_mgr();
         let effect = make_dot_effect(0, 0.5, 10);
         let (tx, _rx) = mpsc::channel(64);
@@ -805,8 +883,94 @@ mod tests {
         );
         let active = &mgr.get_entity(2).unwrap().active_effects;
         assert_eq!(active.len(), 1);
-        assert_eq!(active[0].total_pulses, MAX_CHANNEL_PULSES);
-        assert_eq!(active[0].remaining_pulses, MAX_CHANNEL_PULSES - 1);
+        let expected_cap = (MAX_CHANNEL_DURATION_SECS / 0.5).ceil() as i32;
+        assert_eq!(active[0].total_pulses, expected_cap);
+        assert_eq!(active[0].remaining_pulses, expected_cap - 1);
+    }
+
+    #[tokio::test]
+    async fn refresh_preserves_higher_remaining_pulses() {
+        // Clara G7: a refresh must NOT shorten the existing instance.
+        // 10-pulse DoT at 8 remaining, refreshed by a 5-pulse cast →
+        // should stay at 8 remaining, not drop to 4.
+        let mut mgr = make_mgr();
+        let (tx, _rx) = mpsc::channel(64);
+        let mut long_effect = make_dot_effect(10, 0.5, 5);
+        long_effect.effect_id = 1234;
+        register_active_effect(&mut mgr, 2, 1, &long_effect, Instant::now(), &tx).await;
+        // Burn no pulses: remaining = 9 (10 - 1 already fired).
+        let remaining_before = mgr.get_entity(2).unwrap().active_effects[0].remaining_pulses;
+        assert_eq!(remaining_before, 9);
+
+        // Refresh with a shorter 5-pulse cast of the SAME effect.
+        let mut short_effect = make_dot_effect(5, 0.5, 5);
+        short_effect.effect_id = 1234;
+        register_active_effect(&mut mgr, 2, 1, &short_effect, Instant::now(), &tx).await;
+
+        let remaining_after = mgr.get_entity(2).unwrap().active_effects[0].remaining_pulses;
+        assert_eq!(
+            remaining_after, 9,
+            "refresh must preserve higher remaining_pulses (was 9, refresh proposed 4)"
+        );
+    }
+
+    #[tokio::test]
+    async fn channel_interrupt_uses_planar_distance_only() {
+        // Clara G8: jumping in place (Y-axis change) must NOT interrupt.
+        use cimmeria_entity::abilities::AbilityDef;
+        let mut mgr = make_mgr();
+        let (tx, _rx) = mpsc::channel(64);
+        let mut channel_effect = make_dot_effect(0, 0.5, 5);
+        channel_effect.effect_id = 1300;
+        channel_effect.ability_id = 1301;
+        mgr.effect_defs.insert(1300, channel_effect.clone());
+        mgr.ability_defs.insert(
+            1301,
+            AbilityDef {
+                ability_id: 1301,
+                name: "Test".to_string(),
+                cooldown: 0.0,
+                warmup: 0.0,
+                flags: 0,
+                is_ranged: true,
+                min_range: 0,
+                max_range: 50,
+                target_type_id: 0,
+                effect_ids: vec![1300],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+        register_active_effect(&mut mgr, 2, 1, &channel_effect, Instant::now(), &tx).await;
+
+        // Move invoker UP only (jump) — Y delta = 5, but X/Z unchanged.
+        if let Some(inv) = mgr.get_entity_mut(1) {
+            inv.position.y = 5.0;
+        }
+        let cancelled = channel_interrupt_on_movement_tick(&tx, &mut mgr).await;
+        assert_eq!(
+            cancelled, 0,
+            "vertical-only movement must not interrupt — planar distance only"
+        );
+    }
+
+    #[tokio::test]
+    async fn channelled_safety_cap_scales_to_pulse_duration() {
+        // Regression for Clara G2: a 0.1s-pulse channel must still get
+        // ~30 s of wallclock cap, not the ~6 s that a fixed pulse-count
+        // would have given it.
+        let mut mgr = make_mgr();
+        let effect = make_dot_effect(0, 0.1, 5);
+        let (tx, _rx) = mpsc::channel(64);
+        register_active_effect(&mut mgr, 2, 1, &effect, Instant::now(), &tx).await;
+        let total = mgr.get_entity(2).unwrap().active_effects[0].total_pulses;
+        // At 0.1s × 300 pulses = 30 s — close to MAX_CHANNEL_DURATION_SECS.
+        assert!(
+            total >= 300,
+            "0.1s channel must cap by time (~300 pulses), got {total}"
+        );
     }
 
     #[tokio::test]

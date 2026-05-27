@@ -12,6 +12,14 @@ pub mod threat;
 
 pub use auto_cycle::{arm_auto_cycle, clear_auto_cycle, clear_auto_cycle_for_target};
 pub use damage::{calculate_damage, calculate_qr, calculate_result, QrResult};
+
+/// Faction sentinel for "this entity is hostile to players" — every
+/// damage / interact path that needs to gate on hostility imports this.
+/// Mirrors python `Atrea.enums.FACTION_Aggressive = 10`. Future faction
+/// model overhaul (PvP, contested factions) will retire this in favour
+/// of a per-pair hostility table.
+pub const HOSTILE_FACTION: u8 = 10;
+
 pub use state::{
     is_dead_state, BSF_AUTO_CYCLING, BSF_DEAD, BSF_IN_COMBAT, BSF_MOVEMENT_LOCK, PLAYER_STATE_DEAD,
 };

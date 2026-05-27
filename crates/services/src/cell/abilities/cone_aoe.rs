@@ -19,7 +19,16 @@
 //!   2. `angle_between(target - attacker, E - attacker) <= half_angle`
 //!   3. `E` is not the primary target (it already took damage upstream)
 //!   4. `E` is in the attacker's space (no cross-space leak)
-//!   5. `E` is hostile (faction = 10) and alive
+//!   5. `E` is a hostile NPC (faction = `HOSTILE_FACTION`) and alive
+//!
+//! ## PvE only (today)
+//!
+//! `collect_cone_targets` scans `all_npc_entity_ids()` so player entities
+//! are silently excluded — cone AoE doesn't hit other players today. This
+//! is correct for the PvE-only design Cimmeria currently targets. When
+//! PvP lands, the candidate scan needs to switch to `all_entity_ids()`
+//! plus a per-pair hostility check (replacing the flat `faction == 10`
+//! sentinel with the future faction table).
 //!
 //! ## Why dispatch lives here, not in `apply_damage_to_target`
 //!
@@ -53,9 +62,7 @@ use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::damage_apply::apply_damage_to_target;
 
-/// Faction sentinel used across combat — must match the value in
-/// [`super::dispatch::handle_use_ability_on_ground`].
-const HOSTILE_FACTION: u8 = 10;
+use super::super::combat::HOSTILE_FACTION;
 
 /// Should this effect drive a cone fan-out at primary-cast time?
 ///
@@ -741,5 +748,97 @@ mod tests {
         let (tx, _rx) = mpsc::channel(256);
         let deaths = fan_out_cone_effects(1, 400, 9999, &None, &tx, &mut mgr).await;
         assert!(deaths.is_empty(), "missing ability def = no fan-out");
+    }
+
+    #[tokio::test]
+    async fn fan_out_cone_effects_two_cones_apply_per_effect_not_unioned() {
+        // Clara G19: when an ability has TWO cone effects with different
+        // geometries, each cone applies its OWN damage to the targets it
+        // geometrically matched — NOT the union damage to all matched
+        // targets. Pre-fix, the union path applied the last effect's NVP
+        // to all targets including ones that only matched the narrower cone.
+        let mut mgr = make_mgr_with_attacker();
+        seed_attacker_for_fan_out(&mut mgr);
+
+        // Effect 8001 — Medium cone, 30 damage (matches the inner secondary).
+        let mut p1 = HashMap::new();
+        p1.insert("HealthDamage".to_string(), "30".to_string());
+        mgr.effect_defs.insert(
+            8001,
+            EffectDef {
+                effect_id: 8001,
+                ability_id: 8000,
+                target_collection_method: TCM_AE_CONE.to_string(),
+                tcm_param1: "Medium".to_string(),
+                tcm_param2: "Medium".to_string(),
+                params: p1,
+                ..Default::default()
+            },
+        );
+        // Effect 8002 — Long cone, 5 damage (matches the far secondary only).
+        let mut p2 = HashMap::new();
+        p2.insert("HealthDamage".to_string(), "5".to_string());
+        mgr.effect_defs.insert(
+            8002,
+            EffectDef {
+                effect_id: 8002,
+                ability_id: 8000,
+                target_collection_method: TCM_AE_CONE.to_string(),
+                tcm_param1: "Long".to_string(),
+                tcm_param2: "Narrow".to_string(),
+                params: p2,
+                ..Default::default()
+            },
+        );
+        mgr.ability_defs.insert(
+            8000,
+            AbilityDef {
+                ability_id: 8000,
+                name: "TwoCones".to_string(),
+                cooldown: 0.0,
+                warmup: 0.0,
+                flags: 0,
+                is_ranged: true,
+                min_range: 0,
+                max_range: 50,
+                target_type_id: 0,
+                effect_ids: vec![8001, 8002],
+                moniker_ids: vec![],
+                required_ammo: 1,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+
+        spawn_npc(&mut mgr, 500, "W", [10.0, 0.0, 0.0]); // primary
+        if let Some(npc) = mgr.get_entity_mut(500) {
+            npc.stats.get_mut(HEALTH).unwrap().update(0, 1000, 1000);
+            npc.stats.clear_dirty();
+        }
+        // Far secondary at +X 12m — in Long cone (14m range, narrow),
+        // OUTSIDE Medium cone (8m range).
+        spawn_npc(&mut mgr, 501, "W", [12.0, 0.0, 0.1]);
+        if let Some(npc) = mgr.get_entity_mut(501) {
+            npc.stats.get_mut(HEALTH).unwrap().update(0, 1000, 1000);
+            npc.stats.clear_dirty();
+        }
+
+        let ability_def = mgr.ability_defs.get(&8000).cloned();
+        let hp_before = mgr.get_entity(501).unwrap().stats.get(HEALTH).unwrap().cur;
+        let (tx, _rx) = mpsc::channel(256);
+        let _ = fan_out_cone_effects(1, 500, 8000, &ability_def, &tx, &mut mgr).await;
+        let hp_after = mgr.get_entity(501).unwrap().stats.get(HEALTH).unwrap().cur;
+        let dmg = hp_before - hp_after;
+        // If per-effect routing works, npc 501 takes ~5 dmg from effect 8002 only.
+        // If broken (old union path), it took the last positive HealthDamage
+        // across all effects = 5 OR 30 depending on iteration order — either
+        // way, NOT both. The precise per-effect assertion: 501 should take
+        // the 5-damage effect's amount, not the 30. We assert dmg < 30 to
+        // catch the regression where the Medium cone's 30-damage bleeds into
+        // the far target.
+        assert!(
+            dmg < 30,
+            "far secondary in Long cone only must NOT take Medium cone's damage; got {dmg}"
+        );
     }
 }

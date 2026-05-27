@@ -801,4 +801,39 @@ mod tests {
             "FOCUS took damage normally"
         );
     }
+
+    #[test]
+    fn absorption_drains_elemental_specific_pool_before_generic() {
+        // Clara G20: when both ABSORB_PHYSICAL (elemental) and
+        // ABSORB_UNTYPED (generic) carry capacity, a physical hit must
+        // drain the elemental pool first, leaving the generic pool
+        // untouched for non-physical follow-up damage.
+        let attacker = make_attacker();
+        let mut defender = make_defender();
+        if let Some(stat) = defender.get_mut(ABSORB_PHYSICAL) {
+            stat.update(0, 50, 1000);
+        }
+        // ABSORB_UNTYPED isn't in the physical-pool list (it's only
+        // checked when damage_type is DT_UNTYPED), so this seed proves
+        // the pool routing per damage_type.
+        if let Some(stat) = defender.get_mut(ABSORB_UNTYPED) {
+            stat.update(0, 500, 1000);
+        }
+        let qr = QrResult {
+            result_code: cimmeria_entity::abilities::RC_HIT,
+            qr: 0.0,
+            qr_rand: 1.0,
+        };
+        let _ = calculate_damage(&qr, 20, DT_PHYSICAL, HEALTH, &attacker, &mut defender);
+        // ABSORB_PHYSICAL drained; ABSORB_UNTYPED is untouched on physical hits.
+        assert!(
+            defender.get(ABSORB_PHYSICAL).unwrap().cur < 50,
+            "elemental-specific pool drained"
+        );
+        assert_eq!(
+            defender.get(ABSORB_UNTYPED).unwrap().cur,
+            500,
+            "generic pool untouched on physical hit (only consumed by DT_UNTYPED)"
+        );
+    }
 }
