@@ -28,6 +28,7 @@ members = [
     "crates/upk-objects",
     "crates/wireclient",
     "crates/discord",
+    "crates/client-telemetry",
 ]
 default-members = [
     "crates/common",
@@ -165,6 +166,7 @@ cimmeria-upk = { path = "crates/upk" }
 cimmeria-upk-objects = { path = "crates/upk-objects" }
 cimmeria-wireclient = { path = "crates/wireclient" }
 cimmeria-discord = { path = "crates/discord" }
+cimmeria-client-telemetry = { path = "crates/client-telemetry" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed

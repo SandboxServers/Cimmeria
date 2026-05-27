@@ -86,6 +86,11 @@ enum TelemetryEvent {
     DebugLog(DebugLogEvent),
     KeyDump(KeyDumpEvent),
     SessionMeta(SessionMetaEvent),
+    /// Native event from the injected `cimmeria-client-telemetry`
+    /// DLL (issue #417). Replayed under a distinct tracing target
+    /// and a `service_name = cimmeria-client` field so SigNoz can
+    /// slice client-side traces away from launcher / server events.
+    ClientNative(ClientNativeEvent),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,6 +120,18 @@ struct KeyDumpEvent {
     seq: u64,
     source_file: String,
     key_b64: String,
+}
+
+/// Mirror of [`cimmeria_launcher::telemetry::events::ClientNativeEvent`].
+/// Wire shape pinned by [`tests::client_native_event_matches_launcher_shape`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ClientNativeEvent {
+    ts_ms: i64,
+    seq: u64,
+    target: String,
+    level: String,
+    #[serde(default)]
+    fields: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -512,6 +529,88 @@ fn replay_event(claims: &TokenClaims, ev: TelemetryEvent) {
                 fields = %serde_json::Value::Object(e.fields),
             );
         }
+        TelemetryEvent::ClientNative(e) => {
+            replay_client_native(claims, e);
+        }
+    }
+}
+
+/// Replay one injected-DLL event through `tracing`.
+///
+/// Routing differs from the other launcher event types:
+///
+/// - **Target is dynamic.** The DLL ships a `target` field
+///   (e.g. `"client.frame_tick"`); we forward it as-is so SigNoz
+///   queries can filter by hook category. We also pin a static
+///   prefix (`client.native`) in the macro so the bucket is always
+///   discoverable even when an event omits a more specific target.
+/// - **`service_name = cimmeria-client` field.** The tracing macro
+///   grammar in this version doesn't accept the dotted-string field
+///   key `"service.name"`, so we surface the routing hint as
+///   `service_name` (snake_case). SigNoz queries against this stream
+///   filter on `service_name="cimmeria-client"`. True OpenTelemetry-spec
+///   `service.name` Resource override would require either a second
+///   exporter `Resource` (per-request override isn't a thing at the
+///   OTLP layer) or a tracing-attributes shim that rewrites the
+///   field name on emit — deliberately deferred. The data is the
+///   same either way; only the SigNoz query key differs.
+/// - **`level` is honoured** if it matches one of `trace`/`debug`/
+///   `info`/`warn`/`error`; unknown values fall through to `info`
+///   so a typo in the DLL never silently drops an event.
+fn replay_client_native(claims: &TokenClaims, e: ClientNativeEvent) {
+    let fields_json = serde_json::Value::Object(e.fields);
+    match e.level.as_str() {
+        "trace" => tracing::trace!(
+            target: "client.native",
+            service_name = "cimmeria-client",
+            session_id = %claims.sid,
+            install_id = %claims.sub,
+            ts_ms = e.ts_ms,
+            seq = e.seq,
+            client_target = %e.target,
+            fields = %fields_json,
+        ),
+        "debug" => tracing::debug!(
+            target: "client.native",
+            service_name = "cimmeria-client",
+            session_id = %claims.sid,
+            install_id = %claims.sub,
+            ts_ms = e.ts_ms,
+            seq = e.seq,
+            client_target = %e.target,
+            fields = %fields_json,
+        ),
+        "warn" => tracing::warn!(
+            target: "client.native",
+            service_name = "cimmeria-client",
+            session_id = %claims.sid,
+            install_id = %claims.sub,
+            ts_ms = e.ts_ms,
+            seq = e.seq,
+            client_target = %e.target,
+            fields = %fields_json,
+        ),
+        "error" => tracing::error!(
+            target: "client.native",
+            service_name = "cimmeria-client",
+            session_id = %claims.sid,
+            install_id = %claims.sub,
+            ts_ms = e.ts_ms,
+            seq = e.seq,
+            client_target = %e.target,
+            fields = %fields_json,
+        ),
+        // `info` and any unrecognised value
+        _ => tracing::info!(
+            target: "client.native",
+            service_name = "cimmeria-client",
+            session_id = %claims.sid,
+            install_id = %claims.sub,
+            ts_ms = e.ts_ms,
+            seq = e.seq,
+            client_target = %e.target,
+            fields = %fields_json,
+        ),
     }
 }
 
@@ -618,6 +717,80 @@ mod tests {
         let headers = HeaderMap::new();
         let err = verify_bearer(&headers).unwrap_err();
         assert!(matches!(err, IngestError::MissingAuth));
+    }
+
+    /// The injected-DLL event shape (`type = "client_native"`)
+    /// must deserialize on the server using the exact JSON layout
+    /// the launcher's `ClientNativeEvent` struct produces. If the
+    /// two re-declarations drift, this test fails loudly — the
+    /// wire contract between launcher and admin-api is the only
+    /// thing that keeps the independent enums in sync.
+    #[test]
+    fn client_native_event_matches_launcher_shape() {
+        let raw = r#"{
+            "type": "client_native",
+            "ts_ms": 1700000000000,
+            "seq": 42,
+            "target": "client.frame_tick",
+            "level": "info",
+            "fields": { "frame_no": 99, "stall_ms": 1.5 }
+        }"#;
+        let ev: TelemetryEvent = serde_json::from_str(raw).unwrap();
+        match ev {
+            TelemetryEvent::ClientNative(e) => {
+                assert_eq!(e.seq, 42);
+                assert_eq!(e.target, "client.frame_tick");
+                assert_eq!(e.level, "info");
+                assert_eq!(e.fields["frame_no"], 99);
+                assert_eq!(e.fields["stall_ms"], 1.5);
+            }
+            other => panic!("expected ClientNative, got {other:?}"),
+        }
+    }
+
+    /// `fields` is optional on the wire — an empty hook with no
+    /// payload (e.g. a coarse "FEngineLoop::Tick fired" sample)
+    /// should round-trip without forcing a `"fields": {}` clause
+    /// every time.
+    #[test]
+    fn client_native_event_accepts_missing_fields() {
+        let raw = r#"{
+            "type": "client_native",
+            "ts_ms": 0,
+            "seq": 0,
+            "target": "client.frame_tick",
+            "level": "trace"
+        }"#;
+        let ev: TelemetryEvent = serde_json::from_str(raw).unwrap();
+        match ev {
+            TelemetryEvent::ClientNative(e) => assert!(e.fields.is_empty()),
+            other => panic!("expected ClientNative, got {other:?}"),
+        }
+    }
+
+    /// Replay must not panic on an unknown level string — falls
+    /// through to info. This is the load-bearing forward-compat
+    /// guarantee: a future DLL version that emits a new level the
+    /// server doesn't know about must not crash the ingest path.
+    #[test]
+    fn replay_client_native_tolerates_unknown_level() {
+        let claims = TokenClaims {
+            iss: "cimmeria-server".into(),
+            sub: "install-1".into(),
+            sid: "session-1".into(),
+            iat: 0,
+            exp: i64::MAX,
+            scope: vec!["telemetry.write".into()],
+        };
+        let ev = ClientNativeEvent {
+            ts_ms: 0,
+            seq: 0,
+            target: "client.weird".into(),
+            level: "verbose-but-unknown".into(),
+            fields: serde_json::Map::new(),
+        };
+        // Just must not panic.
+        replay_client_native(&claims, ev);
     }
 
     /// Verify-bearer round-trip via the shared `dev_session::load_secret`.

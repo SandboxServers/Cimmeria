@@ -17,6 +17,7 @@ use crate::config::LauncherConfig;
 use crate::install::{adopt_existing_install, install_all, InstallContext, Progress};
 use crate::launch::{
     launch_atera_debug, launch_atera_debug_with_child, launch_atera_fix_aslr, launch_sgw,
+    launch_sgw_with_telemetry,
 };
 use crate::logs::{blob_name_for, build_log_zip, compute_content_digest, upload_blob, LogError};
 use crate::manifest::{fetch_manifest, Manifest};
@@ -40,6 +41,24 @@ pub enum Command {
     LaunchSgw(PathBuf),
     LaunchAteraDebug(PathBuf),
     LaunchAteraFixAslr(PathBuf),
+    /// Launch SGW.exe with the `cimmeria-client-telemetry.dll`
+    /// side-loaded via the launcher's own injector (issue #417).
+    /// `install_dir` is where SGW.exe lives; `dll_path` is the
+    /// absolute path to the DLL alongside `sgw-launcher.exe`.
+    /// The launcher resolves both paths and hands them through to
+    /// [`launch_sgw_with_telemetry`].
+    ///
+    /// `allow(dead_code)`: Phase 1 of issue #417 lands the worker
+    /// dispatch + injector primitives. UI exposure (the "Launch
+    /// with telemetry" button + DLL path resolution) is intentionally
+    /// deferred to the first hook-set PR so the foundation can land
+    /// in isolation. The dispatch routing is covered by
+    /// [`tests::launch_sgw_with_client_telemetry_routes_through_dispatch`].
+    #[allow(dead_code)]
+    LaunchSgwWithClientTelemetry {
+        install_dir: PathBuf,
+        dll_path: PathBuf,
+    },
     /// Launch the Atera debug bat AND run the telemetry pipeline for
     /// the lifetime of the spawned game process. The telemetry config
     /// carries the auth handshake inputs (install_id, machine_id,
@@ -176,6 +195,12 @@ impl Worker {
             Command::LaunchAteraFixAslr(dir) => {
                 self.spawn_launch("AtreaFixASLR.bat", move || launch_atera_fix_aslr(&dir))
             }
+            Command::LaunchSgwWithClientTelemetry {
+                install_dir,
+                dll_path,
+            } => self.spawn_launch("SGW.exe (telemetry)", move || {
+                launch_sgw_with_telemetry(&install_dir, &dll_path)
+            }),
             Command::UploadLogs {
                 install_dir,
                 sas_url,
@@ -502,6 +527,39 @@ mod tests {
             if pred(&ev) {
                 return ev;
             }
+        }
+    }
+
+    /// Client-telemetry launch dispatches through `spawn_launch` and
+    /// surfaces a `LaunchError` (NotFound) when neither the SGW.exe
+    /// nor the DLL exists — proves the Command variant is routed
+    /// and the error path is the same `LaunchError`-via-`Event`
+    /// shape as the other launch commands. Real injection isn't
+    /// testable from a unit test (would require spawning a Windows
+    /// process and a signed DLL), so we pin the wiring, not the
+    /// kernel call.
+    #[test]
+    fn launch_sgw_with_client_telemetry_routes_through_dispatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let dll = tempfile::NamedTempFile::new().unwrap();
+        let (mut worker, rt) = make_worker();
+        worker.dispatch(Command::LaunchSgwWithClientTelemetry {
+            install_dir: dir.path().to_path_buf(),
+            dll_path: dll.path().to_path_buf(),
+        });
+        let ev = rt.block_on(async {
+            recv_matching(&mut worker.events_rx, |e| {
+                matches!(e, Event::Launched(_, _) | Event::LaunchError(_))
+            })
+            .await
+        });
+        // No SGW.exe in the temp dir, so we expect LaunchError.
+        match ev {
+            Event::LaunchError(msg) => assert!(
+                msg.contains("SGW.exe") || msg.to_lowercase().contains("not found"),
+                "LaunchError should reference the missing SGW.exe, got: {msg}"
+            ),
+            other => panic!("expected LaunchError, got {other:?}"),
         }
     }
 

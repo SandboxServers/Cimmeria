@@ -230,6 +230,12 @@ fn stamp_seq(ev: &mut TelemetryEvent, seq: u64) {
                 e.ts_ms = now_ms;
             }
         }
+        TelemetryEvent::ClientNative(e) => {
+            e.seq = seq;
+            if e.ts_ms == 0 {
+                e.ts_ms = now_ms;
+            }
+        }
     }
 }
 
@@ -337,6 +343,13 @@ mod tests {
                 kind: events::SessionMetaKind::Started,
                 fields: serde_json::Map::new(),
             }),
+            TelemetryEvent::ClientNative(events::ClientNativeEvent {
+                ts_ms: 0,
+                seq: 0,
+                target: "client.frame_tick".into(),
+                level: "info".into(),
+                fields: serde_json::Map::new(),
+            }),
         ];
         for mut ev in cases {
             stamp_seq(&mut ev, 42);
@@ -345,6 +358,7 @@ mod tests {
                 TelemetryEvent::DebugLog(e) => e.seq,
                 TelemetryEvent::KeyDump(e) => e.seq,
                 TelemetryEvent::SessionMeta(e) => e.seq,
+                TelemetryEvent::ClientNative(e) => e.seq,
             };
             assert_eq!(seq_after, 42);
         }

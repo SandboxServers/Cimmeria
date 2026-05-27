@@ -1,0 +1,108 @@
+name: client-telemetry
+
+# Path-filtered: only runs when the cimmeria-client-telemetry crate
+# or its workflow changes. The crate is a Windows cdylib (i686, MSVC)
+# injected into SGW.exe — it never runs on Linux, so a Windows-only
+# CI pipeline is the right shape. The main `ci` workflow excludes it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/client-telemetry/**'
+      - '.github/workflows/client-telemetry-*.yml'
+  pull_request:
+    paths:
+      - 'crates/client-telemetry/**'
+      - '.github/workflows/client-telemetry-*.yml'
+
+concurrency:
+  group: client-telemetry-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: cargo fmt --check (client-telemetry)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt
+        run: |
+          if ! cargo fmt -p cimmeria-client-telemetry -- --check; then
+            echo "::error::Formatting differs from rustfmt. Run 'cargo fmt -p cimmeria-client-telemetry' locally and commit the result."
+            exit 1
+          fi
+
+  clippy:
+    name: cargo clippy -D warnings (i686-pc-windows-msvc)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: client-telemetry-windows-i686
+      - name: cargo clippy
+        run: cargo clippy -p cimmeria-client-telemetry --target i686-pc-windows-msvc --all-targets -- -D warnings
+
+  build:
+    name: cargo build (i686-pc-windows-msvc)
+    runs-on: windows-latest
+    needs: clippy
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: client-telemetry-windows-i686
+      - name: cargo build (cdylib)
+        run: cargo build -p cimmeria-client-telemetry --target i686-pc-windows-msvc --all-targets
+      - name: verify DLL was produced
+        shell: pwsh
+        run: |
+          $dll = "target/i686-pc-windows-msvc/debug/cimmeria_client_telemetry.dll"
+          if (-not (Test-Path $dll)) {
+            Write-Error "Expected $dll to be produced by cdylib build, but it was not."
+            exit 1
+          }
+          Write-Host "DLL produced: $dll ($((Get-Item $dll).Length) bytes)"
+
+  test:
+    name: cargo nextest (i686-pc-windows-msvc)
+    runs-on: windows-latest
+    needs: clippy
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: client-telemetry-windows-i686
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
+      - name: cargo nextest run
+        run: cargo nextest run --profile=ci -p cimmeria-client-telemetry --target i686-pc-windows-msvc

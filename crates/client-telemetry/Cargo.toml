@@ -1,0 +1,41 @@
+[package]
+name = "cimmeria-client-telemetry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Injected DLL that observes SGW.exe via CME EventSignal subscription, function hooks, and log4cxx tees, and ships events to the cimmeria-server telemetry endpoint."
+
+# cdylib for the injected DLL itself; rlib so unit tests can link the
+# library normally without needing a separate target binary.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Windows-only: the entire crate exists to be loaded into SGW.exe.
+# Targeting i686-pc-windows-msvc — the `-gnu` triple was demoted to
+# Tier 2 in Rust 1.88.0 (May 2025), so MSVC is the right default for
+# new 32-bit Windows DLLs.
+#
+# Linux CI builds this crate as a no-op (the lib compiles to an empty
+# stub on non-Windows targets); the real cdylib only links on Windows.
+# Workspace `default-members` excludes this crate so a stock
+# `cargo build` on Linux doesn't try to produce a Windows DLL.
+[dependencies]
+# Minimal init/error surface. No tokio, no reqwest, no opentelemetry
+# inside an injected DLL — those land in follow-up phases via `ureq`
+# + plain JSON to the existing /api/telemetry/upload-chunk endpoint.
+thiserror = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+# Just what DllMain + the bootstrap-thread pattern needs today.
+# Follow-up phases will add Threading/Memory/Diagnostics_Debug as
+# the hook layer and IAT walker land.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_SystemServices",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile = "3"
