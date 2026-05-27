@@ -862,32 +862,52 @@ mod tests {
 
     #[test]
     fn effect_def_is_pulsing_matches_pulse_count() {
-        let mut e = EffectDef::default();
-        e.pulse_count = 0; // channelled
-        assert!(e.is_pulsing());
-        e.pulse_count = 1; // single shot
-        assert!(!e.is_pulsing());
-        e.pulse_count = 5; // DoT
-        assert!(e.is_pulsing());
+        // Channelled (pulse_count=0): is_pulsing → true
+        let channelled = EffectDef {
+            pulse_count: 0,
+            ..Default::default()
+        };
+        assert!(channelled.is_pulsing());
+        // Single shot (pulse_count=1): is_pulsing → false
+        let single = EffectDef {
+            pulse_count: 1,
+            ..Default::default()
+        };
+        assert!(!single.is_pulsing());
+        // DoT (pulse_count>1): is_pulsing → true
+        let dot = EffectDef {
+            pulse_count: 5,
+            ..Default::default()
+        };
+        assert!(dot.is_pulsing());
     }
 
     #[test]
     fn effect_def_total_duration_skips_single_shot_and_channelled() {
-        let mut e = EffectDef::default();
-        e.pulse_count = 1;
-        e.pulse_duration = 5.0;
-        assert_eq!(e.total_duration(), 0.0, "single-shot has 0 duration");
+        let single = EffectDef {
+            pulse_count: 1,
+            pulse_duration: 5.0,
+            ..Default::default()
+        };
+        assert_eq!(single.total_duration(), 0.0, "single-shot has 0 duration");
 
-        e.pulse_count = 0;
+        let channelled = EffectDef {
+            pulse_count: 0,
+            pulse_duration: 5.0,
+            ..Default::default()
+        };
         assert_eq!(
-            e.total_duration(),
+            channelled.total_duration(),
             0.0,
             "channelled has 0 duration (unbounded)"
         );
 
-        e.pulse_count = 5;
-        e.pulse_duration = 1.5;
-        assert_eq!(e.total_duration(), 7.5, "DoT: 5 * 1.5 = 7.5");
+        let dot = EffectDef {
+            pulse_count: 5,
+            pulse_duration: 1.5,
+            ..Default::default()
+        };
+        assert_eq!(dot.total_duration(), 7.5, "DoT: 5 * 1.5 = 7.5");
     }
 
     #[test]
