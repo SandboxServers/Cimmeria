@@ -130,6 +130,36 @@ pub struct SpaceManager {
     /// Loaded at startup so runtime item grants go into the correct inventory bag
     /// (e.g. mission items into INV_Mission, weapons into bandolier).
     pub item_containers: HashMap<i32, i32>,
+    /// Per-item ability bindings: `(item_id, event_id) → ability_id`.
+    /// Loaded from `resources.items_event_sets` at startup. Resolves the
+    /// correct ability for a weapon's ranged/melee/use action — e.g., the
+    /// pistol (item 55) fires ability 579 on `EVENT_ITEM_RANGED`, while
+    /// the P90 (item 21) fires ability 559 for the same event. Previously
+    /// the server hardcoded `592` (Pistol Shot) regardless of equipped
+    /// weapon. Use [`crate::cell::abilities::ability_for_item`] for the
+    /// lookup; it returns `Option<i32>` and callers decide their fallback
+    /// (e.g., the right-click handler falls back to `592` so a fresh
+    /// checkout without seeded bindings stays responsive).
+    pub item_event_set_abilities: HashMap<(i32, i32), i32>,
+    /// Per-archetype ability training tree: `archetype_id → Vec<entry>`.
+    /// Loaded from `resources.archetype_ability_tree` at startup. Used by
+    /// the `train_ability` cell method to validate that a requested
+    /// ability is in the player's archetype tree, level requirement is
+    /// met, and all prerequisite abilities are known. See
+    /// Phase 5b.
+    pub archetype_ability_trees: HashMap<i32, Vec<super::spawner::ArchetypeAbilityTreeEntry>>,
+    /// Trainer NPC ability lists: `(list_id, archetype_id) → Vec<ability_id>`.
+    /// Loaded from `resources.trainer_abilities` at startup. Used by the
+    /// trainer NPC interaction flow (`onInteract` → `sendAbilityList`) to
+    /// enumerate which abilities a specific trainer offers to a player
+    /// of a given archetype.
+    pub trainer_abilities: HashMap<(i32, i32), Vec<i32>>,
+    /// Trainer template → ability-list mapping: `template_id → list_id`.
+    /// Loaded from `resources.entity_templates` rows with non-NULL
+    /// `trainer_ability_list_id`. Used to identify a trainer NPC at
+    /// interaction time (fast HashMap miss for the 95%+ of templates that
+    /// aren't trainers).
+    pub template_trainer_lists: HashMap<i32, i32>,
     /// Weapon defs (clip_size + default_ammo_type) keyed by item_id.
     /// Loaded from `resources.items` at startup. Used by the content engine's
     /// GrantItem path to seed bandolier slots when a weapon is granted at
@@ -183,6 +213,10 @@ impl SpaceManager {
             effect_defs: HashMap::new(),
             sequence_map: HashMap::new(),
             item_containers: HashMap::new(),
+            item_event_set_abilities: HashMap::new(),
+            archetype_ability_trees: HashMap::new(),
+            trainer_abilities: HashMap::new(),
+            template_trainer_lists: HashMap::new(),
             item_defs: HashMap::new(),
             loot_tables: HashMap::new(),
             respawners: Vec::new(),

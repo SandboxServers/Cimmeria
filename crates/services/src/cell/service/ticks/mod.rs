@@ -715,6 +715,7 @@ mod tests {
                 event_set_id: None,
                 script_name: None,
                 params,
+                ..Default::default()
             },
         );
         mgr.ability_defs.insert(

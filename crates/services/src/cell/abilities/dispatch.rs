@@ -108,9 +108,10 @@ pub async fn handle_use_ability_on_ground(
     // cooldown/ammo), the rest get damage applied directly.
     //
     // Hostile-faction sentinel matches `cell_methods/player/interaction.rs`'s
-    // hostile check (`!is_player && faction == 10`). Without it, AoE
-    // would happily damage vendors, quest givers, and neutral wildlife.
-    const HOSTILE_FACTION: u8 = 10;
+    // hostile check. Without it, AoE would happily damage vendors,
+    // quest givers, and neutral wildlife. Imported from `combat::`
+    // so the single sentinel is the source of truth.
+    use crate::cell::combat::HOSTILE_FACTION;
     let mut targets: Vec<(u32, f32)> = Vec::new();
     for npc_eid in space_mgr.all_npc_entity_ids() {
         if let Some(npc) = space_mgr.get_entity(npc_eid) {
@@ -300,6 +301,7 @@ mod tests {
                 event_set_id: None,
                 script_name: None,
                 params: effect_params,
+                ..Default::default()
             },
         );
 
@@ -354,6 +356,7 @@ mod tests {
                 event_set_id: None,
                 script_name: None,
                 params: effect_params,
+                ..Default::default()
             },
         );
 
@@ -456,6 +459,7 @@ mod tests {
                 event_set_id: None,
                 script_name: None,
                 params: effect_params,
+                ..Default::default()
             },
         );
 

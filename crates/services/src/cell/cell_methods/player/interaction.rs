@@ -4,6 +4,7 @@ use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
 use super::constants::*;
+use super::trainer_interaction;
 
 pub async fn dispatch(
     entity_id: u32,
@@ -72,6 +73,60 @@ pub async fn dispatch(
                         return true;
                     }
 
+                    // Resolve the ability for the equipped weapon via
+                    // `items_event_sets` (EVENT_ITEM_RANGED=7). Pre-fix
+                    // this was a hardcoded `592` (Pistol Shot), which
+                    // fired regardless of the weapon — so a P90 player
+                    // still got Pistol Shot animations and the SMG's
+                    // proper `559 Automatic Weapon Auto Attack` binding
+                    // was dead code.
+                    //
+                    // Two fallback paths:
+                    // - **Unarmed** (no item in the active bandolier slot)
+                    //   → `594 Strike`. Firing a gun animation while
+                    //   empty-handed renders nonsense; Strike is the
+                    //   correct melee primitive.
+                    // - **Item present but no `items_event_sets` row**
+                    //   (content gap) → `592 Pistol Shot`. Logged at
+                    //   `warn!` with stable `target: "abilities"` so SigNoz
+                    //   surfaces unbound items via
+                    //   `event = "weapon_unbound"` — operators can grep
+                    //   for content rows missing their RANGED binding.
+                    const RIGHT_CLICK_FALLBACK_RANGED: i32 = 592;
+                    const RIGHT_CLICK_FALLBACK_MELEE: i32 = 594;
+                    let active_item_id = space_mgr.get_entity(entity_id).and_then(|e| {
+                        let slot = e.active_bandolier_slot;
+                        e.bandolier_items.get(&slot).map(|b| b.item_id)
+                    });
+                    let resolved_ability = match active_item_id {
+                        None => {
+                            tracing::debug!(
+                                entity_id,
+                                target_entity_id,
+                                "interact: unarmed → ability 594 (Strike)"
+                            );
+                            RIGHT_CLICK_FALLBACK_MELEE
+                        }
+                        Some(item_id) => crate::cell::abilities::ability_for_item(
+                            space_mgr,
+                            item_id,
+                            crate::cell::spawner::EVENT_ITEM_RANGED,
+                        )
+                        .unwrap_or_else(|| {
+                            tracing::warn!(
+                                target: "abilities",
+                                event = "weapon_unbound",
+                                entity_id,
+                                target_entity_id,
+                                item_id,
+                                "interact: no items_event_sets binding for active \
+                                 weapon (EVENT_ITEM_RANGED=7) — content gap; \
+                                 falling back to ability 592 (Pistol Shot)"
+                            );
+                            RIGHT_CLICK_FALLBACK_RANGED
+                        }),
+                    };
+
                     // Single canonical kill-credit path — see
                     // `handle_use_ability_with_kill_credit` for the
                     // alive→dead detection + `fire_entity_death` wrap
@@ -84,7 +139,7 @@ pub async fn dispatch(
                     // queued attack-while-holstered).
                     crate::cell::abilities::handle_use_ability_with_kill_credit(
                         entity_id,
-                        592,
+                        resolved_ability,
                         target_entity_id,
                         engine,
                         tx,
@@ -94,40 +149,55 @@ pub async fn dispatch(
                     return true;
                 }
 
-                let mut handled = false;
-                if let Some(target) = space_mgr.get_entity(target_entity_u32) {
-                    let tag = target.tag.clone();
-                    let template_name = target.npc_name.clone();
-                    let player_id = space_mgr
-                        .get_entity(entity_id)
-                        .and_then(|e| e.player_id)
-                        .unwrap_or(0);
+                // Trainer NPC check — runs BEFORE the tag/template chain
+                // dispatch so a trainer's UI opens directly rather than the
+                // generic dialog. A trainer is any NPC whose template_id has
+                // a non-NULL `trainer_ability_list_id` (loaded once at
+                // startup into `space_mgr.template_trainer_lists`). See
+                // issue Phase 5b.
+                let mut handled = trainer_interaction::try_open_trainer(
+                    entity_id,
+                    target_entity_u32,
+                    tx,
+                    space_mgr,
+                )
+                .await;
 
-                    if let Some(ref tag) = tag {
-                        handled = crate::cell::content::fire_interact_tag(
-                            entity_id,
-                            player_id,
-                            tag,
-                            target_entity_u32,
-                            engine,
-                            tx,
-                            space_mgr,
-                        )
-                        .await;
-                    }
+                if !handled {
+                    if let Some(target) = space_mgr.get_entity(target_entity_u32) {
+                        let tag = target.tag.clone();
+                        let template_name = target.npc_name.clone();
+                        let player_id = space_mgr
+                            .get_entity(entity_id)
+                            .and_then(|e| e.player_id)
+                            .unwrap_or(0);
 
-                    if !handled {
-                        if let Some(ref name) = template_name {
-                            handled = crate::cell::content::fire_interact_template(
+                        if let Some(ref tag) = tag {
+                            handled = crate::cell::content::fire_interact_tag(
                                 entity_id,
                                 player_id,
-                                name,
+                                tag,
                                 target_entity_u32,
                                 engine,
                                 tx,
                                 space_mgr,
                             )
                             .await;
+                        }
+
+                        if !handled {
+                            if let Some(ref name) = template_name {
+                                handled = crate::cell::content::fire_interact_template(
+                                    entity_id,
+                                    player_id,
+                                    name,
+                                    target_entity_u32,
+                                    engine,
+                                    tx,
+                                    space_mgr,
+                                )
+                                .await;
+                            }
                         }
                     }
                 }

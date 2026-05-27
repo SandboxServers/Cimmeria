@@ -52,3 +52,59 @@ INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (11, 597);
 
 INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (12, 597);
 
+
+-- Starter abilities for the 15 char_def_ids that were shipping with EMPTY
+-- ability lists. Before this change only char_def_ids 1-4 and 11-14
+-- (Soldier M/F and Commando M/F across both alignments) had starter
+-- abilities. The 15 covered here are Scientist, Archeologist, Asgard,
+-- Goa'uld, Sholva, and Jaffa — note that Asgard is M-only (SGU) and
+-- Goa'uld/Jaffa are Praxis-only, matching the char_creation seed shape.
+-- Baseline matches Soldier/Commando: 592 Pistol Shot + 594 Strike + 597
+-- Heal Focus. See db/scripts/seed_starter_abilities_all_archetypes.sql
+-- for the post-deploy migration that lifts these into deployed DBs.
+
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (5, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (5, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (5, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (6, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (6, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (6, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (7, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (7, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (7, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (8, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (8, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (8, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (9, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (9, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (9, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (10, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (10, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (10, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (15, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (15, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (15, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (16, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (16, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (16, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (17, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (17, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (17, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (18, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (18, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (18, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (19, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (19, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (19, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (20, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (20, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (20, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (21, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (21, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (21, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (22, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (22, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (22, 597);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (23, 592);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (23, 594);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (23, 597);

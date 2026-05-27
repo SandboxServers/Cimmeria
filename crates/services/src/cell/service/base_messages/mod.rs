@@ -360,6 +360,27 @@ pub(super) async fn handle_base_message(
             );
         }
 
+        BaseToCellMsg::AbilityGranted {
+            entity_id,
+            ability_id,
+            training_points_remaining,
+        } => {
+            // Base persisted + debited; mirror onto the cell entity and
+            // refresh the client hotbar via the shared helper.
+            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                entity.abilities.add_ability(ability_id);
+            }
+            tracing::info!(
+                target: "abilities",
+                event = "granted",
+                entity_id,
+                ability_id,
+                training_points_remaining,
+                "AbilityGranted: cell mirrored + hotbar refresh"
+            );
+            player_init::send_known_abilities_update(entity_id, tx, space_mgr).await;
+        }
+
         BaseToCellMsg::ItemUsed {
             entity_id,
             instance_id,

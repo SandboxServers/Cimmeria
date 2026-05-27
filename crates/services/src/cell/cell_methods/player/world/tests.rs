@@ -1109,6 +1109,7 @@ async fn set_auto_cycle_immediate_fire_credits_quest_kill_on_tagged_npc_death() 
             event_set_id: None,
             script_name: None,
             params,
+            ..Default::default()
         },
     );
     mgr.ability_defs.insert(

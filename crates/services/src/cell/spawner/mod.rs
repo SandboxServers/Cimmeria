@@ -32,9 +32,11 @@ mod tests;
 
 // Public re-exports — keep `super::spawner::Foo` paths stable for sibling modules.
 pub use abilities::{
-    archetype_item_event_set, load_ability_defs, load_effect_defs, load_event_set_sequences,
-    EVENT_ABILITY_BEGIN, EVENT_ABILITY_END, EVENT_ITEM_EQUIP, EVENT_ITEM_RELOAD,
-    EVENT_ITEM_UNEQUIP, EVENT_ITEM_USE,
+    archetype_item_event_set, load_ability_defs, load_archetype_ability_trees, load_effect_defs,
+    load_event_set_sequences, load_item_event_set_abilities, load_template_trainer_lists,
+    load_trainer_abilities, ArchetypeAbilityTreeEntry, EVENT_ABILITY_BEGIN, EVENT_ABILITY_END,
+    EVENT_ITEM_EQUIP, EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_RELOAD, EVENT_ITEM_UNEQUIP,
+    EVENT_ITEM_USE, EVENT_ITEM_USE_ABILITY,
 };
 pub use dialogs::{load_dialog_set_maps, DialogSetMapEntry};
 pub use loot::{load_item_containers, load_item_defs, load_loot_tables, LootTableEntry, WeaponDef};

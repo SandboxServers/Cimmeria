@@ -534,6 +534,7 @@ mod tests {
                 event_set_id: None,
                 script_name: None,
                 params,
+                ..Default::default()
             },
         );
         if let Some(ability) = mgr.ability_defs.get_mut(&7) {

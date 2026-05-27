@@ -371,6 +371,23 @@ pub(crate) async fn handle_cell_message(
             )
             .await;
         }
+        CellToBaseMsg::TrainAbility {
+            entity_id,
+            player_id,
+            ability_id,
+        } => {
+            super::methods::progression::handle_train_ability(
+                entity_id,
+                player_id,
+                ability_id,
+                db_pool,
+                connected,
+                cell_tx,
+                transport,
+                entity_to_addr,
+            )
+            .await;
+        }
         CellToBaseMsg::GrantItem {
             entity_id,
             player_id,

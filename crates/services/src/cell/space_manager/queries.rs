@@ -110,6 +110,20 @@ impl SpaceManager {
         ids
     }
 
+    /// Collect every entity id across all spaces, regardless of
+    /// class_id or is_player. Used by passes that must visit every
+    /// entity (e.g. active-effect pulsing — DoTs apply to NPCs,
+    /// players, and any future entity type like turrets or destructibles).
+    pub fn all_entity_ids(&self) -> Vec<u32> {
+        let mut ids = Vec::new();
+        for space in self.spaces.values() {
+            for entity in space.entities.values() {
+                ids.push(entity.entity_id.0 as u32);
+            }
+        }
+        ids
+    }
+
     /// Find an NPC entity by its spawn tag within the same space as `source_entity_id`.
     ///
     /// Used by content chain actions (SetInteractionType, DestroyTaggedEntity, etc.)

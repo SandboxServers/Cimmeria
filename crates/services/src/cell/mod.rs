@@ -11,6 +11,7 @@ pub mod client_methods;
 pub mod combat;
 pub mod content;
 pub mod dispatch;
+pub mod effects;
 pub mod gate_travel;
 pub mod interactions;
 pub mod mail;
