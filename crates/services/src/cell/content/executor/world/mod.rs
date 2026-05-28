@@ -9,6 +9,9 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+#[cfg(test)]
+mod tests;
+
 /// `Action::SetInteractionType` — flip an interaction-type bit on the
 /// tagged entity (add / remove / set), broadcasting the new flags to
 /// every witness via `WitnessEntityMethod`.
