@@ -38,17 +38,19 @@ fn stage_drone_with_witness(
 ) {
     mgr.create_entity(npc_id, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
-    if let Some(npc) = mgr.get_entity_mut(npc_id) {
-        npc.tag = Some("Drone".to_string());
-        npc.interaction_type_flags = initial_flags;
-    }
+    let npc = mgr
+        .get_entity_mut(npc_id)
+        .expect("npc entity must exist immediately after create_entity");
+    npc.tag = Some("Drone".to_string());
+    npc.interaction_type_flags = initial_flags;
     mgr.create_entity(player_id, "Agnos", [0.0; 3], [0.0; 3])
         .unwrap();
-    if let Some(p) = mgr.get_entity_mut(player_id) {
-        p.is_player = true;
-        p.player_id = Some(42);
-        p.witnesses.insert(EntityId(npc_id as i32));
-    }
+    let p = mgr
+        .get_entity_mut(player_id)
+        .expect("player entity must exist immediately after create_entity");
+    p.is_player = true;
+    p.player_id = Some(42);
+    p.witnesses.insert(EntityId(npc_id as i32));
     mgr.connect_entity(player_id);
 }
 
@@ -65,11 +67,12 @@ async fn set_interaction_type_add_op_or_masks_flags_and_broadcasts_to_each_witne
     stage_drone_with_witness(&mut mgr, /* player */ 1, /* npc */ 101, 0x01);
     // Second witness — exercises the per-witness loop.
     mgr.create_entity(2, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-    if let Some(p) = mgr.get_entity_mut(2) {
-        p.is_player = true;
-        p.player_id = Some(43);
-        p.witnesses.insert(EntityId(101));
-    }
+    let p = mgr
+        .get_entity_mut(2)
+        .expect("second player entity must exist immediately after create_entity");
+    p.is_player = true;
+    p.player_id = Some(43);
+    p.witnesses.insert(EntityId(101));
     mgr.connect_entity(2);
 
     let (tx, mut rx) = mpsc::channel(16);
@@ -266,18 +269,24 @@ async fn set_interaction_type_set_op_replaces_flags_entirely() {
 
 /// Unknown operation strings hit the default arm with `warn!` and leave
 /// the flags untouched. The broadcast still fires (the code path is:
-/// warn → fall through → broadcast the unchanged value) — pin both:
-/// WARN was emitted AND flags didn't change.
+/// warn → fall through → broadcast the unchanged value) — pin all three:
+/// WARN was emitted, flags didn't change, AND exactly one
+/// `WitnessEntityMethod` was emitted carrying the unchanged flags
+/// (0x42 as LE u64). Pinning the broadcast documents the current
+/// behavior; a future PR that decides to suppress the broadcast on
+/// the warn path will trip here and force the choice consciously
+/// rather than silently changing wire behavior.
 #[tokio::test]
 async fn set_interaction_type_unknown_op_warns_and_does_not_mutate_flags() {
     use crate::test_support::LogCapture;
+    use tokio::sync::mpsc::error::TryRecvError;
     use tracing::Level;
 
     let capture = LogCapture::install();
     let mut mgr = make_space_mgr();
     stage_drone_with_witness(&mut mgr, 1, 101, 0x42);
 
-    let (tx, _rx) = mpsc::channel(8);
+    let (tx, mut rx) = mpsc::channel(8);
     set_interaction_type(
         "Drone".to_string(),
         "frobnicate".to_string(),
@@ -301,6 +310,28 @@ async fn set_interaction_type_unknown_op_warns_and_does_not_mutate_flags() {
         "default arm must WARN — catches chain-authoring typos. Captured: {:#?}",
         capture.all()
     );
+
+    // Current behavior: the warn falls through to the same broadcast
+    // path as the recognised ops, sending the (unchanged) flags out.
+    // Pin one message with byte-exact payload 0x42 LE u64 so a
+    // refactor that suppresses the broadcast trips here.
+    let msg = rx
+        .try_recv()
+        .expect("unknown-op path still broadcasts unchanged flags");
+    match msg {
+        CellToBaseMsg::WitnessEntityMethod { args, .. } => {
+            assert_eq!(
+                args,
+                (0x42_u64).to_le_bytes().to_vec(),
+                "broadcast payload must be the unchanged flags (0x42) as LE u64"
+            );
+        }
+        other => panic!("expected WitnessEntityMethod, got {other:?}"),
+    }
+    assert!(
+        matches!(rx.try_recv(), Err(TryRecvError::Empty)),
+        "exactly one broadcast on the warn path — no double-send"
+    );
 }
 
 /// Missing tag (find_entity_by_tag returns None) takes the outer-else
@@ -310,13 +341,16 @@ async fn set_interaction_type_unknown_op_warns_and_does_not_mutate_flags() {
 /// unwrap path) would trip here.
 #[tokio::test]
 async fn set_interaction_type_missing_tag_emits_no_message() {
+    use tokio::sync::mpsc::error::TryRecvError;
+
     let mut mgr = make_space_mgr();
     // Player exists, but no entity tagged "GhostTag".
     mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-    if let Some(p) = mgr.get_entity_mut(1) {
-        p.is_player = true;
-        p.player_id = Some(42);
-    }
+    let p = mgr
+        .get_entity_mut(1)
+        .expect("player entity must exist immediately after create_entity");
+    p.is_player = true;
+    p.player_id = Some(42);
     mgr.connect_entity(1);
 
     let (tx, mut rx) = mpsc::channel(8);
@@ -331,9 +365,12 @@ async fn set_interaction_type_missing_tag_emits_no_message() {
     )
     .await;
 
+    // `TryRecvError::Empty` specifically — not `is_err()`, which would
+    // also accept `Disconnected` (a different failure mode that would
+    // indicate the channel was closed prematurely by some bug).
     assert!(
-        rx.try_recv().is_err(),
-        "missing-tag path must not emit any WitnessEntityMethod"
+        matches!(rx.try_recv(), Err(TryRecvError::Empty)),
+        "missing-tag path must leave the channel empty — no broadcast"
     );
 }
 
@@ -354,11 +391,12 @@ async fn set_interaction_type_broadcasts_to_target_witnesses_not_source_witnesse
     // would emit to player 2; the correct loop on `target_id=101`
     // emits only to player 1.
     mgr.create_entity(2, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-    if let Some(p) = mgr.get_entity_mut(2) {
-        p.is_player = true;
-        p.player_id = Some(43);
-        p.witnesses.insert(EntityId(1)); // sees the source, not the drone
-    }
+    let p = mgr
+        .get_entity_mut(2)
+        .expect("player 2 entity must exist immediately after create_entity");
+    p.is_player = true;
+    p.player_id = Some(43);
+    p.witnesses.insert(EntityId(1)); // sees the source, not the drone
     mgr.connect_entity(2);
 
     let (tx, mut rx) = mpsc::channel(8);
@@ -413,7 +451,13 @@ async fn set_visible_emits_on_visible_with_correct_bool_byte() {
         }
         other => panic!("expected EntityMethodCall, got {other:?}"),
     }
-    assert!(rx.try_recv().is_err(), "exactly one message expected");
+    {
+        use tokio::sync::mpsc::error::TryRecvError;
+        assert!(
+            matches!(rx.try_recv(), Err(TryRecvError::Empty)),
+            "exactly one message expected — channel must be empty, not disconnected"
+        );
+    }
 
     // visible=true → byte 1
     let (tx, mut rx) = mpsc::channel(8);
@@ -491,16 +535,18 @@ fn set_aggression_missing_tag_leaves_unrelated_entities_untouched() {
     let mut mgr = make_space_mgr();
     // Player exists. NPC with a DIFFERENT tag exists.
     mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-    if let Some(p) = mgr.get_entity_mut(1) {
-        p.is_player = true;
-        p.player_id = Some(42);
-    }
+    let p = mgr
+        .get_entity_mut(1)
+        .expect("player entity must exist immediately after create_entity");
+    p.is_player = true;
+    p.player_id = Some(42);
     mgr.create_entity(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
-    if let Some(n) = mgr.get_entity_mut(101) {
-        n.tag = Some("NotDrone".to_string());
-        assert_eq!(n.aggression, 0, "fixture sanity: NPC starts passive");
-    }
+    let n = mgr
+        .get_entity_mut(101)
+        .expect("npc entity must exist immediately after create_entity");
+    n.tag = Some("NotDrone".to_string());
+    assert_eq!(n.aggression, 0, "fixture sanity: NPC starts passive");
 
     set_aggression("Drone".to_string(), 1, 1, 1032, &mut mgr);
 
