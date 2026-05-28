@@ -15,6 +15,11 @@ use crate::mercury::{
 use super::helpers::{drain_acks_and_seq, get_account_entity_id};
 use super::ConnectedClientState;
 
+#[cfg(test)]
+mod delete_live_db_tests;
+#[cfg(test)]
+mod request_visuals_live_db_tests;
+
 /// Query the character list from the database.
 pub(crate) async fn query_character_list(
     db_pool: &Option<Arc<PgPool>>,

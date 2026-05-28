@@ -43,6 +43,8 @@ pub(crate) use aoi::flush_deferred_aoi;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_dispatch_arms;
 
 /// Handle a message from CellService -- dispatches AoI packets to witness clients.
 pub(crate) async fn handle_cell_message(
