@@ -165,6 +165,29 @@ mod tests {
         );
     }
 
+    /// Companion to `spend_applied_science_points_routes_to_crafting`:
+    /// pin that `CRAFT` (96) also reaches this handler. The two indices
+    /// are the two ends of the "crafting initiating activity" wedge —
+    /// SPEND_ASP (95) is the unlock entry, CRAFT (96) is the most-used
+    /// command. A routing regression that narrowed the range to
+    /// `CRAFT..=RESPEC_CRAFTING - 1` would still pass the 95 test if
+    /// 95 were left in the range, but would fail this one.
+    #[tokio::test]
+    async fn craft_routes_to_crafting() {
+        let mut mgr = make_space_manager_with_player(1);
+        let (tx, _rx) = mpsc::channel(8);
+
+        let args = 7i32.to_le_bytes();
+        let handled = dispatch(1, CRAFT, &args, &tx, &mut mgr).await;
+        assert!(
+            handled,
+            "CRAFT (96) must route to the crafting handler and return true. \
+             A false here means the crafting sub-range in dispatch.rs no \
+             longer covers 96 — either the upper bound shifted down or the \
+             arm itself was removed.",
+        );
+    }
+
     /// `send_on_update_discipline` enqueues an `EntityMethodCall` with
     /// method index 136 and the 8-byte payload `[disciplineId LE][expertise LE]`.
     /// Pins the wire-message shape end-to-end — entity-crate serializer

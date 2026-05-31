@@ -138,18 +138,16 @@ pub async fn load_crafting_state(
 /// remove, but pinning the contract early avoids a behavior change when
 /// respec lands.
 ///
-/// **Invariant — must reach `tx.commit()` after the DELETE.** The
-/// expertise table is rewritten from scratch on every save: DELETE all
-/// rows for this player, then re-INSERT the live map. Any early return
-/// added between the DELETE and the final `tx.commit()` would commit
-/// (via Drop-rollback — though tx in sqlx 0.7+ rolls back on drop, not
-/// commits) — to be precise, an `await?` between the DELETE and the
-/// commit would roll back, but if a future refactor swallows the error
-/// and returns Ok(()) without committing, the rollback path leaves a
-/// torn state if subsequent code mutated other tables. Keep the function
-/// linear: any new step belongs either before the DELETE or before the
-/// commit, never between them with an unguarded early return that
-/// short-circuits the commit.
+/// **Invariant — function must exit only via `tx.commit()` after the
+/// DELETE.** The expertise table is rewritten from scratch on every
+/// save: DELETE all rows for this player, then re-INSERT the live map.
+/// sqlx `Transaction` rolls back on Drop, so an `await?` between the
+/// DELETE and the commit fails safely (rollback). The dangerous shape
+/// is a future refactor that *adds an Ok(()) early return* between the
+/// DELETE and the commit — the txn would drop unsealed and the
+/// player's entire expertise set would be wiped silently. Keep the
+/// function linear; any new step belongs either before the DELETE or
+/// before the commit, never between them with an unguarded `return Ok`.
 ///
 /// **Missing-player guard.** The UPDATE's `WHERE player_id = $5` matches
 /// 0 rows for a non-existent player. Combined with an empty `expertise`
@@ -437,5 +435,142 @@ mod tests {
         assert!(state.discipline_ids.is_empty());
         assert!(state.expertise.is_empty());
         assert_eq!(state.applied_science_points, 0);
+    }
+
+    /// Regression guard for the silent-data-loss fix on save: writing a
+    /// `CraftingState` against a player_id that doesn't exist must
+    /// return an error rather than commit a no-op transaction.
+    ///
+    /// Bug shape this catches: revert the `rows_affected() == 0` check
+    /// in `save_crafting_state` and this test starts seeing Ok(())
+    /// instead of Err — the same way the production bug presented
+    /// before the fix (every "save crafting state for player N" call
+    /// for a stale or freshly-disconnected player would succeed
+    /// silently, throwing away the in-memory mutation).
+    ///
+    /// We assert the error variant is `RowNotFound`; if a future
+    /// refactor chooses a different error idiom (custom error type,
+    /// anyhow context), update the assertion but keep the regression
+    /// guard's intent: a 0-row UPDATE must surface as a failure.
+    #[tokio::test]
+    async fn save_for_nonexistent_player_returns_error() {
+        let pool = require_db_or_skip!();
+        let bogus_player_id = TEST_BASE + 1999;
+
+        // Build a non-empty state to make the bug shape realistic — the
+        // caller's intent is "persist these mutations", and an empty
+        // state would obscure whether anything was meant to be saved.
+        let mut state = CraftingState::new();
+        state.discipline_ids = vec![1, 2];
+        state.expertise.insert(1, 50);
+        state.expertise.insert(2, 75);
+        state.applied_science_points = 3;
+
+        // No prior insert — player_id doesn't exist. Save must fail.
+        let result = save_crafting_state(&pool, bogus_player_id, &state).await;
+        match result {
+            Err(sqlx::Error::RowNotFound) => {} // expected
+            Err(other) => panic!(
+                "save_crafting_state must return RowNotFound for a missing \
+                 player; got a different sqlx::Error variant: {other:?}"
+            ),
+            Ok(()) => panic!(
+                "save_crafting_state silently succeeded for a non-existent \
+                 player_id ({bogus_player_id}). The rows_affected() == 0 \
+                 guard in save_crafting_state has regressed — without it, \
+                 callers think they persisted state but no row exists."
+            ),
+        }
+
+        // Belt-and-suspenders: nothing should have been written to either
+        // table. Verifies the txn rolled back cleanly (not that we
+        // half-committed expertise rows for a phantom player).
+        let expertise_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sgw_player_discipline_expertise WHERE player_id = $1",
+        )
+        .bind(bogus_player_id)
+        .fetch_one(&pool)
+        .await
+        .expect("count expertise rows");
+        assert_eq!(
+            expertise_count, 0,
+            "transaction must roll back — no expertise rows should exist \
+             for a player_id whose sgw_player row was never created"
+        );
+    }
+
+    /// Documents behavior when an expertise row exists for a discipline
+    /// NOT in the player's `discipline_ids` array — i.e., a "stray"
+    /// row that out-of-band drift or partial deletes could leave behind.
+    ///
+    /// **Current contract (this test pins it):** `load_crafting_state`
+    /// loads every expertise row for the player regardless of whether
+    /// the discipline is in `discipline_ids`. Rationale: the
+    /// `(player_id, discipline_id)` PK already scopes the SELECT to
+    /// this player; filtering by `discipline_ids` would mask the drift
+    /// and silently drop the row. Surfacing it (it appears in
+    /// `state.expertise` even though `state.discipline_ids` excludes
+    /// it) lets a future operator-side check catch the inconsistency.
+    ///
+    /// If we ever decide to filter the stray rows out of the load, this
+    /// test must change *deliberately* — flip the expectation and
+    /// document the new contract in the persistence module's docs.
+    #[tokio::test]
+    async fn load_with_stray_expertise_row_keeps_it() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 2900;
+        let player_id = TEST_BASE + 2901;
+        cleanup(&pool, account_id, player_id).await;
+        insert_minimal_player(&pool, account_id, player_id).await;
+
+        // Set the player's known disciplines to [7]. Then insert an
+        // expertise row for discipline 99, which is NOT in the array —
+        // simulating drift (e.g., a respec that removed 99 from
+        // discipline_ids but left the expertise row behind, or a
+        // partial migration). The FK to sgw_player is satisfied
+        // (player_id exists); only the application-level invariant
+        // "expertise discipline_id ∈ discipline_ids" is violated.
+        sqlx::query("UPDATE sgw_player SET discipline_ids = $1 WHERE player_id = $2")
+            .bind(vec![7i32])
+            .bind(player_id)
+            .execute(&pool)
+            .await
+            .expect("seed discipline_ids");
+
+        sqlx::query(
+            "INSERT INTO sgw_player_discipline_expertise \
+                (player_id, discipline_id, expertise) \
+             VALUES ($1, $2, $3)",
+        )
+        .bind(player_id)
+        .bind(99i32)
+        .bind(50i32)
+        .execute(&pool)
+        .await
+        .expect("seed stray expertise row");
+
+        let state = load_crafting_state(&pool, player_id)
+            .await
+            .expect("load with stray expertise row should not error");
+
+        assert_eq!(
+            state.discipline_ids,
+            vec![7],
+            "discipline_ids reloads the sgw_player array verbatim"
+        );
+        assert_eq!(
+            state.get_expertise(99),
+            Some(50),
+            "stray expertise row (discipline 99 not in discipline_ids) \
+             is loaded into state.expertise — the load does NOT filter \
+             by discipline_ids. If this contract changes, update the \
+             load_crafting_state docs alongside the test flip."
+        );
+        // The known discipline 7 has no expertise row yet — get_expertise
+        // returns None for that, which is the existing happy-path shape
+        // covered by other tests.
+        assert_eq!(state.get_expertise(7), None);
+
+        cleanup(&pool, account_id, player_id).await;
     }
 }
