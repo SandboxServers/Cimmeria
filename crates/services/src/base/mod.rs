@@ -22,6 +22,7 @@ pub(crate) mod character_create;
 pub(crate) mod chardef;
 pub(crate) mod connect_loop;
 pub(crate) mod cooked_data;
+pub(crate) mod crafting;
 pub(crate) mod deferred_aoi;
 pub(crate) mod dispatch;
 pub(crate) mod helpers;

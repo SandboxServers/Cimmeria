@@ -368,6 +368,7 @@
 \ir sgw/Mail/Tables/sgw_gate_mail.sql
 \ir sgw/Missions/Tables/sgw_mission.sql
 \ir sgw/Players/Tables/sgw_player.sql
+\ir sgw/Players/Tables/sgw_player_discipline_expertise.sql
 \ir sgw/Shards/Tables/shards.sql
 \ir sgw/Audit/Tables/login_audit.sql
 \ir sgw/Outbox/Tables/cell_event_outbox.sql

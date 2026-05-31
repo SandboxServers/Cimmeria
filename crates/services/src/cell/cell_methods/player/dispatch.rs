@@ -30,12 +30,15 @@ pub async fn dispatch(
         }
         ORG_CREATION..=CANCEL_MOVIE => {
             // The outer arm already pins method_index into [ORG_CREATION,
-            // CANCEL_MOVIE]. Only the [CRAFT, RESPEC_CRAFTING] sub-range
-            // routes to crafting; everything else in the outer range is
+            // CANCEL_MOVIE]. The crafting sub-range is
+            // `SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING` (95..=100) —
+            // it has to start at 95, not 96, because index 95 (the discipline
+            // unlock entry point) was silently dropping into the social
+            // arm before. Everything else in the outer range routes to
             // social. Implicit constant ordering:
-            //   ORG_CREATION ≤ SPEND_APPLIED_SCIENCE_POINTS < CRAFT
+            //   ORG_CREATION ≤ SPEND_APPLIED_SCIENCE_POINTS ≤ CRAFT
             //   ≤ RESPEC_CRAFTING ≤ CANCEL_MOVIE
-            if (CRAFT..=RESPEC_CRAFTING).contains(&method_index) {
+            if (SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING).contains(&method_index) {
                 super::crafting::dispatch(entity_id, method_index, args, tx, space_mgr).await
             } else {
                 super::social::dispatch(entity_id, method_index, args, tx, space_mgr).await
@@ -74,7 +77,10 @@ mod tests {
         // Outer 94..=108 — contains the crafting sub-range
         assert_eq!(ORG_CREATION, 94);
         assert_eq!(CANCEL_MOVIE, 108);
-        // Crafting sub-range: 96..=100
+        // Crafting sub-range: 95..=100 — includes
+        // SPEND_APPLIED_SCIENCE_POINTS (95) since it's the discipline
+        // unlock entry point and must reach the crafting handler.
+        assert_eq!(SPEND_APPLIED_SCIENCE_POINTS, 95);
         assert_eq!(CRAFT, 96);
         assert_eq!(RESPEC_CRAFTING, 100);
     }
