@@ -29,10 +29,11 @@ fn spawn_npc_at(mgr: &mut SpaceManager, npc_id: u32, pos: [f32; 3]) {
     }
 }
 
-/// First tick on Investigating + POI + no nav_path → pathfind, queue
-/// the waypoint, stamp `investigate_until`.
+/// First tick on Investigating + POI + NPC far from POI → pathfind,
+/// queue the waypoint. Dwell is NOT stamped here — that happens on
+/// arrival (see `investigate_arrival_stamps_dwell`).
 #[tokio::test]
-async fn investigate_first_tick_routes_and_stamps_dwell() {
+async fn investigate_first_tick_routes_toward_poi() {
     let mut mgr = make_castle_mgr();
     spawn_npc_at(&mut mgr, 200, [0.0; 3]);
     if let Some(npc) = mgr.get_entity_mut(200) {
@@ -50,8 +51,37 @@ async fn investigate_first_tick_routes_and_stamps_dwell() {
         "Investigate must queue at least one waypoint toward the POI",
     );
     assert!(
+        npc.investigate_until.is_none(),
+        "Dwell stamps on arrival, not on initial routing — otherwise the effective \
+         dwell would be max(0, INVESTIGATE_DWELL_SECS - travel_time)",
+    );
+}
+
+/// Arrival at POI (close + nav_path empty + no dwell) → stamp dwell.
+/// Mirrors the patrol arrival-stamp test.
+#[tokio::test]
+async fn investigate_arrival_stamps_dwell() {
+    let mut mgr = make_castle_mgr();
+    spawn_npc_at(&mut mgr, 200, [10.0, 0.0, 10.0]); // at POI
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.ai_state = AiState::Investigating;
+        npc.poi = Some(Vector3::new(10.0, 0.0, 10.0));
+        npc.investigate_until = None;
+        npc.nav_path.clear();
+    }
+    let (tx, _rx) = mpsc::channel(16);
+
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(200).unwrap();
+    assert!(
         npc.investigate_until.is_some(),
-        "Dwell deadline must be stamped on first entry",
+        "Arrival at POI with no existing dwell must stamp a fresh deadline",
+    );
+    assert_eq!(
+        npc.ai_state,
+        AiState::Investigating,
+        "Still investigating during the dwell window",
     );
 }
 

@@ -159,11 +159,17 @@ pub enum Action {
 
     /// Push a tagged NPC into `AiState::Investigating` with the given
     /// world-space point of interest. The NPC pathfinds to the POI,
-    /// dwells `investigate_dwell_secs`, and returns to `AiState::Idle`.
-    /// Threat preemption converts to Fighting; the POI is preserved
-    /// so the post-fight return to Idle could route back to it (not
-    /// implemented in this PR — content authors fire a fresh
-    /// `SetNpcPoi` instead).
+    /// dwells `INVESTIGATE_DWELL_SECS` (hardcoded 5 seconds, defined
+    /// in `crates/services/src/cell/service/npc_ai.rs`), and returns
+    /// to `AiState::Idle`. Future variations on the dwell would lift
+    /// it to a template column.
+    ///
+    /// Threat preemption converts Investigating → Fighting. The POI
+    /// field persists on the entity post-fight but doesn't auto-route
+    /// back — only Patrol and Wander auto-resume from their per-state
+    /// scratch on Fighting → Leashing → Idle. Content authors who
+    /// want a continued investigation after a fight must fire a
+    /// fresh `SetNpcPoi`.
     SetNpcPoi {
         entity_tag: String,
         x: f32,
@@ -175,13 +181,18 @@ pub enum Action {
     /// `target_tag` resolves to an entity, the NPC transitions to
     /// `AiState::Follow` and maintains the distance band defined by
     /// `follow_min_distance` / `follow_max_distance` on the template.
-    /// Passing `target_tag = None` clears the follow state and
-    /// returns the NPC to Idle.
+    ///
+    /// `target_tag = None` (or a value the runtime can't resolve) is
+    /// treated as "clear": the follow state drops to Idle and
+    /// `follow_target_id` is cleared. Pin the unresolvable case so a
+    /// typo or a removed tag doesn't leave the follower in a half
+    /// state.
     ///
     /// Threat preemption converts Follow → Fighting; the follow
-    /// target persists on the entity but the post-fight return is
-    /// to Idle (re-fire the action if a continued follow is
-    /// desired).
+    /// target field persists on the entity but doesn't auto-route
+    /// back — only Patrol and Wander auto-resume from their per-state
+    /// scratch on Fighting → Leashing → Idle. Re-fire the action if a
+    /// continued follow is desired post-fight.
     SetFollowTarget {
         entity_tag: String,
         target_tag: Option<String>,

@@ -115,12 +115,11 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
                         npc_ai_wander(npc_id, tx, space_mgr).await;
                     }
                 }
-                _ => {
-                    // Other states (Dead, Spawning, Investigating,
-                    // Follow, Despawning, Submit, Error) either don't have
-                    // a per-tick handler today or shouldn't have been
-                    // admitted by the snapshot filter. The remaining
-                    // handlers land in later commits of this PR.
+                AiState::Dead | AiState::Spawning => {
+                    // Excluded by the snapshot filter above. Listing
+                    // them explicitly keeps the match exhaustive so a
+                    // new `AiState` variant lands as a compile error
+                    // here rather than a silent admit / no-op.
                 }
             }
         }
@@ -776,7 +775,51 @@ async fn npc_ai_patrol(
 ) {
     use cimmeria_entity::cell_entity::MobMovementType;
 
-    // Broadcast Patrol movement-type on entry. Dedup'd against
+    let now = std::time::Instant::now();
+
+    // Read patrol state without holding a borrow across the
+    // pathfind / nav_path write below.
+    let (path_empty, nav_empty, dwell, target_index, delay_secs, target_waypoint, npc_pos) = {
+        let npc = match space_mgr.get_entity(npc_id) {
+            Some(e) => e,
+            None => return,
+        };
+        if npc.patrol_path.is_empty() {
+            (
+                true,
+                true,
+                None,
+                0,
+                0.0,
+                None,
+                cimmeria_common::Vector3::zero(),
+            )
+        } else {
+            let next_idx = npc.patrol_next_index % npc.patrol_path.len();
+            (
+                false,
+                npc.nav_path.is_empty(),
+                npc.patrol_dwell_until,
+                next_idx,
+                npc.patrol_point_delay_secs,
+                Some(npc.patrol_path[next_idx]),
+                npc.position,
+            )
+        }
+    };
+
+    // Empty-path drop fires BEFORE the Patrol broadcast so the wire
+    // doesn't see a Patrol byte for an NPC that's about to leave
+    // the state. The drop also broadcasts None to clear the cache.
+    if path_empty {
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
+        }
+        super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
+        return;
+    }
+
+    // Broadcast Patrol movement-type. Dedup'd against
     // `last_movement_type` — subsequent Patrol ticks are no-ops on
     // the wire (the cache stays Some(Patrol) until a state
     // transition clears it).
@@ -788,118 +831,91 @@ async fn npc_ai_patrol(
     )
     .await;
 
-    let now = std::time::Instant::now();
-
-    // Read patrol state without holding a borrow across the
-    // pathfind / nav_path write below.
-    let (path_empty_now, nav_empty, dwell, next_index, delay_secs, next_waypoint) = {
-        let npc = match space_mgr.get_entity(npc_id) {
-            Some(e) => e,
-            None => return,
-        };
-        if npc.patrol_path.is_empty() {
-            // Defensive: snapshot filter should have screened this
-            // out, but a content action could have wiped the path
-            // mid-tick. Drop back to Idle so the next AI tick can
-            // re-route the NPC.
-            (true, true, None, 0, 0.0, None)
-        } else {
-            let next_idx = npc.patrol_next_index % npc.patrol_path.len();
-            (
-                false,
-                npc.nav_path.is_empty(),
-                npc.patrol_dwell_until,
-                next_idx,
-                npc.patrol_point_delay_secs,
-                Some(npc.patrol_path[next_idx]),
-            )
-        }
-    };
-
-    if path_empty_now {
-        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
-        }
-        super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
-        return;
-    }
-
     if !nav_empty {
         // Movement in flight — npc_movement_tick is walking the NPC
         // toward the current waypoint. Nothing to do this tick.
         return;
     }
 
-    // Branch 2 or 3: nav_path is empty so we've arrived at a
-    // waypoint (or never started). Decide between dwelling and
-    // advancing.
-    if let Some(deadline) = dwell {
-        if now < deadline {
-            // Still dwelling.
-            return;
-        }
-        // Dwell elapsed → advance to next waypoint AND clear the
-        // deadline. The next tick (branch 1) pushes the new
-        // waypoint into nav_path.
-        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            let len = npc.patrol_path.len();
-            npc.patrol_next_index = (npc.patrol_next_index + 1) % len;
-            npc.patrol_dwell_until = None;
-        }
-        // Fall through to push the new waypoint in the same tick
-        // — saves one tick of latency at every waypoint.
-    }
-
-    // Branch 1: push the current waypoint into nav_path. Pathfind
-    // so the NPC respects the navmesh rather than walking in a
-    // straight line through walls. Falls back to a direct push if
-    // pathfinding fails (no navmesh in the space, target off-mesh,
-    // etc.) — better to walk through a wall than to wedge.
-    let Some(waypoint) = next_waypoint else {
+    // nav_path is empty. Are we at the target waypoint (arrived) or
+    // never started (still need to queue movement)?
+    //
+    // The "close" threshold is 1.0 world units — `npc_movement_tick`
+    // snaps to a waypoint when `dist <= move_speed` (default 0.6),
+    // so the position will be exactly on the waypoint after arrival.
+    // 1.0 gives a small slack for floating-point round-trips while
+    // staying well under the smallest meaningful patrol distance.
+    let Some(waypoint) = target_waypoint else {
         return;
     };
-    let npc_pos = match space_mgr.get_entity(npc_id) {
-        Some(e) => e.position,
-        None => return,
-    };
-    let path = space_mgr
-        .find_path(npc_id, &npc_pos, &waypoint)
-        .unwrap_or_default();
-    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-        npc.nav_path.clear();
-        if path.len() > 1 {
-            // Skip the first entry (start position). Detour returns a
-            // straight-path that includes both endpoints.
-            for wp in path.into_iter().skip(1) {
-                npc.nav_path.push_back(wp);
+    let close = npc_pos.distance_to(&waypoint) < 1.0;
+
+    if close {
+        // At the waypoint. Dwell logic.
+        match dwell {
+            None => {
+                // Just arrived — stamp the dwell deadline. Subsequent
+                // ticks observe `Some(deadline)` and either keep
+                // waiting or advance.
+                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                    let secs = delay_secs.max(0.5);
+                    npc.patrol_dwell_until = Some(now + std::time::Duration::from_secs_f32(secs));
+                }
+                tracing::debug!(
+                    target: "npc_ai",
+                    event = "patrol_arrived",
+                    npc_id,
+                    target_index,
+                    delay_secs,
+                    "NPC AI: patrol → arrived, dwelling"
+                );
             }
-        } else {
-            // Pathfind failed or returned a single point — direct push.
-            npc.nav_path.push_back(waypoint);
+            Some(deadline) if now < deadline => {
+                // Still dwelling — no-op.
+            }
+            Some(_) => {
+                // Dwell elapsed — advance to next waypoint. Clear the
+                // dwell deadline; the next tick will observe
+                // `close = false` (because the target is now a
+                // different waypoint) and queue movement.
+                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                    let len = npc.patrol_path.len();
+                    npc.patrol_next_index = (npc.patrol_next_index + 1) % len;
+                    npc.patrol_dwell_until = None;
+                }
+            }
         }
-        // Stamp the dwell deadline NOW (not on arrival) so it's
-        // ready when the path-follower drains nav_path. The
-        // movement tick pops waypoints one-by-one; when the last
-        // pop yields an empty nav_path, branch 2/3 of the next
-        // patrol tick consults `patrol_dwell_until` to decide
-        // whether to advance. Setting the deadline relative to
-        // "now + delay" assumes the movement tick takes well
-        // under `delay` seconds to consume nav_path; for typical
-        // 5–15 m hops at 0.6 unit/100ms and a 2-second delay
-        // that holds.
-        let secs = delay_secs.max(0.5); // floor: half a second
-        npc.patrol_dwell_until = Some(now + std::time::Duration::from_secs_f32(secs));
+    } else {
+        // Not at the target — pathfind and queue movement. Do NOT
+        // stamp dwell here; the "arrived" branch above stamps it
+        // once `nav_path` drains and we're close to the target.
+        let path = space_mgr
+            .find_path(npc_id, &npc_pos, &waypoint)
+            .unwrap_or_default();
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            npc.nav_path.clear();
+            if path.len() > 1 {
+                // Skip the first entry (start position). Detour returns
+                // a straight-path that includes both endpoints.
+                for wp in path.into_iter().skip(1) {
+                    npc.nav_path.push_back(wp);
+                }
+            } else {
+                // Pathfind failed or returned a single point — direct push.
+                npc.nav_path.push_back(waypoint);
+            }
+        }
+        tracing::debug!(
+            target: "npc_ai",
+            event = "patrol_waypoint_set",
+            npc_id,
+            target_index,
+            wp_x = waypoint.x,
+            wp_y = waypoint.y,
+            wp_z = waypoint.z,
+            "NPC AI: patrol → next waypoint queued"
+        );
     }
-    tracing::debug!(
-        target: "npc_ai",
-        event = "patrol_waypoint_set",
-        npc_id,
-        next_index,
-        wp_x = waypoint.x,
-        wp_y = waypoint.y,
-        wp_z = waypoint.z,
-        "NPC AI: patrol → next waypoint queued"
-    );
 }
 
 /// NPC wander behavior: pick a random point within `wander_radius` of
@@ -929,14 +945,6 @@ async fn npc_ai_wander(
     use cimmeria_entity::cell_entity::MobMovementType;
     use rand::{RngExt, SeedableRng};
 
-    super::super::abilities::broadcast_movement_type(
-        npc_id,
-        Some(MobMovementType::Wander),
-        tx,
-        space_mgr,
-    )
-    .await;
-
     let now = std::time::Instant::now();
 
     // Read wander config + current position via an immutable borrow.
@@ -954,8 +962,9 @@ async fn npc_ai_wander(
             None => return,
         };
 
-    // Defensive: a content action could have zeroed wander_radius
-    // mid-tick. Drop back to Idle so the next tick re-routes.
+    // Zero-radius drop fires BEFORE the Wander broadcast so the wire
+    // doesn't see a Wander byte for an NPC that's about to leave
+    // Wander this same tick.
     if radius <= 0.0 {
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
@@ -963,6 +972,14 @@ async fn npc_ai_wander(
         super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
         return;
     }
+
+    super::super::abilities::broadcast_movement_type(
+        npc_id,
+        Some(MobMovementType::Wander),
+        tx,
+        space_mgr,
+    )
+    .await;
 
     if !nav_empty {
         // Movement tick is walking — nothing to do.
@@ -983,15 +1000,19 @@ async fn npc_ai_wander(
         return;
     };
 
-    // Seed: (npc_id, current dwell-deadline nanos since UNIX epoch
-    // would require std::time::SystemTime; Instant doesn't expose
-    // that). Use elapsed time since the manager's `now` for variance
-    // and npc_id for per-entity divergence. Tests can pre-set
-    // `wander_next_at` to a known deadline to make the seed
-    // deterministic; the runtime is non-deterministic which is the
-    // desired property for "different NPCs wander to different
-    // places".
-    let seed = u64::from(npc_id) ^ (now.elapsed().as_nanos() as u64);
+    // Seed the per-call RNG from a wall-clock source for real entropy
+    // (`Instant::elapsed()` from a same-function-frame `now` gives
+    // only nanosecond jitter between the two `Instant::now()` calls).
+    // `SystemTime` since epoch survives across calls, so consecutive
+    // wander rolls on the same tick for different NPCs land on
+    // different angles. Tests that need determinism can pre-seed by
+    // setting `wander_next_at` to a future deadline (which forces an
+    // early no-op return) and asserting the un-stamped state instead.
+    let wall_nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let seed = u64::from(npc_id).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ wall_nanos;
     let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(seed);
     let angle = rng.random_range(0.0..(std::f32::consts::TAU));
     let distance = rng.random_range(0.0..radius);
@@ -1066,6 +1087,28 @@ async fn npc_ai_investigate(
 ) {
     use cimmeria_entity::cell_entity::{AiState, MobMovementType};
 
+    let (poi, npc_pos, nav_empty, dwell) = match space_mgr.get_entity(npc_id) {
+        Some(e) => (
+            e.poi,
+            e.position,
+            e.nav_path.is_empty(),
+            e.investigate_until,
+        ),
+        None => return,
+    };
+
+    // No-POI drop fires BEFORE the CombatAdvance broadcast so the
+    // wire doesn't see a movement-type for an NPC that's about to
+    // leave Investigating this tick.
+    let Some(poi_pos) = poi else {
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            npc.ai_state = AiState::Idle;
+            npc.investigate_until = None;
+        }
+        super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
+        return;
+    };
+
     // Use CombatAdvance as the closest movement-type — no dedicated
     // "investigating" byte exists in EMobMovementType, and the
     // animation it implies (alert advance) is the right hint.
@@ -1077,76 +1120,68 @@ async fn npc_ai_investigate(
     )
     .await;
 
-    let (poi, npc_pos, nav_empty, dwell) = match space_mgr.get_entity(npc_id) {
-        Some(e) => (
-            e.poi,
-            e.position,
-            e.nav_path.is_empty(),
-            e.investigate_until,
-        ),
-        None => return,
-    };
-
-    let Some(poi_pos) = poi else {
-        // Defensive: drop to Idle.
-        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-            npc.ai_state = AiState::Idle;
-            npc.investigate_until = None;
-        }
-        super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
-        return;
-    };
-
     if !nav_empty {
         return; // Movement in flight.
     }
 
+    // nav_path empty. Either we've arrived at the POI or we haven't
+    // started yet. Use position-vs-POI distance to distinguish.
+    let close = npc_pos.distance_to(&poi_pos) < 1.0;
     let now = std::time::Instant::now();
 
-    match dwell {
-        Some(deadline) if now < deadline => {
-            // At POI, dwelling.
-        }
-        Some(_) => {
-            // Dwell elapsed → done, return to Idle.
-            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                npc.ai_state = AiState::Idle;
-                npc.poi = None;
-                npc.investigate_until = None;
-            }
-            super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
-        }
-        None => {
-            // First entry — pathfind to POI, queue, stamp dwell.
-            let path = space_mgr
-                .find_path(npc_id, &npc_pos, &poi_pos)
-                .unwrap_or_default();
-            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                npc.nav_path.clear();
-                if path.len() > 1 {
-                    for wp in path.into_iter().skip(1) {
-                        npc.nav_path.push_back(wp);
-                    }
-                } else {
-                    npc.nav_path.push_back(poi_pos);
+    if close {
+        // At the POI. Dwell logic mirrors patrol.
+        match dwell {
+            None => {
+                // Just arrived — stamp dwell.
+                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                    npc.investigate_until =
+                        Some(now + std::time::Duration::from_secs_f32(INVESTIGATE_DWELL_SECS));
                 }
-                // Stamp dwell deadline now (relative to POI arrival
-                // — same approximation patrol uses; the movement tick
-                // takes well under INVESTIGATE_DWELL_SECS to consume
-                // nav_path for typical POI distances).
-                npc.investigate_until =
-                    Some(now + std::time::Duration::from_secs_f32(INVESTIGATE_DWELL_SECS));
+                tracing::debug!(
+                    target: "npc_ai",
+                    event = "investigate_arrived",
+                    npc_id,
+                    "NPC AI: investigate → arrived at POI, dwelling"
+                );
             }
-            tracing::debug!(
-                target: "npc_ai",
-                event = "investigate_routed",
-                npc_id,
-                poi_x = poi_pos.x,
-                poi_y = poi_pos.y,
-                poi_z = poi_pos.z,
-                "NPC AI: investigate → pathfinding to POI"
-            );
+            Some(deadline) if now < deadline => {
+                // Still dwelling.
+            }
+            Some(_) => {
+                // Dwell elapsed → return to Idle.
+                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                    npc.ai_state = AiState::Idle;
+                    npc.poi = None;
+                    npc.investigate_until = None;
+                }
+                super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
+            }
         }
+    } else {
+        // Not at POI — pathfind and queue movement.
+        let path = space_mgr
+            .find_path(npc_id, &npc_pos, &poi_pos)
+            .unwrap_or_default();
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            npc.nav_path.clear();
+            if path.len() > 1 {
+                for wp in path.into_iter().skip(1) {
+                    npc.nav_path.push_back(wp);
+                }
+            } else {
+                npc.nav_path.push_back(poi_pos);
+            }
+        }
+        tracing::debug!(
+            target: "npc_ai",
+            event = "investigate_routed",
+            npc_id,
+            poi_x = poi_pos.x,
+            poi_y = poi_pos.y,
+            poi_z = poi_pos.z,
+            "NPC AI: investigate → pathfinding to POI"
+        );
     }
 }
 
@@ -1168,14 +1203,6 @@ async fn npc_ai_follow(
 ) {
     use cimmeria_entity::cell_entity::{AiState, MobMovementType};
 
-    super::super::abilities::broadcast_movement_type(
-        npc_id,
-        Some(MobMovementType::Follow),
-        tx,
-        space_mgr,
-    )
-    .await;
-
     let (target_id, npc_pos, min_d, max_d, nav_empty) = match space_mgr.get_entity(npc_id) {
         Some(e) => (
             e.follow_target_id,
@@ -1187,6 +1214,9 @@ async fn npc_ai_follow(
         None => return,
     };
 
+    // No-target / gone-target drops fire BEFORE the Follow broadcast
+    // so the wire doesn't see a Follow byte for an NPC that's about
+    // to leave Follow this same tick.
     let Some(target_id) = target_id else {
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
             npc.ai_state = AiState::Idle;
@@ -1204,6 +1234,14 @@ async fn npc_ai_follow(
         super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
         return;
     };
+
+    super::super::abilities::broadcast_movement_type(
+        npc_id,
+        Some(MobMovementType::Follow),
+        tx,
+        space_mgr,
+    )
+    .await;
 
     let dist = npc_pos.distance_to(&target_pos);
     if dist < min_d {

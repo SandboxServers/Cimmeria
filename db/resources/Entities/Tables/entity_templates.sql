@@ -54,7 +54,14 @@ CREATE TABLE entity_templates (
     -- `cell_entity::respawn_secs` for the resolved field on the
     -- runtime entity.
     respawn_secs integer,
-    -- Wander radius in world units. NULL or 0 → NPC doesn't wander.
+    -- Wander radius in world units.
+    --
+    -- `NULL` → NPC doesn't wander. The loader COALESCEs NULL → 0.0
+    -- at runtime, which the AI tick treats as "no wander".
+    -- A literal `0.0` is rejected by the
+    -- `entity_templates_wander_radius_positive` CHECK constraint
+    -- below — use NULL to disable.
+    --
     -- Positive value → idle NPCs without a patrol path pick random
     -- points within `wander_radius` of `spawn_position`, walk there,
     -- pause for a random dwell drawn from

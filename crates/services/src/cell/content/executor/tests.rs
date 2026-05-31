@@ -1068,3 +1068,265 @@ async fn add_dialog_set_warns_when_cell_to_base_channel_closed() {
         capture.all()
     );
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 4 / 6 / 7 content actions: SetNpcPoi, SetFollowTarget, SetNpcAiState
+// ──────────────────────────────────────────────────────────────────────
+
+/// `Action::SetNpcPoi` transitions the tagged NPC into Investigating
+/// with `poi` set to the given coords and `nav_path` cleared so the
+/// investigate handler can re-pathfind.
+#[tokio::test]
+async fn set_npc_poi_transitions_target_to_investigating() {
+    use cimmeria_entity::cell_entity::AiState;
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(101) {
+        npc.tag = Some("Guard".to_string());
+        npc.nav_path
+            .push_back(cimmeria_common::Vector3::new(99.0, 0.0, 99.0));
+    }
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(42);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            1234,
+            Action::SetNpcPoi {
+                entity_tag: "Guard".to_string(),
+                x: 50.0,
+                y: 0.0,
+                z: 60.0,
+            },
+        )],
+    };
+
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let npc = mgr.get_entity(101).unwrap();
+    assert_eq!(npc.ai_state, AiState::Investigating);
+    assert_eq!(
+        npc.poi,
+        Some(cimmeria_common::Vector3::new(50.0, 0.0, 60.0)),
+    );
+    assert!(npc.nav_path.is_empty(), "Action must clear stale nav_path");
+}
+
+/// `Action::SetFollowTarget` with a resolvable `target_tag` transitions
+/// the follower into Follow with `follow_target_id` set.
+#[tokio::test]
+async fn set_follow_target_resolves_target_and_transitions_to_follow() {
+    use cimmeria_entity::cell_entity::AiState;
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(101) {
+        npc.tag = Some("Pet".to_string());
+    }
+    mgr.spawn_npc(102, "Agnos", [20.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(102) {
+        npc.tag = Some("Owner".to_string());
+    }
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(42);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            5678,
+            Action::SetFollowTarget {
+                entity_tag: "Pet".to_string(),
+                target_tag: Some("Owner".to_string()),
+            },
+        )],
+    };
+
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let pet = mgr.get_entity(101).unwrap();
+    assert_eq!(pet.ai_state, AiState::Follow);
+    assert_eq!(pet.follow_target_id, Some(102));
+}
+
+/// `Action::SetFollowTarget` with `target_tag = None` clears the follow
+/// state and returns the NPC to Idle.
+#[tokio::test]
+async fn set_follow_target_none_clears_and_returns_to_idle() {
+    use cimmeria_entity::cell_entity::AiState;
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(101) {
+        npc.tag = Some("Pet".to_string());
+        npc.ai_state = AiState::Follow;
+        npc.follow_target_id = Some(999);
+    }
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(42);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            5678,
+            Action::SetFollowTarget {
+                entity_tag: "Pet".to_string(),
+                target_tag: None,
+            },
+        )],
+    };
+
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let pet = mgr.get_entity(101).unwrap();
+    assert_eq!(pet.ai_state, AiState::Idle);
+    assert_eq!(pet.follow_target_id, None);
+}
+
+/// `Action::SetFollowTarget` with an unresolvable `target_tag` is
+/// treated the same as `None` — the follow state clears and the NPC
+/// returns to Idle. Pin: a typo or removed tag shouldn't leave the
+/// follower in a half-state.
+#[tokio::test]
+async fn set_follow_target_unresolvable_tag_clears_follow() {
+    use cimmeria_entity::cell_entity::AiState;
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(101) {
+        npc.tag = Some("Pet".to_string());
+        npc.ai_state = AiState::Follow;
+        npc.follow_target_id = Some(999);
+    }
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(42);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            5678,
+            Action::SetFollowTarget {
+                entity_tag: "Pet".to_string(),
+                target_tag: Some("Nonexistent".to_string()),
+            },
+        )],
+    };
+
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let pet = mgr.get_entity(101).unwrap();
+    assert_eq!(
+        pet.ai_state,
+        AiState::Idle,
+        "Unresolvable target_tag must drop to Idle (treated as clear)",
+    );
+    assert_eq!(pet.follow_target_id, None);
+}
+
+/// `Action::SetNpcAiState { state: Despawning }` flips the state.
+#[tokio::test]
+async fn set_npc_ai_state_despawning_flips_state() {
+    use cimmeria_content_engine::actions::NpcAiStateAction;
+    use cimmeria_entity::cell_entity::AiState;
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(101) {
+        npc.tag = Some("Boss".to_string());
+    }
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(42);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            999,
+            Action::SetNpcAiState {
+                entity_tag: "Boss".to_string(),
+                state: NpcAiStateAction::Despawning,
+            },
+        )],
+    };
+
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let npc = mgr.get_entity(101).unwrap();
+    assert_eq!(npc.ai_state, AiState::Despawning);
+}
+
+/// `Action::SetNpcAiState { state: Idle }` on a patrolling NPC drops
+/// it back to Idle. Pin: `patrol_next_index` persists so the AI tick's
+/// Idle→Patrol promotion can resume the route from where it left off.
+#[tokio::test]
+async fn set_npc_ai_state_idle_on_patroller_preserves_patrol_index() {
+    use cimmeria_common::Vector3;
+    use cimmeria_content_engine::actions::NpcAiStateAction;
+    use cimmeria_entity::cell_entity::AiState;
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(101) {
+        npc.tag = Some("Guard".to_string());
+        npc.patrol_path = vec![
+            Vector3::new(10.0, 0.0, 0.0),
+            Vector3::new(10.0, 0.0, 10.0),
+            Vector3::new(0.0, 0.0, 10.0),
+        ];
+        npc.ai_state = AiState::Patrol;
+        npc.patrol_next_index = 2;
+    }
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(42);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            999,
+            Action::SetNpcAiState {
+                entity_tag: "Guard".to_string(),
+                state: NpcAiStateAction::Idle,
+            },
+        )],
+    };
+
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let npc = mgr.get_entity(101).unwrap();
+    assert_eq!(npc.ai_state, AiState::Idle);
+    assert_eq!(
+        npc.patrol_next_index, 2,
+        "patrol_next_index must persist across SetNpcAiState(Idle) so the AI tick can resume the route",
+    );
+}

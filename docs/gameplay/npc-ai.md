@@ -7,16 +7,16 @@ last_updated: 2026-05-27
 
 # NPC AI System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~20% implemented — Spawning, Idle, Fighting, and Dead states work. All movement states (Patrol, Wander, Leashing, Investigating, Follow) are unimplemented. Mobs stand still while fighting.
+> **Last updated**: 2026-05-31
+> **Status**: All 12 Atrea AI states are now wired in the Rust runtime. Behavior states (Patrol, Wander, Investigating, Follow) are driven by `npc_ai_tick`; terminal states (Despawning, Submit, Error) are reachable via the `SetNpcAiState` content action. Implementation status detail is in the [summary table](#implementation-status-summary) at the bottom; the historical "Python design" sections below are kept for reference but no longer reflect the runtime.
 
 ## Overview
 
-NPC mob behavior is driven by a state machine implemented in Python on the cell app. The `SGWMob` entity type provides the base AI logic, with `SGWPet` extending it for player-controlled companions. Each mob runs a tick loop (`doAiAction()`) that evaluates the current state and dispatches to a per-state handler.
+NPC mob behavior is driven by a state machine implemented in the Rust cell service (`crates/services/src/cell/service/npc_ai.rs`). The runtime mirrors the Python `SGWMob` design — every 2 seconds the `npc_ai_tick` snapshot-and-dispatch loop routes each NPC into a per-state handler. Threat events preempt behavior states into `Fighting` with per-state scratch preserved.
 
-The C++ cell layer provides navigation primitives (`findPathTo`, `addWaypoint`, `cancelMovement`) and controller IDs for navigation, vision, yaw, and timers, but the Python AI currently ignores all of these. The mob's only movement call is `lookAt()` to rotate toward a target during combat.
+The Detour-backed navmesh (via `space_mgr.find_path`) handles pathfinding for all movement states. Movement is interpolated at 100 ms cadence by `npc_movement_tick`.
 
-**Key files:** `python/Atrea/enums.py` (state and ability enums), `python/cell/SGWMob.py` (state machine, threat, ability selection, ammo), `entities/defs/SGWMob.def` (55 properties, cell and client methods).
+**Key files (Rust runtime):** `crates/entity/src/cell_entity/mod.rs` (the 12-state `AiState` enum + per-state scratch fields), `crates/services/src/cell/service/npc_ai.rs` (state-machine dispatch + per-state handlers), `crates/services/src/cell/combat/threat.rs` (`generate_threat` preemption), `crates/services/src/cell/service/ticks/npc_respawn.rs` (Dead → Idle promotion). The Python design files referenced in legacy sections (`python/cell/SGWMob.py`, `python/Atrea/enums.py`) are kept for evidence-of-intent only.
 
 ---
 
@@ -28,29 +28,36 @@ Defined in `python/Atrea/enums.py` lines 228-239.
 
 | State | Value | Implemented | Notes |
 |-------|-------|-------------|-------|
-| `AI_STATE_Spawning` | 0 | PARTIAL | Transitions to Idle. Legacy loaded weapon ammo here; the Rust port skips this since the fire-gate short-circuits on `!is_player`. See [Ammo Management](#ammo-management). |
-| `AI_STATE_Idle` | 1 | YES | Waits for threat |
-| `AI_STATE_Investigating` | 2 | NO | POI-based investigation loop |
-| `AI_STATE_Fighting` | 3 | YES | Target selection, ability selection, fire |
-| `AI_STATE_Leashing` | 4 | NO | Return to Home when target out of range |
-| `AI_STATE_Dead` | 5 | YES | Checked in `doAiAction()`, terminates loop |
-| `AI_STATE_Despawning` | 6 | NO | Controlled despawn sequence |
-| `AI_STATE_Follow` | 7 | NO | Follow a target entity |
-| `AI_STATE_Patrol` | 8 | NO | Waypoint path traversal |
-| `AI_STATE_Wander` | 9 | NO | Random movement near Home |
-| `AI_STATE_Submit` | 10 | NO | Surrender/graceful despawn |
-| `AI_STATE_Error` | 11 | NO | Recovery/diagnostic state |
+| `AI_STATE_Spawning` | 0 | INERT | Variant preserved for source-enum completeness but the Rust runtime starts every NPC at Idle and never enters this state. Future spawn-VFX hooks (Goa'uld ribbon-device reveal, etc.) can plug in here. |
+| `AI_STATE_Idle` | 1 | DONE | Waits for threat or AI tick promotion into Patrol / Wander / auto-aggro. |
+| `AI_STATE_Investigating` | 2 | DONE | `npc_ai_investigate` — pathfind to `poi`, dwell 5 s on arrival, return to Idle. Reached via `SetNpcPoi` content action. |
+| `AI_STATE_Fighting` | 3 | DONE | Target selection, ability selection, fire. Per-ability range gating + retry-on-launch-failure (see [#329](https://github.com/SandboxServers/Cimmeria/issues/329)). |
+| `AI_STATE_Leashing` | 4 | DONE | `npc_ai_leash` snaps NPC to spawn + restores HP when target exceeds `LEASH_DISTANCE = 50`. |
+| `AI_STATE_Dead` | 5 | DONE | Set on death via `combat::mark_npc_dead`. `npc_respawn_tick` (1 Hz) promotes back to Idle when `respawn_at` elapses. |
+| `AI_STATE_Despawning` | 6 | DONE | `npc_ai_despawn` removes the entity from the space. Reached via `SetNpcAiState`. |
+| `AI_STATE_Follow` | 7 | DONE | `npc_ai_follow` maintains distance band `[follow_min_distance, follow_max_distance]` to a target. Reached via `SetFollowTarget`. |
+| `AI_STATE_Patrol` | 8 | DONE | `npc_ai_patrol` walks a loop from `entity_templates.patrol_path_id` → `point_set_points`, dwells on arrival at each waypoint. Threat preemption preserves the index. |
+| `AI_STATE_Wander` | 9 | DONE | `npc_ai_wander` samples random points within `wander_radius` of spawn, dwells for `[wander_min_dwell_secs, wander_max_dwell_secs]` between hops. |
+| `AI_STATE_Submit` | 10 | DONE | `npc_ai_submit` clears combat state and holds. Reached via `SetNpcAiState`. |
+| `AI_STATE_Error` | 11 | DONE | `npc_ai_error` is quiescent — diagnostic fallback. Reached via `SetNpcAiState` or the `enterErrorAIState` slash command. |
 
-### State Transitions (Implemented)
+### State Transitions
+
+`generate_threat` preempts any non-Dead non-Fighting state to Fighting (with per-state scratch preserved so the post-fight return can re-evaluate). Idle promotion priority is **aggression > patrol > wander**.
 
 ```
-Spawning  -->  Idle       (doAiSpawnAction complete; ammo seed skipped — fire-gate short-circuits on !is_player)
-Idle      -->  Fighting   (threatGenerated() called while alive)
-Fighting  -->  Idle       (threat list empty after target pruning)
-Any       -->  Dead       (isDead() returns true, loop exits)
+Idle      -->  Fighting    (generate_threat fires + NPC was Idle / Patrol / Wander / Investigating / Follow)
+Idle      -->  Patrol      (npc_ai_tick observes patrol_path non-empty)
+Idle      -->  Wander      (npc_ai_tick observes wander_radius > 0 and no patrol_path)
+Idle      -->  Investigating (SetNpcPoi content action)
+Idle      -->  Follow      (SetFollowTarget content action with a valid target)
+Fighting  -->  Idle        (threat list drains)
+Fighting  -->  Leashing    (target exceeds LEASH_DISTANCE from spawn)
+Leashing  -->  Idle        (snap to spawn + HP restore complete)
+Any alive -->  Dead        (HP -> 0; combat::mark_npc_dead)
+Dead      -->  Idle        (npc_respawn_tick promotes; respawn_at elapsed)
+Any alive -->  Despawning / Submit / Error  (SetNpcAiState content action)
 ```
-
-All other transitions (Idle -> Investigating, Fighting -> Leashing, etc.) are defined by design but not implemented.
 
 ### Tick Loop
 

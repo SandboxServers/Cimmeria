@@ -82,15 +82,18 @@ async fn idle_npc_with_patrol_path_transitions_to_patrol_same_tick() {
 /// → advance `patrol_next_index` modulo path length AND queue the next
 /// waypoint in the same tick (no wasted tick at each waypoint).
 #[tokio::test]
-async fn patrol_advances_index_and_queues_next_waypoint_on_dwell_elapsed() {
+async fn patrol_advances_index_when_dwell_elapses_at_waypoint() {
     let mut mgr = make_castle_mgr();
-    spawn_patrol_npc(&mut mgr, 200, [0.0; 3]);
-    // Pre-arrange: NPC is in Patrol, sitting at waypoint 0, dwell
-    // deadline is in the past (simulates "the movement tick popped the
-    // last nav_path entry one second ago and we've been dwelling since").
+    let path = spawn_patrol_npc(&mut mgr, 200, [0.0; 3]);
+    // Pre-arrange: NPC is in Patrol, physically AT waypoint 0
+    // (so `close == true`), dwell deadline in the past. The handler
+    // should observe "elapsed dwell" and advance the index. The next
+    // waypoint queue happens on the FOLLOWING tick, when `close`
+    // becomes false against the new target (index 1).
     if let Some(npc) = mgr.get_entity_mut(200) {
         npc.ai_state = AiState::Patrol;
         npc.patrol_next_index = 0;
+        npc.position = path[0]; // physically at the current target
         npc.patrol_dwell_until =
             Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
         npc.nav_path.clear();
@@ -102,19 +105,52 @@ async fn patrol_advances_index_and_queues_next_waypoint_on_dwell_elapsed() {
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
         npc.patrol_next_index, 1,
-        "Index must advance from 0 → 1 after dwell elapses",
+        "Index must advance from 0 → 1 after dwell elapses at waypoint 0",
     );
     assert!(
-        !npc.nav_path.is_empty(),
-        "Next waypoint must be queued in the same tick",
+        npc.patrol_dwell_until.is_none(),
+        "Dwell must clear on advance — next tick will queue movement to the new target, \
+         and the tick AFTER that (when NPC arrives) will stamp a fresh dwell",
     );
+    assert!(
+        npc.nav_path.is_empty(),
+        "No waypoint queued on the same tick — that happens on the next tick when \
+         `close` is false against the new target index",
+    );
+}
+
+/// Arrival-based dwell: when the NPC reaches the target waypoint
+/// (close + nav_path empty + no dwell stamp), the handler stamps the
+/// dwell deadline. Pre-fix bug shape: stamping at queue time meant the
+/// effective dwell was `max(0, delay - travel_time)`; for any hop
+/// longer than `delay_secs` to walk, the dwell was 0.
+#[tokio::test]
+async fn patrol_arrival_stamps_dwell_deadline() {
+    let mut mgr = make_castle_mgr();
+    let path = spawn_patrol_npc(&mut mgr, 200, [0.0; 3]);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.ai_state = AiState::Patrol;
+        npc.patrol_next_index = 0;
+        npc.position = path[0]; // just arrived
+        npc.patrol_dwell_until = None; // no dwell yet
+        npc.nav_path.clear();
+    }
+    let (tx, _rx) = mpsc::channel(16);
+
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(200).unwrap();
     assert!(
         npc.patrol_dwell_until.is_some(),
-        "Fresh dwell deadline must be stamped for the new waypoint",
+        "Arrival at waypoint with no existing dwell must stamp a fresh deadline",
     );
     assert!(
         npc.patrol_dwell_until.unwrap() > std::time::Instant::now(),
-        "Fresh dwell deadline must be in the future",
+        "Dwell deadline must be in the future",
+    );
+    assert_eq!(
+        npc.patrol_next_index, 0,
+        "Index must not advance on arrival"
     );
 }
 
@@ -188,11 +224,14 @@ async fn patrol_with_empty_path_drops_to_idle() {
 #[tokio::test]
 async fn patrol_with_future_dwell_deadline_is_a_no_op() {
     let mut mgr = make_castle_mgr();
-    spawn_patrol_npc(&mut mgr, 200, [0.0; 3]);
+    let path = spawn_patrol_npc(&mut mgr, 200, [0.0; 3]);
     if let Some(npc) = mgr.get_entity_mut(200) {
         npc.ai_state = AiState::Patrol;
         npc.patrol_next_index = 1;
-        // 60-second dwell — definitely in the future.
+        // NPC physically AT waypoint 1 (close to target). With a
+        // future dwell deadline, the handler must observe "still
+        // dwelling" and not touch anything.
+        npc.position = path[1];
         npc.patrol_dwell_until =
             Some(std::time::Instant::now() + std::time::Duration::from_secs(60));
         npc.nav_path.clear();

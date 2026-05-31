@@ -124,6 +124,80 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
             let level = params.get("level").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             Some(Action::SetAggression { entity_tag, level })
         }
+        "set_npc_poi" => {
+            // target_key carries the NPC tag, params carries x/y/z.
+            // Drop the action with a warn if coords are missing or
+            // non-finite — silently routing the NPC to (0,0,0) would
+            // almost certainly place them out of bounds or in the
+            // floor.
+            let entity_tag = row.target_key.as_deref()?.to_string();
+            let parse_coord = |key: &str| -> Option<f32> {
+                let v = params.get(key)?.as_f64()?;
+                let f = v as f32;
+                if f.is_finite() {
+                    Some(f)
+                } else {
+                    None
+                }
+            };
+            match (parse_coord("x"), parse_coord("y"), parse_coord("z")) {
+                (Some(x), Some(y), Some(z)) => Some(Action::SetNpcPoi {
+                    entity_tag,
+                    x,
+                    y,
+                    z,
+                }),
+                _ => {
+                    warn!(
+                        chain_id = row.chain_id,
+                        %entity_tag,
+                        ?params,
+                        "set_npc_poi: missing or non-finite x/y/z; dropping action"
+                    );
+                    None
+                }
+            }
+        }
+        "set_follow_target" => {
+            // target_key carries the NPC tag (the follower); the
+            // optional `target_tag` param carries the entity to follow.
+            // Missing/empty `target_tag` clears the follow state.
+            let entity_tag = row.target_key.as_deref()?.to_string();
+            let target_tag = params
+                .get("target_tag")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+            Some(Action::SetFollowTarget {
+                entity_tag,
+                target_tag,
+            })
+        }
+        "set_npc_ai_state" => {
+            // target_key carries the NPC tag; `state` param is one of
+            // "idle", "despawning", "submit", "error". Unknown values
+            // are rejected (the runtime would also reject other states
+            // because the action enum is a subset).
+            use crate::actions::NpcAiStateAction;
+            let entity_tag = row.target_key.as_deref()?.to_string();
+            let state_str = params.get("state").and_then(|v| v.as_str()).unwrap_or("");
+            let state = match state_str {
+                "idle" => NpcAiStateAction::Idle,
+                "despawning" => NpcAiStateAction::Despawning,
+                "submit" => NpcAiStateAction::Submit,
+                "error" => NpcAiStateAction::Error,
+                other => {
+                    warn!(
+                        chain_id = row.chain_id,
+                        %entity_tag,
+                        state = %other,
+                        "set_npc_ai_state: unknown state value, dropping action"
+                    );
+                    return None;
+                }
+            };
+            Some(Action::SetNpcAiState { entity_tag, state })
+        }
         "destroy_entity" => {
             let entity_tag = row.target_key.as_deref()?.to_string();
             Some(Action::DestroyTaggedEntity { entity_tag })
