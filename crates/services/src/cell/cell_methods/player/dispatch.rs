@@ -4,6 +4,20 @@ use crate::cell::space_manager::SpaceManager;
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
+// Static guard: the crafting sub-range must sit inside the ORG_CREATION..=
+// CANCEL_MOVIE outer arm, and the sub-range's own ordering must remain
+// `SPEND_APPLIED_SCIENCE_POINTS ≤ CRAFT ≤ RESPEC_CRAFTING`. A constant
+// renumber that breaks either invariant fails the build instead of
+// silently routing methods to the wrong sub-dispatcher.
+const _: () = assert!(
+    ORG_CREATION <= SPEND_APPLIED_SCIENCE_POINTS
+        && SPEND_APPLIED_SCIENCE_POINTS <= CRAFT
+        && CRAFT <= RESPEC_CRAFTING
+        && RESPEC_CRAFTING <= CANCEL_MOVIE,
+    "crafting sub-range constants must satisfy \
+     ORG_CREATION ≤ SPEND_APPLIED_SCIENCE_POINTS ≤ CRAFT ≤ RESPEC_CRAFTING ≤ CANCEL_MOVIE"
+);
+
 pub async fn dispatch(
     entity_id: u32,
     method_index: u16,
@@ -30,12 +44,15 @@ pub async fn dispatch(
         }
         ORG_CREATION..=CANCEL_MOVIE => {
             // The outer arm already pins method_index into [ORG_CREATION,
-            // CANCEL_MOVIE]. Only the [CRAFT, RESPEC_CRAFTING] sub-range
-            // routes to crafting; everything else in the outer range is
-            // social. Implicit constant ordering:
-            //   ORG_CREATION ≤ SPEND_APPLIED_SCIENCE_POINTS < CRAFT
-            //   ≤ RESPEC_CRAFTING ≤ CANCEL_MOVIE
-            if (CRAFT..=RESPEC_CRAFTING).contains(&method_index) {
+            // CANCEL_MOVIE]. The crafting sub-range is
+            // `SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING` (95..=100) —
+            // it has to start at 95, not 96, because index 95 (the discipline
+            // unlock entry point) was silently dropping into the social
+            // arm before. Everything else in the outer range routes to
+            // social. The constant ordering is pinned by a static assertion
+            // below (`crafting_sub_range_is_inside_outer`); if a future
+            // renumber violates it, the build fails.
+            if (SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING).contains(&method_index) {
                 super::crafting::dispatch(entity_id, method_index, args, tx, space_mgr).await
             } else {
                 super::social::dispatch(entity_id, method_index, args, tx, space_mgr).await
@@ -74,7 +91,10 @@ mod tests {
         // Outer 94..=108 — contains the crafting sub-range
         assert_eq!(ORG_CREATION, 94);
         assert_eq!(CANCEL_MOVIE, 108);
-        // Crafting sub-range: 96..=100
+        // Crafting sub-range: 95..=100 — includes
+        // SPEND_APPLIED_SCIENCE_POINTS (95) since it's the discipline
+        // unlock entry point and must reach the crafting handler.
+        assert_eq!(SPEND_APPLIED_SCIENCE_POINTS, 95);
         assert_eq!(CRAFT, 96);
         assert_eq!(RESPEC_CRAFTING, 100);
     }
@@ -132,6 +152,72 @@ mod tests {
                 "{label} arm must route method {method} and return true"
             );
         }
+    }
+
+    /// Regression guard for the outer-router fix that widened the crafting
+    /// sub-range from `CRAFT..=RESPEC_CRAFTING` (96..=100) to
+    /// `SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING` (95..=100).
+    ///
+    /// Bug shape: the previous narrow range silently dropped index 95
+    /// into the social arm of the outer dispatcher. Social's own
+    /// `dispatch` *also* has a `SPEND_APPLIED_SCIENCE_POINTS` arm (a
+    /// stub left from an earlier wiring attempt), so the bug is
+    /// invisible to a bare `assert!(handled)`: both branches return
+    /// `true`. The two arms emit distinguishable log messages —
+    /// crafting tags its log with `"(Phase 2)"`, social does not —
+    /// so we install `LogCapture` and assert the crafting variant
+    /// fired.
+    ///
+    /// If the outer router is narrowed back to `CRAFT..=RESPEC_CRAFTING`,
+    /// index 95 reaches the social arm; the `"(Phase 2)"` log never
+    /// fires, and this test fails. This is the assertion the existing
+    /// `spend_applied_science_points_routes_to_crafting` test in
+    /// `crafting.rs` *intended* to make but cannot, because that test
+    /// calls `crafting::dispatch` directly and bypasses the outer
+    /// router entirely.
+    #[tokio::test]
+    async fn outer_dispatch_routes_spend_asp_to_crafting_not_social() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        let capture = LogCapture::install();
+
+        let mut mgr = make_space_manager_with_player(1);
+        let (tx, _rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+
+        // Non-empty args so the parse-and-log path runs (rather than the
+        // truncated-args warn path, which both arms emit at different
+        // levels but with identical-shape strings).
+        let args = 42i32.to_le_bytes();
+        let handled = dispatch(
+            1,
+            SPEND_APPLIED_SCIENCE_POINTS,
+            &args,
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+        assert!(handled, "outer dispatch must handle method 95");
+
+        // Crafting's stub uniquely tags its log with "(Phase 2)" — the
+        // social-side stub at social.rs:66 emits the same UNIMPLEMENTED
+        // prefix but without that suffix. Pinning the suffix is what
+        // distinguishes "routed to crafting" from "routed to social".
+        let crafting_event = capture.find_message(Level::INFO, "(Phase 2)");
+        assert!(
+            crafting_event.is_some(),
+            "outer dispatch must route method 95 (SPEND_APPLIED_SCIENCE_POINTS) \
+             to the crafting submodule. The expected log \
+             'UNIMPLEMENTED: spendAppliedSciencePoints (Phase 2)' from \
+             cell_methods/player/crafting.rs did not fire. \
+             A passing `handled == true` is not sufficient because the \
+             social submodule also has a SPEND_APPLIED_SCIENCE_POINTS arm \
+             that returns true — the (Phase 2) suffix uniquely identifies \
+             the crafting branch.\n\nCaptured events: {:#?}",
+            capture.all()
+        );
     }
 
     #[tokio::test]

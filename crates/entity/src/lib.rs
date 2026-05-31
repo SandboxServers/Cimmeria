@@ -13,6 +13,7 @@
 pub mod abilities;
 pub mod base_entity;
 pub mod cell_entity;
+pub mod crafting;
 pub mod detour_ffi;
 pub mod interaction_flags;
 pub mod inventory;
