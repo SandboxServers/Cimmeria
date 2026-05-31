@@ -127,6 +127,7 @@ mod tests {
             key: [0u8; 32],
             account_id,
             access_level: 0,
+            dnd_message: None,
             char_list_sent: false,
             world_entry_sent: false,
             pending_player_entity_id: None,

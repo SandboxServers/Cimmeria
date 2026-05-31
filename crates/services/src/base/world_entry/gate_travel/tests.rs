@@ -44,6 +44,7 @@ fn make_state() -> ConnectedClientState {
         key: [0xCDu8; 32],
         account_id: 0xAABB,
         access_level: 0,
+        dnd_message: None,
         char_list_sent: true,
         world_entry_sent: true, // post-playCharacter
         pending_player_entity_id: Some(42),

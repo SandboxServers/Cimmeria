@@ -108,8 +108,23 @@ pub(crate) struct ConnectedClientState {
     pub enc: MercuryEncryption,
     pub key: [u8; 32],
     pub account_id: u32,
-    #[allow(dead_code)]
+    /// Account access level, populated from the login row. Used by
+    /// chat dispatch to set the `SPEAKER_GM` bit on `speaker_flags`
+    /// when `access_level >= 1` (matches `python/base/Chat.py::getSpeakerFlags`
+    /// which uses `accessLevel > 0`). 0=Player, 1=Moderator, 2=GameMaster
+    /// per `crates/commands/src/permissions.rs::AccessLevel`.
     pub access_level: u32,
+    /// DND auto-reply message. `Some(_)` means DND is active and the
+    /// chat dispatch sets `SPEAKER_DND` (0x04) on outgoing
+    /// `onPlayerCommunication`; `None` means not in DND. Set/cleared
+    /// by the `chatSetDNDMessage` (CHAT_SET_DND, 0xC4) handler. A
+    /// payload whose decoded message is empty or 1-char clears the
+    /// field, matching `python/base/SGWPlayer.py::chatSetDNDMessage`.
+    ///
+    /// AFK (`chatSetAFKMessage`) is a separate auto-reply-tells feature
+    /// and does NOT contribute to `ESpeakerFlags` — see issue #65 deep
+    /// dive and `entities/defs/enumerations.xml` (no `SPEAKER_AFK` token).
+    pub dnd_message: Option<String>,
     pub char_list_sent: bool,
     pub world_entry_sent: bool,
     pub pending_player_entity_id: Option<u32>,
