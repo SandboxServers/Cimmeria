@@ -974,6 +974,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-navmesh-extractor"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "cimmeria-upk",
+ "cimmeria-upk-objects",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-scene-editor"
 version = "0.1.0"
 dependencies = [
