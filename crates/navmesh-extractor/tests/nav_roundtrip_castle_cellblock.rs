@@ -42,7 +42,7 @@ fn castle_cellblock_nav_round_trips_byte_exact() {
     let parsed = XrcNav::round_trip(&bytes).expect("round-trip mismatch");
 
     // Sanity-check the parsed metadata matches the values quoted in the
-    // deep dive (issue #46) — guards against silent format drift.
+    // asset-pipeline deep dive — guards against silent format drift.
     assert_eq!(parsed.agent_height, 0.6);
     assert_eq!(parsed.agent_climb, 0.9);
     assert_eq!(parsed.agent_radius, 0.6);

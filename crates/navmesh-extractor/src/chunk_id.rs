@@ -181,11 +181,11 @@ mod tests {
         assert_eq!(id.position_z(), -1);
     }
 
-    /// The six representative chunk filenames cited in the deep dive
-    /// (issue #46) — confirms the (low → x, high → z) decode matches
-    /// what NavBuilder reads. Any change to the cast semantics here
-    /// would silently misplace every chunk relative to the C++ tool's
-    /// expectations.
+    /// The six representative chunk filenames cited in the
+    /// asset-pipeline deep dive — confirms the (low → x, high → z)
+    /// decode matches what NavBuilder reads. Any change to the cast
+    /// semantics here would silently misplace every chunk relative
+    /// to the C++ tool's expectations.
     #[test]
     fn six_chunks_decode_to_expected_positions() {
         let cases: &[(u32, i16, i16)] = &[

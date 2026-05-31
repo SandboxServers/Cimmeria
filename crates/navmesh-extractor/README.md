@@ -26,11 +26,11 @@ crates/entity/src/navigation.rs        ← runtime loader, Detour FFI
 ```
 
 The decision to keep the C++ NavBuilder as a build-time tool — rather
-than porting Recast into Rust right now — is captured in the deep dive
-on issue #46. The recurrent thread: 80% of the work is **extracting
-collision geometry from UE3 chunks**, not running Recast. Get the
-geometry pipeline right first; port the Recast wrapper later if it
-buys anything.
+than porting Recast into Rust right now — is captured in the
+asset-pipeline navmesh deep dive. The recurrent thread: 80% of the
+work is **extracting collision geometry from UE3 chunks**, not
+running Recast. Get the geometry pipeline right first; port the
+Recast wrapper later if it buys anything.
 
 ## Phase status
 

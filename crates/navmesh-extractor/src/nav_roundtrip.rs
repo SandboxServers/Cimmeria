@@ -90,18 +90,15 @@ fn check_count(value: u32, max: u32, field: &'static str) -> crate::Result<u32> 
 /// the on-disk header types — overflow can only happen on 32-bit hosts
 /// or for adversarially-chosen values, but `checked_mul` makes the
 /// failure mode explicit regardless of platform.
-fn checked_alloc_size(
-    count: u32,
-    stride: u32,
-    field: &'static str,
-) -> crate::Result<usize> {
-    let product = (count as u64)
-        .checked_mul(stride as u64)
-        .ok_or(ExtractError::NavHeaderOutOfRange {
-            field,
-            value: count as u64,
-            reason: "count * stride overflows u64",
-        })?;
+fn checked_alloc_size(count: u32, stride: u32, field: &'static str) -> crate::Result<usize> {
+    let product =
+        (count as u64)
+            .checked_mul(stride as u64)
+            .ok_or(ExtractError::NavHeaderOutOfRange {
+                field,
+                value: count as u64,
+                reason: "count * stride overflows u64",
+            })?;
     usize::try_from(product).map_err(|_| ExtractError::NavHeaderOutOfRange {
         field,
         value: product,
@@ -435,7 +432,8 @@ mod tests {
         buf.extend_from_slice(&0_u32.to_le_bytes()); // npolys
         buf.extend_from_slice(&6_u32.to_le_bytes()); // nvp
         buf.extend_from_slice(&0_u32.to_le_bytes()); // border_size
-        // cs, ch, bmin (3xf32), bmax (3xf32) — pad with zeros, the cap
+
+        // Pad zeros for cs, ch, bmin (3xf32), bmax (3xf32); the cap
         // trips before we ever touch these.
         buf.extend_from_slice(&[0u8; 4 * 8]);
         let mut cursor = Cursor::new(&buf);
