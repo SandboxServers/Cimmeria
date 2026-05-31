@@ -198,12 +198,12 @@ pub(super) async fn apply_damage_to_target(
         // Transition NPC AI to Dead so it stops fighting and moving
         if !target.is_player {
             target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
-            // Phase 5 (#48): if the NPC carries a respawn delay (loaded
-            // from spawnlist/template), stamp `respawn_at` so the
+            // If the NPC carries a respawn delay (loaded from
+            // spawnlist/template), stamp `respawn_at` so the
             // `npc_respawn_tick` brings it back to life. `None` →
-            // one-shot mob, corpse persists forever (the current
-            // behavior pre-#48). Read it off the entity here while we
-            // already hold the borrow rather than re-fetching later.
+            // one-shot mob, corpse persists forever. Read it off the
+            // entity here while we already hold the borrow rather
+            // than re-fetching later.
             if let Some(secs) = target.respawn_secs {
                 target.respawn_at =
                     Some(std::time::Instant::now() + std::time::Duration::from_secs(secs as u64));

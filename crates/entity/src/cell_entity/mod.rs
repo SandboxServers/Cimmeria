@@ -447,9 +447,10 @@ pub struct CellEntity {
 
     // ── NPC AI state ──────────────────────────────────────────────────────────
     /// AI state for NPC entities. See [`AiState`] for the full 12-state
-    /// machine. Defaults to `Idle`; only a subset of states are exercised
-    /// by the AI tick today (Idle, Fighting, Leashing, Dead, Patrol,
-    /// Wander); the rest are entry points for future content hooks.
+    /// machine. Defaults to `Idle`; only a subset is currently driven by
+    /// the runtime (`Idle`, `Fighting`, `Leashing`, `Dead`). The other
+    /// variants are entry points for future content hooks and AI tick
+    /// extensions.
     pub ai_state: AiState,
     /// Threat list: entity_id → accumulated threat value.
     pub threat_list: HashMap<u32, f32>,
@@ -673,6 +674,26 @@ pub struct BandolierItem {
 /// the same byte the original SGW server would have produced — used by
 /// the `setMovementType` broadcast helper for the subset of states with
 /// a corresponding `EMobMovementType` value.
+///
+/// # Wire animation mapping
+///
+/// State transitions broadcast `setMovementType` to AoI witnesses so
+/// the client picks the matching animation. Mapping:
+///
+/// | Server state       | Wire byte                       | Client animation     |
+/// |--------------------|---------------------------------|----------------------|
+/// | `Fighting` (entry) | `MobMovementType::CombatAdvance`| Combat-stance walk   |
+/// | `Leashing` (entry) | `MobMovementType::Leash`        | Leash-back trot      |
+/// | `Idle` (entry)     | None (clears cached state)      | (client keeps prev)  |
+/// | `Patrol` (entry)   | `MobMovementType::Patrol`       | Patrol walk          |
+/// | `Wander` (entry)   | `MobMovementType::Wander`       | Wander idle-walk     |
+/// | `Follow` (entry)   | `MobMovementType::Follow`       | Follow gait          |
+/// | `Dead` / `Spawning` / `Investigating` / `Despawning` / `Submit` / `Error` | None | (client keeps prev) |
+///
+/// `Patrol` / `Wander` / `Follow` rows are encoded but their AI tick
+/// handlers land in future PRs. The respawn tick clears
+/// `last_movement_type` on Dead → Idle so the next Fighting entry
+/// re-broadcasts CombatAdvance.
 ///
 /// `Spawning` is preserved as a variant for completeness with the source
 /// enum but is **never entered at runtime in Rust**. The Python original

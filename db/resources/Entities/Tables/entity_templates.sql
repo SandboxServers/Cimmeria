@@ -39,10 +39,16 @@ CREATE TABLE entity_templates (
     -- Per-template respawn delay in seconds. NULL = the template
     -- doesn't carry a default; per-spawn `spawnlist.respawn_secs`
     -- (if set) is the only source. If both are NULL the mob is
-    -- one-shot (corpse never repopulates). See
+    -- one-shot (corpse never repopulates). Zero / negative values
+    -- are rejected at the DB boundary so misconfigured seed data
+    -- fails fast instead of silently becoming a one-shot spawn
+    -- (the runtime loader also downgrades non-positive values to
+    -- NULL as a belt-and-suspenders fallback). See
     -- `cell_entity::respawn_secs` for the resolved field on the
     -- runtime entity.
-    respawn_secs integer
+    respawn_secs integer,
+    CONSTRAINT entity_templates_respawn_secs_positive
+        CHECK (respawn_secs IS NULL OR respawn_secs > 0)
 );
 
 --

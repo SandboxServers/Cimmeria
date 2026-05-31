@@ -468,11 +468,11 @@ async fn npc_ai_leash_emits_stat_update_then_state_field_to_witnesses() {
         }
     }
 
-    // Phase 1 of #48 added a `setMovementType(Leash)` broadcast at
-    // the top of `npc_ai_leash`, so the leash tick now fans out three
-    // messages instead of two. The relative ordering of onStatUpdate
-    // and onStateFieldUpdate is still load-bearing (stats before
-    // state-field flip — pin'd below); the new setMovementType lands
+    // `npc_ai_leash` emits a `setMovementType(Leash)` broadcast at
+    // the top of the tick, so the leash burst fans out three messages
+    // instead of two. The relative ordering of onStatUpdate and
+    // onStateFieldUpdate is still load-bearing (stats before
+    // state-field flip — pinned below); the setMovementType lands
     // first since it's emitted up front before the stat/state-field
     // pair.
     use crate::cell::cell_methods::being::SET_MOVEMENT_TYPE;

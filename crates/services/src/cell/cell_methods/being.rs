@@ -171,4 +171,119 @@ mod tests {
             "setTargetID(0) must clear current_target_id, not store Some(0)"
         );
     }
+
+    // ── setMovementType inbound handler ────────────────────────────────────
+
+    /// Fixture with two co-located NPCs in a Castle space. Both
+    /// connected via a player witness so the witness route fans out.
+    /// Returns the manager — caller picks the entity id to drive.
+    fn make_mgr_with_npc_and_witness() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        // Player witness.
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(100);
+        }
+        // NPC under test.
+        mgr.spawn_npc(50, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+        let _ = mgr.compute_aoi_changes();
+        mgr
+    }
+
+    /// Inbound `setMovementType(2)` on an NPC must store `Patrol` on
+    /// the entity and fan the byte out to AoI witnesses. Pin: any
+    /// refactor that drops either the storage or the broadcast will
+    /// fail this — the symptom would be "client never plays patrol
+    /// animation despite server seeing the inbound call".
+    #[tokio::test]
+    async fn set_movement_type_inbound_stores_and_broadcasts() {
+        use crate::cell::messages::CellToBaseMsg;
+        use cimmeria_entity::cell_entity::MobMovementType;
+
+        let mut mgr = make_mgr_with_npc_and_witness();
+        let (tx, mut rx) = mpsc::channel(16);
+
+        let handled = dispatch(50, SET_MOVEMENT_TYPE, &[2u8], &tx, &mut mgr).await;
+        assert!(handled, "dispatcher must accept SET_MOVEMENT_TYPE");
+
+        // Cache populated.
+        assert_eq!(
+            mgr.get_entity(50).unwrap().last_movement_type,
+            Some(MobMovementType::Patrol),
+            "inbound byte 2 must store MobMovementType::Patrol on the NPC",
+        );
+
+        // Witness got exactly one setMovementType packet with the
+        // single-byte Patrol payload.
+        let witness_sends: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|m| match m {
+                CellToBaseMsg::WitnessEntityMethod {
+                    entity_id: 50,
+                    method_index,
+                    args,
+                    ..
+                } if method_index == SET_MOVEMENT_TYPE => Some(args),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(witness_sends.len(), 1, "exactly one witness fanout");
+        assert_eq!(witness_sends[0], vec![2u8], "payload pin");
+    }
+
+    /// Unknown EMobMovementType byte (anything outside 0..=6) must NOT
+    /// be stored on the entity, must NOT fan out, and must surface a
+    /// warn-level log. Verifies the match arm's catch-all is the
+    /// failure-safe one.
+    #[tokio::test]
+    async fn set_movement_type_inbound_unknown_byte_is_dropped() {
+        use crate::cell::messages::CellToBaseMsg;
+
+        let mut mgr = make_mgr_with_npc_and_witness();
+        let (tx, mut rx) = mpsc::channel(16);
+
+        // 99 is well outside the enum range.
+        let handled = dispatch(50, SET_MOVEMENT_TYPE, &[99u8], &tx, &mut mgr).await;
+        assert!(handled);
+        assert!(
+            mgr.get_entity(50).unwrap().last_movement_type.is_none(),
+            "unknown byte must not populate the cache",
+        );
+        let any_setmt = std::iter::from_fn(|| rx.try_recv().ok()).any(|m| {
+            matches!(
+                m,
+                CellToBaseMsg::WitnessEntityMethod { method_index, .. }
+                    | CellToBaseMsg::EntityMethodCall { method_index, .. }
+                    if method_index == SET_MOVEMENT_TYPE
+            )
+        });
+        assert!(
+            !any_setmt,
+            "unknown byte must not produce a wire setMovementType",
+        );
+    }
+
+    /// Empty args is a malformed call. The handler short-circuits
+    /// without touching state — no panic, no broadcast. Returns
+    /// `true` because the method index is recognised even though the
+    /// payload is invalid.
+    #[tokio::test]
+    async fn set_movement_type_inbound_empty_args_is_a_no_op() {
+        let mut mgr = make_mgr_with_npc_and_witness();
+        let (tx, _rx) = mpsc::channel(16);
+        let handled = dispatch(50, SET_MOVEMENT_TYPE, &[], &tx, &mut mgr).await;
+        assert!(handled, "dispatcher still claims the method index");
+        assert!(
+            mgr.get_entity(50).unwrap().last_movement_type.is_none(),
+            "empty args must not touch the cache",
+        );
+    }
 }

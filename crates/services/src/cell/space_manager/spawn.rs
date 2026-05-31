@@ -126,12 +126,12 @@ impl SpaceManager {
         e.spawn_position = Some(pos);
         e.is_stationary = record.is_stationary;
         e.loot_table_id = record.loot_table_id;
-        // Phase 5 (#48): respawn data. `respawn_secs` is the resolved
-        // template/spawn precedence already collapsed by the loader's
-        // COALESCE. `original_interaction_type_flags` snapshots the
-        // template's interaction bits *before* death OR-merges
-        // `INT_NormalLoot`, so the respawn tick can restore the
-        // pre-death state cleanly without dragging the loot bit forward.
+        // `respawn_secs` is the resolved template/spawn precedence
+        // already collapsed by the loader's COALESCE.
+        // `original_interaction_type_flags` snapshots the template's
+        // interaction bits *before* death OR-merges `INT_NormalLoot`,
+        // so the respawn tick can restore the pre-death state cleanly
+        // without dragging the loot bit forward.
         e.respawn_secs = record.respawn_secs;
         e.original_interaction_type_flags = record.interaction_type;
 

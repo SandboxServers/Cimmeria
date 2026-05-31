@@ -3,13 +3,13 @@
 //!
 //! # Why this tick exists
 //!
-//! Pre-[#48], dead NPCs sat on the ground forever. The death path in
-//! `damage_apply` flipped `BSF_DEAD` + `BSF_MOVEMENT_LOCK`, set
-//! `ai_state = Dead`, and called `apply_death_transition` to drop the
+//! Without it, dead NPCs sit on the ground forever. The death path in
+//! `damage_apply` flips `BSF_DEAD` + `BSF_MOVEMENT_LOCK`, sets
+//! `ai_state = Dead`, and calls `apply_death_transition` to drop the
 //! attacker's reticle, fan out the threat clear, OR-merge
 //! `INT_NormalLoot` into `interaction_type_flags`, and broadcast the
-//! dead-state bit. After that the corpse was just a static object —
-//! the spawner had no way to repopulate it.
+//! dead-state bit. After that the corpse is just a static object —
+//! the spawner has no other way to repopulate it.
 //!
 //! This tick closes the loop: when [`damage_apply`] stamps
 //! `respawn_at = now + respawn_secs` (from the resolved
@@ -100,12 +100,11 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
     }
 
     for entity_id in ready {
-        // Phase 1: collect spawn position before any mutation so the
-        // position update at the end has the right target. Snap
-        // position via `update_entity_position` (which rewires the AoI
-        // grid cell membership) BEFORE mutating other state, so AoI
-        // witness recompute on the next tick sees the post-respawn
-        // location.
+        // Phase 1: snapshot the spawn position via an immutable read
+        // so Phase 3 has the destination cached without needing to
+        // re-borrow `space_mgr` mid-mutation. The actual snap
+        // happens in Phase 3 (post-state-mutation) so the entity is
+        // in its post-respawn shape before AoI sees the move.
         let spawn_pos = match space_mgr.get_entity(entity_id) {
             Some(e) => e.spawn_position,
             None => continue,
@@ -131,15 +130,19 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
                 focus.set_current(focus.max);
             }
 
-            // Clear death/movement-lock state flags via direct
-            // bitmask ops. `unset_state_flag` is the refcounted setter
-            // for content-driven flags; the death path used raw bit ops
-            // (mirrors python `SGWMob.py:292`) so the inverse here does
-            // the same — `BSF_DEAD` / `BSF_MOVEMENT_LOCK` aren't
-            // refcounted, they're set-once on death, cleared-once on
-            // respawn. Mixing in the refcounted helper would hit the
-            // zero-counter no-op and leave bits stuck.
-            entity.state_field &= !(BSF_DEAD | BSF_MOVEMENT_LOCK);
+            // Clear death/movement-lock state flags via the refcounted
+            // helper. The death path in `damage_apply` *does* use
+            // `set_state_flag` for BSF_DEAD / BSF_MOVEMENT_LOCK (the
+            // raw bit op there is BSF_IN_COMBAT, a separate concern),
+            // so each death increments the counter to 1. Calling
+            // `unset_state_flag` here decrements back to 0 and clears
+            // both the bit AND the `state_flag_counts` entry in one
+            // step — using raw bit ops would clear the bit but leave
+            // a stale `count = 1` entry, which would make the next
+            // death-respawn cycle see `count = 2` after the next set
+            // and require two unsets to clear, sticking the bit on.
+            entity.unset_state_flag(BSF_DEAD);
+            entity.unset_state_flag(BSF_MOVEMENT_LOCK);
 
             // Restore the pre-death interaction-type snapshot. The
             // death path OR-merged `INT_NormalLoot` into the live
@@ -147,7 +150,23 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
             // loot was taken. Either way, `original_interaction_type_flags`
             // captured at spawn time is the authoritative pre-death
             // state and is what we want the respawned NPC to expose.
-            entity.interaction_type_flags = entity.original_interaction_type_flags;
+            //
+            // Fallback: when the snapshot is `0` we can't tell whether
+            // (a) the template legitimately has no interaction bits or
+            // (b) the snapshot was never populated (NPC spawned via
+            // bare `CellEntity::new` rather than `spawn_npc_from_record`
+            // — currently used only by test fixtures, but a future GM
+            // /spawn command would also hit this path). Strip
+            // `INT_NormalLoot` off the live flags instead of clobbering
+            // to 0 — preserves any other content-driven bits and is a
+            // strict superset of the snapshot-restore behavior for
+            // record-spawned NPCs (whose snapshot would already exclude
+            // INT_NormalLoot).
+            entity.interaction_type_flags = if entity.original_interaction_type_flags != 0 {
+                entity.original_interaction_type_flags
+            } else {
+                entity.interaction_type_flags & !crate::cell::abilities::INT_NORMAL_LOOT
+            };
 
             // Drop the generated loot list and reset the loot index.
             // Without this, a respawned NPC would hand out the
@@ -474,6 +493,173 @@ mod tests {
         assert!(
             drain(&mut rx).is_empty(),
             "no wire emissions for future deadline"
+        );
+    }
+
+    /// Fallback path: when `original_interaction_type_flags = 0` (NPC
+    /// spawned via bare `CellEntity::new` rather than
+    /// `spawn_npc_from_record`), the respawn must strip
+    /// `INT_NormalLoot` off the live flags instead of clobbering them
+    /// to 0. Other content bits the death/loot path may have OR-merged
+    /// in must survive.
+    #[tokio::test]
+    async fn zero_snapshot_falls_back_to_stripping_loot_bit() {
+        use crate::cell::abilities::INT_NORMAL_LOOT;
+
+        let past = std::time::Instant::now() - std::time::Duration::from_millis(1);
+        let mut mgr = make_mgr_with_dead_npc(Some(30), Some(past));
+
+        // Override the fixture: snapshot is zero, but the live flags
+        // carry both a content bit (1<<5) AND the death-OR'd
+        // INT_NormalLoot. Realistic for an NPC the test harness
+        // synthesised without going through the record-load path.
+        if let Some(npc) = mgr.get_entity_mut(50) {
+            npc.original_interaction_type_flags = 0;
+            npc.interaction_type_flags = (1 << 5) | INT_NORMAL_LOOT;
+        }
+
+        let (tx, _rx) = mpsc::channel(64);
+        npc_respawn_tick(&tx, &mut mgr).await;
+
+        let npc = mgr.get_entity(50).unwrap();
+        assert_eq!(
+            npc.interaction_type_flags,
+            1 << 5,
+            "zero snapshot → must strip INT_NormalLoot while preserving other bits, not clobber to 0",
+        );
+    }
+
+    /// `state_flag_counts` for `BSF_DEAD` and `BSF_MOVEMENT_LOCK` must
+    /// be drained on respawn, not just the `state_field` bits. The
+    /// regression this guards: after kill → respawn → kill again, the
+    /// second death would re-set the bits via the counted helper, and
+    /// if the counter was still at 1 from the first death the new
+    /// count would be 2 — requiring two unsets to actually clear the
+    /// bit. The respawn-after-second-kill would clear the bit but
+    /// leave the counter at 1, sticking the bits on the third death.
+    #[tokio::test]
+    async fn respawn_drains_counted_state_flag_entries() {
+        let past = std::time::Instant::now() - std::time::Duration::from_millis(1);
+        let mut mgr = make_mgr_with_dead_npc(Some(30), Some(past));
+
+        // Pre-condition: the fixture's `set_state_flag(BSF_DEAD)`
+        // populated the counter. Verify before the tick so we know we
+        // have something to drain.
+        assert_eq!(
+            mgr.get_entity(50)
+                .unwrap()
+                .state_flag_counts
+                .get(&BSF_DEAD)
+                .copied(),
+            Some(1),
+            "fixture must populate the BSF_DEAD counter via set_state_flag",
+        );
+
+        let (tx, _rx) = mpsc::channel(64);
+        npc_respawn_tick(&tx, &mut mgr).await;
+
+        let npc = mgr.get_entity(50).unwrap();
+        assert!(
+            !npc.state_flag_counts.contains_key(&BSF_DEAD),
+            "BSF_DEAD entry must be removed from state_flag_counts on respawn",
+        );
+        assert!(
+            !npc.state_flag_counts.contains_key(&BSF_MOVEMENT_LOCK),
+            "BSF_MOVEMENT_LOCK entry must be removed from state_flag_counts on respawn",
+        );
+    }
+
+    /// Full kill → respawn → re-kill → respawn loop. Pins that the
+    /// respawn machinery is reentrant: `respawn_at` clears + re-stamps,
+    /// `state_flag_counts` doesn't accumulate, HP / position / nav /
+    /// movement-type state are clean on every cycle. The shape that
+    /// would break this is any "set once" reset (e.g., a one-time
+    /// flag that latched after the first respawn).
+    #[tokio::test]
+    async fn kill_respawn_rekill_loop_is_idempotent() {
+        let past = std::time::Instant::now() - std::time::Duration::from_millis(1);
+        let mut mgr = make_mgr_with_dead_npc(Some(30), Some(past));
+        let (tx, _rx) = mpsc::channel(64);
+
+        // Cycle 1: corpse → respawn.
+        npc_respawn_tick(&tx, &mut mgr).await;
+        {
+            let npc = mgr.get_entity(50).unwrap();
+            assert_eq!(npc.ai_state, AiState::Idle, "cycle 1 → Idle");
+            assert!(npc.respawn_at.is_none(), "cycle 1 → respawn_at cleared");
+        }
+
+        // Re-kill (mimic damage_apply's kill site).
+        {
+            let npc = mgr.get_entity_mut(50).unwrap();
+            npc.set_state_flag(BSF_DEAD);
+            npc.set_state_flag(BSF_MOVEMENT_LOCK);
+            npc.ai_state = AiState::Dead;
+            if let Some(hp) = npc.stats.get_mut(HEALTH) {
+                hp.set_current(0);
+            }
+            // Re-stamp the deadline.
+            npc.respawn_at = Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
+            // Mimic death's loot-bit OR-merge so the snapshot-restore
+            // path is exercised again.
+            npc.interaction_type_flags |= crate::cell::abilities::INT_NORMAL_LOOT;
+            // Drop the NPC away from spawn so the position snap is
+            // observable again.
+            npc.position = cimmeria_common::Vector3::new(99.0, 0.0, 99.0);
+        }
+
+        // Cycle 2: respawn again.
+        npc_respawn_tick(&tx, &mut mgr).await;
+        {
+            let npc = mgr.get_entity(50).unwrap();
+            assert_eq!(npc.ai_state, AiState::Idle, "cycle 2 → Idle");
+            assert_eq!(
+                npc.state_field & BSF_DEAD,
+                0,
+                "cycle 2 → BSF_DEAD cleared on second respawn",
+            );
+            assert!(
+                !npc.state_flag_counts.contains_key(&BSF_DEAD),
+                "cycle 2 → counter entry drained (regression guard for stick-on bug)",
+            );
+            assert_eq!(npc.position.x, 10.0, "cycle 2 → re-snapped to spawn");
+            let hp = npc.stats.get(HEALTH).unwrap();
+            assert_eq!(hp.cur, hp.max, "cycle 2 → HP restored");
+            assert!(npc.respawn_at.is_none(), "cycle 2 → respawn_at cleared");
+        }
+    }
+
+    /// `broadcast_movement_type` is NPC-only. Calling it on a player
+    /// must short-circuit with a warn and emit nothing — without this
+    /// guard the helper would send a meaningless EMobMovementType byte
+    /// to the player's client (and to nearby observers via the
+    /// self+witnesses fanout).
+    #[tokio::test]
+    async fn broadcast_movement_type_on_player_is_a_no_op() {
+        use cimmeria_entity::cell_entity::MobMovementType;
+
+        let mut mgr = make_mgr_with_dead_npc(None, None);
+        // Promote entity 1 (the player witness in the fixture) to a
+        // movement-type call recipient. Players normally don't have
+        // `last_movement_type`; this test pins that the guard fires
+        // BEFORE the cache mutation.
+        let (tx, mut rx) = mpsc::channel(16);
+        crate::cell::abilities::broadcast_movement_type(
+            1,
+            Some(MobMovementType::CombatAdvance),
+            &tx,
+            &mut mgr,
+        )
+        .await;
+
+        let p = mgr.get_entity(1).unwrap();
+        assert!(
+            p.last_movement_type.is_none(),
+            "player guard must short-circuit before touching the cache",
+        );
+        assert!(
+            drain(&mut rx).is_empty(),
+            "no wire messages must be emitted for a player target",
         );
     }
 }

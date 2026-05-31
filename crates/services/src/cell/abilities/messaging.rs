@@ -206,6 +206,21 @@ pub(crate) async fn broadcast_movement_type(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    // NPC-only guard. `setMovementType` is a mob-animation hint with
+    // no player-side concept — players don't have a movement-type
+    // animation graph the way mobs do. If a caller routes this at a
+    // player entity, no-op and warn so the misuse is visible without
+    // sending a meaningless byte to the player's client.
+    let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
+    if is_player {
+        tracing::warn!(
+            entity_id,
+            ?kind,
+            "broadcast_movement_type called on a player entity — no-op (setMovementType is NPC-only)"
+        );
+        return;
+    }
+
     // Compare-and-set against the cached value. Two-step borrow:
     // immutable read, then mutable write, then drop the borrow before
     // the await below so the helper's `&SpaceManager` parameter doesn't
@@ -488,7 +503,7 @@ mod tests {
         assert_eq!(msgs_a.len(), count_b);
     }
 
-    // ── broadcast_movement_type (#48 + #270) ───────────────────────────────
+    // ── broadcast_movement_type ────────────────────────────────────────────
 
     /// `broadcast_movement_type(Patrol)` on an NPC produces exactly one
     /// 1-byte payload `[0x02]` (EMobMovementType::Patrol) to each witness
