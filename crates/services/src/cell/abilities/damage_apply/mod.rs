@@ -176,9 +176,6 @@ pub(super) async fn apply_damage_to_target(
     // Check if target died — use entity's state_field so we preserve other flags
     let target_died = target.stats.get(HEALTH).is_some_and(|s| s.cur <= 0);
     if target_died {
-        target.set_state_flag(combat::BSF_DEAD);
-        target.set_state_flag(combat::BSF_MOVEMENT_LOCK); // prevent movement while dead
-
         // Player corpses keep the cell entity alive across same-world
         // respawn (`ReanchorPlayer` reuses the entity instead of
         // destroying and re-creating). Any in-flight weapon-action
@@ -193,31 +190,17 @@ pub(super) async fn apply_damage_to_target(
         // a possibly-dead-or-departed entity). NPCs are destroyed
         // outright on death, so the cleanup is player-only.
         if target.is_player {
+            target.set_state_flag(combat::BSF_DEAD);
+            target.set_state_flag(combat::BSF_MOVEMENT_LOCK);
             target.clear_weapon_action_state();
-        }
-        // Transition NPC AI to Dead so it stops fighting and moving
-        if !target.is_player {
-            target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
-            // If the NPC carries a respawn delay (loaded from
-            // spawnlist/template), stamp `respawn_at` so the
-            // `npc_respawn_tick` brings it back to life. `None` →
-            // one-shot mob, corpse persists forever. Read it off the
-            // entity here while we already hold the borrow rather
-            // than re-fetching later.
-            if let Some(secs) = target.respawn_secs {
-                target.respawn_at =
-                    Some(std::time::Instant::now() + std::time::Duration::from_secs(secs as u64));
-                tracing::info!(
-                    target_eid,
-                    respawn_secs = secs,
-                    "NPC death: respawn scheduled"
-                );
-            }
-            // Also clear the cached movement-type so the corpse's wire
-            // state matches its idle pose. The next AI tick after
-            // respawn will re-broadcast whatever the new state
-            // dictates.
-            target.last_movement_type = None;
+        } else {
+            // NPC kill: route through the canonical helper so any
+            // future kill path (effect-driven deaths, scripted kills,
+            // GM commands) can call `combat::mark_npc_dead` and get
+            // the same state mutations — BSF_DEAD / BSF_MOVEMENT_LOCK,
+            // ai_state = Dead, respawn_at stamp, last_movement_type
+            // clear, nav_path / velocity reset.
+            //
             // Do NOT clear `threat_list` here: `apply_death_transition`
             // calls `clear_dead_npc_from_all_player_threat`, which walks
             // this list to drain each aggroed player's `threatened_mobs`
@@ -225,19 +208,16 @@ pub(super) async fn apply_damage_to_target(
             // every aggroed player permanently in-combat. The drain step
             // runs further down in this same function, immediately after
             // `apply_death_transition` consumes the list.
-            target.nav_path.clear();
-            target.velocity = [0.0; 3]; // Stop movement interpolation
-                                        // NOTE: do NOT zero `interaction_type_flags` here. Python `SGWMob.onDead()`
-                                        // OR-merges `INT_NormalLoot` and preserves all other bits — content-driven
-                                        // bits (quest tags, mission interactions) must survive death. The dead-state
-                                        // bit handles cursor distinction client-side; we don't need to clear
-                                        // `INT_Attackable` to suppress the shootable cursor.
-                                        // BSF_IN_COMBAT is intentionally written via raw bitmask ops
-                                        // across the codebase (use_ability sets it on weapon-fire,
-                                        // threat module clears it when the threat list drains). Mixing
-                                        // it with `unset_state_flag` here would hit the zero-counter
-                                        // no-op path and leave the bit stuck — NPCs would render as
-                                        // still-in-combat after death. Mirrors python SGWMob.py:292.
+            //
+            // Do NOT zero `interaction_type_flags` here. Python
+            // `SGWMob.onDead()` OR-merges `INT_NormalLoot` and
+            // preserves all other bits — content-driven bits (quest
+            // tags, mission interactions) must survive death.
+            //
+            // `BSF_IN_COMBAT` clear stays here as a raw bit op (see
+            // python `SGWMob.py:292`) — the helper deliberately stays
+            // out of the combat-state-machine concerns.
+            combat::mark_npc_dead(target);
             target.state_field &= !combat::BSF_IN_COMBAT;
         }
         tracing::info!(

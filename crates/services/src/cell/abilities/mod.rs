@@ -37,6 +37,7 @@ pub use dispatch::handle_use_ability_on_ground;
 pub(crate) use loot_drop::INT_NORMAL_LOOT;
 pub(crate) use messaging::{
     broadcast_movement_type, request_appearance_refresh, send_entity_method,
+    send_entity_method_to_witnesses,
 };
 // `send_entity_method_to_witnesses` and `send_entity_method_to_self_and_witnesses`
 // land here for #278 child PRs to adopt. They stay private to the `messaging`

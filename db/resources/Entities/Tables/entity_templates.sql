@@ -39,16 +39,23 @@ CREATE TABLE entity_templates (
     -- Per-template respawn delay in seconds. NULL = the template
     -- doesn't carry a default; per-spawn `spawnlist.respawn_secs`
     -- (if set) is the only source. If both are NULL the mob is
-    -- one-shot (corpse never repopulates). Zero / negative values
-    -- are rejected at the DB boundary so misconfigured seed data
-    -- fails fast instead of silently becoming a one-shot spawn
-    -- (the runtime loader also downgrades non-positive values to
-    -- NULL as a belt-and-suspenders fallback). See
+    -- one-shot (corpse never repopulates).
+    --
+    -- Minimum: 3 seconds. The death animation needs time to play
+    -- before the corpse comes back, and the 1 Hz respawn tick
+    -- needs a window where the dead-state wire packets reach the
+    -- client before the alive-state ones; 1- and 2-second
+    -- respawns produce a visible "die / instantly alive" glitch
+    -- in the worst case. Recommended floor for typical mobs is
+    -- 30 seconds; bosses 300+. Values below 3 are rejected at the
+    -- DB boundary so misconfigured seed data fails fast (the
+    -- runtime loader also downgrades non-positive values to NULL
+    -- as a belt-and-suspenders fallback). See
     -- `cell_entity::respawn_secs` for the resolved field on the
     -- runtime entity.
     respawn_secs integer,
-    CONSTRAINT entity_templates_respawn_secs_positive
-        CHECK (respawn_secs IS NULL OR respawn_secs > 0)
+    CONSTRAINT entity_templates_respawn_secs_min_3
+        CHECK (respawn_secs IS NULL OR respawn_secs >= 3)
 );
 
 --

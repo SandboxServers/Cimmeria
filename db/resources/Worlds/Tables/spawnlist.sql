@@ -19,13 +19,11 @@ CREATE TABLE spawnlist (
     -- to the template default. When both are NULL the mob is
     -- one-shot. Lets level designers tune a boss encounter to a
     -- different cadence than the same template's trash spawns.
-    -- Zero / negative values are rejected at the DB boundary so a
-    -- typo in a spawn row fails fast instead of silently becoming
-    -- a one-shot spawn (the runtime loader also downgrades
-    -- non-positive values to NULL as a belt-and-suspenders fallback).
+    -- Minimum 3 seconds — see `entity_templates.respawn_secs`
+    -- comment for the floor rationale.
     respawn_secs integer,
-    CONSTRAINT spawnlist_respawn_secs_positive
-        CHECK (respawn_secs IS NULL OR respawn_secs > 0)
+    CONSTRAINT spawnlist_respawn_secs_min_3
+        CHECK (respawn_secs IS NULL OR respawn_secs >= 3)
 );
 
 --

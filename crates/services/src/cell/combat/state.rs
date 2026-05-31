@@ -57,6 +57,54 @@ pub fn is_dead_state(state_field: u32) -> bool {
     state_field & BSF_DEAD != 0
 }
 
+/// Apply the NPC-side death-state mutations on a cell entity.
+///
+/// Single home for the contract every NPC-kill path must satisfy:
+/// - Set `BSF_DEAD` and `BSF_MOVEMENT_LOCK` (counted, so `clear_all_state_flags`
+///   on respawn drains the counters).
+/// - Transition `ai_state` to `Dead` so the AI tick stops scheduling actions.
+/// - Stamp `respawn_at = now + respawn_secs` when `respawn_secs.is_some()`;
+///   leave `respawn_at = None` for one-shot mobs. The respawn tick promotes
+///   the entity back to `Idle` once the deadline passes.
+/// - Clear `last_movement_type` so the next AI state-entry re-broadcasts
+///   `setMovementType` to witnesses.
+/// - Clear `nav_path` + zero `velocity` so the corpse stops mid-pathfind.
+///
+/// **Does not** clear `threat_list` — the death-side wire helper
+/// (`cell::abilities::death::apply_death_transition`) walks it to drain
+/// each aggroed player's `threatened_mobs` set and broadcast the
+/// `BSF_InCombat` clear. Wiping it here would leave every aggroed
+/// player permanently in-combat.
+///
+/// **Does not** fire any wire packets. Caller is responsible for the
+/// `apply_death_transition` burst (reticle clear, threat fanout, loot
+/// drop, state-field broadcast) — splitting state mutation from wire
+/// dispatch keeps the helper safe to call from non-async contexts and
+/// keeps the wire-order invariants visible at the kill site.
+///
+/// Player entities are out of scope — the player-side death path has
+/// its own concerns (weapon-action cleanup, defeat window, respawner
+/// list). Callers must gate on `!entity.is_player` before invoking.
+pub fn mark_npc_dead(entity: &mut cimmeria_entity::cell_entity::CellEntity) {
+    use cimmeria_entity::cell_entity::AiState;
+
+    entity.set_state_flag(BSF_DEAD);
+    entity.set_state_flag(BSF_MOVEMENT_LOCK);
+    entity.ai_state = AiState::Dead;
+    if let Some(secs) = entity.respawn_secs {
+        entity.respawn_at =
+            Some(std::time::Instant::now() + std::time::Duration::from_secs(secs as u64));
+        tracing::info!(
+            entity_id = entity.entity_id.0,
+            respawn_secs = secs,
+            "NPC death: respawn scheduled",
+        );
+    }
+    entity.last_movement_type = None;
+    entity.nav_path.clear();
+    entity.velocity = [0.0; 3];
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

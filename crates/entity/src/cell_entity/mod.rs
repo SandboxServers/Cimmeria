@@ -456,6 +456,14 @@ pub struct CellEntity {
     pub threat_list: HashMap<u32, f32>,
     /// Position where this NPC was spawned (for leashing).
     pub spawn_position: Option<Vector3>,
+    /// Direction (`[pitch, yaw, roll]` in radians) the NPC was facing at
+    /// spawn time. Captured from `spawnlist.heading` for record-spawned
+    /// NPCs, defaulted to `Vector3::zero()` for the bare-spawn path.
+    /// Restored on respawn so the NPC doesn't snap to facing-north every
+    /// time it comes back — combat sets `direction` to face the target,
+    /// and without this snapshot the respawn would lose the original
+    /// heading.
+    pub spawn_direction: Option<Vector3>,
     /// Ticks until next AI action (count-down from ai tick interval).
     pub ai_cooldown_ticks: u32,
     /// Deadline for the next AI fight tick on this NPC, in service-local
@@ -498,6 +506,18 @@ pub struct CellEntity {
     /// or last broadcast was a "clear" (entering Idle / Dead /
     /// Despawning). Cached so re-entering the same state from the AI
     /// tick doesn't re-spam the wire — only state *changes* fan out.
+    ///
+    /// **Ownership**: this cache is written exclusively by
+    /// [`cell::abilities::messaging::broadcast_movement_type`]. The two
+    /// legitimate call sites are (a) the NPC AI tick, which broadcasts
+    /// on every state transition (Fighting entry, Leashing entry,
+    /// Idle entry), and (b) the inbound `setMovementType` cell-method
+    /// handler, which routes the inbound byte through the same helper
+    /// so the dedup is consistent in both directions. **Server-side
+    /// callers that want to set a movement type must go through the
+    /// helper, not write this field directly** — direct writes bypass
+    /// the AoI broadcast and the dedup, producing a server-thinks-A /
+    /// client-thinks-B divergence.
     ///
     /// Server-side only; never persisted, never restored across login.
     pub last_movement_type: Option<MobMovementType>,
@@ -680,20 +700,21 @@ pub struct BandolierItem {
 /// State transitions broadcast `setMovementType` to AoI witnesses so
 /// the client picks the matching animation. Mapping:
 ///
-/// | Server state       | Wire byte                       | Client animation     |
-/// |--------------------|---------------------------------|----------------------|
-/// | `Fighting` (entry) | `MobMovementType::CombatAdvance`| Combat-stance walk   |
-/// | `Leashing` (entry) | `MobMovementType::Leash`        | Leash-back trot      |
-/// | `Idle` (entry)     | None (clears cached state)      | (client keeps prev)  |
-/// | `Patrol` (entry)   | `MobMovementType::Patrol`       | Patrol walk          |
-/// | `Wander` (entry)   | `MobMovementType::Wander`       | Wander idle-walk     |
-/// | `Follow` (entry)   | `MobMovementType::Follow`       | Follow gait          |
-/// | `Dead` / `Spawning` / `Investigating` / `Despawning` / `Submit` / `Error` | None | (client keeps prev) |
+/// | Server state       | Wire byte                        | Client animation    | Driven? |
+/// |--------------------|----------------------------------|---------------------|---------|
+/// | `Fighting` (entry) | `MobMovementType::CombatAdvance` | Combat-stance walk  | Yes     |
+/// | `Leashing` (entry) | `MobMovementType::Leash`         | Leash-back trot     | Yes     |
+/// | `Idle` (entry)     | None (clears cached state)       | (client keeps prev) | Yes     |
+/// | `Patrol` (entry)   | `MobMovementType::Patrol`        | Patrol walk         | No (Phase 2) |
+/// | `Wander` (entry)   | `MobMovementType::Wander`        | Wander idle-walk    | No (Phase 3) |
+/// | `Follow` (entry)   | `MobMovementType::Follow`        | Follow gait         | No (Phase 6) |
+/// | `Dead` / `Spawning` / `Investigating` / `Despawning` / `Submit` / `Error` | None | (client keeps prev) | (no transition) |
 ///
-/// `Patrol` / `Wander` / `Follow` rows are encoded but their AI tick
-/// handlers land in future PRs. The respawn tick clears
-/// `last_movement_type` on Dead → Idle so the next Fighting entry
-/// re-broadcasts CombatAdvance.
+/// "Driven? = No" rows are encoded but their AI tick handlers haven't
+/// landed yet — broadcasting on entry is the planned mapping; the
+/// state transitions themselves don't fire today. The respawn tick
+/// clears `last_movement_type` on Dead → Idle so the next Fighting
+/// entry re-broadcasts CombatAdvance.
 ///
 /// `Spawning` is preserved as a variant for completeness with the source
 /// enum but is **never entered at runtime in Rust**. The Python original
@@ -803,6 +824,7 @@ impl CellEntity {
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),
             spawn_position: None,
+            spawn_direction: None,
             ai_cooldown_ticks: 0,
             ai_retry_at: None,
             nav_path: VecDeque::new(),

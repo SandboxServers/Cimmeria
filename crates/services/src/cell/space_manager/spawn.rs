@@ -33,6 +33,7 @@ impl SpaceManager {
         cell_entity.class_id = 0x04; // SGWMob
         cell_entity.is_player = false;
         cell_entity.spawn_position = Some(pos);
+        cell_entity.spawn_direction = Some(dir);
         cell_entity
             .abilities
             .add_ability(super::super::combat::NPC_DEFAULT_ABILITY);
@@ -124,6 +125,7 @@ impl SpaceManager {
         e.body_set = Some(record.body_set.clone());
         e.components = record.components.clone().unwrap_or_default();
         e.spawn_position = Some(pos);
+        e.spawn_direction = Some(dir);
         e.is_stationary = record.is_stationary;
         e.loot_table_id = record.loot_table_id;
         // `respawn_secs` is the resolved template/spawn precedence
