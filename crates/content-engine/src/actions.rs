@@ -157,6 +157,70 @@ pub enum Action {
     /// Set the aggression level on a tagged NPC.
     SetAggression { entity_tag: String, level: i32 },
 
+    /// Push a tagged NPC into `AiState::Investigating` with the given
+    /// world-space point of interest. The NPC pathfinds to the POI,
+    /// dwells `INVESTIGATE_DWELL_SECS` (hardcoded 5 seconds, defined
+    /// in `crates/services/src/cell/service/npc_ai.rs`), and returns
+    /// to `AiState::Idle`. Future variations on the dwell would lift
+    /// it to a template column.
+    ///
+    /// Threat preemption converts Investigating → Fighting. The POI
+    /// field persists on the entity post-fight but doesn't auto-route
+    /// back — only Patrol and Wander auto-resume from their per-state
+    /// scratch on Fighting → Leashing → Idle. Content authors who
+    /// want a continued investigation after a fight must fire a
+    /// fresh `SetNpcPoi`.
+    SetNpcPoi {
+        entity_tag: String,
+        x: f32,
+        y: f32,
+        z: f32,
+    },
+
+    /// Set or clear the follow target for a tagged NPC. When
+    /// `target_tag` resolves to an entity, the NPC transitions to
+    /// `AiState::Follow` and maintains the distance band defined by
+    /// `follow_min_distance` / `follow_max_distance` on the template.
+    ///
+    /// `target_tag = None` (or a value the runtime can't resolve) is
+    /// treated as "clear": the follow state drops to Idle and
+    /// `follow_target_id` is cleared. Pin the unresolvable case so a
+    /// typo or a removed tag doesn't leave the follower in a half
+    /// state.
+    ///
+    /// Threat preemption converts Follow → Fighting; the follow
+    /// target field persists on the entity but doesn't auto-route
+    /// back — only Patrol and Wander auto-resume from their per-state
+    /// scratch on Fighting → Leashing → Idle. Re-fire the action if a
+    /// continued follow is desired post-fight.
+    SetFollowTarget {
+        entity_tag: String,
+        target_tag: Option<String>,
+    },
+
+    /// Push a tagged NPC into a specific AI state. Supports the
+    /// terminal / scripted states: `Despawning`, `Submit`, `Error`,
+    /// and `Idle` (for cleanup). Other states should be reached via
+    /// their behavior-specific actions (`SetNpcPoi` for Investigating,
+    /// `SetFollowTarget` for Follow, etc.) so the per-state scratch
+    /// fields are populated correctly.
+    ///
+    /// - `Despawning` → AI tick removes the entity from the space
+    ///   on the next pass. Witnesses get an AoI-left event.
+    /// - `Submit` → clears combat state, broadcasts movement-type
+    ///   None; NPC sits inert until destroyed or transitioned.
+    /// - `Error` → halts AI ticking on the NPC, logs the inconsistency.
+    ///   Used by `enterErrorAIState` slash commands and by the AI tick
+    ///   itself when it detects unrecoverable state.
+    /// - `Idle` → clean fallback that lets the AI tick re-route.
+    ///
+    /// Other state values (Fighting/Leashing/etc.) are rejected with
+    /// a warn log — those are owned by the runtime, not content.
+    SetNpcAiState {
+        entity_tag: String,
+        state: NpcAiStateAction,
+    },
+
     /// Destroy a tagged entity (remove from world).
     DestroyTaggedEntity { entity_tag: String },
 
@@ -257,6 +321,19 @@ pub enum PropertyOp {
     Add,
     Subtract,
     Multiply,
+}
+
+/// Subset of [`cimmeria_entity::cell_entity::AiState`] reachable from
+/// content actions. Other states (Fighting/Leashing/Patrol/Wander/
+/// Investigating/Follow/Dead/Spawning) are owned by the runtime and
+/// must be reached via their behavior-specific paths so the per-state
+/// scratch fields are populated correctly.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum NpcAiStateAction {
+    Idle,
+    Despawning,
+    Submit,
+    Error,
 }
 
 /// Result of executing a single action.

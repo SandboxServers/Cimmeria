@@ -546,6 +546,72 @@ pub struct CellEntity {
     /// interaction cursor and try to hand out a fresh loot table on
     /// right-click). Set once at spawn, read once by `npc_respawn_tick`.
     pub original_interaction_type_flags: i64,
+    /// Ordered patrol waypoints for this NPC. Loaded from
+    /// `entity_templates.patrol_path_id` → `point_set_points` at
+    /// spawn time. Empty for non-patrolling NPCs (the common case).
+    ///
+    /// The patrol AI handler advances `patrol_next_index` modulo
+    /// `patrol_path.len()` so the route loops. Threat preemption
+    /// (NPC enters Fighting) does NOT reset the index — when the
+    /// fight ends and the NPC re-enters Patrol, it resumes from
+    /// where it left off.
+    pub patrol_path: Vec<Vector3>,
+    /// Index of the next waypoint this NPC should walk to. Always
+    /// `< patrol_path.len()` when the patrol path is non-empty;
+    /// wraps modulo the path length when the last waypoint is
+    /// consumed. Persists across Patrol → Fighting → Patrol
+    /// transitions so re-engagement resumes mid-route.
+    pub patrol_next_index: usize,
+    /// Dwell deadline: when `Some(t)`, the NPC is paused at the
+    /// most-recently-reached waypoint until `now >= t`. Set when
+    /// the path-follower pops the last `nav_path` entry equal to
+    /// the waypoint position. Cleared by the patrol handler when
+    /// it pushes the next waypoint into `nav_path`.
+    pub patrol_dwell_until: Option<std::time::Instant>,
+    /// Per-template patrol dwell duration. Copied from
+    /// `entity_templates.patrol_point_delay` (defaulted to 2.0
+    /// when NULL). Read by the patrol handler when it stamps a
+    /// fresh `patrol_dwell_until` deadline.
+    pub patrol_point_delay_secs: f32,
+    /// Wander radius in world units. `0.0` → NPC doesn't wander.
+    /// Positive values opt the NPC into `AiState::Wander` from
+    /// Idle when it has no patrol_path and no positive aggression.
+    /// Loaded from `entity_templates.wander_radius`.
+    pub wander_radius: f32,
+    /// Random-dwell lower bound between successive wander hops,
+    /// in seconds. The handler samples a uniform value in
+    /// `[min, max]` and stamps `wander_next_at = now + sample`
+    /// when it queues a fresh waypoint.
+    pub wander_min_dwell_secs: f32,
+    /// Random-dwell upper bound between successive wander hops,
+    /// in seconds. The DB CHECK guarantees `min <= max`.
+    pub wander_max_dwell_secs: f32,
+    /// Deadline at which the wander handler may pick a fresh
+    /// waypoint. `None` on first entry (handler picks immediately
+    /// and stamps a deadline for the next pass).
+    pub wander_next_at: Option<std::time::Instant>,
+    /// Investigating-state point of interest in world coordinates.
+    /// Set by the `SetNpcPoi` content action; consumed by the
+    /// `npc_ai_investigate` handler which pathfinds to the POI,
+    /// dwells, then returns to Idle (clearing the field).
+    pub poi: Option<Vector3>,
+    /// Deadline at which the investigation dwell ends and the NPC
+    /// returns to Idle. Set by the investigate handler when it
+    /// pops the last nav_path entry at the POI.
+    pub investigate_until: Option<std::time::Instant>,
+    /// Entity ID of the player or NPC this entity is currently
+    /// following. Set by the `SetFollowTarget` content action;
+    /// cleared when the target disappears or by an explicit
+    /// `SetFollowTarget` with a None target.
+    pub follow_target_id: Option<u32>,
+    /// Lower bound of the follow distance band, in world units.
+    /// Loaded from `entity_templates.follow_min_distance`.
+    pub follow_min_distance: f32,
+    /// Upper bound of the follow distance band, in world units.
+    /// Loaded from `entity_templates.follow_max_distance`. The
+    /// follow handler walks toward the target whenever the
+    /// distance exceeds this.
+    pub follow_max_distance: f32,
 
     // ── Saved mission state (for re-login) ────────────────────────────────────
     /// Saved missions loaded from DB, to be populated before content engine fires.
@@ -700,21 +766,22 @@ pub struct BandolierItem {
 /// State transitions broadcast `setMovementType` to AoI witnesses so
 /// the client picks the matching animation. Mapping:
 ///
-/// | Server state       | Wire byte                        | Client animation    | Driven? |
-/// |--------------------|----------------------------------|---------------------|---------|
-/// | `Fighting` (entry) | `MobMovementType::CombatAdvance` | Combat-stance walk  | Yes     |
-/// | `Leashing` (entry) | `MobMovementType::Leash`         | Leash-back trot     | Yes     |
-/// | `Idle` (entry)     | None (clears cached state)       | (client keeps prev) | Yes     |
-/// | `Patrol` (entry)   | `MobMovementType::Patrol`        | Patrol walk         | No (Phase 2) |
-/// | `Wander` (entry)   | `MobMovementType::Wander`        | Wander idle-walk    | No (Phase 3) |
-/// | `Follow` (entry)   | `MobMovementType::Follow`        | Follow gait         | No (Phase 6) |
-/// | `Dead` / `Spawning` / `Investigating` / `Despawning` / `Submit` / `Error` | None | (client keeps prev) | (no transition) |
+/// | Server state            | Wire byte                        | Client animation    |
+/// |-------------------------|----------------------------------|---------------------|
+/// | `Fighting` (entry)      | `MobMovementType::CombatAdvance` | Combat-stance walk  |
+/// | `Leashing` (entry)      | `MobMovementType::Leash`         | Leash-back trot     |
+/// | `Patrol` (entry)        | `MobMovementType::Patrol`        | Patrol walk         |
+/// | `Wander` (entry)        | `MobMovementType::Wander`        | Wander idle-walk    |
+/// | `Follow` (entry)        | `MobMovementType::Follow`        | Follow gait         |
+/// | `Investigating` (entry) | `MobMovementType::CombatAdvance` | Alert advance (closest match) |
+/// | `Idle` / `Submit` / `Despawning` (entry) | None (clears cache) | (client keeps prev) |
+/// | `Dead` / `Spawning` / `Error` | None | (client keeps prev — no transition fires from these states) |
 ///
-/// "Driven? = No" rows are encoded but their AI tick handlers haven't
-/// landed yet — broadcasting on entry is the planned mapping; the
-/// state transitions themselves don't fire today. The respawn tick
-/// clears `last_movement_type` on Dead → Idle so the next Fighting
-/// entry re-broadcasts CombatAdvance.
+/// `Investigating` uses `CombatAdvance` because no dedicated
+/// investigate byte exists in `EMobMovementType`; the alert-advance
+/// animation it implies is the closest semantic match.
+/// The respawn tick clears `last_movement_type` on Dead → Idle so
+/// the next behavior-state entry re-broadcasts cleanly.
 ///
 /// `Spawning` is preserved as a variant for completeness with the source
 /// enum but is **never entered at runtime in Rust**. The Python original
@@ -835,6 +902,19 @@ impl CellEntity {
             respawn_secs: None,
             respawn_at: None,
             original_interaction_type_flags: 0,
+            patrol_path: Vec::new(),
+            patrol_next_index: 0,
+            patrol_dwell_until: None,
+            patrol_point_delay_secs: 2.0,
+            wander_radius: 0.0,
+            wander_min_dwell_secs: 3.0,
+            wander_max_dwell_secs: 8.0,
+            wander_next_at: None,
+            poi: None,
+            investigate_until: None,
+            follow_target_id: None,
+            follow_min_distance: 2.0,
+            follow_max_distance: 5.0,
             saved_missions_loaded: false,
             loot_table_id: None,
             loot: Vec::new(),

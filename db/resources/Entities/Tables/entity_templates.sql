@@ -54,8 +54,55 @@ CREATE TABLE entity_templates (
     -- `cell_entity::respawn_secs` for the resolved field on the
     -- runtime entity.
     respawn_secs integer,
+    -- Wander radius in world units.
+    --
+    -- `NULL` → NPC doesn't wander. The loader COALESCEs NULL → 0.0
+    -- at runtime, which the AI tick treats as "no wander".
+    -- A literal `0.0` is rejected by the
+    -- `entity_templates_wander_radius_positive` CHECK constraint
+    -- below — use NULL to disable.
+    --
+    -- Positive value → idle NPCs without a patrol path pick random
+    -- points within `wander_radius` of `spawn_position`, walk there,
+    -- pause for a random dwell drawn from
+    -- `[wander_min_dwell_secs, wander_max_dwell_secs]`, repeat. The
+    -- runtime falls back to `[3.0, 8.0]` seconds when either dwell
+    -- bound is NULL.
+    wander_radius real,
+    wander_min_dwell_secs real,
+    wander_max_dwell_secs real,
+    -- Follow-state distance band, in world units. NPCs targeted by
+    -- `SetFollowTarget` walk toward their target until within
+    -- `follow_max_distance`, then hold until the target moves out
+    -- of the band. `follow_min_distance` is a no-op zone — the NPC
+    -- doesn't back away when the target gets close. NULL on both
+    -- → runtime defaults `[2.0, 5.0]`.
+    follow_min_distance real,
+    follow_max_distance real,
     CONSTRAINT entity_templates_respawn_secs_min_3
-        CHECK (respawn_secs IS NULL OR respawn_secs >= 3)
+        CHECK (respawn_secs IS NULL OR respawn_secs >= 3),
+    CONSTRAINT entity_templates_wander_radius_positive
+        CHECK (wander_radius IS NULL OR wander_radius > 0.0),
+    CONSTRAINT entity_templates_wander_dwell_positive
+        CHECK (
+            (wander_min_dwell_secs IS NULL OR wander_min_dwell_secs > 0.0)
+            AND (wander_max_dwell_secs IS NULL OR wander_max_dwell_secs > 0.0)
+            AND (
+                wander_min_dwell_secs IS NULL
+                OR wander_max_dwell_secs IS NULL
+                OR wander_min_dwell_secs <= wander_max_dwell_secs
+            )
+        ),
+    CONSTRAINT entity_templates_follow_distance_positive
+        CHECK (
+            (follow_min_distance IS NULL OR follow_min_distance > 0.0)
+            AND (follow_max_distance IS NULL OR follow_max_distance > 0.0)
+            AND (
+                follow_min_distance IS NULL
+                OR follow_max_distance IS NULL
+                OR follow_min_distance <= follow_max_distance
+            )
+        )
 );
 
 --

@@ -94,6 +94,13 @@ fn spawn_npc_from_record_sets_template_fields() {
         is_stationary: false,
         ability_ids: vec![],
         respawn_secs: None,
+        patrol_path: vec![],
+        patrol_point_delay_secs: 2.0,
+        wander_radius: 0.0,
+        wander_min_dwell_secs: 3.0,
+        wander_max_dwell_secs: 8.0,
+        follow_min_distance: 2.0,
+        follow_max_distance: 5.0,
     };
 
     mgr.spawn_npc_from_record(600, &record).unwrap();

@@ -89,6 +89,114 @@ pub(super) fn set_aggression(
     }
 }
 
+/// `Action::SetNpcPoi` — push the tagged NPC into `AiState::Investigating`
+/// with the given POI. The NPC pathfinds to the POI on the next AI tick,
+/// dwells `investigate_dwell_secs` (5s default), then returns to Idle.
+///
+/// Threat preemption: a damaged NPC mid-investigate transitions to
+/// Fighting via the standard threat path; the POI persists on the
+/// entity but isn't re-routed back to after the fight ends (content
+/// authors fire a fresh `SetNpcPoi` if needed).
+pub(super) fn set_npc_poi(
+    entity_tag: String,
+    x: f32,
+    y: f32,
+    z: f32,
+    entity_id: u32,
+    chain_id: i64,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::AiState;
+    if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
+        tracing::info!(
+            entity_id, %entity_tag, target_id, x, y, z, chain_id,
+            "Content: set NPC POI (Investigating)"
+        );
+        if let Some(target) = space_mgr.get_entity_mut(target_id) {
+            target.poi = Some(cimmeria_common::Vector3::new(x, y, z));
+            target.ai_state = AiState::Investigating;
+            // Clear in-flight nav so the investigate handler can
+            // pathfind to the POI from the current position rather
+            // than continuing toward a stale patrol/wander waypoint.
+            target.nav_path.clear();
+        }
+    } else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetNpcPoi");
+    }
+}
+
+/// `Action::SetFollowTarget` — set or clear the follow target for a
+/// tagged NPC. When `target_tag` resolves, the NPC transitions to
+/// `AiState::Follow` and maintains the distance band defined by
+/// `follow_min/max_distance`. When `target_tag` is None (or doesn't
+/// resolve), the follow state clears and the NPC returns to Idle.
+pub(super) fn set_follow_target(
+    entity_tag: String,
+    target_tag: Option<String>,
+    entity_id: u32,
+    chain_id: i64,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::AiState;
+    let Some(npc_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetFollowTarget");
+        return;
+    };
+    let resolved_target = match &target_tag {
+        Some(tag) => space_mgr.find_entity_by_tag(entity_id, tag),
+        None => None,
+    };
+    tracing::info!(
+        entity_id, %entity_tag, npc_id, ?target_tag, ?resolved_target, chain_id,
+        "Content: set follow target"
+    );
+    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+        npc.follow_target_id = resolved_target;
+        // Transition to Follow if a target landed; otherwise drop to
+        // Idle and clear any in-flight nav so the AI tick re-routes
+        // cleanly.
+        if resolved_target.is_some() {
+            npc.ai_state = AiState::Follow;
+        } else {
+            npc.ai_state = AiState::Idle;
+        }
+        npc.nav_path.clear();
+    }
+}
+
+/// `Action::SetNpcAiState` — push a tagged NPC into a content-reachable
+/// terminal / scripted AI state. See [`Action::SetNpcAiState`] for the
+/// admitted states and the rationale for the subset.
+pub(super) fn set_npc_ai_state(
+    entity_tag: String,
+    state: cimmeria_content_engine::actions::NpcAiStateAction,
+    entity_id: u32,
+    chain_id: i64,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_content_engine::actions::NpcAiStateAction;
+    use cimmeria_entity::cell_entity::AiState;
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetNpcAiState");
+        return;
+    };
+    let new_state = match state {
+        NpcAiStateAction::Idle => AiState::Idle,
+        NpcAiStateAction::Despawning => AiState::Despawning,
+        NpcAiStateAction::Submit => AiState::Submit,
+        NpcAiStateAction::Error => AiState::Error,
+    };
+    tracing::info!(
+        entity_id, %entity_tag, target_id, ?state, ?new_state, chain_id,
+        "Content: set NPC AI state"
+    );
+    if let Some(npc) = space_mgr.get_entity_mut(target_id) {
+        npc.ai_state = new_state;
+        // Clear in-flight nav so the new-state handler can re-route.
+        npc.nav_path.clear();
+    }
+}
+
 /// `Action::DestroyTaggedEntity` — remove the tagged entity from the
 /// space. Witnesses get the destroy on the next AoI sweep.
 pub(super) fn destroy_tagged_entity(

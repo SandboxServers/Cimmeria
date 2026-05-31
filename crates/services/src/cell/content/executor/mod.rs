@@ -232,6 +232,23 @@ pub(super) async fn execute_actions(
             } => {
                 world::set_aggression(entity_tag, agg_level, entity_id, chain_id, space_mgr);
             }
+            Action::SetNpcPoi {
+                entity_tag,
+                x,
+                y,
+                z,
+            } => {
+                world::set_npc_poi(entity_tag, x, y, z, entity_id, chain_id, space_mgr);
+            }
+            Action::SetFollowTarget {
+                entity_tag,
+                target_tag,
+            } => {
+                world::set_follow_target(entity_tag, target_tag, entity_id, chain_id, space_mgr);
+            }
+            Action::SetNpcAiState { entity_tag, state } => {
+                world::set_npc_ai_state(entity_tag, state, entity_id, chain_id, space_mgr);
+            }
             Action::DestroyTaggedEntity { entity_tag } => {
                 world::destroy_tagged_entity(entity_tag, entity_id, chain_id, space_mgr);
             }
