@@ -154,6 +154,72 @@ mod tests {
         }
     }
 
+    /// Regression guard for the outer-router fix that widened the crafting
+    /// sub-range from `CRAFT..=RESPEC_CRAFTING` (96..=100) to
+    /// `SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING` (95..=100).
+    ///
+    /// Bug shape: the previous narrow range silently dropped index 95
+    /// into the social arm of the outer dispatcher. Social's own
+    /// `dispatch` *also* has a `SPEND_APPLIED_SCIENCE_POINTS` arm (a
+    /// stub left from an earlier wiring attempt), so the bug is
+    /// invisible to a bare `assert!(handled)`: both branches return
+    /// `true`. The two arms emit distinguishable log messages —
+    /// crafting tags its log with `"(Phase 2)"`, social does not —
+    /// so we install `LogCapture` and assert the crafting variant
+    /// fired.
+    ///
+    /// If the outer router is narrowed back to `CRAFT..=RESPEC_CRAFTING`,
+    /// index 95 reaches the social arm; the `"(Phase 2)"` log never
+    /// fires, and this test fails. This is the assertion the existing
+    /// `spend_applied_science_points_routes_to_crafting` test in
+    /// `crafting.rs` *intended* to make but cannot, because that test
+    /// calls `crafting::dispatch` directly and bypasses the outer
+    /// router entirely.
+    #[tokio::test]
+    async fn outer_dispatch_routes_spend_asp_to_crafting_not_social() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        let capture = LogCapture::install();
+
+        let mut mgr = make_space_manager_with_player(1);
+        let (tx, _rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+
+        // Non-empty args so the parse-and-log path runs (rather than the
+        // truncated-args warn path, which both arms emit at different
+        // levels but with identical-shape strings).
+        let args = 42i32.to_le_bytes();
+        let handled = dispatch(
+            1,
+            SPEND_APPLIED_SCIENCE_POINTS,
+            &args,
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+        assert!(handled, "outer dispatch must handle method 95");
+
+        // Crafting's stub uniquely tags its log with "(Phase 2)" — the
+        // social-side stub at social.rs:66 emits the same UNIMPLEMENTED
+        // prefix but without that suffix. Pinning the suffix is what
+        // distinguishes "routed to crafting" from "routed to social".
+        let crafting_event = capture.find_message(Level::INFO, "(Phase 2)");
+        assert!(
+            crafting_event.is_some(),
+            "outer dispatch must route method 95 (SPEND_APPLIED_SCIENCE_POINTS) \
+             to the crafting submodule. The expected log \
+             'UNIMPLEMENTED: spendAppliedSciencePoints (Phase 2)' from \
+             cell_methods/player/crafting.rs did not fire. \
+             A passing `handled == true` is not sufficient because the \
+             social submodule also has a SPEND_APPLIED_SCIENCE_POINTS arm \
+             that returns true — the (Phase 2) suffix uniquely identifies \
+             the crafting branch.\n\nCaptured events: {:#?}",
+            capture.all()
+        );
+    }
+
     #[tokio::test]
     async fn out_of_range_methods_return_false() {
         let mut mgr = make_space_manager_with_player(1);
