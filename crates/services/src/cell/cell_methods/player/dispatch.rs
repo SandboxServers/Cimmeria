@@ -4,18 +4,23 @@ use crate::cell::space_manager::SpaceManager;
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
-// Static guard: the crafting sub-range must sit inside the ORG_CREATION..=
-// CANCEL_MOVIE outer arm, and the sub-range's own ordering must remain
-// `SPEND_APPLIED_SCIENCE_POINTS ≤ CRAFT ≤ RESPEC_CRAFTING`. A constant
-// renumber that breaks either invariant fails the build instead of
-// silently routing methods to the wrong sub-dispatcher.
+// Static guard: the crafting sub-range AND the trade sub-range must both
+// sit inside the ORG_CREATION..=CANCEL_MOVIE outer arm, with crafting
+// preceding trade (95..=100 < 104..=107). A constant renumber that breaks
+// either invariant fails the build instead of silently routing methods
+// to the wrong sub-dispatcher.
 const _: () = assert!(
     ORG_CREATION <= SPEND_APPLIED_SCIENCE_POINTS
         && SPEND_APPLIED_SCIENCE_POINTS <= CRAFT
         && CRAFT <= RESPEC_CRAFTING
-        && RESPEC_CRAFTING <= CANCEL_MOVIE,
-    "crafting sub-range constants must satisfy \
-     ORG_CREATION ≤ SPEND_APPLIED_SCIENCE_POINTS ≤ CRAFT ≤ RESPEC_CRAFTING ≤ CANCEL_MOVIE"
+        && RESPEC_CRAFTING < TRADE_REQUEST
+        && TRADE_REQUEST <= TRADE_REQUEST_CANCEL
+        && TRADE_REQUEST_CANCEL <= TRADE_UPDATE_PROPOSAL
+        && TRADE_UPDATE_PROPOSAL <= TRADE_LOCK_STATE
+        && TRADE_LOCK_STATE <= CANCEL_MOVIE,
+    "crafting + trade sub-ranges must satisfy \
+     ORG_CREATION ≤ SPEND_APPLIED_SCIENCE_POINTS ≤ CRAFT ≤ RESPEC_CRAFTING < \
+     TRADE_REQUEST ≤ TRADE_LOCK_STATE ≤ CANCEL_MOVIE"
 );
 
 pub async fn dispatch(
@@ -43,17 +48,19 @@ pub async fn dispatch(
             super::world::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await
         }
         ORG_CREATION..=CANCEL_MOVIE => {
-            // The outer arm already pins method_index into [ORG_CREATION,
-            // CANCEL_MOVIE]. The crafting sub-range is
-            // `SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING` (95..=100) —
-            // it has to start at 95, not 96, because index 95 (the discipline
-            // unlock entry point) was silently dropping into the social
-            // arm before. Everything else in the outer range routes to
-            // social. The constant ordering is pinned by a static assertion
-            // below (`crafting_sub_range_is_inside_outer`); if a future
-            // renumber violates it, the build fails.
+            // The outer arm pins method_index into [ORG_CREATION,
+            // CANCEL_MOVIE]. Two sub-ranges live inside it:
+            //
+            //   - crafting:    SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING (95..=100)
+            //   - trade:       TRADE_REQUEST..=TRADE_LOCK_STATE              (104..=107)
+            //
+            // Everything else in the outer range routes to social.
+            // Ordering invariants are pinned by the static assert above —
+            // a renumber that violates them fails the build.
             if (SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING).contains(&method_index) {
                 super::crafting::dispatch(entity_id, method_index, args, tx, space_mgr).await
+            } else if (TRADE_REQUEST..=TRADE_LOCK_STATE).contains(&method_index) {
+                super::trade::dispatch(entity_id, method_index, args, tx, space_mgr).await
             } else {
                 super::social::dispatch(entity_id, method_index, args, tx, space_mgr).await
             }

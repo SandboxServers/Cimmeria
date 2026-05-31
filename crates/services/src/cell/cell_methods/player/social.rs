@@ -100,54 +100,14 @@ pub async fn dispatch(
             true
         }
 
-        TRADE_REQUEST => {
-            if args.len() >= 4 {
-                let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, target_entity_id, "UNIMPLEMENTED: tradeRequest");
-            }
-            true
-        }
-
-        TRADE_REQUEST_CANCEL => {
-            if args.len() >= 4 {
-                let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(
-                    entity_id,
-                    target_entity_id,
-                    "UNIMPLEMENTED: tradeRequestCancel"
-                );
-            }
-            true
-        }
-
-        TRADE_UPDATE_PROPOSAL => {
-            if args.len() >= 4 {
-                let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(
-                    entity_id,
-                    target_entity_id,
-                    "UNIMPLEMENTED: tradeUpdateProposal"
-                );
-            }
-            true
-        }
-
-        TRADE_LOCK_STATE => {
-            if args.len() >= 9 {
-                let local_version_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                let remote_version_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                let lock_state = args[8] as i8;
-                tracing::info!(
-                    entity_id,
-                    local_version_id,
-                    remote_version_id,
-                    lock_state,
-                    "UNIMPLEMENTED: tradeLockState"
-                );
-            }
-            true
-        }
-
+        // TRADE_REQUEST / TRADE_REQUEST_CANCEL / TRADE_UPDATE_PROPOSAL /
+        // TRADE_LOCK_STATE (104..=107) used to be stubbed here as
+        // UNIMPLEMENTED log lines. They are now routed by the outer
+        // dispatcher to `cell_methods::player::trade::dispatch` and
+        // implemented for real. If you see a method in the 104..=107
+        // range reach this catch-all, the routing in `dispatch.rs`
+        // regressed — the trade sub-range arm is missing or
+        // mis-ordered.
         CANCEL_MOVIE => {
             tracing::info!(entity_id, "UNIMPLEMENTED: cancelMovie");
             true

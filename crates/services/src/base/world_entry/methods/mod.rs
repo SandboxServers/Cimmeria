@@ -9,6 +9,7 @@ pub mod mail;
 pub mod missions;
 pub mod player_load;
 pub mod progression;
+pub mod trade;
 pub mod vendor;
 pub mod world_entry_db;
 

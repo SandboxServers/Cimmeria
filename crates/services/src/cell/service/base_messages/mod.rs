@@ -98,6 +98,15 @@ pub(super) async fn handle_base_message(
 
         BaseToCellMsg::DestroyEntity { entity_id } => {
             tracing::debug!(entity_id, "DestroyEntity");
+            // Cancel any open trade BEFORE the rest of the teardown: the
+            // surviving partner needs an onTradeResults(Cancelled) +
+            // their own trade state cleared, otherwise their session
+            // becomes a stranded ghost. Python relied on BigWorld GC for
+            // this; Rust has to do it explicitly (deep dive gap).
+            super::super::cell_methods::player::trade::cancel_trade_on_disconnect(
+                entity_id, tx, space_mgr,
+            )
+            .await;
             // Stage D: flush any pending bandolier ammo writes before tearing
             // down the entity. Logout is a hard boundary — anything still in
             // `bandolier_ammo_dirty` after this is lost.
@@ -119,6 +128,16 @@ pub(super) async fn handle_base_message(
 
         BaseToCellMsg::DisconnectEntity { entity_id } => {
             tracing::debug!(entity_id, "DisconnectEntity");
+            // Same as DestroyEntity: tear down any open trade with
+            // Cancelled before the entity is removed. The disconnect
+            // path doesn't reach the DestroyEntity arm directly (it
+            // calls `space_mgr.disconnect_entity` which internally calls
+            // destroy_entity), so this hook lives in both places — a
+            // disconnect mid-trade has to notify the surviving partner.
+            super::super::cell_methods::player::trade::cancel_trade_on_disconnect(
+                entity_id, tx, space_mgr,
+            )
+            .await;
             // Flush dirty bandolier ammo BEFORE space_mgr.disconnect_entity,
             // which internally calls destroy_entity. Without this, the entity
             // is gone by the time DestroyEntity arrives next and its flush

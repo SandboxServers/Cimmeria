@@ -4,6 +4,7 @@ pub mod crafting;
 mod dispatch;
 pub mod interaction;
 pub mod social;
+pub mod trade;
 pub mod vendor;
 pub mod world;
 // Trainer interaction lives in `cell::interactions::trainer::try_open_trainer`

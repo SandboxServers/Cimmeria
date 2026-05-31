@@ -817,5 +817,31 @@ pub(crate) async fn handle_cell_message(
             )
             .await;
         }
+        CellToBaseMsg::ExecuteTrade {
+            entity_id,
+            player_id,
+            partner_entity_id,
+            partner_player_id,
+            p1_item_instance_ids,
+            p1_cash,
+            p2_item_instance_ids,
+            p2_cash,
+        } => {
+            super::methods::trade::handle_execute_trade(
+                entity_id,
+                player_id,
+                partner_entity_id,
+                partner_player_id,
+                p1_item_instance_ids,
+                p1_cash,
+                p2_item_instance_ids,
+                p2_cash,
+                db_pool,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
     }
 }
