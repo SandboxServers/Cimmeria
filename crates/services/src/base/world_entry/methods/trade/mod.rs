@@ -11,4 +11,7 @@
 
 mod execute;
 
+#[cfg(test)]
+mod tests;
+
 pub use execute::handle_execute_trade;

@@ -238,13 +238,37 @@ pub async fn handle_execute_trade(
 #[derive(Debug)]
 enum TradeAbort {
     DbError(sqlx::Error),
-    PlayerMissing { which: &'static str, player_id: i32 },
-    InsufficientCash { which: &'static str, player_id: i32, has: i32, wants: i32 },
-    ItemMissing { which: &'static str, player_id: i32, item_id: i32 },
-    NotEnoughSlots { recipient_player_id: i32, needed: usize },
-    BoundItemOffered { which: &'static str, player_id: i32, item_id: i32 },
-    DuplicateInstance { item_id: i32 },
-    BuybackOffered { player_id: i32, item_id: i32 },
+    PlayerMissing {
+        which: &'static str,
+        player_id: i32,
+    },
+    InsufficientCash {
+        which: &'static str,
+        player_id: i32,
+        has: i32,
+        wants: i32,
+    },
+    ItemMissing {
+        which: &'static str,
+        player_id: i32,
+        item_id: i32,
+    },
+    NotEnoughSlots {
+        recipient_player_id: i32,
+        needed: usize,
+    },
+    BoundItemOffered {
+        which: &'static str,
+        player_id: i32,
+        item_id: i32,
+    },
+    DuplicateInstance {
+        item_id: i32,
+    },
+    BuybackOffered {
+        player_id: i32,
+        item_id: i32,
+    },
 }
 
 impl std::fmt::Display for TradeAbort {
@@ -282,10 +306,7 @@ impl std::fmt::Display for TradeAbort {
                 which,
                 player_id,
                 item_id,
-            } => write!(
-                f,
-                "{which} player {player_id} offered bound item {item_id}"
-            ),
+            } => write!(f, "{which} player {player_id} offered bound item {item_id}"),
             TradeAbort::DuplicateInstance { item_id } => {
                 write!(f, "item instance {item_id} listed twice in proposal")
             }
@@ -361,10 +382,8 @@ async fn atomic_swap(pool: &Arc<PgPool>, p1: &TradeSide, p2: &TradeSide) -> Resu
     // recipient with a full main bag fails fast.
     //
     // The recipient of p1's items is p2, and vice versa.
-    let p2_new_slots =
-        reserve_main_slots_for(&mut tx, p2.player_id, p1_items.len()).await?;
-    let p1_new_slots =
-        reserve_main_slots_for(&mut tx, p1.player_id, p2_items.len()).await?;
+    let p2_new_slots = reserve_main_slots_for(&mut tx, p2.player_id, p1_items.len()).await?;
+    let p1_new_slots = reserve_main_slots_for(&mut tx, p1.player_id, p2_items.len()).await?;
 
     // Apply the item moves: re-key each row to the recipient, drop into
     // INV_MAIN at the reserved slot.
@@ -416,12 +435,11 @@ async fn read_naquadah_for_update(
     player_id: i32,
     which: &'static str,
 ) -> Result<i32, TradeAbort> {
-    let row: Option<i32> = sqlx::query_scalar(
-        "SELECT naquadah FROM sgw_player WHERE player_id = $1 FOR UPDATE",
-    )
-    .bind(player_id)
-    .fetch_optional(&mut **tx)
-    .await?;
+    let row: Option<i32> =
+        sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1 FOR UPDATE")
+            .bind(player_id)
+            .fetch_optional(&mut **tx)
+            .await?;
     row.ok_or(TradeAbort::PlayerMissing { which, player_id })
 }
 
@@ -534,8 +552,24 @@ async fn send_results_to_both(
     p1_result: i32,
     p2_result: i32,
 ) {
-    send_on_trade_results(transport, connected, entity_to_addr, p1_entity, p2_entity as i32, p1_result).await;
-    send_on_trade_results(transport, connected, entity_to_addr, p2_entity, p1_entity as i32, p2_result).await;
+    send_on_trade_results(
+        transport,
+        connected,
+        entity_to_addr,
+        p1_entity,
+        p2_entity as i32,
+        p1_result,
+    )
+    .await;
+    send_on_trade_results(
+        transport,
+        connected,
+        entity_to_addr,
+        p2_entity,
+        p1_entity as i32,
+        p2_result,
+    )
+    .await;
 }
 
 async fn send_on_trade_results(

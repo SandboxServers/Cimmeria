@@ -18,12 +18,12 @@
 //! Reference: `deprecated/python/cell/Trade.py`,
 //! `deprecated/python/cell/SGWPlayer.py:1676-1820`.
 
+use cimmeria_entity::inventory::InvItem;
 use cimmeria_entity::trade::{
     serialize_on_trade_results, serialize_on_trade_state, TradeProposal, ETRADELOCKSTATE_LOCKED,
     ETRADELOCKSTATE_LOCKED_AND_CONFIRMED, ETRADELOCKSTATE_NONE, ETRADERESULTS_CANCELLED,
     ETRADERESULTS_COMPLETED,
 };
-use cimmeria_entity::inventory::InvItem;
 use tokio::sync::mpsc;
 
 use crate::cell::client_methods::player::{ON_TRADE_RESULTS, ON_TRADE_STATE};
@@ -108,7 +108,14 @@ async fn handle_trade_request(
     // wire frame carries the initial offer. If proposal-update fails
     // (bad version, etc.) we tear the session down with Cancelled.
     if !apply_proposal(entity_id, partner_entity_id, proposal, tx, space_mgr).await {
-        cancel_session(entity_id, partner_entity_id, ETRADERESULTS_COMPLETED, tx, space_mgr).await;
+        cancel_session(
+            entity_id,
+            partner_entity_id,
+            ETRADERESULTS_COMPLETED,
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 }
 
@@ -257,12 +264,7 @@ async fn handle_trade_update_proposal(
 
 // ── Inbound: tradeLockState (107) ──────────────────────────────────────────
 
-#[tracing::instrument(
-    name = "trade.lock_state",
-    level = "info",
-    skip_all,
-    fields(entity_id)
-)]
+#[tracing::instrument(name = "trade.lock_state", level = "info", skip_all, fields(entity_id))]
 async fn handle_trade_lock_state(
     entity_id: u32,
     args: &[u8],
@@ -641,7 +643,14 @@ pub async fn cancel_trade_on_disconnect(
     space_mgr: &mut SpaceManager,
 ) -> Option<u32> {
     let partner = space_mgr.get_entity(entity_id)?.trade_partner_entity_id?;
-    cancel_session(entity_id, partner as i32, ETRADERESULTS_CANCELLED, tx, space_mgr).await;
+    cancel_session(
+        entity_id,
+        partner as i32,
+        ETRADERESULTS_CANCELLED,
+        tx,
+        space_mgr,
+    )
+    .await;
     Some(partner)
 }
 
@@ -1085,18 +1094,34 @@ mod tests {
         dispatch(
             2,
             TRADE_UPDATE_PROPOSAL,
-            &build_trade_request_args(1, &TradeProposal { version: 1, ..Default::default() }),
+            &build_trade_request_args(
+                1,
+                &TradeProposal {
+                    version: 1,
+                    ..Default::default()
+                },
+            ),
             &tx,
             &mut mgr,
         )
         .await;
         // Each side starts with version=1, lock = None.
         assert_eq!(
-            mgr.get_entity(1).unwrap().trade_proposal.as_ref().unwrap().version,
+            mgr.get_entity(1)
+                .unwrap()
+                .trade_proposal
+                .as_ref()
+                .unwrap()
+                .version,
             1
         );
         assert_eq!(
-            mgr.get_entity(2).unwrap().trade_proposal.as_ref().unwrap().version,
+            mgr.get_entity(2)
+                .unwrap()
+                .trade_proposal
+                .as_ref()
+                .unwrap()
+                .version,
             1
         );
 
@@ -1107,12 +1132,22 @@ mod tests {
         args.push(ETRADELOCKSTATE_LOCKED as u8);
         dispatch(1, TRADE_LOCK_STATE, &args, &tx, &mut mgr).await;
         assert_eq!(
-            mgr.get_entity(1).unwrap().trade_proposal.as_ref().unwrap().lock_state,
+            mgr.get_entity(1)
+                .unwrap()
+                .trade_proposal
+                .as_ref()
+                .unwrap()
+                .lock_state,
             ETRADELOCKSTATE_LOCKED
         );
         // Partner unaffected.
         assert_eq!(
-            mgr.get_entity(2).unwrap().trade_proposal.as_ref().unwrap().lock_state,
+            mgr.get_entity(2)
+                .unwrap()
+                .trade_proposal
+                .as_ref()
+                .unwrap()
+                .lock_state,
             ETRADELOCKSTATE_NONE
         );
 
@@ -1124,7 +1159,12 @@ mod tests {
         dispatch(1, TRADE_LOCK_STATE, &bad, &tx, &mut mgr).await;
         // Did NOT change to LockedAndConfirmed.
         assert_eq!(
-            mgr.get_entity(1).unwrap().trade_proposal.as_ref().unwrap().lock_state,
+            mgr.get_entity(1)
+                .unwrap()
+                .trade_proposal
+                .as_ref()
+                .unwrap()
+                .lock_state,
             ETRADELOCKSTATE_LOCKED
         );
 
@@ -1136,7 +1176,12 @@ mod tests {
         downgrade_args.push(ETRADELOCKSTATE_LOCKED as u8);
         dispatch(1, TRADE_LOCK_STATE, &downgrade_args, &tx, &mut mgr).await;
         assert_eq!(
-            mgr.get_entity(1).unwrap().trade_proposal.as_ref().unwrap().lock_state,
+            mgr.get_entity(1)
+                .unwrap()
+                .trade_proposal
+                .as_ref()
+                .unwrap()
+                .lock_state,
             ETRADELOCKSTATE_NONE,
             "stale remote_version must silently downgrade Locked → None"
         );
@@ -1151,7 +1196,13 @@ mod tests {
         dispatch(
             1,
             TRADE_REQUEST,
-            &build_trade_request_args(2, &TradeProposal { version: 1, ..Default::default() }),
+            &build_trade_request_args(
+                2,
+                &TradeProposal {
+                    version: 1,
+                    ..Default::default()
+                },
+            ),
             &tx,
             &mut mgr,
         )
@@ -1200,7 +1251,13 @@ mod tests {
         dispatch(
             1,
             TRADE_REQUEST,
-            &build_trade_request_args(2, &TradeProposal { version: 1, ..Default::default() }),
+            &build_trade_request_args(
+                2,
+                &TradeProposal {
+                    version: 1,
+                    ..Default::default()
+                },
+            ),
             &tx,
             &mut mgr,
         )
@@ -1215,7 +1272,10 @@ mod tests {
         // Next tradeUpdateProposal — must auto-cancel.
         let next = TradeProposal {
             version: 2,
-            items: vec![TradeItem { instance_id: 42, slot_id: 0 }],
+            items: vec![TradeItem {
+                instance_id: 42,
+                slot_id: 0,
+            }],
             cash: 0,
             lock_state: ETRADELOCKSTATE_NONE,
         };
@@ -1259,13 +1319,24 @@ mod tests {
         dispatch(
             1,
             TRADE_REQUEST,
-            &build_trade_request_args(2, &TradeProposal { version: 1, ..Default::default() }),
+            &build_trade_request_args(
+                2,
+                &TradeProposal {
+                    version: 1,
+                    ..Default::default()
+                },
+            ),
             &tx,
             &mut mgr,
         )
         .await;
         assert_eq!(
-            mgr.get_entity(1).unwrap().trade_proposal.as_ref().unwrap().version,
+            mgr.get_entity(1)
+                .unwrap()
+                .trade_proposal
+                .as_ref()
+                .unwrap()
+                .version,
             1
         );
 
@@ -1322,7 +1393,13 @@ mod tests {
         dispatch(
             1,
             TRADE_REQUEST,
-            &build_trade_request_args(2, &TradeProposal { version: 1, ..Default::default() }),
+            &build_trade_request_args(
+                2,
+                &TradeProposal {
+                    version: 1,
+                    ..Default::default()
+                },
+            ),
             &tx,
             &mut mgr,
         )
@@ -1331,7 +1408,13 @@ mod tests {
         dispatch(
             2,
             TRADE_UPDATE_PROPOSAL,
-            &build_trade_request_args(1, &TradeProposal { version: 1, ..Default::default() }),
+            &build_trade_request_args(
+                1,
+                &TradeProposal {
+                    version: 1,
+                    ..Default::default()
+                },
+            ),
             &tx,
             &mut mgr,
         )
@@ -1380,7 +1463,13 @@ mod tests {
         dispatch(
             1,
             TRADE_REQUEST,
-            &build_trade_request_args(2, &TradeProposal { version: 1, ..Default::default() }),
+            &build_trade_request_args(
+                2,
+                &TradeProposal {
+                    version: 1,
+                    ..Default::default()
+                },
+            ),
             &tx,
             &mut mgr,
         )
@@ -1394,7 +1483,12 @@ mod tests {
         dispatch(1, TRADE_LOCK_STATE, &args, &tx, &mut mgr).await;
         // State unchanged.
         assert_eq!(
-            mgr.get_entity(1).unwrap().trade_proposal.as_ref().unwrap().lock_state,
+            mgr.get_entity(1)
+                .unwrap()
+                .trade_proposal
+                .as_ref()
+                .unwrap()
+                .lock_state,
             ETRADELOCKSTATE_NONE
         );
     }
@@ -1408,7 +1502,13 @@ mod tests {
         dispatch(
             1,
             TRADE_REQUEST,
-            &build_trade_request_args(2, &TradeProposal { version: 1, ..Default::default() }),
+            &build_trade_request_args(
+                2,
+                &TradeProposal {
+                    version: 1,
+                    ..Default::default()
+                },
+            ),
             &tx,
             &mut mgr,
         )

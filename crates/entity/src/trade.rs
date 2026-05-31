@@ -472,10 +472,7 @@ mod tests {
         // version(4) + count(4) + 1*(instance:4 + slot:4) + cash(4) + lockState(1) = 21
         let local_start = 4;
         assert_eq!(&buf[local_start..local_start + 4], &5i32.to_le_bytes());
-        assert_eq!(
-            &buf[local_start + 4..local_start + 8],
-            &1u32.to_le_bytes()
-        );
+        assert_eq!(&buf[local_start + 4..local_start + 8], &1u32.to_le_bytes());
 
         // Remote proposal begins after 4 + 21 = 25 bytes
         let remote_start = 4 + 21;
