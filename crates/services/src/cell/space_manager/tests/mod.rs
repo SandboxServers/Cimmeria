@@ -7,6 +7,7 @@ use super::*;
 mod aoi;
 mod entity_lifecycle;
 mod instances;
+mod movement_validation;
 mod npc_spawn;
 mod spaces;
 mod witnesses;
