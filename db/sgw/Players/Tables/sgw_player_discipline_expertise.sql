@@ -16,11 +16,16 @@
 -- (Python `Crafter.spendAppliedSciencePoints` sets `self.disciplines[id] = 1`),
 -- which is the DEFAULT. The CHECK prevents both negative (corruption) and
 -- >100 (cap drift) writes from succeeding silently.
+--
+-- Foreign key to sgw_player lives in db/sgw/_foreign_keys.sql, mirroring the
+-- repo convention: CREATE TABLE here, primary keys in _primary_keys.sql,
+-- foreign keys in _foreign_keys.sql. Inlining the FK here would fail load
+-- because sgw_player's PK constraint isn't established until _primary_keys.sql
+-- runs (a referenced table needs a UNIQUE/PRIMARY KEY on the referenced cols).
 CREATE TABLE sgw_player_discipline_expertise (
     player_id     INTEGER NOT NULL,
     discipline_id INTEGER NOT NULL,
     expertise     INTEGER NOT NULL DEFAULT 1
         CHECK (expertise >= 0 AND expertise <= 100),
-    PRIMARY KEY (player_id, discipline_id),
-    FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON DELETE CASCADE
+    PRIMARY KEY (player_id, discipline_id)
 );

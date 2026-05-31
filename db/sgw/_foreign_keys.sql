@@ -62,3 +62,15 @@ ALTER TABLE ONLY sgw_player
 ALTER TABLE ONLY sgw_player
     ADD CONSTRAINT sgw_player_world_location_fkey FOREIGN KEY (world_location) REFERENCES resources.worlds(world) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
+--
+-- Name: sgw_player_discipline_expertise_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- Per-(player, discipline) crafting expertise table; rows are removed when
+-- the parent player is deleted. Declared here (not inline in the CREATE TABLE)
+-- because sgw_player's PK constraint isn't established until _primary_keys.sql
+-- runs.
+--
+
+ALTER TABLE ONLY sgw_player_discipline_expertise
+    ADD CONSTRAINT sgw_player_discipline_expertise_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
