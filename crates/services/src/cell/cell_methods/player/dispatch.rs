@@ -158,25 +158,65 @@ mod tests {
     /// sub-range from `CRAFT..=RESPEC_CRAFTING` (96..=100) to
     /// `SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING` (95..=100).
     ///
-    /// Bug shape: the previous narrow range silently dropped index 95
-    /// into the social arm of the outer dispatcher. Social's own
-    /// `dispatch` *also* has a `SPEND_APPLIED_SCIENCE_POINTS` arm (a
-    /// stub left from an earlier wiring attempt), so the bug is
-    /// invisible to a bare `assert!(handled)`: both branches return
-    /// `true`. The two arms emit distinguishable log messages —
-    /// crafting tags its log with `"(Phase 2)"`, social does not —
-    /// so we install `LogCapture` and assert the crafting variant
-    /// fired.
-    ///
-    /// If the outer router is narrowed back to `CRAFT..=RESPEC_CRAFTING`,
-    /// index 95 reaches the social arm; the `"(Phase 2)"` log never
-    /// fires, and this test fails. This is the assertion the existing
-    /// `spend_applied_science_points_routes_to_crafting` test in
-    /// `crafting.rs` *intended* to make but cannot, because that test
-    /// calls `crafting::dispatch` directly and bypasses the outer
-    /// router entirely.
+    /// With the social-side `SPEND_APPLIED_SCIENCE_POINTS` shadow arm
+    /// removed, no arm in the social submodule handles index 95 — so
+    /// `assert!(handled)` against the outer dispatcher is now sufficient
+    /// proof of correct routing. (Before the shadow was removed, both
+    /// submodules' arms returned `true`, making this assertion ambiguous
+    /// — that's the trap [`route_index_95_must_go_to_crafting_not_social`]
+    /// guards against re-introducing.)
     #[tokio::test]
-    async fn outer_dispatch_routes_spend_asp_to_crafting_not_social() {
+    async fn outer_dispatch_routes_spend_asp_to_crafting() {
+        let mut mgr = make_space_manager_with_player(1);
+        let (tx, _rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+
+        // Non-empty args so the crafting handler takes the parse-and-log
+        // path, not the truncated-args warn path. Either path returns
+        // `true`, but the parse path is the realistic success shape.
+        let args = 42i32.to_le_bytes();
+        let handled = dispatch(
+            1,
+            SPEND_APPLIED_SCIENCE_POINTS,
+            &args,
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+        assert!(
+            handled,
+            "outer dispatch must route method 95 (SPEND_APPLIED_SCIENCE_POINTS) \
+             to the crafting submodule and return true. A `false` here means \
+             the crafting sub-range in `dispatch` regressed and 95 fell into \
+             the social arm — which (after the shadow-arm removal) has no \
+             case for 95 and returns false.",
+        );
+    }
+
+    /// Shadow-arm regression guard. Asserts that the
+    /// `SPEND_APPLIED_SCIENCE_POINTS` arm in
+    /// `crates/services/src/cell/cell_methods/player/social.rs` stays
+    /// deleted: dispatching index 95 must produce **exactly one** info-
+    /// level log carrying the `spendAppliedSciencePoints` substring, and
+    /// that log must be the crafting submodule's `"(Phase 2)"` variant.
+    ///
+    /// Bug shape this catches: if a future PR reintroduces the social
+    /// shadow arm (e.g., by reverting this PR or by an unrelated copy-
+    /// paste), both the crafting and social handlers fire for index 95
+    /// — the count goes from 1 to 2 — and routing tests that assert only
+    /// `handled == true` cannot distinguish "routed to the right place"
+    /// from "routed to two places". That's the shadow-arm trap from
+    /// issue \#431.
+    ///
+    /// We pin BOTH the count (exactly one) and the suffix `(Phase 2)`
+    /// because:
+    /// 1. Count alone would miss a future shadow that adopts a different
+    ///    log message but still returns `true`.
+    /// 2. Suffix alone would miss the same crafting log firing twice
+    ///    (unlikely, but cheap to guard).
+    #[tokio::test]
+    async fn route_index_95_must_go_to_crafting_not_social() {
         use crate::test_support::LogCapture;
         use tracing::Level;
 
@@ -186,9 +226,6 @@ mod tests {
         let (tx, _rx) = mpsc::channel(8);
         let engine = ChainEngine::new();
 
-        // Non-empty args so the parse-and-log path runs (rather than the
-        // truncated-args warn path, which both arms emit at different
-        // levels but with identical-shape strings).
         let args = 42i32.to_le_bytes();
         let handled = dispatch(
             1,
@@ -201,22 +238,78 @@ mod tests {
         .await;
         assert!(handled, "outer dispatch must handle method 95");
 
-        // Crafting's stub uniquely tags its log with "(Phase 2)" — the
-        // social-side stub at social.rs:66 emits the same UNIMPLEMENTED
-        // prefix but without that suffix. Pinning the suffix is what
-        // distinguishes "routed to crafting" from "routed to social".
-        let crafting_event = capture.find_message(Level::INFO, "(Phase 2)");
+        // Count INFO events that mention spendAppliedSciencePoints —
+        // the substring is shared by both submodules' historical log
+        // shapes, so a re-emerged social shadow shows up as count == 2.
+        let asp_logs: Vec<_> = capture
+            .all()
+            .into_iter()
+            .filter(|c| c.level == Level::INFO && c.message_contains("spendAppliedSciencePoints"))
+            .collect();
+
+        assert_eq!(
+            asp_logs.len(),
+            1,
+            "expected exactly one `spendAppliedSciencePoints` log for method 95; \
+             got {}. More than one log indicates the social-submodule shadow \
+             arm at cell_methods/player/social.rs (deleted in PR \\#431) has \
+             been reintroduced. All captured events: {:#?}",
+            asp_logs.len(),
+            capture.all(),
+        );
+
+        // The single log must be the crafting submodule's `(Phase 2)`
+        // variant — proves it's the right handler.
+        let only = &asp_logs[0];
         assert!(
-            crafting_event.is_some(),
-            "outer dispatch must route method 95 (SPEND_APPLIED_SCIENCE_POINTS) \
-             to the crafting submodule. The expected log \
-             'UNIMPLEMENTED: spendAppliedSciencePoints (Phase 2)' from \
-             cell_methods/player/crafting.rs did not fire. \
-             A passing `handled == true` is not sufficient because the \
-             social submodule also has a SPEND_APPLIED_SCIENCE_POINTS arm \
-             that returns true — the (Phase 2) suffix uniquely identifies \
-             the crafting branch.\n\nCaptured events: {:#?}",
-            capture.all()
+            only.message_contains("(Phase 2)"),
+            "the single spendAppliedSciencePoints log must be the crafting \
+             handler's `(Phase 2)` variant — its message was {:?}. A log \
+             without `(Phase 2)` is the social-submodule shape and means \
+             index 95 is being routed to social instead of crafting.",
+            only,
+        );
+    }
+
+    /// Companion guard to [`route_index_95_must_go_to_crafting_not_social`].
+    ///
+    /// The outer-dispatcher test catches a *combined* regression (shadow
+    /// arm restored AND outer router narrowed). It can't catch a lone
+    /// shadow restoration on its own: with the outer router still
+    /// correctly routing 95 to crafting, a re-added social arm never
+    /// fires through `dispatch`, the captured-log count stays at 1, and
+    /// the test happily passes.
+    ///
+    /// This test calls `social::dispatch` **directly** with method 95
+    /// and asserts the social submodule does NOT claim it. If a future
+    /// PR re-introduces the shadow arm at `social.rs:66`, this assertion
+    /// catches it at the source — before it can pair with an outer-
+    /// router regression to silently re-route real traffic.
+    #[tokio::test]
+    async fn social_submodule_must_not_handle_index_95() {
+        let mut mgr = make_space_manager_with_player(1);
+        let (tx, _rx) = mpsc::channel(8);
+
+        let args = 42i32.to_le_bytes();
+        // `super` inside this `mod tests` is `dispatch`; the sibling
+        // `social` module lives one level up under `player`.
+        let handled = crate::cell::cell_methods::player::social::dispatch(
+            1,
+            SPEND_APPLIED_SCIENCE_POINTS,
+            &args,
+            &tx,
+            &mut mgr,
+        )
+        .await;
+
+        assert!(
+            !handled,
+            "social::dispatch must NOT handle method 95 (SPEND_APPLIED_SCIENCE_POINTS). \
+             A `true` here means a SPEND_APPLIED_SCIENCE_POINTS arm has been \
+             re-added to crates/services/src/cell/cell_methods/player/social.rs \
+             — that's the shadow-arm trap from issue \\#431. Index 95 belongs \
+             to the crafting submodule; the outer dispatcher already routes \
+             it there. Delete the social-side arm.",
         );
     }
 
