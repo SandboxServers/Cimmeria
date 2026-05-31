@@ -44,6 +44,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [Auto-cycle system findings](auto-cycle-findings.md) — **[PROMOTE → spec.combat.auto-cycle or doc-reference from gameplay/combat-system.md]** — Full wire path confirmed: cell method 83, 2-byte payload, server-driven loop, `BSF_AutoCycling` bit 1, cooldown-expiry re-fire pattern. Implementation gap identified.
 
+## UE3 terrain serializer RE (2026-05-27)
+
+- [UTerrain::Serialize binary layout](ue3-terrain-serialize.md) — **[PROMOTE → issue #46 appendix DONE; unblocks Phase 1.3]** — ATerrain__vfunc_12 @ 0x007517C0, full trailer layout, None-scan gotcha, 92% confidence.
+
 ## SGWHomeless full recovery (2026-05-25)
 
 - [SGWHomeless full recovery](sgwhomeless-full-recovery.md) — **[PROMOTE → docs/reverse-engineering/findings/atrea-editor.md §SGWHomeless]** — Complete v5 RE: 30 CME subscriptions confirmed, all handler VAs, singleton at `0x01ef23fc` (CORRECTS prior `cme-anomalies-resolved.md`), GLevel ToD/Wind/Weather layout, Ghidra renames applied.
