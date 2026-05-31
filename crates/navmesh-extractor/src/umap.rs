@@ -113,10 +113,23 @@ mod tests {
     /// Minimal tempdir without pulling in the `tempfile` crate — the
     /// extractor's dependency budget should stay tight; a few unit
     /// tests don't justify a runtime dep.
+    ///
+    /// The suffix combines pid + thread id + nanosecond timestamp so
+    /// concurrent test threads in the same process don't collide.
+    /// Cargo's default test runner parallelises by default, so naming
+    /// the dir by pid alone would race two threads into the same path
+    /// — one `remove_dir_all` clobbering the other's setup.
     fn tempdir() -> PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
         let dir = std::env::temp_dir().join(format!(
-            "cimmeria-navmesh-extractor-test-{}",
-            std::process::id()
+            "cimmeria-navmesh-extractor-test-{}-{:?}-{}",
+            std::process::id(),
+            std::thread::current().id(),
+            nanos,
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
