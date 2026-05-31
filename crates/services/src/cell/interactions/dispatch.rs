@@ -10,7 +10,6 @@ use crate::cell::space_manager::SpaceManager;
 
 use super::dialog::send_dialog_display;
 use super::loot::send_loot_display;
-use super::trainer::send_trainer_open;
 use super::vendor::send_store_open;
 
 /// Maximum distance for NPC interaction (world units).
@@ -143,13 +142,31 @@ pub async fn handle_interact(
             None
         }
         Some(NpcInteractionType::Trainer { archetype_id }) => {
-            tracing::info!(
+            // Deprecated routing arm. The canonical trainer path is the
+            // `template_trainer_lists` lookup in
+            // `cell_methods/player/interaction.rs::dispatch`, which calls
+            // `interactions::try_open_trainer` BEFORE falling through to
+            // `handle_interact`. By the time control reaches this arm,
+            // `try_open_trainer` has already either opened the trainer
+            // (returning `true`, in which case we don't get here) or
+            // determined the NPC isn't a trainer (no `trainer_ability_list_id`
+            // on the template). If the NPC has the `Trainer` tag but no
+            // template-registered list, the only sane action is to log
+            // and drop — emitting `onTrainerOpen` from here would bypass
+            // the per-archetype offering, already-known, level, and
+            // prereq filters that the canonical handler enforces.
+            tracing::warn!(
+                target: "abilities",
+                event = "trainer_deprecated_routing_arm",
                 entity_id,
                 target_entity_id,
                 archetype_id,
-                "interact: trainer → onTrainerOpen"
+                reason = "deprecated_routing_arm",
+                "interact: deprecated NpcInteractionType::Trainer arm hit — \
+                 template_trainer_lists is the canonical path; set \
+                 entity_templates.trainer_ability_list_id on this NPC's \
+                 template instead of using the Trainer interaction tag"
             );
-            send_trainer_open(entity_id, target_entity_id as i32, archetype_id, tx).await;
             None
         }
         Some(NpcInteractionType::Loot) => {
@@ -611,6 +628,81 @@ mod tests {
         assert!(
             rx.try_recv().is_err(),
             "initial_response must not send onDialogDisplay when player_id is missing"
+        );
+    }
+
+    /// The deprecated `NpcInteractionType::Trainer` arm in `handle_interact`
+    /// must log a `reason=deprecated_routing_arm` WARN and emit no wire
+    /// frame when an NPC carries the legacy tag but is NOT registered in
+    /// `template_trainer_lists`. The canonical trainer path runs upstream
+    /// in `cell_methods/player/interaction.rs::dispatch` and short-circuits
+    /// before reaching `handle_interact` whenever the NPC's template has
+    /// a `trainer_ability_list_id` — so by the time control reaches this
+    /// arm, there is no list to send and the only sane action is to log.
+    ///
+    /// Pins the post-rewrite behavior: WARN level, `reason` field set to
+    /// the canonical key, no `onTrainerOpen` queued.
+    #[tokio::test]
+    async fn deprecated_trainer_arm_warns_without_emitting_wire_frame() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        let capture = LogCapture::install();
+
+        let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(spaces_xml).unwrap();
+        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(42);
+        }
+
+        // NPC inside MAX_INTERACT_DISTANCE, carrying the deprecated tag but
+        // with NO `template_trainer_lists` registration — the canonical
+        // upstream path would not have routed this NPC through
+        // `try_open_trainer`, so the fall-through here is the only signal.
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            npc.template_id = Some(999); // intentionally NOT in template_trainer_lists
+            npc.interaction_type = Some(NpcInteractionType::Trainer { archetype_id: 2 });
+        }
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let result = handle_interact(1, npc_id, &tx, &mut mgr).await;
+
+        assert_eq!(result, None, "deprecated trainer arm must return None");
+
+        // No wire frame queued — the arm only logs and drops.
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
+                assert_ne!(
+                    method_index,
+                    crate::mercury::method_idx::ON_TRAINER_OPEN,
+                    "deprecated trainer arm must NOT emit onTrainerOpen — that's \
+                     exactly the double-frame bug the consolidation removed"
+                );
+            }
+        }
+
+        assert!(
+            capture
+                .find_event(
+                    Level::WARN,
+                    "deprecated NpcInteractionType::Trainer arm hit",
+                    "deprecated_routing_arm",
+                )
+                .is_some(),
+            "deprecated trainer arm must WARN with reason=deprecated_routing_arm; \
+             reverting to the old wording (or dropping the log) breaks operator \
+             diagnosability when a content edit accidentally sets the Trainer tag"
         );
     }
 }

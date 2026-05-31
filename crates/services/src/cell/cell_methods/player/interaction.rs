@@ -4,7 +4,6 @@ use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
 use super::constants::*;
-use super::trainer_interaction;
 
 pub async fn dispatch(
     entity_id: u32,
@@ -153,9 +152,13 @@ pub async fn dispatch(
                 // dispatch so a trainer's UI opens directly rather than the
                 // generic dialog. A trainer is any NPC whose template_id has
                 // a non-NULL `trainer_ability_list_id` (loaded once at
-                // startup into `space_mgr.template_trainer_lists`). See
-                // issue Phase 5b.
-                let mut handled = trainer_interaction::try_open_trainer(
+                // startup into `space_mgr.template_trainer_lists`).
+                //
+                // `crate::cell::interactions::trainer::try_open_trainer`
+                // is the single source-of-truth path. The fallback below
+                // (`handle_interact`) handles non-trainer interaction types
+                // and the deprecated `NpcInteractionType::Trainer` tag arm.
+                let mut handled = crate::cell::interactions::try_open_trainer(
                     entity_id,
                     target_entity_u32,
                     tx,
@@ -471,5 +474,111 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Routing consolidation regression: exactly ONE onTrainerOpen per
+    /// interact, even when the NPC carries the legacy
+    /// `NpcInteractionType::Trainer` tag in addition to a template-driven
+    /// `trainer_ability_list_id`.
+    ///
+    /// Pre-consolidation there were two code paths claiming to handle
+    /// trainer NPCs:
+    /// - `cell_methods/player/interaction.rs::dispatch` (INTERACT arm) →
+    ///   the canonical try_open_trainer path → correctly built the
+    ///   per-archetype, per-known-set list.
+    /// - `cell::interactions::dispatch::handle_interact` (the fall-through
+    ///   below) → a stub at `cell::interactions::trainer::send_trainer_open`
+    ///   that fabricated the list from `archetype_ability_tree` with
+    ///   everything marked trainable: no per-archetype offering, no
+    ///   already-known filter, no level/prereq check.
+    ///
+    /// Both paths fired only if `NpcInteractionType::Trainer { archetype_id }`
+    /// was assigned AND the template had a `trainer_ability_list_id` — rare
+    /// in production today (no NPC has the variant set) but a latent
+    /// footgun: any future content edit setting
+    /// `interaction_type = Trainer { ... }` would silently emit a
+    /// double-onTrainerOpen with two different ability lists.
+    ///
+    /// Post-consolidation: the canonical handler is the
+    /// `template_trainer_lists` path; the legacy `NpcInteractionType::Trainer`
+    /// arm in `interactions::dispatch::handle_interact` now logs a warning
+    /// and returns `None` without sending a duplicate frame.
+    #[tokio::test]
+    async fn trainer_interact_emits_exactly_one_on_trainer_open() {
+        use crate::cell::spawner::ArchetypeAbilityTreeEntry;
+
+        let mut mgr = make_space_manager();
+
+        // Player setup.
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(42);
+            p.archetype_id = Some(2); // Commando
+            p.level = 1;
+        }
+
+        // Trainer NPC with BOTH template_trainer_lists registration AND the
+        // legacy `NpcInteractionType::Trainer` tag — this is the bug-shape
+        // scenario where pre-consolidation both paths would fire. After
+        // consolidation only the template-driven path emits onTrainerOpen.
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            npc.template_id = Some(25);
+            npc.interaction_type = Some(NpcInteractionType::Trainer { archetype_id: 2 });
+        }
+        mgr.template_trainer_lists.insert(25, 1);
+        mgr.trainer_abilities.insert((1, 2), vec![597]);
+        mgr.archetype_ability_trees.insert(
+            2,
+            vec![ArchetypeAbilityTreeEntry {
+                ability_id: 597,
+                tree_index: 1,
+                level: 1,
+                prerequisite_abilities: vec![],
+            }],
+        );
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let mut args = Vec::with_capacity(4);
+        args.extend_from_slice(&(npc_id as i32).to_le_bytes());
+        let handled = dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
+        assert!(handled);
+
+        // Count emitted onTrainerOpen frames. Pre-consolidation, both the
+        // template-driven `try_open_trainer` AND the legacy
+        // `NpcInteractionType::Trainer` arm in handle_interact would have
+        // sent one each — a guard that asserted "> 0" would have masked
+        // the bug. Asserting `== 1` is what catches it.
+        let mut on_trainer_open_count = 0u32;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index,
+                args,
+            } = msg
+            {
+                if method_index == crate::mercury::method_idx::ON_TRAINER_OPEN {
+                    assert_eq!(entity_id, 1, "frame must target the player");
+                    let wire_trainer_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                    assert_eq!(
+                        wire_trainer_id as u32, npc_id,
+                        "onTrainerOpen wire TrainerID must be the NPC id"
+                    );
+                    on_trainer_open_count += 1;
+                }
+            }
+        }
+        assert_eq!(
+            on_trainer_open_count, 1,
+            "trainer interact must emit exactly one onTrainerOpen — pre- \
+             consolidation both the template-driven path AND the dead \
+             NpcInteractionType::Trainer arm would fire, double-emitting \
+             with two divergent ability lists"
+        );
     }
 }
