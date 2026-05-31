@@ -22,6 +22,7 @@
 
 mod loader;
 mod reservation;
+mod scoring;
 mod spatial;
 mod types;
 
@@ -30,5 +31,6 @@ mod tests;
 
 pub use loader::{load_cover_nodes, load_cover_sets, CoverLoadError};
 pub use reservation::{CoverReservations, ReserveError};
+pub use scoring::{is_flanked, pick_best, score_node, CoverWeights, ScoringContext, MAX_COVER_DISTANCE};
 pub use spatial::CoverIndex;
 pub use types::{Cover, CoverHeight, CoverNode, CoverQuality, CoverSetMeta, CoverSlotKey};

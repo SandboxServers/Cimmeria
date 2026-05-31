@@ -107,6 +107,34 @@ pub enum Trigger {
     /// quest objects, granting starter items) without coupling that work
     /// to the chain that did the accepting.
     OnMissionAccepted { mission_id: i32 },
+
+    /// Fires when a player enters proximity of a cover set (a chunk of
+    /// cover-prefab nodes — see `resources.cover_sets`). The same player
+    /// can be in multiple cover sets at once; one event per set on entry.
+    /// Filter by `cover_set_id` to gate on a specific chunk (e.g. the
+    /// Castle Cellblock med-bay cover set for the drone-attack chain).
+    /// Wildcard (None) fires for any cover-set entry.
+    OnPlayerEnteredCover { cover_set_id: Option<i32> },
+
+    /// Fires when a player leaves a cover set's proximity. Paired with
+    /// [`Self::OnPlayerEnteredCover`] for symmetry; useful for chains
+    /// that want to react to "player no longer behind cover".
+    OnPlayerLeftCover { cover_set_id: Option<i32> },
+
+    /// Fires once when the player has continuously been in a cover set
+    /// for at least `seconds`. Debounced — leaving and re-entering resets
+    /// the timer. Useful for "stay in cover for 5 seconds" objectives.
+    OnPlayerInCoverDuration {
+        cover_set_id: Option<i32>,
+        seconds: u32,
+    },
+
+    /// Fires when an NPC currently occupying a cover slot is flanked —
+    /// the top-threat target moved outside the cover's defensive arc
+    /// (cover orientation ± π/2). Used by encounter authors who want to
+    /// react to "you outflanked the guard" (the AI itself already
+    /// repositions; this is just an authoring hook).
+    OnNpcFlanked { npc_template: Option<String> },
 }
 
 /// Runtime event payload passed to the chain engine when a game event occurs.
@@ -155,6 +183,10 @@ pub enum TriggerType {
     MissionCompleted,
     DialogSetOpen,
     MissionAccepted,
+    PlayerEnteredCover,
+    PlayerLeftCover,
+    PlayerInCoverDuration,
+    NpcFlanked,
 }
 
 impl Trigger {
@@ -187,6 +219,10 @@ impl Trigger {
             Trigger::OnMissionCompleted { .. } => TriggerType::MissionCompleted,
             Trigger::OnDialogSetOpen { .. } => TriggerType::DialogSetOpen,
             Trigger::OnMissionAccepted { .. } => TriggerType::MissionAccepted,
+            Trigger::OnPlayerEnteredCover { .. } => TriggerType::PlayerEnteredCover,
+            Trigger::OnPlayerLeftCover { .. } => TriggerType::PlayerLeftCover,
+            Trigger::OnPlayerInCoverDuration { .. } => TriggerType::PlayerInCoverDuration,
+            Trigger::OnNpcFlanked { .. } => TriggerType::NpcFlanked,
         }
     }
 
@@ -325,6 +361,37 @@ impl Trigger {
             Trigger::OnMissionAccepted { mission_id } => {
                 event.params.get("mission_id").and_then(|v| v.as_i64()) == Some(*mission_id as i64)
             }
+            Trigger::OnPlayerEnteredCover { cover_set_id }
+            | Trigger::OnPlayerLeftCover { cover_set_id } => match cover_set_id {
+                Some(expected) => {
+                    event.params.get("cover_set_id").and_then(|v| v.as_i64())
+                        == Some(*expected as i64)
+                }
+                None => true,
+            },
+            Trigger::OnPlayerInCoverDuration {
+                cover_set_id,
+                seconds,
+            } => {
+                let seconds_match = event.params.get("seconds").and_then(|v| v.as_i64())
+                    == Some(*seconds as i64);
+                let set_match = match cover_set_id {
+                    Some(expected) => {
+                        event.params.get("cover_set_id").and_then(|v| v.as_i64())
+                            == Some(*expected as i64)
+                    }
+                    None => true,
+                };
+                seconds_match && set_match
+            }
+            Trigger::OnNpcFlanked { npc_template } => match npc_template {
+                Some(expected) => event
+                    .params
+                    .get("npc_template")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|actual| actual == expected),
+                None => true,
+            },
         }
     }
 }
