@@ -9,7 +9,7 @@ Cimmeria reimplements the server infrastructure — authentication, world simula
 
 ## Status
 
-The project tracks **369 features** across 38 systems. **47% have code** (175 of 369). See the [Gap Analysis](docs/gap-analysis.md) for the full breakdown.
+The project tracks **437 features** across 44 systems against the Rust codebase. **57% have code** (248 of 437); **32% are confirmed working** end-to-end with the live client (139 of 437). See the [Gap Analysis](docs/gap-analysis.md) for the full per-system breakdown.
 
 **Tested end-to-end with the game client:**
 - Login and authentication (HTTP SOAP → shard select → Mercury UDP)

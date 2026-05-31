@@ -9,31 +9,32 @@ last_updated: 2026-05-27
 
 Where the Cimmeria server emulator stands today and what's ahead.
 
-> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks 369 individual features across 30 gameplay systems and 8 infrastructure systems.
+> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which now tracks **437 individual features across 44 systems** (36 gameplay + 8 infrastructure) against the active Rust codebase. The previous edition counted against the deprecated Python + C++ trees; it overstated some completion (counting Python `pass` stubs as "code exists") and understated others (the content engine, observability, wireclient, and Discord crates didn't exist back then).
 
 ## Status Taxonomy
 
 | Status | Symbol | Meaning |
 |--------|--------|---------|
-| **Confirmed Working** | CW | Tested end-to-end with the game client and verified correct |
+| **Confirmed Working** | CW | Tested end-to-end with the game client (Castle Cellblock smoke + Lomiada captures) and verified correct |
 | **Needs Test** | NT | Code exists, looks reasonable, but hasn't been verified with a live client |
 | **Implemented** | IM | Code written but may be incomplete or have known issues |
-| **Known / Missing** | KM | We know this needs to exist but no code exists |
+| **Known / Missing** | KM | We know this needs to exist but no code exists in `crates/` |
 | **Needed / Unknown** | NU | Server-only system we infer must exist but have no direct evidence for |
 
 ## Overall Completion
 
 | Status | Features | Percentage |
 |--------|----------|-----------|
-| Confirmed Working (CW) | 31 | 8.4% |
-| Needs Test (NT) | 49 | 13.3% |
-| Implemented (IM) | 95 | 25.7% |
-| Known/Missing (KM) | 191 | 51.8% |
-| Needed/Unknown (NU) | 3 | 0.8% |
-| **Total** | **369** | |
+| Confirmed Working (CW) | 139 | 31.8% |
+| Needs Test (NT) | 18 | 4.1% |
+| Implemented (IM) | 91 | 20.8% |
+| Known/Missing (KM) | 184 | 42.1% |
+| Needed/Unknown (NU) | 5 | 1.1% |
+| **Total** | **437** | |
 
-**Code exists (CW + NT + IM)**: 175 features (47.4%)
-**Missing (KM + NU)**: 194 features (52.6%)
+**Code exists (CW + NT + IM)**: 248 features (56.8%)  
+**Missing (KM + NU)**: 189 features (43.2%)  
+**Tested end-to-end (CW)**: 139 features (31.8%)
 
 ## System Status
 
@@ -41,160 +42,173 @@ Where the Cimmeria server emulator stands today and what's ahead.
 
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
-| Authentication & login | CW | 8 (5 CW, 3 IM) | Full login/auth flow tested and reliable |
-| Mercury protocol | CW | 7 (5 CW, 2 KM) | Reliable UDP transport works. Missing cumulative ACKs, piggyback |
-| Game data pipeline | CW | 4 (3 CW, 1 KM) | 22 resource categories, 112,626 DB rows served |
-| Database persistence | CW | 5 (4 CW, 1 IM) | SOCI ORM, player/inventory/mission state persisted |
-| Python embedding | CW | — | Boost.Python 3.4 embedding works, 164 scripts load |
+| Authentication & login | CW | 11 (6 CW, 3 IM, 2 KM) | Full login flow tested. SHA1 → bcrypt and continuous validation pending |
+| Mercury protocol | CW | 13 (11 CW, 2 KM) | AES-256-CBC + HMAC-MD5 transport, Transport trait, ChannelBundle, loopback harness, pcap replay, chaos primitives. Missing: cumulative + piggyback ACKs |
+| Game data pipeline | CW | 7 (6 CW, 1 KM) | 22 resource categories, 112,626 DB rows, PAK overrides for missions and items. Hot reload pending |
+| Database persistence | CW | 8 (7 CW, 1 KM) | sqlx with compile-time query checks, durable Base→Cell outbox, 155 live-DB regression guards. No migration framework yet |
 
-### Core Gameplay — Real Code Exists
-
-| System | Status | Features | Notes |
-|--------|--------|----------|-------|
-| Character creation | NT | 11 (9 NT, 2 KM) | Account.py ~300 lines, full flow with validation. Needs client test |
-| World entry & spaces | CW | 8 (5 CW, 3 IM) | 1 zone tested (Castle Cellblock). Others need verification |
-| Movement & navigation | IM | 9 (1 CW, 5 IM, 3 KM) | Player movement works. No server-side speed validation |
-| Entity lifecycle (AoI) | CW | 7 (5 CW, 2 KM) | Grid-based AoI works. No LOD system |
-| Combat & abilities | IM | 21 (14 IM, 7 KM) | 1,090-line AbilityManager. Single-target works. AoE/deploy missing |
-| Effects & buffs | IM | 13 (8 IM, 5 KM) | Framework works. 4 of 3,217 effects have scripts |
-| Stats | IM | 8 (4 IM, 3 KM, 1 NU) | Stat class works. Missing: derived formulas, level scaling |
-| Inventory & items | NT | 11 (1 CW, 8 NT, 2 KM) | 21K-line Inventory.py. Full bag/equip/move logic |
-| Missions | IM | 12 (1 CW, 8 IM, 3 KM) | 29K-line MissionManager. 20 mission scripts. 1 zone tested |
-| Loot | NT | 9 (5 NT, 1 IM, 3 KM) | Algorithm works (221 lines). Loot tables mostly empty |
-| Vendors | NT | 7 (6 NT, 1 KM) | Vendor.py complete (buy/sell/repair/recharge/buyback) |
-
-### NPC Systems — Partial/Server-Only
+### Core Gameplay — Real Code, Mostly Working
 
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
-| NPC AI & behavior | IM | 26 (11 IM, 15 KM) | 2 of 12 AI states work (Spawning, Fighting). No patrol/wander/leash |
-| Spawn system | KM | 19 (18 KM, 1 NU) | 100% empty Python stubs. Rich .def properties reveal design |
+| Character creation | NT | 11 (8 NT, 3 KM) | 1,640 lines incl. delete + visuals live-DB tests. Full client smoke would move to CW |
+| World entry & spaces | CW | 9 (7 CW, 2 IM) | 22,682 lines across 64 files. Castle Cellblock end-to-end. 23 other zones unchecked |
+| Movement & navigation | IM | 9 (1 CW, 4 IM, 4 KM) | Player movement works; NPC navigation states blocked on full Detour wiring |
+| Entity lifecycle (AoI) | CW | 9 (7 CW, 1 IM, 1 KM) | Grid-based AoI, witness lifecycle, BeingAppearance fanout helper pending (#278) |
+| Combat & abilities | IM | 23 (5 CW, 15 IM, 3 KM) | 5,918 lines + 142 tests. PR #420 closed ability+effect gaps (#47, #61, #331, #416, #419) |
+| Effects & buffs | IM | 13 (4 CW, 7 IM, 2 KM) | Framework CW. Long tail of 3,217 effect rows needs script coverage |
+| Stats | IM | 8 (5 CW, 2 KM, 1 NU) | Stat list + dirty sync + per-level scaling shipped. Equipment bonuses + derived formulas pending |
+| Inventory & items | IM | 13 (9 CW, 2 NT, 2 KM) | 5,272-line dispatcher with stacking (#405), bandolier discipline, Slappack PAK override |
+| Missions | IM | 12 (8 CW, 2 IM, 2 KM) | Content-engine driven. Castle Cellblock end-to-end. Sharing + mission-gated loot pending |
+| Loot | IM | 9 (2 CW, 2 NT, 2 IM, 3 KM) | Take-all + bag drop verified. Tables mostly empty; group eligibility unwired |
+| Vendors | NT | 8 (2 CW, 5 NT, 1 IM) | 7,267 lines across buyback / purchase / sell / paid_repair / paid_recharge submodules. PL/pgSQL smoke verifies the loop |
 
-### Secondary Systems — Code Exists, Untested
-
-| System | Status | Features | Notes |
-|--------|--------|----------|-------|
-| XP & leveling | IM | 11 (6 IM, 5 KM) | giveExperience() works. Placeholder XP table. No stat scaling |
-| Crafting | NT | 9 (8 NT, 1 KM) | Crafter.py 575 lines, ~95% implemented. Untested |
-| Stargate travel | IM | 9 (6 IM, 3 KM) | Dial/timer/passage work. Missing multi-player sync, return trips |
-| Chat | NT | 10 (6 NT, 4 KM) | Chat.py 352 lines. Messaging works. 11 admin methods = stubs |
-| Trading | NT | 8 (7 NT, 1 KM) | Trade.py 244 lines. P2P trade slots. Untested |
-
-### Stub-Only Systems — No Real Implementation
-
-| System | Status | Features | Notes |
-|--------|--------|----------|-------|
-| Organizations/guilds | KM | 15 (all KM) | All 15+ RPC methods are `pass`/`trace()` |
-| Mail | KM | 13 (2 IM, 10 KM, 1 NU) | sendMailMessage = `pass`. Some read-only partial |
-| Black market | KM | 10 (all KM) | All 6 handler methods = `pass` |
-| Contact lists | KM | 8 (all KM) | All 6 methods = empty stubs |
-| Dueling | KM | 6 (all KM) | All methods = `pass`/`trace()` |
-| Pets | KM | 7 (2 IM, 5 KM) | Entity + basic init exists. No behavior |
-| Minigames | IM | 9 (4 IM, 5 KM) | 3 of 9 have logic, 6 are placeholders. None tested |
-| Groups | KM | 7 (all KM) | SGWPlayerGroupAuthority.py = empty shell |
-
-### Server Infrastructure — Mostly Missing
+### NPC Systems — Partial
 
 | System | Status | Features | Notes |
 |--------|--------|----------|-------|
-| Session management | IM | 6 (3 IM, 3 KM) | Basic timeout exists. No reconnection grace, no concurrent limit |
-| Rate limiting | KM | 5 (1 IM, 4 KM) | No action throttling. Exploitable |
-| Anti-cheat | IM | 7 (3 IM, 4 KM) | Post-login challenge only. No runtime validation |
-| Economy | IM | 6 (3 IM, 3 KM) | Vendor prices static. No sink/faucet tracking |
-| World state | IM | 5 (1 CW, 2 IM, 2 KM) | Space scripts reset on restart |
-| Scheduler | KM | 4 (1 IM, 3 KM) | No timed events, no cron-like system |
-| Admin/GM tools | IM | 10 (4 IM, 6 KM) | 22 GM commands are stubs in SGWPlayer.py |
-| Metrics/telemetry | KM | 5 (1 IM, 4 KM) | Logging categories exist but no game metrics |
+| NPC AI & behavior | IM | 22 (6 CW, 5 IM, 11 KM) | Combat AI works. Patrol / wander / leash blocked on Navigation. Cover system (1,332 Atrea nodes) unimplemented |
+| Spawn system | IM | 23 (7 CW, 11 IM, 4 KM, 1 NU) | 1,983 lines, 23 tests. Castle Cellblock lifecycle CW. Time-of-day + linked sets pending |
+
+### Secondary Systems
+
+| System | Status | Features | Notes |
+|--------|--------|----------|-------|
+| XP & leveling | IM | 11 (9 CW, 2 KM) | Kill-XP pipeline + level scaling + training points CW. Mission XP needs chain authoring; ASP grant on level-up pending |
+| Crafting | KM | 9 (all KM) | **Not ported.** Python Crafter.py (575 lines, ~95% in deprecated tree) needs full transplant |
+| Stargate travel | IM | 10 (2 CW, 5 IM, 3 KM) | Gate passage CW. Multi-player sync + return-trip state + cooldown pending |
+| Chat | NT | 9 (1 NT, 8 KM) | Say/emote/yell only. Channels, tells, moderation all unported |
+| Trading | KM | 8 (all KM) | **Not ported.** Python Trade.py (244 lines) needs full transplant |
+
+### Stub-Only / Largely Missing
+
+| System | Status | Features | Notes |
+|--------|--------|----------|-------|
+| Organizations / guilds | KM | 15 (all KM) | 200 lines of stubs in cell_methods/organization.rs. DB schema needed |
+| Mail | IM | 13 (8 IM, 4 KM, 1 NU) | 1,456 lines in base/world_entry/methods/mail/. CoD + return-to-sender + new-mail fanout pending |
+| Black market | KM | 10 (9 KM, 1 NU) | 94 lines of stubs. Needs sgw_auction schema + lifecycle |
+| Contact lists | KM | 8 (all KM) | 86 lines of stubs. Needs sgw_contact_list schema |
+| Dueling | KM | 6 (all KM) | Not ported. 5-state machine + 7 defeat conditions to implement |
+| Pets | KM | 7 (all KM) | Not ported. Entity extends spawner mob + Follow AI state |
+| Minigames | KM | 9 (4 IM, 5 KM) | Session routing IM. 8 game types unimplemented (SmartFox 1.x external server) |
+| Groups / parties | KM | 7 (all KM) | Not ported. Lightweight Squad-type Organization |
+
+### Systems New Since the Original Audit
+
+These didn't exist in the Python codebase and so weren't tracked. They're substantial in Rust today.
+
+| System | Status | Features | Notes |
+|--------|--------|----------|-------|
+| Content engine | CW | 10 (6 CW, 4 KM) | 7,906 lines in cell/content/ + 3,561 in content-engine/. 99 tests. Drives missions/dialogs/triggers/conditions/actions |
+| Mercury bundle | CW | 5 (5 CW) | ChannelBundle accumulator, AoI-burst bundling, backpressure handling |
+| Observability pipeline | CW | 8 (8 CW) | OTLP exporter, SigNoz overlay, Mercury packet logging, dev-session telemetry, negative-logging convention |
+| Wireclient + chaos | CW | 7 (7 CW) | Tier 3 headless client + LossyTransport + loopback harness + pcap replay |
+| Discord notifications | CW | 6 (6 CW) | Event routing, channel toggles, embed formatting, panic-hook capture |
+| Tauri admin app + tools | IM | 9 (1 CW, 7 IM, 1 KM) | Admin API, content editor, scene editor, sgw-launcher. Three.js space viewer pending |
+
+### Server Infrastructure (Cross-Cutting)
+
+| System | Status | Features | Notes |
+|--------|--------|----------|-------|
+| Session management | IM | 6 (1 CW, 2 IM, 3 KM) | Inactivity timeout works. No reconnection grace or continuous validation |
+| Rate limiting | KM | 5 (1 CW, 4 KM) | Ability cooldowns enforced. Chat / action / trade / login throttling pending |
+| Anti-cheat | KM | 7 (1 CW, 2 IM, 4 KM) | Inventory ownership checked. No speed/teleport/damage validation |
+| Economy | IM | 7 (5 CW, 2 KM) | Vendor/loot/mission cash all flowing. AH listing fees + cash-flow tracking pending |
+| World state | IM | 6 (2 CW, 1 IM, 3 KM) | Outbox CW. Gate/door state + world-state table pending |
+| Scheduler | IM | 4 (1 IM, 3 KM) | Per-chain timers via content engine. No global cron |
+| Admin / GM | IM | 11 (5 IM, 6 KM) | Admin API + Tauri panel IM. Ban/mute, teleport, item-grant pending |
+| Metrics / telemetry | CW | 7 (4 CW, 3 IM) | Full OTLP pipeline. Per-player and dashboard polish ongoing |
 
 ## Content Coverage
 
 | Content Type | Total in DB | Tested/Verified | Notes |
 |--------------|-------------|-----------------|-------|
-| Zones | 91 world definitions | 1 (Castle Cellblock) | Other zones have space scripts but are untested |
-| Missions | 1,041 | ~5 in Castle Cellblock | Most have scripts that exist but are unverified |
-| Abilities | 1,887 | ~10-20 | Basic attacks tested, vast majority untested |
-| Items | 6,060 | ~20-30 | Quest items and basic gear tested |
-| Effects | 3,217 | 4 have scripts | Massive content gap — generator tool created |
-| NPCs | 153 templates | ~10 | Castle Cellblock NPCs tested |
-| Dialog trees | 5,406 | ~10 | Castle Cellblock dialogs tested |
-| Stargates | 29 | 0 end-to-end | DHD UI works, gate passage does not |
-| Crafting blueprints | 499 | 0 | System untested |
-| Loot tables | defined | mostly empty | Algorithm works, tables need population |
+| Zones | 91 world definitions | 1 (Castle Cellblock) routinely; some others manually | Multi-zone smoke is on the critical path |
+| Missions | 1,041 | ~5 in Castle Cellblock | Content engine drives mission chains generically |
+| Abilities | 1,887 | many | Three-bucket selection landed (#368), PR #420 closed ability gaps |
+| Items | 6,060 | ~30 routinely | Slappack stacking + bandolier discipline verified |
+| Effects | 3,217 | framework + most-common scripts | Long tail still needs content authoring |
+| NPCs | 153 templates | ~12 routinely | Castle Cellblock NPCs + Castle drone encounter |
+| Dialog trees | 5,406 | ~10 | Castle Cellblock dialogs verified |
+| Stargates | 29 | Castle ↔ neighbor smoke | Multi-player sync pending |
+| Crafting blueprints | 499 | 0 | Subsystem not ported |
+| Loot tables | defined | mostly empty | Algorithm verified; content sparse |
 
 ## Known Issues
 
-### Combat Formula Gaps
+### Combat formula calibration
 
-Combat works at a basic level but many formulas are unvalidated:
-- No diminishing returns on stats
-- Armor/resistance calculations may not match original
-- Ability scaling with level is undefined
-- Area-of-effect abilities not implemented
-- Cover system mechanics are minimal
+Combat works at a basic level but several formulas are still calibration items:
 
-### Mercury Protocol Gaps
+- No diminishing returns on stats (NU)
+- Armor / resistance calibration vs. original is approximate
+- AoE damage falloff curves need verification (PR #420 landed AoE framework)
+- Cover system mechanics minimal (1,332 cover nodes unimplemented)
 
-The transport layer works but lacks some BigWorld features:
-- No cumulative ACKs (individual only)
-- No piggyback packet support
-- Native little-endian byte ordering (works because both sides are x86)
-- Untested with multiple simultaneous clients
+### Mercury protocol gaps
 
-### Effect Content Gap
+The transport layer works but a few BigWorld features are still missing:
 
-Only 4 of 3,217 effects have Python scripts. The effect framework works but virtually no effect content exists. A generator tool (`tools/generate_effect_stubs.py`) has been created to bootstrap stubs.
+- No cumulative ACKs (per-packet only)
+- No piggyback ACKs
+- Reconnection grace period missing (instant disconnect = lost session)
 
-### Spawn System Empty
+### Effect content gap
 
-SGWSpawnRegion.py and SGWSpawnSet.py are 100% empty shells. Without the spawn system, NPCs only exist via space scripts (static placement). Dynamic population management is completely missing.
+The framework is CW (PR #420). The long tail of the 3,217 effect rows still needs script coverage — the most common scripts are wired; the niche ones are not.
+
+### Crafting and Trading not ported
+
+These two Python subsystems (575 lines and 244 lines respectively) never made the jump to Rust. They are firmly KM and on the critical path.
+
+### Single-zone coverage
+
+Only Castle Cellblock is routinely smoked end-to-end. The other 23 spaces have content but no continuous verification.
 
 ## Critical Path for Playability
 
-The minimum viable gameplay loop requires these systems in order:
+In rough priority order:
 
-1. **Spawn System** (KM) — Without it, no mobs exist in the world dynamically
-2. **NPC Navigation** (KM) — Without it, mobs stand still during combat
-3. **XP from Kills** (KM) — Primary progression driver
-4. **Stat Scaling** (KM) — Makes leveling meaningful
-5. **Loot Table Content** (KM) — Makes combat rewarding
-6. **Effect Scripts** (KM) — 4 of 3,217 effects have scripts
+1. **Effect-script content coverage** — framework CW (#420); the 3,217 effect rows need script authoring for the long tail
+2. **Mission XP** — `mission.reward_xp` is 0 in all seed rows; chain-side authoring + `Action::GrantXP` wiring
+3. **NPC navigation states** — patrol / wander / leash blocked on full Detour wiring
+4. **Crafting port** — full subsystem missing from Rust
+5. **Trading port** — full subsystem missing from Rust
+6. **Multi-zone end-to-end** — 23 spaces unchecked
 
-Once these are addressed, the core combat→loot→level loop is functional.
+Quality-of-life items (organizations, mail polish, black market, contact lists, dueling, pets, minigame port, groups, GM tools) follow the above and can be picked up independently.
 
 ## Roadmap
 
-### Near-term: Validate What Exists
+### Near-term — close critical-path gaps
 
-- Test character creation end-to-end with a live client
-- Test chat, crafting, trading, vendor systems with a live client
-- Verify space scripts beyond Castle Cellblock
-- Validate combat formulas against original client behavior
+- Effect-script coverage for the most-played encounters
+- Mission XP chain-authoring
+- NPC patrol / wander / leash wiring (Detour pass)
+- Multi-zone routine smoke
 
-### Medium-term: Fill Critical Gaps
+### Medium-term — restore retired subsystems
 
-- Implement spawn system (SGWSpawnRegion/Set population management)
-- Implement NPC patrol, wander, leash, and flee AI states
-- Define real XP curves and stat scaling per level
-- Populate loot tables from game data
-- Generate effect script stubs and implement key effects
-- Complete AoE and deploy ability targeting modes
+- Port Crafting (Crafter.py → Rust)
+- Port Trading (Trade.py → Rust)
+- Org / guild lifecycle + schema
+- Mail polish (CoD, return-to-sender, new-mail fanout)
 
-### Long-term: Build Missing Systems
+### Long-term — finish-out
 
-- Organizations/guilds (15+ RPC methods)
-- Mail system (send, receive, attachments, COD)
-- Black market/auction house
-- Contact lists, dueling, pets
-- Complete minigame implementations
-- Server infrastructure (rate limiting, anti-cheat, session management)
+- Black market + contact lists + dueling + pets + groups + minigames (in any order)
+- Server infrastructure: rate limiting, anti-cheat (speed/teleport/damage), reconnection grace, GM-command surface
+- Three.js space viewer (Phase 2 of the admin UI)
 
 ## Related Documents
 
-- [Gap Analysis](gap-analysis.md) — Per-feature status tracking (source of truth)
-- [Gameplay Dashboard](gameplay/README.md) — Per-system gameplay breakdowns
+- [Gap Analysis](gap-analysis.md) — per-feature status tracking (source of truth)
+- [Gameplay Dashboard](gameplay/README.md) — per-system gameplay breakdowns
+- [Content Engine](content/content-engine.md) — the data-driven runtime
 - [NPC AI](gameplay/npc-ai.md) — AI state machine and threat system
-- [Spawn System](gameplay/spawn-system.md) — Spawn region/set architecture
-- [Loot System](gameplay/loot-system.md) — Loot generation algorithm
+- [Spawn System](gameplay/spawn-system.md) — spawn region/set architecture
+- [Loot System](gameplay/loot-system.md) — loot generation algorithm
 - [Progression](gameplay/progression-system.md) — XP, leveling, training points
-- [Character Creation](gameplay/character-creation.md) — Character creation flow
-- [Server Systems](architecture/server-systems.md) — Server-only infrastructure
+- [Character Creation](gameplay/character-creation.md) — character creation flow
+- [Server Systems](architecture/server-systems.md) — server-only infrastructure
+- [../README.md](../README.md) — high-level project status
