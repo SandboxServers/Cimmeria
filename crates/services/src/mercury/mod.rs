@@ -234,6 +234,8 @@ pub mod method_idx {
     pub const ON_RING_TRANSPORTER_LIST: u16 = 133;
     pub const ON_UPDATE_KNOWN_CRAFTS: u16 = 139;
     pub const ON_ABILITY_TREE_INFO: u16 = 141;
+    pub const ON_TRADE_STATE: u16 = 144;
+    pub const ON_TRADE_RESULTS: u16 = 145;
     pub const ON_PLAY_MOVIE: u16 = 155;
 }
 
