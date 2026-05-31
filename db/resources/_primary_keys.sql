@@ -1,6 +1,27 @@
 --
+-- Name: cover_sets_pkey; Type: CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY cover_sets
+    ADD CONSTRAINT cover_sets_pkey PRIMARY KEY (chunk_id);
+
+--
+-- Name: cover_sets_chunk_name_key; Type: CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY cover_sets
+    ADD CONSTRAINT cover_sets_chunk_name_key UNIQUE (chunk_name);
+
+--
+-- Name: cover_nodes_pkey; Type: CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY cover_nodes
+    ADD CONSTRAINT cover_nodes_pkey PRIMARY KEY (chunk_id, node_id);
+
+--
 -- TOC entry 2914 (class 2606 OID 63189)
--- Name: abilities_pkey; Type: CONSTRAINT; Schema: resources; Owner: -; Tablespace: 
+-- Name: abilities_pkey; Type: CONSTRAINT; Schema: resources; Owner: -; Tablespace:
 --
 
 ALTER TABLE ONLY abilities
