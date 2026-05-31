@@ -18,5 +18,5 @@ pub mod texture2d;
 
 pub use error::{ObjectError, Result};
 pub use package_index::PackageIndex;
-pub use static_mesh::{deserialize_static_mesh, StaticMesh};
+pub use static_mesh::{deserialize_static_mesh, KdopTriangle, StaticMesh};
 pub use texture2d::{deserialize_texture2d, MipLevel, PixelFormat, Texture2D};
