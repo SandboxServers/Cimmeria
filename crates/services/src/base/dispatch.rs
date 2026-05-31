@@ -18,9 +18,9 @@ use super::ConnectedClientState;
 /// Only `SPEAKER_GM` and `SPEAKER_DND` are computed today — matches
 /// `python/base/Chat.py::getSpeakerFlags`. `SPEAKER_Petition` (0x02) is
 /// declared in the enum but never set by the Python reference, so it is
-/// intentionally omitted here (see issue #65 deep dive).
+/// intentionally omitted here.
 pub(crate) mod speaker_flags {
-    /// Set when the speaker's `access_level >= 1` (Moderator or GameMaster).
+    /// Set when the speaker's `access_level > 0` (Moderator or higher).
     /// Python parity: `if player.accessLevel > 0`.
     pub const GM: u8 = 0x01;
     /// Set when the speaker has a non-empty DND auto-reply message.
@@ -82,14 +82,15 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             let channel = payload[0];
             let mut offset = 1;
 
-            // Parse target (WSTRING). `read_wstring` returns the number of
-            // BYTES CONSUMED (not the new absolute offset), so accumulate
-            // with `+=`. The earlier code did `offset = new_offset` which
-            // dropped the +1 for the channel byte and mis-aligned the text
-            // WSTRING read — discovered while wiring #65 speaker_flags
-            // (the dispatch never reached the cell-forward branch on
-            // empty-target spatial channels because `read_wstring(buf, 4)`
-            // saw garbage where the text length should have been).
+            // Parse target (WSTRING). `read_wstring` returns the number
+            // of BYTES CONSUMED (not the new absolute offset), so
+            // accumulate with `+=` — `offset = ret` would drop the +1
+            // for the channel byte and mis-align the subsequent text
+            // WSTRING read. Empty-target spatial channels (say / emote /
+            // yell) are the case this matters most: with a 0-length
+            // target the text length lives at the byte right after the
+            // channel byte, and the old `=` assignment made the text
+            // read see garbage.
             let (target, target_bytes) = match read_wstring(payload, offset) {
                 Ok(v) => v,
                 Err(_) => return Ok(()),
@@ -127,7 +128,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 match clients.get(&addr) {
                     Some(c) => {
                         let mut flags: u8 = 0;
-                        if c.access_level >= 1 {
+                        if c.access_level > 0 {
                             flags |= speaker_flags::GM;
                         }
                         if c.dnd_message.is_some() {
@@ -174,11 +175,13 @@ pub(crate) async fn dispatch_sgw_player_base_method(
         }
 
         sgw_player_base::CHAT_SET_AFK => {
-            // AFK is intentionally log-only. AFK is NOT a speaker flag
-            // (see issue #65 deep dive: `enumerations.xml` has no
-            // `SPEAKER_AFK` token). In Python, `chatSetAFKMessage` only
-            // affects the auto-reply-tell path in `sendPlayerMessage`,
-            // which is a separate feature we have not ported yet.
+            // AFK is intentionally log-only. AFK is NOT a speaker flag:
+            // `entities/defs/enumerations.xml` has no `SPEAKER_AFK`
+            // token, and `python/base/Chat.py::getSpeakerFlags` only
+            // checks `accessLevel > 0` / `dndMessage is not None`. In
+            // Python, `chatSetAFKMessage` only affects the
+            // auto-reply-tell path in `sendPlayerMessage`, which is a
+            // separate feature we have not ported yet.
             tracing::debug!(
                 %addr,
                 "chatSetAFKMessage -- acknowledged (auto-reply not yet implemented)",
@@ -502,11 +505,11 @@ mod tests {
         );
     }
 
-    // ── Speaker flags (#65) regression guards ──────────────────────────
+    // ── Speaker flags regression guards ────────────────────────────────
     //
     // The chat dispatch at `SEND_PLAYER_COMMUNICATION` must compute
     // `speaker_flags` from per-connection state:
-    //   - SPEAKER_GM  (0x01) when access_level >= 1
+    //   - SPEAKER_GM  (0x01) when access_level > 0
     //   - SPEAKER_DND (0x04) when dnd_message.is_some()
     // matching `python/base/Chat.py::getSpeakerFlags`. The wire
     // serializer is byte-exact already (pinned by
@@ -601,7 +604,7 @@ mod tests {
         assert_eq!(
             flags & speaker_flags::GM,
             speaker_flags::GM,
-            "access_level >= 1 must set SPEAKER_GM (0x01); got {flags:#04x}",
+            "access_level > 0 must set SPEAKER_GM (0x01); got {flags:#04x}",
         );
         assert_eq!(
             flags & speaker_flags::DND,
@@ -929,10 +932,10 @@ mod tests {
         let mut valid_wstring_payload = Vec::new();
         crate::mercury::write_wstring(&mut valid_wstring_payload, "afk for lunch");
         let payloads: &[&[u8]] = &[
-            &[],                          // empty payload
-            &[0u8, 0u8, 0u8, 0u8],        // valid 0-length WSTRING header
-            &valid_wstring_payload,       // valid non-empty WSTRING
-            &[0xFFu8, 0xFFu8],            // malformed (too short for char_count)
+            &[],                    // empty payload
+            &[0u8, 0u8, 0u8, 0u8],  // valid 0-length WSTRING header
+            &valid_wstring_payload, // valid non-empty WSTRING
+            &[0xFFu8, 0xFFu8],      // malformed (too short for char_count)
         ];
 
         for (i, payload) in payloads.iter().enumerate() {
@@ -959,11 +962,7 @@ mod tests {
         let snapshot = {
             let g = connected.lock().unwrap();
             let c = g.get(&addr).expect("client state must still be present");
-            (
-                c.player_entity_id,
-                c.dnd_message.clone(),
-                c.access_level,
-            )
+            (c.player_entity_id, c.dnd_message.clone(), c.access_level)
         };
         assert_eq!(
             snapshot,
