@@ -35,7 +35,9 @@ mod tests;
 pub use cone_aoe::{collect_cone_targets, fan_out_cone_effects, log_effect_flag_categories};
 pub use dispatch::handle_use_ability_on_ground;
 pub(crate) use loot_drop::INT_NORMAL_LOOT;
-pub(crate) use messaging::{request_appearance_refresh, send_entity_method};
+pub(crate) use messaging::{
+    broadcast_movement_type, request_appearance_refresh, send_entity_method,
+};
 // `send_entity_method_to_witnesses` and `send_entity_method_to_self_and_witnesses`
 // land here for #278 child PRs to adopt. They stay private to the `messaging`
 // module until the first child callsite migrates — at which point the

@@ -1,5 +1,5 @@
 //! Per-frame tick handlers: AoI propagation, reload-completion promotion,
-//! and NPC movement along nav paths.
+//! NPC movement along nav paths, and NPC respawn promotion.
 
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
@@ -11,11 +11,13 @@ use super::super::space_manager::SpaceManager;
 mod auto_cycle;
 pub(crate) mod holster;
 mod npc_movement;
+mod npc_respawn;
 
 pub(super) use auto_cycle::auto_cycle_tick;
 pub(crate) use holster::HOLSTER_ANIMATION_DURATION;
 pub(super) use holster::{holster_timer_tick, pending_slot_swap_tick};
 pub(super) use npc_movement::npc_movement_tick;
+pub(super) use npc_respawn::npc_respawn_tick;
 
 pub(super) async fn run_aoi_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     let events = space_mgr.compute_aoi_changes();

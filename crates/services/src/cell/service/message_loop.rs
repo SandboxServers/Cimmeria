@@ -136,6 +136,13 @@ pub(super) async fn run_cell_loop(
                 // can stay "points per second" without an internal time check.
                 if aoi_tick_counter.is_multiple_of(10) {
                     super::ticks::regen_tick(tx, &mut space_mgr).await;
+                    // NPC respawn promotion — also 1 Hz. Cadence here
+                    // because respawn timers are second-granular; the
+                    // scan filter on `ai_state == Dead` short-circuits
+                    // when no NPC is currently waiting to come back.
+                    // See `ticks::npc_respawn` for the full state +
+                    // wire-burst sequence.
+                    super::ticks::npc_respawn_tick(tx, &mut space_mgr).await;
                 }
 
                 // Channel-interrupt-on-movement sweep — BEFORE the

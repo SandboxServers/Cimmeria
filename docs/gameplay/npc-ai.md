@@ -387,18 +387,22 @@ Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared f
 | Loot on death | DONE | Loot table referenced, no tap check |
 | Aggression override | DONE | With client broadcast and timer revert |
 | lookAt() rotation | DONE | Mob faces target during combat |
-| Investigating state | NOT IMPL | POI, timer, hearingRadius wired but idle |
-| Leashing state | NOT IMPL | Home property exists, no pursuit abort |
-| Patrol state | NOT IMPL | patrolPaths defined, C++ hooks present |
-| Wander state | NOT IMPL | nextWanderTime defined, no navigation calls |
-| Follow state | NOT IMPL | All follow properties defined |
-| Submit state | NOT IMPL | State defined only |
-| Error state | NOT IMPL | Properties and hooks defined |
-| Despawning state | NOT IMPL | despawnFlag, timer defined |
-| Navigation (findPathTo) | NOT IMPL | C++ API available, never called |
-| Cover system | NOT IMPL | Properties and node types defined |
-| Proactive aggro detection | NOT IMPL | Mobs only enter combat when hit |
-| Mob group coordination | NOT IMPL | mobGroup property, mobJoinGroup() declared |
-| Behavior event sets | NOT IMPL | addBehaviorSet/removeBehaviorSet declared |
-| Tapping (kill credit) | NOT IMPL | Properties defined, no Python logic |
-| Group mate threat assist | NOT IMPL | Methods declared, no logic |
+| Leashing state | DONE | `npc_ai_leash` snaps NPC to spawn + restores HP on `Fighting → Leashing` transition when target exceeds `LEASH_DISTANCE = 50`. |
+| Proactive aggro detection | DONE | `aggression > 0` → `npc_ai_idle_auto_aggro` scans witnesses every 2 s, seeds 1.0 threat on the closest opposing-faction player. Set via `set_aggression` content action. |
+| Navigation (findPathTo) | DONE | Detour FFI behind `space_mgr.find_path()` + `npc_movement_tick` consumes `nav_path` waypoints at 100 ms. See [#35](https://github.com/SandboxServers/Cimmeria/issues/35). |
+| Per-ability range | DONE | `ability_ranges()` reads each ability's `min_range`/`max_range` from defs; fight tick gates on the chosen ability rather than a flat 30 m. See [#329](https://github.com/SandboxServers/Cimmeria/issues/329). |
+| Three-bucket ability selection | DONE | `choose_npc_ability` partitions known abilities into usable / cooling / needs-ammo and picks the first off-cooldown ID. See [#342](https://github.com/SandboxServers/Cimmeria/issues/342). |
+| `setMovementType` AoI broadcast | DONE | `broadcast_movement_type` fans the EMobMovementType byte to AoI witnesses on every state transition (CombatAdvance on Fighting entry, Leash on Leashing entry, clear on Idle). Dedup'd against `last_movement_type` so re-entry of same state is a wire no-op. Closes [#270](https://github.com/SandboxServers/Cimmeria/issues/270). |
+| NPC respawn | DONE | `npc_respawn_tick` (1 Hz) reads `respawn_secs` (COALESCE `spawnlist`, `entity_templates`); on death `damage_apply` stamps `respawn_at = now + respawn_secs`. Tick promotes Dead → Idle with HP/state/position/interaction-type restored. `NULL` columns → one-shot mob (corpse persists). |
+| Investigating state | NOT IMPL | POI, timer, hearingRadius wired but no content hook yet — Phase 4 of [#48](https://github.com/SandboxServers/Cimmeria/issues/48). |
+| Patrol state | NOT IMPL | Schema columns `patrol_path_id` / `patrol_point_delay` exist on `entity_templates`; runtime patrol handler is Phase 2 of [#48](https://github.com/SandboxServers/Cimmeria/issues/48). |
+| Wander state | NOT IMPL | Phase 3 of [#48](https://github.com/SandboxServers/Cimmeria/issues/48) — needs `wander_radius` template column + RNG seed. |
+| Follow state | NOT IMPL | Phase 6 of [#48](https://github.com/SandboxServers/Cimmeria/issues/48) — pet/escort behavior. |
+| Submit state | NOT IMPL | Phase 7 stub of [#48](https://github.com/SandboxServers/Cimmeria/issues/48) — scripted surrender. |
+| Error state | NOT IMPL | Phase 7 stub of [#48](https://github.com/SandboxServers/Cimmeria/issues/48) — diagnostic fallback for inconsistent AI state. |
+| Despawning state | NOT IMPL | Phase 7 stub of [#48](https://github.com/SandboxServers/Cimmeria/issues/48) — controlled removal distinct from death. |
+| Cover system | NOT IMPL | Tracked by [#209](https://github.com/SandboxServers/Cimmeria/issues/209) — needs spatial index + reservation lifecycle on top of the state machine. |
+| Mob group coordination | NOT IMPL | mobGroup property, mobJoinGroup() declared; deferred. |
+| Behavior event sets | NOT IMPL | addBehaviorSet/removeBehaviorSet declared; deferred. |
+| Tapping (kill credit) | DONE | Content-engine kill chains supersede the Python tap design. |
+| Group mate threat assist | NOT IMPL | Methods declared, no logic. |

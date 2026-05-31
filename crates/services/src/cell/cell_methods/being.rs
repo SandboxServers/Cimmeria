@@ -63,9 +63,43 @@ pub async fn dispatch(
             true
         }
         SET_MOVEMENT_TYPE => {
+            // Inbound `setMovementType(UINT8)` — the client (or a peer
+            // entity in BigWorld's call-on-ghost model) is telling us
+            // an entity has switched movement modes. Store the value on
+            // the entity and fan out to AoI witnesses via the dedup'd
+            // broadcast helper. The helper handles the
+            // "already-cached, skip" case so a re-send of the same byte
+            // doesn't spam the wire.
+            //
+            // The byte is one of `EMobMovementType` (Cover=0,
+            // CombatAdvance=1, Patrol=2, Follow=3, Wander=4, Leash=5,
+            // Avoid=6) per `entities/defs/enumerations.xml:1593-1604`.
+            // Unknown values are stored as `None` (clear cached state)
+            // and skipped on broadcast — better than persisting a
+            // garbage byte that future dedup compares against.
+            use cimmeria_entity::cell_entity::MobMovementType;
             if !args.is_empty() {
                 let movement_type = args[0];
-                tracing::debug!(entity_id, movement_type, "setMovementType");
+                let kind = match movement_type {
+                    0 => Some(MobMovementType::Cover),
+                    1 => Some(MobMovementType::CombatAdvance),
+                    2 => Some(MobMovementType::Patrol),
+                    3 => Some(MobMovementType::Follow),
+                    4 => Some(MobMovementType::Wander),
+                    5 => Some(MobMovementType::Leash),
+                    6 => Some(MobMovementType::Avoid),
+                    other => {
+                        tracing::warn!(
+                            entity_id,
+                            movement_type = other,
+                            "setMovementType: unknown EMobMovementType value, dropping"
+                        );
+                        None
+                    }
+                };
+                tracing::debug!(entity_id, movement_type, ?kind, "setMovementType");
+                crate::cell::abilities::broadcast_movement_type(entity_id, kind, tx, space_mgr)
+                    .await;
             }
             true
         }

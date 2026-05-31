@@ -10,7 +10,6 @@ pub mod commands;
 pub mod interactions;
 pub mod inventory;
 pub mod missions;
-pub mod mob;
 pub mod npc;
 pub mod player;
 pub mod social;

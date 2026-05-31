@@ -13,7 +13,13 @@ CREATE TABLE spawnlist (
     template_id integer NOT NULL,
     tag character varying(100),
     set_name character varying(100),
-    is_stationary boolean DEFAULT false NOT NULL
+    is_stationary boolean DEFAULT false NOT NULL,
+    -- Per-spawn respawn-delay override in seconds. Takes precedence
+    -- over `entity_templates.respawn_secs` when set; NULL falls back
+    -- to the template default. When both are NULL the mob is
+    -- one-shot. Lets level designers tune a boss encounter to a
+    -- different cadence than the same template's trash spawns.
+    respawn_secs integer
 );
 
 --

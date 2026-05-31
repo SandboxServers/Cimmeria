@@ -46,7 +46,7 @@ Source: `entities/defs/interfaces/SGWBeing.def`
 | Index | Method | Exposed | Args |
 |-------|--------|---------|------|
 | 0 | setTargetID | YES | INT32 targetId |
-| 1 | setMovementType | YES | INT8 movementType |
+| 1 | setMovementType | YES | UINT8 aMovementType (`EMobMovementType`: Cover=0, CombatAdvance=1, Patrol=2, Follow=3, Wander=4, Leash=5, Avoid=6). Bidirectional via the BigWorld Exposed convention — the server fans the same method index out to AoI witnesses (and the entity's own client) on NPC AI state transitions. See `crate::cell::abilities::messaging::broadcast_movement_type` (#48 / #270). |
 | - | onPetSpawn | no | |
 | - | onPetDeath | no | |
 | - | onPetDetection | no | |

@@ -35,7 +35,14 @@ CREATE TABLE entity_templates (
     trainer_ability_list_id integer,
     speaker_id integer,
     has_dynamic_properties boolean DEFAULT true NOT NULL,
-    interaction_set_id integer
+    interaction_set_id integer,
+    -- Per-template respawn delay in seconds. NULL = the template
+    -- doesn't carry a default; per-spawn `spawnlist.respawn_secs`
+    -- (if set) is the only source. If both are NULL the mob is
+    -- one-shot (corpse never repopulates). See
+    -- `cell_entity::respawn_secs` for the resolved field on the
+    -- runtime entity.
+    respawn_secs integer
 );
 
 --

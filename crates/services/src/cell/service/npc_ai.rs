@@ -147,7 +147,19 @@ async fn npc_ai_idle_auto_aggro(
 /// NPC fighting behavior: attack top-threat target or leash if too far from spawn.
 async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     use super::super::combat;
-    use cimmeria_entity::cell_entity::AiState;
+    use cimmeria_entity::cell_entity::{AiState, MobMovementType};
+
+    // Movement-type broadcast on Fighting entry. Dedup'd against the
+    // cached `last_movement_type` — subsequent Fighting ticks are
+    // no-ops on the wire. See `broadcast_movement_type` doc for
+    // rationale (animation hint, not gameplay-side state).
+    super::super::abilities::broadcast_movement_type(
+        npc_id,
+        Some(MobMovementType::CombatAdvance),
+        tx,
+        space_mgr,
+    )
+    .await;
 
     // Read NPC state (immutable borrow)
     let (top_target, spawn_pos, npc_pos, is_stationary) = {
@@ -175,6 +187,10 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
                 npc.threat_list.clear();
                 tracing::debug!(npc_id, "NPC AI: no threat targets, resetting to Idle");
             }
+            // Clear cached movement-type so the next Fighting entry
+            // re-broadcasts. None means "no wire emission, just drop
+            // the dedup cache" per `broadcast_movement_type` doc.
+            super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
             return;
         }
     };
@@ -226,6 +242,19 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
                     "NPC AI: target too far from spawn, leashing"
                 );
             }
+            // Broadcast Leash movement-type now rather than wait for
+            // the next AI tick (which would land ~2s later). The leash
+            // handler itself snaps the position instantly, so even
+            // though there's no actual leash-walk yet, the wire
+            // signal lets the client play any leash-specific VFX it
+            // wants for one frame before the corpse snaps home.
+            super::super::abilities::broadcast_movement_type(
+                npc_id,
+                Some(MobMovementType::Leash),
+                tx,
+                space_mgr,
+            )
+            .await;
             return;
         }
     }
@@ -667,7 +696,20 @@ pub(super) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager) -> Optio
 /// In a full implementation this would pathfind the NPC back to spawn.
 /// For now we snap back instantly and restore health.
 async fn npc_ai_leash(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
-    use cimmeria_entity::cell_entity::AiState;
+    use cimmeria_entity::cell_entity::{AiState, MobMovementType};
+
+    // The Fighting → Leashing transition site in `npc_ai_fight`
+    // already broadcasts Leash, so this is a no-op in the normal
+    // path — but for completeness (and for the future when leash
+    // becomes a multi-tick walk-back rather than a snap) call it
+    // here too. Dedup'd by `last_movement_type`.
+    super::super::abilities::broadcast_movement_type(
+        npc_id,
+        Some(MobMovementType::Leash),
+        tx,
+        space_mgr,
+    )
+    .await;
 
     let (stat_update, state_field) = {
         let npc = match space_mgr.get_entity_mut(npc_id) {
@@ -712,6 +754,12 @@ async fn npc_ai_leash(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     let mut state_args = Vec::with_capacity(4);
     state_args.extend_from_slice(&state_field.to_le_bytes());
     super::super::abilities::send_entity_method(npc_id, 19, state_args, tx, space_mgr).await;
+
+    // Leash complete — clear the cached movement-type so the next
+    // Fighting transition re-broadcasts CombatAdvance. None emits no
+    // wire byte (client keeps its idle pose); only the dedup cache
+    // resets. See `broadcast_movement_type` doc.
+    super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
 }
 
 /// Test-only re-export of the private `compute_backup_waypoint` so

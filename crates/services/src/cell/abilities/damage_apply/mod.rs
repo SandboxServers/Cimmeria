@@ -198,6 +198,26 @@ pub(super) async fn apply_damage_to_target(
         // Transition NPC AI to Dead so it stops fighting and moving
         if !target.is_player {
             target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
+            // Phase 5 (#48): if the NPC carries a respawn delay (loaded
+            // from spawnlist/template), stamp `respawn_at` so the
+            // `npc_respawn_tick` brings it back to life. `None` →
+            // one-shot mob, corpse persists forever (the current
+            // behavior pre-#48). Read it off the entity here while we
+            // already hold the borrow rather than re-fetching later.
+            if let Some(secs) = target.respawn_secs {
+                target.respawn_at =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(secs as u64));
+                tracing::info!(
+                    target_eid,
+                    respawn_secs = secs,
+                    "NPC death: respawn scheduled"
+                );
+            }
+            // Also clear the cached movement-type so the corpse's wire
+            // state matches its idle pose. The next AI tick after
+            // respawn will re-broadcast whatever the new state
+            // dictates.
+            target.last_movement_type = None;
             // Do NOT clear `threat_list` here: `apply_death_transition`
             // calls `clear_dead_npc_from_all_player_threat`, which walks
             // this list to drain each aggroed player's `threatened_mobs`

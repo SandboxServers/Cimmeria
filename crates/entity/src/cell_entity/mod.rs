@@ -446,7 +446,10 @@ pub struct CellEntity {
     pub active_effects: Vec<ActiveEffectInstance>,
 
     // ── NPC AI state ──────────────────────────────────────────────────────────
-    /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
+    /// AI state for NPC entities. See [`AiState`] for the full 12-state
+    /// machine. Defaults to `Idle`; only a subset of states are exercised
+    /// by the AI tick today (Idle, Fighting, Leashing, Dead, Patrol,
+    /// Wander); the rest are entry points for future content hooks.
     pub ai_state: AiState,
     /// Threat list: entity_id → accumulated threat value.
     pub threat_list: HashMap<u32, f32>,
@@ -489,6 +492,39 @@ pub struct CellEntity {
     /// Distinct from any UI-layer aggression-override (nameplate color);
     /// this field drives combat behavior, not the friend/foe indicator.
     pub aggression: i32,
+    /// Last `MobMovementType` broadcast to AoI witnesses via
+    /// `setMovementType`. `None` = nothing broadcast yet (initial state)
+    /// or last broadcast was a "clear" (entering Idle / Dead /
+    /// Despawning). Cached so re-entering the same state from the AI
+    /// tick doesn't re-spam the wire — only state *changes* fan out.
+    ///
+    /// Server-side only; never persisted, never restored across login.
+    pub last_movement_type: Option<MobMovementType>,
+    /// Resolved respawn delay for this NPC, in seconds.
+    ///
+    /// Loaded at spawn time from
+    /// `spawnlist.respawn_secs` (per-spawn override) ?? `entity_templates.respawn_secs`
+    /// (per-template default). `None` on both → one-shot mob: corpse
+    /// stays on the ground, the spawn position never repopulates.
+    /// Player entities and all non-spawned NPCs keep `None`.
+    pub respawn_secs: Option<u32>,
+    /// Deadline at which the `npc_respawn_tick` should bring this NPC
+    /// back to life. `Some(t)` is set by `damage_apply` at the kill
+    /// site when `respawn_secs.is_some()`. Cleared by the respawn tick
+    /// once consumed, or by a manual GM revive command (future).
+    ///
+    /// Storing this on `CellEntity` rather than a separate respawn
+    /// queue means there's no chance of a queue/entity divergence
+    /// (e.g. queue still holds an NPC the space removed via despawn).
+    pub respawn_at: Option<std::time::Instant>,
+    /// Snapshot of `interaction_type_flags` at spawn time. The death
+    /// path OR-merges `INT_NormalLoot` into the live flags so the
+    /// corpse becomes lootable; on respawn we have to restore the
+    /// pre-death value rather than carry the OR-merged bits forward
+    /// (otherwise a respawned mob would still show the loot
+    /// interaction cursor and try to hand out a fresh loot table on
+    /// right-click). Set once at spawn, read once by `npc_respawn_tick`.
+    pub original_interaction_type_flags: i64,
 
     // ── Saved mission state (for re-login) ────────────────────────────────────
     /// Saved missions loaded from DB, to be populated before content engine fires.
@@ -632,15 +668,60 @@ pub struct BandolierItem {
     pub cur_ammo_type: i32,
 }
 
-/// NPC AI state machine.
+/// NPC AI state machine. Discriminants match `Atrea.enums.AI_STATE_*` in
+/// `deprecated/python/Atrea/enums.py:228-239` so an `as u8` cast yields
+/// the same byte the original SGW server would have produced — used by
+/// the `setMovementType` broadcast helper for the subset of states with
+/// a corresponding `EMobMovementType` value.
 ///
-/// Reference: `python/Atrea/enums.py:228-239`
+/// `Spawning` is preserved as a variant for completeness with the source
+/// enum but is **never entered at runtime in Rust**. The Python original
+/// used it to seed weapon ammo before the first Idle tick; the Rust
+/// fire-gate short-circuits on `!is_player`, so ammo seeding is moot and
+/// new NPCs start at `Idle`. Future spawn-VFX hooks (e.g., Goa'uld
+/// ribbon-device reveal) have a clean place to plug in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum AiState {
-    Idle,
-    Fighting,
-    Dead,
-    Leashing,
+    Spawning = 0,
+    Idle = 1,
+    Investigating = 2,
+    Fighting = 3,
+    Leashing = 4,
+    Dead = 5,
+    Despawning = 6,
+    Follow = 7,
+    Patrol = 8,
+    Wander = 9,
+    Submit = 10,
+    Error = 11,
+}
+
+/// Mob movement-type byte broadcast via `setMovementType` (`SGWBeing`
+/// interface, method index 1). Discriminants match
+/// `entities/defs/enumerations.xml:1593-1604` (`EMobMovementType`) so an
+/// `as u8` cast yields the byte the client expects on the wire.
+///
+/// The client uses this **purely for animation selection** (run vs walk
+/// vs combat-stance vs leashed-trot) — gameplay-side movement is fully
+/// server-authoritative. Confirmed by Ghidra: `FUN_00deb660` in SGW.exe
+/// switches on this byte to format the debug labels "Entity: %d is
+/// patroling", "...leashing", etc. (strings at `019d2ca4`..`019d2e20`).
+///
+/// Not all `AiState` values have a movement type — Idle / Spawning /
+/// Dead / Despawning / Submit / Error broadcast `None` (which the
+/// helper translates to "clear cached, no wire send" — the client
+/// defaults to the appearance the entity already had).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum MobMovementType {
+    Cover = 0,
+    CombatAdvance = 1,
+    Patrol = 2,
+    Follow = 3,
+    Wander = 4,
+    Leash = 5,
+    Avoid = 6,
 }
 
 impl CellEntity {
@@ -707,6 +788,10 @@ impl CellEntity {
             move_speed: 0.6, // ~0.6 world units per 100ms tick = 6 units/sec
             is_stationary: false,
             aggression: 0,
+            last_movement_type: None,
+            respawn_secs: None,
+            respawn_at: None,
+            original_interaction_type_flags: 0,
             saved_missions_loaded: false,
             loot_table_id: None,
             loot: Vec::new(),
