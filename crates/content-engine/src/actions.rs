@@ -157,6 +157,20 @@ pub enum Action {
     /// Set the aggression level on a tagged NPC.
     SetAggression { entity_tag: String, level: i32 },
 
+    /// Push a tagged NPC into `AiState::Investigating` with the given
+    /// world-space point of interest. The NPC pathfinds to the POI,
+    /// dwells `investigate_dwell_secs`, and returns to `AiState::Idle`.
+    /// Threat preemption converts to Fighting; the POI is preserved
+    /// so the post-fight return to Idle could route back to it (not
+    /// implemented in this PR — content authors fire a fresh
+    /// `SetNpcPoi` instead).
+    SetNpcPoi {
+        entity_tag: String,
+        x: f32,
+        y: f32,
+        z: f32,
+    },
+
     /// Destroy a tagged entity (remove from world).
     DestroyTaggedEntity { entity_tag: String },
 

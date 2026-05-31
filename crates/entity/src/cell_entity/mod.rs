@@ -590,6 +590,15 @@ pub struct CellEntity {
     /// waypoint. `None` on first entry (handler picks immediately
     /// and stamps a deadline for the next pass).
     pub wander_next_at: Option<std::time::Instant>,
+    /// Investigating-state point of interest in world coordinates.
+    /// Set by the `SetNpcPoi` content action; consumed by the
+    /// `npc_ai_investigate` handler which pathfinds to the POI,
+    /// dwells, then returns to Idle (clearing the field).
+    pub poi: Option<Vector3>,
+    /// Deadline at which the investigation dwell ends and the NPC
+    /// returns to Idle. Set by the investigate handler when it
+    /// pops the last nav_path entry at the POI.
+    pub investigate_until: Option<std::time::Instant>,
 
     // ── Saved mission state (for re-login) ────────────────────────────────────
     /// Saved missions loaded from DB, to be populated before content engine fires.
@@ -887,6 +896,8 @@ impl CellEntity {
             wander_min_dwell_secs: 3.0,
             wander_max_dwell_secs: 8.0,
             wander_next_at: None,
+            poi: None,
+            investigate_until: None,
             saved_missions_loaded: false,
             loot_table_id: None,
             loot: Vec::new(),

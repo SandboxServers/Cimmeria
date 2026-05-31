@@ -89,6 +89,42 @@ pub(super) fn set_aggression(
     }
 }
 
+/// `Action::SetNpcPoi` — push the tagged NPC into `AiState::Investigating`
+/// with the given POI. The NPC pathfinds to the POI on the next AI tick,
+/// dwells `investigate_dwell_secs` (5s default), then returns to Idle.
+///
+/// Threat preemption: a damaged NPC mid-investigate transitions to
+/// Fighting via the standard threat path; the POI persists on the
+/// entity but isn't re-routed back to after the fight ends (content
+/// authors fire a fresh `SetNpcPoi` if needed).
+pub(super) fn set_npc_poi(
+    entity_tag: String,
+    x: f32,
+    y: f32,
+    z: f32,
+    entity_id: u32,
+    chain_id: i64,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::AiState;
+    if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
+        tracing::info!(
+            entity_id, %entity_tag, target_id, x, y, z, chain_id,
+            "Content: set NPC POI (Investigating)"
+        );
+        if let Some(target) = space_mgr.get_entity_mut(target_id) {
+            target.poi = Some(cimmeria_common::Vector3::new(x, y, z));
+            target.ai_state = AiState::Investigating;
+            // Clear in-flight nav so the investigate handler can
+            // pathfind to the POI from the current position rather
+            // than continuing toward a stale patrol/wander waypoint.
+            target.nav_path.clear();
+        }
+    } else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetNpcPoi");
+    }
+}
+
 /// `Action::DestroyTaggedEntity` — remove the tagged entity from the
 /// space. Witnesses get the destroy on the next AoI sweep.
 pub(super) fn destroy_tagged_entity(
