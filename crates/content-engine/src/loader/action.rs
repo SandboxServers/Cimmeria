@@ -175,13 +175,18 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         }
         "set_npc_ai_state" => {
             // target_key carries the NPC tag; `state` param is one of
-            // "idle", "despawning", "submit", "error". Unknown values
-            // are rejected (the runtime would also reject other states
-            // because the action enum is a subset).
+            // "idle", "despawning", "submit", "error". Case-insensitive
+            // — content authors can write "Idle", "DESPAWNING", etc.
+            // Unknown values are rejected (the runtime would also
+            // reject other states because the action enum is a subset).
             use crate::actions::NpcAiStateAction;
             let entity_tag = row.target_key.as_deref()?.to_string();
-            let state_str = params.get("state").and_then(|v| v.as_str()).unwrap_or("");
-            let state = match state_str {
+            let state_str = params
+                .get("state")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            let state = match state_str.as_str() {
                 "idle" => NpcAiStateAction::Idle,
                 "despawning" => NpcAiStateAction::Despawning,
                 "submit" => NpcAiStateAction::Submit,

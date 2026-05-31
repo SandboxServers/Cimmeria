@@ -254,3 +254,139 @@ async fn patrol_with_future_dwell_deadline_is_a_no_op() {
         "Dwell deadline must persist unchanged",
     );
 }
+
+/// **A1 fix pin**: knockback during dwell must NOT skip the dwell on
+/// re-arrival. Pre-fix bug: the handler stamped dwell at queue time
+/// (CP2) and observed `Some(past)` on re-arrival, falling into the
+/// "elapsed → advance" branch. Post-CP2 fix the dwell stamps on
+/// arrival, but a stale `Some(past)` after a knockback still
+/// short-circuits the re-arrival. The fix clears
+/// `patrol_dwell_until` in the "not close" branch so re-arrival sees
+/// `None` and re-stamps from scratch.
+#[tokio::test]
+async fn patrol_knockback_during_dwell_re_stamps_on_re_arrival() {
+    let mut mgr = make_castle_mgr();
+    let path = spawn_patrol_npc(&mut mgr, 200, [0.0; 3]);
+    // Pre-arrange: NPC dwelling at waypoint 0 with a future deadline.
+    let past_dwell = std::time::Instant::now() - std::time::Duration::from_secs(60);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.ai_state = AiState::Patrol;
+        npc.patrol_next_index = 0;
+        npc.position = path[0];
+        npc.patrol_dwell_until = Some(past_dwell);
+        npc.nav_path.clear();
+    }
+    let (tx, _rx) = mpsc::channel(16);
+
+    // Step 1: simulate the knockback by moving the NPC far from the
+    // waypoint. Run the tick — handler observes `not close` and
+    // routes back. The dwell must be cleared so the post-knockback
+    // re-arrival re-stamps from scratch rather than seeing
+    // `Some(past)` and immediately advancing the index.
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.position = cimmeria_common::Vector3::new(50.0, 0.0, 50.0);
+    }
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let after_knockback = mgr.get_entity(200).unwrap();
+    assert!(
+        after_knockback.patrol_dwell_until.is_none(),
+        "Routing back to the waypoint after a knockback must clear the dwell — \
+         leaving `Some(past)` would short-circuit re-arrival into the \
+         elapsed-advance branch and skip the remaining dwell time",
+    );
+    assert!(
+        !after_knockback.nav_path.is_empty(),
+        "Re-route must queue movement back to the waypoint",
+    );
+    assert_eq!(
+        after_knockback.patrol_next_index, 0,
+        "Index must NOT advance during the knockback route — only on \
+         dwell-elapsed at the destination",
+    );
+
+    // Step 2: simulate arrival (NPC walks back to waypoint 0, nav
+    // empty, close). Handler should observe `Some(None)` dwell, stamp
+    // a fresh deadline.
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.position = path[0];
+        npc.nav_path.clear();
+    }
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let after_re_arrival = mgr.get_entity(200).unwrap();
+    assert!(
+        after_re_arrival.patrol_dwell_until.is_some(),
+        "Re-arrival after knockback must stamp a fresh dwell",
+    );
+    assert!(
+        after_re_arrival.patrol_dwell_until.unwrap() > std::time::Instant::now(),
+        "Re-stamped dwell must be in the future (not the original `past_dwell`)",
+    );
+    assert_eq!(
+        after_re_arrival.patrol_next_index, 0,
+        "Index still must not have advanced — the NPC is back at \
+         waypoint 0 starting a fresh dwell",
+    );
+}
+
+/// **A3 pin**: a 1-waypoint patrol is a stationary NPC. The handler
+/// loops dwell → advance(=same index) → dwell repeatedly, broadcasts
+/// Patrol once (dedup), and never queues movement after arrival.
+#[tokio::test]
+async fn patrol_with_single_waypoint_holds_position_and_re_stamps_dwell() {
+    let mut mgr = make_castle_mgr();
+    mgr.spawn_npc(200, "Castle", [5.0, 0.0, 5.0], [0.0; 3])
+        .unwrap();
+    let single_wp = cimmeria_common::Vector3::new(5.0, 0.0, 5.0);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.class_id = 0x04;
+        npc.is_player = false;
+        npc.patrol_path = vec![single_wp];
+        npc.patrol_point_delay_secs = 2.0;
+        npc.position = single_wp; // already at the waypoint
+        if let Some(h) = npc.stats.get_mut(HEALTH) {
+            h.update(0, 100, 100);
+            h.clear_dirty();
+        }
+    }
+    let (tx, _rx) = mpsc::channel(16);
+
+    // Tick 1: Idle → Patrol, close + dwell None → stamp.
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    let after_arrival = mgr.get_entity(200).unwrap();
+    assert_eq!(after_arrival.ai_state, AiState::Patrol);
+    assert!(after_arrival.patrol_dwell_until.is_some());
+    assert!(after_arrival.nav_path.is_empty());
+    assert_eq!(after_arrival.patrol_next_index, 0);
+
+    // Force the dwell to elapse + re-tick. Index advances modulo 1
+    // (back to 0), dwell clears. Next tick re-stamps.
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.patrol_dwell_until =
+            Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
+    }
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    let after_elapsed = mgr.get_entity(200).unwrap();
+    assert_eq!(
+        after_elapsed.patrol_next_index, 0,
+        "Single-waypoint patrol wraps to index 0",
+    );
+    assert!(
+        after_elapsed.patrol_dwell_until.is_none(),
+        "Elapsed branch clears dwell",
+    );
+    assert!(
+        after_elapsed.nav_path.is_empty(),
+        "No movement queued — NPC is already at the single waypoint",
+    );
+
+    // Re-tick: close + dwell None → stamp again. The loop continues
+    // indefinitely with no observable motion.
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    let after_re_stamp = mgr.get_entity(200).unwrap();
+    assert!(
+        after_re_stamp.patrol_dwell_until.is_some(),
+        "Re-stamp branch fired on re-tick after dwell cleared",
+    );
+}

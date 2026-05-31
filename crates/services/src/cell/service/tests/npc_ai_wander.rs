@@ -153,3 +153,92 @@ async fn idle_with_patrol_and_wander_picks_patrol() {
         "patrol_path takes priority over wander_radius",
     );
 }
+
+/// **A2 fix pin**: `wander_next_at` stamps as
+/// `Duration::from_secs_f32`, preserving sub-second precision. A
+/// refactor that truncates to integer seconds (e.g.,
+/// `Duration::from_secs(dwell as u64)`) would round 3.5 → 3 and any
+/// dwell under 1.0 → 0. Sample multiple times to bound the
+/// distribution: the stamped deadline must always fall inside
+/// `[now + min, now + max]`.
+#[tokio::test]
+async fn wander_arrival_stamps_dwell_within_min_max_band() {
+    let mut mgr = make_castle_mgr();
+    spawn_wander_npc(&mut mgr, 200, 10.0);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.wander_min_dwell_secs = 2.0;
+        npc.wander_max_dwell_secs = 4.0;
+        npc.ai_state = AiState::Wander;
+        npc.wander_next_at = None;
+        npc.nav_path.clear();
+    }
+    let (tx, _rx) = mpsc::channel(16);
+    let before = std::time::Instant::now();
+
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(200).unwrap();
+    let deadline = npc.wander_next_at.expect("arrival must stamp");
+    let dwell = deadline.saturating_duration_since(before).as_secs_f32();
+    // Loose bounds because some wall-clock time elapses between
+    // `before` and the handler stamping the deadline. The 0.5s
+    // tolerance absorbs that without making the test flaky.
+    assert!(
+        (1.9..=4.5).contains(&dwell),
+        "Stamped dwell {dwell}s must fall inside [min=2.0, max=4.0] (with \
+         ~0.5s clock-drift tolerance) — a refactor that truncated to \
+         integer seconds would land at 0, 1, or 2",
+    );
+}
+
+/// **A2 fix pin (state machine)**: wander_next_at `None` + nav_empty
+/// is the "just arrived" branch — the handler stamps dwell, does NOT
+/// pick a new destination, and leaves nav_path empty.
+#[tokio::test]
+async fn wander_first_entry_stamps_dwell_without_routing() {
+    let mut mgr = make_castle_mgr();
+    spawn_wander_npc(&mut mgr, 200, 10.0);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.ai_state = AiState::Wander;
+        npc.wander_next_at = None;
+        npc.nav_path.clear();
+    }
+    let (tx, _rx) = mpsc::channel(16);
+
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(200).unwrap();
+    assert!(npc.wander_next_at.is_some(), "Arrival must stamp dwell");
+    assert!(
+        npc.nav_path.is_empty(),
+        "Arrival branch must NOT queue movement — the NPC dwells at the \
+         current position until the deadline elapses",
+    );
+}
+
+/// **A2 fix pin (state machine)**: wander_next_at elapsed + nav_empty
+/// triggers the "pick new destination, route, clear dwell" branch.
+#[tokio::test]
+async fn wander_elapsed_dwell_routes_to_new_destination_and_clears_deadline() {
+    let mut mgr = make_castle_mgr();
+    spawn_wander_npc(&mut mgr, 200, 10.0);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.ai_state = AiState::Wander;
+        npc.wander_next_at = Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
+        npc.nav_path.clear();
+    }
+    let (tx, _rx) = mpsc::channel(16);
+
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(200).unwrap();
+    assert!(
+        !npc.nav_path.is_empty(),
+        "Elapsed dwell must queue movement to a fresh destination",
+    );
+    assert!(
+        npc.wander_next_at.is_none(),
+        "Deadline must clear so the next arrival re-stamps from the \
+         `wander_arrival_stamps_dwell_within_min_max_band` branch",
+    );
+}

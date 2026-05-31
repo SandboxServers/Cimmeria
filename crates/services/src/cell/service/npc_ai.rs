@@ -741,33 +741,42 @@ pub(super) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager) -> Optio
         .find(|&id| !npc.abilities.is_on_cooldown(id))
 }
 
-/// NPC patrol behavior: walk a waypoint loop with dwell pauses.
+/// NPC patrol behavior: walk a waypoint loop with arrival-based
+/// dwell pauses.
 ///
-/// State machine within Patrol:
-/// 1. **Empty `nav_path` + no dwell deadline** → push the next
-///    waypoint into `nav_path`, broadcast `CombatAdvance` is
-///    intentionally NOT used (Patrol has its own
-///    `MobMovementType::Patrol` byte). The path-follower
-///    (`npc_movement_tick`) walks the NPC toward the waypoint at
-///    `move_speed`.
-/// 2. **Empty `nav_path` + dwell deadline in the future** → still
-///    paused at the waypoint, no work to do.
-/// 3. **Empty `nav_path` + dwell deadline elapsed** → advance
-///    `patrol_next_index` (modulo path length) and clear the
-///    deadline so the next pass falls into branch 1.
-/// 4. **Non-empty `nav_path`** → movement is in flight, no work
-///    to do here.
+/// State machine within Patrol (in evaluation order):
+/// 1. **`patrol_path` empty** → drop to `Idle` and clear the
+///    movement-type cache. Reachable only if a content action wipes
+///    the path mid-tick.
+/// 2. **`nav_path` non-empty** → `npc_movement_tick` is walking the
+///    NPC toward the current target waypoint; no work this tick.
+/// 3. **`nav_path` empty + close to target + dwell `None`** → just
+///    arrived (or first entry). Stamp `patrol_dwell_until = now +
+///    delay_secs`.
+/// 4. **`nav_path` empty + close to target + dwell in the future**
+///    → still pausing at the waypoint; no-op.
+/// 5. **`nav_path` empty + close to target + dwell elapsed** →
+///    advance `patrol_next_index` modulo path length and clear the
+///    dwell. The next tick observes `not close` against the new
+///    target index and queues movement.
+/// 6. **`nav_path` empty + NOT close to target** → pathfind to the
+///    current target waypoint and push the result into `nav_path`.
+///    Also clears `patrol_dwell_until` — leaving a `Some(past)` here
+///    would cause the re-arrival from a knockback to skip the
+///    dwell.
 ///
-/// The dwell deadline is stamped here when we clear `nav_path` —
-/// movement-tick consumes nav_path until it's empty, at which
-/// point we know the NPC has arrived at the waypoint.
+/// The "close" threshold is `< 1.0` world units. `npc_movement_tick`
+/// snaps to a waypoint when `distance <= move_speed` (default 0.6),
+/// so post-arrival position is exactly on the waypoint; the 1.0
+/// slack absorbs floating-point round-trips and keeps the
+/// comparison well under any meaningful patrol distance.
 ///
 /// Threat preemption is handled outside: when `generate_threat`
-/// flips the state from Patrol → Fighting, the next AI tick
-/// routes through `npc_ai_fight`. On Fighting → Leashing →
-/// Idle, the tick's Idle branch transitions back to Patrol and
-/// the saved `patrol_next_index` resumes the route from where
-/// it left off (no progress lost).
+/// flips the state from Patrol → Fighting, the next AI tick routes
+/// through `npc_ai_fight`. On Fighting → Leashing → Idle, the
+/// tick's Idle branch transitions back to Patrol and the saved
+/// `patrol_next_index` resumes the route from where it left off
+/// (no progress lost).
 async fn npc_ai_patrol(
     npc_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -886,13 +895,19 @@ async fn npc_ai_patrol(
             }
         }
     } else {
-        // Not at the target — pathfind and queue movement. Do NOT
-        // stamp dwell here; the "arrived" branch above stamps it
-        // once `nav_path` drains and we're close to the target.
+        // Not at the target — pathfind and queue movement. Clearing
+        // `patrol_dwell_until` here matters for the knockback case:
+        // if the NPC dwelled at the waypoint, got pushed off, and is
+        // now walking back, leaving `Some(past)` on the entity would
+        // make the next arrival fall into the "elapsed → advance"
+        // branch and skip the remainder of the dwell. Clearing means
+        // the re-arrival re-stamps from scratch, which is the
+        // expected "pause for delay_secs after arriving" semantic.
         let path = space_mgr
             .find_path(npc_id, &npc_pos, &waypoint)
             .unwrap_or_default();
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            npc.patrol_dwell_until = None;
             npc.nav_path.clear();
             if path.len() > 1 {
                 // Skip the first entry (start position). Detour returns
@@ -986,9 +1001,58 @@ async fn npc_ai_wander(
         return;
     }
 
-    if let Some(deadline) = wander_next {
-        if now < deadline {
-            return; // Still pausing.
+    // Arrival-based dwell semantics (matches Patrol + Investigating
+    // and the column comment on `wander_min/max_dwell_secs`):
+    //
+    // - `wander_next_at` None + nav_empty → just arrived (or first
+    //   entry). Sample a dwell duration and stamp the deadline.
+    // - `wander_next_at` Some(future) + nav_empty → dwelling at the
+    //   destination, no-op.
+    // - `wander_next_at` Some(elapsed) + nav_empty → dwell complete,
+    //   pick a fresh destination, route, clear the deadline so the
+    //   next arrival re-stamps.
+    //
+    // The "first entry" case stamps dwell at spawn_position: the NPC
+    // pauses at spawn for [min, max] seconds before its first hop.
+    // Acceptable initial behavior; alternative would be to sample
+    // immediately and skip the dwell-at-spawn beat.
+    match wander_next {
+        Some(deadline) if now < deadline => {
+            // Dwelling at the current destination.
+            return;
+        }
+        None => {
+            // Just arrived (or first call). Stamp dwell.
+            //
+            // Seed the per-call RNG from a wall-clock source for real
+            // entropy (`Instant::elapsed()` from a same-function-frame
+            // `now` would give only nanosecond jitter). The
+            // multiplicative golden-ratio constant per `npc_id` ensures
+            // two NPCs sampling on the same nanosecond get different
+            // dwell durations.
+            let wall_nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos() as u64)
+                .unwrap_or(0);
+            let seed = u64::from(npc_id).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ wall_nanos;
+            let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(seed);
+            let dwell_secs = rng
+                .random_range(min_dwell..=max_dwell.max(min_dwell))
+                .max(0.5);
+            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                npc.wander_next_at = Some(now + std::time::Duration::from_secs_f32(dwell_secs));
+            }
+            tracing::debug!(
+                target: "npc_ai",
+                event = "wander_arrived",
+                npc_id,
+                dwell_secs,
+                "NPC AI: wander → arrived, dwelling"
+            );
+            return;
+        }
+        Some(_) => {
+            // Dwell elapsed → fall through to "pick a fresh destination".
         }
     }
 
@@ -1000,14 +1064,6 @@ async fn npc_ai_wander(
         return;
     };
 
-    // Seed the per-call RNG from a wall-clock source for real entropy
-    // (`Instant::elapsed()` from a same-function-frame `now` gives
-    // only nanosecond jitter between the two `Instant::now()` calls).
-    // `SystemTime` since epoch survives across calls, so consecutive
-    // wander rolls on the same tick for different NPCs land on
-    // different angles. Tests that need determinism can pre-seed by
-    // setting `wander_next_at` to a future deadline (which forces an
-    // early no-op return) and asserting the un-stamped state instead.
     let wall_nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
@@ -1016,6 +1072,7 @@ async fn npc_ai_wander(
     let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(seed);
     let angle = rng.random_range(0.0..(std::f32::consts::TAU));
     let distance = rng.random_range(0.0..radius);
+    let _ = (min_dwell, max_dwell); // sampled in the arrival branch above
     let candidate = cimmeria_common::Vector3::new(
         spawn.x + angle.cos() * distance,
         spawn.y,
@@ -1035,6 +1092,11 @@ async fn npc_ai_wander(
         .find_path(npc_id, &npc_pos, &target)
         .unwrap_or_default();
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+        // Clear the dwell deadline now that we're starting the next
+        // hop. The next arrival (`nav_empty` again) will see
+        // `wander_next_at = None` and re-stamp from the arrival
+        // branch above.
+        npc.wander_next_at = None;
         npc.nav_path.clear();
         if path.len() > 1 {
             for wp in path.into_iter().skip(1) {
@@ -1043,13 +1105,6 @@ async fn npc_ai_wander(
         } else {
             npc.nav_path.push_back(target);
         }
-        // Sample the post-arrival dwell now so it's set when the
-        // movement tick drains nav_path. Floor at 0.5s to guard
-        // against a degenerate config.
-        let dwell_secs = rng
-            .random_range(min_dwell..=max_dwell.max(min_dwell))
-            .max(0.5);
-        npc.wander_next_at = Some(now + std::time::Duration::from_secs_f32(dwell_secs));
     }
     tracing::debug!(
         target: "npc_ai",
@@ -1159,11 +1214,16 @@ async fn npc_ai_investigate(
             }
         }
     } else {
-        // Not at POI — pathfind and queue movement.
+        // Not at POI — pathfind and queue movement. Clearing
+        // `investigate_until` here handles the knockback case: if
+        // the NPC was dwelling at the POI and got pushed off, the
+        // re-arrival should re-stamp from scratch rather than
+        // observe `Some(past)` and immediately return to Idle.
         let path = space_mgr
             .find_path(npc_id, &npc_pos, &poi_pos)
             .unwrap_or_default();
         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            npc.investigate_until = None;
             npc.nav_path.clear();
             if path.len() > 1 {
                 for wp in path.into_iter().skip(1) {

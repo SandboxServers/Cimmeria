@@ -149,3 +149,67 @@ async fn investigate_with_no_poi_drops_to_idle() {
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(npc.ai_state, AiState::Idle);
 }
+
+/// **A1 fix pin**: knockback during dwell at the POI must NOT cause
+/// an immediate return-to-Idle on re-arrival. Pre-fix: `Some(past)`
+/// dwell after the knockback round-trip would hit the
+/// "dwell elapsed → return to Idle" branch the moment the NPC walked
+/// back. The fix clears `investigate_until` in the "not close"
+/// branch so re-arrival re-stamps from scratch.
+#[tokio::test]
+async fn investigate_knockback_during_dwell_re_stamps_on_re_arrival() {
+    let mut mgr = make_castle_mgr();
+    spawn_npc_at(&mut mgr, 200, [10.0, 0.0, 10.0]); // start at POI
+    let past = std::time::Instant::now() - std::time::Duration::from_secs(60);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.ai_state = AiState::Investigating;
+        npc.poi = Some(Vector3::new(10.0, 0.0, 10.0));
+        npc.investigate_until = Some(past);
+        npc.nav_path.clear();
+    }
+    let (tx, _rx) = mpsc::channel(16);
+
+    // Step 1: knockback — NPC moves far from POI. Handler routes back.
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.position = Vector3::new(50.0, 0.0, 50.0);
+    }
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let after_knockback = mgr.get_entity(200).unwrap();
+    assert_eq!(
+        after_knockback.ai_state,
+        AiState::Investigating,
+        "Knockback must not flip the NPC out of Investigating mid-route",
+    );
+    assert!(
+        after_knockback.investigate_until.is_none(),
+        "Routing back to the POI must clear the stale dwell",
+    );
+    assert!(
+        !after_knockback.nav_path.is_empty(),
+        "Re-route must queue movement back to the POI",
+    );
+
+    // Step 2: NPC walks back to POI. Handler observes None dwell →
+    // re-stamps a fresh deadline.
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.position = Vector3::new(10.0, 0.0, 10.0);
+        npc.nav_path.clear();
+    }
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let after_re_arrival = mgr.get_entity(200).unwrap();
+    assert_eq!(
+        after_re_arrival.ai_state,
+        AiState::Investigating,
+        "Re-arrival after knockback must NOT immediately return to Idle",
+    );
+    assert!(
+        after_re_arrival.investigate_until.is_some(),
+        "Re-arrival must stamp a fresh dwell",
+    );
+    assert!(
+        after_re_arrival.investigate_until.unwrap() > std::time::Instant::now(),
+        "Fresh dwell must be in the future, not the original `past`",
+    );
+}
