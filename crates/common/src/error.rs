@@ -65,6 +65,24 @@ pub enum CimmeriaError {
     #[error("Timeout")]
     Timeout,
 
+    /// A header count field in an on-disk asset (e.g., a `.nav` file) was
+    /// rejected before allocation because it either exceeded the sanity
+    /// cap for that field or would have overflowed when combined with a
+    /// per-element stride.
+    ///
+    /// `field` names the offending header count, `value` is the raw count
+    /// (or the post-multiplication product when `reason` mentions overflow),
+    /// and `reason` is a short static string describing which rule fired.
+    /// The shape mirrors `cimmeria_navmesh_extractor::ExtractError::NavHeaderOutOfRange`
+    /// so the same hostile-input pattern surfaces with the same diagnostic
+    /// regardless of whether it tripped at build-time or server startup.
+    #[error("Asset header field {field} out of range (value {value}): {reason}")]
+    NavHeaderOutOfRange {
+        field: &'static str,
+        value: u64,
+        reason: &'static str,
+    },
+
     /// Catch-all for errors that do not fit another category.
     #[error("{0}")]
     Other(String),

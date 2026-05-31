@@ -46,6 +46,80 @@ fn read_u8(r: &mut impl IoRead) -> std::io::Result<u8> {
     Ok(buf[0])
 }
 
+// ── XRC header sanity caps ──────────────────────────────────────────────
+//
+// These mirror the caps in `cimmeria_navmesh_extractor::nav_roundtrip` so a
+// hostile `.nav` file is rejected with the same diagnostic whether it reaches
+// the build-time tool or the runtime loader. Castle Cellblock — the largest
+// shipped navmesh at PR-time — has `nverts = 2778`, `npolys = 1479`,
+// `detail_nverts = 6031`, `detail_ntris = 3102`. The caps below leave
+// 360× to 1500× headroom over real assets while still bounding the worst-case
+// allocation to a few hundred MB instead of a u32-multiplication wrap that
+// produces a tiny `Vec` the read loop then walks past.
+
+/// Upper bound on `nverts` accepted from a `.nav` header.
+///
+/// Worst-case `verts` allocation at this cap is
+/// `1_000_000 * 3 * size_of::<u16>() = ~6 MB`.
+const MAX_NVERTS: u32 = 1_000_000;
+
+/// Upper bound on `npolys`.
+const MAX_NPOLYS: u32 = 1_000_000;
+
+/// Upper bound on `nvp` (max vertices per polygon). Recast's poly mesh
+/// uses values in the 3..=12 range in practice; cap at 64 as a sanity
+/// limit. Combined with [`MAX_NPOLYS`], the worst-case `polys` Vec is
+/// `1_000_000 * 64 * 2 * 2 = ~256 MB`.
+const MAX_NVP: u32 = 64;
+
+/// Upper bound on `detail_nmeshes`. Per-poly mesh count, so practically
+/// `<= npolys`. Cap at the same 1M to avoid coupling the checks.
+const MAX_DETAIL_NMESHES: u32 = 1_000_000;
+
+/// Upper bound on `detail_nverts`. Castle Cellblock: 6031.
+const MAX_DETAIL_NVERTS: u32 = 10_000_000;
+
+/// Upper bound on `detail_ntris`. Castle Cellblock: 3102.
+const MAX_DETAIL_NTRIS: u32 = 10_000_000;
+
+/// Validate a header count against its documented maximum and return the
+/// value on success. Used by [`NavMesh::load`] to reject hostile inputs
+/// before they reach a multiplication that could overflow into a too-small
+/// `Vec` allocation.
+fn check_count(value: u32, max: u32, field: &'static str) -> cimmeria_common::Result<u32> {
+    if value > max {
+        return Err(cimmeria_common::CimmeriaError::NavHeaderOutOfRange {
+            field,
+            value: value as u64,
+            reason: "exceeds runtime sanity cap",
+        });
+    }
+    Ok(value)
+}
+
+/// Compute `count * stride` as `usize`, failing with a descriptive error
+/// on overflow. Both inputs are passed as `u32` to match the on-disk
+/// header types; the multiplication is performed in `u64` so the failure
+/// mode is the same on 32-bit and 64-bit targets.
+fn checked_alloc_size(
+    count: u32,
+    stride: u32,
+    field: &'static str,
+) -> cimmeria_common::Result<usize> {
+    let product = (count as u64).checked_mul(stride as u64).ok_or(
+        cimmeria_common::CimmeriaError::NavHeaderOutOfRange {
+            field,
+            value: count as u64,
+            reason: "count * stride overflows u64",
+        },
+    )?;
+    usize::try_from(product).map_err(|_| cimmeria_common::CimmeriaError::NavHeaderOutOfRange {
+        field,
+        value: product,
+        reason: "count * stride does not fit in usize on this target",
+    })
+}
+
 // ── Maximum path sizes (matching C++ reference) ─────────────────────────
 
 const MAX_POLY_PATH: i32 = 256;
@@ -122,9 +196,19 @@ impl NavMesh {
         let agent_radius = read_f32(&mut r)?;
 
         // ── Section 2: Mesh metadata ────────────────────────────────────
-        let nverts = read_u32(&mut r)?;
-        let npolys = read_u32(&mut r)?;
-        let nvp = read_u32(&mut r)?;
+        //
+        // Every header count is validated against its `MAX_*` cap before the
+        // matching allocation. A `.nav` file with `nverts = 0xFFFFFFFF` would
+        // otherwise wrap `nverts * 3` to a 3-element `Vec<u16>` and the
+        // following read loop would consume only three u16s while the rest
+        // of the claimed `0xFFFFFFFF * 3` vertex region went phantom —
+        // leaving every downstream section offset wrong and (on a u32
+        // multiplication that does *not* wrap) demanding a 12 GB allocation
+        // that crashes the server at startup. Operator-deployable input,
+        // strict bounds check.
+        let nverts = check_count(read_u32(&mut r)?, MAX_NVERTS, "nverts")?;
+        let npolys = check_count(read_u32(&mut r)?, MAX_NPOLYS, "npolys")?;
+        let nvp = check_count(read_u32(&mut r)?, MAX_NVP, "nvp")?;
         let _border_size = read_u32(&mut r)?;
 
         // ── Section 3: Grid config (quantization parameters) ────────────
@@ -134,13 +218,19 @@ impl NavMesh {
         let bmax = [read_f32(&mut r)?, read_f32(&mut r)?, read_f32(&mut r)?];
 
         // ── Section 4: Quantized vertices ───────────────────────────────
-        let mut verts = vec![0u16; (nverts * 3) as usize];
+        let verts_len = checked_alloc_size(nverts, 3, "nverts")?;
+        let mut verts = vec![0u16; verts_len];
         for v in &mut verts {
             *v = read_u16(&mut r)?;
         }
 
         // ── Section 5: Polygon connectivity ─────────────────────────────
-        let mut polys = vec![0u16; (npolys * nvp * 2) as usize];
+        // Fold the `npolys * nvp * 2` product into one checked mul via
+        // `npolys * (nvp * 2)`. `nvp` is already bounded by `MAX_NVP = 64`
+        // so `nvp * 2` cannot overflow u32; `saturating_mul` is belt-and-
+        // suspenders against future cap changes.
+        let polys_len = checked_alloc_size(npolys, nvp.saturating_mul(2), "npolys*nvp*2")?;
+        let mut polys = vec![0u16; polys_len];
         for p in &mut polys {
             *p = read_u16(&mut r)?;
         }
@@ -160,21 +250,24 @@ impl NavMesh {
         }
 
         // ── Sections 9-12: Detail mesh ──────────────────────────────────
-        let detail_nmeshes = read_u32(&mut r)?;
-        let detail_nverts = read_u32(&mut r)?;
-        let detail_ntris = read_u32(&mut r)?;
+        let detail_nmeshes = check_count(read_u32(&mut r)?, MAX_DETAIL_NMESHES, "detail_nmeshes")?;
+        let detail_nverts = check_count(read_u32(&mut r)?, MAX_DETAIL_NVERTS, "detail_nverts")?;
+        let detail_ntris = check_count(read_u32(&mut r)?, MAX_DETAIL_NTRIS, "detail_ntris")?;
 
-        let mut detail_meshes = vec![0u32; (detail_nmeshes * 4) as usize];
+        let detail_meshes_len = checked_alloc_size(detail_nmeshes, 4, "detail_nmeshes")?;
+        let mut detail_meshes = vec![0u32; detail_meshes_len];
         for v in &mut detail_meshes {
             *v = read_u32(&mut r)?;
         }
 
-        let mut detail_verts = vec![0.0f32; (detail_nverts * 3) as usize];
+        let detail_verts_len = checked_alloc_size(detail_nverts, 3, "detail_nverts")?;
+        let mut detail_verts = vec![0.0f32; detail_verts_len];
         for v in &mut detail_verts {
             *v = read_f32(&mut r)?;
         }
 
-        let mut detail_tris = vec![0u8; (detail_ntris * 4) as usize];
+        let detail_tris_len = checked_alloc_size(detail_ntris, 4, "detail_ntris")?;
+        let mut detail_tris = vec![0u8; detail_tris_len];
         r.read_exact(&mut detail_tris)?;
 
         // ── Build Detour navmesh tile ───────────────────────────────────
@@ -666,6 +759,167 @@ mod tests {
              failing on flyer NPC positions",
             off_mesh, ground
         );
+    }
+
+    // ── Hostile-input regression guards ────────────────────────────────
+    //
+    // Each of the five tests below synthesises a `.nav` header in which
+    // exactly one count field is poisoned with `0xFFFFFFFF` and the rest
+    // are zero, writes it to a temp file, and asserts that `NavMesh::load`
+    // rejects it with `CimmeriaError::NavHeaderOutOfRange` naming the
+    // offending field. Reverting any single bounds check in `load`
+    // (e.g., dropping the `check_count` wrapping `nverts`) causes the
+    // matching test to fail by trying to allocate / read past EOF instead.
+    //
+    // Layout written below (mirrors `NavMesh::load` exactly through the
+    // first allocation site of each section; later sections need only
+    // enough header bytes for the cap to trip before the alloc):
+    //
+    //   agent_height/climb/radius   3 × f32     (12 bytes)
+    //   nverts/npolys/nvp/border    4 × u32     (16 bytes)
+    //   cs/ch                       2 × f32     (8  bytes)
+    //   bmin/bmax                   6 × f32     (24 bytes)
+    //   ...sections beyond this only need their leading count headers...
+
+    /// Construct a unique temp-file path so concurrent test runs don't
+    /// clobber each other. We deliberately don't use the `tempfile`
+    /// crate to keep `cimmeria-entity` dep-free at this layer.
+    fn make_tmp_nav_path(suffix: &str) -> std::path::PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let pid = std::process::id();
+        let mut p = std::env::temp_dir();
+        p.push(format!("cimmeria_navmesh_load_{pid}_{nanos}_{suffix}.nav"));
+        p
+    }
+
+    /// Build a minimal header with all counts zero, then let the caller
+    /// overwrite a single 4-byte slot with the hostile value. Returns
+    /// a byte vector long enough to reach the detail-section header so
+    /// any of the five caps can trip without truncated-read confusion.
+    fn synthesise_header() -> Vec<u8> {
+        let mut buf = Vec::new();
+        // agent_height/climb/radius — values don't matter, just non-NaN.
+        buf.extend_from_slice(&0.6_f32.to_le_bytes());
+        buf.extend_from_slice(&0.9_f32.to_le_bytes());
+        buf.extend_from_slice(&0.6_f32.to_le_bytes());
+        // nverts/npolys/nvp/border_size — start all zero so the test can
+        // overwrite exactly one.
+        buf.extend_from_slice(&0_u32.to_le_bytes());
+        buf.extend_from_slice(&0_u32.to_le_bytes());
+        buf.extend_from_slice(&6_u32.to_le_bytes()); // nvp can't be 0 if the test wants
+                                                     // to reach detail headers via valid `polys`
+                                                     // sizing — but with npolys=0 the alloc is
+                                                     // zero-sized regardless. Use a sane default.
+        buf.extend_from_slice(&0_u32.to_le_bytes()); // border_size
+                                                     // cs/ch
+        buf.extend_from_slice(&0.3_f32.to_le_bytes());
+        buf.extend_from_slice(&0.2_f32.to_le_bytes());
+        // bmin/bmax — six f32s.
+        for _ in 0..6 {
+            buf.extend_from_slice(&0.0_f32.to_le_bytes());
+        }
+        // verts/polys/regs/flags/areas are all zero-sized when counts are
+        // zero, so the read cursor lands directly on the detail header.
+        // detail_nmeshes/detail_nverts/detail_ntris — three u32 slots.
+        buf.extend_from_slice(&0_u32.to_le_bytes());
+        buf.extend_from_slice(&0_u32.to_le_bytes());
+        buf.extend_from_slice(&0_u32.to_le_bytes());
+        buf
+    }
+
+    /// Byte offsets of each header count field inside `synthesise_header()`'s
+    /// output. Encoded as constants so a layout change here forces a
+    /// matching update in the tests below.
+    // Byte budget: 3 × f32 (12) + 4 × u32 (16) + 2 × f32 (8) + 6 × f32 (24)
+    // = 60 bytes before the detail header. detail_* occupies bytes 60..72.
+    const OFFSET_NVERTS: usize = 12;
+    const OFFSET_NPOLYS: usize = 16;
+    const OFFSET_NVP: usize = 20;
+    const OFFSET_DETAIL_NMESHES: usize = 60;
+    const OFFSET_DETAIL_NVERTS: usize = 64;
+    const OFFSET_DETAIL_NTRIS: usize = 68;
+
+    fn write_hostile_at(field_offset: usize) -> std::path::PathBuf {
+        use std::io::Write;
+        let mut buf = synthesise_header();
+        let bytes = 0xFFFF_FFFF_u32.to_le_bytes();
+        buf[field_offset..field_offset + 4].copy_from_slice(&bytes);
+        let path = make_tmp_nav_path(&format!("hostile_{field_offset}"));
+        let mut f = std::fs::File::create(&path).expect("create tmp nav");
+        f.write_all(&buf).expect("write tmp nav");
+        path
+    }
+
+    fn assert_hostile_field(path: &std::path::Path, expected_field: &str) {
+        let result = NavMesh::load(path);
+        // Clean up the temp file before asserting so a failed assertion
+        // doesn't leave litter under $TMP.
+        let _ = std::fs::remove_file(path);
+        match result {
+            Err(cimmeria_common::CimmeriaError::NavHeaderOutOfRange { field, .. }) => {
+                assert_eq!(
+                    field, expected_field,
+                    "wrong field flagged in NavHeaderOutOfRange"
+                );
+            }
+            other => panic!(
+                "expected NavHeaderOutOfRange({expected_field}), got {other:?}\n\
+                 If this regressed: the bounds check on `{expected_field}` in \
+                 NavMesh::load was reverted; restore the check_count call."
+            ),
+        }
+    }
+
+    /// Hostile `nverts` must trip `MAX_NVERTS` before `vec![0u16; (nverts * 3)]`
+    /// wraps to a 3-element Vec (or the unwrapped 12 GB allocation crashes
+    /// the server).
+    #[test]
+    fn navmesh_load_rejects_oversized_nverts() {
+        let path = write_hostile_at(OFFSET_NVERTS);
+        assert_hostile_field(&path, "nverts");
+    }
+
+    /// Hostile `npolys` must trip `MAX_NPOLYS` before the
+    /// `npolys * nvp * 2` multiplication can overflow.
+    #[test]
+    fn navmesh_load_rejects_oversized_npolys() {
+        let path = write_hostile_at(OFFSET_NPOLYS);
+        assert_hostile_field(&path, "npolys");
+    }
+
+    /// Hostile `nvp` must trip `MAX_NVP = 64`. Without this check, a `.nav`
+    /// with `nvp = 0xFFFFFFFF` and `npolys = 1` would still pass through
+    /// the `npolys` and `nverts` caps but the `polys_len` multiplication
+    /// would overflow u32 (or even u64 if we hadn't widened first).
+    #[test]
+    fn navmesh_load_rejects_oversized_nvp() {
+        let path = write_hostile_at(OFFSET_NVP);
+        assert_hostile_field(&path, "nvp");
+    }
+
+    /// Hostile `detail_nmeshes` must trip the detail-section cap.
+    #[test]
+    fn navmesh_load_rejects_oversized_detail_nmeshes() {
+        let path = write_hostile_at(OFFSET_DETAIL_NMESHES);
+        assert_hostile_field(&path, "detail_nmeshes");
+    }
+
+    /// Hostile `detail_nverts` must trip the detail-section cap.
+    #[test]
+    fn navmesh_load_rejects_oversized_detail_nverts() {
+        let path = write_hostile_at(OFFSET_DETAIL_NVERTS);
+        assert_hostile_field(&path, "detail_nverts");
+    }
+
+    /// Hostile `detail_ntris` must trip the detail-section cap.
+    #[test]
+    fn navmesh_load_rejects_oversized_detail_ntris() {
+        let path = write_hostile_at(OFFSET_DETAIL_NTRIS);
+        assert_hostile_field(&path, "detail_ntris");
     }
 
     #[test]
