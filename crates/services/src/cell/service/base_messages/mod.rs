@@ -388,14 +388,19 @@ pub(super) async fn handle_base_message(
             // with the dependent ability still greyed out until they close
             // and re-open the trainer.
             //
-            // We delegate the "is this newly-unlocked a prereq for B?"
-            // decision to `try_open_trainer` itself — it recomputes every
-            // `trainable` flag from current state (known set, level,
-            // prereqs). Calling it whenever the player has a trainer pinned
-            // is idempotent and matches Python's "always-resend on grant"
-            // shape. `try_open_trainer` short-circuits to `false` when the
-            // pinned target isn't a trainer template, so the only NPCs
-            // that trigger a resend here are real trainers.
+            // **Contract — "resend on ANY grant while pinned":** this fires
+            // for every `AbilityGranted` while `last_interaction_target` is
+            // set, regardless of whether the granted ability is in the
+            // trainer's offered list. We delegate the "is this newly-unlocked
+            // a prereq for B?" decision to `try_open_trainer` itself, which
+            // recomputes every `trainable` flag from current state (known
+            // set, level, prereqs). This matches Python's
+            // `AbilityTrainer.onTrainAbility` behavior: it re-fires
+            // `onTrainerOpen` unconditionally after a successful train RPC.
+            // `try_open_trainer` short-circuits to `false` when the pinned
+            // target isn't a trainer template, so non-trainer NPCs pinned
+            // as `last_interaction_target` (vendors, lootables, dialog NPCs)
+            // never trigger a resend.
             //
             // `last_interaction_target` is set by `handle_interact` and
             // not cleared on trainer close. Trade-off: if a player opens
@@ -403,8 +408,8 @@ pub(super) async fn handle_base_message(
             // (chain `Action::GrantAbility` from a quest turn-in), we'd
             // emit a spurious `onTrainerOpen`. The client tolerates an
             // unsolicited `onTrainerOpen` when the trainer window isn't
-            // visible (UEvent_UI_TrainerOpen handler just shows the
-            // panel), so this is harmless. See issue #55 deep dive Item B.
+            // visible (UEvent_UI_TrainerOpen handler just shows the panel),
+            // so this is harmless.
             let trainer_entity_id = space_mgr
                 .get_entity(entity_id)
                 .and_then(|p| p.last_interaction_target);

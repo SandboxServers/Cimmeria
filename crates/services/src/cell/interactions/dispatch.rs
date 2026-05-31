@@ -142,28 +142,30 @@ pub async fn handle_interact(
             None
         }
         Some(NpcInteractionType::Trainer { archetype_id }) => {
-            // Trainer NPCs are routed via the canonical
-            // `template_trainer_lists` path in
-            // `cell_methods/player/interaction.rs::dispatch` — it calls
+            // Deprecated routing arm. The canonical trainer path is the
+            // `template_trainer_lists` lookup in
+            // `cell_methods/player/interaction.rs::dispatch`, which calls
             // `interactions::try_open_trainer` BEFORE falling through to
-            // `handle_interact`. The `NpcInteractionType::Trainer` variant
-            // isn't assigned anywhere in production content; if it ever is,
-            // the canonical handler keys off
-            // `entity_templates.trainer_ability_list_id` regardless of
-            // this tag, so a fall-through here means the NPC has the tag
-            // set but no list — a content gap, not a routing issue.
-            //
-            // The prior stub at `interactions/trainer.rs::send_trainer_open`
-            // fabricated a list from `archetype_ability_tree` with everything
-            // marked trainable — bypassing per-archetype offering, already-
-            // known, level, and prereq filters. Deleted in #55.
+            // `handle_interact`. By the time control reaches this arm,
+            // `try_open_trainer` has already either opened the trainer
+            // (returning `true`, in which case we don't get here) or
+            // determined the NPC isn't a trainer (no `trainer_ability_list_id`
+            // on the template). If the NPC has the `Trainer` tag but no
+            // template-registered list, the only sane action is to log
+            // and drop — emitting `onTrainerOpen` from here would bypass
+            // the per-archetype offering, already-known, level, and
+            // prereq filters that the canonical handler enforces.
             tracing::warn!(
+                target: "abilities",
+                event = "trainer_deprecated_routing_arm",
                 entity_id,
                 target_entity_id,
                 archetype_id,
-                "interact: NpcInteractionType::Trainer assigned but routing \
-                 goes through template_trainer_lists -- check the NPC's \
-                 entity_templates.trainer_ability_list_id"
+                reason = "deprecated_routing_arm",
+                "interact: deprecated NpcInteractionType::Trainer arm hit — \
+                 template_trainer_lists is the canonical path; set \
+                 entity_templates.trainer_ability_list_id on this NPC's \
+                 template instead of using the Trainer interaction tag"
             );
             None
         }
