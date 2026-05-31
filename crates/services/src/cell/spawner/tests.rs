@@ -50,6 +50,9 @@ fn make_test_record(world_name: &str, tag: Option<&str>, class: &str) -> SpawnRe
         respawn_secs: None,
         patrol_path: vec![],
         patrol_point_delay_secs: 2.0,
+        wander_radius: 0.0,
+        wander_min_dwell_secs: 3.0,
+        wander_max_dwell_secs: 8.0,
     }
 }
 

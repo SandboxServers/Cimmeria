@@ -19,6 +19,7 @@ mod bandolier;
 mod npc_ai;
 mod npc_ai_auto_aggro;
 mod npc_ai_patrol;
+mod npc_ai_wander;
 mod regen;
 mod reload;
 

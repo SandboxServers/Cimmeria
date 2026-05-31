@@ -143,6 +143,12 @@ impl SpaceManager {
         // it reaches Idle and has no threats.
         e.patrol_path = record.patrol_path.clone();
         e.patrol_point_delay_secs = record.patrol_point_delay_secs;
+        // Wander config: 0.0 radius → no wander. Positive value
+        // opts the NPC into AiState::Wander when it reaches Idle
+        // without a patrol path / aggression.
+        e.wander_radius = record.wander_radius;
+        e.wander_min_dwell_secs = record.wander_min_dwell_secs;
+        e.wander_max_dwell_secs = record.wander_max_dwell_secs;
 
         // Per-template ability bucket. Empty `ability_ids` (template has
         // no `ability_set_id`) falls back to `NPC_DEFAULT_ABILITY` so

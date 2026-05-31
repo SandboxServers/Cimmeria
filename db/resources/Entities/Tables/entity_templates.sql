@@ -54,8 +54,30 @@ CREATE TABLE entity_templates (
     -- `cell_entity::respawn_secs` for the resolved field on the
     -- runtime entity.
     respawn_secs integer,
+    -- Wander radius in world units. NULL or 0 → NPC doesn't wander.
+    -- Positive value → idle NPCs without a patrol path pick random
+    -- points within `wander_radius` of `spawn_position`, walk there,
+    -- pause for a random dwell drawn from
+    -- `[wander_min_dwell_secs, wander_max_dwell_secs]`, repeat. The
+    -- runtime falls back to `[3.0, 8.0]` seconds when either dwell
+    -- bound is NULL.
+    wander_radius real,
+    wander_min_dwell_secs real,
+    wander_max_dwell_secs real,
     CONSTRAINT entity_templates_respawn_secs_min_3
-        CHECK (respawn_secs IS NULL OR respawn_secs >= 3)
+        CHECK (respawn_secs IS NULL OR respawn_secs >= 3),
+    CONSTRAINT entity_templates_wander_radius_positive
+        CHECK (wander_radius IS NULL OR wander_radius > 0.0),
+    CONSTRAINT entity_templates_wander_dwell_positive
+        CHECK (
+            (wander_min_dwell_secs IS NULL OR wander_min_dwell_secs > 0.0)
+            AND (wander_max_dwell_secs IS NULL OR wander_max_dwell_secs > 0.0)
+            AND (
+                wander_min_dwell_secs IS NULL
+                OR wander_max_dwell_secs IS NULL
+                OR wander_min_dwell_secs <= wander_max_dwell_secs
+            )
+        )
 );
 
 --

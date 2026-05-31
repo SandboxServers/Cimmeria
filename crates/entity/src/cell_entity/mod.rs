@@ -573,6 +573,23 @@ pub struct CellEntity {
     /// when NULL). Read by the patrol handler when it stamps a
     /// fresh `patrol_dwell_until` deadline.
     pub patrol_point_delay_secs: f32,
+    /// Wander radius in world units. `0.0` → NPC doesn't wander.
+    /// Positive values opt the NPC into `AiState::Wander` from
+    /// Idle when it has no patrol_path and no positive aggression.
+    /// Loaded from `entity_templates.wander_radius`.
+    pub wander_radius: f32,
+    /// Random-dwell lower bound between successive wander hops,
+    /// in seconds. The handler samples a uniform value in
+    /// `[min, max]` and stamps `wander_next_at = now + sample`
+    /// when it queues a fresh waypoint.
+    pub wander_min_dwell_secs: f32,
+    /// Random-dwell upper bound between successive wander hops,
+    /// in seconds. The DB CHECK guarantees `min <= max`.
+    pub wander_max_dwell_secs: f32,
+    /// Deadline at which the wander handler may pick a fresh
+    /// waypoint. `None` on first entry (handler picks immediately
+    /// and stamps a deadline for the next pass).
+    pub wander_next_at: Option<std::time::Instant>,
 
     // ── Saved mission state (for re-login) ────────────────────────────────────
     /// Saved missions loaded from DB, to be populated before content engine fires.
@@ -866,6 +883,10 @@ impl CellEntity {
             patrol_next_index: 0,
             patrol_dwell_until: None,
             patrol_point_delay_secs: 2.0,
+            wander_radius: 0.0,
+            wander_min_dwell_secs: 3.0,
+            wander_max_dwell_secs: 8.0,
+            wander_next_at: None,
             saved_missions_loaded: false,
             loot_table_id: None,
             loot: Vec::new(),

@@ -67,6 +67,19 @@ pub struct SpawnRecord {
     /// authors fill the path but leave the delay null). Ignored
     /// when `patrol_path.is_empty()`.
     pub patrol_point_delay_secs: f32,
+    /// Wander radius in world units. `0.0` → no wander. Positive
+    /// values opt the NPC into `AiState::Wander` from Idle (when
+    /// it has no patrol_path and no positive aggression).
+    pub wander_radius: f32,
+    /// Lower bound of the random dwell duration drawn between
+    /// successive wander hops, in seconds. Defaults to `3.0` when
+    /// the template field is NULL.
+    pub wander_min_dwell_secs: f32,
+    /// Upper bound of the random dwell duration, in seconds.
+    /// Defaults to `8.0` when NULL. The CHECK constraint enforces
+    /// `min <= max` at the DB boundary so the runtime can sample
+    /// without an extra guard.
+    pub wander_max_dwell_secs: f32,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
@@ -109,6 +122,9 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                t.loot_table_id, \
                t.patrol_path_id, \
                COALESCE(t.patrol_point_delay, 2.0) AS patrol_point_delay, \
+               COALESCE(t.wander_radius, 0.0) AS wander_radius, \
+               COALESCE(t.wander_min_dwell_secs, 3.0) AS wander_min_dwell_secs, \
+               COALESCE(t.wander_max_dwell_secs, 8.0) AS wander_max_dwell_secs, \
                COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -175,6 +191,9 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                 .and_then(|id| patrol_points.get(&id).cloned())
                 .unwrap_or_default(),
             patrol_point_delay_secs: r.get::<f32, _>("patrol_point_delay"),
+            wander_radius: r.get::<f32, _>("wander_radius"),
+            wander_min_dwell_secs: r.get::<f32, _>("wander_min_dwell_secs"),
+            wander_max_dwell_secs: r.get::<f32, _>("wander_max_dwell_secs"),
         })
         .collect();
 

@@ -33,29 +33,36 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
 
     // Snapshot NPC IDs and their AI state so we don't hold a borrow on space_mgr
     // while calling handle_use_ability (which needs &mut SpaceManager).
-    let npc_snapshot: Vec<(u32, AiState, i32, bool)> = space_mgr
+    let npc_snapshot: Vec<(u32, AiState, i32, bool, bool)> = space_mgr
         .all_npc_entity_ids()
         .iter()
         .filter_map(|&eid| {
-            space_mgr
-                .get_entity(eid)
-                .map(|e| (eid, e.ai_state, e.aggression, !e.patrol_path.is_empty()))
+            space_mgr.get_entity(eid).map(|e| {
+                (
+                    eid,
+                    e.ai_state,
+                    e.aggression,
+                    !e.patrol_path.is_empty(),
+                    e.wander_radius > 0.0,
+                )
+            })
         })
-        .filter(|(_, state, aggression, has_patrol)| {
+        .filter(|(_, state, aggression, has_patrol, has_wander)| {
             // Admit any state that has a per-tick handler. Idle is
-            // admitted when the NPC has a patrol path (so the tick
-            // can transition Idle → Patrol) or when aggression is
-            // positive (auto-aggro).
+            // admitted when the NPC has a patrol path, a wander
+            // radius, or positive aggression so the tick can promote
+            // it into the matching behavior state.
             *state == AiState::Fighting
                 || *state == AiState::Leashing
                 || *state == AiState::Patrol
-                || (*state == AiState::Idle && (*aggression > 0 || *has_patrol))
+                || *state == AiState::Wander
+                || (*state == AiState::Idle && (*aggression > 0 || *has_patrol || *has_wander))
         })
         .collect();
 
     use tracing::Instrument;
 
-    for (npc_id, ai_state, _, has_patrol) in npc_snapshot {
+    for (npc_id, ai_state, _, has_patrol, has_wander) in npc_snapshot {
         // `.instrument()` (not `.entered()`) — the handler bodies await,
         // so a thread-local guard would silently fall off across runtime
         // thread switches.
@@ -71,11 +78,15 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
                 AiState::Fighting => npc_ai_fight(npc_id, tx, space_mgr).await,
                 AiState::Leashing => npc_ai_leash(npc_id, tx, space_mgr).await,
                 AiState::Patrol => npc_ai_patrol(npc_id, tx, space_mgr).await,
+                AiState::Wander => npc_ai_wander(npc_id, tx, space_mgr).await,
                 AiState::Idle => {
-                    // Aggro-driven idle has priority over patrol: an
+                    // Priority order: aggression > patrol > wander.
+                    // Aggro-driven idle has priority because an
                     // aggressive guard standing on a waypoint should
                     // still seed threat on a passing player rather
-                    // than stride past them.
+                    // than stride past them. Patrol beats wander
+                    // because explicit waypoint authoring is more
+                    // intentional than a wander radius.
                     let aggression = space_mgr
                         .get_entity(npc_id)
                         .map(|e| e.aggression)
@@ -83,23 +94,23 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
                     if aggression > 0 {
                         npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await;
                     } else if has_patrol {
-                        // Idle NPC with a patrol path → transition
-                        // into Patrol. The actual waypoint queuing
-                        // happens on the same call (state set +
-                        // first nav_path push) to avoid a wasted
-                        // tick where the NPC sits Patrol-but-idle.
                         if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                             npc.ai_state = AiState::Patrol;
                         }
                         npc_ai_patrol(npc_id, tx, space_mgr).await;
+                    } else if has_wander {
+                        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                            npc.ai_state = AiState::Wander;
+                        }
+                        npc_ai_wander(npc_id, tx, space_mgr).await;
                     }
                 }
                 _ => {
-                    // Other states (Dead, Spawning, Wander, Investigating,
+                    // Other states (Dead, Spawning, Investigating,
                     // Follow, Despawning, Submit, Error) either don't have
                     // a per-tick handler today or shouldn't have been
-                    // admitted by the snapshot filter. Wander/Investigating/
-                    // Follow handlers land in later commits of this PR.
+                    // admitted by the snapshot filter. The remaining
+                    // handlers land in later commits of this PR.
                 }
             }
         }
@@ -878,6 +889,145 @@ async fn npc_ai_patrol(
         wp_y = waypoint.y,
         wp_z = waypoint.z,
         "NPC AI: patrol → next waypoint queued"
+    );
+}
+
+/// NPC wander behavior: pick a random point within `wander_radius` of
+/// `spawn_position`, walk there via the navmesh, pause for a random
+/// dwell drawn from `[wander_min_dwell_secs, wander_max_dwell_secs]`,
+/// repeat.
+///
+/// State machine within Wander:
+/// - **nav_path empty + no/elapsed dwell** → sample a fresh waypoint,
+///   pathfind, queue into `nav_path`, stamp `wander_next_at`. RNG is
+///   seeded from `(npc_id, current_dwell_deadline_nanos)` so the
+///   sample is reproducible per-tick for tests but varies across
+///   real-world ticks.
+/// - **nav_path empty + future dwell deadline** → no-op (pausing).
+/// - **nav_path non-empty** → movement-tick is walking, no work.
+///
+/// Off-mesh rejection: when `space_mgr.is_position_valid` fails for
+/// the sampled point, the handler falls back to `spawn_position` so
+/// the NPC heads home rather than walking through a wall. This is
+/// deliberately simple — a future "re-sample N times before giving
+/// up" would be a small refinement.
+async fn npc_ai_wander(
+    npc_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::MobMovementType;
+    use rand::{RngExt, SeedableRng};
+
+    super::super::abilities::broadcast_movement_type(
+        npc_id,
+        Some(MobMovementType::Wander),
+        tx,
+        space_mgr,
+    )
+    .await;
+
+    let now = std::time::Instant::now();
+
+    // Read wander config + current position via an immutable borrow.
+    let (spawn_pos, npc_pos, radius, min_dwell, max_dwell, nav_empty, wander_next) =
+        match space_mgr.get_entity(npc_id) {
+            Some(e) => (
+                e.spawn_position,
+                e.position,
+                e.wander_radius,
+                e.wander_min_dwell_secs,
+                e.wander_max_dwell_secs,
+                e.nav_path.is_empty(),
+                e.wander_next_at,
+            ),
+            None => return,
+        };
+
+    // Defensive: a content action could have zeroed wander_radius
+    // mid-tick. Drop back to Idle so the next tick re-routes.
+    if radius <= 0.0 {
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
+        }
+        super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
+        return;
+    }
+
+    if !nav_empty {
+        // Movement tick is walking — nothing to do.
+        return;
+    }
+
+    if let Some(deadline) = wander_next {
+        if now < deadline {
+            return; // Still pausing.
+        }
+    }
+
+    let Some(spawn) = spawn_pos else {
+        // No spawn anchor — wander can't pick a destination. Drop to Idle.
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
+        }
+        return;
+    };
+
+    // Seed: (npc_id, current dwell-deadline nanos since UNIX epoch
+    // would require std::time::SystemTime; Instant doesn't expose
+    // that). Use elapsed time since the manager's `now` for variance
+    // and npc_id for per-entity divergence. Tests can pre-set
+    // `wander_next_at` to a known deadline to make the seed
+    // deterministic; the runtime is non-deterministic which is the
+    // desired property for "different NPCs wander to different
+    // places".
+    let seed = u64::from(npc_id) ^ (now.elapsed().as_nanos() as u64);
+    let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(seed);
+    let angle = rng.random_range(0.0..(std::f32::consts::TAU));
+    let distance = rng.random_range(0.0..radius);
+    let candidate = cimmeria_common::Vector3::new(
+        spawn.x + angle.cos() * distance,
+        spawn.y,
+        spawn.z + angle.sin() * distance,
+    );
+
+    // Off-mesh rejection: fall back to spawn_position. A single
+    // re-sample would be a nicer behavior but adds complexity for
+    // marginal benefit at this stage.
+    let target = if space_mgr.is_position_valid(npc_id, &candidate) {
+        candidate
+    } else {
+        spawn
+    };
+
+    let path = space_mgr
+        .find_path(npc_id, &npc_pos, &target)
+        .unwrap_or_default();
+    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+        npc.nav_path.clear();
+        if path.len() > 1 {
+            for wp in path.into_iter().skip(1) {
+                npc.nav_path.push_back(wp);
+            }
+        } else {
+            npc.nav_path.push_back(target);
+        }
+        // Sample the post-arrival dwell now so it's set when the
+        // movement tick drains nav_path. Floor at 0.5s to guard
+        // against a degenerate config.
+        let dwell_secs = rng
+            .random_range(min_dwell..=max_dwell.max(min_dwell))
+            .max(0.5);
+        npc.wander_next_at = Some(now + std::time::Duration::from_secs_f32(dwell_secs));
+    }
+    tracing::debug!(
+        target: "npc_ai",
+        event = "wander_waypoint_set",
+        npc_id,
+        target_x = target.x,
+        target_z = target.z,
+        radius,
+        "NPC AI: wander → fresh waypoint queued"
     );
 }
 
