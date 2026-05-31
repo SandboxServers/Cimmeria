@@ -105,17 +105,24 @@ impl ChunkId {
     /// Decode a chunk ID from a NavBuilder-style OBJ filename of the form
     /// `<HEX8>o.obj`. This is what the C++ NavBuilder reads from disk
     /// (see `chunk.cpp:19-29`).
+    ///
+    /// The format is **strict**: the stem must be exactly nine
+    /// characters — eight hex digits followed by a literal `o`.
+    /// Filenames with extra prefix material (e.g. `prefix-12345678o.obj`)
+    /// are rejected; if the C++ NavBuilder ever needs to accept a
+    /// prefixed form, both sides must change together.
     pub fn from_obj_path(path: &Path) -> crate::Result<Self> {
         let stem = path
             .file_stem()
             .and_then(|s| s.to_str())
             .ok_or_else(|| ExtractError::InvalidChunkFilename(path.display().to_string()))?;
 
-        // NavBuilder strips the trailing 'o' and reads the preceding 8 hex chars.
-        if !stem.ends_with('o') || stem.len() < 9 {
+        // Require exactly 9 chars: 8 hex digits + trailing 'o'. Anything
+        // longer would silently mis-parse a prefix as part of the hex.
+        if stem.len() != 9 || !stem.ends_with('o') {
             return Err(ExtractError::InvalidChunkFilename(stem.to_string()));
         }
-        let hex = &stem[stem.len() - 9..stem.len() - 1];
+        let hex = &stem[..8];
         let raw = u32::from_str_radix(hex, 16)
             .map_err(|_| ExtractError::InvalidChunkFilename(stem.to_string()))?;
         Ok(Self::from_raw(raw))
@@ -252,5 +259,22 @@ mod tests {
         let path = PathBuf::from(id.obj_filename());
         let decoded = ChunkId::from_obj_path(&path).unwrap();
         assert_eq!(decoded, id);
+    }
+
+    /// Tightened format check — pre-tightening, the slice-from-end
+    /// loop would silently accept `prefix-12345678o.obj` and treat
+    /// `12345678` as the chunk ID. The strict `stem.len() == 9`
+    /// invariant rejects it.
+    #[test]
+    fn obj_path_rejects_prefixed_form() {
+        let p = PathBuf::from("prefix-12345678o.obj");
+        assert!(ChunkId::from_obj_path(&p).is_err());
+    }
+
+    /// Missing the trailing 'o' marker — also a malformed input.
+    #[test]
+    fn obj_path_rejects_missing_marker() {
+        let p = PathBuf::from("12345678.obj");
+        assert!(ChunkId::from_obj_path(&p).is_err());
     }
 }
