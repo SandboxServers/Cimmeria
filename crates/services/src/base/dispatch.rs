@@ -193,7 +193,27 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             // it. The stored message itself is currently only used as
             // an "is DND active?" signal for the speaker_flags bit —
             // the auto-reply-tell path is future work.
-            let message = read_wstring(payload, 0).map(|(s, _)| s).unwrap_or_default();
+            //
+            // A decode failure (truncated / malformed payload) must NOT
+            // be coerced to `""` and then treated as a clear — that
+            // silently destroys existing DND state on a garbage packet.
+            // Bind the Result explicitly, warn-log on Err per
+            // `docs/architecture/negative-logging-convention.md`, and
+            // leave `dnd_message` untouched so a flaky packet doesn't
+            // surprise the user.
+            let message = match read_wstring(payload, 0) {
+                Ok((s, _)) => s,
+                Err(e) => {
+                    tracing::warn!(
+                        %addr,
+                        payload_len = payload.len(),
+                        reason = "read_wstring_failed",
+                        error = %e,
+                        "chatSetDNDMessage: WSTRING decode failed -- existing DND state preserved",
+                    );
+                    return Ok(());
+                }
+            };
             let mut clients = connected.lock().unwrap();
             if let Some(c) = clients.get_mut(&addr) {
                 c.dnd_message = if message.chars().count() > 1 {
@@ -281,6 +301,14 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                         c.cached_tint_args = None;
                         c.world_entry_sent = false;
                         c.char_list_sent = false;
+                        // DND is per-character state. Without this reset,
+                        // char A's /dnd would leak into char B on the
+                        // same connection — every subsequent
+                        // `sendPlayerCommunication` would carry
+                        // `SPEAKER_DND` until char B's user toggled DND
+                        // explicitly. Mirrors the other per-character
+                        // fields cleared on return-to-character-select.
+                        c.dnd_message = None;
                     }
                 }
 
