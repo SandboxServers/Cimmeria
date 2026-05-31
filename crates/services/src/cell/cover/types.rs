@@ -93,7 +93,11 @@ impl CoverQuality {
 /// The reservation table is keyed on this. A node currently maps 1:1 to a
 /// slot (the in-memory `CoverNodePrefabData` does not yet model multi-slot
 /// per-node — the on-disk format's `tail` bytes may encode slot data but
-/// remain unconfirmed; see #209 residuals).
+/// remain unconfirmed). The combination `(chunk_id, node_id)` is the
+/// natural key — be aware that `node_id` is sequential per chunk and
+/// stable only for as long as the extractor's input pak ordering stays
+/// the same; do NOT persist this key in saved-game data without also
+/// persisting the `chunk_name` for a re-extract-safe lookup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CoverSlotKey {
     pub chunk_id: i32,
@@ -192,11 +196,23 @@ impl Cover {
 
     /// Release the cover slot currently held by `entity_id`, if any.
     /// Idempotent — returns the freed slot if there was one.
+    ///
+    /// Recovers gracefully from a poisoned reservations mutex: emits a
+    /// `tracing::warn!` and continues with the recovered inner state
+    /// rather than panicking the cell process. A poisoned cover table
+    /// is recoverable — the worst case is some stale reservations get
+    /// retired one tick later than they should.
     pub fn release_for_entity(&self, entity_id: EntityId) -> Option<CoverSlotKey> {
-        let mut r = self
-            .reservations
-            .lock()
-            .expect("cover reservations poisoned");
+        let mut r = match self.reservations.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                tracing::warn!(
+                    entity_id = entity_id.0,
+                    "cover reservations mutex poisoned during release_for_entity — recovering"
+                );
+                poisoned.into_inner()
+            }
+        };
         r.release_for_entity(entity_id)
     }
 }

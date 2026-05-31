@@ -201,8 +201,8 @@ pub struct SpaceManager {
     /// Cover-system service handle. Loaded from `resources.cover_sets` +
     /// `resources.cover_nodes` at startup; carries the spatial index,
     /// reservation table, and per-set metadata. See
-    /// `crates/services/src/cell/cover/` for details and the issue #209
-    /// architecture doc for the design.
+    /// `crates/services/src/cell/cover/` for details and
+    /// `docs/architecture/cover-system.md` for the design.
     pub cover: super::cover::Cover,
     /// Per-player cover-detection state. Updated by the
     /// `cover_detection_tick` to track which cover sets each player is

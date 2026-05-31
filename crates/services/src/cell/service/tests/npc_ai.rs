@@ -47,7 +47,12 @@ fn make_ai_fixture(npc_spawn: [f32; 3], npc_pos: [f32; 3]) -> SpaceManager {
 async fn npc_ai_fighting_with_empty_threat_resets_to_idle() {
     let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
     let (tx, _rx) = mpsc::channel(8);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
     assert!(matches!(
         mgr.get_entity(200).unwrap().ai_state,
         AiState::Idle
@@ -76,7 +81,12 @@ async fn npc_ai_target_beyond_leash_distance_triggers_leashing() {
         npc.threat_list.insert(100, 1.0);
     }
     let (tx, _rx) = mpsc::channel(8);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
     let npc = mgr.get_entity(200).unwrap();
     assert!(matches!(npc.ai_state, AiState::Leashing));
     assert!(
@@ -121,7 +131,12 @@ async fn npc_ai_dead_target_is_removed_but_other_threats_remain() {
         npc.threat_list.insert(101, 2.0);
     }
     let (tx, _rx) = mpsc::channel(8);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
     let npc = mgr.get_entity(200).unwrap();
     assert!(
         !npc.threat_list.contains_key(&100),
@@ -178,7 +193,12 @@ async fn stationary_no_los_or_range_emits_structured_decision_log() {
         npc.is_stationary = true;
     }
     let (tx, _rx) = mpsc::channel(8);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let event = capture
         .find_message(Level::INFO, "stationary mob holding fire")
@@ -227,7 +247,12 @@ async fn npc_ai_stationary_does_not_pathfind_when_out_of_range() {
         npc.is_stationary = true;
     }
     let (tx, _rx) = mpsc::channel(8);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
     let npc = mgr.get_entity(200).unwrap();
     assert!(
         npc.nav_path.is_empty(),
@@ -263,7 +288,12 @@ async fn npc_ai_leashing_snaps_to_spawn_restores_health_and_idles() {
         }
     }
     let (tx, _rx) = mpsc::channel(16);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
     let npc = mgr.get_entity(200).unwrap();
     assert!(matches!(npc.ai_state, AiState::Idle));
     assert_eq!(
@@ -335,7 +365,12 @@ async fn npc_ai_fight_picks_top_threat_among_multiple_live_targets() {
     }
 
     let (tx, _rx) = mpsc::channel(8);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
@@ -373,7 +408,12 @@ async fn npc_ai_fight_single_nan_target_does_not_panic() {
     }
 
     let (tx, _rx) = mpsc::channel(8);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
@@ -410,7 +450,12 @@ async fn npc_ai_fight_nan_in_threat_list_with_other_targets_does_not_panic() {
     }
 
     let (tx, _rx) = mpsc::channel(8);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
@@ -451,7 +496,12 @@ async fn npc_ai_leash_emits_stat_update_then_state_field_to_witnesses() {
     }
 
     let (tx, mut rx) = mpsc::channel(16);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     // Collect WitnessEntityMethod packets for NPC 200.
     let mut witness_methods: Vec<u16> = Vec::new();
@@ -549,7 +599,12 @@ async fn idle_npc_with_aggression_aggros_opposing_player() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200_001).unwrap();
     assert_eq!(
@@ -573,7 +628,12 @@ async fn idle_npc_without_aggression_stays_idle() {
     assert_eq!(mgr.get_entity(200_002).unwrap().aggression, 0);
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200_002).unwrap();
     assert_eq!(npc.ai_state, AiState::Idle);
@@ -591,7 +651,12 @@ async fn aggression_skips_same_faction_witnesses() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200_003).unwrap();
     assert_eq!(npc.ai_state, AiState::Idle, "same faction must not aggro");
@@ -775,7 +840,12 @@ async fn npc_ai_fight_warns_when_handle_use_ability_returns_false() {
 
     let capture = LogCapture::install();
     let (tx, _rx) = mpsc::channel(8);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     assert!(
         capture
@@ -884,7 +954,12 @@ async fn npc_ai_fight_with_short_max_range_holds_fire_when_target_outside() {
     }
 
     let (tx, _rx) = mpsc::channel(16);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     // Post-fix the AI's own range gate keeps the NPC out of the fire
     // path entirely — observable via the side effects:
@@ -928,7 +1003,12 @@ async fn npc_ai_fight_with_short_max_range_fires_when_target_inside() {
     }
 
     let (tx, _rx) = mpsc::channel(64);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     // Successful fire signature: handle_use_ability started the
     // ability's cooldown (it ran end-to-end without rejection).
@@ -961,7 +1041,12 @@ async fn npc_ai_fight_max_range_zero_falls_back_to_npc_attack_range() {
     }
 
     let (tx, _rx) = mpsc::channel(64);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
@@ -996,7 +1081,12 @@ async fn npc_ai_fight_target_inside_min_range_schedules_backup_waypoint() {
     }
 
     let (tx, _rx) = mpsc::channel(16);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
@@ -1062,7 +1152,12 @@ async fn npc_ai_fight_schedules_retry_on_handle_use_ability_failure() {
 
     let before = std::time::Instant::now();
     let (tx, _rx) = mpsc::channel(16);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
     let after = std::time::Instant::now();
 
     let retry_at = mgr.get_entity(200).unwrap().ai_retry_at.expect(
@@ -1122,7 +1217,12 @@ async fn npc_ai_retry_sweep_processes_due_npc_and_clears_slot() {
     mgr.pending_ai_retries.insert(200);
 
     let (tx, _rx) = mpsc::channel(16);
-    crate::cell::service::npc_ai::npc_ai_retry_sweep(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_retry_sweep(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     // The sweep clears the slot BEFORE calling npc_ai_fight; if the
     // re-fired fight failed (it will, same has_ability rejection),
@@ -1163,7 +1263,12 @@ async fn npc_ai_fight_missing_ability_def_falls_back_to_npc_attack_range() {
     }
 
     let (tx, _rx) = mpsc::channel(64);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     // With no def, `ability_ranges` returns `(NPC_ATTACK_RANGE,
     // 0.0)`. Distance 25 < 30 = in_range = true → fire path. But
@@ -1250,7 +1355,12 @@ async fn npc_ai_fight_stationary_does_not_back_off_inside_min_range() {
     }
 
     let (tx, _rx) = mpsc::channel(16);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(

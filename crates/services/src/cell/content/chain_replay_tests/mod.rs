@@ -17,6 +17,7 @@
 //! chains for one mission's branches and edges so a regression surfaces
 //! near the seed it touches.
 
+mod cover_demo_9209;
 mod mission_1562;
 mod mission_622;
 mod mission_638;

@@ -6,7 +6,7 @@
 //!
 //! | Weight | Term meaning |
 //! |---|---|
-//! | `aDistanceWeight` | shorter is better — encourages picking nearby cover |
+//! | `aDistanceWeight` | farther from threat is better — encourages picking cover at tactical engagement range |
 //! | `aDefCoverWeight` | how well the cover faces the current threat |
 //! | `aOffCoverWeight` | how well the cover faces the *direction the NPC will shoot* |
 //! | `aMoveWeight` | penalty for picking a node far from the NPC's current position |
@@ -85,22 +85,40 @@ impl ScoringContext {
     }
 }
 
-/// Half-plane flank test. Returns `true` if `threat_pos` is OUTSIDE the
-/// cover's defensive arc (more than ±π/2 off `orient`), i.e. the cover is
-/// no longer protecting against this threat.
+/// Hysteresis margin (BW meter² in dot-product space) used by the
+/// flank test to avoid tick-to-tick oscillation when the threat sits
+/// near the cover's defensive half-plane boundary. At ~5° off the
+/// perpendicular boundary the test still returns "defended", which
+/// prevents the release→re-pick→release cycle a strict `dot <= 0.0`
+/// check would produce on a perpendicular-moving threat.
+const FLANK_HYSTERESIS_DOT: f32 = 0.0872; // sin(5°) — empirical small dead zone
+
+/// Half-plane flank test. Returns `true` if `threat_pos` is clearly
+/// OUTSIDE the cover's defensive arc (more than ±π/2 + 5° hysteresis
+/// off `orient`), i.e. the cover is no longer protecting against this
+/// threat.
 ///
 /// The cover's `orient` faces outward from the wall. The defended
-/// half-plane is therefore the half-space "in front of" the cover. If
-/// `(threat - cover_pos)` falls into the *back* half-plane, the threat
-/// is behind the cover — the NPC is flanked.
+/// half-plane is the half-space "in front of" the cover. The 5°
+/// hysteresis (`FLANK_HYSTERESIS_DOT`) keeps the NPC in cover when the
+/// threat is right at the perpendicular — without it, a threat moving
+/// exactly along the cover-orient axis would oscillate the NPC between
+/// `Released` and `MoveToCover` every tick.
 pub fn is_flanked(cover_pos: Vector3, cover_orient: f32, threat_pos: Vector3) -> bool {
     let to_threat = Vector3::new(threat_pos.x - cover_pos.x, 0.0, threat_pos.z - cover_pos.z);
-    // Cover faces (cos(orient), 0, sin(orient)) in BW x/z plane.
+    // Normalise the threat direction so the hysteresis is angular, not
+    // distance-dependent. Otherwise a threat at 1 m and at 100 m would
+    // need different dot thresholds for the same angle.
+    let to_threat_len = (to_threat.x * to_threat.x + to_threat.z * to_threat.z)
+        .sqrt()
+        .max(1e-3);
     let face_x = cover_orient.cos();
     let face_z = cover_orient.sin();
-    // Dot product: positive = in defended arc, negative = flanked.
-    let dot = to_threat.x * face_x + to_threat.z * face_z;
-    dot <= 0.0
+    let dot = (to_threat.x * face_x + to_threat.z * face_z) / to_threat_len;
+    // `dot ∈ [-1, 1]` after normalisation. Threat ahead = +1, threat
+    // behind = -1, threat perpendicular = 0. Flanked when dot drops
+    // clearly below 0 (with hysteresis).
+    dot < -FLANK_HYSTERESIS_DOT
 }
 
 /// Score a single candidate cover node. Returns a final score in roughly
@@ -214,7 +232,11 @@ pub fn pick_best(
     weights: &CoverWeights,
     chunk_ally_counts: &std::collections::HashMap<i32, usize>,
 ) -> Option<usize> {
-    let candidate_indices = index.nearby(&ctx.npc_pos, MAX_COVER_DISTANCE, Some(5.0));
+    // 2-m Y-axis tolerance: cover on a different floor of a multi-
+    // level chunk is unreachable without a pathfinding stair-climb;
+    // exclude it so the scorer doesn't waste cycles on candidates the
+    // navmesh won't be able to path to anyway.
+    let candidate_indices = index.nearby(&ctx.npc_pos, MAX_COVER_DISTANCE, Some(2.0));
     let mut best_idx: Option<usize> = None;
     let mut best_score = f32::NEG_INFINITY;
     for idx in candidate_indices {
@@ -269,12 +291,40 @@ mod scoring_tests {
     }
 
     #[test]
-    fn is_flanked_threat_on_boundary_is_flanked() {
+    fn is_flanked_perpendicular_stays_in_cover_hysteresis() {
         // Threat exactly perpendicular to cover orient — dot product = 0.
-        // We treat this as flanked (boundary case favours safety —
-        // re-pick to a better position).
+        // Strict `dot <= 0.0` would say "flanked" and trigger re-pick.
+        // With the 5° hysteresis (FLANK_HYSTERESIS_DOT ≈ 0.0872), a
+        // perpendicular threat stays inside the defensive arc — no
+        // tick-to-tick oscillation. Threat must move clearly behind
+        // the cover to flip the test.
         let cover_pos = Vector3::zero();
-        assert!(is_flanked(cover_pos, 0.0, Vector3::new(0.0, 0.0, 5.0)));
+        assert!(
+            !is_flanked(cover_pos, 0.0, Vector3::new(0.0, 0.0, 5.0)),
+            "perpendicular threat must stay in defensive arc (hysteresis)"
+        );
+    }
+
+    #[test]
+    fn is_flanked_does_not_oscillate_within_hysteresis() {
+        // Threat very slightly behind the perpendicular boundary
+        // (~3° behind). Without hysteresis a strict `<= 0.0` check
+        // would flip at this exact angle every tick. With 5° hysteresis
+        // the NPC keeps the slot until the threat is clearly flanking.
+        let cover_pos = Vector3::zero();
+        let theta = -89.0f32.to_radians(); // 1° past perpendicular into back half-plane
+        let threat = Vector3::new(5.0 * theta.cos(), 0.0, 5.0 * theta.sin());
+        assert!(
+            !is_flanked(cover_pos, 0.0, threat),
+            "1° past perpendicular must NOT flip (within 5° hysteresis)"
+        );
+        // 10° past perpendicular (clearly flanked) flips.
+        let theta_clear = -100.0f32.to_radians();
+        let threat_clear = Vector3::new(5.0 * theta_clear.cos(), 0.0, 5.0 * theta_clear.sin());
+        assert!(
+            is_flanked(cover_pos, 0.0, threat_clear),
+            "10° past perpendicular must flip — clear flank"
+        );
     }
 
     #[test]

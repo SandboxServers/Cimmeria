@@ -117,7 +117,7 @@ pub(super) async fn run_cell_loop(
 
                 // NPC AI runs every 20th AoI tick (2 seconds at 100ms intervals)
                 if aoi_tick_counter.is_multiple_of(20) {
-                    super::npc_ai::npc_ai_tick(tx, &mut space_mgr).await;
+                    super::npc_ai::npc_ai_tick(tx, &mut space_mgr, &engine).await;
                 }
 
                 // Retry sweep for NPCs with a pending `ai_retry_at`
@@ -129,7 +129,7 @@ pub(super) async fn run_cell_loop(
                 // here is just an `all_npc_entity_ids()` walk + the
                 // pending-retry set membership — negligible. See
                 // `npc_ai::npc_ai_retry_sweep` for the rationale.
-                super::npc_ai::npc_ai_retry_sweep(tx, &mut space_mgr).await;
+                super::npc_ai::npc_ai_retry_sweep(tx, &mut space_mgr, &engine).await;
 
                 // Out-of-combat HP/focus regen — 1 Hz (every 10th 100ms tick).
                 // Cadence is wired here so the per-call delta in `regen_tick`

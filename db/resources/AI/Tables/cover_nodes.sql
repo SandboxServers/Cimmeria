@@ -9,7 +9,7 @@
 -- secondary lean angle near -π/2, but unconfirmed at v1).
 --
 -- Per chunk, node_id is 0-based and stable per extraction. The
--- (chunk_id, node_id) composite is the natural key. Issue: #209.
+-- (chunk_id, node_id) composite is the natural key.
 --
 -- Name: cover_nodes; Type: TABLE; Schema: resources; Owner: -
 --

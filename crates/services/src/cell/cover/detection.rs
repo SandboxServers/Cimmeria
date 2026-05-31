@@ -25,12 +25,6 @@ use std::time::Instant;
 
 use super::types::{Cover, CoverHeight, CoverQuality};
 
-/// How often the detection tick should run, in milliseconds. Chosen as a
-/// conservative middle ground: fast enough that the HUD doesn't lag (the
-/// client polls the server CoverSpace at ~250 ms in the original), slow
-/// enough not to dominate cell-service tick time.
-pub const COVER_DETECTION_TICK_MS: u64 = 250;
-
 /// Proximity radius in BigWorld meters for the "player is in this cover
 /// set" test. Mirrors the SGWCoverSet proximity controller's typical
 /// radius. Tuned high enough that the player gets the HUD as they
@@ -144,12 +138,25 @@ pub fn run_detection_tick(
     // Forget players that aren't in the current player list (they
     // disconnected or got despawned without an explicit `forget_player`
     // call). Compute the active set up front.
+    //
+    // ASSUMPTION: the caller hands us EVERY player across the cell —
+    // i.e. all spaces' players flat-listed. If a future caller passes
+    // a per-space subset (one cell owning multiple spaces, then ticking
+    // each independently), a player who moves between spaces would get
+    // their cover state silently wiped on the tick after they cross
+    // the boundary. The current caller in `service::ticks::cover` does
+    // flatten across `space_mgr.spaces`, so this contract holds — but
+    // if you split that tick into per-space, this prune must move into
+    // per-space scope too.
     let active_players: HashSet<EntityId> = players.iter().map(|(eid, _)| *eid).collect();
     table.players.retain(|eid, _| active_players.contains(eid));
 
     for (player_id, player_pos) in players {
         // Query nearby cover nodes; fold to set of cover_set_ids (chunk_ids).
-        let node_indices = cover.index.nearby(player_pos, proximity_radius, Some(5.0));
+        // 2-m Y-axis tolerance keeps cover detection on the same floor
+        // as the player — 5 m was loose enough to pick up cover on the
+        // floor above/below in multi-level chunks.
+        let node_indices = cover.index.nearby(player_pos, proximity_radius, Some(2.0));
 
         // For each chunk represented in the hits, find the highest-quality
         // node to use as the "representative" for the trigger payload. A
@@ -209,7 +216,14 @@ pub fn run_detection_tick(
 
         // Duration milestones: for every still-occupied set, check which
         // thresholds have been crossed since entry that haven't fired yet.
-        for &cover_set_id in current_sets.intersection(&state.current_sets.clone()) {
+        // Iterate `current_sets` and probe `state.current_sets` via
+        // `.contains()` instead of `intersection(&state.current_sets.clone())`
+        // — the latter cloned the entire prior-state HashSet on every
+        // player every tick just to satisfy the borrow checker.
+        for &cover_set_id in &current_sets {
+            if !state.current_sets.contains(&cover_set_id) {
+                continue;
+            }
             let Some(entry_time) = state.entry_times.get(&cover_set_id).copied() else {
                 continue;
             };

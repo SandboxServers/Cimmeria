@@ -26,9 +26,29 @@
 
 use cimmeria_common::{EntityId, Vector3};
 use std::collections::HashMap;
+use std::sync::{Mutex, MutexGuard};
 
+use super::reservation::CoverReservations;
 use super::scoring::{is_flanked, pick_best, CoverWeights, ScoringContext};
 use super::types::{Cover, CoverSlotKey};
+
+/// Lock a `Mutex<CoverReservations>`, recovering gracefully from poisoning.
+/// A poisoned mutex on the reservation table is not catastrophic — the
+/// worst case is some live reservations are inconsistent and the next
+/// scoring pass will re-evaluate. Better to log + continue than to
+/// panic the cell process and kill every active player session.
+fn lock_or_recover(m: &Mutex<CoverReservations>) -> MutexGuard<'_, CoverReservations> {
+    match m.lock() {
+        Ok(g) => g,
+        Err(poisoned) => {
+            tracing::warn!(
+                "cover reservations mutex was poisoned — recovering inner state; \
+                 a prior lock-holder panicked, reservation table may be inconsistent"
+            );
+            poisoned.into_inner()
+        }
+    }
+}
 
 /// The decision returned by [`maintain_cover_for_npc`].
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,24 +90,24 @@ pub fn maintain_cover_for_npc(
         return CoverDecision::NoCover;
     }
 
-    // Step 1: in cover already?
-    let current_slot = {
-        let r = cover
-            .reservations
-            .lock()
-            .expect("cover reservations poisoned");
-        r.slot_for_entity(npc_id)
-    };
+    // Hold the reservations lock for the entire pick+reserve sequence.
+    // Three separate lock acquisitions previously opened a TOCTOU window
+    // where another NPC could reserve the same slot between `pick_best`
+    // and `reserve_for_entity`, and where `ally_counts` could go stale
+    // between the count pass and the reserve. Single-guard scope below
+    // closes both races. `lock_or_recover` returns the inner data even
+    // on a poisoned mutex (a poisoned cover-reservation table is
+    // recoverable — the worst case is some live reservations get lost,
+    // not data corruption — so we log + continue rather than panic the
+    // cell process).
+    let mut reservations_guard = lock_or_recover(&cover.reservations);
 
-    if let Some(slot) = current_slot {
+    // Step 1: in cover already?
+    if let Some(slot) = reservations_guard.slot_for_entity(npc_id) {
         if let Some(node) = cover.index.node_by_key(slot) {
             if is_flanked(node.pos, node.orient, threat_pos) {
                 // Release and let the caller re-evaluate next tick.
-                let mut r = cover
-                    .reservations
-                    .lock()
-                    .expect("cover reservations poisoned");
-                r.release_for_entity(npc_id);
+                reservations_guard.release_for_entity(npc_id);
                 return CoverDecision::Released { prior_slot: slot };
             }
             return CoverDecision::StayInCover {
@@ -95,13 +115,11 @@ pub fn maintain_cover_for_npc(
                 pos: node.pos,
             };
         }
-        // Stale reservation — slot index gone (shouldn't happen since
-        // the index is immutable post-startup, but defend against it).
-        let mut r = cover
-            .reservations
-            .lock()
-            .expect("cover reservations poisoned");
-        r.release_for_entity(npc_id);
+        // Stale reservation — slot index gone. The spatial index is
+        // immutable post-startup; this branch defends against the
+        // pathological case where a future feature removes nodes at
+        // runtime (none today).
+        reservations_guard.release_for_entity(npc_id);
         return CoverDecision::Released { prior_slot: slot };
     }
 
@@ -110,32 +128,26 @@ pub fn maintain_cover_for_npc(
         return CoverDecision::NoCover;
     }
 
-    // Step 3: pick + reserve a new slot.
-    // Squad-affinity counts: how many allied NPCs already hold cover in
-    // each chunk? Walk the reservation table once.
+    // Step 3: pick + reserve a new slot under the same guard. Squad-
+    // affinity counts walk the reservation table once; pick_best runs
+    // immediately after; reserve happens before the guard drops. No
+    // window for another caller to claim the same slot mid-sequence.
     let mut ally_counts: HashMap<i32, usize> = HashMap::new();
-    {
-        let r = cover
-            .reservations
-            .lock()
-            .expect("cover reservations poisoned");
-        for (other_id, slot) in r.iter() {
-            if other_id == npc_id {
-                continue;
-            }
-            *ally_counts.entry(slot.chunk_id).or_insert(0) += 1;
+    for (other_id, slot) in reservations_guard.iter() {
+        if other_id == npc_id {
+            continue;
         }
+        *ally_counts.entry(slot.chunk_id).or_insert(0) += 1;
     }
 
     let ctx = ScoringContext::new(npc_pos, threat_pos);
-    // Borrow the reservation table read-only for `pick_best`'s filter.
-    let chosen_idx = {
-        let r = cover
-            .reservations
-            .lock()
-            .expect("cover reservations poisoned");
-        pick_best(&cover.index, &r, &ctx, weights, &ally_counts)
-    };
+    let chosen_idx = pick_best(
+        &cover.index,
+        &reservations_guard,
+        &ctx,
+        weights,
+        &ally_counts,
+    );
     let chosen_idx = match chosen_idx {
         Some(i) => i,
         None => return CoverDecision::NoCover,
@@ -146,22 +158,14 @@ pub fn maintain_cover_for_npc(
     };
     let slot = node.key();
 
-    // Reserve atomically — auto-release-prior is part of the lifecycle
-    // semantics declared on `SGWCoverSet.def`; this NPC could have just
-    // had its slot released in step 1, but `reserve_for_entity` handles
-    // both fresh-reserve and re-reserve cleanly.
-    let reserved_ok = {
-        let mut r = cover
-            .reservations
-            .lock()
-            .expect("cover reservations poisoned");
-        r.reserve_for_entity(npc_id, slot).is_ok()
-    };
-    if !reserved_ok {
-        // Race with another NPC reserving the same slot between our
-        // `pick_best` and our `reserve_for_entity`. Fall back to no-cover
-        // for this tick; next tick will try again with the now-occupied
-        // slot filtered out.
+    // Reserve atomically under the held guard. With no intervening
+    // lock-drop, only logic bugs (this NPC's own stale reservation
+    // colliding) could fail this — handled gracefully.
+    if reservations_guard.reserve_for_entity(npc_id, slot).is_err() {
+        // Defensive: this NPC's `slot_for_entity` returned None at the
+        // top of the function but reserve_for_entity now sees a
+        // conflict. Only happens on internal bookkeeping drift; fall
+        // back to no-cover and try again next tick.
         return CoverDecision::NoCover;
     }
 

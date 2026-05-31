@@ -8,7 +8,6 @@
 //! See `docs/architecture/cover-system.md` for the design overview and
 //! `docs/reverse-engineering/findings/cover-system.md` for the binary
 //! format + wire-surface reverse-engineering that motivated the design.
-//! Tracking issue: #209.
 //!
 //! Submodules:
 //! - [`types`] — `CoverNode`, `CoverSetMeta`, `CoverHeight`, `CoverQuality`,
@@ -34,8 +33,7 @@ mod tests;
 pub use ai_integration::{maintain_cover_for_npc, CoverDecision};
 pub use detection::{
     run_detection_tick, CoverDetectionTable, CoverDetectionTick, DurationCoverEvent,
-    EnteredCoverEvent, LeftCoverEvent, COVER_DETECTION_TICK_MS, COVER_DURATION_MILESTONES_SECS,
-    COVER_PROXIMITY_RADIUS,
+    EnteredCoverEvent, LeftCoverEvent, COVER_DURATION_MILESTONES_SECS, COVER_PROXIMITY_RADIUS,
 };
 pub use loader::{load_cover_nodes, load_cover_sets, CoverLoadError};
 pub use reservation::{CoverReservations, ReserveError};

@@ -177,7 +177,7 @@ pub struct CellEntity {
     /// (`SGWMob.useCover`). Default `false`; the spawner flips it on
     /// per-template for NPCs that should react to ranged engagement by
     /// taking cover. Players ignore this field — they handle cover via
-    /// the proximity-detection tick. Issue: #209.
+    /// the proximity-detection tick.
     pub use_cover: bool,
 
     /// Entity class ID for CREATE_ENTITY wire format (0x02 = SGWPlayer, 0x04 = SGWMob).

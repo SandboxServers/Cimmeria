@@ -53,7 +53,12 @@ async fn auto_aggro_broadcasts_appearance_refresh_on_holstered_player() {
     }
 
     let (tx, mut rx) = mpsc::channel(16);
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     // Drain the cell→base channel and count appearance refresh +
     // state-field-update messages. Counting (rather than a bool)

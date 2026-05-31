@@ -327,7 +327,7 @@ VALUES
   (1031, 'set_interaction_type', NULL, 'ArmYourself_AmbernolVial', '{"op": "|", "mask": 1073741824}', 0, 1);
 
 -- ============================================================
--- COVER-SYSTEM DEMO (issue #209)
+-- COVER-SYSTEM DEMO
 -- ============================================================
 --
 -- Chain 9209 — proof-of-trigger that the OnPlayerEnteredCover wire
@@ -337,12 +337,9 @@ VALUES
 -- active. The action is a counter bump — observable in the entity's
 -- `counters` map and verifiable from the chain-replay test harness.
 --
--- Chain id 9209 chosen to:
---   1. Avoid collision with the 1xxx-5xxx range used by authored
---      mission content (1098 is already taken by the "search crate"
---      chain in this same file at line ~1289).
---   2. Encode the issue number (#209) so the chain is grep-able as
---      "cover-system demo, see issue 209".
+-- Chain id 9209 chosen to avoid collision with the 1xxx-5xxx range
+-- used by authored mission content (1098 is taken by the "search
+-- crate" chain in this same file at line ~1289).
 --
 -- Production med-bay gate (the user's stated use case — "gate the
 -- drone attack on player crouching + entering cover") is the natural

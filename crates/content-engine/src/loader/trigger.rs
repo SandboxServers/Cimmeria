@@ -63,7 +63,7 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
         "mission_accepted" => Some(Trigger::OnMissionAccepted {
             mission_id: key?.parse().ok()?,
         }),
-        // Cover-system triggers (issue #209). `event_key` is the
+        // Cover-system triggers. `event_key` is the
         // optional `cover_set_id` filter — `NULL` means "any cover
         // set". Same wildcard-or-id pattern as `item_equipped` so a
         // typo'd integer rejects the chain rather than silently

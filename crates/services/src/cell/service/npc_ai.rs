@@ -28,7 +28,11 @@ use super::super::space_manager::SpaceManager;
 /// `set_aggression` content action actually trigger combat — without it
 /// the action would be a behavior bit nothing read. See
 /// [`super::super::content::executor::world::set_aggression`].
-pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
+pub(super) async fn npc_ai_tick(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
+) {
     use cimmeria_entity::cell_entity::AiState;
 
     // Snapshot NPC IDs and their AI state so we don't hold a borrow on space_mgr
@@ -80,7 +84,7 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
         );
         async {
             match ai_state {
-                AiState::Fighting => npc_ai_fight(npc_id, tx, space_mgr).await,
+                AiState::Fighting => npc_ai_fight(npc_id, tx, space_mgr, engine).await,
                 AiState::Leashing => npc_ai_leash(npc_id, tx, space_mgr).await,
                 AiState::Patrol => npc_ai_patrol(npc_id, tx, space_mgr).await,
                 AiState::Wander => npc_ai_wander(npc_id, tx, space_mgr).await,
@@ -195,7 +199,12 @@ async fn npc_ai_idle_auto_aggro(
 }
 
 /// NPC fighting behavior: attack top-threat target or leash if too far from spawn.
-async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
+async fn npc_ai_fight(
+    npc_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
+) {
     use super::super::combat;
     use cimmeria_entity::cell_entity::{AiState, MobMovementType};
 
@@ -415,6 +424,29 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
                     node_id = prior_slot.node_id,
                     "NPC AI: released flanked cover slot, re-evaluating next tick"
                 );
+                // Clear any stale nav_path pointing at the now-released
+                // cover slot. Without this, the NPC would continue
+                // walking toward the abandoned slot for one more
+                // movement tick before the re-pick lands next AI tick.
+                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                    npc.nav_path.clear();
+                }
+                // Fire the OnNpcFlanked content trigger so chain
+                // authors can hook narrative reactions (the AI itself
+                // already repositions; this is just the affordance).
+                let npc_template = space_mgr
+                    .get_entity(npc_id)
+                    .and_then(|e| e.npc_name.clone())
+                    .unwrap_or_default();
+                super::super::content::fire_npc_flanked(
+                    npc_id,
+                    target_id,
+                    &npc_template,
+                    engine,
+                    tx,
+                    space_mgr,
+                )
+                .await;
             }
             CoverDecision::NoCover => {}
         }
@@ -743,6 +775,7 @@ fn compute_backup_waypoint(
 pub(super) async fn npc_ai_retry_sweep(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
 ) {
     use cimmeria_entity::cell_entity::AiState;
 
@@ -794,7 +827,7 @@ pub(super) async fn npc_ai_retry_sweep(
             npc.ai_retry_at = None;
         }
         space_mgr.pending_ai_retries.remove(&npc_id);
-        npc_ai_fight(npc_id, tx, space_mgr).await;
+        npc_ai_fight(npc_id, tx, space_mgr, engine).await;
     }
 }
 
