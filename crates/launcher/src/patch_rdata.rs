@@ -1,7 +1,7 @@
 //! One-time `.rdata` byte patch that redirects SGW.exe's hardcoded SOAP login
 //! hostname (`www.stargateworlds.com`) to the configured emulator server.
 //!
-//! See `docs/plans/2026-03-06-sgw-launcher-design.md` (superseded by
+//! See `.claude/plans/2026-03-06-sgw-launcher-design.md` (superseded by
 //! `docs/client/sgw-launcher.md`) for the rationale: data-section string
 //! edits aren't subject to ASLR or PE-checksum recalculation, so this is
 //! simpler than runtime DLL injection via AtreaRL.

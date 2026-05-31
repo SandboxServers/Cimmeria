@@ -1,4 +1,7 @@
-# Game Systems
+# Game Systems (historical RE pass)
+
+> [!WARNING]
+> **Historical document.** Early-project survey of game systems from binary RE. The current canonical references are [`../game-systems.md`](../game-systems.md) (project-wide survey) and the per-system docs under [`../gameplay/`](../gameplay/). Keep this page for the historical first-pass framing; do not extend.
 
 Overview of all major game systems identified in sgw.exe, organized by the network message patterns and string references that reveal them.
 

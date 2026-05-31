@@ -105,5 +105,5 @@ You should see ~245 `mcp__ghidra__*` tools. If the call returns "connection refu
 - [docs/guides/reverse-engineering-with-claude.md](../../guides/reverse-engineering-with-claude.md) — workflow doc: when to invoke `game-archaeology-specialist`, evidence handoff, what NOT to delegate.
 - [docs/guides/sgw-live-debugging.md](../../guides/sgw-live-debugging.md) — manual fallback when MCP-driven flows fail. Notes the pybag incompatibility with SGW.
 - [docs/guides/reading-decompiled-code.md](../../guides/reading-decompiled-code.md) — how to interpret Ghidra decompiler output.
-- [docs/guides/evidence-standards.md](../../guides/evidence-standards.md) — confidence tiers, citation grammar.
+- [docs/reverse-engineering/evidence-standards.md](../evidence-standards.md) — confidence tiers, citation grammar.
 - [`.mcp.json.example`](../../../.mcp.json.example) — the template `.mcp.json`.

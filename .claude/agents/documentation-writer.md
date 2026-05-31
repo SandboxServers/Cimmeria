@@ -18,7 +18,7 @@ You turn technical work into documentation that humans actually read. In this re
 
 | Type | When | Where in this repo |
 |---|---|---|
-| **Tutorial** (learning) | First-time walkthrough leading to a working result | `docs/guides/`, `docs/superpowers/` |
+| **Tutorial** (learning) | First-time walkthrough leading to a working result | `docs/guides/` (agentic plans/specs live under `.claude/plans/` and `.claude/superpowers/`) |
 | **How-to** (task) | Goal-driven steps, assumes basics | `TESTING.md` picker, `bootstrap/`, runbooks |
 | **Reference** (information) | Complete, dry, every option | `docs/protocol/`, `docs/architecture/`, `docs/testing/inventory/` |
 | **Explanation** (why) | Tradeoffs, rationale, ADRs | `docs/architecture/*-decision.md`, `docs/gap-analysis.md` |

@@ -15,7 +15,7 @@
 
 **Tech Stack:** Rust, Tauri 2, tauri-plugin-shell (sidecar), tauri-plugin-dialog (folder picker), tauri-plugin-updater (self-update), reqwest (HTTP streaming), sha2 (hash verification), vanilla HTML/CSS/JS
 
-**Design doc:** `docs/plans/2026-03-06-sgw-launcher-design.md`
+**Design doc:** `.claude/plans/2026-03-06-sgw-launcher-design.md`
 **Original spec:** `docs/client/sgw-launcher.md`
 
 ---

@@ -1,4 +1,7 @@
-# Source Code Reconstruction Feasibility
+# Source Code Reconstruction Feasibility (historical)
+
+> [!WARNING]
+> **Historical document.** Early-project analysis of what could be recovered from the binary. The question is largely settled — the per-system findings under [`../reverse-engineering/findings/`](../reverse-engineering/findings/) and the campaign tracker at [`../reverse-engineering/STATUS.md`](../reverse-engineering/STATUS.md) are the current canonical state of source reconstruction. Keep this page for the original feasibility framing; do not extend.
 
 Comprehensive analysis of what's recoverable from sgw.exe for full client source reconstruction.
 

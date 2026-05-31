@@ -169,7 +169,7 @@ Bad shape: "use the specialist to research and implement and document and verify
 - [docs/guides/re-toolchain-setup.md](re-toolchain-setup.md) — get the MCPs working in the first place
 - [docs/guides/sgw-live-debugging.md](sgw-live-debugging.md) — manual dynamic-analysis techniques, pybag warning
 - [docs/guides/reading-decompiled-code.md](reading-decompiled-code.md) — interpret Ghidra output
-- [docs/guides/evidence-standards.md](evidence-standards.md) — confidence tiers and citation grammar
+- [docs/reverse-engineering/evidence-standards.md](../reverse-engineering/evidence-standards.md) — confidence tiers and citation grammar
 - [docs/reverse-engineering/PLAN.md](../reverse-engineering/PLAN.md) — campaign-level RE plan
 - [docs/reverse-engineering/STATUS.md](../reverse-engineering/STATUS.md) — what's been recovered so far
 - [docs/reverse-engineering/findings/](../reverse-engineering/findings/) — the V5 evidence pool

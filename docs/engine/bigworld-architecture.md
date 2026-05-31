@@ -1,5 +1,8 @@
 # BigWorld Architecture
 
+> [!NOTE]
+> The canonical BigWorld + CME architecture reference will land as a bible chapter under [`docs/drafts/spec/`](../drafts/spec/) (chapter not yet authored). Once that chapter exists, this doc will summarise it and link forward. For overlap with the wire protocol, the canonical reference is the in-progress [`docs/drafts/spec/mercury-wire-format.md`](../drafts/spec/mercury-wire-format.md). This doc and [`../how-sgw-works.md`](../how-sgw-works.md) currently overlap significantly; consolidation is tracked under [#264](https://github.com/SandboxServers/Cimmeria/issues/264).
+
 > **Last updated**: 2026-03-08
 > **RE Status**: Well understood from BigWorld reference source + Cimmeria implementation
 > **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/`, BigWorld-Engine-1.9.1 (client match), `src/`, `docs/how-sgw-works.md`

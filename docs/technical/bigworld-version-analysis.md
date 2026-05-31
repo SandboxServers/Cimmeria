@@ -1,4 +1,7 @@
-# BigWorld Technology Version Analysis
+# BigWorld Technology Version Analysis (historical RE)
+
+> [!WARNING]
+> **Historical document.** Original forensic version-identification work that pinned SGW to BigWorld 1.9.1 (client) and 2.0.1 (server reference). The conclusions are now built into [`../engine/bigworld-architecture.md`](../engine/bigworld-architecture.md). Keep this page for the methodology and the full string-fingerprint evidence trail; do not extend.
 
 Forensic identification of the BigWorld Technology version embedded in sgw.exe, based on string fingerprinting, RTTI analysis, and cross-referencing against open-source BigWorld releases.
 

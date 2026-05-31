@@ -2,6 +2,9 @@
 
 How a player gets from the login screen to running around in the game world. This covers the full journey from clicking "Login" to controlling their character.
 
+> [!NOTE]
+> This doc summarizes the connection flow at a usable-for-orientation level. The canonical wire-level reference is the in-progress bible chapter at [`docs/drafts/spec/mercury-wire-format.md`](drafts/spec/mercury-wire-format.md) — when the bible disagrees with this page, the bible wins.
+
 > **Server: Confirmed working.** This entire flow has been tested end-to-end with a real client. Players can log in, select a shard, enter the game world, and play.
 
 ## Overview

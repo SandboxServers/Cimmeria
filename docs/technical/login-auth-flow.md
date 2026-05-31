@@ -1,4 +1,7 @@
-# Login & Authentication Flow
+# Login & Authentication Flow (historical reconstruction)
+
+> [!WARNING]
+> **Historical document.** Early-project reconstruction of the login sequence from binary strings and RTTI. The current canonical references are [`../connection-flow.md`](../connection-flow.md) (end-to-end developer summary) and [`../protocol/login-handshake.md`](../protocol/login-handshake.md) (wire-level reference). Keep this page for the original reconstruction framing; do not extend.
 
 Complete login sequence for Stargate Worlds, reconstructed from strings and RTTI in sgw.exe.
 

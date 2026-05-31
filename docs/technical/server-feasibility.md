@@ -1,4 +1,7 @@
-# Server Emulator Feasibility Assessment
+# Server Emulator Feasibility Assessment (historical)
+
+> [!WARNING]
+> **Historical document.** Early-project assessment of whether the server emulator was feasible. The question is settled — the server exists and is playable. For current state see [`../project-status.md`](../project-status.md), [`../gap-analysis.md`](../gap-analysis.md), and [`../../README.md`](../../README.md). Keep this page for the original reasoning; do not extend.
 
 Analysis of what's available in sgw.exe for building a Stargate Worlds server emulator.
 

@@ -1,4 +1,7 @@
-# Mercury Protocol Audit: Cimmeria vs BigWorld Reference
+# Mercury Protocol Audit: Cimmeria vs BigWorld Reference (historical)
+
+> [!WARNING]
+> **Historical document.** Audit of the C++ Cimmeria Mercury implementation against the BigWorld reference. The active Mercury implementation is now Rust under [`../../crates/mercury/`](../../crates/mercury/); for the current wire format see the in-progress bible chapter at [`../drafts/spec/mercury-wire-format.md`](../drafts/spec/mercury-wire-format.md). Keep this page for the original audit comparisons; do not extend.
 
 Comparison of Cimmeria's Mercury protocol implementation against the BigWorld 1.9.1/2.0.1 open-source reference. The audit identifies differences that are likely intentional CME modifications for SGW, versus potential bugs.
 

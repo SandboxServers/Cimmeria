@@ -1088,7 +1088,7 @@ For NetIn events, the handler chain is reversed: Mercury message arrives, SGWNet
 
 - [Message Catalog](../protocol/message-catalog.md) -- Full 420-event catalog with addresses
 - [Entity Type Catalog](../engine/entity-type-catalog.md) -- All 36 types with property/method tables
-- [Entity Def Guide](../guides/entity-def-guide.md) -- How .def files define the protocol
+- [Entity Def Guide](../engine/entity-def-guide.md) -- How .def files define the protocol
 - [Mercury Wire Format](../protocol/mercury-wire-format.md) -- Wire-level message format
 - [CME Framework](../engine/cme-framework.md) -- EventSignal system architecture
 

@@ -40,7 +40,7 @@ This directory contains per-system reverse engineering findings with evidence.
 
 ## Finding Format
 
-Each finding should follow the template in [evidence-standards.md](../../guides/evidence-standards.md):
+Each finding should follow the template in [evidence-standards.md](../evidence-standards.md):
 
 ```markdown
 ## Finding: [Short Description]

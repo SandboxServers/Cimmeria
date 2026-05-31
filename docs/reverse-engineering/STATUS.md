@@ -43,9 +43,9 @@ Scripts 01-06 completed, 07-10 pending. Run in order — later scripts build on 
 - [x] docs/README.md — Master navigation hub
 - [x] docs/protocol/README.md, docs/engine/README.md
 - [x] docs/gameplay/README.md (HUB) — System dashboard, 18 systems
-- [x] docs/guides/evidence-standards.md (333 lines)
+- [x] docs/reverse-engineering/evidence-standards.md (333 lines; moved from docs/guides/ in #344)
 - [x] docs/guides/reading-decompiled-code.md (491 lines)
-- [x] docs/guides/entity-def-guide.md (817 lines)
+- [x] docs/engine/entity-def-guide.md (817 lines; moved from docs/guides/ in #344)
 
 ### 1b. Ghidra Annotation Scripts — DONE
 - [x] All 10 scripts written, tested, and run

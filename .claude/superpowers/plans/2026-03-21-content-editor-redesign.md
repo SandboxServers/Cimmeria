@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 19, Tailwind v4, Vite, @xyflow/react, allotment, lucide-react, Tauri v2
 
-**Spec:** `docs/superpowers/specs/2026-03-21-content-editor-redesign-design.md`
+**Spec:** `.claude/superpowers/specs/2026-03-21-content-editor-redesign-design.md`
 
 ---
 

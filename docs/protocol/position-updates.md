@@ -1,5 +1,8 @@
 # Position Update Protocol
 
+> [!NOTE]
+> The canonical, evidence-backed reference is the in-progress bible chapter at [`docs/drafts/spec/position-updates.md`](../drafts/spec/position-updates.md). This page is a legacy summary kept for orientation — when it disagrees with the bible chapter, the bible wins.
+
 > **Last updated**: 2026-03-01
 > **RE Status**: Substantially documented from BigWorld source + Cimmeria movement code + Ghidra RE of sgw.exe
 > **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/lib/connection/common_client_interface.hpp`, `src/cellapp/entity/movement.hpp`, `src/mercury/base_cell_messages.hpp`, Ghidra analysis of `sgw.exe` client binary

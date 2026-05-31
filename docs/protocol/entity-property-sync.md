@@ -1,5 +1,8 @@
 # Entity Property Synchronization Protocol
 
+> [!NOTE]
+> The canonical, evidence-backed reference is the in-progress bible chapter at [`docs/drafts/spec/entity-property-sync.md`](../drafts/spec/entity-property-sync.md). This page is a legacy summary kept for orientation — when it disagrees with the bible chapter, the bible wins.
+
 > **Last updated**: 2026-03-01
 > **RE Status**: Partially documented from BigWorld 2.0.1 entitydef source + Cimmeria .def files
 > **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/lib/entitydef/`, `entities/defs/`, `src/mercury/base_cell_messages.hpp`

@@ -1,5 +1,8 @@
 # Mercury Wire Format
 
+> [!NOTE]
+> The canonical, evidence-backed reference is the in-progress bible chapter at [`docs/drafts/spec/mercury-wire-format.md`](../drafts/spec/mercury-wire-format.md). This page is a legacy summary kept for orientation — when it disagrees with the bible chapter, the bible wins.
+
 > **Last updated**: 2026-03-01
 > **RE Status**: Partially documented from BigWorld 2.0.1 source + Cimmeria implementation
 > **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/lib/network/`, `src/mercury/`

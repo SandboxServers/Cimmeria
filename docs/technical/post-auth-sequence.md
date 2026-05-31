@@ -1,4 +1,7 @@
-# Post-Authentication Entity Creation Sequence
+# Post-Authentication Entity Creation Sequence (historical)
+
+> [!WARNING]
+> **Historical document.** Early-project reconstruction of the post-auth message sequence. The current canonical references are [`../connection-flow.md`](../connection-flow.md) (developer summary) and [`../protocol/world-entry-phases.md`](../protocol/world-entry-phases.md) (per-phase wire-level reference). Keep this page for the original sequence reconstruction; do not extend.
 
 Complete ordered sequence of messages the BaseApp must send after a successful `baseAppLogin`, with wire formats. Derived from analysis of BigWorld 1.9.1/2.0.1 source code cross-referenced against Cimmeria's current implementation and SGW client reverse engineering.
 

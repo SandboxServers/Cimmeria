@@ -42,7 +42,7 @@ Every client-to-server method is identified by an integer (the **method index** 
 - [`cell-method-dispatch-table.md`](../protocol/cell-method-dispatch-table.md) — cell-side methods.
 - [`message-catalog.md`](../protocol/message-catalog.md) — the full 420-message catalog with IDs, directions, and payload shapes.
 
-The canonical *source* of the method index is the entity definition in [`entities/defs/`](../../entities/defs/) — that XML is what the client and server both bind against. If you're adding a brand-new method, you'll need to add it to the relevant `.def` file too; consult [`docs/guides/entity-def-guide.md`](entity-def-guide.md).
+The canonical *source* of the method index is the entity definition in [`entities/defs/`](../../entities/defs/) — that XML is what the client and server both bind against. If you're adding a brand-new method, you'll need to add it to the relevant `.def` file too; consult [`docs/engine/entity-def-guide.md`](../engine/entity-def-guide.md).
 
 ---
 

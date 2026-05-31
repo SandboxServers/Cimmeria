@@ -194,7 +194,7 @@ The workflow that puts them together — when to invoke which agent, how to hand
 - [docs/reverse-engineering/toolchain/install-ghidra-mcp.md](../reverse-engineering/toolchain/install-ghidra-mcp.md) — Ghidra MCP reference
 - [docs/guides/sgw-live-debugging.md](sgw-live-debugging.md) — manual x32dbg techniques and the pybag warning
 - [docs/guides/reading-decompiled-code.md](reading-decompiled-code.md) — interpret Ghidra output
-- [docs/guides/evidence-standards.md](evidence-standards.md) — confidence tiers, citation grammar
+- [docs/reverse-engineering/evidence-standards.md](../reverse-engineering/evidence-standards.md) — confidence tiers, citation grammar
 - [`.mcp.json.example`](../../.mcp.json.example) — template
 - [bootstrap/README.md](../../bootstrap/README.md) — bootstrap module docs
 - [docs/reverse-engineering/](../reverse-engineering/) — RE plan, status, findings

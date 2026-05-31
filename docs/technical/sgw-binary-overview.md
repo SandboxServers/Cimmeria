@@ -1,4 +1,7 @@
-# SGW Binary Overview
+# SGW Binary Overview (historical)
+
+> [!WARNING]
+> **Historical document.** Early-project survey of the sgw.exe binary. The current canonical references are [`../reverse-engineering/STATUS.md`](../reverse-engineering/STATUS.md) (campaign tracker) and [`../reverse-engineering/address-map.md`](../reverse-engineering/address-map.md) (key address table). Keep this page for the original binary profile; do not extend.
 
 Reverse engineering analysis of `sgw.exe` — the Stargate Worlds UnrealEd build.
 

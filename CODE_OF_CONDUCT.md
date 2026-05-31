@@ -8,7 +8,7 @@ Cimmeria is a hobby project bringing back a cancelled MMO. It exists because a s
 
 **Be precise.** "It doesn't work" is not a bug report; `BASE_EXTERNAL` was unset and the client got a connect timeout is. When you ask for help or open an issue, include the version, the steps, the symptom, and the log lines. When you offer help, ask the questions that get you to a reproducible state rather than guessing.
 
-**Be honest about what you know.** This project has a lot of reverse-engineering surface area. It is fine — encouraged, even — to say "I think but I haven't verified" or "I extrapolated from the BigWorld 2.0.1 reference, not the SGW binary." It is not fine to present speculation as fact. The evidence-tier system in [`docs/guides/evidence-standards.md`](docs/guides/evidence-standards.md) exists for exactly this reason; use it.
+**Be honest about what you know.** This project has a lot of reverse-engineering surface area. It is fine — encouraged, even — to say "I think but I haven't verified" or "I extrapolated from the BigWorld 2.0.1 reference, not the SGW binary." It is not fine to present speculation as fact. The evidence-tier system in [`docs/reverse-engineering/evidence-standards.md`](docs/reverse-engineering/evidence-standards.md) exists for exactly this reason; use it.
 
 **Be kind in code review.** Review the diff, not the person. A direct "this would deadlock if the channel is closed mid-handshake" is helpful. A condescending "obviously you should have known X" is not. Disagree with technical decisions freely, but keep the disagreement about the technical decision.
 

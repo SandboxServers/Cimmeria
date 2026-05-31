@@ -1,4 +1,7 @@
-# Slash Commands
+# Slash Commands (historical RTTI catalog)
+
+> [!WARNING]
+> **Historical document.** Raw early-project catalog of slash commands extracted from sgw.exe RTTI. The current canonical reference is [`../commands.md`](../commands.md) (player + GM + debug commands actually implemented or planned in the Rust server). Keep this page for the unfiltered RTTI dump; do not extend.
 
 Complete catalog of 256 slash commands extracted from sgw.exe RTTI (`Event_SlashCmd_*` pattern). These are player-typed commands that the client processes locally and/or sends to the server.
 

@@ -45,7 +45,7 @@ These variants exist in the `Action` / `Condition` enum and are accepted by the 
 | Status today | Variant defined ([actions.rs:23](../../crates/content-engine/src/actions.rs#L23)). No loader arm. No executor arm. **No mission in the seed data uses XP rewards** — every `reward_xp` field is 0. |
 | Effort | Small (S) — once the XP/leveling system lands. |
 | Unlocks | Mission XP rewards. Currently every chain that completes a mission fires `CompleteMission` followed by `GrantItem` rewards — `GrantXP` is not authored anywhere. |
-| Why | Already on the roadmap via [docs/plans/2026-03-08-xp-leveling-design.md](../plans/2026-03-08-xp-leveling-design.md). The chain-side wiring should land alongside the leveling system. |
+| Why | Already on the roadmap via [.claude/plans/2026-03-08-xp-leveling-design.md](../../.claude/plans/2026-03-08-xp-leveling-design.md). The chain-side wiring should land alongside the leveling system. |
 
 ---
 
@@ -178,4 +178,4 @@ The discipline is: only suggest extensions that are justified by either content 
 - [extending-the-engine.md](extending-the-engine.md) — How to actually add a variant.
 - [serverEd-comparison.md](serverEd-comparison.md) — Where some of the Tier 2 ideas come from.
 - [gap-analysis.md](../gap-analysis.md) — Project-wide feature-gap tracking.
-- [docs/plans/](../plans/) — Active design docs for in-flight engine work.
+- [.claude/plans/](../../.claude/plans/) — Active design docs for in-flight engine work (agentic).

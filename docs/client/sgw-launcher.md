@@ -10,9 +10,9 @@ window with no webview dependency.
 
 > **Status:** rewritten 2026-05-20. Supersedes the Tauri prototype and the
 > archive.org-RAR install flow described in
-> [docs/plans/2026-03-06-sgw-launcher-design.md](../plans/2026-03-06-sgw-launcher-design.md)
+> [.claude/plans/2026-03-06-sgw-launcher-design.md](../../.claude/plans/2026-03-06-sgw-launcher-design.md)
 > and the task-by-task plan in
-> [docs/plans/2026-03-06-sgw-launcher-plan.md](../plans/2026-03-06-sgw-launcher-plan.md).
+> [.claude/plans/2026-03-06-sgw-launcher-plan.md](../../.claude/plans/2026-03-06-sgw-launcher-plan.md).
 > Both are kept for historical context; do not implement from them.
 
 ---

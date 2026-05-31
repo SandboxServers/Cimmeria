@@ -1,4 +1,7 @@
-# Network Messages
+# Network Messages (historical RE catalog)
+
+> [!WARNING]
+> **Historical document.** Raw early-project catalog of network messages extracted from sgw.exe RTTI and strings. The current canonical references are [`../network-messages.md`](../network-messages.md) (categorised) and [`../protocol/message-catalog.md`](../protocol/message-catalog.md) (full 420-message catalog with handler addresses). Keep this page for the unfiltered RTTI dump; do not extend.
 
 Complete catalog of all client-server network messages extracted from sgw.exe RTTI and string data. These are the CME::EventSignal events that correspond to Mercury protocol messages.
 

@@ -10,7 +10,7 @@ The maintainers prioritise:
 
 1. **Correctness over speed.** A change that works on the happy path but breaks under reconnect is a regression, not a feature.
 2. **Tests that reproduce the bug shape.** A regression guard that passes when the fix is reverted is theatre, not protection. [`TESTING.md`](TESTING.md) explains the picker and the test-types catalog.
-3. **Evidence over confidence.** When you claim "the client expects X," cite the Ghidra address, the `.def` field, or the BigWorld reference source. The tier system in [`docs/guides/evidence-standards.md`](docs/guides/evidence-standards.md) is how we keep speculation out of the docs.
+3. **Evidence over confidence.** When you claim "the client expects X," cite the Ghidra address, the `.def` field, or the BigWorld reference source. The tier system in [`docs/reverse-engineering/evidence-standards.md`](docs/reverse-engineering/evidence-standards.md) is how we keep speculation out of the docs.
 4. **Documentation that matches the code.** A PR that changes user-visible behaviour without updating the corresponding doc will be sent back. See "Required documentation" in [`CLAUDE.md`](CLAUDE.md) for the doc-update map.
 
 ## Before you start coding
@@ -125,7 +125,7 @@ PR body checklist (the maintainers will look for these):
 If you're producing new findings against the SGW binary:
 
 - Cite the Ghidra address for every claim. The findings under [`docs/reverse-engineering/findings/`](docs/reverse-engineering/findings/) are the template.
-- Tag confidence: **HIGH** (decompiled + corroborated), **MEDIUM** (single source), **LOW** (inferred). See [`docs/guides/evidence-standards.md`](docs/guides/evidence-standards.md).
+- Tag confidence: **HIGH** (decompiled + corroborated), **MEDIUM** (single source), **LOW** (inferred). See [`docs/reverse-engineering/evidence-standards.md`](docs/reverse-engineering/evidence-standards.md).
 - If your finding overlaps with an in-progress bible chapter under [`docs/drafts/spec/`](docs/drafts/spec/), coordinate before writing — the bible is the canonical reference and we don't want parallel versions of the same chapter.
 
 ## Security

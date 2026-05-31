@@ -266,10 +266,10 @@ Practical guidance for contributors working on the RE effort or the emulator.
 | [write-a-database-migration.md](guides/write-a-database-migration.md) | **How-to.** Schema vs. migration vs. seed; the `db/scripts/` idempotent pattern; live-DB test discipline; verifying idempotency before pushing | Complete |
 | [re-toolchain-setup.md](guides/re-toolchain-setup.md) | **Start here for RE.** End-to-end setup for Ghidra, x64dbg, MCP bridges, and `.mcp.json`. Includes the `pwsh setup.ps1 -WithReToolchain` automated path. | Complete |
 | [reverse-engineering-with-claude.md](guides/reverse-engineering-with-claude.md) | Workflow doc: when to invoke `game-archaeology-specialist`, Six-Phase mapping to Claude Code sessions, evidence handoff to `documentation-writer`, what NOT to delegate | Complete |
-| [evidence-standards.md](guides/evidence-standards.md) | Confidence levels, citation format, how to document findings | Complete |
 | [reading-decompiled-code.md](guides/reading-decompiled-code.md) | Tips for reading Ghidra decompiler output, common patterns, pitfalls | Complete |
 | [sgw-live-debugging.md](guides/sgw-live-debugging.md) | Live debugging SGW.exe with x32dbg + log breakpoints — manual fallback when MCP-driven flows fail; pybag incompatibility documented | Complete |
-| [entity-def-guide.md](guides/entity-def-guide.md) | How to read and write entity XML definitions and connect them to Python scripts | Complete |
+
+Two former-guides files moved to their correct homes in #344: [evidence-standards.md](reverse-engineering/evidence-standards.md) is now under `reverse-engineering/` (it's the standards reference for the RE process), and [entity-def-guide.md](engine/entity-def-guide.md) is now under `engine/` (it's reference doc on entity definition files).
 
 ---
 
@@ -335,9 +335,9 @@ See [reverse-engineering/README.md](reverse-engineering/README.md) for the top-l
 
 ---
 
-### `technical/` -- Legacy Technical Documents
+### `technical/` -- Legacy Technical Documents (historical)
 
-Detailed RE analysis documents created during initial investigation. These predate the reorganized directory structure above and contain the foundational analysis that drives everything else.
+Early-project RE analysis from before the reorganised `docs/` tree and the Rust rewrite. **All pages in this directory are now historical** — every file links forward to the current canonical replacement. Read them for context and original first-pass framing; do not extend them. See [`technical/README.md`](technical/README.md) for the directory orientation and the page-by-page replacement table.
 
 | Document | Description |
 |----------|-------------|
@@ -403,7 +403,7 @@ All RE documentation uses a three-tier confidence system to distinguish verified
 | **MEDIUM** | Probable | Strong indirect evidence: consistent string references, RTTI matches, behavioral correlation with reference source |
 | **LOW** | Speculative | Inferred from naming patterns, partial decompilation, or analogy with similar systems; needs further verification |
 
-When documenting findings, always state the confidence level and cite the evidence basis (address, function name, reference source file, or test observation). See [Evidence Standards Guide](guides/evidence-standards.md) for full details.
+When documenting findings, always state the confidence level and cite the evidence basis (address, function name, reference source file, or test observation). See [Evidence Standards](reverse-engineering/evidence-standards.md) for full details.
 
 
 ## Contributing

@@ -1,4 +1,7 @@
-# Game Data Analysis
+# Game Data Analysis (historical)
+
+> [!WARNING]
+> **Historical document.** Early-project content-data census. The current canonical references are [`../game-data.md`](../game-data.md) (content overview) and the [`../content/`](../content/) directory (per-system content inventories and the data-driven content engine reference). Keep this page for the original first-pass survey; do not extend.
 
 Comprehensive analysis of all game content data available for the Cimmeria server emulator: PAK files, entity definitions, Python scripts, database schema, and client assets.
 

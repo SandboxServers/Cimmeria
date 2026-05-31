@@ -5,7 +5,7 @@ last_updated: 2026-05-24
 companion_docs:
   - ../guides/re-toolchain-setup.md
   - ../guides/reverse-engineering-with-claude.md
-  - ../guides/evidence-standards.md
+  - evidence-standards.md
 ---
 
 # Reverse-Engineering — Cimmeria's Ghidra Work
@@ -16,7 +16,7 @@ This directory holds everything the Cimmeria project has recovered from the SGW 
 
 1. [`../guides/re-toolchain-setup.md`](../guides/re-toolchain-setup.md) — Install Ghidra, x64dbg, the MCP bridges, and wire `.mcp.json`. End-to-end. ~30 minutes if the bootstrap path works.
 2. [`../guides/reverse-engineering-with-claude.md`](../guides/reverse-engineering-with-claude.md) — How to use the `game-archaeology-specialist` agent, what to verify yourself, what to hand off to `documentation-writer`.
-3. [`../guides/evidence-standards.md`](../guides/evidence-standards.md) — Confidence tiers (HIGH / MEDIUM / LOW), citation grammar, the rules every finding doc must follow.
+3. [`evidence-standards.md`](evidence-standards.md) — Confidence tiers (HIGH / MEDIUM / LOW), citation grammar, the rules every finding doc must follow.
 4. [`../guides/reading-decompiled-code.md`](../guides/reading-decompiled-code.md) — How to interpret Ghidra decompiler output without being misled.
 5. [`../guides/sgw-live-debugging.md`](../guides/sgw-live-debugging.md) — Manual dynamic-analysis techniques in x32dbg. The pybag warning lives here.
 
@@ -50,7 +50,7 @@ The end-to-end "from `git clone` to MCPs reachable" walkthrough lives one level 
 
 ## Findings — the V5 evidence pool
 
-[`findings/`](findings/) holds the per-system findings docs that earlier phases produced. As of 2026-05-12, 19 docs cover combat, inventory, missions, organizations, crafting, gate travel, minigames, chat, mail, black market, contact list, group, trade, duel, pet, entity types, entity creation, position/movement, space/viewport, system protocol, and the CME EventSignal pipeline. All rated HIGH confidence at time of writing — but per [`../guides/evidence-standards.md`](../guides/evidence-standards.md) and the [`reverse-engineering-with-claude.md`](../guides/reverse-engineering-with-claude.md) "verify load-bearing claims" rule, pre-V5 docs are hypotheses; re-verify before pinning a claim into a bible chapter or production Rust.
+[`findings/`](findings/) holds the per-system findings docs that earlier phases produced. As of 2026-05-12, 19 docs cover combat, inventory, missions, organizations, crafting, gate travel, minigames, chat, mail, black market, contact list, group, trade, duel, pet, entity types, entity creation, position/movement, space/viewport, system protocol, and the CME EventSignal pipeline. All rated HIGH confidence at time of writing — but per [`evidence-standards.md`](evidence-standards.md) and the [`reverse-engineering-with-claude.md`](../guides/reverse-engineering-with-claude.md) "verify load-bearing claims" rule, pre-V5 docs are hypotheses; re-verify before pinning a claim into a bible chapter or production Rust.
 
 See [`findings/README.md`](findings/README.md) for the full per-doc index.
 
@@ -93,7 +93,7 @@ Re-running them on a fresh Ghidra project takes ~1 hour. If you're picking up a 
 
 - [`../guides/re-toolchain-setup.md`](../guides/re-toolchain-setup.md) — install everything
 - [`../guides/reverse-engineering-with-claude.md`](../guides/reverse-engineering-with-claude.md) — how to use the toolchain
-- [`../guides/evidence-standards.md`](../guides/evidence-standards.md) — confidence rules
+- [`evidence-standards.md`](evidence-standards.md) — confidence rules
 - [`../guides/reading-decompiled-code.md`](../guides/reading-decompiled-code.md) — decompile interpretation
 - [`../guides/sgw-live-debugging.md`](../guides/sgw-live-debugging.md) — manual x32dbg techniques
 - [`../analysis/event-net-mapping.md`](../analysis/event-net-mapping.md) — 420 Event_NetIn/NetOut → .def methods → Ghidra addresses

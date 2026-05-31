@@ -1,4 +1,7 @@
-# Mercury Protocol
+# Mercury Protocol (historical overview)
+
+> [!WARNING]
+> **Historical document.** Early-project survey of the Mercury layer. The current canonical reference is the in-progress bible chapter at [`../drafts/spec/mercury-wire-format.md`](../drafts/spec/mercury-wire-format.md), with [`../protocol/mercury-wire-format.md`](../protocol/mercury-wire-format.md) as the legacy summary. Keep this page for the original framing; do not extend.
 
 CME's proprietary networking layer, built on top of BigWorld Technology's transport. Mercury handles all client-server communication in Stargate Worlds.
 
