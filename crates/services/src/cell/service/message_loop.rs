@@ -143,6 +143,12 @@ pub(super) async fn run_cell_loop(
                     // See `ticks::npc_respawn` for the full state +
                     // wire-burst sequence.
                     super::ticks::npc_respawn_tick(tx, &mut space_mgr).await;
+                    // Cover-detection — also 1 Hz. Scans every player for
+                    // proximity to loaded cover sets; fires
+                    // OnPlayerEnteredCover / OnPlayerLeftCover /
+                    // OnPlayerInCoverDuration on transitions. Short-
+                    // circuits when no cover data was loaded at startup.
+                    super::ticks::cover_detection_tick(tx, &mut space_mgr, &engine).await;
                 }
 
                 // Channel-interrupt-on-movement sweep — BEFORE the

@@ -9,11 +9,13 @@ use super::super::space_manager::SpaceManager;
 
 /// Run one tick of AoI processing across all spaces.
 mod auto_cycle;
+mod cover;
 pub(crate) mod holster;
 mod npc_movement;
 mod npc_respawn;
 
 pub(super) use auto_cycle::auto_cycle_tick;
+pub(super) use cover::cover_detection_tick;
 pub(crate) use holster::HOLSTER_ANIMATION_DURATION;
 pub(super) use holster::{holster_timer_tick, pending_slot_swap_tick};
 pub(super) use npc_movement::npc_movement_tick;

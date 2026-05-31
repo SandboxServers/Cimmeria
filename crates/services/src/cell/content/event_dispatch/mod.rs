@@ -29,6 +29,7 @@ use crate::cell::space_manager::SpaceManager;
 
 use super::executor;
 
+mod cover;
 mod dialog;
 mod interaction;
 mod inventory;
@@ -36,6 +37,7 @@ mod lifecycle;
 mod mission;
 mod region;
 
+pub use cover::{fire_cover_duration, fire_cover_entered, fire_cover_left, fire_npc_flanked};
 pub use dialog::{fire_dialog_choice, fire_dialog_open};
 pub use interaction::{fire_interact_tag, fire_interact_template};
 pub use inventory::{fire_item_equipped, fire_item_use};

@@ -198,6 +198,17 @@ pub struct SpaceManager {
     /// stateless for the bounds layer (PR1), will accrete per-entity
     /// state for the speed / teleport-detection layers (PR2/3).
     pub movement_validator: MovementValidator,
+    /// Cover-system service handle. Loaded from `resources.cover_sets` +
+    /// `resources.cover_nodes` at startup; carries the spatial index,
+    /// reservation table, and per-set metadata. See
+    /// `crates/services/src/cell/cover/` for details and the issue #209
+    /// architecture doc for the design.
+    pub cover: super::cover::Cover,
+    /// Per-player cover-detection state. Updated by the
+    /// `cover_detection_tick` to track which cover sets each player is
+    /// currently inside (drives `onEnterCoverSet` / `onLeaveCoverSet`
+    /// fanout + content-engine `OnPlayerEnteredCover` triggers).
+    pub cover_detection: super::cover::CoverDetectionTable,
 }
 
 impl SpaceManager {
@@ -233,6 +244,8 @@ impl SpaceManager {
             ring_transporters: super::ring_transport::RingTransporterManager::new(),
             pending_ai_retries: std::collections::HashSet::new(),
             movement_validator: MovementValidator::new(),
+            cover: super::cover::Cover::empty(),
+            cover_detection: super::cover::CoverDetectionTable::new(),
         }
     }
 }
