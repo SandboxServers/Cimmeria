@@ -149,6 +149,8 @@ impl SpaceManager {
         e.wander_radius = record.wander_radius;
         e.wander_min_dwell_secs = record.wander_min_dwell_secs;
         e.wander_max_dwell_secs = record.wander_max_dwell_secs;
+        e.follow_min_distance = record.follow_min_distance;
+        e.follow_max_distance = record.follow_max_distance;
 
         // Per-template ability bucket. Empty `ability_ids` (template has
         // no `ability_set_id`) falls back to `NPC_DEFAULT_ABILITY` so

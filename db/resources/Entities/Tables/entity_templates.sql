@@ -64,6 +64,14 @@ CREATE TABLE entity_templates (
     wander_radius real,
     wander_min_dwell_secs real,
     wander_max_dwell_secs real,
+    -- Follow-state distance band, in world units. NPCs targeted by
+    -- `SetFollowTarget` walk toward their target until within
+    -- `follow_max_distance`, then hold until the target moves out
+    -- of the band. `follow_min_distance` is a no-op zone — the NPC
+    -- doesn't back away when the target gets close. NULL on both
+    -- → runtime defaults `[2.0, 5.0]`.
+    follow_min_distance real,
+    follow_max_distance real,
     CONSTRAINT entity_templates_respawn_secs_min_3
         CHECK (respawn_secs IS NULL OR respawn_secs >= 3),
     CONSTRAINT entity_templates_wander_radius_positive
@@ -76,6 +84,16 @@ CREATE TABLE entity_templates (
                 wander_min_dwell_secs IS NULL
                 OR wander_max_dwell_secs IS NULL
                 OR wander_min_dwell_secs <= wander_max_dwell_secs
+            )
+        ),
+    CONSTRAINT entity_templates_follow_distance_positive
+        CHECK (
+            (follow_min_distance IS NULL OR follow_min_distance > 0.0)
+            AND (follow_max_distance IS NULL OR follow_max_distance > 0.0)
+            AND (
+                follow_min_distance IS NULL
+                OR follow_max_distance IS NULL
+                OR follow_min_distance <= follow_max_distance
             )
         )
 );

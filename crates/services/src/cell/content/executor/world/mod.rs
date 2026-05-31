@@ -125,6 +125,45 @@ pub(super) fn set_npc_poi(
     }
 }
 
+/// `Action::SetFollowTarget` — set or clear the follow target for a
+/// tagged NPC. When `target_tag` resolves, the NPC transitions to
+/// `AiState::Follow` and maintains the distance band defined by
+/// `follow_min/max_distance`. When `target_tag` is None (or doesn't
+/// resolve), the follow state clears and the NPC returns to Idle.
+pub(super) fn set_follow_target(
+    entity_tag: String,
+    target_tag: Option<String>,
+    entity_id: u32,
+    chain_id: i64,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::AiState;
+    let Some(npc_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetFollowTarget");
+        return;
+    };
+    let resolved_target = match &target_tag {
+        Some(tag) => space_mgr.find_entity_by_tag(entity_id, tag),
+        None => None,
+    };
+    tracing::info!(
+        entity_id, %entity_tag, npc_id, ?target_tag, ?resolved_target, chain_id,
+        "Content: set follow target"
+    );
+    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+        npc.follow_target_id = resolved_target;
+        // Transition to Follow if a target landed; otherwise drop to
+        // Idle and clear any in-flight nav so the AI tick re-routes
+        // cleanly.
+        if resolved_target.is_some() {
+            npc.ai_state = AiState::Follow;
+        } else {
+            npc.ai_state = AiState::Idle;
+        }
+        npc.nav_path.clear();
+    }
+}
+
 /// `Action::DestroyTaggedEntity` — remove the tagged entity from the
 /// space. Witnesses get the destroy on the next AoI sweep.
 pub(super) fn destroy_tagged_entity(

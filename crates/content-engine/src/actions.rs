@@ -171,6 +171,22 @@ pub enum Action {
         z: f32,
     },
 
+    /// Set or clear the follow target for a tagged NPC. When
+    /// `target_tag` resolves to an entity, the NPC transitions to
+    /// `AiState::Follow` and maintains the distance band defined by
+    /// `follow_min_distance` / `follow_max_distance` on the template.
+    /// Passing `target_tag = None` clears the follow state and
+    /// returns the NPC to Idle.
+    ///
+    /// Threat preemption converts Follow → Fighting; the follow
+    /// target persists on the entity but the post-fight return is
+    /// to Idle (re-fire the action if a continued follow is
+    /// desired).
+    SetFollowTarget {
+        entity_tag: String,
+        target_tag: Option<String>,
+    },
+
     /// Destroy a tagged entity (remove from world).
     DestroyTaggedEntity { entity_tag: String },
 

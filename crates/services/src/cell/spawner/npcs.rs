@@ -80,6 +80,14 @@ pub struct SpawnRecord {
     /// `min <= max` at the DB boundary so the runtime can sample
     /// without an extra guard.
     pub wander_max_dwell_secs: f32,
+    /// Follow-state distance band lower bound, in world units. The
+    /// NPC doesn't back away from the target inside this distance —
+    /// just holds position. Defaulted to `2.0` when NULL.
+    pub follow_min_distance: f32,
+    /// Follow-state distance band upper bound, in world units. The
+    /// NPC walks toward the target whenever the distance exceeds
+    /// this. Defaulted to `5.0` when NULL.
+    pub follow_max_distance: f32,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
@@ -125,6 +133,8 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                COALESCE(t.wander_radius, 0.0) AS wander_radius, \
                COALESCE(t.wander_min_dwell_secs, 3.0) AS wander_min_dwell_secs, \
                COALESCE(t.wander_max_dwell_secs, 8.0) AS wander_max_dwell_secs, \
+               COALESCE(t.follow_min_distance, 2.0) AS follow_min_distance, \
+               COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
                COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -194,6 +204,8 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
             wander_radius: r.get::<f32, _>("wander_radius"),
             wander_min_dwell_secs: r.get::<f32, _>("wander_min_dwell_secs"),
             wander_max_dwell_secs: r.get::<f32, _>("wander_max_dwell_secs"),
+            follow_min_distance: r.get::<f32, _>("follow_min_distance"),
+            follow_max_distance: r.get::<f32, _>("follow_max_distance"),
         })
         .collect();
 

@@ -599,6 +599,19 @@ pub struct CellEntity {
     /// returns to Idle. Set by the investigate handler when it
     /// pops the last nav_path entry at the POI.
     pub investigate_until: Option<std::time::Instant>,
+    /// Entity ID of the player or NPC this entity is currently
+    /// following. Set by the `SetFollowTarget` content action;
+    /// cleared when the target disappears or by an explicit
+    /// `SetFollowTarget` with a None target.
+    pub follow_target_id: Option<u32>,
+    /// Lower bound of the follow distance band, in world units.
+    /// Loaded from `entity_templates.follow_min_distance`.
+    pub follow_min_distance: f32,
+    /// Upper bound of the follow distance band, in world units.
+    /// Loaded from `entity_templates.follow_max_distance`. The
+    /// follow handler walks toward the target whenever the
+    /// distance exceeds this.
+    pub follow_max_distance: f32,
 
     // ── Saved mission state (for re-login) ────────────────────────────────────
     /// Saved missions loaded from DB, to be populated before content engine fires.
@@ -898,6 +911,9 @@ impl CellEntity {
             wander_next_at: None,
             poi: None,
             investigate_until: None,
+            follow_target_id: None,
+            follow_min_distance: 2.0,
+            follow_max_distance: 5.0,
             saved_missions_loaded: false,
             loot_table_id: None,
             loot: Vec::new(),
