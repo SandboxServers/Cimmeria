@@ -146,6 +146,7 @@ pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
         key,
         account_id: 0,
         access_level: 0,
+        dnd_message: None,
         char_list_sent: false,
         world_entry_sent: false,
         pending_player_entity_id: None,

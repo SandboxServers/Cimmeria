@@ -154,6 +154,7 @@ pub(crate) async fn handle_login(
                 key,
                 account_id: login.account_id,
                 access_level: login.access_level,
+                dnd_message: None,
                 char_list_sent: false,
                 world_entry_sent: false,
                 pending_player_entity_id: None,
