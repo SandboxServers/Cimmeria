@@ -21,6 +21,7 @@ pub mod mailbox;
 pub mod manager;
 pub mod missions;
 pub mod movement;
+pub mod movement_validation;
 pub mod navigation;
 pub mod properties;
 pub mod space;

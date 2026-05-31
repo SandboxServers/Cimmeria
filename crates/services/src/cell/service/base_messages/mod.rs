@@ -13,7 +13,7 @@ use cimmeria_content_engine::chain::ChainEngine;
 
 use super::super::content;
 use super::super::messages::{BaseToCellMsg, CellToBaseMsg};
-use super::super::space_manager::SpaceManager;
+use super::super::space_manager::{ClientMoveOutcome, SpaceManager};
 use super::super::{chat, dispatch, spawner};
 
 mod bandolier;
@@ -163,7 +163,90 @@ pub(super) async fn handle_base_message(
                     "player position update (sampled)"
                 );
             }
-            space_mgr.update_entity_position(entity_id, position, direction, velocity);
+            // Client-authoritative position updates go through the
+            // movement validator. Server-authoritative paths (ring
+            // transport, respawn, content teleport, NPC movement) call
+            // `update_entity_position` directly and bypass validation —
+            // they are the source of truth for those entities and
+            // already snap via `BASEMSG_FORCED_POSITION` where needed.
+            let outcome =
+                space_mgr.apply_client_position_update(entity_id, position, direction, velocity);
+            match outcome {
+                ClientMoveOutcome::Accepted { .. } => {}
+                ClientMoveOutcome::EntityMissing => {
+                    // Stale inbound after destroy / disconnect.
+                    // Matches the legacy silent-drop shape of
+                    // `update_entity_position`; surface as debug so a
+                    // future deluge here is queryable but doesn't
+                    // alarm by default.
+                    tracing::debug!(
+                        target: "movement.validation",
+                        entity_id,
+                        reason = "entity_missing",
+                        "EntityMove dropped: entity not in any space (likely post-disconnect)"
+                    );
+                }
+                ClientMoveOutcome::Rejected {
+                    reason,
+                    last_valid,
+                    space_id,
+                    bounds,
+                } => {
+                    // Negative-log per docs/architecture/negative-logging-convention.md.
+                    // `reason` carries the validation layer that fired
+                    // (today only "bounds"); `bounds_min`/`bounds_max`
+                    // let an operator confirm which AABB rejected the
+                    // proposed position without grepping for it.
+                    tracing::warn!(
+                        target: "movement.validation",
+                        entity_id,
+                        space_id,
+                        client_x = position[0],
+                        client_y = position[1],
+                        client_z = position[2],
+                        last_valid_x = last_valid[0],
+                        last_valid_y = last_valid[1],
+                        last_valid_z = last_valid[2],
+                        bounds_min_x = bounds.min[0],
+                        bounds_min_y = bounds.min[1],
+                        bounds_min_z = bounds.min[2],
+                        bounds_max_x = bounds.max[0],
+                        bounds_max_y = bounds.max[1],
+                        bounds_max_z = bounds.max[2],
+                        reason = "bounds",
+                        reject = ?reason,
+                        "movement.bounds_violation: client position outside space \
+                         AABB — snapping back to last valid via FORCED_POSITION"
+                    );
+                    // Snap the offending client back. The cell entity's
+                    // position was NOT advanced — the next AoI tick
+                    // (100 ms) rebroadcasts the last-valid position to
+                    // witnesses, so witnesses never see the rejected
+                    // coordinates. TeleportPlayer routes through
+                    // `handle_teleport_player` which emits
+                    // `BASEMSG_FORCED_POSITION` to the owner; the
+                    // existing teleport bundle is the right primitive.
+                    if let Err(e) = tx
+                        .send(CellToBaseMsg::TeleportPlayer {
+                            entity_id,
+                            space_id,
+                            position: last_valid,
+                            prev_pos: last_valid,
+                        })
+                        .await
+                    {
+                        tracing::warn!(
+                            entity_id,
+                            space_id,
+                            error = %e,
+                            reason = "snap_back_send_failed",
+                            "movement.bounds_violation: snap-back \
+                             TeleportPlayer send to base failed — \
+                             client will continue desynced"
+                        );
+                    }
+                }
+            }
         }
 
         BaseToCellMsg::CellMethodCall {

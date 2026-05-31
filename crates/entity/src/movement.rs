@@ -14,6 +14,8 @@
 
 use cimmeria_common::Vector3;
 
+use crate::movement_validation::{MovementReject, MovementValidator, SpaceBounds};
+
 /// Trait for entity movement strategies.
 ///
 /// Implementors produce position updates each tick. The entity system calls
@@ -51,14 +53,53 @@ impl PlayerMovementController {
         }
     }
 
-    /// Apply a client-authoritative position update.
+    /// Apply a client-authoritative position update, **unchecked**.
     ///
-    /// In a full implementation this would perform speed validation and
-    /// navmesh checks before accepting the position.
+    /// Convenience for callers that have already validated the position
+    /// upstream, or for legacy tests that pre-date the validator. New
+    /// code should prefer [`Self::apply_validated_client_update`] which
+    /// runs the bounds layer (and, in future PRs, speed / teleport /
+    /// navmesh-containment layers) before writing.
     pub fn apply_client_update(&mut self, position: Vector3) {
-        // TODO: Validate speed, navmesh containment, anti-cheat checks.
         self.current_position = position;
         self.has_update = true;
+    }
+
+    /// Apply a client-authoritative position update through the
+    /// [`MovementValidator`] bounds layer.
+    ///
+    /// On accept, the new position becomes the controller's
+    /// `current_position` and `update()` will return it on the next
+    /// tick. On reject, the controller is **not** advanced — the
+    /// previous valid position stays current — and the caller is
+    /// expected to:
+    ///
+    /// 1. Skip the spatial-grid update so AoI naturally rebroadcasts
+    ///    the last-valid position.
+    /// 2. Emit `BASEMSG_FORCED_POSITION` so the offending client
+    ///    snaps its own avatar back.
+    ///
+    /// PR1 wires only the bounds check; PR2 will add speed, PR3
+    /// teleport-detection, PR4 navmesh containment. The signature does
+    /// not change between PRs.
+    pub fn apply_validated_client_update(
+        &mut self,
+        position: Vector3,
+        validator: &MovementValidator,
+        bounds: &SpaceBounds,
+    ) -> Result<(), MovementReject> {
+        validator.check_bounds(position, bounds)?;
+        self.current_position = position;
+        self.has_update = true;
+        Ok(())
+    }
+
+    /// Returns the last-validated position. Used by the cell seam to
+    /// build the `BASEMSG_FORCED_POSITION` snap-back body on reject —
+    /// the snap target is the last position the controller accepted,
+    /// not the one it just rejected.
+    pub fn current_position(&self) -> Vector3 {
+        self.current_position
     }
 }
 
@@ -187,6 +228,65 @@ mod tests {
     fn player_controller_never_completes() {
         let ctrl = PlayerMovementController::new(Vector3::zero());
         assert!(!ctrl.is_complete());
+    }
+
+    fn small_bounds() -> SpaceBounds {
+        SpaceBounds::new([-50.0, -50.0, -50.0], [50.0, 50.0, 50.0])
+    }
+
+    #[test]
+    fn legitimate_movement_within_bounds_accepts() {
+        let mut ctrl = PlayerMovementController::new(Vector3::zero());
+        let validator = MovementValidator::new();
+        let target = Vector3::new(5.0, 1.0, 5.0);
+        assert_eq!(
+            ctrl.apply_validated_client_update(target, &validator, &small_bounds()),
+            Ok(())
+        );
+        assert_eq!(ctrl.update(0.016), Some(target));
+        assert_eq!(ctrl.current_position(), target);
+    }
+
+    #[test]
+    fn bounds_violation_outside_x_min_rejects_and_keeps_last_valid() {
+        let mut ctrl = PlayerMovementController::new(Vector3::new(1.0, 0.0, 1.0));
+        let validator = MovementValidator::new();
+        let out_x = Vector3::new(-1000.0, 0.0, 0.0);
+
+        let res = ctrl.apply_validated_client_update(out_x, &validator, &small_bounds());
+        assert_eq!(res, Err(MovementReject::OutOfBounds));
+        // Last-valid pin: the rejected position must NOT have been
+        // written, and the controller must NOT signal an update on the
+        // next tick — otherwise AoI would broadcast the rejected pos.
+        assert_eq!(ctrl.current_position(), Vector3::new(1.0, 0.0, 1.0));
+        assert!(ctrl.update(0.016).is_none());
+    }
+
+    #[test]
+    fn bounds_violation_outside_y_max_rejects_and_keeps_last_valid() {
+        let mut ctrl = PlayerMovementController::new(Vector3::new(0.0, 10.0, 0.0));
+        let validator = MovementValidator::new();
+        let out_y = Vector3::new(0.0, 9999.0, 0.0);
+
+        let res = ctrl.apply_validated_client_update(out_y, &validator, &small_bounds());
+        assert_eq!(res, Err(MovementReject::OutOfBounds));
+        assert_eq!(ctrl.current_position(), Vector3::new(0.0, 10.0, 0.0));
+        assert!(ctrl.update(0.016).is_none());
+    }
+
+    /// Z-axis is the floor-clip exploit guard — pin that the validator
+    /// rejects a position with a valid X/Y but Z far below the floor
+    /// just like X/Y rejections.
+    #[test]
+    fn bounds_violation_outside_z_min_rejects_and_keeps_last_valid() {
+        let mut ctrl = PlayerMovementController::new(Vector3::new(0.0, 0.0, 5.0));
+        let validator = MovementValidator::new();
+        let out_z = Vector3::new(0.0, 0.0, -9999.0);
+
+        let res = ctrl.apply_validated_client_update(out_z, &validator, &small_bounds());
+        assert_eq!(res, Err(MovementReject::OutOfBounds));
+        assert_eq!(ctrl.current_position(), Vector3::new(0.0, 0.0, 5.0));
+        assert!(ctrl.update(0.016).is_none());
     }
 
     #[test]
