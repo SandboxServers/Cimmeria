@@ -218,3 +218,105 @@ async fn ability_granted_with_no_trainer_pinned_does_not_resend() {
         }
     }
 }
+
+/// Pins the documented "resend on ANY grant while pinned" contract — the
+/// resend fires for every `AbilityGranted` while a trainer is pinned,
+/// regardless of whether the granted ability is in the trainer's offered
+/// list or is a prereq for anything offered.
+///
+/// Mirrors Python's `AbilityTrainer.onTrainAbility:128` shape: it
+/// re-fires `onTrainerOpen` unconditionally after a successful train RPC.
+/// The "is this newly-learned ability a prereq for B?" decision lives
+/// inside `try_open_trainer`, not here.
+///
+/// Setup: trainer offers A (597) and B (646) — neither has prereqs on
+/// the other. Grant a DIFFERENT ability that the trainer doesn't even
+/// offer (700, a chain-granted quest reward, say). The resend must
+/// still fire — list content won't change but the wire frame goes out.
+///
+/// Without this pin, a future "optimisation" that filters out resends
+/// for non-prereq grants would silently diverge from Python parity.
+#[tokio::test]
+async fn ability_granted_resends_even_when_not_a_prereq() {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#)
+        .unwrap();
+
+    // Player with trainer pinned.
+    mgr.create_entity(1, "W", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(100);
+        p.archetype_id = Some(2); // Commando
+        p.level = 1;
+        p.last_interaction_target = Some(200);
+    }
+
+    // Trainer NPC.
+    mgr.spawn_npc(200, "W", [5.0; 3], [0.0; 3]).unwrap();
+    if let Some(t) = mgr.get_entity_mut(200) {
+        t.template_id = Some(25);
+    }
+    mgr.template_trainer_lists.insert(25, 1);
+
+    // Trainer offers 597 + 646, both lvl 1, neither a prereq of the other.
+    mgr.trainer_abilities.insert((1, 2), vec![597, 646]);
+    mgr.archetype_ability_trees.insert(
+        2,
+        vec![
+            ArchetypeAbilityTreeEntry {
+                ability_id: 597,
+                tree_index: 1,
+                level: 1,
+                prerequisite_abilities: vec![],
+            },
+            ArchetypeAbilityTreeEntry {
+                ability_id: 646,
+                tree_index: 1,
+                level: 1,
+                prerequisite_abilities: vec![],
+            },
+        ],
+    );
+
+    let (tx, mut rx) = mpsc::channel(32);
+    let engine = ChainEngine::new();
+
+    // Grant 700 — NOT in the trainer's offered list, NOT a prereq for
+    // anything offered. The resend must still fire per the contract.
+    handle_base_message(
+        BaseToCellMsg::AbilityGranted {
+            entity_id: 1,
+            ability_id: 700,
+            training_points_remaining: 4,
+        },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+
+    let mut on_trainer_open_seen = false;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            ..
+        } = msg
+        {
+            if entity_id == 1 && method_index == crate::mercury::method_idx::ON_TRAINER_OPEN {
+                on_trainer_open_seen = true;
+            }
+        }
+    }
+    assert!(
+        on_trainer_open_seen,
+        "resend contract: AbilityGranted while a trainer is pinned must \
+         re-emit onTrainerOpen even when the granted ability is unrelated \
+         to the trainer's offered list (Python parity with \
+         AbilityTrainer.onTrainAbility unconditional re-fire)"
+    );
+}
