@@ -416,4 +416,57 @@ mod tests {
         let mut cursor = Cursor::new(&buf);
         assert!(XrcNav::read(&mut cursor).is_err());
     }
+
+    /// Hostile `nverts` must trip the sanity cap before any allocation.
+    ///
+    /// Original failure mode this guards against: `vec![0u16; (nverts * 3)
+    /// as usize]` with `nverts = 0xFFFFFFFF` wraps to a 3-element Vec.
+    /// The read loop then consumes only three u16s while the rest of the
+    /// claimed `0xFFFFFFFF * 3` vertex region goes phantom — leaving every
+    /// downstream offset wrong.
+    #[test]
+    fn read_rejects_oversized_nverts() {
+        let mut buf = Vec::new();
+        // agent_height/climb/radius, then the four header counts.
+        buf.extend_from_slice(&0.6_f32.to_le_bytes());
+        buf.extend_from_slice(&0.9_f32.to_le_bytes());
+        buf.extend_from_slice(&0.6_f32.to_le_bytes());
+        buf.extend_from_slice(&0xFFFF_FFFF_u32.to_le_bytes()); // nverts — hostile
+        buf.extend_from_slice(&0_u32.to_le_bytes()); // npolys
+        buf.extend_from_slice(&6_u32.to_le_bytes()); // nvp
+        buf.extend_from_slice(&0_u32.to_le_bytes()); // border_size
+        // cs, ch, bmin (3xf32), bmax (3xf32) — pad with zeros, the cap
+        // trips before we ever touch these.
+        buf.extend_from_slice(&[0u8; 4 * 8]);
+        let mut cursor = Cursor::new(&buf);
+        match XrcNav::read(&mut cursor) {
+            Err(ExtractError::NavHeaderOutOfRange { field, .. }) => {
+                assert_eq!(field, "nverts", "wrong field flagged");
+            }
+            other => panic!("expected NavHeaderOutOfRange(nverts), got {other:?}"),
+        }
+    }
+
+    /// Same shape as `read_rejects_oversized_nverts` but for the
+    /// `npolys * nvp * 2` allocation. `nverts = 0` so the verts path
+    /// is unaffected and the test isolates the npolys cap.
+    #[test]
+    fn read_rejects_oversized_npolys() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&0.6_f32.to_le_bytes());
+        buf.extend_from_slice(&0.9_f32.to_le_bytes());
+        buf.extend_from_slice(&0.6_f32.to_le_bytes());
+        buf.extend_from_slice(&0_u32.to_le_bytes()); // nverts
+        buf.extend_from_slice(&0xFFFF_FFFF_u32.to_le_bytes()); // npolys — hostile
+        buf.extend_from_slice(&6_u32.to_le_bytes()); // nvp
+        buf.extend_from_slice(&0_u32.to_le_bytes()); // border_size
+        buf.extend_from_slice(&[0u8; 4 * 8]); // cs, ch, bmin, bmax
+        let mut cursor = Cursor::new(&buf);
+        match XrcNav::read(&mut cursor) {
+            Err(ExtractError::NavHeaderOutOfRange { field, .. }) => {
+                assert_eq!(field, "npolys", "wrong field flagged");
+            }
+            other => panic!("expected NavHeaderOutOfRange(npolys), got {other:?}"),
+        }
+    }
 }
