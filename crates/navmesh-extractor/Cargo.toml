@@ -1,0 +1,15 @@
+[package]
+name = "cimmeria-navmesh-extractor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Extracts UE3 .umap collision geometry to OBJ for the C++ NavBuilder Recast pipeline"
+
+[dependencies]
+cimmeria-upk = { workspace = true }
+cimmeria-upk-objects = { workspace = true }
+byteorder = "1"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]

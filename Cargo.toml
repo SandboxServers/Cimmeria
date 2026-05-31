@@ -26,6 +26,7 @@ members = [
     "tools/spec-lint",
     "crates/upk",
     "crates/upk-objects",
+    "crates/navmesh-extractor",
     "crates/wireclient",
     "crates/discord",
 ]
@@ -163,6 +164,7 @@ cimmeria-commands = { path = "crates/commands" }
 cimmeria-server = { path = "crates/server" }
 cimmeria-upk = { path = "crates/upk" }
 cimmeria-upk-objects = { path = "crates/upk-objects" }
+cimmeria-navmesh-extractor = { path = "crates/navmesh-extractor" }
 cimmeria-wireclient = { path = "crates/wireclient" }
 cimmeria-discord = { path = "crates/discord" }
 
