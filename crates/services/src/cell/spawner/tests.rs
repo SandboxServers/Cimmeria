@@ -48,6 +48,8 @@ fn make_test_record(world_name: &str, tag: Option<&str>, class: &str) -> SpawnRe
         is_stationary: false,
         ability_ids: vec![],
         respawn_secs: None,
+        patrol_path: vec![],
+        patrol_point_delay_secs: 2.0,
     }
 }
 

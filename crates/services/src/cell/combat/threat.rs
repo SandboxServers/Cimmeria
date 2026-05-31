@@ -57,12 +57,33 @@ pub fn generate_threat(
         if target.is_player {
             return None;
         }
-        if target.ai_state == AiState::Idle {
+        // Threat preemption: any non-Dead, non-already-fighting state
+        // transitions to Fighting. Patrol/Wander/Investigating/Follow
+        // NPCs that get attacked drop their current behavior and
+        // engage. Per-state scratch (patrol index, wander deadline,
+        // POI, follow target) persists on the entity so the
+        // post-Leashing return-to-Idle path can resume the
+        // pre-fight behavior from where it left off.
+        let preemptable = matches!(
+            target.ai_state,
+            AiState::Idle
+                | AiState::Patrol
+                | AiState::Wander
+                | AiState::Investigating
+                | AiState::Follow
+        );
+        if preemptable {
+            let prev = target.ai_state;
             target.ai_state = AiState::Fighting;
+            // Clear in-flight nav so the fight handler can pathfind
+            // toward the target instead of continuing to a stale
+            // patrol/wander waypoint.
+            target.nav_path.clear();
             tracing::info!(
                 npc_id = target_id,
                 attacker = attacker_id,
-                "NPC aggro: Idle -> Fighting"
+                ?prev,
+                "NPC aggro: preempt -> Fighting"
             );
         }
         *target.threat_list.entry(attacker_id).or_insert(0.0) += threat_amount;

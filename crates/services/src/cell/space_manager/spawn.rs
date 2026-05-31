@@ -136,6 +136,13 @@ impl SpaceManager {
         // without dragging the loot bit forward.
         e.respawn_secs = record.respawn_secs;
         e.original_interaction_type_flags = record.interaction_type;
+        // Patrol waypoints loaded from `entity_templates.patrol_path_id`
+        // → `point_set_points` by the spawner SQL. Empty for the
+        // common case (non-patrolling NPC). Non-empty paths cause
+        // the AI tick to admit the NPC into the Patrol state once
+        // it reaches Idle and has no threats.
+        e.patrol_path = record.patrol_path.clone();
+        e.patrol_point_delay_secs = record.patrol_point_delay_secs;
 
         // Per-template ability bucket. Empty `ability_ids` (template has
         // no `ability_set_id`) falls back to `NPC_DEFAULT_ABILITY` so

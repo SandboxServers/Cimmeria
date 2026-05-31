@@ -94,6 +94,8 @@ fn spawn_npc_from_record_sets_template_fields() {
         is_stationary: false,
         ability_ids: vec![],
         respawn_secs: None,
+        patrol_path: vec![],
+        patrol_point_delay_secs: 2.0,
     };
 
     mgr.spawn_npc_from_record(600, &record).unwrap();

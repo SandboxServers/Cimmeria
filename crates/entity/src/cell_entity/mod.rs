@@ -546,6 +546,33 @@ pub struct CellEntity {
     /// interaction cursor and try to hand out a fresh loot table on
     /// right-click). Set once at spawn, read once by `npc_respawn_tick`.
     pub original_interaction_type_flags: i64,
+    /// Ordered patrol waypoints for this NPC. Loaded from
+    /// `entity_templates.patrol_path_id` → `point_set_points` at
+    /// spawn time. Empty for non-patrolling NPCs (the common case).
+    ///
+    /// The patrol AI handler advances `patrol_next_index` modulo
+    /// `patrol_path.len()` so the route loops. Threat preemption
+    /// (NPC enters Fighting) does NOT reset the index — when the
+    /// fight ends and the NPC re-enters Patrol, it resumes from
+    /// where it left off.
+    pub patrol_path: Vec<Vector3>,
+    /// Index of the next waypoint this NPC should walk to. Always
+    /// `< patrol_path.len()` when the patrol path is non-empty;
+    /// wraps modulo the path length when the last waypoint is
+    /// consumed. Persists across Patrol → Fighting → Patrol
+    /// transitions so re-engagement resumes mid-route.
+    pub patrol_next_index: usize,
+    /// Dwell deadline: when `Some(t)`, the NPC is paused at the
+    /// most-recently-reached waypoint until `now >= t`. Set when
+    /// the path-follower pops the last `nav_path` entry equal to
+    /// the waypoint position. Cleared by the patrol handler when
+    /// it pushes the next waypoint into `nav_path`.
+    pub patrol_dwell_until: Option<std::time::Instant>,
+    /// Per-template patrol dwell duration. Copied from
+    /// `entity_templates.patrol_point_delay` (defaulted to 2.0
+    /// when NULL). Read by the patrol handler when it stamps a
+    /// fresh `patrol_dwell_until` deadline.
+    pub patrol_point_delay_secs: f32,
 
     // ── Saved mission state (for re-login) ────────────────────────────────────
     /// Saved missions loaded from DB, to be populated before content engine fires.
@@ -835,6 +862,10 @@ impl CellEntity {
             respawn_secs: None,
             respawn_at: None,
             original_interaction_type_flags: 0,
+            patrol_path: Vec::new(),
+            patrol_next_index: 0,
+            patrol_dwell_until: None,
+            patrol_point_delay_secs: 2.0,
             saved_missions_loaded: false,
             loot_table_id: None,
             loot: Vec::new(),

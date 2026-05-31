@@ -33,24 +33,29 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
 
     // Snapshot NPC IDs and their AI state so we don't hold a borrow on space_mgr
     // while calling handle_use_ability (which needs &mut SpaceManager).
-    let npc_snapshot: Vec<(u32, AiState, i32)> = space_mgr
+    let npc_snapshot: Vec<(u32, AiState, i32, bool)> = space_mgr
         .all_npc_entity_ids()
         .iter()
         .filter_map(|&eid| {
             space_mgr
                 .get_entity(eid)
-                .map(|e| (eid, e.ai_state, e.aggression))
+                .map(|e| (eid, e.ai_state, e.aggression, !e.patrol_path.is_empty()))
         })
-        .filter(|(_, state, aggression)| {
+        .filter(|(_, state, aggression, has_patrol)| {
+            // Admit any state that has a per-tick handler. Idle is
+            // admitted when the NPC has a patrol path (so the tick
+            // can transition Idle → Patrol) or when aggression is
+            // positive (auto-aggro).
             *state == AiState::Fighting
                 || *state == AiState::Leashing
-                || (*state == AiState::Idle && *aggression > 0)
+                || *state == AiState::Patrol
+                || (*state == AiState::Idle && (*aggression > 0 || *has_patrol))
         })
         .collect();
 
     use tracing::Instrument;
 
-    for (npc_id, ai_state, _) in npc_snapshot {
+    for (npc_id, ai_state, _, has_patrol) in npc_snapshot {
         // `.instrument()` (not `.entered()`) — the handler bodies await,
         // so a thread-local guard would silently fall off across runtime
         // thread switches.
@@ -61,16 +66,41 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
             ai_state = ?ai_state,
             space_id = space_id.unwrap_or(0),
         );
-        // Snapshot filter above admits only Fighting | Leashing | Idle —
-        // express that contract as an if/else if/else rather than a
-        // match-with-wildcard.
         async {
-            if ai_state == AiState::Fighting {
-                npc_ai_fight(npc_id, tx, space_mgr).await;
-            } else if ai_state == AiState::Leashing {
-                npc_ai_leash(npc_id, tx, space_mgr).await;
-            } else {
-                npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await;
+            match ai_state {
+                AiState::Fighting => npc_ai_fight(npc_id, tx, space_mgr).await,
+                AiState::Leashing => npc_ai_leash(npc_id, tx, space_mgr).await,
+                AiState::Patrol => npc_ai_patrol(npc_id, tx, space_mgr).await,
+                AiState::Idle => {
+                    // Aggro-driven idle has priority over patrol: an
+                    // aggressive guard standing on a waypoint should
+                    // still seed threat on a passing player rather
+                    // than stride past them.
+                    let aggression = space_mgr
+                        .get_entity(npc_id)
+                        .map(|e| e.aggression)
+                        .unwrap_or(0);
+                    if aggression > 0 {
+                        npc_ai_idle_auto_aggro(npc_id, tx, space_mgr).await;
+                    } else if has_patrol {
+                        // Idle NPC with a patrol path → transition
+                        // into Patrol. The actual waypoint queuing
+                        // happens on the same call (state set +
+                        // first nav_path push) to avoid a wasted
+                        // tick where the NPC sits Patrol-but-idle.
+                        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                            npc.ai_state = AiState::Patrol;
+                        }
+                        npc_ai_patrol(npc_id, tx, space_mgr).await;
+                    }
+                }
+                _ => {
+                    // Other states (Dead, Spawning, Wander, Investigating,
+                    // Follow, Despawning, Submit, Error) either don't have
+                    // a per-tick handler today or shouldn't have been
+                    // admitted by the snapshot filter. Wander/Investigating/
+                    // Follow handlers land in later commits of this PR.
+                }
             }
         }
         .instrument(ai_span)
@@ -689,6 +719,166 @@ pub(super) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager) -> Optio
     ability_ids
         .into_iter()
         .find(|&id| !npc.abilities.is_on_cooldown(id))
+}
+
+/// NPC patrol behavior: walk a waypoint loop with dwell pauses.
+///
+/// State machine within Patrol:
+/// 1. **Empty `nav_path` + no dwell deadline** → push the next
+///    waypoint into `nav_path`, broadcast `CombatAdvance` is
+///    intentionally NOT used (Patrol has its own
+///    `MobMovementType::Patrol` byte). The path-follower
+///    (`npc_movement_tick`) walks the NPC toward the waypoint at
+///    `move_speed`.
+/// 2. **Empty `nav_path` + dwell deadline in the future** → still
+///    paused at the waypoint, no work to do.
+/// 3. **Empty `nav_path` + dwell deadline elapsed** → advance
+///    `patrol_next_index` (modulo path length) and clear the
+///    deadline so the next pass falls into branch 1.
+/// 4. **Non-empty `nav_path`** → movement is in flight, no work
+///    to do here.
+///
+/// The dwell deadline is stamped here when we clear `nav_path` —
+/// movement-tick consumes nav_path until it's empty, at which
+/// point we know the NPC has arrived at the waypoint.
+///
+/// Threat preemption is handled outside: when `generate_threat`
+/// flips the state from Patrol → Fighting, the next AI tick
+/// routes through `npc_ai_fight`. On Fighting → Leashing →
+/// Idle, the tick's Idle branch transitions back to Patrol and
+/// the saved `patrol_next_index` resumes the route from where
+/// it left off (no progress lost).
+async fn npc_ai_patrol(
+    npc_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::MobMovementType;
+
+    // Broadcast Patrol movement-type on entry. Dedup'd against
+    // `last_movement_type` — subsequent Patrol ticks are no-ops on
+    // the wire (the cache stays Some(Patrol) until a state
+    // transition clears it).
+    super::super::abilities::broadcast_movement_type(
+        npc_id,
+        Some(MobMovementType::Patrol),
+        tx,
+        space_mgr,
+    )
+    .await;
+
+    let now = std::time::Instant::now();
+
+    // Read patrol state without holding a borrow across the
+    // pathfind / nav_path write below.
+    let (path_empty_now, nav_empty, dwell, next_index, delay_secs, next_waypoint) = {
+        let npc = match space_mgr.get_entity(npc_id) {
+            Some(e) => e,
+            None => return,
+        };
+        if npc.patrol_path.is_empty() {
+            // Defensive: snapshot filter should have screened this
+            // out, but a content action could have wiped the path
+            // mid-tick. Drop back to Idle so the next AI tick can
+            // re-route the NPC.
+            (true, true, None, 0, 0.0, None)
+        } else {
+            let next_idx = npc.patrol_next_index % npc.patrol_path.len();
+            (
+                false,
+                npc.nav_path.is_empty(),
+                npc.patrol_dwell_until,
+                next_idx,
+                npc.patrol_point_delay_secs,
+                Some(npc.patrol_path[next_idx]),
+            )
+        }
+    };
+
+    if path_empty_now {
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            npc.ai_state = cimmeria_entity::cell_entity::AiState::Idle;
+        }
+        super::super::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
+        return;
+    }
+
+    if !nav_empty {
+        // Movement in flight — npc_movement_tick is walking the NPC
+        // toward the current waypoint. Nothing to do this tick.
+        return;
+    }
+
+    // Branch 2 or 3: nav_path is empty so we've arrived at a
+    // waypoint (or never started). Decide between dwelling and
+    // advancing.
+    if let Some(deadline) = dwell {
+        if now < deadline {
+            // Still dwelling.
+            return;
+        }
+        // Dwell elapsed → advance to next waypoint AND clear the
+        // deadline. The next tick (branch 1) pushes the new
+        // waypoint into nav_path.
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            let len = npc.patrol_path.len();
+            npc.patrol_next_index = (npc.patrol_next_index + 1) % len;
+            npc.patrol_dwell_until = None;
+        }
+        // Fall through to push the new waypoint in the same tick
+        // — saves one tick of latency at every waypoint.
+    }
+
+    // Branch 1: push the current waypoint into nav_path. Pathfind
+    // so the NPC respects the navmesh rather than walking in a
+    // straight line through walls. Falls back to a direct push if
+    // pathfinding fails (no navmesh in the space, target off-mesh,
+    // etc.) — better to walk through a wall than to wedge.
+    let Some(waypoint) = next_waypoint else {
+        return;
+    };
+    let npc_pos = match space_mgr.get_entity(npc_id) {
+        Some(e) => e.position,
+        None => return,
+    };
+    let path = space_mgr
+        .find_path(npc_id, &npc_pos, &waypoint)
+        .unwrap_or_default();
+    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+        npc.nav_path.clear();
+        if path.len() > 1 {
+            // Skip the first entry (start position). Detour returns a
+            // straight-path that includes both endpoints.
+            for wp in path.into_iter().skip(1) {
+                npc.nav_path.push_back(wp);
+            }
+        } else {
+            // Pathfind failed or returned a single point — direct push.
+            npc.nav_path.push_back(waypoint);
+        }
+        // Stamp the dwell deadline NOW (not on arrival) so it's
+        // ready when the path-follower drains nav_path. The
+        // movement tick pops waypoints one-by-one; when the last
+        // pop yields an empty nav_path, branch 2/3 of the next
+        // patrol tick consults `patrol_dwell_until` to decide
+        // whether to advance. Setting the deadline relative to
+        // "now + delay" assumes the movement tick takes well
+        // under `delay` seconds to consume nav_path; for typical
+        // 5–15 m hops at 0.6 unit/100ms and a 2-second delay
+        // that holds.
+        let secs = delay_secs.max(0.5); // floor: half a second
+        npc.patrol_dwell_until = Some(now + std::time::Duration::from_secs_f32(secs));
+    }
+    tracing::debug!(
+        target: "npc_ai",
+        event = "patrol_waypoint_set",
+        npc_id,
+        next_index,
+        wp_x = waypoint.x,
+        wp_y = waypoint.y,
+        wp_z = waypoint.z,
+        "NPC AI: patrol → next waypoint queued"
+    );
 }
 
 /// NPC leashing behavior: reset to Idle and restore health.

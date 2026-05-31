@@ -52,6 +52,21 @@ pub struct SpawnRecord {
     /// the DB are downgraded to `None` at load time so a misconfigured
     /// row doesn't trigger an instant respawn loop.
     pub respawn_secs: Option<u32>,
+    /// Ordered waypoints loaded from
+    /// `point_set_points` keyed by `entity_templates.patrol_path_id`.
+    /// Empty when the template has no `patrol_path_id` or the
+    /// referenced set has zero points. The runtime checks
+    /// `patrol_path.is_empty()` to decide whether the NPC has a
+    /// patrol behavior at all — non-empty paths transition the
+    /// NPC out of Idle into `AiState::Patrol` once the AI tick
+    /// runs.
+    pub patrol_path: Vec<cimmeria_common::Vector3>,
+    /// Seconds the NPC dwells at each patrol waypoint before
+    /// moving on. Defaulted to `2.0` if the template has a NULL
+    /// `patrol_point_delay` but a non-empty path (some content
+    /// authors fill the path but leave the delay null). Ignored
+    /// when `patrol_path.is_empty()`.
+    pub patrol_point_delay_secs: f32,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
@@ -92,6 +107,8 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                t.alignment, t.faction, t.name_id, t.speaker_id, \
                t.static_interaction_sets, t.has_dynamic_properties, \
                t.loot_table_id, \
+               t.patrol_path_id, \
+               COALESCE(t.patrol_point_delay, 2.0) AS patrol_point_delay, \
                COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -106,6 +123,18 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
     )
     .fetch_all(pool)
     .await?;
+
+    // Load patrol points for every patrol_path_id referenced by the
+    // spawn list, in a single follow-up query. Building a HashMap
+    // keyed by set_id then lookup per-record is cheaper than the
+    // alternative (correlated subquery + jsonb_agg) and keeps the
+    // primary spawn query readable. Empty patrol_path_ids → empty
+    // hashmap → every spawn gets `patrol_path: vec![]`.
+    let patrol_path_ids: Vec<i32> = rows
+        .iter()
+        .filter_map(|r| r.try_get::<Option<i32>, _>("patrol_path_id").ok().flatten())
+        .collect();
+    let patrol_points = load_patrol_points(pool, &patrol_path_ids).await?;
 
     let records = rows
         .iter()
@@ -139,10 +168,58 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
             respawn_secs: normalize_respawn_secs(
                 r.try_get::<Option<i32>, _>("respawn_secs").ok().flatten(),
             ),
+            patrol_path: r
+                .try_get::<Option<i32>, _>("patrol_path_id")
+                .ok()
+                .flatten()
+                .and_then(|id| patrol_points.get(&id).cloned())
+                .unwrap_or_default(),
+            patrol_point_delay_secs: r.get::<f32, _>("patrol_point_delay"),
         })
         .collect();
 
     Ok(records)
+}
+
+/// Load patrol waypoints for a set of `patrol_path_id` values from
+/// `point_set_points`. Returns a `HashMap<set_id, ordered waypoints>`.
+///
+/// Waypoints are ordered by `point_id` — the canonical authoring order
+/// of patrol points in a set. Empty `ids` short-circuits without a DB
+/// round-trip; sets with zero points produce an entry mapping to
+/// `vec![]` (caller treats as "no patrol").
+async fn load_patrol_points(
+    pool: &PgPool,
+    ids: &[i32],
+) -> Result<std::collections::HashMap<i32, Vec<cimmeria_common::Vector3>>, sqlx::Error> {
+    use sqlx::Row;
+
+    if ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    let rows = sqlx::query(
+        "SELECT set_id, x, y, z \
+         FROM resources.point_set_points \
+         WHERE set_id = ANY($1) \
+         ORDER BY set_id, point_id",
+    )
+    .bind(ids)
+    .fetch_all(pool)
+    .await?;
+
+    let mut out: std::collections::HashMap<i32, Vec<cimmeria_common::Vector3>> =
+        std::collections::HashMap::new();
+    for r in &rows {
+        let set_id: i32 = r.get("set_id");
+        let x: f32 = r.get("x");
+        let y: f32 = r.get("y");
+        let z: f32 = r.get("z");
+        out.entry(set_id)
+            .or_default()
+            .push(cimmeria_common::Vector3::new(x, y, z));
+    }
+    Ok(out)
 }
 
 /// Downgrade a raw `respawn_secs` value from the DB to the runtime's
