@@ -117,18 +117,23 @@ pub fn extract_map(map_dir: &Path, output_dir: &Path) -> Result<()> {
             "extract_map: processing chunk"
         );
 
-        // Phase 1.2: StaticMesh extraction goes here. Open the umap with
+        // Phase 1.2: StaticMesh extraction. Open the umap with
         // `cimmeria_upk::Package`, walk StaticMeshActors, resolve
         // StaticMeshComponent → StaticMesh via PackageIndex, transform
         // LOD0 vertices into world space, push triangles into a
         // `geometry::TriangleSoup`.
+        todo!("Phase 1.2: StaticMesh instancing");
 
-        // Phase 1.3: Terrain extraction goes here. For each `Terrain`
-        // export, parse the tagged-property block, then decode the
-        // binary trailer (Heights → InfoData → AlphaXSize → AlphaYSize
-        // → WeightedTextureMaps → WeightMapTextures), triangulate via
+        // Phase 1.3: Terrain extraction. For each `Terrain` export,
+        // parse the tagged-property block, then decode the binary
+        // trailer (Heights → InfoData → AlphaXSize → AlphaYSize →
+        // WeightedTextureMaps → WeightMapTextures), triangulate via
         // `geometry::triangulate_terrain`. The recipe is documented in
         // `.claude/agent-memory/game-archaeology-specialist/ue3-terrain-serialize.md`.
+        #[allow(unreachable_code)]
+        {
+            todo!("Phase 1.3: Terrain decoder");
+        }
 
         // Phase 1.4: BSP Model/Polys — deferred; needs Ghidra trace.
     }
