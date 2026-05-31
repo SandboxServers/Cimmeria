@@ -164,6 +164,39 @@ pub(super) fn set_follow_target(
     }
 }
 
+/// `Action::SetNpcAiState` — push a tagged NPC into a content-reachable
+/// terminal / scripted AI state. See [`Action::SetNpcAiState`] for the
+/// admitted states and the rationale for the subset.
+pub(super) fn set_npc_ai_state(
+    entity_tag: String,
+    state: cimmeria_content_engine::actions::NpcAiStateAction,
+    entity_id: u32,
+    chain_id: i64,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_content_engine::actions::NpcAiStateAction;
+    use cimmeria_entity::cell_entity::AiState;
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetNpcAiState");
+        return;
+    };
+    let new_state = match state {
+        NpcAiStateAction::Idle => AiState::Idle,
+        NpcAiStateAction::Despawning => AiState::Despawning,
+        NpcAiStateAction::Submit => AiState::Submit,
+        NpcAiStateAction::Error => AiState::Error,
+    };
+    tracing::info!(
+        entity_id, %entity_tag, target_id, ?state, ?new_state, chain_id,
+        "Content: set NPC AI state"
+    );
+    if let Some(npc) = space_mgr.get_entity_mut(target_id) {
+        npc.ai_state = new_state;
+        // Clear in-flight nav so the new-state handler can re-route.
+        npc.nav_path.clear();
+    }
+}
+
 /// `Action::DestroyTaggedEntity` — remove the tagged entity from the
 /// space. Witnesses get the destroy on the next AoI sweep.
 pub(super) fn destroy_tagged_entity(

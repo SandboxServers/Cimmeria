@@ -21,6 +21,7 @@ mod npc_ai_auto_aggro;
 mod npc_ai_follow;
 mod npc_ai_investigate;
 mod npc_ai_patrol;
+mod npc_ai_phase7;
 mod npc_ai_wander;
 mod regen;
 mod reload;

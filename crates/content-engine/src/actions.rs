@@ -187,6 +187,29 @@ pub enum Action {
         target_tag: Option<String>,
     },
 
+    /// Push a tagged NPC into a specific AI state. Supports the
+    /// terminal / scripted states: `Despawning`, `Submit`, `Error`,
+    /// and `Idle` (for cleanup). Other states should be reached via
+    /// their behavior-specific actions (`SetNpcPoi` for Investigating,
+    /// `SetFollowTarget` for Follow, etc.) so the per-state scratch
+    /// fields are populated correctly.
+    ///
+    /// - `Despawning` → AI tick removes the entity from the space
+    ///   on the next pass. Witnesses get an AoI-left event.
+    /// - `Submit` → clears combat state, broadcasts movement-type
+    ///   None; NPC sits inert until destroyed or transitioned.
+    /// - `Error` → halts AI ticking on the NPC, logs the inconsistency.
+    ///   Used by `enterErrorAIState` slash commands and by the AI tick
+    ///   itself when it detects unrecoverable state.
+    /// - `Idle` → clean fallback that lets the AI tick re-route.
+    ///
+    /// Other state values (Fighting/Leashing/etc.) are rejected with
+    /// a warn log — those are owned by the runtime, not content.
+    SetNpcAiState {
+        entity_tag: String,
+        state: NpcAiStateAction,
+    },
+
     /// Destroy a tagged entity (remove from world).
     DestroyTaggedEntity { entity_tag: String },
 
@@ -287,6 +310,19 @@ pub enum PropertyOp {
     Add,
     Subtract,
     Multiply,
+}
+
+/// Subset of [`cimmeria_entity::cell_entity::AiState`] reachable from
+/// content actions. Other states (Fighting/Leashing/Patrol/Wander/
+/// Investigating/Follow/Dead/Spawning) are owned by the runtime and
+/// must be reached via their behavior-specific paths so the per-state
+/// scratch fields are populated correctly.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum NpcAiStateAction {
+    Idle,
+    Despawning,
+    Submit,
+    Error,
 }
 
 /// Result of executing a single action.

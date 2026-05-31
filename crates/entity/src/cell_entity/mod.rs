@@ -766,21 +766,22 @@ pub struct BandolierItem {
 /// State transitions broadcast `setMovementType` to AoI witnesses so
 /// the client picks the matching animation. Mapping:
 ///
-/// | Server state       | Wire byte                        | Client animation    | Driven? |
-/// |--------------------|----------------------------------|---------------------|---------|
-/// | `Fighting` (entry) | `MobMovementType::CombatAdvance` | Combat-stance walk  | Yes     |
-/// | `Leashing` (entry) | `MobMovementType::Leash`         | Leash-back trot     | Yes     |
-/// | `Idle` (entry)     | None (clears cached state)       | (client keeps prev) | Yes     |
-/// | `Patrol` (entry)   | `MobMovementType::Patrol`        | Patrol walk         | No (Phase 2) |
-/// | `Wander` (entry)   | `MobMovementType::Wander`        | Wander idle-walk    | No (Phase 3) |
-/// | `Follow` (entry)   | `MobMovementType::Follow`        | Follow gait         | No (Phase 6) |
-/// | `Dead` / `Spawning` / `Investigating` / `Despawning` / `Submit` / `Error` | None | (client keeps prev) | (no transition) |
+/// | Server state            | Wire byte                        | Client animation    |
+/// |-------------------------|----------------------------------|---------------------|
+/// | `Fighting` (entry)      | `MobMovementType::CombatAdvance` | Combat-stance walk  |
+/// | `Leashing` (entry)      | `MobMovementType::Leash`         | Leash-back trot     |
+/// | `Patrol` (entry)        | `MobMovementType::Patrol`        | Patrol walk         |
+/// | `Wander` (entry)        | `MobMovementType::Wander`        | Wander idle-walk    |
+/// | `Follow` (entry)        | `MobMovementType::Follow`        | Follow gait         |
+/// | `Investigating` (entry) | `MobMovementType::CombatAdvance` | Alert advance (closest match) |
+/// | `Idle` / `Submit` / `Despawning` (entry) | None (clears cache) | (client keeps prev) |
+/// | `Dead` / `Spawning` / `Error` | None | (client keeps prev — no transition fires from these states) |
 ///
-/// "Driven? = No" rows are encoded but their AI tick handlers haven't
-/// landed yet — broadcasting on entry is the planned mapping; the
-/// state transitions themselves don't fire today. The respawn tick
-/// clears `last_movement_type` on Dead → Idle so the next Fighting
-/// entry re-broadcasts CombatAdvance.
+/// `Investigating` uses `CombatAdvance` because no dedicated
+/// investigate byte exists in `EMobMovementType`; the alert-advance
+/// animation it implies is the closest semantic match.
+/// The respawn tick clears `last_movement_type` on Dead → Idle so
+/// the next behavior-state entry re-broadcasts cleanly.
 ///
 /// `Spawning` is preserved as a variant for completeness with the source
 /// enum but is **never entered at runtime in Rust**. The Python original
