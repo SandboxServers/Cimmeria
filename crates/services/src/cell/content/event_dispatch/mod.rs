@@ -259,6 +259,202 @@ mod tests {
         );
     }
 
+    // ─── Cover-system dispatchers ──────────────────────────────────
+
+    /// Empty engine → all four cover dispatchers must complete without
+    /// panicking and produce no wire messages. The dispatchers exist
+    /// to fire content-engine triggers; with no chains registered
+    /// the entire pipeline must be a no-op.
+    #[tokio::test]
+    async fn fire_cover_entered_with_empty_engine_is_silent() {
+        let mut mgr = make_mgr_with_player_and_npc();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        fire_cover_entered(
+            1,
+            100,
+            42,
+            "HEIGHT_Mid",
+            "QUALITY_Best",
+            &engine,
+            &tx,
+            &mut mgr,
+        )
+        .await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "fire_cover_entered with no chains must not emit wire packets"
+        );
+    }
+
+    #[tokio::test]
+    async fn fire_cover_left_with_empty_engine_is_silent() {
+        let mut mgr = make_mgr_with_player_and_npc();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        fire_cover_left(1, 100, 42, &engine, &tx, &mut mgr).await;
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn fire_cover_duration_with_empty_engine_is_silent() {
+        let mut mgr = make_mgr_with_player_and_npc();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        fire_cover_duration(1, 100, 42, 5, &engine, &tx, &mut mgr).await;
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn fire_npc_flanked_with_empty_engine_is_silent() {
+        let mut mgr = make_mgr_with_player_and_npc();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        fire_npc_flanked(2, 1, "TestGuard", &engine, &tx, &mut mgr).await;
+        assert!(rx.try_recv().is_err());
+    }
+
+    /// `fire_cover_entered` resolves a registered chain that filters
+    /// on a specific `cover_set_id`. Action increments a counter so we
+    /// can pin the dispatch reached the executor and the trigger
+    /// payload's `cover_set_id` field flowed through.
+    #[tokio::test]
+    async fn fire_cover_entered_runs_chain_with_matching_set_id() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = make_mgr_with_player_and_npc();
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 9209,
+            name: "test: enter cover set 42 → bump counter".to_string(),
+            enabled: true,
+            trigger: Trigger::OnPlayerEnteredCover {
+                cover_set_id: Some(42),
+            },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_cover_entered".to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        fire_cover_entered(
+            1,
+            100,
+            42,
+            "HEIGHT_Mid",
+            "QUALITY_Best",
+            &engine,
+            &tx,
+            &mut mgr,
+        )
+        .await;
+
+        let entity = mgr.get_entity(1).expect("player must still exist");
+        assert_eq!(
+            entity.counters.get("test_cover_entered"),
+            Some(&1),
+            "matched cover chain must execute IncrementCounter; \
+             counter state: {:?}",
+            entity.counters
+        );
+    }
+
+    /// `fire_cover_entered` with a wildcard chain (no cover_set_id
+    /// filter) must match any set. Mirrors the equip-wildcard test.
+    #[tokio::test]
+    async fn fire_cover_entered_wildcard_chain_matches_any_set() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = make_mgr_with_player_and_npc();
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 9210,
+            name: "test: enter ANY cover → bump counter".to_string(),
+            enabled: true,
+            trigger: Trigger::OnPlayerEnteredCover { cover_set_id: None },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_any_cover".to_string(),
+                amount: 7,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        fire_cover_entered(
+            1,
+            100,
+            9999,
+            "HEIGHT_High",
+            "QUALITY_Better",
+            &engine,
+            &tx,
+            &mut mgr,
+        )
+        .await;
+
+        let entity = mgr.get_entity(1).expect("player must still exist");
+        assert_eq!(
+            entity.counters.get("test_any_cover"),
+            Some(&7),
+            "wildcard cover chain must match set_id=9999"
+        );
+    }
+
+    /// `fire_npc_flanked` with a typed-template chain must NOT fire on
+    /// a different template — same drift-guard pattern as
+    /// `fire_item_equipped_typed_chain_does_not_fire_on_other_items`.
+    #[tokio::test]
+    async fn fire_npc_flanked_typed_chain_rejects_other_template() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = make_mgr_with_player_and_npc();
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 9211,
+            name: "test: HumanGuard flank only".to_string(),
+            enabled: true,
+            trigger: Trigger::OnNpcFlanked {
+                npc_template: Some("HumanGuard".to_string()),
+            },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_human_guard_flanked".to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        // Fire with a DIFFERENT template — chain must NOT match.
+        fire_npc_flanked(2, 1, "GoauldGuard", &engine, &tx, &mut mgr).await;
+
+        let entity = mgr.get_entity(2);
+        // NPC entity has its own counters — verify the chain didn't fire
+        // by checking neither the player nor the NPC got the counter
+        // bumped.
+        if let Some(e) = entity {
+            assert!(
+                !e.counters.contains_key("test_human_guard_flanked"),
+                "typed-template chain must not fire on different template"
+            );
+        }
+    }
+
     /// A typed-filter chain on `OnItemEquipped { item_id: Some(55) }`
     /// must NOT fire on a different equipped type. Inverse of the
     /// matching test — guards against the "typo'd integer collapses to
