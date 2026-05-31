@@ -78,7 +78,10 @@ pub struct ScoringContext {
 
 impl ScoringContext {
     pub fn new(npc_pos: Vector3, threat_pos: Vector3) -> Self {
-        Self { npc_pos, threat_pos }
+        Self {
+            npc_pos,
+            threat_pos,
+        }
     }
 }
 
@@ -140,8 +143,7 @@ pub fn score_node(
         .max(1e-3);
     let face_x = node.orient.cos();
     let face_z = node.orient.sin();
-    let cos_def =
-        (to_threat_from_node.x * face_x + to_threat_from_node.z * face_z) / to_threat_len;
+    let cos_def = (to_threat_from_node.x * face_x + to_threat_from_node.z * face_z) / to_threat_len;
     let def_cover_score = ((cos_def + 1.0) / 2.0).clamp(0.0, 1.0);
 
     // 3. Offensive-cover term — same geometric shape as def_cover (the
@@ -161,11 +163,7 @@ pub fn score_node(
     //    much of (npc→cover) goes "across" (npc→threat). 1.0 = perpendicular
     //    (high cross), 0.0 = along the threat direction (low cross). Then
     //    invert so low cross = high score.
-    let npc_to_cover = Vector3::new(
-        node.pos.x - ctx.npc_pos.x,
-        0.0,
-        node.pos.z - ctx.npc_pos.z,
-    );
+    let npc_to_cover = Vector3::new(node.pos.x - ctx.npc_pos.x, 0.0, node.pos.z - ctx.npc_pos.z);
     let npc_to_cover_len = (npc_to_cover.x * npc_to_cover.x + npc_to_cover.z * npc_to_cover.z)
         .sqrt()
         .max(1e-3);
@@ -174,8 +172,7 @@ pub fn score_node(
         0.0,
         ctx.threat_pos.z - ctx.npc_pos.z,
     );
-    let npc_to_threat_len = (npc_to_threat.x * npc_to_threat.x
-        + npc_to_threat.z * npc_to_threat.z)
+    let npc_to_threat_len = (npc_to_threat.x * npc_to_threat.x + npc_to_threat.z * npc_to_threat.z)
         .sqrt()
         .max(1e-3);
     let cos_path = (npc_to_cover.x * npc_to_threat.x + npc_to_cover.z * npc_to_threat.z)
@@ -210,8 +207,8 @@ pub fn score_node(
 /// `chunk_ally_counts` is a `chunk_id → count` map of how many allied NPCs
 /// already hold cover in each chunk; the scorer applies a squad-affinity
 /// penalty per ally. Caller computes this once per scoring pass.
-pub fn pick_best<'a>(
-    index: &'a CoverIndex,
+pub fn pick_best(
+    index: &CoverIndex,
     reservations: &CoverReservations,
     ctx: &ScoringContext,
     weights: &CoverWeights,
@@ -289,7 +286,10 @@ mod scoring_tests {
         let good = n(1, 1, 5.0, 0.0, std::f32::consts::PI, CoverQuality::Good);
         let s_best = score_node(&best, &ctx, &weights, 0);
         let s_good = score_node(&good, &ctx, &weights, 0);
-        assert!(s_best > s_good, "Best quality must outscore Good at equal geometry");
+        assert!(
+            s_best > s_good,
+            "Best quality must outscore Good at equal geometry"
+        );
     }
 
     #[test]
@@ -322,8 +322,7 @@ mod scoring_tests {
         let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(10.0, 0.0, 0.0));
         // Both at the same position; differ only in orient direction.
         let facing_threat = n(1, 0, 5.0, 0.0, 0.0, CoverQuality::Best); // orient=0 → faces +X = toward threat
-        let facing_away =
-            n(1, 1, 5.0, 0.0, std::f32::consts::PI, CoverQuality::Best); // orient=π → faces -X = away from threat
+        let facing_away = n(1, 1, 5.0, 0.0, std::f32::consts::PI, CoverQuality::Best); // orient=π → faces -X = away from threat
         let s_facing = score_node(&facing_threat, &ctx, &weights, 0);
         let s_away = score_node(&facing_away, &ctx, &weights, 0);
         assert!(
@@ -341,7 +340,10 @@ mod scoring_tests {
         let s_one_ally = score_node(&node, &ctx, &weights, 1);
         let s_two_allies = score_node(&node, &ctx, &weights, 2);
         assert!(s_solo > s_one_ally, "ally in same chunk must penalise");
-        assert!(s_one_ally > s_two_allies, "second ally must penalise further");
+        assert!(
+            s_one_ally > s_two_allies,
+            "second ally must penalise further"
+        );
     }
 
     #[test]
@@ -355,8 +357,11 @@ mod scoring_tests {
         let idx = CoverIndex::build(nodes);
         let mut r = CoverReservations::new();
         // Pin one of the two reserved by some other entity.
-        r.reserve_for_entity(cimmeria_common::EntityId(99), super::super::types::CoverSlotKey::new(1, 0))
-            .unwrap();
+        r.reserve_for_entity(
+            cimmeria_common::EntityId(99),
+            super::super::types::CoverSlotKey::new(1, 0),
+        )
+        .unwrap();
         let ally_counts = HashMap::new();
         let pick = pick_best(&idx, &r, &ctx, &weights, &ally_counts).expect("must pick something");
         assert_eq!(
@@ -371,14 +376,7 @@ mod scoring_tests {
         let weights = CoverWeights::default();
         let ctx = ScoringContext::new(Vector3::zero(), Vector3::new(10.0, 0.0, 0.0));
         // Only node is 100m away — outside MAX_COVER_DISTANCE.
-        let idx = CoverIndex::build(vec![n(
-            1,
-            0,
-            100.0,
-            100.0,
-            0.0,
-            CoverQuality::Best,
-        )]);
+        let idx = CoverIndex::build(vec![n(1, 0, 100.0, 100.0, 0.0, CoverQuality::Best)]);
         let r = CoverReservations::new();
         let ally_counts = HashMap::new();
         assert!(pick_best(&idx, &r, &ctx, &weights, &ally_counts).is_none());

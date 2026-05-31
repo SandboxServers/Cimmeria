@@ -193,7 +193,10 @@ impl Cover {
     /// Release the cover slot currently held by `entity_id`, if any.
     /// Idempotent — returns the freed slot if there was one.
     pub fn release_for_entity(&self, entity_id: EntityId) -> Option<CoverSlotKey> {
-        let mut r = self.reservations.lock().expect("cover reservations poisoned");
+        let mut r = self
+            .reservations
+            .lock()
+            .expect("cover reservations poisoned");
         r.release_for_entity(entity_id)
     }
 }

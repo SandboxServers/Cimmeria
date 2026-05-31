@@ -326,6 +326,36 @@ VALUES
   (1031, 'advance_step', 639, '2145', '{}', 0, 0),
   (1031, 'set_interaction_type', NULL, 'ArmYourself_AmbernolVial', '{"op": "|", "mask": 1073741824}', 0, 1);
 
+-- ============================================================
+-- COVER-SYSTEM DEMO (issue #209)
+-- ============================================================
+--
+-- Chain 1098 — proof-of-trigger that the OnPlayerEnteredCover wire
+-- path works end-to-end (DB → loader → trigger match → executor).
+-- Fires when ANY player enters ANY cover set inside Castle Cellblock,
+-- gated on the prisoner-retrieval-unit (med-bay drone) mission being
+-- active. The action is a counter bump — observable in the entity's
+-- `counters` map and verifiable from the chain-replay test harness.
+--
+-- Production med-bay gate (the user's stated use case — "gate the drone
+-- attack on player crouching + entering cover") is the natural next
+-- step: once cover_set_ids in the med-bay room are catalogued from the
+-- generated extractor manifest, swap the wildcard NULL for the specific
+-- set_id and add the BSF_CROUCHING state-flag condition to gate on
+-- crouched-and-in-cover. v1 lands the trigger plumbing; the per-room
+-- tuning is a content-author follow-up.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1098, 'COVER DEMO: bump counter on player enter cover', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1098, 'player_entered_cover', NULL, 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1098, 'step_status', 639, '2145', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1098, 'increment_counter', NULL, 'cover_demo_entered', '{"amount": 1}', 0, 0);
+
 -- Chain 1032: interact with Ambernol vial while step 2145 active → pick up, destroy, aggro guard, advance
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1032, '639 - Interact vial: pick up ambernol, trigger guard', 'mission', 639, true, 0);

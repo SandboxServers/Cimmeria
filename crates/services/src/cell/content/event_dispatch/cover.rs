@@ -175,7 +175,8 @@ pub async fn fire_npc_flanked(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(npc_entity_id as i32));
+    let mut ctx =
+        ExecutionContext::new().with_source(cimmeria_common::EntityId(npc_entity_id as i32));
     ctx.set_param("npc_template".to_string(), serde_json::json!(npc_template));
     ctx.set_param("threat_id".to_string(), serde_json::json!(threat_entity_id));
 

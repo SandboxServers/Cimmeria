@@ -20,6 +20,7 @@
 //! - [`reservation`] — `reserve_cover_slot` / `release_cover_slot` honoring
 //!   the `SGWCoverSet.def`'s auto-release-prior semantics.
 
+mod ai_integration;
 mod detection;
 mod loader;
 mod reservation;
@@ -30,6 +31,7 @@ mod types;
 #[cfg(test)]
 mod tests;
 
+pub use ai_integration::{maintain_cover_for_npc, CoverDecision};
 pub use detection::{
     run_detection_tick, CoverDetectionTable, CoverDetectionTick, DurationCoverEvent,
     EnteredCoverEvent, LeftCoverEvent, COVER_DETECTION_TICK_MS, COVER_DURATION_MILESTONES_SECS,
@@ -37,6 +39,8 @@ pub use detection::{
 };
 pub use loader::{load_cover_nodes, load_cover_sets, CoverLoadError};
 pub use reservation::{CoverReservations, ReserveError};
-pub use scoring::{is_flanked, pick_best, score_node, CoverWeights, ScoringContext, MAX_COVER_DISTANCE};
+pub use scoring::{
+    is_flanked, pick_best, score_node, CoverWeights, ScoringContext, MAX_COVER_DISTANCE,
+};
 pub use spatial::CoverIndex;
 pub use types::{Cover, CoverHeight, CoverNode, CoverQuality, CoverSetMeta, CoverSlotKey};

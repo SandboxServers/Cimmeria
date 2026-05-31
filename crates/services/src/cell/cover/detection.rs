@@ -174,17 +174,14 @@ pub fn run_detection_tick(
         let current_sets: HashSet<i32> = chunk_reps.keys().copied().collect();
 
         // Diff against the player's prior state.
-        let state = table
-            .players
-            .entry(*player_id)
-            .or_default();
+        let state = table.players.entry(*player_id).or_default();
 
         // Entered: sets that are current but weren't previously tracked.
         for &cover_set_id in current_sets.difference(&state.current_sets) {
-            let (h, q) = chunk_reps.get(&cover_set_id).copied().unwrap_or((
-                CoverHeight::Low,
-                CoverQuality::None_,
-            ));
+            let (h, q) = chunk_reps
+                .get(&cover_set_id)
+                .copied()
+                .unwrap_or((CoverHeight::Low, CoverQuality::None_));
             tick.entered.push(EnteredCoverEvent {
                 player_id: *player_id,
                 cover_set_id,
@@ -192,13 +189,15 @@ pub fn run_detection_tick(
                 representative_quality: q,
             });
             state.entry_times.insert(cover_set_id, now);
-            state
-                .fired_milestones
-                .insert(cover_set_id, HashSet::new());
+            state.fired_milestones.insert(cover_set_id, HashSet::new());
         }
 
         // Left: sets that were tracked previously but aren't now.
-        let left_now: Vec<i32> = state.current_sets.difference(&current_sets).copied().collect();
+        let left_now: Vec<i32> = state
+            .current_sets
+            .difference(&current_sets)
+            .copied()
+            .collect();
         for cover_set_id in left_now {
             tick.left.push(LeftCoverEvent {
                 player_id: *player_id,
@@ -215,10 +214,7 @@ pub fn run_detection_tick(
                 continue;
             };
             let secs_in = now.duration_since(entry_time).as_secs() as u32;
-            let fired_set = state
-                .fired_milestones
-                .entry(cover_set_id)
-                .or_default();
+            let fired_set = state.fired_milestones.entry(cover_set_id).or_default();
             for &threshold in duration_milestones_secs {
                 if secs_in >= threshold && !fired_set.contains(&threshold) {
                     tick.duration_milestones.push(DurationCoverEvent {

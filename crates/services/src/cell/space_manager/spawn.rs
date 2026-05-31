@@ -106,6 +106,12 @@ impl SpaceManager {
         e.direction = dir;
         e.class_id = super::super::spawner::class_id_for_class(&record.class);
         e.is_player = false;
+        // Default-on cover use for spawned NPCs: the cover scorer + AI
+        // tick respect `use_cover`, and existing mob templates don't
+        // (yet) carry a DB-driven override. Per-template tuning is a
+        // follow-up issue once the `entity_templates.use_cover` column
+        // lands; for v1 every NPC opts in. Issue #209.
+        e.use_cover = true;
         e.level = record.level.unwrap_or(1) as u32;
         e.npc_name = Some(record.template_name.clone());
 

@@ -95,16 +95,18 @@ fn release_slot_idempotent_when_unreserved() {
 fn empty_index_returns_no_hits() {
     let idx = CoverIndex::empty();
     assert_eq!(idx.node_count(), 0);
-    assert!(idx.nearby(&Vector3::new(0.0, 0.0, 0.0), 100.0, None).is_empty());
+    assert!(idx
+        .nearby(&Vector3::new(0.0, 0.0, 0.0), 100.0, None)
+        .is_empty());
 }
 
 #[test]
 fn nearby_returns_sorted_by_distance() {
     // Place 3 nodes at known offsets from origin.
     let nodes = vec![
-        node(1, 0, 5.0, 0.0),   // dist = 5
-        node(1, 1, 20.0, 0.0),  // dist = 20
-        node(1, 2, 10.0, 0.0),  // dist = 10
+        node(1, 0, 5.0, 0.0),  // dist = 5
+        node(1, 1, 20.0, 0.0), // dist = 20
+        node(1, 2, 10.0, 0.0), // dist = 10
     ];
     let idx = CoverIndex::build(nodes);
 
@@ -119,9 +121,9 @@ fn nearby_returns_sorted_by_distance() {
 #[test]
 fn nearby_excludes_nodes_outside_radius() {
     let nodes = vec![
-        node(1, 0, 5.0, 0.0),    // inside r=10
-        node(1, 1, 15.0, 0.0),   // outside r=10
-        node(1, 2, 0.0, 8.0),    // inside r=10
+        node(1, 0, 5.0, 0.0),  // inside r=10
+        node(1, 1, 15.0, 0.0), // outside r=10
+        node(1, 2, 0.0, 8.0),  // inside r=10
     ];
     let idx = CoverIndex::build(nodes);
     let hits = idx.nearby(&Vector3::new(0.0, 0.0, 0.0), 10.0, None);
@@ -129,7 +131,10 @@ fn nearby_excludes_nodes_outside_radius() {
     let ids: Vec<_> = hits.iter().map(|i| idx.node(*i).unwrap().node_id).collect();
     assert!(ids.contains(&0));
     assert!(ids.contains(&2));
-    assert!(!ids.contains(&1), "node at distance 15 must be excluded for radius 10");
+    assert!(
+        !ids.contains(&1),
+        "node at distance 15 must be excluded for radius 10"
+    );
 }
 
 #[test]

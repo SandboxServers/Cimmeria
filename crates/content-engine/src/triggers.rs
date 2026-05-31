@@ -373,8 +373,8 @@ impl Trigger {
                 cover_set_id,
                 seconds,
             } => {
-                let seconds_match = event.params.get("seconds").and_then(|v| v.as_i64())
-                    == Some(*seconds as i64);
+                let seconds_match =
+                    event.params.get("seconds").and_then(|v| v.as_i64()) == Some(*seconds as i64);
                 let set_match = match cover_set_id {
                     Some(expected) => {
                         event.params.get("cover_set_id").and_then(|v| v.as_i64())
