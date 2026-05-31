@@ -1,3 +1,10 @@
+---
+title: "Character Creation"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Character Creation
 
 ## Overview

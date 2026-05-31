@@ -1,3 +1,10 @@
+---
+title: "Container distribution"
+type: how-to
+audience: operators
+last_updated: 2026-05-27
+---
+
 # Container distribution
 
 Self-contained Docker image: server binary + cooked game data + pre-loaded Postgres + s6-overlay supervisor, in one published artifact. The goal is `docker run` and you have a working Cimmeria server — no Rust toolchain, no MSVC, no PowerShell bootstrap, no `.sql` files to load.

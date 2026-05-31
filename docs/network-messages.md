@@ -1,3 +1,10 @@
+---
+title: "Network Messages"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Network Messages
 
 Every action in Stargate Worlds — swinging a weapon, opening a store, dialing a stargate — is a **network message** sent between the client and the server. This page catalogs all of them.

@@ -1,3 +1,10 @@
+---
+title: "Content engine — reference"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Content engine — reference
 
 > **Last updated**: 2026-05-07

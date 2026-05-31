@@ -1,3 +1,10 @@
+---
+title: "Entity Property Synchronization Protocol"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Entity Property Synchronization Protocol
 
 > [!NOTE]

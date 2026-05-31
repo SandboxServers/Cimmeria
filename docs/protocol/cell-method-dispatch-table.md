@@ -1,3 +1,10 @@
+---
+title: "SGWPlayer Exposed CellMethod Dispatch Table"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # SGWPlayer Exposed CellMethod Dispatch Table
 
 Client-to-server cell method calls. Only methods with `<Exposed/>` in the .def file

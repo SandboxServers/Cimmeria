@@ -1,3 +1,10 @@
+---
+title: "Complete Audio Inventory"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Complete Audio Inventory
 
 Comprehensive accounting of every audio file in the Stargate Worlds QA client build — what it is, where it is, whether it's referenced in code, and where the gaps are.

@@ -1,3 +1,10 @@
+---
+title: "Entity Definition (.def) File Guide"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Entity Definition (.def) File Guide
 
 Entity definition files are XML documents that define the complete client-server contract for each entity type in the BigWorld engine. They specify what properties an entity has, what methods can be called on it, and which parts of the entity are visible to which components of the distributed system (cell, base, client). For the Cimmeria project, these files are the authoritative source of truth for the entity system -- they dictate what the server must implement and what the client expects to receive.

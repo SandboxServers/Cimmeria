@@ -1,3 +1,10 @@
+---
+title: "Spawn System"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Spawn System
 
 ## Status: Known/Missing (KM)

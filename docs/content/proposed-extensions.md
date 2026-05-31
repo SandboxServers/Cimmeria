@@ -1,3 +1,10 @@
+---
+title: "Proposed content engine extensions"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Proposed content engine extensions
 
 > **Last updated**: 2026-05-07

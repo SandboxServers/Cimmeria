@@ -1,3 +1,10 @@
+---
+title: "Ring Transport System"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Ring Transport System
 
 Complete analysis of the Ring Transport / Asgard Teleporter system as implemented in the original Stargate Worlds game. Covers server logic, client behavior, database schema, entity definitions, visual effects, and mission integration.

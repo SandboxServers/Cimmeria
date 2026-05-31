@@ -1,3 +1,10 @@
+---
+title: "Cinematic System (Kismet/Matinee Sequences)"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Cinematic System (Kismet/Matinee Sequences)
 
 > **Last updated**: 2026-03-02

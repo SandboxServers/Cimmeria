@@ -53,10 +53,10 @@ See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
 
 ## Testing
 
-The workspace currently carries **1351 `#[test]` / `#[tokio::test]` cases across 215 files**, of which 151 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+The workspace currently carries **2,012 `#[test]` / `#[tokio::test]` cases across 305 files**, of which 155 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
 
 ```bash
-# Unit + non-DB integration (covers ~961 tests):
+# Unit + non-DB integration (covers ~1,854 tests):
 cargo test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher
 

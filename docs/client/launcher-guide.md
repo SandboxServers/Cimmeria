@@ -1,3 +1,10 @@
+---
+title: "Launcher Guide"
+type: how-to
+audience: players, operators
+last_updated: 2026-05-27
+---
+
 # Launcher Guide
 
 How the Stargate Worlds launcher works from the user's seat, and how

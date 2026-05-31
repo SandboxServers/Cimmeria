@@ -1,3 +1,10 @@
+---
+title: "Interaction Flags Reference"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Interaction Flags Reference
 
 Every clickable thing in the game world — NPCs, switches, corpses, vendors, ring transporters — exposes a 64-bit `EInteractionNotificationType` bitmask to the client. The client uses that mask to decide:

@@ -1,3 +1,10 @@
+---
+title: "Python Console Reference"
+type: reference
+audience: engineers, operators
+last_updated: 2026-05-27
+---
+
 # Python Console Reference
 
 Complete reference for the Python console system available in BaseApp and CellApp. Both services expose two interfaces: a **local stdin console** and a **remote TCP console** -- each providing a raw Python REPL with full access to the `Atrea` module and all imported game modules.

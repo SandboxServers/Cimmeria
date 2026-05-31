@@ -1,3 +1,10 @@
+---
+title: "Client Tools"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Client Tools
 
 The Stargate Worlds client installation comes with several tools beyond just the game itself. Here's what each one does and how to use it.

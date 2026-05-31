@@ -1,3 +1,10 @@
+---
+title: "Auto-Cycle (Auto-Fire) Button — Protocol and Behavior Reference"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Auto-Cycle (Auto-Fire) Button — Protocol and Behavior Reference
 
 **Status**: Confirmed  

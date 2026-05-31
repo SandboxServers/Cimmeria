@@ -1,3 +1,10 @@
+---
+title: "Gameplay Systems Dashboard"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Gameplay Systems Dashboard
 
 > **Last updated**: 2026-03-05

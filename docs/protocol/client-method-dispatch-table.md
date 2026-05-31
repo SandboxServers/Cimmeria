@@ -1,3 +1,10 @@
+---
+title: "SGWPlayer Client Method Dispatch Table (Server → Client)"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # SGWPlayer Client Method Dispatch Table (Server → Client)
 
 > **Last updated**: 2026-03-22

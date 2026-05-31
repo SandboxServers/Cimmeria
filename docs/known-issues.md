@@ -1,3 +1,10 @@
+---
+title: "Known Issues"
+type: reference
+audience: engineers, operators
+last_updated: 2026-05-27
+---
+
 # Known Issues
 
 Issues that exist in both the C++ reference emulator and the Rust rewrite, or are client-side limitations.

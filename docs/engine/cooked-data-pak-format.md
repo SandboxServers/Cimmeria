@@ -1,3 +1,10 @@
+---
+title: "Cooked Data PAK File Format"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Cooked Data PAK File Format
 
 BigWorld cooked data files (`.pak`) are ZIP archives containing XML entries that the client

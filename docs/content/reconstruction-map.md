@@ -1,3 +1,10 @@
+---
+title: "Reconstruction Map"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Reconstruction Map
 
 What can be rebuilt from existing data, what has gaps requiring guesswork, and what was

@@ -1,3 +1,10 @@
+---
+title: "Game Data"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Game Data
 
 What content data exists for the Stargate Worlds emulator, where it comes from, and what's missing.

@@ -1,3 +1,10 @@
+---
+title: "Cimmeria Admin Panel"
+type: explanation
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Cimmeria Admin Panel
 
 A standalone web dashboard for administering the Cimmeria server emulator during development. Provides account management, player inspection, live server interaction via the Python console bridge, and database operations through a polished browser-based interface.

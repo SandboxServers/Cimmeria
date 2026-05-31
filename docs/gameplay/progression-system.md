@@ -1,3 +1,10 @@
+---
+title: "Progression System"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Progression System
 
 Covers XP gain, leveling, stat growth, training points, and applied science points. These systems are partially implemented: leveling and ability training work end-to-end, while stat scaling and point granting on level-up are absent.

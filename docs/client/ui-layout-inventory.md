@@ -1,3 +1,10 @@
+---
+title: "SGW Client UI Layout Inventory"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # SGW Client UI Layout Inventory
 
 **150 layout files** across 4 categories. Each module is defined by a `.toc` file that declares which layouts and Lua scripts to load.

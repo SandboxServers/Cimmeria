@@ -1,3 +1,10 @@
+---
+title: "Distributed Checkpointing & Crash Recovery"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Distributed Checkpointing & Crash Recovery
 
 > **Last updated**: 2026-03-01

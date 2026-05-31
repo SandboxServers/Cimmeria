@@ -1,3 +1,10 @@
+---
+title: "Weapon Ammo & Reload"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Weapon Ammo & Reload
 
 > **Last updated**: 2026-04-29

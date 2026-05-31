@@ -1,3 +1,10 @@
+---
+title: "The Crazy Wall -- Content Association Map"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # The Crazy Wall -- Content Association Map
 
 Cross-reference intersection document mapping every connection between every content

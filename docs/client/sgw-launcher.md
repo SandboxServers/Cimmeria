@@ -1,3 +1,10 @@
+---
+title: "SGW Launcher"
+type: explanation
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # SGW Launcher
 
 A standalone Windows .exe that installs the SGW client from an Azure Blob

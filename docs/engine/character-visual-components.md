@@ -1,3 +1,10 @@
+---
+title: "Character Visual Components"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Character Visual Components
 
 > **Last updated**: 2026-03-08

@@ -2,8 +2,8 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-06-12  
-> **Total tests catalogued**: 1351  
+> **Last updated**: 2026-06-12 (catalogue snapshot — see note below)  
+> **Total tests catalogued**: 1,351 *(snapshot; current workspace count is **2,012** — inventory regeneration is pending the next sweep)*  
 > **Companion docs**: [TESTING.md](../../../TESTING.md) (the playbook for *how to write* tests), [maintenance.md](maintenance.md), [review-report.md](review-report.md) (audit findings — owned by the testing-validation-engineer agent)
 
 Catalogue of every test in the workspace. The playbook for *how to write* tests is [TESTING.md](../../../TESTING.md); this directory is the reference complement — what tests already exist, where they live, and what each one asserts.

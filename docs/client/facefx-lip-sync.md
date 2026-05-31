@@ -1,3 +1,10 @@
+---
+title: "FaceFX Lip Sync System"
+type: explanation
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # FaceFX Lip Sync System
 
 Analysis of FaceFX middleware integration in the Stargate Worlds client, how lip sync data is authored, and the current state of the content pipeline.

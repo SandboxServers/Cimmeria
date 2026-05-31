@@ -1,3 +1,10 @@
+---
+title: "Reading Ghidra Decompiler Output of SGW.exe"
+type: how-to
+audience: contributors doing RE
+last_updated: 2026-05-27
+---
+
 # Reading Ghidra Decompiler Output of SGW.exe
 
 This guide covers practical techniques for reading and interpreting Ghidra's decompiler output when analyzing SGW.exe, the Stargate Worlds client binary. SGW.exe is a 32-bit Windows executable built with MSVC (Visual Studio), linked against the BigWorld Engine and Unreal Engine 3 (UE3). Understanding MSVC's code generation patterns and BigWorld's architectural conventions is essential for extracting useful information from the decompilation.

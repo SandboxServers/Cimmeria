@@ -1,3 +1,10 @@
+---
+title: "`bStateField` bit map — what the SGW client actually reads"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # `bStateField` bit map — what the SGW client actually reads
 
 Status: verified against the live `SGW.exe` binary (image base `0x00400000`, ASLR-fixed build).

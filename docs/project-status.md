@@ -1,3 +1,10 @@
+---
+title: "Project Status"
+type: reference
+audience: anyone tracking the project
+last_updated: 2026-05-27
+---
+
 # Project Status
 
 Where the Cimmeria server emulator stands today and what's ahead.

@@ -1,3 +1,10 @@
+---
+title: "Editor Ghidra Map — SGW.exe Function ↔ Reference Source"
+type: reference
+audience: contributors doing RE
+last_updated: 2026-05-27
+---
+
 # Editor Ghidra Map — SGW.exe Function ↔ Reference Source
 
 > **Last updated**: 2026-03-08

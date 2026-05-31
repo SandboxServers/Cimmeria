@@ -1,3 +1,10 @@
+---
+title: "Archetype Content Availability Map"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Archetype Content Availability Map
 
 Per-archetype analysis of what content exists, what is placeholder, and what is missing

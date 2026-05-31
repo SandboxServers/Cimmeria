@@ -1,3 +1,10 @@
+---
+title: "World Entry Phases"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # World Entry Phases
 
 > **Last updated**: 2026-03-08

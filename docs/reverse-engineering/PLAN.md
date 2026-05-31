@@ -1,3 +1,10 @@
+---
+title: "Systematic Reverse Engineering Plan for Stargate Worlds"
+type: explanation
+audience: contributors doing RE
+last_updated: 2026-05-27
+---
+
 # Systematic Reverse Engineering Plan for Stargate Worlds
 
 > [!WARNING]

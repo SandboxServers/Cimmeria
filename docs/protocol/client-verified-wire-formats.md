@@ -1,3 +1,10 @@
+---
+title: "Client-Verified Wire Format Reference"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Client-Verified Wire Format Reference
 
 > **Status**: Complete — all 57 system message IDs (0x00-0x38 + 0xFF) verified against client binary

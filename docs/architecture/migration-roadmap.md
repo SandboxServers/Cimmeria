@@ -1,3 +1,10 @@
+---
+title: "Dependency Migration Roadmap"
+type: explanation
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Dependency Migration Roadmap
 
 > Extracted from CLAUDE.md to keep the operator file concise. Reference this when planning or executing dependency upgrades.

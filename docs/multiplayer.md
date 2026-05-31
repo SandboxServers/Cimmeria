@@ -1,3 +1,10 @@
+---
+title: "Multiplayer / LAN Setup"
+type: how-to
+audience: operators, players
+last_updated: 2026-05-27
+---
+
 # Multiplayer / LAN Setup
 
 ## Key Environment Variable: BASE_EXTERNAL

@@ -1,3 +1,10 @@
+---
+title: "Commands Reference"
+type: reference
+audience: engineers, players
+last_updated: 2026-05-27
+---
+
 # Commands Reference
 
 All 256 slash commands available in Stargate Worlds. Player commands work for everyone; GM/Debug commands require elevated permissions.

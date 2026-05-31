@@ -1,3 +1,10 @@
+---
+title: "Address Map — Key Locations in SGW.exe"
+type: reference
+audience: contributors doing RE
+last_updated: 2026-05-27
+---
+
 # Address Map — Key Locations in SGW.exe
 
 > **Last updated**: 2026-05-13

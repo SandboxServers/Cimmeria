@@ -1,3 +1,10 @@
+---
+title: "Cimmeria Admin API"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Cimmeria Admin API
 
 REST and WebSocket API for administering the Cimmeria server emulator. Built with Axum in the `crates/admin-api/` crate, consumed by the Tauri-based ServerEd desktop app (`frontend/` + `src-tauri/`).

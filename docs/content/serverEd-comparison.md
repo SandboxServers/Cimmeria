@@ -1,3 +1,10 @@
+---
+title: "ServerEd vs. the content engine — gap analysis"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # ServerEd vs. the content engine — gap analysis
 
 > **Last updated**: 2026-05-07

@@ -1,3 +1,10 @@
+---
+title: "Zone Completeness Audit"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Zone Completeness Audit
 
 Per-zone scorecard for the Cimmeria server emulator. Documents what actually exists,

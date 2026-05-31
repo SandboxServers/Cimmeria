@@ -1,3 +1,10 @@
+---
+title: "BigWorld Watcher System"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # BigWorld Watcher System
 
 > **Last updated**: 2026-03-01

@@ -1,3 +1,10 @@
+---
+title: "Launcher Distribution Setup"
+type: how-to
+audience: operators
+last_updated: 2026-05-27
+---
+
 # Launcher Distribution Setup
 
 Operational runbook for everything the launcher reads from or writes to

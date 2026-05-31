@@ -38,9 +38,9 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 152 |
-| Rust tests (`#[test]` / `#[tokio::test]`) | 1351 across 215 files |
-| Live-DB regression guards | 151 |
+| Documentation files | 243 |
+| Rust tests (`#[test]` / `#[tokio::test]`) | 2,012 across 305 files |
+| Live-DB regression guards | 155 |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 
@@ -190,7 +190,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 14 documents.
+How the Cimmeria emulator itself is structured. 23 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -217,7 +217,7 @@ See also: [building.md](building.md), [connection-flow.md](connection-flow.md), 
 
 ### `client/` -- Game Client Analysis
 
-Analysis of game client binaries, launcher tools, and client asset inventories. 6 documents.
+Analysis of game client binaries, launcher tools, and client asset inventories. 8 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|

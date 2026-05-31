@@ -1,3 +1,10 @@
+---
+title: "Mission Chains: Complete Inventory"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Mission Chains: Complete Inventory
 
 > **Last updated**: 2026-05-09

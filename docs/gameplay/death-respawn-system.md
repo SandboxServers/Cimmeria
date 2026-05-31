@@ -1,3 +1,10 @@
+---
+title: "Death & Respawn System"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Death & Respawn System
 
 ## Death Flow

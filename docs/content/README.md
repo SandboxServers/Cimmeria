@@ -1,3 +1,10 @@
+---
+title: "Game Content Data Audit"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Game Content Data Audit
 
 > **Last updated**: 2026-03-01

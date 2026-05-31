@@ -1,3 +1,10 @@
+---
+title: "Black Market (Auction House)"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Black Market (Auction House)
 
 > **Last updated**: 2026-03-01

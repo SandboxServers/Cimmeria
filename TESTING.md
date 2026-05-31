@@ -5,7 +5,7 @@
 > **Companion docs**: [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) (live-DB infra rationale and local setup), [CLAUDE.md](CLAUDE.md) (pre-PR checklist), [.github/copilot-instructions.md](.github/copilot-instructions.md) (review checklist).
 > **See also**: [docs/testing/inventory/README.md](docs/testing/inventory/README.md) — catalogue of every test in the workspace (the "what tests exist" reference; this file is the "how to write a test" playbook).
 
-The Rust workspace currently has **1351 `#[test]` / `#[tokio::test]` cases across 215 files**: 151 are live-DB regression guards (`require_db_or_skip!`) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~68 tests at the current 1351 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a live `postgres:17.9` service container. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace currently has **2,012 `#[test]` / `#[tokio::test]` cases across 305 files**: 155 are live-DB regression guards (`require_db_or_skip!`) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~100 tests at the current 2,012 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a live `postgres:17.9` service container. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 This guide is the playbook for writing tests that survive review and catch real regressions. **Read it before opening a PR that adds tests.**
 
@@ -28,7 +28,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 
 **Where**: `#[cfg(test)] mod tests` in the same file as the code under test, or in a sibling `tests.rs` / `tests/` submodule when the host file approaches the 700-line cap.
 
-**For**: Pure functions, normalizers, parsers, state machines, anything you can exercise without a network socket or a database. ~700 of the 878 tests are this kind.
+**For**: Pure functions, normalizers, parsers, state machines, anything you can exercise without a network socket or a database. ~1,600 of the 2,012 tests are this kind.
 
 **Patterns to follow:**
 - One assertion focus per test. Multi-assertion tests are fine when they pin one invariant from several angles, but if the test name doesn't predict the assertion, split it.
@@ -346,7 +346,7 @@ This section is mined from review comments since the test push began. Each item 
 
 ## Running the test suite
 
-### Locally (no DB — covers ~794 tests)
+### Locally (no DB — covers ~1,854 tests)
 
 ```bash
 cargo nextest run --profile=ci --workspace \
@@ -359,7 +359,7 @@ cargo test --doc -p cimmeria-commands
 
 `cargo test --workspace ...` still works for quick sanity checks if you don't have nextest installed, but CI uses nextest and that's what the JUnit upload to Codecov Test Analytics expects.
 
-### Locally (live DB — adds the 84 `require_db_or_skip!` guards + 3 smokes)
+### Locally (live DB — adds the 155 `require_db_or_skip!` guards + 3 smokes)
 
 Start the bundled Postgres on port 5433 (via `setup.ps1`'s bootstrap), then:
 
@@ -368,7 +368,7 @@ DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
   cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
 ```
 
-The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) — equivalent to the old `cargo test ... -- --test-threads=1`. Without `DATABASE_URL`, those 84 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready.
+The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) — equivalent to the old `cargo test ... -- --test-threads=1`. Without `DATABASE_URL`, those 155 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready.
 
 ### CI (every PR)
 

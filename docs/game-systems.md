@@ -1,3 +1,10 @@
+---
+title: "Game Systems"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Game Systems
 
 Every major game system identified in Stargate Worlds, what it does, and how far along it is in the emulator.

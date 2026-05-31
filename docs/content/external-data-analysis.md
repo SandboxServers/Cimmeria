@@ -1,3 +1,10 @@
+---
+title: "External Game Data Analysis"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # External Game Data Analysis
 
 > **Source**: Analysis of 11 spreadsheets and text files assembled by the external dev team

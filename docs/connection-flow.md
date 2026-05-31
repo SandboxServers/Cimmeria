@@ -1,3 +1,10 @@
+---
+title: "Connection Flow"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Connection Flow
 
 How a player gets from the login screen to running around in the game world. This covers the full journey from clicking "Login" to controlling their character.

@@ -1,3 +1,10 @@
+---
+title: "Loot System"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Loot System
 
 The loot system governs how enemies drop items and currency (naquadah) when killed. It consists of a three-layer architecture: static database definitions, Python def objects loaded from those definitions, and a per-entity interaction handler that manages loot state at runtime.

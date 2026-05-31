@@ -1,3 +1,10 @@
+---
+title: "Mercury Wire Format"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Mercury Wire Format
 
 > [!NOTE]

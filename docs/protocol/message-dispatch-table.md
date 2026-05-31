@@ -1,3 +1,10 @@
+---
+title: "Mercury Message Dispatch Table"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Mercury Message Dispatch Table
 
 > **Last updated**: 2026-03-05

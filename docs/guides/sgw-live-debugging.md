@@ -1,3 +1,10 @@
+---
+title: "Live debugging SGW.exe with x32dbg + Ghidra MCP"
+type: how-to
+audience: contributors doing RE
+last_updated: 2026-05-27
+---
+
 # Live debugging SGW.exe with x32dbg + Ghidra MCP
 
 > **Type**: How-to guide

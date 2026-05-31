@@ -1,3 +1,10 @@
+---
+title: "Entity LOD (Level of Detail) System"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Entity LOD (Level of Detail) System
 
 > **Last updated**: 2026-03-01

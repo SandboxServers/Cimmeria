@@ -1,3 +1,10 @@
+---
+title: "SGWPlayer Exposed BaseMethod Dispatch Table"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # SGWPlayer Exposed BaseMethod Dispatch Table
 
 Client-to-server base method calls for the SGWPlayer entity type (in-world).

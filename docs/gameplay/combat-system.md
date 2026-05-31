@@ -1,3 +1,10 @@
+---
+title: "Combat System"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Combat System
 
 > **Last updated**: 2026-03-01

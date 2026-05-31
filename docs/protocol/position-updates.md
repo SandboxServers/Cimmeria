@@ -1,3 +1,10 @@
+---
+title: "Position Update Protocol"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Position Update Protocol
 
 > [!NOTE]

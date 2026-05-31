@@ -1,3 +1,10 @@
+---
+title: "Colo / single-host auto-update deployment"
+type: how-to
+audience: operators
+last_updated: 2026-05-27
+---
+
 # Colo / single-host auto-update deployment
 
 How to host a publicly-reachable Cimmeria server on a Debian box you don't want to babysit. Goal: bring the box up once, and every time a new `latest-prerelease` lands on GHCR the running container is automatically replaced with the fresh one — DB and all.

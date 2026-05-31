@@ -7,7 +7,7 @@
 
 ## When to update
 
-A PR that adds or removes **≥5% of the workspace test count** (~68 tests against the current 1351 baseline) updates the matching per-crate file under `docs/testing/inventory/` and the totals in [README.md](README.md) in the same PR. Smaller drifts get folded in by periodic sweep updates — running the regenerate scripts below every few weeks is cheaper than reviewing inventory churn on every PR. Renamed a test? Pick it up in the next sweep unless the PR is already in the ≥5% bucket.
+A PR that adds or removes **≥5% of the workspace test count** (~100 tests against the current 2,012 baseline) updates the matching per-crate file under `docs/testing/inventory/` and the totals in [README.md](README.md) in the same PR. Smaller drifts get folded in by periodic sweep updates — running the regenerate scripts below every few weeks is cheaper than reviewing inventory churn on every PR. Renamed a test? Pick it up in the next sweep unless the PR is already in the ≥5% bucket.
 
 Inventory drift up to ~5% is acceptable between sweeps — see [.github/copilot-instructions.md](../../../.github/copilot-instructions.md) and [CLAUDE.md](../../../CLAUDE.md) for the doc-update map. A CI drift-check is **planned but not yet implemented**; for now, reviewers eyeball the diff against the threshold.
 

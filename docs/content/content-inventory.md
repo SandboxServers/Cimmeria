@@ -1,3 +1,10 @@
+---
+title: "Content Inventory — Stargate Worlds Emulator"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Content Inventory — Stargate Worlds Emulator
 
 > **Last updated**: 2026-03-01

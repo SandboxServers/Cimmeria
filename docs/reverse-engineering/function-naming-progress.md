@@ -1,3 +1,10 @@
+---
+title: "Function Naming Progress"
+type: reference
+audience: contributors doing RE
+last_updated: 2026-05-27
+---
+
 # Function Naming Progress
 
 > **Last updated**: 2026-03-01

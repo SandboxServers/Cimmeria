@@ -1,3 +1,10 @@
+---
+title: "Gate Travel System"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Gate Travel System
 
 > **Last updated**: 2026-03-01

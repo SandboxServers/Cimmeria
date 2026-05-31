@@ -1,3 +1,10 @@
+---
+title: "Entity Type Catalog"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Entity Type Catalog
 
 Comprehensive reference for all 18 entity types and 18 interfaces in the Stargate Worlds entity system. Data sourced directly from the `.def` files in `entities/defs/` and `entities/defs/interfaces/`.

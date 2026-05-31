@@ -1,3 +1,10 @@
+---
+title: "Evidence Standards for Reverse Engineering Findings"
+type: reference
+audience: contributors doing RE
+last_updated: 2026-05-27
+---
+
 # Evidence Standards for Reverse Engineering Findings
 
 This document defines the confidence tiers, citation formats, and documentation templates used across all Cimmeria reverse engineering work. Every finding committed to the project must follow these standards so that future contributors can evaluate the reliability of claims and trace them back to primary sources.

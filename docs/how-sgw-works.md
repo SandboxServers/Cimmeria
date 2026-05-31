@@ -1,3 +1,10 @@
+---
+title: "How Stargate Worlds Works"
+type: explanation
+audience: new hires, engineers
+last_updated: 2026-05-27
+---
+
 # How Stargate Worlds Works
 
 Stargate Worlds is built from three major technology layers stacked together, plus custom code by Cheyenne Mountain Entertainment (CME).

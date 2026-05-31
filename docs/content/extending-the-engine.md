@@ -1,3 +1,10 @@
+---
+title: "Extending the content engine"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Extending the content engine
 
 > **Last updated**: 2026-05-07

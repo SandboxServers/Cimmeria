@@ -1,3 +1,10 @@
+---
+title: "Equip-From-Inventory Pattern"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Equip-From-Inventory Pattern
 
 > **Type**: explanation

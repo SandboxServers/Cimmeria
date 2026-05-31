@@ -1,3 +1,10 @@
+---
+title: "Group System"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Group System
 
 > **Last updated**: 2026-03-01

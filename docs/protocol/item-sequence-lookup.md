@@ -1,3 +1,10 @@
+---
+title: "Item sequence lookup — `items_event_sets` archaeology"
+type: reference
+audience: engineers
+last_updated: 2026-05-27
+---
+
 # Item sequence lookup — `items_event_sets` archaeology
 
 **Scope:** Does the original SGW server use `resources.items_event_sets` for per-weapon kismet-sequence overrides (Item\_Equip / Item\_Unequip / Item\_Reload / Item\_Use)?  
