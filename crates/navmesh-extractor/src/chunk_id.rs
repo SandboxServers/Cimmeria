@@ -150,6 +150,37 @@ impl ChunkId {
     pub fn obj_filename(&self) -> String {
         format!("{:08x}o.obj", self.raw)
     }
+
+    /// World-space UE3 cm offset for this chunk's origin.
+    ///
+    /// Each chunk patch is 100 BW units = 10000 UE3 cm wide along both
+    /// horizontal axes (per `deprecated/cpp/src/nav_builder/chunk.cpp:29`
+    /// where `sizeX_ = sizeZ_ = 100` is the **post-divide** BW value).
+    /// Convention here matches the C++ NavBuilder's field names:
+    /// `position_x` indexes along UE3 Y and `position_z` indexes along
+    /// UE3 X — see the module-level doc for the swizzle rationale.
+    ///
+    /// # Important
+    ///
+    /// For SGW cooked maps the actor `Location` field is **already** in
+    /// world-space UE3 cm — the chunk filename just tells NavBuilder
+    /// which patch the OBJ describes; it does NOT contribute a translation
+    /// during geometry extraction. This accessor exists for callers that
+    /// want to render or annotate a chunk's expected bounds, but the
+    /// per-chunk extractor does NOT add this offset to its vertices.
+    /// (Verified against Castle_CellBlock chunk `fffefffd`, whose 524
+    /// StaticMeshActors have Location.X in [−19864, −10148] — the chunk
+    /// at grid position (−2, −3) already lives at UE3 X ≈ −20000.)
+    pub fn position_offset(&self) -> [f32; 3] {
+        const CM_PER_PATCH: f32 = 10000.0;
+        [
+            // BW field name `position_z` corresponds to UE3 X.
+            self.position_z as f32 * CM_PER_PATCH,
+            // BW field name `position_x` corresponds to UE3 Y.
+            self.position_x as f32 * CM_PER_PATCH,
+            0.0,
+        ]
+    }
 }
 
 #[cfg(test)]
@@ -259,6 +290,23 @@ mod tests {
         let path = PathBuf::from(id.obj_filename());
         let decoded = ChunkId::from_obj_path(&path).unwrap();
         assert_eq!(decoded, id);
+    }
+
+    #[test]
+    fn position_offset_origin_is_zero() {
+        let id = ChunkId::from_raw(0x0000_0000);
+        assert_eq!(id.position_offset(), [0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn position_offset_negative_chunk() {
+        // fffefffd → position_x = -3 (UE3 Y), position_z = -2 (UE3 X)
+        // Offset should be UE3 X = -2 * 10000 = -20000, UE3 Y = -30000.
+        let id = ChunkId::from_raw(0xFFFE_FFFD);
+        let off = id.position_offset();
+        assert_eq!(off[0], -20000.0);
+        assert_eq!(off[1], -30000.0);
+        assert_eq!(off[2], 0.0);
     }
 
     /// Tightened format check — pre-tightening, the slice-from-end

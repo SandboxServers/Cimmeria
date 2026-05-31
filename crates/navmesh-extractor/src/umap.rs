@@ -11,11 +11,15 @@ use std::path::{Path, PathBuf};
 
 use crate::ExtractError;
 
-/// Enumerate every `*.umap` file in `map_dir`, sorted by filename for
+/// Enumerate every `*.umap` file in `map_dir` that follows the chunk
+/// filename convention `<MapName>-<HEX8>.umap`, sorted by filename for
 /// deterministic per-chunk output ordering.
 ///
-/// Recursing into subdirectories is **not** done — SGW cooks all chunks
-/// for one map into a single flat directory.
+/// Master `.umap` files that lack the hex suffix (e.g. `Castle_CellBlock.umap`
+/// alongside the chunked-out `Castle_CellBlock-XXXXYYYY.umap` siblings)
+/// are skipped — they're streaming-level placeholders, not chunks with
+/// per-tile geometry. Recursing into subdirectories is **not** done; SGW
+/// cooks all chunks for one map into a single flat directory.
 pub fn enumerate_chunks(map_dir: &Path) -> crate::Result<Vec<PathBuf>> {
     if !map_dir.exists() {
         return Err(ExtractError::Other(format!(
@@ -38,9 +42,23 @@ pub fn enumerate_chunks(map_dir: &Path) -> crate::Result<Vec<PathBuf>> {
                 .map(|x| x.eq_ignore_ascii_case("umap"))
                 .unwrap_or(false)
         })
+        .filter(|p| is_chunk_filename(p))
         .collect();
     chunks.sort();
     Ok(chunks)
+}
+
+/// Return `true` if the file's stem ends with `-<HEX8>` (the SGW
+/// per-chunk naming convention). Files that don't match — such as the
+/// master streaming-level `.umap` for the map — are skipped.
+fn is_chunk_filename(path: &Path) -> bool {
+    let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+        return false;
+    };
+    let Some((_, suffix)) = stem.rsplit_once('-') else {
+        return false;
+    };
+    suffix.len() == 8 && suffix.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// Summary of a single export inside a `.umap` chunk.
@@ -103,11 +121,29 @@ mod tests {
     fn enumerate_skips_non_umap_files() {
         let tmp = tempdir();
         std::fs::write(tmp.join("foo.upk"), b"x").unwrap();
-        std::fs::write(tmp.join("bar.umap"), b"x").unwrap();
+        // Chunk-shaped filename to survive the new chunk-pattern filter.
+        std::fs::write(tmp.join("bar-00000000.umap"), b"x").unwrap();
         std::fs::write(tmp.join("baz.txt"), b"x").unwrap();
         let chunks = enumerate_chunks(&tmp).unwrap();
         assert_eq!(chunks.len(), 1);
-        assert!(chunks[0].file_name().unwrap() == "bar.umap");
+        assert!(chunks[0].file_name().unwrap() == "bar-00000000.umap");
+    }
+
+    /// SGW's per-map directory contains both the chunked tiles
+    /// (`<Name>-<HEX8>.umap`) and a master streaming `.umap` with no hex
+    /// suffix. The orchestrator should only emit OBJs for the tiles —
+    /// the master `.umap` doesn't have per-chunk geometry to extract.
+    #[test]
+    fn enumerate_skips_master_umap_without_hex_suffix() {
+        let tmp = tempdir();
+        std::fs::write(tmp.join("Castle_CellBlock.umap"), b"x").unwrap();
+        std::fs::write(tmp.join("Castle_CellBlock-00000000.umap"), b"x").unwrap();
+        std::fs::write(tmp.join("Castle_CellBlock-FFFEFFFD.umap"), b"x").unwrap();
+        let chunks = enumerate_chunks(&tmp).unwrap();
+        assert_eq!(chunks.len(), 2);
+        assert!(chunks
+            .iter()
+            .all(|p| p.file_name().unwrap() != "Castle_CellBlock.umap"));
     }
 
     /// Minimal tempdir without pulling in the `tempfile` crate — the
