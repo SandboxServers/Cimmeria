@@ -42,6 +42,73 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::ExtractError;
 
+/// Upper bound on `nverts` accepted from a `.nav` header.
+///
+/// Castle Cellblock (the largest shipped navmesh at PR-time) has
+/// `nverts = 2778`, so 1,000,000 is ~360× headroom — well above any
+/// plausible map while still bounding the allocation at
+/// `1_000_000 * 3 * size_of::<u16>() = ~6 MB` for the `verts` vector.
+/// Anything larger is almost certainly hostile input.
+const MAX_NVERTS: u32 = 1_000_000;
+
+/// Upper bound on `npolys`. Castle Cellblock has `npolys = 1479`.
+const MAX_NPOLYS: u32 = 1_000_000;
+
+/// Upper bound on `nvp` (max vertices per polygon). Recast's poly mesh
+/// uses values in the 3..=12 range in practice; cap at 64 as a sanity
+/// limit. Combined with [`MAX_NPOLYS`], the worst-case `polys` Vec is
+/// `1_000_000 * 64 * 2 * 2 = ~256 MB`.
+const MAX_NVP: u32 = 64;
+
+/// Upper bound on `detail_nmeshes`. Per-poly mesh count, so practically
+/// `<= npolys`. Cap at the same 1M to avoid coupling the checks.
+const MAX_DETAIL_NMESHES: u32 = 1_000_000;
+
+/// Upper bound on `detail_nverts`. Castle Cellblock: 6031.
+const MAX_DETAIL_NVERTS: u32 = 10_000_000;
+
+/// Upper bound on `detail_ntris`. Castle Cellblock: 3102.
+const MAX_DETAIL_NTRIS: u32 = 10_000_000;
+
+/// Validate a header count against its documented maximum and return
+/// the value on success. Used by [`XrcNav::read`] to reject hostile
+/// inputs before they reach a multiplication that could overflow into
+/// a too-small `Vec` allocation.
+fn check_count(value: u32, max: u32, field: &'static str) -> crate::Result<u32> {
+    if value > max {
+        return Err(ExtractError::NavHeaderOutOfRange {
+            field,
+            value: value as u64,
+            reason: "exceeds extractor sanity cap",
+        });
+    }
+    Ok(value)
+}
+
+/// Compute `count * stride` as `usize`, failing with a descriptive error
+/// on overflow. Both `count` and `stride` are passed as `u32` to match
+/// the on-disk header types — overflow can only happen on 32-bit hosts
+/// or for adversarially-chosen values, but `checked_mul` makes the
+/// failure mode explicit regardless of platform.
+fn checked_alloc_size(
+    count: u32,
+    stride: u32,
+    field: &'static str,
+) -> crate::Result<usize> {
+    let product = (count as u64)
+        .checked_mul(stride as u64)
+        .ok_or(ExtractError::NavHeaderOutOfRange {
+            field,
+            value: count as u64,
+            reason: "count * stride overflows u64",
+        })?;
+    usize::try_from(product).map_err(|_| ExtractError::NavHeaderOutOfRange {
+        field,
+        value: product,
+        reason: "count * stride does not fit in usize on this target",
+    })
+}
+
 /// In-memory representation of a parsed XRC `.nav` file.
 ///
 /// Field ordering deliberately mirrors the on-disk layout so a writer
@@ -77,14 +144,24 @@ impl XrcNav {
     /// an error if the stream is truncated, malformed, or has trailing
     /// bytes after the documented sections (anything past `detail_tris`
     /// would indicate the format has been extended without our knowing).
+    ///
+    /// # Robustness against hostile input
+    ///
+    /// All header count fields are validated against the `MAX_*` caps
+    /// before any allocation, and every `count * stride` calculation
+    /// goes through [`checked_alloc_size`]. A `.nav` with
+    /// `nverts = 0xFFFFFFFF` is rejected with
+    /// [`ExtractError::NavHeaderOutOfRange`] rather than wrapping the
+    /// multiplication into a tiny `Vec` allocation that subsequent
+    /// reads would walk past.
     pub fn read<R: Read + Seek>(r: &mut R) -> crate::Result<Self> {
         let agent_height = r.read_f32::<LittleEndian>()?;
         let agent_climb = r.read_f32::<LittleEndian>()?;
         let agent_radius = r.read_f32::<LittleEndian>()?;
 
-        let nverts = r.read_u32::<LittleEndian>()?;
-        let npolys = r.read_u32::<LittleEndian>()?;
-        let nvp = r.read_u32::<LittleEndian>()?;
+        let nverts = check_count(r.read_u32::<LittleEndian>()?, MAX_NVERTS, "nverts")?;
+        let npolys = check_count(r.read_u32::<LittleEndian>()?, MAX_NPOLYS, "npolys")?;
+        let nvp = check_count(r.read_u32::<LittleEndian>()?, MAX_NVP, "nvp")?;
         let border_size = r.read_u32::<LittleEndian>()?;
 
         let cs = r.read_f32::<LittleEndian>()?;
@@ -100,11 +177,16 @@ impl XrcNav {
             r.read_f32::<LittleEndian>()?,
         ];
 
-        let mut verts = vec![0u16; (nverts * 3) as usize];
+        let verts_len = checked_alloc_size(nverts, 3, "nverts")?;
+        let mut verts = vec![0u16; verts_len];
         for v in &mut verts {
             *v = r.read_u16::<LittleEndian>()?;
         }
-        let mut polys = vec![0u16; (npolys * nvp * 2) as usize];
+        // polys is npolys * nvp * 2 — fold the two strides into one
+        // multiplication via npolys * (nvp * 2). nvp is already bounded
+        // by MAX_NVP, so `nvp * 2` cannot overflow u32.
+        let polys_len = checked_alloc_size(npolys, nvp.saturating_mul(2), "npolys*nvp*2")?;
+        let mut polys = vec![0u16; polys_len];
         for v in &mut polys {
             *v = r.read_u16::<LittleEndian>()?;
         }
@@ -119,19 +201,34 @@ impl XrcNav {
         let mut areas = vec![0u8; npolys as usize];
         r.read_exact(&mut areas)?;
 
-        let detail_nmeshes = r.read_u32::<LittleEndian>()?;
-        let detail_nverts = r.read_u32::<LittleEndian>()?;
-        let detail_ntris = r.read_u32::<LittleEndian>()?;
+        let detail_nmeshes = check_count(
+            r.read_u32::<LittleEndian>()?,
+            MAX_DETAIL_NMESHES,
+            "detail_nmeshes",
+        )?;
+        let detail_nverts = check_count(
+            r.read_u32::<LittleEndian>()?,
+            MAX_DETAIL_NVERTS,
+            "detail_nverts",
+        )?;
+        let detail_ntris = check_count(
+            r.read_u32::<LittleEndian>()?,
+            MAX_DETAIL_NTRIS,
+            "detail_ntris",
+        )?;
 
-        let mut detail_meshes = vec![0u32; (detail_nmeshes * 4) as usize];
+        let detail_meshes_len = checked_alloc_size(detail_nmeshes, 4, "detail_nmeshes")?;
+        let mut detail_meshes = vec![0u32; detail_meshes_len];
         for v in &mut detail_meshes {
             *v = r.read_u32::<LittleEndian>()?;
         }
-        let mut detail_verts = vec![0.0f32; (detail_nverts * 3) as usize];
+        let detail_verts_len = checked_alloc_size(detail_nverts, 3, "detail_nverts")?;
+        let mut detail_verts = vec![0.0f32; detail_verts_len];
         for v in &mut detail_verts {
             *v = r.read_f32::<LittleEndian>()?;
         }
-        let mut detail_tris = vec![0u8; (detail_ntris * 4) as usize];
+        let detail_tris_len = checked_alloc_size(detail_ntris, 4, "detail_ntris")?;
+        let mut detail_tris = vec![0u8; detail_tris_len];
         r.read_exact(&mut detail_tris)?;
 
         // Confirm no trailing bytes — would indicate a format extension

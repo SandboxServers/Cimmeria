@@ -60,6 +60,20 @@ pub enum ExtractError {
     #[error("Round-trip size mismatch: original={original} bytes, re-emitted={reemitted} bytes")]
     RoundTripSizeMismatch { original: usize, reemitted: usize },
 
+    /// A count field in a `.nav` header is implausibly large — either an
+    /// arithmetic overflow when computing the allocation size, or a value
+    /// that exceeds the documented `MAX_*` caps. Castle Cellblock — the
+    /// largest real navmesh in the SGW data set at the time of writing —
+    /// has `nverts=2778, npolys=1479`, so the caps in `nav_roundtrip.rs`
+    /// (1M each) sit four orders of magnitude above ground truth.
+    /// Triggered exclusively by malformed or hostile input.
+    #[error("Implausible {field} = {value} in .nav header ({reason})")]
+    NavHeaderOutOfRange {
+        field: &'static str,
+        value: u64,
+        reason: &'static str,
+    },
+
     #[error("Other: {0}")]
     Other(String),
 }
