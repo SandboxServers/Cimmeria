@@ -152,13 +152,12 @@ pub async fn dispatch(
                 // dispatch so a trainer's UI opens directly rather than the
                 // generic dialog. A trainer is any NPC whose template_id has
                 // a non-NULL `trainer_ability_list_id` (loaded once at
-                // startup into `space_mgr.template_trainer_lists`). See
-                // issue Phase 5b.
-                // Consolidated routing in #55: this calls
-                // `crate::cell::interactions::trainer::try_open_trainer`,
-                // the single source-of-truth path. The prior
-                // `cell_methods/player/trainer_interaction.rs` was the
-                // same logic copied under a different module — removed.
+                // startup into `space_mgr.template_trainer_lists`).
+                //
+                // `crate::cell::interactions::trainer::try_open_trainer`
+                // is the single source-of-truth path. The fallback below
+                // (`handle_interact`) handles non-trainer interaction types
+                // and the deprecated `NpcInteractionType::Trainer` tag arm.
                 let mut handled = crate::cell::interactions::try_open_trainer(
                     entity_id,
                     target_entity_u32,
@@ -477,17 +476,20 @@ mod tests {
         }
     }
 
-    /// Routing consolidation regression (issue #55 deep dive Item A).
+    /// Routing consolidation regression: exactly ONE onTrainerOpen per
+    /// interact, even when the NPC carries the legacy
+    /// `NpcInteractionType::Trainer` tag in addition to a template-driven
+    /// `trainer_ability_list_id`.
     ///
-    /// Before consolidation there were two code paths claiming to handle
+    /// Pre-consolidation there were two code paths claiming to handle
     /// trainer NPCs:
     /// - `cell_methods/player/interaction.rs::dispatch` (INTERACT arm) →
-    ///   `cell_methods/player/trainer_interaction.rs::try_open_trainer` →
-    ///   correctly built the per-archetype, per-known-set list.
+    ///   the canonical try_open_trainer path → correctly built the
+    ///   per-archetype, per-known-set list.
     /// - `cell::interactions::dispatch::handle_interact` (the fall-through
-    ///   below) → `cell::interactions::trainer::send_trainer_open` →
-    ///   the stub: fabricated the list from `archetype_ability_tree` with
-    ///   everything marked trainable, no per-archetype offering, no
+    ///   below) → a stub at `cell::interactions::trainer::send_trainer_open`
+    ///   that fabricated the list from `archetype_ability_tree` with
+    ///   everything marked trainable: no per-archetype offering, no
     ///   already-known filter, no level/prereq check.
     ///
     /// Both paths fired only if `NpcInteractionType::Trainer { archetype_id }`
@@ -497,9 +499,7 @@ mod tests {
     /// `interaction_type = Trainer { ... }` would silently emit a
     /// double-onTrainerOpen with two different ability lists.
     ///
-    /// This test pins the post-consolidation shape: exactly ONE
-    /// `onTrainerOpen` per interact, regardless of whether the NPC also
-    /// has the `Trainer` tag set. The canonical handler is the
+    /// Post-consolidation: the canonical handler is the
     /// `template_trainer_lists` path; the legacy `NpcInteractionType::Trainer`
     /// arm in `interactions::dispatch::handle_interact` now logs a warning
     /// and returns `None` without sending a duplicate frame.
@@ -575,9 +575,10 @@ mod tests {
         }
         assert_eq!(
             on_trainer_open_count, 1,
-            "trainer interact must emit exactly one onTrainerOpen (issue #55 \
-             consolidation regression — pre-fix both the template-driven path \
-             AND the dead NpcInteractionType::Trainer arm would fire)"
+            "trainer interact must emit exactly one onTrainerOpen — pre- \
+             consolidation both the template-driven path AND the dead \
+             NpcInteractionType::Trainer arm would fire, double-emitting \
+             with two divergent ability lists"
         );
     }
 }

@@ -7,6 +7,6 @@ pub use stargate::*;
 pub use vendor::*;
 
 // Trainer interaction lives in `cimmeria-services` —
-// `crates/services/src/cell/interactions/trainer.rs`. The old stub here
-// (`TrainerSession`, `TrainableAbility`, `TrainerResult` with `todo!()`)
-// was dead code that predated the real implementation. Removed in #55.
+// `crates/services/src/cell/interactions/trainer.rs`. No game-crate-side
+// types are needed; the cell-side handler reads `SpaceManager` state
+// directly.

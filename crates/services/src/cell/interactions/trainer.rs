@@ -20,14 +20,13 @@
 //! - All `prerequisite_abilities` are in the player's known set
 //! - The ability isn't already known
 //!
-//! Wire (issue #55 deep dive, verified):
+//! Wire (verified against pcap + python):
 //!   `INT32 TrainerID, UINT32 count, [N × (INT32 abilityID + UINT8 trainable)], INT32 CostToRespec`
 //!
 //! References:
 //! - `deprecated/python/cell/interactions/AbilityTrainer.py`
 //! - `docs/protocol/client-method-dispatch-table.md:248` (method 113)
 //! - `entities/defs/SGWPlayer.def:1194-1198`, `entities/defs/alias.xml:417-422`
-//! - issue #55 deep dive (2026-05-27)
 
 use tokio::sync::mpsc;
 
@@ -52,7 +51,7 @@ const DEFAULT_RESPEC_COST: i32 = 1000;
 /// `dispatch.rs` `NpcInteractionType::Trainer { archetype_id }` arm was
 /// dead code (never assigned anywhere in production) that called a stub
 /// fabricating a list from `archetype_ability_tree` directly with no
-/// per-known-ability filtering. Consolidated in issue #55.
+/// per-known-ability filtering — now removed.
 pub(crate) async fn try_open_trainer(
     player_entity_id: u32,
     target_entity_id: u32,
@@ -329,7 +328,7 @@ pub(crate) mod tests {
         }
     }
 
-    /// Already-known ability filter regression (issue #55 deep dive).
+    /// Already-known ability filter regression.
     /// An ability that the player already has in `entity.abilities` must
     /// appear in the trainer list with `trainable=0`. Without this guard
     /// the client UI would show the ability as available — the DB UPDATE's

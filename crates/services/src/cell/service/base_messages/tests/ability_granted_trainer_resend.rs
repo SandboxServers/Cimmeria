@@ -1,5 +1,5 @@
-//! Regression for issue #55 Item B — `AbilityGranted` must re-send
-//! `onTrainerOpen` when the player has a trainer pinned.
+//! Regression tests for `AbilityGranted` re-sending `onTrainerOpen` when
+//! the player has a trainer pinned.
 //!
 //! Python parity (`AbilityTrainer.onTrainAbility:128`): after a successful
 //! `trainAbility` round-trip, if the newly-learned ability is a prerequisite
@@ -131,8 +131,8 @@ async fn ability_granted_resends_trainer_open_with_unlocked_prereq() {
 
     let args = on_trainer_open_payload.expect(
         "AbilityGranted while trainer is pinned must re-send onTrainerOpen \
-         (issue #55 Item B regression — without this the dependent ability's \
-         greyed-out state is stale until close+reopen)",
+         — without this the dependent ability's greyed-out state is stale \
+         until close+reopen (Python parity with AbilityTrainer.onTrainAbility)",
     );
 
     // Wire layout: [INT32 TrainerID, UINT32 count, N × (INT32 ability_id +
@@ -167,7 +167,7 @@ async fn ability_granted_resends_trainer_open_with_unlocked_prereq() {
     assert_eq!(
         args[17], 1,
         "598 must be trainable now that prereq 597 is known — without the \
-         resend the client would still show it greyed out (issue #55 Item B)"
+         resend the client would still show it greyed out"
     );
 }
 
