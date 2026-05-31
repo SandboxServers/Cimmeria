@@ -1,9 +1,27 @@
-# Cimmeria Reverse Engineering Documentation
+# Cimmeria Documentation
 
-Server emulator for **Stargate Worlds** (SGW), the cancelled MMO built on BigWorld Technology and the Cheyenne Mountain Entertainment (CME) game framework. The reverse engineering effort targets `sgw.exe` -- the game client binary -- loaded in Ghidra, with the goal of understanding the client-server protocol and game mechanics well enough to build a faithful server replacement.
+**Cimmeria** is a server emulator for *Stargate Worlds* (SGW), the cancelled MMO built on BigWorld Technology and Unreal Engine 3 by Cheyenne Mountain Entertainment (CME). The active server is a Rust workspace under [`crates/`](../crates/); these docs cover its architecture, the wire protocol, game-system internals, the reverse-engineering work that informs both, and the operational runbooks for running it.
 
-The emulator is **playable today**: players can log in, enter the world, interact with NPCs, run quests, and engage in combat. These docs capture everything learned during the RE process and track what remains.
+The emulator is **playable today**: players can log in, enter the world, interact with NPCs, run quests, and engage in combat. See the [project README](../README.md) for the high-level status snapshot.
 
+---
+
+## New Developer Start Here
+
+If you've just cloned the repo, walk through these in order:
+
+1. **[../README.md](../README.md)** — project overview and current status.
+2. **[guides/getting-started.md](guides/getting-started.md)** — first-time setup tutorial: prerequisites, `setup.ps1`, verifying the server is up, connecting the client.
+3. **[building.md](building.md)** — how to build and run the Rust server, including the CI checks.
+4. **[../CLAUDE.md](../CLAUDE.md)** — repo invariants, build memory rules (WSL), pre-PR checklist.
+5. **[../TESTING.md](../TESTING.md)** — test types, picker for which to use when, gotchas mined from PR reviews.
+6. **[connection-flow.md](connection-flow.md)** — end-to-end login + world entry. Once you've followed it through, the architecture starts to make sense.
+7. **[how-sgw-works.md](how-sgw-works.md)** — BigWorld, CME, and how the pieces fit together.
+8. **[troubleshooting.md](troubleshooting.md)** — common first-day problems. Bookmark for when something breaks.
+
+Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** — it covers contribution scope, where to find an approachable first issue, and the difference between content-chain work (no RE required) and protocol work (RE required).
+
+---
 
 ## Quick Stats
 
@@ -49,6 +67,9 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
 | [Project Status](project-status.md) | What works, what is left, and the roadmap |
 | [Gap Analysis](gap-analysis.md) | Comprehensive system-by-system gap analysis with per-feature status tracking |
+| [Known Issues](known-issues.md) | Catalogue of known bugs (client/shared and server-side) with severity, status, and root cause |
+| [Multiplayer / LAN Setup](multiplayer.md) | `BASE_EXTERNAL` env var, LAN configuration, multi-machine play |
+| [Troubleshooting](troubleshooting.md) | Common first-day problems: build OOM, Postgres won't start, `DATABASE_URL` not set, client can't connect, `external/` missing |
 
 ---
 
@@ -218,6 +239,7 @@ Design documents for development and administration tools.
 | Document | Description | Status |
 |----------|-------------|--------|
 | [admin-panel.md](tools/admin-panel.md) | Web admin dashboard: architecture, Flask+React stack, py_client protocol bridge, DB queries, API routes | Complete |
+| [admin-api.md](tools/admin-api.md) | REST + WebSocket admin API: `crates/admin-api/` Axum implementation, routes, auth, Tauri IPC bridge | Complete |
 
 ---
 
@@ -238,6 +260,10 @@ Practical guidance for contributors working on the RE effort or the emulator.
 
 | Document | Description | Status |
 |----------|-------------|--------|
+| [getting-started.md](guides/getting-started.md) | **Start here for new contributors.** First-time tutorial: prerequisites → `setup.ps1` → verifying the server is up → connecting the client → running tests → where to go next | Complete |
+| [add-a-message-handler.md](guides/add-a-message-handler.md) | **How-to.** The most common first server-side feature: route a new client message, decode the payload, do the work, reply. Tied to dispatcher seams, decode helpers, and the test types you need | Complete |
+| [extend-the-content-engine.md](guides/extend-the-content-engine.md) | **How-to (quickstart).** 1-page entry point to adding a new trigger / condition / action. Defers to [content/extending-the-engine.md](content/extending-the-engine.md) for the detailed walkthrough | Complete |
+| [write-a-database-migration.md](guides/write-a-database-migration.md) | **How-to.** Schema vs. migration vs. seed; the `db/scripts/` idempotent pattern; live-DB test discipline; verifying idempotency before pushing | Complete |
 | [re-toolchain-setup.md](guides/re-toolchain-setup.md) | **Start here for RE.** End-to-end setup for Ghidra, x64dbg, MCP bridges, and `.mcp.json`. Includes the `pwsh setup.ps1 -WithReToolchain` automated path. | Complete |
 | [reverse-engineering-with-claude.md](guides/reverse-engineering-with-claude.md) | Workflow doc: when to invoke `game-archaeology-specialist`, Six-Phase mapping to Claude Code sessions, evidence handoff to `documentation-writer`, what NOT to delegate | Complete |
 | [evidence-standards.md](guides/evidence-standards.md) | Confidence levels, citation format, how to document findings | Complete |
@@ -382,10 +408,15 @@ When documenting findings, always state the confidence level and cite the eviden
 
 ## Contributing
 
-When adding or updating documentation:
+For the full contribution guide — scope, code style, PR conventions, where to find a first issue, how content-chain work differs from protocol work — see **[../CONTRIBUTING.md](../CONTRIBUTING.md)** at the repo root.
+
+When adding or updating documentation specifically:
 
 1. Place documents in the correct subdirectory per the map above.
 2. Use relative links for all cross-references within `docs/`.
 3. Tag every claim with a confidence level (HIGH / MEDIUM / LOW).
 4. Include Ghidra addresses or source references where applicable.
 5. Update this README when adding new documents.
+6. Update the doc-update map in [../CLAUDE.md](../CLAUDE.md) so reviewers can verify the right files were touched.
+
+Reporting a security issue? See **[../SECURITY.md](../SECURITY.md)** for the private reporting path. Project conduct expectations are in **[../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)**.

@@ -174,18 +174,41 @@ Test account: **test** / **test** (SHA1 hashed).
 
 [docs/](docs/readme.md) contains **152 documents** covering protocol, gameplay, engine internals, architecture, and reverse engineering.
 
-**Start here:**
+**New here? Start with:**
+
+- [Getting Started](docs/guides/getting-started.md) — first-time setup tutorial (prerequisites → `setup.ps1` → connecting the client → running tests)
+- [Building the Server](docs/building.md) — how-to for cargo builds, the test suite, and CI checks
+- [Troubleshooting](docs/troubleshooting.md) — common first-day problems and fixes
+
+**Understand the codebase:**
+
 - [How SGW Works](docs/how-sgw-works.md) — BigWorld + UE3 hybrid architecture
-- [Game Systems](docs/game-systems.md) — Combat, abilities, stargates, missions, crafting
 - [Connection Flow](docs/connection-flow.md) — End-to-end login and world entry
+- [Game Systems](docs/game-systems.md) — Combat, abilities, stargates, missions, crafting
+- [Service Architecture](docs/architecture/service-architecture.md) — Auth / Base / Cell topology
+
+**Plan and contribute:**
+
 - [Project Status](docs/project-status.md) — What works and what's left
 - [Gap Analysis](docs/gap-analysis.md) — Per-feature completion tracking
-- [Container Distribution](docs/operations/container.md) — `docker run` the published GHCR image, env reference, release model
+- [Contributing](CONTRIBUTING.md) — Contribution scope, code style, PR conventions
 - [Testing Guide](TESTING.md) — Test types, when to use which, common gotchas
+
+**Operate and deploy:**
+
+- [Container Distribution](docs/operations/container.md) — `docker run` the published GHCR image, env reference, release model
 - [Integration Test Infra](docs/architecture/integration-test-infra.md) — Live-DB test setup and rationale
 
 For reverse engineering: [docs/reverse-engineering/](docs/reverse-engineering/PLAN.md)
 
+## Contributing
+
+Contributions welcome. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for scope, code style, PR conventions, and where to find a first issue. The pre-PR checklist lives in [CLAUDE.md](CLAUDE.md); test conventions in [TESTING.md](TESTING.md). Project conduct expectations are in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+## Security
+
+If you find a security issue, **please do not open a public issue**. See [SECURITY.md](SECURITY.md) for the private reporting path.
+
 ## License
 
-This project is a server emulator for research and preservation purposes.
+This project is a server emulator for research and preservation purposes. A formal license file is pending — until it lands, treat the source as available for reading, building, and contributing back, but ask before redistributing.

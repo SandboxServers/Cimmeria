@@ -1,5 +1,8 @@
 # Systematic Reverse Engineering Plan for Stargate Worlds
 
+> [!WARNING]
+> **This plan was written against the deprecated C++ server.** The active server is the Rust workspace under [`crates/`](../../crates/); see [`crates/README.md`](../../crates/README.md) for the current architecture. The RE methodology below (Ghidra annotation scripts, evidence standards, per-system findings) is still load-bearing and continues to drive Rust development, but any references to "the server" in the C++ tense, percentages of "C++ server completion," or planned phases against the deprecated codebase are historical context — not a roadmap for new work.
+
 ## Context
 
 Cimmeria's C++ server infrastructure is 75-80% complete (Mercury networking, entity lifecycle, database, auth, AoI, navigation all working). What's missing is primarily **game logic** (combat completion, crafting, gate travel, minigames, guilds, mail, etc.) and some **BigWorld engine subsystems** (watchers, space slicing, LOD).

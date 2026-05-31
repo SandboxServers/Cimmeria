@@ -12,7 +12,7 @@ type: reference
 
 Bible vocabulary. Every term used in a canonical chapter is defined here, with a cross-reference to the chapter where the term is load-bearing.
 
-This is the **bible-specific** glossary. Project-wide vocabulary (build system, test types, agent personas, CI workflows) lives in [`../glossary.md`](../glossary.md) — the two glossaries cross-reference; terms defined in one are linked in the other.
+This is the **bible-specific** glossary. Project-wide vocabulary (build system, test types, agent personas, CI workflows) is distributed across the top-level docs — see [`../../CLAUDE.md`](../../CLAUDE.md) for repo invariants and build/test conventions, [`../../TESTING.md`](../../TESTING.md) for the test-type taxonomy, and [`../readme.md`](../readme.md) for the document map. A consolidated project-wide glossary may be added later; until then, terms unique to a domain are defined in that domain's reference doc.
 
 If you are reading a chapter and hit a term not defined here, that is a bug. Either the term belongs in this glossary (add it in your next PR) or the chapter is using non-bible vocabulary (replace with a defined term).
 

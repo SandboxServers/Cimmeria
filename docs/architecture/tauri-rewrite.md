@@ -1,8 +1,22 @@
 # Cimmeria Server Rewrite — Rust + Tauri 2.x Architecture
 
+> **Last updated**: 2026-03-15 (HISTORICAL banner added 2026-05-27)
+> **Type**: Explanation (historical design doc)
+> **Audience**: Engineers, project historians
+> **Status**: **HISTORICAL.** This is the original proposal that drove the C++ → Rust rewrite. The rewrite landed. The codebase **is** the Rust server; the C++ implementation now lives under [`deprecated/cpp/`](../../deprecated/cpp/). Read this doc for the *why* — what shape the rewrite took and why each technical decision was made. For **what's running today**, see [`../../crates/README.md`](../../crates/README.md) (crate layout), [`service-architecture.md`](service-architecture.md) (topology), and [`../../README.md`](../../README.md) (project overview).
+>
+> **Where the design diverged from implementation:**
+>
+> - The Tauri shell shipped as separate apps under [`tools/`](../../tools/) (content/scene editors, admin panel) rather than a single bundled binary. The game server runs as `cimmeria-server` standalone.
+> - The "all-in-one process" model softened — Auth/Base/Cell still exist as logically separate services orchestrated together (see [`service-architecture.md`](service-architecture.md)).
+> - The content engine landed as designed; see [`data-driven-content-engine.md`](data-driven-content-engine.md) for the historical design and [`../content/content-engine.md`](../content/content-engine.md) for the live runtime.
+> - The admin UI is the Tauri app under [`tools/`](../../tools/) — Three.js space viewer is still aspirational ([`../tools/admin-panel.md`](../tools/admin-panel.md)).
+
 ## Context
 
 ### What We Have Today
+
+> **Historical context — describes the state before the rewrite.** For current state see [`../../crates/README.md`](../../crates/README.md).
 
 Cimmeria is a server emulator for the Stargate Worlds MMO. It's built in **C++ (~22,000 lines)** with **Python 3.4 scripting (~26,000 lines)** and **PostgreSQL 9.2** for persistence. The server runs as three separate executables (AuthenticationServer, BaseApp, CellApp) that communicate over TCP, while game clients connect via a custom reliable UDP protocol called Mercury.
 

@@ -1,4 +1,11 @@
-# Building Cimmeria
+# Building Cimmeria (deprecated C++ build)
+
+> [!WARNING]
+> **This document covers the retired C++ server build.** The active server is the Rust workspace in [`crates/`](../../crates/), built with Cargo. For current build instructions see [`../building.md`](../building.md), [`bootstrap/README.md`](../../bootstrap/README.md), and [`crates/README.md`](../../crates/README.md).
+>
+> The content below is kept for historical reference only. It describes the Boost 1.55 / OpenSSL 1.0.1e / SOCI 3.2.1 / `W-NG.sln` MSVC toolchain used by the original C++ implementation under [`deprecated/cpp/`](../../deprecated/cpp/). Those binaries do not interoperate with the Rust server and are not built by `setup.ps1`.
+
+---
 
 ## Automated (Recommended)
 
