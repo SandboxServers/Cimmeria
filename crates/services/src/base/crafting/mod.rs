@@ -6,8 +6,6 @@
 //!
 //! Phases 2-5 (craft/research/alloy/reveng activities, full wire emission,
 //! respec) live in the cell layer and will land in follow-up PRs.
-//!
-//! See issue #53 deep dive for the full subsystem design.
 
 pub mod persistence;
 

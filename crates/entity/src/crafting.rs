@@ -4,9 +4,8 @@
 //! state half: the values a character carries between sessions and the values
 //! the cell layer mutates during craft/research/alloy/reveng activity.
 //!
-//! Reference: see the deep dive in issue body for wire format, formulas, and
-//! per-activity logic. Phase 1 just defines the struct + a couple of helpers
-//! and leaves the activity mutators stubbed (those land in Phase 2/3).
+//! Phase 1 just defines the struct + a couple of helpers and leaves the
+//! activity mutators stubbed (those land in Phase 2/3).
 //!
 //! Persistence lives in the services crate (see
 //! `crates/services/src/base/crafting/persistence.rs`); the entity crate is
@@ -38,8 +37,12 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Default)]
 pub struct CraftingState {
     /// Disciplines the player has unlocked, in insertion order. Parallel to
-    /// `sgw_player.discipline_ids`. Iteration order is preserved across
-    /// reloads because `load_from_db` orders by row id / discipline_id.
+    /// `sgw_player.discipline_ids` (a Postgres `integer[]`). Persistence
+    /// lives in `crates/services/src/base/crafting/persistence.rs` —
+    /// `load_crafting_state` reads the array verbatim, so reload order is
+    /// whatever order was on the row when last saved. (The parallel
+    /// expertise rows in `sgw_player_discipline_expertise` are loaded
+    /// `ORDER BY discipline_id`, but those land in `expertise`, not here.)
     pub discipline_ids: Vec<i32>,
 
     /// Expertise per discipline, in `[0, 100]`. Only contains entries for
@@ -57,7 +60,7 @@ pub struct CraftingState {
     /// Spendable Applied Science Points. Each `spendAppliedSciencePoints`
     /// call consumes 1; content-engine actions (level-up, mission rewards)
     /// add to this. Wire syncing uses `onEntityProperty(type=2, value)`,
-    /// not a dedicated message — see the deep dive in #53.
+    /// not a dedicated message.
     pub applied_science_points: i32,
 
     /// Racial paradigm levels, keyed by paradigm id. Discipline unlocks
@@ -107,7 +110,7 @@ impl CraftingState {
 //      a Phase 2 module.
 //
 // Method indices and wire shapes are sourced from
-// `docs/protocol/client-method-dispatch-table.md` and the deep dive in #53.
+// `docs/protocol/client-method-dispatch-table.md`.
 
 /// Serialize the `onUpdateDiscipline` args (method index 136).
 ///

@@ -4,6 +4,20 @@ use crate::cell::space_manager::SpaceManager;
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
+// Static guard: the crafting sub-range must sit inside the ORG_CREATION..=
+// CANCEL_MOVIE outer arm, and the sub-range's own ordering must remain
+// `SPEND_APPLIED_SCIENCE_POINTS ≤ CRAFT ≤ RESPEC_CRAFTING`. A constant
+// renumber that breaks either invariant fails the build instead of
+// silently routing methods to the wrong sub-dispatcher.
+const _: () = assert!(
+    ORG_CREATION <= SPEND_APPLIED_SCIENCE_POINTS
+        && SPEND_APPLIED_SCIENCE_POINTS <= CRAFT
+        && CRAFT <= RESPEC_CRAFTING
+        && RESPEC_CRAFTING <= CANCEL_MOVIE,
+    "crafting sub-range constants must satisfy \
+     ORG_CREATION ≤ SPEND_APPLIED_SCIENCE_POINTS ≤ CRAFT ≤ RESPEC_CRAFTING ≤ CANCEL_MOVIE"
+);
+
 pub async fn dispatch(
     entity_id: u32,
     method_index: u16,
@@ -35,9 +49,9 @@ pub async fn dispatch(
             // it has to start at 95, not 96, because index 95 (the discipline
             // unlock entry point) was silently dropping into the social
             // arm before. Everything else in the outer range routes to
-            // social. Implicit constant ordering:
-            //   ORG_CREATION ≤ SPEND_APPLIED_SCIENCE_POINTS ≤ CRAFT
-            //   ≤ RESPEC_CRAFTING ≤ CANCEL_MOVIE
+            // social. The constant ordering is pinned by a static assertion
+            // below (`crafting_sub_range_is_inside_outer`); if a future
+            // renumber violates it, the build fails.
             if (SPEND_APPLIED_SCIENCE_POINTS..=RESPEC_CRAFTING).contains(&method_index) {
                 super::crafting::dispatch(entity_id, method_index, args, tx, space_mgr).await
             } else {

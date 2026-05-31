@@ -137,6 +137,26 @@ pub async fn load_crafting_state(
 /// *removed* a discipline (e.g., respec — Phase 5). Phase 1 doesn't
 /// remove, but pinning the contract early avoids a behavior change when
 /// respec lands.
+///
+/// **Invariant — must reach `tx.commit()` after the DELETE.** The
+/// expertise table is rewritten from scratch on every save: DELETE all
+/// rows for this player, then re-INSERT the live map. Any early return
+/// added between the DELETE and the final `tx.commit()` would commit
+/// (via Drop-rollback — though tx in sqlx 0.7+ rolls back on drop, not
+/// commits) — to be precise, an `await?` between the DELETE and the
+/// commit would roll back, but if a future refactor swallows the error
+/// and returns Ok(()) without committing, the rollback path leaves a
+/// torn state if subsequent code mutated other tables. Keep the function
+/// linear: any new step belongs either before the DELETE or before the
+/// commit, never between them with an unguarded early return that
+/// short-circuits the commit.
+///
+/// **Missing-player guard.** The UPDATE's `WHERE player_id = $5` matches
+/// 0 rows for a non-existent player. Combined with an empty `expertise`
+/// map, that would commit a no-op transaction and return Ok — silently
+/// persisting nothing. We check `rows_affected()` on the UPDATE and
+/// return `sqlx::Error::RowNotFound` if the player doesn't exist, so
+/// callers see a real failure instead of a phantom success.
 //
 // Phase 1: Phase 2's spendAppliedSciencePoints handler is the first
 // production caller. See note on `load_crafting_state`.
@@ -176,7 +196,7 @@ pub async fn save_crafting_state(
         levels_array.push(level as i32);
     }
 
-    sqlx::query(
+    let update_result = sqlx::query(
         "UPDATE sgw_player \
          SET discipline_ids = $1, \
              blueprint_ids = $2, \
@@ -191,6 +211,19 @@ pub async fn save_crafting_state(
     .bind(player_id)
     .execute(&mut *tx)
     .await?;
+
+    // Silent-data-loss guard: if the player_id doesn't exist, the UPDATE
+    // matches 0 rows and (with an empty expertise map) the rest of the
+    // transaction is a no-op. Without this check, the caller sees Ok(())
+    // and assumes the state was persisted. Returning RowNotFound mirrors
+    // sqlx's idiom for "the row you expected to touch wasn't there".
+    if update_result.rows_affected() == 0 {
+        tracing::error!(
+            player_id,
+            "save_crafting_state: UPDATE matched 0 rows — sgw_player row missing"
+        );
+        return Err(sqlx::Error::RowNotFound);
+    }
 
     sqlx::query("DELETE FROM sgw_player_discipline_expertise WHERE player_id = $1")
         .bind(player_id)

@@ -1,17 +1,16 @@
+use crate::cell::client_methods::player::ON_UPDATE_DISCIPLINE;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
 
 use super::constants::*;
 
-/// Cell-method index for the server→client `onUpdateDiscipline` callback.
-///
-/// Extended encoding (≥ idbase=61), emitted via [`super::super::super::super::mercury::append_entity_method`].
-/// Wire payload: `[disciplineSeqId: i32 LE][expertise: i32 LE]` — 8 bytes.
-/// See `cimmeria_entity::crafting::serialize_on_update_discipline`.
-///
-/// Sourced from `docs/protocol/client-method-dispatch-table.md` row 136.
-const ON_UPDATE_DISCIPLINE: u16 = 136;
+// onUpdateDiscipline (method 136) is the canonical client callback constant
+// in crate::cell::client_methods::player — imported above. Wire payload:
+// `[disciplineSeqId: i32 LE][expertise: i32 LE]` — 8 bytes total. See
+// `cimmeria_entity::crafting::serialize_on_update_discipline` for the
+// serializer; `docs/protocol/client-method-dispatch-table.md` row 136 for
+// the source.
 
 pub async fn dispatch(
     entity_id: u32,
@@ -138,7 +137,8 @@ mod tests {
     /// dispatch fix. The original code routed only `CRAFT..=RESPEC_CRAFTING`
     /// (96..=100) to crafting; index 95 fell through to the social arm,
     /// which has no case for 95 either, so the message silently dropped
-    /// (now-warn-logged after #311, but still wrong-handler).
+    /// (now warn-logged by the unhandled-dispatcher path, but still
+    /// wrong-handler).
     ///
     /// Bug shape: a refactor that re-narrows the crafting sub-range back to
     /// `CRAFT..=RESPEC_CRAFTING` (or sets the lower bound to a constant
@@ -161,7 +161,7 @@ mod tests {
             handled,
             "SPEND_APPLIED_SCIENCE_POINTS (95) must route to the crafting handler \
              and return true. If this fails, the dispatch range in dispatch.rs has \
-             regressed to exclude 95 — see issue #53 deep dive risk callout R6.",
+             regressed to exclude 95.",
         );
     }
 
