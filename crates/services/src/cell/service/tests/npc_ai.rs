@@ -468,18 +468,30 @@ async fn npc_ai_leash_emits_stat_update_then_state_field_to_witnesses() {
         }
     }
 
+    // `npc_ai_leash` emits a `setMovementType(Leash)` broadcast at
+    // the top of the tick, so the leash burst fans out three messages
+    // instead of two. The relative ordering of onStatUpdate and
+    // onStateFieldUpdate is still load-bearing (stats before
+    // state-field flip — pinned below); the setMovementType lands
+    // first since it's emitted up front before the stat/state-field
+    // pair.
+    use crate::cell::cell_methods::being::SET_MOVEMENT_TYPE;
     assert_eq!(
         witness_methods.len(),
-        2,
-        "leash tick must emit exactly 2 witness methods for NPC 200"
+        3,
+        "leash tick must emit exactly 3 witness methods for NPC 200 (setMovementType + onStatUpdate + onStateFieldUpdate)"
     );
     assert_eq!(
-        witness_methods[0], 20,
-        "first witness method must be onStatUpdate (20)"
+        witness_methods[0], SET_MOVEMENT_TYPE,
+        "first witness method must be setMovementType (Leash broadcast)"
     );
     assert_eq!(
-        witness_methods[1], 19,
-        "second witness method must be onStateFieldUpdate (19)"
+        witness_methods[1], 20,
+        "second witness method must be onStatUpdate (20)"
+    );
+    assert_eq!(
+        witness_methods[2], 19,
+        "third witness method must be onStateFieldUpdate (19)"
     );
 }
 

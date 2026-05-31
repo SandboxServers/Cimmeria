@@ -44,6 +44,14 @@ pub struct SpawnRecord {
     /// `NPC_DEFAULT_ABILITY` so we never spawn a defenseless mob by
     /// accident (the Castle_CellBlock guards rely on this fallback).
     pub ability_ids: Vec<i32>,
+    /// Resolved respawn delay in seconds.
+    /// `COALESCE(spawnlist.respawn_secs, entity_templates.respawn_secs)`:
+    /// per-spawn override beats template default. `None` on both → mob
+    /// is one-shot (no respawn — the corpse stays in the world). Set
+    /// to a positive integer to opt in. Zero and negative values from
+    /// the DB are downgraded to `None` at load time so a misconfigured
+    /// row doesn't trigger an instant respawn loop.
+    pub respawn_secs: Option<u32>,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
@@ -84,6 +92,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                t.alignment, t.faction, t.name_id, t.speaker_id, \
                t.static_interaction_sets, t.has_dynamic_properties, \
                t.loot_table_id, \
+               COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
                   FROM resources.ability_set_abilities asa \
@@ -127,10 +136,26 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
             loot_table_id: r.get("loot_table_id"),
             is_stationary: r.get("is_stationary"),
             ability_ids: r.get::<Vec<i32>, _>("ability_ids"),
+            respawn_secs: normalize_respawn_secs(
+                r.try_get::<Option<i32>, _>("respawn_secs").ok().flatten(),
+            ),
         })
         .collect();
 
     Ok(records)
+}
+
+/// Downgrade a raw `respawn_secs` value from the DB to the runtime's
+/// `Option<u32>` shape. Zero and negative values become `None` —
+/// they would schedule an instant-or-past respawn deadline which the
+/// tick would fire on the same frame the NPC died, producing a
+/// runaway loop. Positive values pass through unchanged.
+///
+/// Belt-and-suspenders against the DB-level `CHECK respawn_secs > 0`
+/// constraint: even if a future migration relaxes the check, the
+/// runtime stays defensive.
+pub(crate) fn normalize_respawn_secs(raw: Option<i32>) -> Option<u32> {
+    raw.and_then(|v| if v > 0 { Some(v as u32) } else { None })
 }
 
 /// Spawn NPCs from DB records into all currently-loaded startup spaces.
@@ -219,4 +244,49 @@ pub fn spawn_instance_npcs_from_records(
     }
     tracing::Span::current().record("spawned", count);
     count
+}
+
+#[cfg(test)]
+mod respawn_secs_tests {
+    use super::normalize_respawn_secs;
+
+    /// Positive values pass through unchanged. The DB CHECK constraint
+    /// already enforces this at the boundary; the runtime fallback is
+    /// belt-and-suspenders.
+    #[test]
+    fn positive_values_pass_through() {
+        assert_eq!(normalize_respawn_secs(Some(1)), Some(1));
+        assert_eq!(normalize_respawn_secs(Some(30)), Some(30));
+        assert_eq!(
+            normalize_respawn_secs(Some(i32::MAX)),
+            Some(i32::MAX as u32)
+        );
+    }
+
+    /// Zero must downgrade to None, NOT to `Some(0)`. `Some(0)` would
+    /// stamp `respawn_at = now + 0s`, which the next 1 Hz tick would
+    /// immediately consume — the corpse would respawn the same tick it
+    /// died, looking like the kill never happened.
+    #[test]
+    fn zero_downgrades_to_none() {
+        assert_eq!(normalize_respawn_secs(Some(0)), None);
+    }
+
+    /// Negative values are nonsensical for a duration. Downgrading to
+    /// None matches the zero case so a misconfigured row is treated as
+    /// "no respawn" instead of crashing on the `as u32` cast (which
+    /// would wrap to a huge positive number and effectively make the
+    /// mob never respawn anyway, but loudly).
+    #[test]
+    fn negative_values_downgrade_to_none() {
+        assert_eq!(normalize_respawn_secs(Some(-1)), None);
+        assert_eq!(normalize_respawn_secs(Some(i32::MIN)), None);
+    }
+
+    /// NULL in the DB (None) is the canonical "no respawn" signal and
+    /// must round-trip cleanly.
+    #[test]
+    fn none_passes_through() {
+        assert_eq!(normalize_respawn_secs(None), None);
+    }
 }

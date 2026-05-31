@@ -33,6 +33,7 @@ impl SpaceManager {
         cell_entity.class_id = 0x04; // SGWMob
         cell_entity.is_player = false;
         cell_entity.spawn_position = Some(pos);
+        cell_entity.spawn_direction = Some(dir);
         cell_entity
             .abilities
             .add_ability(super::super::combat::NPC_DEFAULT_ABILITY);
@@ -124,8 +125,17 @@ impl SpaceManager {
         e.body_set = Some(record.body_set.clone());
         e.components = record.components.clone().unwrap_or_default();
         e.spawn_position = Some(pos);
+        e.spawn_direction = Some(dir);
         e.is_stationary = record.is_stationary;
         e.loot_table_id = record.loot_table_id;
+        // `respawn_secs` is the resolved template/spawn precedence
+        // already collapsed by the loader's COALESCE.
+        // `original_interaction_type_flags` snapshots the template's
+        // interaction bits *before* death OR-merges `INT_NormalLoot`,
+        // so the respawn tick can restore the pre-death state cleanly
+        // without dragging the loot bit forward.
+        e.respawn_secs = record.respawn_secs;
+        e.original_interaction_type_flags = record.interaction_type;
 
         // Per-template ability bucket. Empty `ability_ids` (template has
         // no `ability_set_id`) falls back to `NPC_DEFAULT_ABILITY` so

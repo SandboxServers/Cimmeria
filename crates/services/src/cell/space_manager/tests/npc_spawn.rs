@@ -93,6 +93,7 @@ fn spawn_npc_from_record_sets_template_fields() {
         loot_table_id: Some(2),
         is_stationary: false,
         ability_ids: vec![],
+        respawn_secs: None,
     };
 
     mgr.spawn_npc_from_record(600, &record).unwrap();
