@@ -10,7 +10,6 @@ use crate::cell::space_manager::SpaceManager;
 
 use super::dialog::send_dialog_display;
 use super::loot::send_loot_display;
-use super::trainer::send_trainer_open;
 use super::vendor::send_store_open;
 
 /// Maximum distance for NPC interaction (world units).
@@ -143,13 +142,29 @@ pub async fn handle_interact(
             None
         }
         Some(NpcInteractionType::Trainer { archetype_id }) => {
-            tracing::info!(
+            // Trainer NPCs are routed via the canonical
+            // `template_trainer_lists` path in
+            // `cell_methods/player/interaction.rs::dispatch` — it calls
+            // `interactions::try_open_trainer` BEFORE falling through to
+            // `handle_interact`. The `NpcInteractionType::Trainer` variant
+            // isn't assigned anywhere in production content; if it ever is,
+            // the canonical handler keys off
+            // `entity_templates.trainer_ability_list_id` regardless of
+            // this tag, so a fall-through here means the NPC has the tag
+            // set but no list — a content gap, not a routing issue.
+            //
+            // The prior stub at `interactions/trainer.rs::send_trainer_open`
+            // fabricated a list from `archetype_ability_tree` with everything
+            // marked trainable — bypassing per-archetype offering, already-
+            // known, level, and prereq filters. Deleted in #55.
+            tracing::warn!(
                 entity_id,
                 target_entity_id,
                 archetype_id,
-                "interact: trainer → onTrainerOpen"
+                "interact: NpcInteractionType::Trainer assigned but routing \
+                 goes through template_trainer_lists -- check the NPC's \
+                 entity_templates.trainer_ability_list_id"
             );
-            send_trainer_open(entity_id, target_entity_id as i32, archetype_id, tx).await;
             None
         }
         Some(NpcInteractionType::Loot) => {
