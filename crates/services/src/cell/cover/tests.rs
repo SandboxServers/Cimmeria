@@ -2,7 +2,7 @@ use cimmeria_common::{EntityId, Vector3};
 
 use super::reservation::{CoverReservations, ReserveError};
 use super::spatial::CoverIndex;
-use super::types::{CoverHeight, CoverNode, CoverQuality, CoverSlotKey};
+use super::types::{Cover, CoverHeight, CoverNode, CoverQuality, CoverSlotKey};
 
 fn node(chunk_id: i32, node_id: i32, x: f32, z: f32) -> CoverNode {
     CoverNode {
@@ -200,6 +200,130 @@ fn cover_quality_score_factor_ordering() {
     assert!(CoverQuality::Better.score_factor() > CoverQuality::Good.score_factor());
     assert!(CoverQuality::Good.score_factor() > CoverQuality::None_.score_factor());
     assert_eq!(CoverQuality::None_.score_factor(), 0.0);
+}
+
+#[test]
+fn cover_empty_has_no_nodes_no_sets_no_reservations() {
+    let cover = Cover::empty();
+    assert_eq!(cover.node_count(), 0, "empty cover must have 0 nodes");
+    assert_eq!(cover.set_count(), 0, "empty cover must have 0 sets");
+    assert_eq!(
+        cover.release_for_entity(EntityId(42)),
+        None,
+        "release_for_entity on empty must return None"
+    );
+}
+
+#[test]
+fn cover_from_loaded_exposes_sets_and_node_count() {
+    use super::types::CoverSetMeta;
+    let sets = vec![
+        CoverSetMeta {
+            chunk_id: 1,
+            chunk_name: "set/one".to_string(),
+            primary_author: "x".to_string(),
+            has_variant: false,
+            src_pak: "p".to_string(),
+        },
+        CoverSetMeta {
+            chunk_id: 2,
+            chunk_name: "set/two".to_string(),
+            primary_author: "x".to_string(),
+            has_variant: true,
+            src_pak: "p".to_string(),
+        },
+    ];
+    let nodes = vec![node(1, 0, 0.0, 0.0), node(2, 0, 10.0, 0.0)];
+    let cover = Cover::from_loaded(sets, nodes);
+    assert_eq!(cover.set_count(), 2);
+    assert_eq!(cover.node_count(), 2);
+}
+
+#[test]
+fn cover_release_for_entity_round_trips_reserved_slot() {
+    let cover = Cover::from_loaded(Vec::new(), vec![node(7, 3, 0.0, 0.0)]);
+    cover
+        .reservations
+        .lock()
+        .unwrap()
+        .reserve_for_entity(EntityId(99), CoverSlotKey::new(7, 3))
+        .unwrap();
+
+    let freed = cover.release_for_entity(EntityId(99));
+    assert_eq!(
+        freed,
+        Some(CoverSlotKey::new(7, 3)),
+        "release_for_entity must return the prior slot key so callers can \
+         log / re-pick. Pre-fix this could leak; the regression shape is a \
+         silent None return after reservation."
+    );
+    // Idempotent: second call returns None.
+    assert_eq!(cover.release_for_entity(EntityId(99)), None);
+}
+
+#[test]
+fn reservation_iter_yields_every_held_slot() {
+    let mut r = CoverReservations::new();
+    r.reserve_for_entity(EntityId(1), CoverSlotKey::new(10, 0))
+        .unwrap();
+    r.reserve_for_entity(EntityId(2), CoverSlotKey::new(10, 1))
+        .unwrap();
+    r.reserve_for_entity(EntityId(3), CoverSlotKey::new(20, 0))
+        .unwrap();
+
+    let mut pairs: Vec<(EntityId, CoverSlotKey)> = r.iter().collect();
+    pairs.sort_by_key(|(e, _)| e.0);
+    assert_eq!(
+        pairs.len(),
+        3,
+        "iter must enumerate every active reservation"
+    );
+    assert_eq!(pairs[0], (EntityId(1), CoverSlotKey::new(10, 0)));
+    assert_eq!(pairs[1], (EntityId(2), CoverSlotKey::new(10, 1)));
+    assert_eq!(pairs[2], (EntityId(3), CoverSlotKey::new(20, 0)));
+}
+
+#[test]
+fn reservation_release_slot_returns_true_when_held_and_drops_both_maps() {
+    let mut r = CoverReservations::new();
+    let slot = CoverSlotKey::new(5, 0);
+    r.reserve_for_entity(EntityId(10), slot).unwrap();
+    assert!(
+        r.release_slot(slot),
+        "release_slot must return true when the slot was held"
+    );
+    assert!(!r.is_reserved(slot), "slot must be cleared");
+    assert_eq!(
+        r.slot_for_entity(EntityId(10)),
+        None,
+        "entity_to_slot side must also clear — without this the maps drift \
+         and a re-reserve would corrupt accounting"
+    );
+    assert_eq!(r.reserved_count(), 0);
+}
+
+#[test]
+fn spatial_all_nodes_returns_full_slice() {
+    let nodes = vec![node(1, 0, 0.0, 0.0), node(2, 0, 10.0, 0.0)];
+    let idx = CoverIndex::build(nodes);
+    let all = idx.all_nodes();
+    assert_eq!(all.len(), 2);
+    // Sanity check on identity — the slice must be the same data the
+    // build pass took in, not a synthetic placeholder.
+    assert_eq!(all[0].chunk_id, 1);
+    assert_eq!(all[1].chunk_id, 2);
+}
+
+#[test]
+fn spatial_nearby_with_zero_radius_returns_empty() {
+    let idx = CoverIndex::build(vec![node(1, 0, 0.0, 0.0), node(1, 1, 0.5, 0.0)]);
+    // Radius 0 is a degenerate input; the loop's guard short-circuits
+    // to an empty result rather than scanning every cell with `radius_sq = 0`.
+    assert!(idx.nearby(&Vector3::zero(), 0.0, None).is_empty());
+    // Negative radius is the more dangerous degenerate — without the
+    // `radius <= 0.0` early-out the `cell_radius` cast would clamp to
+    // 0 but the dist comparison would always pass for the origin.
+    assert!(idx.nearby(&Vector3::zero(), -1.0, None).is_empty());
 }
 
 #[test]

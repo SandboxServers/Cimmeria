@@ -413,6 +413,133 @@ mod tests {
         );
     }
 
+    /// `fire_cover_left` resolves a registered `OnPlayerLeftCover`
+    /// chain — the matched-positive sibling of the empty-engine
+    /// silence test. Pre-fix the dispatcher could short-circuit on
+    /// an empty `actions` vec without invoking the executor; that
+    /// regression would still pass the silence test but fail this
+    /// one (counter never bumped).
+    #[tokio::test]
+    async fn fire_cover_left_runs_chain_with_matching_set_id() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = make_mgr_with_player_and_npc();
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 0x7000_2A00,
+            name: "test: leave cover set 42 → bump counter".to_string(),
+            enabled: true,
+            trigger: Trigger::OnPlayerLeftCover {
+                cover_set_id: Some(42),
+            },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_cover_left".to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        fire_cover_left(1, 100, 42, &engine, &tx, &mut mgr).await;
+
+        let entity = mgr.get_entity(1).expect("player must still exist");
+        assert_eq!(
+            entity.counters.get("test_cover_left"),
+            Some(&1),
+            "matched OnPlayerLeftCover chain must execute IncrementCounter; \
+             counter state: {:?}",
+            entity.counters,
+        );
+    }
+
+    /// `fire_cover_duration` resolves a registered
+    /// `OnPlayerInCoverDuration` chain. Pin the `seconds` param
+    /// flows through to the trigger payload — without it, chain
+    /// authors couldn't filter on milestone (e.g. only fire at the
+    /// 10-second mark, not the 3-second one).
+    #[tokio::test]
+    async fn fire_cover_duration_runs_chain_with_matching_set_id() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = make_mgr_with_player_and_npc();
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 0x7000_2A01,
+            name: "test: in cover set 42 for any duration → bump counter".to_string(),
+            enabled: true,
+            trigger: Trigger::OnPlayerInCoverDuration {
+                cover_set_id: Some(42),
+                seconds: 10,
+            },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_cover_duration".to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        fire_cover_duration(1, 100, 42, 10, &engine, &tx, &mut mgr).await;
+
+        let entity = mgr.get_entity(1).expect("player must still exist");
+        assert_eq!(
+            entity.counters.get("test_cover_duration"),
+            Some(&1),
+            "matched OnPlayerInCoverDuration chain must execute the action; \
+             counter state: {:?}",
+            entity.counters,
+        );
+    }
+
+    /// `fire_npc_flanked` with a matching typed-template chain MUST
+    /// fire — the rejection-only test below proves the filter works
+    /// in one direction, but a "always reject" bug would also pass
+    /// that test. Pair with this positive-match test.
+    #[tokio::test]
+    async fn fire_npc_flanked_typed_chain_fires_on_matching_template() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = make_mgr_with_player_and_npc();
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 0x7000_2A02,
+            name: "test: HumanGuard flank → bump counter".to_string(),
+            enabled: true,
+            trigger: Trigger::OnNpcFlanked {
+                npc_template: Some("HumanGuard".to_string()),
+            },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_flank_match".to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        // Fire with the matching template — chain MUST resolve and execute.
+        fire_npc_flanked(2, 1, "HumanGuard", &engine, &tx, &mut mgr).await;
+
+        // The flank-dispatcher routes via `npc_entity_id` (the NPC, id=2)
+        // as the action target — counter lands on the NPC, not the player.
+        let npc = mgr.get_entity(2).expect("NPC entity must still exist");
+        assert_eq!(
+            npc.counters.get("test_flank_match"),
+            Some(&1),
+            "matched OnNpcFlanked chain must execute IncrementCounter on \
+             the NPC entity (the trigger source). Counter state: {:?}",
+            npc.counters,
+        );
+    }
+
     /// `fire_npc_flanked` with a typed-template chain must NOT fire on
     /// a different template — same drift-guard pattern as
     /// `fire_item_equipped_typed_chain_does_not_fire_on_other_items`.

@@ -284,6 +284,65 @@ mod ai_integration_tests {
     }
 
     #[test]
+    fn squad_affinity_routes_two_npcs_to_different_chunks() {
+        // Two chunks of equal quality, each with one cover slot. NPC #1
+        // reserves a slot in chunk 1; NPC #2 then calls maintain_cover.
+        // The squad-affinity penalty must steer NPC #2 away from chunk
+        // 1's remaining slots and into chunk 2 instead. Pre-fix (no
+        // affinity), NPC #2 picks whichever chunk happens to score
+        // first on quality+distance — clustering all NPCs into one
+        // chunk and breaking AI-pacing variety.
+        //
+        // Layout: NPC at origin, threat at +X (20,0,0).
+        //  - chunk 1 has two slots — one for NPC #1 (pre-reserved on
+        //    node 0), one open on node 1. Open slot at (5,0,0) is the
+        //    closest cover, best baseline geometry.
+        //  - chunk 2 has one slot at (8,0,0): same orient, worse move.
+        // Without affinity: NPC #2 picks chunk 1's open slot (node 1)
+        // because it has the highest score (closer to NPC).
+        // With affinity (1 ally already in chunk 1 from the pre-seeded
+        // reservation), chunk 1's open slot is penalised and chunk 2
+        // wins. Removing the `ally_counts` wiring in maintain_cover
+        // sends NPC #2 back to chunk 1's open slot.
+        let cover = cover_with(vec![
+            n(1, 0, 5.5, 0.0, 0.0), // chunk 1 slot 0 — reserved by ally
+            n(1, 1, 5.0, 0.0, 0.0), // chunk 1 slot 1 — open, best baseline
+            n(2, 0, 8.0, 0.0, 0.0), // chunk 2 slot — worse baseline
+        ]);
+        // Pin NPC #1 in chunk 1 (on slot 0) so chunk 1 carries an
+        // ally count of 1; node 1 stays available.
+        cover
+            .reservations
+            .lock()
+            .unwrap()
+            .reserve_for_entity(EntityId(1), CoverSlotKey::new(1, 0))
+            .unwrap();
+
+        let dec = maintain_cover_for_npc(
+            EntityId(2),
+            Vector3::zero(),
+            Vector3::new(20.0, 0.0, 0.0),
+            false,
+            true,
+            &cover,
+            &CoverWeights::default(),
+        );
+        match dec {
+            CoverDecision::MoveToCover { slot, .. } => {
+                assert_eq!(
+                    slot.chunk_id, 2,
+                    "squad-affinity must penalise chunk 1 (already has ally) so the \
+                     second NPC routes to chunk 2 instead; got {slot:?}. Removing the \
+                     penalty term in scoring.rs would pick chunk 1 here (the slot is \
+                     marginally closer to the NPC by 1 z-unit but has the affinity \
+                     penalty against it)."
+                );
+            }
+            other => panic!("expected MoveToCover into chunk 2, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn stay_in_cover_when_not_flanked() {
         let cover = cover_with(vec![n(1, 0, 5.0, 0.0, 0.0)]);
         cover

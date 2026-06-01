@@ -28,6 +28,8 @@ mod spatial;
 mod types;
 
 #[cfg(test)]
+mod loader_live_db_tests;
+#[cfg(test)]
 mod tests;
 
 pub use ai_integration::{maintain_cover_for_npc, CoverDecision};

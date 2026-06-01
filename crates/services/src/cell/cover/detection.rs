@@ -441,6 +441,55 @@ mod detection_tests {
     }
 
     #[test]
+    fn cover_detection_tick_is_empty_reports_true_for_default() {
+        let tick = CoverDetectionTick::default();
+        assert!(tick.is_empty());
+    }
+
+    #[test]
+    fn cover_detection_tick_is_empty_false_after_any_event() {
+        let mut tick = CoverDetectionTick::default();
+        tick.entered.push(EnteredCoverEvent {
+            player_id: EntityId(1),
+            cover_set_id: 7,
+            representative_height: CoverHeight::Mid,
+            representative_quality: CoverQuality::Best,
+        });
+        assert!(
+            !tick.is_empty(),
+            "is_empty must flip false when ANY of the three vecs has an entry; \
+             the dispatch hot-loop in service::ticks::cover relies on this gate"
+        );
+    }
+
+    #[test]
+    fn forget_player_removes_tracked_state_explicitly() {
+        let cover = cover_with(vec![node(7, 0, 2.0, 0.0)]);
+        let mut table = CoverDetectionTable::new();
+        let now = Instant::now();
+        run_detection_tick(
+            &cover,
+            &[(EntityId(10), Vector3::new(0.0, 0.0, 0.0))],
+            &mut table,
+            now,
+            5.0,
+            &[],
+        );
+        assert_eq!(table.tracked_player_count(), 1);
+        table.forget_player(EntityId(10));
+        assert_eq!(
+            table.tracked_player_count(),
+            0,
+            "forget_player is the explicit-disconnect callsite hook; the \
+             auto-prune in run_detection_tick only fires when the player \
+             is absent from the next tick's input list. Both paths must \
+             work — pin the explicit one here."
+        );
+        // Idempotent: forgetting an unknown id is a no-op, not a panic.
+        table.forget_player(EntityId(999));
+    }
+
+    #[test]
     fn highest_height_in_chunk_wins_representative() {
         let cover = cover_with(vec![
             CoverNode {
