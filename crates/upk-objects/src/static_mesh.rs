@@ -175,12 +175,56 @@ pub fn deserialize_static_mesh(
         lod_models.push(lod);
     }
 
+    // 8. Validate kDOP triangle indices against the LOD0 vertex count.
+    validate_kdop_indices(
+        &kdop_triangles,
+        lod_models.first().map(|l| l.vertices.len()),
+    )?;
+
     Ok(StaticMesh {
         bounds,
         lod_models,
         internal_version,
         kdop_triangles,
     })
+}
+
+/// Reject the mesh if any kDOP triangle references a vertex index that
+/// falls outside the LOD0 vertex range.
+///
+/// The kDOP wire format stores vertex indices as `u16`, but a UE3
+/// StaticMesh's LOD0 can in principle hold more than 65535 vertices.
+/// When that happens, any kDOP triangle for a high-index vertex had its
+/// wire value silently wrapped at cook time — there's no way to recover
+/// the original index after the fact. The pragmatic choice is to fail
+/// fast at parse so the navmesh extractor doesn't see the same triangle
+/// later via `collision_triangles()` (where it would get silently dropped
+/// and leave a hole in the navmesh).
+///
+/// Lifted into its own function so the regression test can exercise the
+/// guard without constructing a full StaticMesh binary fixture.
+fn validate_kdop_indices(
+    kdop_triangles: &[KdopTriangle],
+    lod0_vert_count: Option<usize>,
+) -> Result<()> {
+    let Some(vert_count) = lod0_vert_count else {
+        // No LOD0 means no vertex buffer to validate against. The
+        // mesh is unusable downstream regardless; let it through so the
+        // caller's "no LOD models" path is the one that fires.
+        return Ok(());
+    };
+    if let Some(bad) = kdop_triangles.iter().find(|t| {
+        (t.v0 as usize) >= vert_count
+            || (t.v1 as usize) >= vert_count
+            || (t.v2 as usize) >= vert_count
+    }) {
+        return Err(ObjectError::InvalidData(format!(
+            "kDOP triangle ({}, {}, {}) references vertex index >= LOD0 vertex count {} \
+             — likely a u16 index wrap on a >65535-vertex mesh",
+            bad.v0, bad.v1, bad.v2, vert_count
+        )));
+    }
+    Ok(())
 }
 
 impl StaticMesh {
