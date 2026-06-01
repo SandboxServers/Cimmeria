@@ -46,6 +46,23 @@ pub(super) fn begin_trading(
             return false;
         }
     };
+    // Symmetric `is_player` gate — we already reject non-player partners
+    // below, and the same gate must apply to the caller. Without this,
+    // any non-player entity that gets routed into this handler (e.g.,
+    // an NPC granted a player_id by a content-engine bug, or a future
+    // entity type that reuses cell methods) could open a trade session
+    // from the server side. Python only reached this code path from
+    // SGWPlayer.def-dispatched methods, so the guarantee was structural;
+    // our Rust split routes inbound methods through `dispatch` which
+    // does NOT enforce that structurally, so we enforce it here.
+    if !me.is_player {
+        tracing::warn!(
+            entity_id,
+            partner_entity_id,
+            "beginTrading: caller is not a player — rejecting"
+        );
+        return false;
+    }
     if me.trade_partner_entity_id.is_some() {
         tracing::warn!(
             entity_id,
@@ -144,9 +161,17 @@ pub(super) async fn apply_proposal(
     }
 
     // De-duplicate item instances (Trade.py:53-58). A client sending the
-    // same instance twice gets the second occurrence dropped silently.
-    // We DON'T validate item ownership / canSell() here — base-side
-    // commit re-validates against the DB inside the FOR UPDATE
+    // same instance twice gets the second occurrence dropped silently —
+    // INTENTIONAL Python parity, not an oversight. The partner's UI will
+    // show fewer items than the actor's proposal claimed (the actor sent
+    // `[A, A, A]` but the partner sees `[A]` after dedup); this is fine
+    // because (a) the partner only commits after they personally lock,
+    // so the visible-count mismatch is observable before any goods move,
+    // and (b) the base-side atomic commit also dedups in `lock_items`
+    // and rejects duplicate instance_ids outright — so even if a
+    // hostile client managed to bypass cell-side dedup, the swap cannot
+    // double-spend. We DON'T validate item ownership / canSell() here —
+    // base-side commit re-validates against the DB inside the FOR UPDATE
     // transaction, which is the only TOCTOU-safe point to check.
     let mut seen = HashSet::with_capacity(new_proposal.items.len());
     let deduped_items: Vec<_> = new_proposal
@@ -239,6 +264,14 @@ pub async fn cancel_trade_on_disconnect(
 /// Whether the two participants are within `MAX_INTERACT_DISTANCE` AND
 /// in the same space. `false` whenever either side cannot be looked up
 /// (treat missing entities as out-of-range so we tear down cleanly).
+///
+/// Distance is 3D (includes Y/elevation) by convention — matches Python
+/// `Atrea.utils.distance3d` used throughout the original cell, and the
+/// same metric vendor / dialog / loot interactions use. A player on a
+/// balcony 4m above another player is "in range" if they're within
+/// 3m horizontally; a player on a balcony 6m above is not. Switching
+/// to a 2D (horizontal-only) check would diverge from every other
+/// interaction range gate in the codebase — out of scope for this PR.
 pub(super) fn partners_in_range(
     entity_id: u32,
     partner_entity_id: i32,

@@ -454,6 +454,131 @@ async fn cannot_trade_with_npc() {
     assert!(mgr.get_entity(1).unwrap().trade_partner_entity_id.is_none());
 }
 
+/// Clara G12 regression guard: `begin_trading` must reject when the
+/// CALLER is not a player, not just when the partner isn't. Without
+/// the symmetric `is_player` gate, an NPC entity that ever gets a
+/// `player_id` assigned (content-engine bug, future hybrid entity type)
+/// could open a trade session server-side from the caller direction.
+/// The partner check is structural; the caller check has to be
+/// enforced here because cell-method dispatch doesn't structurally
+/// guarantee the source entity is a player.
+///
+/// Revert-verifier: removing the `if !me.is_player { return false; }`
+/// block in `begin_trading` lets this test pass when it shouldn't —
+/// the partner-entity gets wired into a trade with an NPC caller.
+#[tokio::test]
+async fn cannot_initiate_trade_as_npc() {
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+    // Demote the CALLER (entity 1) to a non-player. Partner is still a player.
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = false;
+    }
+    let (tx, _rx) = mpsc::channel(8);
+    let args = build_trade_request_args(2, &TradeProposal::default());
+    dispatch(1, TRADE_REQUEST, &args, &tx, &mut mgr).await;
+    assert!(
+        mgr.get_entity(1).unwrap().trade_partner_entity_id.is_none(),
+        "non-player caller MUST NOT open a trade session — without the \
+         symmetric is_player check, an NPC with a player_id could become \
+         the source of a trade. Revert the `if !me.is_player` guard in \
+         begin_trading() to fail this test."
+    );
+    assert!(
+        mgr.get_entity(2).unwrap().trade_partner_entity_id.is_none(),
+        "partner must NOT be wired into a trade session when the caller \
+         was rejected"
+    );
+}
+
+/// Clara G10 regression guard: a proposal containing the same item
+/// instance twice gets the second occurrence silently dropped (Python
+/// `Trade.py:53-58` parity). The cell-side dedup is the first line of
+/// defense; base-side `lock_items` rejects duplicates with
+/// `TradeAbort::DuplicateInstance` as a second line.
+///
+/// The behavior the client sees: the actor's proposal claims
+/// `[A, A]` but the actor's saved state contains only `[A]`. The
+/// partner's `onTradeState` packet reflects the deduped list. This is
+/// INTENTIONAL and matches Python — see the design note on
+/// `apply_proposal` in `state.rs`.
+///
+/// Revert-verifier: replacing the `HashSet`-based filter with a
+/// straight `clone()` causes the proposal to retain two `instance_id=42`
+/// entries and trips this assertion.
+#[tokio::test]
+async fn apply_proposal_dedups_duplicate_instance_ids() {
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+
+    let (tx, mut rx) = mpsc::channel(64);
+    // Open a session first.
+    dispatch(
+        1,
+        TRADE_REQUEST,
+        &build_trade_request_args(
+            2,
+            &TradeProposal {
+                version: 1,
+                ..Default::default()
+            },
+        ),
+        &tx,
+        &mut mgr,
+    )
+    .await;
+    while rx.try_recv().is_ok() {}
+
+    // Update proposal with two copies of the same instance id.
+    let dup_proposal = TradeProposal {
+        version: 2,
+        items: vec![
+            TradeItem {
+                instance_id: 42,
+                slot_id: 0,
+            },
+            TradeItem {
+                instance_id: 42,
+                slot_id: 1, // different slot but same instance
+            },
+            TradeItem {
+                instance_id: 99,
+                slot_id: 2,
+            },
+        ],
+        cash: 0,
+        lock_state: ETRADELOCKSTATE_NONE,
+    };
+    dispatch(
+        1,
+        TRADE_UPDATE_PROPOSAL,
+        &build_trade_request_args(2, &dup_proposal),
+        &tx,
+        &mut mgr,
+    )
+    .await;
+
+    let saved_items = mgr
+        .get_entity(1)
+        .unwrap()
+        .trade_proposal
+        .as_ref()
+        .unwrap()
+        .items
+        .clone();
+    assert_eq!(
+        saved_items.len(),
+        2,
+        "duplicate instance_id=42 must be dropped — proposal claimed 3 \
+         items, post-dedup we expect 2 (instance_id 42 and 99). Got \
+         {saved_items:?}"
+    );
+    // Order is preserved (first-occurrence wins).
+    assert_eq!(saved_items[0].instance_id, 42);
+    assert_eq!(saved_items[0].slot_id, 0);
+    assert_eq!(saved_items[1].instance_id, 99);
+}
+
 /// `cancel_trade_on_disconnect` MUST be a no-op when the disconnecting
 /// entity has no open trade — otherwise every logout would spuriously
 /// clear non-existent partner state and emit Cancelled to nobody.

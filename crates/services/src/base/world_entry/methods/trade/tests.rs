@@ -25,10 +25,34 @@ use crate::test_support::TestTransport;
 /// player_load +0x0D00 / sync_bandolier +0x0E00).
 const TEST_BASE: i32 = 0x7000_0F00;
 
-/// Tradeable item type id. Resources.items must have a row for this
-/// id — picked from the live DB seed.
-const WEAPON_TYPE_ID: i32 = 3241;
-const ANOTHER_TYPE_ID: i32 = 3242;
+/// Pull two distinct, currently-existing item type ids from the live
+/// `resources.items` seed at runtime. The previous shape pinned
+/// `weapon_type_id = 3241` / `another_type_id = 3242` as constants —
+/// per TESTING.md, this is exactly the kind of seed-id hard-coding
+/// that broke PRs #160 / #158 / #162 when the seed shifted, and
+/// CodeRabbit flagged it on PR #438. The runtime lookup picks the
+/// two lowest-numbered ids so the result is stable enough to be
+/// deterministic across CI runs but not so brittle that a seed
+/// edit moves them.
+///
+/// Returns `(first, second)` in ascending order. Panics if the
+/// seed has fewer than two rows — that's a precondition failure
+/// for any trade test, since both sides of a trade need to offer
+/// distinct items to exercise the swap.
+async fn tradeable_type_ids(pool: &PgPool) -> (i32, i32) {
+    let ids: Vec<i32> = sqlx::query_scalar(
+        "SELECT item_id FROM resources.items ORDER BY item_id ASC LIMIT 2",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("query resources.items seed for tradeable type ids");
+    assert!(
+        ids.len() >= 2,
+        "trade tests require at least 2 rows in `resources.items` — \
+         the live-DB seed must be loaded before running this test"
+    );
+    (ids[0], ids[1])
+}
 
 async fn cleanup(pool: &PgPool, accounts: &[i32], players: &[i32]) {
     for &p in players {
@@ -165,6 +189,7 @@ fn make_state(
 #[tokio::test]
 async fn commit_swaps_items_atomically() {
     let pool = require_db_or_skip!();
+    let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(0);
     cleanup(
         &pool,
@@ -175,8 +200,8 @@ async fn commit_swaps_items_atomically() {
 
     insert_account_and_player(&pool, f.account_a, f.player_a, 1_000, "a").await;
     insert_account_and_player(&pool, f.account_b, f.player_b, 500, "b").await;
-    let item_a = insert_item(&pool, f.player_a, WEAPON_TYPE_ID, INV_MAIN, 0, false).await;
-    let item_b = insert_item(&pool, f.player_b, ANOTHER_TYPE_ID, INV_MAIN, 0, false).await;
+    let item_a = insert_item(&pool, f.player_a, weapon_type_id, INV_MAIN, 0, false).await;
+    let item_b = insert_item(&pool, f.player_b, another_type_id, INV_MAIN, 0, false).await;
 
     let (transport, e2a, conn) = make_state(f.entity_a, f.entity_b);
     let db = Some(Arc::new(pool.clone()));
@@ -226,6 +251,7 @@ async fn commit_swaps_items_atomically() {
 #[tokio::test]
 async fn commit_rolls_back_on_insufficient_cash() {
     let pool = require_db_or_skip!();
+    let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(200);
     cleanup(
         &pool,
@@ -236,8 +262,8 @@ async fn commit_rolls_back_on_insufficient_cash() {
 
     insert_account_and_player(&pool, f.account_a, f.player_a, 10, "a").await; // poor
     insert_account_and_player(&pool, f.account_b, f.player_b, 500, "b").await;
-    let item_a = insert_item(&pool, f.player_a, WEAPON_TYPE_ID, INV_MAIN, 0, false).await;
-    let item_b = insert_item(&pool, f.player_b, ANOTHER_TYPE_ID, INV_MAIN, 0, false).await;
+    let item_a = insert_item(&pool, f.player_a, weapon_type_id, INV_MAIN, 0, false).await;
+    let item_b = insert_item(&pool, f.player_b, another_type_id, INV_MAIN, 0, false).await;
 
     let (transport, e2a, conn) = make_state(f.entity_a, f.entity_b);
     let db = Some(Arc::new(pool.clone()));
@@ -278,6 +304,7 @@ async fn commit_rolls_back_on_insufficient_cash() {
 #[tokio::test]
 async fn commit_rolls_back_on_missing_item() {
     let pool = require_db_or_skip!();
+    let (_weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(400);
     cleanup(
         &pool,
@@ -288,7 +315,7 @@ async fn commit_rolls_back_on_missing_item() {
 
     insert_account_and_player(&pool, f.account_a, f.player_a, 100, "a").await;
     insert_account_and_player(&pool, f.account_b, f.player_b, 100, "b").await;
-    let item_b = insert_item(&pool, f.player_b, ANOTHER_TYPE_ID, INV_MAIN, 0, false).await;
+    let item_b = insert_item(&pool, f.player_b, another_type_id, INV_MAIN, 0, false).await;
 
     let (transport, e2a, conn) = make_state(f.entity_a, f.entity_b);
     let db = Some(Arc::new(pool.clone()));
@@ -327,6 +354,7 @@ async fn commit_rolls_back_on_missing_item() {
 #[tokio::test]
 async fn commit_rolls_back_on_bound_item() {
     let pool = require_db_or_skip!();
+    let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(600);
     cleanup(
         &pool,
@@ -337,8 +365,8 @@ async fn commit_rolls_back_on_bound_item() {
 
     insert_account_and_player(&pool, f.account_a, f.player_a, 0, "a").await;
     insert_account_and_player(&pool, f.account_b, f.player_b, 0, "b").await;
-    let bound_item = insert_item(&pool, f.player_a, WEAPON_TYPE_ID, INV_MAIN, 0, true).await;
-    let item_b = insert_item(&pool, f.player_b, ANOTHER_TYPE_ID, INV_MAIN, 0, false).await;
+    let bound_item = insert_item(&pool, f.player_a, weapon_type_id, INV_MAIN, 0, true).await;
+    let item_b = insert_item(&pool, f.player_b, another_type_id, INV_MAIN, 0, false).await;
 
     let (transport, e2a, conn) = make_state(f.entity_a, f.entity_b);
     let db = Some(Arc::new(pool.clone()));
@@ -381,6 +409,7 @@ async fn commit_rolls_back_on_bound_item() {
 #[tokio::test]
 async fn commit_rolls_back_on_buyback_bag_item() {
     let pool = require_db_or_skip!();
+    let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(800);
     cleanup(
         &pool,
@@ -391,8 +420,8 @@ async fn commit_rolls_back_on_buyback_bag_item() {
 
     insert_account_and_player(&pool, f.account_a, f.player_a, 0, "a").await;
     insert_account_and_player(&pool, f.account_b, f.player_b, 0, "b").await;
-    let buyback_item = insert_item(&pool, f.player_a, WEAPON_TYPE_ID, INV_BUYBACK, 0, false).await;
-    let item_b = insert_item(&pool, f.player_b, ANOTHER_TYPE_ID, INV_MAIN, 0, false).await;
+    let buyback_item = insert_item(&pool, f.player_a, weapon_type_id, INV_BUYBACK, 0, false).await;
+    let item_b = insert_item(&pool, f.player_b, another_type_id, INV_MAIN, 0, false).await;
 
     let (transport, e2a, conn) = make_state(f.entity_a, f.entity_b);
     let db = Some(Arc::new(pool.clone()));
@@ -436,6 +465,7 @@ async fn commit_rolls_back_on_buyback_bag_item() {
 #[tokio::test]
 async fn commit_rolls_back_on_duplicate_instance_in_proposal() {
     let pool = require_db_or_skip!();
+    let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(1000);
     cleanup(
         &pool,
@@ -446,8 +476,8 @@ async fn commit_rolls_back_on_duplicate_instance_in_proposal() {
 
     insert_account_and_player(&pool, f.account_a, f.player_a, 0, "a").await;
     insert_account_and_player(&pool, f.account_b, f.player_b, 0, "b").await;
-    let item_a = insert_item(&pool, f.player_a, WEAPON_TYPE_ID, INV_MAIN, 0, false).await;
-    let item_b = insert_item(&pool, f.player_b, ANOTHER_TYPE_ID, INV_MAIN, 0, false).await;
+    let item_a = insert_item(&pool, f.player_a, weapon_type_id, INV_MAIN, 0, false).await;
+    let item_b = insert_item(&pool, f.player_b, another_type_id, INV_MAIN, 0, false).await;
 
     let (transport, e2a, conn) = make_state(f.entity_a, f.entity_b);
     let db = Some(Arc::new(pool.clone()));
@@ -547,6 +577,7 @@ async fn commit_rolls_back_on_negative_cash() {
 #[tokio::test]
 async fn lock_items_rejects_non_inv_main_containers() {
     let pool = require_db_or_skip!();
+    let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
 
     // One forbidden container per iteration. Each gets a distinct salt
     // so the sentinels don't collide.
@@ -577,13 +608,13 @@ async fn lock_items_rejects_non_inv_main_containers() {
         let bad_item = insert_item(
             &pool,
             f.player_a,
-            WEAPON_TYPE_ID,
+            weapon_type_id,
             *forbidden_container,
             0,
             false,
         )
         .await;
-        let good_item_b = insert_item(&pool, f.player_b, ANOTHER_TYPE_ID, INV_MAIN, 0, false).await;
+        let good_item_b = insert_item(&pool, f.player_b, another_type_id, INV_MAIN, 0, false).await;
 
         let (transport, e2a, conn) = make_state(f.entity_a, f.entity_b);
         let db = Some(Arc::new(pool.clone()));
@@ -645,6 +676,7 @@ async fn lock_items_rejects_non_inv_main_containers() {
 #[tokio::test]
 async fn lock_items_accepts_inv_main() {
     let pool = require_db_or_skip!();
+    let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(1500);
     cleanup(
         &pool,
@@ -655,8 +687,8 @@ async fn lock_items_accepts_inv_main() {
 
     insert_account_and_player(&pool, f.account_a, f.player_a, 0, "a").await;
     insert_account_and_player(&pool, f.account_b, f.player_b, 0, "b").await;
-    let item_a = insert_item(&pool, f.player_a, WEAPON_TYPE_ID, INV_MAIN, 0, false).await;
-    let item_b = insert_item(&pool, f.player_b, ANOTHER_TYPE_ID, INV_MAIN, 0, false).await;
+    let item_a = insert_item(&pool, f.player_a, weapon_type_id, INV_MAIN, 0, false).await;
+    let item_b = insert_item(&pool, f.player_b, another_type_id, INV_MAIN, 0, false).await;
 
     let (transport, e2a, conn) = make_state(f.entity_a, f.entity_b);
     let db = Some(Arc::new(pool.clone()));
@@ -845,6 +877,7 @@ async fn slot_id_of(pool: &PgPool, item_id: i32) -> Option<i32> {
 #[tokio::test]
 async fn commit_succeeds_when_recipient_bag_full_but_trading_slot_away() {
     let pool = require_db_or_skip!();
+    let (weapon_type_id, another_type_id) = tradeable_type_ids(&pool).await;
     let f = fixtures(1600);
     cleanup(
         &pool,
@@ -857,7 +890,7 @@ async fn commit_succeeds_when_recipient_bag_full_but_trading_slot_away() {
     insert_account_and_player(&pool, f.account_b, f.player_b, 0, "b").await;
 
     // player_a: one item in INV_MAIN slot 0.
-    let item_a = insert_item(&pool, f.player_a, WEAPON_TYPE_ID, INV_MAIN, 0, false).await;
+    let item_a = insert_item(&pool, f.player_a, weapon_type_id, INV_MAIN, 0, false).await;
 
     // player_b: 40 items in INV_MAIN slots 0..=39 (the bag is full).
     // Slot 39 holds the item being traded out.
@@ -866,9 +899,9 @@ async fn commit_succeeds_when_recipient_bag_full_but_trading_slot_away() {
         // Mix the type ids so a future stack-aware accounting change
         // can't accidentally pass by coalescing stacks.
         let t = if slot % 2 == 0 {
-            WEAPON_TYPE_ID
+            weapon_type_id
         } else {
-            ANOTHER_TYPE_ID
+            another_type_id
         };
         let id = insert_item(&pool, f.player_b, t, INV_MAIN, slot, false).await;
         b_filler_items.push(id);

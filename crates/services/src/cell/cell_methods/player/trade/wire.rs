@@ -1,7 +1,7 @@
 //! Outbound serializers for the trade flow.
 //!
-//! - `onTradeResults(144)` — terminal status (Completed / Cancelled / etc.)
-//! - `onTradeState(145)` — full `(localProposal, remoteProposal)` snapshot
+//! - `onTradeState(144)` — full `(localProposal, remoteProposal)` snapshot
+//! - `onTradeResults(145)` — terminal status (Completed / Cancelled / etc.)
 //!
 //! Includes the `stub_inv_items_for` builder that pads `RemoteTradeProposal`
 //! with sentinel-bearing `InvItem` records — the cell doesn't own the full

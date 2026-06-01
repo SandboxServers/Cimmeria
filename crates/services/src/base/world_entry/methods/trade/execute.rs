@@ -32,6 +32,8 @@ use std::sync::{Arc, Mutex};
 use cimmeria_entity::inventory::INV_MAIN;
 use cimmeria_entity::trade::{
     serialize_on_trade_results, ETRADERESULTS_CANCELLED, ETRADERESULTS_COMPLETED,
+    ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_LOCAL_SPACE, ETRADERESULTS_NO_REMOTE_CASH,
+    ETRADERESULTS_NO_REMOTE_SPACE,
 };
 use cimmeria_mercury::transport::Transport;
 use sqlx::{PgPool, Postgres, Transaction};
@@ -150,12 +152,19 @@ pub async fn handle_execute_trade(
     };
 
     match atomic_swap(&pool, &p1, &p2).await {
-        Ok(()) => {
+        Ok(final_balances) => {
             // After-commit notifications: cash + inventory + final
             // onTradeResults(Completed) to both clients.
+            //
+            // Cash totals come from inside the tx (read AFTER the debit/
+            // credit UPDATE, before commit). Reading post-commit with a
+            // separate query would open a small race window: an
+            // unrelated transaction modifying naquadah between our
+            // commit and the read would broadcast a wrong total to the
+            // client, making the UI desync from `sgw_player.naquadah`.
             send_cash_changed_to_client(
                 p1.entity_id,
-                read_cash(&pool, p1.player_id).await,
+                final_balances.p1,
                 transport,
                 connected,
                 entity_to_addr,
@@ -163,7 +172,7 @@ pub async fn handle_execute_trade(
             .await;
             send_cash_changed_to_client(
                 p2.entity_id,
-                read_cash(&pool, p2.player_id).await,
+                final_balances.p2,
                 transport,
                 connected,
                 entity_to_addr,
@@ -204,19 +213,29 @@ pub async fn handle_execute_trade(
             );
         }
         Err(reason) => {
-            // The Python source asymmetrically reports NoLocal*/NoRemote*
-            // by which side failed. Without breaking the tx return up
-            // into per-side error variants, we send the same result code
-            // to both. Cancelled is the safest catch-all — the client UI
-            // treats it as a clean teardown notification.
+            // Map the abort variant to the Python-parity per-side
+            // ETradeResults codes. The wire shape is unchanged — each
+            // client always received an INT32 result on `onTradeResults` —
+            // but now the result is per-side asymmetric: the failing
+            // player sees `NoLocal*`, the other sees `NoRemote*`. The
+            // canonical client uses these to surface a more specific
+            // "you don't have enough cash" / "they don't have enough
+            // space" string in the trade-results dialog.
             //
-            // The result is still per-side so a future enhancement can
-            // surface asymmetric codes without changing the wire path.
+            // Catch-all variants (DbError, PlayerMissing, DuplicateInstance,
+            // BoundItemOffered, IneligibleContainer) map to Cancelled on
+            // both sides — these are either internal faults or
+            // server-authority validations the client UI has no
+            // dedicated string for.
+            let (p1_code, p2_code) =
+                trade_abort_to_results_codes(&reason, p1.player_id, p2.player_id);
             tracing::warn!(
                 p1_player = p1.player_id,
                 p2_player = p2.player_id,
                 reason = %reason,
-                "ExecuteTrade: atomic swap failed — sending Cancelled"
+                p1_code,
+                p2_code,
+                "ExecuteTrade: atomic swap failed — sending asymmetric results"
             );
             send_results_to_both(
                 transport,
@@ -224,11 +243,72 @@ pub async fn handle_execute_trade(
                 entity_to_addr,
                 p1.entity_id,
                 p2.entity_id,
-                ETRADERESULTS_CANCELLED,
-                ETRADERESULTS_CANCELLED,
+                p1_code,
+                p2_code,
             )
             .await;
         }
+    }
+}
+
+/// Final post-commit balances for both sides of a successful trade —
+/// read inside the same transaction as the cash UPDATEs so the
+/// `onCashChanged` packet can't race against a concurrent vendor /
+/// loot / mission grant on either player.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TradeFinalBalances {
+    p1: i32,
+    p2: i32,
+}
+
+/// Per-side ETradeResults code mapping for [`TradeAbort`].
+///
+/// Returns `(p1_code, p2_code)` in p1-then-p2 order. The asymmetric
+/// `NoLocal*` / `NoRemote*` codes mirror Python `Trade.py:237-263`:
+/// the failing player sees `NoLocal*`, the other sees `NoRemote*`. The
+/// canonical client uses the asymmetry to surface a more specific
+/// trade-results dialog string ("you don't have enough cash" vs.
+/// "they don't have enough space"); both sides seeing Cancelled would
+/// render the generic teardown string for both, hiding the cause.
+///
+/// `InsufficientCash` carries a `which: "p1"|"p2"` discriminant that
+/// directly identifies the failing side. `NotEnoughSlots` carries
+/// `recipient_player_id` — the side without room — which we resolve
+/// against the caller-provided `p1_player_id`/`p2_player_id`.
+///
+/// Catch-all variants (`DbError`, `PlayerMissing`, `ItemMissing`,
+/// `DuplicateInstance`, `BoundItemOffered`, `IneligibleContainer`) are
+/// internal faults or server-authority validations the client UI has
+/// no dedicated string for — both sides see Cancelled, matching the
+/// pre-asymmetric behavior.
+fn trade_abort_to_results_codes(
+    reason: &TradeAbort,
+    p1_player_id: i32,
+    p2_player_id: i32,
+) -> (i32, i32) {
+    match reason {
+        TradeAbort::InsufficientCash { which: "p1", .. } => {
+            (ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_REMOTE_CASH)
+        }
+        TradeAbort::InsufficientCash { which: "p2", .. } => {
+            (ETRADERESULTS_NO_REMOTE_CASH, ETRADERESULTS_NO_LOCAL_CASH)
+        }
+        TradeAbort::NotEnoughSlots {
+            recipient_player_id,
+            ..
+        } => {
+            if *recipient_player_id == p1_player_id {
+                (ETRADERESULTS_NO_LOCAL_SPACE, ETRADERESULTS_NO_REMOTE_SPACE)
+            } else if *recipient_player_id == p2_player_id {
+                (ETRADERESULTS_NO_REMOTE_SPACE, ETRADERESULTS_NO_LOCAL_SPACE)
+            } else {
+                // recipient is neither side — shouldn't happen unless
+                // the abort variant was constructed with a stale id;
+                // fail safe with Cancelled rather than guessing.
+                (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED)
+            }
+        }
+        _ => (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED),
     }
 }
 
@@ -348,7 +428,11 @@ struct TradeItemRow {
     bound: bool,
 }
 
-async fn atomic_swap(pool: &Arc<PgPool>, p1: &TradeSide, p2: &TradeSide) -> Result<(), TradeAbort> {
+async fn atomic_swap(
+    pool: &Arc<PgPool>,
+    p1: &TradeSide,
+    p2: &TradeSide,
+) -> Result<TradeFinalBalances, TradeAbort> {
     let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
 
     // Lock both players' rows in a deterministic order to avoid
@@ -456,27 +540,39 @@ async fn atomic_swap(pool: &Arc<PgPool>, p1: &TradeSide, p2: &TradeSide) -> Resu
 
     // Cash debits & credits. Net delta per side avoids a redundant
     // SQL roundtrip when both sides offered the same amount (no-op).
-    if p1.cash != p2.cash || p1.cash != 0 {
-        let p1_delta = p2.cash - p1.cash; // p1 receives p2.cash, owes p1.cash
-        let p2_delta = p1.cash - p2.cash;
-        if p1_delta != 0 {
-            sqlx::query("UPDATE sgw_player SET naquadah = naquadah + $1 WHERE player_id = $2")
-                .bind(p1_delta)
-                .bind(p1.player_id)
-                .execute(&mut *tx)
-                .await?;
-        }
-        if p2_delta != 0 {
-            sqlx::query("UPDATE sgw_player SET naquadah = naquadah + $1 WHERE player_id = $2")
-                .bind(p2_delta)
-                .bind(p2.player_id)
-                .execute(&mut *tx)
-                .await?;
-        }
+    let p1_delta = p2.cash - p1.cash; // p1 receives p2.cash, owes p1.cash
+    let p2_delta = p1.cash - p2.cash;
+    if p1_delta != 0 {
+        sqlx::query("UPDATE sgw_player SET naquadah = naquadah + $1 WHERE player_id = $2")
+            .bind(p1_delta)
+            .bind(p1.player_id)
+            .execute(&mut *tx)
+            .await?;
+    }
+    if p2_delta != 0 {
+        sqlx::query("UPDATE sgw_player SET naquadah = naquadah + $1 WHERE player_id = $2")
+            .bind(p2_delta)
+            .bind(p2.player_id)
+            .execute(&mut *tx)
+            .await?;
     }
 
+    // Compute final balances arithmetically rather than re-reading
+    // `sgw_player.naquadah` post-UPDATE. We already hold the
+    // pre-UPDATE balance (`p1_balance` / `p2_balance`) under
+    // `FOR UPDATE` locks, and the delta is the only mutation to
+    // naquadah in this transaction. A re-read would just round-trip
+    // the same value (the row is locked, no concurrent writer can
+    // change it). Sourcing the totals from inside the tx is what
+    // closes the race window the post-commit `read_cash` opened —
+    // see the design note in [`handle_execute_trade`].
+    let final_balances = TradeFinalBalances {
+        p1: p1_balance + p1_delta,
+        p2: p2_balance + p2_delta,
+    };
+
     tx.commit().await?;
-    Ok(())
+    Ok(final_balances)
 }
 
 /// Acquire the per-player advisory lock for the trade transaction.
@@ -523,16 +619,6 @@ async fn read_naquadah_for_update(
             .fetch_optional(&mut **tx)
             .await?;
     row.ok_or(TradeAbort::PlayerMissing { which, player_id })
-}
-
-async fn read_cash(pool: &Arc<PgPool>, player_id: i32) -> i32 {
-    sqlx::query_scalar::<_, i32>("SELECT naquadah FROM sgw_player WHERE player_id = $1")
-        .bind(player_id)
-        .fetch_optional(pool.as_ref())
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or(0)
 }
 
 /// Whitelist of containers an item may sit in to be eligible for trade.
@@ -1076,6 +1162,146 @@ mod parking_sentinel {
                      from any legitimate slot-allocation path"
                 );
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod trade_results_code_mapping {
+    //! Unit-level regression guard for the per-side asymmetric
+    //! `ETradeResults` code mapping introduced for Clara's G7 review
+    //! on PR #438.
+    //!
+    //! The mapping replaces the old "both sides see Cancelled on every
+    //! abort" behavior with the Python-parity `NoLocal*`/`NoRemote*`
+    //! codes from `Trade.py:237-263`. The canonical client uses these
+    //! to surface a specific trade-results dialog string (e.g. "you
+    //! don't have enough cash" vs. "they don't have enough space")
+    //! rather than the generic teardown notification.
+    //!
+    //! Pinning the mapping at the unit level means a refactor that
+    //! reverts to "Cancelled on both sides" trips here without needing
+    //! a live-DB integration run. The live-DB tests already verify the
+    //! Err arm fires for the underlying conditions
+    //! (insufficient cash, full bag, bound item, etc.); this is the
+    //! algorithmic-core proxy for the codes those Errs translate to.
+    //!
+    //! Revert-verifier: replacing `trade_abort_to_results_codes` with
+    //! `|_, _, _| (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED)`
+    //! trips every assertion below.
+
+    use super::*;
+
+    const P1_PID: i32 = 1000;
+    const P2_PID: i32 = 2000;
+
+    #[test]
+    fn insufficient_cash_p1_maps_to_no_local_cash_and_no_remote_cash() {
+        let reason = TradeAbort::InsufficientCash {
+            which: "p1",
+            player_id: P1_PID,
+            has: 5,
+            wants: 10,
+        };
+        assert_eq!(
+            trade_abort_to_results_codes(&reason, P1_PID, P2_PID),
+            (ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_REMOTE_CASH),
+            "p1 short on cash: p1 sees NoLocalCash, p2 sees NoRemoteCash"
+        );
+    }
+
+    #[test]
+    fn insufficient_cash_p2_maps_to_no_remote_cash_and_no_local_cash() {
+        let reason = TradeAbort::InsufficientCash {
+            which: "p2",
+            player_id: P2_PID,
+            has: 0,
+            wants: 100,
+        };
+        assert_eq!(
+            trade_abort_to_results_codes(&reason, P1_PID, P2_PID),
+            (ETRADERESULTS_NO_REMOTE_CASH, ETRADERESULTS_NO_LOCAL_CASH),
+            "p2 short on cash: p1 sees NoRemoteCash, p2 sees NoLocalCash"
+        );
+    }
+
+    #[test]
+    fn not_enough_slots_resolves_recipient_against_player_ids() {
+        // Recipient = p1 → p1 sees NoLocalSpace (their bag is full),
+        // p2 sees NoRemoteSpace (partner is the one without room).
+        let reason = TradeAbort::NotEnoughSlots {
+            recipient_player_id: P1_PID,
+            needed: 3,
+        };
+        assert_eq!(
+            trade_abort_to_results_codes(&reason, P1_PID, P2_PID),
+            (ETRADERESULTS_NO_LOCAL_SPACE, ETRADERESULTS_NO_REMOTE_SPACE)
+        );
+
+        // Recipient = p2 → mirrored.
+        let reason = TradeAbort::NotEnoughSlots {
+            recipient_player_id: P2_PID,
+            needed: 3,
+        };
+        assert_eq!(
+            trade_abort_to_results_codes(&reason, P1_PID, P2_PID),
+            (ETRADERESULTS_NO_REMOTE_SPACE, ETRADERESULTS_NO_LOCAL_SPACE)
+        );
+    }
+
+    /// Defensive: an abort variant with a stale `recipient_player_id`
+    /// that matches neither side must fall back to Cancelled rather
+    /// than guess. The atomic-commit-failure shape would still be
+    /// surfaced to the player as the generic teardown string — which
+    /// is correct: the trade is cancelled.
+    #[test]
+    fn not_enough_slots_unknown_recipient_falls_back_to_cancelled() {
+        let reason = TradeAbort::NotEnoughSlots {
+            recipient_player_id: 99999, // matches neither
+            needed: 3,
+        };
+        assert_eq!(
+            trade_abort_to_results_codes(&reason, P1_PID, P2_PID),
+            (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED)
+        );
+    }
+
+    /// Catch-all variants (DbError, PlayerMissing, ItemMissing,
+    /// DuplicateInstance, BoundItemOffered, IneligibleContainer) are
+    /// either internal faults or server-authority validations the
+    /// client UI has no dedicated string for — both sides see
+    /// Cancelled.
+    #[test]
+    fn catch_all_variants_map_to_cancelled_on_both_sides() {
+        let catch_alls = [
+            TradeAbort::PlayerMissing {
+                which: "p1",
+                player_id: P1_PID,
+            },
+            TradeAbort::ItemMissing {
+                which: "p2",
+                player_id: P2_PID,
+                item_id: 7,
+            },
+            TradeAbort::DuplicateInstance { item_id: 42 },
+            TradeAbort::BoundItemOffered {
+                which: "p1",
+                player_id: P1_PID,
+                item_id: 99,
+            },
+            TradeAbort::IneligibleContainer {
+                which: "p1",
+                player_id: P1_PID,
+                item_id: 11,
+                container_id: 8, // INV_EQUIP or similar
+            },
+        ];
+        for reason in &catch_alls {
+            assert_eq!(
+                trade_abort_to_results_codes(reason, P1_PID, P2_PID),
+                (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED),
+                "catch-all {reason:?} must map to Cancelled on both sides"
+            );
         }
     }
 }

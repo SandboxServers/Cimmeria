@@ -387,6 +387,77 @@ async fn execute_handoff_refuses_when_partner_player_id_missing() {
     );
 }
 
+/// Clara G6 regression guard: when `tx.send(ExecuteTrade)` fails
+/// (the base task has crashed or the channel is closed), the handoff
+/// must STILL attempt to push `onTradeResults(Cancelled)` to both
+/// clients via the same channel — best-effort UI teardown. The atomic
+/// commit invariant is preserved (the cell state is already cleared,
+/// no items move); the cancelled notification is the player-visible
+/// signal that the trade didn't go through.
+///
+/// We exercise this with a tokio mpsc channel whose receiver is
+/// dropped: the first `send` (ExecuteTrade) returns Err — and so will
+/// the subsequent two `send_on_trade_results` calls — but the
+/// implementation must still ATTEMPT them. We can't observe the
+/// attempts through the dropped channel directly; we observe them
+/// indirectly through the `tracing::warn!` lines `send_on_trade_results`
+/// emits when its own channel send fails.
+///
+/// Revert-verifier: removing the two `send_on_trade_results` calls
+/// from the `if let Err` arm in `request_execute_trade` drops the
+/// expected warn-level breadcrumb count from 2 (one per player) to 0;
+/// the assertion below fails.
+#[tokio::test]
+async fn execute_handoff_attempts_cancelled_notifications_when_channel_closed() {
+    use crate::test_support::LogCapture;
+    let capture = LogCapture::install();
+
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.trade_partner_entity_id = Some(2);
+        e.trade_proposal = Some(TradeProposal {
+            version: 1,
+            items: vec![],
+            cash: 0,
+            lock_state: ETRADELOCKSTATE_LOCKED_AND_CONFIRMED,
+        });
+    }
+    if let Some(e) = mgr.get_entity_mut(2) {
+        e.trade_partner_entity_id = Some(1);
+        e.trade_proposal = Some(TradeProposal {
+            version: 1,
+            items: vec![],
+            cash: 0,
+            lock_state: ETRADELOCKSTATE_LOCKED_AND_CONFIRMED,
+        });
+    }
+
+    let (tx, rx) = mpsc::channel(64);
+    drop(rx);
+
+    request_execute_trade(1, 2, &tx, &mut mgr).await;
+
+    // Two warn-level breadcrumbs from `send_on_trade_results` — one
+    // per player. The exact message text lives in `wire.rs`:
+    // "send onTradeResults: cell→base channel closed". Count them.
+    let warn_breadcrumbs = capture
+        .all()
+        .into_iter()
+        .filter(|e| e.level == tracing::Level::WARN)
+        .filter(|e| e.message_contains("send onTradeResults"))
+        .count();
+    assert_eq!(
+        warn_breadcrumbs, 2,
+        "best-effort onTradeResults(Cancelled) must be attempted for BOTH \
+         players when the handoff channel is closed. Each attempt emits \
+         a warn-level breadcrumb; expected 2, got {warn_breadcrumbs}. \
+         A regression that omits the per-player send calls in \
+         `request_execute_trade`'s Err arm would drop this count to 0."
+    );
+}
+
 /// Regression guard for the cell→base channel-closed-mid-handoff
 /// error log. If the base task has crashed/exited between
 /// `LockedAndConfirmed` and the handoff, the players' clients still

@@ -89,7 +89,12 @@ async fn handle_trade_request(
 
     // Session is open on both sides. Now apply the proposal — the request
     // wire frame carries the initial offer. If proposal-update fails
-    // (bad version, etc.) we tear the session down with Cancelled.
+    // (bad version, etc.) we tear the session down with Completed
+    // (clean shutdown, same as `tradeRequestCancel` — see TRAP #2).
+    // Reserving Cancelled for disconnect / distance-break / commit
+    // failure means a bad-version reject still renders as a tidy
+    // close in the client UI rather than the error-state teardown
+    // string.
     if !apply_proposal(entity_id, partner_entity_id, proposal, tx, space_mgr).await {
         cancel_session(
             entity_id,
@@ -146,6 +151,22 @@ async fn handle_trade_request_cancel(
 }
 
 // ── Inbound: tradeUpdateProposal (106) ─────────────────────────────────────
+//
+// **Rate-limiting note** (deferred — see Clara G9 review on PR #438):
+// A malicious client could spam `tradeUpdateProposal` with strictly
+// monotonic versions, forcing the server to broadcast `onTradeState` to
+// both clients on each one. The version-monotonicity check is the
+// first-line defense — it rejects replay and bounds growth — but it
+// does NOT cap throughput. A per-session "min N ms between accepted
+// proposals" cap belongs here, but the canonical client already
+// rate-limits the outbound at the UI layer (the trade dialog can't
+// re-emit faster than ~5 Hz), and the broadcast amplification is
+// bounded at 2x (one inbound → one outbound to each side), so the
+// realistic attack ceiling is low. Deferred until either (a) a
+// concrete operational signal (Mercury congestion alarms on the
+// trade method indices), or (b) the same cap is added globally to
+// the cell-method dispatcher so it covers every method, not just
+// trade. Tracking: PR #438 review notes.
 
 #[tracing::instrument(
     name = "trade.update_proposal",
@@ -371,14 +392,31 @@ async fn handle_trade_lock_state(
         new_lock = ETRADELOCKSTATE_NONE;
     }
 
-    // Per Trade.py:207-210: if the requested lock is None AND the actor
-    // wasn't currently in Locked state, also clear the partner's lock.
-    // (Effect: any not-yet-confirmed unlock propagates back to the partner;
-    // a partner who had locked stays locked only while the actor was
-    // already locked — the comment in Python says "if one of the players
-    // released the trade lock we'll release the lock on the partner as
-    // well", which is a slight misread of the actual conditional but
-    // the conditional is what the client expects.)
+    // Per Trade.py:207-210: cascade-clear the partner's lock when the
+    // actor's new lock is None AND the actor's previous lock was NOT
+    // Locked. The truth table:
+    //
+    // | prev_my_lock              | new_lock | propagate? | meaning                        |
+    // |---------------------------|----------|------------|--------------------------------|
+    // | None                      | None     | yes        | no-op self-unlock cascades     |
+    // | Locked                    | None     | NO         | actor lowers their own lock —  |
+    // |                           |          |            | partner's Locked stays         |
+    // | LockedAndConfirmed        | None     | yes        | actor backs out of confirm —   |
+    // |                           |          |            | clears the confirm cascade     |
+    //
+    // The Python author's comment ("if one of the players released the
+    // trade lock we'll release the lock on the partner as well") reads
+    // like "any unlock propagates," but the conditional encodes a
+    // narrower intent: a Locked → None transition is a *unilateral*
+    // step-back that should NOT affect the partner's state; any other
+    // path *to* None (including the no-op None → None and the
+    // back-out-of-confirm None → from LockedAndConfirmed) DOES propagate.
+    // The QA 0.8384 client encodes the same conditional, so we mirror
+    // it byte-for-byte — diverging here desyncs the lock-state machine
+    // with the client's prediction.
+    //
+    // Regression guard: see
+    // `tests/lock_state.rs::propagate_unlock_to_partner_truth_table`.
     let propagate_unlock_to_partner =
         new_lock == ETRADELOCKSTATE_NONE && prev_my_lock != ETRADELOCKSTATE_LOCKED;
 

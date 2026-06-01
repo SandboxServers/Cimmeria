@@ -18,6 +18,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::state::{cancel_session, clear_trade_state, partners_in_range};
+use super::wire::send_on_trade_results;
 
 /// Both sides reached `LockedAndConfirmed` — kick the execution off to
 /// the base layer (which owns the DB). The cell clears the in-memory
@@ -105,11 +106,29 @@ pub(super) async fn request_execute_trade(
         };
         let my_prop = match &me.trade_proposal {
             Some(p) => p.clone(),
-            None => return,
+            None => {
+                // Reaching `LockedAndConfirmed` without a proposal on
+                // the actor's own side is a state-machine bug — the
+                // lock-state handler should have validated this before
+                // calling us. Log at warn so it's correlated with the
+                // surrounding handoff trace, then refuse.
+                tracing::warn!(
+                    entity_id,
+                    "request_execute_trade: caller has no trade_proposal — refusing"
+                );
+                return;
+            }
         };
         let p_prop = match &partner.trade_proposal {
             Some(p) => p.clone(),
-            None => return,
+            None => {
+                tracing::warn!(
+                    entity_id,
+                    partner_entity_id,
+                    "request_execute_trade: partner has no trade_proposal — refusing"
+                );
+                return;
+            }
         };
         ExecuteTradeSnapshot {
             my_pid,
@@ -150,6 +169,28 @@ pub(super) async fn request_execute_trade(
             "request_execute_trade: cell→base channel closed mid-handoff — \
              trade was Locked&Confirmed on both sides but never committed",
         );
+
+        // Best-effort UI teardown: try to send `onTradeResults(Cancelled)`
+        // to both players via the same channel. The channel that just
+        // failed is the only path we have to reach the clients, so this
+        // is purely opportunistic — if the channel is permanently
+        // closed both sends will fail silently and the original
+        // tracing::error! above remains the operator-visible signal.
+        // If the channel was only transiently full / closed by the
+        // base task shutting down (e.g., a racy task abort) one or
+        // both notifications may still land, sparing the players a
+        // stuck trade window. The atomic commit invariant is
+        // preserved either way: the cell state is already cleared,
+        // no items will move, and a reconnect will start with a
+        // clean slate.
+        send_on_trade_results(entity_id, partner_entity_id, ETRADERESULTS_CANCELLED, tx).await;
+        send_on_trade_results(
+            partner_entity_id as u32,
+            entity_id as i32,
+            ETRADERESULTS_CANCELLED,
+            tx,
+        )
+        .await;
     } else {
         tracing::info!(
             entity_id,
