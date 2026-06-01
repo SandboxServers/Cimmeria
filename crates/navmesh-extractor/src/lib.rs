@@ -24,16 +24,18 @@
 //!
 //! # Phase status
 //!
-//! This crate currently ships **Phase 0 (.nav round-trip smoke)** and the
-//! **Phase 1.1 scaffolding** (module skeleton + chunk-position decoding).
-//! Phase 1.2 (StaticMesh extraction) and Phase 1.3 (Terrain decode) land
-//! in follow-up changes — their module hooks are wired into [`extract_map`]
-//! as `// TODO:` markers.
+//! This crate currently ships **Phase 0 (.nav round-trip smoke)**, the
+//! **Phase 1.1 scaffolding** (module skeleton + chunk-position decoding),
+//! and **Phase 1.2 (StaticMesh + StaticMeshActor extraction)**. Phase
+//! 1.3 (Terrain decode) lands in a follow-up change — its module hook
+//! is wired into [`extract_map`] as a `// TODO:` marker.
 
 pub mod chunk_id;
 pub mod geometry;
 pub mod nav_roundtrip;
 pub mod obj;
+pub mod staticmesh;
+pub mod transform;
 pub mod umap;
 
 use std::path::Path;
@@ -88,16 +90,25 @@ pub type Result<T> = std::result::Result<T, ExtractError>;
 /// are the chunk ID as stored in the UE3 cooked filename
 /// (e.g. `Castle_CellBlock-FFFEFFFD.umap` → `fffefffdo.obj`). NavBuilder
 /// decodes those eight digits back into a `(positionX, positionZ)` pair
-/// via [`chunk_id::ChunkId::decode`]; see that module for axis-label
-/// caveats.
+/// via [`chunk_id::ChunkId::from_obj_path`]; see that module for
+/// axis-label caveats.
+///
+/// `index` is the cross-package export index used to resolve
+/// `StaticMeshActor` → `StaticMesh` references. Build it once via
+/// [`cimmeria_upk_objects::PackageIndex::build`] from the `CookedPC`
+/// directory and reuse it across maps. Passing `None` runs in degraded
+/// mode — actors are still walked and logged, but no triangles are
+/// emitted; useful for CI runs that don't ship the cooked asset bundle.
 ///
 /// # Phase status
 ///
-/// Currently a **stub** — it walks the map directory and prints the
-/// chunk IDs but does not yet emit geometry. The StaticMesh decoder
-/// (Phase 1.2) and Terrain decoder (Phase 1.3) plug into the
-/// `// TODO:` markers inside the per-chunk loop.
-pub fn extract_map(map_dir: &Path, output_dir: &Path) -> Result<()> {
+/// Ships **Phase 1.2 (StaticMesh extraction)**. Phase 1.3 (Terrain) is
+/// still a `// TODO:` marker inside the per-chunk loop.
+pub fn extract_map(
+    map_dir: &Path,
+    output_dir: &Path,
+    index: Option<&cimmeria_upk_objects::PackageIndex>,
+) -> Result<()> {
     tracing::info!(map_dir = %map_dir.display(), output_dir = %output_dir.display(), "extract_map: starting");
 
     if !output_dir.exists() {
@@ -106,6 +117,18 @@ pub fn extract_map(map_dir: &Path, output_dir: &Path) -> Result<()> {
 
     let chunks = umap::enumerate_chunks(map_dir)?;
     tracing::info!(count = chunks.len(), "extract_map: enumerated chunks");
+
+    // Combined OBJ accumulator — emitted alongside the per-chunk files
+    // so the NavBuilder operator can pick `whole` mode if they want to
+    // build a single navmesh from the entire map without chunk
+    // boundaries. The filename `<mapname>.obj` mirrors what the legacy
+    // C++ extractor produced.
+    let mut combined_soups: Vec<geometry::TriangleSoup> = Vec::new();
+
+    let mut chunks_with_geometry = 0usize;
+    let mut total_triangles = 0usize;
+    let mut total_actors_resolved = 0usize;
+    let mut total_actors_unresolved = 0usize;
 
     for chunk_path in chunks {
         let id = chunk_id::ChunkId::from_umap_path(&chunk_path)?;
@@ -117,12 +140,16 @@ pub fn extract_map(map_dir: &Path, output_dir: &Path) -> Result<()> {
             "extract_map: processing chunk"
         );
 
-        // Phase 1.2: StaticMesh extraction. Open the umap with
-        // `cimmeria_upk::Package`, walk StaticMeshActors, resolve
-        // StaticMeshComponent → StaticMesh via PackageIndex, transform
-        // LOD0 vertices into world space, push triangles into a
-        // `geometry::TriangleSoup`.
-        todo!("Phase 1.2: StaticMesh instancing");
+        // Phase 1.2: StaticMesh extraction.
+        let mut extraction = staticmesh::extract_chunk(&chunk_path, index)?;
+        // Tag the soup with a group so NavBuilder can debug-print which
+        // chunk a triangle came from. `Chunk_*` keeps it distinct from
+        // the reserved `Terrain_*` prefix NavBuilder skips.
+        extraction.soup.group = Some(format!("Chunk_{:08x}", id.raw()));
+
+        total_actors_resolved += extraction.actors_resolved;
+        total_actors_unresolved += extraction.actors_unresolved;
+        total_triangles += extraction.triangles_emitted;
 
         // Phase 1.3: Terrain extraction. For each `Terrain` export,
         // parse the tagged-property block, then decode the binary
@@ -130,13 +157,69 @@ pub fn extract_map(map_dir: &Path, output_dir: &Path) -> Result<()> {
         // WeightedTextureMaps → WeightMapTextures), triangulate via
         // `geometry::triangulate_terrain`. The recipe is documented in
         // `.claude/agent-memory/game-archaeology-specialist/ue3-terrain-serialize.md`.
-        #[allow(unreachable_code)]
-        {
-            todo!("Phase 1.3: Terrain decoder");
-        }
+        // TODO: wire `Terrain` exports into `extraction.soup` (Phase 1.3).
 
         // Phase 1.4: BSP Model/Polys — deferred; needs Ghidra trace.
+
+        if extraction.soup.triangle_count() == 0 {
+            // Empty chunks are skipped entirely — no OBJ written. The
+            // directory listing surfaces "missing chunks" on its own
+            // (a chunk_id with no .obj file means no geometry was
+            // resolvable); a zero-triangle stub would just litter the
+            // output dir with content-free files.
+            tracing::debug!(
+                chunk_id = format!("{:08x}", id.raw()),
+                actors_total = extraction.actors_total,
+                actors_resolved = extraction.actors_resolved,
+                actors_unresolved = extraction.actors_unresolved,
+                "extract_map: chunk produced no geometry; skipping OBJ write"
+            );
+            continue;
+        }
+
+        let obj_path = output_dir.join(id.obj_filename());
+        obj::write_obj(&obj_path, &extraction.soup)?;
+        chunks_with_geometry += 1;
+
+        tracing::info!(
+            chunk_id = format!("{:08x}", id.raw()),
+            actors_total = extraction.actors_total,
+            actors_resolved = extraction.actors_resolved,
+            triangles = extraction.triangles_emitted,
+            path = %obj_path.display(),
+            "extract_map: wrote chunk OBJ"
+        );
+
+        combined_soups.push(extraction.soup);
     }
+
+    if !combined_soups.is_empty() {
+        // Combined OBJ is named after the map directory (lowercase) so a
+        // CI run on `Castle_CellBlock/` produces `castle_cellblock.obj`,
+        // matching the historical naming convention from
+        // `data/spaces/*.nav`.
+        let map_name = map_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("map")
+            .to_lowercase();
+        let combined_path = output_dir.join(format!("{map_name}.obj"));
+        obj::write_combined_obj(&combined_path, &combined_soups)?;
+        tracing::info!(
+            path = %combined_path.display(),
+            chunks = chunks_with_geometry,
+            triangles = total_triangles,
+            "extract_map: wrote combined OBJ"
+        );
+    }
+
+    tracing::info!(
+        chunks_with_geometry,
+        total_triangles,
+        total_actors_resolved,
+        total_actors_unresolved,
+        "extract_map: done"
+    );
 
     Ok(())
 }

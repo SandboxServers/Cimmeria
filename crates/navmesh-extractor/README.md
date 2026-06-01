@@ -38,7 +38,7 @@ Recast wrapper later if it buys anything.
 |---|---|
 | 0 — `.nav` round-trip smoke | **shipped** — see `tests/nav_roundtrip_castle_cellblock.rs` |
 | 1.1 — crate scaffold | **shipped** — modules `chunk_id`, `geometry`, `obj`, `umap`, `nav_roundtrip` |
-| 1.2 — StaticMesh instancing | follow-up |
+| 1.2 — StaticMesh instancing | **shipped** — modules `transform`, `staticmesh`; archetype-based actors deferred |
 | 1.3 — Terrain decoder | follow-up (recipe in `.claude/agent-memory/game-archaeology-specialist/ue3-terrain-serialize.md`) |
 | 1.4 — BSP `Model` / `Polys` decoder | follow-up (needs Ghidra trace) |
 | 2 — NavBuilder rebuild + Castle_CellBlock acceptance | follow-up |
@@ -56,6 +56,34 @@ Recast wrapper later if it buys anything.
   helper (stub for Phase 1.3).
 - `obj.rs` — Wavefront OBJ writer (NavBuilder-compatible).
 - `nav_roundtrip.rs` — Phase 0 XRC `.nav` reader / writer pair.
+- `transform.rs` — actor-to-world `ActorTransform` math
+  (`Location` + UE3 `Rotator` + `DrawScale` + `DrawScale3D`).
+- `staticmesh.rs` — Phase 1.2 walker: enumerates `StaticMeshActor`
+  exports, resolves their `StaticMeshComponent.StaticMesh` reference
+  via a `PackageIndex`, applies the actor transform, and pushes
+  collision triangles into the chunk's soup.
+
+## End-to-end usage
+
+```rust
+use cimmeria_navmesh_extractor::extract_map;
+use cimmeria_upk_objects::PackageIndex;
+
+// Build once, reuse across maps. ~50 seconds on a cold cache.
+let index = PackageIndex::build("path/to/CookedPC".as_ref())?;
+index.save("package_index.bin".as_ref())?;
+
+// Per map:
+extract_map(
+    "path/to/CookedPC/Maps/Castle_CellBlock".as_ref(),
+    "out/castle_cellblock".as_ref(),
+    Some(&index),
+)?;
+```
+
+Passing `None` for the index runs in degraded mode — actors are walked
+and counted, but no triangles are emitted. Useful in CI when the asset
+bundle is missing.
 
 ## Known unknowns
 
