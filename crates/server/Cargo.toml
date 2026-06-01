@@ -24,7 +24,7 @@ tracing-appender = { workspace = true }
 # OTLP collector) via gRPC. The integration is opt-in via the standard
 # `OTEL_EXPORTER_OTLP_ENDPOINT` env var; with it unset the exporter is
 # a no-op and these crates' code never executes.
-opentelemetry = "0.27"
+opentelemetry = "0.32"
 opentelemetry_sdk = { version = "0.27", features = ["rt-tokio", "logs"] }
 opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "logs"] }
 # Bridges root-level `tracing::*` events (those NOT inside an active span)
