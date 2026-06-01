@@ -655,26 +655,42 @@ async fn reserve_main_slots_excluding(
     .fetch_all(&mut **tx)
     .await?;
 
-    let excluding: std::collections::HashSet<i32> = excluding_slots.iter().copied().collect();
-    let occupied_slots: Vec<i32> = rows
-        .into_iter()
-        .map(|row| row.slot_id)
-        .filter(|slot| !excluding.contains(slot))
-        .collect();
-
-    let picked = free_inventory_slots(
-        bag_min_slot(INV_MAIN),
-        bag_max_slots(INV_MAIN),
-        &occupied_slots,
-        needed,
-    );
-    match picked {
+    let raw_occupied: Vec<i32> = rows.into_iter().map(|row| row.slot_id).collect();
+    match pick_free_main_slots_excluding(&raw_occupied, excluding_slots, needed) {
         Some(slots) => Ok(slots),
         None => Err(TradeAbort::NotEnoughSlots {
             recipient_player_id,
             needed,
         }),
     }
+}
+
+/// Pure slot-pick: given the recipient's current INV_MAIN occupancy and
+/// the slot IDs they're about to vacate in the same transaction, return
+/// the lowest-indexed `needed` slots that will be free post-swap, or
+/// `None` if the bag can't fit them.
+///
+/// Split out from [`reserve_main_slots_excluding`] so the unit test
+/// path exercises the same algorithmic core the production async fn
+/// uses — a revert of the exclusion logic here trips the unit-level
+/// regression guard, not just the live-DB integration test.
+fn pick_free_main_slots_excluding(
+    raw_occupied: &[i32],
+    vacating: &[i32],
+    needed: usize,
+) -> Option<Vec<i32>> {
+    let excluding: std::collections::HashSet<i32> = vacating.iter().copied().collect();
+    let occupied_after_exclusion: Vec<i32> = raw_occupied
+        .iter()
+        .copied()
+        .filter(|slot| !excluding.contains(slot))
+        .collect();
+    free_inventory_slots(
+        bag_min_slot(INV_MAIN),
+        bag_max_slots(INV_MAIN),
+        &occupied_after_exclusion,
+        needed,
+    )
 }
 
 async fn move_item_to_recipient(
@@ -805,6 +821,112 @@ mod advisory_lock_alignment {
             INV_MAIN, 1,
             "INV_MAIN must be 1 — if this constant changes, audit the \
              vendor stack too: it binds the container id directly."
+        );
+    }
+}
+
+#[cfg(test)]
+mod slot_exclusion_accounting {
+    //! Unit-level regression guard for the recipient-slot-reservation
+    //! bug. The full live-DB integration guard is
+    //! `commit_succeeds_when_recipient_bag_full_but_trading_slot_away`
+    //! in this module's `tests.rs`; this is the algorithmic-core proxy
+    //! that runs without a live DB.
+    //!
+    //! Pre-fix, `reserve_main_slots_for(recipient, needed)` called
+    //! `reserve_free_inventory_slots(_, recipient, INV_MAIN, needed)`
+    //! which read the recipient's current INV_MAIN occupancy and
+    //! treated EVERY existing row as occupied. That counted the
+    //! recipient's own outgoing-this-trade items as occupied even
+    //! though the same atomic transaction would move them out.
+    //!
+    //! Post-fix, `reserve_main_slots_excluding` filters the outgoing
+    //! slot IDs out of the "occupied" set before calling the pure
+    //! `free_inventory_slots(min, max, occupied, needed)` helper. This
+    //! test exercises that algorithmic core: same occupancy, same
+    //! `needed`, but excluding vs. not excluding the about-to-vacate
+    //! slot must give different answers.
+
+    use super::*;
+
+    /// Bag is 100% full (40/40 in INV_MAIN). One of those 40 is being
+    /// traded away. Without the exclusion the reservation fails
+    /// (0 free); with the exclusion it succeeds (slot 39 is the
+    /// vacating slot, returned as the pick).
+    ///
+    /// This test calls [`pick_free_main_slots_excluding`] directly —
+    /// the same pure helper that the production async
+    /// `reserve_main_slots_excluding` delegates to after reading the
+    /// raw occupancy from the DB. A revert of the exclusion logic in
+    /// `pick_free_main_slots_excluding` (e.g., dropping the
+    /// `.filter(|slot| !excluding.contains(slot))`) trips this guard.
+    ///
+    /// Revert-verifier: change `pick_free_main_slots_excluding` to
+    /// pass `raw_occupied` straight through to `free_inventory_slots`
+    /// without subtracting `vacating`; the second assertion below
+    /// fails with `None != Some([39])`.
+    #[test]
+    fn full_bag_swap_succeeds_with_exclusion_fails_without() {
+        // 40/40 occupied — slots 0..=39.
+        let raw_occupied: Vec<i32> = (0..bag_max_slots(INV_MAIN)).collect();
+        let vacating = vec![39]; // the slot the recipient is trading away
+
+        // Sanity: with NO exclusion (vacating is empty), the
+        // fully-occupied bag rejects the reservation. This is the
+        // pre-fix shape — what the bug looked like in production.
+        let without_exclusion = pick_free_main_slots_excluding(&raw_occupied, &[], 1);
+        assert!(
+            without_exclusion.is_none(),
+            "sanity: without the exclusion (i.e., vacating list empty), \
+             a 40/40 INV_MAIN bag can't reserve a slot. This is the \
+             pre-fix shape — the bug Copilot flagged was that the \
+             recipient's outgoing trade item counted as occupied even \
+             though it's about to leave."
+        );
+
+        // Post-fix behaviour: with the vacating slot excluded, the
+        // 40-slot bag has 1 free slot (39 itself, since the picker
+        // returns the lowest free slot in [min, max)).
+        let with_exclusion = pick_free_main_slots_excluding(&raw_occupied, &vacating, 1);
+        assert_eq!(
+            with_exclusion,
+            Some(vec![39]),
+            "with the exclusion, the recipient's about-to-vacate slot \
+             39 is available for the incoming item. If this returns \
+             None, the exclusion was dropped from \
+             `pick_free_main_slots_excluding` — re-check the filter."
+        );
+    }
+
+    /// Two-for-two swap: recipient's bag is full (40/40), trading 2
+    /// of those slots away, must accept 2 incoming items.
+    #[test]
+    fn full_bag_two_for_two_swap_succeeds_with_exclusion() {
+        let raw_occupied: Vec<i32> = (0..bag_max_slots(INV_MAIN)).collect();
+        let vacating = vec![5, 17]; // two non-contiguous outgoing slots
+        let picked = pick_free_main_slots_excluding(&raw_occupied, &vacating, 2);
+        assert_eq!(
+            picked,
+            Some(vec![5, 17]),
+            "the two vacating slots are the only free slots and must \
+             be returned in ascending order"
+        );
+    }
+
+    /// Recipient still has free slots even WITHOUT counting the
+    /// vacating ones — the exclusion is a no-op in that case. This
+    /// pins the "happy path" doesn't regress when the fix is in:
+    /// the exclusion must not poison the pick when it isn't needed.
+    #[test]
+    fn partially_full_bag_doesnt_need_exclusion() {
+        // 10/40 used — slots 0..=9. Plenty of room.
+        let raw_occupied: Vec<i32> = (0..10).collect();
+        let picked = pick_free_main_slots_excluding(&raw_occupied, &[], 1);
+        assert_eq!(
+            picked,
+            Some(vec![10]),
+            "with 10/40 used and no exclusions, slot 10 is the lowest \
+             free slot — must be returned"
         );
     }
 }
