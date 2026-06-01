@@ -50,6 +50,15 @@ fn reserve_collision_returns_holder() {
 fn reserve_auto_releases_prior_slot() {
     // Pins the SGWCoverSet.def auto-release-prior semantics — without this,
     // an NPC re-picking cover would leak the prior reservation.
+    //
+    // Per PR #483 review: the implicit release also emits a
+    // `cover_reservation_state{state=released}` counter so the
+    // derived "currently held = held − released" dashboard query
+    // doesn't drift. We can't read counter values from a unit test
+    // (no in-process collector), but this test pins the *behavior*
+    // the counter shadows. A refactor that removes the
+    // `entity_to_slot.remove` branch would trip both this test
+    // (state would leak) and the counter balance simultaneously.
     let mut r = CoverReservations::new();
     let slot_a = CoverSlotKey::new(1, 0);
     let slot_b = CoverSlotKey::new(2, 5);
