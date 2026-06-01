@@ -915,6 +915,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-observability"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-scene-editor"
 version = "0.1.0"
 dependencies = [
@@ -943,6 +955,7 @@ dependencies = [
  "cimmeria-admin-api",
  "cimmeria-common",
  "cimmeria-discord",
+ "cimmeria-observability",
  "cimmeria-services",
  "opentelemetry",
  "opentelemetry-appender-tracing",

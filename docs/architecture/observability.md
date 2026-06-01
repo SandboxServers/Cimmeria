@@ -200,6 +200,47 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 | `no_ability` | Every known ability on cooldown / needs ammo |
 | `leashed` | Target moved past `LEASH_DISTANCE` from spawn |
 
+### Metrics
+
+A third OTLP signal — alongside traces and logs — ships counters,
+histograms, and up/down counters from
+[`crates/observability/`](../../crates/observability/) (the
+`cimmeria-observability` crate). The facade exposes thin macros:
+
+```rust
+use cimmeria_observability::{counter, histogram, gauge_add};
+
+counter!("trade_swaps_total", "outcome" => "completed");
+histogram!("trade_swap_duration_seconds", elapsed_secs, "outcome" => "completed");
+gauge_add!("cover_slots_held", 1, "world_name" => "Castle");
+```
+
+Instruments are lazily registered on first emission via the global
+Meter set by [`otel::init`](../../crates/server/src/otel.rs). When
+`OTEL_EXPORTER_OTLP_ENDPOINT` is unset, the global Meter is never
+installed and the macros expand to a no-op — same opt-in shape as
+the rest of the OTLP pipeline.
+
+The metrics provider uses a `PeriodicReader` with the default OTLP
+emit cadence (60s). The metric exporter shares the same OTLP endpoint
++ protocol as the trace/log exporters — SigNoz ingests all three
+signals via one collector.
+
+**Label cardinality.** Per
+[instrumentation-discipline.md](instrumentation-discipline.md#rule-4--metric-labels-are-enumerated-spanlog-fields-are-correlators):
+metric labels must be enumerated low-cardinality strings (`outcome`,
+`reason`, `kind`, `world_name`, `decision_outcome`). High-cardinality
+correlators (`entity_id`, `player_id`, `peer`) belong in span/log
+fields. A counter labelled by `player_id` would degrade ClickHouse's
+merge-tree query performance non-linearly.
+
+**Resource attribute `deployment.environment`.** Every metric (and
+every span and log) carries this resource attribute, defaulted from
+`CIMMERIA_DEPLOY_ENV` (default `"dev"`). Operators set it in the
+colo's docker-compose to `colo` so SigNoz dashboards can split
+production data from dev-laptop noise. Override via the standard OTel
+`OTEL_RESOURCE_ATTRIBUTES=deployment.environment=...` if needed.
+
 ### Cost on the hot path
 
 `tracing::info!` with no subscriber attached: a single atomic load +

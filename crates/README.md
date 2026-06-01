@@ -31,6 +31,7 @@ common ──┬──► mercury ──► entity ──► game ────�
 | `upk-objects` | `cimmeria-upk-objects` | UPK object type definitions |
 | `navmesh-extractor` | `cimmeria-navmesh-extractor` | Extracts UE3 `.umap` chunk geometry to `.obj` for the C++ NavBuilder Recast pipeline. Owns the XRC `.nav` round-trip parser/emitter — the canonical Rust-side ground truth for the wire format `crates/entity/src/navigation.rs` consumes at runtime. See [README](navmesh-extractor/README.md). |
 | `wireclient` | `cimmeria-wireclient` | **Tier 3 headless test client.** Drives the SOAP auth, Mercury phase-3 handshake, and replays captured `.pcap` + AES-key sessions for end-to-end behavioral validation. Pairs with `tools/pcap_to_session.py` (JSONL exporter built atop `tools/pcap_dissect.py`). See [docs/architecture/wireclient.md](../docs/architecture/wireclient.md). |
+| `observability` | `cimmeria-observability` | Metrics facade — `counter!`/`histogram!`/`gauge_add!` macros wrapping the OpenTelemetry SDK's metrics API. Lazily registers instruments on first emission, no-ops when telemetry is disabled. Initialised from `cimmeria-server`'s `otel::init` alongside traces + logs. See [docs/architecture/instrumentation-discipline.md](../docs/architecture/instrumentation-discipline.md). |
 
 ## Building
 
