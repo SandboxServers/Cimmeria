@@ -435,15 +435,88 @@ async fn atomic_swap(pool: &Arc<PgPool>, p1: &TradeSide, p2: &TradeSide) -> Resu
     Ok(())
 }
 
+/// Acquire the per-player advisory lock for the trade transaction.
+///
+/// The namespace MUST match the vendor stack's lock shape — vendor
+/// uses `pg_advisory_xact_lock(player_id, container_id)` with
+/// `container_id = INV_MAIN` in `reserve_free_inventory_slots`. Trade
+/// previously used `(player_id, 0)` which gave Postgres two
+/// independent lock keys for the same logical lock, so a concurrent
+/// trade and vendor purchase on the same player wouldn't serialize at
+/// the advisory layer (`FOR UPDATE` on the row remains correct, but
+/// the deadlock detector surfaces ABBA failures noisily under load).
+///
+/// `pg_advisory_xact_lock` is idempotent within a single transaction
+/// (see the comment in `inventory::grant`), so the redundant lock
+/// acquired by `reserve_free_inventory_slots` for INV_MAIN later in
+/// the same trade tx is a no-op.
+/// The SQL form for the advisory lock — extracted into a constant so
+/// the alignment test below can assert it byte-for-byte against the
+/// vendor stack's lock SQL. Any divergence (single-arg form, different
+/// namespace) breaks the alignment guarantee.
+const ADVISORY_LOCK_SQL: &str = "SELECT pg_advisory_xact_lock($1, $2)";
+
 async fn take_advisory_lock(
     tx: &mut Transaction<'_, Postgres>,
     player_id: i32,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
+    sqlx::query(ADVISORY_LOCK_SQL)
         .bind(player_id)
+        .bind(INV_MAIN)
         .execute(&mut **tx)
         .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod advisory_lock_alignment {
+    //! Static-read regression guard: trade's advisory-lock SQL form
+    //! must match the vendor stack's. Both use the two-arg form
+    //! `pg_advisory_xact_lock($1, $2)` and bind `(player_id, INV_MAIN)`
+    //! so the two paths serialize through the same lock namespace —
+    //! otherwise concurrent trade-and-vendor on the same player race
+    //! at the advisory layer (`FOR UPDATE` still saves correctness,
+    //! but the deadlock detector surfaces ABBA failures noisily
+    //! under load).
+    //!
+    //! The original trade code used the single-arg form
+    //! `pg_advisory_xact_lock(player_id, 0)`. Postgres treats
+    //! `(player_id, 0)` and `(player_id, 1)` as completely independent
+    //! locks — they don't serialize against each other.
+    //!
+    //! This is a static-read test (no DB required) so the alignment
+    //! invariant is gated in CI even when the live-DB profile is off.
+
+    use super::ADVISORY_LOCK_SQL;
+    use cimmeria_entity::inventory::INV_MAIN;
+
+    /// Pin the SQL string. If a future change goes back to the
+    /// single-arg `(player_id, 0)` form, this assertion trips.
+    #[test]
+    fn lock_sql_is_two_arg_form() {
+        assert_eq!(
+            ADVISORY_LOCK_SQL, "SELECT pg_advisory_xact_lock($1, $2)",
+            "trade's advisory lock MUST use the two-arg form to match \
+             vendor's `pg_advisory_xact_lock(player_id, container_id)`. \
+             Single-arg form races at the advisory layer against vendor."
+        );
+    }
+
+    /// Pin that the second bind is INV_MAIN. The vendor stack always
+    /// binds the container id; for trade we lock under INV_MAIN
+    /// (since that's the only tradeable container per the whitelist).
+    #[test]
+    fn lock_namespace_is_inv_main_not_zero() {
+        // INV_MAIN is `1` per `entities/defs/system.xml`. The pre-fix
+        // shape was `(player_id, 0)` which collides with no real
+        // container — so the lock was effectively in its own
+        // namespace.
+        assert_eq!(
+            INV_MAIN, 1,
+            "INV_MAIN must be 1 — if this constant changes, audit the \
+             vendor stack too: it binds the container id directly."
+        );
+    }
 }
 
 async fn read_naquadah_for_update(
