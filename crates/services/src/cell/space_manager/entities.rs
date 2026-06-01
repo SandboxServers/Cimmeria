@@ -6,9 +6,43 @@
 
 use cimmeria_common::{EntityId, SpaceId, Vector3};
 use cimmeria_entity::cell_entity::CellEntity;
+use cimmeria_entity::movement_validation::{MovementReject, SpaceBounds};
 
 use super::super::messages::CellToBaseMsg;
 use super::SpaceManager;
+
+/// Outcome of `SpaceManager::apply_client_position_update`.
+///
+/// `Accepted` means the cell entity's position has been advanced; the
+/// caller does not need to do anything else. `Rejected` means the
+/// validator refused the proposed position and the cell entity is
+/// unchanged — the caller must emit `CellToBaseMsg::TeleportPlayer` so
+/// the offending client snaps back to `last_valid`. `EntityMissing` is
+/// the cell-side equivalent of "address not found" — log and drop.
+#[derive(Debug)]
+pub enum ClientMoveOutcome {
+    /// Position passed validation and was written. Carries the new
+    /// position so callers that want to log it can do so without
+    /// re-querying the entity.
+    Accepted { position: [f32; 3] },
+    /// Position failed validation. Carries the last-valid position and
+    /// the space id needed to compose the `BASEMSG_FORCED_POSITION`
+    /// snap-back message.
+    Rejected {
+        reason: MovementReject,
+        last_valid: [f32; 3],
+        space_id: u32,
+        /// The bounds the proposed position was tested against. Carried
+        /// out so the caller's structured log can include `bounds_min`
+        /// and `bounds_max` per the negative-logging convention.
+        bounds: SpaceBounds,
+    },
+    /// The entity is not currently in any space — likely a stale
+    /// inbound packet that arrived after destroy / disconnect. The
+    /// caller can safely no-op; the original `update_entity_position`
+    /// silently dropped the same shape.
+    EntityMissing,
+}
 
 impl SpaceManager {
     /// Create a cell entity in the appropriate space.
@@ -141,6 +175,72 @@ impl SpaceManager {
         // Then destroy the cell entity
         self.destroy_entity(entity_id);
         tracing::debug!(entity_id, "Entity disconnected and destroyed");
+    }
+
+    /// Apply a client-authoritative position update through the
+    /// movement validator.
+    ///
+    /// This is the **only** seam that should be called from the inbound
+    /// `BaseToCellMsg::EntityMove` handler — every other position
+    /// mutation in the cell is server-authoritative (ring transport,
+    /// respawn, content-engine teleport, NPC movement) and goes through
+    /// the unchecked [`Self::update_entity_position`] directly.
+    ///
+    /// On accept, the call is equivalent to `update_entity_position`.
+    /// On reject, the cell entity is left untouched so the next AoI
+    /// tick rebroadcasts the last-valid position to witnesses; the
+    /// caller emits `CellToBaseMsg::TeleportPlayer` so the offending
+    /// client receives `BASEMSG_FORCED_POSITION` and snaps its own
+    /// avatar back to the last-valid position.
+    ///
+    /// PR1 wires the bounds layer only; PR2/3/4 will add speed,
+    /// teleport-detection, and navmesh-containment respectively. The
+    /// outcome type is shared across all four PRs.
+    pub fn apply_client_position_update(
+        &mut self,
+        entity_id: u32,
+        position: [f32; 3],
+        direction: [i8; 3],
+        velocity: [f32; 3],
+    ) -> ClientMoveOutcome {
+        let space_id = match self.entity_space.get(&entity_id) {
+            Some(&id) => id,
+            None => return ClientMoveOutcome::EntityMissing,
+        };
+
+        // Source bounds from the active space's navmesh if present; fall
+        // back to the generous default for spaces without a loaded
+        // navmesh (most non-Castle zones today). The fallback is wider
+        // than any legitimate world by an order of magnitude — see
+        // `SpaceBounds::FALLBACK`.
+        let (bounds, last_valid) = {
+            let space = match self.spaces.get(&space_id) {
+                Some(s) => s,
+                None => return ClientMoveOutcome::EntityMissing,
+            };
+            let bounds = match &space.navmesh {
+                Some(nav) => SpaceBounds::new(nav.bmin, nav.bmax),
+                None => SpaceBounds::FALLBACK,
+            };
+            let last_valid = match space.entities.get(&entity_id) {
+                Some(e) => [e.position.x, e.position.y, e.position.z],
+                None => return ClientMoveOutcome::EntityMissing,
+            };
+            (bounds, last_valid)
+        };
+
+        let proposed = Vector3::new(position[0], position[1], position[2]);
+        if let Err(reason) = self.movement_validator.check_bounds(proposed, &bounds) {
+            return ClientMoveOutcome::Rejected {
+                reason,
+                last_valid,
+                space_id,
+                bounds,
+            };
+        }
+
+        self.update_entity_position(entity_id, position, direction, velocity);
+        ClientMoveOutcome::Accepted { position }
     }
 
     /// Update an entity's position from a client movement packet.
