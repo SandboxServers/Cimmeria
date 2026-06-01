@@ -285,8 +285,7 @@ async fn lock_items(
         // (equipped gear, mission items, bank, bandolier, crafting,
         // auction, team/command bank) silently passed. That's a
         // dupe-strip exploit on equip slots and a bypass of the
-        // banker-NPC gate on bank items. See the security review on
-        // PR #438.
+        // banker-NPC gate on bank items.
         if !TRADEABLE_CONTAINERS.contains(&row.container_id) {
             return Err(TradeAbort::IneligibleContainer {
                 which,

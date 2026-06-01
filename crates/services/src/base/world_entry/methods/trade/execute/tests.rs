@@ -215,18 +215,16 @@ mod parking_sentinel {
 
 mod trade_results_code_mapping {
     //! Unit-level regression guard for the per-side asymmetric
-    //! `ETradeResults` code mapping introduced for Clara's G7 review
-    //! on PR #438.
+    //! `ETradeResults` code mapping.
     //!
-    //! The mapping replaces the old "both sides see Cancelled on every
-    //! abort" behavior with the Python-parity `NoLocal*`/`NoRemote*`
-    //! codes from `Trade.py:237-263`. The canonical client uses these
-    //! to surface a specific trade-results dialog string (e.g. "you
-    //! don't have enough cash" vs. "they don't have enough space")
-    //! rather than the generic teardown notification.
+    //! The mapping returns Python-parity `NoLocal*`/`NoRemote*` codes
+    //! (Trade.py:237-263) so the canonical client can surface a
+    //! specific trade-results dialog string ("you don't have enough
+    //! cash" vs. "they don't have enough space") rather than the
+    //! generic teardown notification.
     //!
     //! Revert-verifier: replacing `trade_abort_to_results_codes` with
-    //! `|_, _, _| (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED)`
+    //! `|_, _| (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED)`
     //! trips every assertion below.
 
     use super::super::{trade_abort_to_results_codes, TradeAbort};
@@ -247,7 +245,7 @@ mod trade_results_code_mapping {
             wants: 10,
         };
         assert_eq!(
-            trade_abort_to_results_codes(&reason, P1_PID, P2_PID),
+            trade_abort_to_results_codes(&reason, P1_PID),
             (ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_REMOTE_CASH),
             "p1 short on cash: p1 sees NoLocalCash, p2 sees NoRemoteCash"
         );
@@ -262,7 +260,7 @@ mod trade_results_code_mapping {
             wants: 100,
         };
         assert_eq!(
-            trade_abort_to_results_codes(&reason, P1_PID, P2_PID),
+            trade_abort_to_results_codes(&reason, P1_PID),
             (ETRADERESULTS_NO_REMOTE_CASH, ETRADERESULTS_NO_LOCAL_CASH),
             "p2 short on cash: p1 sees NoRemoteCash, p2 sees NoLocalCash"
         );
@@ -277,7 +275,7 @@ mod trade_results_code_mapping {
             needed: 3,
         };
         assert_eq!(
-            trade_abort_to_results_codes(&reason, P1_PID, P2_PID),
+            trade_abort_to_results_codes(&reason, P1_PID),
             (ETRADERESULTS_NO_LOCAL_SPACE, ETRADERESULTS_NO_REMOTE_SPACE)
         );
 
@@ -287,25 +285,8 @@ mod trade_results_code_mapping {
             needed: 3,
         };
         assert_eq!(
-            trade_abort_to_results_codes(&reason, P1_PID, P2_PID),
+            trade_abort_to_results_codes(&reason, P1_PID),
             (ETRADERESULTS_NO_REMOTE_SPACE, ETRADERESULTS_NO_LOCAL_SPACE)
-        );
-    }
-
-    /// Defensive: an abort variant with a stale `recipient_player_id`
-    /// that matches neither side must fall back to Cancelled rather
-    /// than guess. The atomic-commit-failure shape would still be
-    /// surfaced to the player as the generic teardown string — which
-    /// is correct: the trade is cancelled.
-    #[test]
-    fn not_enough_slots_unknown_recipient_falls_back_to_cancelled() {
-        let reason = TradeAbort::NotEnoughSlots {
-            recipient_player_id: 99999, // matches neither
-            needed: 3,
-        };
-        assert_eq!(
-            trade_abort_to_results_codes(&reason, P1_PID, P2_PID),
-            (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED)
         );
     }
 
@@ -341,7 +322,7 @@ mod trade_results_code_mapping {
         ];
         for reason in &catch_alls {
             assert_eq!(
-                trade_abort_to_results_codes(reason, P1_PID, P2_PID),
+                trade_abort_to_results_codes(reason, P1_PID),
                 (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED),
                 "catch-all {reason:?} must map to Cancelled on both sides"
             );

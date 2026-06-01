@@ -41,14 +41,11 @@ mod slot_reservation;
 pub(super) const TEST_BASE: i32 = 0x7000_0F00;
 
 /// Pull two distinct, currently-existing item type ids from the live
-/// `resources.items` seed at runtime. The previous shape pinned
-/// `weapon_type_id = 3241` / `another_type_id = 3242` as constants —
-/// per TESTING.md, this is exactly the kind of seed-id hard-coding
-/// that broke PRs #160 / #158 / #162 when the seed shifted, and
-/// CodeRabbit flagged it on PR #438. The runtime lookup picks the
-/// two lowest-numbered ids so the result is stable enough to be
-/// deterministic across CI runs but not so brittle that a seed
-/// edit moves them.
+/// `resources.items` seed at runtime. Hard-coded type-id constants
+/// are explicitly discouraged by TESTING.md because they break when
+/// seeds shift; the runtime lookup picks the two lowest-numbered ids
+/// so the result is stable enough to be deterministic across CI runs
+/// but not so brittle that a seed edit moves them.
 ///
 /// Returns `(first, second)` in ascending order. Panics if the
 /// seed has fewer than two rows — that's a precondition failure

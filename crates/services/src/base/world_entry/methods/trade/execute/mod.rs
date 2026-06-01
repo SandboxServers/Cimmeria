@@ -96,7 +96,6 @@ pub(super) struct TradeSide {
         p2_cash,
     )
 )]
-#[allow(clippy::too_many_arguments)]
 pub async fn handle_execute_trade(
     entity_id: u32,
     player_id: i32,
@@ -243,8 +242,7 @@ pub async fn handle_execute_trade(
             // both sides — these are either internal faults or
             // server-authority validations the client UI has no
             // dedicated string for.
-            let (p1_code, p2_code) =
-                trade_abort_to_results_codes(&reason, p1.player_id, p2.player_id);
+            let (p1_code, p2_code) = trade_abort_to_results_codes(&reason, p1.player_id);
             tracing::warn!(
                 p1_player = p1.player_id,
                 p2_player = p2.player_id,
@@ -290,18 +288,15 @@ pub(super) struct TradeFinalBalances {
 /// `InsufficientCash` carries a `which: "p1"|"p2"` discriminant that
 /// directly identifies the failing side. `NotEnoughSlots` carries
 /// `recipient_player_id` — the side without room — which we resolve
-/// against the caller-provided `p1_player_id`/`p2_player_id`.
+/// against the caller-provided `p1_player_id` (recipient is either
+/// p1 or p2 by construction in `swap::atomic_swap`).
 ///
 /// Catch-all variants (`DbError`, `PlayerMissing`, `ItemMissing`,
 /// `DuplicateInstance`, `BoundItemOffered`, `IneligibleContainer`) are
 /// internal faults or server-authority validations the client UI has
 /// no dedicated string for — both sides see Cancelled, matching the
 /// pre-asymmetric behavior.
-fn trade_abort_to_results_codes(
-    reason: &TradeAbort,
-    p1_player_id: i32,
-    p2_player_id: i32,
-) -> (i32, i32) {
+fn trade_abort_to_results_codes(reason: &TradeAbort, p1_player_id: i32) -> (i32, i32) {
     match reason {
         TradeAbort::InsufficientCash { which: "p1", .. } => {
             (ETRADERESULTS_NO_LOCAL_CASH, ETRADERESULTS_NO_REMOTE_CASH)
@@ -309,20 +304,17 @@ fn trade_abort_to_results_codes(
         TradeAbort::InsufficientCash { which: "p2", .. } => {
             (ETRADERESULTS_NO_REMOTE_CASH, ETRADERESULTS_NO_LOCAL_CASH)
         }
+        // `NotEnoughSlots` is only constructed from `p1.player_id` or
+        // `p2.player_id` in `swap::atomic_swap`, so the recipient
+        // always matches one of the two sides.
         TradeAbort::NotEnoughSlots {
             recipient_player_id,
             ..
-        } => {
-            if *recipient_player_id == p1_player_id {
-                (ETRADERESULTS_NO_LOCAL_SPACE, ETRADERESULTS_NO_REMOTE_SPACE)
-            } else if *recipient_player_id == p2_player_id {
-                (ETRADERESULTS_NO_REMOTE_SPACE, ETRADERESULTS_NO_LOCAL_SPACE)
-            } else {
-                // recipient is neither side — shouldn't happen unless
-                // the abort variant was constructed with a stale id;
-                // fail safe with Cancelled rather than guessing.
-                (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED)
-            }
+        } if *recipient_player_id == p1_player_id => {
+            (ETRADERESULTS_NO_LOCAL_SPACE, ETRADERESULTS_NO_REMOTE_SPACE)
+        }
+        TradeAbort::NotEnoughSlots { .. } => {
+            (ETRADERESULTS_NO_REMOTE_SPACE, ETRADERESULTS_NO_LOCAL_SPACE)
         }
         _ => (ETRADERESULTS_CANCELLED, ETRADERESULTS_CANCELLED),
     }

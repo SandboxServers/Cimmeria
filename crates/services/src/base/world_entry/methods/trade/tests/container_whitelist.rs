@@ -1,5 +1,4 @@
-//! Container-whitelist regression guards for the security review on
-//! PR #438.
+//! Container-whitelist regression guards.
 //!
 //! `lock_items` must reject items from any container that isn't
 //! `INV_MAIN`. The pre-fix code only rejected `INV_BUYBACK`; equipped

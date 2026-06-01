@@ -152,21 +152,20 @@ async fn handle_trade_request_cancel(
 
 // ── Inbound: tradeUpdateProposal (106) ─────────────────────────────────────
 //
-// **Rate-limiting note** (deferred — see Clara G9 review on PR #438):
-// A malicious client could spam `tradeUpdateProposal` with strictly
-// monotonic versions, forcing the server to broadcast `onTradeState` to
-// both clients on each one. The version-monotonicity check is the
-// first-line defense — it rejects replay and bounds growth — but it
-// does NOT cap throughput. A per-session "min N ms between accepted
-// proposals" cap belongs here, but the canonical client already
-// rate-limits the outbound at the UI layer (the trade dialog can't
-// re-emit faster than ~5 Hz), and the broadcast amplification is
-// bounded at 2x (one inbound → one outbound to each side), so the
-// realistic attack ceiling is low. Deferred until either (a) a
-// concrete operational signal (Mercury congestion alarms on the
-// trade method indices), or (b) the same cap is added globally to
-// the cell-method dispatcher so it covers every method, not just
-// trade. Tracking: PR #438 review notes.
+// **Rate-limiting note** (deferred): A malicious client could spam
+// `tradeUpdateProposal` with strictly monotonic versions, forcing the
+// server to broadcast `onTradeState` to both clients on each one. The
+// version-monotonicity check is the first-line defense — it rejects
+// replay and bounds growth — but it does NOT cap throughput. A
+// per-session "min N ms between accepted proposals" cap belongs here,
+// but the canonical client already rate-limits the outbound at the UI
+// layer (the trade dialog can't re-emit faster than ~5 Hz), and the
+// broadcast amplification is bounded at 2x (one inbound → one
+// outbound to each side), so the realistic attack ceiling is low.
+// Deferred until either (a) a concrete operational signal (Mercury
+// congestion alarms on the trade method indices), or (b) the same
+// cap is added globally to the cell-method dispatcher so it covers
+// every method, not just trade.
 
 #[tracing::instrument(
     name = "trade.update_proposal",
