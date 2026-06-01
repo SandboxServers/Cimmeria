@@ -659,6 +659,28 @@ pub struct CellEntity {
     /// Entity ID of the currently-open vendor (only for player entities).
     pub vendor_entity: Option<u32>,
 
+    /// Entity ID of the player currently trading with this entity, if any.
+    /// Set on both participants when [`crate::trade`] opens a session,
+    /// cleared when it resolves (Completed, Cancelled, or disconnect).
+    ///
+    /// Used as the "am I in a trade" gate by the cell-side trade handlers
+    /// — a player with `trade_partner_entity_id = Some(_)` cannot start
+    /// another trade, and the partner field provides the lookup key for
+    /// fanning state updates / results to the other side.
+    pub trade_partner_entity_id: Option<u32>,
+
+    /// This player's current trade proposal — the offer THIS player has
+    /// pushed into the trade window. `None` whenever
+    /// [`Self::trade_partner_entity_id`] is `None` (the two fields are
+    /// kept in lockstep — see `cell_methods::player::trade::clear_trade_state`).
+    ///
+    /// Versioned: every `tradeUpdateProposal` bumps `version` and resets
+    /// both sides' `lock_state` to `None`. The partner's view of this
+    /// proposal lives on the partner's own `CellEntity` — there is no
+    /// shared `TradeTransaction` struct, the in-memory state is fully
+    /// distributed between the two participants.
+    pub trade_proposal: Option<crate::trade::TradeProposal>,
+
     /// Entity ID of the player's currently-selected target on the client
     /// (player entities only).
     ///
@@ -930,6 +952,8 @@ impl CellEntity {
             looting_entity: None,
             last_interaction_target: None,
             vendor_entity: None,
+            trade_partner_entity_id: None,
+            trade_proposal: None,
             current_target_id: None,
             active_bandolier_slot: 0,
             bandolier_items: HashMap::new(),

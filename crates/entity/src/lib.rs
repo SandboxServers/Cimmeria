@@ -26,4 +26,5 @@ pub mod navigation;
 pub mod properties;
 pub mod space;
 pub mod stats;
+pub mod trade;
 pub mod world_grid;

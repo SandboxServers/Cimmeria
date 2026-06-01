@@ -438,4 +438,30 @@ pub enum CellToBaseMsg {
         result_code: u8,
         on_victory_chains: Vec<i64>,
     },
+
+    /// Both players in a trade reached `LockedAndConfirmed` — base must
+    /// now perform the atomic swap (items + cash) inside a single sqlx
+    /// transaction, then send `onTradeResults` to both clients.
+    ///
+    /// Cell has already torn down the in-memory session state by the
+    /// time this fires — base is the final source of truth for the
+    /// commit outcome. Base sends one of:
+    /// - `Completed` to both on success
+    /// - `Cancelled` to both if any validation (item ownership, cash
+    ///   availability, slot capacity) fails inside the tx
+    ///
+    /// `p1_item_instance_ids` and `p2_item_instance_ids` carry only the
+    /// inventory instance IDs from each side's proposal. Base re-fetches
+    /// the full row (FOR UPDATE) to re-validate ownership and stack size
+    /// — the cell-side TradeProposal is stale by the time this arrives.
+    ExecuteTrade {
+        entity_id: u32,
+        player_id: i32,
+        partner_entity_id: u32,
+        partner_player_id: i32,
+        p1_item_instance_ids: Vec<i32>,
+        p1_cash: i32,
+        p2_item_instance_ids: Vec<i32>,
+        p2_cash: i32,
+    },
 }
