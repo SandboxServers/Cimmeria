@@ -174,12 +174,12 @@ impl CellService {
                     tracing::warn!("Failed to load event_set sequences: {e}");
                 }
             }
-            // Cover-system data. Loads the `resources.cover_sets` +
-            // `resources.cover_nodes` tables and builds the per-process
-            // spatial index. The Cover service
-            // stays on `Cover::empty()` if either load fails — the rest
-            // of the cell service still functions; NPCs just won't use
-            // cover until the load is repaired.
+            // Cover-system data. Builds the per-process spatial index from
+            // `resources.cover_sets` + `resources.cover_nodes`. Initialises
+            // if either load returns any rows; stays on `Cover::empty()`
+            // only when both come back empty (load failure or fresh DB).
+            // The rest of the cell service still functions; NPCs just
+            // won't use cover until the load is repaired.
             let cover_sets = match cover::load_cover_sets(pool).await {
                 Ok(s) => s,
                 Err(e) => {

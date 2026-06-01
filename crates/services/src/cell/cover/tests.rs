@@ -1,8 +1,3 @@
-//! Unit tests for the cover module's pure components: spatial index +
-//! reservation lifecycle. Live-DB tests for the loader live alongside
-//! the other `cimmeria-services` live-DB tests; see
-//! `crates/services/src/cell/cover/tests.rs::live_db_loader_tests`.
-
 use cimmeria_common::{EntityId, Vector3};
 
 use super::reservation::{CoverReservations, ReserveError};
@@ -21,8 +16,6 @@ fn node(chunk_id: i32, node_id: i32, x: f32, z: f32) -> CoverNode {
     }
 }
 
-// ─── reservation tests ──────────────────────────────────────────────
-
 #[test]
 fn reserve_succeeds_on_empty_table() {
     let mut r = CoverReservations::new();
@@ -37,7 +30,6 @@ fn reserve_same_slot_by_holder_is_idempotent() {
     let mut r = CoverReservations::new();
     let slot = CoverSlotKey::new(1, 0);
     r.reserve_for_entity(EntityId(10), slot).unwrap();
-    // Idempotent re-reserve must succeed (NPC ticking while still in cover).
     assert!(r.reserve_for_entity(EntityId(10), slot).is_ok());
     assert_eq!(r.reserved_count(), 1);
 }
@@ -51,18 +43,17 @@ fn reserve_collision_returns_holder() {
         Err(ReserveError::AlreadyReserved { holder }) => assert_eq!(holder, EntityId(10)),
         other => panic!("expected AlreadyReserved, got {other:?}"),
     }
-    // Original holder unchanged.
     assert_eq!(r.holder(slot), Some(EntityId(10)));
 }
 
 #[test]
 fn reserve_auto_releases_prior_slot() {
+    // Pins the SGWCoverSet.def auto-release-prior semantics — without this,
+    // an NPC re-picking cover would leak the prior reservation.
     let mut r = CoverReservations::new();
     let slot_a = CoverSlotKey::new(1, 0);
     let slot_b = CoverSlotKey::new(2, 5);
     r.reserve_for_entity(EntityId(10), slot_a).unwrap();
-    // Auto-release-prior semantics from SGWCoverSet.def — re-reserving
-    // a different slot must atomically release the prior one.
     r.reserve_for_entity(EntityId(10), slot_b).unwrap();
     assert!(!r.is_reserved(slot_a), "prior slot must be released");
     assert_eq!(r.holder(slot_b), Some(EntityId(10)));
@@ -78,7 +69,6 @@ fn release_for_entity_clears_both_maps() {
     assert_eq!(released, Some(slot));
     assert!(!r.is_reserved(slot));
     assert_eq!(r.slot_for_entity(EntityId(42)), None);
-    // Idempotent — second release returns None, no panic.
     assert_eq!(r.release_for_entity(EntityId(42)), None);
 }
 
@@ -88,8 +78,6 @@ fn release_slot_idempotent_when_unreserved() {
     let slot = CoverSlotKey::new(1, 0);
     assert!(!r.release_slot(slot));
 }
-
-// ─── spatial-index tests ───────────────────────────────────────────
 
 #[test]
 fn empty_index_returns_no_hits() {
@@ -102,17 +90,15 @@ fn empty_index_returns_no_hits() {
 
 #[test]
 fn nearby_returns_sorted_by_distance() {
-    // Place 3 nodes at known offsets from origin.
     let nodes = vec![
-        node(1, 0, 5.0, 0.0),  // dist = 5
-        node(1, 1, 20.0, 0.0), // dist = 20
-        node(1, 2, 10.0, 0.0), // dist = 10
+        node(1, 0, 5.0, 0.0),
+        node(1, 1, 20.0, 0.0),
+        node(1, 2, 10.0, 0.0),
     ];
     let idx = CoverIndex::build(nodes);
 
     let hits = idx.nearby(&Vector3::new(0.0, 0.0, 0.0), 30.0, None);
     assert_eq!(hits.len(), 3, "all three nodes are within 30 m");
-    // Order must be ascending distance.
     assert_eq!(idx.node(hits[0]).unwrap().node_id, 0, "closest first");
     assert_eq!(idx.node(hits[1]).unwrap().node_id, 2);
     assert_eq!(idx.node(hits[2]).unwrap().node_id, 1, "farthest last");
@@ -121,9 +107,9 @@ fn nearby_returns_sorted_by_distance() {
 #[test]
 fn nearby_excludes_nodes_outside_radius() {
     let nodes = vec![
-        node(1, 0, 5.0, 0.0),  // inside r=10
-        node(1, 1, 15.0, 0.0), // outside r=10
-        node(1, 2, 0.0, 8.0),  // inside r=10
+        node(1, 0, 5.0, 0.0),
+        node(1, 1, 15.0, 0.0),
+        node(1, 2, 0.0, 8.0),
     ];
     let idx = CoverIndex::build(nodes);
     let hits = idx.nearby(&Vector3::new(0.0, 0.0, 0.0), 10.0, None);
@@ -152,7 +138,6 @@ fn nearby_y_axis_filter_excludes_different_floors() {
         CoverNode {
             chunk_id: 1,
             node_id: 1,
-            // Same XZ but 10m up — different floor.
             pos: Vector3::new(2.0, 10.0, 2.0),
             orient: 0.0,
             height: CoverHeight::Mid,
@@ -161,9 +146,7 @@ fn nearby_y_axis_filter_excludes_different_floors() {
         },
     ];
     let idx = CoverIndex::build(nodes);
-    // Without Y filter both match.
     assert_eq!(idx.nearby(&Vector3::zero(), 20.0, None).len(), 2);
-    // With 2-m Y tolerance only node 0 matches.
     let hits = idx.nearby(&Vector3::zero(), 20.0, Some(2.0));
     assert_eq!(hits.len(), 1);
     assert_eq!(idx.node(hits[0]).unwrap().node_id, 0);
@@ -198,8 +181,6 @@ fn node_by_key_finds_correct_record() {
     assert!(idx.node_by_key(CoverSlotKey::new(99, 99)).is_none());
 }
 
-// ─── height / quality enum tests ────────────────────────────────────
-
 #[test]
 fn cover_height_sql_round_trip() {
     for (name, h) in [
@@ -215,7 +196,6 @@ fn cover_height_sql_round_trip() {
 
 #[test]
 fn cover_quality_score_factor_ordering() {
-    // Best > Better > Good > None — ordering matters for the scorer.
     assert!(CoverQuality::Best.score_factor() > CoverQuality::Better.score_factor());
     assert!(CoverQuality::Better.score_factor() > CoverQuality::Good.score_factor());
     assert!(CoverQuality::Good.score_factor() > CoverQuality::None_.score_factor());
@@ -224,9 +204,8 @@ fn cover_quality_score_factor_ordering() {
 
 #[test]
 fn cover_height_meters_are_monotonic() {
-    // Empirically-confirmed values must stay monotonically increasing
-    // by enum ordinal — a regression that swapped the constants would
-    // break cover-vs-stance gating downstream.
+    // Anchors to binary-confirmed RE values — a regression that swapped
+    // the constants would break cover-vs-stance gating downstream.
     let h: [CoverHeight; 4] = [
         CoverHeight::Low,
         CoverHeight::Mid,
@@ -236,7 +215,6 @@ fn cover_height_meters_are_monotonic() {
     for w in h.windows(2) {
         assert!(w[0].meters() < w[1].meters(), "{:?} < {:?}", w[0], w[1]);
     }
-    // Anchor specific values per the binary-confirmed RE.
     assert!((CoverHeight::Low.meters() - 0.71).abs() < 0.01);
     assert!((CoverHeight::Los.meters() - 2.52).abs() < 0.01);
 }
