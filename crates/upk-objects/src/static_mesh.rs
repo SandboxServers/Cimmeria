@@ -115,6 +115,19 @@ const MESH_EDGE_SIZE: usize = 16;
 /// Fields per FStaticMeshElement (serialized as 7 consecutive i32 values in SGW v486).
 const ELEMENT_FIELD_COUNT: usize = 7;
 
+/// Reject kDOPTree node arrays larger than this. The largest real
+/// Castle_CellBlock kDOPTree fits in low five digits; this cap sits
+/// comfortably above ground truth while still refusing a malicious file
+/// from coercing a ~3GB allocation.
+const MAX_KDOP_NODES: i32 = 100_000;
+
+/// Reject kDOPTree triangle arrays larger than this. The largest real
+/// Castle_CellBlock mesh has ~80k collision triangles; the cap sits an
+/// order of magnitude above ground truth. Without it, a malformed file
+/// declaring `tri_count = 0x7FFFFFFF` would coerce the parser into a
+/// ~16GB allocation before the underlying read could fail.
+const MAX_KDOP_TRIANGLES: i32 = 1_000_000;
+
 /// Deserialize a StaticMesh from export serial data.
 ///
 /// `data` is the raw bytes from `pkg.read_export_data(export)`.
@@ -283,28 +296,32 @@ fn read_bounds(data: &[u8], pos: &mut usize) -> Result<BoundingBox> {
 ///    material/section index. **This is the collision-relevant data**
 ///    and we return it to the caller.
 fn read_kdop_tree(data: &[u8], pos: &mut usize) -> Result<Vec<KdopTriangle>> {
-    // kDOP nodes: count + count * 32 bytes
+    // kDOP nodes: count + count * 32 bytes. Bounds-check before any
+    // Vec::with_capacity-like allocation — a malicious file can declare
+    // `node_count = 0x7FFFFFFF` and force ~3GB of allocation upfront.
     ensure_bytes(data, *pos, 4, "kDOP node count")?;
     let node_count = LittleEndian::read_i32(&data[*pos..]);
     *pos += 4;
-    if !(0..=100_000).contains(&node_count) {
+    if !(0..=MAX_KDOP_NODES).contains(&node_count) {
         return Err(ObjectError::InvalidData(format!(
-            "Unreasonable kDOP node count: {}",
-            node_count
+            "Unreasonable kDOP node count: {} (max {})",
+            node_count, MAX_KDOP_NODES
         )));
     }
     let node_data = node_count as usize * KDOP_NODE_SIZE;
     ensure_bytes(data, *pos, node_data, "kDOP node data")?;
     *pos += node_data;
 
-    // kDOP triangles: count + count * 8 bytes
+    // kDOP triangles: count + count * 8 bytes. Same allocation-bomb
+    // concern as the node array above — cap before we hit
+    // Vec::with_capacity.
     ensure_bytes(data, *pos, 4, "kDOP triangle count")?;
     let tri_count = LittleEndian::read_i32(&data[*pos..]);
     *pos += 4;
-    if !(0..=1_000_000).contains(&tri_count) {
+    if !(0..=MAX_KDOP_TRIANGLES).contains(&tri_count) {
         return Err(ObjectError::InvalidData(format!(
-            "Unreasonable kDOP triangle count: {}",
-            tri_count
+            "Unreasonable kDOP triangle count: {} (max {})",
+            tri_count, MAX_KDOP_TRIANGLES
         )));
     }
     let tri_data = tri_count as usize * KDOP_TRI_SIZE;
