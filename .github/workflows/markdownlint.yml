@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # DavidAnson/markdownlint-cli2-action bundles markdownlint-cli2 and
       # emits ::warning:: annotations under GITHUB_ACTIONS. continue-on-error

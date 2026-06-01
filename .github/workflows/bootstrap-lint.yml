@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: validate .mcp.json.example as JSON
         # Heredoc keeps the embedded Python visually unambiguous — column-0
