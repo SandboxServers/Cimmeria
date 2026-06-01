@@ -173,7 +173,9 @@ mod tests {
 
         // Non-empty args so the crafting handler takes the parse-and-log
         // path, not the truncated-args warn path. Either path returns
-        // `true`, but the parse path is the realistic success shape.
+        // `true`, but the parse path is the realistic success shape. The
+        // numeric payload itself is irrelevant — this test pins WHERE the
+        // dispatch lands, not what the handler computes from the value.
         let args = 42i32.to_le_bytes();
         let handled = dispatch(
             1,
@@ -206,8 +208,8 @@ mod tests {
     /// paste), both the crafting and social handlers fire for index 95
     /// — the count goes from 1 to 2 — and routing tests that assert only
     /// `handled == true` cannot distinguish "routed to the right place"
-    /// from "routed to two places". That's the shadow-arm trap from
-    /// issue \#431.
+    /// from "routed to two places". That's the shadow-arm trap this
+    /// guard exists to prevent.
     ///
     /// We pin BOTH the count (exactly one) and the suffix `(Phase 2)`
     /// because:
@@ -226,6 +228,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(8);
         let engine = ChainEngine::new();
 
+        // Payload value is irrelevant — only the routing target matters here.
         let args = 42i32.to_le_bytes();
         let handled = dispatch(
             1,
@@ -252,8 +255,8 @@ mod tests {
             1,
             "expected exactly one `spendAppliedSciencePoints` log for method 95; \
              got {}. More than one log indicates the social-submodule shadow \
-             arm at cell_methods/player/social.rs (deleted in PR \\#431) has \
-             been reintroduced. All captured events: {:#?}",
+             arm at cell_methods/player/social.rs has been reintroduced. \
+             All captured events: {:#?}",
             asp_logs.len(),
             capture.all(),
         );
@@ -290,6 +293,7 @@ mod tests {
         let mut mgr = make_space_manager_with_player(1);
         let (tx, _rx) = mpsc::channel(8);
 
+        // Payload value is irrelevant — only the routing target matters here.
         let args = 42i32.to_le_bytes();
         // `super` inside this `mod tests` is `dispatch`; the sibling
         // `social` module lives one level up under `player`.
@@ -307,9 +311,9 @@ mod tests {
             "social::dispatch must NOT handle method 95 (SPEND_APPLIED_SCIENCE_POINTS). \
              A `true` here means a SPEND_APPLIED_SCIENCE_POINTS arm has been \
              re-added to crates/services/src/cell/cell_methods/player/social.rs \
-             — that's the shadow-arm trap from issue \\#431. Index 95 belongs \
-             to the crafting submodule; the outer dispatcher already routes \
-             it there. Delete the social-side arm.",
+             — that's the shadow-arm trap this regression guard exists to \
+             catch. Index 95 belongs to the crafting submodule; the outer \
+             dispatcher already routes it there. Delete the social-side arm.",
         );
     }
 
