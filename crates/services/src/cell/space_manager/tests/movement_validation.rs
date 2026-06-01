@@ -152,6 +152,63 @@ fn rejection_carries_bounds_for_log_capture() {
     }
 }
 
+/// Regression guard: an accepted client position update must advance
+/// the `last_valid` source so the *next* iteration's bounds check
+/// uses the freshly written position, not the spawn pos.
+///
+/// The `last_valid` field returned on reject is read from
+/// `space.entities[entity_id].position` at validation time. If a
+/// future refactor accidentally stops writing the accepted position
+/// into the cell entity (e.g. early-returning before
+/// `update_entity_position`, or routing accepts down a path that
+/// snapshots `last_valid` from spawn), then a later reject would
+/// snap the client back to spawn instead of the actually-last-valid
+/// position — surfacing as a "rubber-banding to spawn" bug for
+/// players whose connection later sends one bad packet.
+///
+/// Shape: apply legal move A → apply legal move B → reject move C →
+/// assert C's `last_valid` equals B's destination (not A, not spawn).
+#[test]
+fn legitimate_movement_updates_last_valid_for_next_iteration() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+
+    // Move A: small legal delta from spawn.
+    let pos_a = [12.0, 0.0, 22.0];
+    let outcome_a = mgr.apply_client_position_update(100, pos_a, [0, 0, 0], [0.0; 3]);
+    assert!(
+        matches!(outcome_a, ClientMoveOutcome::Accepted { position } if position == pos_a),
+        "move A must be accepted, got {outcome_a:?}"
+    );
+
+    // Move B: another legal delta from A.
+    let pos_b = [15.0, 0.0, 25.0];
+    let outcome_b = mgr.apply_client_position_update(100, pos_b, [0, 0, 0], [0.0; 3]);
+    assert!(
+        matches!(outcome_b, ClientMoveOutcome::Accepted { position } if position == pos_b),
+        "move B must be accepted, got {outcome_b:?}"
+    );
+
+    // Move C: out-of-bounds. The rejection's `last_valid` must equal
+    // pos_b — proving the cell entity's position field was advanced
+    // by the prior accepts. If anything in the accept path stopped
+    // writing through to `cell_entity.position`, `last_valid` would
+    // be SPAWN_POS here.
+    let outcome_c =
+        mgr.apply_client_position_update(100, [-100_000.0, 0.0, 20.0], [0, 0, 0], [0.0; 3]);
+    match outcome_c {
+        ClientMoveOutcome::Rejected { last_valid, .. } => {
+            assert_eq!(
+                last_valid, pos_b,
+                "after two accepts, snap-back target must be the most recent valid \
+                 position (pos_b), not spawn or pos_a — got {last_valid:?}"
+            );
+        }
+        other => panic!("expected Rejected, got {other:?}"),
+    }
+}
+
 #[test]
 fn missing_entity_returns_entity_missing_outcome() {
     let mut mgr = make_manager();

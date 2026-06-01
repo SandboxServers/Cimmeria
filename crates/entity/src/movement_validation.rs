@@ -236,6 +236,66 @@ mod tests {
         ));
     }
 
+    /// Regression guard: `+f32::INFINITY` on any axis must be rejected
+    /// **even against an unbounded-max AABB**.
+    ///
+    /// The shape of the regression we're guarding: a future
+    /// contributor replaces the `is_finite()` gate with a NaN-only
+    /// check. Against a finite-max AABB (like `unit_bounds`), the
+    /// rejection still works incidentally — `+Inf <= 100.0` is false,
+    /// so the conjunction collapses. But against a wide-open AABB
+    /// (e.g. `max = f32::INFINITY`, which a contributor widening
+    /// `SpaceBounds::FALLBACK` toward "infinitely permissive" might
+    /// reach for), `+Inf <= +Inf` is true and infinity slips through.
+    /// Pinning the test against an inf-max AABB fires on revert of
+    /// `is_finite()` → `is_nan()`.
+    #[test]
+    fn position_with_infinity_axis_rejected() {
+        let inf = f32::INFINITY;
+        let neg_inf = f32::NEG_INFINITY;
+        // Wide-open AABB: every comparison against +Inf coordinates
+        // succeeds on the max side (`+Inf <= +Inf`). The only thing
+        // that can reject `+Inf` here is the explicit `is_finite()`
+        // gate up front.
+        let unbounded = SpaceBounds::new([neg_inf, neg_inf, neg_inf], [inf, inf, inf]);
+        assert!(!position_within_bounds(
+            Vector3::new(inf, 0.0, 0.0),
+            &unbounded
+        ));
+        assert!(!position_within_bounds(
+            Vector3::new(0.0, inf, 0.0),
+            &unbounded
+        ));
+        assert!(!position_within_bounds(
+            Vector3::new(0.0, 0.0, inf),
+            &unbounded
+        ));
+    }
+
+    /// Symmetric regression guard for the `-Infinity` side of the
+    /// `is_finite()` gate, tested against a wide-open AABB so that
+    /// the explicit `is_finite()` check is the only thing rejecting
+    /// the position (see `position_with_infinity_axis_rejected` for
+    /// the full rationale).
+    #[test]
+    fn position_with_neg_infinity_axis_rejected() {
+        let inf = f32::INFINITY;
+        let neg_inf = f32::NEG_INFINITY;
+        let unbounded = SpaceBounds::new([neg_inf, neg_inf, neg_inf], [inf, inf, inf]);
+        assert!(!position_within_bounds(
+            Vector3::new(neg_inf, 0.0, 0.0),
+            &unbounded
+        ));
+        assert!(!position_within_bounds(
+            Vector3::new(0.0, neg_inf, 0.0),
+            &unbounded
+        ));
+        assert!(!position_within_bounds(
+            Vector3::new(0.0, 0.0, neg_inf),
+            &unbounded
+        ));
+    }
+
     #[test]
     fn validator_accepts_in_bounds_position() {
         let v = MovementValidator::new();
