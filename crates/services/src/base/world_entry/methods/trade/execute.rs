@@ -39,8 +39,9 @@ use sqlx::{PgPool, Postgres, Transaction};
 use super::super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
 use super::super::vendor::helpers::send_cash_changed_to_client;
-use super::super::vendor::serializers::reserve_free_inventory_slots;
+use super::super::vendor::serializers::free_inventory_slots;
 use crate::base::helpers;
+use crate::base::resources::{bag_max_slots, bag_min_slot};
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 /// One side of a trade — the data the atomic commit needs to swap items
@@ -343,6 +344,7 @@ impl From<sqlx::Error> for TradeAbort {
 struct TradeItemRow {
     item_id: i32,
     container_id: i32,
+    slot_id: i32,
     bound: bool,
 }
 
@@ -398,8 +400,23 @@ async fn atomic_swap(pool: &Arc<PgPool>, p1: &TradeSide, p2: &TradeSide) -> Resu
     // recipient with a full main bag fails fast.
     //
     // The recipient of p1's items is p2, and vice versa.
-    let p2_new_slots = reserve_main_slots_for(&mut tx, p2.player_id, p1_items.len()).await?;
-    let p1_new_slots = reserve_main_slots_for(&mut tx, p1.player_id, p2_items.len()).await?;
+    //
+    // Important: the recipient's OWN outgoing INV_MAIN items count as
+    // "currently occupied" in the raw SELECT, but they're about to be
+    // moved to the other side in this same transaction — so for the
+    // purposes of slot reservation they should be treated as free.
+    // Without this exclusion, a valid full-bag swap (e.g., P2's bag is
+    // full but one of those slots holds the item P2 is trading away)
+    // would fail spuriously. The atomic-commit transaction makes this
+    // sound: either both sides' UPDATEs land, or neither does.
+    let p2_vacating_slots = main_slot_ids_of(&p2_items);
+    let p1_vacating_slots = main_slot_ids_of(&p1_items);
+    let p2_new_slots =
+        reserve_main_slots_excluding(&mut tx, p2.player_id, p1_items.len(), &p2_vacating_slots)
+            .await?;
+    let p1_new_slots =
+        reserve_main_slots_excluding(&mut tx, p1.player_id, p2_items.len(), &p1_vacating_slots)
+            .await?;
 
     // Apply the item moves: re-key each row to the recipient, drop into
     // INV_MAIN at the reserved slot.
@@ -533,7 +550,7 @@ async fn lock_items(
     let mut rows = Vec::with_capacity(instance_ids.len());
     for &item_id in instance_ids {
         let row: Option<TradeItemRow> = sqlx::query_as::<_, TradeItemRow>(
-            "SELECT item_id, container_id, bound FROM sgw_inventory \
+            "SELECT item_id, container_id, slot_id, bound FROM sgw_inventory \
              WHERE character_id = $1 AND item_id = $2 FOR UPDATE",
         )
         .bind(player_id)
@@ -572,15 +589,86 @@ async fn lock_items(
     Ok(rows)
 }
 
-async fn reserve_main_slots_for(
+/// Slot IDs of every TradeItemRow that lives in INV_MAIN — these are
+/// the slots that will become free in the same transaction as the
+/// recipient's slot reservation, so they must be excluded from the
+/// recipient's "currently occupied" set.
+///
+/// Non-INV_MAIN items can't appear in the trade today (the
+/// `TRADEABLE_CONTAINERS` whitelist rejects them in [`lock_items`]) but
+/// the filter is kept defensive so a future whitelist expansion doesn't
+/// silently misaccount.
+fn main_slot_ids_of(rows: &[TradeItemRow]) -> Vec<i32> {
+    rows.iter()
+        .filter(|r| r.container_id == INV_MAIN)
+        .map(|r| r.slot_id)
+        .collect()
+}
+
+/// Reserve `needed` free slots in the recipient's INV_MAIN, excluding
+/// any slot IDs the same transaction is about to vacate.
+///
+/// Without the exclusion, a valid full-bag swap fails: if the
+/// recipient's bag is full but contains an item they're trading away,
+/// `reserve_free_inventory_slots` sees that slot as occupied and
+/// rejects the trade even though the slot will be free by commit time.
+/// The transaction is atomic — either every `UPDATE sgw_inventory`
+/// statement lands or none do — so excluding the soon-to-vacate slots
+/// is correct.
+///
+/// We inline the slot query rather than calling
+/// `reserve_free_inventory_slots` directly because that helper has no
+/// exclusion hook. Composition via the pure [`free_inventory_slots`]
+/// keeps the slot-pick logic shared, only the occupancy assembly
+/// differs.
+async fn reserve_main_slots_excluding(
     tx: &mut Transaction<'_, Postgres>,
     recipient_player_id: i32,
     needed: usize,
+    excluding_slots: &[i32],
 ) -> Result<Vec<i32>, TradeAbort> {
     if needed == 0 {
         return Ok(Vec::new());
     }
-    match reserve_free_inventory_slots(tx, recipient_player_id, INV_MAIN, needed).await? {
+
+    // Per-(player, container) advisory lock — mirror the lock shape
+    // `reserve_free_inventory_slots` uses, since concurrent vendor /
+    // grant paths serialize against this namespace.
+    sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+        .bind(recipient_player_id)
+        .bind(INV_MAIN)
+        .execute(&mut **tx)
+        .await?;
+
+    #[derive(sqlx::FromRow)]
+    struct InventorySlotRow {
+        slot_id: i32,
+    }
+
+    let rows = sqlx::query_as::<_, InventorySlotRow>(
+        "SELECT slot_id FROM sgw_inventory \
+         WHERE character_id = $1 AND container_id = $2 \
+         FOR UPDATE",
+    )
+    .bind(recipient_player_id)
+    .bind(INV_MAIN)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let excluding: std::collections::HashSet<i32> = excluding_slots.iter().copied().collect();
+    let occupied_slots: Vec<i32> = rows
+        .into_iter()
+        .map(|row| row.slot_id)
+        .filter(|slot| !excluding.contains(slot))
+        .collect();
+
+    let picked = free_inventory_slots(
+        bag_min_slot(INV_MAIN),
+        bag_max_slots(INV_MAIN),
+        &occupied_slots,
+        needed,
+    );
+    match picked {
         Some(slots) => Ok(slots),
         None => Err(TradeAbort::NotEnoughSlots {
             recipient_player_id,
