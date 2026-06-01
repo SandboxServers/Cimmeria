@@ -256,15 +256,24 @@ impl NavMesh {
         }
 
         // ── Sections 6-8: Regions, flags, areas ─────────────────────────
-        let mut regs = vec![0u16; npolys as usize];
+        // These are parallel `npolys`-length arrays (stride 1). `npolys`
+        // is already capped by `check_count` above, so they're safe as
+        // raw `as usize` today — but route them through `checked_alloc_size`
+        // anyway. Defense in depth: if `MAX_NPOLYS` is ever raised, this
+        // multiplication still gets checked, and the allocation pattern
+        // stays uniform across every count-driven `Vec` in `NavMesh::load`.
+        let regs_len = checked_alloc_size(npolys, 1, "npolys", "regs = npolys u16s")?;
+        let mut regs = vec![0u16; regs_len];
         for v in &mut regs {
             *v = read_u16(&mut r)?;
         }
-        let mut flags = vec![0u16; npolys as usize];
+        let flags_len = checked_alloc_size(npolys, 1, "npolys", "flags = npolys u16s")?;
+        let mut flags = vec![0u16; flags_len];
         for v in &mut flags {
             *v = read_u16(&mut r)?;
         }
-        let mut areas = vec![0u8; npolys as usize];
+        let areas_len = checked_alloc_size(npolys, 1, "npolys", "areas = npolys bytes")?;
+        let mut areas = vec![0u8; areas_len];
         for v in &mut areas {
             *v = read_u8(&mut r)?;
         }
@@ -819,6 +828,12 @@ mod tests {
     /// Construct a unique temp-file path so concurrent test runs don't
     /// clobber each other. We deliberately don't use the `tempfile`
     /// crate to keep `cimmeria-entity` dep-free at this layer.
+    ///
+    /// Suffix combines pid + thread id + nanosecond timestamp — matching
+    /// the navmesh-extractor's `tempdir()` helper. Cargo's default test
+    /// runner parallelises by default, so naming the file by pid+nanos
+    /// alone would race two threads into the same path on fast hardware
+    /// where multiple tests start within the same nanosecond.
     fn make_tmp_nav_path(suffix: &str) -> std::path::PathBuf {
         use std::time::{SystemTime, UNIX_EPOCH};
         let nanos = SystemTime::now()
@@ -826,8 +841,11 @@ mod tests {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         let pid = std::process::id();
+        let tid = std::thread::current().id();
         let mut p = std::env::temp_dir();
-        p.push(format!("cimmeria_navmesh_load_{pid}_{nanos}_{suffix}.nav"));
+        p.push(format!(
+            "cimmeria_navmesh_load_{pid}_{tid:?}_{nanos}_{suffix}.nav"
+        ));
         p
     }
 
