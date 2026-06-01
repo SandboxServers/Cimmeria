@@ -227,6 +227,62 @@ mod tests {
         );
     }
 
+    /// Regression guard for the outer-router trade sub-range. The
+    /// crafting sub-range guard (`outer_dispatch_routes_spend_asp_to_crafting_not_social`)
+    /// pins the crafting branch; this pins the *trade* branch.
+    ///
+    /// Bug shape: if the `TRADE_REQUEST..=TRADE_LOCK_STATE` else-if arm
+    /// regresses (typo'd range, wrong sub-dispatcher, or moved below the
+    /// fallback `social` arm), tradeRequest would route to `social`
+    /// instead. Social's dispatch does not know about trade methods —
+    /// the request would unhandled-warn and the trade UI on the client
+    /// would never open. Pinning the routing via `handled == true`
+    /// alongside the absence of a "social fallback" log proves the
+    /// trade arm fired.
+    ///
+    /// We send TRADE_REQUEST (104) with truncated args (4 bytes — enough
+    /// to read the partner entity id, not enough for a full proposal)
+    /// so the trade handler returns early with its own truncation warn.
+    /// That warn is what proves the trade sub-dispatcher saw the call.
+    ///
+    /// Revert-verifier: deleting the trade else-if arm in the outer
+    /// `dispatch` (so trade methods fall through to social) causes the
+    /// "tradeRequest: malformed LocalTradeProposal" warn to never
+    /// fire — the social sub-dispatcher doesn't emit any such warn.
+    #[tokio::test]
+    async fn outer_dispatch_routes_trade_request_to_trade_not_social() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        let capture = LogCapture::install();
+
+        let mut mgr = make_space_manager_with_player(1);
+        let (tx, _rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+
+        // 4 bytes — partner entity id only; LocalTradeProposal parse
+        // will fail with a malformed-proposal warn (proves we reached
+        // the trade handler).
+        let args = 2i32.to_le_bytes();
+        let handled = dispatch(1, TRADE_REQUEST, &args, &tx, &mut mgr, &engine).await;
+        assert!(
+            handled,
+            "outer dispatch must handle TRADE_REQUEST (104) — fall-through \
+             to social or the unhandled arm would return false here"
+        );
+
+        let event = capture.find_message(Level::WARN, "tradeRequest: malformed LocalTradeProposal");
+        assert!(
+            event.is_some(),
+            "outer dispatch must route TRADE_REQUEST to the trade submodule. \
+             The expected warn 'tradeRequest: malformed LocalTradeProposal' \
+             from cell_methods/player/trade/handlers.rs did not fire. \
+             A passing `handled == true` alone is not sufficient because \
+             a fall-through could land in social.\n\nCaptured events: {:#?}",
+            capture.all()
+        );
+    }
+
     #[tokio::test]
     async fn out_of_range_methods_return_false() {
         let mut mgr = make_space_manager_with_player(1);

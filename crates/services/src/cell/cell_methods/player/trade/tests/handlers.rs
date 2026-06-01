@@ -9,7 +9,7 @@ use cimmeria_entity::trade::{
 };
 
 use crate::cell::cell_methods::player::constants::{
-    TRADE_REQUEST, TRADE_REQUEST_CANCEL, TRADE_UPDATE_PROPOSAL,
+    TRADE_LOCK_STATE, TRADE_REQUEST, TRADE_REQUEST_CANCEL, TRADE_UPDATE_PROPOSAL,
 };
 use crate::cell::client_methods::player::{ON_TRADE_RESULTS, ON_TRADE_STATE};
 use crate::cell::messages::CellToBaseMsg;
@@ -307,6 +307,139 @@ async fn cannot_trade_with_self() {
     assert!(mgr.get_entity(1).unwrap().trade_partner_entity_id.is_none());
 }
 
+/// `begin_trading` must reject when the partner is already in another
+/// trade session. Without this check, a popular player could be
+/// trade-hijacked: a malicious client could spam tradeRequest against
+/// a target already mid-trade with a different player, racing to be
+/// the one whose session sticks.
+///
+/// Revert-verifier: removing the `partner.trade_partner_entity_id.is_some()`
+/// check causes the caller's session to overwrite the partner's existing
+/// partner pointer — the test detects this by asserting the partner's
+/// original trade_partner_entity_id stayed pointing at the original
+/// caller, not the new one.
+#[tokio::test]
+async fn cannot_trade_with_partner_already_in_session() {
+    let mut mgr = make_space_manager();
+    // Three players: entities 1, 2, 3 — all in range of each other.
+    make_two_players(&mut mgr, 1, 2, 2.0);
+    mgr.create_entity(3, "Agnos", [1.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(3) {
+        e.is_player = true;
+        e.player_id = Some(3000);
+    }
+
+    let (tx, _rx) = mpsc::channel(64);
+    // Player 1 opens a trade with player 2.
+    dispatch(
+        1,
+        TRADE_REQUEST,
+        &build_trade_request_args(
+            2,
+            &TradeProposal {
+                version: 1,
+                ..Default::default()
+            },
+        ),
+        &tx,
+        &mut mgr,
+    )
+    .await;
+    assert_eq!(mgr.get_entity(2).unwrap().trade_partner_entity_id, Some(1));
+
+    // Now player 3 tries to trade with player 2 — must be rejected.
+    dispatch(
+        3,
+        TRADE_REQUEST,
+        &build_trade_request_args(
+            2,
+            &TradeProposal {
+                version: 1,
+                ..Default::default()
+            },
+        ),
+        &tx,
+        &mut mgr,
+    )
+    .await;
+
+    // Player 2's session is STILL with player 1, not hijacked to player 3.
+    assert_eq!(
+        mgr.get_entity(2).unwrap().trade_partner_entity_id,
+        Some(1),
+        "partner's session must not be hijacked by a second tradeRequest. \
+         A revert that omits the partner-already-trading check would \
+         overwrite this to Some(3)."
+    );
+    // Player 3 has no session.
+    assert!(
+        mgr.get_entity(3).unwrap().trade_partner_entity_id.is_none(),
+        "rejected caller must NOT have a trade session opened"
+    );
+}
+
+/// `begin_trading` must reject when the caller is already mid-trade.
+/// A client that's mid-trade with player A and sends tradeRequest for
+/// player B should keep the original session intact, not get a second
+/// concurrent session.
+#[tokio::test]
+async fn cannot_open_second_trade_while_already_trading() {
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+    mgr.create_entity(3, "Agnos", [1.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(3) {
+        e.is_player = true;
+        e.player_id = Some(3000);
+    }
+
+    let (tx, _rx) = mpsc::channel(64);
+    // Player 1 opens a trade with player 2.
+    dispatch(
+        1,
+        TRADE_REQUEST,
+        &build_trade_request_args(
+            2,
+            &TradeProposal {
+                version: 1,
+                ..Default::default()
+            },
+        ),
+        &tx,
+        &mut mgr,
+    )
+    .await;
+    assert_eq!(mgr.get_entity(1).unwrap().trade_partner_entity_id, Some(2));
+
+    // Now player 1 tries to ALSO trade with player 3.
+    dispatch(
+        1,
+        TRADE_REQUEST,
+        &build_trade_request_args(
+            3,
+            &TradeProposal {
+                version: 1,
+                ..Default::default()
+            },
+        ),
+        &tx,
+        &mut mgr,
+    )
+    .await;
+
+    // Player 1's original session with player 2 must be intact.
+    assert_eq!(
+        mgr.get_entity(1).unwrap().trade_partner_entity_id,
+        Some(2),
+        "caller's original session must not be hijacked by a second \
+         tradeRequest. Revert of caller-already-trading check would \
+         overwrite this to Some(3)."
+    );
+    // Player 3 has no session — wasn't pulled in.
+    assert!(mgr.get_entity(3).unwrap().trade_partner_entity_id.is_none());
+}
+
 #[tokio::test]
 async fn cannot_trade_with_npc() {
     let mut mgr = make_space_manager();
@@ -319,6 +452,94 @@ async fn cannot_trade_with_npc() {
     let args = build_trade_request_args(2, &TradeProposal::default());
     dispatch(1, TRADE_REQUEST, &args, &tx, &mut mgr).await;
     assert!(mgr.get_entity(1).unwrap().trade_partner_entity_id.is_none());
+}
+
+/// `cancel_trade_on_disconnect` MUST be a no-op when the disconnecting
+/// entity has no open trade — otherwise every logout would spuriously
+/// clear non-existent partner state and emit Cancelled to nobody.
+///
+/// Revert-verifier: replacing the `?` early-return on
+/// `trade_partner_entity_id` with `unwrap_or(0)` would attempt to
+/// cancel a trade with entity_id=0, panicking on the partner lookup
+/// or sending a spurious onTradeResults to whichever entity happens
+/// to have id 0.
+#[tokio::test]
+async fn cancel_trade_on_disconnect_returns_none_for_non_trading_entity() {
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+    // Neither side is trading.
+    assert!(mgr.get_entity(1).unwrap().trade_partner_entity_id.is_none());
+
+    let (tx, mut rx) = mpsc::channel(8);
+    let result = cancel_trade_on_disconnect(1, &tx, &mut mgr).await;
+    assert_eq!(
+        result, None,
+        "no-op disconnect for non-trading entity must return None"
+    );
+    // No outbound message — confirms no spurious cancel was sent.
+    assert!(
+        rx.try_recv().is_err(),
+        "disconnect of non-trading entity must NOT send any cell→base \
+         message (would notify a non-existent partner)"
+    );
+}
+
+/// Truncated `tradeLockState` args (less than 9 bytes) must be rejected
+/// before any session lookup — otherwise the unchecked indexing
+/// `args[8]` panics the cell task. Hostile/malformed packets must
+/// fail closed.
+///
+/// Revert-verifier: removing the `args.len() < 9` early-return
+/// causes a panic at `args[8]` when args is shorter than 9 bytes.
+#[tokio::test]
+async fn trade_lock_state_truncated_args_rejected_silently() {
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+    // Open a session so the truncation path is the only thing that
+    // can reject — otherwise "no session" would also reject and we
+    // wouldn't be sure which branch fired.
+    let (tx, _rx) = mpsc::channel(64);
+    dispatch(
+        1,
+        TRADE_REQUEST,
+        &build_trade_request_args(
+            2,
+            &TradeProposal {
+                version: 1,
+                ..Default::default()
+            },
+        ),
+        &tx,
+        &mut mgr,
+    )
+    .await;
+    let before = mgr
+        .get_entity(1)
+        .unwrap()
+        .trade_proposal
+        .as_ref()
+        .unwrap()
+        .lock_state;
+
+    // Send a TRADE_LOCK_STATE with 8 bytes (one short of the 9-byte minimum).
+    let truncated = [0u8; 8];
+    let handled = dispatch(1, TRADE_LOCK_STATE, &truncated, &tx, &mut mgr).await;
+    assert!(
+        handled,
+        "TRADE_LOCK_STATE is still a recognised method — the truncation \
+         path returns true (handled) but rejects the payload"
+    );
+    // Lock state unchanged.
+    assert_eq!(
+        mgr.get_entity(1)
+            .unwrap()
+            .trade_proposal
+            .as_ref()
+            .unwrap()
+            .lock_state,
+        before,
+        "lock_state must not change when the args are truncated"
+    );
 }
 
 #[tokio::test]

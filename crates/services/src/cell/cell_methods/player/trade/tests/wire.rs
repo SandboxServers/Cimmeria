@@ -4,11 +4,17 @@
 //! by [`super::super::wire::stub_inv_items_for`] against accidental
 //! regression to plausible-looking placeholders.
 
+use tokio::sync::mpsc;
+
 use cimmeria_entity::trade::{
     serialize_on_trade_state, TradeItem, TradeProposal, ETRADELOCKSTATE_NONE,
+    ETRADERESULTS_CANCELLED,
 };
 
-use super::super::wire::stub_inv_items_for;
+use crate::test_support::{make_space_manager, LogCapture};
+
+use super::super::wire::{send_on_trade_results, send_on_trade_state_to_both, stub_inv_items_for};
+use super::make_two_players;
 
 /// Wire-level regression guard for the info-asymmetry fix on the
 /// trading PR.
@@ -157,4 +163,128 @@ fn on_trade_state_stub_invitem_carries_sentinel_not_lying_values() {
         4 + 13 + 4 + 4 + INV_ITEM_NO_AMMO_BYTES + 5,
         "onTradeState packet length must match the documented layout"
     );
+}
+
+/// Regression guard for the `send_on_trade_results` channel-closed
+/// negative log. If the cell→base channel has shut down (base task
+/// exited / panicked) while a trade is mid-flight, every outbound
+/// trade packet would otherwise be silently dropped — the only signal
+/// is the warn log. Pinning the level prevents a quiet downgrade to
+/// `debug!` (which the production filter usually drops); pinning the
+/// "channel closed" substring prevents an accidental rename that
+/// breaks the SigNoz alert this log feeds.
+///
+/// Revert-verifier: replacing the `if let Err(e) = ...` block with
+/// `let _ = tx.send(...).await` causes the warn event to never fire
+/// and this assertion to fail with "expected event missing".
+#[tokio::test]
+async fn send_on_trade_results_logs_warn_when_cell_to_base_channel_closed() {
+    let capture = LogCapture::install();
+
+    // Close the channel by dropping the receiver before the send.
+    let (tx, rx) = mpsc::channel(8);
+    drop(rx);
+
+    send_on_trade_results(
+        /*entity_id*/ 42,
+        /*partner*/ 99,
+        ETRADERESULTS_CANCELLED,
+        &tx,
+    )
+    .await;
+
+    let event = capture
+        .find_message(
+            tracing::Level::WARN,
+            "send onTradeResults: cell→base channel closed",
+        )
+        .expect(
+            "send_on_trade_results MUST log WARN when the cell→base channel \
+             has closed. A regression that silently swallows the SendError \
+             (let _ = tx.send().await) makes mid-flight trade-end \
+             notifications invisible to operators.",
+        );
+    assert!(
+        event.has_field("entity_id", "42"),
+        "channel-closed warn must record entity_id=42: {event:#?}"
+    );
+    assert!(
+        event.has_field("partner_entity_id", "99"),
+        "channel-closed warn must record partner_entity_id=99: {event:#?}"
+    );
+    assert!(
+        event.has_field("result", &ETRADERESULTS_CANCELLED.to_string()),
+        "channel-closed warn must record result={ETRADERESULTS_CANCELLED}: {event:#?}"
+    );
+}
+
+/// `send_on_trade_state_to_both` early-returns with a WARN if EITHER
+/// entity is missing a `trade_proposal` (one side never opened the
+/// session, or the proposal was cleared mid-flight). The post-fix
+/// shape must surface that case as a structured log; pre-fix the
+/// function would have happily called `unwrap()` and panicked the
+/// cell task.
+///
+/// Revert-verifier: replacing the `(None, _) | (_, None)` arm with
+/// `unwrap()` causes the test to panic instead of finishing — that
+/// regression would crash the cell task in production.
+#[tokio::test]
+async fn send_on_trade_state_to_both_warns_when_proposal_missing() {
+    let capture = LogCapture::install();
+
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+    // Both entities exist, but neither has a `trade_proposal` (default
+    // state for a player that never opened a trade).
+    assert!(mgr.get_entity(1).unwrap().trade_proposal.is_none());
+    assert!(mgr.get_entity(2).unwrap().trade_proposal.is_none());
+
+    let (tx, _rx) = mpsc::channel(8);
+    send_on_trade_state_to_both(1, 2, &tx, &mgr).await;
+
+    let event = capture
+        .find_message(
+            tracing::Level::WARN,
+            "send_on_trade_state_to_both: missing proposal state",
+        )
+        .expect(
+            "send_on_trade_state_to_both must WARN when either side has \
+             no trade_proposal. A regression to .unwrap() would panic the \
+             cell task.",
+        );
+    assert!(event.has_field("entity_id", "1"));
+    assert!(event.has_field("partner_entity_id", "2"));
+}
+
+/// Symmetric guard: if the partner entity is missing entirely (e.g. a
+/// race against entity destruction), the function logs a different
+/// warn (the entity-lookup branch, not the proposal-lookup branch)
+/// and early-returns. Different log substring distinguishes "entity
+/// gone" from "entity here but proposal absent" — useful for the
+/// post-mortem when a stuck-trade report comes in.
+#[tokio::test]
+async fn send_on_trade_state_to_both_warns_when_entity_missing() {
+    let capture = LogCapture::install();
+
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+    // Destroy the partner entity — entity lookup fails before
+    // proposal lookup.
+    mgr.destroy_entity(2);
+
+    let (tx, _rx) = mpsc::channel(8);
+    send_on_trade_state_to_both(1, 2, &tx, &mgr).await;
+
+    let event = capture
+        .find_message(
+            tracing::Level::WARN,
+            "send_on_trade_state_to_both: missing entity",
+        )
+        .expect(
+            "missing-entity branch must log a different message than \
+             missing-proposal so operators can tell them apart in the \
+             post-mortem.",
+        );
+    assert!(event.has_field("entity_id", "1"));
+    assert!(event.has_field("partner_entity_id", "2"));
 }

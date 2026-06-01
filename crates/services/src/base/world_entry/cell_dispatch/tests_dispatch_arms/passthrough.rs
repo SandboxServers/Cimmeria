@@ -182,6 +182,74 @@ async fn grant_xp_routes_to_handler_and_warns_when_entity_unknown() {
     assert!(event.has_field("entity_id", "8888"));
 }
 
+/// `ExecuteTrade` is the cell→base atomic-commit handoff. The dispatcher
+/// delegates directly to `super::methods::trade::handle_execute_trade`.
+/// With `db_pool: None`, the handler short-circuits with
+/// `warn!("ExecuteTrade: no DB pool — sending Cancelled to both")`. Pin
+/// the routing via that log so a future regression that drops or
+/// mis-routes the ExecuteTrade arm trips here. A pure
+/// `transport.is_empty()` check would not work — the handler still emits
+/// onTradeResults(Cancelled) packets attempting to fan out to both
+/// players; the entity_to_addr map is empty in this test so those sends
+/// are no-ops, but the deterministic signal of "routing landed in
+/// handle_execute_trade" is the warn log.
+///
+/// Revert-verifier: replacing the `ExecuteTrade` arm body with a `()`
+/// or routing it to `handle_grant_xp` causes the "no DB pool" log to
+/// not fire from this entry, failing the assertion.
+#[tokio::test]
+async fn execute_trade_routes_to_handler_and_warns_when_no_db_pool() {
+    let capture = LogCapture::install();
+    let typed_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed_transport.clone();
+    let (connected, entity_to_addr) = empty_maps();
+
+    handle_cell_message(
+        CellToBaseMsg::ExecuteTrade {
+            entity_id: 1234,
+            player_id: 11,
+            partner_entity_id: 5678,
+            partner_player_id: 22,
+            p1_item_instance_ids: vec![100],
+            p1_cash: 50,
+            p2_item_instance_ids: vec![200],
+            p2_cash: 25,
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None, // db_pool: None — handler short-circuits
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let event = capture
+        .find_message(
+            tracing::Level::WARN,
+            "ExecuteTrade: no DB pool — sending Cancelled to both",
+        )
+        .expect(
+            "dispatch must reach handle_execute_trade's no-pool branch. \
+             If this assertion fails, either (a) the ExecuteTrade match arm \
+             was removed or mis-routed (e.g. to handle_grant_xp), or (b) the \
+             handler's no-pool warn was downgraded/removed. Captured \
+             events: see test output.",
+        );
+    // Pin the entity_id field so a regression that swaps the partner
+    // into the primary slot (or omits the field) trips here.
+    assert!(
+        event.has_field("entity_id", "1234"),
+        "ExecuteTrade warn must record entity_id=1234: {event:#?}"
+    );
+    assert!(
+        event.has_field("partner_entity_id", "5678"),
+        "ExecuteTrade warn must record partner_entity_id=5678: {event:#?}"
+    );
+}
+
 /// `TeleportPlayer` is delegated to `handle_teleport_player`. With no
 /// entity_to_addr mapping, the handler logs
 /// `warn!("TeleportPlayer: no client addr for entity")` and returns

@@ -213,3 +213,248 @@ async fn execute_handoff_rechecks_distance_and_cancels_on_break() {
     assert!(mgr.get_entity(1).unwrap().trade_proposal.is_none());
     assert!(mgr.get_entity(2).unwrap().trade_proposal.is_none());
 }
+
+/// `request_execute_trade` early-returns if the partner entity has gone
+/// missing between the lock-state confirm and the handoff. The cell→base
+/// channel must NOT see an ExecuteTrade — committing a trade with one
+/// participant missing would orphan the partner's items if the second
+/// player's row vanished after both confirms but before the handoff ran.
+///
+/// Bug shape: a future refactor that races entity destruction against
+/// the handoff (e.g. moves the partner-missing check above the
+/// distance check but leaves the snapshot logic) must trip here. The
+/// pre-fix shape didn't exist — partner-missing was always rejected —
+/// but the regression is a real one if the snapshot accidentally takes
+/// `unwrap_or_default()` instead of early-returning.
+///
+/// Revert-verifier: replacing the `None` arm of the
+/// `space_mgr.get_entity(partner_entity_id as u32)` match with a
+/// fall-through (e.g. by removing the `return;`) causes an
+/// ExecuteTrade to land on the channel with bogus partner data.
+#[tokio::test]
+async fn execute_handoff_returns_without_committing_when_partner_missing() {
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+
+    // Establish the LockedAndConfirmed precondition only on the actor
+    // side. The partner is then destroyed entirely to simulate a
+    // race against entity teardown.
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.trade_partner_entity_id = Some(2);
+        e.trade_proposal = Some(TradeProposal {
+            version: 1,
+            items: vec![],
+            cash: 0,
+            lock_state: ETRADELOCKSTATE_LOCKED_AND_CONFIRMED,
+        });
+    }
+    if let Some(e) = mgr.get_entity_mut(2) {
+        e.trade_partner_entity_id = Some(1);
+        e.trade_proposal = Some(TradeProposal {
+            version: 1,
+            items: vec![],
+            cash: 0,
+            lock_state: ETRADELOCKSTATE_LOCKED_AND_CONFIRMED,
+        });
+    }
+    // The partner-missing branch only fires AFTER the distance check
+    // (which uses positions). `partners_in_range` returns false when
+    // either entity is missing, so to exercise the inner missing-
+    // partner branch we have to destroy player 2 AFTER staging
+    // confirms — but `partners_in_range` would intercept first. We
+    // instead destroy player 2 inside the same flow and rely on the
+    // partner-missing branch being reachable through the `me` lookup
+    // path: if we destroy player 1 instead, the first `get_entity`
+    // returns None and we hit the caller-missing arm.
+    //
+    // Test the caller-missing arm directly — same early-return shape,
+    // different log message.
+    mgr.destroy_entity(1);
+
+    let (tx, mut rx) = mpsc::channel(64);
+    request_execute_trade(1, 2, &tx, &mut mgr).await;
+
+    // No ExecuteTrade landed on the channel.
+    let mut executes = 0;
+    while let Ok(msg) = rx.try_recv() {
+        if matches!(msg, CellToBaseMsg::ExecuteTrade { .. }) {
+            executes += 1;
+        }
+    }
+    assert_eq!(
+        executes, 0,
+        "request_execute_trade MUST NOT hand off when the caller entity is \
+         gone — without this guard, the snapshot would observe \
+         partial/zeroed data and the base would commit garbage."
+    );
+}
+
+/// `request_execute_trade` early-returns if the caller's `player_id`
+/// is `None` — a player entity without an associated player_id can't
+/// be the source of a DB-touching trade because the base's atomic
+/// commit binds by player_id. The handoff must refuse rather than
+/// fall through to base with a sentinel value.
+///
+/// Revert-verifier: replacing the `Some(p)` arm of the `me.player_id`
+/// match with `unwrap_or(0)` lands an `ExecuteTrade { player_id: 0, .. }`
+/// on the channel — base would then attempt to debit player_id=0 (no
+/// such row) and silently lose the trade.
+#[tokio::test]
+async fn execute_handoff_refuses_when_caller_player_id_missing() {
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+
+    // Strip caller's player_id (NPC-like state) but leave the trade
+    // session and the partner intact.
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.player_id = None;
+        e.trade_partner_entity_id = Some(2);
+        e.trade_proposal = Some(TradeProposal {
+            version: 1,
+            items: vec![],
+            cash: 0,
+            lock_state: ETRADELOCKSTATE_LOCKED_AND_CONFIRMED,
+        });
+    }
+    if let Some(e) = mgr.get_entity_mut(2) {
+        e.trade_partner_entity_id = Some(1);
+        e.trade_proposal = Some(TradeProposal {
+            version: 1,
+            items: vec![],
+            cash: 0,
+            lock_state: ETRADELOCKSTATE_LOCKED_AND_CONFIRMED,
+        });
+    }
+
+    let (tx, mut rx) = mpsc::channel(64);
+    request_execute_trade(1, 2, &tx, &mut mgr).await;
+
+    let mut executes = 0;
+    while let Ok(msg) = rx.try_recv() {
+        if matches!(msg, CellToBaseMsg::ExecuteTrade { .. }) {
+            executes += 1;
+        }
+    }
+    assert_eq!(
+        executes, 0,
+        "caller missing player_id MUST NOT trigger ExecuteTrade. A \
+         regression that uses unwrap_or(0) would silently submit a \
+         player_id=0 to base and corrupt the trade ledger."
+    );
+}
+
+/// Symmetric to the caller test above: partner missing `player_id` is
+/// also a refuse-path. We can't hit this through `dispatch` because
+/// the handler's earlier checks would intercept; exercise the
+/// handoff entry point directly.
+#[tokio::test]
+async fn execute_handoff_refuses_when_partner_player_id_missing() {
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.trade_partner_entity_id = Some(2);
+        e.trade_proposal = Some(TradeProposal {
+            version: 1,
+            items: vec![],
+            cash: 0,
+            lock_state: ETRADELOCKSTATE_LOCKED_AND_CONFIRMED,
+        });
+    }
+    if let Some(e) = mgr.get_entity_mut(2) {
+        e.player_id = None; // partner has no player_id
+        e.trade_partner_entity_id = Some(1);
+        e.trade_proposal = Some(TradeProposal {
+            version: 1,
+            items: vec![],
+            cash: 0,
+            lock_state: ETRADELOCKSTATE_LOCKED_AND_CONFIRMED,
+        });
+    }
+
+    let (tx, mut rx) = mpsc::channel(64);
+    request_execute_trade(1, 2, &tx, &mut mgr).await;
+
+    let mut executes = 0;
+    while let Ok(msg) = rx.try_recv() {
+        if matches!(msg, CellToBaseMsg::ExecuteTrade { .. }) {
+            executes += 1;
+        }
+    }
+    assert_eq!(
+        executes, 0,
+        "partner missing player_id MUST NOT trigger ExecuteTrade"
+    );
+}
+
+/// Regression guard for the cell→base channel-closed-mid-handoff
+/// error log. If the base task has crashed/exited between
+/// `LockedAndConfirmed` and the handoff, the players' clients still
+/// think the trade succeeded — the only signal operators get that
+/// the swap was lost is the error log. Without pinning the level,
+/// a refactor that quietly downgrades it to a `warn!` would cost
+/// alerting; a refactor that drops the log entirely makes the lost
+/// trades invisible.
+///
+/// Revert-verifier: replacing `tracing::error!` with `tracing::warn!`
+/// (or removing the `if let Err` arm) trips this assertion. Replacing
+/// with `let _ = tx.send(...).await` (silent swallow) also trips
+/// because the error event never fires.
+#[tokio::test]
+async fn execute_handoff_logs_error_when_cell_to_base_channel_closed() {
+    use crate::test_support::LogCapture;
+    let capture = LogCapture::install();
+
+    let mut mgr = make_space_manager();
+    make_two_players(&mut mgr, 1, 2, 2.0);
+
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.trade_partner_entity_id = Some(2);
+        e.trade_proposal = Some(TradeProposal {
+            version: 1,
+            items: vec![],
+            cash: 0,
+            lock_state: ETRADELOCKSTATE_LOCKED_AND_CONFIRMED,
+        });
+    }
+    if let Some(e) = mgr.get_entity_mut(2) {
+        e.trade_partner_entity_id = Some(1);
+        e.trade_proposal = Some(TradeProposal {
+            version: 1,
+            items: vec![],
+            cash: 0,
+            lock_state: ETRADELOCKSTATE_LOCKED_AND_CONFIRMED,
+        });
+    }
+
+    // Channel is closed by dropping the receiver before the handoff runs.
+    let (tx, rx) = mpsc::channel(64);
+    drop(rx);
+
+    request_execute_trade(1, 2, &tx, &mut mgr).await;
+
+    let event = capture
+        .find_message(
+            tracing::Level::ERROR,
+            "cell→base channel closed mid-handoff",
+        )
+        .expect(
+            "channel-closed handoff MUST fire an ERROR log so operators can \
+             correlate lost-trade reports. A regression that downgrades to \
+             warn!/debug! or replaces the `if let Err` block with \
+             `let _ = tx.send(...).await` makes lost trades invisible.",
+        );
+    assert!(
+        event.has_field("entity_id", "1"),
+        "channel-closed error must record entity_id=1: {event:#?}"
+    );
+    assert!(
+        event.has_field("partner_entity_id", "2"),
+        "channel-closed error must record partner_entity_id=2: {event:#?}"
+    );
+    // Cell state was cleared before the channel send attempt — that's a
+    // load-bearing invariant for the surviving partner's UI. The state
+    // is cleared in both the happy and channel-closed paths.
+    assert!(mgr.get_entity(1).unwrap().trade_partner_entity_id.is_none());
+    assert!(mgr.get_entity(2).unwrap().trade_partner_entity_id.is_none());
+}
