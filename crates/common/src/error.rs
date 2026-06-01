@@ -70,12 +70,21 @@ pub enum CimmeriaError {
     /// cap for that field or would have overflowed when combined with a
     /// per-element stride.
     ///
-    /// `field` names the offending header count, `value` is the raw count
-    /// (or the post-multiplication product when `reason` mentions overflow),
-    /// and `reason` is a short static string describing which rule fired.
+    /// `field` names the offending header count (always a real header
+    /// field name like `"nverts"` — never a compound expression), `value`
+    /// is the raw count that triggered the rejection, and `reason` is a
+    /// short static string identifying which rule fired (cap violation
+    /// vs. allocation-size overflow, with the multiplication shape spelled
+    /// out so an operator can diagnose which downstream allocation would
+    /// have busted without reading source).
+    ///
     /// The shape mirrors `cimmeria_navmesh_extractor::ExtractError::NavHeaderOutOfRange`
     /// so the same hostile-input pattern surfaces with the same diagnostic
-    /// regardless of whether it tripped at build-time or server startup.
+    /// regardless of whether it tripped at build-time (extractor) or
+    /// server startup (runtime loader). Both call sites validate the same
+    /// header-count field class against the same caps, so an operator
+    /// seeing this error can rely on it always describing the same kind
+    /// of fault.
     #[error("Asset header field {field} out of range (value {value}): {reason}")]
     NavHeaderOutOfRange {
         field: &'static str,

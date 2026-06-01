@@ -101,22 +101,33 @@ fn check_count(value: u32, max: u32, field: &'static str) -> cimmeria_common::Re
 /// on overflow. Both inputs are passed as `u32` to match the on-disk
 /// header types; the multiplication is performed in `u64` so the failure
 /// mode is the same on 32-bit and 64-bit targets.
+///
+/// `field` names the header-count source of the multiplication (always a
+/// real header field — e.g. `"nverts"`, not a compound expression). The
+/// caller passes `alloc_desc` to describe the multiplication shape so the
+/// error names *which* downstream allocation would have busted (e.g.
+/// `"polys = npolys * nvp * 2 u16s"`). On overflow we widen `value` to
+/// report whichever number the operator can still diagnose: for the u64
+/// `checked_mul` failure that's the raw count (the product is by
+/// definition unrepresentable in u64); for the `usize::try_from` failure
+/// the product fits in u64 and is reported as-is.
 fn checked_alloc_size(
     count: u32,
     stride: u32,
     field: &'static str,
+    alloc_desc: &'static str,
 ) -> cimmeria_common::Result<usize> {
     let product = (count as u64).checked_mul(stride as u64).ok_or(
         cimmeria_common::CimmeriaError::NavHeaderOutOfRange {
             field,
             value: count as u64,
-            reason: "count * stride overflows u64",
+            reason: alloc_desc,
         },
     )?;
     usize::try_from(product).map_err(|_| cimmeria_common::CimmeriaError::NavHeaderOutOfRange {
         field,
         value: product,
-        reason: "count * stride does not fit in usize on this target",
+        reason: alloc_desc,
     })
 }
 
@@ -218,7 +229,7 @@ impl NavMesh {
         let bmax = [read_f32(&mut r)?, read_f32(&mut r)?, read_f32(&mut r)?];
 
         // ── Section 4: Quantized vertices ───────────────────────────────
-        let verts_len = checked_alloc_size(nverts, 3, "nverts")?;
+        let verts_len = checked_alloc_size(nverts, 3, "nverts", "verts = nverts * 3 u16s")?;
         let mut verts = vec![0u16; verts_len];
         for v in &mut verts {
             *v = read_u16(&mut r)?;
@@ -228,8 +239,17 @@ impl NavMesh {
         // Fold the `npolys * nvp * 2` product into one checked mul via
         // `npolys * (nvp * 2)`. `nvp` is already bounded by `MAX_NVP = 64`
         // so `nvp * 2` cannot overflow u32; `saturating_mul` is belt-and-
-        // suspenders against future cap changes.
-        let polys_len = checked_alloc_size(npolys, nvp.saturating_mul(2), "npolys*nvp*2")?;
+        // suspenders against future cap changes. The `field` slot stays
+        // `"npolys"` (a real header field) and the multiplication shape
+        // moves into `alloc_desc` so an operator seeing the error knows
+        // both *which header field* and *which downstream allocation*
+        // would have busted.
+        let polys_len = checked_alloc_size(
+            npolys,
+            nvp.saturating_mul(2),
+            "npolys",
+            "polys = npolys * nvp * 2 u16s",
+        )?;
         let mut polys = vec![0u16; polys_len];
         for p in &mut polys {
             *p = read_u16(&mut r)?;
@@ -254,19 +274,34 @@ impl NavMesh {
         let detail_nverts = check_count(read_u32(&mut r)?, MAX_DETAIL_NVERTS, "detail_nverts")?;
         let detail_ntris = check_count(read_u32(&mut r)?, MAX_DETAIL_NTRIS, "detail_ntris")?;
 
-        let detail_meshes_len = checked_alloc_size(detail_nmeshes, 4, "detail_nmeshes")?;
+        let detail_meshes_len = checked_alloc_size(
+            detail_nmeshes,
+            4,
+            "detail_nmeshes",
+            "detail_meshes = detail_nmeshes * 4 u32s",
+        )?;
         let mut detail_meshes = vec![0u32; detail_meshes_len];
         for v in &mut detail_meshes {
             *v = read_u32(&mut r)?;
         }
 
-        let detail_verts_len = checked_alloc_size(detail_nverts, 3, "detail_nverts")?;
+        let detail_verts_len = checked_alloc_size(
+            detail_nverts,
+            3,
+            "detail_nverts",
+            "detail_verts = detail_nverts * 3 f32s",
+        )?;
         let mut detail_verts = vec![0.0f32; detail_verts_len];
         for v in &mut detail_verts {
             *v = read_f32(&mut r)?;
         }
 
-        let detail_tris_len = checked_alloc_size(detail_ntris, 4, "detail_ntris")?;
+        let detail_tris_len = checked_alloc_size(
+            detail_ntris,
+            4,
+            "detail_ntris",
+            "detail_tris = detail_ntris * 4 bytes",
+        )?;
         let mut detail_tris = vec![0u8; detail_tris_len];
         r.read_exact(&mut detail_tris)?;
 
