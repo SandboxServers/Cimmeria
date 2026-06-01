@@ -111,3 +111,75 @@ async fn error_state_is_inert_per_tick() {
     assert_eq!(npc.ai_state, AiState::Error, "Error must persist");
     assert!(npc.nav_path.is_empty(), "Error must not queue movement");
 }
+
+/// Regression guard (audit #482): each new state handler must record
+/// `decision_outcome = "<vocab>"` on the dispatcher's `npc_ai.decision`
+/// span. Without this, the SigNoz query `groupBy=decision_outcome` on
+/// the `npc_ai` target would show every patrol/wander/investigate
+/// /follow/despawn/submit/error tick under "no decision_outcome
+/// recorded" — exactly the regression the audit's commit 5 fixes.
+///
+/// Bug shape: revert the `Span::current().record(...)` call inside
+/// `npc_ai_despawn` (or any of the other 6 new state handlers) and
+/// the matching assertion fails. We pick Despawn here because it has
+/// the cleanest single-outcome shape — Patrol/Wander/Investigate/
+/// Follow record context-dependent outcomes that vary per sub-state.
+#[tokio::test]
+async fn despawn_handler_records_decision_outcome_on_span() {
+    use crate::test_support::LogCapture;
+
+    let mut mgr = make_castle_mgr();
+    spawn_npc(&mut mgr, 200);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.ai_state = AiState::Despawning;
+    }
+
+    let capture = LogCapture::install();
+    let (tx, _rx) = mpsc::channel(16);
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
+
+    assert!(
+        capture.span_recorded("decision_outcome", "despawn"),
+        "Despawn handler must Span::current().record(\"decision_outcome\", \"despawn\") \
+         per docs/architecture/observability.md §npc_ai_decision_outcome enum; \
+         reverting the record() breaks SigNoz `groupBy=decision_outcome` queries. \
+         Captured: {:#?}",
+        capture.all()
+    );
+}
+
+/// Companion guard for the `error_hold` outcome — same shape as
+/// despawn, different terminal vocab. Error state is quiescent (no
+/// nav, no broadcast) so the single record() is the only signal that
+/// the NPC is alive but stuck in Error.
+#[tokio::test]
+async fn error_handler_records_decision_outcome_on_span() {
+    use crate::test_support::LogCapture;
+
+    let mut mgr = make_castle_mgr();
+    spawn_npc(&mut mgr, 200);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.ai_state = AiState::Error;
+    }
+
+    let capture = LogCapture::install();
+    let (tx, _rx) = mpsc::channel(16);
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
+
+    assert!(
+        capture.span_recorded("decision_outcome", "error_hold"),
+        "Error handler must Span::current().record(\"decision_outcome\", \"error_hold\") \
+         per docs/architecture/observability.md. Captured: {:#?}",
+        capture.all()
+    );
+}
