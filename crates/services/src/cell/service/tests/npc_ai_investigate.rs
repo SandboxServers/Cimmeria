@@ -43,7 +43,12 @@ async fn investigate_first_tick_routes_toward_poi() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
@@ -71,7 +76,12 @@ async fn investigate_arrival_stamps_dwell() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
@@ -99,7 +109,12 @@ async fn investigate_with_elapsed_dwell_returns_to_idle() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(npc.ai_state, AiState::Idle);
@@ -144,7 +159,12 @@ async fn investigate_with_no_poi_drops_to_idle() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(npc.ai_state, AiState::Idle);
@@ -173,7 +193,12 @@ async fn investigate_knockback_during_dwell_re_stamps_on_re_arrival() {
     if let Some(npc) = mgr.get_entity_mut(200) {
         npc.position = Vector3::new(50.0, 0.0, 50.0);
     }
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let after_knockback = mgr.get_entity(200).unwrap();
     assert_eq!(
@@ -196,7 +221,12 @@ async fn investigate_knockback_during_dwell_re_stamps_on_re_arrival() {
         npc.position = Vector3::new(10.0, 0.0, 10.0);
         npc.nav_path.clear();
     }
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let after_re_arrival = mgr.get_entity(200).unwrap();
     assert_eq!(

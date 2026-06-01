@@ -59,7 +59,12 @@ async fn idle_npc_with_patrol_path_transitions_to_patrol_same_tick() {
     spawn_patrol_npc(&mut mgr, 200, [0.0; 3]);
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
@@ -100,7 +105,12 @@ async fn patrol_advances_index_when_dwell_elapses_at_waypoint() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
@@ -137,7 +147,12 @@ async fn patrol_arrival_stamps_dwell_deadline() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
@@ -208,7 +223,12 @@ async fn patrol_with_empty_path_drops_to_idle() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(npc.ai_state, AiState::Idle, "empty path → Idle");
@@ -238,7 +258,12 @@ async fn patrol_with_future_dwell_deadline_is_a_no_op() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
@@ -286,7 +311,12 @@ async fn patrol_knockback_during_dwell_re_stamps_on_re_arrival() {
     if let Some(npc) = mgr.get_entity_mut(200) {
         npc.position = cimmeria_common::Vector3::new(50.0, 0.0, 50.0);
     }
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let after_knockback = mgr.get_entity(200).unwrap();
     assert!(
@@ -312,7 +342,12 @@ async fn patrol_knockback_during_dwell_re_stamps_on_re_arrival() {
         npc.position = path[0];
         npc.nav_path.clear();
     }
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let after_re_arrival = mgr.get_entity(200).unwrap();
     assert!(
@@ -353,7 +388,12 @@ async fn patrol_with_single_waypoint_holds_position_and_re_stamps_dwell() {
     let (tx, _rx) = mpsc::channel(16);
 
     // Tick 1: Idle → Patrol, close + dwell None → stamp.
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
     let after_arrival = mgr.get_entity(200).unwrap();
     assert_eq!(after_arrival.ai_state, AiState::Patrol);
     assert!(after_arrival.patrol_dwell_until.is_some());
@@ -366,7 +406,12 @@ async fn patrol_with_single_waypoint_holds_position_and_re_stamps_dwell() {
         npc.patrol_dwell_until =
             Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
     }
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
     let after_elapsed = mgr.get_entity(200).unwrap();
     assert_eq!(
         after_elapsed.patrol_next_index, 0,
@@ -383,7 +428,12 @@ async fn patrol_with_single_waypoint_holds_position_and_re_stamps_dwell() {
 
     // Re-tick: close + dwell None → stamp again. The loop continues
     // indefinitely with no observable motion.
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
     let after_re_stamp = mgr.get_entity(200).unwrap();
     assert!(
         after_re_stamp.patrol_dwell_until.is_some(),

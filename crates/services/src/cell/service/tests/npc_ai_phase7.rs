@@ -39,7 +39,12 @@ async fn despawning_removes_entity_from_space() {
     assert!(mgr.get_entity(200).is_some(), "fixture invariant");
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     assert!(
         mgr.get_entity(200).is_none(),
@@ -62,7 +67,12 @@ async fn submit_clears_combat_state_and_holds() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(npc.ai_state, AiState::Submit);
@@ -90,7 +100,12 @@ async fn error_state_is_inert_per_tick() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(npc.ai_state, AiState::Error, "Error must persist");

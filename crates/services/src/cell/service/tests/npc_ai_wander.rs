@@ -40,7 +40,12 @@ async fn idle_npc_with_wander_radius_transitions_to_wander_same_tick() {
     spawn_wander_npc(&mut mgr, 200, 10.0);
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
@@ -72,7 +77,12 @@ async fn wander_with_future_deadline_is_a_no_op() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
@@ -97,7 +107,12 @@ async fn wander_with_zero_radius_drops_to_idle() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(npc.ai_state, AiState::Idle, "zero radius → Idle");
@@ -120,7 +135,12 @@ async fn wander_with_active_nav_path_is_a_no_op() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
@@ -144,7 +164,12 @@ async fn idle_with_patrol_and_wander_picks_patrol() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert_eq!(
@@ -175,7 +200,12 @@ async fn wander_arrival_stamps_dwell_within_min_max_band() {
     let (tx, _rx) = mpsc::channel(16);
     let before = std::time::Instant::now();
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     let deadline = npc.wander_next_at.expect("arrival must stamp");
@@ -205,7 +235,12 @@ async fn wander_first_entry_stamps_dwell_without_routing() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(npc.wander_next_at.is_some(), "Arrival must stamp dwell");
@@ -229,7 +264,12 @@ async fn wander_elapsed_dwell_routes_to_new_destination_and_clears_deadline() {
     }
     let (tx, _rx) = mpsc::channel(16);
 
-    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
 
     let npc = mgr.get_entity(200).unwrap();
     assert!(
