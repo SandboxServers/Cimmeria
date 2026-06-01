@@ -184,6 +184,9 @@ to crate-rename churn) and **named for the question they answer**.
 | `movement.npc` | DEBUG (1-in-10 sampled `step`, always `waypoint_reached`) | `cell::service::ticks::npc_movement` | NPC nav-path movement |
 | `npc_ai` | DEBUG / INFO | `cell::service::npc_ai_fight` | NPC AI tick outcomes — see `decision_outcome` |
 | `threat` | INFO | `cell::combat::threat::{enter,exit}_player_combat` | Player combat-enter / combat-exit transitions (gated on actual state change) |
+| `trade.request` / `trade.cancel` / `trade.update_proposal` / `trade.lock_state` | INFO | `cell::cell_methods::player::trade::handlers` | Per-handler trade dispatch from the cell side |
+| `trade.execute` | INFO | `base::world_entry::methods::trade::execute::handle_execute_trade` | Base-side execute span (entrypoint) — wraps the atomic_swap call |
+| `trade.atomic_swap` | INFO | `base::world_entry::methods::trade::execute::swap::atomic_swap` | The DB-tx span — `phase = "..."` debug breadcrumbs name the failing step on abort |
 
 #### `npc_ai.decision_outcome` enum
 
