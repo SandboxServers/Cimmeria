@@ -118,6 +118,10 @@ pub async fn handle_execute_trade(
                 partner_entity_id,
                 "ExecuteTrade: no DB pool — sending Cancelled to both"
             );
+            cimmeria_observability::counter!(
+                "trade_swaps_total",
+                "outcome" => "no_db_pool",
+            );
             send_results_to_both(
                 transport,
                 connected,
@@ -139,6 +143,10 @@ pub async fn handle_execute_trade(
             p1_cash,
             p2_cash,
             "ExecuteTrade: negative cash in proposal — rejecting"
+        );
+        cimmeria_observability::counter!(
+            "trade_swaps_total",
+            "outcome" => "negative_cash",
         );
         send_results_to_both(
             transport,
@@ -226,8 +234,21 @@ pub async fn handle_execute_trade(
                 p2_player = p2.player_id,
                 "trade executed atomically"
             );
+            cimmeria_observability::counter!(
+                "trade_swaps_total",
+                "outcome" => "completed",
+            );
         }
         Err(reason) => {
+            // Per the instrumentation-discipline ADR (rule 4): the
+            // metric label vocab is enumerated low-cardinality, NOT
+            // player_id / entity_id. The outcome string is derived
+            // once from the abort variant; correlator fields stay on
+            // the parent span (`trade.execute`) for SigNoz drilldown.
+            cimmeria_observability::counter!(
+                "trade_swaps_total",
+                "outcome" => trade_abort_outcome_label(&reason),
+            );
             // Map the abort variant to the Python-parity per-side
             // ETradeResults codes. The wire shape is unchanged — each
             // client always received an INT32 result on `onTradeResults` —
@@ -296,6 +317,22 @@ pub(super) struct TradeFinalBalances {
 /// internal faults or server-authority validations the client UI has
 /// no dedicated string for — both sides see Cancelled, matching the
 /// pre-asymmetric behavior.
+/// Low-cardinality outcome label for the `trade_swaps_total{outcome=...}`
+/// counter. Enumerated values only — no `player_id` / `entity_id`
+/// (rule 4 in instrumentation-discipline.md).
+fn trade_abort_outcome_label(reason: &TradeAbort) -> &'static str {
+    match reason {
+        TradeAbort::DbError(_) => "db_error",
+        TradeAbort::PlayerMissing { .. } => "player_missing",
+        TradeAbort::InsufficientCash { .. } => "insufficient_cash",
+        TradeAbort::ItemMissing { .. } => "item_missing",
+        TradeAbort::NotEnoughSlots { .. } => "insufficient_slots",
+        TradeAbort::BoundItemOffered { .. } => "bound_item",
+        TradeAbort::DuplicateInstance { .. } => "duplicate_instance",
+        TradeAbort::IneligibleContainer { .. } => "ineligible_container",
+    }
+}
+
 fn trade_abort_to_results_codes(reason: &TradeAbort, p1_player_id: i32) -> (i32, i32) {
     match reason {
         TradeAbort::InsufficientCash { which: "p1", .. } => {

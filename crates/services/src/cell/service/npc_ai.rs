@@ -23,6 +23,23 @@ use tokio::sync::mpsc;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
+/// Co-located span-field record + counter emission for the
+/// `decision_outcome` vocab. The dispatcher span at
+/// [`npc_ai_tick`] declares
+/// `fields(decision_outcome = tracing::field::Empty)`; each handler
+/// fills the slot via this helper, which ALSO increments the
+/// `npc_ai_decisions_total{decision_outcome}` counter once per tick.
+///
+/// Calling this twice in one handler emits two counter increments —
+/// callers should pick one terminal outcome per tick.
+fn record_decision_outcome(outcome: &'static str) {
+    tracing::Span::current().record("decision_outcome", outcome);
+    cimmeria_observability::counter!(
+        "npc_ai_decisions_total",
+        "decision_outcome" => outcome,
+    );
+}
+
 /// NPC AI tick — drives Fighting, Leashing, and Idle-with-aggression
 /// NPCs. The `Idle` filter on `aggression > 0` is what makes the
 /// `set_aggression` content action actually trigger combat — without it
@@ -970,7 +987,7 @@ async fn npc_ai_patrol(
     if !nav_empty {
         // Movement in flight — npc_movement_tick is walking the NPC
         // toward the current waypoint. Nothing to do this tick.
-        tracing::Span::current().record("decision_outcome", "patrol_continue");
+        record_decision_outcome("patrol_continue");
         return;
     }
 
@@ -994,7 +1011,7 @@ async fn npc_ai_patrol(
         // a waypoint" from the outcome perspective. The per-transition
         // `event = "patrol_arrived"` breadcrumb (debug log below)
         // discriminates the sub-state for log queries.
-        tracing::Span::current().record("decision_outcome", "patrol_dwell");
+        record_decision_outcome("patrol_dwell");
         match dwell {
             None => {
                 // Just arrived — stamp the dwell deadline. Subsequent
@@ -1058,7 +1075,7 @@ async fn npc_ai_patrol(
         // and "queueing the next waypoint". The dispatcher span
         // already carries npc_id + ai_state; the discriminator field
         // names the sub-state (patrol_waypoint_set).
-        tracing::Span::current().record("decision_outcome", "patrol_continue");
+        record_decision_outcome("patrol_continue");
         tracing::debug!(
             target: "npc_ai",
             event = "patrol_waypoint_set",
@@ -1137,7 +1154,7 @@ async fn npc_ai_wander(
 
     if !nav_empty {
         // Movement tick is walking — nothing to do.
-        tracing::Span::current().record("decision_outcome", "wander_dwell");
+        record_decision_outcome("wander_dwell");
         return;
     }
 
@@ -1159,12 +1176,12 @@ async fn npc_ai_wander(
     match wander_next {
         Some(deadline) if now < deadline => {
             // Dwelling at the current destination.
-            tracing::Span::current().record("decision_outcome", "wander_dwell");
+            record_decision_outcome("wander_dwell");
             return;
         }
         None => {
             // Just arrived (or first call). Stamp dwell.
-            tracing::Span::current().record("decision_outcome", "wander_dwell");
+            record_decision_outcome("wander_dwell");
             //
             // Seed the per-call RNG from a wall-clock source for real
             // entropy (`Instant::elapsed()` from a same-function-frame
@@ -1251,7 +1268,7 @@ async fn npc_ai_wander(
     // Picked a fresh waypoint and queued the path — the next tick
     // observes `nav_empty = false` and records wander_dwell while the
     // movement plays out.
-    tracing::Span::current().record("decision_outcome", "wander_pick");
+    record_decision_outcome("wander_pick");
     tracing::debug!(
         target: "npc_ai",
         event = "wander_waypoint_set",
@@ -1324,7 +1341,7 @@ async fn npc_ai_investigate(
     if !nav_empty {
         // Movement in flight toward the POI — equivalent to
         // investigate_routed; the next tick observes arrival.
-        tracing::Span::current().record("decision_outcome", "investigate_routed");
+        record_decision_outcome("investigate_routed");
         return; // Movement in flight.
     }
 
@@ -1340,7 +1357,7 @@ async fn npc_ai_investigate(
         // they're all "at the POI" outcomes from a SigNoz aggregation
         // perspective. The per-transition debug events discriminate
         // the sub-step.
-        tracing::Span::current().record("decision_outcome", "investigate_arrived");
+        record_decision_outcome("investigate_arrived");
         match dwell {
             None => {
                 // Just arrived — stamp dwell.
@@ -1390,7 +1407,7 @@ async fn npc_ai_investigate(
         }
         // Pathfind queued — the next tick will observe nav_empty=false
         // and record investigate_routed again until arrival.
-        tracing::Span::current().record("decision_outcome", "investigate_routed");
+        record_decision_outcome("investigate_routed");
         tracing::debug!(
             target: "npc_ai",
             event = "investigate_routed",
@@ -1464,18 +1481,18 @@ async fn npc_ai_follow(
     let dist = npc_pos.distance_to(&target_pos);
     if dist < min_d {
         // Too close — hold position.
-        tracing::Span::current().record("decision_outcome", "follow_band");
+        record_decision_outcome("follow_band");
         return;
     }
     if dist <= max_d {
         // In band — hold position.
-        tracing::Span::current().record("decision_outcome", "follow_band");
+        record_decision_outcome("follow_band");
         return;
     }
 
     if !nav_empty {
         // Movement in flight toward the target.
-        tracing::Span::current().record("decision_outcome", "follow_band");
+        record_decision_outcome("follow_band");
         return;
     }
 
@@ -1508,7 +1525,7 @@ async fn npc_ai_follow(
     // Out-of-band pathfind queued — the next tick observes
     // nav_empty=false (movement in flight) and records follow_band
     // until back in range.
-    tracing::Span::current().record("decision_outcome", "follow_band");
+    record_decision_outcome("follow_band");
     tracing::debug!(
         target: "npc_ai",
         event = "follow_routed",
@@ -1531,7 +1548,7 @@ async fn npc_ai_despawn(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    tracing::Span::current().record("decision_outcome", "despawn");
+    record_decision_outcome("despawn");
     // Clear the movement-type cache first so the wire state is clean
     // before the destroy. The broadcast itself is dedup'd on None and
     // emits nothing — this is purely a state-clean step.
@@ -1551,7 +1568,7 @@ async fn npc_ai_submit(
     space_mgr: &mut SpaceManager,
 ) {
     use super::super::combat;
-    tracing::Span::current().record("decision_outcome", "submit_init");
+    record_decision_outcome("submit_init");
     // Cache check: only do the heavy work on first entry. After that,
     // last_movement_type is None and we early-out.
     let needs_init = space_mgr
@@ -1580,7 +1597,7 @@ async fn npc_ai_error(
     _tx: &mpsc::Sender<CellToBaseMsg>,
     _space_mgr: &mut SpaceManager,
 ) {
-    tracing::Span::current().record("decision_outcome", "error_hold");
+    record_decision_outcome("error_hold");
     // No-op per tick — Error is a quiescent diagnostic state. The
     // entry log is emitted by whatever transitioned the NPC into
     // Error (typically the content action or the slash command).

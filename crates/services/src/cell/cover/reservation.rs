@@ -39,6 +39,15 @@ impl CoverReservations {
             if current_holder == entity_id {
                 return Ok(());
             }
+            // `race_lost` counter — paired with the warn line in
+            // `ai_integration::try_reserve_or_warn`. Tracks how often
+            // an NPC wanted a slot another entity already holds (today
+            // unreachable in production due to the single-guard
+            // invariant — defensive against future async refactors).
+            cimmeria_observability::counter!(
+                "cover_reservation_state",
+                "state" => "race_lost",
+            );
             return Err(ReserveError::AlreadyReserved {
                 holder: current_holder,
             });
@@ -52,12 +61,20 @@ impl CoverReservations {
 
         self.slot_to_entity.insert(slot, entity_id);
         self.entity_to_slot.insert(entity_id, slot);
+        cimmeria_observability::counter!(
+            "cover_reservation_state",
+            "state" => "held",
+        );
         Ok(())
     }
 
     pub fn release_slot(&mut self, slot: CoverSlotKey) -> bool {
         if let Some(entity_id) = self.slot_to_entity.remove(&slot) {
             self.entity_to_slot.remove(&entity_id);
+            cimmeria_observability::counter!(
+                "cover_reservation_state",
+                "state" => "released",
+            );
             true
         } else {
             false
@@ -67,6 +84,10 @@ impl CoverReservations {
     pub fn release_for_entity(&mut self, entity_id: EntityId) -> Option<CoverSlotKey> {
         let slot = self.entity_to_slot.remove(&entity_id)?;
         self.slot_to_entity.remove(&slot);
+        cimmeria_observability::counter!(
+            "cover_reservation_state",
+            "state" => "released",
+        );
         Some(slot)
     }
 

@@ -374,6 +374,14 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
             interaction_flags,
             "NPC respawned (Dead -> Idle, HP restored, position snapped, witnesses notified)"
         );
+        // `world_name` is bounded by the worlds.xml registry (~30
+        // entries) — low-cardinality. Useful for "is the respawn
+        // timer working as configured per world" / "are we leaking
+        // dead NPCs in Castle but not in Agnos" queries.
+        cimmeria_observability::counter!(
+            "npc_respawns_total",
+            "world_name" => world_name.clone(),
+        );
     }
 }
 

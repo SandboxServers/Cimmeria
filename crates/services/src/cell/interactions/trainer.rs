@@ -64,18 +64,36 @@ pub(crate) async fn try_open_trainer(
         .and_then(|t| t.template_id)
     {
         Some(t) => t,
-        None => return false,
+        None => {
+            cimmeria_observability::counter!(
+                "trainer_opens_total",
+                "outcome" => "no_template",
+            );
+            return false;
+        }
     };
     let list_id = match space_mgr.template_trainer_lists.get(&trainer_template_id) {
         Some(&id) => id,
-        None => return false, // not a trainer — fall through to other interact paths
+        None => {
+            cimmeria_observability::counter!(
+                "trainer_opens_total",
+                "outcome" => "no_template",
+            );
+            return false; // not a trainer — fall through to other interact paths
+        }
     };
 
     // Player must have an archetype to query the right ability list.
     let (player_archetype, player_level, known_abilities) = {
         let player = match space_mgr.get_entity(player_entity_id) {
             Some(p) => p,
-            None => return false,
+            None => {
+                cimmeria_observability::counter!(
+                    "trainer_opens_total",
+                    "outcome" => "no_archetype",
+                );
+                return false;
+            }
         };
         let arch = match player.archetype_id {
             Some(a) => a,
@@ -84,6 +102,10 @@ pub(crate) async fn try_open_trainer(
                     player_entity_id,
                     target_entity_id,
                     "trainer interact: player has no archetype_id — skipping"
+                );
+                cimmeria_observability::counter!(
+                    "trainer_opens_total",
+                    "outcome" => "no_archetype",
                 );
                 return false;
             }
@@ -112,6 +134,13 @@ pub(crate) async fn try_open_trainer(
             archetype_id = player_archetype,
             "Trainer has no abilities for this archetype — content gap"
         );
+        cimmeria_observability::counter!(
+            "trainer_opens_total",
+            "outcome" => "empty_offering",
+        );
+        // Continue — the UI still opens with an empty list. The
+        // counter fires here AND `opened` does NOT below, so the
+        // empty-offering branch is tracked separately.
     }
 
     // For each offered ability, compute `trainable` (1 if the player can
@@ -194,6 +223,16 @@ pub(crate) async fn try_open_trainer(
                 trainable_count = entries.iter().filter(|(_, t)| *t == 1).count(),
                 "Sent onTrainerOpen"
             );
+            // Only emit `opened` for non-empty offerings — the
+            // empty-offering branch already counted itself above.
+            // This way the rate "opened ÷ (opened + empty_offering)"
+            // measures content-completeness.
+            if !entries.is_empty() {
+                cimmeria_observability::counter!(
+                    "trainer_opens_total",
+                    "outcome" => "opened",
+                );
+            }
         }
         Err(e) => {
             tracing::error!(

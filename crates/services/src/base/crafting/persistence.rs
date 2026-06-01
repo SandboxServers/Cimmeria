@@ -49,18 +49,36 @@ pub async fn load_crafting_state(
         racial_paradigm_levels: Vec<i32>,
     }
 
-    let row_opt: Option<PlayerCraftingRow> = sqlx::query_as(
+    let row_opt: Option<PlayerCraftingRow> = match sqlx::query_as(
         "SELECT discipline_ids, blueprint_ids, applied_science_points, \
                 racial_paradigm_levels \
          FROM sgw_player WHERE player_id = $1",
     )
     .bind(player_id)
     .fetch_optional(pool)
-    .await?;
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            cimmeria_observability::counter!(
+                "crafting_persist_attempts_total",
+                "kind" => "load",
+                "outcome" => "sqlx_error",
+            );
+            return Err(e);
+        }
+    };
 
     let row = match row_opt {
         Some(r) => r,
-        None => return Ok(CraftingState::new()),
+        None => {
+            cimmeria_observability::counter!(
+                "crafting_persist_attempts_total",
+                "kind" => "load",
+                "outcome" => "row_not_found",
+            );
+            return Ok(CraftingState::new());
+        }
     };
 
     // Pull expertise rows for the disciplines this player knows. We *could*
@@ -121,6 +139,11 @@ pub async fn load_crafting_state(
         state.expertise.insert(discipline_id, expertise);
     }
 
+    cimmeria_observability::counter!(
+        "crafting_persist_attempts_total",
+        "kind" => "load",
+        "outcome" => "ok",
+    );
     Ok(state)
 }
 
@@ -167,6 +190,29 @@ pub async fn load_crafting_state(
     fields(player_id, expertise_count = state.expertise.len()),
 )]
 pub async fn save_crafting_state(
+    pool: &PgPool,
+    player_id: i32,
+    state: &CraftingState,
+) -> Result<(), sqlx::Error> {
+    // Wrap the body so the counter fires once on every exit (Ok, Err,
+    // or row_not_found) without sprinkling counter! calls at each
+    // early-return. The Drop-on-error path keeps the metric balanced
+    // even if a future refactor adds a new error arm.
+    let result = save_crafting_state_inner(pool, player_id, state).await;
+    let outcome = match &result {
+        Ok(()) => "ok",
+        Err(sqlx::Error::RowNotFound) => "row_not_found",
+        Err(_) => "sqlx_error",
+    };
+    cimmeria_observability::counter!(
+        "crafting_persist_attempts_total",
+        "kind" => "save",
+        "outcome" => outcome,
+    );
+    result
+}
+
+async fn save_crafting_state_inner(
     pool: &PgPool,
     player_id: i32,
     state: &CraftingState,

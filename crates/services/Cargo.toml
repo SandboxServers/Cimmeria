@@ -12,6 +12,7 @@ cimmeria-entity = { workspace = true }
 cimmeria-game = { workspace = true }
 cimmeria-content-engine = { workspace = true }
 cimmeria-commands = { workspace = true }
+cimmeria-observability = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
 rand = { workspace = true }

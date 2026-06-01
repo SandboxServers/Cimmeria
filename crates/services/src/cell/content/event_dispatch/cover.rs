@@ -77,6 +77,10 @@ pub async fn fire_cover_entered(
             "fire_cover_entered: no chains matched"
         );
     }
+    cimmeria_observability::counter!(
+        "cover_detection_events_total",
+        "kind" => "entered",
+    );
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
@@ -117,6 +121,10 @@ pub async fn fire_cover_left(
             "fire_cover_left: matched"
         );
     }
+    cimmeria_observability::counter!(
+        "cover_detection_events_total",
+        "kind" => "left",
+    );
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
@@ -161,6 +169,10 @@ pub async fn fire_cover_duration(
             "fire_cover_duration: matched"
         );
     }
+    cimmeria_observability::counter!(
+        "cover_detection_events_total",
+        "kind" => "duration",
+    );
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
@@ -197,6 +209,10 @@ pub async fn fire_npc_flanked(
             "fire_npc_flanked: matched"
         );
     }
+    cimmeria_observability::counter!(
+        "cover_detection_events_total",
+        "kind" => "flanked",
+    );
     // Player id 0 — flank events don't have a single "player" frame of
     // reference; the executor's mission-context lookups would be a no-op
     // anyway since `npc_entity_id` isn't a player. Pass 0 explicitly so

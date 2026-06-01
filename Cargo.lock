@@ -983,6 +983,7 @@ dependencies = [
  "cimmeria-entity",
  "cimmeria-game",
  "cimmeria-mercury",
+ "cimmeria-observability",
  "proptest",
  "quick-xml",
  "rand 0.10.1",
