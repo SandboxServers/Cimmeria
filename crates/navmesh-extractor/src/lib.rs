@@ -162,10 +162,11 @@ pub fn extract_map(
         // Phase 1.4: BSP Model/Polys — deferred; needs Ghidra trace.
 
         if extraction.soup.triangle_count() == 0 {
-            // Empty chunks still get a stub OBJ so NavBuilder's chunked
-            // mode sees the expected file set. Skip the write when no
-            // geometry was extracted at all to avoid littering the output
-            // dir with zero-content files.
+            // Empty chunks are skipped entirely — no OBJ written. The
+            // directory listing surfaces "missing chunks" on its own
+            // (a chunk_id with no .obj file means no geometry was
+            // resolvable); a zero-triangle stub would just litter the
+            // output dir with content-free files.
             tracing::debug!(
                 chunk_id = format!("{:08x}", id.raw()),
                 actors_total = extraction.actors_total,

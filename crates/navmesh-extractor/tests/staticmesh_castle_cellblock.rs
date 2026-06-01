@@ -21,6 +21,7 @@
 use std::path::{Path, PathBuf};
 
 use cimmeria_navmesh_extractor::staticmesh::{collect_static_mesh_instances, extract_chunk};
+use cimmeria_navmesh_extractor::umap::enumerate_chunks;
 
 /// Where the cooked Castle_CellBlock chunks live in the dev environment.
 ///
@@ -71,17 +72,12 @@ fn castle_cellblock_walks_static_mesh_actors() {
         return;
     }
 
-    // Enumerate every .umap chunk, walk each one, accumulate stats.
-    let chunks: Vec<_> = std::fs::read_dir(&dir)
-        .expect("read Castle_CellBlock dir")
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| {
-            p.extension()
-                .map(|ext| ext.eq_ignore_ascii_case("umap"))
-                .unwrap_or(false)
-        })
-        .collect();
+    // Enumerate every .umap chunk via the production walker so the test
+    // sees exactly what the orchestrator does. Using `enumerate_chunks`
+    // (instead of a raw `read_dir + extension == "umap"` filter) drops
+    // the master streaming-level `<MapName>.umap` that has no hex suffix
+    // and would otherwise be counted alongside the real chunks.
+    let chunks = enumerate_chunks(&dir).expect("enumerate_chunks");
 
     assert!(
         chunks.len() >= 60,
@@ -237,18 +233,9 @@ fn castle_cellblock_extract_chunk_without_index_emits_no_geometry() {
         return;
     }
 
-    // Pick the first chunk deterministically (sorted).
-    let mut chunks: Vec<_> = std::fs::read_dir(&dir)
-        .expect("read Castle_CellBlock dir")
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| {
-            p.extension()
-                .map(|ext| ext.eq_ignore_ascii_case("umap"))
-                .unwrap_or(false)
-        })
-        .collect();
-    chunks.sort();
+    // Pick the first chunk deterministically. `enumerate_chunks` already
+    // sorts and filters out the non-chunk master `.umap`.
+    let chunks = enumerate_chunks(&dir).expect("enumerate_chunks");
     let chunk = chunks.first().expect("at least one chunk");
 
     let result = extract_chunk(chunk, None).expect("extract_chunk");
