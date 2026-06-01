@@ -199,6 +199,27 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 | `min_range_backup` | Target inside ability `min_range` — stepping back |
 | `no_ability` | Every known ability on cooldown / needs ammo |
 | `leashed` | Target moved past `LEASH_DISTANCE` from spawn |
+| `stationary_holds` | Stationary NPC out of range / no LOS — holds fire |
+| `stay_in_cover` | NPC in cover, threat in defensive arc — hold |
+| `move_to_cover` | NPC picked a fresh cover slot — paths to it |
+| `cover_released_flanked` | Threat flanked the cover — released, re-eval next tick |
+| `patrol_continue` | Patrol tick walking toward the current waypoint |
+| `patrol_dwell` | Patrol tick paused at a waypoint after arrival |
+| `wander_pick` | Wander tick chose a fresh destination within radius |
+| `wander_dwell` | Wander tick paused at the current destination |
+| `investigate_arrived` | Investigate tick reached the POI — dwell starts |
+| `investigate_routed` | Investigate tick pathfinding toward the POI |
+| `follow_band` | Follow target is inside the band — no work |
+| `despawn` | Despawn tick — entity is being removed from the space |
+| `submit_init` | Submit tick — first-entry combat-clear |
+| `error_hold` | Error state — diagnostic quiescent fallback |
+
+Successor PRs may add `patrol_arrived` / `wander_waypoint_set` / etc.
+as sub-state breadcrumb `event = "..."` discriminators (see
+[instrumentation-discipline.md §rule-2](instrumentation-discipline.md#rule-2--every-state-transition-gets-a-debug-level-event-with-event--)).
+The enum above is the **terminal** decision-outcome — the single
+value `Span::current().record("decision_outcome", ...)` settles on per
+tick — not the per-transition event log.
 
 ### Metrics
 
