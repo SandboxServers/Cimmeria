@@ -32,6 +32,48 @@ use super::reservation::CoverReservations;
 use super::scoring::{is_flanked, pick_best, CoverWeights, ScoringContext};
 use super::types::{Cover, CoverSlotKey};
 
+/// Attempt to reserve `slot` for `npc_id` on a held reservation guard,
+/// emitting a `warn!` per docs/architecture/negative-logging-convention.md
+/// when the slot is already taken by another entity. Returns `Ok(())`
+/// on success or when the slot was already reserved BY THIS NPC
+/// (idempotent re-reserve); `Err(())` on the race-lost path so the
+/// caller can fall back to `NoCover`.
+///
+/// Extracted from [`maintain_cover_for_npc`] so the negative-log
+/// behavior is unit-testable without having to construct a race in
+/// the guarded outer function (which is unreachable from the current
+/// production code — the warn is purely defensive against future
+/// async refactors that break the single-guard invariant).
+fn try_reserve_or_warn(
+    reservations_guard: &mut MutexGuard<'_, CoverReservations>,
+    npc_id: EntityId,
+    slot: CoverSlotKey,
+) -> Result<(), ()> {
+    match reservations_guard.reserve_for_entity(npc_id, slot) {
+        Ok(()) => Ok(()),
+        Err(super::reservation::ReserveError::AlreadyReserved {
+            holder: current_holder,
+        }) => {
+            // Per docs/architecture/negative-logging-convention.md:
+            // "expectation unmet, player-visible, recoverable" — a
+            // future async refactor that breaks the single-guard
+            // invariant would silently degrade NPCs' cover decisions
+            // without this warn surfacing the race. Greppable by
+            // `reason = "cover_slot_taken"`.
+            tracing::warn!(
+                target: "cover.reservation",
+                npc_id = npc_id.0,
+                holder = current_holder.0,
+                chunk_id = slot.chunk_id,
+                node_id = slot.node_id,
+                reason = "cover_slot_taken",
+                "cover reserve_for_entity lost the race -- falling back to NoCover"
+            );
+            Err(())
+        }
+    }
+}
+
 /// Lock a `Mutex<CoverReservations>`, recovering gracefully from poisoning.
 /// A poisoned mutex on the reservation table is not catastrophic — the
 /// worst case is some live reservations are inconsistent and the next
@@ -160,12 +202,11 @@ pub fn maintain_cover_for_npc(
 
     // Reserve atomically under the held guard. With no intervening
     // lock-drop, only logic bugs (this NPC's own stale reservation
-    // colliding) could fail this — handled gracefully.
-    if reservations_guard.reserve_for_entity(npc_id, slot).is_err() {
-        // Defensive: this NPC's `slot_for_entity` returned None at the
-        // top of the function but reserve_for_entity now sees a
-        // conflict. Only happens on internal bookkeeping drift; fall
-        // back to no-cover and try again next tick.
+    // colliding) could fail this — `try_reserve_or_warn` handles the
+    // negative path gracefully so a future async refactor that breaks
+    // the single-guard invariant still surfaces the race via the
+    // `cover.reservation` target.
+    if try_reserve_or_warn(&mut reservations_guard, npc_id, slot).is_err() {
         return CoverDecision::NoCover;
     }
 
@@ -340,6 +381,111 @@ mod ai_integration_tests {
             }
             other => panic!("expected MoveToCover into chunk 2, got {other:?}"),
         }
+    }
+
+    /// **Negative-logging regression guard (audit #482 P0).** When the
+    /// reservation table reports a slot already held by a *different*
+    /// entity, the reserve attempt must emit a structured `warn!` with
+    /// `target = "cover.reservation"` and `reason = "cover_slot_taken"`
+    /// before falling back to `Err(())`. Without this warn, a future
+    /// async refactor that breaks the single-guard invariant in
+    /// `maintain_cover_for_npc` would silently degrade NPC cover
+    /// decisions — no log line names the race, no SigNoz query catches
+    /// the rate.
+    ///
+    /// Bug shape this catches: revert the warn to a bare `Err(())`
+    /// return and the test asserts on a missing event.
+    #[test]
+    fn try_reserve_warns_when_slot_taken_by_other_holder() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        let capture = LogCapture::install();
+
+        let cover = cover_with(vec![n(1, 0, 5.0, 0.0, 0.0)]);
+        // Pre-occupy the slot with a DIFFERENT entity so the
+        // try_reserve call lands on the AlreadyReserved path.
+        cover
+            .reservations
+            .lock()
+            .unwrap()
+            .reserve_for_entity(EntityId(99), CoverSlotKey::new(1, 0))
+            .unwrap();
+
+        let mut guard = cover.reservations.lock().unwrap();
+        let result = try_reserve_or_warn(&mut guard, EntityId(42), CoverSlotKey::new(1, 0));
+        drop(guard);
+
+        assert!(
+            result.is_err(),
+            "race-lost path must return Err so the caller falls back to NoCover"
+        );
+
+        let event = capture
+            .find_event(
+                Level::WARN,
+                "cover reserve_for_entity lost the race",
+                "cover_slot_taken",
+            )
+            .unwrap_or_else(|| {
+                panic!(
+                    "must emit warn at target=cover.reservation with \
+                     reason=cover_slot_taken; reverting the warn site \
+                     breaks ops visibility of the cover-race condition. \
+                     Captured: {:#?}",
+                    capture.all()
+                )
+            });
+        assert!(
+            event.has_field("npc_id", "42"),
+            "warn must carry the npc_id field for correlation: {event:#?}"
+        );
+        assert!(
+            event.has_field("holder", "99"),
+            "warn must carry the current slot holder for correlation: {event:#?}"
+        );
+        assert!(
+            event.has_field("chunk_id", "1"),
+            "warn must carry the slot's chunk_id: {event:#?}"
+        );
+    }
+
+    /// Same helper, but called for the entity that ALREADY holds the
+    /// slot — idempotent re-reserve must NOT emit a warn (the
+    /// reservation contract treats this as Ok(())).
+    #[test]
+    fn try_reserve_no_warn_on_idempotent_reserve_by_same_holder() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        let capture = LogCapture::install();
+
+        let cover = cover_with(vec![n(1, 0, 5.0, 0.0, 0.0)]);
+        cover
+            .reservations
+            .lock()
+            .unwrap()
+            .reserve_for_entity(EntityId(42), CoverSlotKey::new(1, 0))
+            .unwrap();
+
+        let mut guard = cover.reservations.lock().unwrap();
+        let result = try_reserve_or_warn(&mut guard, EntityId(42), CoverSlotKey::new(1, 0));
+        drop(guard);
+
+        assert!(
+            result.is_ok(),
+            "same-entity re-reserve must return Ok per CoverReservations contract"
+        );
+        assert!(
+            capture
+                .find_event(
+                    Level::WARN,
+                    "cover reserve_for_entity lost the race",
+                    "cover_slot_taken"
+                )
+                .is_none(),
+            "idempotent re-reserve must NOT emit the race-lost warn"
+        );
     }
 
     #[test]

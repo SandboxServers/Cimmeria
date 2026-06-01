@@ -25,12 +25,33 @@ pub(super) struct TradeItemRow {
     pub(super) bound: bool,
 }
 
+#[tracing::instrument(
+    name = "trade.atomic_swap",
+    level = "info",
+    skip_all,
+    fields(
+        p1_player = p1.player_id,
+        p2_player = p2.player_id,
+        p1_items = p1.item_instance_ids.len(),
+        p2_items = p2.item_instance_ids.len(),
+        p1_cash = p1.cash,
+        p2_cash = p2.cash,
+    ),
+)]
 pub(super) async fn atomic_swap(
     pool: &Arc<PgPool>,
     p1: &TradeSide,
     p2: &TradeSide,
 ) -> Result<TradeFinalBalances, TradeAbort> {
     let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
+
+    // Per-phase debug! checkpoints fire BEFORE each `await?` so a
+    // parent error log (`ExecuteTrade: atomic swap failed`) can be
+    // narrowed to which phase by looking at the last-seen phase in
+    // the SigNoz timeline for the same trace_id. debug level (not
+    // info) per docs/architecture/instrumentation-discipline.md
+    // rule 2 — these are sub-state breadcrumbs inside the parent
+    // `trade.atomic_swap` span.
 
     // Lock both players' rows in a deterministic order to avoid
     // deadlocks against any other paths that lock multiple players at
@@ -40,6 +61,13 @@ pub(super) async fn atomic_swap(
     } else {
         (p2, p1)
     };
+    tracing::debug!(
+        target: "trade.atomic_swap",
+        phase = "take_advisory_lock",
+        lo_player = lo.player_id,
+        hi_player = hi.player_id,
+        "trade.atomic_swap: acquiring per-player advisory locks"
+    );
     take_advisory_lock(&mut tx, lo.player_id).await?;
     take_advisory_lock(&mut tx, hi.player_id).await?;
 
@@ -73,6 +101,13 @@ pub(super) async fn atomic_swap(
     // `container_id` — only INV_MAIN is on the tradeable whitelist
     // (buyback / bank / mission / equip slots / bandolier are all
     // rejected). See `TRADEABLE_CONTAINERS` below for rationale.
+    tracing::debug!(
+        target: "trade.atomic_swap",
+        phase = "lock_items",
+        p1_count = p1.item_instance_ids.len(),
+        p2_count = p2.item_instance_ids.len(),
+        "trade.atomic_swap: SELECT FOR UPDATE on offered item rows"
+    );
     let p1_items = lock_items(&mut tx, p1.player_id, &p1.item_instance_ids, "p1").await?;
     let p2_items = lock_items(&mut tx, p2.player_id, &p2.item_instance_ids, "p2").await?;
 
@@ -92,6 +127,13 @@ pub(super) async fn atomic_swap(
     // sound: either both sides' UPDATEs land, or neither does.
     let p2_vacating_slots = main_slot_ids_of(&p2_items);
     let p1_vacating_slots = main_slot_ids_of(&p1_items);
+    tracing::debug!(
+        target: "trade.atomic_swap",
+        phase = "reserve_main_slots_excluding",
+        p1_needed = p2_items.len(),
+        p2_needed = p1_items.len(),
+        "trade.atomic_swap: picking free INV_MAIN slots for each recipient"
+    );
     let p2_new_slots =
         reserve_main_slots_excluding(&mut tx, p2.player_id, p1_items.len(), &p2_vacating_slots)
             .await?;

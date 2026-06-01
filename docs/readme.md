@@ -191,7 +191,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 23 documents.
+How the Cimmeria emulator itself is structured. 24 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -211,6 +211,7 @@ How the Cimmeria emulator itself is structured. 23 documents.
 | [transport-trait.md](architecture/transport-trait.md) | ADR: `Transport` trait for the Mercury send side — `UdpTransport`/`TestTransport`, the send/recv asymmetric split, why `Nub` I/O (#57) was retired, and the fan-out byte test seam | Complete |
 | [mercury-bundle.md](architecture/mercury-bundle.md) | `ChannelBundle` accumulator: cross-entity bundling rule, transaction-state hazard, AoI burst migration (#356), follow-up migration playbook | Complete |
 | [negative-logging-convention.md](architecture/negative-logging-convention.md) | Negative-logging convention (issue #304): three patterns, field-naming rules, level discipline, defensible silent sends, `LogCapture` regression-guard helper | Complete |
+| [instrumentation-discipline.md](architecture/instrumentation-discipline.md) | Instrumentation discipline (issue #482): success-side rules — dispatch-entrypoint info spans, debug-event discriminators, hot-loop span discipline, metric-label cardinality | Complete |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
 

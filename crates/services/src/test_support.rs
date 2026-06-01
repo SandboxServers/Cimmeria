@@ -364,6 +364,27 @@ impl LogCaptureGuard {
     pub fn all(&self) -> Vec<Captured> {
         self.capture.events.lock().unwrap().clone()
     }
+
+    /// Look for a span field set to `value` via `Span::current().record(...)`
+    /// or the instrument-macro placeholder mechanism. Returns true if
+    /// any captured `on_record` call (target prefix `span_record:`)
+    /// carries `field_name = value`.
+    ///
+    /// Used to regression-guard the `decision_outcome` vocab the NPC
+    /// AI handlers fill into the dispatcher span — see
+    /// `docs/architecture/observability.md#npc_ai_decision_outcome-enum`.
+    /// Without this, deleting a `Span::current().record(...)` line
+    /// would go unnoticed because there's no event-level emission to
+    /// catch.
+    #[allow(dead_code)] // exercised by npc_ai phase 2-7 guards
+    pub fn span_recorded(&self, field_name: &str, value: &str) -> bool {
+        self.capture
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|c| c.target.starts_with("span_record:") && c.has_field(field_name, value))
+    }
 }
 
 struct CaptureLayer {
@@ -383,9 +404,40 @@ impl<S: Subscriber> Layer<S> for CaptureLayer {
         });
     }
 
-    // No-op span methods — capture doesn't care about spans, only events.
-    fn on_new_span(&self, _attrs: &Attributes<'_>, _id: &Id, _ctx: Context<'_, S>) {}
-    fn on_record(&self, _id: &Id, _values: &Record<'_>, _ctx: Context<'_, S>) {}
+    // Span entry: capture the initial attribute set so a span declared
+    // with `fields(decision_outcome = tracing::field::Empty)` and later
+    // filled by `Span::current().record("decision_outcome", "...")` is
+    // queryable via [`LogCaptureGuard::find_span_attribute`].
+    fn on_new_span(&self, attrs: &Attributes<'_>, _id: &Id, _ctx: Context<'_, S>) {
+        let mut visitor = FieldVisitor::default();
+        attrs.record(&mut visitor);
+        let metadata = attrs.metadata();
+        self.events.lock().unwrap().push(Captured {
+            level: *metadata.level(),
+            target: format!("span:{}", metadata.name()),
+            message: None,
+            fields: visitor.fields,
+        });
+    }
+
+    // Span field record (via `Span::current().record(...)` or the
+    // `instrument` macro's `fields(...)` placeholders being filled
+    // mid-span). Each call appears as a synthetic "record" event tagged
+    // with target `span_record:?` — we don't have direct access to the
+    // span's name from `_id` without walking the registry, and tests
+    // want field+value matching, not span-name matching. The fixed `?`
+    // discriminator is what [`LogCaptureGuard::span_recorded`] greps
+    // for via `starts_with("span_record:")`.
+    fn on_record(&self, _id: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
+        let mut visitor = FieldVisitor::default();
+        values.record(&mut visitor);
+        self.events.lock().unwrap().push(Captured {
+            level: tracing::Level::TRACE,
+            target: "span_record:?".to_string(),
+            message: None,
+            fields: visitor.fields,
+        });
+    }
 }
 
 #[derive(Default)]

@@ -184,6 +184,14 @@ to crate-rename churn) and **named for the question they answer**.
 | `movement.npc` | DEBUG (1-in-10 sampled `step`, always `waypoint_reached`) | `cell::service::ticks::npc_movement` | NPC nav-path movement |
 | `npc_ai` | DEBUG / INFO | `cell::service::npc_ai_fight` | NPC AI tick outcomes — see `decision_outcome` |
 | `threat` | INFO | `cell::combat::threat::{enter,exit}_player_combat` | Player combat-enter / combat-exit transitions (gated on actual state change) |
+| `trade.request` / `trade.cancel` / `trade.update_proposal` / `trade.lock_state` | INFO | `cell::cell_methods::player::trade::handlers` | Per-handler trade dispatch from the cell side |
+| `trade.execute` | INFO | `base::world_entry::methods::trade::execute::handle_execute_trade` | Base-side execute span (entrypoint) — wraps the atomic_swap call |
+| `trade.atomic_swap` | INFO | `base::world_entry::methods::trade::execute::swap::atomic_swap` | The DB-tx span — `phase = "..."` debug breadcrumbs name the failing step on abort |
+| `crafting.load` / `crafting.save` | INFO | `base::crafting::persistence::{load_crafting_state, save_crafting_state}` | Crafting state round-trip — correlator: `player_id` |
+| `cover.reservation` | WARN | `cell::cover::ai_integration::try_reserve_or_warn` | Cover-slot race-lost — defensive against future async refactors |
+| `spawner.npc_respawn` | INFO | `cell::service::ticks::npc_respawn::npc_respawn_tick` | Per-NPC respawn promotion — correlator: `world_name`, `respawn_secs` |
+| `movement.validation` | WARN | `cell::service::base_messages` | Movement reject (bounds violation) — snap-back to last_valid |
+| `navmesh.load` | ERROR | `entity::navigation::check_count` | Hostile `.nav` header rejected — space loads navmesh-less |
 
 #### `npc_ai.decision_outcome` enum
 
@@ -199,6 +207,68 @@ failing to engage and why" via a single `groupBy=decision_outcome`:
 | `min_range_backup` | Target inside ability `min_range` — stepping back |
 | `no_ability` | Every known ability on cooldown / needs ammo |
 | `leashed` | Target moved past `LEASH_DISTANCE` from spawn |
+| `stationary_holds` | Stationary NPC out of range / no LOS — holds fire |
+| `stay_in_cover` | NPC in cover, threat in defensive arc — hold |
+| `move_to_cover` | NPC picked a fresh cover slot — paths to it |
+| `cover_released_flanked` | Threat flanked the cover — released, re-eval next tick |
+| `patrol_continue` | Patrol tick walking toward the current waypoint |
+| `patrol_dwell` | Patrol tick paused at a waypoint after arrival |
+| `wander_pick` | Wander tick chose a fresh destination within radius |
+| `wander_dwell` | Wander tick paused at the current destination |
+| `investigate_arrived` | Investigate tick reached the POI — dwell starts |
+| `investigate_routed` | Investigate tick pathfinding toward the POI |
+| `follow_band` | Follow target is inside the band — no work |
+| `despawn` | Despawn tick — entity is being removed from the space |
+| `submit_init` | Submit tick — first-entry combat-clear |
+| `error_hold` | Error state — diagnostic quiescent fallback |
+
+Successor PRs may add `patrol_arrived` / `wander_waypoint_set` / etc.
+as sub-state breadcrumb `event = "..."` discriminators (see
+[instrumentation-discipline.md §rule-2](instrumentation-discipline.md#rule-2--every-state-transition-gets-a-debug-level-event-with-event--)).
+The enum above is the **terminal** decision-outcome — the single
+value `Span::current().record("decision_outcome", ...)` settles on per
+tick — not the per-transition event log.
+
+### Metrics
+
+A third OTLP signal — alongside traces and logs — ships counters,
+histograms, and up/down counters from
+[`crates/observability/`](../../crates/observability/) (the
+`cimmeria-observability` crate). The facade exposes thin macros:
+
+```rust
+use cimmeria_observability::{counter, histogram, gauge_add};
+
+counter!("trade_swaps_total", "outcome" => "completed");
+histogram!("trade_swap_duration_seconds", elapsed_secs, "outcome" => "completed");
+gauge_add!("cover_slots_held", 1, "world_name" => "Castle");
+```
+
+Instruments are lazily registered on first emission via the global
+Meter set by [`otel::init`](../../crates/server/src/otel.rs). When
+`OTEL_EXPORTER_OTLP_ENDPOINT` is unset, the global Meter is never
+installed and the macros expand to a no-op — same opt-in shape as
+the rest of the OTLP pipeline.
+
+The metrics provider uses a `PeriodicReader` with the default OTLP
+emit cadence (60s). The metric exporter shares the same OTLP endpoint
++ protocol as the trace/log exporters — SigNoz ingests all three
+signals via one collector.
+
+**Label cardinality.** Per
+[instrumentation-discipline.md](instrumentation-discipline.md#rule-4--metric-labels-are-enumerated-spanlog-fields-are-correlators):
+metric labels must be enumerated low-cardinality strings (`outcome`,
+`reason`, `kind`, `world_name`, `decision_outcome`). High-cardinality
+correlators (`entity_id`, `player_id`, `peer`) belong in span/log
+fields. A counter labelled by `player_id` would degrade ClickHouse's
+merge-tree query performance non-linearly.
+
+**Resource attribute `deployment.environment`.** Every metric (and
+every span and log) carries this resource attribute, defaulted from
+`CIMMERIA_DEPLOY_ENV` (default `"dev"`). Operators set it in the
+colo's docker-compose to `colo` so SigNoz dashboards can split
+production data from dev-laptop noise. Override via the standard OTel
+`OTEL_RESOURCE_ATTRIBUTES=deployment.environment=...` if needed.
 
 ### Cost on the hot path
 

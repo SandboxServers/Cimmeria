@@ -14,6 +14,7 @@ axum = { workspace = true }
 cimmeria-admin-api = { workspace = true }
 cimmeria-common = { workspace = true }
 cimmeria-discord = { workspace = true }
+cimmeria-observability = { workspace = true }
 cimmeria-services = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
@@ -25,8 +26,8 @@ tracing-appender = { workspace = true }
 # `OTEL_EXPORTER_OTLP_ENDPOINT` env var; with it unset the exporter is
 # a no-op and these crates' code never executes.
 opentelemetry = "0.32"
-opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "logs"] }
-opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "logs"] }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "logs", "metrics"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "logs", "metrics"] }
 # Bridges root-level `tracing::*` events (those NOT inside an active span)
 # into OpenTelemetry log records. `tracing-opentelemetry` alone only handles
 # spans and span-events; without this appender, every `tracing::info!` that

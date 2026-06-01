@@ -36,7 +36,46 @@ use cimmeria_entity::crafting::CraftingState;
 // activity dispatch. `#[allow(dead_code)]` keeps the function in the
 // public surface so Phase 2 doesn't have to flip visibility.
 #[allow(dead_code)]
+#[tracing::instrument(name = "crafting.load", level = "info", skip_all, fields(player_id))]
 pub async fn load_crafting_state(
+    pool: &PgPool,
+    player_id: i32,
+) -> Result<CraftingState, sqlx::Error> {
+    // Wrap the body so the counter fires exactly once on every exit
+    // (`ok`, `sqlx_error`, `row_not_found`) without sprinkling counter!
+    // calls at each early-return. The inner function returns
+    // `Err(RowNotFound)` for the missing-row case so the wrapper can
+    // tag the outcome, and the wrapper maps it back to
+    // `Ok(CraftingState::new())` to preserve the original public
+    // contract ("missing row = default state").
+    //
+    // Bug shape this guards against (PR #483 review): the previous
+    // per-exit counter pattern emitted `sqlx_error` *only* if the first
+    // `sgw_player` query failed. If the second `sgw_player_discipline_expertise`
+    // query failed via `await?`, the function returned early without
+    // any counter — under-counting load failures by exactly the
+    // fraction that surface as expertise-side errors.
+    let result = load_crafting_state_inner(pool, player_id).await;
+    let outcome = match &result {
+        Ok(_) => "ok",
+        Err(sqlx::Error::RowNotFound) => "row_not_found",
+        Err(_) => "sqlx_error",
+    };
+    cimmeria_observability::counter!(
+        "crafting_persist_attempts_total",
+        "kind" => "load",
+        "outcome" => outcome,
+    );
+    // Preserve the public contract: callers see `Ok(default state)` for
+    // a missing player_id, matching the offline-mode sentinel used by
+    // `query_player_load_data`.
+    match result {
+        Err(sqlx::Error::RowNotFound) => Ok(CraftingState::new()),
+        other => other,
+    }
+}
+
+async fn load_crafting_state_inner(
     pool: &PgPool,
     player_id: i32,
 ) -> Result<CraftingState, sqlx::Error> {
@@ -57,10 +96,11 @@ pub async fn load_crafting_state(
     .fetch_optional(pool)
     .await?;
 
-    let row = match row_opt {
-        Some(r) => r,
-        None => return Ok(CraftingState::new()),
-    };
+    // Distinguish the missing-row case via `RowNotFound`. The public
+    // wrapper maps this back to `Ok(default)` for the caller; the
+    // wrapper-emitted counter tags it as `row_not_found` so the
+    // dashboard separates "no DB connection" from "no such player".
+    let row = row_opt.ok_or(sqlx::Error::RowNotFound)?;
 
     // Pull expertise rows for the disciplines this player knows. We *could*
     // filter `WHERE discipline_id = ANY($2)` to match `discipline_ids`, but
@@ -159,7 +199,36 @@ pub async fn load_crafting_state(
 // Phase 1: Phase 2's spendAppliedSciencePoints handler is the first
 // production caller. See note on `load_crafting_state`.
 #[allow(dead_code)]
+#[tracing::instrument(
+    name = "crafting.save",
+    level = "info",
+    skip_all,
+    fields(player_id, expertise_count = state.expertise.len()),
+)]
 pub async fn save_crafting_state(
+    pool: &PgPool,
+    player_id: i32,
+    state: &CraftingState,
+) -> Result<(), sqlx::Error> {
+    // Wrap the body so the counter fires once on every exit (Ok, Err,
+    // or row_not_found) without sprinkling counter! calls at each
+    // early-return. The Drop-on-error path keeps the metric balanced
+    // even if a future refactor adds a new error arm.
+    let result = save_crafting_state_inner(pool, player_id, state).await;
+    let outcome = match &result {
+        Ok(()) => "ok",
+        Err(sqlx::Error::RowNotFound) => "row_not_found",
+        Err(_) => "sqlx_error",
+    };
+    cimmeria_observability::counter!(
+        "crafting_persist_attempts_total",
+        "kind" => "save",
+        "outcome" => outcome,
+    );
+    result
+}
+
+async fn save_crafting_state_inner(
     pool: &PgPool,
     player_id: i32,
     state: &CraftingState,

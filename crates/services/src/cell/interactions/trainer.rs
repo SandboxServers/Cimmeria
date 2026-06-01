@@ -58,24 +58,55 @@ pub(crate) async fn try_open_trainer(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) -> bool {
-    // Identify the trainer's list_id via template lookup.
+    // Identify the trainer's list_id via template lookup. The two
+    // `outcome` labels below split intentionally distinct failure modes:
+    //
+    // - `entity_no_template` — the target entity has no `template_id`.
+    //   Spawn / setup bug. Should be near-zero in steady state.
+    // - `not_a_trainer` — the target has a template_id but it isn't in
+    //   `template_trainer_lists`. Expected high-volume fall-through
+    //   path: every non-trainer NPC interaction lands here.
+    //
+    // Collapsing both into `no_template` would drown the rare setup
+    // bug in the expected fall-through traffic. See review of #482.
     let trainer_template_id = match space_mgr
         .get_entity(target_entity_id)
         .and_then(|t| t.template_id)
     {
         Some(t) => t,
-        None => return false,
+        None => {
+            cimmeria_observability::counter!(
+                "trainer_opens_total",
+                "outcome" => "entity_no_template",
+            );
+            return false;
+        }
     };
     let list_id = match space_mgr.template_trainer_lists.get(&trainer_template_id) {
         Some(&id) => id,
-        None => return false, // not a trainer — fall through to other interact paths
+        None => {
+            cimmeria_observability::counter!(
+                "trainer_opens_total",
+                "outcome" => "not_a_trainer",
+            );
+            return false; // not a trainer — fall through to other interact paths
+        }
     };
 
     // Player must have an archetype to query the right ability list.
+    // Same split rationale as above: `player_missing` is an entity-
+    // lifecycle issue (player entity wasn't found at all), `no_archetype`
+    // is a state issue (player entity exists but archetype_id is unset).
     let (player_archetype, player_level, known_abilities) = {
         let player = match space_mgr.get_entity(player_entity_id) {
             Some(p) => p,
-            None => return false,
+            None => {
+                cimmeria_observability::counter!(
+                    "trainer_opens_total",
+                    "outcome" => "player_missing",
+                );
+                return false;
+            }
         };
         let arch = match player.archetype_id {
             Some(a) => a,
@@ -84,6 +115,10 @@ pub(crate) async fn try_open_trainer(
                     player_entity_id,
                     target_entity_id,
                     "trainer interact: player has no archetype_id — skipping"
+                );
+                cimmeria_observability::counter!(
+                    "trainer_opens_total",
+                    "outcome" => "no_archetype",
                 );
                 return false;
             }
@@ -112,6 +147,13 @@ pub(crate) async fn try_open_trainer(
             archetype_id = player_archetype,
             "Trainer has no abilities for this archetype — content gap"
         );
+        cimmeria_observability::counter!(
+            "trainer_opens_total",
+            "outcome" => "empty_offering",
+        );
+        // Continue — the UI still opens with an empty list. The
+        // counter fires here AND `opened` does NOT below, so the
+        // empty-offering branch is tracked separately.
     }
 
     // For each offered ability, compute `trainable` (1 if the player can
@@ -194,6 +236,16 @@ pub(crate) async fn try_open_trainer(
                 trainable_count = entries.iter().filter(|(_, t)| *t == 1).count(),
                 "Sent onTrainerOpen"
             );
+            // Only emit `opened` for non-empty offerings — the
+            // empty-offering branch already counted itself above.
+            // This way the rate "opened ÷ (opened + empty_offering)"
+            // measures content-completeness.
+            if !entries.is_empty() {
+                cimmeria_observability::counter!(
+                    "trainer_opens_total",
+                    "outcome" => "opened",
+                );
+            }
         }
         Err(e) => {
             tracing::error!(
@@ -363,5 +415,69 @@ pub(crate) mod tests {
         let (tx, _rx) = mpsc::channel(8);
         let handled = try_open_trainer(1, 200, &tx, &mgr).await;
         assert!(!handled, "missing archetype must skip trainer flow");
+    }
+
+    /// Regression guard for the `trainer_opens_total{outcome=...}` label
+    /// split (PR #483 review).
+    ///
+    /// The two "player not available" paths share the same return value
+    /// (`!handled`) but emit *different* metric labels:
+    ///
+    /// - `outcome=player_missing` when the player entity isn't in
+    ///   SpaceManager at all (lifecycle bug).
+    /// - `outcome=no_archetype` when the player entity exists but
+    ///   `archetype_id` is unset (state bug), and is accompanied by a
+    ///   `tracing::warn!` carrying "player has no archetype_id".
+    ///
+    /// Without the metric collector we can't read counter values from a
+    /// unit test, but the warn line is path-specific — its presence
+    /// pins the `no_archetype` branch, its absence pins the
+    /// `player_missing` branch. Bug shape this catches: a refactor that
+    /// collapses the two branches back into a single `no_archetype`
+    /// counter would silently lose the diagnostic split — the warn
+    /// would still fire on the no-archetype path but would also fire
+    /// on the player-missing path, tripping the second assertion below.
+    #[tokio::test]
+    async fn outcome_split_player_missing_vs_no_archetype() {
+        use crate::test_support::LogCapture;
+        use tracing::Level;
+
+        // Path A: player entity has no archetype_id — must warn.
+        {
+            let capture = LogCapture::install();
+            let mut mgr = make_mgr_with_trainer_and_player();
+            if let Some(p) = mgr.get_entity_mut(1) {
+                p.archetype_id = None;
+            }
+            let (tx, _rx) = mpsc::channel(8);
+            let handled = try_open_trainer(1, 200, &tx, &mgr).await;
+            assert!(!handled);
+            assert!(
+                capture
+                    .find_message(Level::WARN, "player has no archetype_id")
+                    .is_some(),
+                "no_archetype path must emit the path-specific warn — \
+                 without it the outcome label split has regressed",
+            );
+        }
+
+        // Path B: player entity doesn't exist at all — must NOT warn
+        // (this path is silent-counter only).
+        {
+            let capture = LogCapture::install();
+            let mgr = make_mgr_with_trainer_and_player();
+            let (tx, _rx) = mpsc::channel(8);
+            // entity_id 9999 doesn't exist in `mgr`.
+            let handled = try_open_trainer(9999, 200, &tx, &mgr).await;
+            assert!(!handled);
+            assert!(
+                capture
+                    .find_message(Level::WARN, "player has no archetype_id")
+                    .is_none(),
+                "player_missing path must NOT emit the no_archetype warn \
+                 — a regression here means the two outcome labels are \
+                 firing from a single shared branch",
+            );
+        }
     }
 }

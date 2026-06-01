@@ -122,15 +122,30 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
         // facing their original heading instead of snapping to yaw=0
         // (which `update_entity_position` would do if we passed
         // `[0, 0, 0]` as the direction param).
-        let (spawn_pos, spawn_dir, space_id) = match space_mgr.get_entity(entity_id) {
+        //
+        // Also captures `respawn_secs` + `world_name` for the
+        // per-promotion info log below — without them an operator
+        // looking at SigNoz can't tell which spawn config produced the
+        // promotion or which world it belongs to.
+        let (spawn_pos, spawn_dir, space_id, respawn_secs) = match space_mgr.get_entity(entity_id) {
             Some(e) => (
                 e.spawn_position,
                 e.spawn_direction
                     .unwrap_or(cimmeria_common::Vector3::zero()),
                 e.space_id.0 as u32,
+                e.respawn_secs,
             ),
             None => continue,
         };
+        // world_name lives on the SpaceInstance, not the entity —
+        // resolve via the SpaceManager. Defaulted to "unknown" so the
+        // metric label cardinality stays bounded even if a future
+        // refactor allows entities in spaces that aren't registered.
+        let world_name = space_mgr
+            .spaces
+            .get(&space_id)
+            .map(|s| s.world_name.clone())
+            .unwrap_or_else(|| "unknown".to_string());
 
         // Phase 2: mutate entity state (clear death flags, restore HP,
         // wipe combat state). Capture the wire payloads we'll send
@@ -350,11 +365,22 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
         }
 
         tracing::info!(
-            entity_id,
+            target: "spawner.npc_respawn",
+            npc_id = entity_id,
             ?spawn_pos,
+            respawn_secs,
+            world_name = %world_name,
             state_field,
             interaction_flags,
-            "NPC respawn: Dead -> Idle (HP restored, position snapped, witnesses notified)"
+            "NPC respawned (Dead -> Idle, HP restored, position snapped, witnesses notified)"
+        );
+        // `world_name` is bounded by the worlds.xml registry (~30
+        // entries) — low-cardinality. Useful for "is the respawn
+        // timer working as configured per world" / "are we leaking
+        // dead NPCs in Castle but not in Agnos" queries.
+        cimmeria_observability::counter!(
+            "npc_respawns_total",
+            "world_name" => world_name,
         );
     }
 }

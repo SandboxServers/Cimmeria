@@ -237,6 +237,13 @@ pub(super) async fn handle_base_message(
                         "movement.bounds_violation: client position outside space \
                          AABB — snapping back to last valid via FORCED_POSITION"
                     );
+                    // Future validators will add `speed | teleport | navmesh`
+                    // reason labels; today only `bounds` fires. Aggregating
+                    // the rate without high-cardinality entity_id labels.
+                    cimmeria_observability::counter!(
+                        "movement_validation_rejects_total",
+                        "reason" => "bounds",
+                    );
                     // Snap the offending client back. The cell entity's
                     // position was NOT advanced — the next AoI tick
                     // (100 ms) rebroadcasts the last-valid position to

@@ -5,7 +5,8 @@
 //! # Architecture
 //!
 //! Two `tracing_subscriber::Layer`s composed alongside the file/broadcast
-//! layers:
+//! layers, plus a third metrics provider registered with the OTel global
+//! state:
 //!
 //! 1. **Trace layer** ([`tracing_opentelemetry::OpenTelemetryLayer`]) —
 //!    converts `tracing::span!` spans into OpenTelemetry spans. Span
@@ -14,6 +15,13 @@
 //! 2. **Log layer** ([`OpenTelemetryTracingBridge`]) — captures *every*
 //!    `tracing` event as an OpenTelemetry log record, including events
 //!    fired at the top level outside any active span.
+//! 3. **Metrics provider** ([`SdkMeterProvider`]) — registered as the
+//!    global Meter so the [`cimmeria_observability`] facade's
+//!    `counter!`/`histogram!`/`gauge_add!` macros emit through the
+//!    same OTLP endpoint as traces + logs. SigNoz ingests all three
+//!    via the same collector. Per the instrumentation-discipline ADR
+//!    (`docs/architecture/instrumentation-discipline.md`), labels are
+//!    enumerated low-cardinality strings — never `entity_id`/`player_id`.
 //!
 //! Both are needed: without the log layer, every `tracing::info!` that
 //! fires outside a span (the entire `mercury.packet` event stream
@@ -36,6 +44,7 @@
 //! | `OTEL_SERVICE_NAME` | Defaults to `cimmeria-server`. Shows up in SigNoz's service map. |
 //! | `OTEL_RESOURCE_ATTRIBUTES` | Comma-separated `k=v` pairs piped through to every event. Common keys: `deployment.environment`, `service.namespace`. |
 //! | `OTEL_TRACES_SAMPLER` | `always_on` (default), `always_off`, or `traceidratio` with `OTEL_TRACES_SAMPLER_ARG`. |
+//! | `CIMMERIA_DEPLOY_ENV` | Default `"dev"`. Sets `deployment.environment` on every signal — overridable by `OTEL_RESOURCE_ATTRIBUTES`. |
 //!
 //! All env vars match the OpenTelemetry SDK spec — pinned so the
 //! standard `opentelemetry-otlp` crate reads them directly without us
@@ -47,6 +56,7 @@ use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::logs::{SdkLogger, SdkLoggerProvider};
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{Sampler, SdkTracer, SdkTracerProvider};
 use opentelemetry_sdk::Resource;
@@ -88,14 +98,29 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
     // plus a hardcoded `service.name` fallback. SigNoz's service map
     // groups by `service.name`, so leaving it unset would coalesce
     // every server's events into a single "unknown_service" bucket.
+    //
+    // `deployment.environment` defaults to `"dev"` and is set from the
+    // `CIMMERIA_DEPLOY_ENV` env var (e.g. `colo`, `staging`, `dev`).
+    // SigNoz dashboards use this to split aggregates between
+    // dev-laptop noise and the colo's production-shaped traffic — if
+    // it's unset the colo dashboards would silently include local
+    // events and skew every aggregate.
     let service_name =
         env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "cimmeria-server".to_string());
+    let deploy_env = env::var("CIMMERIA_DEPLOY_ENV").unwrap_or_else(|_| "dev".to_string());
     let resource = Resource::builder()
         .with_service_name(service_name.clone())
+        .with_attribute(opentelemetry::KeyValue::new(
+            "deployment.environment",
+            deploy_env.clone(),
+        ))
         .build();
     // OTEL_RESOURCE_ATTRIBUTES is parsed by `opentelemetry_sdk` itself
     // when present, so we don't need to manually split-and-merge it
     // here — the SDK union-merges over our explicit Resource above.
+    // An operator who sets `OTEL_RESOURCE_ATTRIBUTES=deployment.environment=colo`
+    // overrides the `CIMMERIA_DEPLOY_ENV` default per the SDK's
+    // env-var merge precedence.
 
     // Sampler defaults to `always_on` — Mercury packet logs are the
     // analytical surface we care about, sampling would defeat the
@@ -178,12 +203,63 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
 
     let logger_provider = SdkLoggerProvider::builder()
         .with_batch_exporter(log_exporter)
-        .with_resource(resource)
+        .with_resource(resource.clone())
         .build();
 
     let log_layer = OpenTelemetryTracingBridge::new(&logger_provider);
 
-    eprintln!("[otel] Streaming to {endpoint} (protocol={protocol}, signals=traces+logs)");
+    // ── Metrics exporter (counters + histograms) ──────────────────────
+    //
+    // The metrics SDK is initialised AFTER logs so a metrics-exporter
+    // failure logs through the (already-installed) trace + log pipe
+    // before the process exits. Soft-fail by design: telemetry stays
+    // enabled with traces+logs even when metrics flake — the missing
+    // counters surface as gaps in the SigNoz dashboard, not as a dead
+    // server.
+    let metric_exporter_result = match protocol.as_str() {
+        "http/protobuf" | "http" => opentelemetry_otlp::MetricExporter::builder()
+            .with_http()
+            .with_endpoint(&endpoint)
+            .build(),
+        _ => opentelemetry_otlp::MetricExporter::builder()
+            .with_tonic()
+            .with_endpoint(&endpoint)
+            .build(),
+    };
+
+    let meter_provider = match metric_exporter_result {
+        Ok(exporter) => {
+            // PeriodicReader ships a metric batch every 60s by default.
+            // That's the OTLP spec default and matches what SigNoz
+            // dashboards expect — finer granularity costs more storage
+            // for marginal observability benefit.
+            let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(exporter).build();
+            let provider = SdkMeterProvider::builder()
+                .with_reader(reader)
+                .with_resource(resource)
+                .build();
+            opentelemetry::global::set_meter_provider(provider.clone());
+            // Initialise the cimmeria-observability facade so the
+            // counter!/histogram! macros pick up the global Meter on
+            // the first emission. Idempotent — a second otel::init in
+            // the same process is a no-op on the facade.
+            if let Err(e) = cimmeria_observability::init("cimmeria-server") {
+                eprintln!("[otel] observability facade init returned {e}; metrics may not ship");
+            }
+            Some(provider)
+        }
+        Err(err) => {
+            eprintln!(
+                "[otel] Metric exporter init failed ({err}); traces+logs continue, metrics OFF"
+            );
+            None
+        }
+    };
+
+    eprintln!(
+        "[otel] Streaming to {endpoint} (protocol={protocol}, signals=traces+logs{metrics}, deployment.environment={deploy_env})",
+        metrics = if meter_provider.is_some() { "+metrics" } else { "" },
+    );
 
     Some((
         trace_layer,
@@ -191,6 +267,7 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
         OtelGuard {
             tracer_provider,
             logger_provider,
+            meter_provider,
         },
     ))
 }
@@ -202,6 +279,10 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
 pub struct OtelGuard {
     tracer_provider: SdkTracerProvider,
     logger_provider: SdkLoggerProvider,
+    /// `None` when the metric exporter failed to construct — traces +
+    /// logs still flush on shutdown, metrics path was never wired so
+    /// nothing to drain.
+    meter_provider: Option<SdkMeterProvider>,
 }
 
 impl Drop for OtelGuard {
@@ -210,6 +291,17 @@ impl Drop for OtelGuard {
         // worst-case per provider; usually much faster. We do this on
         // the main thread, after `stop_all` returns, so the cost is on
         // a path where we're already serial-shutting-down anyway.
+        //
+        // Metric shutdown runs FIRST so the final batch ships through
+        // before tracer/logger shutdown closes the gRPC tonic channel
+        // they share — out-of-order shutdown silently loses the last
+        // metric batch on a 60s emit cadence (so up to ~60s of counter
+        // emissions if shutdown lands mid-cycle).
+        if let Some(provider) = &self.meter_provider {
+            if let Err(e) = provider.shutdown() {
+                eprintln!("[otel] Meter shutdown flush failed: {e}");
+            }
+        }
         if let Err(e) = self.tracer_provider.shutdown() {
             eprintln!("[otel] Tracer shutdown flush failed: {e}");
         }

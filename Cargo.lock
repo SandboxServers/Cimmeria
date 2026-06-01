@@ -862,6 +862,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -915,6 +916,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-observability"
+version = "0.1.0"
+dependencies = [
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "tokio",
+]
+
+[[package]]
 name = "cimmeria-scene-editor"
 version = "0.1.0"
 dependencies = [
@@ -943,6 +954,7 @@ dependencies = [
  "cimmeria-admin-api",
  "cimmeria-common",
  "cimmeria-discord",
+ "cimmeria-observability",
  "cimmeria-services",
  "opentelemetry",
  "opentelemetry-appender-tracing",
@@ -969,6 +981,7 @@ dependencies = [
  "cimmeria-entity",
  "cimmeria-game",
  "cimmeria-mercury",
+ "cimmeria-observability",
  "proptest",
  "quick-xml",
  "rand 0.10.1",
