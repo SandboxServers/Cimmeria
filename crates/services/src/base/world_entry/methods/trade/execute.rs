@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use cimmeria_entity::inventory::{INV_BUYBACK, INV_MAIN};
+use cimmeria_entity::inventory::INV_MAIN;
 use cimmeria_entity::trade::{
     serialize_on_trade_results, ETRADERESULTS_CANCELLED, ETRADERESULTS_COMPLETED,
 };
@@ -265,9 +265,17 @@ enum TradeAbort {
     DuplicateInstance {
         item_id: i32,
     },
-    BuybackOffered {
+    /// Item lives in a container that's not on the tradeable-container
+    /// whitelist (anything other than `INV_MAIN`). Covers the
+    /// dupe-strip-equipped-gear, mission-item-share, banker-gate-bypass,
+    /// and bandolier-ammo-sync exploits — all the same shape: the
+    /// server must independently verify *which* containers can leak
+    /// items, not just whether the row is bound or in the buyback bag.
+    IneligibleContainer {
+        which: &'static str,
         player_id: i32,
         item_id: i32,
+        container_id: i32,
     },
 }
 
@@ -310,9 +318,16 @@ impl std::fmt::Display for TradeAbort {
             TradeAbort::DuplicateInstance { item_id } => {
                 write!(f, "item instance {item_id} listed twice in proposal")
             }
-            TradeAbort::BuybackOffered { player_id, item_id } => write!(
+            TradeAbort::IneligibleContainer {
+                which,
+                player_id,
+                item_id,
+                container_id,
+            } => write!(
                 f,
-                "player {player_id} offered item {item_id} from the buyback bag"
+                "{which} player {player_id} offered item {item_id} from \
+                 non-tradeable container {container_id} \
+                 (whitelist: only INV_MAIN)"
             ),
         }
     }
@@ -370,10 +385,11 @@ async fn atomic_swap(pool: &Arc<PgPool>, p1: &TradeSide, p2: &TradeSide) -> Resu
     }
 
     // Validate + lock items from each side. We pull the full row so we
-    // can also check `bound` (bound items must not change hands) and
-    // detect items the player claimed but doesn't actually own (or that
-    // are sitting in the buyback bag, which would re-introduce items
-    // the player previously sold to a vendor — forbidden).
+    // can check `bound` (soul-bound items never change hands), detect
+    // items the player claimed but doesn't actually own, and gate on
+    // `container_id` — only INV_MAIN is on the tradeable whitelist
+    // (buyback / bank / mission / equip slots / bandolier are all
+    // rejected). See `TRADEABLE_CONTAINERS` below for rationale.
     let p1_items = lock_items(&mut tx, p1.player_id, &p1.item_instance_ids, "p1").await?;
     let p2_items = lock_items(&mut tx, p2.player_id, &p2.item_instance_ids, "p2").await?;
 
@@ -453,10 +469,28 @@ async fn read_cash(pool: &Arc<PgPool>, player_id: i32) -> i32 {
         .unwrap_or(0)
 }
 
+/// Whitelist of containers an item may sit in to be eligible for trade.
+///
+/// Only `INV_MAIN` (the visible main bag) is on the wire-trade allowlist.
+/// Players who want to trade equipped gear, banked items, or bandolier
+/// ammo must unequip / withdraw / unload first — the same flow the
+/// canonical SGW client uses, and the same intent as the Python
+/// `canSell()` check (Trade.py only operates on main-bag rows).
+///
+/// Anything outside this list is rejected with
+/// [`TradeAbort::IneligibleContainer`]. This is the **server-authority**
+/// version of the check: the wire only carries `instance_id`, so the
+/// server independently decides which rows are trade-eligible.
+///
+/// **Do not add `INV_BUYBACK` (16) here** — buyback bag items must
+/// remain reclaimable only by their original seller. The whitelist
+/// subsumes the old buyback blacklist.
+const TRADEABLE_CONTAINERS: &[i32] = &[INV_MAIN];
+
 /// SELECT FOR UPDATE every item instance from the player's inventory,
 /// returning rows in input order. Fails with `ItemMissing` /
-/// `BoundItemOffered` / `DuplicateInstance` / `BuybackOffered` if the
-/// validation gauntlet rejects any entry.
+/// `BoundItemOffered` / `DuplicateInstance` / `IneligibleContainer` if
+/// the validation gauntlet rejects any entry.
 async fn lock_items(
     tx: &mut Transaction<'_, Postgres>,
     player_id: i32,
@@ -496,8 +530,20 @@ async fn lock_items(
                 item_id,
             });
         }
-        if row.container_id == INV_BUYBACK {
-            return Err(TradeAbort::BuybackOffered { player_id, item_id });
+        // Whitelist gate: only INV_MAIN is trade-eligible. The blacklist
+        // pre-fix only blocked INV_BUYBACK; every other container
+        // (equipped gear, mission items, bank, bandolier, crafting,
+        // auction, team/command bank) silently passed. That's a
+        // dupe-strip exploit on equip slots and a bypass of the
+        // banker-NPC gate on bank items. See the security review on
+        // PR #438.
+        if !TRADEABLE_CONTAINERS.contains(&row.container_id) {
+            return Err(TradeAbort::IneligibleContainer {
+                which,
+                player_id,
+                item_id,
+                container_id: row.container_id,
+            });
         }
         rows.push(row);
     }
