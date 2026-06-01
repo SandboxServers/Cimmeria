@@ -88,6 +88,22 @@ const MAX_DETAIL_NTRIS: u32 = 10_000_000;
 /// `Vec` allocation.
 fn check_count(value: u32, max: u32, field: &'static str) -> cimmeria_common::Result<u32> {
     if value > max {
+        // Negative log per docs/architecture/negative-logging-convention.md.
+        // The error propagates to NavMesh::load's caller, but callers
+        // historically used `unwrap_or_default()` patterns that
+        // silently swallowed the failure — turning a hostile `.nav`
+        // into a navmesh-less space without any greppable signal.
+        // The error! here makes the rejection alertable (target:
+        // "navmesh.load", reason: "header_out_of_range") regardless
+        // of how the caller chooses to handle the propagated Err.
+        tracing::error!(
+            target: "navmesh.load",
+            field = field,
+            value,
+            max,
+            reason = "header_out_of_range",
+            "rejected hostile .nav header field -- space will be navmesh-less"
+        );
         return Err(cimmeria_common::CimmeriaError::NavHeaderOutOfRange {
             field,
             value: value as u64,
@@ -1074,6 +1090,107 @@ mod tests {
                 Err(cimmeria_common::CimmeriaError::NavHeaderOutOfRange { .. })
             ));
         }
+    }
+
+    /// Regression guard (audit #482): a header field exceeding its
+    /// cap must emit a structured `error!` on the `navmesh.load`
+    /// target with `reason = "header_out_of_range"` BEFORE returning
+    /// the propagating Err. Callers historically swallow the Err via
+    /// `unwrap_or_default()` patterns — without this log, a hostile
+    /// `.nav` silently turns the affected space navmesh-less and
+    /// players fall through the world with no alertable signal.
+    ///
+    /// Bug shape: revert the error! line in `check_count` and the
+    /// assertion below fails on the empty event list.
+    #[test]
+    fn check_count_emits_error_log_on_reject() {
+        use std::sync::{Arc, Mutex};
+        use tracing::{
+            field::{Field, Visit},
+            Event, Subscriber,
+        };
+        use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
+
+        // Minimal in-test event capture. tracing-subscriber is a
+        // dev-dependency only — see this crate's Cargo.toml.
+        struct CapLayer {
+            events: Arc<
+                Mutex<
+                    Vec<(
+                        tracing::Level,
+                        String,
+                        std::collections::HashMap<String, String>,
+                    )>,
+                >,
+            >,
+        }
+        impl<S: Subscriber> Layer<S> for CapLayer {
+            fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+                let metadata = event.metadata();
+                struct V {
+                    fields: std::collections::HashMap<String, String>,
+                }
+                impl Visit for V {
+                    fn record_debug(&mut self, f: &Field, v: &dyn std::fmt::Debug) {
+                        self.fields.insert(f.name().to_string(), format!("{v:?}"));
+                    }
+                    fn record_str(&mut self, f: &Field, v: &str) {
+                        self.fields.insert(f.name().to_string(), v.to_string());
+                    }
+                    fn record_u64(&mut self, f: &Field, v: u64) {
+                        self.fields.insert(f.name().to_string(), v.to_string());
+                    }
+                    fn record_i64(&mut self, f: &Field, v: i64) {
+                        self.fields.insert(f.name().to_string(), v.to_string());
+                    }
+                }
+                let mut visitor = V {
+                    fields: std::collections::HashMap::new(),
+                };
+                event.record(&mut visitor);
+                self.events.lock().unwrap().push((
+                    *metadata.level(),
+                    metadata.target().to_string(),
+                    visitor.fields,
+                ));
+            }
+        }
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let layer = CapLayer {
+            events: events.clone(),
+        };
+        let subscriber = tracing_subscriber::Registry::default().with(layer);
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        // Synthesise a hostile header value (`nverts` exceeds the cap).
+        let result = check_count(MAX_NVERTS + 1, MAX_NVERTS, "nverts");
+        assert!(
+            matches!(
+                result,
+                Err(cimmeria_common::CimmeriaError::NavHeaderOutOfRange { .. })
+            ),
+            "check_count must propagate Err on out-of-range input"
+        );
+
+        let captured: Vec<_> = events.lock().unwrap().clone();
+        let reject_log = captured.iter().find(|(level, target, fields)| {
+            *level == tracing::Level::ERROR
+                && target == "navmesh.load"
+                && fields.get("reason").map(String::as_str) == Some("header_out_of_range")
+        });
+        assert!(
+            reject_log.is_some(),
+            "check_count rejection must emit error! at target='navmesh.load' with \
+             reason='header_out_of_range'. Reverting the error! line in `check_count` \
+             breaks the silent-fall-through alert path documented in audit #482. \
+             Captured: {captured:#?}"
+        );
+        let (_, _, fields) = reject_log.unwrap();
+        assert_eq!(
+            fields.get("field").map(String::as_str),
+            Some("nverts"),
+            "warn must carry the rejected field name: {fields:#?}"
+        );
     }
 
     #[test]

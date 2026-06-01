@@ -36,6 +36,7 @@ use cimmeria_entity::crafting::CraftingState;
 // activity dispatch. `#[allow(dead_code)]` keeps the function in the
 // public surface so Phase 2 doesn't have to flip visibility.
 #[allow(dead_code)]
+#[tracing::instrument(name = "crafting.load", level = "info", skip_all, fields(player_id))]
 pub async fn load_crafting_state(
     pool: &PgPool,
     player_id: i32,
@@ -159,6 +160,12 @@ pub async fn load_crafting_state(
 // Phase 1: Phase 2's spendAppliedSciencePoints handler is the first
 // production caller. See note on `load_crafting_state`.
 #[allow(dead_code)]
+#[tracing::instrument(
+    name = "crafting.save",
+    level = "info",
+    skip_all,
+    fields(player_id, expertise_count = state.expertise.len()),
+)]
 pub async fn save_crafting_state(
     pool: &PgPool,
     player_id: i32,

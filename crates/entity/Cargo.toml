@@ -18,3 +18,9 @@ thiserror = { workspace = true }
 
 [build-dependencies]
 cc = "1"
+
+[dev-dependencies]
+# Lightweight tracing-layer-based capture for negative-log regression
+# guards. Pulls in tracing-subscriber as a dev-only dependency; not
+# bundled into the production binary.
+tracing-subscriber = { workspace = true }

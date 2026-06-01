@@ -187,6 +187,11 @@ to crate-rename churn) and **named for the question they answer**.
 | `trade.request` / `trade.cancel` / `trade.update_proposal` / `trade.lock_state` | INFO | `cell::cell_methods::player::trade::handlers` | Per-handler trade dispatch from the cell side |
 | `trade.execute` | INFO | `base::world_entry::methods::trade::execute::handle_execute_trade` | Base-side execute span (entrypoint) — wraps the atomic_swap call |
 | `trade.atomic_swap` | INFO | `base::world_entry::methods::trade::execute::swap::atomic_swap` | The DB-tx span — `phase = "..."` debug breadcrumbs name the failing step on abort |
+| `crafting.load` / `crafting.save` | INFO | `base::crafting::persistence::{load_crafting_state, save_crafting_state}` | Crafting state round-trip — correlator: `player_id` |
+| `cover.reservation` | WARN | `cell::cover::ai_integration::try_reserve_or_warn` | Cover-slot race-lost — defensive against future async refactors |
+| `spawner.npc_respawn` | INFO | `cell::service::ticks::npc_respawn::npc_respawn_tick` | Per-NPC respawn promotion — correlator: `world_name`, `respawn_secs` |
+| `movement.validation` | WARN | `cell::service::base_messages` | Movement reject (bounds violation) — snap-back to last_valid |
+| `navmesh.load` | ERROR | `entity::navigation::check_count` | Hostile `.nav` header rejected — space loads navmesh-less |
 
 #### `npc_ai.decision_outcome` enum
 
