@@ -96,10 +96,18 @@ impl SpaceBounds {
 /// catches it.
 ///
 /// Returns `true` if the point is contained; `false` if any axis is
-/// out of range. NaN coordinates are also rejected: an `f32` `NaN`
-/// fails every comparison, so the `>=` / `<=` chain naturally returns
-/// `false` for NaN on any axis.
+/// out of range. Non-finite coordinates (`NaN`, `+Infinity`,
+/// `-Infinity`) are rejected up front via `is_finite()`. Relying on
+/// the bounds comparisons alone is fragile — `NaN` happens to fail
+/// every `>=`/`<=` (because NaN comparisons are always false), and
+/// `±Infinity` happens to fail one side of a finite AABB, but a
+/// future contributor widening the fallback toward `f32::MAX` /
+/// `f32::MIN` could silently let infinities through. The explicit
+/// gate is cheap and removes that footgun.
 pub fn position_within_bounds(pos: Vector3, bounds: &SpaceBounds) -> bool {
+    if !pos.x.is_finite() || !pos.y.is_finite() || !pos.z.is_finite() {
+        return false;
+    }
     pos.x >= bounds.min[0]
         && pos.x <= bounds.max[0]
         && pos.y >= bounds.min[1]
@@ -210,8 +218,9 @@ mod tests {
 
     #[test]
     fn nan_position_rejected_on_every_axis() {
-        // Every comparison against NaN is false; the conjunction
-        // collapses to false regardless of which axis carries the NaN.
+        // Every comparison against NaN is false; the `is_finite()`
+        // gate up front catches it explicitly regardless of which axis
+        // carries the NaN.
         let nan = f32::NAN;
         assert!(!position_within_bounds(
             Vector3::new(nan, 0.0, 0.0),
