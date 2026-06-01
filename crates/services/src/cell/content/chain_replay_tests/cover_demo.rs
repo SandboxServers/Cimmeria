@@ -1,7 +1,7 @@
-//! Chain 9209 (`db/resources/Content/Seed/castle_cellblock_chains.sql`):
-//! the cover-system demo chain — fires on `OnPlayerEnteredCover` (any
-//! cover_set_id) gated on mission 639 step 2145 active, and increments
-//! the `cover_demo_entered` counter on the player entity.
+//! Cover-system demo chain (`db/resources/Content/Seed/castle_cellblock_chains.sql`):
+//! fires on `OnPlayerEnteredCover` (any cover_set_id) gated on mission
+//! 639 step 2145 active, and increments the `cover_demo_entered`
+//! counter on the player entity.
 //!
 //! Load-bearing for: proves the DB → loader → trigger match → executor
 //! pipeline works for the new `OnPlayerEnteredCover` trigger family.
@@ -16,17 +16,19 @@ use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 use super::super::engine_loader::load_single_chain_for_test;
 use crate::test_support::require_db_or_skip;
 
-/// Test 1: with mission 639 step 2145 active, entering ANY cover set
-/// resolves the chain to its `IncrementCounter("cover_demo_entered", 1)`
-/// action. Pinning the exact action variant + value catches drift if
-/// the demo seed gets reworked into a different observable side effect.
+/// Single source of truth for the demo chain id. Keep in sync with the
+/// `1035` literal in `db/resources/Content/Seed/castle_cellblock_chains.sql`
+/// (mission 639 range 1031–1040). Typed as `i64` to match `Chain.id`; the
+/// loader takes `i32`, so the call site casts at that boundary.
+const COVER_DEMO_CHAIN_ID: i64 = 1035;
+
 #[tokio::test]
-async fn chain_9209_fires_when_step_2145_active() {
+async fn cover_demo_fires_when_step_2145_active() {
     let pool = require_db_or_skip!();
-    let chain = load_single_chain_for_test(&pool, 9209)
+    let chain = load_single_chain_for_test(&pool, COVER_DEMO_CHAIN_ID as i32)
         .await
-        .expect("DB query for chain 9209 must succeed")
-        .expect("chain 9209 must exist and load — the cover-system demo");
+        .expect("DB query for cover-demo chain must succeed")
+        .expect("cover-demo chain must exist and load");
 
     let mut engine = ChainEngine::new();
     engine.register_chain(chain);
@@ -49,12 +51,12 @@ async fn chain_9209_fires_when_step_2145_active() {
     let chain_actions: Vec<_> = resolved
         .actions
         .iter()
-        .filter(|(id, _)| *id == 9209)
+        .filter(|(id, _)| *id == COVER_DEMO_CHAIN_ID)
         .collect();
     assert_eq!(
         chain_actions.len(),
         1,
-        "chain 9209 must resolve exactly one action when step 2145 is active; \
+        "cover-demo chain must resolve exactly one action when step 2145 is active; \
          got {chain_actions:?}",
     );
     assert!(
@@ -65,30 +67,25 @@ async fn chain_9209_fires_when_step_2145_active() {
                 amount: 1,
             } if counter_name == "cover_demo_entered"
         ),
-        "chain 9209's single action must be IncrementCounter(cover_demo_entered, 1); \
+        "cover-demo chain's single action must be IncrementCounter(cover_demo_entered, 1); \
          got {:?}",
         chain_actions[0].1
     );
 }
 
-/// Test 2: when step 2145 is NOT active (e.g. before the player picks
-/// up the Ambernol vial), the chain must NOT fire. Catches a regression
-/// where a future loader change collapses the step-status condition
-/// into a wildcard.
 #[tokio::test]
-async fn chain_9209_does_not_fire_when_step_2145_inactive() {
+async fn cover_demo_does_not_fire_when_step_2145_inactive() {
     let pool = require_db_or_skip!();
-    let chain = load_single_chain_for_test(&pool, 9209)
+    let chain = load_single_chain_for_test(&pool, COVER_DEMO_CHAIN_ID as i32)
         .await
-        .expect("DB query for chain 9209 must succeed")
-        .expect("chain 9209 must exist and load");
+        .expect("DB query for cover-demo chain must succeed")
+        .expect("cover-demo chain must exist and load");
 
     let mut engine = ChainEngine::new();
     engine.register_chain(chain);
 
     let mut ctx = ExecutionContext::new();
     ctx.set_param("cover_set_id".to_string(), serde_json::json!(42));
-    // Mission 639 step 2145 not yet active — earlier in the quest flow.
     ctx.set_param(
         "mission_639_step_2145_status".to_string(),
         serde_json::json!("not_active"),
@@ -105,11 +102,11 @@ async fn chain_9209_does_not_fire_when_step_2145_inactive() {
     let chain_actions: Vec<_> = resolved
         .actions
         .iter()
-        .filter(|(id, _)| *id == 9209)
+        .filter(|(id, _)| *id == COVER_DEMO_CHAIN_ID)
         .collect();
     assert!(
         chain_actions.is_empty(),
-        "chain 9209 must NOT fire when step 2145 is inactive; \
+        "cover-demo chain must NOT fire when step 2145 is inactive; \
          got {chain_actions:?}",
     );
 }

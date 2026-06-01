@@ -337,28 +337,23 @@ VALUES
 -- active. The action is a counter bump — observable in the entity's
 -- `counters` map and verifiable from the chain-replay test harness.
 --
--- Chain id 9209 chosen to avoid collision with the 1xxx-5xxx range
--- used by authored mission content (1098 is taken by the "search
--- crate" chain in this same file at line ~1289).
---
--- Production med-bay gate (the user's stated use case — "gate the
--- drone attack on player crouching + entering cover") is the natural
--- next step: once cover_set_ids in the med-bay room are catalogued
--- from the generated extractor manifest, swap the wildcard NULL for
--- the specific set_id and add the BSF_CROUCHING state-flag condition
--- to gate on crouched-and-in-cover. v1 lands the trigger plumbing;
--- the per-room tuning is a content-author follow-up.
+-- Chain 1035: COVER DEMO — bump a counter on player_entered_cover
+-- while step 2145 is active. Slots into the mission 639 range
+-- (1031-1040) per the header allocation. v1 wires the trigger plumbing
+-- with a wildcard cover_set_id (NULL); per-room tuning (e.g. swap NULL
+-- for the med-bay set_id, add BSF_CROUCHING state-flag condition) is a
+-- content-author follow-up.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (9209, 'COVER DEMO: bump counter on player enter cover', 'mission', 639, true, 0);
+VALUES (1035, '639 - COVER DEMO: bump counter on player enter cover', 'mission', 639, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (9209, 'player_entered_cover', NULL, 'player', false, 0);
+VALUES (1035, 'player_entered_cover', NULL, 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (9209, 'step_status', 639, '2145', 'eq', 'active', 0);
+VALUES (1035, 'step_status', 639, '2145', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (9209, 'increment_counter', NULL, 'cover_demo_entered', '{"amount": 1}', 0, 0);
+VALUES (1035, 'increment_counter', NULL, 'cover_demo_entered', '{"amount": 1}', 0, 0);
 
 -- Chain 1032: interact with Ambernol vial while step 2145 active → pick up, destroy, aggro guard, advance
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
