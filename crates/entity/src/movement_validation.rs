@@ -76,11 +76,35 @@ impl SpaceBounds {
 
     /// Generous fallback used for spaces whose navmesh failed to load.
     ///
-    /// Wider than any legitimate world by an order of magnitude — only
-    /// catches absurd values from a tampered client (NaN, infinity,
-    /// 1e9 coordinate overflows) while staying out of the way of every
-    /// real position. Per the design doc, do NOT use this as the
-    /// primary source; it is the safety net for navmesh-less spaces.
+    /// **Rationale.** This 20 km × 12 km × 20 km AABB exists for spaces
+    /// that have no canonical bounds source today — legacy zones whose
+    /// navmesh extractor hasn't been run, dev maps without authored
+    /// `spaces.xml` bounds, and any space that ships before its navmesh
+    /// is wired. Per the design doc, do **not** use this as the primary
+    /// source; it is the safety net for navmesh-less spaces.
+    ///
+    /// **Permissive by design.** Wider than any legitimate world by an
+    /// order of magnitude. The cost of a false-positive snapback (a
+    /// legitimate exploring player getting yanked back to spawn) is
+    /// vastly worse for the player experience than the cost of letting
+    /// a cheater roam within a 20 km box — the cheater is already
+    /// inside the bounds layer's blind spot regardless of how tight we
+    /// crank it, and the *next* validator layers (speed, teleport
+    /// detection, navmesh containment) are what actually constrain
+    /// where a cheater can move. The bounds layer's job is to catch
+    /// absurd values (NaN, infinity, 1e9 coordinate overflows), not to
+    /// be the gate against in-bounds cheating.
+    ///
+    /// **Tightening path.** When a previously navmesh-less zone gets
+    /// its navmesh wired, the per-space navmesh `bmin`/`bmax` becomes
+    /// the source automatically (see `apply_client_position_update` in
+    /// `crates/services/src/cell/space_manager/entities.rs`). A later
+    /// validator layer narrows the in-bounds-cheating window by
+    /// recording authorized server-side teleports (ring transport,
+    /// respawn, content-engine teleport) via a `note_authorized_teleport`
+    /// hook so the teleport-detection layer can distinguish legitimate
+    /// large jumps from tampered ones — see
+    /// `.claude/agent-memory/movement-teleport-advisor/authorized-teleport-paths.md`.
     pub const FALLBACK: Self = Self {
         min: [-10_000.0, -2_000.0, -10_000.0],
         max: [10_000.0, 10_000.0, 10_000.0],
