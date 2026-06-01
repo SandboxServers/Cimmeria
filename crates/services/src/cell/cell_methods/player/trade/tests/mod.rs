@@ -15,6 +15,7 @@ use cimmeria_entity::trade::TradeProposal;
 use crate::cell::space_manager::SpaceManager;
 
 mod handlers;
+mod handlers_validation;
 mod handoff;
 mod lock_state;
 mod wire;
