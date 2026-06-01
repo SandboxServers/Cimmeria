@@ -422,17 +422,15 @@ impl<S: Subscriber> Layer<S> for CaptureLayer {
 
     // Span field record (via `Span::current().record(...)` or the
     // `instrument` macro's `fields(...)` placeholders being filled
-    // mid-span). Each call appears as a synthetic "record" event whose
-    // target is `span_record:<span_name>` so tests can find the recorded
-    // value by [`LogCaptureGuard::find_span_attribute`].
+    // mid-span). Each call appears as a synthetic "record" event tagged
+    // with target `span_record:?` — we don't have direct access to the
+    // span's name from `_id` without walking the registry, and tests
+    // want field+value matching, not span-name matching. The fixed `?`
+    // discriminator is what [`LogCaptureGuard::span_recorded`] greps
+    // for via `starts_with("span_record:")`.
     fn on_record(&self, _id: &Id, values: &Record<'_>, _ctx: Context<'_, S>) {
         let mut visitor = FieldVisitor::default();
         values.record(&mut visitor);
-        // We don't have direct access to the span's name from `_id`
-        // without walking the registry — but tests want field+value
-        // matching, not span-name matching. Tag the row as
-        // `span_record:?` and let the visitor's fields carry the
-        // discriminator.
         self.events.lock().unwrap().push(Captured {
             level: tracing::Level::TRACE,
             target: "span_record:?".to_string(),

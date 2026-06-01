@@ -380,7 +380,7 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
         // dead NPCs in Castle but not in Agnos" queries.
         cimmeria_observability::counter!(
             "npc_respawns_total",
-            "world_name" => world_name.clone(),
+            "world_name" => world_name,
         );
     }
 }

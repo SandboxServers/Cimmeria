@@ -237,7 +237,7 @@ pub(super) async fn handle_base_message(
                         "movement.bounds_violation: client position outside space \
                          AABB — snapping back to last valid via FORCED_POSITION"
                     );
-                    // PRs 2/3/4 of #63 will add `speed | teleport | navmesh`
+                    // Future validators will add `speed | teleport | navmesh`
                     // reason labels; today only `bounds` fires. Aggregating
                     // the rate without high-cardinality entity_id labels.
                     cimmeria_observability::counter!(
