@@ -183,6 +183,8 @@
 \ir resources/Worlds/Sequences/stargates_id_seq.sql
 
 -- Tables
+\ir resources/AI/Tables/cover_sets.sql
+\ir resources/AI/Tables/cover_nodes.sql
 \ir resources/Abilities/Tables/abilities.sql
 \ir resources/Abilities/Tables/ability_moniker_groups.sql
 \ir resources/Abilities/Tables/ability_set_abilities.sql
@@ -264,6 +266,8 @@
 \ir resources/_functions.sql
 
 -- Seed data
+\ir resources/AI/Seed/cover_sets.sql
+\ir resources/AI/Seed/cover_nodes.sql
 \ir resources/Abilities/Seed/abilities.sql
 \ir resources/Abilities/Seed/ability_moniker_groups.sql
 \ir resources/Abilities/Seed/ability_set_abilities.sql

@@ -28,7 +28,11 @@ use super::super::space_manager::SpaceManager;
 /// `set_aggression` content action actually trigger combat — without it
 /// the action would be a behavior bit nothing read. See
 /// [`super::super::content::executor::world::set_aggression`].
-pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
+pub(super) async fn npc_ai_tick(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
+) {
     use cimmeria_entity::cell_entity::AiState;
 
     // Snapshot NPC IDs and their AI state so we don't hold a borrow on space_mgr
@@ -80,7 +84,7 @@ pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mu
         );
         async {
             match ai_state {
-                AiState::Fighting => npc_ai_fight(npc_id, tx, space_mgr).await,
+                AiState::Fighting => npc_ai_fight(npc_id, tx, space_mgr, engine).await,
                 AiState::Leashing => npc_ai_leash(npc_id, tx, space_mgr).await,
                 AiState::Patrol => npc_ai_patrol(npc_id, tx, space_mgr).await,
                 AiState::Wander => npc_ai_wander(npc_id, tx, space_mgr).await,
@@ -195,7 +199,12 @@ async fn npc_ai_idle_auto_aggro(
 }
 
 /// NPC fighting behavior: attack top-threat target or leash if too far from spawn.
-async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
+async fn npc_ai_fight(
+    npc_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
+) {
     use super::super::combat;
     use cimmeria_entity::cell_entity::{AiState, MobMovementType};
 
@@ -212,7 +221,7 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     .await;
 
     // Read NPC state (immutable borrow)
-    let (top_target, spawn_pos, npc_pos, is_stationary) = {
+    let (top_target, spawn_pos, npc_pos, is_stationary, use_cover) = {
         let npc = match space_mgr.get_entity(npc_id) {
             Some(e) => e,
             None => return,
@@ -225,7 +234,13 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(&eid, _)| eid);
 
-        (top, npc.spawn_position, npc.position, npc.is_stationary)
+        (
+            top,
+            npc.spawn_position,
+            npc.position,
+            npc.is_stationary,
+            npc.use_cover,
+        )
     };
 
     let target_id = match top_target {
@@ -237,6 +252,12 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
                 npc.threat_list.clear();
                 tracing::debug!(npc_id, "NPC AI: no threat targets, resetting to Idle");
             }
+            // Release any cover slot the NPC was holding — combat ended.
+            // `release_for_entity` is idempotent; the call is cheap when
+            // the NPC wasn't in cover.
+            space_mgr
+                .cover
+                .release_for_entity(cimmeria_common::EntityId(npc_id as i32));
             // Clear cached movement-type so the next Fighting entry
             // re-broadcasts. None means "no wire emission, just drop
             // the dedup cache" per `broadcast_movement_type` doc.
@@ -292,6 +313,10 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
                     "NPC AI: target too far from spawn, leashing"
                 );
             }
+            // Release any cover slot held — leash is a combat-end transition.
+            space_mgr
+                .cover
+                .release_for_entity(cimmeria_common::EntityId(npc_id as i32));
             // Broadcast Leash movement-type now rather than wait for
             // the next AI tick (which would land ~2s later). The leash
             // handler itself snaps the position instantly, so even
@@ -337,6 +362,96 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     let in_range = dist_to_target <= max_range;
     let has_los = space_mgr.has_line_of_sight(npc_id, target_id);
 
+    // Cover-system integration. When `use_cover` is on (set by the
+    // spawner for NPCs from `SGWMob.def`'s `useCover` flag) and the
+    // threat is engaged, `maintain_cover_for_npc` decides whether to
+    // stay in the current cover, move to a new cover slot, or fall
+    // back to direct chase. The returned `nav_target_pos` is the
+    // position the chase block below paths toward — it overrides the
+    // threat's position with the chosen cover slot's position so the
+    // NPC paths to cover instead of running at the player.
+    //
+    // Reservation state is owned by the cover module; the function is
+    // a pure decision against an atomic snapshot. Release on death /
+    // leash / idle is handled elsewhere in this file.
+    let mut nav_target_pos = target_pos;
+    if use_cover && !is_stationary {
+        use crate::cell::cover::{maintain_cover_for_npc, CoverDecision, CoverWeights};
+        let decision = maintain_cover_for_npc(
+            cimmeria_common::EntityId(npc_id as i32),
+            npc_pos,
+            target_pos,
+            in_range,
+            true,
+            &space_mgr.cover,
+            &CoverWeights::default(),
+        );
+        match decision {
+            CoverDecision::StayInCover { pos, slot } => {
+                nav_target_pos = pos;
+                tracing::debug!(
+                    target: "npc_ai",
+                    event = "decision",
+                    decision_outcome = "stay_in_cover",
+                    npc_id,
+                    target_id,
+                    chunk_id = slot.chunk_id,
+                    node_id = slot.node_id,
+                    "NPC AI: holding cover slot"
+                );
+            }
+            CoverDecision::MoveToCover { pos, slot } => {
+                nav_target_pos = pos;
+                tracing::info!(
+                    target: "npc_ai",
+                    event = "decision",
+                    decision_outcome = "move_to_cover",
+                    npc_id,
+                    target_id,
+                    chunk_id = slot.chunk_id,
+                    node_id = slot.node_id,
+                    "NPC AI: picked cover slot"
+                );
+            }
+            CoverDecision::Released { prior_slot } => {
+                tracing::info!(
+                    target: "npc_ai",
+                    event = "decision",
+                    decision_outcome = "cover_released_flanked",
+                    npc_id,
+                    target_id,
+                    chunk_id = prior_slot.chunk_id,
+                    node_id = prior_slot.node_id,
+                    "NPC AI: released flanked cover slot, re-evaluating next tick"
+                );
+                // Clear any stale nav_path pointing at the now-released
+                // cover slot. Without this, the NPC would continue
+                // walking toward the abandoned slot for one more
+                // movement tick before the re-pick lands next AI tick.
+                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                    npc.nav_path.clear();
+                }
+                // Fire the OnNpcFlanked content trigger so chain
+                // authors can hook narrative reactions (the AI itself
+                // already repositions; this is just the affordance).
+                let npc_template = space_mgr
+                    .get_entity(npc_id)
+                    .and_then(|e| e.npc_name.clone())
+                    .unwrap_or_default();
+                super::super::content::fire_npc_flanked(
+                    npc_id,
+                    target_id,
+                    &npc_template,
+                    engine,
+                    tx,
+                    space_mgr,
+                )
+                .await;
+            }
+            CoverDecision::NoCover => {}
+        }
+    }
+
     // Out of range OR occluded — keep pathfinding so the NPC can reposition
     // to regain line of sight. Treating "in range but blocked" as a stop
     // condition would freeze the NPC behind walls/corners; making it a repath
@@ -376,19 +491,21 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
             let npc = space_mgr.get_entity(npc_id);
             match npc {
                 Some(e) if !e.nav_path.is_empty() => {
-                    // Check if target moved far from the last waypoint
+                    // Check if nav target moved far from the last waypoint.
+                    // Uses `nav_target_pos` (may be a cover-slot override)
+                    // so cover-routed paths don't repath every tick.
                     let last_wp = match e.nav_path.back() {
                         Some(wp) => *wp,
                         None => return,
                     };
-                    last_wp.distance_to(&target_pos) > 5.0
+                    last_wp.distance_to(&nav_target_pos) > 5.0
                 }
                 _ => true, // No path — need one
             }
         };
 
         if needs_repath {
-            if let Some(path) = space_mgr.find_path(npc_id, &npc_pos, &target_pos) {
+            if let Some(path) = space_mgr.find_path(npc_id, &npc_pos, &nav_target_pos) {
                 if path.len() > 1 {
                     let waypoints: std::collections::VecDeque<_> =
                         path.into_iter().skip(1).collect();
@@ -658,6 +775,7 @@ fn compute_backup_waypoint(
 pub(super) async fn npc_ai_retry_sweep(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
 ) {
     use cimmeria_entity::cell_entity::AiState;
 
@@ -709,7 +827,7 @@ pub(super) async fn npc_ai_retry_sweep(
             npc.ai_retry_at = None;
         }
         space_mgr.pending_ai_retries.remove(&npc_id);
-        npc_ai_fight(npc_id, tx, space_mgr).await;
+        npc_ai_fight(npc_id, tx, space_mgr, engine).await;
     }
 }
 

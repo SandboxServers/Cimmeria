@@ -63,6 +63,44 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
         "mission_accepted" => Some(Trigger::OnMissionAccepted {
             mission_id: key?.parse().ok()?,
         }),
+        // Cover-system triggers. `event_key` is the
+        // optional `cover_set_id` filter — `NULL` means "any cover
+        // set". Same wildcard-or-id pattern as `item_equipped` so a
+        // typo'd integer rejects the chain rather than silently
+        // collapsing to wildcard.
+        "player_entered_cover" => match key {
+            None => Some(Trigger::OnPlayerEnteredCover { cover_set_id: None }),
+            Some(s) => Some(Trigger::OnPlayerEnteredCover {
+                cover_set_id: Some(s.parse().ok()?),
+            }),
+        },
+        "player_left_cover" => match key {
+            None => Some(Trigger::OnPlayerLeftCover { cover_set_id: None }),
+            Some(s) => Some(Trigger::OnPlayerLeftCover {
+                cover_set_id: Some(s.parse().ok()?),
+            }),
+        },
+        // `player_in_cover_duration` requires both a duration (in
+        // `event_key` as seconds) and an optional cover_set_id, but a
+        // single string can't carry both. Convention: `event_key`
+        // = `"<seconds>"` (no set filter) or `"<seconds>:<set_id>"`.
+        "player_in_cover_duration" => {
+            let s = key?;
+            let (secs_str, set_str) = match s.split_once(':') {
+                Some((a, b)) => (a, Some(b)),
+                None => (s, None),
+            };
+            Some(Trigger::OnPlayerInCoverDuration {
+                seconds: secs_str.parse().ok()?,
+                cover_set_id: match set_str {
+                    Some(s) => Some(s.parse().ok()?),
+                    None => None,
+                },
+            })
+        }
+        "npc_flanked" => Some(Trigger::OnNpcFlanked {
+            npc_template: key.map(|s| s.to_string()),
+        }),
         _ => None,
     }
 }

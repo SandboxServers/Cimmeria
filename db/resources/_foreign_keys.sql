@@ -1,4 +1,11 @@
 --
+-- Name: cover_nodes_chunk_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY cover_nodes
+    ADD CONSTRAINT cover_nodes_chunk_id_fkey FOREIGN KEY (chunk_id) REFERENCES cover_sets(chunk_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
 -- TOC entry 3071 (class 2606 OID 63362)
 -- Name: abilities_event_set_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
 --

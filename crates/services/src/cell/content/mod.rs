@@ -17,8 +17,9 @@ mod chain_replay_tests;
 // callers across the cell service already use.
 pub use engine_loader::build_engine;
 pub use event_dispatch::{
-    fire_chain_by_id, fire_dialog_choice, fire_dialog_open, fire_enter_region, fire_entity_death,
-    fire_exit_region, fire_interact_tag, fire_interact_template, fire_item_equipped, fire_item_use,
+    fire_chain_by_id, fire_cover_duration, fire_cover_entered, fire_cover_left, fire_dialog_choice,
+    fire_dialog_open, fire_enter_region, fire_entity_death, fire_exit_region, fire_interact_tag,
+    fire_interact_template, fire_item_equipped, fire_item_use, fire_npc_flanked,
     fire_player_loaded, fire_teleport_in,
 };
 

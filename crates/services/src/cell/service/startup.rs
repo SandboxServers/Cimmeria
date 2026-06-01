@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::Notify;
 
 use super::super::content;
+use super::super::cover;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::super::{spawner, CellError};
@@ -172,6 +173,34 @@ impl CellService {
                 Err(e) => {
                     tracing::warn!("Failed to load event_set sequences: {e}");
                 }
+            }
+            // Cover-system data. Builds the per-process spatial index from
+            // `resources.cover_sets` + `resources.cover_nodes`. Initialises
+            // if either load returns any rows; stays on `Cover::empty()`
+            // only when both come back empty (load failure or fresh DB).
+            // The rest of the cell service still functions; NPCs just
+            // won't use cover until the load is repaired.
+            let cover_sets = match cover::load_cover_sets(pool).await {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!("Failed to load cover sets: {e}");
+                    Vec::new()
+                }
+            };
+            let cover_nodes = match cover::load_cover_nodes(pool).await {
+                Ok(n) => n,
+                Err(e) => {
+                    tracing::error!("Failed to load cover nodes: {e}");
+                    Vec::new()
+                }
+            };
+            if !cover_sets.is_empty() || !cover_nodes.is_empty() {
+                space_mgr.cover = cover::Cover::from_loaded(cover_sets, cover_nodes);
+                tracing::info!(
+                    sets = space_mgr.cover.set_count(),
+                    nodes = space_mgr.cover.node_count(),
+                    "Cover service loaded"
+                );
             }
             match spawner::load_item_containers(pool).await {
                 Ok(map) => {

@@ -107,6 +107,34 @@ pub enum Trigger {
     /// quest objects, granting starter items) without coupling that work
     /// to the chain that did the accepting.
     OnMissionAccepted { mission_id: i32 },
+
+    /// Fires when a player enters proximity of a cover set (a chunk of
+    /// cover-prefab nodes — see `resources.cover_sets`). The same player
+    /// can be in multiple cover sets at once; one event per set on entry.
+    /// Filter by `cover_set_id` to gate on a specific chunk (e.g. the
+    /// Castle Cellblock med-bay cover set for the drone-attack chain).
+    /// Wildcard (None) fires for any cover-set entry.
+    OnPlayerEnteredCover { cover_set_id: Option<i32> },
+
+    /// Fires when a player leaves a cover set's proximity. Paired with
+    /// [`Self::OnPlayerEnteredCover`] for symmetry; useful for chains
+    /// that want to react to "player no longer behind cover".
+    OnPlayerLeftCover { cover_set_id: Option<i32> },
+
+    /// Fires once when the player has continuously been in a cover set
+    /// for at least `seconds`. Debounced — leaving and re-entering resets
+    /// the timer. Useful for "stay in cover for 5 seconds" objectives.
+    OnPlayerInCoverDuration {
+        cover_set_id: Option<i32>,
+        seconds: u32,
+    },
+
+    /// Fires when an NPC currently occupying a cover slot is flanked —
+    /// the top-threat target moved outside the cover's defensive arc
+    /// (cover orientation ± π/2). Used by encounter authors who want to
+    /// react to "you outflanked the guard" (the AI itself already
+    /// repositions; this is just an authoring hook).
+    OnNpcFlanked { npc_template: Option<String> },
 }
 
 /// Runtime event payload passed to the chain engine when a game event occurs.
@@ -155,6 +183,10 @@ pub enum TriggerType {
     MissionCompleted,
     DialogSetOpen,
     MissionAccepted,
+    PlayerEnteredCover,
+    PlayerLeftCover,
+    PlayerInCoverDuration,
+    NpcFlanked,
 }
 
 impl Trigger {
@@ -187,6 +219,10 @@ impl Trigger {
             Trigger::OnMissionCompleted { .. } => TriggerType::MissionCompleted,
             Trigger::OnDialogSetOpen { .. } => TriggerType::DialogSetOpen,
             Trigger::OnMissionAccepted { .. } => TriggerType::MissionAccepted,
+            Trigger::OnPlayerEnteredCover { .. } => TriggerType::PlayerEnteredCover,
+            Trigger::OnPlayerLeftCover { .. } => TriggerType::PlayerLeftCover,
+            Trigger::OnPlayerInCoverDuration { .. } => TriggerType::PlayerInCoverDuration,
+            Trigger::OnNpcFlanked { .. } => TriggerType::NpcFlanked,
         }
     }
 
@@ -325,6 +361,37 @@ impl Trigger {
             Trigger::OnMissionAccepted { mission_id } => {
                 event.params.get("mission_id").and_then(|v| v.as_i64()) == Some(*mission_id as i64)
             }
+            Trigger::OnPlayerEnteredCover { cover_set_id }
+            | Trigger::OnPlayerLeftCover { cover_set_id } => match cover_set_id {
+                Some(expected) => {
+                    event.params.get("cover_set_id").and_then(|v| v.as_i64())
+                        == Some(*expected as i64)
+                }
+                None => true,
+            },
+            Trigger::OnPlayerInCoverDuration {
+                cover_set_id,
+                seconds,
+            } => {
+                let seconds_match =
+                    event.params.get("seconds").and_then(|v| v.as_i64()) == Some(*seconds as i64);
+                let set_match = match cover_set_id {
+                    Some(expected) => {
+                        event.params.get("cover_set_id").and_then(|v| v.as_i64())
+                            == Some(*expected as i64)
+                    }
+                    None => true,
+                };
+                seconds_match && set_match
+            }
+            Trigger::OnNpcFlanked { npc_template } => match npc_template {
+                Some(expected) => event
+                    .params
+                    .get("npc_template")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|actual| actual == expected),
+                None => true,
+            },
         }
     }
 }
@@ -578,5 +645,156 @@ mod tests {
             vec![("item_id", serde_json::json!(123))],
         );
         assert!(trigger.matches(&event));
+    }
+
+    // ─── Cover triggers ────────────────────────────────────────────
+
+    #[test]
+    fn player_entered_cover_filters_by_set_id() {
+        let trigger = Trigger::OnPlayerEnteredCover {
+            cover_set_id: Some(42),
+        };
+        let matching = make_event(
+            TriggerType::PlayerEnteredCover,
+            vec![("cover_set_id", serde_json::json!(42))],
+        );
+        assert!(trigger.matches(&matching));
+        let other_set = make_event(
+            TriggerType::PlayerEnteredCover,
+            vec![("cover_set_id", serde_json::json!(43))],
+        );
+        assert!(!trigger.matches(&other_set));
+    }
+
+    #[test]
+    fn player_entered_cover_wildcard_matches_any_set() {
+        let trigger = Trigger::OnPlayerEnteredCover { cover_set_id: None };
+        let event = make_event(
+            TriggerType::PlayerEnteredCover,
+            vec![("cover_set_id", serde_json::json!(999))],
+        );
+        assert!(trigger.matches(&event));
+    }
+
+    #[test]
+    fn player_left_cover_filters_by_set_id() {
+        let trigger = Trigger::OnPlayerLeftCover {
+            cover_set_id: Some(7),
+        };
+        let matching = make_event(
+            TriggerType::PlayerLeftCover,
+            vec![("cover_set_id", serde_json::json!(7))],
+        );
+        assert!(trigger.matches(&matching));
+        let other = make_event(
+            TriggerType::PlayerLeftCover,
+            vec![("cover_set_id", serde_json::json!(8))],
+        );
+        assert!(!trigger.matches(&other));
+    }
+
+    #[test]
+    fn player_left_cover_wildcard_matches_any_set() {
+        let trigger = Trigger::OnPlayerLeftCover { cover_set_id: None };
+        let event = make_event(
+            TriggerType::PlayerLeftCover,
+            vec![("cover_set_id", serde_json::json!(123))],
+        );
+        assert!(trigger.matches(&event));
+    }
+
+    #[test]
+    fn player_in_cover_duration_requires_seconds_match() {
+        let trigger = Trigger::OnPlayerInCoverDuration {
+            cover_set_id: None,
+            seconds: 5,
+        };
+        let three_s = make_event(
+            TriggerType::PlayerInCoverDuration,
+            vec![("seconds", serde_json::json!(3))],
+        );
+        assert!(!trigger.matches(&three_s));
+        let five_s = make_event(
+            TriggerType::PlayerInCoverDuration,
+            vec![("seconds", serde_json::json!(5))],
+        );
+        assert!(trigger.matches(&five_s));
+    }
+
+    #[test]
+    fn player_in_cover_duration_filters_by_set_id_too() {
+        let trigger = Trigger::OnPlayerInCoverDuration {
+            cover_set_id: Some(42),
+            seconds: 5,
+        };
+        // Correct seconds, wrong set → no match.
+        let wrong_set = make_event(
+            TriggerType::PlayerInCoverDuration,
+            vec![
+                ("seconds", serde_json::json!(5)),
+                ("cover_set_id", serde_json::json!(43)),
+            ],
+        );
+        assert!(!trigger.matches(&wrong_set));
+        // Correct set + correct seconds → match.
+        let correct = make_event(
+            TriggerType::PlayerInCoverDuration,
+            vec![
+                ("seconds", serde_json::json!(5)),
+                ("cover_set_id", serde_json::json!(42)),
+            ],
+        );
+        assert!(trigger.matches(&correct));
+    }
+
+    #[test]
+    fn npc_flanked_filters_by_template() {
+        let trigger = Trigger::OnNpcFlanked {
+            npc_template: Some("HumanGuard".to_string()),
+        };
+        let matching = make_event(
+            TriggerType::NpcFlanked,
+            vec![("npc_template", serde_json::json!("HumanGuard"))],
+        );
+        assert!(trigger.matches(&matching));
+        let other = make_event(
+            TriggerType::NpcFlanked,
+            vec![("npc_template", serde_json::json!("GoauldGuard"))],
+        );
+        assert!(!trigger.matches(&other));
+    }
+
+    #[test]
+    fn npc_flanked_wildcard_matches_any() {
+        let trigger = Trigger::OnNpcFlanked { npc_template: None };
+        let event = make_event(
+            TriggerType::NpcFlanked,
+            vec![("npc_template", serde_json::json!("AnyGuard"))],
+        );
+        assert!(trigger.matches(&event));
+    }
+
+    #[test]
+    fn cover_triggers_have_correct_discriminants() {
+        assert_eq!(
+            Trigger::OnPlayerEnteredCover { cover_set_id: None }.trigger_type(),
+            TriggerType::PlayerEnteredCover
+        );
+        assert_eq!(
+            Trigger::OnPlayerLeftCover { cover_set_id: None }.trigger_type(),
+            TriggerType::PlayerLeftCover
+        );
+        assert_eq!(
+            Trigger::OnPlayerInCoverDuration {
+                cover_set_id: None,
+                seconds: 3,
+            }
+            .trigger_type(),
+            TriggerType::PlayerInCoverDuration
+        );
+        assert_eq!(
+            Trigger::OnNpcFlanked { npc_template: None }.trigger_type(),
+            TriggerType::NpcFlanked
+        );
     }
 }

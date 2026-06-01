@@ -10,6 +10,7 @@ pub mod chat;
 pub mod client_methods;
 pub mod combat;
 pub mod content;
+pub mod cover;
 pub mod dispatch;
 pub mod effects;
 pub mod gate_travel;
