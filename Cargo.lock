@@ -919,12 +919,10 @@ dependencies = [
 name = "cimmeria-observability"
 version = "0.1.0"
 dependencies = [
- "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "tokio",
- "tracing",
 ]
 
 [[package]]

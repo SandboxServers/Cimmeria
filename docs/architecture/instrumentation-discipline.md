@@ -130,7 +130,7 @@ not span fields.** The cardinality rules:
 
 | Where | What goes there | Examples |
 |---|---|---|
-| Metric label | Enumerated low-cardinality string (≤ ~30 values) | `outcome`, `reason`, `kind`, `world_name`, `decision_outcome` |
+| Metric label | Enumerated low-cardinality string (target ≤ ~30 values) | `outcome`, `reason`, `kind`, `world_name`, `decision_outcome` |
 | Span field | High-cardinality correlator | `player_id`, `entity_id`, `space_id`, `peer`, `mission_id` |
 | Log field | Same as span field — any correlator | `player_id`, `entity_id`, `rows_affected`, `expected` |
 
@@ -139,8 +139,50 @@ labelled by the enum; **adding `entity_id` as a label would explode
 the label-set cardinality to one bucket per NPC**, which ClickHouse
 handles badly and SigNoz's UI shows as a wall of cardinality warnings.
 
-When in doubt: if the label can ever take more than ~100 distinct
-values, it belongs in span/log fields, not on the metric.
+**Two thresholds — design target vs. hard ceiling.**
+
+- **Target ≤ ~30 distinct values** per label is the *design goal*.
+  Picking labels in this range gives readable SigNoz pivot tables and
+  predictable ClickHouse merge-tree storage. The values listed in the
+  table above all sit comfortably under this.
+- **Hard ceiling ~100 distinct values** is the *do-not-cross line*.
+  If a label can ever cross this — a per-player counter, a per-entity
+  counter, a per-template counter for a content set that may grow
+  beyond ~100 templates — the cardinality bound moves from "operator
+  unfriendly" to "ClickHouse query-plan blow-up." Move it to a span /
+  log field instead.
+
+A label sitting between the target and the hard ceiling (e.g. 50
+worlds when we ship more content) is a yellow flag, not a fail —
+revisit it during the next instrumentation review.
+
+### Worked example
+
+A `trade.execute` handler that already has the dispatcher span:
+
+```rust
+#[tracing::instrument(
+    name = "trade.execute",
+    level = "info",
+    skip_all,
+    fields(initiator_player_id, recipient_player_id, total_cash),
+)]
+async fn execute_trade(...) -> Result<(), TradeError> {
+    // ... attempt the atomic swap ...
+
+    // Rule 4: counter label is the enumerated outcome (low-cardinality),
+    // never a player_id (which is the span's correlator).
+    cimmeria_observability::counter!(
+        "trade_swaps_total",
+        "outcome" => "completed",
+    );
+    Ok(())
+}
+```
+
+The span fields and the counter label are complementary: the span
+carries the correlators an operator filters *by* (which trade, whose
+trade), the counter aggregates *across* trades by outcome.
 
 ## Anti-patterns
 

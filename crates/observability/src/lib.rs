@@ -3,9 +3,13 @@
 //!
 //! Why a facade instead of using the OTel API directly:
 //!
-//! - **Lazy instrument registration.** Every counter/histogram is
-//!   registered once via `once_cell::Lazy` on first emission. Without
-//!   this, every callsite would walk the global `Meter` to look up the
+//! - **Lazy instrument registration.** A process-global
+//!   `OnceLock<RwLock<HashMap<&'static str, Instrument>>>` per
+//!   instrument kind holds the cached `Counter` / `Histogram` /
+//!   `UpDownCounter` handles. On first emission for a given name we
+//!   take a write lock to build and insert; every subsequent emission
+//!   takes a read lock and returns the cached clone. Without this,
+//!   every callsite would walk the global `Meter` to look up the
 //!   instrument by name on every hit — measurable cost on the hot
 //!   path.
 //! - **One macro shape.** `counter!("trade_swaps_total", "outcome" =>
@@ -28,6 +32,20 @@
 //! correlators (`entity_id`, `player_id`, `peer`) belong in span/log
 //! fields, NEVER on a metric. ClickHouse merge-tree storing a label per
 //! entity degrades query performance non-linearly.
+//!
+//! # Cache key is the instrument name, not (name, labels)
+//!
+//! OpenTelemetry instruments are **label-agnostic**: the same
+//! `Counter<u64>` accepts every label-set at `.add()` time, so the
+//! cache is keyed only by the metric name. A future contributor who
+//! thinks they need a per-label-set cache is misreading the OTel API.
+//!
+//! # Resource attributes
+//!
+//! The OTel SDK attaches resource attributes (e.g. `service.name`,
+//! `deployment.environment`) once at provider init — not here. The
+//! server wires `CIMMERIA_DEPLOY_ENV` → `deployment.environment` in
+//! `crates/server/src/otel.rs`; this facade is downstream of that.
 
 use std::sync::OnceLock;
 
@@ -53,6 +71,7 @@ static METER: OnceLock<Meter> = OnceLock::new();
 ///
 /// Never panics. The error path returns `InitError` so the caller can
 /// log and continue.
+#[must_use = "init failure leaves the metrics facade in no-op mode — log and decide"]
 pub fn init(scope_name: &'static str) -> Result<(), InitError> {
     let meter = opentelemetry::global::meter(scope_name);
     METER
@@ -96,23 +115,51 @@ pub fn meter() -> Option<&'static Meter> {
 // Counters/histograms are looked up from the Meter by name; the lookup
 // returns the same instrument every time (the SDK deduplicates by
 // name + unit). The cost of the lookup itself is non-trivial because
-// it threads through a HashMap — so we wrap each named instrument
-// in `Lazy<>` keyed on the name string, computed once per
-// (name × process) pair.
+// it threads through a HashMap — so each named instrument is cached
+// once per (name × process) pair in an `OnceLock<RwLock<HashMap>>`.
+//
+// Why RwLock not Mutex: emissions read this map on every hot-path
+// callsite (`movement_validation_rejects_total`, NPC AI per-tick
+// counters, every cover state transition). A Mutex would serialize
+// readers from independent threads on the common cache-hit path.
+// RwLock lets readers proceed concurrently and only serializes the
+// rare "first emission for this name" path against the writer.
+//
+// Why poisoning recovery: if a panic unwinds while holding the lock,
+// `lock().ok()?` would silently fail every subsequent emission for
+// that instrument kind — a silent telemetry blackout. We recover via
+// `unwrap_or_else(|e| e.into_inner())` so a panicked thread doesn't
+// poison the metrics pipeline for the rest of the process.
 
 use opentelemetry::metrics::{Counter, Histogram, UpDownCounter};
-use opentelemetry::KeyValue;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+/// Recover from `PoisonError` by extracting the inner guard — a
+/// panicked thread shouldn't blackhole telemetry for the rest of the
+/// process. Standard pattern for read-mostly caches.
+fn read_unpoisoned<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
+    lock.read().unwrap_or_else(|e| e.into_inner())
+}
+
+fn write_unpoisoned<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
+    lock.write().unwrap_or_else(|e| e.into_inner())
+}
 
 /// Internal cache of registered Counter<u64> instruments by name.
 /// Lazily populated on first emission per name.
 #[doc(hidden)]
 pub fn get_or_register_counter_u64(name: &'static str) -> Option<Counter<u64>> {
-    static CACHE: OnceLock<Mutex<HashMap<&'static str, Counter<u64>>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    static CACHE: OnceLock<RwLock<HashMap<&'static str, Counter<u64>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| RwLock::new(HashMap::new()));
     let meter = meter()?;
-    let mut guard = cache.lock().ok()?;
+    // Fast path: read lock, return cloned handle if cached.
+    if let Some(c) = read_unpoisoned(cache).get(name) {
+        return Some(c.clone());
+    }
+    // Slow path: take write lock and re-check (another thread may have
+    // raced us between the read drop and write acquire), then insert.
+    let mut guard = write_unpoisoned(cache);
     if let Some(c) = guard.get(name) {
         return Some(c.clone());
     }
@@ -123,10 +170,13 @@ pub fn get_or_register_counter_u64(name: &'static str) -> Option<Counter<u64>> {
 
 #[doc(hidden)]
 pub fn get_or_register_histogram_f64(name: &'static str) -> Option<Histogram<f64>> {
-    static CACHE: OnceLock<Mutex<HashMap<&'static str, Histogram<f64>>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    static CACHE: OnceLock<RwLock<HashMap<&'static str, Histogram<f64>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| RwLock::new(HashMap::new()));
     let meter = meter()?;
-    let mut guard = cache.lock().ok()?;
+    if let Some(h) = read_unpoisoned(cache).get(name) {
+        return Some(h.clone());
+    }
+    let mut guard = write_unpoisoned(cache);
     if let Some(h) = guard.get(name) {
         return Some(h.clone());
     }
@@ -138,14 +188,21 @@ pub fn get_or_register_histogram_f64(name: &'static str) -> Option<Histogram<f64
 #[doc(hidden)]
 pub fn get_or_register_gauge_i64(name: &'static str) -> Option<UpDownCounter<i64>> {
     // UpDownCounter is the OTel SDK's "gauge-like" cumulative metric;
-    // a true "synchronous gauge" doesn't exist in the SDK (only async).
-    // For the use cases we have (cover slots held, in-flight trades),
-    // an up/down counter that callers `add(+1)` on reserve and
-    // `add(-1)` on release is the right shape.
-    static CACHE: OnceLock<Mutex<HashMap<&'static str, UpDownCounter<i64>>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    // a true synchronous point-in-time gauge doesn't exist in the SDK
+    // (only async observable gauges). For the use cases we have (cover
+    // slots held, in-flight trades), an up/down counter that callers
+    // `add(+1)` on reserve and `add(-1)` on release is the right shape.
+    //
+    // Caveat: on process restart the counter resets to 0; observability
+    // dashboards should chart the rate of change, not the absolute
+    // value, if they need restart-resilience.
+    static CACHE: OnceLock<RwLock<HashMap<&'static str, UpDownCounter<i64>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| RwLock::new(HashMap::new()));
     let meter = meter()?;
-    let mut guard = cache.lock().ok()?;
+    if let Some(g) = read_unpoisoned(cache).get(name) {
+        return Some(g.clone());
+    }
+    let mut guard = write_unpoisoned(cache);
     if let Some(g) = guard.get(name) {
         return Some(g.clone());
     }
@@ -160,17 +217,6 @@ pub fn get_or_register_gauge_i64(name: &'static str) -> Option<UpDownCounter<i64
 // would change `KeyValue` to whatever the new SDK uses, and our
 // macros' call sites stay unchanged.
 pub use opentelemetry::KeyValue as Label;
-
-/// Build a `[KeyValue]` slice from `(key, value)` pairs. Internal to
-/// the macros; the value type is constrained to `Into<opentelemetry::Value>`
-/// (which accepts `&str`, `String`, integers, etc.).
-#[doc(hidden)]
-pub fn labels<const N: usize>(pairs: [(&'static str, opentelemetry::Value); N]) -> Vec<KeyValue> {
-    pairs
-        .into_iter()
-        .map(|(k, v)| KeyValue::new(k, v))
-        .collect()
-}
 
 /// Increment a counter by 1.
 ///
@@ -312,9 +358,9 @@ mod tests {
     }
 
     /// Concurrent emissions from two threads must not panic and must
-    /// not deadlock. The instrument cache uses a Mutex, so we pin that
-    /// the lock isn't held across the actual counter add (would deadlock
-    /// against re-entry from another thread doing the same).
+    /// not deadlock. The instrument cache uses an `RwLock`, so readers
+    /// from independent threads on the common cache-hit path proceed
+    /// concurrently; only the rare first-registration write contends.
     #[test]
     fn concurrent_emissions_dont_deadlock() {
         use std::thread;
@@ -330,5 +376,60 @@ mod tests {
         });
         h1.join().expect("thread 1 must finish");
         h2.join().expect("thread 2 must finish");
+    }
+
+    /// Regression guard for Clara G1 (silent telemetry blackout via
+    /// mutex poisoning). Originally the cache used a `Mutex` with
+    /// `.lock().ok()?`, so a panicked thread would poison the lock and
+    /// every subsequent emission would silently no-op — invisible
+    /// telemetry loss. The fix moved to `RwLock` and unpoisons via
+    /// `unwrap_or_else(|e| e.into_inner())`.
+    ///
+    /// This test induces a poison and asserts the next emission still
+    /// goes through (does not panic, does not silently drop).
+    ///
+    /// Bug shape: revert the `read_unpoisoned` / `write_unpoisoned`
+    /// helpers to `.read().ok()?` / `.write().ok()?` and observe the
+    /// `try_emit_after_poison` thread silently fail to register a new
+    /// instrument.
+    #[test]
+    fn poisoned_lock_recovers_via_unpoison() {
+        use std::sync::{Arc, RwLock};
+
+        // We test the unpoison helper directly against a synthetic
+        // RwLock since the cache statics in the facade are private.
+        // The helper's behavior is what guards the silent-blackout
+        // failure mode — once the helper unpoisons, the facade's
+        // cache lookups behave the same as a never-poisoned cache.
+        let lock: Arc<RwLock<HashMap<&'static str, u32>>> = Arc::new(RwLock::new(HashMap::new()));
+        let lock_clone = Arc::clone(&lock);
+
+        let _ = std::thread::spawn(move || {
+            let _guard = lock_clone.write().expect("acquire write lock");
+            panic!("intentional panic to poison the lock");
+        })
+        .join();
+
+        // Direct .read() / .write() would return Err(PoisonError).
+        assert!(lock.read().is_err(), "lock must be poisoned");
+
+        // The unpoison helpers must recover transparently.
+        let read_guard = read_unpoisoned(&lock);
+        assert!(read_guard.is_empty(), "read after unpoison must succeed");
+        drop(read_guard);
+
+        let mut write_guard = write_unpoisoned(&lock);
+        write_guard.insert("after_poison", 42);
+        drop(write_guard);
+
+        // The map should now carry the post-poison write.
+        assert_eq!(
+            read_unpoisoned(&lock).get("after_poison").copied(),
+            Some(42),
+            "write through unpoisoned guard must persist — without the \
+             unpoison helpers this assertion would never run because \
+             the poisoned .write() returns Err and the test would \
+             abort on the unwrap"
+        );
     }
 }
