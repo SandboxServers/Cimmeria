@@ -40,12 +40,11 @@ const TEST_BASE: i32 = 0x7000_0F00;
 /// for any trade test, since both sides of a trade need to offer
 /// distinct items to exercise the swap.
 async fn tradeable_type_ids(pool: &PgPool) -> (i32, i32) {
-    let ids: Vec<i32> = sqlx::query_scalar(
-        "SELECT item_id FROM resources.items ORDER BY item_id ASC LIMIT 2",
-    )
-    .fetch_all(pool)
-    .await
-    .expect("query resources.items seed for tradeable type ids");
+    let ids: Vec<i32> =
+        sqlx::query_scalar("SELECT item_id FROM resources.items ORDER BY item_id ASC LIMIT 2")
+            .fetch_all(pool)
+            .await
+            .expect("query resources.items seed for tradeable type ids");
     assert!(
         ids.len() >= 2,
         "trade tests require at least 2 rows in `resources.items` — \
