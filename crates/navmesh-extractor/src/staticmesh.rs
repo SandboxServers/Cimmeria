@@ -153,9 +153,19 @@ pub fn extract_chunk(chunk_path: &Path, index: Option<&PackageIndex>) -> Result<
         }
 
         for inst in group {
-            let world_tris = transform_triangles(&local_tris, &inst.transform);
-            for t in world_tris {
-                result.soup.push(t);
+            // Transform mesh-local triangles into world space and push
+            // each one directly into the soup. The previous shape allocated
+            // an intermediate `Vec` per instance via
+            // `transform_triangles(...).collect()` — at ~375 actors per
+            // dense Castle_CellBlock chunk that's 375 redundant heap
+            // allocations on the hot path.
+            for t in &local_tris {
+                let world_tri = [
+                    inst.transform.apply(t[0]),
+                    inst.transform.apply(t[1]),
+                    inst.transform.apply(t[2]),
+                ];
+                result.soup.push(world_tri);
             }
             result.actors_resolved += 1;
             result.triangles_emitted += local_tris.len();
