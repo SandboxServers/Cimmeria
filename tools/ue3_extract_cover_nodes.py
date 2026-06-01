@@ -279,29 +279,28 @@ def emit_sql(merged: dict, out_dir: Path) -> tuple:
 
     with sets_path.open("w", encoding="utf-8", newline="\n") as f:
         f.write(header)
-        f.write(
-            "INSERT INTO resources.cover_sets "
-            "(chunk_id, chunk_name, primary_author, has_variant, src_pak) VALUES\n"
-        )
         rows = []
         for name, cs in chunks_sorted:
             cid = chunk_ids[name]
             author_esc = cs.primary_author.replace("'", "''")
             chunk_esc = name.replace("'", "''")
+            src_esc = cs.src_pak.replace("'", "''")
             rows.append(
                 f"  ({cid}, '{chunk_esc}', '{author_esc}', "
-                f"{'true' if cs.has_variant else 'false'}, '{cs.src_pak}')"
+                f"{'true' if cs.has_variant else 'false'}, '{src_esc}')"
             )
             sets_count += 1
+        if not rows:
+            raise ValueError("No cover set rows extracted; refusing to emit invalid SQL.")
+        f.write(
+            "INSERT INTO resources.cover_sets "
+            "(chunk_id, chunk_name, primary_author, has_variant, src_pak) VALUES\n"
+        )
         f.write(",\n".join(rows))
         f.write(";\n")
 
     with nodes_path.open("w", encoding="utf-8", newline="\n") as f:
         f.write(header)
-        f.write(
-            "INSERT INTO resources.cover_nodes "
-            "(chunk_id, node_id, pos_x, pos_y, pos_z, orient, height, quality, tail) VALUES\n"
-        )
         rows = []
         for name, cs in chunks_sorted:
             cid = chunk_ids[name]
@@ -314,6 +313,12 @@ def emit_sql(merged: dict, out_dir: Path) -> tuple:
                     f"'\\x{rec.tail.hex()}'::bytea)"
                 )
                 nodes_count += 1
+        if not rows:
+            raise ValueError("No cover node rows extracted; refusing to emit invalid SQL.")
+        f.write(
+            "INSERT INTO resources.cover_nodes "
+            "(chunk_id, node_id, pos_x, pos_y, pos_z, orient, height, quality, tail) VALUES\n"
+        )
         f.write(",\n".join(rows))
         f.write(";\n")
 
