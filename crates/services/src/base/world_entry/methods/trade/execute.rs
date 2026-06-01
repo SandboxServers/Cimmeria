@@ -418,8 +418,35 @@ async fn atomic_swap(pool: &Arc<PgPool>, p1: &TradeSide, p2: &TradeSide) -> Resu
         reserve_main_slots_excluding(&mut tx, p1.player_id, p2_items.len(), &p1_vacating_slots)
             .await?;
 
-    // Apply the item moves: re-key each row to the recipient, drop into
-    // INV_MAIN at the reserved slot.
+    // Apply the item moves in two phases to avoid violating the
+    // `sgw_inventory_unique_slot` UNIQUE INDEX on
+    // `(character_id, container_id, slot_id)`. A single-statement re-key
+    // collides whenever the recipient's destination slot is currently
+    // occupied by a row that this same transaction will vacate
+    // (the trivial case: both sides hold an item at INV_MAIN slot 0 —
+    // moving p1's item to (p2, INV_MAIN, 0) collides with p2's existing
+    // row at (p2, INV_MAIN, 0) until that row is itself moved out).
+    //
+    // The two-phase shape mirrors the swap pattern in `inventory/move_`:
+    //   Phase 1: park every outgoing item in a unique negative sentinel
+    //            slot in INV_MAIN. character_id and container_id are left
+    //            on the sender so the parked rows still belong to
+    //            someone (FK + observability), only slot_id changes.
+    //   Phase 2: re-key each parked row to the recipient and into the
+    //            reserved destination slot. By this point every original
+    //            slot is vacant on both sides, so no UNIQUE collision.
+    //
+    // Each parked item gets its OWN distinct negative slot so the parked
+    // set itself can't collide. (The single-sentinel approach in
+    // `inventory/move_` works there because that path swaps at most two
+    // items; trade can move up to 40 per side.) The (player_id, INV_MAIN)
+    // advisory lock taken upstream serializes against any other path
+    // that might also be parking rows for either player.
+    let total_items = p1_items.len() + p2_items.len();
+    for (parked_index, row) in (0_i32..).zip(p1_items.iter().chain(p2_items.iter())) {
+        let sentinel = park_sentinel_slot(parked_index, total_items);
+        park_item_at_sentinel(&mut tx, row.item_id, sentinel).await?;
+    }
     for (row, &new_slot) in p1_items.iter().zip(p2_new_slots.iter()) {
         move_item_to_recipient(&mut tx, row.item_id, p2.player_id, new_slot).await?;
     }
@@ -713,6 +740,52 @@ async fn move_item_to_recipient(
     Ok(())
 }
 
+/// Compute a unique negative parking slot for the `nth` of `total`
+/// outgoing items in a trade.
+///
+/// Returns slots in the range `[-(total), -1]` so the parked items
+/// don't collide with each other against the
+/// `sgw_inventory_unique_slot` UNIQUE INDEX, and don't collide with
+/// any real container slot (every container's `bag_min_slot` is 0,
+/// so negative slots are unreachable from any normal grant / move /
+/// purchase path).
+///
+/// The exact mapping (`-(nth + 1)`) is an internal detail; only the
+/// distinctness and negativity are load-bearing. The `total`
+/// parameter is plumbed through for a future debug assertion / log
+/// without changing the wire shape.
+fn park_sentinel_slot(nth: i32, _total: usize) -> i32 {
+    // -1, -2, -3, ... — distinct per parked item.
+    -(nth + 1)
+}
+
+/// Phase-1 parking step of the two-phase swap: relocate `item_id` to
+/// a sentinel slot in INV_MAIN without changing its owner. This
+/// vacates the item's original slot so the partner's incoming item
+/// can land there in phase 2 without colliding with the
+/// `sgw_inventory_unique_slot` UNIQUE INDEX on
+/// `(character_id, container_id, slot_id)`.
+///
+/// `sentinel_slot_id` must be unique within the parked set for this
+/// transaction — see [`park_sentinel_slot`].
+async fn park_item_at_sentinel(
+    tx: &mut Transaction<'_, Postgres>,
+    item_id: i32,
+    sentinel_slot_id: i32,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE sgw_inventory \
+         SET container_id = $1, slot_id = $2 \
+         WHERE item_id = $3",
+    )
+    .bind(INV_MAIN)
+    .bind(sentinel_slot_id)
+    .bind(item_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
 // ── Outbound onTradeResults ───────────────────────────────────────────────
 
 async fn send_results_to_both(
@@ -928,5 +1001,81 @@ mod slot_exclusion_accounting {
             "with 10/40 used and no exclusions, slot 10 is the lowest \
              free slot — must be returned"
         );
+    }
+}
+
+#[cfg(test)]
+mod parking_sentinel {
+    //! Unit-level regression guard for the two-phase swap parking step.
+    //!
+    //! Background: `sgw_inventory` has a UNIQUE INDEX on
+    //! `(character_id, container_id, slot_id)` (see
+    //! `db/sgw/Inventory/Tables/sgw_inventory.sql`). The pre-fix
+    //! single-statement re-key (item_a → recipient's destination slot,
+    //! immediately followed by item_b → sender's destination slot)
+    //! violated the constraint whenever the destination slot still
+    //! contained the partner's outgoing-this-trade item — the trivial
+    //! 1-for-1 swap where both players hold an item at INV_MAIN slot 0
+    //! tripped it. The transaction rolled back, items stayed with
+    //! their original owners, and the test diagnostics surfaced the
+    //! recipient-slot accounting fix path even though the underlying
+    //! cause was unique-index collision, not slot accounting.
+    //!
+    //! The fix: phase 1 parks each outgoing item at a distinct
+    //! NEGATIVE slot in INV_MAIN, vacating its original slot before
+    //! phase 2 re-keys the row to the recipient at its reserved
+    //! positive slot. Distinctness within the parked set is critical —
+    //! two items parked at the same `(player, INV_MAIN, sentinel)`
+    //! would themselves collide on the UNIQUE INDEX.
+    //!
+    //! These tests pin the distinctness + negativity invariants of
+    //! [`park_sentinel_slot`] so a refactor that breaks either
+    //! property trips at the unit level. The live-DB tests
+    //! `commit_swaps_items_atomically` and `lock_items_accepts_inv_main`
+    //! are the integration-level revert-verifiers: removing the
+    //! parking loop in `atomic_swap` makes them fail with `left:
+    //! Some(player_a) right: Some(player_b)` (item didn't move).
+
+    use super::park_sentinel_slot;
+    use std::collections::HashSet;
+
+    /// Every parked item must land on a distinct slot. The smallest
+    /// trade that exposed the original bug had 2 items (one per side);
+    /// the largest realistic case has 40 per side (full INV_MAIN
+    /// each). Sweep the whole range.
+    #[test]
+    fn parked_slots_are_pairwise_distinct() {
+        for total in [2usize, 4, 10, 40, 80] {
+            let slots: Vec<i32> = (0..total as i32)
+                .map(|n| park_sentinel_slot(n, total))
+                .collect();
+            let unique: HashSet<i32> = slots.iter().copied().collect();
+            assert_eq!(
+                unique.len(),
+                total,
+                "parking slots must be distinct for total={total}; \
+                 got {slots:?}. A duplicate sentinel collides on the \
+                 sgw_inventory_unique_slot index during phase 1."
+            );
+        }
+    }
+
+    /// Parked slots must be negative, so they never collide with a
+    /// real container slot (every container's `bag_min_slot` is 0)
+    /// and the grant / purchase / move paths can never accidentally
+    /// land there.
+    #[test]
+    fn parked_slots_are_strictly_negative() {
+        for total in [2usize, 40, 80] {
+            for n in 0..total as i32 {
+                let s = park_sentinel_slot(n, total);
+                assert!(
+                    s < 0,
+                    "park_sentinel_slot({n}, {total}) = {s}; sentinel \
+                     slots must be negative so they can't be reached \
+                     from any legitimate slot-allocation path"
+                );
+            }
+        }
     }
 }
