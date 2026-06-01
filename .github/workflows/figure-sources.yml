@@ -38,7 +38,7 @@ jobs:
     timeout-minutes: 3
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Full history so `git log -1 --format=%ct -- <path>` resolves
           # each file's last-modifying commit. A shallow clone reports 0

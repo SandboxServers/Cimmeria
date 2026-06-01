@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 3
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: run lint-figure-style
         run: bash tools/lint-figure-style.sh

@@ -252,8 +252,9 @@ fn status_line_for(event: &Event) -> Option<String> {
 }
 
 impl eframe::App for LauncherApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.drain_events(ctx);
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        self.drain_events(&ctx);
         if self.installing {
             // Keep ticking so progress bars animate even when no events
             // happen to arrive between frames.
@@ -264,7 +265,7 @@ impl eframe::App for LauncherApp {
             self.last_refresh = std::time::Instant::now();
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Stargate Worlds Launcher");
             ui.separator();
             self.show_config_panel(ui);
@@ -281,7 +282,7 @@ impl eframe::App for LauncherApp {
             ui.separator();
             self.show_status_log(ui);
         });
-        self.show_confirm_wipe_all_modal(ctx);
+        self.show_confirm_wipe_all_modal(&ctx);
     }
 }
 

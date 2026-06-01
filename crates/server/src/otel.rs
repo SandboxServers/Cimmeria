@@ -44,12 +44,11 @@
 use std::env;
 
 use opentelemetry::trace::TracerProvider as _;
-use opentelemetry::KeyValue;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::logs::LoggerProvider;
+use opentelemetry_sdk::logs::{SdkLogger, SdkLoggerProvider};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::trace::{Sampler, TracerProvider};
+use opentelemetry_sdk::trace::{Sampler, SdkTracer, SdkTracerProvider};
 use opentelemetry_sdk::Resource;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::Registry;
@@ -57,8 +56,8 @@ use tracing_subscriber::Registry;
 /// Composed return type for [`init`] — the trace layer (spans) and the
 /// log layer (root-level events) flow through different SDK paths, so
 /// `main()` adds them both to the layered subscriber when present.
-pub type OtelTraceLayer = OpenTelemetryLayer<Registry, opentelemetry_sdk::trace::Tracer>;
-pub type OtelLogLayer = OpenTelemetryTracingBridge<LoggerProvider, opentelemetry_sdk::logs::Logger>;
+pub type OtelTraceLayer = OpenTelemetryLayer<Registry, SdkTracer>;
+pub type OtelLogLayer = OpenTelemetryTracingBridge<SdkLoggerProvider, SdkLogger>;
 
 /// Initialize the OTLP exporters and return the pair of tracing layers
 /// that ship events through them. Returns `None` (silently) when
@@ -91,7 +90,9 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
     // every server's events into a single "unknown_service" bucket.
     let service_name =
         env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "cimmeria-server".to_string());
-    let resource = Resource::new(vec![KeyValue::new("service.name", service_name.clone())]);
+    let resource = Resource::builder()
+        .with_service_name(service_name.clone())
+        .build();
     // OTEL_RESOURCE_ATTRIBUTES is parsed by `opentelemetry_sdk` itself
     // when present, so we don't need to manually split-and-merge it
     // here — the SDK union-merges over our explicit Resource above.
@@ -137,8 +138,8 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
         }
     };
 
-    let tracer_provider = TracerProvider::builder()
-        .with_batch_exporter(span_exporter, opentelemetry_sdk::runtime::Tokio)
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_batch_exporter(span_exporter)
         .with_sampler(sampler)
         .with_resource(resource.clone())
         .build();
@@ -175,8 +176,8 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
         }
     };
 
-    let logger_provider = LoggerProvider::builder()
-        .with_batch_exporter(log_exporter, opentelemetry_sdk::runtime::Tokio)
+    let logger_provider = SdkLoggerProvider::builder()
+        .with_batch_exporter(log_exporter)
         .with_resource(resource)
         .build();
 
@@ -199,8 +200,8 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
 /// `main()` until after the orchestrator's `stop_all` returns keeps the
 /// last few hundred ms of shutdown telemetry from being dropped.
 pub struct OtelGuard {
-    tracer_provider: TracerProvider,
-    logger_provider: LoggerProvider,
+    tracer_provider: SdkTracerProvider,
+    logger_provider: SdkLoggerProvider,
 }
 
 impl Drop for OtelGuard {
