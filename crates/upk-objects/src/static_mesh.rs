@@ -900,6 +900,136 @@ mod tests {
     }
 
     #[test]
+    fn read_kdop_tree_rejects_oversized_tri_count() {
+        // Regression guard for the allocation-bomb class of bug: a
+        // malicious file that declares `tri_count = i32::MAX` must be
+        // rejected before the parser hits `Vec::with_capacity(...)`,
+        // not after a ~16GB allocation attempt.
+        //
+        // Encode: 0 nodes, then `tri_count = 0x7FFFFFFF`. We don't bother
+        // including the (impossible) triangle payload — the rejection
+        // must happen before any of those bytes are read.
+        let mut buf = vec![0u8; 8];
+        LittleEndian::write_i32(&mut buf[0..], 0); // 0 kDOP nodes
+        LittleEndian::write_i32(&mut buf[4..], i32::MAX); // malicious tri_count
+
+        let mut pos = 0;
+        let result = read_kdop_tree(&buf, &mut pos);
+        let err = result.expect_err("oversized tri_count must error, not panic");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("Unreasonable kDOP triangle count"),
+            "error must call out the bounds-check failure; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn read_kdop_tree_rejects_oversized_node_count() {
+        // Companion guard for the kDOP node array — same allocation-bomb
+        // shape, different field. Catches a malicious file that uses the
+        // node-array side to drive the parser into a multi-GB allocation.
+        let mut buf = vec![0u8; 4];
+        LittleEndian::write_i32(&mut buf[0..], i32::MAX);
+        let mut pos = 0;
+        let result = read_kdop_tree(&buf, &mut pos);
+        let err = result.expect_err("oversized node_count must error");
+        assert!(format!("{err}").contains("Unreasonable kDOP node count"));
+    }
+
+    #[test]
+    fn read_kdop_tree_rejects_negative_tri_count() {
+        // Negative counts can't survive a `Vec::with_capacity` cast to
+        // usize cleanly — guard explicitly. Without the bounds check the
+        // multiplication `tri_count as usize * KDOP_TRI_SIZE` overflows
+        // and panics on debug builds.
+        let mut buf = vec![0u8; 8];
+        LittleEndian::write_i32(&mut buf[0..], 0);
+        LittleEndian::write_i32(&mut buf[4..], -1);
+        let mut pos = 0;
+        let result = read_kdop_tree(&buf, &mut pos);
+        assert!(result.is_err(), "negative tri_count must error");
+    }
+
+    #[test]
+    fn validate_kdop_indices_passes_when_all_in_range() {
+        let tris = vec![
+            KdopTriangle {
+                v0: 0,
+                v1: 1,
+                v2: 2,
+                material: 0,
+            },
+            KdopTriangle {
+                v0: 99,
+                v1: 50,
+                v2: 25,
+                material: 0,
+            },
+        ];
+        assert!(validate_kdop_indices(&tris, Some(100)).is_ok());
+    }
+
+    #[test]
+    fn validate_kdop_indices_rejects_out_of_range() {
+        // A mesh with 100 LOD0 verts can only legally reference indices
+        // 0..=99. Index 100 is out of range and could be a u16 wrap from
+        // a >65535-vertex mesh — fail fast at parse so the navmesh
+        // extractor doesn't see the same triangle later and silently
+        // drop it (leaving a hole in the navmesh).
+        let tris = vec![
+            KdopTriangle {
+                v0: 0,
+                v1: 1,
+                v2: 2,
+                material: 0,
+            },
+            KdopTriangle {
+                v0: 0,
+                v1: 1,
+                v2: 100,
+                material: 0,
+            },
+        ];
+        let err =
+            validate_kdop_indices(&tris, Some(100)).expect_err("out-of-range index must error");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("u16 index wrap"),
+            "error message must explain the u16-wrap class of failure; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn validate_kdop_indices_rejects_u16_wrap_scenario() {
+        // The literal scenario: a mesh with >65535 verts. The wire can't
+        // represent index 70000 (>65535), so the cooker would either
+        // have wrapped (silent corruption) or — if the cook chain is
+        // sane — never emitted a kDOP for that mesh in the first place.
+        // Either way, if we see an out-of-range index that could have
+        // come from a u16 wrap, reject.
+        let tris = vec![KdopTriangle {
+            v0: 0,
+            v1: 1,
+            v2: 65535,
+            material: 0,
+        }];
+        assert!(validate_kdop_indices(&tris, Some(100)).is_err());
+    }
+
+    #[test]
+    fn validate_kdop_indices_with_no_lod_is_lenient() {
+        // No LOD0 vertex buffer to validate against → pass through. The
+        // caller's "no LOD models" path will surface the unusability.
+        let tris = vec![KdopTriangle {
+            v0: 99,
+            v1: 99,
+            v2: 99,
+            material: 0,
+        }];
+        assert!(validate_kdop_indices(&tris, None).is_ok());
+    }
+
+    #[test]
     fn parse_single_vertex_40byte() {
         let stride = 40;
         let mut buf = vec![0u8; stride];
