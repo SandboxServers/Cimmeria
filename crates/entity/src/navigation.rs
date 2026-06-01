@@ -975,6 +975,107 @@ mod tests {
         assert_hostile_field(&path, "detail_ntris");
     }
 
+    /// Pin the u32→u64 widening contract of `checked_alloc_size`.
+    ///
+    /// Reviewer flagged that the existing hostile-input guards exercise
+    /// the `check_count` cap path but never the `checked_mul`/`try_from`
+    /// inside `checked_alloc_size` itself. The current `check_count` caps
+    /// make the helper's overflow branches structurally unreachable from
+    /// `NavMesh::load` on a 64-bit target — every count is `<= 10M` and
+    /// strides are `<= 64` so `count * stride <= 640M`, well below
+    /// `u32::MAX`. But the helper is intentionally written so that
+    /// removing the caps (or raising them past u32 boundaries) still
+    /// can't bust the allocation: the multiplication widens to u64 first.
+    ///
+    /// This test calls `checked_alloc_size` directly with `count =
+    /// u32::MAX, stride = 2` — a product that wraps to `0xFFFF_FFFE` if
+    /// the widening is removed, but expands to `0x1_FFFF_FFFE` (=
+    /// `2 * u32::MAX`) when widened. We assert the helper returns the
+    /// widened product. A refactor that drops the `as u64` casts (e.g.
+    /// `count.checked_mul(stride).map(|p| p as u64)`) would wrap inside
+    /// the u32 multiplication and return `Ok(0xFFFF_FFFE)`, failing this
+    /// test — that's the realistic regression shape this guard catches.
+    ///
+    /// On a 64-bit target this returns `Ok` (usize is u64). On a 32-bit
+    /// target the same call surfaces `NavHeaderOutOfRange` via the
+    /// `usize::try_from` branch with the `alloc_desc` carried in
+    /// `reason`. The test asserts both shapes.
+    #[test]
+    fn checked_alloc_size_widens_before_multiplying() {
+        const DESC: &str = "test stride";
+        let result = checked_alloc_size(u32::MAX, 2, "synthetic", DESC);
+
+        #[cfg(target_pointer_width = "64")]
+        {
+            let got = result.expect("widened product must fit in 64-bit usize");
+            // 2 * (2^32 - 1) = 2^33 - 2 = 0x1_FFFF_FFFE. If the function
+            // wraps in u32 first this would be 0xFFFF_FFFE — half as
+            // large — and the assertion fires.
+            assert_eq!(
+                got, 0x1_FFFF_FFFE_usize,
+                "checked_alloc_size must widen u32 -> u64 BEFORE multiplying; \
+                 got {got:#x}, expected {:#x}. If you see {:#x}, the multiplication \
+                 wrapped in u32 — restore the `as u64` casts in `checked_alloc_size`.",
+                0x1_FFFF_FFFE_u64, 0xFFFF_FFFE_u64,
+            );
+        }
+
+        #[cfg(target_pointer_width = "32")]
+        {
+            // Product fits in u64 but not usize=u32; expect the
+            // `usize::try_from` branch to fire with alloc_desc as reason.
+            match result {
+                Err(cimmeria_common::CimmeriaError::NavHeaderOutOfRange {
+                    field,
+                    value,
+                    reason,
+                }) => {
+                    assert_eq!(field, "synthetic");
+                    assert_eq!(value, 0x1_FFFF_FFFE_u64);
+                    assert_eq!(reason, DESC);
+                }
+                other => panic!("expected NavHeaderOutOfRange on 32-bit target, got {other:?}"),
+            }
+        }
+    }
+
+    /// Companion to the widening guard: when the u64 product genuinely
+    /// would not fit in any addressable size, the helper reports the
+    /// product via `value` and the caller-supplied `alloc_desc` via
+    /// `reason`. We can only synthesise the u64-overflow path by passing
+    /// the helper inputs that exceed what `NavMesh::load` ever produces,
+    /// so this test exercises the helper directly.
+    ///
+    /// `u32::MAX * u32::MAX = 2^64 - 2^33 + 1` — fits in u64 (just), so
+    /// the `checked_mul` branch in `checked_alloc_size` is unreachable
+    /// with u32-typed inputs. The function is still correct: the only
+    /// way that branch can fire today is from a u32 overflow in the
+    /// product that's caught by u64 widening, which is what the
+    /// `checked_alloc_size_widens_before_multiplying` test pins.
+    /// We document the dead-code branch here so a future maintainer
+    /// raising the helper to u64 inputs knows the test surface they
+    /// need to expand.
+    #[test]
+    fn checked_alloc_size_max_u32_inputs_fit_in_u64() {
+        let result = checked_alloc_size(u32::MAX, u32::MAX, "synthetic", "max product");
+        #[cfg(target_pointer_width = "64")]
+        {
+            // (2^32 - 1)^2 = 2^64 - 2^33 + 1 = 0xFFFF_FFFE_0000_0001
+            let got = result.expect("u32*u32 product must fit in 64-bit usize");
+            assert_eq!(got, 0xFFFF_FFFE_0000_0001_usize);
+        }
+        #[cfg(target_pointer_width = "32")]
+        {
+            // 32-bit usize can't hold the product; expect rejection via
+            // the `usize::try_from` branch (NOT the `checked_mul` branch,
+            // which is unreachable with u32 inputs).
+            assert!(matches!(
+                result,
+                Err(cimmeria_common::CimmeriaError::NavHeaderOutOfRange { .. })
+            ));
+        }
+    }
+
     #[test]
     fn load_and_height_query() {
         let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
