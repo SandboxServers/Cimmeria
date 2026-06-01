@@ -60,6 +60,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [SigNoz Remote Access](operations/signoz-remote-access.md) | Cloudflare Tunnel + Cloudflare Access for secure UI access and Cimmeria-MCP service-token auth â€” no inbound firewall ports. |
 | [Testing Guide](../TESTING.md) | Test types, picker for which to use when, gotchas mined from PR reviews |
 | [Test Inventory](testing/inventory/README.md) | Catalogue of every test in the workspace, one file per crate, with kind / system / first-commit date / what-it-tests |
+| [Test Audit 2026-05-31](testing/audit-2026-05-31.md) | Point-in-time codebase-wide audit: real bugs surfaced by the test suite, tests to delete, tests to tighten, coverage gaps, strategic recommendations |
 | [Game Systems](game-systems.md) | Survey of every game feature: combat, abilities, stargates, missions, crafting |
 | [Game Data](game-data.md) | What game content exists (items, abilities, missions) and what is missing |
 | [Commands Reference](commands.md) | Player commands, chat, GM tools, and debug commands |
