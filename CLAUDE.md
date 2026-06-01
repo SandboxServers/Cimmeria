@@ -46,13 +46,15 @@ cargo check -p cimmeria-services
 cargo test -p cimmeria-services
 
 # Full workspace check — skip the GUI apps (Tauri editors and the egui
-# launcher) so the linker doesn't OOM and Linux dev hosts don't need
-# xkbcommon/xcb dev packages.
+# launcher), and the Windows-only client-telemetry cdylib so Linux
+# dev hosts don't need xkbcommon/xcb dev packages and the linker
+# doesn't OOM.
 cargo check --workspace \
   --exclude cimmeria-app \
   --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor \
-  --exclude sgw-launcher
+  --exclude sgw-launcher \
+  --exclude cimmeria-client-telemetry
 
 # Kill stale builds
 pkill -f "cargo|rustc"
@@ -67,13 +69,16 @@ cargo fmt --all -- --check
 cargo clippy --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher \
+  --exclude cimmeria-client-telemetry \
   --all-targets -- -D warnings
 cargo build --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher --all-targets
+  --exclude cimmeria-scene-editor --exclude sgw-launcher \
+  --exclude cimmeria-client-telemetry --all-targets
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher
+  --exclude cimmeria-scene-editor --exclude sgw-launcher \
+  --exclude cimmeria-client-telemetry
 # Doctests aren't run by nextest — only cimmeria-commands has runnable
 # doctests today, so this is a one-crate sanity check:
 cargo test --doc -p cimmeria-commands

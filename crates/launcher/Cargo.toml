@@ -59,7 +59,21 @@ thiserror = { workspace = true }
 # copy of the sys bindings.
 [target.'cfg(windows)'.dependencies]
 # Win32_System_Registry: read MachineGuid for the telemetry machine_id.
-windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Registry"] }
+# Win32_System_Threading + Win32_System_Memory + Win32_System_Diagnostics_Debug + Win32_System_LibraryLoader:
+# CreateProcess(SUSPENDED) -> VirtualAllocEx -> WriteProcessMemory ->
+# CreateRemoteThread(LoadLibraryW) -> ResumeThread, the DLL-injection
+# path used by `inject.rs` to side-load cimmeria-client-telemetry.dll
+# into SGW.exe at game start (issue #417).
+windows-sys = { version = "0.61", features = [
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_LibraryLoader",
+] }
 
 [build-dependencies]
 # Embeds icons/icon.ico into the .exe as a Win32 resource when targeting

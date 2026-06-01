@@ -15,6 +15,14 @@ pub enum TelemetryEvent {
     DebugLog(DebugLogEvent),
     KeyDump(KeyDumpEvent),
     SessionMeta(SessionMetaEvent),
+    /// Events emitted by the injected `cimmeria-client-telemetry`
+    /// DLL (issue #417) — frame ticks, level streaming transitions,
+    /// CME EventSignal dispatches, async I/O completions, log-tee
+    /// lines. Sent through the same upload-chunk endpoint as the
+    /// launcher's own events; tagged so the server-side replay can
+    /// route them under `service.name = cimmeria-client` instead of
+    /// the launcher's default targets.
+    ClientNative(ClientNativeEvent),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -44,6 +52,31 @@ pub struct KeyDumpEvent {
     pub seq: u64,
     pub source_file: String,
     pub key_b64: String,
+}
+
+/// Native event from the injected client-telemetry DLL. The
+/// `target` becomes a tracing target on the server side
+/// (e.g. `client.frame_tick`, `client.mercury.dispatch`); `fields`
+/// is an arbitrary JSON object whose keys become structured-log
+/// fields. Kept open-ended so the DLL can ship new hook categories
+/// without a launcher/server schema dance.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ClientNativeEvent {
+    pub ts_ms: i64,
+    pub seq: u64,
+    /// Tracing target the server replays under, e.g.
+    /// `"client.frame_tick"`. Naming convention:
+    /// `client.<subsystem>.<event>` so SigNoz filters can match
+    /// `target LIKE 'client.%'` for the whole DLL stream.
+    pub target: String,
+    /// Tracing level — `"trace"`/`"debug"`/`"info"`/`"warn"`/`"error"`.
+    /// Unknown values fall through to `"info"` on the server side.
+    pub level: String,
+    /// Arbitrary key-value bag. Server fans the top-level keys out
+    /// as structured-log fields so SigNoz indexes them. Nested
+    /// objects are stringified.
+    #[serde(default)]
+    pub fields: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -237,12 +270,49 @@ mod tests {
                 kind: SessionMetaKind::Started,
                 fields: serde_json::Map::new(),
             }),
+            TelemetryEvent::ClientNative(ClientNativeEvent {
+                ts_ms: 5,
+                seq: 5,
+                target: "client.frame_tick".into(),
+                level: "info".into(),
+                fields: {
+                    let mut m = serde_json::Map::new();
+                    m.insert("frame_no".into(), serde_json::Value::Number(12345.into()));
+                    m
+                },
+            }),
         ];
         for ev in cases {
             let text = serde_json::to_string(&ev).unwrap();
             let back: TelemetryEvent = serde_json::from_str(&text).unwrap();
             assert_eq!(back, ev);
         }
+    }
+
+    // The injected DLL ships events under a `client_native` type tag.
+    // Pin the exact wire shape so the launcher and admin-api
+    // independent re-declarations stay byte-identical at the JSON
+    // layer.
+    #[test]
+    fn client_native_serializes_with_expected_shape() {
+        let ev = TelemetryEvent::ClientNative(ClientNativeEvent {
+            ts_ms: 1_700_000_000_000,
+            seq: 1,
+            target: "client.streaming.state_change".into(),
+            level: "debug".into(),
+            fields: {
+                let mut m = serde_json::Map::new();
+                m.insert("level".into(), serde_json::Value::String("sg1_p9q".into()));
+                m.insert("status".into(), serde_json::Value::Number(2.into()));
+                m
+            },
+        });
+        let json = serde_json::to_value(&ev).unwrap();
+        assert_eq!(json["type"], "client_native");
+        assert_eq!(json["target"], "client.streaming.state_change");
+        assert_eq!(json["level"], "debug");
+        assert_eq!(json["fields"]["level"], "sg1_p9q");
+        assert_eq!(json["fields"]["status"], 2);
     }
 
     #[test]

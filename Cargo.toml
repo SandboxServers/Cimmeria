@@ -29,6 +29,7 @@ members = [
     "crates/navmesh-extractor",
     "crates/wireclient",
     "crates/discord",
+    "crates/client-telemetry",
 ]
 default-members = [
     "crates/common",
@@ -167,6 +168,7 @@ cimmeria-upk-objects = { path = "crates/upk-objects" }
 cimmeria-navmesh-extractor = { path = "crates/navmesh-extractor" }
 cimmeria-wireclient = { path = "crates/wireclient" }
 cimmeria-discord = { path = "crates/discord" }
+cimmeria-client-telemetry = { path = "crates/client-telemetry" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed

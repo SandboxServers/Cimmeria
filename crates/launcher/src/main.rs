@@ -4,6 +4,7 @@ mod app;
 mod client_paths;
 mod config;
 mod identity;
+mod inject;
 mod install;
 mod launch;
 mod logs;
