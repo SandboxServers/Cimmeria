@@ -1,3 +1,4 @@
 - [movement-validation-anchors.md](movement-validation-anchors.md) — Ghidra anchors + DB sources for speed/bounds validation
 - [authorized-teleport-paths.md](authorized-teleport-paths.md) — Every path that legitimately mutates entity position; each must update last_pos
 - [pr1-bounds-seam.md](pr1-bounds-seam.md) — Where PR1 landed in the cell seam; the pattern PR2/3/4 should follow
+- [position-validation-finite-gate.md](position-validation-finite-gate.md) — Use `is_finite()`, not `is_nan()`, and test it against an unbounded AABB so the regression actually fires on revert

@@ -3,6 +3,7 @@
 ## Phase −0.5 triage status (2026-05-13)
 
 - [security-audit.md](security-audit.md) — **[RE-VERIFY]** — captures behavioral comparison from 2026-03-04; needs re-verification against current Rust before promoting to `spec.protocol.cipher-and-auth` section 5. The deprecated C++ half is immutable and chapter-ready.
+- [security-audit-2026-05-31.md](security-audit-2026-05-31.md) — **CURRENT** — full red-team pass against commit `14827c9c`. Ten findings: 2 Critical (admin-api unauth, /ws/logs credential leak), 3 High (dev-session mint, ticket IP-binding, plain-HTTP SOAP), 4 Medium, 1 Low. Use as the starting point for the next audit; check "Re-verification notes" for which prior-audit items are now FIXED vs OPEN.
 
 Inline-content section status:
 

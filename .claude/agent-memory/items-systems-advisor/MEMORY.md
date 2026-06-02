@@ -8,3 +8,4 @@
 - [db_schema_trainer.md](db_schema_trainer.md) — trainer_abilities, trainer_ability_lists, archetype_ability_tree schema and joins
 - [ghidra_trainer_addresses.md](ghidra_trainer_addresses.md) — Ghidra RE addresses for trainer-related functions in SGW.exe
 - [project_crafting_system.md](project_crafting_system.md) — Crafting system deep-dive: wire formats, DB schema, item flags, expertise formulas, implementation phases (issue #53)
+- [trade_system_wire_formats.md](trade_system_wire_formats.md) — Trade system: verified wire formats, enum values, state machine, TRAPS (INT32 result, cancel=Completed, QA client skips tradeRequest), issue #54

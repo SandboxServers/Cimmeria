@@ -1,0 +1,6 @@
+- [Bandolier ammo TOCTOU](exploit_bandolier_ammo_toctou.md) — base UPDATE keys on `type_id` instead of `item_id`; same-type swap dupes ammo across instances.
+- [AVATAR_UPDATE_EXPLICIT trust](exploit_avatar_update_explicit.md) — base wire 0x03 accepts client position unconditionally; no anti-teleport, no speed check.
+- [Admin API unauthenticated](exploit_admin_api_unauth.md) — `/api/config/stop` and `/api/editor/content` bind on 0.0.0.0 with no auth middleware; trivially DoS-able.
+- [useAbility no faction check](exploit_use_ability_no_faction.md) — single-target ability resolves damage on any non-dead target in range; party/vendor friendly fire possible.
+- [Lootable no ownership](exploit_loot_no_ownership.md) — lootItem trusts player's own `looting_entity` state; no kill-credit check, no post-interact range re-check.
+- [Reference: authoritative state locations](reference_authority_sources.md) — where the server-of-truth state lives for inventory, position, currency, GM flag.
