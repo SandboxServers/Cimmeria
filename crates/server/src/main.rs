@@ -95,14 +95,20 @@ async fn main() {
     let login_buffer = LoginEventBuffer::new();
 
     // OTLP exporter (optional — requires OTEL_EXPORTER_OTLP_ENDPOINT).
-    // Two layers come back: a trace layer (spans + span events) and a
-    // log layer (root-level events like the `mercury.packet` stream).
-    // The guard is bound at this scope so it drops *after* the
-    // orchestrator's stop_all returns, flushing both in-flight batches
-    // on clean shutdown.
-    let (otel_trace_layer, otel_log_layer, _otel_guard) = match otel::init() {
-        Some((trace, log, guard)) => (Some(trace), Some(log), Some(guard)),
-        None => (None, None, None),
+    // Three layers come back: a trace layer (spans + span events), a
+    // log layer for the high-signal `cimmeria-server` index (auth,
+    // content, combat, missions), and a separate log layer for the
+    // high-noise `cimmeria-network` index (mercury_packet, bundle
+    // decode, cell-arms dispatch, tick-sync heartbeats). The split is
+    // resource-tagged at the OTLP provider level — see
+    // `otel::is_network_noise_target` for the routing predicate. The
+    // guard is bound at this scope so it drops *after* the
+    // orchestrator's stop_all returns, flushing all three in-flight
+    // batches on clean shutdown.
+    let (otel_trace_layer, otel_log_layer, otel_network_log_layer, _otel_guard) = match otel::init()
+    {
+        Some((trace, log, network, guard)) => (Some(trace), Some(log), Some(network), Some(guard)),
+        None => (None, None, None, None),
     };
 
     // Initialise layered tracing — guards must live until shutdown.
@@ -111,6 +117,7 @@ async fn main() {
         log_buffer.clone(),
         otel_trace_layer,
         otel_log_layer,
+        otel_network_log_layer,
     );
 
     tracing::trace!(pid = std::process::id(), "Process spawned");
@@ -393,6 +400,7 @@ fn init_logging(
     log_buffer: LogBuffer,
     otel_trace_layer: Option<otel::OtelTraceLayer>,
     otel_log_layer: Option<otel::OtelLogLayer>,
+    otel_network_log_layer: Option<otel::OtelLogLayer>,
 ) -> Vec<WorkerGuard> {
     // Move previous session's logs into archive/.
     archive_previous_logs();
@@ -587,8 +595,47 @@ fn init_logging(
     if let Some(layer) = otel_trace_layer {
         layers.push(Box::new(layer.with_filter(EnvFilter::new(otel_filter))));
     }
+    // The log signal splits across TWO OTLP providers (cimmeria-server +
+    // cimmeria-network — see `otel::init`). Per-layer FilterFn routes:
+    //
+    // - `cimmeria-server` layer: receive everything EXCEPT TRACE/DEBUG/
+    //   INFO from network-noise scopes. WARN+ from network-noise scopes
+    //   still goes here so elevated severity surfaces in the operator's
+    //   primary view without dual-querying.
+    // - `cimmeria-network` layer: receive ONLY TRACE/DEBUG/INFO from
+    //   network-noise scopes. WARN+ is suppressed (it's already in the
+    //   server index).
+    //
+    // Composition: each branch is `EnvFilter::new(otel_filter)` AND a
+    // `FilterFn` doing the noise routing. Together they cover all events
+    // with no overlap (a single event lands in exactly one log index).
+    //
+    // We use `tracing_subscriber::filter::FilterExt::and` to combine the
+    // two filters, and `Box::new` at the end because the layer push
+    // signature wants a homogeneous trait object.
     if let Some(layer) = otel_log_layer {
-        layers.push(Box::new(layer.with_filter(EnvFilter::new(otel_filter))));
+        use tracing_subscriber::filter::{filter_fn, FilterExt};
+        let routing = filter_fn(|meta| {
+            // Server index: non-noise OR severity is WARN/ERROR.
+            !otel::is_network_noise_target(meta.target()) || *meta.level() <= tracing::Level::WARN
+        });
+        layers.push(Box::new(
+            layer.with_filter(EnvFilter::new(otel_filter).and(routing)),
+        ));
+    }
+    if let Some(layer) = otel_network_log_layer {
+        use tracing_subscriber::filter::{filter_fn, FilterExt};
+        let routing = filter_fn(|meta| {
+            // Network index: noise scopes only, at non-elevated severity.
+            // `level <= Level::WARN` is "WARN or more severe" (numerically
+            // smaller); the negation here means "less severe than WARN"
+            // i.e. INFO/DEBUG/TRACE.
+            otel::is_network_noise_target(meta.target())
+                && *meta.level() > tracing::Level::WARN
+        });
+        layers.push(Box::new(
+            layer.with_filter(EnvFilter::new(otel_filter).and(routing)),
+        ));
     }
 
     // Assemble the subscriber — one `.with()` call on the whole Vec.

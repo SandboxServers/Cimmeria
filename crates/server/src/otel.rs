@@ -2,9 +2,28 @@
 //! deployment (or any other OTLP-compatible backend) via the OTEL
 //! Collector.
 //!
+//! # SigNoz service split
+//!
+//! The OTLP log signal is split across **two** providers, each tagged
+//! with its own `service.name` resource:
+//!
+//! - **`cimmeria-server`** — the high-signal index. Auth, content
+//!   chains, combat, missions, inventory, vendor, abilities. Default
+//!   operator view for triage. Receives WARN+ from every scope
+//!   regardless of routing — elevated severity always lands here.
+//! - **`cimmeria-network`** — the high-noise wire-level index. Every
+//!   `mercury_packet` event, every bundle decrypt, every cell-arms
+//!   dispatch, tick-sync heartbeats. Operators query this index when
+//!   chasing wire-level issues; it never drowns the main view at
+//!   normal severity.
+//!
+//! Routing is target-based via [`is_network_noise_target`] composed
+//! with a severity carve-out in `crates/server/src/main.rs`. See that
+//! file's `init_logging` for the layer composition.
+//!
 //! # Architecture
 //!
-//! Two `tracing_subscriber::Layer`s composed alongside the file/broadcast
+//! Three `tracing_subscriber::Layer`s composed alongside the file/broadcast
 //! layers, plus a third metrics provider registered with the OTel global
 //! state:
 //!
@@ -64,10 +83,57 @@ use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::Registry;
 
 /// Composed return type for [`init`] — the trace layer (spans) and the
-/// log layer (root-level events) flow through different SDK paths, so
-/// `main()` adds them both to the layered subscriber when present.
+/// log layers (root-level events, split into a high-signal stream and a
+/// high-noise network stream) flow through different SDK paths, so
+/// `main()` adds them all to the layered subscriber when present.
 pub type OtelTraceLayer = OpenTelemetryLayer<Registry, SdkTracer>;
 pub type OtelLogLayer = OpenTelemetryTracingBridge<SdkLoggerProvider, SdkLogger>;
+
+/// Default service name for the high-signal index (auth, content,
+/// combat, missions, etc.).
+const DEFAULT_SERVICE_NAME: &str = "cimmeria-server";
+
+/// Service name for the high-noise wire-level index (mercury packets,
+/// bundle decode, cell-arms dispatch, tick-sync heartbeats). Splitting
+/// these into their own SigNoz service stops the volume from drowning
+/// the high-signal events in the main index — operators query
+/// `service.name = 'cimmeria-network'` only when chasing wire-level
+/// issues, and keep `service.name = 'cimmeria-server'` as the default
+/// triage view.
+///
+/// WARN and ERROR events from network-noise scopes are NOT split —
+/// elevated severity always lands in the `cimmeria-server` index so a
+/// real wire problem surfaces in the operator's primary view without
+/// dual-querying. See [`is_network_noise_target`] for the routing
+/// predicate.
+const NETWORK_SERVICE_NAME: &str = "cimmeria-network";
+
+/// True if `target` (which OTel surfaces as `scope_name`) is a
+/// high-volume wire-level event that should land in the
+/// `cimmeria-network` index rather than `cimmeria-server`.
+///
+/// The list is conservative — anything not explicitly enumerated
+/// stays in the main index. Add to this list, not subtract, when a
+/// new high-volume scope appears.
+///
+/// Source of the listed targets:
+/// - `mercury.packet` / `mercury.retransmit` / `mercury.backpressure`
+///   — explicit `target = "mercury.*"` strings in
+///   `crates/mercury/src/instrumentation.rs`, `channel/mod.rs`,
+///   `transport.rs`. Per-packet wire-level instrumentation.
+/// - `cimmeria_services::base::connect_loop::encrypted` —
+///   bundle/decrypt DEBUG logs that fire per inbound packet.
+/// - `cimmeria_services::base::connect_loop::cell_arms` — cell-method
+///   dispatch debug logs.
+/// - `cimmeria_services::base::tick_sync` — tick-sync heartbeats and
+///   retransmit RTO notices.
+pub fn is_network_noise_target(target: &str) -> bool {
+    target.starts_with("mercury.")
+        || target == "cimmeria_services::base::connect_loop::encrypted"
+        || target == "cimmeria_services::base::connect_loop::cell_arms"
+        || target.starts_with("cimmeria_services::base::tick_sync")
+        || target.starts_with("cimmeria_mercury::")
+}
 
 /// Initialize the OTLP exporters and return the pair of tracing layers
 /// that ship events through them. Returns `None` (silently) when
@@ -77,7 +143,7 @@ pub type OtelLogLayer = OpenTelemetryTracingBridge<SdkLoggerProvider, SdkLogger>
 /// process — dropping it shuts down both providers, flushing the
 /// in-flight batches to the collector. Without this flush, the last
 /// few seconds of telemetry before a clean shutdown are lost.
-pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
+pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelLogLayer, OtelGuard)> {
     let endpoint = match env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
         Ok(v) if !v.is_empty() => v,
         _ => {
@@ -106,10 +172,23 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
     // it's unset the colo dashboards would silently include local
     // events and skew every aggregate.
     let service_name =
-        env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "cimmeria-server".to_string());
+        env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| DEFAULT_SERVICE_NAME.to_string());
     let deploy_env = env::var("CIMMERIA_DEPLOY_ENV").unwrap_or_else(|_| "dev".to_string());
     let resource = Resource::builder()
         .with_service_name(service_name.clone())
+        .with_attribute(opentelemetry::KeyValue::new(
+            "deployment.environment",
+            deploy_env.clone(),
+        ))
+        .build();
+    // High-noise wire-level events ride a separate provider with
+    // `service.name = cimmeria-network`. Same deployment.environment
+    // so the dev/colo split still applies, but SigNoz indexes them as
+    // a distinct service so operators can isolate the noise stream
+    // when triaging. See `is_network_noise_target` for the routing
+    // predicate; the per-layer filter is applied in `main.rs`.
+    let network_resource = Resource::builder()
+        .with_service_name(NETWORK_SERVICE_NAME)
         .with_attribute(opentelemetry::KeyValue::new(
             "deployment.environment",
             deploy_env.clone(),
@@ -208,6 +287,46 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
 
     let log_layer = OpenTelemetryTracingBridge::new(&logger_provider);
 
+    // ── Network log exporter (high-noise wire-level events) ───────────
+    //
+    // Same OTLP endpoint, different `service.name` resource. SigNoz
+    // groups by service.name so this stream surfaces as its own
+    // service (`cimmeria-network`) without affecting the main
+    // `cimmeria-server` view. Routing happens via the per-layer
+    // FilterFn applied in `main.rs` — events whose target matches
+    // `is_network_noise_target` go to this bridge; everything else
+    // goes through the `log_layer` above.
+    //
+    // We pay the cost of a second batch exporter + gRPC channel; that
+    // overhead is small compared to the volume of mercury_packet
+    // events we're routing.
+    let network_log_exporter_result = match protocol.as_str() {
+        "http/protobuf" | "http" => opentelemetry_otlp::LogExporter::builder()
+            .with_http()
+            .with_endpoint(&endpoint)
+            .build(),
+        _ => opentelemetry_otlp::LogExporter::builder()
+            .with_tonic()
+            .with_endpoint(&endpoint)
+            .build(),
+    };
+
+    let network_log_exporter = match network_log_exporter_result {
+        Ok(e) => e,
+        Err(err) => {
+            // Same fail-loud rationale as the primary log exporter.
+            eprintln!("[otel] Network log exporter init failed ({err}); telemetry will not ship");
+            return None;
+        }
+    };
+
+    let network_logger_provider = SdkLoggerProvider::builder()
+        .with_batch_exporter(network_log_exporter)
+        .with_resource(network_resource)
+        .build();
+
+    let network_log_layer = OpenTelemetryTracingBridge::new(&network_logger_provider);
+
     // ── Metrics exporter (counters + histograms) ──────────────────────
     //
     // The metrics SDK is initialised AFTER logs so a metrics-exporter
@@ -264,9 +383,11 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
     Some((
         trace_layer,
         log_layer,
+        network_log_layer,
         OtelGuard {
             tracer_provider,
             logger_provider,
+            network_logger_provider,
             meter_provider,
         },
     ))
@@ -279,6 +400,11 @@ pub fn init() -> Option<(OtelTraceLayer, OtelLogLayer, OtelGuard)> {
 pub struct OtelGuard {
     tracer_provider: SdkTracerProvider,
     logger_provider: SdkLoggerProvider,
+    /// Second logger provider for the high-noise `cimmeria-network`
+    /// index. Same shutdown discipline as `logger_provider` — its
+    /// batches must flush before the gRPC channel closes or the last
+    /// wire-level packets get dropped on a clean shutdown.
+    network_logger_provider: SdkLoggerProvider,
     /// `None` when the metric exporter failed to construct — traces +
     /// logs still flush on shutdown, metrics path was never wired so
     /// nothing to drain.
@@ -307,6 +433,9 @@ impl Drop for OtelGuard {
         }
         if let Err(e) = self.logger_provider.shutdown() {
             eprintln!("[otel] Logger shutdown flush failed: {e}");
+        }
+        if let Err(e) = self.network_logger_provider.shutdown() {
+            eprintln!("[otel] Network logger shutdown flush failed: {e}");
         }
     }
 }
@@ -338,5 +467,51 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
         assert!(init().is_none(), "no endpoint → no layer");
+    }
+
+    /// Network-noise routing predicate — pinned for the routing logic
+    /// in `main.rs`. Add to [`is_network_noise_target`] when a new
+    /// high-volume scope appears, then add it here.
+    ///
+    /// A regression that broadens this predicate (e.g., starts matching
+    /// `cimmeria_services::base::*`) would silently route auth/world-
+    /// entry/content events into the network index, hiding them from
+    /// the operator's primary triage view. Pin every accepted prefix
+    /// AND a few high-signal scopes that MUST remain in cimmeria-server.
+    #[test]
+    fn is_network_noise_target_matches_explicit_wire_scopes() {
+        // Accepted (route to cimmeria-network):
+        assert!(is_network_noise_target("mercury.packet"));
+        assert!(is_network_noise_target("mercury.retransmit"));
+        assert!(is_network_noise_target("mercury.backpressure"));
+        assert!(is_network_noise_target(
+            "cimmeria_services::base::connect_loop::encrypted"
+        ));
+        assert!(is_network_noise_target(
+            "cimmeria_services::base::connect_loop::cell_arms"
+        ));
+        assert!(is_network_noise_target(
+            "cimmeria_services::base::tick_sync"
+        ));
+        assert!(is_network_noise_target("cimmeria_mercury::session"));
+    }
+
+    #[test]
+    fn is_network_noise_target_does_not_match_high_signal_scopes() {
+        // Rejected (stay in cimmeria-server):
+        assert!(!is_network_noise_target("cimmeria_services::auth::handlers"));
+        assert!(!is_network_noise_target(
+            "cimmeria_services::cell::abilities::use_ability"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_services::cell::content::executor::dialog"
+        ));
+        assert!(!is_network_noise_target(
+            "cimmeria_services::base::world_entry::methods::inventory::grant"
+        ));
+        assert!(!is_network_noise_target("cimmeria_services::base::dispatch"));
+        // Empty / arbitrary string — defaults to "not noise" (server).
+        assert!(!is_network_noise_target(""));
+        assert!(!is_network_noise_target("unknown"));
     }
 }
