@@ -623,9 +623,7 @@ fn pick_first_open_bag_multi_item_walk_fills_then_overflows() {
             .expect("six placements with this fixture must all succeed");
         placements.push(bag);
         // Mirror the loop's bookkeeping.
-        *slot_indices
-            .entry(bag)
-            .or_insert_with(|| bag_min_slot(bag)) += 1;
+        *slot_indices.entry(bag).or_insert_with(|| bag_min_slot(bag)) += 1;
     }
     assert_eq!(
         placements,

@@ -101,11 +101,7 @@ pub fn is_ability_granted_by_active_weapon(
     // to know which event_id their `ability_id` was bound under.
     use crate::cell::spawner::{EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_USE_ABILITY};
     for event_id in [EVENT_ITEM_RANGED, EVENT_ITEM_MELEE, EVENT_ITEM_USE_ABILITY] {
-        if space_mgr
-            .item_event_set_abilities
-            .get(&(item_id, event_id))
-            == Some(&ability_id)
-        {
+        if space_mgr.item_event_set_abilities.get(&(item_id, event_id)) == Some(&ability_id) {
             return true;
         }
     }
