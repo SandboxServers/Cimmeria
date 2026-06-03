@@ -77,11 +77,17 @@ pub fn ability_for_active_weapon(
 /// the player's *trained / known / archetype-starter* set, not their
 /// currently-equipped weapon's abilities.
 ///
-/// Without this fallback the use_ability gate rejects every weapon-driven
-/// fire with `useAbility: entity does not have ability`. Live observation
-/// 2026-06-02 (player 72.206.34.241): 25 consecutive useAbility(579)
-/// rejections for a player holding the pistol that grants 579 via
-/// `items_event_sets` row `(item_id=55, ability_id=579, event_id=7)`.
+/// **Returns `false` for any entity that has no item in the active
+/// bandolier slot** — including every NPC (NPCs don't populate
+/// `bandolier_items`). The use_ability gate that calls this is the
+/// player-fire path; NPC ability dispatch goes through a separate
+/// known-set check.
+///
+/// **Iteration is in fixed order — RANGED, MELEE, USE_ABILITY — and
+/// returns true on the first match.** If a weapon binds the same
+/// ability_id to multiple event_ids the function still returns true;
+/// callers only care "is this ability allowed for the equipped
+/// weapon," not which event_id wired it.
 pub fn is_ability_granted_by_active_weapon(
     space_mgr: &SpaceManager,
     entity_id: u32,
@@ -193,5 +199,66 @@ mod tests {
         mgr.item_event_set_abilities.insert((55, 6), 708);
         assert_eq!(ability_for_active_weapon(&mgr, 1, 7), Some(579));
         assert_eq!(ability_for_active_weapon(&mgr, 1, 6), Some(708));
+    }
+
+    // ── is_ability_granted_by_active_weapon ──────────────────────────────
+
+    /// Either of the weapon's event bindings must satisfy the gate —
+    /// a player firing the melee ability of an equipped pistol is just
+    /// as valid as firing its ranged ability. Pins that the iteration
+    /// covers all weapon-relevant event ids, not just RANGED.
+    #[test]
+    fn is_ability_granted_by_active_weapon_accepts_melee_binding_too() {
+        let mut mgr = mgr_with_one_player(55, 0);
+        // Pistol binds 579 to RANGED (event 7) and 708 to MELEE (event 6).
+        mgr.item_event_set_abilities.insert((55, 7), 579);
+        mgr.item_event_set_abilities.insert((55, 6), 708);
+        assert!(
+            is_ability_granted_by_active_weapon(&mgr, 1, 579),
+            "RANGED-bound ability must be accepted",
+        );
+        assert!(
+            is_ability_granted_by_active_weapon(&mgr, 1, 708),
+            "MELEE-bound ability must also be accepted — iteration must \
+             reach event 6, not stop at RANGED",
+        );
+        // Negative: an ability the active weapon does NOT bind at all.
+        assert!(!is_ability_granted_by_active_weapon(&mgr, 1, 999));
+    }
+
+    /// Same ability bound to multiple event ids on the same weapon
+    /// still returns true (any-match-wins). Today this can't happen in
+    /// the canonical seed but a content patch could legitimately bind
+    /// e.g. a holdable that's both ITEM_USE_ABILITY and RANGED — the
+    /// gate must accept it under either lookup.
+    #[test]
+    fn is_ability_granted_by_active_weapon_same_ability_multi_event_returns_true() {
+        let mut mgr = mgr_with_one_player(55, 0);
+        mgr.item_event_set_abilities.insert((55, 7), 579); // RANGED
+        mgr.item_event_set_abilities.insert((55, 5), 579); // USE_ABILITY
+        assert!(is_ability_granted_by_active_weapon(&mgr, 1, 579));
+    }
+
+    /// NPCs (and any entity that doesn't populate `bandolier_items`) —
+    /// the helper must return `false` rather than panic or accidentally
+    /// accept. NPC ability dispatch goes through a separate known-set
+    /// check; this fallback is player-only.
+    #[test]
+    fn is_ability_granted_by_active_weapon_returns_false_for_entity_without_bandolier() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        // NPC-shaped: no is_player, no bandolier_items.
+        mgr.create_entity(1, "W", [0.0; 3], [0.0; 3]).unwrap();
+        // Even with an items_event_sets binding present in the world,
+        // an entity that doesn't have the item equipped fails.
+        mgr.item_event_set_abilities.insert((55, 7), 579);
+        assert!(
+            !is_ability_granted_by_active_weapon(&mgr, 1, 579),
+            "entity without bandolier_items must not be considered to \
+             have any weapon-granted ability",
+        );
     }
 }

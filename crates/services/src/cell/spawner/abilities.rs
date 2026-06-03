@@ -370,8 +370,6 @@ pub async fn load_effect_defs(
     // `Option<String>` shape (with `unwrap_or_else(TCM_SINGLE)` downstream)
     // keeps working. Long-term fix is a `#[sqlx(type_name = ...)]` Rust
     // enum mirror; the cast is the safe immediate patch.
-    // See PR #420 (commit da4e3451) which added this column to the SELECT
-    // without handling the PG ENUM type.
     let rows = sqlx::query_as::<_, EffectRow>(
         "SELECT effect_id, ability_id, delay, effect_sequence, event_set_id, script_name, \
                 pulse_count, pulse_duration, is_channeled, \

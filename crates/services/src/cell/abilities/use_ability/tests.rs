@@ -723,16 +723,13 @@ async fn same_ability_manual_fire_does_not_break_loop() {
 /// **Regression guard: weapon-granted abilities fire even when the ability
 /// is not in the player's `entity.abilities` known set.**
 ///
-/// Bug shape this catches: PR #420 wired the per-weapon ability resolver
-/// (`items_event_sets` lookup at the right-click site) but did NOT
-/// connect it to the `use_ability` gate. `entity.abilities.has_ability`
-/// alone rejects every weapon fire because weapon-granted IDs aren't
-/// injected into the known set on equip.
-///
-/// Live observation 2026-06-02 (player 72.206.34.241): 25 consecutive
-/// useAbility(579) rejections for a player holding the pistol that
-/// grants 579 via `items_event_sets` row `(item=55, ability=579, event=7)`.
-/// The fire button was effectively dead for the entire session.
+/// Bug shape: the per-weapon ability resolver (`items_event_sets` lookup
+/// at the right-click site) is wired, but the `use_ability` gate
+/// historically only checked `entity.abilities.has_ability`. Weapon-
+/// granted IDs aren't injected into the known set on equip, so the
+/// gate alone rejects every weapon fire — fire button effectively
+/// dead for any player holding a weapon whose grants only live in
+/// `items_event_sets`.
 ///
 /// Reverting the `is_ability_granted_by_active_weapon` fallback in
 /// `use_ability/mod.rs` must fail this test.

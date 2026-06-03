@@ -12,7 +12,7 @@ use crate::mercury::read_wstring;
 use super::character::{query_character_list, send_char_create_failed};
 use super::chardef::chardef_lookup;
 use super::helpers::{drain_acks_and_seq, get_account_entity_id};
-use super::resources::{bag_max_slots, bag_min_slot, pick_first_open_bag, BAG_FILL_ORDER};
+use super::resources::{bag_min_slot, pick_first_open_bag, BAG_FILL_ORDER};
 use super::ConnectedClientState;
 
 /// Handle `createCharacter` (0xC4) -- parse args and INSERT into sgw_player.
@@ -456,20 +456,6 @@ pub(crate) async fn handle_create_character(
                     .or_insert_with(|| bag_min_slot(bag_id));
                 let current_slot = *entry;
                 *entry += 1;
-
-                // Defensive: the `.find()` predicate above already gates on
-                // `next_slot < bag_max_slots(bag)`, so this branch is
-                // unreachable through normal flow. Keep it as a guard
-                // against future refactors that might separate selection
-                // from increment.
-                if current_slot >= bag_max_slots(bag_id) {
-                    tracing::error!(
-                        %addr, bag_id, item_id = item.item_id,
-                        "Bag-full guard tripped after fill-order selection — \
-                         selection logic and slot accounting are out of sync"
-                    );
-                    continue;
-                }
 
                 if let Err(e) = sqlx::query(
                     "INSERT INTO sgw_inventory \

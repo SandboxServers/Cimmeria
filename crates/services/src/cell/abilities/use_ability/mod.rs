@@ -123,39 +123,44 @@ pub async fn handle_use_ability(
             return false;
         }
         if !entity.abilities.has_ability(ability_id) {
-            // PR #420 follow-up: weapon-granted abilities are resolved
-            // at fire time from `items_event_sets` (see `resolve.rs` and
-            // the hostile-NPC right-click path in `interaction.rs`).
-            // They are NOT injected into `entity.abilities` on equip —
-            // `entity.abilities` carries the player's *trained / known /
-            // archetype-starter* set, distinct from weapon-granted IDs.
-            //
-            // Without this fallback, every weapon fire is rejected with
-            // "entity does not have ability". Live observation 2026-06-02
-            // (player 72.206.34.241): 25 consecutive useAbility(579)
-            // rejections for a player holding the pistol that grants 579
-            // — fire button effectively dead for that session.
-            //
-            // We need to drop the immutable `entity` borrow before the
-            // call into the helper (which takes `&SpaceManager`) — the
-            // outer `&mut space_mgr` is fine to re-borrow as `&` here
-            // since we're inside the immutable-checks block.
+            // Weapon-granted abilities are resolved at fire time from
+            // `items_event_sets` (see `resolve.rs` and the hostile-NPC
+            // right-click path in `interaction.rs`). They are NOT
+            // injected into `entity.abilities` on equip — that field
+            // carries the player's trained / known / archetype-starter
+            // set, distinct from weapon-granted IDs. Without this
+            // fallback every weapon fire is rejected with "entity does
+            // not have ability".
             let granted_by_weapon = super::resolve::is_ability_granted_by_active_weapon(
                 space_mgr, entity_id, ability_id,
             );
             if !granted_by_weapon {
-                // WARN, not DEBUG: a rejected fire is an actionable
-                // signal that the player is mashing a button and the
-                // server is silently dropping every attempt. The 25-
-                // per-second rate observed during the regression that
-                // motivated this fix is exactly the volume that
-                // disappears at DEBUG and burns at WARN — which is what
-                // we want operators to see.
-                tracing::warn!(
-                    entity_id,
-                    ability_id,
-                    "useAbility: ability not in known set and not granted by active weapon"
-                );
+                // Severity split keyed on "does the server know this
+                // ability id?" — `ability_def` is `Some` only when the
+                // id is in `space_mgr.ability_defs`:
+                //
+                // - server-known + not granted → WARN. Real wiring
+                //   issue: the player tried to fire an ability the
+                //   server understands but the active weapon doesn't
+                //   bind it. Operator-actionable.
+                // - server-unknown → DEBUG. Almost certainly a forged
+                //   or buggy client packet — the server has no def for
+                //   this id at all. WARN here would let any client
+                //   spam-burn the log index just by sending bogus
+                //   ability ids on this client-controlled path.
+                if ability_def.is_some() {
+                    tracing::warn!(
+                        entity_id,
+                        ability_id,
+                        "useAbility: ability not in known set and not granted by active weapon"
+                    );
+                } else {
+                    tracing::debug!(
+                        entity_id,
+                        ability_id,
+                        "useAbility: unknown ability_id (no server def — likely client-forged or stale)"
+                    );
+                }
                 return false;
             }
         }
