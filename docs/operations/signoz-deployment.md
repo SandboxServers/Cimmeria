@@ -12,18 +12,36 @@ Cimmeria-MCP server for LLM-mediated retrieval, see
 
 ## What gets shipped to SigNoz
 
-Two streams converge into the same ClickHouse-backed store:
+Two streams converge into the same ClickHouse-backed store, **split
+across two SigNoz services** so wire-level volume doesn't drown the
+high-signal events in the operator's primary triage view:
 
-1. **Server logs.** Every `tracing::*` macro call in `cimmeria-server`
-   and its workspace crates. Filtered to `info+` for general modules
-   and `debug+` for `cimmeria_services` / `cimmeria_mercury`. Targets
-   matching `mercury.packet` are routed through unconditionally.
-2. **Mercury packets.** Every UDP packet (client ↔ server) and every
-   Unified TCP frame (Auth ↔ Base ↔ Cell) is recorded via the
-   instrumentation helpers in
-   [`crates/mercury/src/instrumentation.rs`](../../crates/mercury/src/instrumentation.rs).
-   Schema: `target = "mercury.packet"`, fields `dir`, `transport`,
-   `seq`, `flags`, `msg_id`, `len`, `peer`.
+1. **`service.name = cimmeria-server`** — the high-signal index. Auth,
+   content chains, combat, missions, inventory, vendor, abilities.
+   Default operator view. Receives **WARN+ from every scope regardless
+   of routing** — elevated severity always lands here so a real wire
+   problem surfaces without dual-querying.
+2. **`service.name = cimmeria-network`** — the high-noise wire-level
+   index. Every `mercury.packet` event, every bundle decrypt + cell-
+   arms dispatch from `cimmeria_services::base::connect_loop::*`,
+   tick-sync heartbeats. Query this index when chasing wire-level
+   issues; it never drowns the main view at normal severity.
+
+Routing is target-based via `otel::is_network_noise_target` (see
+[`crates/server/src/otel.rs`](../../crates/server/src/otel.rs)) composed
+with a severity carve-out in
+[`crates/server/src/main.rs`'s `init_logging`](../../crates/server/src/main.rs).
+The two streams share one OTLP endpoint + collector but two
+`SdkLoggerProvider`s (one per resource).
+
+Schemas:
+
+- `cimmeria-server` events follow the standard tracing field set
+  (`entity_id`, `player_id`, `account_id`, `target`, etc.)
+- `cimmeria-network` `mercury.packet` events: `dir`, `transport`,
+  `seq`, `flags`, `msg_id`, `len`, `peer`. Recorded via the
+  instrumentation helpers in
+  [`crates/mercury/src/instrumentation.rs`](../../crates/mercury/src/instrumentation.rs).
 
 A previous iteration of the server also wrote logs to an Azure Cosmos
 DB sink alongside the OTLP exporter. That sink was removed when SigNoz
