@@ -123,12 +123,46 @@ pub async fn handle_use_ability(
             return false;
         }
         if !entity.abilities.has_ability(ability_id) {
-            tracing::debug!(
-                entity_id,
-                ability_id,
-                "useAbility: entity does not have ability"
+            // Weapon-granted abilities are resolved at fire time from
+            // `items_event_sets` (see `resolve.rs` and the hostile-NPC
+            // right-click path in `interaction.rs`). They are NOT
+            // injected into `entity.abilities` on equip — that field
+            // carries the player's trained / known / archetype-starter
+            // set, distinct from weapon-granted IDs. Without this
+            // fallback every weapon fire is rejected with "entity does
+            // not have ability".
+            let granted_by_weapon = super::resolve::is_ability_granted_by_active_weapon(
+                space_mgr, entity_id, ability_id,
             );
-            return false;
+            if !granted_by_weapon {
+                // Severity split keyed on "does the server know this
+                // ability id?" — `ability_def` is `Some` only when the
+                // id is in `space_mgr.ability_defs`:
+                //
+                // - server-known + not granted → WARN. Real wiring
+                //   issue: the player tried to fire an ability the
+                //   server understands but the active weapon doesn't
+                //   bind it. Operator-actionable.
+                // - server-unknown → DEBUG. Almost certainly a forged
+                //   or buggy client packet — the server has no def for
+                //   this id at all. WARN here would let any client
+                //   spam-burn the log index just by sending bogus
+                //   ability ids on this client-controlled path.
+                if ability_def.is_some() {
+                    tracing::warn!(
+                        entity_id,
+                        ability_id,
+                        "useAbility: ability not in known set and not granted by active weapon"
+                    );
+                } else {
+                    tracing::debug!(
+                        entity_id,
+                        ability_id,
+                        "useAbility: unknown ability_id (no server def — likely client-forged or stale)"
+                    );
+                }
+                return false;
+            }
         }
         if entity.abilities.is_on_cooldown(ability_id) {
             tracing::debug!(entity_id, ability_id, "useAbility: ability on cooldown");

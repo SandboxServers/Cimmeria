@@ -49,6 +49,44 @@ pub(crate) fn bag_min_slot(_container_id: i32) -> i32 {
     0
 }
 
+/// Pick the first bag in [`BAG_FILL_ORDER`] that (a) is in the item's
+/// `container_sets` list AND (b) still has room based on the per-bag
+/// next-free-slot map.
+///
+/// Used by `character_create` to place starter items. Pre-fix this was
+/// inline in `handle_create_character` and the selection ignored
+/// fullness — picking the first valid bag unconditionally then
+/// `continue`-ing if it was full. That dropped items that could
+/// otherwise overflow to a later bag in the fill order (live observation
+/// 2026-06-02: item 4343 dropped at character create because its
+/// primary bag filled up first while a later valid bag still had room).
+///
+/// `slot_indices` carries the next free slot for each bag that's been
+/// touched so far. A bag with no entry yet starts at
+/// `bag_min_slot(bag)`; an entry that has reached `bag_max_slots(bag)`
+/// is full.
+///
+/// Returns `Some(bag_id)` for the first bag that satisfies both gates,
+/// `None` if no valid + non-full bag exists.
+pub(crate) fn pick_first_open_bag(
+    container_sets: &[i32],
+    slot_indices: &HashMap<i32, i32>,
+) -> Option<i32> {
+    BAG_FILL_ORDER
+        .iter()
+        .find(|&&bag| {
+            if !container_sets.contains(&bag) {
+                return false;
+            }
+            let next_slot = slot_indices
+                .get(&bag)
+                .copied()
+                .unwrap_or_else(|| bag_min_slot(bag));
+            next_slot < bag_max_slots(bag)
+        })
+        .copied()
+}
+
 // ── Resource cache ───────────────────────────────────────────────────────────
 
 /// Per-category cooked data loaded from a PAK file.

@@ -43,7 +43,9 @@ pub(crate) use messaging::{
 // land here for #278 child PRs to adopt. They stay private to the `messaging`
 // module until the first child callsite migrates — at which point the
 // migrating PR adds the re-exports it needs.
-pub use resolve::{ability_for_active_weapon, ability_for_item};
+pub use resolve::{
+    ability_for_active_weapon, ability_for_item, is_ability_granted_by_active_weapon,
+};
 pub use use_ability::{handle_use_ability, handle_use_ability_with_kill_credit};
 
 #[cfg(test)]
