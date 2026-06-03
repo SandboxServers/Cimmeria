@@ -123,12 +123,41 @@ pub async fn handle_use_ability(
             return false;
         }
         if !entity.abilities.has_ability(ability_id) {
-            tracing::debug!(
-                entity_id,
-                ability_id,
-                "useAbility: entity does not have ability"
+            // PR #420 follow-up: weapon-granted abilities are resolved
+            // at fire time from `items_event_sets` (see `resolve.rs` and
+            // the hostile-NPC right-click path in `interaction.rs`).
+            // They are NOT injected into `entity.abilities` on equip —
+            // `entity.abilities` carries the player's *trained / known /
+            // archetype-starter* set, distinct from weapon-granted IDs.
+            //
+            // Without this fallback, every weapon fire is rejected with
+            // "entity does not have ability". Live observation 2026-06-02
+            // (player 72.206.34.241): 25 consecutive useAbility(579)
+            // rejections for a player holding the pistol that grants 579
+            // — fire button effectively dead for that session.
+            //
+            // We need to drop the immutable `entity` borrow before the
+            // call into the helper (which takes `&SpaceManager`) — the
+            // outer `&mut space_mgr` is fine to re-borrow as `&` here
+            // since we're inside the immutable-checks block.
+            let granted_by_weapon = super::resolve::is_ability_granted_by_active_weapon(
+                space_mgr, entity_id, ability_id,
             );
-            return false;
+            if !granted_by_weapon {
+                // WARN, not DEBUG: a rejected fire is an actionable
+                // signal that the player is mashing a button and the
+                // server is silently dropping every attempt. The 25-
+                // per-second rate observed during the regression that
+                // motivated this fix is exactly the volume that
+                // disappears at DEBUG and burns at WARN — which is what
+                // we want operators to see.
+                tracing::warn!(
+                    entity_id,
+                    ability_id,
+                    "useAbility: ability not in known set and not granted by active weapon"
+                );
+                return false;
+            }
         }
         if entity.abilities.is_on_cooldown(ability_id) {
             tracing::debug!(entity_id, ability_id, "useAbility: ability on cooldown");

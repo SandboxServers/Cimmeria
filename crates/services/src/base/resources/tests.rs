@@ -516,3 +516,127 @@ fn compute_item_metadata_bump_is_deterministic_and_low_bit_set() {
         "stack-size edit must change the bump",
     );
 }
+
+// ── pick_first_open_bag ─────────────────────────────────────────────────────
+
+/// Happy path: a bag with room in the item's container set is picked.
+#[test]
+fn pick_first_open_bag_picks_first_valid_when_empty() {
+    let slot_indices = HashMap::new();
+    // Item can live in INV_MAIN (1) or INV_BANDOLIER (3). BAG_FILL_ORDER
+    // visits BANDOLIER (3) before MAIN (1), so BANDOLIER wins.
+    let container_sets = vec![INV_MAIN, INV_BANDOLIER];
+    assert_eq!(
+        pick_first_open_bag(&container_sets, &slot_indices),
+        Some(INV_BANDOLIER),
+        "BANDOLIER comes before MAIN in BAG_FILL_ORDER and both are empty"
+    );
+}
+
+/// **Regression guard for the live 2026-06-02 bug:** when the
+/// fill-order-preferred bag is full but a later valid bag still has
+/// room, the picker must overflow to the later bag rather than dropping
+/// the item.
+///
+/// Pre-fix the inline `.find()` in `character_create` only checked
+/// "does this bag accept this item type" — it ignored fullness — so
+/// once the preferred bag filled up, every subsequent same-type item
+/// got `continue`'d. Real impact: starter item 4343 disappeared at
+/// character create.
+///
+/// Reverting `pick_first_open_bag` to ignore fullness must fail this
+/// assertion.
+#[test]
+fn pick_first_open_bag_overflows_when_preferred_bag_is_full() {
+    // Item can live in BANDOLIER (3, max 4) or MAIN (1, max 40).
+    let container_sets = vec![INV_MAIN, INV_BANDOLIER];
+    let mut slot_indices = HashMap::new();
+    // Bandolier already at max: next_slot would be 4, == bag_max_slots(3).
+    slot_indices.insert(INV_BANDOLIER, bag_max_slots(INV_BANDOLIER));
+    assert_eq!(
+        pick_first_open_bag(&container_sets, &slot_indices),
+        Some(INV_MAIN),
+        "BANDOLIER full → overflow to MAIN. Reverting to the pre-fix \
+         'ignore fullness' selection would return BANDOLIER and then the \
+         caller would drop the item."
+    );
+}
+
+/// All valid bags full → `None`. Caller is expected to log "all valid
+/// containers full" and drop the item, but the picker just reports the
+/// fact — keeps the policy where it belongs.
+#[test]
+fn pick_first_open_bag_returns_none_when_all_valid_bags_full() {
+    let container_sets = vec![INV_MAIN, INV_BANDOLIER];
+    let mut slot_indices = HashMap::new();
+    slot_indices.insert(INV_BANDOLIER, bag_max_slots(INV_BANDOLIER));
+    slot_indices.insert(INV_MAIN, bag_max_slots(INV_MAIN));
+    assert_eq!(pick_first_open_bag(&container_sets, &slot_indices), None);
+}
+
+/// Item with no valid container → `None`. Distinct from "all full" at
+/// the caller level (different warn message), but at the picker level
+/// the answer is the same.
+#[test]
+fn pick_first_open_bag_returns_none_when_no_valid_container() {
+    // Container 17 is out of BAG_FILL_ORDER entirely.
+    let container_sets = vec![17];
+    let slot_indices = HashMap::new();
+    assert_eq!(pick_first_open_bag(&container_sets, &slot_indices), None);
+}
+
+/// Edge case: a bag with one slot free (`next_slot == max - 1`) is
+/// picked, and a bag at exactly max is rejected. Guards the boundary
+/// arithmetic between `<` and `<=`.
+#[test]
+fn pick_first_open_bag_boundary_one_slot_free_vs_at_max() {
+    let container_sets = vec![INV_BANDOLIER];
+    let mut indices = HashMap::new();
+    indices.insert(INV_BANDOLIER, bag_max_slots(INV_BANDOLIER) - 1);
+    assert_eq!(
+        pick_first_open_bag(&container_sets, &indices),
+        Some(INV_BANDOLIER),
+        "one slot free must be pickable"
+    );
+
+    indices.insert(INV_BANDOLIER, bag_max_slots(INV_BANDOLIER));
+    assert_eq!(
+        pick_first_open_bag(&container_sets, &indices),
+        None,
+        "exactly at max must NOT be pickable"
+    );
+}
+
+/// Multi-item placement walk: simulate placing N items, ensuring the
+/// picker advances across bags as they fill. End-to-end shape of the
+/// production loop in `character_create`.
+#[test]
+fn pick_first_open_bag_multi_item_walk_fills_then_overflows() {
+    let container_sets = vec![INV_MAIN, INV_BANDOLIER];
+    let mut slot_indices: HashMap<i32, i32> = HashMap::new();
+    let mut placements: Vec<i32> = Vec::new();
+
+    // Place 6 items. First 4 land in BANDOLIER (slots 0..3), next 2
+    // land in MAIN (slots 0, 1).
+    for _ in 0..6 {
+        let bag = pick_first_open_bag(&container_sets, &slot_indices)
+            .expect("six placements with this fixture must all succeed");
+        placements.push(bag);
+        // Mirror the loop's bookkeeping.
+        *slot_indices
+            .entry(bag)
+            .or_insert_with(|| bag_min_slot(bag)) += 1;
+    }
+    assert_eq!(
+        placements,
+        vec![
+            INV_BANDOLIER,
+            INV_BANDOLIER,
+            INV_BANDOLIER,
+            INV_BANDOLIER,
+            INV_MAIN,
+            INV_MAIN
+        ],
+        "first 4 fill BANDOLIER, next 2 overflow to MAIN"
+    );
+}

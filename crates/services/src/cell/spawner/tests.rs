@@ -576,4 +576,54 @@ mod live_db {
             2.0 * probe_radius
         );
     }
+
+    /// **Regression guard for the PR #420 effect-def loader bug:**
+    /// `resources.effects.target_collection_method` is a PG ENUM
+    /// (`resources."ETargetCollectionMethod"`), not TEXT. sqlx-postgres
+    /// won't auto-coerce the ENUM into `Option<String>` (the
+    /// `EffectRow` field type), so the whole `fetch_all` returns a
+    /// decode error and `load_effect_defs` returns `Err`. The startup
+    /// path swallows that as a WARN, leaving `effect_defs` EMPTY for
+    /// the entire process lifetime — every combat ability that resolves
+    /// through an effect silently no-ops.
+    ///
+    /// The fix is `target_collection_method::TEXT` in the SELECT.
+    /// Reverting the cast must fail this test with a decode error.
+    ///
+    /// Live observation 2026-06-02: this WARN fired at startup
+    /// (`Failed to load effect defs: error occurred while decoding
+    /// column "target_collection_method": mismatched types; Rust type
+    /// core::option::Option<alloc::string::String> ... is not compatible
+    /// with SQL type resources."ETargetCollectionMethod"`) and the
+    /// player's combat session ran with an empty effect_defs map
+    /// downstream.
+    #[tokio::test]
+    async fn load_effect_defs_succeeds_against_seeded_db() {
+        let pool = require_db_or_skip!();
+        let map = load_effect_defs(&pool)
+            .await
+            .expect("load_effect_defs must succeed — PG ENUM cast regression");
+        assert!(
+            !map.is_empty(),
+            "seeded resources.effects has rows; an empty map means \
+             the loader silently failed or the seed didn't load"
+        );
+        // Pin that target_collection_method actually came through —
+        // not blank, not all-default. The default-fallback in the loader
+        // (`unwrap_or_else(|| TCM_SINGLE.to_string())`) means a column
+        // that's NULL falls back to TCM_Single; but every row mapping
+        // to TCM_Single would suggest the SELECT silently lost the
+        // column or every NULL got the fallback. Check at least one
+        // row carries a non-default value (the seed has TCM_AECone +
+        // TCM_AERadius rows).
+        let has_non_single_tcm = map
+            .values()
+            .any(|e| e.target_collection_method != cimmeria_entity::abilities::TCM_SINGLE);
+        assert!(
+            has_non_single_tcm,
+            "seeded effects include TCM_AECone and TCM_AERadius rows; \
+             every effect being TCM_Single suggests the cast lost data \
+             or the column isn't actually being read"
+        );
+    }
 }

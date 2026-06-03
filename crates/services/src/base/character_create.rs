@@ -12,7 +12,7 @@ use crate::mercury::read_wstring;
 use super::character::{query_character_list, send_char_create_failed};
 use super::chardef::chardef_lookup;
 use super::helpers::{drain_acks_and_seq, get_account_entity_id};
-use super::resources::{bag_max_slots, bag_min_slot, BAG_FILL_ORDER};
+use super::resources::{bag_max_slots, bag_min_slot, pick_first_open_bag, BAG_FILL_ORDER};
 use super::ConnectedClientState;
 
 /// Handle `createCharacter` (0xC4) -- parse args and INSERT into sgw_player.
@@ -417,14 +417,36 @@ pub(crate) async fn handle_create_character(
                 .flatten()
                 .unwrap_or_default();
 
-                // Find the best container from BagFillOrder
-                let bag_id = match BAG_FILL_ORDER
-                    .iter()
-                    .find(|&&bag| container_sets.contains(&bag))
-                {
-                    Some(&bag) => bag,
+                // Pick the first bag that's both valid for this item AND
+                // still has room. Pre-fix this picked the first valid bag
+                // unconditionally and `continue`d if it was full — so an
+                // item that could overflow to a later bag was silently
+                // dropped (live observation 2026-06-02: item 4343 lost
+                // at character create because its primary bag filled up
+                // first while a later valid bag still had room).
+                let bag_id = match pick_first_open_bag(&container_sets, &slot_indices) {
+                    Some(bag) => bag,
                     None => {
-                        tracing::warn!(%addr, item_id = item.item_id, "No valid container for starter item");
+                        // Either the item has no valid container (content
+                        // gap) or every valid container is genuinely full.
+                        // Both are operator-actionable — surface the
+                        // distinction so a real content gap doesn't get
+                        // confused with "too many starter items."
+                        let any_valid_container =
+                            BAG_FILL_ORDER.iter().any(|b| container_sets.contains(b));
+                        if any_valid_container {
+                            tracing::warn!(
+                                %addr,
+                                item_id = item.item_id,
+                                "All valid containers full — starter item dropped"
+                            );
+                        } else {
+                            tracing::warn!(
+                                %addr,
+                                item_id = item.item_id,
+                                "No valid container for starter item"
+                            );
+                        }
                         continue;
                     }
                 };
@@ -435,8 +457,17 @@ pub(crate) async fn handle_create_character(
                 let current_slot = *entry;
                 *entry += 1;
 
-                if *entry > bag_max_slots(bag_id) {
-                    tracing::warn!(%addr, bag_id, item_id = item.item_id, "Bag full, skipping starter item");
+                // Defensive: the `.find()` predicate above already gates on
+                // `next_slot < bag_max_slots(bag)`, so this branch is
+                // unreachable through normal flow. Keep it as a guard
+                // against future refactors that might separate selection
+                // from increment.
+                if current_slot >= bag_max_slots(bag_id) {
+                    tracing::error!(
+                        %addr, bag_id, item_id = item.item_id,
+                        "Bag-full guard tripped after fill-order selection — \
+                         selection logic and slot accounting are out of sync"
+                    );
                     continue;
                 }
 

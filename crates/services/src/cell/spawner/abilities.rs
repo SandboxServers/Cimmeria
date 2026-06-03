@@ -360,9 +360,22 @@ pub async fn load_item_event_set_abilities(
 pub async fn load_effect_defs(
     pool: &PgPool,
 ) -> Result<std::collections::HashMap<i32, cimmeria_entity::abilities::EffectDef>, sqlx::Error> {
+    // `target_collection_method` is a PG ENUM (`resources."ETargetCollectionMethod"`),
+    // not TEXT. sqlx-postgres won't auto-coerce a PG ENUM into
+    // `Option<String>` (the `EffectRow` field type), and without the cast
+    // the whole `fetch_all` returns a decode error — the WARN at startup
+    // hides the fact that `effect_defs` ends up EMPTY for the entire
+    // process lifetime. Empty effect_defs silently disables every combat
+    // ability that resolves through an effect. Cast inline so the existing
+    // `Option<String>` shape (with `unwrap_or_else(TCM_SINGLE)` downstream)
+    // keeps working. Long-term fix is a `#[sqlx(type_name = ...)]` Rust
+    // enum mirror; the cast is the safe immediate patch.
+    // See PR #420 (commit da4e3451) which added this column to the SELECT
+    // without handling the PG ENUM type.
     let rows = sqlx::query_as::<_, EffectRow>(
         "SELECT effect_id, ability_id, delay, effect_sequence, event_set_id, script_name, \
-                pulse_count, pulse_duration, is_channeled, target_collection_method, \
+                pulse_count, pulse_duration, is_channeled, \
+                target_collection_method::TEXT AS target_collection_method, \
                 tcm_param1, tcm_param2, flags \
          FROM resources.effects",
     )

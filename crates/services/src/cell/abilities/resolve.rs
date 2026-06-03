@@ -66,6 +66,52 @@ pub fn ability_for_active_weapon(
     ability_for_item(space_mgr, item_id, event_id)
 }
 
+/// True if `ability_id` is bound to the player's active bandolier weapon
+/// via `items_event_sets` for any of the weapon-relevant event ids
+/// (RANGED, MELEE, USE_ABILITY).
+///
+/// Used by [`super::use_ability::handle_use_ability`] as a fallback when
+/// `entity.abilities.has_ability` returns false. Weapon-granted abilities
+/// are resolved at fire time from `items_event_sets` rather than being
+/// injected into `entity.abilities` on equip — `entity.abilities` holds
+/// the player's *trained / known / archetype-starter* set, not their
+/// currently-equipped weapon's abilities.
+///
+/// Without this fallback the use_ability gate rejects every weapon-driven
+/// fire with `useAbility: entity does not have ability`. Live observation
+/// 2026-06-02 (player 72.206.34.241): 25 consecutive useAbility(579)
+/// rejections for a player holding the pistol that grants 579 via
+/// `items_event_sets` row `(item_id=55, ability_id=579, event_id=7)`.
+pub fn is_ability_granted_by_active_weapon(
+    space_mgr: &SpaceManager,
+    entity_id: u32,
+    ability_id: i32,
+) -> bool {
+    let item_id = match space_mgr.get_entity(entity_id).and_then(|e| {
+        let slot = e.active_bandolier_slot;
+        e.bandolier_items.get(&slot).map(|b| b.item_id)
+    }) {
+        Some(id) => id,
+        None => return false,
+    };
+    // Probe every weapon-relevant event id. A single weapon often grants
+    // distinct ranged + melee abilities (the pistol has 579 for RANGED
+    // and 708 for MELEE), and a player can legitimately fire any of them
+    // while the same weapon is active. Iterating means callers don't have
+    // to know which event_id their `ability_id` was bound under.
+    use crate::cell::spawner::{EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_USE_ABILITY};
+    for event_id in [EVENT_ITEM_RANGED, EVENT_ITEM_MELEE, EVENT_ITEM_USE_ABILITY] {
+        if space_mgr
+            .item_event_set_abilities
+            .get(&(item_id, event_id))
+            == Some(&ability_id)
+        {
+            return true;
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
