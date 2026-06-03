@@ -630,8 +630,7 @@ fn init_logging(
             // `level <= Level::WARN` is "WARN or more severe" (numerically
             // smaller); the negation here means "less severe than WARN"
             // i.e. INFO/DEBUG/TRACE.
-            otel::is_network_noise_target(meta.target())
-                && *meta.level() > tracing::Level::WARN
+            otel::is_network_noise_target(meta.target()) && *meta.level() > tracing::Level::WARN
         });
         layers.push(Box::new(
             layer.with_filter(EnvFilter::new(otel_filter).and(routing)),
