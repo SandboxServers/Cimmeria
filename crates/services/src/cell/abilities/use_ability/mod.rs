@@ -593,6 +593,16 @@ pub async fn handle_use_ability(
                 seq_args.extend_from_slice(&effect_seq.to_le_bytes()); // InstanceId
                 send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await;
                 // 1 = onSequence
+                tracing::debug!(
+                    target: "abilities.sequence",
+                    event = "ability_begin",
+                    source_id = entity_id,
+                    target_id,
+                    ability_id,
+                    sequence_id = begin_seq_id,
+                    event_set_id,
+                    "onSequence broadcast: Ability_Begin (warmup animation)"
+                );
             }
         }
 
@@ -611,6 +621,16 @@ pub async fn handle_use_ability(
             seq_args.push(0); // ViewType = KISMET_VIEW_Witness
             seq_args.extend_from_slice(&effect_seq.to_le_bytes()); // InstanceId
             send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
+            tracing::debug!(
+                target: "abilities.sequence",
+                event = "ability_end",
+                source_id = entity_id,
+                target_id,
+                ability_id,
+                sequence_id = end_seq_id,
+                event_set_id,
+                "onSequence broadcast: Ability_End (main fire animation)"
+            );
         } else {
             tracing::debug!(
                 entity_id,
