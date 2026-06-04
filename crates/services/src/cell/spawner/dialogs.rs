@@ -1,9 +1,18 @@
-//! Dialog set map cache.
+//! Dialog set map cache + monologue dialog id cache.
 //!
-//! Maps `dialog_set_map_id → (dialog_id, interaction_flags)` for use by
-//! `add_dialog_set` content actions at runtime.
+//! - `load_dialog_set_maps` maps `dialog_set_map_id → (dialog_id, interaction_flags)`
+//!   for `add_dialog_set` content actions.
+//! - `load_monologue_dialog_ids` returns the set of `dialog_id` values whose
+//!   every screen has `speaker_id = 0` — player-narration / inner-thought
+//!   dialogs that have no NPC speaker. The executor uses this to decide
+//!   whether a `display_dialog` chain with no resolved NPC should bind
+//!   the player as the dialog context entity (correct for monologues —
+//!   the client's per-screen speaker resolution falls back to the
+//!   player's name naturally; portrait shows the player) or bail with
+//!   a warn (correct for NPC dialogs whose NPC context was lost).
 
 use sqlx::PgPool;
+use std::collections::HashSet;
 
 /// Cached row from `resources.dialog_set_maps`, used by `add_dialog_set` content actions.
 #[derive(Debug, Clone)]
@@ -46,4 +55,45 @@ pub async fn load_dialog_set_maps(
 
     tracing::info!(count = map.len(), "Loaded dialog_set_maps cache");
     Ok(map)
+}
+
+/// Load the set of dialog ids whose screens are *all* player-monologue
+/// (every `dialog_screens.speaker_id = 0`).
+///
+/// Used by the `DisplayDialog` executor to distinguish:
+///
+/// - A monologue dialog (player inner thought, no NPC) where binding
+///   the player as the wire `EntityId` of `onDialogDisplay` is the
+///   correct render — the client's per-screen lookup of `speaker_id = 0`
+///   falls back to the player's own name (see RE finding
+///   `docs/reverse-engineering/findings/dialog-portrait-lookup.md`),
+///   and the portrait shows the player's character.
+/// - A normal NPC dialog where binding the player would blank the NPC
+///   portrait and substitute the player's name everywhere — the bug
+///   the existing "warn and bail" path was added to prevent.
+///
+/// Computed as: dialog_ids whose every screen carries `speaker_id = 0`
+/// AND which have at least one screen (the `HAVING` filters out dialogs
+/// with zero screens, which are content-error rows).
+pub async fn load_monologue_dialog_ids(pool: &PgPool) -> Result<HashSet<i32>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT dialog_id \
+         FROM resources.dialog_screens \
+         GROUP BY dialog_id \
+         HAVING COUNT(*) > 0 \
+            AND COUNT(*) FILTER (WHERE speaker_id <> 0) = 0",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut ids = HashSet::with_capacity(rows.len());
+    for r in &rows {
+        let id: i32 = r.get("dialog_id");
+        ids.insert(id);
+    }
+
+    tracing::info!(count = ids.len(), "Loaded monologue dialog id cache");
+    Ok(ids)
 }

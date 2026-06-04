@@ -103,6 +103,18 @@ pub struct SpaceManager {
     /// Cached dialog_set_maps: dialog_set_map_id → (dialog_id, interaction_flags).
     /// Populated at startup from `resources.dialog_set_maps`.
     pub dialog_set_maps: HashMap<i32, super::spawner::DialogSetMapEntry>,
+    /// Set of dialog ids whose every screen has `speaker_id = 0`
+    /// (player-monologue / inner-thought dialogs). Populated at startup
+    /// from `resources.dialog_screens`. Used by the `DisplayDialog`
+    /// executor: when no NPC entity can be resolved from chain context
+    /// AND the dialog is in this set, bind the player as the wire
+    /// `EntityId` of `onDialogDisplay` (correct render for monologue
+    /// — speaker name falls back to player, portrait shows player's
+    /// character). Dialogs NOT in this set continue to bail-and-warn
+    /// when no NPC resolves, since binding the player there would
+    /// blank an NPC portrait and substitute the player's name for
+    /// every NPC line.
+    pub monologue_dialog_ids: std::collections::HashSet<i32>,
     /// Cached mission definitions: mission_id → (first step_id, objectives).
     /// Populated at startup from `resources.mission_steps` + `resources.mission_objectives`.
     pub mission_defs: HashMap<i32, super::spawner::MissionDefEntry>,
@@ -223,6 +235,7 @@ impl SpaceManager {
             next_local_id: 0,
             next_npc_id: 100_000,
             dialog_set_maps: HashMap::new(),
+            monologue_dialog_ids: std::collections::HashSet::new(),
             mission_defs: HashMap::new(),
             stargates: HashMap::new(),
             step_objectives: HashMap::new(),

@@ -388,6 +388,177 @@ impl EffectScript for Suppression {
     }
 }
 
+// ── RangedPhysicalDamage ─────────────────────────────────────────────────
+
+/// Focus-gated physical damage. Models "shields absorb the bullet first."
+///
+/// NVPs:
+///   - `FocusDamage` (i32) — amount to subtract from target FOCUS pool
+///   - `HealthDamage` (i32) — base HEALTH damage added to spillover
+///
+/// Behavior, mirroring `deprecated/python/cell/effects/RangedPhysicalDamage.py`:
+///
+/// 1. Subtract `FocusDamage` from the target's FOCUS pool. The pool
+///    clamps at 0 — any unused damage is the "overflow."
+/// 2. If FOCUS absorbed *everything* (no overflow) → done. No HEALTH
+///    damage. This is the "shields held" case.
+/// 3. Otherwise, compute spillover = overflow / 3, add `HealthDamage`,
+///    apply to HEALTH.
+///
+/// The legacy `/300` divisor in the visual script collapses to `/3`
+/// algebraically: `remaining_pct = overflow * 100 / FocusDamage`, then
+/// `spillover = remaining_pct * FocusDamage / 300` simplifies to
+/// `overflow / 3` (the `FocusDamage` factor cancels). So the spillover
+/// is exactly 1/3 of the focus-pool overflow.
+///
+/// Why this matters: without this script, the legacy NVP fallback
+/// applies both `FocusDamage` and `HealthDamage` independently every
+/// shot, so the player takes HEALTH damage even at full Focus. The
+/// fight feels meaningfully harder than authored. With the script,
+/// physical ranged exchanges trade Focus first, then bleed into
+/// Health once shields are down — the intended cadence.
+///
+/// Reference: `deprecated/python/cell/effects/RangedPhysicalDamage.py`
+/// and `deprecated/data-scripts/scripts/effects/RangedPhysicalDamage.script`.
+pub struct RangedPhysicalDamage;
+
+impl EffectScript for RangedPhysicalDamage {
+    fn on_apply(&self, ctx: &mut EffectContext) {
+        let focus_damage = ctx.effect.param_i32("FocusDamage").max(0);
+        let health_damage = ctx.effect.param_i32("HealthDamage").max(0);
+        if focus_damage == 0 && health_damage == 0 {
+            return;
+        }
+
+        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
+            return;
+        };
+
+        // Apply Focus damage; capture how much overflowed the pool.
+        let focus_overflow = if focus_damage > 0 {
+            let cur = target.stats.get(FOCUS).map(|s| s.cur).unwrap_or(0);
+            let applied = focus_damage.min(cur.max(0));
+            let overflow = (focus_damage - applied).max(0);
+            if let Some(stat) = target.stats.get_mut(FOCUS) {
+                let new_cur = (cur - applied).max(0);
+                stat.update(stat.min, new_cur, stat.max);
+            }
+            overflow
+        } else {
+            // If there's no Focus damage at all, the spillover gate
+            // (`overflow > 0`) suppresses Health damage too — matches
+            // the legacy script's conditional branch off the QR result.
+            0
+        };
+
+        // Legacy gate: if Focus absorbed everything (overflow == 0),
+        // NO Health damage is applied at all. The shield held.
+        if focus_overflow == 0 {
+            tracing::debug!(
+                target: "abilities",
+                event = "ranged_physical_damage",
+                source_id = ctx.source_id,
+                target_id = ctx.target_id,
+                effect_id = ctx.effect.effect_id,
+                focus_damage,
+                focus_overflow,
+                health_damage_applied = 0,
+                "RangedPhysicalDamage: Focus absorbed all damage, no HEALTH bleed",
+            );
+            return;
+        }
+
+        // Spillover = overflow / 3 + base HealthDamage NVP.
+        let spillover = focus_overflow / 3;
+        let final_health_damage = spillover + health_damage;
+        if final_health_damage <= 0 {
+            return;
+        }
+        if let Some(stat) = target.stats.get_mut(HEALTH) {
+            let new_cur = (stat.cur - final_health_damage).max(0);
+            stat.update(stat.min, new_cur, stat.max);
+        }
+        tracing::info!(
+            target: "abilities",
+            event = "ranged_physical_damage",
+            source_id = ctx.source_id,
+            target_id = ctx.target_id,
+            effect_id = ctx.effect.effect_id,
+            focus_damage,
+            focus_overflow,
+            health_damage_applied = final_health_damage,
+            spillover,
+            base_health_damage = health_damage,
+            "RangedPhysicalDamage: Focus pierced, applied HEALTH bleed",
+        );
+        // damage_type=14 (DT_PHYSICAL) recorded for documentation but
+        // not used here: the legacy `qrCombatDamage` path applied
+        // armor + absorption via that type, and we'll route through
+        // `cell::combat::calculate_damage` in a follow-up that unifies
+        // every script's stat-mutation path. For now this matches the
+        // existing MeleeDamage shape (raw stat mutation) so behavior
+        // is consistent across scripts that share the legacy NVP-style
+        // contract.
+        let _: i8 = DT_PHYSICAL;
+    }
+}
+
+// ── RangedEnergyDamage ───────────────────────────────────────────────────
+
+/// Parallel HEALTH + FOCUS damage with no shield-first gating. The
+/// energy-weapon counterpart to [`RangedPhysicalDamage`] — both pools
+/// are hit on every shot regardless of Focus state.
+///
+/// NVPs:
+///   - `HealthDamage` (i32)
+///   - `FocusDamage`  (i32)
+///
+/// Reference: `deprecated/python/cell/effects/RangedEnergyDamage.py` —
+/// `effect.qrCombatDamage(HEALTH, ...)` and `effect.qrCombatDamage(FOCUS, ...)`
+/// fired back-to-back on `onPulseBegin`, no comparison gate.
+pub struct RangedEnergyDamage;
+
+impl EffectScript for RangedEnergyDamage {
+    fn on_apply(&self, ctx: &mut EffectContext) {
+        let focus_damage = ctx.effect.param_i32("FocusDamage").max(0);
+        let health_damage = ctx.effect.param_i32("HealthDamage").max(0);
+        if focus_damage == 0 && health_damage == 0 {
+            return;
+        }
+
+        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
+            return;
+        };
+
+        if focus_damage > 0 {
+            if let Some(stat) = target.stats.get_mut(FOCUS) {
+                let new_cur = (stat.cur - focus_damage).max(0);
+                stat.update(stat.min, new_cur, stat.max);
+            }
+        }
+        if health_damage > 0 {
+            if let Some(stat) = target.stats.get_mut(HEALTH) {
+                let new_cur = (stat.cur - health_damage).max(0);
+                stat.update(stat.min, new_cur, stat.max);
+            }
+        }
+
+        tracing::info!(
+            target: "abilities",
+            event = "ranged_energy_damage",
+            source_id = ctx.source_id,
+            target_id = ctx.target_id,
+            effect_id = ctx.effect.effect_id,
+            focus_damage,
+            health_damage,
+            "RangedEnergyDamage applied",
+        );
+        // damage_type=15 (DT_ENERGY) — see RangedPhysicalDamage note
+        // re unified pipeline migration.
+        let _: i8 = DT_ENERGY;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -865,5 +1036,228 @@ mod tests {
             .unwrap()
             .cur;
         assert_eq!(focus, 200, "zero percent must not change stat");
+    }
+
+    // ── RangedPhysicalDamage ──────────────────────────────────────────
+
+    fn effect_with_two_nvps(name1: &str, val1: &str, name2: &str, val2: &str) -> EffectDef {
+        let mut params = HashMap::new();
+        params.insert(name1.to_string(), val1.to_string());
+        params.insert(name2.to_string(), val2.to_string());
+        EffectDef {
+            effect_id: 641,
+            ability_id: 579,
+            params,
+            ..Default::default()
+        }
+    }
+
+    /// **Shield absorbs everything → no health damage.** Mirror of
+    /// `if remaining_dmg_percent > 0` in the legacy Python: when Focus
+    /// fully absorbs the requested damage, the script returns without
+    /// touching HEALTH. This is the load-bearing difference vs. the
+    /// legacy NVP fallback (which applies both pools independently).
+    /// Reverting the gate (always applying HealthDamage) would fail
+    /// this test.
+    #[test]
+    fn ranged_physical_full_focus_absorbs_no_health_damage() {
+        let mut mgr = make_mgr_with_target();
+        // Focus 200/1000 in fixture; FocusDamage 100 fits entirely.
+        let effect = effect_with_two_nvps("FocusDamage", "100", "HealthDamage", "10");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        RangedPhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.stats.get(FOCUS).unwrap().cur,
+            100,
+            "100 focus damage out of 200 must drain to 100"
+        );
+        assert_eq!(
+            e.stats.get(HEALTH).unwrap().cur,
+            50,
+            "shield held → no HEALTH damage, even though HealthDamage NVP = 10"
+        );
+    }
+
+    /// **Partial absorb → spillover lands as health damage.** Focus
+    /// 30/1000, FocusDamage 100 → 30 applied to focus, 70 overflow,
+    /// spillover = 70/3 = 23, plus HealthDamage 10 = 33 health damage.
+    #[test]
+    fn ranged_physical_partial_absorb_spills_to_health() {
+        let mut mgr = make_mgr_with_target();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            if let Some(s) = e.stats.get_mut(FOCUS) {
+                s.update(0, 30, 1000);
+            }
+        }
+        let effect = effect_with_two_nvps("FocusDamage", "100", "HealthDamage", "10");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        RangedPhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.stats.get(FOCUS).unwrap().cur,
+            0,
+            "focus drained to 0 (30 was less than 100)"
+        );
+        // Overflow = 70. Spillover = 70/3 = 23 (integer division).
+        // Final health damage = 23 + 10 = 33. HP was 50 → 17.
+        assert_eq!(
+            e.stats.get(HEALTH).unwrap().cur,
+            17,
+            "HP 50 - (spillover 23 + HealthDamage 10) = 17"
+        );
+    }
+
+    /// **No focus at all → full overflow.** With FOCUS = 0, the entire
+    /// FocusDamage is overflow; spillover = 100/3 = 33; + HealthDmg 10
+    /// = 43 HP loss. HP 50 → 7.
+    #[test]
+    fn ranged_physical_no_focus_takes_full_overflow_spillover() {
+        let mut mgr = make_mgr_with_target();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            if let Some(s) = e.stats.get_mut(FOCUS) {
+                s.update(0, 0, 1000);
+            }
+        }
+        let effect = effect_with_two_nvps("FocusDamage", "100", "HealthDamage", "10");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        RangedPhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 0);
+        assert_eq!(
+            e.stats.get(HEALTH).unwrap().cur,
+            7,
+            "HP 50 - (spillover 33 + HealthDamage 10) = 7"
+        );
+    }
+
+    /// **FocusDamage = 0 → no Focus mutation AND no Health damage.**
+    /// The spillover gate trips on `focus_overflow == 0`. With no
+    /// Focus damage configured, overflow is also 0, so the script
+    /// returns before touching HEALTH. This pins that the script is
+    /// genuinely Focus-driven — HealthDamage alone shouldn't fire.
+    #[test]
+    fn ranged_physical_zero_focus_damage_skips_health_too() {
+        let mut mgr = make_mgr_with_target();
+        let effect = effect_with_two_nvps("FocusDamage", "0", "HealthDamage", "10");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        RangedPhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 200, "no focus mutation");
+        assert_eq!(
+            e.stats.get(HEALTH).unwrap().cur,
+            50,
+            "no health damage when Focus damage is zero"
+        );
+    }
+
+    /// **Missing target is a graceful no-op.**
+    #[test]
+    fn ranged_physical_missing_target_is_noop() {
+        let mut mgr = make_mgr_with_target();
+        let effect = effect_with_two_nvps("FocusDamage", "100", "HealthDamage", "10");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 999, // doesn't exist
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        RangedPhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 200);
+        assert_eq!(e.stats.get(HEALTH).unwrap().cur, 50);
+    }
+
+    // ── RangedEnergyDamage ────────────────────────────────────────────
+
+    /// **Energy damage hits both pools simultaneously — no gating.**
+    /// The structural difference vs. RangedPhysicalDamage: even if the
+    /// target's Focus could absorb the requested damage, Health still
+    /// takes the HealthDamage NVP. This is what makes Energy weapons
+    /// the "ignore shields" counterpart to Physical.
+    #[test]
+    fn ranged_energy_applies_both_pools_in_parallel() {
+        let mut mgr = make_mgr_with_target();
+        // Focus 200/1000, HP 50/100 in fixture.
+        let effect = effect_with_two_nvps("FocusDamage", "30", "HealthDamage", "15");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        RangedEnergyDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.stats.get(FOCUS).unwrap().cur,
+            170,
+            "200 - 30 = 170 (no gating — applied independently)"
+        );
+        assert_eq!(
+            e.stats.get(HEALTH).unwrap().cur,
+            35,
+            "50 - 15 = 35 (applied even though Focus could have absorbed)"
+        );
+    }
+
+    /// Zero-NVP edge: nothing applied either way.
+    #[test]
+    fn ranged_energy_zero_nvps_is_noop() {
+        let mut mgr = make_mgr_with_target();
+        let effect = effect_with_two_nvps("FocusDamage", "0", "HealthDamage", "0");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        RangedEnergyDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 200);
+        assert_eq!(e.stats.get(HEALTH).unwrap().cur, 50);
+    }
+
+    /// Pool clamps at 0 — Focus damage exceeding cur drains to 0, not
+    /// below. (For Energy there's no spillover so the excess just
+    /// disappears.)
+    #[test]
+    fn ranged_energy_drain_clamps_at_zero() {
+        let mut mgr = make_mgr_with_target();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            if let Some(s) = e.stats.get_mut(FOCUS) {
+                s.update(0, 20, 1000);
+            }
+        }
+        let effect = effect_with_two_nvps("FocusDamage", "100", "HealthDamage", "5");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        RangedEnergyDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 0, "focus clamps at 0");
+        assert_eq!(e.stats.get(HEALTH).unwrap().cur, 45, "50 - 5 = 45");
     }
 }
