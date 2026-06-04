@@ -190,10 +190,13 @@ client's wire-method table and cross-checked with
 1. **Heal Focus**: pure-RE follow-up — trace the action-bar Lua
    that builds the `useAbility` arg list to see whether it passes
    the player's entity id as arg2 for self-casts.
-2. **P90 swap**: shipped via PR #502 — re-send
-   `onActiveSlotUpdate` from `handle_init_player_state` after the
-   client has confirmed `onClientReady`. Needs playtest to
-   confirm diagnosis (the next session should show non-zero
+2. **P90 swap**: implemented in PR #502 (open, pending merge —
+   the resend code lives in the PR branch, not yet on main).
+   The fix adds an `onActiveSlotUpdate` re-emission to
+   `handle_init_player_state` (which is itself invoked after
+   the client sends `onClientReady`, so by the time the resend
+   fires the bag-list map has been initialized). Needs playtest
+   to confirm diagnosis (the next session should show non-zero
    `requestActiveSlotChange` events after F-key presses).
 
 ## In-flight queue audit (2026-06-04 follow-up)
@@ -206,12 +209,13 @@ rejection-path drain is missing.**
 in-flight ability queue at `GameEntityManager+0x228` via the
 handler `LAB_00cea050` in `FUN_00cc33f0`.
 
-Audited every committed-path return from
+Audited every `return false` rejection path AND the success-commit
+path in
 `crates/services/src/cell/abilities/use_ability/mod.rs::handle_use_ability`:
 
 | Outcome | `onTimerUpdate` emitted? | Drain ok? |
 |---|---|---|
-| Successful commit | ✅ line 530 (every shot) | yes |
+| Successful commit | ✅ in the success-commit path of `handle_use_ability`, emitted unconditionally after `serialize_timer_update(TIMER_ABILITY_COOLDOWN, …)` | yes |
 | Unknown ability id | ❌ early return | gap |
 | Ability not in known set + not weapon-granted | ❌ early return | gap |
 | Ability on cooldown | ❌ early return | gap |
@@ -219,8 +223,9 @@ Audited every committed-path return from
 | No ammo | ❌ early return | gap |
 | Target dead | ❌ early return | gap |
 | Out of range | ⚠ sends `onErrorCode(42)` only | likely gap |
-| Mid-draw queued | ❌ early return | gap |
+| Mid-draw queued (`pending_attack_at` already set) | ❌ early return | gap |
 | Bandolier slot swap in progress | ❌ early return | gap |
+| **Holstered-weapon queue** (`weapon_holstered + is_player + threatened_mobs.is_empty()`) | ❌ early return after stashing `pending_attack_*` + sending appearance refresh + Item_Equip sequence | likely gap (no cooldown packet, but the queued attack's later re-fire via `pending_attack_tick` would emit one) |
 
 If the client speculatively adds an entry to its in-flight queue
 **before** receiving the server's response, every rejection-path
