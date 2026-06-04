@@ -550,6 +550,28 @@ mod live_db {
                  incorrectly bind the player for an NPC dialog"
             );
         }
+
+        // A dialog with at least one NULL `speaker_id` screen must NOT
+        // be classified as a monologue. The original predicate
+        // (`COUNT(*) FILTER (WHERE speaker_id <> 0) = 0`) treated NULL
+        // as "not non-zero" and wrongly admitted such dialogs — the
+        // exact mis-binding the cache exists to prevent.
+        let null_speaker_dialog: Option<i32> = sqlx::query_scalar(
+            "SELECT dialog_id FROM resources.dialog_screens \
+             WHERE speaker_id IS NULL \
+             GROUP BY dialog_id LIMIT 1",
+        )
+        .fetch_optional(&pool)
+        .await
+        .expect("query must succeed");
+        if let Some(d) = null_speaker_dialog {
+            assert!(
+                !ids.contains(&d),
+                "dialog {d} has at least one NULL speaker_id screen — it must NOT be \
+                 in the monologue set; treating NULL as monologue would mis-bind the \
+                 player as the dialog context entity for unknown-speaker dialogs"
+            );
+        }
     }
 
     #[tokio::test]

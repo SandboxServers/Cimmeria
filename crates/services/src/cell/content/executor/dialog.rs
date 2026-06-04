@@ -486,21 +486,10 @@ mod tests {
         );
     }
 
-    /// **Monologue fallback: when no NPC resolves AND the dialog is a
-    /// player-monologue (all screens speaker_id=0), bind the player as
-    /// the wire EntityId instead of bailing.** This is the cellblock
-    /// wake-up case — dialog 2982 fires from chain 1001 with no NPC
-    /// context, both screens carry `speaker_id = 0`, and the intended
-    /// render is the player's own portrait + name (inner thought). The
-    /// client's per-screen lookup of speaker_id=0 falls back to the
-    /// player's name naturally (see RE finding
-    /// `docs/reverse-engineering/findings/dialog-portrait-lookup.md`).
-    ///
-    /// Without this branch, ~42% of authored dialog screens (the
-    /// speaker_id=0 ones) silently never displayed. Live observation
-    /// 2026-06-02: dialog 2982 chain 1001 fired this exact bail every
-    /// session start. Reverting the monologue branch must fail this
-    /// test.
+    /// When no NPC resolves and the dialog is in the monologue cache,
+    /// the wire EntityId must be the player's own id (not bail). The
+    /// per-screen `speaker_id = 0` lookup on the client falls back to
+    /// the player's name, rendering as inner thought.
     #[tokio::test]
     async fn display_binds_player_when_no_npc_and_dialog_is_monologue() {
         let mut mgr = make_space_manager();

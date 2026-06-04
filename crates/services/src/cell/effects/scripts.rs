@@ -402,21 +402,22 @@ impl EffectScript for Suppression {
 ///    clamps at 0 — any unused damage is the "overflow."
 /// 2. If FOCUS absorbed *everything* (no overflow) → done. No HEALTH
 ///    damage. This is the "shields held" case.
-/// 3. Otherwise, compute spillover = overflow / 3, add `HealthDamage`,
-///    apply to HEALTH.
+/// 3. Otherwise, compute spillover via the legacy two-step integer
+///    formula `(overflow * 100 / FocusDamage) * FocusDamage / 300`,
+///    add `HealthDamage`, apply to HEALTH.
 ///
-/// The legacy `/300` divisor in the visual script collapses to `/3`
-/// algebraically: `remaining_pct = overflow * 100 / FocusDamage`, then
-/// `spillover = remaining_pct * FocusDamage / 300` simplifies to
-/// `overflow / 3` (the `FocusDamage` factor cancels). So the spillover
-/// is exactly 1/3 of the focus-pool overflow.
+/// **Why the two-step integer formula matters** — algebraically the
+/// `FocusDamage` factor cancels to `overflow / 3`, but the legacy
+/// truncates after each integer step. With `FocusDamage = 80` and
+/// `overflow = 3`: legacy computes `3 * 100 / 80 = 3` (truncated from
+/// 3.75) then `3 * 80 / 300 = 0` (truncated from 0.8) — zero
+/// spillover. The algebraic shortcut `overflow / 3` gives 1 here,
+/// over-damaging on small overflows. We match the legacy truncation
+/// step-for-step so combat tuning is parity-correct.
 ///
-/// Why this matters: without this script, the legacy NVP fallback
-/// applies both `FocusDamage` and `HealthDamage` independently every
-/// shot, so the player takes HEALTH damage even at full Focus. The
-/// fight feels meaningfully harder than authored. With the script,
-/// physical ranged exchanges trade Focus first, then bleed into
-/// Health once shields are down — the intended cadence.
+/// Without this script, the legacy NVP fallback applies both
+/// `FocusDamage` and `HealthDamage` independently every shot, so the
+/// player takes HEALTH damage even at full Focus.
 ///
 /// Reference: `deprecated/python/cell/effects/RangedPhysicalDamage.py`
 /// and `deprecated/data-scripts/scripts/effects/RangedPhysicalDamage.script`.
@@ -468,8 +469,12 @@ impl EffectScript for RangedPhysicalDamage {
             return;
         }
 
-        // Spillover = overflow / 3 + base HealthDamage NVP.
-        let spillover = focus_overflow / 3;
+        // Two-step integer truncation matches the legacy Atrea script
+        // graph (Node 6 → 9 → 10 → 12). DO NOT collapse to
+        // `focus_overflow / 3` — see fn docs for the small-overflow
+        // divergence.
+        let remaining_pct = focus_overflow.saturating_mul(100) / focus_damage;
+        let spillover = remaining_pct.saturating_mul(focus_damage) / 300;
         let final_health_damage = spillover + health_damage;
         if final_health_damage <= 0 {
             return;
@@ -486,20 +491,12 @@ impl EffectScript for RangedPhysicalDamage {
             effect_id = ctx.effect.effect_id,
             focus_damage,
             focus_overflow,
-            health_damage_applied = final_health_damage,
+            remaining_pct,
             spillover,
+            health_damage_applied = final_health_damage,
             base_health_damage = health_damage,
             "RangedPhysicalDamage: Focus pierced, applied HEALTH bleed",
         );
-        // damage_type=14 (DT_PHYSICAL) recorded for documentation but
-        // not used here: the legacy `qrCombatDamage` path applied
-        // armor + absorption via that type, and we'll route through
-        // `cell::combat::calculate_damage` in a follow-up that unifies
-        // every script's stat-mutation path. For now this matches the
-        // existing MeleeDamage shape (raw stat mutation) so behavior
-        // is consistent across scripts that share the legacy NVP-style
-        // contract.
-        let _: i8 = DT_PHYSICAL;
     }
 }
 
@@ -527,6 +524,14 @@ impl EffectScript for RangedEnergyDamage {
         }
 
         let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
+            tracing::debug!(
+                target: "abilities",
+                event = "ranged_energy_damage",
+                source_id = ctx.source_id,
+                target_id = ctx.target_id,
+                effect_id = ctx.effect.effect_id,
+                "RangedEnergyDamage: target missing — skipped",
+            );
             return;
         };
 
@@ -553,9 +558,6 @@ impl EffectScript for RangedEnergyDamage {
             health_damage,
             "RangedEnergyDamage applied",
         );
-        // damage_type=15 (DT_ENERGY) — see RangedPhysicalDamage note
-        // re unified pipeline migration.
-        let _: i8 = DT_ENERGY;
     }
 }
 
@@ -1259,5 +1261,76 @@ mod tests {
         let e = ctx.space_mgr.get_entity(1).unwrap();
         assert_eq!(e.stats.get(FOCUS).unwrap().cur, 0, "focus clamps at 0");
         assert_eq!(e.stats.get(HEALTH).unwrap().cur, 45, "50 - 5 = 45");
+    }
+
+    /// Pins the legacy two-step truncation: with FocusDamage=80,
+    /// overflow=3 → `remaining_pct = 3*100/80 = 3` (truncated from 3.75)
+    /// → `spillover = 3*80/300 = 0` (truncated from 0.8). Zero spillover.
+    /// A regression to `overflow / 3` would compute `3/3 = 1` and over-
+    /// damage small overflows.
+    #[test]
+    fn ranged_physical_small_overflow_truncates_to_zero_spillover() {
+        let mut mgr = make_mgr_with_target();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            if let Some(s) = e.stats.get_mut(FOCUS) {
+                s.update(0, 77, 1000); // 80 dmg → applied 77 → overflow 3
+            }
+        }
+        let effect = effect_with_two_nvps("FocusDamage", "80", "HealthDamage", "10");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        RangedPhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 0);
+        // Spillover = 0, so final health damage is just HealthDamage = 10.
+        // HP 50 - 10 = 40. With `overflow / 3` (1 spillover) it would be 39.
+        assert_eq!(
+            e.stats.get(HEALTH).unwrap().cur,
+            40,
+            "small overflow (3) truncates to zero spillover; only base \
+             HealthDamage applies. Regression to overflow/3 would give 39."
+        );
+    }
+
+    /// `param_i32` returns whatever the NVP parses to; the script
+    /// `.max(0)`s it, so a negative NVP value (content authoring
+    /// mistake) is clamped to 0 and treated as zero damage on that
+    /// pool — never produces "negative damage" healing.
+    #[test]
+    fn ranged_physical_negative_nvps_clamp_to_zero() {
+        let mut mgr = make_mgr_with_target();
+        let effect = effect_with_two_nvps("FocusDamage", "-50", "HealthDamage", "-20");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        RangedPhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 200, "no focus change");
+        assert_eq!(e.stats.get(HEALTH).unwrap().cur, 50, "no health change");
+    }
+
+    /// Missing target on the energy path returns silently with a debug
+    /// log — companion to `ranged_physical_missing_target_is_noop`.
+    #[test]
+    fn ranged_energy_missing_target_is_noop() {
+        let mut mgr = make_mgr_with_target();
+        let effect = effect_with_two_nvps("FocusDamage", "30", "HealthDamage", "15");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 9999,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        RangedEnergyDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 200);
+        assert_eq!(e.stats.get(HEALTH).unwrap().cur, 50);
     }
 }

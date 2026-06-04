@@ -72,9 +72,13 @@ pub async fn load_dialog_set_maps(
 ///   portrait and substitute the player's name everywhere — the bug
 ///   the existing "warn and bail" path was added to prevent.
 ///
-/// Computed as: dialog_ids whose every screen carries `speaker_id = 0`
-/// AND which have at least one screen (the `HAVING` filters out dialogs
-/// with zero screens, which are content-error rows).
+/// Computed as: dialog_ids where every screen has an explicit
+/// `speaker_id = 0`. The `dialog_screens.speaker_id` column is
+/// nullable and the seed has NULL rows; treating NULL as "monologue"
+/// would misclassify dialogs whose screens have unknown speakers
+/// (the very mis-binding this cache exists to prevent), so the
+/// predicate counts only explicit zeros and requires that to equal
+/// the total row count.
 pub async fn load_monologue_dialog_ids(pool: &PgPool) -> Result<HashSet<i32>, sqlx::Error> {
     use sqlx::Row;
 
@@ -83,7 +87,7 @@ pub async fn load_monologue_dialog_ids(pool: &PgPool) -> Result<HashSet<i32>, sq
          FROM resources.dialog_screens \
          GROUP BY dialog_id \
          HAVING COUNT(*) > 0 \
-            AND COUNT(*) FILTER (WHERE speaker_id <> 0) = 0",
+            AND COUNT(*) = COUNT(*) FILTER (WHERE speaker_id = 0)",
     )
     .fetch_all(pool)
     .await?;

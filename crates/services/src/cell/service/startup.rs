@@ -67,19 +67,18 @@ impl CellService {
             }
         }
 
-        // Load monologue dialog ids for the DisplayDialog executor's
-        // "no NPC resolved → bind player for inner-thought render"
-        // branch. Set stays empty on DB failure — the executor falls
-        // through to the existing warn-and-bail path, so failure is
-        // graceful: monologue dialogs silently don't display rather
-        // than rendering with a wrong NPC bind.
+        // Load monologue dialog ids for the DisplayDialog executor.
+        // ERROR (not WARN) on failure: an empty cache silently strips
+        // ~42% of authored dialog screens (the inner-thought ones)
+        // from world entry. The executor falls through to bail-and-
+        // warn so behavior stays safe, but operators need to see this.
         if let Some(ref pool) = self.db_pool {
             match spawner::load_monologue_dialog_ids(pool).await {
                 Ok(ids) => {
                     space_mgr.monologue_dialog_ids = ids;
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to load monologue dialog ids: {e}");
+                    tracing::error!("Failed to load monologue dialog ids: {e}");
                 }
             }
         }
