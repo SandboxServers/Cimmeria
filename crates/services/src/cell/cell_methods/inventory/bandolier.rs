@@ -248,10 +248,11 @@ pub(crate) async fn handle_request_active_slot_change(
     // drains the active slot when reloads finish; this catches
     // mid-magazine swaps where the player swaps weapons before
     // reloading the empty one.
-    let (prev_persist, new_ammo_type, prev_slot_for_log): (
+    let (prev_persist, new_ammo_type, prev_slot_for_log, auto_cycle_clear_state): (
         Option<(i32, i32, i32, i32)>,
         Option<i32>,
         i32,
+        Option<u32>,
     ) = {
         let entity = match space_mgr.get_entity_mut(entity_id) {
             Some(e) => e,
@@ -299,18 +300,46 @@ pub(crate) async fn handle_request_active_slot_change(
         // This branch catches the no-choreography paths (one slot
         // empty) and the tick re-entry path (which clears
         // `pending_slot_swap_at` above and falls through to here).
-        if slot_id != prev_slot {
+        // Weapon swap also clears auto-cycle stash + last-fired stash.
+        // The stashed ability ids resolved against the OUTGOING weapon
+        // (via `items_event_sets`); firing them on the incoming weapon
+        // either silently rejects in `use_ability` (the new weapon
+        // doesn't grant the stashed id) or misfires the wrong ability.
+        // Live observation: lomiada1 session 2026-06-04 10:04 — auto-
+        // cycle fired stale ability 559 (SMG) after swap to a non-SMG
+        // weapon. Re-engaging auto-cycle on the new weapon's slot is
+        // the player's explicit choice.
+        let auto_cycle_clear_state = if slot_id != prev_slot {
             entity.pending_reload_at = None;
             entity.pending_attack_at = None;
             entity.pending_attack_ability_id = None;
             entity.pending_attack_target_id = None;
-        }
+
+            let had_auto_cycle = entity.abilities.auto_cycle;
+            entity.abilities.auto_cycle = false;
+            entity.abilities.auto_cycle_ability_id = None;
+            entity.abilities.last_fired_ability_id = None;
+            if had_auto_cycle {
+                let old = entity.state_field;
+                entity.state_field &= !crate::cell::combat::BSF_AUTO_CYCLING;
+                (entity.state_field != old).then_some(entity.state_field)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         entity.active_bandolier_slot = slot_id;
         let new_ammo_type = entity
             .bandolier_items
             .get(&slot_id)
             .map(|i| i.cur_ammo_type);
-        (prev_persist, new_ammo_type, prev_slot)
+        (
+            prev_persist,
+            new_ammo_type,
+            prev_slot,
+            auto_cycle_clear_state,
+        )
     };
     // Observability: log the resolved weapon ability for the new slot so
     // SigNoz can verify Phase 1's per-weapon resolution is firing
@@ -341,6 +370,22 @@ pub(crate) async fn handle_request_active_slot_change(
             resolved_ranged_ability = ?resolved_ranged_ability,
             "Active bandolier slot changed — auto-attack ability resolved"
         );
+    }
+
+    // Broadcast BSF_AUTO_CYCLING clear if the swap killed an active
+    // auto-cycle. Self-routed (matches the wire rule for BSF transitions
+    // driven by use_ability::clear_auto_cycle). Skipped when no
+    // transition fired — `Option::is_some` was set above only on a
+    // genuine bit drop.
+    if let Some(new_state) = auto_cycle_clear_state {
+        super::super::super::abilities::send_entity_method(
+            entity_id,
+            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+            new_state.to_le_bytes().to_vec(),
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 
     // Phase 2: send messages now that the borrow is released. Clear the
