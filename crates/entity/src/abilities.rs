@@ -283,13 +283,30 @@ pub struct AbilityTreeData {
 impl AbilityTreeData {
     /// Serialize for `onAbilityTreeInfo(ARRAY<ARRAY<INT32>>)`.
     ///
-    /// Wire: outer ARRAY has no count prefix (the .def says it's
-    /// `ARRAY <of> ARRAY <of> INT32 </of> </of>` — but the outer array
-    /// count is implicitly 3 based on the Python code which always sends
-    /// exactly 3 arrays). Wire: `count1:u32 [ids...] count2:u32 [ids...] count3:u32 [ids...]`.
+    /// The .def declares a single nested-array `<Arg>` —
+    /// `ARRAY <of> ARRAY <of> INT32 </of> </of>` — so BigWorld's wire
+    /// encoding is `[outer_count:u32][inner_count:u32 ids...] × N`. Both
+    /// counts are required; the outer count is what tells the client how
+    /// many inner arrays to expect. Without it the client reads the first
+    /// inner count as the outer count, tries to parse that many inner
+    /// arrays, the parser fails, and the handler aborts silently — the
+    /// abilities window stays empty.
+    ///
+    /// SGW's authored content always sends exactly 3 trees, but the
+    /// outer count is on the wire either way. The Python
+    /// `self.client.onAbilityTreeInfo([a, b, c])` call passes a 3-element
+    /// list; the BigWorld serializer on the Python client side still
+    /// prepends the outer length prefix.
+    ///
+    /// Compare with the working `setupStargateInfo` shape: that .def has
+    /// THREE separate `<Arg>` entries, each `ARRAY<of>INT32</of>`. Three
+    /// top-level args, each its own length-prefixed array, no outer
+    /// wrapper. Coincidentally the same byte layout up to the outer
+    /// prefix — which is what masked this bug.
     pub fn serialize(&self) -> Vec<u8> {
         let total_ids: usize = self.trees.iter().map(|t| t.len()).sum();
-        let mut buf = Vec::with_capacity(12 + total_ids * 4);
+        let mut buf = Vec::with_capacity(4 + 4 * self.trees.len() + total_ids * 4);
+        buf.extend_from_slice(&(self.trees.len() as u32).to_le_bytes());
         for tree in &self.trees {
             buf.extend_from_slice(&(tree.len() as u32).to_le_bytes());
             for &id in tree {
@@ -725,16 +742,17 @@ mod tests {
     fn ability_tree_empty() {
         let tree = AbilityTreeData::default();
         let data = tree.serialize();
-        // 3 arrays, each with count 0
-        assert_eq!(data.len(), 12);
+        // outer count(4) + 3 inner counts(4) = 16
+        assert_eq!(data.len(), 16);
+        // Outer count = 3 (number of inner arrays)
+        let outer = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        assert_eq!(outer, 3);
+        // Each of the 3 inner counts = 0
         for i in 0..3 {
-            let count = u32::from_le_bytes([
-                data[i * 4],
-                data[i * 4 + 1],
-                data[i * 4 + 2],
-                data[i * 4 + 3],
-            ]);
-            assert_eq!(count, 0);
+            let off = 4 + i * 4;
+            let count =
+                u32::from_le_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]);
+            assert_eq!(count, 0, "inner array {i} count must be 0");
         }
     }
 
@@ -744,17 +762,56 @@ mod tests {
             trees: [vec![592, 1005, 642], vec![597, 646, 641], vec![]],
         };
         let data = tree.serialize();
-        // tree0: count(4) + 3*4=12 = 16
-        // tree1: count(4) + 3*4=12 = 16
-        // tree2: count(4) = 4
-        assert_eq!(data.len(), 36);
+        // outer(4) + tree0:count(4)+3*4=12=16 + tree1:16 + tree2:count(4)=4 = 40
+        assert_eq!(data.len(), 40);
 
-        // First tree count
-        let c0 = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        // Outer count = 3 inner arrays
+        let outer = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        assert_eq!(outer, 3);
+        // First inner count = 3 ids
+        let c0 = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
         assert_eq!(c0, 3);
-        // First ability in tree 0
-        let a0 = i32::from_le_bytes([data[4], data[5], data[6], data[7]]);
+        // First ability id in tree 0 = 592
+        let a0 = i32::from_le_bytes([data[8], data[9], data[10], data[11]]);
         assert_eq!(a0, 592);
+    }
+
+    /// **Regression guard: the outer ARRAY count prefix is on the wire.**
+    ///
+    /// Bug shape: the wire encoding for `ARRAY<ARRAY<INT32>>` is
+    /// `[outer:u32][inner:u32 ids...] × N`. Skipping the outer prefix
+    /// is what the original Rust impl did — based on the (wrong) theory
+    /// that "the Python code always sends exactly 3 arrays so the count
+    /// is implicit." It isn't; BigWorld's serializer still emits it.
+    /// The client decoder reads the first u32 as the outer count, gets
+    /// some inner-tree size like 29, tries to parse 29 inner arrays,
+    /// parser fails, handler aborts silently → abilities window stays
+    /// empty for every player.
+    ///
+    /// Reverting [`AbilityTreeData::serialize`] to skip the outer count
+    /// must fail this assertion.
+    #[test]
+    fn ability_tree_outer_count_prefix_is_first_four_bytes() {
+        let tree = AbilityTreeData {
+            trees: [
+                // Real shape: Soldier tree 0 has 29 abilities; if we read
+                // the first u32 as the outer count we'd get 29, not 3 —
+                // the exact decode error the client makes on unprefixed
+                // bytes.
+                (0..29).collect(),
+                vec![],
+                vec![],
+            ],
+        };
+        let data = tree.serialize();
+        let outer = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+        assert_eq!(
+            outer, 3,
+            "first 4 bytes MUST be the outer ARRAY count (=3, the number of \
+             trees). Reverting serialize() to skip the outer prefix would \
+             surface this as outer=29 here — the exact byte the client \
+             misreads as outer-count on the wire."
+        );
     }
 
     #[test]
