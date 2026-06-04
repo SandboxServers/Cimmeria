@@ -352,6 +352,16 @@ pub struct AbilityManager {
     /// never revoke it on weapon swap.
     ///
     /// See [`Self::swap_weapon_granted_abilities`] for the diff math.
+    ///
+    /// **Runtime-only, not persisted.** The set is rebuilt on
+    /// session start: when a player re-enters the world, the
+    /// bandolier's `active_bandolier_slot` is loaded from the
+    /// `bandolier_slot` column, and the cell's
+    /// `swap_weapon_granted_abilities_for_slot` re-runs against an
+    /// empty tracked set + the loaded weapon — producing the same
+    /// granted set the previous session ended with. The DB doesn't
+    /// need a column for this; the items_event_sets table + the
+    /// active slot are the canonical source.
     weapon_granted_abilities: HashSet<i32>,
 
     /// Active ability cooldowns keyed by ability_id.

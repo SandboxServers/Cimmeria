@@ -842,3 +842,96 @@ async fn slot_change_to_empty_slot_revokes_weapon_abilities_and_broadcasts() {
          so the client sees the empty-handed known set"
     );
 }
+
+/// **Same-slot no-op (PR #494 review G10).** When the player
+/// "swaps" to the slot they're already on (e.g., replayed client
+/// packet, CEGUI fires the keybinding 3-4× per physical press),
+/// the weapon-equip ability swap MUST NOT broadcast
+/// `onKnownAbilitiesUpdate`. The diff is empty (same weapon,
+/// same bindings); a forced broadcast would flood the wire on
+/// every duplicate keypress.
+///
+/// Reverting the empty-diff short-circuit in
+/// `swap_weapon_granted_abilities_for_slot` trips this guard by
+/// firing `onKnownAbilitiesUpdate` for the no-op case.
+#[tokio::test]
+async fn same_slot_swap_does_not_broadcast_known_abilities_update() {
+    use crate::cell::content::build_engine;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    const PISTOL_ITEM_ID: i32 = 55;
+    const PISTOL_RANGED: i32 = 579;
+    const PISTOL_MELEE: i32 = 708;
+    const EVENT_RANGED: i32 = 7;
+    const EVENT_MELEE: i32 = 6;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    mgr.item_event_set_abilities
+        .insert((PISTOL_ITEM_ID, EVENT_RANGED), PISTOL_RANGED);
+    mgr.item_event_set_abilities
+        .insert((PISTOL_ITEM_ID, EVENT_MELEE), PISTOL_MELEE);
+
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        e.archetype_id = Some(1);
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: PISTOL_ITEM_ID,
+                clip_size: 12,
+                default_ammo_type: 1,
+                current_ammo: 12,
+                cur_ammo_type: 1,
+            },
+        );
+        e.active_bandolier_slot = 0;
+        // Pre-seed pistol's bindings as already weapon-granted —
+        // the prior equip already populated the tracked set.
+        e.abilities
+            .swap_weapon_granted_abilities([PISTOL_RANGED, PISTOL_MELEE].into_iter().collect());
+        e.pending_slot_swap_at = Some(std::time::Instant::now());
+    }
+    mgr.connect_entity(1);
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let engine = build_engine(None).await;
+
+    // Wire slot 1 = server slot 0 — the slot we're already on.
+    let mut args = Vec::with_capacity(8);
+    args.extend_from_slice(&3i32.to_le_bytes());
+    args.extend_from_slice(&1i32.to_le_bytes());
+
+    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &args, &tx, &mut mgr, &engine).await;
+
+    // Known set must be unchanged.
+    let entity = mgr.get_entity(1).unwrap();
+    assert!(entity.abilities.has_ability(PISTOL_RANGED));
+    assert!(entity.abilities.has_ability(PISTOL_MELEE));
+
+    // No onKnownAbilitiesUpdate broadcast should have fired. Other
+    // wire packets from the slot-change handler (active-slot
+    // indicator, etc.) are out of scope here — we're pinning the
+    // ability-swap broadcast specifically.
+    let mut saw_known_abilities_update = false;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall {
+            entity_id: 1,
+            method_index,
+            ..
+        } = msg
+        {
+            if method_index == crate::cell::client_methods::player::ON_KNOWN_ABILITIES_UPDATE {
+                saw_known_abilities_update = true;
+            }
+        }
+    }
+    assert!(
+        !saw_known_abilities_update,
+        "same-slot 'swap' (weapon binding unchanged) must NOT broadcast \
+         onKnownAbilitiesUpdate — the diff is empty and the bulk update \
+         would flood the wire on every duplicate keypress"
+    );
+}
