@@ -190,10 +190,67 @@ client's wire-method table and cross-checked with
 1. **Heal Focus**: pure-RE follow-up — trace the action-bar Lua
    that builds the `useAbility` arg list to see whether it passes
    the player's entity id as arg2 for self-casts.
-2. **P90 swap**: ship the cell-side `onActiveSlotUpdate` re-send
-   on `InitPlayerState` (PR pending — needs playtest to confirm
-   diagnosis before merge).
-3. **In-flight queue audit**: confirm server emits
-   `AbilityCooldownUpdate` for every committed ability — gap
-   here would explain Heal Focus failing after the player has
-   already cast another ability that didn't clear cleanly.
+2. **P90 swap**: shipped via PR #502 — re-send
+   `onActiveSlotUpdate` from `handle_init_player_state` after the
+   client has confirmed `onClientReady`. Needs playtest to
+   confirm diagnosis (the next session should show non-zero
+   `requestActiveSlotChange` events after F-key presses).
+
+## In-flight queue audit (2026-06-04 follow-up)
+
+**Verdict: the success-path drain is correctly wired; the
+rejection-path drain is missing.**
+
+`AbilityCooldownUpdate` (Mercury method 12 / `onTimerUpdate` with
+`TIMER_ABILITY_COOLDOWN`) is the packet that drains the client's
+in-flight ability queue at `GameEntityManager+0x228` via the
+handler `LAB_00cea050` in `FUN_00cc33f0`.
+
+Audited every committed-path return from
+`crates/services/src/cell/abilities/use_ability/mod.rs::handle_use_ability`:
+
+| Outcome | `onTimerUpdate` emitted? | Drain ok? |
+|---|---|---|
+| Successful commit | ✅ line 530 (every shot) | yes |
+| Unknown ability id | ❌ early return | gap |
+| Ability not in known set + not weapon-granted | ❌ early return | gap |
+| Ability on cooldown | ❌ early return | gap |
+| Reload in flight | ❌ early return | gap |
+| No ammo | ❌ early return | gap |
+| Target dead | ❌ early return | gap |
+| Out of range | ⚠ sends `onErrorCode(42)` only | likely gap |
+| Mid-draw queued | ❌ early return | gap |
+| Bandolier slot swap in progress | ❌ early return | gap |
+
+If the client speculatively adds an entry to its in-flight queue
+**before** receiving the server's response, every rejection-path
+return leaves a stuck entry. The next `useAbility` call —
+including Heal Focus — would then be suppressed by the gate at
+`FUN_00d2b020`.
+
+**Whether the client speculatively populates the queue is not yet
+confirmed.** The path to validate is:
+
+1. Inspect `FUN_00d2b020` callers — does any caller insert into
+   `this+0x228` BEFORE the wire emit (speculative), or only on
+   the response NetIn handler (reactive)?
+2. If speculative: ship a synthetic drain packet on every
+   `handle_use_ability` rejection. Could be a no-op
+   `onTimerUpdate(ability_id, TIMER_ABILITY_COOLDOWN, dur=0, ...)`
+   sent right before each `return false`, or a dedicated
+   `onAbilityRejected` wire method (requires `entities/defs` +
+   client RE to confirm a handler exists).
+3. If reactive: the client only adds to the queue on
+   `LAB_00cea050` — which means the queue should always be
+   drainable by the NEXT `AbilityCooldownUpdate`, no fix needed.
+
+This investigation is not blocking the P90 swap fix (#502),
+which addresses an unrelated gate. The follow-up here is a
+separate RE session against the client's `useAbility` send
+pipeline at `FUN_00d2afc0` → `FUN_00d2ae40` → `FUN_00cacd50`,
+specifically looking for inserts into the queue at offset
+`+0x228` on the emit side.
+
+**If lomiada's next session shows Heal Focus still failing AFTER
+PR #502 lands**, the in-flight queue is the next suspect and
+the RE follow-up above becomes priority.
