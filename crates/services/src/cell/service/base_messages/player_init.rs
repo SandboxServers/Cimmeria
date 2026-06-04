@@ -53,6 +53,56 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         entity.player_id = Some(player_id);
         entity.archetype_id = Some(archetype_id);
 
+        // Seed core stats from the archetype's base values. Without
+        // this seed, the cell-side `CellEntity::stats` stays at the
+        // default `Stat { min: 0, cur: 0, max: 0 }` tuple it gets
+        // from `StatList::new()`, which means:
+        //   - FOCUS is at 0/0/0 → `RangedPhysicalDamage` reads
+        //     `target.stats.get(FOCUS).cur` as 0 and absorbs 0 — the
+        //     shield mechanism never engages and the player takes
+        //     full overflow damage every shot.
+        //   - HEALTH is at 0/0/0 → `set_current(max)` on respawn
+        //     restores 0, leaving the player with 0 HP at spawn.
+        //
+        // The base service's `world_data::map_loaded` builds a LOCAL
+        // `StatList`, applies the archetype to it, and serializes
+        // that for `onStatUpdate` — so the CLIENT sees the right
+        // numbers from world entry while the SERVER's cell entity
+        // has zeroes. Symptom on lomiada's 2026-06-04 18:09 session:
+        // every NPC shot landed `focus_overflow = focus_damage` (no
+        // absorb), spillover full strength, 86 HP per hit.
+        //
+        // The archetype lookup mirrors the map_loaded path so both
+        // sides use the same source-of-truth (the values hardcoded
+        // from `db/resources/Archetypes/Seed/archetypes.sql` in
+        // `mercury::world_data::stats::archetype_stats`).
+        {
+            let arch = crate::mercury::archetype_stats(archetype_id);
+            entity
+                .stats
+                .apply_archetype(&cimmeria_entity::stats::ArchetypeStatValues {
+                    coordination: arch.coordination,
+                    engagement: arch.engagement,
+                    fortitude: arch.fortitude,
+                    morale: arch.morale,
+                    perception: arch.perception,
+                    intelligence: arch.intelligence,
+                    health: arch.health,
+                    focus: arch.focus,
+                    health_per_level: arch.health_per_level,
+                    focus_per_level: arch.focus_per_level,
+                });
+            tracing::info!(
+                target: "stats",
+                event = "archetype_stats_seeded",
+                entity_id,
+                archetype_id,
+                health = arch.health,
+                focus = arch.focus,
+                "Seeded cell-entity stats from archetype base values"
+            );
+        }
+
         // Register player's known abilities on the server-side entity
         for &ability_id in &abilities {
             entity.abilities.add_ability(ability_id);
@@ -383,6 +433,78 @@ mod system_options_assignment_tests {
             e.system_options, hydrated,
             "InitPlayerState must overwrite the entity's default \
              SystemOptions with the DB-hydrated values",
+        );
+    }
+
+    /// **Lomiada's 2026-06-04 18:09 session regression.**
+    /// `InitPlayerState` must seed the cell-entity's stats from the
+    /// archetype's base values so the damage scripts see non-zero
+    /// FOCUS + HEALTH pools. Without this, `RangedPhysicalDamage`
+    /// reads `target.stats.get(FOCUS).cur` as 0 → focus_overflow ==
+    /// focus_damage every shot → no shield absorb → full spillover
+    /// damage every hit.
+    ///
+    /// Pins both pools at non-zero with the Soldier archetype
+    /// values (760 HEALTH, 1570 FOCUS — straight out of the
+    /// hardcoded `mercury::world_data::stats::archetype_stats`
+    /// table). Reverting the `apply_archetype` call in
+    /// `handle_init_player_state` trips this guard by leaving the
+    /// stats at the `StatList::new()` default of (0, 0, 0).
+    #[tokio::test]
+    async fn init_player_state_seeds_stats_from_archetype() {
+        use cimmeria_entity::stats::{FOCUS, HEALTH};
+
+        let mut mgr = make_mgr();
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(32);
+
+        handle_init_player_state(
+            1,
+            100,
+            "Castle_CellBlock".into(),
+            1, // archetype_id = Soldier
+            vec![],
+            vec![],
+            0,
+            vec![],
+            SystemOptions::default(),
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        let e = mgr.get_entity(1).unwrap();
+
+        let health = e
+            .stats
+            .get(HEALTH)
+            .expect("HEALTH stat must exist on cell entity");
+        assert_eq!(
+            health.max, 760,
+            "Soldier max HEALTH must be seeded to the archetype's 760 — \
+             pre-fix the default (0, 0, 0) tuple meant respawn would \
+             restore 0 HP and the player would spawn dead.",
+        );
+        assert_eq!(
+            health.cur, 760,
+            "Initial HEALTH cur must equal max — apply_archetype \
+             sets (min=0, cur=max, max=max)",
+        );
+
+        let focus = e
+            .stats
+            .get(FOCUS)
+            .expect("FOCUS stat must exist on cell entity");
+        assert_eq!(
+            focus.max, 1570,
+            "Soldier max FOCUS must be seeded to the archetype's 1570",
+        );
+        assert_eq!(
+            focus.cur, 1570,
+            "Initial FOCUS cur must equal max — without this, \
+             RangedPhysicalDamage absorbs zero (overflow == full \
+             damage every shot, 86 HP per hit on lomiada's session).",
         );
     }
 
