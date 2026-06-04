@@ -147,8 +147,20 @@ pub async fn handle_use_ability(
                 .item_event_set_abilities
                 .get(&(item_id, super::super::spawner::EVENT_ITEM_RANGED))
             {
+                // Same-id guard: if a weapon ever bound the same id the
+                // player already presses (hypothetical content where a
+                // pistol-class item binds 592 directly), the redirect is
+                // a no-op — skip the rewrite and the re-lookup so the
+                // DEBUG log only fires when something actually changed.
                 if weapon_ranged_ability != ability_id {
-                    tracing::info!(
+                    // DEBUG, not INFO — fires on every player shot
+                    // during sustained fire (auto-cycle 1.5–2 Hz). INFO
+                    // would balloon the log volume for what is, after
+                    // the first redirect, expected steady-state
+                    // behavior. The `combat.use_ability` span (INFO)
+                    // already records every commit; this DEBUG just
+                    // discriminates the redirect path inside it.
+                    tracing::debug!(
                         entity_id,
                         original_ability_id = ability_id,
                         weapon_ability_id = weapon_ranged_ability,
@@ -158,6 +170,12 @@ pub async fn handle_use_ability(
                     );
                     ability_id = weapon_ranged_ability;
                     ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
+                    // Depends on PR #494 adding the weapon's RANGED
+                    // binding to `known_abilities` at equip time. The
+                    // `is_ability_granted_by_active_weapon` fallback in
+                    // the validation block below catches the gap if PR
+                    // #494 hasn't landed yet, but the explicit grant is
+                    // the cleaner path so this comment doesn't drift.
                 }
             }
         }
