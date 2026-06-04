@@ -38,6 +38,11 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (16, 621, 'Healt
 
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (17, 621, 'FocusDamage', '200');
 
+-- Strike (594) / effect 656: shipped via PR #493 (MeleePhysicalDamage).
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (18, 656, 'HealthDamage', '10');
+
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (19, 656, 'FocusDamage', '100');
+
 -- Wires effect 2008 (Health Heal — ability 1646, +10% Health) to the
 -- existing `HealHealth` effect script. The script reads HealPercentage
 -- and heals the target's HEALTH stat by that % of max. Set high so it

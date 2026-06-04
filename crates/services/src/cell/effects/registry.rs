@@ -21,6 +21,7 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         "HealHealth" => Some(&scripts::HealHealth),
         "HealFocus" => Some(&scripts::HealFocus),
         "MeleeDamage" => Some(&scripts::MeleeDamage),
+        "MeleePhysicalDamage" => Some(&scripts::MeleePhysicalDamage),
         "AbsorbShield" => Some(&scripts::AbsorbShield),
         "Stun" => Some(&scripts::Stun),
         "Suppression" => Some(&scripts::Suppression),
@@ -39,6 +40,7 @@ mod tests {
         assert!(lookup("HealHealth").is_some());
         assert!(lookup("HealFocus").is_some());
         assert!(lookup("MeleeDamage").is_some());
+        assert!(lookup("MeleePhysicalDamage").is_some());
         assert!(lookup("AbsorbShield").is_some());
         assert!(lookup("Stun").is_some());
         assert!(lookup("Suppression").is_some());
