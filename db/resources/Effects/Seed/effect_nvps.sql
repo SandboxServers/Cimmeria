@@ -38,11 +38,15 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (16, 621, 'Healt
 
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (17, 621, 'FocusDamage', '200');
 
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (18, 656, 'HealthDamage', '10');
+
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (19, 656, 'FocusDamage', '100');
+
 --
 -- TOC entry 3313 (class 0 OID 0)
 -- Dependencies: 305
 -- Name: effect_nvps_2_nvp_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('effect_nvps_2_nvp_id_seq', 18, true);
+SELECT pg_catalog.setval('effect_nvps_2_nvp_id_seq', 20, true);
 
