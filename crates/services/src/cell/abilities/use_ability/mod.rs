@@ -22,6 +22,25 @@ use super::super::space_manager::SpaceManager;
 
 use super::messaging::{flush_attacker_ammo_stat, send_entity_method};
 
+/// The universal archetype-starter default ranged auto-attack ability.
+///
+/// Granted to every char_def (1-14) at character creation per
+/// `db/resources/Archetypes/Seed/char_creation_abilities.sql`. The
+/// action-bar slot the player drags Pistol Shot into stays bound to
+/// `592` across weapon swaps; the fire-time redirect in
+/// `handle_use_ability` resolves it to the active weapon's RANGED
+/// binding so a player firing this with a P90 equipped fires SMG
+/// Auto Attack (559), with a pistol fires Pistol Auto Attack (579),
+/// etc. See the redirect comment in `handle_use_ability` for the
+/// full rationale + scope limits.
+///
+/// Single-id constant rather than a slice because every archetype
+/// shares this one — Soldier, Commando, Scientist, Archaeologist all
+/// get 592. If a future archetype defines a different default ranged
+/// starter, add it as a second constant + extend the redirect check
+/// to walk a small `&[i32]` slice.
+const ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK: i32 = 592;
+
 /// Broadcast `onStateFieldUpdate` after a `BSF_AUTO_CYCLING` transition.
 /// Self-only routing (like BSF_InCombat changes) — kept in one place so
 /// arm/clear sites don't drift apart on the wire rule.
@@ -69,13 +88,80 @@ async fn send_state_field(
 )]
 pub async fn handle_use_ability(
     entity_id: u32,
-    ability_id: i32,
+    mut ability_id: i32,
     target_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
     // ── Look up ability definition from DB (before mutable borrow) ──
-    let ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
+    let mut ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
+
+    // ── Archetype-default weapon redirect ──
+    //
+    // Ability 592 (Pistol Shot) is granted to every char_def at
+    // character creation as the universal "default ranged auto-attack"
+    // (see `db/resources/Archetypes/Seed/char_creation_abilities.sql`:
+    // every char_def 1-14 gets 592). The action-bar slot the player
+    // drags it into stays bound to 592 across weapon swaps — the
+    // client has no wire path for single-slot rebind (confirmed by
+    // Ghidra scan, `client.def` audit, and the deprecated python
+    // SGWPlayer reference). So when the player equips a P90 (which
+    // binds 559 SMG Auto Attack to its RANGED event) and presses the
+    // action-bar slot, the wire arrives as `useAbility(592)` and the
+    // server fires Pistol Shot — wrong animation, wrong damage
+    // profile, wrong ammo pool. Reported as "P90 fires using the
+    // pistol shot ability and not the SMG shot ability."
+    //
+    // Redirect rule: if the called ability is the archetype default
+    // ranged auto-attack AND the player has a weapon active whose
+    // RANGED binding differs, swap `ability_id` to the weapon's
+    // binding before validation runs. The rest of the handler uses
+    // the post-redirect id naturally — known-set check, cooldown,
+    // range, effect dispatch, on-wire packets all key on the weapon's
+    // ability. The player drags Pistol Shot to slot 1 once; equipping
+    // a P90 makes that slot fire SMG; equipping a pistol fires Pistol
+    // Auto Attack; the slot follows the weapon without ever needing a
+    // rebind from the server.
+    //
+    // **What's NOT in scope here:**
+    // - Melee equivalent (Strike, 594). Strike's animation/identity is
+    //   more distinct than Pistol Shot's, and weapons each bind a
+    //   different MELEE id (P90: 595, pistol: 708). Could redirect
+    //   symmetrically but the user only reported the ranged break;
+    //   handle melee in a follow-up if it turns out to need the same
+    //   treatment.
+    // - Heal Focus (597) and other non-attack archetype starters —
+    //   these have no weapon binding, the lookup returns None,
+    //   redirect is a no-op.
+    // - Weapon-bound abilities already in the known set (e.g. player
+    //   firing 559 directly with P90 equipped). The redirect only
+    //   fires for the archetype-default starter id; firing the weapon
+    //   binding directly skips this entire block.
+    if ability_id == ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK {
+        if let Some(item_id) = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.bandolier_items.get(&e.active_bandolier_slot))
+            .map(|b| b.item_id)
+        {
+            if let Some(&weapon_ranged_ability) = space_mgr
+                .item_event_set_abilities
+                .get(&(item_id, super::super::spawner::EVENT_ITEM_RANGED))
+            {
+                if weapon_ranged_ability != ability_id {
+                    tracing::info!(
+                        entity_id,
+                        original_ability_id = ability_id,
+                        weapon_ability_id = weapon_ranged_ability,
+                        item_id,
+                        "useAbility: redirecting archetype-default ranged \
+                         auto-attack to active weapon's RANGED binding"
+                    );
+                    ability_id = weapon_ranged_ability;
+                    ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
+                }
+            }
+        }
+    }
 
     // ── Auto-cycle manual-override gate ──
     //
