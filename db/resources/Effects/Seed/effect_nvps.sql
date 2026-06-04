@@ -41,10 +41,21 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (17, 621, 'Focus
 -- Wires effect 1383 (Medical Attention: Recuperation — ability 1218,
 -- 75% Health heal over 25 seconds) to the existing `HealHealth` script.
 -- The effect already has `pulse_count = 25` and `pulse_duration = 1`
--- on its row in effects.sql; with HealPercentage = 3.00 the per-pulse
--- script call delivers +3% of max HP, 25 pulses = 75% over 25s.
--- nvp_id 200 is set well clear of PR #493 (18/19) and PR #496 (100)
--- so this PR doesn't collide regardless of merge order.
+-- on its row in effects.sql.
+--
+-- Pulse-count accounting (verified against
+-- `crates/services/src/cell/effects/pulsing.rs:118-119`):
+--   - `damage_apply` fires the initial pulse synchronously
+--     (counts as pulse 1 of 25 — NOT an extra pulse)
+--   - `register_active_effect` schedules `remaining = pulse_count - 1`
+--     follow-up pulses (24 in this case) at `pulse_duration` intervals
+--   - Total: 1 initial + 24 follow-ups = 25 pulses × 3% = 75% of max HP
+--     over 25 seconds. Matches the effect's `effect_desc` exactly.
+--
+-- nvp_id 200 set well clear of PR #493 (18/19) and PR #496 (100) so
+-- this PR doesn't collide regardless of merge order. The 18-199 gap
+-- is harmless; nvp_id is a primary key, not a packed array index, and
+-- the seed loader doesn't iterate by id.
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (200, 1383, 'HealPercentage', '3.00');
 
 --
