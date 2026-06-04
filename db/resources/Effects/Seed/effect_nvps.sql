@@ -38,6 +38,14 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (16, 621, 'Healt
 
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (17, 621, 'FocusDamage', '200');
 
+-- Strike (594) / effect 656: shipped via PR #493 (MeleePhysicalDamage).
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (18, 656, 'HealthDamage', '10');
+
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (19, 656, 'FocusDamage', '100');
+
+-- Health Heal (1646) / effect 2008: shipped via PR #496.
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (100, 2008, 'HealPercentage', '10.00');
+
 -- Wires effect 1383 (Medical Attention: Recuperation — ability 1218,
 -- 75% Health heal over 25 seconds) to the existing `HealHealth` script.
 -- The effect already has `pulse_count = 25` and `pulse_duration = 1`
@@ -51,11 +59,6 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (17, 621, 'Focus
 --     follow-up pulses (24 in this case) at `pulse_duration` intervals
 --   - Total: 1 initial + 24 follow-ups = 25 pulses × 3% = 75% of max HP
 --     over 25 seconds. Matches the effect's `effect_desc` exactly.
---
--- nvp_id 200 set well clear of PR #493 (18/19) and PR #496 (100) so
--- this PR doesn't collide regardless of merge order. The 18-199 gap
--- is harmless; nvp_id is a primary key, not a packed array index, and
--- the seed loader doesn't iterate by id.
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (200, 1383, 'HealPercentage', '3.00');
 
 --

@@ -109,6 +109,34 @@ INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (23, 592);
 INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (23, 594);
 INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (23, 597);
 
+-- Health Heal (1646) — universal starter HP self-heal, parallel to
+-- 597 (Heal Focus). 10% Health, 30s cooldown, 500u range, single-target.
+-- Granted to every char_def the same way 597 is so the player has it
+-- on first login without a trainer detour.
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (1, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (2, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (3, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (4, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (5, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (6, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (7, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (8, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (9, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (10, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (11, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (12, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (13, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (14, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (15, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (16, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (17, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (18, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (19, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (20, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (21, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (22, 1646);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (23, 1646);
+
 -- Medical Attention: Recuperation (1218) — universal starter HoT.
 -- 75% Health restored over 25 seconds (effect 1383 / 25 pulses ×
 -- 3%/pulse via HealHealth). Targets self or another player at 400u.

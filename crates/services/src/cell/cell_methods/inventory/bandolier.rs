@@ -248,10 +248,11 @@ pub(crate) async fn handle_request_active_slot_change(
     // drains the active slot when reloads finish; this catches
     // mid-magazine swaps where the player swaps weapons before
     // reloading the empty one.
-    let (prev_persist, new_ammo_type, prev_slot_for_log): (
+    let (prev_persist, new_ammo_type, prev_slot_for_log, auto_cycle_clear_state): (
         Option<(i32, i32, i32, i32)>,
         Option<i32>,
         i32,
+        Option<u32>,
     ) = {
         let entity = match space_mgr.get_entity_mut(entity_id) {
             Some(e) => e,
@@ -299,18 +300,46 @@ pub(crate) async fn handle_request_active_slot_change(
         // This branch catches the no-choreography paths (one slot
         // empty) and the tick re-entry path (which clears
         // `pending_slot_swap_at` above and falls through to here).
-        if slot_id != prev_slot {
+        // Weapon swap also clears auto-cycle stash + last-fired stash.
+        // The stashed ability ids resolved against the OUTGOING weapon
+        // (via `items_event_sets`); firing them on the incoming weapon
+        // either silently rejects in `use_ability` (the new weapon
+        // doesn't grant the stashed id) or misfires the wrong ability.
+        // Live observation: lomiada1 session 2026-06-04 10:04 — auto-
+        // cycle fired stale ability 559 (SMG) after swap to a non-SMG
+        // weapon. Re-engaging auto-cycle on the new weapon's slot is
+        // the player's explicit choice.
+        let auto_cycle_clear_state = if slot_id != prev_slot {
             entity.pending_reload_at = None;
             entity.pending_attack_at = None;
             entity.pending_attack_ability_id = None;
             entity.pending_attack_target_id = None;
-        }
+
+            let had_auto_cycle = entity.abilities.auto_cycle;
+            entity.abilities.auto_cycle = false;
+            entity.abilities.auto_cycle_ability_id = None;
+            entity.abilities.last_fired_ability_id = None;
+            if had_auto_cycle {
+                let old = entity.state_field;
+                entity.state_field &= !crate::cell::combat::BSF_AUTO_CYCLING;
+                (entity.state_field != old).then_some(entity.state_field)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         entity.active_bandolier_slot = slot_id;
         let new_ammo_type = entity
             .bandolier_items
             .get(&slot_id)
             .map(|i| i.cur_ammo_type);
-        (prev_persist, new_ammo_type, prev_slot)
+        (
+            prev_persist,
+            new_ammo_type,
+            prev_slot,
+            auto_cycle_clear_state,
+        )
     };
     // Observability: log the resolved weapon ability for the new slot so
     // SigNoz can verify Phase 1's per-weapon resolution is firing
@@ -341,6 +370,22 @@ pub(crate) async fn handle_request_active_slot_change(
             resolved_ranged_ability = ?resolved_ranged_ability,
             "Active bandolier slot changed — auto-attack ability resolved"
         );
+    }
+
+    // Broadcast BSF_AUTO_CYCLING clear if the swap killed an active
+    // auto-cycle. Self-routed (matches the wire rule for BSF transitions
+    // driven by use_ability::clear_auto_cycle). Skipped when no
+    // transition fired — `Option::is_some` was set above only on a
+    // genuine bit drop.
+    if let Some(new_state) = auto_cycle_clear_state {
+        super::super::super::abilities::send_entity_method(
+            entity_id,
+            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+            new_state.to_le_bytes().to_vec(),
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 
     // Phase 2: send messages now that the borrow is released. Clear the
@@ -484,6 +529,120 @@ pub(crate) async fn handle_request_active_slot_change(
         entity_id, tx, space_mgr,
     )
     .await;
+
+    // Per-weapon ability swap: revoke the OLD weapon's items_event_sets
+    // bindings from the player's known-ability set and grant the NEW
+    // weapon's bindings. Broadcasts `onKnownAbilitiesUpdate` if the
+    // set changed so the client hotbar/abilities-window re-renders.
+    //
+    // Background: SGW's wire protocol has no single-slot action-bar
+    // rebind method — the action-bar binding is client-owned state
+    // (confirmed by Ghidra dig on SGW.exe, full client.def scan, and
+    // deprecated/python/cell/SGWPlayer.py: `addAbility` / `removeAbility`
+    // both broadcast the bulk `onKnownAbilitiesUpdate` and nothing
+    // smaller exists). The bulk update is the only lever we have:
+    // we tell the client "your known set is now X" and the client
+    // re-evaluates every action-bar slot against that. Whether the
+    // client gracefully migrates a slot bound to the *old* weapon's
+    // ability when the *new* weapon's ability replaces it is exactly
+    // what the user wants validated in playtest — Path A from the
+    // RE finding.
+    //
+    // Tracked separately from `known_abilities` via
+    // `AbilityManager::weapon_granted_abilities` so player-trained
+    // and archetype-starter abilities are never revoked on weapon
+    // swap, even if they happen to overlap with a weapon binding.
+    // See `AbilityManager::swap_weapon_granted_abilities` for the
+    // diff math + the player-already-knew-it carve-out.
+    swap_weapon_granted_abilities_for_slot(entity_id, slot_id, tx, space_mgr).await;
+}
+
+/// Compute the new weapon's `items_event_sets` bindings, hand them to
+/// [`cimmeria_entity::abilities::AbilityManager::swap_weapon_granted_abilities`],
+/// and broadcast `onKnownAbilitiesUpdate` if the set changed.
+///
+/// Probes `EVENT_ITEM_RANGED`, `EVENT_ITEM_MELEE`, and
+/// `EVENT_ITEM_USE_ABILITY` — the three weapon-relevant event ids the
+/// resolve.rs lookup also walks. A weapon often grants one ability per
+/// event id (e.g., pistol: 579 ranged + 708 melee); all of them go
+/// into the new set so any of them is fireable while the weapon is
+/// active.
+///
+/// An empty slot (no item bound) produces an empty new set — every
+/// previously-tracked weapon ability is revoked.
+async fn swap_weapon_granted_abilities_for_slot(
+    entity_id: u32,
+    slot_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    use crate::cell::spawner::{EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_USE_ABILITY};
+    use std::collections::HashSet;
+
+    // 1. New weapon's bindings — read item_id from the now-active slot,
+    //    look up every relevant event_id in items_event_sets.
+    let item_id = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.bandolier_items.get(&slot_id).map(|b| b.item_id));
+    let mut new_set: HashSet<i32> = HashSet::new();
+    if let Some(item_id) = item_id {
+        for event_id in [EVENT_ITEM_RANGED, EVENT_ITEM_MELEE, EVENT_ITEM_USE_ABILITY] {
+            if let Some(&ability_id) = space_mgr.item_event_set_abilities.get(&(item_id, event_id))
+            {
+                new_set.insert(ability_id);
+            }
+        }
+    }
+
+    // 2. Hand the new set to the diff helper; capture (removed, added).
+    let (removed, added) = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => e.abilities.swap_weapon_granted_abilities(new_set),
+        None => return,
+    };
+    if removed.is_empty() && added.is_empty() {
+        return; // No change — skip the broadcast.
+    }
+
+    // 3. Build + broadcast `onKnownAbilitiesUpdate` (method 101) — the
+    //    bulk known-abilities replace. Same wire shape the login burst
+    //    sends in `base_messages/player_init.rs::send_known_abilities_update`
+    //    (we don't call that helper directly because it's `pub(super)`
+    //    and the import-chain reshape isn't worth it for one extra
+    //    call site).
+    //
+    //    Wire format: `ARRAY<INT32> AbilityData` → `u32 count` +
+    //    N × `i32 ability_id`. Read straight from the post-swap
+    //    `known_ability_ids()` so the broadcast matches the entity's
+    //    current state exactly.
+    let ability_ids: Vec<i32> = match space_mgr.get_entity(entity_id) {
+        Some(e) => e.abilities.known_ability_ids(),
+        None => return,
+    };
+    let mut args = Vec::with_capacity(4 + ability_ids.len() * 4);
+    args.extend_from_slice(&(ability_ids.len() as u32).to_le_bytes());
+    for id in &ability_ids {
+        args.extend_from_slice(&id.to_le_bytes());
+    }
+    crate::cell::abilities::send_entity_method(
+        entity_id,
+        crate::cell::client_methods::player::ON_KNOWN_ABILITIES_UPDATE,
+        args,
+        tx,
+        space_mgr,
+    )
+    .await;
+
+    tracing::info!(
+        target: "bandolier",
+        event = "weapon_ability_swap",
+        entity_id,
+        slot_id,
+        item_id = ?item_id,
+        removed = ?removed,
+        added = ?added,
+        new_known_count = ability_ids.len(),
+        "Per-weapon ability grant — broadcast onKnownAbilitiesUpdate"
+    );
 }
 
 #[tracing::instrument(
