@@ -38,11 +38,20 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (16, 621, 'Healt
 
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (17, 621, 'FocusDamage', '200');
 
+-- Wires effect 1383 (Medical Attention: Recuperation — ability 1218,
+-- 75% Health heal over 25 seconds) to the existing `HealHealth` script.
+-- The effect already has `pulse_count = 25` and `pulse_duration = 1`
+-- on its row in effects.sql; with HealPercentage = 3.00 the per-pulse
+-- script call delivers +3% of max HP, 25 pulses = 75% over 25s.
+-- nvp_id 200 is set well clear of PR #493 (18/19) and PR #496 (100)
+-- so this PR doesn't collide regardless of merge order.
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (200, 1383, 'HealPercentage', '3.00');
+
 --
 -- TOC entry 3313 (class 0 OID 0)
 -- Dependencies: 305
 -- Name: effect_nvps_2_nvp_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('effect_nvps_2_nvp_id_seq', 18, true);
+SELECT pg_catalog.setval('effect_nvps_2_nvp_id_seq', 201, true);
 

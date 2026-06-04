@@ -108,3 +108,33 @@ INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (22, 597);
 INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (23, 592);
 INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (23, 594);
 INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (23, 597);
+
+-- Medical Attention: Recuperation (1218) — universal starter HoT.
+-- 75% Health restored over 25 seconds (effect 1383 / 25 pulses ×
+-- 3%/pulse via HealHealth). Targets self or another player at 400u.
+-- Granted to every char_def parallel to 1646 (Health Heal) and
+-- 597 (Heal Focus) so the player has a complementary big-button
+-- emergency heal alongside the small instant one.
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (1, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (2, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (3, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (4, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (5, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (6, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (7, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (8, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (9, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (10, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (11, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (12, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (13, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (14, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (15, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (16, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (17, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (18, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (19, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (20, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (21, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (22, 1218);
+INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (23, 1218);
