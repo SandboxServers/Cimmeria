@@ -384,11 +384,27 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             // enough to confirm the client is alive without flooding
             // WARN. If/when we wire this to SigNoz metrics, parse the
             // 12 floats here and emit a `perf_stats` metric.
-            tracing::debug!(
-                %addr,
-                payload_len = payload.len(),
-                "SGWPlayer.perfStats — telemetry sink (no-op)"
-            );
+            //
+            // A non-48-byte payload is a wire-shape drift signal: the
+            // client either changed the metric set or is sending a
+            // corrupted packet. Logged at DEBUG with both the actual
+            // and expected length so an ops query can grep for it
+            // without us promoting the everyday case to WARN.
+            const EXPECTED_PERF_STATS_LEN: usize = 48;
+            if payload.len() != EXPECTED_PERF_STATS_LEN {
+                tracing::debug!(
+                    %addr,
+                    payload_len = payload.len(),
+                    expected_len = EXPECTED_PERF_STATS_LEN,
+                    "SGWPlayer.perfStats — unexpected payload length (wire shape drift?)"
+                );
+            } else {
+                tracing::debug!(
+                    %addr,
+                    payload_len = payload.len(),
+                    "SGWPlayer.perfStats — telemetry sink (no-op)"
+                );
+            }
         }
 
         _ => {
