@@ -591,27 +591,189 @@ async fn weapon_attack_blocked_while_slot_swap_in_progress() {
     );
 }
 
-/// **Per-weapon ability swap regression guard.**
+/// Weapon swap clears auto-cycle stash + last-fired stash, and
+/// broadcasts the `BSF_AUTO_CYCLING` clear to the client.
 ///
-/// Player has pistol in slot 0 (items_event_sets binds 579 RANGED
-/// + 708 MELEE) and P90 in slot 1 (binds 559 RANGED + 595 MELEE).
-/// They also have the archetype starter Strike (594) in their
-/// known set.
-///
-/// Pre-state: active slot 0 (pistol), `weapon_granted_abilities`
-/// pre-seeded with `{579, 708}` to mirror "pistol already equipped
-/// before this swap." Known set: `{594, 579, 708}`.
-///
-/// Action: swap to slot 1 (P90).
-///
-/// Post-state assertions:
-/// - `known_abilities` drops 579 + 708, gains 559 + 595, keeps 594
-/// - `onKnownAbilitiesUpdate` (method 101) broadcast at least once,
-///   carrying the post-swap known list
-///
-/// Reverting `swap_weapon_granted_abilities_for_slot` in
-/// `bandolier.rs` (e.g., by skipping the call) trips both halves:
-/// the known-set assertion AND the broadcast presence.
+/// Bug shape: `setAutoCycle`'s immediate-fire path uses
+/// `last_fired_ability_id` to pick what to fire, and the auto-cycle
+/// tick uses `auto_cycle_ability_id`. Both are stashed at fire time
+/// against the THEN-active weapon's `items_event_sets`. Swapping
+/// weapons without clearing makes the next auto-cycle press fire
+/// the wrong ability against the new weapon — either silently rejects
+/// in `use_ability` (the new weapon doesn't grant the stashed id) or
+/// misfires.
+#[tokio::test]
+async fn slot_change_clears_auto_cycle_stash_and_broadcasts() {
+    use crate::cell::combat::BSF_AUTO_CYCLING;
+    use crate::cell::content::build_engine;
+    use crate::mercury::method_idx::ON_STATE_FIELD_UPDATE;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        // Skip the swap choreography (covered elsewhere) — this test
+        // is about the auto-cycle state mutation on the immediate swap.
+        e.pending_slot_swap_at = Some(std::time::Instant::now());
+
+        // Seed slot 0 (current active, SMG-shaped) and slot 1 (target).
+        for slot_id in 0..2 {
+            e.bandolier_items.insert(
+                slot_id,
+                BandolierItem {
+                    item_id: 100 + slot_id,
+                    clip_size: 30,
+                    default_ammo_type: 1,
+                    current_ammo: 30,
+                    cur_ammo_type: 1,
+                },
+            );
+        }
+        e.active_bandolier_slot = 0;
+
+        // Pre-arm auto-cycle on slot 0's weapon — the exact state
+        // lomiada1's session reached before the bad swap.
+        e.abilities.auto_cycle = true;
+        e.abilities.auto_cycle_ability_id = Some(559); // SMG Auto Attack
+        e.abilities.last_fired_ability_id = Some(559);
+        e.state_field |= BSF_AUTO_CYCLING;
+    }
+    mgr.connect_entity(1);
+
+    let (tx, mut rx) = mpsc::channel(16);
+    let engine = build_engine(None).await;
+
+    // Wire-slot 2 = server slot 1.
+    let mut args = Vec::with_capacity(8);
+    args.extend_from_slice(&3i32.to_le_bytes()); // bandolier bag
+    args.extend_from_slice(&2i32.to_le_bytes());
+
+    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &args, &tx, &mut mgr, &engine).await;
+
+    let e = mgr.get_entity(1).unwrap();
+    assert_eq!(e.active_bandolier_slot, 1, "fixture: swap must land");
+    assert!(
+        !e.abilities.auto_cycle,
+        "weapon swap must clear auto_cycle flag",
+    );
+    assert!(
+        e.abilities.auto_cycle_ability_id.is_none(),
+        "weapon swap must clear auto_cycle_ability_id — otherwise next \
+         setAutoCycle press fires the OLD weapon's stale ability",
+    );
+    assert!(
+        e.abilities.last_fired_ability_id.is_none(),
+        "weapon swap must clear last_fired_ability_id — otherwise \
+         setAutoCycle's immediate-fire path picks the OLD weapon's \
+         ability and use_ability rejects with 'not granted by active \
+         weapon' (live observation: lomiada1 ability 559 after swap)",
+    );
+    assert_eq!(
+        e.state_field & BSF_AUTO_CYCLING,
+        0,
+        "weapon swap must clear BSF_AUTO_CYCLING — the cycling icon on \
+         the UI must reflect that the loop stopped",
+    );
+
+    // Wire-side: onStateFieldUpdate must fire so the client UI's
+    // cycling icon clears. Without the broadcast, the UI shows the
+    // loop as still armed even though the server cleared it.
+    let mut saw_state_field_update = false;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall {
+            entity_id: 1,
+            method_index,
+            args,
+        } = msg
+        {
+            if method_index == ON_STATE_FIELD_UPDATE {
+                let state = u32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                assert_eq!(
+                    state & BSF_AUTO_CYCLING,
+                    0,
+                    "broadcast must carry the cleared state",
+                );
+                saw_state_field_update = true;
+            }
+        }
+    }
+    assert!(
+        saw_state_field_update,
+        "weapon swap that ended an auto-cycle must broadcast \
+         onStateFieldUpdate so the client UI clears the cycling icon",
+    );
+}
+
+/// Companion: same-slot "swap" (replayed packet / no-op) must NOT
+/// clear auto-cycle. The player hasn't expressed intent to change
+/// weapons, so the loop should continue.
+#[tokio::test]
+async fn same_slot_change_preserves_auto_cycle_stash() {
+    use crate::cell::combat::BSF_AUTO_CYCLING;
+    use crate::cell::content::build_engine;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        e.pending_slot_swap_at = Some(std::time::Instant::now());
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 100,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 30,
+                cur_ammo_type: 1,
+            },
+        );
+        e.active_bandolier_slot = 0;
+        e.abilities.auto_cycle = true;
+        e.abilities.auto_cycle_ability_id = Some(559);
+        e.abilities.last_fired_ability_id = Some(559);
+        e.state_field |= BSF_AUTO_CYCLING;
+    }
+    mgr.connect_entity(1);
+
+    let (tx, _rx) = mpsc::channel(16);
+    let engine = build_engine(None).await;
+
+    // Wire-slot 1 = server slot 0 = current slot. No-op swap.
+    let mut args = Vec::with_capacity(8);
+    args.extend_from_slice(&3i32.to_le_bytes());
+    args.extend_from_slice(&1i32.to_le_bytes());
+
+    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &args, &tx, &mut mgr, &engine).await;
+
+    let e = mgr.get_entity(1).unwrap();
+    assert!(
+        e.abilities.auto_cycle,
+        "same-slot must NOT clear auto_cycle"
+    );
+    assert_eq!(
+        e.abilities.auto_cycle_ability_id,
+        Some(559),
+        "same-slot must preserve auto_cycle_ability_id",
+    );
+    assert_eq!(
+        e.abilities.last_fired_ability_id,
+        Some(559),
+        "same-slot must preserve last_fired_ability_id",
+    );
+    assert_ne!(
+        e.state_field & BSF_AUTO_CYCLING,
+        0,
+        "same-slot must NOT clear BSF_AUTO_CYCLING",
+    );
+}
 #[tokio::test]
 async fn slot_change_to_p90_revokes_pistol_abilities_grants_smg_and_broadcasts() {
     use crate::cell::content::build_engine;
