@@ -533,14 +533,31 @@ impl NavMesh {
     /// `is_stationary = true` flyer NPCs whose `npc_ai_fight` tick
     /// silently skipped them every cycle.
     ///
-    /// Reverting either fallback re-introduces the "drone in Fighting
-    /// state never fires" bug shape observed in the SigNoz logs for
-    /// the Ambernol encounter (entity 100115, instance 65552): 54s of
-    /// aggro with zero `npc_ai.decision` events because every tick
-    /// landed in the stationary-no-LoS silent return.
+    /// **Off-mesh end projection.** Symmetric to the start case: the
+    /// Detour raycast walks navmesh polygons from `start_ref` toward
+    /// `end_pos`. If `end` lies outside any walkable polygon (player
+    /// standing on a crate the mesh doesn't cover, jumping past a
+    /// stair edge, or briefly clipped above geometry), Detour exits
+    /// the mesh at the boundary, reports `t < 1.0` and the function
+    /// returns `false` — `has_los = false` for what is visually a
+    /// clear shot. Stationary NPCs see this as "no LoS" and hold
+    /// fire silently (`npc_ai::stationary_holds` log). We project
+    /// `end` to its nearest poly within `DEST_EXTENTS` and raycast to
+    /// **that** point; if no poly is in range (the target is genuinely
+    /// far off-mesh — flying, in the sky, behind real geometry), we
+    /// fall back to the original raw `end_pos` so unreachable targets
+    /// still correctly fail.
+    ///
+    /// Reverting either fallback re-introduces a "stationary mob never
+    /// fires" bug shape. Original observation: Ambernol drone (entity
+    /// 100115) 54s aggro with zero `npc_ai.decision` events. End-side
+    /// regression observed on castle_cellblock NPC 100143 (lomiada
+    /// 2026-06-04 11:04:44–46): `dist_to_target=12.7–13.0m`,
+    /// `max_range=30m`, `in_range=true`, `has_los=false`, two
+    /// `stationary_holds` ticks back-to-back even though the player
+    /// was in unobstructed sight (mesh just didn't cover the player's
+    /// exact tile).
     pub fn raycast(&self, start: &Vector3, end: &Vector3) -> bool {
-        let end_pos = [end.x, end.y, end.z];
-
         // Try the tight extents first (matches the existing walking-NPC
         // shape — agent stands on the polygon, original position == the
         // polygon's closest point within 0.5u). Most NPCs and players
@@ -551,6 +568,18 @@ impl NavMesh {
                 Some(v) => v,
                 None => return false, // truly off-mesh; nothing to raycast from
             },
+        };
+
+        // Project `end` for the same reason: Detour's raycast halts at
+        // the mesh boundary when `end` is off-poly, which is the
+        // off-navmesh-target case described in the doc above. Only the
+        // wider `DEST_EXTENTS` is used here — there is no "tight" case
+        // worth distinguishing for the destination, and if the target
+        // is more than ~3u from any walkable poly we want to fall back
+        // to the raw end so genuinely unreachable targets still fail.
+        let end_pos = match self.project_to_polygon(end, &DEST_EXTENTS) {
+            Some((_, projected_end)) => projected_end,
+            None => [end.x, end.y, end.z],
         };
 
         let mut hit_normal = [0.0f32; 3];
@@ -818,6 +847,56 @@ mod tests {
              retry was added to recover from the START_EXTENTS=0.5 lookup \
              failing on flyer NPC positions",
             off_mesh, ground
+        );
+    }
+
+    /// Symmetric regression for the end-projection fallback. The end
+    /// point (the player being shot at) must also be projected to its
+    /// nearest polygon when off-mesh — Detour's raycast halts at the
+    /// mesh boundary when `end_pos` lies outside any walkable poly,
+    /// returning `t < 1.0` and surfacing as `has_los = false` even
+    /// when no real geometry blocks the shot. Without the fix,
+    /// stationary NPCs see this as "no LoS" and silently hold fire
+    /// (`npc_ai::stationary_holds`).
+    ///
+    /// Observed instance: castle_cellblock NPC 100143 vs lomiada at
+    /// 2026-06-04 11:04:44–46 UTC — `dist=12.7–13.0m`, `max_range=30m`,
+    /// `in_range=true`, `has_los=false`, two ticks of `stationary_holds`
+    /// with the player visually in clear sight (the navmesh just
+    /// didn't cover the player's exact tile).
+    ///
+    /// Reverting `raycast`'s end-projection block trips this test by
+    /// returning `false` (target off-mesh halt) instead of matching
+    /// the on-mesh-target baseline.
+    #[test]
+    fn raycast_with_off_mesh_end_projects_to_polygon() {
+        let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
+        if !path.exists() {
+            return;
+        }
+        let mesh = NavMesh::load(path).expect("Failed to load castle_cellblock.nav");
+
+        // Same ground reference used by the sibling raycast tests, then
+        // lift the *target* (end) up 2.5 units — past `START_EXTENTS = 0.5`
+        // but within `DEST_EXTENTS = 3.0`. Symmetric to the off-mesh-start
+        // case; without end-projection the call returns `false` because
+        // Detour halts at the mesh boundary near the target.
+        let start = Vector3::new(-289.465, 68.542, -154.276);
+        let on_mesh_target = Vector3::new(-280.0, 68.0, -150.0);
+        let off_mesh_target =
+            Vector3::new(on_mesh_target.x, on_mesh_target.y + 2.5, on_mesh_target.z);
+
+        let los_to_off_mesh = mesh.raycast(&start, &off_mesh_target);
+        let los_to_on_mesh = mesh.raycast(&start, &on_mesh_target);
+        assert_eq!(
+            los_to_off_mesh, los_to_on_mesh,
+            "off-mesh end ({:?}) must produce the same LoS result as the \
+             on-mesh point directly below it ({:?}) — the end-side \
+             projection-to-polygon was added to recover from Detour halting \
+             at the mesh boundary when the target tile isn't covered by \
+             the navmesh (castle_cellblock NPC 100143 vs lomiada, \
+             2026-06-04 11:04 UTC).",
+            off_mesh_target, on_mesh_target
         );
     }
 

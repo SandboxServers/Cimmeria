@@ -98,7 +98,17 @@ pub async fn handle_loot_item(
     let target_eid = match looting_target {
         Some(eid) => eid,
         None => {
-            tracing::warn!(entity_id, index, "lootItem: player not looting anything");
+            // Benign race: client-side "Loot All" fires `lootItem(i)` per
+            // entry in the window. The server's loot-exhaustion path
+            // (further down) already clears `looting_entity` and sends an
+            // empty `onLootDisplay` so the client closes the window —
+            // but any clicks that were in-flight before the close
+            // arrives land here with no work to do. Demoted from WARN
+            // because it surfaced as 2× false positives per "Loot All"
+            // sequence on lomiada's 2026-06-04 session without any
+            // gameplay impact, and there is no defensive action we
+            // could take here (no NPC id to address a close at).
+            tracing::debug!(entity_id, index, "lootItem: player not looting anything");
             return;
         }
     };
@@ -240,6 +250,66 @@ mod tests {
         assert_eq!(args.len(), 9);
         assert_eq!(u32::from_le_bytes([args[4], args[5], args[6], args[7]]), 0);
         assert_eq!(args[8], 1);
+    }
+
+    /// Pins the WARN→DEBUG demotion for the "player not looting anything"
+    /// path. Symptom shape: client-side "Loot All" fires `lootItem(i)`
+    /// per visible entry. The corpse-exhaustion path clears
+    /// `looting_entity` and sends an empty `onLootDisplay` to close the
+    /// window — but any clicks in flight before the close arrives land
+    /// here with `looting_entity = None`. There is no defensive action
+    /// to take (no NPC id to address a close at), and the event is a
+    /// known benign race, so it must not be WARN. Observed surface:
+    /// 2 false positives per "Loot All" sequence on lomiada's
+    /// 2026-06-04 session.
+    ///
+    /// Reverting the demotion (DEBUG → WARN) trips this guard.
+    #[tokio::test]
+    async fn loot_item_with_no_looting_entity_logs_at_debug() {
+        use super::super::super::space_manager::SpaceManager;
+        use super::*;
+        use crate::test_support::LogCapture;
+        use tokio::sync::mpsc;
+
+        let capture = LogCapture::install();
+
+        let mut mgr = SpaceManager::new(1);
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(spaces_xml).unwrap();
+        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        // Note: looting_entity is left as None (the post-exhaustion state
+        // the racing click lands in).
+
+        let (tx, _rx) = mpsc::channel(16);
+        handle_loot_item(1, 1, &tx, &mut mgr).await;
+
+        assert!(
+            capture
+                .find_message(
+                    tracing::Level::DEBUG,
+                    "lootItem: player not looting anything"
+                )
+                .is_some(),
+            "racing-click branch must log at DEBUG; got: {:#?}",
+            capture.all()
+        );
+        assert!(
+            capture
+                .find_message(
+                    tracing::Level::WARN,
+                    "lootItem: player not looting anything"
+                )
+                .is_none(),
+            "racing-click branch must NOT log at WARN — promoting it back \
+             will re-introduce the 'Loot All' noise observed pre-fix: {:#?}",
+            capture.all()
+        );
     }
 
     /// Regression for #106 + Copilot review on PR #108: validate looter
