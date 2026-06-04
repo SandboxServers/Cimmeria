@@ -228,6 +228,59 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     // 3+ starter abilities couldn't see or click any of them.
     send_known_abilities_update(entity_id, tx, space_mgr).await;
 
+    // Re-send `onActiveSlotUpdate` for the bandolier — defensive resync
+    // against a client-side initialization race documented in
+    // [docs/reverse-engineering/findings/client-wire-emit-suppression.md].
+    //
+    // The login burst at `mercury::world_data::map_loaded` already sends
+    // this packet (see `map_loaded.rs:354`), but Ghidra analysis of the
+    // client's NetIn handler `FUN_00da9ce0` shows it walks
+    // `SGWPlayer.bagList` at `+0x8c → +0x24` and silently no-ops when
+    // the bag-list map is uninitialized. If the burst's
+    // `onActiveSlotUpdate` arrives before the bag-init packets in the
+    // same bundle are processed, the cached active-slot value at
+    // `slot+0xc` never gets written and stays at the default (0). The
+    // Lua gate inside `BandolierMod.ActivateBandolierSlotN` then reads
+    // `getActiveSlotForContainer(3) ~= N` as false for any keypress
+    // matching the stale-cached slot, and `requestActiveSlotChange` is
+    // never emitted — symptom: "F2 doesn't swap to the P90."
+    //
+    // `InitPlayerState` runs AFTER the client sends `onClientReady`,
+    // which is itself sent only AFTER the client has processed the
+    // entire `mapLoaded` bundle (per the handler's docstring above).
+    // So the bag-list map is guaranteed initialized by the time this
+    // resend lands — the cached value gets the correct write and the
+    // Lua gate stops misfiring.
+    //
+    // Wire format mirrors `bandolier.rs:449-451` and `map_loaded.rs:354`:
+    // bag_id (i32 LE) + (slot_id + 1) (i32 LE, 1-indexed wire) = 8 bytes.
+    {
+        const CONTAINER_BANDOLIER: i32 = 3;
+        let active_slot = space_mgr
+            .get_entity(entity_id)
+            .map(|e| e.active_bandolier_slot)
+            .unwrap_or(0);
+        let mut args = Vec::with_capacity(8);
+        args.extend_from_slice(&CONTAINER_BANDOLIER.to_le_bytes());
+        args.extend_from_slice(&(active_slot + 1).to_le_bytes());
+        crate::cell::abilities::send_entity_method(
+            entity_id,
+            crate::cell::client_methods::inventory::ON_ACTIVE_SLOT_UPDATE,
+            args,
+            tx,
+            space_mgr,
+        )
+        .await;
+        tracing::info!(
+            target: "bandolier.resend",
+            entity_id,
+            active_slot,
+            "Re-sent onActiveSlotUpdate post-onClientReady (defensive resync \
+             against client bag-list init race — see \
+             docs/reverse-engineering/findings/client-wire-emit-suppression.md)"
+        );
+    }
+
     // Send addClientHintedGenericRegion for each client-hinted region in
     // this world. Matches Python Space.playerEntered() → queryRegions():
     // clearClientHintedGenericRegions was already sent in mapLoaded body,
@@ -505,6 +558,85 @@ mod system_options_assignment_tests {
             "Initial FOCUS cur must equal max — without this, \
              RangedPhysicalDamage absorbs zero (overflow == full \
              damage every shot, 86 HP per hit on lomiada's session).",
+        );
+    }
+
+    /// **RE-driven defensive resync.** `InitPlayerState` must re-emit
+    /// `onActiveSlotUpdate` to the client AFTER `onClientReady`,
+    /// carrying the player's persisted active bandolier slot. The Ghidra-recovered client behaviour is that
+    /// the NetIn handler `FUN_00da9ce0` walks `SGWPlayer.bagList`
+    /// (at `+0x8c → +0x24`) and silently no-ops when the bag-list
+    /// map is uninitialized. The login-burst `onActiveSlotUpdate`
+    /// from `mapLoaded` can arrive before the bag-init packets in
+    /// the same bundle are processed, leaving the cached active-slot
+    /// value at the default (0). The Lua gate inside
+    /// `BandolierMod.ActivateBandolierSlotN` then suppresses the
+    /// wire emit for any F-key matching the stale value — symptom:
+    /// "F2 doesn't swap to the P90," reported by lomiada
+    /// 2026-06-04 18:09 with zero `requestActiveSlotChange` events
+    /// in the entire session.
+    ///
+    /// Pin: handler must emit at least one `onActiveSlotUpdate`
+    /// (method index `crate::cell::client_methods::inventory::ON_ACTIVE_SLOT_UPDATE`)
+    /// carrying bag_id=3 and the 1-indexed wire slot (server slot + 1).
+    /// Reverting the resend block trips this by leaving the only
+    /// `onActiveSlotUpdate` emission on the wire as the one from the
+    /// login burst — which the InitPlayerState handler doesn't see
+    /// directly (it's a separate wire site).
+    #[tokio::test]
+    async fn init_player_state_resends_active_slot_update_for_resync() {
+        let mut mgr = make_mgr();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(64);
+        const SERVER_SLOT: i32 = 1; // arbitrary non-zero so the bag_id=3 + (slot+1)=2 encoding is observable
+
+        handle_init_player_state(
+            1,
+            100,
+            "Castle_CellBlock".into(),
+            1,      // archetype_id
+            vec![], // no abilities
+            vec![], // no missions
+            SERVER_SLOT,
+            vec![], // no bandolier items (slot can still be active over an empty slot)
+            SystemOptions::default(),
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        // Walk the channel for the onActiveSlotUpdate emit. Decode the
+        // 8-byte payload: bag_id (i32 LE) + wire_slot (i32 LE).
+        let mut found = None;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall {
+                entity_id: 1,
+                method_index,
+                args,
+            } = msg
+            {
+                if method_index == crate::cell::client_methods::inventory::ON_ACTIVE_SLOT_UPDATE
+                    && args.len() == 8
+                {
+                    let bag_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                    let wire_slot = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                    found = Some((bag_id, wire_slot));
+                    break;
+                }
+            }
+        }
+
+        let (bag_id, wire_slot) = found.expect(
+            "InitPlayerState must re-send onActiveSlotUpdate as a defensive \
+             resync against the client bag-list init race documented in \
+             docs/reverse-engineering/findings/client-wire-emit-suppression.md",
+        );
+        assert_eq!(bag_id, 3, "bag_id must be CONTAINER_BANDOLIER (3)");
+        assert_eq!(
+            wire_slot,
+            SERVER_SLOT + 1,
+            "wire slot is 1-indexed (server slot {SERVER_SLOT} + 1)"
         );
     }
 
