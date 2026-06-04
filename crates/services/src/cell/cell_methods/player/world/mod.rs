@@ -76,7 +76,26 @@ pub async fn dispatch(
                     // the fire and rely on the cooldown gate inside
                     // handle_use_ability to reject — wasted work + log
                     // noise.
-                    if let (Some(_), Some((ability_id, target_id))) = (new_state, immediate_fire) {
+                    //
+                    // Additionally gated on the stashed ability being
+                    // off cooldown. The bit-transition gate alone still
+                    // produces one cooldown-rejection DEBUG per
+                    // "arm while mid-cooldown" toggle (player manually
+                    // right-clicks once, then arms auto-cycle while
+                    // the manual shot is still cooling). The stash is
+                    // already persisted above, so the next
+                    // auto_cycle_tick after cooldown clear picks the
+                    // re-fire up — calling handle_use_ability here
+                    // when it would just reject is wasted work.
+                    let stash_ready = match immediate_fire {
+                        Some((ability_id, _)) => space_mgr
+                            .get_entity(entity_id)
+                            .is_some_and(|e| !e.abilities.is_on_cooldown(ability_id)),
+                        None => false,
+                    };
+                    if let (Some(_), true, Some((ability_id, target_id))) =
+                        (new_state, stash_ready, immediate_fire)
+                    {
                         tracing::info!(
                             entity_id,
                             ability_id,

@@ -39,11 +39,33 @@ pub(crate) mod sgw_player_base {
     pub const SEND_PLAYER_COMMUNICATION: u8 = 0xC2;
     pub const CHAT_SET_AFK: u8 = 0xC3;
     pub const CHAT_SET_DND: u8 = 0xC4;
+    /// SGWPlayer.elementDataRequest(UINT16 categoryId, UINT32 key) — cache
+    /// miss request for a server resource. Same wire shape as the
+    /// pre-world-entry 0xC1 cache flow (handled in `cooked_data.rs`),
+    /// but routed through the SGWPlayer namespace while the entity is
+    /// in-world. Currently a documented no-op — the catalog and
+    /// per-key push happens in `cooked_data.rs::send_initial_caches`,
+    /// so in-world cache misses are diagnostic rather than a service
+    /// the server must fulfil. Demoted from the unhandled-WARN catch-all
+    /// so the perfStats-style benign telemetry doesn't trip operator
+    /// alerts. See per-method dispatch table in
+    /// `docs/protocol/sgwplayer-base-method-dispatch-table.md`.
+    pub const ELEMENT_DATA_REQUEST: u8 = 0xD5;
     /// SGWPlayer.logOff(INT8 Disconnect) — 0=return to char select, 1=full exit
     pub const LOG_OFF: u8 = 0xD6;
     /// SGWPlayer.cancelLogOff() — cancel pending logoff timer
     pub const CANCEL_LOG_OFF: u8 = 0xD7;
     pub const ON_CLIENT_READY: u8 = 0xD8;
+    /// SGWPlayer.perfStats(12 × FLOAT) — client-side perf telemetry
+    /// (FPS, frame time variance, etc.) pushed every ~15 s. Sink-only
+    /// on the server: there is no actionable response, no persistence,
+    /// and no metric extraction wired yet. Acknowledged as a known
+    /// handler so the unhandled-WARN catch-all stays alert-worthy for
+    /// genuinely missing methods. If we later want this telemetry on
+    /// SigNoz, the right entry point is to parse the 12 floats here
+    /// and emit a metric — until then, the DEBUG line is enough to
+    /// confirm the client is still ticking.
+    pub const PERF_STATS: u8 = 0xDD;
 }
 
 /// Dispatch an SGWPlayer base method call (after world entry).
@@ -330,6 +352,61 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             tracing::debug!(%addr, "SGWPlayer.cancelLogOff — acknowledged");
         }
 
+        sgw_player_base::ELEMENT_DATA_REQUEST => {
+            // Wire: UINT16 categoryId, UINT32 key. Logged as DEBUG only —
+            // the in-world client uses this as a cache miss query, but
+            // the catalog + per-key push completed in `cooked_data.rs`
+            // before world entry, so the runtime path here is purely
+            // diagnostic. Promoting back to WARN would flood operator
+            // alerts on every cache miss the client decides to re-ask
+            // for (1× per session observed in 2026-06-04 sessions).
+            if payload.len() >= 6 {
+                let category_id = u16::from_le_bytes([payload[0], payload[1]]);
+                let key = u32::from_le_bytes([payload[2], payload[3], payload[4], payload[5]]);
+                tracing::debug!(
+                    %addr,
+                    category_id,
+                    key,
+                    "SGWPlayer.elementDataRequest — in-world cache miss (no-op)"
+                );
+            } else {
+                tracing::debug!(
+                    %addr,
+                    payload_len = payload.len(),
+                    "SGWPlayer.elementDataRequest — short payload (no-op)"
+                );
+            }
+        }
+
+        sgw_player_base::PERF_STATS => {
+            // Wire: 12 × FLOAT (48 bytes) — client perf telemetry pushed
+            // every ~15 s. No actionable response; the DEBUG line is
+            // enough to confirm the client is alive without flooding
+            // WARN. If/when we wire this to SigNoz metrics, parse the
+            // 12 floats here and emit a `perf_stats` metric.
+            //
+            // A non-48-byte payload is a wire-shape drift signal: the
+            // client either changed the metric set or is sending a
+            // corrupted packet. Logged at DEBUG with both the actual
+            // and expected length so an ops query can grep for it
+            // without us promoting the everyday case to WARN.
+            const EXPECTED_PERF_STATS_LEN: usize = 48;
+            if payload.len() != EXPECTED_PERF_STATS_LEN {
+                tracing::debug!(
+                    %addr,
+                    payload_len = payload.len(),
+                    expected_len = EXPECTED_PERF_STATS_LEN,
+                    "SGWPlayer.perfStats — unexpected payload length (wire shape drift?)"
+                );
+            } else {
+                tracing::debug!(
+                    %addr,
+                    payload_len = payload.len(),
+                    "SGWPlayer.perfStats — telemetry sink (no-op)"
+                );
+            }
+        }
+
         _ => {
             // Promoted from trace! per #311 (Tier 4 follow-up to #304).
             // Below-ops-filter trace! masked unimplemented client→server
@@ -502,6 +579,130 @@ mod tests {
         assert!(
             event.has_field("base_method_index", "63"),
             "base_method_index must be 0xFF - 0xC0 = 63; got {event:#?}",
+        );
+    }
+
+    /// Pins the `perfStats` (0xDD / index 29) explicit DEBUG handler.
+    /// The client pushes 12 × FLOAT telemetry every ~15 s; without
+    /// an explicit handler it landed in the unhandled-WARN catch-all
+    /// and produced ~40 WARNs per session of pure noise. Promoting
+    /// back to WARN (by removing the match arm) trips this guard
+    /// because the unhandled-WARN body fires instead of the DEBUG.
+    #[tokio::test]
+    async fn perf_stats_logs_at_debug_not_warn() {
+        let capture = LogCapture::install();
+
+        let addr: SocketAddr = "127.0.0.1:54323".parse().unwrap();
+        let key = [0u8; 32];
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
+        let state = test_default_connected_client_state();
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::<u32, SocketAddr>::new()));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let cell_tx: Option<mpsc::Sender<BaseToCellMsg>> = None;
+
+        // 12 × FLOAT = 48 bytes — the documented wire shape per
+        // `docs/protocol/sgwplayer-base-method-dispatch-table.md`.
+        let payload = [0u8; 48];
+
+        dispatch_sgw_player_base_method(
+            sgw_player_base::PERF_STATS,
+            &payload,
+            &None,
+            addr,
+            &transport,
+            key,
+            &connected,
+            &entity_manager,
+            &cell_tx,
+            &entity_to_addr,
+        )
+        .await
+        .expect("perfStats dispatch must not propagate Err");
+
+        assert!(
+            capture
+                .find_message(Level::DEBUG, "SGWPlayer.perfStats — telemetry sink")
+                .is_some(),
+            "perfStats must log at DEBUG; got: {:#?}",
+            capture.all()
+        );
+        assert!(
+            capture
+                .find_message(Level::WARN, "Unhandled SGWPlayer base method")
+                .is_none(),
+            "perfStats must NOT fall through to the unhandled-WARN catch-all — \
+             removing the explicit PERF_STATS arm re-introduces the ~40-WARN/session \
+             noise observed pre-fix: {:#?}",
+            capture.all()
+        );
+    }
+
+    /// Pins the `elementDataRequest` (0xD5 / index 21) explicit DEBUG
+    /// handler. In-world cache-miss requests are diagnostic only —
+    /// the catalog + per-key push happens in `cooked_data.rs` before
+    /// world entry, so the runtime path here serves no live data. The
+    /// pre-fix unhandled-WARN created a category of operator-alert
+    /// noise indistinguishable from genuinely missing handlers.
+    #[tokio::test]
+    async fn element_data_request_logs_at_debug_not_warn() {
+        let capture = LogCapture::install();
+
+        let addr: SocketAddr = "127.0.0.1:54324".parse().unwrap();
+        let key = [0u8; 32];
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
+        let state = test_default_connected_client_state();
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::<u32, SocketAddr>::new()));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let cell_tx: Option<mpsc::Sender<BaseToCellMsg>> = None;
+
+        // UINT16 categoryId + UINT32 key = 6 bytes per the dispatch table.
+        let mut payload = Vec::with_capacity(6);
+        payload.extend_from_slice(&7u16.to_le_bytes()); // category
+        payload.extend_from_slice(&12345u32.to_le_bytes()); // key
+
+        dispatch_sgw_player_base_method(
+            sgw_player_base::ELEMENT_DATA_REQUEST,
+            &payload,
+            &None,
+            addr,
+            &transport,
+            key,
+            &connected,
+            &entity_manager,
+            &cell_tx,
+            &entity_to_addr,
+        )
+        .await
+        .expect("elementDataRequest dispatch must not propagate Err");
+
+        let event = capture
+            .find_message(
+                Level::DEBUG,
+                "SGWPlayer.elementDataRequest — in-world cache miss",
+            )
+            .unwrap_or_else(|| {
+                panic!(
+                    "elementDataRequest must log at DEBUG; got: {:#?}",
+                    capture.all()
+                )
+            });
+        // Pin the parsed fields so a refactor that drops them (which
+        // would also break ops queries pivoting on category_id) trips
+        // here instead of slipping in silently.
+        assert!(
+            event.has_field("category_id", "7") && event.has_field("key", "12345"),
+            "elementDataRequest must surface category_id + key fields: {event:#?}",
+        );
+        assert!(
+            capture
+                .find_message(Level::WARN, "Unhandled SGWPlayer base method")
+                .is_none(),
+            "elementDataRequest must NOT fall through to the unhandled-WARN catch-all \
+             — removing the explicit ELEMENT_DATA_REQUEST arm re-introduces operator-alert \
+             noise: {:#?}",
+            capture.all()
         );
     }
 
