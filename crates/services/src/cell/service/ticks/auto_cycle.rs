@@ -104,6 +104,21 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
                 return None;
             }
 
+            // Mid-draw gate. When the player's weapon is mid-draw
+            // animation (`pending_attack_at = Some`), `handle_use_ability`
+            // rejects with `"weapon attack already queued (mid-draw),
+            // ignoring input"`. Without this skip, every 100 ms tick
+            // during the ~0.8 s draw window invokes the handler, fails
+            // the gate, and produces one DEBUG line — observed as 8
+            // rejections in <1 s on lomiada's 2026-06-04 18:16:08 burst.
+            // The `pending_attack_tick` will fire the deferred attack
+            // once the draw window elapses, then auto-cycle takes over
+            // the rest of the loop. Skip-don't-error here is the same
+            // pattern the cooldown + range gates use.
+            if e.pending_attack_at.is_some() {
+                return None;
+            }
+
             // Range pre-gate. Mirrors the rule inside
             // `handle_use_ability` but in skip-don't-error mode.
             // Without this, every out-of-range tick would invoke the
@@ -277,6 +292,58 @@ mod tests {
         assert!(
             rx.try_recv().is_err(),
             "tick must not emit anything when stashed ability is on cooldown"
+        );
+    }
+
+    /// **Lomiada's 2026-06-04 18:16:08 burst regression.** When the
+    /// player's weapon is mid-draw (`pending_attack_at = Some`), the
+    /// auto-cycle tick MUST skip without re-invoking
+    /// `handle_use_ability`. The handler's mid-draw gate would
+    /// otherwise reject with `"weapon attack already queued
+    /// (mid-draw), ignoring input"` on every 100 ms tick — observed
+    /// 8 rejections in <1 s when the OOC re-holster timer fired
+    /// mid-combat and the next press re-drew the weapon.
+    ///
+    /// Reverting the `pending_attack_at.is_some()` skip in the
+    /// eligibility filter trips this: the tick fires
+    /// `handle_use_ability`, the mid-draw gate rejects it, but the
+    /// cooldown timer also gets started by the call's commit-side
+    /// effects (no — the gate fires BEFORE the cooldown stamp). So
+    /// the cleanest pin is to assert that nothing was sent on the
+    /// channel — same shape as the cooldown-skip test above.
+    #[tokio::test]
+    async fn auto_cycle_tick_skips_during_weapon_draw_window() {
+        let mut mgr = make_auto_cycle_mgr();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            // Mid-draw: pending_attack_at set well into the future so
+            // pending_attack_tick doesn't race with us. The tick must
+            // skip without invoking handle_use_ability.
+            p.pending_attack_at =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(60));
+        }
+
+        let (tx, mut rx) = mpsc::channel(64);
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "tick must not emit anything when weapon is mid-draw — \
+             the mid-draw gate inside handle_use_ability would have \
+             rejected with a DEBUG line per 100 ms tick (8 rejections \
+             in <1 s on lomiada's 2026-06-04 18:16:08 burst pre-fix)",
+        );
+        // Loop stays armed — the pending_attack_tick will fire the
+        // deferred attack when the draw window elapses, then auto-
+        // cycle resumes.
+        let p = mgr.get_entity(1).unwrap();
+        assert!(
+            p.abilities.auto_cycle,
+            "mid-draw skip must NOT clear the loop — same correctness \
+             discipline as the cooldown skip",
+        );
+        assert!(
+            !p.abilities.is_on_cooldown(7),
+            "no useAbility invocation → no cooldown stamped",
         );
     }
 
