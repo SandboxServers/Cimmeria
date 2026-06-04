@@ -352,6 +352,15 @@ pub(super) async fn apply_damage_to_target(
                         space_mgr,
                     )
                     .await;
+                    tracing::debug!(
+                        target: "abilities.sequence",
+                        event = "entity_death",
+                        source_id = target_eid,
+                        target_id = target_eid,
+                        sequence_id = death_seq_id,
+                        event_set_id = esid,
+                        "onSequence broadcast: Entity_Death (death animation)"
+                    );
                 }
             }
         }
