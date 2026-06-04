@@ -339,6 +339,21 @@ pub struct AbilityManager {
     /// Set of ability IDs this entity knows.
     known_abilities: HashSet<i32>,
 
+    /// Subset of [`Self::known_abilities`] that were added on behalf of the
+    /// **currently-equipped weapon** via the `items_event_sets` binding
+    /// (e.g., equipping a P90 grants the SMG Auto Attack ability 559).
+    ///
+    /// Maintained separately from `known_abilities` so weapon-equip
+    /// swaps can revoke exactly the abilities the *previous* weapon
+    /// added, without touching player-trained or archetype-starter
+    /// abilities. An ability is tracked here ONLY when the weapon
+    /// binding added it — if the player already knew the same id
+    /// (trained it, archetype-granted), we leave it untracked and
+    /// never revoke it on weapon swap.
+    ///
+    /// See [`Self::swap_weapon_granted_abilities`] for the diff math.
+    weapon_granted_abilities: HashSet<i32>,
+
     /// Active ability cooldowns keyed by ability_id.
     ability_cooldowns: HashMap<i32, CooldownEntry>,
 
@@ -391,6 +406,7 @@ impl AbilityManager {
     pub fn new() -> Self {
         Self {
             known_abilities: HashSet::new(),
+            weapon_granted_abilities: HashSet::new(),
             ability_cooldowns: HashMap::new(),
             moniker_cooldowns: HashMap::new(),
             auto_cycle: false,
@@ -427,6 +443,81 @@ impl AbilityManager {
     /// Remove a known ability.
     pub fn remove_ability(&mut self, ability_id: i32) {
         self.known_abilities.remove(&ability_id);
+        // If the ability was tracked as weapon-granted, drop the tracking
+        // too — caller is removing it unconditionally, so the
+        // weapon-grant accounting shouldn't outlive the underlying
+        // known-set entry.
+        self.weapon_granted_abilities.remove(&ability_id);
+    }
+
+    /// Swap the set of abilities granted by the currently-equipped
+    /// weapon for a new set (i.e., player equipped a different weapon).
+    ///
+    /// Returns `(removed, added)` — the ability IDs that left and
+    /// joined `known_abilities` as a result of this call. An empty
+    /// `(removed, added)` means nothing changed and the caller should
+    /// skip the `onKnownAbilitiesUpdate` broadcast to avoid wire noise.
+    ///
+    /// Semantics:
+    ///
+    /// 1. For each id in the **previous** `weapon_granted_abilities`
+    ///    that is NOT in the new set: remove it from `known_abilities`
+    ///    AND drop the weapon-grant tag. This is the revoke path —
+    ///    the old weapon no longer grants it and we added it on the
+    ///    weapon's behalf, so it leaves with the weapon.
+    /// 2. For each id in the **new** set that the player does NOT
+    ///    already know: add it to `known_abilities` AND tag it as
+    ///    weapon-granted. The tag is what makes step 1 work on the
+    ///    NEXT swap.
+    /// 3. For each id in the **new** set that the player already
+    ///    knows (trained, archetype-granted, etc.): leave
+    ///    `known_abilities` untouched AND do NOT tag it as weapon-
+    ///    granted. The player owns this ability independently of the
+    ///    weapon and we won't revoke it on unequip.
+    ///
+    /// Passing an empty `new_set` is the "unequip — no weapon" call:
+    /// every previously-tracked weapon ability is revoked, and nothing
+    /// is added.
+    ///
+    /// **Why a separate tracked set rather than computing the diff
+    /// from items_event_sets at unequip time?** The previous weapon
+    /// may have been removed from the items table mid-session
+    /// (content reload, hot-fix), or its bindings may have changed.
+    /// Tracking what we actually added means we can always undo
+    /// exactly that, independent of the current state of the data.
+    pub fn swap_weapon_granted_abilities(&mut self, new_set: HashSet<i32>) -> (Vec<i32>, Vec<i32>) {
+        // Removed: previously weapon-granted but not in the new set.
+        let removed: Vec<i32> = self
+            .weapon_granted_abilities
+            .difference(&new_set)
+            .copied()
+            .collect();
+        for id in &removed {
+            self.known_abilities.remove(id);
+            self.weapon_granted_abilities.remove(id);
+        }
+
+        // Added: new entries the player didn't already know. If they
+        // already knew it (trained/archetype), the weapon-grant tag
+        // isn't taken — that ability stays player-owned and won't be
+        // revoked on the next swap.
+        let mut added: Vec<i32> = Vec::new();
+        for id in new_set {
+            if !self.known_abilities.contains(&id) {
+                self.known_abilities.insert(id);
+                self.weapon_granted_abilities.insert(id);
+                added.push(id);
+            }
+        }
+
+        (removed, added)
+    }
+
+    /// Inspect which abilities are currently tagged as weapon-granted.
+    /// Test helper; exposed for verification, not for runtime mutation.
+    #[doc(hidden)]
+    pub fn weapon_granted_ability_ids(&self) -> Vec<i32> {
+        self.weapon_granted_abilities.iter().copied().collect()
     }
 
     /// Get all known ability IDs (unsorted).
@@ -736,6 +827,142 @@ mod tests {
         let count = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
         assert_eq!(count, 2);
         assert_eq!(data.len(), 4 + 2 * 4); // count + 2 ids
+    }
+
+    // ── swap_weapon_granted_abilities ────────────────────────────────
+
+    /// First weapon equip — empty tracked set, non-empty new set:
+    /// every new id lands in known_abilities AND in
+    /// weapon_granted_abilities. `added` returns the full new set;
+    /// `removed` is empty.
+    #[test]
+    fn swap_weapon_granted_first_equip_adds_all_new() {
+        let mut mgr = AbilityManager::with_abilities(&[594, 597]);
+        // Pre: archetype starter has Strike (594) + Heal Focus (597).
+        // Equip P90 — items_event_sets binds 559 (SMG Auto) + 595 (SMG Melee).
+        let new_set: HashSet<i32> = [559, 595].into_iter().collect();
+        let (removed, added) = mgr.swap_weapon_granted_abilities(new_set);
+
+        assert!(removed.is_empty(), "first equip removes nothing");
+        let mut added_sorted = added.clone();
+        added_sorted.sort();
+        assert_eq!(added_sorted, vec![559, 595]);
+        assert!(mgr.has_ability(559));
+        assert!(mgr.has_ability(595));
+        // Archetype abilities untouched.
+        assert!(mgr.has_ability(594));
+        assert!(mgr.has_ability(597));
+        // Weapon-grant tags hold exactly the added ids.
+        let mut weapon_granted = mgr.weapon_granted_ability_ids();
+        weapon_granted.sort();
+        assert_eq!(weapon_granted, vec![559, 595]);
+    }
+
+    /// Swap weapon — old tracked abilities revoke, new ones grant.
+    /// Player's archetype abilities are NOT in either diff.
+    #[test]
+    fn swap_weapon_granted_weapon_swap_revokes_old_grants_new() {
+        let mut mgr = AbilityManager::with_abilities(&[594, 597]);
+        // Equip pistol first — adds 579 + 708 to known + tracked.
+        let pistol_set: HashSet<i32> = [579, 708].into_iter().collect();
+        mgr.swap_weapon_granted_abilities(pistol_set);
+
+        // Then swap to P90 — adds 559 + 595, revokes 579 + 708.
+        let p90_set: HashSet<i32> = [559, 595].into_iter().collect();
+        let (removed, added) = mgr.swap_weapon_granted_abilities(p90_set);
+
+        let mut removed_sorted = removed.clone();
+        removed_sorted.sort();
+        assert_eq!(removed_sorted, vec![579, 708]);
+
+        let mut added_sorted = added.clone();
+        added_sorted.sort();
+        assert_eq!(added_sorted, vec![559, 595]);
+
+        // Pistol abilities gone, P90 abilities present, archetype intact.
+        assert!(!mgr.has_ability(579));
+        assert!(!mgr.has_ability(708));
+        assert!(mgr.has_ability(559));
+        assert!(mgr.has_ability(595));
+        assert!(mgr.has_ability(594));
+        assert!(mgr.has_ability(597));
+    }
+
+    /// Unequip — empty new set revokes every tracked weapon ability
+    /// and leaves the player with just their non-weapon known set.
+    #[test]
+    fn swap_weapon_granted_unequip_revokes_all_tracked() {
+        let mut mgr = AbilityManager::with_abilities(&[594, 597]);
+        mgr.swap_weapon_granted_abilities([579, 708].into_iter().collect());
+
+        let (removed, added) = mgr.swap_weapon_granted_abilities(HashSet::new());
+
+        let mut removed_sorted = removed.clone();
+        removed_sorted.sort();
+        assert_eq!(removed_sorted, vec![579, 708]);
+        assert!(added.is_empty());
+        assert!(!mgr.has_ability(579));
+        assert!(!mgr.has_ability(708));
+        assert!(mgr.has_ability(594));
+        assert!(mgr.has_ability(597));
+        assert!(mgr.weapon_granted_ability_ids().is_empty());
+    }
+
+    /// **The player-already-knew-it carve-out.** If the new weapon's
+    /// binding overlaps an ability the player ALREADY had (trained,
+    /// archetype-granted, or already weapon-granted), the swap MUST
+    /// NOT tag it as weapon-granted — otherwise the next unequip
+    /// would revoke a player-owned ability.
+    ///
+    /// Reverting the `!self.known_abilities.contains(&id)` gate around
+    /// the weapon-grant insert trips this guard by re-tagging an
+    /// already-known ability, which then gets revoked on the next
+    /// swap — the assertion `has_ability(594)` fails after the second
+    /// swap.
+    #[test]
+    fn swap_weapon_granted_skips_tagging_already_known_ability() {
+        // Player has Strike (594) trained as part of archetype.
+        let mut mgr = AbilityManager::with_abilities(&[594]);
+        // Equip a hypothetical weapon that ALSO binds 594 + 559.
+        let weapon_set: HashSet<i32> = [594, 559].into_iter().collect();
+        let (_removed, added) = mgr.swap_weapon_granted_abilities(weapon_set);
+
+        // 594 was already known — must NOT appear in `added` (it
+        // didn't transition into the known set) and must NOT be
+        // tagged.
+        assert_eq!(added, vec![559], "only 559 transitioned into known");
+        let weapon_granted = mgr.weapon_granted_ability_ids();
+        assert_eq!(
+            weapon_granted,
+            vec![559],
+            "594 must NOT be tagged as weapon-granted — player already knew it"
+        );
+
+        // Now swap to a weapon that grants neither 594 nor 559.
+        // 559 (was tracked) gets revoked; 594 STAYS because it was
+        // never tagged.
+        let other_set: HashSet<i32> = [777].into_iter().collect();
+        let (removed2, _added2) = mgr.swap_weapon_granted_abilities(other_set);
+        assert_eq!(removed2, vec![559]);
+        assert!(
+            mgr.has_ability(594),
+            "player-owned 594 must survive the second swap — \
+             reverting the already-known carve-out makes this fail"
+        );
+    }
+
+    /// No-op swap — old and new sets are identical → empty diff,
+    /// no broadcast warranted. Pins the empty-tuple short-circuit
+    /// the bandolier handler keys on.
+    #[test]
+    fn swap_weapon_granted_identical_set_returns_empty_diff() {
+        let mut mgr = AbilityManager::with_abilities(&[594, 597]);
+        mgr.swap_weapon_granted_abilities([559, 595].into_iter().collect());
+
+        // Re-apply the same set.
+        let (removed, added) = mgr.swap_weapon_granted_abilities([559, 595].into_iter().collect());
+        assert!(removed.is_empty());
+        assert!(added.is_empty());
     }
 
     #[test]
