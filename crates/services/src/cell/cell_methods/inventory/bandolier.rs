@@ -529,6 +529,120 @@ pub(crate) async fn handle_request_active_slot_change(
         entity_id, tx, space_mgr,
     )
     .await;
+
+    // Per-weapon ability swap: revoke the OLD weapon's items_event_sets
+    // bindings from the player's known-ability set and grant the NEW
+    // weapon's bindings. Broadcasts `onKnownAbilitiesUpdate` if the
+    // set changed so the client hotbar/abilities-window re-renders.
+    //
+    // Background: SGW's wire protocol has no single-slot action-bar
+    // rebind method — the action-bar binding is client-owned state
+    // (confirmed by Ghidra dig on SGW.exe, full client.def scan, and
+    // deprecated/python/cell/SGWPlayer.py: `addAbility` / `removeAbility`
+    // both broadcast the bulk `onKnownAbilitiesUpdate` and nothing
+    // smaller exists). The bulk update is the only lever we have:
+    // we tell the client "your known set is now X" and the client
+    // re-evaluates every action-bar slot against that. Whether the
+    // client gracefully migrates a slot bound to the *old* weapon's
+    // ability when the *new* weapon's ability replaces it is exactly
+    // what the user wants validated in playtest — Path A from the
+    // RE finding.
+    //
+    // Tracked separately from `known_abilities` via
+    // `AbilityManager::weapon_granted_abilities` so player-trained
+    // and archetype-starter abilities are never revoked on weapon
+    // swap, even if they happen to overlap with a weapon binding.
+    // See `AbilityManager::swap_weapon_granted_abilities` for the
+    // diff math + the player-already-knew-it carve-out.
+    swap_weapon_granted_abilities_for_slot(entity_id, slot_id, tx, space_mgr).await;
+}
+
+/// Compute the new weapon's `items_event_sets` bindings, hand them to
+/// [`cimmeria_entity::abilities::AbilityManager::swap_weapon_granted_abilities`],
+/// and broadcast `onKnownAbilitiesUpdate` if the set changed.
+///
+/// Probes `EVENT_ITEM_RANGED`, `EVENT_ITEM_MELEE`, and
+/// `EVENT_ITEM_USE_ABILITY` — the three weapon-relevant event ids the
+/// resolve.rs lookup also walks. A weapon often grants one ability per
+/// event id (e.g., pistol: 579 ranged + 708 melee); all of them go
+/// into the new set so any of them is fireable while the weapon is
+/// active.
+///
+/// An empty slot (no item bound) produces an empty new set — every
+/// previously-tracked weapon ability is revoked.
+async fn swap_weapon_granted_abilities_for_slot(
+    entity_id: u32,
+    slot_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    use crate::cell::spawner::{EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_USE_ABILITY};
+    use std::collections::HashSet;
+
+    // 1. New weapon's bindings — read item_id from the now-active slot,
+    //    look up every relevant event_id in items_event_sets.
+    let item_id = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.bandolier_items.get(&slot_id).map(|b| b.item_id));
+    let mut new_set: HashSet<i32> = HashSet::new();
+    if let Some(item_id) = item_id {
+        for event_id in [EVENT_ITEM_RANGED, EVENT_ITEM_MELEE, EVENT_ITEM_USE_ABILITY] {
+            if let Some(&ability_id) = space_mgr.item_event_set_abilities.get(&(item_id, event_id))
+            {
+                new_set.insert(ability_id);
+            }
+        }
+    }
+
+    // 2. Hand the new set to the diff helper; capture (removed, added).
+    let (removed, added) = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => e.abilities.swap_weapon_granted_abilities(new_set),
+        None => return,
+    };
+    if removed.is_empty() && added.is_empty() {
+        return; // No change — skip the broadcast.
+    }
+
+    // 3. Build + broadcast `onKnownAbilitiesUpdate` (method 101) — the
+    //    bulk known-abilities replace. Same wire shape the login burst
+    //    sends in `base_messages/player_init.rs::send_known_abilities_update`
+    //    (we don't call that helper directly because it's `pub(super)`
+    //    and the import-chain reshape isn't worth it for one extra
+    //    call site).
+    //
+    //    Wire format: `ARRAY<INT32> AbilityData` → `u32 count` +
+    //    N × `i32 ability_id`. Read straight from the post-swap
+    //    `known_ability_ids()` so the broadcast matches the entity's
+    //    current state exactly.
+    let ability_ids: Vec<i32> = match space_mgr.get_entity(entity_id) {
+        Some(e) => e.abilities.known_ability_ids(),
+        None => return,
+    };
+    let mut args = Vec::with_capacity(4 + ability_ids.len() * 4);
+    args.extend_from_slice(&(ability_ids.len() as u32).to_le_bytes());
+    for id in &ability_ids {
+        args.extend_from_slice(&id.to_le_bytes());
+    }
+    crate::cell::abilities::send_entity_method(
+        entity_id,
+        crate::cell::client_methods::player::ON_KNOWN_ABILITIES_UPDATE,
+        args,
+        tx,
+        space_mgr,
+    )
+    .await;
+
+    tracing::info!(
+        target: "bandolier",
+        event = "weapon_ability_swap",
+        entity_id,
+        slot_id,
+        item_id = ?item_id,
+        removed = ?removed,
+        added = ?added,
+        new_known_count = ability_ids.len(),
+        "Per-weapon ability grant — broadcast onKnownAbilitiesUpdate"
+    );
 }
 
 #[tracing::instrument(
