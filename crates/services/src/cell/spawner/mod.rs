@@ -38,7 +38,7 @@ pub use abilities::{
     EVENT_ITEM_EQUIP, EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_RELOAD, EVENT_ITEM_UNEQUIP,
     EVENT_ITEM_USE, EVENT_ITEM_USE_ABILITY,
 };
-pub use dialogs::{load_dialog_set_maps, DialogSetMapEntry};
+pub use dialogs::{load_dialog_set_maps, load_monologue_dialog_ids, DialogSetMapEntry};
 pub use loot::{load_item_containers, load_item_defs, load_loot_tables, LootTableEntry, WeaponDef};
 pub use missions::{load_mission_defs, load_step_objectives, MissionDefEntry, MissionObjectiveDef};
 pub use npcs::{

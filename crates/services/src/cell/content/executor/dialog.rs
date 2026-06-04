@@ -10,10 +10,9 @@ use crate::cell::space_manager::SpaceManager;
 /// to the player. They take different field names but the same id semantics,
 /// merged into one handler.
 ///
-/// The wire `EntityId` field of `onDialogDisplay` MUST be the NPC the
-/// player is talking to — the client uses it as the key into
-/// `LookupEntityListenerEntry` to bind the dialog portrait actor and the
-/// per-screen speaker entity (see
+/// The wire `EntityId` field of `onDialogDisplay` is the key the client
+/// uses for `LookupEntityListenerEntry` to bind the dialog portrait actor
+/// and the per-screen speaker entity (see
 /// `docs/reverse-engineering/findings/dialog-portrait-lookup.md`).
 /// Resolution order, from most to least direct:
 ///
@@ -24,15 +23,25 @@ use crate::cell::space_manager::SpaceManager;
 ///    `handle_interact`. Covers follow-up chains (e.g. an
 ///    `OnDialogChoice` trigger that fires another `display_dialog` on
 ///    the same NPC) where the trigger event itself carries no NPC.
-/// 3. Abort with a `warn` — falling back to the player's own entity ID
-///    here is the bug this commit fixed: the client would bind the
-///    player as the dialog speaker, blanking the portrait and
-///    rendering the player's name for every screen.
+/// 3. **Monologue fallback** — if the dialog is in
+///    `space_mgr.monologue_dialog_ids` (every screen has
+///    `speaker_id = 0`, i.e. player-narration / inner-thought), bind
+///    the player as the wire EntityId. The client's per-screen lookup
+///    of `speaker_id = 0` naturally falls back to the player's name and
+///    the portrait shows the player — exactly the intended render for
+///    "the player is talking to themselves." Without this branch,
+///    monologue dialogs (~42% of authored screens) silently never
+///    display.
+/// 4. Abort with a `warn` — the dialog is NPC-shaped but no NPC could
+///    be resolved. Binding the player here would blank the NPC portrait
+///    and substitute the player's name for every NPC line — the bug
+///    that motivated the original gate. Bail loud so the chain author
+///    can fix the missing target_entity_id wire-up.
 #[tracing::instrument(
     name = "dialog.display",
     level = "info",
     skip_all,
-    fields(entity_id, dialog_id, chain_id, npc_entity_id = tracing::field::Empty)
+    fields(entity_id, dialog_id, chain_id, npc_entity_id = tracing::field::Empty, monologue = tracing::field::Empty)
 )]
 pub(super) async fn display(
     dialog_id: i32,
@@ -56,14 +65,27 @@ pub(super) async fn display(
     let npc_entity_id = match npc_entity_id {
         Some(id) => id,
         None => {
-            tracing::warn!(
-                entity_id,
-                dialog_id,
-                chain_id,
-                "DisplayDialog: no NPC entity id in chain params or last_interaction_target -- \
-                 cannot send onDialogDisplay (would bind player as speaker and blank portrait)"
-            );
-            return;
+            // Monologue fallback — see doc on this fn for rationale.
+            if space_mgr.monologue_dialog_ids.contains(&dialog_id) {
+                tracing::Span::current().record("monologue", true);
+                tracing::info!(
+                    entity_id,
+                    dialog_id,
+                    chain_id,
+                    "DisplayDialog: no NPC resolved, dialog is player-monologue \
+                     (all screens speaker_id=0) — binding player as context entity"
+                );
+                entity_id as i32
+            } else {
+                tracing::warn!(
+                    entity_id,
+                    dialog_id,
+                    chain_id,
+                    "DisplayDialog: no NPC entity id in chain params or last_interaction_target -- \
+                     cannot send onDialogDisplay (would bind player as speaker and blank portrait)"
+                );
+                return;
+            }
         }
     };
 
@@ -461,6 +483,67 @@ mod tests {
                 .find_message(Level::WARN, "DisplayDialog: no NPC entity id")
                 .is_some(),
             "abort must surface a WARN — silent return masks the chain-author bug"
+        );
+    }
+
+    /// When no NPC resolves and the dialog is in the monologue cache,
+    /// the wire EntityId must be the player's own id (not bail). The
+    /// per-screen `speaker_id = 0` lookup on the client falls back to
+    /// the player's name, rendering as inner thought.
+    #[tokio::test]
+    async fn display_binds_player_when_no_npc_and_dialog_is_monologue() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        // Cache dialog 2982 as a known monologue.
+        mgr.monologue_dialog_ids.insert(2982);
+
+        let params = empty_params();
+        let (tx, mut rx) = mpsc::channel(4);
+        display(2982, 1, 1001, &params, &tx, &mgr).await;
+
+        let msg = rx.try_recv().expect(
+            "monologue dialog must emit onDialogDisplay even with no NPC \
+             resolved — reverting the monologue branch in display() fails here",
+        );
+        match msg {
+            CellToBaseMsg::EntityMethodCall { args, .. } => {
+                let wire_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                assert_eq!(
+                    wire_entity_id, 1,
+                    "monologue must bind the player's own entity id as the wire EntityId"
+                );
+            }
+            other => panic!("expected EntityMethodCall, got {other:?}"),
+        }
+    }
+
+    /// Companion guard: a dialog NOT in the monologue cache still
+    /// bails when no NPC resolves. Pins that the fallback is gated on
+    /// the cache, not an "accept anything" hole — an NPC dialog whose
+    /// chain context was lost must still warn, because binding the
+    /// player there would blank the NPC portrait and substitute the
+    /// player's name for every screen.
+    #[tokio::test]
+    async fn display_still_aborts_for_npc_dialog_not_in_monologue_cache() {
+        let capture = LogCapture::install();
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        // monologue_dialog_ids intentionally empty for dialog 4001 (NPC
+        // dialog — Future Col Marsh).
+
+        let params = empty_params();
+        let (tx, mut rx) = mpsc::channel(4);
+        display(4001, 1, 9999, &params, &tx, &mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "non-monologue dialog with no NPC must still bail"
+        );
+        assert!(
+            capture
+                .find_message(Level::WARN, "DisplayDialog: no NPC entity id")
+                .is_some(),
+            "non-monologue bail must still surface the WARN"
         );
     }
 }

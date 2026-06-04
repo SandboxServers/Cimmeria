@@ -67,6 +67,22 @@ impl CellService {
             }
         }
 
+        // Load monologue dialog ids for the DisplayDialog executor.
+        // ERROR (not WARN) on failure: an empty cache silently strips
+        // ~42% of authored dialog screens (the inner-thought ones)
+        // from world entry. The executor falls through to bail-and-
+        // warn so behavior stays safe, but operators need to see this.
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_monologue_dialog_ids(pool).await {
+                Ok(ids) => {
+                    space_mgr.monologue_dialog_ids = ids;
+                }
+                Err(e) => {
+                    tracing::error!("Failed to load monologue dialog ids: {e}");
+                }
+            }
+        }
+
         // Load mission definitions cache for AcceptMission content actions
         if let Some(ref pool) = self.db_pool {
             match spawner::load_mission_defs(pool).await {

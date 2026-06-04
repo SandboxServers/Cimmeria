@@ -24,6 +24,8 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         "AbsorbShield" => Some(&scripts::AbsorbShield),
         "Stun" => Some(&scripts::Stun),
         "Suppression" => Some(&scripts::Suppression),
+        "RangedPhysicalDamage" => Some(&scripts::RangedPhysicalDamage),
+        "RangedEnergyDamage" => Some(&scripts::RangedEnergyDamage),
         _ => None,
     }
 }
@@ -40,6 +42,8 @@ mod tests {
         assert!(lookup("AbsorbShield").is_some());
         assert!(lookup("Stun").is_some());
         assert!(lookup("Suppression").is_some());
+        assert!(lookup("RangedPhysicalDamage").is_some());
+        assert!(lookup("RangedEnergyDamage").is_some());
     }
 
     #[test]

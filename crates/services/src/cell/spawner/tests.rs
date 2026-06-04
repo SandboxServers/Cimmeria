@@ -506,6 +506,74 @@ mod live_db {
         }
     }
 
+    /// **Regression guard for the monologue dialog cache:** dialog 2982
+    /// is the Castle Cellblock wake-up monologue, two screens both
+    /// `speaker_id = 0`. The cache must include it OR the
+    /// `DisplayDialog` monologue fallback never triggers and the
+    /// cellblock opening narration silently never shows.
+    ///
+    /// Also asserts the predicate is correctly exclusive — a dialog
+    /// with any non-zero speaker_id row must NOT surface in the
+    /// monologue set (else the executor would bind the player as the
+    /// NPC for that dialog and blank the NPC portrait — the bug the
+    /// original abort gate was designed to prevent).
+    #[tokio::test]
+    async fn load_monologue_dialog_ids_includes_cellblock_wakeup() {
+        let pool = require_db_or_skip!();
+        let ids = load_monologue_dialog_ids(&pool)
+            .await
+            .expect("load_monologue_dialog_ids must succeed");
+
+        // Dialog 2982 = Castle Cellblock wake-up monologue.
+        assert!(
+            ids.contains(&2982),
+            "dialog 2982 (cellblock wake-up monologue) must be in the monologue set; \
+             without it the chain-1001 DisplayDialog continues to silently never fire"
+        );
+
+        // Pick any dialog id from the seed that has at least one
+        // non-zero speaker_id screen — it must NOT be in the cache.
+        // Fetch a representative dialog and assert.
+        let mixed_dialog: Option<i32> = sqlx::query_scalar(
+            "SELECT dialog_id FROM resources.dialog_screens \
+             WHERE speaker_id <> 0 \
+             GROUP BY dialog_id LIMIT 1",
+        )
+        .fetch_optional(&pool)
+        .await
+        .expect("query must succeed");
+        if let Some(d) = mixed_dialog {
+            assert!(
+                !ids.contains(&d),
+                "dialog {d} has at least one non-zero speaker_id screen — it must NOT be \
+                 in the monologue set, or the executor's monologue fallback would \
+                 incorrectly bind the player for an NPC dialog"
+            );
+        }
+
+        // A dialog with at least one NULL `speaker_id` screen must NOT
+        // be classified as a monologue. The original predicate
+        // (`COUNT(*) FILTER (WHERE speaker_id <> 0) = 0`) treated NULL
+        // as "not non-zero" and wrongly admitted such dialogs — the
+        // exact mis-binding the cache exists to prevent.
+        let null_speaker_dialog: Option<i32> = sqlx::query_scalar(
+            "SELECT dialog_id FROM resources.dialog_screens \
+             WHERE speaker_id IS NULL \
+             GROUP BY dialog_id LIMIT 1",
+        )
+        .fetch_optional(&pool)
+        .await
+        .expect("query must succeed");
+        if let Some(d) = null_speaker_dialog {
+            assert!(
+                !ids.contains(&d),
+                "dialog {d} has at least one NULL speaker_id screen — it must NOT be \
+                 in the monologue set; treating NULL as monologue would mis-bind the \
+                 player as the dialog context entity for unknown-speaker dialogs"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn load_stargates_resolves_world_join() {
         let pool = require_db_or_skip!();
