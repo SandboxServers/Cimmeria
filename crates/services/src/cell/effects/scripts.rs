@@ -190,6 +190,130 @@ impl EffectScript for MeleeDamage {
     }
 }
 
+// ── MeleePhysicalDamage ──────────────────────────────────────────────────
+
+/// Focus-gated physical damage for melee abilities. Direct counterpart
+/// to [`RangedPhysicalDamage`] but for short-range strikes — same
+/// shield-first math, no script-side range gating (the ability's
+/// `max_range` field gates that one layer up in `damage_apply`).
+///
+/// NVPs:
+///   - `FocusDamage` (i32) — amount to subtract from target FOCUS pool
+///   - `HealthDamage` (i32) — base HEALTH damage added to spillover
+///
+/// Modeled on the legacy effect-desc convention `"-100F -10H"` used
+/// by the original Strike ability (594, effect 656). The legacy
+/// authoring stored those numbers in `effect_desc` as a free-text
+/// hint and relied on per-script logic to do the actual application.
+/// We surface them as proper NVPs and reuse the existing two-step
+/// integer truncation from `RangedPhysicalDamage` so combat tuning
+/// is parity-correct across both archetypes.
+///
+/// Behavior, mirroring the `RangedPhysicalDamage` flow:
+///
+/// 1. Subtract `FocusDamage` from the target's FOCUS pool. The pool
+///    clamps at 0; any unused damage is the "overflow."
+/// 2. If FOCUS absorbed everything (no overflow) → done. No HEALTH
+///    damage applied — shields held the melee hit.
+/// 3. Otherwise, compute spillover via the two-step integer formula
+///    `(overflow * 100 / FocusDamage) * FocusDamage / 300`, add the
+///    base `HealthDamage`, apply to HEALTH.
+///
+/// **Why not extend `MeleeDamage` to take a `FocusDamage` NVP?**
+/// `MeleeDamage` is the simple "raw HP damage" script — flat damage
+/// is the entire contract today. A drive-by addition would change
+/// its semantic without renaming, and the same NVP-key collision
+/// (`FocusDamage`) would silently start draining FOCUS for any
+/// existing effect that happened to inherit the NVP. Splitting into
+/// a named-as-such script keeps the two intentions clearly separable.
+///
+/// Without this script, the legacy NVP fallback applies both
+/// `FocusDamage` and `HealthDamage` independently every melee hit,
+/// so the target takes HEALTH damage even at full Focus — exactly
+/// the bug shape `RangedPhysicalDamage` exists to prevent for ranged.
+///
+/// Reference: `crates/services/src/cell/effects/scripts.rs::RangedPhysicalDamage`
+/// (parent shape); `db/resources/Effects/Seed/effects.sql` row for
+/// effect 656; companion DB migration
+/// `db/scripts/wire_strike_melee_physical_damage.sql`.
+pub struct MeleePhysicalDamage;
+
+impl EffectScript for MeleePhysicalDamage {
+    fn on_apply(&self, ctx: &mut EffectContext) {
+        let focus_damage = ctx.effect.param_i32("FocusDamage").max(0);
+        let health_damage = ctx.effect.param_i32("HealthDamage").max(0);
+        if focus_damage == 0 && health_damage == 0 {
+            return;
+        }
+
+        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
+            return;
+        };
+
+        // Apply Focus damage; capture how much overflowed the pool.
+        let focus_overflow = if focus_damage > 0 {
+            let cur = target.stats.get(FOCUS).map(|s| s.cur).unwrap_or(0);
+            let applied = focus_damage.min(cur.max(0));
+            let overflow = (focus_damage - applied).max(0);
+            if let Some(stat) = target.stats.get_mut(FOCUS) {
+                let new_cur = (cur - applied).max(0);
+                stat.update(stat.min, new_cur, stat.max);
+            }
+            overflow
+        } else {
+            // If there's no Focus damage at all, the spillover gate
+            // suppresses Health damage too — matches the parent
+            // `RangedPhysicalDamage` conditional branch off the QR result.
+            0
+        };
+
+        // Legacy gate: if Focus absorbed everything (overflow == 0),
+        // NO Health damage is applied at all. The shield held the strike.
+        if focus_overflow == 0 {
+            tracing::debug!(
+                target: "abilities",
+                event = "melee_physical_damage",
+                source_id = ctx.source_id,
+                target_id = ctx.target_id,
+                effect_id = ctx.effect.effect_id,
+                focus_damage,
+                focus_overflow,
+                health_damage_applied = 0,
+                "MeleePhysicalDamage: Focus absorbed all damage, no HEALTH bleed",
+            );
+            return;
+        }
+
+        // Two-step integer truncation — see `RangedPhysicalDamage` for
+        // the small-overflow divergence rationale. DO NOT collapse to
+        // `focus_overflow / 3`.
+        let remaining_pct = focus_overflow.saturating_mul(100) / focus_damage;
+        let spillover = remaining_pct.saturating_mul(focus_damage) / 300;
+        let final_health_damage = spillover + health_damage;
+        if final_health_damage <= 0 {
+            return;
+        }
+        if let Some(stat) = target.stats.get_mut(HEALTH) {
+            let new_cur = (stat.cur - final_health_damage).max(0);
+            stat.update(stat.min, new_cur, stat.max);
+        }
+        tracing::info!(
+            target: "abilities",
+            event = "melee_physical_damage",
+            source_id = ctx.source_id,
+            target_id = ctx.target_id,
+            effect_id = ctx.effect.effect_id,
+            focus_damage,
+            focus_overflow,
+            remaining_pct,
+            spillover,
+            health_damage_applied = final_health_damage,
+            base_health_damage = health_damage,
+            "MeleePhysicalDamage: Focus pierced, applied HEALTH bleed",
+        );
+    }
+}
+
 // ── AbsorbShield ─────────────────────────────────────────────────────────
 
 /// Adds `ShieldAmount` to the target's matching ABSORB_* pool. Damage
@@ -1314,6 +1438,148 @@ mod tests {
         let e = ctx.space_mgr.get_entity(1).unwrap();
         assert_eq!(e.stats.get(FOCUS).unwrap().cur, 200, "no focus change");
         assert_eq!(e.stats.get(HEALTH).unwrap().cur, 50, "no health change");
+    }
+
+    // ── MeleePhysicalDamage ──────────────────────────────────────────
+
+    /// Shield holds against a melee Focus-gated hit (Strike with
+    /// Focus 200, FocusDamage 100 → no overflow, no HEALTH bleed).
+    /// Mirror of `ranged_physical_full_focus_absorbs_no_health_damage`
+    /// for the melee script. Reverting the early-return after the
+    /// `focus_overflow == 0` gate would land a 10 HP hit here, failing
+    /// the assertion.
+    #[test]
+    fn melee_physical_full_focus_absorbs_no_health_damage() {
+        let mut mgr = make_mgr_with_target();
+        let effect = effect_with_two_nvps("FocusDamage", "100", "HealthDamage", "10");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        MeleePhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.stats.get(FOCUS).unwrap().cur,
+            100,
+            "100 focus damage out of 200 must drain to 100"
+        );
+        assert_eq!(
+            e.stats.get(HEALTH).unwrap().cur,
+            50,
+            "shield held → no HEALTH damage, even though HealthDamage NVP = 10"
+        );
+    }
+
+    /// Strike-canonical NVPs (FocusDamage 100, HealthDamage 10) on a
+    /// target with Focus pre-depleted to 30 → 70 overflow, spillover
+    /// `(70*100/100)*100/300 = 23`, + HealthDamage 10 = 33 total HP
+    /// damage. HP 50 → 17. Same math the ranged twin uses, by design.
+    #[test]
+    fn melee_physical_partial_absorb_spills_to_health() {
+        let mut mgr = make_mgr_with_target();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            if let Some(s) = e.stats.get_mut(FOCUS) {
+                s.update(0, 30, 1000);
+            }
+        }
+        let effect = effect_with_two_nvps("FocusDamage", "100", "HealthDamage", "10");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        MeleePhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 0);
+        assert_eq!(
+            e.stats.get(HEALTH).unwrap().cur,
+            17,
+            "HP 50 - (spillover 23 + HealthDamage 10) = 17"
+        );
+    }
+
+    /// No focus at all → entire FocusDamage is overflow; spillover
+    /// `(100*100/100)*100/300 = 33`, + 10 = 43 HP loss. HP 50 → 7.
+    /// Symmetric to the ranged-side coverage so a refactor that
+    /// drops the empty-pool branch trips here too.
+    #[test]
+    fn melee_physical_no_focus_takes_full_overflow_spillover() {
+        let mut mgr = make_mgr_with_target();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            if let Some(s) = e.stats.get_mut(FOCUS) {
+                s.update(0, 0, 1000);
+            }
+        }
+        let effect = effect_with_two_nvps("FocusDamage", "100", "HealthDamage", "10");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        MeleePhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 0);
+        assert_eq!(e.stats.get(HEALTH).unwrap().cur, 7);
+    }
+
+    /// Missing target — return silently, no panic. The script-side
+    /// missing-target branch in the ranged twin had a regression
+    /// where an unwrap was reintroduced; pin the same shape here.
+    #[test]
+    fn melee_physical_missing_target_is_noop() {
+        let mut mgr = make_mgr_with_target();
+        let effect = effect_with_two_nvps("FocusDamage", "100", "HealthDamage", "10");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 9999,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        MeleePhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 200);
+        assert_eq!(e.stats.get(HEALTH).unwrap().cur, 50);
+    }
+
+    /// Both NVPs at zero → no work, no log. Coverage parity with the
+    /// ranged twin's zero-effect short-circuit.
+    #[test]
+    fn melee_physical_zero_nvps_skips_both_pools() {
+        let mut mgr = make_mgr_with_target();
+        let effect = effect_with_two_nvps("FocusDamage", "0", "HealthDamage", "0");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        MeleePhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 200);
+        assert_eq!(e.stats.get(HEALTH).unwrap().cur, 50);
+    }
+
+    /// Negative NVPs (content authoring mistake) clamp to zero and
+    /// the script becomes a no-op — never produces "negative damage"
+    /// healing. Same `max(0)` discipline the ranged twin uses.
+    #[test]
+    fn melee_physical_negative_nvps_clamp_to_zero() {
+        let mut mgr = make_mgr_with_target();
+        let effect = effect_with_two_nvps("FocusDamage", "-50", "HealthDamage", "-20");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        MeleePhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(e.stats.get(FOCUS).unwrap().cur, 200);
+        assert_eq!(e.stats.get(HEALTH).unwrap().cur, 50);
     }
 
     /// Missing target on the energy path returns silently with a debug
