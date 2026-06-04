@@ -561,10 +561,9 @@ mod system_options_assignment_tests {
         );
     }
 
-    /// **RE-driven defensive resync from PR #501.** `InitPlayerState`
-    /// must re-emit `onActiveSlotUpdate` to the client AFTER
-    /// `onClientReady`, carrying the player's persisted active
-    /// bandolier slot. The Ghidra-recovered client behaviour is that
+    /// **RE-driven defensive resync.** `InitPlayerState` must re-emit
+    /// `onActiveSlotUpdate` to the client AFTER `onClientReady`,
+    /// carrying the player's persisted active bandolier slot. The Ghidra-recovered client behaviour is that
     /// the NetIn handler `FUN_00da9ce0` walks `SGWPlayer.bagList`
     /// (at `+0x8c → +0x24`) and silently no-ops when the bag-list
     /// map is uninitialized. The login-burst `onActiveSlotUpdate`
