@@ -232,10 +232,18 @@ impl EffectScript for MeleeDamage {
 /// so the target takes HEALTH damage even at full Focus — exactly
 /// the bug shape `RangedPhysicalDamage` exists to prevent for ranged.
 ///
+/// **Edge case — `FocusDamage = 0` with `HealthDamage > 0`:** the
+/// script returns early via the `focus_overflow == 0` gate without
+/// applying the `HealthDamage`. This is intentional and mirrors
+/// `RangedPhysicalDamage`'s shields-first contract: with no Focus
+/// component there is no shield to pierce, so the spillover-only
+/// HEALTH bleed never fires. If an effect genuinely wants flat raw
+/// melee damage with no Focus interaction, the right script is
+/// `MeleeDamage` (which reads `HealthDamage` alone), not this one.
+///
 /// Reference: `crates/services/src/cell/effects/scripts.rs::RangedPhysicalDamage`
 /// (parent shape); `db/resources/Effects/Seed/effects.sql` row for
-/// effect 656; companion DB migration
-/// `db/scripts/wire_strike_melee_physical_damage.sql`.
+/// effect 656.
 pub struct MeleePhysicalDamage;
 
 impl EffectScript for MeleePhysicalDamage {
@@ -1561,6 +1569,44 @@ mod tests {
         let e = ctx.space_mgr.get_entity(1).unwrap();
         assert_eq!(e.stats.get(FOCUS).unwrap().cur, 200);
         assert_eq!(e.stats.get(HEALTH).unwrap().cur, 50);
+    }
+
+    /// **Edge case from PR #493 review**: `FocusDamage = 0` with
+    /// `HealthDamage > 0` returns early via the
+    /// `focus_overflow == 0` shields-held gate — no Health damage
+    /// applied, even though `HealthDamage` is non-zero.
+    ///
+    /// This is the documented contract: with no Focus component,
+    /// there is no shield to pierce, so the spillover-only HEALTH
+    /// bleed never fires. An effect that wants flat raw melee damage
+    /// with no Focus interaction should use the `MeleeDamage` script
+    /// (reads `HealthDamage` alone), not this one.
+    ///
+    /// Reverting the early-return after the `focus_overflow == 0`
+    /// gate would land a 10 HP hit here, failing the assertion.
+    #[test]
+    fn melee_physical_zero_focus_damage_skips_health_too() {
+        let mut mgr = make_mgr_with_target();
+        let effect = effect_with_two_nvps("FocusDamage", "0", "HealthDamage", "10");
+        let mut ctx = EffectContext {
+            source_id: 1,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        };
+        MeleePhysicalDamage.on_apply(&mut ctx);
+        let e = ctx.space_mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.stats.get(FOCUS).unwrap().cur,
+            200,
+            "no Focus damage requested → Focus pool untouched"
+        );
+        assert_eq!(
+            e.stats.get(HEALTH).unwrap().cur,
+            50,
+            "shields-held gate fires when there's nothing to absorb — \
+             use the `MeleeDamage` script for flat-raw-HP melee damage"
+        );
     }
 
     /// Negative NVPs (content authoring mistake) clamp to zero and
