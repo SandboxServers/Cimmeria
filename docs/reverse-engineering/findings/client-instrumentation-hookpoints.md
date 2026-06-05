@@ -65,13 +65,13 @@ See [`cme-event-signal.md`](cme-event-signal.md) for the full Pattern A vs Patte
 
 The minimum hook set that turns "client froze somewhere during world entry" into a SigNoz trace.
 
-| Function | Anchor | Technique | Event name | Status |
+| Function | Anchor → Entry | Technique | Event name | Status |
 |---|---|---|---|---|
-| `FEngineLoop::Tick` | RTTI `0x01d8f838` | Inline | `client.frame_tick` (sampled 1/100) | CONFIRMED |
-| `UWorld::UpdateLevelStreaming` | StreamingLevel xref @ `0x01837518` | Inline | `client.streaming.update` | CONFIRMED |
+| `FEngineLoop::Tick` | RTTI `0x01d8f838` → **entry `0x00416ec0`** | Inline | `client.engine.tick` (sampled 1/100) | ENABLED (PR #504) |
+| `UWorld::UpdateLevelStreaming` | StreamingLevel xref @ `0x01837518` → **entry `0x0054e9c0`** | Inline | `client.engine.update_level_streaming` | SCAFFOLDED — entry resolved, signature (Ghidra recovered `this, int, float*`) needs RE before enable to avoid stack-mismatch crash |
 | `ULevelStreaming::SetLevelStatus` | `0x01837518`, `0x01906e30` | Inline | `client.streaming.state_change` | CONFIRMED |
-| `FArchiveAsync::Read*` | RTTI `0x01dafd0c` | Inline | `client.async_io.read` | CONFIRMED |
-| `LoadPackage` | "FailedLoadPackage" xref @ `0x0180f104` | Inline | `client.package.load` | CONFIRMED |
+| `FArchiveAsync::Serialize` (vtbl slot 1) | RTTI `0x01dafd0c` → vtable `0x01814198` → **entry `0x004c7ae0`** | Inline | `client.engine.async_archive_serialize` (sampled 1/1000) | ENABLED (PR #504) |
+| `LoadPackageInternal` | "FailedLoadPackage" xref @ `0x0180f104` → **entry `0x004a8e10`** | Inline | `client.engine.load_package` | SCAFFOLDED — entry resolved (192 xrefs, recursive self-call confirms `LoadPackageInternal`), but Ghidra recovered 7 cdecl args; need to map to UE3-source signature before enable |
 | `Event_NetIn_onClientMapLoad` handler | TypedEmitInfo `0x01e4da90` | CME subscribe | `client.network.on_client_map_load` | CONFIRMED |
 | `Event_NetIn_onClientReady` handler | string `0x019c2828` ("onClientReady") | CME subscribe | `client.network.on_client_ready` | CONFIRMED (string at address is the bare `onClientReady` — the full `Event_NetIn_onClientReady` is the RTTI-derived signal name) |
 | `recvfrom` / `WSARecv` | `ws2_32.dll` IAT | IAT | `client.os.udp_recv` (sampled) | DEFERRED — IAT walker work |

@@ -2,8 +2,8 @@
 
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
-> **Last updated**: 2026-05-26
-> **Status**: Phase 2 landed (CME hooks + Mercury inline hook); 4 inline hooks deferred pending per-anchor RE
+> **Last updated**: 2026-06-04
+> **Status**: Phase 2 landed (CME hooks + 3 inline hooks: Mercury dispatch, FEngineLoop::Tick, FArchiveAsync::Serialize); 2 inline hooks scaffolded — addresses resolved via Ghidra RTTI walks (UWorld::UpdateLevelStreaming @ `0x0054e9c0`, LoadPackageInternal @ `0x004a8e10`) but argument shapes need confirmation before enable
 
 How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
 
