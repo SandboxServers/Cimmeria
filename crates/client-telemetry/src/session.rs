@@ -6,9 +6,10 @@
 //! `<install_dir>/Binaries/sessions/current-session.json` at session
 //! start (see `crates/launcher/src/telemetry/session.rs`). The DLL
 //! reads it during bootstrap, holds onto the relevant fields for
-//! the uploader thread's lifetime, and re-reads only when the token
-//! expires (Phase 3 — for now the uploader runs until process exit
-//! or a 401 from the server, whichever comes first).
+//! the uploader thread's lifetime, and never re-reads the file in
+//! Phase 2 — the uploader runs until process exit. Token expiry
+//! and re-read on 401 land in Phase 3 (see
+//! `crate::uploader` failure-mode docs).
 //!
 //! # How the DLL finds the file
 //!

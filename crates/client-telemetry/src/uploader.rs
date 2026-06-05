@@ -17,19 +17,32 @@
 //! transfers control to [`run_uploader`] which never returns
 //! under normal operation.
 //!
-//! # Failure modes (per [docs/architecture/dev-session-telemetry.md])
+//! # Failure modes (current implementation)
 //!
-//! - **401 from server** — token rejected. Today we just log and
-//!   keep retrying; Phase 3 will pull a fresh token from disk by
-//!   re-reading `current-session.json` (the launcher refreshes it
-//!   at 75% TTL).
-//! - **503 from server** — kill switch / overload. We honor any
-//!   `Retry-After` header; on parse failure, fall back to 30 s.
-//! - **Network error** — keep events on the queue, retry on the
-//!   next cadence. Drops only happen when the queue itself
-//!   overflows (see [`crate::queue`]).
+//! The Phase-2 uploader is deliberately minimal — it ships batches
+//! and retains them on failure but does not yet parse server hints
+//! or refresh credentials. Phase 3 will add the more sophisticated
+//! handling described in [docs/architecture/dev-session-telemetry.md].
+//!
+//! - **401 from server** — token rejected. Treated like any other
+//!   non-2xx: the batch is retained for retry on the next cadence
+//!   and the failure is silently discarded by the caller. Phase 3
+//!   will re-read `current-session.json` to pick up a refreshed
+//!   token (the launcher rotates at 75% TTL).
+//! - **5xx from server** — overload / outage. Same path as 401:
+//!   retained for retry on the next cadence. `Retry-After` is not
+//!   parsed today; Phase 3 will honor it.
+//! - **Network error** — same path. The batch (which has already
+//!   been popped from the queue) is retained in the uploader's
+//!   `Vec` and re-attempted on the next flush cadence. When the
+//!   retained batch hits `max_batch` capacity, the oldest half is
+//!   dropped to bound memory at ~2× `max_batch` events.
 //! - **Disconnected channel** — Producer side hung up. Treated as
 //!   "uploader done" and the thread exits.
+//!
+//! Drops also happen at the queue itself when the producer side
+//! overflows the ring (see [`crate::queue`]) — those are accounted
+//! for separately and never reach the uploader.
 
 use std::io::Write;
 use std::time::{Duration, Instant};
@@ -130,13 +143,22 @@ pub fn run_uploader(
             return UploaderExit::Stopped;
         }
 
-        // Wait up to the flush interval for the next event. The
-        // timeout makes the loop wake even when the queue is empty
-        // so we can emit cadence-driven health events later.
-        let recv_timeout = cfg
-            .flush_interval
-            .saturating_sub(last_flush.elapsed())
-            .max(Duration::from_millis(1));
+        // Wait for the next event. Pick the timeout so we wake on
+        // cadence:
+        //  - empty batch: wait the full flush_interval (nothing to
+        //    flush, no reason to wake sooner). This avoids a 1 ms
+        //    busy-spin when no events arrive but `last_flush` is
+        //    older than `flush_interval`.
+        //  - non-empty batch: wait at most `flush_interval -
+        //    last_flush.elapsed()`, floored at 1 ms, so we ship
+        //    pending events on cadence even if the queue went quiet.
+        let recv_timeout = if batch.is_empty() {
+            cfg.flush_interval
+        } else {
+            cfg.flush_interval
+                .saturating_sub(last_flush.elapsed())
+                .max(Duration::from_millis(1))
+        };
         match recv_timeout_raw(&consumer, recv_timeout) {
             Ok(ev) => batch.push(ev),
             Err(RecvTimeoutError::Timeout) => { /* fall through to flush */ }
@@ -158,8 +180,24 @@ pub fn run_uploader(
         let should_flush = !batch.is_empty()
             && (batch.len() >= cfg.max_batch || last_flush.elapsed() >= cfg.flush_interval);
         if should_flush {
-            let _ = post_batch(&client, &cfg, &batch);
-            batch.clear();
+            match post_batch(&client, &cfg, &batch) {
+                Ok(()) => {
+                    batch.clear();
+                }
+                Err(_) => {
+                    // Network/HTTP failure — retain the batch for
+                    // retry on the next cadence rather than dropping
+                    // it. Bound memory: if the retained batch is
+                    // already at `max_batch`, drop the oldest half
+                    // to leave room for new events. This caps worst-
+                    // case memory at ~2 × max_batch events while
+                    // preferring newer telemetry over the very
+                    // oldest.
+                    if batch.len() >= cfg.max_batch {
+                        batch.drain(..batch.len() / 2);
+                    }
+                }
+            }
             last_flush = Instant::now();
         }
     }
@@ -190,11 +228,15 @@ fn drain_into(consumer: &Consumer, batch: &mut Vec<ClientNativeEvent>, max_batch
 
 /// Serialize as NDJSON, gzip, POST with the Bearer token.
 ///
-/// Returns `Err` on any network or HTTP failure; the caller (the
-/// uploader loop) currently discards the error — the events have
-/// already been popped, so we're committed to the "at-least-once"
-/// shape rather than retry-on-network-fail. A future Phase 3 may
-/// keep a retry buffer for the most recent batch.
+/// Returns `Err` on any network or non-2xx HTTP response. The
+/// caller (the uploader loop) retains the batch in memory on
+/// failure and re-attempts on the next flush cadence, so the
+/// delivery shape is at-least-once *with possible duplicates* if
+/// the server actually processed the batch before its response
+/// failed (since we cannot distinguish that case from a true POST
+/// failure). The server's `/api/telemetry/upload-chunk` handler is
+/// designed to be idempotent on the `(install_id, session_id,
+/// seq)` tuple to absorb those duplicates.
 fn post_batch(
     client: &ureq::Agent,
     cfg: &UploaderConfig,
@@ -409,6 +451,98 @@ mod tests {
         server_done.store(true, Ordering::Relaxed);
         server_handle.join().unwrap();
         assert_eq!(exit, UploaderExit::Stopped);
+    }
+
+    /// **Retains batch across a failed POST.** Server returns 503
+    /// once, then 200. The uploader must retry the same events on
+    /// the next cadence rather than dropping them after the 503.
+    ///
+    /// Regression guard for the bug where `batch.clear()` ran
+    /// unconditionally inside the `if should_flush` arm — that
+    /// silently dropped any telemetry whose POST failed. Reverting
+    /// the fix flips this test to "0 events received" on the
+    /// retry POST.
+    #[test]
+    fn retains_batch_after_failed_post() {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let addr = server.server_addr().to_ip().unwrap();
+        let url = format!("http://{}:{}/x", addr.ip(), addr.port());
+
+        // Server returns 503 for the first request, 200 thereafter.
+        // Capture the body of every request so the assertion can
+        // verify the retry carries the original events.
+        let bodies: Arc<std::sync::Mutex<Vec<String>>> = Arc::new(Default::default());
+        let bodies2 = bodies.clone();
+        let server_handle = thread::spawn(move || {
+            let mut request_n = 0;
+            while let Ok(Some(mut req)) = server.recv_timeout(Duration::from_secs(2)) {
+                let mut buf = Vec::new();
+                req.as_reader().read_to_end(&mut buf).unwrap();
+                let mut dec = flate2::read::GzDecoder::new(&buf[..]);
+                let mut decoded = String::new();
+                dec.read_to_string(&mut decoded).unwrap();
+                bodies2.lock().unwrap().push(decoded);
+                let resp = if request_n == 0 {
+                    tiny_http::Response::from_string("oops")
+                        .with_status_code(503)
+                        .boxed()
+                } else {
+                    tiny_http::Response::from_string("ok").boxed()
+                };
+                req.respond(resp).ok();
+                request_n += 1;
+            }
+        });
+
+        let (p, c) = channel();
+        // 2 events; tight flush interval so we get multiple cadences.
+        p.try_emit(
+            ClientNativeEvent::builder("client.retry", "info").field("i", serde_json::json!(0)),
+        );
+        p.try_emit(
+            ClientNativeEvent::builder("client.retry", "info").field("i", serde_json::json!(1)),
+        );
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop2 = stop.clone();
+        let upload = thread::spawn(move || {
+            let cfg = UploaderConfig {
+                upload_endpoint: url,
+                token: "t".into(),
+                flush_interval: Duration::from_millis(50),
+                max_batch: 100,
+            };
+            run_uploader(c, cfg, move || stop2.load(Ordering::Relaxed))
+        });
+
+        // Give the uploader enough time to attempt the 503 POST and
+        // then the 200 retry on the next cadence.
+        thread::sleep(Duration::from_millis(400));
+        stop.store(true, Ordering::Relaxed);
+        drop(p);
+        upload.join().unwrap();
+        server_handle.join().unwrap();
+
+        let got = bodies.lock().unwrap();
+        assert!(
+            got.len() >= 2,
+            "expected at least 2 POSTs (503 + retry), got {}",
+            got.len()
+        );
+        // First POST was 503 — but should still have carried both
+        // events. Second POST is the retry — must also carry both
+        // events (we retained the batch).
+        for (idx, body) in got.iter().enumerate().take(2) {
+            let lines: Vec<&str> = body.lines().collect();
+            assert_eq!(
+                lines.len(),
+                2,
+                "POST #{idx} expected 2 events, got {}: {body}",
+                lines.len()
+            );
+            assert!(lines[0].contains(r#""i":0"#), "POST #{idx} missing i=0");
+            assert!(lines[1].contains(r#""i":1"#), "POST #{idx} missing i=1");
+        }
     }
 
     /// **Batch caps at max_batch.** Stuff the queue with more
