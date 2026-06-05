@@ -3,7 +3,7 @@
 > **Diátaxis type**: reference
 > **Audience**: engineers writing or reviewing `cimmeria-client-telemetry` hooks (issue #417)
 > **Last updated**: 2026-06-04
-> **Confidence**: HIGH for Tier-1 anchors validated by Ghidra decompile + string-search pre-issue. HIGH for Tier-3 through Tier-7 anchors after the 2026-06-04 upfront Ghidra pass that resolved every anchor to a function entry or IAT slot. MEDIUM for the 4 deferred vtable-swap targets (UObject::ProcessEvent, AActor::Tick, USequence::Tick, PropertyNode<T> get/set) where the class vtable is identified but the specific slot needs per-slot decompile during implementation.
+> **Confidence**: HIGH for Tier-1 anchors validated by Ghidra decompile + string-search pre-issue. HIGH for Tier-3 through Tier-7 anchors after the 2026-06-04 upfront Ghidra pass that resolved every anchor to a function entry or IAT slot. HIGH for `AActor::Tick` (slot 88 @ `0x005e4200`) and `USequence::UpdateOp` (slot 84 @ `0x006c61c0`) after the second-pass vtable walk. MEDIUM for the 2 remaining deferred vtable-swap targets (`UObject::ProcessEvent` — vtable identified, 5 slots ruled out, ~35 remain to scan; `PropertyNode<T>` get/set — RTTI + COL identified but heavy templated specialization needs per-T enumeration).
 >
 > **See also**: [`client-instrumentation-entry-points.md`](client-instrumentation-entry-points.md) — the resolved Phase 3-6 manifest with all addresses + IAT slots + recommended detour signatures. Read that doc first if you're implementing a Phase 3-6 hook; this doc is the per-tier anchor catalog the manifest derives from.
 

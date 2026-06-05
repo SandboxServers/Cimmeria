@@ -87,15 +87,21 @@ These are the highest-risk hooks in the entire plan because they sit in the scri
 | 6 | `0x004a0ec0` | (unknown) |
 | ...25-30 | candidates for `AActor::Tick(FLOAT, ELevelTick)` | needs per-slot decompile to identify Tick by signature pattern (2 args after `this`, the first is `float` DeltaSeconds, large body) |
 
-### Implementation-time RE follow-up
+### Resolved vtable slots (2026-06-04 second Ghidra pass)
 
-| Target | UE3 source signature | Strategy |
-|---|---|---|
-| `UObject::ProcessEvent` | `void(UFunction* Function, void* Parms, void* Result = NULL)` `__thiscall` | Walk UObject vtable from `.?AVUObject@@` @ `0x01dae610`. ProcessEvent slot is around 25-28 in UE3 2009 vtables. Identify by: 4-arg `__thiscall` returning void, FFrame stack construction (references `0x01daf8d4` RTTI), invokes natives via dispatch table. **MANDATORY for hook**: FName allowlist + thread-local re-entry guard. Sample 1/100 default, 1/1 in diag mode. |
-| `AActor::Tick` | `void(FLOAT DeltaSeconds, ELevelTick TickType)` `__thiscall` | Walk AActor vtable @ `0x0183c408`. Slot is around 25-30. Identify by `(*float, int)` signature and large body. Sample 1/10 per actor class. |
-| `USequence::Tick` | `void(FLOAT DeltaSeconds)` `__thiscall` | Walk USequence vtable (RTTI @ `0x01dc37fc`). Sample 1/1. |
-| `SequenceManager::OnSequence` | (CME auto-discovered) | `Event_NetIn_onSequence` — caught by Phase 3a RTTI scan. |
-| `Event_Kismet_SequenceFinished` | (CME auto-discovered) | RTTI scan. |
+| Target | Signature | Slot | Entry | Notes |
+|---|---|---|---|---|
+| **`AActor::Tick`** | `__thiscall UBOOL(this, FLOAT DeltaSeconds, ELevelTick TickType)` | **88** | **`0x005e4200`** | Vtable `0x0183c40c`. Ghidra annotation confirms slot 88 across ~110 Actor subclasses (AKeypoint, APawn, AVehicle, ABrush, AGameInfo, ALight family, ACoverLink, ASGWRegion, etc.). Decompile confirms `param_2 == LEVELTICK_TimeOnly` branch + per-subclass virtual dispatch via `[this+0xf0, +0x1a0, +0x1a4, +0x1a8, +0x1d4]`. Body 333 B. **Sample 1/10 per actor class** + re-entry guard. |
+| **`USequence::UpdateOp`** (the "Tick" for kismet) | `__thiscall UBOOL(this, FLOAT DeltaTime)` | **84** | **`0x006c61c0`** | Vtable `0x01854a84`. Also at slot 84 in UUISequence, UUIStateSequence. Decompile shows `check("!HasAnyFlags(RF_Unreachable)", ".\Src\UnSequence.cpp", 0x989)`, `kismetSequenceTimeout` config key, ElapsedTime accumulator at `this+0x114`, emits `Event_Kismet_SequenceFinished` CME event on finish. Body 855 B. **Sample 1/1** — sequences are infrequent. |
+
+### Deferred slot identification (vtable known, slot needs implementation-time decompile)
+
+| Target | UE3 source signature | What's known | What's deferred |
+|---|---|---|---|
+| `UObject::ProcessEvent` | `void(UFunction* Function, void* Parms, void* Result = NULL)` `__thiscall` | RTTI `.?AVUObject@@` @ `0x01dae610`; type_info @ `0x01dae608`; vtable @ `0x0180fe54` (~67 slots). **Ruled out**: slots 29 (`__thiscall(this, int*)`), 30 (same), 31 (same), 32 (`__thiscall void(this)` — single-arg, decompile shows `UnObj.cpp` line 0xCCA `GObjInitialized` check, behaves like `PostLoad`/`UpdateDefaults`), 40 (`Rename(const TCHAR*, UObject*, ERenameFlags)`). | The remaining ~35 unverified slots need a focused decompile-pattern search for `4-arg __thiscall void(this, void*, void*, void*)` with FFrame stack construction (~140-160 bytes alloca, FFrame vtable assignment near function entry) and indirect call to `[UFunction+0xa8]` (= UFunction::Func, the resolved native pointer). Estimate: 15-30 min of focused work with UE3 leaked-source headers open. **MANDATORY for hook**: FName allowlist + thread-local re-entry guard. Sample 1/100 default, 1/1 in diag mode. |
+| `PropertyNode<T>` get/set | `virtual T get()`, `virtual void set(T)` per specialization | RTTI `.?AVPropertyNode@Detail@CME@@` @ `0x01daadb0` (base); type_info @ `0x01daada8`; COL @ `0x01b50e6c`. Adjacent RTTI strings include `BasicPropertyList`, `BasicPropertyTree`. | PropertyNode is heavily templated with 6+ specializations (`Property<long/int/bool/float/Vector3/wstring>` per the original anchor doc). Each specialization has its own vtable; each `get` + `set` is at the same slot index within their respective templated vtables. Implementation strategy: walk the base PropertyNode vtable to identify `get`/`set` slot indices, then enumerate the per-T vtables via RTTI scan and hook each. Estimate: 1-2 hours of focused work. |
+| `SequenceManager::OnSequence` | (CME auto-discovered) | `Event_NetIn_onSequence` — caught by Phase 3a RTTI scan. | No address needed. |
+| `Event_Kismet_SequenceFinished` | (CME auto-discovered) | RTTI scan. | No address needed. |
 
 ### APlayerController::ConsoleCommand (inline-hookable, simpler)
 
@@ -221,16 +227,16 @@ This is more work than a simple IAT walk and warrants its own PR.
 | 3 | 3 | `USGWAnimNotify_Event::Notify` (B) | `0x00e97070` | Inline |
 | 3 | 3 | Cooked-data PAK load | `0x00420074` | Inline |
 | 3 | 4 | `APlayerController::execConsoleCommand` | `0x00539850` | Inline |
-| 3 | 4 | `UObject::ProcessEvent` | TBD (vtable walk from `0x01dae610`) | Vtable swap |
-| 3 | 4 | `AActor::Tick` | TBD (vtable walk from `0x0183c408`) | Vtable swap |
-| 3 | 4 | `USequence::Tick` | TBD (vtable walk from `0x01dc37fc`) | Vtable swap |
+| 3 | 4 | `UObject::ProcessEvent` | vtable `0x0180fe54`, slot TBD (5 candidates ruled out) | Vtable swap |
+| 3 | 4 | `AActor::Tick` | **`0x005e4200` (slot 88)** | Vtable swap |
+| 3 | 4 | `USequence::UpdateOp` | **`0x006c61c0` (slot 84)** | Vtable swap |
 | 4 | 5 | `CEGUI::DefaultLogger::logEvent` | `0x012129E0` | Vtable swap |
 | 4 | 5 | `lua_pcall` | IAT `0x01988A0C` | IAT |
 | 4 | 5 | `lua_call` | IAT `0x01988904` | IAT |
 | 4 | 5 | `lua_newstate` | IAT `0x01988656` | IAT |
 | 5 | 6 | `FMOD_EventSystem_Create` | IAT `0x01988234` | IAT + vtable traversal |
 | 5 | 6 | `FFullScreenMovieBink::Tick` | `0x0050BBC0` | Inline |
-| 5 | 6 | `PropertyNode<T>` get/set | TBD (vtable walk from `0x01daadb0`) | Vtable swap |
+| 5 | 6 | `PropertyNode<T>` get/set | RTTI `0x01daadb0`, COL `0x01b50e6c`, slot TBD (per-T enumeration) | Vtable swap |
 | 5 | 6 | `CreateThread` | IAT `0x0196B65A` | IAT |
 | 5 | 6 | `LoadLibraryW` | IAT `0x0196B5BC` | IAT |
 | 5 | 6 | `LoadLibraryA` | IAT `0x0196B5AC` | IAT |
@@ -239,7 +245,8 @@ This is more work than a simple IAT walk and warrants its own PR.
 | 6 | 7 | `MiniDumpWriteDump` | IAT `0x01987B76` | Direct call (no hook) |
 
 **Total**: 21 hook surfaces across Phases 3-6.
-**Resolved upfront**: 17 (all but the 4 vtable-swap targets that need per-slot identification during implementation).
+**Resolved upfront** (after the 2026-06-04 + second-pass Ghidra work): **19** (17 from the first pass + AActor::Tick + USequence::UpdateOp from the second pass).
+**Slot-deferred** (vtable identified, slot needs per-slot decompile at impl time): **2** — `UObject::ProcessEvent` (vtable at `0x0180fe54`, 5 candidate slots ruled out) and `PropertyNode<T>` get/set (RTTI + COL identified, per-T enumeration needed).
 **Auto-discovered via CME RTTI scan** (Phase 3a): `Event_AppearanceJob_Completed`, `Event_NetIn_LootDisplay`, `Event_NetIn_onSequence`, `Event_Kismet_SequenceFinished`, `Event_SlashCmd_*` (1,477).
 
 ---
@@ -253,5 +260,7 @@ The following Ghidra function renames + plate comments were applied so future se
 - `0x005527a0` → `UWorld__UpdateLevelStreaming` (outer iterator, Phase 2)
 - `0x004c7ae0` → `FArchiveAsync__Serialize` (Phase 2)
 - `0x004a8e10` → `UObject__StaticLoadObject` (Phase 2, corrected from earlier `LoadPackageInternal` mis-id)
+- `0x005e4200` → `AActor__Tick` (vtable slot 88; this manifest second pass)
+- `0x006c61c0` → `USequence__UpdateOp` (vtable slot 84; this manifest second pass)
 
-Phase 3-6 entries above have function info but were not renamed in this pass — the resolution is documented here and re-running Ghidra walks is unnecessary; rename at implementation time.
+Phase 3-6 entries above have function info but the rest were not renamed in this pass — the resolution is documented here and re-running Ghidra walks is unnecessary; rename at implementation time.
