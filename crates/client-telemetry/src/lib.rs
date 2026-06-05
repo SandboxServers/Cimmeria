@@ -32,11 +32,22 @@
 
 #![cfg_attr(not(windows), allow(dead_code))]
 
+// Phase 2 modules — all cross-platform. The Windows-specific bits
+// (DllMain, GetModuleFileNameW for the host exe path, thread creation
+// via CreateThread) stay in `boot`. The event queue, wire schema,
+// session loader, and uploader thread compile and run on Linux for
+// unit tests; only the Windows cdylib actually executes them inside
+// SGW.exe.
+pub mod events;
+pub mod queue;
+pub mod session;
+pub mod uploader;
+
 #[cfg(windows)]
 mod boot;
 
 #[cfg(windows)]
-pub use boot::{attach_diagnostics, bootstrap_main, module_handle, AttachDiagnostics};
+pub use boot::{attach_diagnostics, bootstrap_main, module_handle, producer, AttachDiagnostics};
 
 // Non-Windows stub: the crate exists in the workspace so `cargo
 // check --workspace` works on Linux, but its real surface is Windows

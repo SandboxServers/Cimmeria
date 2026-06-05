@@ -21,9 +21,46 @@ crate-type = ["cdylib", "rlib"]
 # `cargo build` on Linux doesn't try to produce a Windows DLL.
 [dependencies]
 # Minimal init/error surface. No tokio, no reqwest, no opentelemetry
-# inside an injected DLL — those land in follow-up phases via `ureq`
-# + plain JSON to the existing /api/telemetry/upload-chunk endpoint.
+# inside an injected DLL — Phase 2 ships `ureq` + plain JSON to the
+# existing /api/telemetry/upload-chunk endpoint.
 thiserror = { workspace = true }
+
+# Phase 2 — Event queue + uploader. Cross-platform deps so the rlib
+# builds and tests on Linux; the cdylib's network path only runs on
+# Windows but the queue / serialization / batching logic is portable
+# and fully unit-tested here.
+#
+# `crossbeam-channel` — bounded sync MPMC channel with `try_send`
+# (returns the value on full, never blocks the producer). The
+# producers are hook handlers running on whatever game thread
+# caught the event; the consumer is the uploader thread. We
+# considered `thingbuf` but its recycle-based API requires
+# `Default + Clone` on the element type and a re-zero step that
+# doesn't fit the build-then-stamp shape the producer uses.
+#
+# `ureq` (rustls-tls) — single-threaded sync HTTPS client. No tokio,
+# no async, exactly one connection at a time per uploader thread.
+# That's the right shape for a dedicated worker that owns its own
+# OS thread inside SGW.exe.
+#
+# `flate2` — gzip the NDJSON payload to match the launcher's
+# upload-chunk wire format. The server's gzip decoder uses the
+# `flate2` crate too, so the encode/decode pair is symmetric.
+#
+# `serde` / `serde_json` — wire format. `ClientNativeEvent` is a
+# byte-shape mirror of the launcher's type at
+# `cimmeria_launcher::telemetry::events::ClientNativeEvent`.
+#
+# `base64` — read `current-session.json` (the launcher writes its
+# JSON pretty-printed; we read the token field as a plain string).
+# Not used for encoding — kept here for future Phase 3+ where we
+# may need to base64 binary payloads (frame thumbnails, crash
+# minidumps).
+crossbeam-channel = "0.5"
+ureq = { version = "2.10", default-features = false, features = ["json", "tls"] }
+flate2 = "1.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 # Just what DllMain + the bootstrap-thread pattern needs today.
@@ -39,3 +76,8 @@ windows-sys = { version = "0.61", features = [
 
 [dev-dependencies]
 tempfile = "3"
+# Tiny synchronous HTTP server for uploader integration tests. Linux-
+# friendly, blocking, dep-light — perfect for "spin up a fake
+# /api/telemetry/upload-chunk endpoint, fire the uploader at it,
+# assert the body decoded correctly."
+tiny_http = "0.12"
