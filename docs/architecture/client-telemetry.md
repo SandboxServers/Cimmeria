@@ -3,7 +3,7 @@
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
 > **Last updated**: 2026-05-26
-> **Status**: Phase 1 foundation landed; tier-1 hooks in follow-up PR
+> **Status**: Phase 2 landed (CME hooks + Mercury inline hook); 4 inline hooks deferred pending per-anchor RE
 
 How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
 
@@ -161,7 +161,9 @@ To preserve "observe without changing behavior":
 |---|---|---|
 | 0 | RE prep — anchor table, Unsubscribe decompile, ABI doc | LANDED |
 | 1 | Foundation — crate skeleton, DllMain bootstrap, injector + launch wiring, `ClientNative` variant on both sides, CI | LANDED |
-| 2 | Tier-1 hooks (10 hooks: frame tick, level streaming, async IO, Mercury dispatch, log4cxx tee, CME `onClientMapLoad` / `onClientReady`, WinSock recv) | NEXT |
+| 2a | Event queue (crossbeam-channel MPMC) + in-DLL uploader (ureq+rustls, gzipped NDJSON) + session.json loader + `client.dll.attached` first event | LANDED (PR #504) |
+| 2b/c/d | Tier-1 hooks — both CME EventSignal subscribes (`Event_NetIn_onClientReady`, `Event_NetIn_onClientMapLoad`) + `Mercury::Nub::handleMessage` inline hook via MinHook. Sampling counter for hot-path hooks. Phase-status update. | LANDED |
+| 2-deferred | The remaining 4 tier-1 inline hooks (`FEngineLoop::Tick`, `UWorld::UpdateLevelStreaming`, `FArchiveAsync::Read*`, `LoadPackage`) need per-anchor RE to derive function entry points from their RTTI/xref anchors — see `hooks/inline_hooks.rs` module doc for the table. Scaffolding is in place; adding each is a one-liner once the entry address is known. | DEFERRED |
 | 3 | CME EventSignal full coverage — RTTI walk, auto-generated `Event_NetIn_*` / `Event_NetOut_*` subscriptions | |
 | 4 | Game state + animation + effects + cooked data | |
 | 5 | UI / Lua / kismet / dispatcher | |

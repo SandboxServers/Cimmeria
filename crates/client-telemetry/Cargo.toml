@@ -63,16 +63,27 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-# Just what DllMain + the bootstrap-thread pattern needs today.
-# Follow-up phases will add Threading/Memory/Diagnostics_Debug as
-# the hook layer and IAT walker land.
+# Just what DllMain + the bootstrap-thread pattern + the inline-hook
+# trampolines + CME subscribe ABI need.
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_System_SystemServices",
     "Win32_System_LibraryLoader",
     "Win32_System_Threading",
+    "Win32_System_Memory",
+    "Win32_System_Diagnostics_Debug",
 ] }
+
+# `minhook-sys` — raw FFI bindings to the MinHook C library, built
+# from source via `cc`. We use the raw `MH_*` API rather than a
+# higher-level Rust wrapper (most Rust inline-hook crates require
+# nightly via the `feature(unboxed_closures)` trick — see retour
+# 0.3.1). MinHook handles the JMP-based trampoline + thread freeze
+# coordination + restore-on-unhook for us. Tier-1 anchors at fixed
+# addresses in SGW.exe (ASLR disabled via AtreaFixASLR.bat) so we
+# just hand MinHook the address and our callback.
+minhook-sys = "0.1"
 
 [dev-dependencies]
 tempfile = "3"

@@ -274,6 +274,14 @@ fn bootstrap_phase2() {
         })
         .ok();
 
+    // Step 6.5: install hooks. Each hook clones the producer
+    // handle (Arc-backed inside crossbeam-channel) so the clones
+    // are cheap. Per-hook success/failure events flow through the
+    // queue and ship like any other telemetry. Hook installation
+    // is best-effort — a missing CME signal or a failed MinHook
+    // create logs a warn event and the hook becomes a no-op.
+    crate::hooks::install_all(producer);
+
     // Step 7: park the bootstrap thread. Future Phase 7 hooks can
     // wake us via an `Event` to drive shutdown drain. For now,
     // `thread::park()` blocks until the OS reclaims the thread at
