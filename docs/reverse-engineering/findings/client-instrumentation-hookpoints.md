@@ -2,8 +2,10 @@
 
 > **Diátaxis type**: reference
 > **Audience**: engineers writing or reviewing `cimmeria-client-telemetry` hooks (issue #417)
-> **Last updated**: 2026-05-26
-> **Confidence**: HIGH for Tier-1 anchors validated by Ghidra decompile + string-search pre-issue. MEDIUM for Tier-2+ anchors derived from existing RE docs without per-anchor re-verification.
+> **Last updated**: 2026-06-04
+> **Confidence**: HIGH for Tier-1 anchors validated by Ghidra decompile + string-search pre-issue. HIGH for Tier-3 through Tier-7 anchors after the 2026-06-04 upfront Ghidra pass that resolved every anchor to a function entry or IAT slot. MEDIUM for the 4 deferred vtable-swap targets (UObject::ProcessEvent, AActor::Tick, USequence::Tick, PropertyNode<T> get/set) where the class vtable is identified but the specific slot needs per-slot decompile during implementation.
+>
+> **See also**: [`client-instrumentation-entry-points.md`](client-instrumentation-entry-points.md) — the resolved Phase 3-6 manifest with all addresses + IAT slots + recommended detour signatures. Read that doc first if you're implementing a Phase 3-6 hook; this doc is the per-tier anchor catalog the manifest derives from.
 
 The injected client-side telemetry DLL (issue #417) hooks SGW.exe at the addresses and entry points catalogued here. Anchors are stable because SGW.exe has ASLR disabled (`AtreaFixASLR.bat` clears `IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE` on-disk), so addresses are the same on every run.
 
