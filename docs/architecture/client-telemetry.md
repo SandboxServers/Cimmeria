@@ -3,7 +3,7 @@
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
 > **Last updated**: 2026-06-04
-> **Status**: Phase 2 landed (CME hooks + 3 inline hooks: Mercury dispatch, FEngineLoop::Tick, FArchiveAsync::Serialize); 2 inline hooks scaffolded — addresses resolved via Ghidra RTTI walks (UWorld::UpdateLevelStreaming @ `0x0054e9c0`, LoadPackageInternal @ `0x004a8e10`) but argument shapes need confirmation before enable
+> **Status**: Phase 2 fully landed — 2 CME hooks (`onClientMapLoad`, `onClientReady`) + 5 inline hooks (Mercury dispatch, FEngineLoop::Tick, FArchiveAsync::Serialize, UWorld::UpdateLevelStreamingInner, UObject::StaticLoadObject). All 5 inline-hook signatures confirmed via Ghidra decompile against UE3 leaked source. `StaticLoadObject` emit captures `package_name` field for cold-load freeze investigation.
 
 How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
 

@@ -7,26 +7,18 @@
 //!
 //! # What's installed in this PR
 //!
-//! All four engine-side anchors below were resolved in Ghidra on
-//! 2026-06-04. The two with well-known UE3 ABIs (taken from the
-//! leaked UE3 source) are enabled; the two whose argument shapes
-//! are uncertain are scaffolded but disabled pending signature
-//! confirmation — see the `Scaffolded` table below.
-//!
-//! Enabled:
+//! All five engine-side anchors below were resolved + signature-
+//! confirmed in Ghidra on 2026-06-04. The two originally scaffolded
+//! (UpdateLevelStreamingInner, StaticLoadObject) have been confirmed
+//! against UE3 leaked-source signatures and are now enabled.
 //!
 //! | Function | Address | Target | Sampling |
 //! |---|---|---|---|
 //! | `Mercury::Nub::handleMessage` | `0x01b18be0` | `client.mercury.dispatch` | none (network-bounded) |
 //! | `FEngineLoop::Tick` | `0x00416ec0` | `client.engine.tick` | 1/100 (~0.3-1.2 Hz at 30-120 fps) |
 //! | `FArchiveAsync::Serialize` (vtbl slot 1) | `0x004c7ae0` | `client.engine.async_archive_serialize` | 1/1000 (hot during loads) |
-//!
-//! Scaffolded — address known, signature shape needs RE before enable:
-//!
-//! | Function | Address | Reason deferred |
-//! |---|---|---|
-//! | `UWorld::UpdateLevelStreaming` | `0x0054e9c0` | Ghidra recovered `(this, int, float*)` — `int` arg between `this` and the `FVector*` doesn't match the public `UWorld::UpdateLevelStreaming(FVector const&)` signature. Likely a 2009-era SGW override or an additional `bForceLevelStream` flag. Need to confirm exact arg count + order before hooking, or the cdecl/thiscall stack will mismatch and crash. |
-//! | `LoadPackageInternal` | `0x004a8e10` | Ghidra recovered 7 `__cdecl` args. The public `UObject::LoadPackage(UPackage*, const TCHAR*, DWORD)` is 3 args, so 0x004a8e10 is `LoadPackageInternal` (the heavy internal helper). UE3 source has multiple internal helpers with different signatures; need to map this one before enabling. The single-string `FailedLoadPackage` anchor confirms the address but not the arg count. |
+//! | `UWorld::UpdateLevelStreamingInner` | `0x0054e9c0` | `client.engine.update_level_streaming` | 1/10 (fires per streaming level per frame) |
+//! | `UObject::StaticLoadObject` | `0x004a8e10` | `client.engine.static_load_object` (with `package_name` field) | 1/10 (bursts during cold loads) |
 //!
 //! # Why MinHook
 //!
@@ -66,6 +58,32 @@ const ADDR_FENGINE_LOOP_TICK: usize = 0x00416ec0;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 const ADDR_ARCHIVE_ASYNC_SERIALIZE: usize = 0x004c7ae0;
 
+/// Address of `UWorld::UpdateLevelStreamingInner(ULevelStreaming*,
+/// FVector*)` — the per-streaming-level helper.
+///
+/// Resolved 2026-06-04 by xref to the "StreamingLevel" check-macro
+/// string @ 0x01837518; signature confirmed by decompile (param_1
+/// is StreamingLevel pointer, param_2 is FVector pointer derefed
+/// as 3 floats for distance check).
+///
+/// The OUTER `UWorld::UpdateLevelStreaming` is at 0x005527a0 —
+/// it loops over streaming levels and invokes this inner per-
+/// level. Hooking the inner gives per-level transition events.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const ADDR_UPDATE_LEVEL_STREAMING_INNER: usize = 0x0054e9c0;
+
+/// Address of `UObject::StaticLoadObject(UClass*, UObject*, TCHAR*,
+/// TCHAR*, DWORD, UPackageMap*, UBOOL)` — the canonical generic
+/// object loader (UnObj.cpp).
+///
+/// Resolved 2026-06-04 by xref to "FailedLoadPackage" wstring @
+/// 0x0180f104 (in the SEH catch handler); signature confirmed by
+/// decompile against UE3 leaked source. The 7 cdecl args match
+/// the UE3 source exactly; the recursive self-call at 0x004a8f8d
+/// is the redirector-handling pattern.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const ADDR_STATIC_LOAD_OBJECT: usize = 0x004a8e10;
+
 /// Trampoline pointer for `Mercury::Nub::handleMessage`. Set by
 /// MinHook at hook install time. Reading `.get()` gives us the
 /// address of the original function prologue + JMP back to
@@ -80,6 +98,14 @@ static TICK_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
 /// Trampoline pointer for `FArchiveAsync::Serialize`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 static ARCHIVE_SERIALIZE_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
+
+/// Trampoline pointer for `UWorld::UpdateLevelStreamingInner`.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static UPDATE_LEVEL_STREAMING_INNER_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
+
+/// Trampoline pointer for `UObject::StaticLoadObject`.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static STATIC_LOAD_OBJECT_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
 
 /// Sampling counter for `FEngineLoop::Tick`. At 30-120 fps the
 /// game ticks 30-120 Hz; 1/100 sampling yields ~0.3-1.2 emits/sec
@@ -99,6 +125,20 @@ static TICK_SAMPLER: SamplingCounter = SamplingCounter::new(100);
 /// the load-storm signature in SigNoz.
 #[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
 static ARCHIVE_SERIALIZE_SAMPLER: SamplingCounter = SamplingCounter::new(1000);
+
+/// Sampling counter for `UWorld::UpdateLevelStreamingInner`. Fires
+/// per streaming level per frame — typically 1-10 active streaming
+/// levels at any time, so 1/10 sampling keeps the wire rate ≤ ~1
+/// emit/sec at 30 fps with 10 streaming levels.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+static UPDATE_LEVEL_STREAMING_SAMPLER: SamplingCounter = SamplingCounter::new(10);
+
+/// Sampling counter for `UObject::StaticLoadObject`. Called bursts
+/// of dozens to thousands during a cold load; 1/10 sampling makes
+/// the load storm visible without flooding SigNoz with every nested
+/// import resolve.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+static STATIC_LOAD_OBJECT_SAMPLER: SamplingCounter = SamplingCounter::new(10);
 
 /// Install all inline hooks. Best-effort: a MinHook init failure
 /// or a single CreateHook failure logs a warn event and the rest
@@ -129,11 +169,13 @@ unsafe fn install_inner(producer: Producer) {
     install_handle_message(&producer);
     install_engine_tick(&producer);
     install_archive_async_serialize(&producer);
+    install_update_level_streaming_inner(&producer);
+    install_static_load_object(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(3))],
+        [("hook_count", serde_json::json!(5))],
     );
 }
 
@@ -167,6 +209,28 @@ unsafe fn install_archive_async_serialize(producer: &Producer) {
         ADDR_ARCHIVE_ASYNC_SERIALIZE,
         archive_async_serialize_detour as *mut c_void,
         &ARCHIVE_SERIALIZE_TRAMPOLINE,
+    );
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn install_update_level_streaming_inner(producer: &Producer) {
+    install_one(
+        producer,
+        "uworld_update_level_streaming_inner",
+        ADDR_UPDATE_LEVEL_STREAMING_INNER,
+        update_level_streaming_inner_detour as *mut c_void,
+        &UPDATE_LEVEL_STREAMING_INNER_TRAMPOLINE,
+    );
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn install_static_load_object(producer: &Producer) {
+    install_one(
+        producer,
+        "uobject_static_load_object",
+        ADDR_STATIC_LOAD_OBJECT,
+        static_load_object_detour as *mut c_void,
+        &STATIC_LOAD_OBJECT_TRAMPOLINE,
     );
 }
 
@@ -342,6 +406,151 @@ unsafe extern "thiscall" fn archive_async_serialize_detour(
     }
 }
 
+/// Detour for `UWorld::UpdateLevelStreamingInner(ULevelStreaming*,
+/// FVector*)`.
+///
+/// Signature: `extern "thiscall" fn(*mut UWorld, *mut ULevelStreaming,
+/// *mut FVector)`. ECX = this, stack = (StreamingLevel, FVector*).
+///
+/// **Hot path discipline:** fires per active streaming level per
+/// frame on the main game thread. Sampled at 1/10 via
+/// `UPDATE_LEVEL_STREAMING_SAMPLER`.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[allow(improper_ctypes_definitions)]
+unsafe extern "thiscall" fn update_level_streaming_inner_detour(
+    this: *mut c_void,
+    streaming_level: *mut c_void,
+    delta_position: *mut c_void,
+) {
+    let _ = std::panic::catch_unwind(|| {
+        if UPDATE_LEVEL_STREAMING_SAMPLER.should_emit() {
+            if let Some(p) = crate::boot::producer() {
+                p.try_emit(crate::events::ClientNativeEvent::builder(
+                    "client.engine.update_level_streaming",
+                    "debug",
+                ));
+            }
+        }
+    });
+
+    if let Some(t) = UPDATE_LEVEL_STREAMING_INNER_TRAMPOLINE.get() {
+        let original: unsafe extern "thiscall" fn(*mut c_void, *mut c_void, *mut c_void) =
+            unsafe { std::mem::transmute(*t) };
+        original(this, streaming_level, delta_position);
+    }
+}
+
+/// Detour for `UObject::StaticLoadObject(UClass*, UObject*, TCHAR*,
+/// TCHAR*, DWORD, UPackageMap*, UBOOL) -> UObject*`.
+///
+/// Signature: 7 `__cdecl` args matching UE3 leaked source. ALL
+/// args must be forwarded to the trampoline or the original
+/// function reads garbage off the stack.
+///
+/// **Hot path discipline:** fires in bursts of dozens to thousands
+/// during cold loads. Sampled at 1/10 via
+/// `STATIC_LOAD_OBJECT_SAMPLER`.
+///
+/// **Sampled emit captures `package_name`**: when we DO emit, we
+/// read up to 256 wchar_t from `in_name` (bounded, null-terminated
+/// safe) and ship it as a UTF-8 string field. This is the load-
+/// freeze investigation gold: SigNoz can show "which package was
+/// loading when the client froze."
+///
+/// **Safety:** `in_name` is a stack-passed `*const u16`. The caller
+/// holds the buffer for the duration of the call; we only read
+/// from it inside the detour (before invoking the trampoline) so
+/// the buffer is still live. The 256-wchar bound prevents runaway
+/// reads if the string isn't null-terminated.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[allow(improper_ctypes_definitions)]
+unsafe extern "C" fn static_load_object_detour(
+    object_class: *mut c_void,
+    in_outer: *mut c_void,
+    in_name: *const u16,
+    filename: *const u16,
+    load_flags: u32,
+    sandbox: *mut c_void,
+    allow_reconciliation: i32,
+) -> *mut c_void {
+    let _ = std::panic::catch_unwind(|| {
+        if STATIC_LOAD_OBJECT_SAMPLER.should_emit() {
+            if let Some(p) = crate::boot::producer() {
+                let name = read_utf16_bounded(in_name, 256);
+                p.try_emit(
+                    crate::events::ClientNativeEvent::builder(
+                        "client.engine.static_load_object",
+                        "debug",
+                    )
+                    .field("package_name", serde_json::Value::String(name))
+                    .field("load_flags", serde_json::json!(load_flags)),
+                );
+            }
+        }
+    });
+
+    if let Some(t) = STATIC_LOAD_OBJECT_TRAMPOLINE.get() {
+        let original: unsafe extern "C" fn(
+            *mut c_void,
+            *mut c_void,
+            *const u16,
+            *const u16,
+            u32,
+            *mut c_void,
+            i32,
+        ) -> *mut c_void = unsafe { std::mem::transmute(*t) };
+        original(
+            object_class,
+            in_outer,
+            in_name,
+            filename,
+            load_flags,
+            sandbox,
+            allow_reconciliation,
+        )
+    } else {
+        // Trampoline missing — return null. The caller will treat
+        // it as "object not found" and likely log + recover. Better
+        // than crashing.
+        std::ptr::null_mut()
+    }
+}
+
+/// Read a UTF-16 C string up to `max_chars`. Stops at the first
+/// NUL or at the bound, whichever comes first. Returns the UTF-8
+/// representation with `U+FFFD` replacement for invalid surrogates.
+///
+/// Used by the `static_load_object_detour` to capture the package
+/// name for the emit field. The bound exists because we don't
+/// trust the caller's buffer to be NUL-terminated — a runaway read
+/// inside the detour would risk an access violation that takes
+/// the whole game with it.
+///
+/// Returns `"<null>"` on null pointer, `""` on empty string. Never
+/// reads past `max_chars` wchars (= 2 × max_chars bytes).
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+fn read_utf16_bounded(ptr: *const u16, max_chars: usize) -> String {
+    if ptr.is_null() {
+        return "<null>".into();
+    }
+    let mut len = 0usize;
+    while len < max_chars {
+        // SAFETY: bounded by max_chars; caller's contract is the
+        // buffer is valid for at least max_chars wchars OR
+        // NUL-terminated sooner. We exit on first NUL.
+        let ch = unsafe { *ptr.add(len) };
+        if ch == 0 {
+            break;
+        }
+        len += 1;
+    }
+    // SAFETY: `len` is the number of u16 elements before NUL,
+    // bounded by max_chars. `from_raw_parts` on the same pointer
+    // with that length is sound.
+    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+    String::from_utf16_lossy(slice)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,6 +566,8 @@ mod tests {
             assert_eq!(ADDR_HANDLE_MESSAGE, 0x01b18be0);
             assert_eq!(ADDR_FENGINE_LOOP_TICK, 0x00416ec0);
             assert_eq!(ADDR_ARCHIVE_ASYNC_SERIALIZE, 0x004c7ae0);
+            assert_eq!(ADDR_UPDATE_LEVEL_STREAMING_INNER, 0x0054e9c0);
+            assert_eq!(ADDR_STATIC_LOAD_OBJECT, 0x004a8e10);
         }
     }
 
@@ -378,5 +589,56 @@ mod tests {
             .filter(|_| ARCHIVE_SERIALIZE_SAMPLER.should_emit())
             .count();
         assert_eq!(archive_emits, 1, "archive sampler should emit 1/1000");
+
+        // 1/10 for the two coarser hooks.
+        let stream_emits: usize = (0..10)
+            .filter(|_| UPDATE_LEVEL_STREAMING_SAMPLER.should_emit())
+            .count();
+        assert_eq!(stream_emits, 1, "stream sampler should emit 1/10");
+
+        let load_emits: usize = (0..10)
+            .filter(|_| STATIC_LOAD_OBJECT_SAMPLER.should_emit())
+            .count();
+        assert_eq!(load_emits, 1, "load-object sampler should emit 1/10");
+    }
+
+    /// `read_utf16_bounded` must:
+    /// 1. Stop at the NUL terminator.
+    /// 2. Cap at `max_chars` so a missing NUL can't cause a runaway
+    ///    read (the safety contract for use inside the StaticLoadObject
+    ///    detour — caller's buffer is foreign-allocated, not trusted).
+    /// 3. Handle a null pointer without UB.
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn read_utf16_bounded_stops_at_nul() {
+        let buf: Vec<u16> = "Engine/EngineMaterials/DefaultMaterial\0extra"
+            .encode_utf16()
+            .collect();
+        let got = read_utf16_bounded(buf.as_ptr(), 256);
+        assert_eq!(got, "Engine/EngineMaterials/DefaultMaterial");
+    }
+
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn read_utf16_bounded_caps_at_max() {
+        // 300 chars, no NUL — must stop at max_chars=8.
+        let buf: Vec<u16> = (0..300).map(|_| 'A' as u16).collect();
+        let got = read_utf16_bounded(buf.as_ptr(), 8);
+        assert_eq!(got, "AAAAAAAA");
+        assert_eq!(got.chars().count(), 8);
+    }
+
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn read_utf16_bounded_null_ptr() {
+        assert_eq!(read_utf16_bounded(std::ptr::null(), 256), "<null>");
+    }
+
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn read_utf16_bounded_empty_string() {
+        let buf: Vec<u16> = vec![0u16, 0u16];
+        let got = read_utf16_bounded(buf.as_ptr(), 256);
+        assert_eq!(got, "");
     }
 }
