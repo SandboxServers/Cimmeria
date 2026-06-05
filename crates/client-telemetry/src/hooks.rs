@@ -1,4 +1,4 @@
-//! Tier-1 hook installation — the actual observation surface.
+//! Hook installation — the actual observation surface.
 //!
 //! Called from `boot::bootstrap_phase2` after the queue +
 //! uploader are running. Each hook below registers itself with
@@ -6,14 +6,24 @@
 //!
 //! # What gets hooked
 //!
-//! Anchors per `docs/reverse-engineering/findings/client-instrumentation-hookpoints.md`
-//! (the Tier 1 table). Two kinds:
+//! Anchors per the `client-instrumentation-hookpoints.md` and
+//! `client-instrumentation-entry-points.md` docs. Four techniques across
+//! Phases 2-5:
 //!
 //! - **CME EventSignal subscribe** (no code patching) —
-//!   `Event_NetIn_onClientReady`, `Event_NetIn_onClientMapLoad`.
-//! - **Inline JMP hook** (MinHook) — `FEngineLoop::Tick` (sampled),
-//!   `UWorld::UpdateLevelStreaming`, `FArchiveAsync::Read*`,
-//!   `LoadPackage`, `Mercury::Nub::handleMessage`.
+//!   `cme_hooks.rs`. Currently: `Event_NetIn_onClientReady`,
+//!   `Event_NetIn_onClientMapLoad`. Phase 3a will add ~270 events
+//!   via RTTI auto-discovery.
+//! - **Inline JMP** (MinHook) — `inline_hooks.rs`. 11 hooks:
+//!   Mercury dispatch, FEngineLoop::Tick, FArchiveAsync::Serialize,
+//!   UWorld::UpdateLevelStreamingInner, UObject::StaticLoadObject,
+//!   GameBeing::onStateFieldUpdate, USGWAnimNotify::Notify A+B,
+//!   cooked-data load, APlayerController::execConsoleCommand,
+//!   FFullScreenMovieBink::Tick.
+//! - **IAT swap** — `iat_hooks.rs`. 7 hooks: lua_pcall/call/newstate
+//!   + CreateThread + LoadLibraryW/A + GetForegroundWindow.
+//! - **Vtable swap** — `vtable_hooks.rs`. 3 hooks: CEGUI::DefaultLogger::
+//!   logEvent + AActor::Tick + USequence::UpdateOp.
 //!
 //! # Address stability
 //!
@@ -34,8 +44,10 @@ use crate::events::ClientNativeEvent;
 use crate::queue::Producer;
 
 mod cme_hooks;
+mod iat_hooks;
 mod inline_hooks;
 mod sampling;
+mod vtable_hooks;
 
 pub use sampling::SamplingCounter;
 
@@ -49,7 +61,9 @@ pub fn install_all(producer: Producer) {
     // Each install function is responsible for its own success/
     // failure event. Order doesn't matter — they're independent.
     cme_hooks::install(producer.clone());
-    inline_hooks::install(producer);
+    inline_hooks::install(producer.clone());
+    iat_hooks::install(producer.clone());
+    vtable_hooks::install(producer);
 }
 
 /// Convenience: emit a one-shot info event with this target +

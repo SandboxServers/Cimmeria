@@ -5,12 +5,11 @@
 //! prologue + jumps back. Our detour emits an event and calls the
 //! trampoline to invoke the original function transparently.
 //!
-//! # What's installed in this PR
+//! # What's installed
 //!
-//! All five engine-side anchors below were resolved + signature-
-//! confirmed in Ghidra on 2026-06-04. The two originally scaffolded
-//! (UpdateLevelStreamingInner, StaticLoadObject) have been confirmed
-//! against UE3 leaked-source signatures and are now enabled.
+//! Phase 2 (5 hooks) + Phase 3/5 (6 additional inline hooks) below.
+//! All Phase 3-5 anchors resolved + signature-confirmed in Ghidra
+//! on 2026-06-04 (see `client-instrumentation-entry-points.md`).
 //!
 //! | Function | Address | Target | Sampling |
 //! |---|---|---|---|
@@ -19,6 +18,12 @@
 //! | `FArchiveAsync::Serialize` (vtbl slot 1) | `0x004c7ae0` | `client.engine.async_archive_serialize` | 1/1000 (hot during loads) |
 //! | `UWorld::UpdateLevelStreamingInner` | `0x0054e9c0` | `client.engine.update_level_streaming` | 1/10 (fires per streaming level per frame) |
 //! | `UObject::StaticLoadObject` | `0x004a8e10` | `client.engine.static_load_object` (with `package_name` field) | 1/10 (bursts during cold loads) |
+//! | `GameBeing::onStateFieldUpdate` | `0x00e01c90` | `client.state.field_update` | 1/1 (one hook covers all 9 BSF_* flags via dispatcher) |
+//! | `USGWAnimNotify_Event::Notify` (A) | `0x00e974b0` | `client.anim.notify` (`variant=a`) | 1/100 (shared with B) |
+//! | `USGWAnimNotify_Event::Notify` (B) | `0x00e97070` | `client.anim.notify` (`variant=b`) | 1/100 (shared with A) |
+//! | Cooked-data PAK load | `0x00420074` | `client.engine.pak_load` (with `category` field) | 1/1 (21 PAKs total) |
+//! | `APlayerController::execConsoleCommand` | `0x00539850` | `client.input.console_command` | 1/1 |
+//! | `FFullScreenMovieBink::Tick` (vtbl slot 1) | `0x0050bbc0` | `client.engine.bink_tick` (with `delta_seconds` field) | 1/30 (~1/sec during cinematics) |
 //!
 //! # Why MinHook
 //!
@@ -84,6 +89,44 @@ const ADDR_UPDATE_LEVEL_STREAMING_INNER: usize = 0x0054e9c0;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 const ADDR_STATIC_LOAD_OBJECT: usize = 0x004a8e10;
 
+// ─── Phase 3 Tier 3 inline targets (resolved 2026-06-04) ────────
+
+/// `GameBeing::onStateFieldUpdate` — CME-subscribed dispatcher
+/// that XOR-delta-decodes the 9 BSF_* state flags (Dead,
+/// AutoCycling, Crouching, InCombat, PlayingMinigame, InStealth,
+/// MovementLock, Walking, Holster). One hook here covers all
+/// state-flag transitions. See `state-flag-broadcast.md`.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const ADDR_STATE_FIELD_UPDATE: usize = 0x00e01c90;
+
+/// `USGWAnimNotify_Event::Notify` variant A — 1.2 KB body.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const ADDR_ANIM_NOTIFY_A: usize = 0x00e974b0;
+
+/// `USGWAnimNotify_Event::Notify` variant B — 450 B body, likely
+/// a specialized notify path (per-tick or per-key variant).
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const ADDR_ANIM_NOTIFY_B: usize = 0x00e97070;
+
+/// Cooked-data PAK load — fires once per PAK load (21 categories).
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const ADDR_COOKED_DATA_LOAD: usize = 0x00420074;
+
+/// `APlayerController::execConsoleCommand` — UnrealScript exec
+/// wrapper, FuncMap-bound at 0x01db2460. Fires on every script-
+/// invoked console command.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const ADDR_CONSOLE_COMMAND: usize = 0x00539850;
+
+// ─── Phase 5 Tier 6 inline target (resolved 2026-06-04) ─────────
+
+/// `FFullScreenMovieBink::Tick` — cinematic playback per-frame
+/// driver. Vfunc 1 of FFullScreenMovieBink, 154 B body. The
+/// presence of this firing distinguishes a real stall from
+/// expected cinematic-bound frames.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const ADDR_BINK_TICK: usize = 0x0050bbc0;
+
 /// Trampoline pointer for `Mercury::Nub::handleMessage`. Set by
 /// MinHook at hook install time. Reading `.get()` gives us the
 /// address of the original function prologue + JMP back to
@@ -106,6 +149,24 @@ static UPDATE_LEVEL_STREAMING_INNER_TRAMPOLINE: OnceLock<usize> = OnceLock::new(
 /// Trampoline pointer for `UObject::StaticLoadObject`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 static STATIC_LOAD_OBJECT_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static STATE_FIELD_UPDATE_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static ANIM_NOTIFY_A_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static ANIM_NOTIFY_B_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static COOKED_DATA_LOAD_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static CONSOLE_COMMAND_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static BINK_TICK_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
 
 /// Sampling counter for `FEngineLoop::Tick`. At 30-120 fps the
 /// game ticks 30-120 Hz; 1/100 sampling yields ~0.3-1.2 emits/sec
@@ -140,6 +201,18 @@ static UPDATE_LEVEL_STREAMING_SAMPLER: SamplingCounter = SamplingCounter::new(10
 #[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
 static STATIC_LOAD_OBJECT_SAMPLER: SamplingCounter = SamplingCounter::new(10);
 
+/// `Bink::Tick` runs at the cinematic's framerate (30 fps typical).
+/// 1/30 sampling yields ~1 emit/sec — enough to detect "stuck on
+/// a cinematic frame" without flooding.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+static BINK_TICK_SAMPLER: SamplingCounter = SamplingCounter::new(30);
+
+/// `AnimNotify::Notify` fires on every animation notify event —
+/// can fire several times per actor per frame during combat
+/// animations. 1/100 sampling keeps emit rate manageable.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+static ANIM_NOTIFY_SAMPLER: SamplingCounter = SamplingCounter::new(100);
+
 /// Install all inline hooks. Best-effort: a MinHook init failure
 /// or a single CreateHook failure logs a warn event and the rest
 /// of the hooks still attempt to install.
@@ -171,11 +244,17 @@ unsafe fn install_inner(producer: Producer) {
     install_archive_async_serialize(&producer);
     install_update_level_streaming_inner(&producer);
     install_static_load_object(&producer);
+    install_state_field_update(&producer);
+    install_anim_notify_a(&producer);
+    install_anim_notify_b(&producer);
+    install_cooked_data_load(&producer);
+    install_console_command(&producer);
+    install_bink_tick(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(5))],
+        [("hook_count", serde_json::json!(11))],
     );
 }
 
@@ -231,6 +310,72 @@ unsafe fn install_static_load_object(producer: &Producer) {
         ADDR_STATIC_LOAD_OBJECT,
         static_load_object_detour as *mut c_void,
         &STATIC_LOAD_OBJECT_TRAMPOLINE,
+    );
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn install_state_field_update(producer: &Producer) {
+    install_one(
+        producer,
+        "gamebeing_state_field_update",
+        ADDR_STATE_FIELD_UPDATE,
+        state_field_update_detour as *mut c_void,
+        &STATE_FIELD_UPDATE_TRAMPOLINE,
+    );
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn install_anim_notify_a(producer: &Producer) {
+    install_one(
+        producer,
+        "anim_notify_a",
+        ADDR_ANIM_NOTIFY_A,
+        anim_notify_a_detour as *mut c_void,
+        &ANIM_NOTIFY_A_TRAMPOLINE,
+    );
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn install_anim_notify_b(producer: &Producer) {
+    install_one(
+        producer,
+        "anim_notify_b",
+        ADDR_ANIM_NOTIFY_B,
+        anim_notify_b_detour as *mut c_void,
+        &ANIM_NOTIFY_B_TRAMPOLINE,
+    );
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn install_cooked_data_load(producer: &Producer) {
+    install_one(
+        producer,
+        "cooked_data_load",
+        ADDR_COOKED_DATA_LOAD,
+        cooked_data_load_detour as *mut c_void,
+        &COOKED_DATA_LOAD_TRAMPOLINE,
+    );
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn install_console_command(producer: &Producer) {
+    install_one(
+        producer,
+        "console_command",
+        ADDR_CONSOLE_COMMAND,
+        console_command_detour as *mut c_void,
+        &CONSOLE_COMMAND_TRAMPOLINE,
+    );
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn install_bink_tick(producer: &Producer) {
+    install_one(
+        producer,
+        "bink_tick",
+        ADDR_BINK_TICK,
+        bink_tick_detour as *mut c_void,
+        &BINK_TICK_TRAMPOLINE,
     );
 }
 
@@ -516,6 +661,165 @@ unsafe extern "C" fn static_load_object_detour(
     }
 }
 
+/// Detour for `GameBeing::onStateFieldUpdate` — CME dispatcher
+/// for the 9 BSF_* state flags.
+///
+/// Signature: `extern "thiscall" fn(*mut GameBeing, *mut EventData)`.
+///
+/// **Hot path discipline:** state-flag changes (combat enter/exit,
+/// stealth toggle, holster) are infrequent (a few per minute per
+/// player typically). No sampling — emit 1/1.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[allow(improper_ctypes_definitions)]
+unsafe extern "thiscall" fn state_field_update_detour(this: *mut c_void, event_data: *mut c_void) {
+    let _ = std::panic::catch_unwind(|| {
+        if let Some(p) = crate::boot::producer() {
+            p.try_emit(crate::events::ClientNativeEvent::builder(
+                "client.state.field_update",
+                "debug",
+            ));
+        }
+    });
+
+    if let Some(t) = STATE_FIELD_UPDATE_TRAMPOLINE.get() {
+        let original: unsafe extern "thiscall" fn(*mut c_void, *mut c_void) =
+            unsafe { std::mem::transmute(*t) };
+        original(this, event_data);
+    }
+}
+
+/// Detour for `USGWAnimNotify_Event::Notify` (variant A).
+///
+/// Signature: `extern "thiscall" fn(*mut this, int notify_type)`.
+///
+/// **Hot path discipline:** fires several times per actor per frame
+/// during combat animations. Sampled at 1/100 via `ANIM_NOTIFY_SAMPLER`.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[allow(improper_ctypes_definitions)]
+unsafe extern "thiscall" fn anim_notify_a_detour(this: *mut c_void, notify_arg: i32) {
+    let _ = std::panic::catch_unwind(|| {
+        if ANIM_NOTIFY_SAMPLER.should_emit() {
+            if let Some(p) = crate::boot::producer() {
+                p.try_emit(
+                    crate::events::ClientNativeEvent::builder("client.anim.notify", "debug")
+                        .field("variant", serde_json::json!("a")),
+                );
+            }
+        }
+    });
+
+    if let Some(t) = ANIM_NOTIFY_A_TRAMPOLINE.get() {
+        let original: unsafe extern "thiscall" fn(*mut c_void, i32) =
+            unsafe { std::mem::transmute(*t) };
+        original(this, notify_arg);
+    }
+}
+
+/// Detour for `USGWAnimNotify_Event::Notify` (variant B).
+/// Shares sampling counter with variant A so the combined rate is
+/// 1/100 per (A or B) call.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[allow(improper_ctypes_definitions)]
+unsafe extern "thiscall" fn anim_notify_b_detour(this: *mut c_void, notify_arg: i32) {
+    let _ = std::panic::catch_unwind(|| {
+        if ANIM_NOTIFY_SAMPLER.should_emit() {
+            if let Some(p) = crate::boot::producer() {
+                p.try_emit(
+                    crate::events::ClientNativeEvent::builder("client.anim.notify", "debug")
+                        .field("variant", serde_json::json!("b")),
+                );
+            }
+        }
+    });
+
+    if let Some(t) = ANIM_NOTIFY_B_TRAMPOLINE.get() {
+        let original: unsafe extern "thiscall" fn(*mut c_void, i32) =
+            unsafe { std::mem::transmute(*t) };
+        original(this, notify_arg);
+    }
+}
+
+/// Detour for the cooked-data PAK loader.
+///
+/// Signature: `extern "cdecl" fn(u32 category, void** out_a, void** out_b)`.
+///
+/// Fires once per PAK load (21 categories). Emit 1/1 — rare event.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[allow(improper_ctypes_definitions)]
+unsafe extern "C" fn cooked_data_load_detour(
+    category: u32,
+    out_a: *mut *mut c_void,
+    out_b: *mut *mut c_void,
+) {
+    let _ = std::panic::catch_unwind(|| {
+        if let Some(p) = crate::boot::producer() {
+            p.try_emit(
+                crate::events::ClientNativeEvent::builder("client.engine.pak_load", "info")
+                    .field("category", serde_json::json!(category)),
+            );
+        }
+    });
+
+    if let Some(t) = COOKED_DATA_LOAD_TRAMPOLINE.get() {
+        let original: unsafe extern "C" fn(u32, *mut *mut c_void, *mut *mut c_void) =
+            unsafe { std::mem::transmute(*t) };
+        original(category, out_a, out_b);
+    }
+}
+
+/// Detour for `APlayerController::execConsoleCommand`.
+///
+/// Signature: `extern "thiscall" fn(*mut APlayerController, int frame_ptr)`.
+/// The UnrealScript exec wrapper — actual command string is in the
+/// FFrame at param_1. Decoding it here would require parsing FFrame
+/// bytecode; skip for now and emit the bare event.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[allow(improper_ctypes_definitions)]
+unsafe extern "thiscall" fn console_command_detour(this: *mut c_void, frame: i32) {
+    let _ = std::panic::catch_unwind(|| {
+        if let Some(p) = crate::boot::producer() {
+            p.try_emit(crate::events::ClientNativeEvent::builder(
+                "client.input.console_command",
+                "info",
+            ));
+        }
+    });
+
+    if let Some(t) = CONSOLE_COMMAND_TRAMPOLINE.get() {
+        let original: unsafe extern "thiscall" fn(*mut c_void, i32) =
+            unsafe { std::mem::transmute(*t) };
+        original(this, frame);
+    }
+}
+
+/// Detour for `FFullScreenMovieBink::Tick` — vtable slot 1.
+///
+/// Signature: `extern "thiscall" fn(*mut FFullScreenMovieBink, float DeltaSeconds)`.
+///
+/// **Hot path discipline:** fires every frame during cinematic
+/// playback (30 fps typical). Sampled at 1/30 via `BINK_TICK_SAMPLER`
+/// for ~1 emit/sec during cinematics.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[allow(improper_ctypes_definitions)]
+unsafe extern "thiscall" fn bink_tick_detour(this: *mut c_void, delta_seconds: f32) {
+    let _ = std::panic::catch_unwind(|| {
+        if BINK_TICK_SAMPLER.should_emit() {
+            if let Some(p) = crate::boot::producer() {
+                p.try_emit(
+                    crate::events::ClientNativeEvent::builder("client.engine.bink_tick", "debug")
+                        .field("delta_seconds", serde_json::json!(delta_seconds)),
+                );
+            }
+        }
+    });
+
+    if let Some(t) = BINK_TICK_TRAMPOLINE.get() {
+        let original: unsafe extern "thiscall" fn(*mut c_void, f32) =
+            unsafe { std::mem::transmute(*t) };
+        original(this, delta_seconds);
+    }
+}
+
 /// Read a UTF-16 C string up to `max_chars`. Stops at the first
 /// NUL or at the bound, whichever comes first. Returns the UTF-8
 /// representation with `U+FFFD` replacement for invalid surrogates.
@@ -529,7 +833,7 @@ unsafe extern "C" fn static_load_object_detour(
 /// Returns `"<null>"` on null pointer, `""` on empty string. Never
 /// reads past `max_chars` wchars (= 2 × max_chars bytes).
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-fn read_utf16_bounded(ptr: *const u16, max_chars: usize) -> String {
+pub(super) fn read_utf16_bounded(ptr: *const u16, max_chars: usize) -> String {
     if ptr.is_null() {
         return "<null>".into();
     }
@@ -568,6 +872,13 @@ mod tests {
             assert_eq!(ADDR_ARCHIVE_ASYNC_SERIALIZE, 0x004c7ae0);
             assert_eq!(ADDR_UPDATE_LEVEL_STREAMING_INNER, 0x0054e9c0);
             assert_eq!(ADDR_STATIC_LOAD_OBJECT, 0x004a8e10);
+            // Phase 3 + 5 inline targets (2026-06-04 manifest):
+            assert_eq!(ADDR_STATE_FIELD_UPDATE, 0x00e01c90);
+            assert_eq!(ADDR_ANIM_NOTIFY_A, 0x00e974b0);
+            assert_eq!(ADDR_ANIM_NOTIFY_B, 0x00e97070);
+            assert_eq!(ADDR_COOKED_DATA_LOAD, 0x00420074);
+            assert_eq!(ADDR_CONSOLE_COMMAND, 0x00539850);
+            assert_eq!(ADDR_BINK_TICK, 0x0050bbc0);
         }
     }
 
@@ -600,6 +911,16 @@ mod tests {
             .filter(|_| STATIC_LOAD_OBJECT_SAMPLER.should_emit())
             .count();
         assert_eq!(load_emits, 1, "load-object sampler should emit 1/10");
+
+        // 1/30 — Bink frame cadence.
+        let bink_emits: usize = (0..30).filter(|_| BINK_TICK_SAMPLER.should_emit()).count();
+        assert_eq!(bink_emits, 1, "bink sampler should emit 1/30");
+
+        // 1/100 shared between anim variants A + B.
+        let anim_emits: usize = (0..100)
+            .filter(|_| ANIM_NOTIFY_SAMPLER.should_emit())
+            .count();
+        assert_eq!(anim_emits, 1, "anim sampler should emit 1/100");
     }
 
     /// `read_utf16_bounded` must:
