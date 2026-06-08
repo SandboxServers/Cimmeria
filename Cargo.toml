@@ -94,7 +94,7 @@ rand_chacha = "0.10"
 reqwest = { version = "0.13", features = ["json"] }
 
 # Config file parsing
-toml = "0.9"
+toml = "1.1"
 
 # Filesystem watch (Discord config live-reload)
 notify = { version = "8", default-features = false, features = ["macos_kqueue"] }
