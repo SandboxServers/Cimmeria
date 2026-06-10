@@ -212,6 +212,9 @@ async fn set_auto_cycle_enable_fires_immediately_when_target_and_last_ability_se
     let mut mgr = make_mgr_with_player();
     mgr.spawn_npc(50, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(50) {
+        npc.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
     if let Some(p) = mgr.get_entity_mut(1) {
         p.abilities.add_ability(7);
         p.abilities.last_fired_ability_id = Some(7);
@@ -356,6 +359,9 @@ async fn set_auto_cycle_enable_skips_immediate_fire_when_on_cooldown() {
     let mut mgr = make_mgr_with_player();
     mgr.spawn_npc(50, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(50) {
+        npc.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
     if let Some(p) = mgr.get_entity_mut(1) {
         p.abilities.add_ability(7);
         p.abilities.last_fired_ability_id = Some(7);
@@ -1160,6 +1166,9 @@ async fn set_auto_cycle_immediate_fire_credits_quest_kill_on_tagged_npc_death() 
     let mut mgr = make_mgr_with_player();
     mgr.spawn_npc(50, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(50) {
+        npc.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
     // Pre-conditions for SET_AUTO_CYCLE's immediate-fire branch:
     // current_target_id + last_fired_ability_id both Some. Mirror
     // the existing `set_auto_cycle_enable_fires_immediately_*` test

@@ -220,6 +220,11 @@ mod tests {
         mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
         mgr.spawn_npc(50, "Castle", [5.0, 0.0, 0.0], [0.0; 3])
             .unwrap();
+        // Hostile so the #444 player-attacker target-validity gate lets
+        // the auto-cycle re-fire reach this NPC.
+        if let Some(npc) = mgr.get_entity_mut(50) {
+            npc.faction = crate::cell::combat::HOSTILE_FACTION;
+        }
         if let Some(p) = mgr.get_entity_mut(1) {
             p.is_player = true;
             p.player_id = Some(100);
@@ -426,6 +431,11 @@ mod tests {
         let mut mgr = make_auto_cycle_mgr();
         mgr.spawn_npc(75, "Castle", [3.0, 0.0, 0.0], [0.0; 3])
             .unwrap();
+        // Hostile so the #444 player-attacker gate lets the re-fire reach
+        // the switched-to live target.
+        if let Some(npc) = mgr.get_entity_mut(75) {
+            npc.faction = crate::cell::combat::HOSTILE_FACTION;
+        }
         if let Some(p) = mgr.get_entity_mut(1) {
             p.current_target_id = Some(75);
             p.position = Vector3::new(0.0, 0.0, 0.0);

@@ -791,6 +791,9 @@ mod tests {
         mgr.spawn_npc(50, "Castle", [3.0, 0.0, 0.0], [0.0, 1.57, 0.0])
             .unwrap();
         if let Some(npc) = mgr.get_entity_mut(50) {
+            // Hostile so the #444 single-target target-validity gate
+            // allows the attack through to the kill path this test drives.
+            npc.faction = crate::cell::combat::HOSTILE_FACTION;
             npc.respawn_secs = Some(3);
             npc.original_interaction_type_flags = 1 << 5;
             npc.interaction_type_flags = 1 << 5;

@@ -689,6 +689,11 @@ mod tests {
         mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
         mgr.spawn_npc(50, "Castle", [3.0, 0.0, 0.0], [0.0; 3])
             .unwrap();
+        // Hostile so the #444 single-target target-validity gate allows
+        // the deferred attack through to the kill path this test drives.
+        if let Some(npc) = mgr.get_entity_mut(50) {
+            npc.faction = crate::cell::combat::HOSTILE_FACTION;
+        }
         // Phase-B queue pre-conditions: stamp is in the past so the
         // tick promotes it, and the queue carries the target+ability
         // the deferred fire should pick up.
