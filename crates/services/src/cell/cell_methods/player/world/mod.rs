@@ -69,6 +69,7 @@ pub async fn dispatch(
                             space_mgr,
                         )
                         .await;
+                        persist_state_field_bits(entity_id, new_state, tx, space_mgr).await;
                     }
                     // Gated on bit transition. CEGUI fires the Lua
                     // binding 3-4× per physical click (~150µs apart);
@@ -130,6 +131,7 @@ pub async fn dispatch(
                             space_mgr,
                         )
                         .await;
+                        persist_state_field_bits(entity_id, new_state, tx, space_mgr).await;
                     }
                 }
             }
@@ -257,6 +259,51 @@ pub async fn dispatch(
         }
 
         _ => false,
+    }
+}
+
+/// Fire-and-forget persist of the user-preference `state_field` bits
+/// after an explicit `setAutoCycle` toggle flipped `BSF_AutoCycling`.
+///
+/// Masks to [`crate::cell::combat::PERSISTED_STATE_FIELD_MASK`] so
+/// transient combat bits riding the same broadcast value (BSF_Dead,
+/// BSF_InCombat, BSF_MovementLock) never reach the DB — a relog must
+/// always be a clean combat slate (#412).
+///
+/// Deliberately called from the explicit toggle site only, NOT from the
+/// in-combat auto-clear paths (target death, manual fire of a different
+/// ability, AF_DEACTIVATE_AUTO_CYCLE): those are session mechanics, and
+/// mirroring them to the DB would make the post-relog state depend on
+/// whether the player's last target happened to die — the persisted
+/// value tracks the player's deliberate button choice.
+///
+/// Silent no-op for entities without a `player_id` (NPCs / test
+/// fixtures shouldn't persist).
+async fn persist_state_field_bits(
+    entity_id: u32,
+    state_field: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let Some(player_id) = space_mgr.get_entity(entity_id).and_then(|e| e.player_id) else {
+        return;
+    };
+    if let Err(e) = tx
+        .send(CellToBaseMsg::StateFieldUpdate {
+            player_id,
+            state_field: state_field & crate::cell::combat::PERSISTED_STATE_FIELD_MASK,
+        })
+        .await
+    {
+        // Channel closed — the toggle still applies in-memory for this
+        // session but won't survive the relog. Same level rationale as
+        // the SystemOptionsUpdate persist failure path.
+        tracing::warn!(
+            entity_id,
+            player_id,
+            error = %e,
+            "StateFieldUpdate send to base failed -- auto-cycle preference not persisted"
+        );
     }
 }
 

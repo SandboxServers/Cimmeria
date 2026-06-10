@@ -44,6 +44,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     active_bandolier_slot: i32,
     bandolier_items: Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>,
     system_options: cimmeria_entity::cell_entity::SystemOptions,
+    state_field: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
@@ -211,6 +212,65 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         // cooldown state during the initial-load burst — one less thing
         // the client has to chew on. (PR #410)
         entity.abilities.clear_all_cooldowns();
+
+        // Restore the persisted user-preference state bits (#412). The
+        // mask strips anything a corrupt / hand-edited row might carry —
+        // restoring a saved BSF_Dead or BSF_MovementLock would spawn the
+        // player frozen, the exact "relog is a fresh combat slate"
+        // violation the cooldown wipe above exists to prevent. Raw `|=`
+        // because BSF_AutoCycling is a single-source flag that bypasses
+        // the ref-counted helpers (see cell::combat::auto_cycle's module
+        // doc). When the bit is set we also re-arm `abilities.auto_cycle`
+        // so the player's first attack of the new session enters
+        // `arm_auto_cycle` and the server-driven re-fire loop starts —
+        // the loop's ability stash (`auto_cycle_ability_id`) stays None
+        // until that first commit, by design.
+        let restored_state = state_field & crate::cell::combat::PERSISTED_STATE_FIELD_MASK;
+        if restored_state != 0 {
+            entity.state_field |= restored_state;
+            if restored_state & crate::cell::combat::BSF_AUTO_CYCLING != 0 {
+                entity.abilities.auto_cycle = true;
+            }
+            tracing::info!(
+                entity_id,
+                state_field = restored_state,
+                "Restored persisted state_field preference bits"
+            );
+        }
+    }
+
+    // Re-broadcast the restored state field so the client's UI reflects
+    // the preference immediately (the auto-cycle gun-icon button
+    // highlight listens on the BSF_AutoCycling transition — see the
+    // Ghidra note on `BSF_AUTO_CYCLING`). The client initialises its
+    // cached state_field to 0, so without this send the bit is armed
+    // server-side but the button looks off until the first in-session
+    // toggle. Sent post-onClientReady for the same ordering reason as
+    // the onActiveSlotUpdate resync below.
+    {
+        // Broadcast the FULL current state_field (the client's XOR-delta
+        // dispatcher diffs against its cached value), but gate the send
+        // on a preference bit actually having been restored — a fresh
+        // character with state_field 0 needs no packet.
+        let (full_state, restored) = space_mgr
+            .get_entity(entity_id)
+            .map(|e| {
+                (
+                    e.state_field,
+                    e.state_field & crate::cell::combat::PERSISTED_STATE_FIELD_MASK,
+                )
+            })
+            .unwrap_or((0, 0));
+        if restored != 0 {
+            crate::cell::abilities::send_entity_method(
+                entity_id,
+                crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                full_state.to_le_bytes().to_vec(),
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
     }
 
     // Resend active mission state to the client so the journal UI is
@@ -424,6 +484,181 @@ pub(super) async fn send_known_abilities_update(
 }
 
 #[cfg(test)]
+mod state_field_restore_tests {
+    //! **#412 restore guards.** `InitPlayerState` must restore the
+    //! persisted preference bits of `state_field` (today:
+    //! `BSF_AutoCycling`), re-arm `abilities.auto_cycle`, and
+    //! re-broadcast `onStateFieldUpdate` so the client's button
+    //! highlight survives the relog — while a corrupt row carrying
+    //! transient combat bits must be masked out so the player never
+    //! spawns dead / frozen / in-combat.
+
+    use super::*;
+    use crate::cell::combat::{BSF_AUTO_CYCLING, BSF_DEAD, BSF_IN_COMBAT, BSF_MOVEMENT_LOCK};
+    use cimmeria_entity::cell_entity::SystemOptions;
+
+    fn make_mgr() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+        }
+        mgr.connect_entity(1);
+        mgr
+    }
+
+    fn drain_state_field_broadcasts(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<u32> {
+        let mut out = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall {
+                entity_id: 1,
+                method_index,
+                args,
+            } = msg
+            {
+                if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE
+                    && args.len() == 4
+                {
+                    out.push(u32::from_le_bytes([args[0], args[1], args[2], args[3]]));
+                }
+            }
+        }
+        out
+    }
+
+    /// Happy path: persisted BSF_AutoCycling restores onto the entity,
+    /// re-arms the loop flag, and re-broadcasts the bit to the client.
+    /// This is the acceptance shape from #412 — after relog, the first
+    /// attack enters `arm_auto_cycle` (gated on `abilities.auto_cycle`)
+    /// and the loop drives itself without a second button press.
+    #[tokio::test]
+    async fn restores_auto_cycle_bit_and_rearms_loop_flag() {
+        let mut mgr = make_mgr();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(64);
+
+        handle_init_player_state(
+            1,
+            100,
+            "Castle_CellBlock".into(),
+            1,
+            vec![],
+            vec![],
+            0,
+            vec![],
+            SystemOptions::default(),
+            BSF_AUTO_CYCLING,
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_ne!(
+            e.state_field & BSF_AUTO_CYCLING,
+            0,
+            "persisted BSF_AutoCycling must restore onto the entity"
+        );
+        assert!(
+            e.abilities.auto_cycle,
+            "auto_cycle must re-arm so the first attack of the session \
+             enters arm_auto_cycle and the loop starts (the #412 symptom \
+             was exactly this flag staying false)"
+        );
+        assert!(
+            e.abilities.auto_cycle_ability_id.is_none(),
+            "the ability stash stays empty until first commit, by design"
+        );
+
+        let broadcasts = drain_state_field_broadcasts(&mut rx);
+        assert_eq!(
+            broadcasts,
+            vec![BSF_AUTO_CYCLING],
+            "restore must re-broadcast onStateFieldUpdate so the client's \
+             gun-icon button highlights without an in-session toggle"
+        );
+    }
+
+    /// Mask guard: a corrupt / hand-edited row carrying transient combat
+    /// bits must NOT restore them — spawning dead + movement-locked is
+    /// the failure shape the mask exists to prevent. No broadcast either
+    /// (nothing legitimate was restored).
+    #[tokio::test]
+    async fn transient_bits_in_saved_row_are_not_restored() {
+        let mut mgr = make_mgr();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(64);
+
+        handle_init_player_state(
+            1,
+            100,
+            "Castle_CellBlock".into(),
+            1,
+            vec![],
+            vec![],
+            0,
+            vec![],
+            SystemOptions::default(),
+            BSF_DEAD | BSF_IN_COMBAT | BSF_MOVEMENT_LOCK,
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.state_field, 0,
+            "transient combat bits must be masked out on restore — a \
+             relog is always a clean combat slate"
+        );
+        assert!(!e.abilities.auto_cycle, "loop flag must stay disarmed");
+        assert!(
+            drain_state_field_broadcasts(&mut rx).is_empty(),
+            "nothing restored → no onStateFieldUpdate"
+        );
+    }
+
+    /// Zero-state companion: the common case (player never touched the
+    /// button) must not emit a spurious state-field packet during the
+    /// already-busy world-entry burst.
+    #[tokio::test]
+    async fn zero_state_field_emits_no_broadcast() {
+        let mut mgr = make_mgr();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(64);
+
+        handle_init_player_state(
+            1,
+            100,
+            "Castle_CellBlock".into(),
+            1,
+            vec![],
+            vec![],
+            0,
+            vec![],
+            SystemOptions::default(),
+            0,
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        assert!(
+            drain_state_field_broadcasts(&mut rx).is_empty(),
+            "state_field 0 must not add a packet to the login burst"
+        );
+    }
+}
+
+#[cfg(test)]
 mod relog_mission_resurrection_tests {
     //! **#411 end-to-end guard.** A mis-gated `player_loaded` chain (one
     //! whose author forgot the `mission_status eq not_active` condition)
@@ -497,6 +732,7 @@ mod relog_mission_resurrection_tests {
             0,
             vec![],
             cimmeria_entity::cell_entity::SystemOptions::default(),
+            0, // state_field
             &tx,
             &mut mgr,
             &engine,
@@ -587,6 +823,7 @@ mod system_options_assignment_tests {
             0,
             vec![],
             hydrated.clone(),
+            0, // state_field
             &tx,
             &mut mgr,
             &engine,
@@ -633,6 +870,7 @@ mod system_options_assignment_tests {
             0,
             vec![],
             SystemOptions::default(),
+            0, // state_field
             &tx,
             &mut mgr,
             &engine,
@@ -712,6 +950,7 @@ mod system_options_assignment_tests {
             SERVER_SLOT,
             vec![], // no bandolier items (slot can still be active over an empty slot)
             SystemOptions::default(),
+            0, // state_field
             &tx,
             &mut mgr,
             &engine,
@@ -854,6 +1093,7 @@ mod system_options_assignment_tests {
             slot,
             items,
             sys_opts,
+            0, // state_field
             &tx,
             &mut mgr,
             &engine,
@@ -935,6 +1175,7 @@ mod system_options_assignment_tests {
             slot,
             items,
             sys_opts,
+            0, // state_field
             &tx,
             &mut mgr,
             &engine,
@@ -984,6 +1225,7 @@ mod system_options_assignment_tests {
             slot,
             items,
             sys_opts,
+            0, // state_field
             &tx,
             &mut mgr,
             &engine,
@@ -1026,6 +1268,7 @@ mod system_options_assignment_tests {
             slot,
             items,
             sys_opts,
+            0, // state_field
             &tx,
             &mut mgr,
             &engine,
@@ -1065,6 +1308,7 @@ mod system_options_assignment_tests {
             0,
             vec![],
             SystemOptions::default(),
+            0, // state_field
             &tx,
             &mut mgr,
             &engine,

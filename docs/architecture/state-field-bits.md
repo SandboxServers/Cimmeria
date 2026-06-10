@@ -2,7 +2,7 @@
 title: "`bStateField` bit map — what the SGW client actually reads"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-06-10
 ---
 
 # `bStateField` bit map — what the SGW client actually reads
@@ -29,6 +29,29 @@ Status: verified against the live `SGW.exe` binary (image base `0x00400000`, ASL
 | 9–31 | `0x200`–`0x80000000` | Reserved | Nothing. |
 
 The `0xC4` group mask (bits 2 + 6 + 7) is the movement-speed recompute — any of crouch / movement-lock / walking changes triggers the same code path.
+
+## Persistence across relogs
+
+`state_field` is transient combat state with one exception: `BSF_AutoCycling`
+is a player preference toggle the original game kept across sessions. The
+persisted subset is defined by `PERSISTED_STATE_FIELD_MASK` in
+[crates/services/src/cell/combat/state.rs](../../crates/services/src/cell/combat/state.rs)
+(today: `BSF_AutoCycling` alone) and stored in `sgw_player.state_field`:
+
+- **Write**: the explicit `setAutoCycle` toggle (player method 83) sends
+  `CellToBaseMsg::StateFieldUpdate` with the masked value; the base-side
+  handler masks again defensively before the `UPDATE`. In-combat
+  auto-clears (target death, manual fire of a different ability,
+  `AF_DEACTIVATE_AUTO_CYCLE`) deliberately do **not** persist — the stored
+  value tracks the player's deliberate button choice, not loop mechanics.
+- **Read**: `InitPlayerState` masks the loaded value, ORs it onto
+  `CellEntity::state_field`, re-arms `abilities.auto_cycle`, and
+  re-broadcasts `onStateFieldUpdate` so the client's gun-icon highlight
+  survives the relog. Transient bits in a corrupt row (`BSF_Dead`,
+  `BSF_MovementLock`, …) are stripped — a relog is always a clean combat
+  slate, matching the cooldown wipe from PR #410.
+
+History: #412 (auto-cycle bit lost on relog).
 
 ## Bit 8 retirement (`BSF_Holster`)
 

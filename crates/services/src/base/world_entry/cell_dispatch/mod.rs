@@ -37,6 +37,7 @@ use super::teleport::handle_teleport_player;
 mod aoi;
 mod bandolier;
 mod minigame;
+mod state_field;
 mod system_options;
 
 pub(crate) use aoi::flush_deferred_aoi;
@@ -783,6 +784,12 @@ pub(crate) async fn handle_cell_message(
                 db_pool,
             )
             .await;
+        }
+        CellToBaseMsg::StateFieldUpdate {
+            player_id,
+            state_field,
+        } => {
+            state_field::persist_state_field(player_id, state_field, db_pool).await;
         }
         CellToBaseMsg::RefreshAppearance {
             entity_id,
