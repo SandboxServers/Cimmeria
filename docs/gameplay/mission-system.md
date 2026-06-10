@@ -109,6 +109,30 @@ MissionManager.complete(missionId)
        |-> client.onMissionUpdate(id, 1, 0)
 ```
 
+## Offer Guard (server-authoritative re-accept gate)
+
+`accept_mission` ([crates/services/src/cell/missions.rs](../../crates/services/src/cell/missions.rs))
+ports Python `MissionManager.canOffer()` and refuses the accept when:
+
+- the mission is already **ACTIVE** (a re-accept would reset progress to
+  the first step — the "briefing loop" bug class), or
+- the mission is **FAILED** and `resources.missions.can_repeat_on_fail`
+  is false, or
+- the mission is **COMPLETED** and `repeats > num_repeats` (both sides
+  from the DB: instance counter vs. `resources.missions.num_repeats`).
+
+A refused accept returns `false`; the content-engine executor then skips
+both the `MissionUpdate` persist and the `mission_accepted` follow-up
+event, so a mis-gated chain (e.g. a `player_loaded` grant missing its
+`mission_status eq not_active` condition) can no longer UPSERT
+`status=active` over a saved completed row — the root corruption behind
+"completed missions reappear in the quest log after relog" (#411).
+Chain-side `not_active` gates remain the first line of defense; the
+guard is the server-authoritative backstop. Repeatability fields ride
+the `MissionDefEntry` cache loaded at startup
+([crates/services/src/cell/spawner/missions.rs](../../crates/services/src/cell/spawner/missions.rs));
+a mission without a def entry fails closed (treated as non-repeatable).
+
 ## Mission Status Codes
 
 | Code | Constant | Description |

@@ -22,6 +22,13 @@ pub struct MissionDefEntry {
     /// honors it. Without this, hidden sub-missions like the
     /// Hallway0N Controllers (mission 682-686) leak into the player's UI.
     pub is_hidden: bool,
+    /// `resources.missions.num_repeats` — re-acceptance cap. Python parity:
+    /// `MissionManager.py canOffer()` refuses a COMPLETED mission when
+    /// `repeats > numRepeats`. Read by the `accept_mission` offer guard.
+    pub num_repeats: i32,
+    /// `resources.missions.can_repeat_on_fail` — when false, a FAILED
+    /// mission can never be re-offered (Python parity: `canOffer()`).
+    pub can_repeat_on_fail: bool,
 }
 
 /// A single objective within a mission step.
@@ -45,7 +52,8 @@ pub async fn load_mission_defs(
     // Get the first step per mission (lowest index) plus the mission-level
     // `is_hidden` flag, joined in one query.
     let step_rows = sqlx::query(
-        "SELECT DISTINCT ON (s.mission_id) s.mission_id, s.step_id, m.is_hidden \
+        "SELECT DISTINCT ON (s.mission_id) s.mission_id, s.step_id, m.is_hidden, \
+                m.num_repeats, m.can_repeat_on_fail \
          FROM resources.mission_steps s \
          JOIN resources.missions m ON m.mission_id = s.mission_id \
          ORDER BY s.mission_id, s.index ASC",
@@ -58,12 +66,16 @@ pub async fn load_mission_defs(
         let mission_id: i32 = r.get("mission_id");
         let step_id: i32 = r.get("step_id");
         let is_hidden: bool = r.get("is_hidden");
+        let num_repeats: i32 = r.get("num_repeats");
+        let can_repeat_on_fail: bool = r.get("can_repeat_on_fail");
         map.insert(
             mission_id,
             MissionDefEntry {
                 step_id,
                 objectives: Vec::new(),
                 is_hidden,
+                num_repeats,
+                can_repeat_on_fail,
             },
         );
     }

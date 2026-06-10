@@ -31,6 +31,17 @@ Every `op: "|"` (set) needs a matching `op: "~"` (clear) on the chain that compl
 
 For mission progression, also add a `player_loaded`-triggered chain that re-applies the bit for active steps. Interaction flags don't persist on the entity across server restart, so without restoration a relog mid-mission breaks interactivity. Worked example: chains 1045/1046 in `castle_cellblock_chains.sql` restore HackTheRings_Switch's bit based on which step is active.
 
+## Mission grants must gate on `not_active`
+
+Every chain whose actions include `accept_mission` must carry a
+`mission_status <id> eq not_active` condition (see chain 1001 for the
+canonical shape). Since #411 the server also refuses re-accepts
+authoritatively (`accept_mission`'s offer guard: already-active,
+failed-without-`can_repeat_on_fail`, or completed past `num_repeats`),
+so a missing gate no longer corrupts saved mission rows — but it still
+fires the chain's *other* actions (dialogs, highlights) spuriously, so
+the condition remains a review requirement.
+
 ## Inventory consumption
 
 `UseInventoryItem` fires `OnItemUse` as a pure event — the base no longer auto-consumes the stack. Chains that need to consume (consumable vials, mission objects) must include an explicit `remove_item` action. This is the correct pattern for `item_use`-triggered chains:
