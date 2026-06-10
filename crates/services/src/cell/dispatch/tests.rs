@@ -302,6 +302,136 @@ async fn dispatch_reload_sends_entity_property() {
     }
 }
 
+// ── GM gate (#475 / CAT-N-03) ─────────────────────────────────────────
+
+/// **#475 negative case.** A non-GM caller (access_level 0) sending a
+/// GM-gated cell method (`onWorldInstanceReset`, CM 92) must be rejected
+/// at the dispatch layer: a `warn!` audit log fires, an `onErrorCode`
+/// wire response goes back to the caller, and the method never reaches
+/// its handler. Reverting the gate lets the call fall through to the
+/// stub handler (which would, once implemented, tear down the space).
+#[tokio::test]
+async fn gm_gated_method_rejected_for_non_gm_caller() {
+    use crate::test_support::LogCapture;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.player_id = Some(100);
+        e.access_level = 0; // Player — explicit for clarity
+    }
+
+    let capture = LogCapture::install();
+    let engine = cimmeria_content_engine::chain::ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+
+    dispatch_cell_method(1, CM_WORLD_INSTANCE_RESET, &[], &tx, &mut mgr, &engine).await;
+
+    // Audit warn with the structured fields ops would pivot on.
+    let event = capture
+        .find_message(tracing::Level::WARN, "GM-gated cell method rejected")
+        .expect("non-GM call to a GM-gated method must emit the rejection warn");
+    assert!(event.has_field("method_index", "92"));
+    assert!(event.has_field("access_level", "0"));
+
+    // Wire-visible rejection: onErrorCode (121) back to the caller.
+    let msg = rx
+        .try_recv()
+        .expect("rejection must send a wire-visible onErrorCode response");
+    match msg {
+        CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } => {
+            assert_eq!(entity_id, 1);
+            assert_eq!(method_index, 121, "onErrorCode");
+            // SystemID(u8) + InstanceID(i32 LE = method index) + ErrorCodeID(u16)
+            assert_eq!(args.len(), 7);
+            assert_eq!(
+                i32::from_le_bytes([args[1], args[2], args[3], args[4]]),
+                92,
+                "InstanceID carries the rejected method index"
+            );
+        }
+        other => panic!("expected onErrorCode EntityMethodCall, got {other:?}"),
+    }
+    // Nothing else on the wire — the handler never ran.
+    assert!(
+        rx.try_recv().is_err(),
+        "a rejected GM call must produce only the onErrorCode response"
+    );
+}
+
+/// **#475 positive case.** A GM caller (access_level 2 = GameMaster)
+/// passes the gate: an authorization `info!` fires and no `onErrorCode`
+/// rejection is sent. The method then reaches its (stub) handler, which
+/// for CM 92 logs `UNIMPLEMENTED` and sends nothing — so the absence of
+/// an onErrorCode is the observable signal that the gate let it through.
+#[tokio::test]
+async fn gm_gated_method_allowed_for_gm_caller() {
+    use crate::test_support::LogCapture;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.player_id = Some(100);
+        e.access_level = 2; // GameMaster
+    }
+
+    let capture = LogCapture::install();
+    let engine = cimmeria_content_engine::chain::ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+
+    dispatch_cell_method(1, CM_WORLD_INSTANCE_RESET, &[], &tx, &mut mgr, &engine).await;
+
+    assert!(
+        capture
+            .find_message(tracing::Level::INFO, "GM-gated cell method authorized")
+            .is_some(),
+        "GM caller must pass the gate with an authorization info log"
+    );
+    // No onErrorCode rejection — the call was authorized through to the
+    // (stub) handler.
+    assert!(
+        rx.try_recv().is_err(),
+        "authorized GM call must not emit an onErrorCode rejection"
+    );
+}
+
+/// An ordinary (non-gated) player method must be completely unaffected by
+/// the gate even for an access_level 0 caller — the gate only intercepts
+/// the restricted index set.
+#[tokio::test]
+async fn non_gated_method_unaffected_by_gate_for_player() {
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.player_id = Some(100);
+        e.access_level = 0;
+    }
+
+    let engine = cimmeria_content_engine::chain::ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+
+    // setTargetID (CM 0) with a target id — an ordinary player method.
+    let args = 5i32.to_le_bytes().to_vec();
+    dispatch_cell_method(1, CM_SET_TARGET_ID, &args, &tx, &mut mgr, &engine).await;
+
+    // No onErrorCode (the gate didn't fire); the method ran normally.
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
+            assert_ne!(
+                method_index, 121,
+                "a non-gated player method must never trip the GM-gate onErrorCode"
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn dispatch_reload_already_full_no_message() {
     use cimmeria_entity::cell_entity::BandolierItem;

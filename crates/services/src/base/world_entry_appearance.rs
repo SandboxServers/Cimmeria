@@ -202,12 +202,21 @@ pub(crate) async fn handle_on_client_ready(
     // same lock so the welcome-message send below doesn't need a second
     // round-trip. `player_name` is set during `playCharacter` and stays
     // for the session, so reading it here is safe.
-    let (pending, player_name) = {
+    let (pending, player_name, access_level) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let entry = clients.get_mut(&addr);
         match entry {
-            Some(c) => (c.pending_client_ready.take(), c.player_name.clone()),
-            None => (None, None),
+            // `access_level` is the authoritative GM/admin level for this
+            // session (from `account.accesslevel` at login). Carried into
+            // the cell on `InitPlayerState` so the cell-method GM gate can
+            // reject `gm*`/debug methods from non-privileged callers
+            // without trusting any client byte (#475 / CAT-N-03).
+            Some(c) => (
+                c.pending_client_ready.take(),
+                c.player_name.clone(),
+                c.access_level,
+            ),
+            None => (None, None, 0),
         }
     };
 
@@ -369,6 +378,7 @@ pub(crate) async fn handle_on_client_ready(
                 bandolier_items,
                 system_options,
                 state_field,
+                access_level,
             })
             .await
         {

@@ -93,6 +93,13 @@ pub enum BaseToCellMsg {
         /// re-broadcasts `onStateFieldUpdate` so the client's button
         /// highlight survives the relog. (#412)
         state_field: u32,
+        /// Account access level (0=Player … 4=Developer) from the login
+        /// session (`ConnectedClientState.access_level`, itself sourced from
+        /// the `account.accesslevel` DB column). Stored on
+        /// `CellEntity::access_level` so the cell-method GM gate can reject
+        /// `gm*`/debug methods from non-privileged callers. Authoritative
+        /// server-side value — never client-supplied. (#475 / CAT-N-03)
+        access_level: u32,
     },
 
     /// Update one bandolier slot after a runtime item grant.

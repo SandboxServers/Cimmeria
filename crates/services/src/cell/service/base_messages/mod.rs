@@ -314,6 +314,7 @@ pub(super) async fn handle_base_message(
             bandolier_items,
             system_options,
             state_field,
+            access_level,
         } => {
             player_init::handle_init_player_state(
                 entity_id,
@@ -326,6 +327,7 @@ pub(super) async fn handle_base_message(
                 bandolier_items,
                 system_options,
                 state_field,
+                access_level,
                 tx,
                 space_mgr,
                 engine,

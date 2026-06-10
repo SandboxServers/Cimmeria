@@ -42,6 +42,16 @@ pub async fn dispatch_cell_method(
     if let Some(e) = space_mgr.get_entity(entity_id) {
         tracing::Span::current().record("space_id", e.space_id.0);
     }
+
+    // Server-authority GM gate (#475 / CAT-N-03). For GM/debug method
+    // indices, reject any caller whose `CellEntity::access_level` is below
+    // GameMaster *before* the method reaches a handler. Ordinary player
+    // methods pass through untouched. The gate emits its own `warn!` +
+    // `onErrorCode` on rejection, so a `false` return is terminal.
+    if !super::gm_gate::enforce_gm_gate(entity_id, method_index, tx, space_mgr).await {
+        return;
+    }
+
     // SGWBeing interface (0–1)
     if cell_methods::being::dispatch(entity_id, method_index, args, tx, space_mgr).await {
         return;
