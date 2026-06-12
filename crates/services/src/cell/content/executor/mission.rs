@@ -51,10 +51,25 @@ pub(super) async fn accept_or_advance(
                 optional: o.is_optional,
             })
             .collect();
-        crate::cell::missions::accept_mission(
+        let accepted = crate::cell::missions::accept_mission(
             entity_id, mission_id, step_id, objectives, tx, space_mgr,
         )
         .await;
+        // Offer refused (already active / completed at repeat cap /
+        // failed non-repeatable) or entity missing. Persisting the
+        // MissionUpdate anyway would UPSERT status=1 over the saved
+        // row — exactly the "completed missions reappear as active
+        // after relog" corruption (#411). Skip the follow-up
+        // `mission_accepted` event too: no acceptance happened.
+        if !accepted {
+            tracing::info!(
+                entity_id,
+                mission_id,
+                chain_id,
+                "Content: accept_mission refused by offer guard — skipping persist + follow-up event"
+            );
+            return;
+        }
         // Read repeats AFTER the helper runs — for a re-accept of
         // a previously-completed repeatable mission, the count
         // restored from DB is what should round-trip back, not 0.
@@ -255,4 +270,128 @@ pub(super) async fn complete_objective(
     );
     crate::cell::missions::complete_objective(entity_id, mission_id, objective_id, tx, space_mgr)
         .await;
+}
+
+#[cfg(test)]
+mod offer_guard_tests {
+    //! #411 regression guards at the executor boundary: a refused (or
+    //! entity-less) `accept_or_advance` must NOT persist a `MissionUpdate`
+    //! — pre-fix, the handler sent `status=1` to the base unconditionally,
+    //! so any re-fired grant chain UPSERTed "active" over a saved
+    //! completed row and the mission resurrected in the quest log on the
+    //! next relog.
+
+    use super::*;
+    use crate::cell::spawner::MissionDefEntry;
+    use cimmeria_entity::missions::{MissionInstance, MISSION_COMPLETED};
+    use tokio::sync::mpsc;
+
+    fn make_mgr_with_def() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.mission_defs.insert(
+            622,
+            MissionDefEntry {
+                step_id: 2113,
+                objectives: vec![],
+                is_hidden: false,
+                num_repeats: 1,
+                can_repeat_on_fail: true,
+            },
+        );
+        mgr
+    }
+
+    fn drain(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<CellToBaseMsg> {
+        let mut msgs = Vec::new();
+        while let Ok(m) = rx.try_recv() {
+            msgs.push(m);
+        }
+        msgs
+    }
+
+    fn mission_updates(msgs: &[CellToBaseMsg]) -> Vec<i8> {
+        msgs.iter()
+            .filter_map(|m| match m {
+                CellToBaseMsg::MissionUpdate { status, .. } => Some(*status),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Refused offer (completed mission at the repeat cap) → no
+    /// `MissionUpdate` reaches the base, entity state untouched.
+    #[tokio::test]
+    async fn refused_accept_does_not_persist_mission_update() {
+        let mut mgr = make_mgr_with_def();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        {
+            let entity = mgr.get_entity_mut(1).unwrap();
+            let mut prior = MissionInstance::new(622, 2113, vec![]);
+            prior.complete();
+            prior.repeats = 2; // past num_repeats = 1
+            entity.missions.add_mission(prior);
+        }
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(32);
+
+        accept_or_advance(622, 1, 100, 9999, &tx, &mut mgr, &engine).await;
+
+        let msgs = drain(&mut rx);
+        assert!(
+            mission_updates(&msgs).is_empty(),
+            "refused accept must not send MissionUpdate (would UPSERT \
+             status=1 over the saved completed row); got {msgs:?}"
+        );
+        let m = mgr
+            .get_entity(1)
+            .unwrap()
+            .missions
+            .get_mission(622)
+            .unwrap();
+        assert_eq!(m.status, MISSION_COMPLETED, "completed status preserved");
+    }
+
+    /// Entity missing entirely (e.g. an event fired against a player whose
+    /// cell entity is gone) → nothing to verify against, so nothing may be
+    /// persisted. Pre-fix this path still sent `MissionUpdate status=1
+    /// repeats=0`, silently corrupting the saved row.
+    #[tokio::test]
+    async fn missing_entity_does_not_persist_mission_update() {
+        let mut mgr = make_mgr_with_def();
+        // No entity created.
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(32);
+
+        accept_or_advance(622, 1, 100, 9999, &tx, &mut mgr, &engine).await;
+
+        let msgs = drain(&mut rx);
+        assert!(
+            mission_updates(&msgs).is_empty(),
+            "entity-less accept must not persist anything; got {msgs:?}"
+        );
+    }
+
+    /// Happy-path companion pinning the success contract: a fresh accept
+    /// still persists exactly one `MissionUpdate` with status=1. Guards
+    /// against the refusal gate accidentally swallowing legitimate accepts.
+    #[tokio::test]
+    async fn fresh_accept_still_persists_mission_update() {
+        let mut mgr = make_mgr_with_def();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(32);
+
+        accept_or_advance(622, 1, 100, 9999, &tx, &mut mgr, &engine).await;
+
+        let msgs = drain(&mut rx);
+        assert_eq!(
+            mission_updates(&msgs),
+            vec![1],
+            "fresh accept must persist exactly one MissionUpdate(status=1)"
+        );
+    }
 }
