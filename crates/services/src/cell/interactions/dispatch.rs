@@ -14,7 +14,12 @@ use super::vendor::send_store_open;
 
 /// Maximum distance for NPC interaction (world units).
 /// From `python/common/Constants.py: MAX_INTERACT_DISTANCE = 5`.
-const MAX_INTERACT_DISTANCE: f32 = 5.0;
+///
+/// `pub(super)` so the sibling `loot` module can re-validate looting
+/// distance against the same bound the initial `interact` enforces
+/// (#446 — the loot handler must re-check range on every take, not just
+/// trust the interact-time `looting_entity` pin).
+pub(super) const MAX_INTERACT_DISTANCE: f32 = 5.0;
 
 /// Handle `interact(targetEntityId)` cell method call.
 ///

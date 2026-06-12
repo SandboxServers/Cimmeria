@@ -129,6 +129,40 @@ pub async fn handle_loot_item(
         }
     };
 
+    // Server-authority range re-check (#446). `looting_entity` was pinned
+    // at interact time, where the distance to the corpse was checked once
+    // against `MAX_INTERACT_DISTANCE`. Nothing re-validates it afterward,
+    // so a client that spoofs its position (or simply walks away while the
+    // loot window is open) can keep calling `lootItem` from anywhere in the
+    // zone — "vacuum loot" every corpse without traversing to it. Re-check
+    // the LIVE distance on every take so the pin alone can't be replayed
+    // from out of range. The corpse-position read is cheap (no DB, no
+    // fan-out).
+    //
+    // This does NOT yet enforce kill-credit / loot ownership (a player who
+    // dealt 0 damage can still loot a corpse they walked up to) — that's
+    // the larger SGW lootability-window model, tracked as the follow-up
+    // half of #446 and routed through the combat-systems advisor.
+    {
+        let looter_pos = space_mgr.get_entity(entity_id).map(|e| e.position);
+        let corpse_pos = space_mgr.get_entity(target_eid).map(|e| e.position);
+        if let (Some(lp), Some(cp)) = (looter_pos, corpse_pos) {
+            let dist = lp.distance_to(&cp);
+            if dist > super::dispatch::MAX_INTERACT_DISTANCE {
+                tracing::warn!(
+                    entity_id,
+                    target_eid,
+                    index,
+                    dist,
+                    max = super::dispatch::MAX_INTERACT_DISTANCE,
+                    "lootItem rejected -- looter is out of range of the corpse \
+                     (position spoof or walked away); no item removed (#446)"
+                );
+                return;
+            }
+        }
+    }
+
     // Find and remove the loot item from the NPC
     let removed_item = {
         let target = match space_mgr.get_entity_mut(target_eid) {
@@ -375,5 +409,107 @@ mod tests {
                 _ => {}
             }
         }
+    }
+
+    // ── #446 loot range re-validation ─────────────────────────────────
+
+    /// Build a manager with one player (id 1, has player_id) at the origin
+    /// looting an NPC corpse (id 2) seeded with one cash drop. The corpse
+    /// position is caller-chosen so the distance gate can be exercised.
+    fn make_loot_mgr(corpse_pos: [f32; 3]) -> super::super::super::space_manager::SpaceManager {
+        use super::super::super::space_manager::SpaceManager;
+        use cimmeria_entity::cell_entity::LootItem;
+
+        let mut mgr = SpaceManager::new(1);
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(spaces_xml).unwrap();
+        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", corpse_pos, [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            npc.loot.push(LootItem {
+                design_id: None, // cash
+                quantity: 50,
+                index: 1,
+            });
+        }
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(42);
+            p.looting_entity = Some(npc_id);
+        }
+        mgr
+    }
+
+    /// **#446 in-range positive guard.** A looter standing on the corpse
+    /// (distance 2 < MAX_INTERACT_DISTANCE) loots normally — the gate must
+    /// not over-block. The drop is removed and a GrantCash is queued.
+    #[tokio::test]
+    async fn loot_item_in_range_succeeds() {
+        use super::*;
+        use tokio::sync::mpsc;
+
+        let mut mgr = make_loot_mgr([2.0, 0.0, 0.0]);
+        let npc_id = mgr.get_entity(1).and_then(|e| e.looting_entity).unwrap();
+
+        let (tx, mut rx) = mpsc::channel(16);
+        handle_loot_item(1, 1, &tx, &mut mgr).await;
+
+        assert_eq!(
+            mgr.get_entity(npc_id).map(|e| e.loot.len()).unwrap_or(99),
+            0,
+            "in-range loot must remove the drop from the corpse"
+        );
+        let granted = std::iter::from_fn(|| rx.try_recv().ok())
+            .any(|m| matches!(m, CellToBaseMsg::GrantCash { .. }));
+        assert!(granted, "in-range cash loot must queue a GrantCash");
+    }
+
+    /// **#446 out-of-range negative guard.** A looter far from the corpse
+    /// (distance 100 > MAX_INTERACT_DISTANCE) — the position-spoof / vacuum
+    /// case — must be denied: the drop stays on the corpse, nothing is
+    /// granted, and the rejection is logged. Pre-fix the handler trusted
+    /// the interact-time `looting_entity` pin and looted regardless of
+    /// live distance.
+    #[tokio::test]
+    async fn loot_item_out_of_range_is_denied() {
+        use super::*;
+        use crate::test_support::LogCapture;
+        use tokio::sync::mpsc;
+
+        let mut mgr = make_loot_mgr([100.0, 0.0, 0.0]);
+        let npc_id = mgr.get_entity(1).and_then(|e| e.looting_entity).unwrap();
+
+        let capture = LogCapture::install();
+        let (tx, mut rx) = mpsc::channel(16);
+        handle_loot_item(1, 1, &tx, &mut mgr).await;
+
+        assert_eq!(
+            mgr.get_entity(npc_id).map(|e| e.loot.len()).unwrap_or(0),
+            1,
+            "out-of-range loot must NOT remove the drop — the corpse keeps it"
+        );
+        let granted = std::iter::from_fn(|| rx.try_recv().ok()).any(|m| {
+            matches!(
+                m,
+                CellToBaseMsg::GrantCash { .. } | CellToBaseMsg::GrantItem { .. }
+            )
+        });
+        assert!(!granted, "out-of-range loot must not grant anything");
+        assert!(
+            capture
+                .find_message(
+                    tracing::Level::WARN,
+                    "lootItem rejected -- looter is out of range"
+                )
+                .is_some(),
+            "out-of-range loot must emit the documented rejection warn (#446)"
+        );
     }
 }

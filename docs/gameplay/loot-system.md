@@ -162,8 +162,21 @@ When a mob dies, it immediately generates its loot and sets the `INT_NormalLoot`
 ### 64-bit Signedness Bug (FIXME)
 A signedness issue in `interactionSetMapId()` prevents the `INTERACTION_MissionLoot` flag from being used correctly. Mission-specific loot interactions are blocked until this is resolved.
 
-### Range Checking (TODO)
-There is no automatic end-of-interaction trigger when a player walks out of range of the loot container. Players who open a loot window and then move away will retain the open window until they manually close it or the server resets it. A distance check on tick or on `onLootItem` would fix this.
+### Range Checking (server-authority gate, #446)
+`handle_loot_item` re-validates the looter's **live** distance to the corpse
+against `MAX_INTERACT_DISTANCE` (5.0) on **every** `lootItem` call, not just
+once at interact time. Out-of-range takes are denied (the drop stays on the
+corpse, nothing is granted, a `warn!` is logged). This closes the
+"vacuum loot" exploit — chained with a position spoof, the interact-time
+`looting_entity` pin could otherwise be replayed to loot every corpse in
+the zone without traversing to them (CAT-D, #446).
+
+There is still no automatic end-of-interaction trigger that *closes the loot
+window* when a player walks out of range — the window lingers client-side
+until manually closed — but a take from that stale window now fails the
+range gate. **Not yet implemented**: kill-credit / loot ownership (a player
+who dealt no damage can still loot a corpse they walk up to) — the larger
+SGW lootability-window model, the follow-up half of #446.
 
 ### Dynamic Interaction Type Update (FIXME)
 There is a known workaround in place for the lack of a proper dynamic interaction type update. When the loot list empties, the entity's interaction flags should clear `INT_NormalLoot`, but the mechanism for pushing that update to nearby clients is not cleanly implemented.
