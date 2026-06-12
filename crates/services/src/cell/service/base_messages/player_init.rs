@@ -45,6 +45,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     bandolier_items: Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>,
     system_options: cimmeria_entity::cell_entity::SystemOptions,
     state_field: u32,
+    access_level: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
@@ -53,6 +54,11 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         entity.player_id = Some(player_id);
         entity.archetype_id = Some(archetype_id);
+        // Authoritative GM/admin level for this session, sourced from the
+        // login row. The cell-method GM gate reads this; storing it here
+        // (rather than trusting any per-call client byte) is the
+        // server-authority fix for CAT-N-03 (#475).
+        entity.access_level = access_level;
 
         // Seed core stats from the archetype's base values. Without
         // this seed, the cell-side `CellEntity::stats` stays at the
@@ -553,6 +559,7 @@ mod state_field_restore_tests {
             vec![],
             SystemOptions::default(),
             BSF_AUTO_CYCLING,
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,
@@ -606,6 +613,7 @@ mod state_field_restore_tests {
             vec![],
             SystemOptions::default(),
             BSF_DEAD | BSF_IN_COMBAT | BSF_MOVEMENT_LOCK,
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,
@@ -645,6 +653,7 @@ mod state_field_restore_tests {
             vec![],
             SystemOptions::default(),
             0,
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,
@@ -733,6 +742,7 @@ mod relog_mission_resurrection_tests {
             vec![],
             cimmeria_entity::cell_entity::SystemOptions::default(),
             0, // state_field
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,
@@ -824,6 +834,7 @@ mod system_options_assignment_tests {
             vec![],
             hydrated.clone(),
             0, // state_field
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,
@@ -835,6 +846,48 @@ mod system_options_assignment_tests {
             e.system_options, hydrated,
             "InitPlayerState must overwrite the entity's default \
              SystemOptions with the DB-hydrated values",
+        );
+    }
+
+    /// **#475 plumbing guard.** `InitPlayerState` must land the
+    /// session's `access_level` on `CellEntity::access_level` — that's
+    /// the authoritative value the cell-method GM gate reads. A refactor
+    /// that drops the assignment would silently leave every entity at
+    /// access_level 0, so legitimate GMs lose their commands AND (worse,
+    /// once the gate is the only check) the plumbing that makes the gate
+    /// meaningful is gone. Pin a non-zero level so a missed assignment is
+    /// observable.
+    #[tokio::test]
+    async fn init_player_state_assigns_access_level() {
+        let mut mgr = make_mgr();
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(32);
+
+        const GM_LEVEL: u32 = 2; // GameMaster
+
+        handle_init_player_state(
+            1,
+            100,
+            "Castle_CellBlock".into(),
+            1,
+            vec![],
+            vec![],
+            0,
+            vec![],
+            SystemOptions::default(),
+            0, // state_field
+            GM_LEVEL,
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        assert_eq!(
+            mgr.get_entity(1).unwrap().access_level,
+            GM_LEVEL,
+            "InitPlayerState must store the session access_level on the \
+             cell entity — the GM gate has nothing to check otherwise (#475)"
         );
     }
 
@@ -871,6 +924,7 @@ mod system_options_assignment_tests {
             vec![],
             SystemOptions::default(),
             0, // state_field
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,
@@ -951,6 +1005,7 @@ mod system_options_assignment_tests {
             vec![], // no bandolier items (slot can still be active over an empty slot)
             SystemOptions::default(),
             0, // state_field
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,
@@ -1094,6 +1149,7 @@ mod system_options_assignment_tests {
             items,
             sys_opts,
             0, // state_field
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,
@@ -1176,6 +1232,7 @@ mod system_options_assignment_tests {
             items,
             sys_opts,
             0, // state_field
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,
@@ -1226,6 +1283,7 @@ mod system_options_assignment_tests {
             items,
             sys_opts,
             0, // state_field
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,
@@ -1269,6 +1327,7 @@ mod system_options_assignment_tests {
             items,
             sys_opts,
             0, // state_field
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,
@@ -1309,6 +1368,7 @@ mod system_options_assignment_tests {
             vec![],
             SystemOptions::default(),
             0, // state_field
+            0, // access_level
             &tx,
             &mut mgr,
             &engine,

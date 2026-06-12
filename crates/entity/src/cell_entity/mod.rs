@@ -207,6 +207,16 @@ pub struct CellEntity {
     /// Archetype ID for content engine conditions. Set from character data on connect.
     pub archetype_id: Option<i32>,
 
+    /// Account access level (0=Player, 1=Moderator, 2=GameMaster, 3=Admin,
+    /// 4=Developer — see `cimmeria_commands::permissions::AccessLevel`).
+    /// Sourced authoritatively from the `account.accesslevel` DB column at
+    /// login, carried into the cell via `InitPlayerState`, and **never**
+    /// derived from any client-supplied byte. The cell-method GM gate
+    /// (`cell::dispatch::gm_gate`) reads this to reject `gm*`/debug methods
+    /// from non-privileged callers. Defaults to 0 (Player) for NPCs and any
+    /// entity whose login row didn't set it. (#475 / CAT-N-03)
+    pub access_level: u32,
+
     /// Entity level (for XP calculations on kill). Default 1.
     pub level: u32,
 
@@ -885,6 +895,7 @@ impl CellEntity {
             missions: MissionManager::new(),
             player_id: None,
             archetype_id: None,
+            access_level: 0,
             level: 1,
             template_id: None,
             tag: None,
