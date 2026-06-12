@@ -109,7 +109,7 @@ pub async fn handle_interact(
                 dialog_id,
                 "interact: per-player dialog set → onDialogDisplay"
             );
-            send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx).await;
+            send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx, space_mgr).await;
             return Some(dialog_id);
         } else {
             tracing::info!(
@@ -129,7 +129,7 @@ pub async fn handle_interact(
                 dialog_id,
                 "interact: static dialog → onDialogDisplay"
             );
-            send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx).await;
+            send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx, space_mgr).await;
             Some(dialog_id)
         }
         Some(NpcInteractionType::Vendor) => {
@@ -272,7 +272,7 @@ pub async fn handle_initial_response(
             npc_entity_id,
             "handle_initial_response: found dialog, sending onDialogDisplay"
         );
-        send_dialog_display(entity_id, npc_entity_id, dialog_id, tx).await;
+        send_dialog_display(entity_id, npc_entity_id, dialog_id, tx, space_mgr).await;
         crate::cell::content::fire_dialog_open(
             entity_id, player_id, dialog_id, engine, tx, space_mgr,
         )

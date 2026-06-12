@@ -240,6 +240,38 @@ pub async fn dispatch(
                 let button_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::info!(entity_id, dialog_id, button_id, "dialogButtonChoice");
 
+                // Server-authority precondition (CAT-J-01 / #479): the dialog
+                // must actually be open for this player. `open_dialog_id` is
+                // pinned by `send_dialog_display` on every display path and
+                // matched here on strict equality. Without this gate, a forged
+                // `DialogButtonChoice` for any discovered `dialog_id` drives the
+                // bound `OnDialogChoice` chain's actions (GrantXP / GrantItem /
+                // AcceptMission / Teleport / …) with no precondition. Mirrors
+                // python `SGWPlayer.dialogButtonChoice` rejecting a choice whose
+                // id isn't in `displayedDialogs`. The pin is cleared on a valid
+                // choice (one-shot — SGW sends exactly one choice per displayed
+                // dialog_id), which also makes a replayed choice idempotent.
+                let open_dialog_id = space_mgr
+                    .get_entity(entity_id)
+                    .and_then(|e| e.open_dialog_id);
+                if open_dialog_id != Some(dialog_id) {
+                    tracing::warn!(
+                        entity_id,
+                        dialog_id,
+                        button_id,
+                        open_dialog_id = ?open_dialog_id,
+                        "dialogButtonChoice rejected -- no matching open dialog for this player \
+                         (forged/replayed choice or stale client state); chain not fired (#479)"
+                    );
+                    return true;
+                }
+                // Clear the pin BEFORE firing the chain: a chain action may
+                // open a follow-up dialog (`display_dialog`), whose
+                // `send_dialog_display` re-arms the pin for the next choice.
+                if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+                    player.open_dialog_id = None;
+                }
+
                 let player_id = space_mgr
                     .get_entity(entity_id)
                     .and_then(|e| e.player_id)
@@ -579,6 +611,186 @@ mod tests {
              consolidation both the template-driven path AND the dead \
              NpcInteractionType::Trainer arm would fire, double-emitting \
              with two divergent ability lists"
+        );
+    }
+
+    // ── DialogButtonChoice open-dialog gate (CAT-J-01 / #479) ──────────
+
+    /// Register an `OnDialogChoice { dialog_id }` chain that bumps a counter
+    /// when it fires, so a test can observe whether the choice handler
+    /// actually ran the chain. Counter delta = proof of chain execution.
+    fn engine_with_dialog_choice_chain(dialog_id: i32, counter: &str) -> ChainEngine {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 70479,
+            name: "test OnDialogChoice → increment counter".into(),
+            enabled: true,
+            trigger: Trigger::OnDialogChoice { dialog_id },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: counter.into(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+        engine
+    }
+
+    fn dialog_choice_args(dialog_id: i32, button_id: i32) -> Vec<u8> {
+        let mut a = Vec::with_capacity(8);
+        a.extend_from_slice(&dialog_id.to_le_bytes());
+        a.extend_from_slice(&button_id.to_le_bytes());
+        a
+    }
+
+    fn counter(mgr: &SpaceManager, entity_id: u32, name: &str) -> i32 {
+        mgr.get_entity(entity_id)
+            .and_then(|e| e.counters.get(name).copied())
+            .unwrap_or(0)
+    }
+
+    /// **#479 negative case.** A `DialogButtonChoice` for a `dialog_id` the
+    /// server never displayed (forged packet) must be rejected: the bound
+    /// `OnDialogChoice` chain does NOT fire, and a `warn!` is logged. Pre-fix
+    /// the handler fired the chain unconditionally, so an attacker could
+    /// drive GrantItem/AcceptMission/Teleport for any discovered dialog_id.
+    #[tokio::test]
+    async fn dialog_choice_for_unopened_dialog_is_rejected() {
+        use crate::test_support::LogCapture;
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(42);
+            // No dialog open — open_dialog_id stays None (the default).
+        }
+        let engine = engine_with_dialog_choice_chain(5354, "j01");
+        let (tx, _rx) = mpsc::channel(16);
+        let capture = LogCapture::install();
+
+        let handled = dispatch(
+            1,
+            DIALOG_BUTTON_CHOICE,
+            &dialog_choice_args(5354, 0),
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+        assert!(handled, "handler still consumes the method");
+
+        assert_eq!(
+            counter(&mgr, 1, "j01"),
+            0,
+            "a forged choice for an un-opened dialog must NOT fire the chain"
+        );
+        assert!(
+            capture
+                .find_message(tracing::Level::WARN, "dialogButtonChoice rejected")
+                .is_some(),
+            "rejection must emit the documented warn for ops/audit"
+        );
+    }
+
+    /// **#479 positive case.** When the dialog IS open (pinned by
+    /// `send_dialog_display`), the matching choice fires the chain and the
+    /// pin is cleared one-shot (mirrors python `del displayedDialogs[id]`).
+    #[tokio::test]
+    async fn dialog_choice_for_open_dialog_fires_chain_and_clears_pin() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(42);
+            p.open_dialog_id = Some(5354); // dialog is open
+        }
+        let engine = engine_with_dialog_choice_chain(5354, "j01");
+        let (tx, _rx) = mpsc::channel(16);
+
+        let handled = dispatch(
+            1,
+            DIALOG_BUTTON_CHOICE,
+            &dialog_choice_args(5354, 0),
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+        assert!(handled);
+
+        assert_eq!(
+            counter(&mgr, 1, "j01"),
+            1,
+            "an open dialog's choice must fire the bound OnDialogChoice chain"
+        );
+        assert_eq!(
+            mgr.get_entity(1).and_then(|e| e.open_dialog_id),
+            None,
+            "a valid choice must clear the pin (one-shot) so a replay is rejected"
+        );
+    }
+
+    /// **#479 mismatch case.** A choice for dialog B while dialog A is open
+    /// must be rejected — the attacker can't ride an unrelated open dialog
+    /// to fire a different dialog_id's chain.
+    #[tokio::test]
+    async fn dialog_choice_for_different_open_dialog_is_rejected() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(42);
+            p.open_dialog_id = Some(1111); // a DIFFERENT dialog is open
+        }
+        let engine = engine_with_dialog_choice_chain(5354, "j01");
+        let (tx, _rx) = mpsc::channel(16);
+
+        dispatch(
+            1,
+            DIALOG_BUTTON_CHOICE,
+            &dialog_choice_args(5354, 0),
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        assert_eq!(
+            counter(&mgr, 1, "j01"),
+            0,
+            "choice for dialog 5354 must not fire while only dialog 1111 is open"
+        );
+        assert_eq!(
+            mgr.get_entity(1).and_then(|e| e.open_dialog_id),
+            Some(1111),
+            "a rejected mismatched choice must leave the real open dialog pinned"
+        );
+    }
+
+    /// **#479 replay idempotency.** Two identical valid choices in a row:
+    /// the first fires + clears the pin; the second hits `open == None` and
+    /// is rejected. Closes the replay sub-finding for free.
+    #[tokio::test]
+    async fn replayed_dialog_choice_is_rejected_after_first() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(42);
+            p.open_dialog_id = Some(5354);
+        }
+        let engine = engine_with_dialog_choice_chain(5354, "j01");
+        let (tx, _rx) = mpsc::channel(16);
+        let args = dialog_choice_args(5354, 0);
+
+        dispatch(1, DIALOG_BUTTON_CHOICE, &args, &tx, &mut mgr, &engine).await;
+        dispatch(1, DIALOG_BUTTON_CHOICE, &args, &tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            counter(&mgr, 1, "j01"),
+            1,
+            "the chain must fire exactly once — the replayed second choice is \
+             rejected because the pin was cleared by the first"
         );
     }
 }

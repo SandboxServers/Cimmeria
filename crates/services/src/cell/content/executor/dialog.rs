@@ -49,7 +49,7 @@ pub(super) async fn display(
     chain_id: i64,
     params: &std::collections::HashMap<String, serde_json::Value>,
     tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &SpaceManager,
+    space_mgr: &mut SpaceManager,
 ) {
     let npc_entity_id = params
         .get("target_entity_id")
@@ -97,7 +97,14 @@ pub(super) async fn display(
         chain_id,
         "Content: displaying dialog"
     );
-    crate::cell::interactions::send_dialog_display(entity_id, npc_entity_id, dialog_id, tx).await;
+    crate::cell::interactions::send_dialog_display(
+        entity_id,
+        npc_entity_id,
+        dialog_id,
+        tx,
+        space_mgr,
+    )
+    .await;
 }
 
 /// `Action::AddDialogSet` — register a dialog set on the player's
@@ -414,7 +421,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(4);
         display(
             /* dialog_id */ 4001, /* entity_id */ 1, /* chain_id */ 99, &params,
-            &tx, &mgr,
+            &tx, &mut mgr,
         )
         .await;
 
@@ -445,7 +452,7 @@ mod tests {
 
         let params = empty_params();
         let (tx, mut rx) = mpsc::channel(4);
-        display(2299, 1, 1021, &params, &tx, &mgr).await;
+        display(2299, 1, 1021, &params, &tx, &mut mgr).await;
 
         let msg = rx.try_recv().expect("must emit onDialogDisplay");
         match msg {
@@ -472,7 +479,7 @@ mod tests {
 
         let params = empty_params();
         let (tx, mut rx) = mpsc::channel(4);
-        display(4001, 1, 9999, &params, &tx, &mgr).await;
+        display(4001, 1, 9999, &params, &tx, &mut mgr).await;
 
         assert!(
             rx.try_recv().is_err(),
@@ -499,7 +506,7 @@ mod tests {
 
         let params = empty_params();
         let (tx, mut rx) = mpsc::channel(4);
-        display(2982, 1, 1001, &params, &tx, &mgr).await;
+        display(2982, 1, 1001, &params, &tx, &mut mgr).await;
 
         let msg = rx.try_recv().expect(
             "monologue dialog must emit onDialogDisplay even with no NPC \
@@ -533,7 +540,7 @@ mod tests {
 
         let params = empty_params();
         let (tx, mut rx) = mpsc::channel(4);
-        display(4001, 1, 9999, &params, &tx, &mgr).await;
+        display(4001, 1, 9999, &params, &tx, &mut mgr).await;
 
         assert!(
             rx.try_recv().is_err(),
