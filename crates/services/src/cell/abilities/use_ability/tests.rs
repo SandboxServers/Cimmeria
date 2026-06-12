@@ -95,9 +95,14 @@ async fn cooldown_blocks_fire_and_emits_no_packets() {
 async fn out_of_range_emits_on_error_code_with_condition_42() {
     let mut mgr = make_mgr();
     make_player(&mut mgr, 1, [0.0; 3]);
-    // Target far away beyond max_range=10.
+    // Target far away beyond max_range=10. Hostile so it passes the
+    // #444 target-validity gate and reaches the range check this test
+    // is about.
     mgr.create_entity(2, "Castle_CellBlock", [100.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
+    if let Some(t) = mgr.get_entity_mut(2) {
+        t.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
     if let Some(p) = mgr.get_entity_mut(1) {
         p.abilities.add_ability(7);
     }
@@ -214,6 +219,91 @@ async fn dead_target_blocks_fire_without_consuming_resources() {
     assert!(
         !mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
         "rejecting against a dead target must not start the cooldown"
+    );
+}
+
+// ── #444 single-target faction / target-validity gate ─────────────────
+
+/// **#444 friendly-fire guard.** A single-target ability against a
+/// non-hostile NPC (vendor / quest giver / neutral, faction != 10) must
+/// be rejected before the damage pipeline — no commit, no cooldown.
+/// Pre-fix the path only checked alive + range, so a forged
+/// `useAbility(weapon_id, vendor_eid)` killed vendors and quest NPCs.
+#[tokio::test]
+async fn non_hostile_npc_target_blocks_fire() {
+    let mut mgr = make_mgr();
+    make_player(&mut mgr, 1, [0.0; 3]);
+    // Neutral NPC (default faction 0) within range — a vendor / quest giver.
+    mgr.create_entity(2, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.abilities.add_ability(7);
+    }
+    mgr.ability_defs.insert(7, make_ability(7, 0, 30));
+    let (tx, _rx) = mpsc::channel(8);
+
+    let committed = handle_use_ability(1, 7, 2, &tx, &mut mgr).await;
+    assert!(
+        !committed,
+        "a single-target ability must not commit against a non-hostile NPC"
+    );
+    assert!(
+        !mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
+        "rejecting a non-hostile target must not start the cooldown"
+    );
+}
+
+/// **#444 PvP-forgery guard.** A forged single-target ability against
+/// another PLAYER must be rejected — players are never legitimate
+/// single-target ability targets in today's PvE-only design, and the
+/// wire path doesn't otherwise stop `target_id = other_player_eid`.
+#[tokio::test]
+async fn player_target_blocks_fire() {
+    let mut mgr = make_mgr();
+    make_player(&mut mgr, 1, [0.0; 3]);
+    make_player(&mut mgr, 2, [3.0, 0.0, 0.0]); // another player in range
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.abilities.add_ability(7);
+    }
+    mgr.ability_defs.insert(7, make_ability(7, 0, 30));
+    let (tx, _rx) = mpsc::channel(8);
+
+    let committed = handle_use_ability(1, 7, 2, &tx, &mut mgr).await;
+    assert!(
+        !committed,
+        "a single-target ability must not commit against another player"
+    );
+    assert!(!mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7));
+}
+
+/// **#444 regression guard (positive).** A hostile NPC target still
+/// passes the gate and the ability commits — proves the new check
+/// doesn't over-block legitimate combat. A revert that drops the gate
+/// keeps this green, but the two negative tests above flip to failing,
+/// which is the intended fail-shape.
+#[tokio::test]
+async fn hostile_npc_target_commits() {
+    let mut mgr = make_mgr();
+    make_player(&mut mgr, 1, [0.0; 3]);
+    mgr.create_entity(2, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(t) = mgr.get_entity_mut(2) {
+        t.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.abilities.add_ability(7);
+    }
+    mgr.ability_defs.insert(7, make_ability(7, 0, 30));
+    let (tx, _rx) = mpsc::channel(8);
+
+    let committed = handle_use_ability(1, 7, 2, &tx, &mut mgr).await;
+    assert!(
+        committed,
+        "a hostile NPC target must still commit — the gate must not over-block combat"
+    );
+    assert!(
+        mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
+        "a committed fire against a hostile target starts the cooldown"
     );
 }
 
@@ -738,9 +828,13 @@ async fn weapon_granted_ability_commits_even_when_not_in_known_set() {
     use cimmeria_entity::cell_entity::BandolierItem;
     let mut mgr = make_mgr();
     make_player(&mut mgr, 1, [0.0; 3]);
-    // Target NPC within range.
+    // Target NPC within range. Hostile so it passes the #444
+    // target-validity gate.
     mgr.create_entity(2, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
+    if let Some(t) = mgr.get_entity_mut(2) {
+        t.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
 
     if let Some(p) = mgr.get_entity_mut(1) {
         // Pistol (item 55) in active bandolier slot 0. Weapon drawn so
@@ -855,6 +949,9 @@ async fn use_ability_redirects_pistol_shot_to_smg_when_p90_equipped() {
     // NPC target so the post-redirect range check has something to find.
     mgr.spawn_npc(50, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
+    if let Some(t) = mgr.get_entity_mut(50) {
+        t.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
 
     if let Some(p) = mgr.get_entity_mut(1) {
         // Pistol Shot (592) — archetype starter. The player only
@@ -913,6 +1010,9 @@ async fn use_ability_does_not_redirect_pistol_shot_when_no_weapon_equipped() {
     make_player(&mut mgr, 1, [0.0; 3]);
     mgr.spawn_npc(50, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
+    if let Some(t) = mgr.get_entity_mut(50) {
+        t.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
 
     if let Some(p) = mgr.get_entity_mut(1) {
         p.abilities.add_ability(592);
@@ -953,6 +1053,9 @@ async fn use_ability_does_not_redirect_when_called_ability_is_already_weapon_bin
     make_player(&mut mgr, 1, [0.0; 3]);
     mgr.spawn_npc(50, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
+    if let Some(t) = mgr.get_entity_mut(50) {
+        t.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
 
     if let Some(p) = mgr.get_entity_mut(1) {
         p.abilities.add_ability(559);

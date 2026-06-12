@@ -286,6 +286,49 @@ pub async fn handle_use_ability(
                     );
                     return false;
                 }
+                // Server-authority target-validity gate (#444), scoped to
+                // PLAYER attackers — that's the forgery vector. The
+                // single-target path resolves as damage unconditionally
+                // (see `apply_damage_to_target` — there is no offensive vs
+                // supportive branch), so a player may only target a hostile
+                // NPC. A non-hostile NPC (vendor / quest giver / neutral)
+                // must never take player damage, and another player is
+                // never a legitimate single-target target in today's
+                // PvE-only design. Mirrors the AoE (`abilities/dispatch.rs`)
+                // and cone (`abilities/cone_aoe.rs`) faction filters;
+                // without it a forged `useAbility` packet griefs vendors,
+                // quest NPCs, party members, or other players (the client
+                // UI restricts target selection, but the server must
+                // enforce it).
+                //
+                // NPC attackers are deliberately NOT gated here: NPC AI
+                // fight (`npc_ai`) calls this same entry point to attack a
+                // PLAYER, which is legitimate — the AI already picks valid
+                // targets server-side.
+                //
+                // TODO: supportive single-target abilities (heal/buff an
+                // ally) will need the inverse gate (require friendly/self
+                // target) once an offensive/supportive ability flag exists
+                // — `AbilityDef` has no such field today, and
+                // `target_type_id` only encodes self/target/ground. Same
+                // seam where a per-pair hostility check replaces the flat
+                // `HOSTILE_FACTION` sentinel when PvP lands (see the cone
+                // module doc).
+                if entity.is_player
+                    && (target.is_player || target.faction != combat::HOSTILE_FACTION)
+                {
+                    tracing::warn!(
+                        entity_id,
+                        ability_id,
+                        target_id,
+                        target_is_player = target.is_player,
+                        target_faction = target.faction,
+                        "useAbility rejected -- player single-target ability against a \
+                         non-hostile target (friendly-fire / forged target); \
+                         damage pipeline not entered (#444)"
+                    );
+                    return false;
+                }
                 // Range check
                 let max_range = ability_def.as_ref().map_or(30.0, |d| {
                     if d.max_range > 0 {

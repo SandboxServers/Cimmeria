@@ -151,6 +151,23 @@ No.
 
 ### CAT-C-03 — `useAbility` allows player→player damage (no friendly-fire / faction check)
 
+**Status**: ✅ RESOLVED (#444) — the single-target validation block in
+`handle_use_ability` (`cell/abilities/use_ability/mod.rs`) now rejects,
+**for player attackers**, any target that is a player or a non-hostile NPC
+(`entity.is_player && (target.is_player || target.faction !=
+HOSTILE_FACTION)`) before the damage pipeline, mirroring the AoE
+(`abilities/dispatch.rs`) and cone (`abilities/cone_aoe.rs`) faction
+filters, with a `warn!` for the attempted friendly-fire. Closes the
+vendor/quest-NPC/party-member and forged-player-target vectors. The gate
+is scoped to player attackers because NPC AI fight calls the same entry
+point to attack a *player* (legitimate combat).
+Single-target abilities resolve as damage unconditionally today (no
+offensive/supportive field exists on `AbilityDef`), so supportive
+single-target abilities (heal/buff an ally) will need the inverse gate
+when that field is added — documented as a TODO at the guard. The flat
+`HOSTILE_FACTION` sentinel is the same PvP seam the cone module already
+flags for a future per-pair hostility model.
+
 **Severity**: High
 **Class**: Missing faction/hostility gate
 **Wire surface**: `Event_NetOut_UseAbility` (cell method 68)

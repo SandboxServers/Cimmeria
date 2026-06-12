@@ -175,6 +175,19 @@ distinction is load-bearing for mission progression.
 | Player-driven, single target | `handle_use_ability_with_kill_credit` | Every player-initiated single-target attack |
 | NPC AI, tests, AoE caller layer | `handle_use_ability` (bare) | NPC attacks; ability-mechanic tests; AoE primary cast (the AoE caller fires `fire_entity_death` per-death itself) |
 
+Both entry points share `handle_use_ability`'s single-target validation,
+which gates on target validity: the target must be alive and in range, and
+— **for player attackers** — a hostile NPC (`entity.is_player &&
+(target.is_player || target.faction != HOSTILE_FACTION)` → rejected with a
+`warn!`). This mirrors the AoE/cone faction filters and is the
+server-authority guard against forged `useAbility` packets that would
+otherwise grief vendors, quest NPCs, party members, or other players
+(#444 / CAT-C-03). The check is scoped to player attackers because NPC AI
+fight calls the same entry point to attack a *player*, which is
+legitimate. Single-target abilities resolve as damage unconditionally
+today; supportive single-target abilities (heal/buff an ally) will need
+the inverse gate once an offensive/supportive ability field exists.
+
 `handle_use_ability_with_kill_credit` wraps `handle_use_ability` with
 an alive→dead transition detector that fires the content-engine
 `EntityDeath` event. KillCount-style mission chains (e.g., "kill 5
