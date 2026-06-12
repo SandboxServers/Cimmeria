@@ -86,6 +86,13 @@ pub enum BaseToCellMsg {
         /// so the auto-reload and reload-on-activate triggers honour the
         /// player's saved preferences instead of falling back to defaults.
         system_options: cimmeria_entity::cell_entity::SystemOptions,
+        /// Persisted user-preference state bits from `sgw_player.state_field`
+        /// (today: `BSF_AutoCycling` only — see `PERSISTED_STATE_FIELD_MASK`).
+        /// The handler masks again on restore, ORs the bits onto
+        /// `CellEntity::state_field`, re-arms `abilities.auto_cycle`, and
+        /// re-broadcasts `onStateFieldUpdate` so the client's button
+        /// highlight survives the relog. (#412)
+        state_field: u32,
     },
 
     /// Update one bandolier slot after a runtime item grant.

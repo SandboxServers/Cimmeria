@@ -45,6 +45,13 @@ CREATE TABLE sgw_player (
     -- crates/entity/src/cell_entity/system_options.rs.
     auto_reload boolean DEFAULT true NOT NULL,
     reload_on_activate boolean DEFAULT false NOT NULL,
+    -- Persisted user-preference bits of the cell entity's `state_field`
+    -- bitmask. Only bits in PERSISTED_STATE_FIELD_MASK
+    -- (crates/services/src/cell/combat/state.rs) are ever written —
+    -- today that's BSF_AutoCycling (1 << 1) alone. Transient combat
+    -- bits (BSF_Dead, BSF_InCombat, BSF_MovementLock) are masked out
+    -- on write so a relog is always a clean combat slate. (#412)
+    state_field integer DEFAULT 0 NOT NULL,
     CONSTRAINT alignment_sanity CHECK (((alignment >= 0) AND (alignment <= 5))),
     CONSTRAINT archetype_sanity CHECK (((archetype >= 0) AND (archetype <= 8))),
     CONSTRAINT bandolier_slot_sanity CHECK (((bandolier_slot >= 0) AND (bandolier_slot <= 3))),

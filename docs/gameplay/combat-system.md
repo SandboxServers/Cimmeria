@@ -24,7 +24,7 @@ The server handles all combat resolution; the client sends ability requests and 
 | QR hit/miss/crit calculation | DONE | Beta distribution model in `DamageCalc` |
 | Damage pipeline (base -> resist -> QR -> AF -> absorb) | DONE | `calculateDamage()` |
 | Warmup / cooldown timers | DONE | Timer-based with client sync |
-| Auto-cycle (auto-attack) | DONE | Loops ability on cooldown expiry |
+| Auto-cycle (auto-attack) | DONE | Loops ability on cooldown expiry; toggle persists across relog via `sgw_player.state_field` (#412 — see [state-field-bits.md](../architecture/state-field-bits.md)) |
 | Effect application / removal | DONE | `EffectInstance` class |
 | Death / revive | DONE | `PLAYER_STATE_Dead` flag, `onDead()` / `onRevived()` |
 | Crouch / cover stance | PARTIAL | State flag set, affects QR, cover sets tracked |

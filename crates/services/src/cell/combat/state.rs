@@ -35,6 +35,22 @@ pub const BSF_DEAD: u32 = 1 << BSF_DEAD_BIT;
 /// From python `Atrea.enums.BSF_AutoCycling = 1`.
 pub const BSF_AUTO_CYCLING: u32 = 1 << 1;
 
+/// The subset of `state_field` bits that persist across logins.
+///
+/// `state_field` is mostly transient combat state — `BSF_Dead`,
+/// `BSF_InCombat`, `BSF_MovementLock` all describe the current fight and
+/// must reset on world entry (relog is a fresh combat slate; see the
+/// cooldown-wipe rationale in PR #410). `BSF_AutoCycling` is the
+/// exception: it's a player preference toggle the original game kept
+/// across sessions, so the `setAutoCycle` handler persists it through
+/// `CellToBaseMsg::StateFieldUpdate` and `InitPlayerState` restores it.
+///
+/// Both the cell-side send site and the base-side DB write mask with
+/// this constant, so growing the persisted set is a one-line change
+/// here — and a transient bit can never leak into `sgw_player.state_field`
+/// even if a send site passes an unmasked value. (#412)
+pub const PERSISTED_STATE_FIELD_MASK: u32 = BSF_AUTO_CYCLING;
+
 /// `BSF_InCombat` mask. The client uses this bit to route right-click on
 /// selected entities to `useAbility` (auto-attack) instead of `interact`.
 /// From python `Atrea.enums.BSF_InCombat = 3`.

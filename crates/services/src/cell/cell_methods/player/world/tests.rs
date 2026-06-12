@@ -84,6 +84,76 @@ async fn set_auto_cycle_disable_clears_stash_and_bsf() {
     );
 }
 
+/// Collect every `StateFieldUpdate` persist message out of the channel.
+fn drain_state_field_updates(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(i32, u32)> {
+    let mut out = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::StateFieldUpdate {
+            player_id,
+            state_field,
+        } = msg
+        {
+            out.push((player_id, state_field));
+        }
+    }
+    out
+}
+
+/// **#412 persist-on-enable.** The explicit `setAutoCycle(1)` toggle must
+/// send a `StateFieldUpdate` carrying the masked preference bits so the
+/// base persists the choice and the next relog restores it. Pre-fix,
+/// nothing persisted `state_field` and the auto-cycle loop never armed
+/// post-relog until the player pressed the button again.
+#[tokio::test]
+async fn set_auto_cycle_enable_persists_masked_state_field() {
+    use crate::cell::combat::{BSF_AUTO_CYCLING, BSF_IN_COMBAT};
+    let mut mgr = make_mgr_with_player();
+    // Pre-set a transient bit so the mask discipline is observable: the
+    // persisted value must carry ONLY the preference bit even though the
+    // live state_field has BSF_InCombat riding along.
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.state_field |= BSF_IN_COMBAT;
+    }
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let handled = dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
+    assert!(handled);
+
+    let updates = drain_state_field_updates(&mut rx);
+    assert_eq!(
+        updates,
+        vec![(100, BSF_AUTO_CYCLING)],
+        "enable must persist exactly one StateFieldUpdate with the masked \
+         preference bits (BSF_InCombat must be stripped)"
+    );
+}
+
+/// **#412 persist-on-disable.** The explicit `setAutoCycle(0)` toggle must
+/// persist the cleared preference (state_field = 0) so a relog doesn't
+/// resurrect a deliberately disabled auto-cycle.
+#[tokio::test]
+async fn set_auto_cycle_disable_persists_cleared_state_field() {
+    use crate::cell::combat::BSF_AUTO_CYCLING;
+    let mut mgr = make_mgr_with_player();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.abilities.auto_cycle = true;
+        e.state_field |= BSF_AUTO_CYCLING;
+    }
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let handled = dispatch(1, SET_AUTO_CYCLE, &[0], &tx, &mut mgr, &engine).await;
+    assert!(handled);
+
+    let updates = drain_state_field_updates(&mut rx);
+    assert_eq!(
+        updates,
+        vec![(100, 0)],
+        "disable must persist exactly one StateFieldUpdate with the bit cleared"
+    );
+}
+
 /// SET_AUTO_CYCLE disable when BSF was already clear must NOT
 /// emit a redundant `onStateFieldUpdate`. The transition gate
 /// inside `clear_auto_cycle` returns `None` and the handler

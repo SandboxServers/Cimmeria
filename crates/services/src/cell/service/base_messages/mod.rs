@@ -313,6 +313,7 @@ pub(super) async fn handle_base_message(
             active_bandolier_slot,
             bandolier_items,
             system_options,
+            state_field,
         } => {
             player_init::handle_init_player_state(
                 entity_id,
@@ -324,6 +325,7 @@ pub(super) async fn handle_base_message(
                 active_bandolier_slot,
                 bandolier_items,
                 system_options,
+                state_field,
                 tx,
                 space_mgr,
                 engine,
