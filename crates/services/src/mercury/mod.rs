@@ -129,6 +129,19 @@ pub(crate) const BASEMSG_LOGGED_OFF: u8 = 0x37;
 pub(crate) const ACCOUNT_CLASS_ID: u8 = 0x07;
 /// SGWPlayer entity class ID (EntityTypeID 2 in entity definitions).
 pub(crate) const SGWPLAYER_CLASS_ID: u8 = 0x02;
+/// SGWGmPlayer entity class ID (EntityTypeID 3 in entity definitions).
+///
+/// `SGWGmPlayer.def` declares `<Parent>SGWPlayer</Parent>` with an empty
+/// `<Implements>`, so its own methods APPEND at the end of the flattened
+/// tables (cell 109+, client 157+) and the inherited 0-108 / 0-156 indices
+/// do NOT renumber. The wire `idbase` also stays 61 (the exposed-method-count
+/// staircase doesn't step between 157 and 163). This is the single byte the
+/// client reads from CREATE_BASE_PLAYER to select which entity method table
+/// it binds to the player id — 0x02 → SGWPlayer, 0x03 → SGWGmPlayer. Only
+/// flipped for access_level > 0 accounts so the native gm* cell surface
+/// (109+) becomes reachable. See `bigworld-engine-advisor`
+/// `sgwgmplayer-class-and-index-shift.md` for the full derivation.
+pub(crate) const SGWGMPLAYER_CLASS_ID: u8 = 0x03;
 /// Default space ID for CombatSim (matches reference server pcap: 0x10010 = 65552).
 pub const DEFAULT_SPACE_ID: u32 = 65552;
 

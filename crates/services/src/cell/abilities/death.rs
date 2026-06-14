@@ -207,6 +207,72 @@ pub(super) async fn apply_death_transition(
     .await;
 }
 
+/// Kill an NPC outside the damage pipeline (GM command, scripted death).
+///
+/// Mirrors the NPC-kill arm of `damage_apply` at the kill site: route the
+/// state mutations through `combat::mark_npc_dead` (BSF_DEAD /
+/// BSF_MOVEMENT_LOCK, ai_state = Dead, respawn stamp, nav/velocity reset),
+/// clear `BSF_IN_COMBAT` as a raw bit op, then run the canonical
+/// `apply_death_transition` burst so loot, threat fanout, and the dead-state
+/// flip land in the protocol-correct order. The dying NPC's `threat_list` is
+/// drained *after* the transition consumes it — same deferred-clear contract
+/// as the combat path.
+///
+/// `attacker_id` is the GM entity (used only for the death span's credit
+/// field; no reticle drop fires because the GM isn't targeting via the
+/// combat HUD). Refuses non-NPC and missing targets — the caller is
+/// responsible for the player-target rejection, but this fails closed too.
+///
+/// Returns `true` if a kill was applied, `false` if the target was absent,
+/// a player, or already dead.
+pub(crate) async fn gm_kill_npc(
+    target_eid: u32,
+    attacker_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let target_state = {
+        let target = match space_mgr.get_entity_mut(target_eid) {
+            Some(t) => t,
+            None => return false,
+        };
+        // Fail closed: GM kill is NPC-only. Player corpses go through the
+        // PvP/respawn path, not this helper.
+        if target.is_player {
+            return false;
+        }
+        if crate::cell::combat::is_dead_state(target.state_field) {
+            return false;
+        }
+        crate::cell::combat::mark_npc_dead(target);
+        target.state_field &= !crate::cell::combat::BSF_IN_COMBAT;
+        target.state_field
+    };
+
+    apply_death_transition(
+        target_eid,
+        attacker_id,
+        target_state,
+        // attacker_is_player: GM kills don't drop a combat reticle on the
+        // GM, so pass false to skip the onTargetUpdate(0) attacker step.
+        false,
+        // target_is_player: always false (NPC-only, enforced above).
+        false,
+        tx,
+        space_mgr,
+    )
+    .await;
+
+    // Deferred threat-list clear — mirrors damage_apply: the transition
+    // consumer reads `threat_list` to fan out the BSF_InCombat clear; drain
+    // it only after.
+    if let Some(corpse) = space_mgr.get_entity_mut(target_eid) {
+        corpse.threat_list.clear();
+    }
+
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

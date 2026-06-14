@@ -6,9 +6,24 @@ use tokio::sync::mpsc;
 use cimmeria_entity::manager::EntityManager;
 
 use crate::cell::messages::BaseToCellMsg;
-use crate::mercury::{WorldEntryInfo, DEFAULT_SPACE_ID, SGWPLAYER_CLASS_ID};
+use crate::mercury::{WorldEntryInfo, DEFAULT_SPACE_ID, SGWGMPLAYER_CLASS_ID, SGWPLAYER_CLASS_ID};
 
 use super::super::space_registry::resolve_space_id_fallback;
+
+/// Resolve the CREATE_BASE_PLAYER `class_id` byte from the caller's access
+/// level. GMs (access_level > 0) come up as SGWGmPlayer (0x03) so the
+/// client binds the GM method table and the native gm* cell surface
+/// (flattened indices 109+) is reachable; everyone else stays SGWPlayer
+/// (0x02). Inherited indices 0-108 don't shift either way (append-at-end
+/// inheritance), so the existing player wire path is byte-identical for
+/// access_level 0. See `spec`/`SGWGMPLAYER_CLASS_ID` for the derivation.
+fn class_id_for_access_level(access_level: u32) -> u8 {
+    if access_level > 0 {
+        SGWGMPLAYER_CLASS_ID
+    } else {
+        SGWPLAYER_CLASS_ID
+    }
+}
 
 /// Sentinel `player_entity_id` returned by [`query_world_entry`] when no real
 /// entity could be allocated/registered (DB error or character not found).
@@ -24,9 +39,13 @@ pub async fn query_world_entry(
     db_pool: &Option<Arc<PgPool>>,
     account_id: u32,
     player_id: i32,
+    access_level: u32,
     entity_manager: &Arc<std::sync::Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) -> WorldEntryInfo {
+    // GMs spawn as SGWGmPlayer (0x03) so the gm* cell surface is reachable;
+    // regular players stay SGWPlayer (0x02) — byte-unchanged login path.
+    let class_id = class_id_for_access_level(access_level);
     // Defer allocating the entity_id until we know the player row loaded —
     // otherwise every DB failure / no-character lookup leaks an entity_id
     // in the EntityManager. On hard failure paths (DB error, no character
@@ -41,7 +60,7 @@ pub async fn query_world_entry(
         pos: [0.0; 3],
         rot: [0.0; 3],
         world_name: "CombatSim".to_string(),
-        class_id: SGWPLAYER_CLASS_ID,
+        class_id,
         world_stargates: vec![],
     };
 
@@ -152,7 +171,7 @@ pub async fn query_world_entry(
                 pos,
                 rot: [0.0; 3],
                 world_name: row.world_location.clone(),
-                class_id: SGWPLAYER_CLASS_ID,
+                class_id,
                 world_stargates,
             }
         }
@@ -212,7 +231,8 @@ mod tests {
     #[tokio::test]
     async fn query_world_entry_no_db_allocates_entity_and_returns_default() {
         let mgr = Arc::new(std::sync::Mutex::new(EntityManager::new()));
-        let entry = query_world_entry(&None, 1, 1, &mgr, &None).await;
+        // access_level 0 → regular player → SGWPlayer class.
+        let entry = query_world_entry(&None, 1, 1, 0, &mgr, &None).await;
         assert_ne!(
             entry.player_entity_id, NO_ENTITY_ID,
             "no-DB mode must allocate a real entity id"
@@ -223,6 +243,31 @@ mod tests {
         assert_eq!(entry.class_id, SGWPLAYER_CLASS_ID);
     }
 
+    /// #473 / CAT-N-04: a GM (access_level > 0) world entry must build the
+    /// `WorldEntryInfo` with the SGWGmPlayer class id so CREATE_BASE_PLAYER
+    /// emits 0x03 and the client binds the GM method table. A regular
+    /// player (access_level 0) stays 0x02 — the byte-unchanged property
+    /// asserted in the test above. This pins the class flip at the source
+    /// where `WorldEntryInfo.class_id` is decided.
+    #[tokio::test]
+    async fn query_world_entry_gm_access_level_uses_gmplayer_class() {
+        let mgr = Arc::new(std::sync::Mutex::new(EntityManager::new()));
+        // access_level 2 = GameMaster (any non-zero level → GM class).
+        let entry = query_world_entry(&None, 1, 1, 2, &mgr, &None).await;
+        assert_eq!(
+            entry.class_id, SGWGMPLAYER_CLASS_ID,
+            "GM (access_level > 0) world entry must use SGWGmPlayer class id 0x03"
+        );
+    }
+
+    #[test]
+    fn class_id_for_access_level_only_flips_for_nonzero() {
+        assert_eq!(class_id_for_access_level(0), SGWPLAYER_CLASS_ID);
+        assert_eq!(class_id_for_access_level(1), SGWGMPLAYER_CLASS_ID);
+        assert_eq!(class_id_for_access_level(2), SGWGMPLAYER_CLASS_ID);
+        assert_eq!(class_id_for_access_level(4), SGWGMPLAYER_CLASS_ID);
+    }
+
     #[tokio::test]
     async fn query_world_entry_no_db_with_cell_tx_round_trips_create_entity() {
         let mgr = Arc::new(std::sync::Mutex::new(EntityManager::new()));
@@ -230,7 +275,7 @@ mod tests {
 
         let handle = tokio::spawn(async move {
             let cell_tx = Some(cell_tx);
-            query_world_entry(&None, 1, 1, &mgr, &cell_tx).await
+            query_world_entry(&None, 1, 1, 0, &mgr, &cell_tx).await
         });
 
         // Drive the CreateEntity round-trip so the oneshot doesn't hang.

@@ -1,8 +1,8 @@
 ---
-title: "SGWPlayer Exposed CellMethod Dispatch Table"
+title: "SGWPlayer / SGWGmPlayer Exposed CellMethod Dispatch Table"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-06-14
 ---
 
 # SGWPlayer Exposed CellMethod Dispatch Table
@@ -410,3 +410,51 @@ This table was derived by reading every `<CellMethods>` section across the entit
 hierarchy .def files, counting only `<Exposed/>` methods in file order.
 Triple-checked 2026-03-16. The OrganizationMember interface has **12** exposed
 methods (not 11 -- `organizationLeave` at line 287 is easily missed).
+
+---
+
+## SGWGmPlayer extension (indices 109+) — #473 / CAT-N-04
+
+GMs (account `access_level > 0`) enter the world as **SGWGmPlayer** (`class_id =
+0x03`) instead of SGWPlayer (`0x02`). The single `class_id` byte in
+CREATE_BASE_PLAYER is what the client uses to bind the entity method table.
+
+`SGWGmPlayer.def` declares `<Parent>SGWPlayer</Parent>` with an empty
+`<Implements>`, so its own `<Exposed/>` CellMethods **append at the end** of the
+flattened table. The inherited SGWPlayer indices 0-108 do **not** renumber, and
+the wire `idbase` stays 61 (the exposed-method-count staircase doesn't step
+between 157 and 163). The first own SGWGmPlayer method (`gmMissionAssign`, def
+line 65) is index **109**; counting forward in document order (skipping
+`gmSetCallback` at def line 312, which has no `<Exposed/>`) runs to index **225**
+(`changeCoverStanceWeight`, def line 673) — 117 gm*/debug methods total
+(indices 109-225 inclusive).
+
+### Authorization
+
+The **entire** SGWGmPlayer tail (`index >= 109`) is GM-gated by
+`crates/services/src/cell/dispatch/gm_gate.rs`: a caller whose
+`CellEntity::access_level` is below `GameMaster` is rejected with an `onErrorCode`
+(method 121) **before** any handler runs. One range rule (`index >= 109`) secures
+every gm* method, implemented or not. See
+[gm-cell-method-gating.md](../architecture/gm-cell-method-gating.md).
+
+### Implemented handlers
+
+A verified subset is wired into the cell router (the rest fall through to the
+already-authorized "unhandled cell method" warn arm — harmless). Each index is
+counted against `SGWGmPlayer.def` document order and asserted in
+`cell::cell_methods::gm::tests::gm_indices_match_def_document_order`.
+
+| Index | Method | Def line | Args | Behaviour |
+|-------|--------|----------|------|-----------|
+| 133 | `gmGiveItem` | 185 | `WSTRING DesignId, INT32 Quantity` | Grants the item to the GM's own inventory via `GrantItem`. DesignId resolved as a positive numeric design id (internal-name resolution not wired in the cell — rejected with a warn). Quantity clamped to `[1, 1000]`. |
+| 163 | `gmGotoXYZ` | 348 | `FLOAT aX, FLOAT aY, FLOAT aZ` | Teleports the GM to the coordinate in their current space via `TeleportPlayer` (same-space FORCED_POSITION snap). Non-finite coordinates rejected. |
+| 190 | `gmKillTarget` | 482 | `INT64 TargetId` | Kills an NPC via the canonical death sequence (`abilities::gm_kill_npc`). Refuses player targets and targets in a different space; INT64 ids out of `u32` range rejected. |
+
+> The `class_id` flip and the per-method index counts are byte-verified server
+> side (see the wire-format test
+> `mercury::world_data::tests::player_creation::create_base_player_class_id_byte_reflects_gm_vs_player`).
+> **Client-side GM-console verification still needs a manual UAT with a real
+> client** — the server emits the correct class id and method indices, but only
+> a live client confirms the GM method table binds and the console commands
+> round-trip.

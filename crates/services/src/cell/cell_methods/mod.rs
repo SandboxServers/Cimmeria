@@ -17,6 +17,8 @@ pub mod black_market;
 pub mod combatant;
 pub mod contact_list;
 pub mod gate_travel;
+/// SGWGmPlayer own CellMethods (flattened index 109+, GM-gated upstream).
+pub mod gm;
 pub mod inventory;
 pub mod mail;
 pub mod minigame;

@@ -175,6 +175,51 @@ fn create_player_with_load_data_prewarms_bodyset_before_map_load() {
     );
 }
 
+/// #473 / CAT-N-04 wire guard: CREATE_BASE_PLAYER must carry the GM class id
+/// (0x03) for a GM `WorldEntryInfo` and the normal class id (0x02) for a
+/// regular player. The class byte is THE selector the client uses to bind the
+/// entity method table — 0x03 → SGWGmPlayer (gm* surface reachable), 0x02 →
+/// SGWPlayer. The regular-player 0x02 assertion is the #1 safety property:
+/// regular login must stay byte-unchanged.
+///
+/// Wire layout of CREATE_BASE_PLAYER: `[0x05][word_len:u16=6][entity:u32]
+/// [class_id:u8][propCount:u8=0]`. In the decrypted packet the body starts at
+/// offset 1 (offset 0 is flags), so class_id sits at `pt[1 + 7] = pt[8]`.
+#[test]
+fn create_base_player_class_id_byte_reflects_gm_vs_player() {
+    fn class_byte(class_id: u8) -> u8 {
+        let mut info = sample_world_entry();
+        info.class_id = class_id;
+        let pkt = build_create_player(&TEST_KEY, 1, &[], &info, None);
+        let enc = MercuryEncryption::from_session_key(TEST_KEY);
+        let pt = enc.decrypt(&pkt).unwrap();
+        assert_eq!(
+            pt[1],
+            crate::mercury::BASEMSG_CREATE_BASE_PLAYER,
+            "first record must be CREATE_BASE_PLAYER"
+        );
+        assert_eq!(pt[2..4], 6u16.to_le_bytes(), "word_len must be 6");
+        // propCount byte (right after class_id) is always 0.
+        assert_eq!(pt[9], 0x00, "propCount must be 0");
+        pt[8] // the class_id byte
+    }
+
+    // Regular player — MUST remain 0x02 (byte-unchanged login path).
+    assert_eq!(
+        class_byte(crate::mercury::SGWPLAYER_CLASS_ID),
+        0x02,
+        "regular player CREATE_BASE_PLAYER must emit class_id 0x02 — \
+         byte-unchanged regular-login property"
+    );
+    // GM — MUST be 0x03 so the client binds the SGWGmPlayer method table.
+    assert_eq!(
+        class_byte(crate::mercury::SGWGMPLAYER_CLASS_ID),
+        0x03,
+        "GM CREATE_BASE_PLAYER must emit class_id 0x03 so the gm* cell \
+         surface (109+) is reachable on the client method table"
+    );
+}
+
 /// Backwards-compat: passing `None` for `load` must keep the original
 /// two-record body (CREATE_BASE_PLAYER + onClientMapLoad). Guards the
 /// reanchor / GM-spawn / test paths where appearance data isn't available.

@@ -49,22 +49,37 @@ const CONDITION_FEEDBACK_INVALID_ENTITY: u16 = 0;
 /// The minimum access level a GM/debug cell method requires.
 const REQUIRED: AccessLevel = AccessLevel::GameMaster;
 
+/// First flattened cell-method index owned by SGWGmPlayer. SGWPlayer's own
+/// methods occupy 0-108; SGWGmPlayer's 117 `<Exposed/>` gm*/debug methods
+/// APPEND at 109-225 (append-at-end inheritance — see
+/// `crate::mercury::SGWGMPLAYER_CLASS_ID`). The entire tail is GM-only by
+/// construction, so one threshold secures the whole native GM surface
+/// (#473 / CAT-N-04) — including every gm* index we haven't implemented a
+/// handler for yet (those hit the auth-gated router fall-through, harmless).
+pub const SGWGMPLAYER_CELL_METHOD_BASE: u16 = 109;
+
 /// Returns `true` if the flattened cell-method `index` is a GM / debug
 /// command that must be gated on `access_level >= GameMaster`.
 ///
 /// This is the allow-list of *restricted* indices — everything not named
-/// here is an ordinary player method and passes the gate untouched. Keep
-/// it in sync with the audited CAT-N surface as `gm*` handlers land; the
-/// entries below are the GM-shaped methods reachable on the wire today.
+/// here is an ordinary player method and passes the gate untouched.
 ///
-/// Indices (flattened cell-method positions, see
-/// `docs/protocol/cell-method-dispatch-table.md`):
-/// - `2` `toggleCombatDebug`, `3` `toggleCombatVerboseDebug`,
-///   `6` `toggleHealDebug` — combat/heal debug toggles (CAT-N intro).
-/// - `92` `onWorldInstanceReset` — tears down + recreates the current
-///   space instance, kicking every co-located player (CAT-N-01, High).
+/// Two classes of restricted index:
+/// - The handful of GM/debug methods that live INSIDE the inherited
+///   SGWPlayer range (0-108) because they share an interface with player
+///   methods. These must be named explicitly:
+///   - `2` `toggleCombatDebug`, `3` `toggleCombatVerboseDebug`,
+///     `6` `toggleHealDebug` — combat/heal debug toggles (CAT-N intro).
+///   - `92` `onWorldInstanceReset` — tears down + recreates the current
+///     space instance, kicking every co-located player (CAT-N-01, High).
+/// - The ENTIRE SGWGmPlayer tail (`>= SGWGMPLAYER_CELL_METHOD_BASE`, i.e.
+///   109+). Every method there is a gm*/debug command by construction, so
+///   one range rule gates all of them at once — no per-method bookkeeping.
+///
+/// Flattened cell-method positions are documented in
+/// `docs/protocol/cell-method-dispatch-table.md`.
 pub fn requires_gm(index: u16) -> bool {
-    matches!(index, 2 | 3 | 6 | 92)
+    matches!(index, 2 | 3 | 6 | 92) || index >= SGWGMPLAYER_CELL_METHOD_BASE
 }
 
 /// Enforce the GM gate for `method_index` against the caller entity's
@@ -159,9 +174,35 @@ mod tests {
 
     #[test]
     fn ordinary_player_methods_are_not_gated() {
-        // A spread of non-GM indices across the interface ranges.
+        // A spread of non-GM indices across the inherited SGWPlayer interface
+        // ranges. 108 is the LAST inherited player method — it must stay
+        // ungated; 109 (first SGWGmPlayer method) must become gated.
         for idx in [0u16, 1, 25, 36, 52, 67, 72, 108] {
             assert!(!requires_gm(idx), "index {idx} must NOT be GM-gated");
+        }
+    }
+
+    /// #473 / CAT-N-04: the entire SGWGmPlayer cell-method tail (>= 109) is
+    /// GM-only by construction. One range rule must gate all of it — every
+    /// gm*/debug index, implemented or not. The boundary is load-bearing:
+    /// 108 ungated (last inherited player method) ↔ 109 gated (first GM
+    /// method). A revert of the `index >= 109` arm lets a non-GM client
+    /// reach the GM tail.
+    #[test]
+    fn entire_sgwgmplayer_tail_is_gated() {
+        assert_eq!(SGWGMPLAYER_CELL_METHOD_BASE, 109);
+        assert!(
+            !requires_gm(108),
+            "108 is the last inherited SGWPlayer method — must stay ungated"
+        );
+        // Spot-check the boundary + a spread of gm* indices including
+        // implemented ones (133 gmGiveItem, 163 gmGotoXYZ, 190 gmKillTarget)
+        // and the top of the table (225 changeCoverStanceWeight).
+        for idx in [109u16, 110, 133, 160, 163, 190, 225, 300, u16::MAX] {
+            assert!(
+                requires_gm(idx),
+                "index {idx} is in the SGWGmPlayer tail and must be GM-gated"
+            );
         }
     }
 
