@@ -43,7 +43,7 @@ use super::messaging::send_entity_method;
     skip_all,
     fields(target_eid, attacker_id, attacker_is_player, target_is_player,)
 )]
-pub(super) async fn apply_death_transition(
+pub(crate) async fn apply_death_transition(
     target_eid: u32,
     attacker_id: u32,
     target_state: u32,

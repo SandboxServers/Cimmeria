@@ -2,12 +2,44 @@
 title: "Commands Reference"
 type: reference
 audience: engineers, players
-last_updated: 2026-05-27
+last_updated: 2026-06-14
 ---
 
 # Commands Reference
 
 All 256 slash commands available in Stargate Worlds. Player commands work for everyone; GM/Debug commands require elevated permissions.
+
+> **Two command mechanisms — read this first.** The tables below catalog the
+> *native client* slash commands. In retail SGW the client's GM console maps
+> each `/command` to a **typed `gm*` wire method** on the `SGWGmPlayer` entity
+> class (e.g. `/giveItem` → `gmGiveItem(WSTRING, INT32)`). Cimmeria does not
+> yet build that GM entity class (tracked in #473 / CAT-N-04), so those native
+> wire commands are not yet reachable.
+>
+> **What Cimmeria implements today (#64): a server-side chat-command path.**
+> A GM (account `access_level >= 2`, GameMaster) types a `/`-prefixed line
+> into normal chat; the **server** intercepts it before the chat broadcast
+> (`base/dispatch.rs`), parses + authorizes it against the account access
+> level, and executes it cell-side, feeding a result line back to the GM only
+> (channel `CHAN_FEEDBACK`). This works against an unmodified retail client —
+> the GM just types into chat. The architecture is *base parses + authorizes →
+> typed intent → cell executes* (see [the server-systems doc](architecture/server-systems.md)).
+>
+> ## Implemented server-side GM chat commands
+>
+> | Command | Access | What it does |
+> |---|---|---|
+> | `/spawn <moniker> [count]` | GameMaster | Spawn `count` (≤ 20) NPCs of the named template at your position |
+> | `/goto <x> <y> <z>` | GameMaster | Teleport yourself to coordinates in your current space |
+> | `/goto <player>` | GameMaster | Teleport yourself to a player (by entity id / name) in your space |
+> | `/kill [target]` | GameMaster | Kill an NPC (your current target, or a named NPC in your space). **Refuses player targets.** |
+> | `/give <item_id> [count]` | GameMaster | Give yourself an item (count clamped to 1…1000; negative rejected) |
+> | `/info` | GameMaster | Dump your current target's (or your own) id / faction / hp / position |
+> | `/who` | Moderator | List the players in your space |
+>
+> Authorization is server-side: a non-GM typing one of these gets a
+> "permission denied" feedback line and nothing executes. The `/`-line is
+> never echoed as chat. More commands land incrementally on this same path.
 
 ## Player Commands
 

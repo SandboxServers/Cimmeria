@@ -14,6 +14,7 @@ pub mod cover;
 pub mod dispatch;
 pub mod effects;
 pub mod gate_travel;
+pub mod gm_command;
 pub mod interactions;
 pub mod mail;
 pub mod messages;

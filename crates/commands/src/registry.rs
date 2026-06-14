@@ -5,22 +5,36 @@ use cimmeria_common::types::EntityId;
 use crate::parser;
 use crate::permissions::AccessLevel;
 
-/// The result of executing a GM/admin command.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CommandResult {
-    /// Command executed successfully. Contains a message to display to the caller.
-    Success(String),
-    /// Command failed. Contains an error description.
-    Error(String),
-    /// Incorrect usage. Contains the correct usage string.
+/// The outcome of dispatching a `/`-prefixed command on the base side.
+///
+/// The base PARSES + AUTHORIZES; the cell EXECUTES. A handler that needs to
+/// mutate world state returns [`CommandOutcome::Cell`] carrying a typed
+/// [`crate::intent::GmCommandIntent`] — the base forwards it to the cell and
+/// the cell owns every client-method send (including the GM's feedback line).
+/// The text variants ([`Reply`](CommandOutcome::Reply),
+/// [`Usage`](CommandOutcome::Usage), [`Error`](CommandOutcome::Error)) are
+/// fully handled base-side and route a single feedback line back to the caller.
+///
+/// Not `Eq`: the [`Cell`](CommandOutcome::Cell) variant carries a
+/// [`GmCommandIntent`](crate::intent::GmCommandIntent) which holds an
+/// `f32`-backed `Vector3` (`GotoCoords`), so only `PartialEq` is derivable.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CommandOutcome {
+    /// World-mutating command — the cell executes the carried intent.
+    Cell(crate::intent::GmCommandIntent),
+    /// Fully handled base-side; text back to the caller (e.g. `/help`).
+    Reply(String),
+    /// Bad/missing args; the command's usage string back to the caller.
     Usage(String),
+    /// Unknown command / permission denied / other error.
+    Error(String),
 }
 
 /// A boxed command handler function.
 ///
 /// Receives the execution context and a slice of parsed arguments,
-/// and returns a `CommandResult`.
-pub type CommandHandler = Box<dyn Fn(&CommandContext, &[&str]) -> CommandResult + Send + Sync>;
+/// and returns a [`CommandOutcome`].
+pub type CommandHandler = Box<dyn Fn(&CommandContext, &[&str]) -> CommandOutcome + Send + Sync>;
 
 /// Metadata and handler for a registered command.
 pub struct CommandInfo {
@@ -114,20 +128,23 @@ impl CommandRegistry {
         self.commands.insert(lower_name, info);
     }
 
-    /// Parse and execute a command string.
+    /// Parse and dispatch a command string.
     ///
     /// The input is parsed to extract the command name and arguments,
     /// the caller's access level is checked against the command's requirement,
     /// and the handler is invoked.
     ///
+    /// On an unknown command or denied permission, returns
+    /// [`CommandOutcome::Error`] — the base maps that to a feedback line.
+    ///
     /// # Arguments
     ///
     /// * `ctx` - The execution context (who is running the command).
-    /// * `input` - The raw command string (e.g., "/teleport player1 100 200 300").
-    pub fn execute(&self, ctx: &CommandContext, input: &str) -> CommandResult {
+    /// * `input` - The raw command string (e.g., "/goto 100 200 300").
+    pub fn dispatch(&self, ctx: &CommandContext, input: &str) -> CommandOutcome {
         let (command_name, args) = match parser::parse_command(input) {
             Some(parsed) => parsed,
-            None => return CommandResult::Error("Empty command.".to_string()),
+            None => return CommandOutcome::Error("Empty command.".to_string()),
         };
 
         let lower_name = command_name.to_lowercase();
@@ -140,7 +157,7 @@ impl CommandRegistry {
                     caller = %ctx.caller_name,
                     "Unknown command"
                 );
-                return CommandResult::Error(format!("Unknown command: {}", lower_name));
+                return CommandOutcome::Error(format!("Unknown command: {}", lower_name));
             }
         };
 
@@ -152,7 +169,7 @@ impl CommandRegistry {
                 required_level = ?info.min_access_level,
                 "Permission denied for command"
             );
-            return CommandResult::Error(format!(
+            return CommandOutcome::Error(format!(
                 "Permission denied. '{}' requires {} access.",
                 lower_name, info.min_access_level
             ));
@@ -202,15 +219,15 @@ mod tests {
     }
 
     fn make_handler(response: &'static str) -> CommandHandler {
-        Box::new(move |_ctx, _args| CommandResult::Success(response.to_string()))
+        Box::new(move |_ctx, _args| CommandOutcome::Reply(response.to_string()))
     }
 
     fn echo_handler() -> CommandHandler {
-        Box::new(|_ctx, args| CommandResult::Success(args.join(" ")))
+        Box::new(|_ctx, args| CommandOutcome::Reply(args.join(" ")))
     }
 
     #[test]
-    fn register_and_execute() {
+    fn register_and_dispatch() {
         let mut registry = CommandRegistry::new();
         registry.register(
             "ping",
@@ -221,12 +238,12 @@ mod tests {
         );
 
         let ctx = test_context(AccessLevel::Player);
-        let result = registry.execute(&ctx, "/ping");
-        assert_eq!(result, CommandResult::Success("pong".to_string()));
+        let result = registry.dispatch(&ctx, "/ping");
+        assert_eq!(result, CommandOutcome::Reply("pong".to_string()));
     }
 
     #[test]
-    fn execute_passes_args() {
+    fn dispatch_passes_args() {
         let mut registry = CommandRegistry::new();
         registry.register(
             "echo",
@@ -237,34 +254,34 @@ mod tests {
         );
 
         let ctx = test_context(AccessLevel::Player);
-        let result = registry.execute(&ctx, "/echo hello world");
-        assert_eq!(result, CommandResult::Success("hello world".to_string()));
+        let result = registry.dispatch(&ctx, "/echo hello world");
+        assert_eq!(result, CommandOutcome::Reply("hello world".to_string()));
     }
 
     #[test]
-    fn execute_unknown_command() {
+    fn dispatch_unknown_command() {
         let registry = CommandRegistry::new();
         let ctx = test_context(AccessLevel::Developer);
-        let result = registry.execute(&ctx, "/nonexistent");
+        let result = registry.dispatch(&ctx, "/nonexistent");
         match result {
-            CommandResult::Error(msg) => assert!(msg.contains("Unknown command")),
+            CommandOutcome::Error(msg) => assert!(msg.contains("Unknown command")),
             _ => panic!("Expected Error result"),
         }
     }
 
     #[test]
-    fn execute_empty_input() {
+    fn dispatch_empty_input() {
         let registry = CommandRegistry::new();
         let ctx = test_context(AccessLevel::Developer);
-        let result = registry.execute(&ctx, "");
+        let result = registry.dispatch(&ctx, "");
         match result {
-            CommandResult::Error(msg) => assert!(msg.contains("Empty")),
+            CommandOutcome::Error(msg) => assert!(msg.contains("Empty")),
             _ => panic!("Expected Error result"),
         }
     }
 
     #[test]
-    fn execute_permission_denied() {
+    fn dispatch_permission_denied() {
         let mut registry = CommandRegistry::new();
         registry.register(
             "admin_cmd",
@@ -275,15 +292,15 @@ mod tests {
         );
 
         let ctx = test_context(AccessLevel::Player);
-        let result = registry.execute(&ctx, "/admin_cmd");
+        let result = registry.dispatch(&ctx, "/admin_cmd");
         match result {
-            CommandResult::Error(msg) => assert!(msg.contains("Permission denied")),
+            CommandOutcome::Error(msg) => assert!(msg.contains("Permission denied")),
             _ => panic!("Expected Error result"),
         }
     }
 
     #[test]
-    fn execute_permission_granted_higher_level() {
+    fn dispatch_permission_granted_higher_level() {
         let mut registry = CommandRegistry::new();
         registry.register(
             "mod_cmd",
@@ -294,8 +311,8 @@ mod tests {
         );
 
         let ctx = test_context(AccessLevel::Admin);
-        let result = registry.execute(&ctx, "/mod_cmd");
-        assert_eq!(result, CommandResult::Success("ok".to_string()));
+        let result = registry.dispatch(&ctx, "/mod_cmd");
+        assert_eq!(result, CommandOutcome::Reply("ok".to_string()));
     }
 
     #[test]
@@ -310,8 +327,8 @@ mod tests {
         );
 
         let ctx = test_context(AccessLevel::Player);
-        let result = registry.execute(&ctx, "/HELP");
-        assert_eq!(result, CommandResult::Success("help text".to_string()));
+        let result = registry.dispatch(&ctx, "/HELP");
+        assert_eq!(result, CommandOutcome::Reply("help text".to_string()));
     }
 
     #[test]
@@ -372,9 +389,9 @@ mod tests {
             AccessLevel::Admin,
             Box::new(|ctx, _args| {
                 if ctx.caller_entity_id.is_none() {
-                    CommandResult::Success("Console caller".to_string())
+                    CommandOutcome::Reply("Console caller".to_string())
                 } else {
-                    CommandResult::Success("In-world caller".to_string())
+                    CommandOutcome::Reply("In-world caller".to_string())
                 }
             }),
         );
@@ -384,7 +401,7 @@ mod tests {
             caller_name: "Console".to_string(),
             access_level: AccessLevel::Developer,
         };
-        let result = registry.execute(&ctx, "/status");
-        assert_eq!(result, CommandResult::Success("Console caller".to_string()));
+        let result = registry.dispatch(&ctx, "/status");
+        assert_eq!(result, CommandOutcome::Reply("Console caller".to_string()));
     }
 }

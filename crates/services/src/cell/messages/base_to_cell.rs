@@ -198,6 +198,24 @@ pub enum BaseToCellMsg {
         on_victory_chains: Vec<i64>,
     },
 
+    /// A parsed, authorized GM command for the cell to execute.
+    ///
+    /// The base side intercepted a `/`-prefixed chat line, parsed it, and
+    /// checked the caller's access level against the command's requirement.
+    /// World mutation + the feedback send to the GM happen entirely on the
+    /// cell (it owns `SpaceManager` and the client-method path) — see
+    /// `crate::cell::gm_command::handle_gm_command`.
+    GmCommand {
+        caller_entity_id: u32,
+        intent: cimmeria_commands::GmCommandIntent,
+    },
+
+    /// A base-side-resolved feedback line for a `/`-command (usage / error /
+    /// reply text). The cell routes it to the caller via `onPlayerCommunication`
+    /// on the feedback channel — same single-recipient path
+    /// `handle_gm_command` uses for its result strings.
+    GmCommandFeedback { caller_entity_id: u32, text: String },
+
     /// Client→server `requestEntityUpdate` (msg `0x07`): the client believes it
     /// is missing or has stale state for one or more entities and is asking the
     /// server to re-emit them. This is the canonical recovery path when a

@@ -145,7 +145,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             //   - SPEAKER_DND if dndMessage is not None
             // SPEAKER_Petition (0x02) is in the enum but never set by the
             // Python reference, so it is intentionally not computed.
-            let (player_eid, speaker_flags_value) = {
+            let (player_eid, speaker_flags_value, caller_access_level) = {
                 let clients = connected.lock().unwrap();
                 match clients.get(&addr) {
                     Some(c) => {
@@ -156,11 +156,71 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                         if c.dnd_message.is_some() {
                             flags |= speaker_flags::DND;
                         }
-                        (c.player_entity_id, flags)
+                        (c.player_entity_id, flags, c.access_level)
                     }
-                    None => (None, 0),
+                    None => (None, 0, 0),
                 }
             };
+
+            // GM command interception: a `/`-prefixed line is a command, not
+            // chat. Parse + authorize on the base, then either ship a typed
+            // intent to the cell (world-mutating) or a feedback line (usage /
+            // error / reply). It must NOT fall through to the ChatMessage
+            // broadcast below — a `/`-command is never echoed as chat.
+            if text.starts_with('/') {
+                if let Some(player_eid) = player_eid {
+                    if let Some(ref tx) = cell_tx {
+                        // Map the connected-state access_level (u32) to the
+                        // command crate's AccessLevel ladder. Unknown high
+                        // values fold to Developer (most-privileged) so a
+                        // mis-seeded level never silently *drops* privilege,
+                        // matching the cell gm_gate's mapping for consistency.
+                        //
+                        // SAFETY INVARIANT (server-authority audit, LOW-2):
+                        // this fold-up is safe ONLY because `access_level` is
+                        // sourced from the `account.accesslevel` DB row and
+                        // clamped `>= 0` at login (auth/handlers.rs) — a
+                        // client can never reach the `_` arm. Do NOT keep this
+                        // fold-up if `access_level` ever becomes settable from
+                        // a less-trusted source; fail closed (Player) instead.
+                        use cimmeria_commands::permissions::AccessLevel;
+                        let access_level = match caller_access_level {
+                            0 => AccessLevel::Player,
+                            1 => AccessLevel::Moderator,
+                            2 => AccessLevel::GameMaster,
+                            3 => AccessLevel::Admin,
+                            _ => AccessLevel::Developer,
+                        };
+                        let ctx = cimmeria_commands::registry::CommandContext {
+                            caller_entity_id: Some(cimmeria_common::types::EntityId(
+                                player_eid as i32,
+                            )),
+                            caller_name: speaker.to_string(),
+                            access_level,
+                        };
+                        let outcome = crate::base::gm_commands::gm_registry().dispatch(&ctx, &text);
+                        let msg = match outcome {
+                            cimmeria_commands::registry::CommandOutcome::Cell(intent) => {
+                                BaseToCellMsg::GmCommand {
+                                    caller_entity_id: player_eid,
+                                    intent,
+                                }
+                            }
+                            cimmeria_commands::registry::CommandOutcome::Reply(t)
+                            | cimmeria_commands::registry::CommandOutcome::Usage(t)
+                            | cimmeria_commands::registry::CommandOutcome::Error(t) => {
+                                BaseToCellMsg::GmCommandFeedback {
+                                    caller_entity_id: player_eid,
+                                    text: t,
+                                }
+                            }
+                        };
+                        let _ = tx.send(msg).await;
+                    }
+                }
+                // Swallow the command — never broadcast it as chat.
+                return Ok(());
+            }
 
             if let Some(player_eid) = player_eid {
                 if let Some(ref tx) = cell_tx {

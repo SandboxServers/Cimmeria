@@ -14,7 +14,7 @@ use cimmeria_content_engine::chain::ChainEngine;
 use super::super::content;
 use super::super::messages::{BaseToCellMsg, CellToBaseMsg};
 use super::super::space_manager::{ClientMoveOutcome, SpaceManager};
-use super::super::{chat, dispatch, spawner};
+use super::super::{chat, dispatch, gm_command, spawner};
 
 mod bandolier;
 mod player_init;
@@ -301,6 +301,21 @@ pub(super) async fn handle_base_message(
                 space_mgr,
             )
             .await;
+        }
+
+        BaseToCellMsg::GmCommand {
+            caller_entity_id,
+            intent,
+        } => {
+            gm_command::handle_gm_command(caller_entity_id, intent, tx, space_mgr, spawn_records)
+                .await;
+        }
+
+        BaseToCellMsg::GmCommandFeedback {
+            caller_entity_id,
+            text,
+        } => {
+            gm_command::send_gm_feedback(caller_entity_id, &text, tx).await;
         }
 
         BaseToCellMsg::InitPlayerState {

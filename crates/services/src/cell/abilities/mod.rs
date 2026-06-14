@@ -33,6 +33,11 @@ mod tests;
 
 // Public re-exports — keep `crate::cell::abilities::Foo` paths stable for callers.
 pub use cone_aoe::{collect_cone_targets, fan_out_cone_effects, log_effect_flag_categories};
+// Re-exported for the GM `/kill` path (`cell::gm_command`), which mirrors the
+// combat death sequence: zero HEALTH + `combat::mark_npc_dead`, then this
+// emits the ordered death-transition wire burst. Kept `pub(crate)` so the
+// ordering invariants stay owned by `death.rs`.
+pub(crate) use death::apply_death_transition;
 pub use dispatch::handle_use_ability_on_ground;
 pub(crate) use loot_drop::INT_NORMAL_LOOT;
 pub(crate) use messaging::{
