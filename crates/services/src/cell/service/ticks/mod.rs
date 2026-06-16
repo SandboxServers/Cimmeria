@@ -119,13 +119,16 @@ pub(super) async fn reload_completion_tick(
             let payload = entity.stats.serialize_dirty();
             entity.stats.clear_dirty();
 
-            let (item_id, cur_ammo, cur_ammo_type) = entity
-                .bandolier_items
-                .get(&slot_id)
-                .map_or((0, 0, 0), |i| (i.item_id, i.current_ammo, i.cur_ammo_type));
+            // `instance_id` (sgw_inventory.item_id PK) is the persist TOCTOU
+            // guard; the design id is not used here. A missing slot yields
+            // instance_id 0, which the base-side bound check (`<= 0`) drops.
+            let (instance_id, cur_ammo, cur_ammo_type) =
+                entity.bandolier_items.get(&slot_id).map_or((0, 0, 0), |i| {
+                    (i.instance_id, i.current_ammo, i.cur_ammo_type)
+                });
             let persist = entity
                 .player_id
-                .map(|pid| (pid, slot_id, item_id, cur_ammo, cur_ammo_type));
+                .map(|pid| (pid, slot_id, instance_id, cur_ammo, cur_ammo_type));
 
             (payload, persist)
         };
@@ -147,12 +150,14 @@ pub(super) async fn reload_completion_tick(
 
         // Phase 3: persistence. CellToBaseMsg::BandolierAmmoUpdate is consumed
         // by base's existing handler that writes `sgw_inventory.ammo`.
-        if let Some((player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type)) = persist {
+        if let Some((player_id, slot_id, expected_instance_id, current_ammo, cur_ammo_type)) =
+            persist
+        {
             let _ = tx
                 .send(CellToBaseMsg::BandolierAmmoUpdate {
                     player_id,
                     slot_id,
-                    expected_item_id,
+                    expected_instance_id,
                     current_ammo,
                     cur_ammo_type,
                 })

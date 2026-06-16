@@ -338,14 +338,18 @@ pub enum CellToBaseMsg {
     /// docs/gameplay/weapon-ammo-reload.md (TBD). `player_id` here matches the
     /// DB `character_id`, mirroring the field naming used by `ActiveSlotUpdate`.
     ///
-    /// `expected_item_id` guards against TOCTOU: if the slot's item changes
-    /// between the cell sending this message and the base writing the row,
-    /// the SQL `WHERE type_id = $expected_item_id` clause skips the write
-    /// rather than scribbling stale ammo onto the new weapon.
+    /// `expected_instance_id` guards against TOCTOU: it is the
+    /// `sgw_inventory.item_id` per-row instance id (NOT the design id) of the
+    /// slot's item at the time the writeback was computed.
+    /// If the slot's physical item changes between the cell sending this
+    /// message and the base writing the row, the SQL
+    /// `WHERE item_id = $expected_instance_id` clause skips the write rather
+    /// than scribbling stale ammo onto the new weapon — even when the new
+    /// weapon shares the same design as the old one.
     BandolierAmmoUpdate {
         player_id: i32,
         slot_id: i32,
-        expected_item_id: i32,
+        expected_instance_id: i32,
         current_ammo: i32,
         cur_ammo_type: i32,
     },

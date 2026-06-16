@@ -607,6 +607,7 @@ async fn handle_reload_no_op_when_already_full() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -642,6 +643,7 @@ async fn handle_reload_pins_reload_slot_id_to_current_active_slot() {
         e.bandolier_items.insert(
             2,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -713,6 +715,7 @@ async fn handle_reload_sends_item_reload_sequence() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -854,6 +857,7 @@ async fn handle_reload_emits_ammo_type_under_correct_propid() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: AMMO_TYPE,
@@ -932,6 +936,7 @@ async fn reload_while_holstered_phase_a_defers_reload() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -1009,6 +1014,7 @@ async fn reload_phase_a_to_phase_b_clears_pending_and_starts_reload() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -1070,6 +1076,7 @@ async fn reload_during_ooc_grace_resets_holster_timer() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -1116,6 +1123,7 @@ async fn reload_second_press_during_draw_window_is_ignored() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -1165,6 +1173,7 @@ async fn reload_in_isolation_does_not_flip_bsf_in_combat() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -1359,6 +1368,7 @@ async fn handle_reload_phase_b_cancels_in_flight_holster_phase_2() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,

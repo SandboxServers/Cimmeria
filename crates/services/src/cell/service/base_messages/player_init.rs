@@ -1069,6 +1069,7 @@ mod system_options_assignment_tests {
             vec![(
                 0,
                 cimmeria_entity::cell_entity::BandolierItem {
+                    instance_id: 0,
                     item_id: 55,
                     clip_size: 30,
                     default_ammo_type: 1,

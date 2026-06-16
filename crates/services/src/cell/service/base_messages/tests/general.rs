@@ -15,6 +15,7 @@ async fn destroy_entity_flushes_dirty_bandolier_and_destroys_entity() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,

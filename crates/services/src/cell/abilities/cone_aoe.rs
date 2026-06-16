@@ -611,6 +611,7 @@ mod tests {
             e.bandolier_items.insert(
                 0,
                 BandolierItem {
+                    instance_id: 0,
                     item_id: 1,
                     clip_size: 30,
                     default_ammo_type: 2,

@@ -38,6 +38,7 @@ async fn sync_bandolier_items_active_slot_gained_weapon_draws_and_animates() {
         .insert((804, crate::cell::spawner::EVENT_ITEM_EQUIP), 1872);
 
     let item = BandolierItem {
+        instance_id: 0,
         item_id: 55,
         clip_size: 15,
         default_ammo_type: 2,
@@ -139,6 +140,7 @@ async fn sync_bandolier_items_active_slot_lost_weapon_fires_unequip_and_schedule
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 55,
                 clip_size: 15,
                 default_ammo_type: 2,
@@ -231,6 +233,7 @@ async fn sync_bandolier_items_active_slot_unchanged_does_not_re_animate() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 55,
                 clip_size: 15,
                 default_ammo_type: 2,
@@ -259,6 +262,7 @@ async fn sync_bandolier_items_active_slot_unchanged_does_not_re_animate() {
                 (
                     0,
                     BandolierItem {
+                        instance_id: 0,
                         item_id: 55,
                         clip_size: 15,
                         default_ammo_type: 2,
@@ -269,6 +273,7 @@ async fn sync_bandolier_items_active_slot_unchanged_does_not_re_animate() {
                 (
                     2,
                     BandolierItem {
+                        instance_id: 0,
                         item_id: 99,
                         clip_size: 30,
                         default_ammo_type: 1,
@@ -354,6 +359,7 @@ async fn sync_bandolier_items_active_slot_gained_weapon_emits_ammo_type_id() {
         .insert((804, crate::cell::spawner::EVENT_ITEM_EQUIP), 1872);
 
     let item = BandolierItem {
+        instance_id: 0,
         item_id: 55,
         clip_size: 15,
         default_ammo_type: AMMO_TYPE,
@@ -438,6 +444,7 @@ async fn sync_bandolier_items_active_slot_lost_weapon_emits_ammo_type_id_zero() 
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 55,
                 clip_size: 15,
                 default_ammo_type: 2,
@@ -520,6 +527,7 @@ async fn sync_bandolier_items_active_slot_unchanged_does_not_emit_ammo_type_id()
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 55,
                 clip_size: 15,
                 default_ammo_type: 2,
@@ -540,6 +548,7 @@ async fn sync_bandolier_items_active_slot_unchanged_does_not_emit_ammo_type_id()
             bandolier_items: vec![(
                 0,
                 BandolierItem {
+                    instance_id: 0,
                     item_id: 55,
                     clip_size: 15,
                     default_ammo_type: 2,
@@ -632,6 +641,7 @@ async fn sync_bandolier_items_active_slot_gained_partial_clip_triggers_reload_on
 
     // The item to drag into slot 0 — partial clip (10 of 15).
     let item = BandolierItem {
+        instance_id: 0,
         item_id: 55,
         clip_size: 15,
         default_ammo_type: 2,
@@ -706,6 +716,7 @@ async fn sync_bandolier_items_with_option_off_does_not_reload_on_activate() {
     mgr.connect_entity(1);
 
     let item = BandolierItem {
+        instance_id: 0,
         item_id: 55,
         clip_size: 15,
         default_ammo_type: 2,

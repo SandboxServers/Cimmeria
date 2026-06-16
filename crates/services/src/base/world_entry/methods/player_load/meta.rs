@@ -50,6 +50,9 @@ pub fn default_player_load_data() -> PlayerLoadData {
 #[derive(sqlx::FromRow)]
 struct BandolierItemRow {
     slot_id: i32,
+    /// `sgw_inventory.item_id` — the per-row instance id used as the ammo-persist
+    /// TOCTOU guard (distinct from the design `item_id` below).
+    instance_id: i32,
     item_id: i32,
     clip_size: i32,
     default_ammo_type_id: i32,
@@ -63,7 +66,7 @@ struct BandolierItemRow {
 }
 
 const BANDOLIER_ITEMS_QUERY: &str = r#"
-SELECT inv.slot_id, inv.type_id AS item_id, COALESCE(ri.clip_size, 0) AS clip_size,
+SELECT inv.slot_id, inv.item_id AS instance_id, inv.type_id AS item_id, COALESCE(ri.clip_size, 0) AS clip_size,
        CASE WHEN ri.default_ammo_type IS NULL THEN 0
             ELSE array_position(enum_range(NULL::resources."EAmmoType"), ri.default_ammo_type) - 1
        END AS default_ammo_type_id,
@@ -91,6 +94,7 @@ fn map_bandolier_rows(
             (
                 row.slot_id,
                 cimmeria_entity::cell_entity::BandolierItem {
+                    instance_id: row.instance_id,
                     item_id: row.item_id,
                     clip_size: row.clip_size,
                     default_ammo_type: row.default_ammo_type_id,

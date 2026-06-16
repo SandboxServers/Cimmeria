@@ -80,6 +80,15 @@ pub(super) async fn grant(
                 entity.bandolier_items.insert(
                     slot_id,
                     cimmeria_entity::cell_entity::BandolierItem {
+                        // Optimistic cell-side insert: the base hasn't run the
+                        // grant INSERT yet, so the `sgw_inventory.item_id` PK
+                        // instance id is unknown here. Seed 0 — any ammo persist
+                        // fired in this brief pre-round-trip window carries
+                        // instance_id 0, which the base-side bound check drops
+                        // (there's no committed row to write anyway). Base then
+                        // replays `UpdateBandolierItem` carrying the real
+                        // instance id, which overwrites this entry.
+                        instance_id: 0,
                         item_id,
                         clip_size: clip,
                         default_ammo_type,

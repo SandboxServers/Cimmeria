@@ -24,6 +24,9 @@ async fn reload_completion_tick_refills_and_sends_stat() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                // Distinct from item_id (design id) so the reload-tick persist
+                // assertion proves the guard keys on the instance PK.
+                instance_id: 1001,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -113,15 +116,15 @@ async fn reload_completion_tick_refills_and_sends_stat() {
         CellToBaseMsg::BandolierAmmoUpdate {
             player_id,
             slot_id,
-            expected_item_id,
+            expected_instance_id,
             current_ammo,
             cur_ammo_type,
         } => {
             assert_eq!(player_id, 100);
             assert_eq!(slot_id, 0);
             assert_eq!(
-                expected_item_id, 1,
-                "should carry the slot's item_id for TOCTOU guard"
+                expected_instance_id, 1001,
+                "should carry the slot's instance PK (sgw_inventory.item_id) for TOCTOU guard, not the design id"
             );
             assert_eq!(current_ammo, 30);
             assert_eq!(cur_ammo_type, 2);
@@ -161,6 +164,7 @@ async fn reload_completion_tick_emits_ability_end_sequence_when_event_set_presen
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 1001,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
