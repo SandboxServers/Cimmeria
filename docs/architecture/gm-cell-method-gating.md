@@ -66,13 +66,18 @@ interface handler:
 
 ## Adding the next GM method
 
-1. Implement the handler in `cell_methods/...` as usual.
-2. Add its flattened index to the `matches!` in `requires_gm`.
+- **A new SGWGmPlayer method (flattened index >= 109):** nothing to do for
+  gating. The `index >= SGWGMPLAYER_CELL_METHOD_BASE` range rule already
+  covers the entire tail, so any new gm*/debug method is GM-gated the moment
+  it exists. Just implement the handler in `cell_methods/gm.rs` (or leave it
+  to fall through the auth-gated router warn arm until you do).
+- **A GM/debug method inside the inherited 0-108 range:** add its flattened
+  index to the `matches!` in `requires_gm`. These share an interface with
+  ordinary player methods, so they have to be named explicitly.
 
-That's it — enforcement, audit logging, and the wire-visible error
-response are shared. **Do not** put the `access_level` check inside the
-handler; the gate runs first and centralizes the policy so a new handler
-can't forget it.
+Either way, enforcement, audit logging, and the wire-visible error response
+are shared. **Do not** put the `access_level` check inside the handler; the
+gate runs first and centralizes the policy so a new handler can't forget it.
 
 ### Gated today
 
@@ -86,10 +91,10 @@ must be named explicitly:
 | 6 | `toggleHealDebug` | CAT-N intro |
 | 92 | `onWorldInstanceReset` | CAT-N-01 (High) |
 
-**Plus the entire SGWGmPlayer tail (index >= 109)** — added in #473 / CAT-N-04
+**Plus the entire SGWGmPlayer tail (index >= 109)** — added under CAT-N-04
 when GMs began entering the world as SGWGmPlayer (`class_id 0x03`). SGWGmPlayer's
-~85 own gm*/debug CellMethods append at the end of the flattened table starting
-at 109, so the whole native GM surface (SetGodMode, SetHealth, GiveItem, Kill,
+117 own `<Exposed/>` gm*/debug CellMethods append at the end of the flattened
+table at 109-225, so the whole native GM surface (SetGodMode, SetHealth, GiveItem, Kill,
 Spawn, Goto*, …) is GM-only by construction and gated by the single
 `index >= SGWGMPLAYER_CELL_METHOD_BASE` rule. This holds even for the gm*
 indices that don't yet have a handler — those are still rejected for non-GMs at

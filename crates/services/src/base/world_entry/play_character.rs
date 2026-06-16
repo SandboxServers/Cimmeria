@@ -101,7 +101,7 @@ pub(crate) async fn handle_play_character(
     // Also query the full player data needed for mapLoaded
     let player_load_data = query_player_load_data(db_pool, account_id, player_id).await;
 
-    // class_id selection (#473 / CAT-N-04): GMs (access_level > 0) come up as
+    // class_id selection: GMs (access_level > 0) come up as
     // SGWGmPlayer (0x03), regular players as SGWPlayer (0x02). Decided in
     // query_world_entry from the session access_level captured above.
     //

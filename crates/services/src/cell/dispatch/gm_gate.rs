@@ -53,9 +53,9 @@ const REQUIRED: AccessLevel = AccessLevel::GameMaster;
 /// methods occupy 0-108; SGWGmPlayer's 117 `<Exposed/>` gm*/debug methods
 /// APPEND at 109-225 (append-at-end inheritance — see
 /// `crate::mercury::SGWGMPLAYER_CLASS_ID`). The entire tail is GM-only by
-/// construction, so one threshold secures the whole native GM surface
-/// (#473 / CAT-N-04) — including every gm* index we haven't implemented a
-/// handler for yet (those hit the auth-gated router fall-through, harmless).
+/// construction, so one threshold secures the whole native GM surface —
+/// including every gm* index we haven't implemented a handler for yet
+/// (those hit the auth-gated router fall-through, harmless).
 pub const SGWGMPLAYER_CELL_METHOD_BASE: u16 = 109;
 
 /// Returns `true` if the flattened cell-method `index` is a GM / debug

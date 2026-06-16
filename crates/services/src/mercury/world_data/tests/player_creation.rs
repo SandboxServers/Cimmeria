@@ -175,7 +175,7 @@ fn create_player_with_load_data_prewarms_bodyset_before_map_load() {
     );
 }
 
-/// #473 / CAT-N-04 wire guard: CREATE_BASE_PLAYER must carry the GM class id
+/// Wire guard: CREATE_BASE_PLAYER must carry the GM class id
 /// (0x03) for a GM `WorldEntryInfo` and the normal class id (0x02) for a
 /// regular player. The class byte is THE selector the client uses to bind the
 /// entity method table — 0x03 → SGWGmPlayer (gm* surface reachable), 0x02 →
