@@ -72,9 +72,11 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 **Status**: Fixed. `createCharacter` now stamps the new character's
 `sgw_player.access_level` from the account's session access level
 (`get_access_level`, sourced from `account.accesslevel` at login), mirroring
-the C++ server. The persisted value is loaded back into `PlayerLoadData` at
-world entry and surfaces as the client's `AccessLevel` property, so GM
-accounts no longer lose their privilege marker on every character load.
+the C++ server. The persisted column is loaded at world entry and sent to the
+client as the `AccessLevel` entity property (propId 7 in the mapLoaded block),
+so a GM account's characters carry the correct marker instead of loading at
+access_level 0. (Server-side GM authority is gated on the session level, not
+this per-character column.)
 
 ### ~~KI-12: createCharacter does not validate visual choices~~ — RESOLVED
 

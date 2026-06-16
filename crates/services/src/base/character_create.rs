@@ -377,10 +377,13 @@ pub(crate) async fn handle_create_character(
     // Stamp the new character's `access_level` from the account's session
     // level (loaded from `account.accesslevel` at login), mirroring the C++
     // server which passed the account access level into the character INSERT.
-    // The persisted value is loaded back into `PlayerLoadData` at world entry
-    // (see player_load) and surfaces as the client's `AccessLevel` entity
-    // property; without it a GM account's characters were created at
-    // access_level 0 and lost that privilege marker on every load.
+    // The persisted column is loaded at world entry (player_load) and sent to
+    // the client as the `AccessLevel` entity property — propId 7 in the
+    // mapLoaded block (`mercury::world_data::map_loaded`) — i.e. the
+    // per-character marker the client uses for GM UI. (Server-side GM
+    // authorization gates on the session level, not this column.) Without it,
+    // a GM account's characters were created at access_level 0 and carried no
+    // GM marker on every load.
     let access_level = get_access_level(connected, addr) as i32;
 
     let result = sqlx::query_scalar::<_, i32>(

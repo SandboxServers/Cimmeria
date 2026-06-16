@@ -588,3 +588,33 @@ fn get_access_level_fails_closed_for_unknown_addr() {
         "unknown session must fail closed to Player (0), never privileged"
     );
 }
+
+/// **Fail-closed guard (poisoned lock).** `get_access_level` reads the
+/// session under `.lock().ok()`, so a poisoned mutex (a thread panicked
+/// while holding it) yields `None` and must fall through to 0 (Player) —
+/// a poisoned lock must never be treated as a GM. Reverting the `.ok()`
+/// to an `.unwrap()` would panic here instead of returning 0.
+#[test]
+fn get_access_level_fails_closed_for_poisoned_lock() {
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+
+    let connected: Arc<Mutex<HashMap<SocketAddr, crate::base::ConnectedClientState>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let poison_target = Arc::clone(&connected);
+
+    // Poison the mutex by panicking while holding the guard.
+    let _ = std::thread::spawn(move || {
+        let _guard = poison_target.lock().unwrap();
+        panic!("poison connected mutex");
+    })
+    .join();
+
+    let addr: SocketAddr = "127.0.0.1:5002".parse().unwrap();
+    assert_eq!(
+        get_access_level(&connected, addr),
+        0,
+        "poisoned lock must fail closed to Player (0), never privileged"
+    );
+}
