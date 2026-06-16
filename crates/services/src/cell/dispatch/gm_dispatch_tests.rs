@@ -1,4 +1,4 @@
-//! SGWGmPlayer tail (109+) routing through the gate (#473 / CAT-N-04).
+//! SGWGmPlayer tail (109+) routing through the gate (CAT-N-04).
 //!
 //! End-to-end dispatch tests that exercise the GM gate for the SGWGmPlayer
 //! own cell-method tail (flattened index >= 109): non-GM rejection, GM
@@ -133,7 +133,7 @@ async fn gm_tail_method_executes_for_gm_caller() {
             } => {
                 saw_error = true;
             }
-            _ => {}
+            other => panic!("unexpected wire message in gmGiveItem happy-path: {other:?}"),
         }
     }
     assert!(saw_grant, "authorized gmGiveItem must emit GrantItem");
