@@ -171,25 +171,29 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 if let Some(player_eid) = player_eid {
                     if let Some(ref tx) = cell_tx {
                         // Map the connected-state access_level (u32) to the
-                        // command crate's AccessLevel ladder. Unknown high
-                        // values fold to Developer (most-privileged) so a
-                        // mis-seeded level never silently *drops* privilege,
-                        // matching the cell gm_gate's mapping for consistency.
-                        //
-                        // SAFETY INVARIANT (server-authority audit, LOW-2):
-                        // this fold-up is safe ONLY because `access_level` is
-                        // sourced from the `account.accesslevel` DB row and
-                        // clamped `>= 0` at login (auth/handlers.rs) — a
-                        // client can never reach the `_` arm. Do NOT keep this
-                        // fold-up if `access_level` ever becomes settable from
-                        // a less-trusted source; fail closed (Player) instead.
+                        // command crate's AccessLevel ladder. The value is
+                        // server-set (`account.accesslevel`, clamped `>= 0` at
+                        // login), so a client can't reach the unmapped arm —
+                        // but an unexpected value (bad DB data / migration
+                        // drift) must fail CLOSED to Player and log, never fail
+                        // open to a privileged level. An authorization gate
+                        // resolves ambiguity by denying, not by granting the
+                        // highest privilege (server-authority audit, LOW-2).
                         use cimmeria_commands::permissions::AccessLevel;
                         let access_level = match caller_access_level {
                             0 => AccessLevel::Player,
                             1 => AccessLevel::Moderator,
                             2 => AccessLevel::GameMaster,
                             3 => AccessLevel::Admin,
-                            _ => AccessLevel::Developer,
+                            4 => AccessLevel::Developer,
+                            other => {
+                                tracing::warn!(
+                                    player_eid,
+                                    access_level = other,
+                                    "unmapped access_level; failing closed to Player"
+                                );
+                                AccessLevel::Player
+                            }
                         };
                         let ctx = cimmeria_commands::registry::CommandContext {
                             caller_entity_id: Some(cimmeria_common::types::EntityId(

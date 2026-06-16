@@ -59,19 +59,23 @@ pub(super) async fn handle_who(
         return;
     };
 
-    let mut entries: Vec<String> = space_mgr
+    // Collect (entity_id, player_id) and sort by NUMERIC entity id. Sorting
+    // the formatted strings instead would order lexicographically — "10"
+    // before "2" — so build the display strings only after the numeric sort.
+    let mut ids: Vec<_> = space_mgr
         .all_player_entity_ids()
         .into_iter()
         .filter(|&pid| space_mgr.get_entity_space_id(pid) == Some(space_id))
-        .map(|pid| {
-            let player_id = space_mgr.get_entity(pid).and_then(|e| e.player_id);
-            match player_id {
-                Some(p) => format!("{pid} (player_id {p})"),
-                None => format!("{pid}"),
-            }
+        .map(|pid| (pid, space_mgr.get_entity(pid).and_then(|e| e.player_id)))
+        .collect();
+    ids.sort_by_key(|&(pid, _)| pid);
+    let entries: Vec<String> = ids
+        .into_iter()
+        .map(|(pid, player_id)| match player_id {
+            Some(p) => format!("{pid} (player_id {p})"),
+            None => format!("{pid}"),
         })
         .collect();
-    entries.sort();
 
     let text = if entries.is_empty() {
         "No players in your space.".to_string()
@@ -93,28 +97,35 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(8);
         handle_gm_command(1, GmCommandIntent::Info, &tx, &mut mgr, &[]).await;
         let fb = feedback_text_to(&drain(&mut rx), 1).expect("info must feed back to caller");
-        // Self dump: entity id 1, has an hp field and a pos field.
-        assert!(fb.contains("[1]"), "got: {fb}");
-        assert!(fb.contains("hp"), "got: {fb}");
-        assert!(fb.contains("pos"), "got: {fb}");
+        // Exact self-dump: subject id 1, name "player" (no npc_name/template
+        // on a bare player), faction 0, default HEALTH 100/100, pos from the
+        // fixture (5.0, 0.0, 5.0). Pins the full format/order, so a field
+        // reorder or label change fails here.
+        assert_eq!(fb, "[1] player | faction 0 | hp 100/100 | pos (5.0, 0.0, 5.0)");
     }
 
+    /// **Regression guard:** `/who` entries are ordered by NUMERIC entity id,
+    /// not lexicographically. With ids 1, 2, 10 the numeric order is 1, 2, 10;
+    /// a string sort (`entries.sort()`) would wrongly give 1, 10, 2. The exact
+    /// assertion pins both format and ordering — reverting the numeric sort
+    /// trips it.
     #[tokio::test]
-    async fn who_lists_players_in_space() {
-        let mut mgr = mgr_with_player();
-        mgr.create_entity(2, "Castle", [1.0, 0.0, 1.0], [0.0; 3])
-            .unwrap();
-        mgr.connect_entity(2);
-        if let Some(p) = mgr.get_entity_mut(2) {
-            p.player_id = Some(200);
+    async fn who_lists_players_sorted_by_numeric_id() {
+        let mut mgr = mgr_with_player(); // caller = entity 1, player_id 100
+        for (eid, pid) in [(10u32, 110i32), (2u32, 200i32)] {
+            mgr.create_entity(eid, "Castle", [1.0, 0.0, 1.0], [0.0; 3])
+                .unwrap();
+            mgr.connect_entity(eid);
+            if let Some(p) = mgr.get_entity_mut(eid) {
+                p.player_id = Some(pid);
+            }
         }
         let (tx, mut rx) = mpsc::channel(8);
         handle_gm_command(1, GmCommandIntent::Who, &tx, &mut mgr, &[]).await;
         let fb = feedback_text_to(&drain(&mut rx), 1).expect("who must feed back");
-        assert!(fb.contains("Players (2)"), "got: {fb}");
-        assert!(
-            fb.contains("player_id 100") && fb.contains("player_id 200"),
-            "got: {fb}"
+        assert_eq!(
+            fb,
+            "Players (3): 1 (player_id 100), 2 (player_id 200), 10 (player_id 110)"
         );
     }
 }

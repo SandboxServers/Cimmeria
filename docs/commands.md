@@ -21,9 +21,18 @@ All 256 slash commands available in Stargate Worlds. Player commands work for ev
 > into normal chat; the **server** intercepts it before the chat broadcast
 > (`base/dispatch.rs`), parses + authorizes it against the account access
 > level, and executes it cell-side, feeding a result line back to the GM only
-> (channel `CHAN_FEEDBACK`). This works against an unmodified retail client —
-> the GM just types into chat. The architecture is *base parses + authorizes →
-> typed intent → cell executes* (see [the server-systems doc](architecture/server-systems.md)).
+> (channel `CHAN_FEEDBACK`). No server-side client modification is required —
+> the GM types into chat and the server does the rest.
+>
+> **Reachability caveat (unverified):** the retail client's command system may
+> consume some `/`-prefixed input client-side (routing it to native `gm*` wire
+> methods) *before* it is sent as chat. Whether a given `/`-command actually
+> reaches the server as chat text on an unmodified retail client is **not yet
+> confirmed** and needs a UAT with a real client. This path is exercised today
+> by the test/dev clients (which send raw chat), and the native `gm*` wire path
+> is implemented separately (CAT-N-04) — the two mechanisms are complementary.
+> The architecture is *base parses + authorizes → typed intent → cell executes*
+> (see [the server-systems doc](architecture/server-systems.md)).
 >
 > ## Implemented server-side GM chat commands
 >

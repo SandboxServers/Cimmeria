@@ -67,11 +67,11 @@ fn spawn_handler() -> CommandHandler {
 
 fn goto_handler() -> CommandHandler {
     Box::new(|ctx, args| {
-        // Three numeric args -> coordinate teleport; exactly one arg ->
-        // player teleport. `parse_vector3` consumes the first three args and
-        // returns None on any non-numeric, so a `/goto <player>` with a name
-        // that happens to be 3 tokens can't be misread as coords.
-        if args.len() >= 3 {
+        // Exactly three numeric args -> coordinate teleport; exactly one arg
+        // -> player teleport. Requiring `== 3` (not `>= 3`) rejects malformed
+        // input like `/goto 10 20 30 extra` with a usage line instead of
+        // silently dropping the trailing token.
+        if args.len() == 3 {
             if let Some(pos) = parser::parse_vector3(args) {
                 tracing::info!(caller = %ctx.caller_name, ?pos, "GM /goto coords");
                 return CommandOutcome::Cell(GmCommandIntent::GotoCoords(pos));
@@ -104,7 +104,16 @@ fn give_handler() -> CommandHandler {
             Some(id) => id,
             None => return CommandOutcome::Usage("/give <item_id> [count]".to_string()),
         };
+        // count is user chat input. Reject < 1 (a 0/negative grant is at best
+        // a no-op, at worst a stack-underflow footgun) and clamp to the same
+        // cap the cell handler enforces (1000), so an invalid quantity can't
+        // ride the privileged intent to the cell. Defence-in-depth: the cell
+        // re-validates, but the boundary that takes user input rejects here.
         let count: i32 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(1);
+        if count < 1 {
+            return CommandOutcome::Usage("/give <item_id> [count]".to_string());
+        }
+        let count = count.min(1000);
         tracing::info!(caller = %ctx.caller_name, item_id, count, "GM /give");
         CommandOutcome::Cell(GmCommandIntent::Give { item_id, count })
     })
@@ -208,6 +217,19 @@ mod tests {
         ));
     }
 
+    /// **Regression guard:** `/goto <x> <y> <z> extra` must reject the
+    /// trailing token with usage, not silently drop it and teleport. Reverting
+    /// the coords arm from `== 3` to `>= 3` lets the malformed command through.
+    #[test]
+    fn goto_trailing_tokens_show_usage() {
+        let mut registry = CommandRegistry::new();
+        register_gm_commands(&mut registry);
+        assert!(matches!(
+            registry.dispatch(&gm_ctx(), "/goto 10 20 30 extra"),
+            CommandOutcome::Usage(_)
+        ));
+    }
+
     #[test]
     fn kill_no_arg_targets_current() {
         let mut registry = CommandRegistry::new();
@@ -258,6 +280,40 @@ mod tests {
             registry.dispatch(&gm_ctx(), "/give notanumber"),
             CommandOutcome::Usage(_)
         ));
+    }
+
+    /// **Regression guard:** `/give` count is user chat input — a count `< 1`
+    /// must be rejected with usage, never forwarded as a privileged `Give`
+    /// intent. Dropping the `count < 1` reject lets `0`/negative quantities
+    /// reach the cell.
+    #[test]
+    fn give_rejects_nonpositive_count() {
+        let mut registry = CommandRegistry::new();
+        register_gm_commands(&mut registry);
+        assert!(matches!(
+            registry.dispatch(&gm_ctx(), "/give 55 0"),
+            CommandOutcome::Usage(_)
+        ));
+        assert!(matches!(
+            registry.dispatch(&gm_ctx(), "/give 55 -3"),
+            CommandOutcome::Usage(_)
+        ));
+    }
+
+    /// **Regression guard:** `/give` count is clamped to the cap (1000) the
+    /// cell handler enforces, so an absurd quantity can't ride the intent.
+    /// Dropping the `.min(1000)` lets the raw value through.
+    #[test]
+    fn give_clamps_count_to_cap() {
+        let mut registry = CommandRegistry::new();
+        register_gm_commands(&mut registry);
+        assert_eq!(
+            registry.dispatch(&gm_ctx(), "/give 55 999999"),
+            CommandOutcome::Cell(GmCommandIntent::Give {
+                item_id: 55,
+                count: 1000,
+            })
+        );
     }
 
     #[test]
