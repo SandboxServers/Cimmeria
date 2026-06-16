@@ -13,10 +13,10 @@ All 256 slash commands available in Stargate Worlds. Player commands work for ev
 > *native client* slash commands. In retail SGW the client's GM console maps
 > each `/command` to a **typed `gm*` wire method** on the `SGWGmPlayer` entity
 > class (e.g. `/giveItem` → `gmGiveItem(WSTRING, INT32)`). Cimmeria does not
-> yet build that GM entity class (tracked in #473 / CAT-N-04), so those native
+> yet build that GM entity class (tracked as CAT-N-04), so those native
 > wire commands are not yet reachable.
 >
-> **What Cimmeria implements today (#64): a server-side chat-command path.**
+> **What Cimmeria implements today: a server-side chat-command path.**
 > A GM (account `access_level >= 2`, GameMaster) types a `/`-prefixed line
 > into normal chat; the **server** intercepts it before the chat broadcast
 > (`base/dispatch.rs`), parses + authorizes it against the account access
@@ -31,7 +31,7 @@ All 256 slash commands available in Stargate Worlds. Player commands work for ev
 > |---|---|---|
 > | `/spawn <moniker> [count]` | GameMaster | Spawn `count` (≤ 20) NPCs of the named template at your position |
 > | `/goto <x> <y> <z>` | GameMaster | Teleport yourself to coordinates in your current space |
-> | `/goto <player>` | GameMaster | Teleport yourself to a player (by entity id / name) in your space |
+> | `/goto <player>` | GameMaster | Teleport yourself to another player in your space, identified by their numeric entity id (name matching only works for named entities; player characters don't currently carry a name cell-side) |
 > | `/kill [target]` | GameMaster | Kill an NPC (your current target, or a named NPC in your space). **Refuses player targets.** |
 > | `/give <item_id> [count]` | GameMaster | Give yourself an item (count clamped to 1…1000; negative rejected) |
 > | `/info` | GameMaster | Dump your current target's (or your own) id / faction / hp / position |

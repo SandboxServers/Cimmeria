@@ -215,7 +215,18 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                                 }
                             }
                         };
-                        let _ = tx.send(msg).await;
+                        if let Err(e) = tx.send(msg).await {
+                            // Cell channel closed (cell service gone / shutting
+                            // down). The command never executes and the GM gets
+                            // no feedback — surface it rather than swallowing
+                            // silently (negative-logging convention).
+                            tracing::warn!(
+                                player_eid,
+                                command = %text,
+                                error = %e,
+                                "GM command dropped: cell channel closed before delivery"
+                            );
+                        }
                     }
                 }
                 // Swallow the command — never broadcast it as chat.
