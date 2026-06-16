@@ -2,7 +2,7 @@
 title: "Known Issues"
 type: reference
 audience: engineers, operators
-last_updated: 2026-05-27
+last_updated: 2026-06-16
 ---
 
 # Known Issues
@@ -69,11 +69,12 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 
 ### ~~KI-11: createCharacter does not store access_level~~ — RESOLVED
 
-**Status**: Fixed (#64 precondition). `createCharacter` now stamps the new
-character's `sgw_player.access_level` from the account's session access
-level (`get_access_level`, sourced from `account.accesslevel` at login),
-mirroring the C++ server. GM accounts now create GM-flagged characters, so
-GM authority reaches the cell entity and the client `AccessLevel` property.
+**Status**: Fixed. `createCharacter` now stamps the new character's
+`sgw_player.access_level` from the account's session access level
+(`get_access_level`, sourced from `account.accesslevel` at login), mirroring
+the C++ server. The persisted value is loaded back into `PlayerLoadData` at
+world entry and surfaces as the client's `AccessLevel` property, so GM
+accounts no longer lose their privilege marker on every character load.
 
 ### ~~KI-12: createCharacter does not validate visual choices~~ — RESOLVED
 

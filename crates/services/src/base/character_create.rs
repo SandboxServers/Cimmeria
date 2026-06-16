@@ -374,12 +374,13 @@ pub(crate) async fn handle_create_character(
 
     // ── INSERT into sgw_player with components, world_id, abilities ───
 
-    // KI-11 fix: stamp the new character's `access_level` from the
-    // account's session level (loaded from `account.accesslevel` at login),
-    // mirroring the C++ server which passed the account access level into
-    // the character INSERT. Without this, a GM account created normal
-    // (access_level 0) characters, so the character never carried GM
-    // authority into the cell entity or the client's AccessLevel property.
+    // Stamp the new character's `access_level` from the account's session
+    // level (loaded from `account.accesslevel` at login), mirroring the C++
+    // server which passed the account access level into the character INSERT.
+    // The persisted value is loaded back into `PlayerLoadData` at world entry
+    // (see player_load) and surfaces as the client's `AccessLevel` entity
+    // property; without it a GM account's characters were created at
+    // access_level 0 and lost that privilege marker on every load.
     let access_level = get_access_level(connected, addr) as i32;
 
     let result = sqlx::query_scalar::<_, i32>(
@@ -539,6 +540,10 @@ fn validate_character_name(name: &str) -> Result<(), &'static str> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "character_create_live_db_tests.rs"]
+mod character_create_live_db_tests;
 
 #[cfg(test)]
 mod tests {

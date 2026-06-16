@@ -548,13 +548,12 @@ fn destroy_client_entities_logs_reason_on_already_cleaned_short_circuit() {
     );
 }
 
-// ── get_access_level (#64 / KI-11) ────────────────────────────────────
+// ── get_access_level ──────────────────────────────────────────────────
 
 /// `get_access_level` returns the connected session's account access
-/// level — the value `createCharacter` stamps onto the new character row
-/// (KI-11) and the GM chat-command path authorizes against. A regression
-/// that read the wrong field (or hardcoded a level) would let GM accounts
-/// create non-GM characters again.
+/// level — the value `createCharacter` stamps onto the new character row.
+/// A regression that read the wrong field (or hardcoded a level) would let
+/// GM accounts create non-GM characters again.
 #[test]
 fn get_access_level_returns_session_level() {
     use std::collections::HashMap;
