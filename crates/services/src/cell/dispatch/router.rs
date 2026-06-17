@@ -101,6 +101,14 @@ pub async fn dispatch_cell_method(
     if cell_methods::player::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await {
         return;
     }
+    // SGWGmPlayer own methods (109+) — the native gm*/debug surface. The GM
+    // gate above already authorized this caller for any index >= 109, so
+    // reaching here means access_level >= GameMaster. Only a verified subset
+    // is implemented; unimplemented 109+ indices return `false` and fall
+    // through to the (already-authorized) warn arm below — harmless.
+    if cell_methods::gm::dispatch(entity_id, method_index, args, tx, space_mgr).await {
+        return;
+    }
 
     // Promoted from info! per #311 (Tier 4 follow-up to #304).
     // `info!` was noisy at the volume of cell methods that traverse the
@@ -143,11 +151,21 @@ mod tests {
         let (tx, _rx) = mpsc::channel::<CellToBaseMsg>(8);
         let engine = ChainEngine::new();
 
-        // 0xFFFF is past every cell-interface range (the highest is SGWPlayer's
-        // 67–108). Guaranteed to land in the fall-through warn arm regardless
-        // of future handler additions.
+        // 0xFFFF is past every implemented cell-method range — guaranteed to
+        // reach the fall-through warn arm. BUT the GM gate rejects any index
+        // >= 109 for a non-GM caller BEFORE the router routes, and
+        // 0xFFFF is in that range. To exercise the unhandled-method warn (not
+        // the gate's rejection warn) the caller must be a GM, so register the
+        // entity with GameMaster access. This keeps the test pinning the
+        // dispatcher-gap signal it was written for rather than accidentally
+        // testing the gate.
         let unhandled_method_index: u16 = 0xFFFF;
-        let entity_id: u32 = 4242; // not present in space_mgr — span backfill skips, fall-through still runs
+        let entity_id: u32 = 4242;
+        mgr.create_entity(entity_id, "Agnos", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(entity_id) {
+            e.access_level = 2; // GameMaster — passes the gate
+        }
         let args: &[u8] = &[0x01, 0x02, 0x03];
 
         dispatch_cell_method(

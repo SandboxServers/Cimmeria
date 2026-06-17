@@ -70,7 +70,10 @@ use crate::cell::space_manager::SpaceManager;
         same_world = tracing::field::Empty,
     ),
 )]
-pub(super) async fn handle_respawn(
+// `pub(crate)` (widened from `pub(super)`) so the native GM `gmRespawn`
+// handler (`cell_methods::gm::world`) can reuse the exact same respawn
+// sequence as the combat Defeat-Window path — no duplicate respawn logic.
+pub(crate) async fn handle_respawn(
     entity_id: u32,
     respawner_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,

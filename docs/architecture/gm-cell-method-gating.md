@@ -50,8 +50,12 @@ account.accesslevel (DB)
 `dispatch_cell_method` calls `enforce_gm_gate` **before** routing to any
 interface handler:
 
-- `requires_gm(method_index)` is the allow-list of restricted indices.
-  Everything not named passes untouched.
+- `requires_gm(method_index)` is the allow-list of restricted indices. It
+  covers two classes: a few GM/debug methods that live INSIDE the inherited
+  SGWPlayer range (named explicitly: 2, 3, 6, 92) and the **entire SGWGmPlayer
+  tail** (`index >= SGWGMPLAYER_CELL_METHOD_BASE`, i.e. 109+ — every method
+  there is a gm*/debug command by construction). Everything else passes
+  untouched.
 - For a restricted index, the gate reads `CellEntity::access_level` and
   checks `>= AccessLevel::GameMaster`.
 - On rejection it emits a `warn!` audit log (with `entity_id`,
@@ -62,17 +66,23 @@ interface handler:
 
 ## Adding the next GM method
 
-1. Implement the handler in `cell_methods/...` as usual.
-2. Add its flattened index to the `matches!` in `requires_gm`.
+- **A new SGWGmPlayer method (flattened index >= 109):** nothing to do for
+  gating. The `index >= SGWGMPLAYER_CELL_METHOD_BASE` range rule already
+  covers the entire tail, so any new gm*/debug method is GM-gated the moment
+  it exists. Just implement the handler in `cell_methods/gm/` (or leave it
+  to fall through the auth-gated router warn arm until you do).
+- **A GM/debug method inside the inherited 0-108 range:** add its flattened
+  index to the `matches!` in `requires_gm`. These share an interface with
+  ordinary player methods, so they have to be named explicitly.
 
-That's it — enforcement, audit logging, and the wire-visible error
-response are shared. **Do not** put the `access_level` check inside the
-handler; the gate runs first and centralizes the policy so a new handler
-can't forget it.
+Either way, enforcement, audit logging, and the wire-visible error response
+are shared. **Do not** put the `access_level` check inside the handler; the
+gate runs first and centralizes the policy so a new handler can't forget it.
 
 ### Gated today
 
-The GM-shaped methods reachable on the wire right now:
+GM/debug methods that live inside the inherited SGWPlayer range (0-108) and
+must be named explicitly:
 
 | Index | Method | Finding |
 |---|---|---|
@@ -81,9 +91,17 @@ The GM-shaped methods reachable on the wire right now:
 | 6 | `toggleHealDebug` | CAT-N intro |
 | 92 | `onWorldInstanceReset` | CAT-N-01 (High) |
 
-The full SGWGmPlayer `gm*` surface (SetGodMode, SetHealth, GiveItem,
-Kill, Spawn, Goto*, …) is inventoried in CAT-N; each lands behind this
-gate as it's implemented.
+**Plus the entire SGWGmPlayer tail (index >= 109)** — added under CAT-N-04
+when GMs began entering the world as SGWGmPlayer (`class_id 0x03`). SGWGmPlayer's
+117 own `<Exposed/>` gm*/debug CellMethods append at the end of the flattened
+table at 109-225, so the whole native GM surface (SetGodMode, SetHealth, GiveItem, Kill,
+Spawn, Goto*, …) is GM-only by construction and gated by the single
+`index >= SGWGMPLAYER_CELL_METHOD_BASE` rule. This holds even for the gm*
+indices that don't yet have a handler — those are still rejected for non-GMs at
+the gate, then (for a GM) hit the router's "unhandled cell method" warn arm. A
+verified subset (gmGiveItem 133, gmGotoXYZ 163, gmKillTarget 190) is implemented;
+the full per-index table lives in
+[cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md#sgwgmplayer-extension-indices-109--473--cat-n-04).
 
 ## Why not per-call plumbing?
 

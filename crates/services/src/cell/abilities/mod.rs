@@ -33,6 +33,7 @@ mod tests;
 
 // Public re-exports — keep `crate::cell::abilities::Foo` paths stable for callers.
 pub use cone_aoe::{collect_cone_targets, fan_out_cone_effects, log_effect_flag_categories};
+pub(crate) use death::gm_kill_npc;
 pub use dispatch::handle_use_ability_on_ground;
 pub(crate) use loot_drop::INT_NORMAL_LOOT;
 pub(crate) use messaging::{
