@@ -52,9 +52,17 @@ use crate::cell::space_manager::SpaceManager;
 // pcap-anchored DONE indices (133/163/190) are the alignment proof.
 
 // -- Missions (109–120) -------------------------------------------------------
+/// `gmMissionAssign(WSTRING DesignID, UINT8 popup)` — def line 65. Offset 0.
+pub const GM_MISSION_ASSIGN: u16 = 109;
 /// `gmMissionClear(WSTRING DesignID)` — def line 71. Offset 1. Abandons one
 /// mission by numeric design id.
 pub const GM_MISSION_CLEAR: u16 = 110;
+/// `gmMissionList()` — def line 84. Offset 4. Lists the caller's active missions.
+pub const GM_MISSION_LIST: u16 = 113;
+/// `gmMissionListFull()` — def line 88. Offset 5. Lists all the caller's missions.
+pub const GM_MISSION_LIST_FULL: u16 = 114;
+/// `gmMissionDetails(WSTRING DesignID)` — def line 92. Offset 6.
+pub const GM_MISSION_DETAILS: u16 = 115;
 /// `gmMissionAdvance(WSTRING DesignID, INT32 step)` — def line 97. Offset 7.
 pub const GM_MISSION_ADVANCE: u16 = 116;
 /// `gmMissionAbandon(WSTRING DesignID)` — def line 120. Offset 11. Alias of
@@ -90,6 +98,12 @@ pub const GM_SET_TARGET: u16 = 156;
 // -- Travel (159, 162, 163) ---------------------------------------------------
 /// `gmDHD(INT8 aGateAddress)` — def line 325. Offset 50. Dials a stargate.
 pub const GM_DHD: u16 = 159;
+/// `gmGoto(WSTRING aNameOrID)` — def line 330. Offset 51. Teleport caller to a
+/// target entity (numeric id, same-space).
+pub const GM_GOTO: u16 = 160;
+/// `gmSummon(WSTRING aNameOrID)` — def line 335. Offset 52. Move a target entity
+/// to the caller (numeric id, same-space).
+pub const GM_SUMMON: u16 = 161;
 /// `gmGotoLocation(WSTRING aWorldName, FLOAT aX, aY, aZ)` — def line 340.
 /// Offset 53. Cross-world teleport (full reload).
 pub const GM_GOTO_LOCATION: u16 = 162;
@@ -97,13 +111,22 @@ pub const GM_GOTO_LOCATION: u16 = 162;
 /// Same-space snap teleport.
 pub const GM_GOTO_XYZ: u16 = 163;
 
-// -- Inspection / show (121, 122, 131) ----------------------------------------
+// -- Inspection / show (121–131) ----------------------------------------------
 /// `gmShowTargetLocation()` — def line 127. Offset 12. Reports the current
 /// target's (or caller's) position. FanMMORPG `.location`.
 pub const GM_SHOW_TARGET_LOCATION: u16 = 121;
 /// `gmShowRotation()` — def line 131. Offset 13. Reports facing/heading.
 /// FanMMORPG `.rotation` / `.facing`.
 pub const GM_SHOW_ROTATION: u16 = 122;
+/// `listAbilities()` — def line 135. Offset 14. Lists known ability ids.
+pub const LIST_ABILITIES: u16 = 123;
+/// `gmShowFlag(INT32 flagId)` — def line 144. Offset 16. Tests a state-flag bit.
+pub const GM_SHOW_FLAG: u16 = 125;
+/// `gmGetMobAttribute(INT32 TargetID, WSTRING Attribute)` — def line 153.
+/// Offset 18. Reports one hand-mapped attribute.
+pub const GM_GET_MOB_ATTRIBUTE: u16 = 127;
+/// `gmShowMobCount(INT32 SpaceID)` — def line 159. Offset 19. Counts NPCs.
+pub const GM_SHOW_MOB_COUNT: u16 = 128;
 /// `gmShowPlayer(INT32 TargetID)` — def line 174. Offset 22. Dumps entity info.
 /// FanMMORPG `.info`.
 pub const GM_SHOW_PLAYER: u16 = 131;
@@ -120,6 +143,11 @@ pub const GM_DESPAWN_BY_CMD: u16 = 186;
 pub const GM_RESPAWN: u16 = 189;
 /// `gmKillTarget(INT64 TargetId)` — def line 482. Offset 81. NPC-only.
 pub const GM_KILL_TARGET: u16 = 190;
+
+// -- Debug (180) --------------------------------------------------------------
+/// `gmDebugMobData(INT32 aSpaceID, INT32 target)` — def line 427. Offset 71.
+/// Dumps a mob's debug data via feedback.
+pub const GM_DEBUG_MOB_DATA: u16 = 180;
 
 // -- Test (213, 216) ----------------------------------------------------------
 /// `despawnMob(INT32 entityID)` — def line 605. Offset 104. Test alias of
@@ -153,14 +181,20 @@ pub async fn dispatch(
         GM_SET_FOCUS => stats::handle_set_focus(entity_id, args, false, tx, space_mgr).await,
         GM_SET_FOCUS_MAX => stats::handle_set_focus(entity_id, args, true, tx, space_mgr).await,
         // -- missions --
+        GM_MISSION_ASSIGN => missions::handle_mission_assign(entity_id, args, tx, space_mgr).await,
         GM_MISSION_CLEAR | GM_MISSION_ABANDON => {
             missions::handle_mission_clear(entity_id, args, tx, space_mgr).await
         }
         GM_MISSION_ADVANCE => {
             missions::handle_mission_advance(entity_id, args, tx, space_mgr).await
         }
+        GM_MISSION_LIST => query::handle_mission_list(entity_id, tx, space_mgr).await,
+        GM_MISSION_LIST_FULL => query::handle_mission_list_full(entity_id, tx, space_mgr).await,
+        GM_MISSION_DETAILS => query::handle_mission_details(entity_id, args, tx, space_mgr).await,
         // -- travel --
         GM_GOTO_XYZ => travel::handle_goto_xyz(entity_id, args, tx, space_mgr).await,
+        GM_GOTO => travel::handle_goto(entity_id, args, tx, space_mgr).await,
+        GM_SUMMON => travel::handle_summon(entity_id, args, tx, space_mgr).await,
         GM_GOTO_LOCATION => travel::handle_goto_location(entity_id, args, tx, space_mgr).await,
         GM_DHD => travel::handle_dhd(entity_id, args, tx, space_mgr).await,
         // -- world / entity ops --
@@ -178,6 +212,13 @@ pub async fn dispatch(
         }
         GM_SHOW_ROTATION => query::handle_show_rotation(entity_id, tx, space_mgr).await,
         GM_SHOW_PLAYER => query::handle_show_player(entity_id, args, tx, space_mgr).await,
+        LIST_ABILITIES => query::handle_list_abilities(entity_id, tx, space_mgr).await,
+        GM_SHOW_FLAG => query::handle_show_flag(entity_id, args, tx, space_mgr).await,
+        GM_GET_MOB_ATTRIBUTE => {
+            query::handle_get_mob_attribute(entity_id, args, tx, space_mgr).await
+        }
+        GM_SHOW_MOB_COUNT => query::handle_show_mob_count(entity_id, args, tx, space_mgr).await,
+        GM_DEBUG_MOB_DATA => query::handle_debug_mob_data(entity_id, args, tx, space_mgr).await,
         // Any other 109+ index is an unimplemented (but authorized) gm*
         // method — let the router fall through to its warn arm.
         _ => false,
@@ -257,5 +298,4 @@ pub(super) fn resolve_self_or_target(
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
 mod tests;

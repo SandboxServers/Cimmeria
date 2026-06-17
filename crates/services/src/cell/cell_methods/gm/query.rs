@@ -7,13 +7,15 @@
 //! [`super::feedback::send_gm_feedback`].
 
 use cimmeria_entity::cell_entity::CellEntity;
-use cimmeria_entity::stats::HEALTH;
+use cimmeria_entity::missions::{MISSION_ACTIVE, MISSION_COMPLETED};
+use cimmeria_entity::stats::{FOCUS, HEALTH};
 use tokio::sync::mpsc;
 
 use super::feedback::send_gm_feedback;
 use super::read_i32;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use crate::mercury::read_wstring;
 
 /// The "subject" of a no-arg inspection command: the caller's current target if
 /// it's set and in the caller's space, else the caller themselves. Mirrors
@@ -215,6 +217,294 @@ pub(super) async fn handle_show_player(
         }
         Some(_) => "gmShowPlayer: target is in a different space.".to_string(),
         None => "gmShowPlayer: no such entity.".to_string(),
+    };
+    send_gm_feedback(entity_id, &text, tx).await;
+    true
+}
+
+/// `listAbilities()` — list the known ability ids of the current target (or
+/// caller). FanMMORPG-adjacent inspection helper.
+pub(super) async fn handle_list_abilities(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let subject = subject_or_self(entity_id, space_mgr);
+    let text = match space_mgr.get_entity(subject) {
+        Some(e) => {
+            let ids = e.abilities.known_ability_ids();
+            if ids.is_empty() {
+                format!("abilities [{subject}]: none")
+            } else {
+                let list = ids
+                    .iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("abilities [{subject}] ({}): {list}", ids.len())
+            }
+        }
+        None => "listAbilities: no entity.".to_string(),
+    };
+    send_gm_feedback(entity_id, &text, tx).await;
+    true
+}
+
+/// `gmShowFlag(INT32 flagId)` — report whether state-flag bit `flagId` is set on
+/// the current target (or caller), plus the raw `state_field`.
+pub(super) async fn handle_show_flag(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let Some(flag_id) = read_i32(args, 0) else {
+        send_gm_feedback(entity_id, "gmShowFlag: need an INT32 flag id.", tx).await;
+        return true;
+    };
+    if !(0..32).contains(&flag_id) {
+        send_gm_feedback(
+            entity_id,
+            "gmShowFlag: flag id must be a bit index 0-31.",
+            tx,
+        )
+        .await;
+        return true;
+    }
+    let subject = subject_or_self(entity_id, space_mgr);
+    let text = match space_mgr.get_entity(subject) {
+        Some(e) => {
+            let mask = 1u32 << flag_id;
+            let set = e.has_state_flag(mask);
+            format!(
+                "flag [{subject}] bit {flag_id}: {} (state_field=0x{:08x})",
+                if set { "SET" } else { "clear" },
+                e.state_field
+            )
+        }
+        None => "gmShowFlag: no entity.".to_string(),
+    };
+    send_gm_feedback(entity_id, &text, tx).await;
+    true
+}
+
+/// `gmGetMobAttribute(INT32 TargetID, WSTRING Attribute)` — report one
+/// hand-mapped attribute of the target. No reflection; a fixed set of useful
+/// fields is supported.
+pub(super) async fn handle_get_mob_attribute(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let Some(target) = read_i32(args, 0) else {
+        send_gm_feedback(
+            entity_id,
+            "gmGetMobAttribute: need INT32 target + WSTRING attr.",
+            tx,
+        )
+        .await;
+        return true;
+    };
+    let attr = match read_wstring(args, 4) {
+        Ok((s, _)) => s,
+        Err(_) => {
+            send_gm_feedback(entity_id, "gmGetMobAttribute: malformed attribute.", tx).await;
+            return true;
+        }
+    };
+    let Ok(target_eid) = u32::try_from(target) else {
+        send_gm_feedback(entity_id, "gmGetMobAttribute: target id out of range.", tx).await;
+        return true;
+    };
+    let caller_space = space_mgr.get_entity(entity_id).map(|e| e.space_id.0);
+    let text = match space_mgr.get_entity(target_eid) {
+        Some(e) if Some(e.space_id.0) == caller_space => match attr.trim().to_lowercase().as_str() {
+            "health" | "hp" => e.stats.get(HEALTH).map_or("health: n/a".into(), |s| format!("health: {}/{}", s.cur, s.max)),
+            "focus" => e.stats.get(FOCUS).map_or("focus: n/a".into(), |s| format!("focus: {}/{}", s.cur, s.max)),
+            "level" | "lvl" => format!("level: {}", e.level),
+            "faction" => format!("faction: {}", e.faction),
+            "alignment" => format!("alignment: {}", e.alignment),
+            "aistate" | "ai" => format!("ai_state: {:?}", e.ai_state),
+            "name" => format!("name: {}", describe(e)),
+            "template" => format!("template: {:?}", e.template_id),
+            "pos" | "position" => format!("pos: ({:.1}, {:.1}, {:.1})", e.position.x, e.position.y, e.position.z),
+            other => format!("gmGetMobAttribute: unknown attribute '{other}' (try health/focus/level/faction/alignment/aistate/name/template/pos)"),
+        },
+        Some(_) => "gmGetMobAttribute: target is in a different space.".to_string(),
+        None => "gmGetMobAttribute: no such entity.".to_string(),
+    };
+    send_gm_feedback(entity_id, &text, tx).await;
+    true
+}
+
+/// `gmShowMobCount(INT32 SpaceID)` — count NPCs (non-players) in a space.
+/// `SpaceID == 0` means the caller's current space.
+pub(super) async fn handle_show_mob_count(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let arg = read_i32(args, 0).unwrap_or(0);
+    let target_space = if arg == 0 {
+        space_mgr.get_entity_space_id(entity_id)
+    } else {
+        u32::try_from(arg).ok()
+    };
+    let Some(target_space) = target_space else {
+        send_gm_feedback(entity_id, "gmShowMobCount: no space.", tx).await;
+        return true;
+    };
+    let count = space_mgr
+        .all_npc_entity_ids()
+        .into_iter()
+        .filter(|&id| space_mgr.get_entity_space_id(id) == Some(target_space))
+        .count();
+    send_gm_feedback(
+        entity_id,
+        &format!("gmShowMobCount: {count} NPC(s) in space {target_space}"),
+        tx,
+    )
+    .await;
+    true
+}
+
+/// `gmDebugMobData(INT32 aSpaceID, INT32 target)` — dump a mob's debug data.
+pub(super) async fn handle_debug_mob_data(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    // Args: (aSpaceID, target). We resolve the target directly; spaceId is the
+    // client's hint and isn't needed once we have the entity id.
+    let Some(target) = read_i32(args, 4) else {
+        send_gm_feedback(
+            entity_id,
+            "gmDebugMobData: need INT32 spaceId + INT32 target.",
+            tx,
+        )
+        .await;
+        return true;
+    };
+    let Ok(target_eid) = u32::try_from(target) else {
+        send_gm_feedback(entity_id, "gmDebugMobData: target id out of range.", tx).await;
+        return true;
+    };
+    let caller_space = space_mgr.get_entity(entity_id).map(|e| e.space_id.0);
+    let text = match space_mgr.get_entity(target_eid) {
+        Some(e) if Some(e.space_id.0) == caller_space => {
+            let (hp_cur, hp_max) = e.stats.get(HEALTH).map_or((0, 0), |s| (s.cur, s.max));
+            format!(
+                "mob [{target_eid}] {} | tmpl {:?} | ai {:?} | faction {} lvl {} | hp {hp_cur}/{hp_max} | threat {} | tag {:?}",
+                describe(e),
+                e.template_id,
+                e.ai_state,
+                e.faction,
+                e.level,
+                e.threat_list.len(),
+                e.tag
+            )
+        }
+        Some(_) => "gmDebugMobData: target is in a different space.".to_string(),
+        None => "gmDebugMobData: no such entity.".to_string(),
+    };
+    send_gm_feedback(entity_id, &text, tx).await;
+    true
+}
+
+/// Format one mission instance into a compact line.
+fn mission_line(m: &cimmeria_entity::missions::MissionInstance) -> String {
+    let status = match m.status {
+        MISSION_ACTIVE => "active",
+        MISSION_COMPLETED => "done",
+        _ => "other",
+    };
+    format!(
+        "#{} {status} step {:?} obj {}/{}",
+        m.mission_id,
+        m.current_step_id,
+        m.completed_objectives.len(),
+        m.completed_objectives.len() + m.active_objectives.len()
+    )
+}
+
+/// `gmMissionList()` — list the caller's active missions.
+pub(super) async fn handle_mission_list(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let text = match space_mgr.get_entity(entity_id) {
+        Some(e) => {
+            let lines: Vec<String> = e
+                .missions
+                .active_missions()
+                .iter()
+                .map(|m| mission_line(m))
+                .collect();
+            if lines.is_empty() {
+                "gmMissionList: no active missions.".to_string()
+            } else {
+                format!("gmMissionList ({}): {}", lines.len(), lines.join(" | "))
+            }
+        }
+        None => "gmMissionList: no entity.".to_string(),
+    };
+    send_gm_feedback(entity_id, &text, tx).await;
+    true
+}
+
+/// `gmMissionListFull()` — list ALL the caller's missions (incl. completed/hidden).
+pub(super) async fn handle_mission_list_full(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let text = match space_mgr.get_entity(entity_id) {
+        Some(e) => {
+            let lines: Vec<String> = e.missions.all_missions().map(mission_line).collect();
+            if lines.is_empty() {
+                "gmMissionListFull: no missions.".to_string()
+            } else {
+                format!("gmMissionListFull ({}): {}", lines.len(), lines.join(" | "))
+            }
+        }
+        None => "gmMissionListFull: no entity.".to_string(),
+    };
+    send_gm_feedback(entity_id, &text, tx).await;
+    true
+}
+
+/// `gmMissionDetails(WSTRING DesignID)` — show one mission's detail (numeric id).
+pub(super) async fn handle_mission_details(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let mission_id = match read_wstring(args, 0)
+        .ok()
+        .and_then(|(s, _)| s.trim().parse::<i32>().ok())
+    {
+        Some(id) if id > 0 => id,
+        _ => {
+            send_gm_feedback(
+                entity_id,
+                "gmMissionDetails: DesignID must be a positive numeric id.",
+                tx,
+            )
+            .await;
+            return true;
+        }
+    };
+    let text = match space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.missions.get_mission(mission_id))
+    {
+        Some(m) => format!("gmMissionDetails {}", mission_line(m)),
+        None => format!("gmMissionDetails: mission {mission_id} not found on you."),
     };
     send_gm_feedback(entity_id, &text, tx).await;
     true

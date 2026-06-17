@@ -184,6 +184,142 @@ pub(super) async fn handle_dhd(
     true
 }
 
+/// `gmGoto(WSTRING aNameOrID)` — teleport the calling GM to the target entity's
+/// position. Numeric-id form only (name→id resolution isn't wired in the cell);
+/// same-space only (cross-space requires `gmGotoLocation`).
+pub(super) async fn handle_goto(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let Some(target_eid) = parse_target_id(entity_id, args, "gmGoto") else {
+        return true;
+    };
+    let caller_space = space_mgr.get_entity(entity_id).map(|e| e.space_id.0);
+    let dest = match space_mgr.get_entity(target_eid) {
+        Some(t) if Some(t.space_id.0) == caller_space => [t.position.x, t.position.y, t.position.z],
+        Some(_) => {
+            tracing::warn!(
+                entity_id,
+                target_eid,
+                "gmGoto: target in a different space — refused"
+            );
+            return true;
+        }
+        None => {
+            tracing::warn!(entity_id, target_eid, "gmGoto: target not found");
+            return true;
+        }
+    };
+    let (space_id, prev_pos) = match space_mgr.get_entity(entity_id) {
+        Some(e) => (
+            e.space_id.0 as u32,
+            [e.position.x, e.position.y, e.position.z],
+        ),
+        None => return true,
+    };
+    tracing::info!(
+        entity_id,
+        target_eid,
+        ?dest,
+        "gmGoto: teleporting GM to target"
+    );
+    space_mgr.update_entity_position(entity_id, dest, [0, 0, 0], [0.0; 3]);
+    let _ = tx
+        .send(CellToBaseMsg::TeleportPlayer {
+            entity_id,
+            space_id,
+            position: dest,
+            prev_pos,
+        })
+        .await;
+    true
+}
+
+/// `gmSummon(WSTRING aNameOrID)` — move the target entity to the caller's
+/// position. A player target is snapped via `TeleportPlayer`; an NPC via the
+/// spatial-grid update (witnesses pick it up on the next AoI tick). Numeric-id
+/// form, same-space only.
+pub(super) async fn handle_summon(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let Some(target_eid) = parse_target_id(entity_id, args, "gmSummon") else {
+        return true;
+    };
+    if target_eid == entity_id {
+        tracing::warn!(entity_id, "gmSummon: cannot summon yourself");
+        return true;
+    }
+    let (caller_space, caller_pos) = match space_mgr.get_entity(entity_id) {
+        Some(e) => (e.space_id.0, [e.position.x, e.position.y, e.position.z]),
+        None => return true,
+    };
+    let (is_player, target_prev) = match space_mgr.get_entity(target_eid) {
+        Some(t) if t.space_id.0 == caller_space => {
+            (t.is_player, [t.position.x, t.position.y, t.position.z])
+        }
+        Some(_) => {
+            tracing::warn!(
+                entity_id,
+                target_eid,
+                "gmSummon: target in a different space — refused"
+            );
+            return true;
+        }
+        None => {
+            tracing::warn!(entity_id, target_eid, "gmSummon: target not found");
+            return true;
+        }
+    };
+    tracing::info!(
+        entity_id,
+        target_eid,
+        is_player,
+        "gmSummon: moving target to caller"
+    );
+    space_mgr.update_entity_position(target_eid, caller_pos, [0, 0, 0], [0.0; 3]);
+    if is_player {
+        // Players need the authoritative forced-position snap to their client.
+        let _ = tx
+            .send(CellToBaseMsg::TeleportPlayer {
+                entity_id: target_eid,
+                space_id: caller_space as u32,
+                position: caller_pos,
+                prev_pos: target_prev,
+            })
+            .await;
+    }
+    true
+}
+
+/// Parse a leading `WSTRING aNameOrID` as a positive numeric entity id.
+/// Returns `None` (after a warn) on malformed/non-numeric input.
+fn parse_target_id(entity_id: u32, args: &[u8], cmd: &str) -> Option<u32> {
+    let name_or_id = match read_wstring(args, 0) {
+        Ok((s, _)) => s,
+        Err(e) => {
+            tracing::warn!(entity_id, error = %e, cmd, "GM goto/summon: malformed NameOrID WSTRING");
+            return None;
+        }
+    };
+    match name_or_id.trim().parse::<u32>() {
+        Ok(id) if id > 0 => Some(id),
+        _ => {
+            tracing::warn!(
+                entity_id,
+                name_or_id = %name_or_id,
+                cmd,
+                "GM goto/summon: NameOrID is not a positive numeric id — name resolution not wired in the cell"
+            );
+            None
+        }
+    }
+}
+
 /// Read three consecutive little-endian `f32`s at `offset`, or `None` if the
 /// slice is too short.
 fn read_xyz(args: &[u8], offset: usize) -> Option<[f32; 3]> {

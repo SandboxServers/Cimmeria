@@ -9,6 +9,7 @@
 //! the cell, so these handlers accept the numeric form only (parse the WSTRING
 //! as an `i32`) and reject a non-numeric key rather than guess.
 
+use cimmeria_entity::missions::{MissionObjective, STATUS_ACTIVE};
 use tokio::sync::mpsc;
 
 use super::read_i32;
@@ -40,6 +41,49 @@ fn parse_mission_id(entity_id: u32, args: &[u8], cmd: &str) -> Option<(i32, usiz
             None
         }
     }
+}
+
+/// `gmMissionAssign(WSTRING DesignID, UINT8 popup)` — grant a mission to the
+/// caller by numeric design id. Mirrors the content-engine accept path: resolve
+/// the mission def's first step + objectives, then `accept_mission`. The `popup`
+/// byte is a client UI hint and isn't needed server-side.
+pub(super) async fn handle_mission_assign(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let Some((mission_id, _)) = parse_mission_id(entity_id, args, "gmMissionAssign") else {
+        return true;
+    };
+    let Some((step_id, objectives)) = space_mgr.mission_defs.get(&mission_id).map(|def| {
+        let objectives: Vec<MissionObjective> = def
+            .objectives
+            .iter()
+            .map(|o| MissionObjective {
+                objective_id: o.objective_id,
+                status: STATUS_ACTIVE,
+                hidden: o.is_hidden,
+                optional: o.is_optional,
+            })
+            .collect();
+        (def.step_id, objectives)
+    }) else {
+        tracing::warn!(
+            entity_id,
+            mission_id,
+            "gmMissionAssign: no mission def for id"
+        );
+        return true;
+    };
+    tracing::info!(
+        entity_id,
+        mission_id,
+        step_id,
+        "gmMissionAssign: assigning mission"
+    );
+    missions::accept_mission(entity_id, mission_id, step_id, objectives, tx, space_mgr).await;
+    true
 }
 
 /// `gmMissionClear(WSTRING DesignID)` / `gmMissionAbandon(WSTRING DesignID)` —
