@@ -1,7 +1,7 @@
 //! GM travel handlers — `gmGotoXYZ` (same-space snap), `gmGotoLocation`
 //! (cross-world reload), and `gmDHD` (stargate dial).
 //!
-//! `gmGotoXYZ` is the verified same-space teleport (#518). `gmGotoLocation`
+//! `gmGotoXYZ` is the verified same-space teleport. `gmGotoLocation`
 //! reuses the cross-world `GateTravel` path, and `gmDHD` reuses the canonical
 //! [`crate::cell::gate_travel::handle_dial_gate`] primitive.
 
@@ -83,11 +83,10 @@ pub(super) async fn handle_goto_xyz(
 /// destination world. (If the GM passes their *current* world, this still does
 /// a full reload — use `gmGotoXYZ` for a same-space hop.)
 ///
-/// Caveat: the world name is GM-typed and not validated against the space table
-/// here — an unknown world is the base side's concern. Since the entity is
-/// destroyed before the `GateTravel` is sent (mirroring the stargate dial
-/// path), a typo can strand the GM's session; this is GM-only and matches the
-/// existing `handle_dial_gate` behavior.
+/// The `GateTravel` enqueue is confirmed **before** the local teardown: if the
+/// channel is closed the entity is left in place rather than removed with no
+/// transfer. The world name is GM-typed and not validated against the space
+/// table here — an unknown world is the base side's concern (this is GM-only).
 pub(super) async fn handle_goto_location(
     entity_id: u32,
     args: &[u8],
@@ -127,8 +126,10 @@ pub(super) async fn handle_goto_location(
     }
 
     tracing::info!(entity_id, %world_name, ?position, "gmGotoLocation: cross-world teleport via GateTravel");
-    space_mgr.destroy_entity(entity_id);
-    let _ = tx
+    // Enqueue the transfer first; only tear the entity out of the space once the
+    // send is confirmed. A closed channel must not leave the GM removed locally
+    // with no transfer in flight.
+    if tx
         .send(CellToBaseMsg::GateTravel {
             entity_id,
             target_world_name: world_name,
@@ -136,7 +137,16 @@ pub(super) async fn handle_goto_location(
             rotation: [0.0; 3],
             destination_ring_id: None,
         })
-        .await;
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            entity_id,
+            "gmGotoLocation: GateTravel enqueue failed; entity left in place"
+        );
+        return true;
+    }
+    space_mgr.destroy_entity(entity_id);
     true
 }
 

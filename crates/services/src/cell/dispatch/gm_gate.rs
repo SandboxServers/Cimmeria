@@ -69,9 +69,9 @@ pub const SGWGMPLAYER_CELL_METHOD_BASE: u16 = 109;
 ///   SGWPlayer range (0-108) because they share an interface with player
 ///   methods. These must be named explicitly:
 ///   - `2` `toggleCombatDebug`, `3` `toggleCombatVerboseDebug`,
-///     `6` `toggleHealDebug` — combat/heal debug toggles (CAT-N intro).
+///     `6` `toggleHealDebug` — combat/heal debug toggles.
 ///   - `92` `onWorldInstanceReset` — tears down + recreates the current
-///     space instance, kicking every co-located player (CAT-N-01, High).
+///     space instance, kicking every co-located player (high impact).
 /// - The ENTIRE SGWGmPlayer tail (`>= SGWGMPLAYER_CELL_METHOD_BASE`, i.e.
 ///   109+). Every method there is a gm*/debug command by construction, so
 ///   one range rule gates all of them at once — no per-method bookkeeping.
@@ -182,7 +182,7 @@ mod tests {
         }
     }
 
-    /// #473 / CAT-N-04: the entire SGWGmPlayer cell-method tail (>= 109) is
+    /// The entire SGWGmPlayer cell-method tail (>= 109) is
     /// GM-only by construction. One range rule must gate all of it — every
     /// gm*/debug index, implemented or not. The boundary is load-bearing:
     /// 108 ungated (last inherited player method) ↔ 109 gated (first GM

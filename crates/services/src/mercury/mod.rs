@@ -139,8 +139,9 @@ pub(crate) const SGWPLAYER_CLASS_ID: u8 = 0x02;
 /// client reads from CREATE_BASE_PLAYER to select which entity method table
 /// it binds to the player id — 0x02 → SGWPlayer, 0x03 → SGWGmPlayer. Only
 /// flipped for access_level > 0 accounts so the native gm* cell surface
-/// (109+) becomes reachable. See `bigworld-engine-advisor`
-/// `sgwgmplayer-class-and-index-shift.md` for the full derivation.
+/// (109+) becomes reachable. See
+/// `docs/architecture/gm-cell-method-gating.md` and
+/// `docs/protocol/cell-method-dispatch-table.md` for the full derivation.
 pub(crate) const SGWGMPLAYER_CLASS_ID: u8 = 0x03;
 /// Default space ID for CombatSim (matches reference server pcap: 0x10010 = 65552).
 pub const DEFAULT_SPACE_ID: u32 = 65552;

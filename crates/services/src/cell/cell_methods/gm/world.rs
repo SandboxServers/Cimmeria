@@ -14,7 +14,7 @@ use crate::mercury::read_wstring;
 
 /// `gmKillTarget(INT64 TargetId)` — kill an NPC.
 ///
-/// Safety per the CAT-N audit: REFUSE player targets (player death goes
+/// Safety: REFUSE player targets (player death goes
 /// through the PvP/respawn path, not a GM one-shot), resolve only entities in
 /// the GM's own space, and run the kill through the canonical death sequence
 /// ([`crate::cell::abilities::gm_kill_npc`]) so loot, threat fanout, and the

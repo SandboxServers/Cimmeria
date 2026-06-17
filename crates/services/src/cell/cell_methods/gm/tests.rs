@@ -558,6 +558,172 @@ async fn gm_set_target_sets_and_clears() {
     );
 }
 
+// ── Validation / error-arm guards ──────────────────────────────────────────────
+// These exercise the malformed-input and missing-precondition branches so a
+// regression that drops a guard (and starts acting on garbage) is caught.
+
+#[tokio::test]
+async fn give_handlers_reject_truncated_args() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+    // Each needs an INT32 (or WSTRING+…); empty args must no-op.
+    for idx in [GM_GIVE_XP, GM_GIVE_CASH, GM_GIVE_ITEM, GM_REMOVE_ITEM] {
+        assert!(dispatch(1, idx, &[], &tx, &mut mgr).await);
+    }
+    // gmRemoveItem with only the INT32 (missing the INT16 quantity) is also short.
+    assert!(dispatch(1, GM_REMOVE_ITEM, &7i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        drain(&mut rx).is_empty(),
+        "truncated give/remove args must emit nothing"
+    );
+}
+
+#[tokio::test]
+async fn give_handlers_require_player_id() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.get_entity_mut(1).unwrap().player_id = None;
+    let (tx, mut rx) = mpsc::channel(8);
+
+    assert!(dispatch(1, GM_GIVE_XP, &100i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GIVE_CASH, &100i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GIVE_ITEM, &give_item_args("5", 1), &tx, &mut mgr).await);
+    let mut rm = 5i32.to_le_bytes().to_vec();
+    rm.extend_from_slice(&1i16.to_le_bytes());
+    assert!(dispatch(1, GM_REMOVE_ITEM, &rm, &tx, &mut mgr).await);
+    assert!(
+        drain(&mut rx).is_empty(),
+        "no player_id must block every give/remove"
+    );
+}
+
+#[tokio::test]
+async fn remove_item_rejects_nonpositive_item_id() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+    let mut args = 0i32.to_le_bytes().to_vec();
+    args.extend_from_slice(&5i16.to_le_bytes());
+    assert!(dispatch(1, GM_REMOVE_ITEM, &args, &tx, &mut mgr).await);
+    assert!(rx.try_recv().is_err(), "item_id 0 must not remove");
+}
+
+#[tokio::test]
+async fn set_stat_rejects_truncated_args_and_missing_stat() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+    // No amount.
+    assert!(dispatch(1, GM_SET_HEALTH, &[], &tx, &mut mgr).await);
+    // Amount but no INT64 target.
+    assert!(dispatch(1, GM_SET_FOCUS, &10i32.to_le_bytes(), &tx, &mut mgr).await);
+    // Target id that doesn't resolve to any entity.
+    assert!(dispatch(1, GM_SET_HEALTH, &set_stat_args(10, 9999), &tx, &mut mgr).await);
+    assert!(
+        drain(&mut rx).is_empty(),
+        "truncated / unresolved set-stat must emit nothing"
+    );
+}
+
+#[tokio::test]
+async fn set_focus_max_then_current_applies() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+    // FOCUS default max is 0, so raise the ceiling first, then set current.
+    assert!(dispatch(1, GM_SET_FOCUS_MAX, &set_stat_args(50, 0), &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SET_FOCUS, &set_stat_args(30, 0), &tx, &mut mgr).await);
+    let f = mgr
+        .get_entity(1)
+        .unwrap()
+        .stats
+        .get(cimmeria_entity::stats::FOCUS)
+        .unwrap();
+    assert_eq!(f.max, 50);
+    assert_eq!(f.cur, 30);
+    assert!(
+        !drain(&mut rx).is_empty(),
+        "set-focus must broadcast onStatUpdate"
+    );
+}
+
+#[tokio::test]
+async fn mission_handlers_reject_malformed_design_id() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+    // Empty args → WSTRING parse fails for both.
+    assert!(dispatch(1, GM_MISSION_CLEAR, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_MISSION_ADVANCE, &[], &tx, &mut mgr).await);
+    // Non-numeric design id on advance.
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "QuestName");
+    args.extend_from_slice(&2i32.to_le_bytes());
+    assert!(dispatch(1, GM_MISSION_ADVANCE, &args, &tx, &mut mgr).await);
+    assert!(
+        drain(&mut rx).is_empty(),
+        "malformed/non-numeric mission id must emit nothing"
+    );
+}
+
+#[tokio::test]
+async fn travel_handlers_reject_truncated_args() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+    assert!(dispatch(1, GM_GOTO_XYZ, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_LOCATION, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_DHD, &[], &tx, &mut mgr).await);
+    // goto_location with a world name but no coords.
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "Abydos");
+    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr).await);
+    assert!(
+        drain(&mut rx).is_empty(),
+        "truncated travel args must emit nothing"
+    );
+    assert!(
+        mgr.get_entity(1).is_some(),
+        "rejected travel must not destroy the caller"
+    );
+}
+
+#[tokio::test]
+async fn kill_target_rejects_bad_ids_and_missing_target() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut _rx) = mpsc::channel(8);
+    // Truncated INT64.
+    assert!(dispatch(1, GM_KILL_TARGET, &[], &tx, &mut mgr).await);
+    // Out-of-u32-range target.
+    assert!(dispatch(1, GM_KILL_TARGET, &(i64::MAX).to_le_bytes(), &tx, &mut mgr).await);
+    // Well-formed but nonexistent target — no panic.
+    assert!(dispatch(1, GM_KILL_TARGET, &4242i64.to_le_bytes(), &tx, &mut mgr).await);
+}
+
+#[tokio::test]
+async fn despawn_rejects_truncated_invalid_and_missing() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, _rx) = mpsc::channel(8);
+    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &0i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &4242i32.to_le_bytes(), &tx, &mut mgr).await);
+}
+
+#[tokio::test]
+async fn set_target_rejects_malformed_and_non_numeric() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+    // Empty args → WSTRING parse fails.
+    assert!(dispatch(1, GM_SET_TARGET, &[], &tx, &mut mgr).await);
+    // Non-numeric name (no name→id resolution in the cell).
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "SomeMobName");
+    assert!(dispatch(1, GM_SET_TARGET, &args, &tx, &mut mgr).await);
+    assert_eq!(
+        mgr.get_entity(1).unwrap().current_target_id,
+        None,
+        "malformed/non-numeric must not set a target"
+    );
+    assert!(
+        drain(&mut rx).is_empty(),
+        "malformed gmSetTarget must emit nothing"
+    );
+}
+
 /// An unimplemented 109+ index returns `false` so the router falls through to
 /// its (already-authorized) warn arm — no panic.
 #[tokio::test]

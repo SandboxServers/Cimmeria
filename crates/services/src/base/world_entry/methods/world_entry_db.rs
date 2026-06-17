@@ -16,7 +16,8 @@ use super::super::space_registry::resolve_space_id_fallback;
 /// (flattened indices 109+) is reachable; everyone else stays SGWPlayer
 /// (0x02). Inherited indices 0-108 don't shift either way (append-at-end
 /// inheritance), so the existing player wire path is byte-identical for
-/// access_level 0. See `spec`/`SGWGMPLAYER_CLASS_ID` for the derivation.
+/// access_level 0. See `docs/architecture/gm-cell-method-gating.md` and
+/// `crate::mercury::SGWGMPLAYER_CLASS_ID` for the derivation.
 fn class_id_for_access_level(access_level: u32) -> u8 {
     if access_level > 0 {
         SGWGMPLAYER_CLASS_ID
@@ -243,7 +244,7 @@ mod tests {
         assert_eq!(entry.class_id, SGWPLAYER_CLASS_ID);
     }
 
-    /// #473 / CAT-N-04: a GM (access_level > 0) world entry must build the
+    /// A GM (access_level > 0) world entry must build the
     /// `WorldEntryInfo` with the SGWGmPlayer class id so CREATE_BASE_PLAYER
     /// emits 0x03 and the client binds the GM method table. A regular
     /// player (access_level 0) stays 0x02 — the byte-unchanged property

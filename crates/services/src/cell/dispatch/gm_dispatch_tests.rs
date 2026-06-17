@@ -1,4 +1,4 @@
-//! SGWGmPlayer tail (109+) routing through the gate (CAT-N-04).
+//! SGWGmPlayer tail (109+) routing through the gate.
 //!
 //! End-to-end dispatch tests that exercise the GM gate for the SGWGmPlayer
 //! own cell-method tail (flattened index >= 109): non-GM rejection, GM

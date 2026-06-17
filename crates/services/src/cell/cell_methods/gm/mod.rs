@@ -1,5 +1,5 @@
 //! SGWGmPlayer own CellMethods — the gm*/debug command tail that appends at
-//! flattened cell-method index 109+ (#473 / CAT-N-04).
+//! flattened cell-method index 109+.
 //!
 //! SGWGmPlayer declares `<Parent>SGWPlayer</Parent>` with empty
 //! `<Implements>`, so its own `<Exposed/>` CellMethods land AFTER SGWPlayer's

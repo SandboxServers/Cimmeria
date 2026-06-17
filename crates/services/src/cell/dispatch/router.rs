@@ -101,12 +101,11 @@ pub async fn dispatch_cell_method(
     if cell_methods::player::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await {
         return;
     }
-    // SGWGmPlayer own methods (109+) — the native gm*/debug surface
-    // (#473 / CAT-N-04). The GM gate above already authorized this caller
-    // for any index >= 109, so reaching here means access_level >=
-    // GameMaster. Only a verified subset is implemented; unimplemented 109+
-    // indices return `false` and fall through to the (already-authorized)
-    // warn arm below — harmless.
+    // SGWGmPlayer own methods (109+) — the native gm*/debug surface. The GM
+    // gate above already authorized this caller for any index >= 109, so
+    // reaching here means access_level >= GameMaster. Only a verified subset
+    // is implemented; unimplemented 109+ indices return `false` and fall
+    // through to the (already-authorized) warn arm below — harmless.
     if cell_methods::gm::dispatch(entity_id, method_index, args, tx, space_mgr).await {
         return;
     }
@@ -153,8 +152,8 @@ mod tests {
         let engine = ChainEngine::new();
 
         // 0xFFFF is past every implemented cell-method range — guaranteed to
-        // reach the fall-through warn arm. BUT since #473 the GM gate rejects
-        // any index >= 109 for a non-GM caller BEFORE the router routes, and
+        // reach the fall-through warn arm. BUT the GM gate rejects any index
+        // >= 109 for a non-GM caller BEFORE the router routes, and
         // 0xFFFF is in that range. To exercise the unhandled-method warn (not
         // the gate's rejection warn) the caller must be a GM, so register the
         // entity with GameMaster access. This keeps the test pinning the

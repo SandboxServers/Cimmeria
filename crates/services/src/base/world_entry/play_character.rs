@@ -113,7 +113,7 @@ pub(crate) async fn handle_play_character(
     // 0x03 — the earlier "shifts ALL indices" note was wrong about the
     // mechanism. The real reason 0x02 was hardcoded before was twofold and
     // both are now resolved: (a) no handlers existed for the gm* indices 109+,
-    // and (b) the cell layer had no access_level to gate them (CAT-N-03). With
+    // and (b) the cell layer had no access_level to gate them. With
     // the GM gate (gm_gate.rs) covering 109+ and a verified gm* subset wired
     // in the cell router, flipping the class for GMs is safe.
 
