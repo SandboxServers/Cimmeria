@@ -175,37 +175,40 @@ async fn load_spawn_record_for_template(
         z: position[2],
         heading: 0.0,
         tag: None,
-        // Template-derived fields.
-        template_id: row.get("template_id"),
-        template_name: row.get("template_name"),
-        class: row.get("class"),
-        static_mesh: row.get("static_mesh"),
-        body_set: row.get("body_set"),
-        components: row.get("components"),
-        flags: row.get("flags"),
-        interaction_type: row.get("interaction_type"),
-        event_set_id: row.get("event_set_id"),
-        level: row.get("level"),
-        alignment: row.get("alignment"),
-        faction: row.get("faction"),
-        name_id: row.get("name_id"),
-        speaker_id: row.get("speaker_id"),
-        static_interaction_sets: row.get("static_interaction_sets"),
-        has_dynamic_properties: row.get("has_dynamic_properties"),
-        loot_table_id: row.get("loot_table_id"),
+        // Template-derived fields. Use `try_get` + `?` throughout so a NULL in a
+        // non-nullable column (the seed has half-wired content) surfaces as a
+        // decode error → the handler drops the spawn with a warn, rather than
+        // `row.get` panicking the whole base task.
+        template_id: row.try_get("template_id")?,
+        template_name: row.try_get("template_name")?,
+        class: row.try_get("class")?,
+        static_mesh: row.try_get("static_mesh")?,
+        body_set: row.try_get("body_set")?,
+        components: row.try_get("components")?,
+        flags: row.try_get("flags")?,
+        interaction_type: row.try_get("interaction_type")?,
+        event_set_id: row.try_get("event_set_id")?,
+        level: row.try_get("level")?,
+        alignment: row.try_get("alignment")?,
+        faction: row.try_get("faction")?,
+        name_id: row.try_get("name_id")?,
+        speaker_id: row.try_get("speaker_id")?,
+        static_interaction_sets: row.try_get("static_interaction_sets")?,
+        has_dynamic_properties: row.try_get("has_dynamic_properties")?,
+        loot_table_id: row.try_get("loot_table_id")?,
         // GM spawns are placeable mobs, not stationary props.
         is_stationary: false,
-        ability_ids: row.get::<Vec<i32>, _>("ability_ids"),
-        respawn_secs: crate::cell::spawner::normalize_respawn_secs(
-            row.try_get::<Option<i32>, _>("respawn_secs")?,
-        ),
+        ability_ids: row.try_get::<Vec<i32>, _>("ability_ids")?,
+        // GM spawns are one-shot: force `respawn_secs = None` so a `spawn_id = -1`
+        // (non-DB) instance is never handed to the respawner.
+        respawn_secs: None,
         patrol_path,
-        patrol_point_delay_secs: row.get::<f32, _>("patrol_point_delay"),
-        wander_radius: row.get::<f32, _>("wander_radius"),
-        wander_min_dwell_secs: row.get::<f32, _>("wander_min_dwell_secs"),
-        wander_max_dwell_secs: row.get::<f32, _>("wander_max_dwell_secs"),
-        follow_min_distance: row.get::<f32, _>("follow_min_distance"),
-        follow_max_distance: row.get::<f32, _>("follow_max_distance"),
+        patrol_point_delay_secs: row.try_get::<f32, _>("patrol_point_delay")?,
+        wander_radius: row.try_get::<f32, _>("wander_radius")?,
+        wander_min_dwell_secs: row.try_get::<f32, _>("wander_min_dwell_secs")?,
+        wander_max_dwell_secs: row.try_get::<f32, _>("wander_max_dwell_secs")?,
+        follow_min_distance: row.try_get::<f32, _>("follow_min_distance")?,
+        follow_max_distance: row.try_get::<f32, _>("follow_max_distance")?,
     };
 
     Ok(Some(record))
@@ -272,6 +275,100 @@ mod tests {
             }
             _ => panic!("expected BaseToCellMsg::GmSpawnNpcReady"),
         }
+    }
+
+    /// A template row whose non-Option column (`template_name`) is NULL must be
+    /// dropped gracefully: `load_spawn_record_for_template` reads it via
+    /// `try_get::<String, _>` + `?`, so a NULL decodes to an `sqlx::Error` →
+    /// `Err` arm → no `GmSpawnNpcReady` reply (and crucially, no panic that
+    /// would take down the base task).
+    ///
+    /// `template_name` is schema-NOT-NULL, so the constraint is dropped for the
+    /// duration of the INSERT and restored in a `defer`-style guaranteed
+    /// teardown. Live-DB tests run serialized (`--test-threads=1`), so the
+    /// transient constraint relaxation can't race another test. The sentinel
+    /// row is deleted on the way out.
+    ///
+    /// Reverting the `try_get` + `?` discipline back to `row.get` would turn
+    /// this graceful drop into a panic — the handler would unwind instead of
+    /// returning, and this test (which expects a clean no-reply) would fail.
+    #[tokio::test]
+    async fn gm_spawn_malformed_template_drops_gracefully() {
+        let pool = require_db_or_skip!();
+        // Sentinel template id in the 0x7000_xxxx range, well within i32.
+        const SENTINEL_TEMPLATE_ID: i32 = 0x7000_4242;
+
+        // Teardown: delete the sentinel and restore NOT NULL. The handler under
+        // test returns gracefully (it does not panic — the whole point), so a
+        // straight-line teardown after the run is sufficient; live-DB tests run
+        // serialized so the transient constraint relaxation can't race.
+        async fn teardown(pool: &sqlx::PgPool) {
+            let _ = sqlx::query("DELETE FROM resources.entity_templates WHERE template_id = $1")
+                .bind(SENTINEL_TEMPLATE_ID)
+                .execute(pool)
+                .await;
+            let _ = sqlx::query(
+                "ALTER TABLE resources.entity_templates ALTER COLUMN template_name SET NOT NULL",
+            )
+            .execute(pool)
+            .await;
+        }
+
+        // Clean any leftover sentinel from a previously-aborted run before we
+        // touch the constraint.
+        sqlx::query("DELETE FROM resources.entity_templates WHERE template_id = $1")
+            .bind(SENTINEL_TEMPLATE_ID)
+            .execute(&pool)
+            .await
+            .expect("pre-clean sentinel");
+
+        // Relax NOT NULL just long enough to insert the malformed row.
+        sqlx::query(
+            "ALTER TABLE resources.entity_templates ALTER COLUMN template_name DROP NOT NULL",
+        )
+        .execute(&pool)
+        .await
+        .expect("drop NOT NULL on template_name");
+
+        // Insert the sentinel with template_name = NULL. body_set and class are
+        // still NOT NULL so we provide them; only the column under test is NULL.
+        if let Err(e) = sqlx::query(
+            "INSERT INTO resources.entity_templates \
+                (template_id, template_name, class, body_set) \
+             VALUES ($1, NULL, 'TestClass', 'TestBodySet')",
+        )
+        .bind(SENTINEL_TEMPLATE_ID)
+        .execute(&pool)
+        .await
+        {
+            teardown(&pool).await;
+            panic!("failed to insert malformed sentinel template: {e}");
+        }
+
+        let (cell_tx, mut cell_rx) = mpsc::channel(8);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        // Run the handler against the malformed template. `try_get` + `?` turns
+        // the NULL into an Err arm → graceful drop (no reply, no panic).
+        handle_gm_spawn_npc(
+            42,
+            SENTINEL_TEMPLATE_ID,
+            5,
+            "Castle".to_string(),
+            [0.0; 3],
+            &db_pool,
+            &Some(cell_tx),
+        )
+        .await;
+
+        let got_reply = cell_rx.try_recv().is_ok();
+        teardown(&pool).await;
+
+        assert!(
+            !got_reply,
+            "a NULL non-Option column must decode-error → graceful drop, \
+             not a GmSpawnNpcReady reply"
+        );
     }
 
     /// A template id that doesn't exist must drop the spawn — no

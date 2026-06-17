@@ -169,6 +169,181 @@ async fn summon_moves_npc_to_caller() {
 }
 
 #[tokio::test]
+async fn summon_player_snaps_target_via_teleport() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.get_entity_mut(1).unwrap().position = Vector3 {
+        x: 7.0,
+        y: 0.0,
+        z: 8.0,
+    };
+    // A second *player* target (not an NPC) at a distinct position.
+    mgr.create_entity(2, "Castle", [100.0, 0.0, 100.0], [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(2).unwrap().is_player = true;
+    let (tx, mut rx) = mpsc::channel(8);
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "2");
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+
+    // Grid position moved to the caller…
+    let p = mgr.get_entity(2).unwrap().position;
+    assert_eq!(
+        [p.x, p.y, p.z],
+        [7.0, 0.0, 8.0],
+        "player must move to caller"
+    );
+    // …and a player target needs the authoritative TeleportPlayer snap to id 2.
+    let teleport = drain(&mut rx).into_iter().find_map(|m| match m {
+        CellToBaseMsg::TeleportPlayer {
+            entity_id: 2,
+            position,
+            ..
+        } => Some(position),
+        _ => None,
+    });
+    assert_eq!(
+        teleport,
+        Some([7.0, 0.0, 8.0]),
+        "summoning a PLAYER must emit TeleportPlayer for the target at the caller's position"
+    );
+}
+
+#[tokio::test]
+async fn summon_missing_and_cross_space_refused() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.get_entity_mut(1).unwrap().position = Vector3 {
+        x: 7.0,
+        y: 0.0,
+        z: 8.0,
+    };
+    // A target in a *different* space.
+    mgr.parse_spaces_xml(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Other" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Other" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(2, "Other", [50.0, 0.0, 60.0], [0.0; 3])
+        .unwrap();
+    let (tx, mut rx) = mpsc::channel(8);
+
+    // Cross-space summon: refused — no teleport, target unmoved.
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "2");
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(
+        drain(&mut rx).is_empty(),
+        "cross-space summon must emit nothing"
+    );
+    let p = mgr.get_entity(2).unwrap().position;
+    assert_eq!(
+        [p.x, p.y, p.z],
+        [50.0, 0.0, 60.0],
+        "cross-space target must be left unmoved"
+    );
+
+    // Missing target id: refused — no teleport.
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "4242");
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(
+        drain(&mut rx).is_empty(),
+        "summon of a missing id must emit nothing"
+    );
+}
+
+#[tokio::test]
+async fn goto_missing_and_cross_space_refused() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let caller_start = mgr.get_entity(1).unwrap().position;
+    // A target in a different space.
+    mgr.parse_spaces_xml(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Other" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Other" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(2, "Other", [50.0, 0.0, 60.0], [0.0; 3])
+        .unwrap();
+    let (tx, mut rx) = mpsc::channel(8);
+
+    // Cross-space goto: refused — caller not moved, no teleport.
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "2");
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(
+        drain(&mut rx).is_empty(),
+        "cross-space goto must emit nothing"
+    );
+
+    // Missing target id: refused.
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "4242");
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(
+        drain(&mut rx).is_empty(),
+        "goto of a missing id must emit nothing"
+    );
+
+    let p = mgr.get_entity(1).unwrap().position;
+    assert_eq!(
+        [p.x, p.y, p.z],
+        [caller_start.x, caller_start.y, caller_start.z],
+        "a refused goto must leave the caller unmoved"
+    );
+}
+
+/// G1 witness-visibility guard: a summoned idle NPC must be broadcast to the
+/// caller-witness at the caller's position on the next AoI tick. The NPC is
+/// first brought into the witness set (tick 1 → EnteredAoI), then summoned to
+/// the caller, then tick 2 must emit `EntityMoved` for the NPC to the caller
+/// carrying the caller's position. Without the summon's grid-position update,
+/// the EntityMoved would carry the NPC's old spawn position — so this pins both
+/// that the NPC stays in AoI and that it's broadcast at the new spot.
+#[tokio::test]
+async fn summoned_npc_is_broadcast_to_caller_witness() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.connect_entity(1); // AoI walks players; ensure the caller is tracked
+    mgr.get_entity_mut(1).unwrap().position = Vector3 {
+        x: 5.0,
+        y: 0.0,
+        z: 5.0,
+    };
+    // NPC spawned within the caller's AoI radius so tick 1 makes it a witness.
+    mgr.spawn_npc(50, "Castle", [6.0, 0.0, 6.0], [0.0; 3])
+        .unwrap();
+
+    // Tick 1: NPC enters AoI (becomes a witness of the caller).
+    let _ = mgr.compute_aoi_changes();
+
+    // Summon the NPC to the caller.
+    let (tx, _rx) = mpsc::channel(8);
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "50");
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+
+    // Tick 2: NPC is still in AoI → EntityMoved to the caller with the caller's pos.
+    let moved = mgr.compute_aoi_changes().into_iter().find_map(|m| match m {
+        CellToBaseMsg::EntityMoved {
+            witness_id: 1,
+            entity_id: 50,
+            position,
+            ..
+        } => Some(position),
+        _ => None,
+    });
+    assert_eq!(
+        moved,
+        Some([5.0, 0.0, 5.0]),
+        "summoned NPC must be broadcast to the caller-witness at the caller's position"
+    );
+}
+
+#[tokio::test]
 async fn goto_summon_reject_non_numeric() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);

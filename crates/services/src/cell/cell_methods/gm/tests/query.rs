@@ -197,6 +197,105 @@ async fn get_mob_attribute_maps_known_attrs() {
     assert!(fb.contains("unknown attribute"), "got: {fb}");
 }
 
+/// `gmGetMobAttribute` must map each supported attribute to the entity's actual
+/// value. One NPC is seeded with known stats/fields, then every attribute arm
+/// is exercised and the feedback is checked for the exact value. `level` and
+/// `bogus` are covered elsewhere; this pins the remaining eight arms so a
+/// regression that drops or mis-maps an arm (e.g. focus→health) trips here.
+#[tokio::test]
+async fn get_mob_attribute_covers_all_supported_arms() {
+    use cimmeria_entity::stats::{FOCUS, HEALTH};
+
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.create_entity(2, "Castle", [11.0, 22.0, 33.0], [0.0; 3])
+        .unwrap();
+    {
+        let e = mgr.get_entity_mut(2).unwrap();
+        e.faction = 4;
+        e.alignment = 3;
+        e.template_id = Some(987);
+        e.npc_name = Some("Jaffa Warrior".into());
+        // get_mut works on a fresh entity: StatList::new() seeds HEALTH/FOCUS.
+        let h = e.stats.get_mut(HEALTH).expect("HEALTH stat present");
+        h.cur = 120;
+        h.max = 150;
+        let f = e.stats.get_mut(FOCUS).expect("FOCUS stat present");
+        f.cur = 40;
+        f.max = 60;
+    }
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let ask = |attr: &str| {
+        let mut args = 2i32.to_le_bytes().to_vec();
+        write_wstring_arg(&mut args, attr);
+        args
+    };
+
+    for (attr, expected) in [
+        ("health", "health: 120/150"),
+        ("focus", "focus: 40/60"),
+        ("faction", "faction: 4"),
+        ("alignment", "alignment: 3"),
+        ("aistate", "ai_state:"),
+        ("name", "name: Jaffa Warrior"),
+        ("template", "template: Some(987)"),
+        ("pos", "pos: (11.0, 22.0, 33.0)"),
+    ] {
+        assert!(dispatch(1, GM_GET_MOB_ATTRIBUTE, &ask(attr), &tx, &mut mgr).await);
+        let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
+        assert!(
+            fb.contains(expected),
+            "attr '{attr}' expected substring '{expected}', got: {fb}"
+        );
+    }
+}
+
+/// `gmDebugMobData` (args: spaceId hint + target) must dump the target mob's
+/// template + faction/level. Pins the happy-path branch (the in-space match arm)
+/// distinct from the truncated/not-found paths.
+#[tokio::test]
+async fn debug_mob_data_dumps_target_mob() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    {
+        let e = mgr.get_entity_mut(2).unwrap();
+        e.template_id = Some(555);
+        e.faction = 9;
+        e.level = 12;
+    }
+    let (tx, mut rx) = mpsc::channel(8);
+    // Args: INT32 spaceId (hint, ignored) + INT32 target.
+    let mut args = 0i32.to_le_bytes().to_vec();
+    args.extend_from_slice(&2i32.to_le_bytes());
+    assert!(dispatch(1, GM_DEBUG_MOB_DATA, &args, &tx, &mut mgr).await);
+    let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
+    assert!(
+        fb.contains("mob [2]")
+            && fb.contains("tmpl Some(555)")
+            && fb.contains("faction 9")
+            && fb.contains("lvl 12"),
+        "debug dump must include the mob's template/faction/level, got: {fb}"
+    );
+}
+
+/// `gmShowFlag` must report SET when the queried bit is set on the subject's
+/// `state_field`. The existing test only covers the clear + out-of-range paths;
+/// this pins the SET branch and the raw `state_field` echo.
+#[tokio::test]
+async fn show_flag_reports_set_bit() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    // Set bit 5 directly on the caller's raw state_field; gmShowFlag with no
+    // target inspects the caller (subject_or_self).
+    mgr.get_entity_mut(1).unwrap().state_field = 1u32 << 5;
+    let (tx, mut rx) = mpsc::channel(8);
+    assert!(dispatch(1, GM_SHOW_FLAG, &5i32.to_le_bytes(), &tx, &mut mgr).await);
+    let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
+    assert!(
+        fb.contains("bit 5") && fb.contains("SET") && fb.contains("0x00000020"),
+        "set bit must report SET + raw state_field, got: {fb}"
+    );
+}
+
 #[tokio::test]
 async fn show_mob_count_counts_npcs_in_space() {
     let mut mgr = mgr_with_player(1, "Castle");
