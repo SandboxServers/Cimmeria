@@ -121,22 +121,50 @@ async fn gm_set_target_sets_and_clears() {
 #[tokio::test]
 async fn kill_target_rejects_bad_ids_and_missing_target() {
     let mut mgr = mgr_with_player(1, "Castle");
-    let (tx, mut _rx) = mpsc::channel(8);
-    // Truncated INT64.
+    // A live NPC that must remain untouched by every rejected call.
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    let (tx, mut rx) = mpsc::channel(8);
+    // Truncated INT64 / out-of-u32-range / well-formed but nonexistent.
     assert!(dispatch(1, GM_KILL_TARGET, &[], &tx, &mut mgr).await);
-    // Out-of-u32-range target.
     assert!(dispatch(1, GM_KILL_TARGET, &(i64::MAX).to_le_bytes(), &tx, &mut mgr).await);
-    // Well-formed but nonexistent target — no panic.
     assert!(dispatch(1, GM_KILL_TARGET, &4242i64.to_le_bytes(), &tx, &mut mgr).await);
+    // Postcondition: no side effects — the bystander NPC is alive and nothing
+    // was emitted on the wire. Fails if a reject path falls through to a kill.
+    let npc = mgr.get_entity(2).unwrap();
+    assert!(
+        !crate::cell::combat::is_dead_state(npc.state_field),
+        "no entity should have been killed"
+    );
+    assert!(
+        drain(&mut rx).is_empty(),
+        "rejected kills must emit nothing"
+    );
 }
 
 #[tokio::test]
 async fn despawn_rejects_truncated_invalid_and_missing() {
     let mut mgr = mgr_with_player(1, "Castle");
-    let (tx, _rx) = mpsc::channel(8);
+    // A live NPC that must survive every rejected call.
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    let before = mgr.all_entity_ids().len();
+    let (tx, mut rx) = mpsc::channel(8);
     assert!(dispatch(1, GM_DESPAWN_BY_CMD, &[], &tx, &mut mgr).await);
     assert!(dispatch(1, GM_DESPAWN_BY_CMD, &0i32.to_le_bytes(), &tx, &mut mgr).await);
     assert!(dispatch(1, GM_DESPAWN_BY_CMD, &4242i32.to_le_bytes(), &tx, &mut mgr).await);
+    // Postcondition: nothing despawned, nothing emitted.
+    assert!(
+        mgr.get_entity(2).is_some(),
+        "bystander NPC must survive rejected despawns"
+    );
+    assert_eq!(
+        mgr.all_entity_ids().len(),
+        before,
+        "no entity should have been removed"
+    );
+    assert!(
+        drain(&mut rx).is_empty(),
+        "rejected despawns must emit nothing"
+    );
 }
 
 #[tokio::test]

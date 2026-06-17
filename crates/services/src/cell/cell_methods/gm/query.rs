@@ -7,7 +7,6 @@
 //! [`super::feedback::send_gm_feedback`].
 
 use cimmeria_entity::cell_entity::CellEntity;
-use cimmeria_entity::missions::{MISSION_ACTIVE, MISSION_COMPLETED};
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 use tokio::sync::mpsc;
 
@@ -409,102 +408,6 @@ pub(super) async fn handle_debug_mob_data(
         }
         Some(_) => "gmDebugMobData: target is in a different space.".to_string(),
         None => "gmDebugMobData: no such entity.".to_string(),
-    };
-    send_gm_feedback(entity_id, &text, tx).await;
-    true
-}
-
-/// Format one mission instance into a compact line.
-fn mission_line(m: &cimmeria_entity::missions::MissionInstance) -> String {
-    let status = match m.status {
-        MISSION_ACTIVE => "active",
-        MISSION_COMPLETED => "done",
-        _ => "other",
-    };
-    format!(
-        "#{} {status} step {:?} obj {}/{}",
-        m.mission_id,
-        m.current_step_id,
-        m.completed_objectives.len(),
-        m.completed_objectives.len() + m.active_objectives.len()
-    )
-}
-
-/// `gmMissionList()` — list the caller's active missions.
-pub(super) async fn handle_mission_list(
-    entity_id: u32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) -> bool {
-    let text = match space_mgr.get_entity(entity_id) {
-        Some(e) => {
-            let lines: Vec<String> = e
-                .missions
-                .active_missions()
-                .iter()
-                .map(|m| mission_line(m))
-                .collect();
-            if lines.is_empty() {
-                "gmMissionList: no active missions.".to_string()
-            } else {
-                format!("gmMissionList ({}): {}", lines.len(), lines.join(" | "))
-            }
-        }
-        None => "gmMissionList: no entity.".to_string(),
-    };
-    send_gm_feedback(entity_id, &text, tx).await;
-    true
-}
-
-/// `gmMissionListFull()` — list ALL the caller's missions (incl. completed/hidden).
-pub(super) async fn handle_mission_list_full(
-    entity_id: u32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) -> bool {
-    let text = match space_mgr.get_entity(entity_id) {
-        Some(e) => {
-            let lines: Vec<String> = e.missions.all_missions().map(mission_line).collect();
-            if lines.is_empty() {
-                "gmMissionListFull: no missions.".to_string()
-            } else {
-                format!("gmMissionListFull ({}): {}", lines.len(), lines.join(" | "))
-            }
-        }
-        None => "gmMissionListFull: no entity.".to_string(),
-    };
-    send_gm_feedback(entity_id, &text, tx).await;
-    true
-}
-
-/// `gmMissionDetails(WSTRING DesignID)` — show one mission's detail (numeric id).
-pub(super) async fn handle_mission_details(
-    entity_id: u32,
-    args: &[u8],
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) -> bool {
-    let mission_id = match read_wstring(args, 0)
-        .ok()
-        .and_then(|(s, _)| s.trim().parse::<i32>().ok())
-    {
-        Some(id) if id > 0 => id,
-        _ => {
-            send_gm_feedback(
-                entity_id,
-                "gmMissionDetails: DesignID must be a positive numeric id.",
-                tx,
-            )
-            .await;
-            return true;
-        }
-    };
-    let text = match space_mgr
-        .get_entity(entity_id)
-        .and_then(|e| e.missions.get_mission(mission_id))
-    {
-        Some(m) => format!("gmMissionDetails {}", mission_line(m)),
-        None => format!("gmMissionDetails: mission {mission_id} not found on you."),
     };
     send_gm_feedback(entity_id, &text, tx).await;
     true

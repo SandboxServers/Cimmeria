@@ -68,8 +68,27 @@ async fn show_player_dumps_entity_info() {
 #[tokio::test]
 async fn show_player_cross_space_and_missing_report_errors() {
     let mut mgr = mgr_with_player(1, "Castle");
+    // An entity in a *different* space — gmShowPlayer must refuse it.
+    mgr.parse_spaces_xml(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Other" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Other" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(2, "Other", [0.0; 3], [0.0; 3]).unwrap();
     let (tx, mut rx) = mpsc::channel(8);
-    // Nonexistent id.
+
+    // Cross-space target → "different space".
+    assert!(dispatch(1, GM_SHOW_PLAYER, &2i32.to_le_bytes(), &tx, &mut mgr).await);
+    let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
+    assert!(
+        fb.contains("different space"),
+        "cross-space must be refused, got: {fb}"
+    );
+
+    // Nonexistent id → "no such entity".
     assert!(dispatch(1, GM_SHOW_PLAYER, &4242i32.to_le_bytes(), &tx, &mut mgr).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(fb.contains("no such entity"), "got: {fb}");

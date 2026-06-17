@@ -20,10 +20,11 @@
 //! Handlers are grouped by family into submodules:
 //! - [`give`] — grant/remove (xp, item, cash).
 //! - [`stats`] — set health/focus current+max.
-//! - [`missions`] — clear/advance/abandon.
-//! - [`travel`] — goto-xyz / goto-location / DHD dial.
+//! - [`missions`] — assign/clear/advance + list/full/details.
+//! - [`travel`] — goto-xyz / goto-location / goto / summon / DHD dial.
 //! - [`world`] — kill / despawn / respawn / set-target.
-//! - [`query`] — users / test-LOS (report text via [`feedback`]).
+//! - [`spawn`] — spawn-by-cmd (cell↔base template round-trip).
+//! - [`query`] — inspection/show + users + test-LOS (report via [`feedback`]).
 //! - [`feedback`] — single-recipient `onPlayerCommunication` delivery.
 //!
 //! The full 117-method inventory + handler-status map (DONE/REUSE/ADAPT/NEW)
@@ -209,9 +210,11 @@ pub async fn dispatch(
         GM_MISSION_ADVANCE => {
             missions::handle_mission_advance(entity_id, args, tx, space_mgr).await
         }
-        GM_MISSION_LIST => query::handle_mission_list(entity_id, tx, space_mgr).await,
-        GM_MISSION_LIST_FULL => query::handle_mission_list_full(entity_id, tx, space_mgr).await,
-        GM_MISSION_DETAILS => query::handle_mission_details(entity_id, args, tx, space_mgr).await,
+        GM_MISSION_LIST => missions::handle_mission_list(entity_id, tx, space_mgr).await,
+        GM_MISSION_LIST_FULL => missions::handle_mission_list_full(entity_id, tx, space_mgr).await,
+        GM_MISSION_DETAILS => {
+            missions::handle_mission_details(entity_id, args, tx, space_mgr).await
+        }
         // -- travel --
         GM_GOTO_XYZ => travel::handle_goto_xyz(entity_id, args, tx, space_mgr).await,
         GM_GOTO => travel::handle_goto(entity_id, args, tx, space_mgr).await,
