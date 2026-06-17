@@ -69,7 +69,7 @@ interface handler:
 - **A new SGWGmPlayer method (flattened index >= 109):** nothing to do for
   gating. The `index >= SGWGMPLAYER_CELL_METHOD_BASE` range rule already
   covers the entire tail, so any new gm*/debug method is GM-gated the moment
-  it exists. Just implement the handler in `cell_methods/gm.rs` (or leave it
+  it exists. Just implement the handler in `cell_methods/gm/` (or leave it
   to fall through the auth-gated router warn arm until you do).
 - **A GM/debug method inside the inherited 0-108 range:** add its flattened
   index to the `matches!` in `requires_gm`. These share an interface with
