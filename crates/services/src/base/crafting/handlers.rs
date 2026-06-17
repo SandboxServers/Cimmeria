@@ -72,8 +72,13 @@ pub async fn handle_grant_expertise(
         }
     };
 
-    let new_expertise =
-        (state.get_expertise(discipline_id).unwrap_or(0) + amount).clamp(0, EXPERTISE_CAP);
+    // `saturating_add`: `amount` is only gated `> 0` on the cell side (no upper
+    // bound), so a huge grant must not overflow i32 before the clamp.
+    let new_expertise = state
+        .get_expertise(discipline_id)
+        .unwrap_or(0)
+        .saturating_add(amount)
+        .clamp(0, EXPERTISE_CAP);
     state.set_expertise(discipline_id, new_expertise);
     // Register the discipline as known if this is the first grant — a stray
     // expertise row without the discipline in `discipline_ids` is the drift

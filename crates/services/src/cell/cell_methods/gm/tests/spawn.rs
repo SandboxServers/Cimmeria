@@ -62,7 +62,10 @@ async fn gm_spawn_by_cmd_rejects_non_numeric_template() {
         .await
     );
     assert!(
-        rx.try_recv().is_err(),
+        matches!(
+            rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ),
         "non-numeric template id must not spawn"
     );
 
@@ -77,7 +80,13 @@ async fn gm_spawn_by_cmd_rejects_non_numeric_template() {
         )
         .await
     );
-    assert!(rx.try_recv().is_err(), "template id 0 must not spawn");
+    assert!(
+        matches!(
+            rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ),
+        "template id 0 must not spawn"
+    );
 }
 
 #[tokio::test]
@@ -89,13 +98,22 @@ async fn gm_spawn_by_cmd_rejects_truncated_and_nonfinite() {
     let mut short = Vec::new();
     write_wstring_arg(&mut short, "4321");
     assert!(dispatch(1, GM_SPAWN_BY_CMD, &short, &tx, &mut mgr).await);
-    assert!(rx.try_recv().is_err(), "missing offsets must not spawn");
+    assert!(
+        matches!(
+            rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ),
+        "missing offsets must not spawn"
+    );
 
     // NaN offset → non-finite computed position → reject.
     let args = spawn_args("4321", f32::NAN, 0.0);
     assert!(dispatch(1, GM_SPAWN_BY_CMD, &args, &tx, &mut mgr).await);
     assert!(
-        rx.try_recv().is_err(),
+        matches!(
+            rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ),
         "non-finite spawn position must not spawn"
     );
 }

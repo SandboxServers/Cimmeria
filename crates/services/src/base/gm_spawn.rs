@@ -31,7 +31,6 @@ use crate::cell::spawner::SpawnRecord;
     skip_all,
     fields(entity_id, template_id, space_id)
 )]
-#[allow(clippy::too_many_arguments)]
 pub async fn handle_gm_spawn_npc(
     entity_id: u32,
     template_id: i32,
@@ -156,11 +155,8 @@ async fn load_spawn_record_for_template(
     // Patrol points, if any, follow the same `point_set_points` lookup the
     // spawnlist loader uses. For a GM spawn we resolve the single template's
     // patrol_path_id (NULL → empty path).
-    let patrol_path = match row
-        .try_get::<Option<i32>, _>("patrol_path_id")
-        .ok()
-        .flatten()
-    {
+    let patrol_path_id: Option<i32> = row.try_get("patrol_path_id")?;
+    let patrol_path = match patrol_path_id {
         Some(path_id) => crate::cell::spawner::load_patrol_points(pool, &[path_id])
             .await?
             .remove(&path_id)
@@ -201,7 +197,7 @@ async fn load_spawn_record_for_template(
         is_stationary: false,
         ability_ids: row.get::<Vec<i32>, _>("ability_ids"),
         respawn_secs: crate::cell::spawner::normalize_respawn_secs(
-            row.try_get::<Option<i32>, _>("respawn_secs").ok().flatten(),
+            row.try_get::<Option<i32>, _>("respawn_secs")?,
         ),
         patrol_path,
         patrol_point_delay_secs: row.get::<f32, _>("patrol_point_delay"),

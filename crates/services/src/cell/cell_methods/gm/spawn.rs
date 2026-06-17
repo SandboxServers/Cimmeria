@@ -118,7 +118,7 @@ pub(super) async fn handle_spawn_by_cmd(
         ?position,
         "gmSpawnByCmd: requesting NPC spawn from base"
     );
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::GmSpawnNpc {
             entity_id,
             template_id,
@@ -126,7 +126,10 @@ pub(super) async fn handle_spawn_by_cmd(
             world_name,
             position,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, template_id, error = %e, "gmSpawnByCmd: GmSpawnNpc send to base failed — spawn dropped");
+    }
     true
 }
 
