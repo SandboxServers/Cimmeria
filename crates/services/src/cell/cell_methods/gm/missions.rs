@@ -97,13 +97,19 @@ pub(super) async fn handle_mission_assign(
         step_id,
         "gmMissionAssign: assigning mission"
     );
-    missions::accept_mission(entity_id, mission_id, step_id, objectives, tx, space_mgr).await;
-    send_gm_feedback(
-        entity_id,
-        &format!("gmMissionAssign: assigned mission {mission_id} (step {step_id})"),
-        tx,
-    )
-    .await;
+    // accept_mission returns false when the offer guard refuses (e.g. already
+    // held, or a non-repeatable mission past its repeat cap). Only report
+    // success when the mutation actually happened.
+    let accepted =
+        missions::accept_mission(entity_id, mission_id, step_id, objectives, tx, space_mgr).await;
+    let line = if accepted {
+        format!("gmMissionAssign: assigned mission {mission_id} (step {step_id})")
+    } else {
+        format!(
+            "gmMissionAssign: mission {mission_id} not assigned (already held or not offerable)"
+        )
+    };
+    send_gm_feedback(entity_id, &line, tx).await;
     true
 }
 

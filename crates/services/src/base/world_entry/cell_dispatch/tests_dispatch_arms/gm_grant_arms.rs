@@ -1,4 +1,4 @@
-//! Routing tests for the three GM-command dispatch arms added in PR #521:
+//! Routing tests for the three GM-command dispatch arms:
 //! `GrantExpertise`, `GrantAppliedSciencePoints`, and `GmSpawnNpc`.
 //!
 //! These arms delegate directly to a handler that owns its own DB-touching

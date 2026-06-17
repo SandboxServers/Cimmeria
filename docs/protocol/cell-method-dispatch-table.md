@@ -620,7 +620,7 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 185 | `gmSpawnByCmd(WSTRING DesignId, FLOAT xOff, FLOAT zOff)` | `/Spawn` | `cell/cell_methods/gm/spawn.rs handle_spawn_by_cmd` → `CellToBaseMsg::GmSpawnNpc` → `base/crafting/handlers.rs handle_gm_spawn_npc` (entity_templates→`SpawnRecord`) → `BaseToCellMsg::GmSpawnNpcReady` → `space_manager/spawn.rs:85 spawn_npc_from_record_in_space`. Base round-trip (no cell template cache), mirrors `TrainAbility`→`AbilityGranted`. | **DONE** |
+| 185 | `gmSpawnByCmd(WSTRING DesignId, FLOAT xOff, FLOAT zOff)` | `/Spawn` | `cell/cell_methods/gm/spawn.rs handle_spawn_by_cmd` → `CellToBaseMsg::GmSpawnNpc` → `base/gm_spawn.rs handle_gm_spawn_npc` (entity_templates→`SpawnRecord`) → `BaseToCellMsg::GmSpawnNpcReady` → `space_manager/spawn.rs:85 spawn_npc_from_record_in_space`. Base round-trip (no cell template cache), mirrors `TrainAbility`→`AbilityGranted`. | **DONE** |
 | 186 | `gmDespawnByCmd(INT32 target)` | — | `cell/cell_methods/gm/world.rs` → `destroy_entity` (NPC-only) | **DONE** |
 | 187 | `gmRechargeItem(INT32 itemId)` | — | vendor `recharge.rs` (base-scoped; need GM cell→base route) | ADAPT |
 | 188 | `gmSetMobAttribute(INT32 target, WSTRING attr, WSTRING type, INT32 val)` | — | `queries.rs:35 get_entity_mut` (no reflection; hand-map attrs) | ADAPT |
