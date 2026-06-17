@@ -57,6 +57,12 @@ pub(super) async fn handle_mission_assign(
     space_mgr: &mut SpaceManager,
 ) -> bool {
     let Some((mission_id, _)) = parse_mission_id(entity_id, args, "gmMissionAssign") else {
+        send_gm_feedback(
+            entity_id,
+            "gmMissionAssign: DesignID must be a positive numeric id",
+            tx,
+        )
+        .await;
         return true;
     };
     let Some((step_id, objectives)) = space_mgr.mission_defs.get(&mission_id).map(|def| {
@@ -77,6 +83,12 @@ pub(super) async fn handle_mission_assign(
             mission_id,
             "gmMissionAssign: no mission def for id"
         );
+        send_gm_feedback(
+            entity_id,
+            &format!("gmMissionAssign: no mission def for id {mission_id}"),
+            tx,
+        )
+        .await;
         return true;
     };
     tracing::info!(
@@ -86,6 +98,12 @@ pub(super) async fn handle_mission_assign(
         "gmMissionAssign: assigning mission"
     );
     missions::accept_mission(entity_id, mission_id, step_id, objectives, tx, space_mgr).await;
+    send_gm_feedback(
+        entity_id,
+        &format!("gmMissionAssign: assigned mission {mission_id} (step {step_id})"),
+        tx,
+    )
+    .await;
     true
 }
 
@@ -100,10 +118,22 @@ pub(super) async fn handle_mission_clear(
     space_mgr: &mut SpaceManager,
 ) -> bool {
     let Some((mission_id, _)) = parse_mission_id(entity_id, args, "gmMissionClear") else {
+        send_gm_feedback(
+            entity_id,
+            "gmMissionClear: DesignID must be a positive numeric id",
+            tx,
+        )
+        .await;
         return true;
     };
     tracing::info!(entity_id, mission_id, "gmMissionClear: abandoning mission");
     missions::abandon_mission(entity_id, mission_id, tx, space_mgr).await;
+    send_gm_feedback(
+        entity_id,
+        &format!("gmMissionClear: abandoned mission {mission_id}"),
+        tx,
+    )
+    .await;
     true
 }
 
@@ -118,6 +148,12 @@ pub(super) async fn handle_mission_advance(
     space_mgr: &mut SpaceManager,
 ) -> bool {
     let Some((mission_id, consumed)) = parse_mission_id(entity_id, args, "gmMissionAdvance") else {
+        send_gm_feedback(
+            entity_id,
+            "gmMissionAdvance: DesignID must be a positive numeric id",
+            tx,
+        )
+        .await;
         return true;
     };
     let new_step_id = match read_i32(args, consumed) {
@@ -128,6 +164,12 @@ pub(super) async fn handle_mission_advance(
                 args_len = args.len(),
                 "gmMissionAdvance: truncated args (missing INT32 StepToAdvanceTo)"
             );
+            send_gm_feedback(
+                entity_id,
+                "gmMissionAdvance: missing INT32 StepToAdvanceTo",
+                tx,
+            )
+            .await;
             return true;
         }
     };
@@ -138,6 +180,7 @@ pub(super) async fn handle_mission_advance(
             new_step_id,
             "gmMissionAdvance: non-positive step rejected"
         );
+        send_gm_feedback(entity_id, "gmMissionAdvance: step must be positive", tx).await;
         return true;
     }
     tracing::info!(
@@ -147,6 +190,12 @@ pub(super) async fn handle_mission_advance(
         "gmMissionAdvance: advancing mission step"
     );
     missions::advance_step(entity_id, mission_id, new_step_id, tx, space_mgr).await;
+    send_gm_feedback(
+        entity_id,
+        &format!("gmMissionAdvance: mission {mission_id} advanced to step {new_step_id}"),
+        tx,
+    )
+    .await;
     true
 }
 

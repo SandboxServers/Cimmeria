@@ -43,6 +43,14 @@ async fn gm_spawn_by_cmd_emits_spawn_with_offset_position() {
         }
         other => panic!("expected GmSpawnNpc, got {other:?}"),
     }
+
+    // Base round-trip: the spawn message goes first, then a feedback line worded
+    // as a *request* (the cell only asks the base to build the spawn record).
+    let fb = feedback_text(&drain(&mut rx), 1).expect("gmSpawnByCmd success must feed back");
+    assert!(
+        fb.contains("requested"),
+        "base round-trip success must be worded as a request, got: {fb}"
+    );
 }
 
 #[tokio::test]
@@ -61,12 +69,16 @@ async fn gm_spawn_by_cmd_rejects_non_numeric_template() {
         )
         .await
     );
+    let msgs = drain(&mut rx);
     assert!(
-        matches!(
-            rx.try_recv(),
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
-        ),
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GmSpawnNpc { .. })),
         "non-numeric template id must not spawn"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "non-numeric template id must feed back a rejection"
     );
 
     // Zero / negative template id.
@@ -80,12 +92,16 @@ async fn gm_spawn_by_cmd_rejects_non_numeric_template() {
         )
         .await
     );
+    let msgs = drain(&mut rx);
     assert!(
-        matches!(
-            rx.try_recv(),
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
-        ),
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GmSpawnNpc { .. })),
         "template id 0 must not spawn"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "template id 0 must feed back a rejection"
     );
 }
 
@@ -98,22 +114,30 @@ async fn gm_spawn_by_cmd_rejects_truncated_and_nonfinite() {
     let mut short = Vec::new();
     write_wstring_arg(&mut short, "4321");
     assert!(dispatch(1, GM_SPAWN_BY_CMD, &short, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        matches!(
-            rx.try_recv(),
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
-        ),
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GmSpawnNpc { .. })),
         "missing offsets must not spawn"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "missing offsets must feed back a rejection"
     );
 
     // NaN offset → non-finite computed position → reject.
     let args = spawn_args("4321", f32::NAN, 0.0);
     assert!(dispatch(1, GM_SPAWN_BY_CMD, &args, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        matches!(
-            rx.try_recv(),
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
-        ),
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GmSpawnNpc { .. })),
         "non-finite spawn position must not spawn"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "non-finite spawn position must feed back a rejection"
     );
 }

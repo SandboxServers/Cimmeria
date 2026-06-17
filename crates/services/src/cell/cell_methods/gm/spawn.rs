@@ -11,6 +11,7 @@
 
 use tokio::sync::mpsc;
 
+use super::feedback::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::read_wstring;
@@ -33,6 +34,7 @@ pub(super) async fn handle_spawn_by_cmd(
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(entity_id, error = %e, "gmSpawnByCmd: malformed DesignId WSTRING");
+            send_gm_feedback(entity_id, "gmSpawnByCmd: malformed DesignId", tx).await;
             return true;
         }
     };
@@ -48,6 +50,12 @@ pub(super) async fn handle_spawn_by_cmd(
                 "gmSpawnByCmd: DesignId is not a positive numeric template id — \
                  internal-name resolution is not wired in the cell; rejecting"
             );
+            send_gm_feedback(
+                entity_id,
+                "gmSpawnByCmd: DesignId must be a positive numeric template id",
+                tx,
+            )
+            .await;
             return true;
         }
     };
@@ -60,6 +68,7 @@ pub(super) async fn handle_spawn_by_cmd(
                 args_len = args.len(),
                 "gmSpawnByCmd: truncated args (missing FLOAT XOffset)"
             );
+            send_gm_feedback(entity_id, "gmSpawnByCmd: missing FLOAT XOffset", tx).await;
             return true;
         }
     };
@@ -71,6 +80,7 @@ pub(super) async fn handle_spawn_by_cmd(
                 args_len = args.len(),
                 "gmSpawnByCmd: truncated args (missing FLOAT ZOffset)"
             );
+            send_gm_feedback(entity_id, "gmSpawnByCmd: missing FLOAT ZOffset", tx).await;
             return true;
         }
     };
@@ -83,6 +93,7 @@ pub(super) async fn handle_spawn_by_cmd(
         ),
         None => {
             tracing::warn!(entity_id, "gmSpawnByCmd: caller entity not found");
+            send_gm_feedback(entity_id, "gmSpawnByCmd: caller entity not found", tx).await;
             return true;
         }
     };
@@ -93,6 +104,12 @@ pub(super) async fn handle_spawn_by_cmd(
                 entity_id,
                 "gmSpawnByCmd: caller has no resolvable world name"
             );
+            send_gm_feedback(
+                entity_id,
+                "gmSpawnByCmd: caller has no resolvable world name",
+                tx,
+            )
+            .await;
             return true;
         }
     };
@@ -107,6 +124,12 @@ pub(super) async fn handle_spawn_by_cmd(
             z_off,
             "gmSpawnByCmd: non-finite spawn position rejected"
         );
+        send_gm_feedback(
+            entity_id,
+            "gmSpawnByCmd: non-finite spawn position rejected",
+            tx,
+        )
+        .await;
         return true;
     }
 
@@ -129,7 +152,15 @@ pub(super) async fn handle_spawn_by_cmd(
         .await
     {
         tracing::warn!(entity_id, template_id, error = %e, "gmSpawnByCmd: GmSpawnNpc send to base failed — spawn dropped");
+        send_gm_feedback(entity_id, "gmSpawnByCmd: spawn request failed", tx).await;
+        return true;
     }
+    send_gm_feedback(
+        entity_id,
+        &format!("gmSpawnByCmd: spawn requested (template {template_id})"),
+        tx,
+    )
+    .await;
     true
 }
 

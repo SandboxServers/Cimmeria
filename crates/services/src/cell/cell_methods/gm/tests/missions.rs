@@ -1,6 +1,16 @@
 use super::super::*; // gm module: dispatch + GM_* constants
 use super::*; // shared helpers from tests/mod.rs
+use crate::cell::messages::CellToBaseMsg;
 use tokio::sync::mpsc;
+
+/// A mission *action* is any client method push other than the feedback line
+/// (method 28): the onMissionUpdate / onStepUpdate / onObjectiveUpdate burst.
+fn is_mission_action(m: &CellToBaseMsg) -> bool {
+    matches!(
+        m,
+        CellToBaseMsg::EntityMethodCall { method_index, .. } if *method_index != 28
+    )
+}
 
 #[tokio::test]
 async fn gm_mission_clear_rejects_non_numeric_design_id() {
@@ -9,9 +19,14 @@ async fn gm_mission_clear_rejects_non_numeric_design_id() {
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "FindAmbernol");
     assert!(dispatch(1, GM_MISSION_CLEAR, &args, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        rx.try_recv().is_err(),
+        !msgs.iter().any(is_mission_action),
         "non-numeric DesignID must not emit a mission update"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "non-numeric DesignID must feed back a rejection"
     );
 }
 
@@ -23,7 +38,15 @@ async fn gm_mission_advance_truncated_step_is_noop() {
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "1001");
     assert!(dispatch(1, GM_MISSION_ADVANCE, &args, &tx, &mut mgr).await);
-    assert!(rx.try_recv().is_err(), "missing step must not advance");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs.iter().any(is_mission_action),
+        "missing step must not advance"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "missing step must feed back a rejection"
+    );
 }
 
 #[tokio::test]
@@ -38,9 +61,14 @@ async fn mission_handlers_reject_malformed_design_id() {
     write_wstring_arg(&mut args, "QuestName");
     args.extend_from_slice(&2i32.to_le_bytes());
     assert!(dispatch(1, GM_MISSION_ADVANCE, &args, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "malformed/non-numeric mission id must emit nothing"
+        !msgs.iter().any(is_mission_action),
+        "malformed/non-numeric mission id must not emit a mission update"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "malformed/non-numeric mission id must feed back a rejection"
     );
 }
 
@@ -108,7 +136,14 @@ async fn mission_lifecycle_assign_list_advance_clear() {
 
     // ── Assign ──────────────────────────────────────────────────────────────
     assert!(dispatch(1, GM_MISSION_ASSIGN, &assign_args("1001", 1), &tx, &mut mgr).await);
-    drain(&mut rx); // discard the onMissionUpdate/onStepUpdate/onObjectiveUpdate burst
+    // Drain the onMissionUpdate/onStepUpdate/onObjectiveUpdate burst, but first
+    // confirm the cell-local success fed back what happened.
+    let assign_msgs = drain(&mut rx);
+    let fb = feedback_text(&assign_msgs, 1).expect("gmMissionAssign success must feed back");
+    assert!(
+        fb.contains("assigned") && fb.contains("1001"),
+        "assign feedback must report the assigned mission, got: {fb}"
+    );
     {
         let e = mgr.get_entity(1).expect("caller exists");
         let m = e

@@ -19,9 +19,21 @@ async fn gm_set_health_self_mutates_stat_and_emits_update() {
     );
     let msgs = drain(&mut rx);
     assert!(
-        msgs.iter()
-            .any(|m| matches!(m, CellToBaseMsg::EntityMethodCall { entity_id: 1, .. })),
+        msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall {
+                entity_id: 1,
+                method_index: 20,
+                ..
+            }
+        )),
         "gmSetHealth must emit an onStatUpdate to the player"
+    );
+    // Cell-local success: feedback states what happened.
+    let fb = feedback_text(&msgs, 1).expect("gmSetHealth success must feed back");
+    assert!(
+        fb.contains("set to 75"),
+        "gmSetHealth feedback must report the value, got: {fb}"
     );
 }
 
@@ -36,9 +48,20 @@ async fn gm_set_health_rejects_negative() {
         100,
         "negative amount must not mutate"
     );
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "negative amount must emit nothing"
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall {
+                method_index: 20,
+                ..
+            }
+        )),
+        "negative amount must not emit an onStatUpdate"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "negative amount must feed back a rejection"
     );
 }
 
@@ -58,9 +81,20 @@ async fn gm_set_health_cross_space_target_refused() {
     let (tx, mut rx) = mpsc::channel(8);
 
     assert!(dispatch(1, GM_SET_HEALTH, &set_stat_args(50, 2), &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "cross-space target must be refused"
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall {
+                method_index: 20,
+                ..
+            }
+        )),
+        "cross-space target must not emit an onStatUpdate"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "cross-space target must feed back a rejection"
     );
 }
 
@@ -74,9 +108,20 @@ async fn set_stat_rejects_truncated_args_and_missing_stat() {
     assert!(dispatch(1, GM_SET_FOCUS, &10i32.to_le_bytes(), &tx, &mut mgr).await);
     // Target id that doesn't resolve to any entity.
     assert!(dispatch(1, GM_SET_HEALTH, &set_stat_args(10, 9999), &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "truncated / unresolved set-stat must emit nothing"
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall {
+                method_index: 20,
+                ..
+            }
+        )),
+        "truncated / unresolved set-stat must not emit an onStatUpdate"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "truncated / unresolved set-stat must feed back a rejection"
     );
 }
 

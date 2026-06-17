@@ -38,14 +38,31 @@ async fn gm_give_item_rejects_non_numeric_and_nonpositive_qty() {
 
     let args = give_item_args("AmberVial", 1);
     assert!(dispatch(1, GM_GIVE_ITEM, &args, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        rx.try_recv().is_err(),
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GrantItem { .. })),
         "non-numeric DesignId must not grant"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "non-numeric DesignId must feed back a rejection"
     );
 
     let args = give_item_args("1234", 0);
     assert!(dispatch(1, GM_GIVE_ITEM, &args, &tx, &mut mgr).await);
-    assert!(rx.try_recv().is_err(), "quantity 0 must not grant");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GrantItem { .. })),
+        "quantity 0 must not grant"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "quantity 0 must feed back a rejection"
+    );
 }
 
 #[tokio::test]
@@ -67,7 +84,17 @@ async fn gm_give_xp_emits_grant_and_rejects_nonpositive() {
 
     // Non-positive must not grant (a negative i32 → u64 would be absurd).
     assert!(dispatch(1, GM_GIVE_XP, &(-5i32).to_le_bytes(), &tx, &mut mgr).await);
-    assert!(rx.try_recv().is_err(), "negative XP must not grant");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GrantXP { .. })),
+        "negative XP must not grant"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "negative XP must feed back a rejection"
+    );
 }
 
 #[tokio::test]
@@ -90,9 +117,16 @@ async fn gm_give_cash_emits_grant_and_rejects_nonpositive() {
     }
 
     assert!(dispatch(1, GM_GIVE_CASH, &0i32.to_le_bytes(), &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        rx.try_recv().is_err(),
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GrantCash { .. })),
         "zero cash must not grant (give is additive-only)"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "zero cash must feed back a rejection"
     );
 }
 
@@ -127,7 +161,17 @@ async fn gm_remove_item_emits_remove_and_rejects_nonpositive() {
     let mut args = 42i32.to_le_bytes().to_vec();
     args.extend_from_slice(&0i16.to_le_bytes());
     assert!(dispatch(1, GM_REMOVE_ITEM, &args, &tx, &mut mgr).await);
-    assert!(rx.try_recv().is_err(), "quantity 0 must not remove");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::RemoveInventoryItem { .. })),
+        "quantity 0 must not remove"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "quantity 0 must feed back a rejection"
+    );
 }
 
 #[tokio::test]
@@ -140,9 +184,20 @@ async fn give_handlers_reject_truncated_args() {
     }
     // gmRemoveItem with only the INT32 (missing the INT16 quantity) is also short.
     assert!(dispatch(1, GM_REMOVE_ITEM, &7i32.to_le_bytes(), &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "truncated give/remove args must emit nothing"
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::GrantXP { .. }
+                | CellToBaseMsg::GrantCash { .. }
+                | CellToBaseMsg::GrantItem { .. }
+                | CellToBaseMsg::RemoveInventoryItem { .. }
+        )),
+        "truncated give/remove args must not emit an action"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "truncated give/remove args must feed back a rejection"
     );
 }
 
@@ -158,9 +213,20 @@ async fn give_handlers_require_player_id() {
     let mut rm = 5i32.to_le_bytes().to_vec();
     rm.extend_from_slice(&1i16.to_le_bytes());
     assert!(dispatch(1, GM_REMOVE_ITEM, &rm, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "no player_id must block every give/remove"
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::GrantXP { .. }
+                | CellToBaseMsg::GrantCash { .. }
+                | CellToBaseMsg::GrantItem { .. }
+                | CellToBaseMsg::RemoveInventoryItem { .. }
+        )),
+        "no player_id must block every give/remove action"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "no player_id must feed back a rejection"
     );
 }
 
@@ -171,7 +237,17 @@ async fn remove_item_rejects_nonpositive_item_id() {
     let mut args = 0i32.to_le_bytes().to_vec();
     args.extend_from_slice(&5i16.to_le_bytes());
     assert!(dispatch(1, GM_REMOVE_ITEM, &args, &tx, &mut mgr).await);
-    assert!(rx.try_recv().is_err(), "item_id 0 must not remove");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::RemoveInventoryItem { .. })),
+        "item_id 0 must not remove"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "item_id 0 must feed back a rejection"
+    );
 }
 
 /// Build `(INT32 disciplineId, INT32 expertise)`.
@@ -223,7 +299,17 @@ async fn gm_give_expertise_rejects_nonpositive_fields() {
         )
         .await
     );
-    assert!(rx.try_recv().is_err(), "expertise 0 must not grant");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GrantExpertise { .. })),
+        "expertise 0 must not grant"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "expertise 0 must feed back"
+    );
 
     // Non-positive discipline id.
     assert!(
@@ -236,13 +322,30 @@ async fn gm_give_expertise_rejects_nonpositive_fields() {
         )
         .await
     );
-    assert!(rx.try_recv().is_err(), "discipline id 0 must not grant");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GrantExpertise { .. })),
+        "discipline id 0 must not grant"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "discipline id 0 must feed back"
+    );
 
     // Truncated (missing the second INT32).
     assert!(dispatch(1, GM_GIVE_EXPERTISE, &7i32.to_le_bytes(), &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        rx.try_recv().is_err(),
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GrantExpertise { .. })),
         "truncated expertise args must not grant"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "truncated expertise args must feed back"
     );
 }
 
@@ -287,7 +390,14 @@ async fn gm_give_applied_science_emits_grant_and_rejects_nonpositive() {
         )
         .await
     );
-    assert!(rx.try_recv().is_err(), "zero ASP must not grant");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GrantAppliedSciencePoints { .. })),
+        "zero ASP must not grant"
+    );
+    assert!(feedback_text(&msgs, 1).is_some(), "zero ASP must feed back");
 }
 
 #[tokio::test]
@@ -316,8 +426,37 @@ async fn crafting_grants_require_player_id() {
         )
         .await
     );
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::GrantExpertise { .. } | CellToBaseMsg::GrantAppliedSciencePoints { .. }
+        )),
         "no player_id must block both crafting grants"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "no player_id must feed back a rejection"
+    );
+}
+
+/// Base round-trip success path: the grant message goes first, then a feedback
+/// line worded as a *request* (the cell can't confirm the base-side persist).
+#[tokio::test]
+async fn gm_give_item_success_feeds_back_request() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+
+    assert!(dispatch(1, GM_GIVE_ITEM, &give_item_args("1124", 5), &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
+    // Action is sent first.
+    assert!(
+        matches!(msgs.first(), Some(CellToBaseMsg::GrantItem { .. })),
+        "the grant action must be the first message"
+    );
+    let fb = feedback_text(&msgs, 1).expect("success must feed back");
+    assert!(
+        fb.contains("requested"),
+        "base round-trip success must be worded as a request, got: {fb}"
     );
 }

@@ -33,6 +33,12 @@ async fn gm_goto_xyz_updates_position_and_emits_teleport() {
         [e.position.x, e.position.y, e.position.z],
         [10.0, 20.0, 30.0]
     );
+    // Cell-local success: feedback states the destination after the action.
+    let fb = feedback_text(&drain(&mut rx), 1).expect("gmGotoXYZ success must feed back");
+    assert!(
+        fb.contains("teleported"),
+        "gmGotoXYZ feedback must report the teleport, got: {fb}"
+    );
 }
 
 #[tokio::test]
@@ -45,7 +51,17 @@ async fn gm_goto_xyz_rejects_non_finite() {
     args.extend_from_slice(&0.0f32.to_le_bytes());
     args.extend_from_slice(&0.0f32.to_le_bytes());
     assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr).await);
-    assert!(rx.try_recv().is_err(), "NaN coordinate must not teleport");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::TeleportPlayer { .. })),
+        "NaN coordinate must not teleport"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "NaN coordinate must feed back a rejection"
+    );
 }
 
 #[tokio::test]
@@ -89,7 +105,17 @@ async fn gm_goto_location_rejects_empty_world() {
         args.extend_from_slice(&c.to_le_bytes());
     }
     assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr).await);
-    assert!(rx.try_recv().is_err(), "empty world must not GateTravel");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GateTravel { .. })),
+        "empty world must not GateTravel"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "empty world must feed back a rejection"
+    );
     assert!(
         mgr.get_entity(1).is_some(),
         "entity must survive a rejected goto"
@@ -102,7 +128,17 @@ async fn gm_dhd_list_request_is_noop() {
     let (tx, mut rx) = mpsc::channel(8);
     // Address 0 = "request list" — unsupported without a feedback channel.
     assert!(dispatch(1, GM_DHD, &[0u8], &tx, &mut mgr).await);
-    assert!(rx.try_recv().is_err(), "address 0 must not dial");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GateTravel { .. })),
+        "address 0 must not dial"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "address 0 must feed back a rejection"
+    );
 }
 
 #[tokio::test]
@@ -116,9 +152,17 @@ async fn travel_handlers_reject_truncated_args() {
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "Abydos");
     assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "truncated travel args must emit nothing"
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::TeleportPlayer { .. } | CellToBaseMsg::GateTravel { .. }
+        )),
+        "truncated travel args must not emit a teleport/travel action"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "truncated travel args must feed back a rejection"
     );
     assert!(
         mgr.get_entity(1).is_some(),
@@ -233,9 +277,16 @@ async fn summon_missing_and_cross_space_refused() {
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
     assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "cross-space summon must emit nothing"
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::TeleportPlayer { .. })),
+        "cross-space summon must not teleport"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "cross-space summon must feed back a rejection"
     );
     let p = mgr.get_entity(2).unwrap().position;
     assert_eq!(
@@ -248,9 +299,16 @@ async fn summon_missing_and_cross_space_refused() {
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "4242");
     assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "summon of a missing id must emit nothing"
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::TeleportPlayer { .. })),
+        "summon of a missing id must not teleport"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "summon of a missing id must feed back a rejection"
     );
 }
 
@@ -275,18 +333,32 @@ async fn goto_missing_and_cross_space_refused() {
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
     assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "cross-space goto must emit nothing"
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::TeleportPlayer { .. })),
+        "cross-space goto must not teleport"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "cross-space goto must feed back a rejection"
     );
 
     // Missing target id: refused.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "4242");
     assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "goto of a missing id must emit nothing"
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::TeleportPlayer { .. })),
+        "goto of a missing id must not teleport"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "goto of a missing id must feed back a rejection"
     );
 
     let p = mgr.get_entity(1).unwrap().position;
@@ -350,9 +422,29 @@ async fn goto_summon_reject_non_numeric() {
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "SomeName");
     assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
-    assert!(drain(&mut rx).is_empty(), "non-numeric gmGoto must no-op");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::TeleportPlayer { .. })),
+        "non-numeric gmGoto must not teleport"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "non-numeric gmGoto must feed back a rejection"
+    );
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "SomeName");
     assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
-    assert!(drain(&mut rx).is_empty(), "non-numeric gmSummon must no-op");
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::TeleportPlayer { .. })),
+        "non-numeric gmSummon must not teleport"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "non-numeric gmSummon must feed back a rejection"
+    );
 }

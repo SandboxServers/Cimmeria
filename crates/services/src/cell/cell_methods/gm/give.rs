@@ -7,6 +7,7 @@
 use cimmeria_entity::inventory::INV_MAIN;
 use tokio::sync::mpsc;
 
+use super::feedback::send_gm_feedback;
 use super::read_i32;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -38,11 +39,13 @@ pub(super) async fn handle_give_xp(
                 args_len = args.len(),
                 "gmGiveXp: truncated args (need INT32)"
             );
+            send_gm_feedback(entity_id, "gmGiveXp: missing INT32 amount", tx).await;
             return true;
         }
     };
     if amount <= 0 {
         tracing::warn!(entity_id, amount, "gmGiveXp: non-positive amount rejected");
+        send_gm_feedback(entity_id, "gmGiveXp: amount must be positive", tx).await;
         return true;
     }
     // Caller must be a player entity (XP is a player concept).
@@ -52,6 +55,7 @@ pub(super) async fn handle_give_xp(
         .is_none()
     {
         tracing::warn!(entity_id, "gmGiveXp: caller has no player_id");
+        send_gm_feedback(entity_id, "gmGiveXp: caller is not a player", tx).await;
         return true;
     }
     tracing::info!(entity_id, amount, "gmGiveXp: granting XP to GM");
@@ -61,6 +65,12 @@ pub(super) async fn handle_give_xp(
             xp_amount: amount as u64,
         })
         .await;
+    send_gm_feedback(
+        entity_id,
+        &format!("gmGiveXp: grant requested ({amount} xp)"),
+        tx,
+    )
+    .await;
     true
 }
 
@@ -82,6 +92,7 @@ pub(super) async fn handle_give_item(
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(entity_id, error = %e, "gmGiveItem: malformed DesignId WSTRING");
+            send_gm_feedback(entity_id, "gmGiveItem: malformed DesignId", tx).await;
             return true;
         }
     };
@@ -93,6 +104,7 @@ pub(super) async fn handle_give_item(
                 args_len = args.len(),
                 "gmGiveItem: truncated args (missing INT32 Quantity)"
             );
+            send_gm_feedback(entity_id, "gmGiveItem: missing INT32 Quantity", tx).await;
             return true;
         }
     };
@@ -109,6 +121,12 @@ pub(super) async fn handle_give_item(
                 "gmGiveItem: DesignId is not a positive numeric design id — \
                  internal-name resolution is not wired in the cell; rejecting"
             );
+            send_gm_feedback(
+                entity_id,
+                "gmGiveItem: DesignId must be a positive numeric id",
+                tx,
+            )
+            .await;
             return true;
         }
     };
@@ -117,6 +135,7 @@ pub(super) async fn handle_give_item(
     // at best, a stack-underflow footgun at worst).
     if quantity < 1 {
         tracing::warn!(entity_id, quantity, "gmGiveItem: quantity < 1 rejected");
+        send_gm_feedback(entity_id, "gmGiveItem: quantity must be >= 1", tx).await;
         return true;
     }
     let count = quantity.min(GM_GIVE_ITEM_MAX_QTY);
@@ -128,6 +147,7 @@ pub(super) async fn handle_give_item(
                 entity_id,
                 "gmGiveItem: caller has no player_id (not a player entity)"
             );
+            send_gm_feedback(entity_id, "gmGiveItem: caller is not a player", tx).await;
             return true;
         }
     };
@@ -153,6 +173,12 @@ pub(super) async fn handle_give_item(
             count,
         })
         .await;
+    send_gm_feedback(
+        entity_id,
+        &format!("gmGiveItem: grant requested (item {type_id} x{count})"),
+        tx,
+    )
+    .await;
     true
 }
 
@@ -175,6 +201,7 @@ pub(super) async fn handle_give_cash(
                 args_len = args.len(),
                 "gmGiveCash: truncated args (need INT32)"
             );
+            send_gm_feedback(entity_id, "gmGiveCash: missing INT32 amount", tx).await;
             return true;
         }
     };
@@ -184,12 +211,14 @@ pub(super) async fn handle_give_cash(
             amount,
             "gmGiveCash: non-positive amount rejected"
         );
+        send_gm_feedback(entity_id, "gmGiveCash: amount must be positive", tx).await;
         return true;
     }
     let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
         Some(pid) => pid,
         None => {
             tracing::warn!(entity_id, "gmGiveCash: caller has no player_id");
+            send_gm_feedback(entity_id, "gmGiveCash: caller is not a player", tx).await;
             return true;
         }
     };
@@ -206,6 +235,12 @@ pub(super) async fn handle_give_cash(
             amount,
         })
         .await;
+    send_gm_feedback(
+        entity_id,
+        &format!("gmGiveCash: grant requested ({amount} naquadah)"),
+        tx,
+    )
+    .await;
     true
 }
 
@@ -231,6 +266,7 @@ pub(super) async fn handle_give_expertise(
                 args_len = args.len(),
                 "gmGiveExpertise: truncated args (need INT32 disciplineId)"
             );
+            send_gm_feedback(entity_id, "gmGiveExpertise: missing INT32 disciplineId", tx).await;
             return true;
         }
     };
@@ -242,6 +278,7 @@ pub(super) async fn handle_give_expertise(
                 args_len = args.len(),
                 "gmGiveExpertise: truncated args (missing INT32 expertise)"
             );
+            send_gm_feedback(entity_id, "gmGiveExpertise: missing INT32 expertise", tx).await;
             return true;
         }
     };
@@ -251,6 +288,12 @@ pub(super) async fn handle_give_expertise(
             discipline_id,
             "gmGiveExpertise: non-positive discipline id rejected"
         );
+        send_gm_feedback(
+            entity_id,
+            "gmGiveExpertise: disciplineId must be positive",
+            tx,
+        )
+        .await;
         return true;
     }
     if amount <= 0 {
@@ -259,12 +302,14 @@ pub(super) async fn handle_give_expertise(
             amount,
             "gmGiveExpertise: non-positive amount rejected"
         );
+        send_gm_feedback(entity_id, "gmGiveExpertise: expertise must be positive", tx).await;
         return true;
     }
     let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
         Some(pid) => pid,
         None => {
             tracing::warn!(entity_id, "gmGiveExpertise: caller has no player_id");
+            send_gm_feedback(entity_id, "gmGiveExpertise: caller is not a player", tx).await;
             return true;
         }
     };
@@ -283,6 +328,12 @@ pub(super) async fn handle_give_expertise(
             amount,
         })
         .await;
+    send_gm_feedback(
+        entity_id,
+        &format!("gmGiveExpertise: grant requested (discipline {discipline_id}, +{amount})"),
+        tx,
+    )
+    .await;
     true
 }
 
@@ -306,6 +357,12 @@ pub(super) async fn handle_give_applied_science(
                 args_len = args.len(),
                 "gmGiveAppliedSciencePoints: truncated args (need INT32)"
             );
+            send_gm_feedback(
+                entity_id,
+                "gmGiveAppliedSciencePoints: missing INT32 amount",
+                tx,
+            )
+            .await;
             return true;
         }
     };
@@ -315,6 +372,12 @@ pub(super) async fn handle_give_applied_science(
             amount,
             "gmGiveAppliedSciencePoints: non-positive amount rejected"
         );
+        send_gm_feedback(
+            entity_id,
+            "gmGiveAppliedSciencePoints: amount must be positive",
+            tx,
+        )
+        .await;
         return true;
     }
     let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
@@ -324,6 +387,12 @@ pub(super) async fn handle_give_applied_science(
                 entity_id,
                 "gmGiveAppliedSciencePoints: caller has no player_id"
             );
+            send_gm_feedback(
+                entity_id,
+                "gmGiveAppliedSciencePoints: caller is not a player",
+                tx,
+            )
+            .await;
             return true;
         }
     };
@@ -340,6 +409,12 @@ pub(super) async fn handle_give_applied_science(
             amount,
         })
         .await;
+    send_gm_feedback(
+        entity_id,
+        &format!("gmGiveAppliedSciencePoints: grant requested (+{amount})"),
+        tx,
+    )
+    .await;
     true
 }
 
@@ -364,6 +439,7 @@ pub(super) async fn handle_remove_item(
                 args_len = args.len(),
                 "gmRemoveItem: truncated args (need INT32 ItemID)"
             );
+            send_gm_feedback(entity_id, "gmRemoveItem: missing INT32 ItemID", tx).await;
             return true;
         }
     };
@@ -375,6 +451,7 @@ pub(super) async fn handle_remove_item(
                 args_len = args.len(),
                 "gmRemoveItem: truncated args (missing INT16 quantity)"
             );
+            send_gm_feedback(entity_id, "gmRemoveItem: missing INT16 quantity", tx).await;
             return true;
         }
     };
@@ -384,6 +461,7 @@ pub(super) async fn handle_remove_item(
             item_id,
             "gmRemoveItem: non-positive item id rejected"
         );
+        send_gm_feedback(entity_id, "gmRemoveItem: ItemID must be positive", tx).await;
         return true;
     }
     if quantity <= 0 {
@@ -392,12 +470,14 @@ pub(super) async fn handle_remove_item(
             quantity,
             "gmRemoveItem: non-positive quantity rejected"
         );
+        send_gm_feedback(entity_id, "gmRemoveItem: quantity must be positive", tx).await;
         return true;
     }
     let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
         Some(pid) => pid,
         None => {
             tracing::warn!(entity_id, "gmRemoveItem: caller has no player_id");
+            send_gm_feedback(entity_id, "gmRemoveItem: caller is not a player", tx).await;
             return true;
         }
     };
@@ -416,5 +496,11 @@ pub(super) async fn handle_remove_item(
             quantity: i32::from(quantity),
         })
         .await;
+    send_gm_feedback(
+        entity_id,
+        &format!("gmRemoveItem: remove requested (item {item_id} x{quantity})"),
+        tx,
+    )
+    .await;
     true
 }

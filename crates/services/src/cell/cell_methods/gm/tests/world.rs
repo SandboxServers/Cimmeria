@@ -7,13 +7,20 @@ use tokio::sync::mpsc;
 async fn gm_kill_target_kills_npc_in_same_space() {
     let mut mgr = mgr_with_player(1, "Castle");
     mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
-    let (tx, mut _rx) = mpsc::channel(32);
+    let (tx, mut rx) = mpsc::channel(32);
 
     assert!(dispatch(1, GM_KILL_TARGET, &2i64.to_le_bytes(), &tx, &mut mgr).await);
     let npc = mgr.get_entity(2).unwrap();
     assert!(
         crate::cell::combat::is_dead_state(npc.state_field),
         "gmKillTarget must mark the NPC dead"
+    );
+    // Cell-local success: the kill action lands first, then a feedback line that
+    // states the kill happened.
+    let fb = feedback_text(&drain(&mut rx), 1).expect("gmKillTarget success must feed back");
+    assert!(
+        fb.contains("killed"),
+        "gmKillTarget success feedback must say it killed the npc, got: {fb}"
     );
 }
 
@@ -70,9 +77,22 @@ async fn gm_respawn_requires_player_id() {
     let (tx, mut rx) = mpsc::channel(16);
 
     assert!(dispatch(1, GM_RESPAWN, &[], &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
+    // The only thing emitted must be the rejection feedback line — no respawn
+    // sequence (which would open with the Defeat-Window close, method != 28).
     assert!(
-        rx.try_recv().is_err(),
-        "gmRespawn must no-op for a caller with no player_id"
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall {
+                method_index,
+                ..
+            } if *method_index != 28
+        )),
+        "gmRespawn must not run the respawn sequence for a caller with no player_id"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "gmRespawn must feed back a rejection"
     );
 }
 
@@ -135,9 +155,17 @@ async fn kill_target_rejects_bad_ids_and_missing_target() {
         !crate::cell::combat::is_dead_state(npc.state_field),
         "no entity should have been killed"
     );
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "rejected kills must emit nothing"
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall { method_index, .. } if *method_index != 28
+        ) || matches!(m, CellToBaseMsg::WitnessEntityMethod { .. })),
+        "rejected kills must not emit a kill/death action"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "rejected kills must feed back a rejection"
     );
 }
 
@@ -161,9 +189,22 @@ async fn despawn_rejects_truncated_invalid_and_missing() {
         before,
         "no entity should have been removed"
     );
+    // Each rejected despawn now feeds back; the only messages are method-28
+    // feedback lines.
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "rejected despawns must emit nothing"
+        msgs.iter().all(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall {
+                method_index: 28,
+                ..
+            }
+        )),
+        "rejected despawns must emit nothing but feedback"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "rejected despawns must feed back a rejection"
     );
 }
 
@@ -182,8 +223,20 @@ async fn set_target_rejects_malformed_and_non_numeric() {
         None,
         "malformed/non-numeric must not set a target"
     );
+    // onTargetUpdate is method 30; a reject must emit only the feedback line.
+    let msgs = drain(&mut rx);
     assert!(
-        drain(&mut rx).is_empty(),
-        "malformed gmSetTarget must emit nothing"
+        msgs.iter().all(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall {
+                method_index: 28,
+                ..
+            }
+        )),
+        "malformed gmSetTarget must not emit an onTargetUpdate"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "malformed gmSetTarget must feed back a rejection"
     );
 }

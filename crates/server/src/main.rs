@@ -434,8 +434,15 @@ fn init_logging(
     let mut layers: Vec<BoxLayer> = Vec::new();
 
     // ── Console (stdout, coloured, RUST_LOG or info) ─────────────────────
+    // Default to `info` but mute the per-packet wire firehose — `mercury.packet`
+    // (one INFO event per UDP datagram), the `wire.in`/`wire.out` method-call
+    // stream, and retransmit noise. These stay at full fidelity in the file
+    // layers (protocol.log) and OTLP; they just don't belong on an operator's
+    // console. `RUST_LOG`, when set, overrides this entirely.
+    const CONSOLE_DEFAULT: &str =
+        "info,mercury.packet=warn,wire.in=warn,wire.out=warn,mercury.retransmit=warn";
     let console_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(CONSOLE_DEFAULT));
     layers.push(Box::new(fmt::layer().with_filter(console_filter)));
 
     // ── server.log (JSON, all modules, info) ─────────────────────────────
@@ -485,7 +492,10 @@ fn init_logging(
         "protocol.log",
         "off,\
          cimmeria_services::mercury=trace,\
-         cimmeria_mercury=trace"
+         cimmeria_mercury=trace,\
+         mercury.packet=info,\
+         wire.in=info,wire.out=info,\
+         mercury.retransmit=info"
     ));
 
     layers.push(log_layer!(

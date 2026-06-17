@@ -11,6 +11,7 @@
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 use tokio::sync::mpsc;
 
+use super::feedback::send_gm_feedback;
 use super::{read_i32, read_i64, resolve_self_or_target};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -60,6 +61,14 @@ async fn set_stat(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    // Label used in feedback: the command name plus a "max" suffix when setting
+    // the ceiling, e.g. "gmSetHealth max".
+    let what = if is_max {
+        format!("{cmd} max")
+    } else {
+        cmd.to_string()
+    };
+
     let amount = match read_i32(args, 0) {
         Some(v) => v,
         None => {
@@ -69,6 +78,7 @@ async fn set_stat(
                 cmd,
                 "GM set-stat: truncated args (need INT32 Amount)"
             );
+            send_gm_feedback(entity_id, &format!("{what}: missing INT32 Amount"), tx).await;
             return true;
         }
     };
@@ -81,6 +91,7 @@ async fn set_stat(
                 cmd,
                 "GM set-stat: truncated args (missing INT64 TargetId)"
             );
+            send_gm_feedback(entity_id, &format!("{what}: missing INT64 TargetId"), tx).await;
             return true;
         }
     };
@@ -95,10 +106,12 @@ async fn set_stat(
             is_max,
             "GM set-stat: negative amount rejected"
         );
+        send_gm_feedback(entity_id, &format!("{what}: amount must be >= 0"), tx).await;
         return true;
     }
 
     let Some(target_eid) = resolve_self_or_target(entity_id, target_raw, space_mgr, cmd) else {
+        send_gm_feedback(entity_id, &format!("{what}: target not found"), tx).await;
         return true;
     };
 
@@ -113,6 +126,7 @@ async fn set_stat(
                 cmd,
                 "GM set-stat: target vanished before mutate"
             );
+            send_gm_feedback(entity_id, &format!("{what}: target vanished"), tx).await;
             return true;
         };
         let is_player = target.is_player;
@@ -138,6 +152,7 @@ async fn set_stat(
         }
     };
     if !changed {
+        send_gm_feedback(entity_id, &format!("{what}: target has no such stat"), tx).await;
         return true;
     }
 
@@ -173,5 +188,11 @@ async fn set_stat(
         )
         .await;
     }
+    send_gm_feedback(
+        entity_id,
+        &format!("{what}: set to {amount} on {target_eid}"),
+        tx,
+    )
+    .await;
     true
 }
