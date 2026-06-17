@@ -15,6 +15,23 @@ pub(super) async fn handle_goto_coords(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    // Defence-in-depth: reject non-finite coordinates before any grid write.
+    // The base `/goto` parser (`parse_vector3`) already rejects nan/inf, but
+    // the cell must not trust the privileged intent blindly — same discipline
+    // as `/give`'s count re-validation, and matching the native `gmGotoXYZ`
+    // guard (#518). A NaN/inf position poisons AoI distance math (NaN fails
+    // every ordering comparison, dropping the entity out of witness calc) and
+    // ships a garbage forced-position snap to the client.
+    if position.iter().any(|c| !c.is_finite()) {
+        send_gm_feedback(
+            caller_entity_id,
+            "Goto failed: coordinates must be finite numbers.",
+            tx,
+        )
+        .await;
+        return;
+    }
+
     let Some((prev_pos, space_id)) = space_mgr.get_entity(caller_entity_id).map(|e| {
         (
             [e.position.x, e.position.y, e.position.z],
@@ -212,5 +229,38 @@ mod tests {
         .await;
         let fb = feedback_text_to(&drain(&mut rx), 1).unwrap();
         assert!(fb.contains("no player 'Ghost'"), "got: {fb}");
+    }
+
+    /// **Defence-in-depth guard:** the cell `/goto` handler must reject a
+    /// non-finite coordinate even if one reaches it via the intent — no grid
+    /// write, no `TeleportPlayer`. The base parser already rejects nan/inf,
+    /// but the cell re-validates (mirrors #518's `gmGotoXYZ`). Reverting the
+    /// `is_finite` check lets a NaN corrupt the entity's grid position and the
+    /// forced-position snap.
+    #[tokio::test]
+    async fn goto_coords_rejects_non_finite() {
+        let mut mgr = mgr_with_player();
+        let (tx, mut rx) = mpsc::channel(8);
+        handle_gm_command(
+            1,
+            GmCommandIntent::GotoCoords(Vector3::new(f32::NAN, 0.0, 0.0)),
+            &tx,
+            &mut mgr,
+            &[],
+        )
+        .await;
+
+        // Position unchanged (still the fixture spawn at [5,0,5]); no teleport.
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!([e.position.x, e.position.y, e.position.z], [5.0, 0.0, 5.0]);
+        let msgs = drain(&mut rx);
+        assert!(
+            !msgs
+                .iter()
+                .any(|m| matches!(m, CellToBaseMsg::TeleportPlayer { .. })),
+            "non-finite goto must not emit TeleportPlayer; got {msgs:#?}"
+        );
+        let fb = feedback_text_to(&msgs, 1).unwrap();
+        assert!(fb.contains("finite"), "got: {fb}");
     }
 }

@@ -101,7 +101,10 @@ mod tests {
         // on a bare player), faction 0, default HEALTH 100/100, pos from the
         // fixture (5.0, 0.0, 5.0). Pins the full format/order, so a field
         // reorder or label change fails here.
-        assert_eq!(fb, "[1] player | faction 0 | hp 100/100 | pos (5.0, 0.0, 5.0)");
+        assert_eq!(
+            fb,
+            "[1] player | faction 0 | hp 100/100 | pos (5.0, 0.0, 5.0)"
+        );
     }
 
     /// **Regression guard:** `/who` entries are ordered by NUMERIC entity id,

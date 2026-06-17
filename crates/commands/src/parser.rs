@@ -64,7 +64,9 @@ pub fn parse_entity_id(s: &str) -> Option<EntityId> {
 
 /// Parse three consecutive string arguments into a `Vector3`.
 ///
-/// Expects exactly three parseable `f32` values in x, y, z order.
+/// Expects exactly three parseable `f32` values in x, y, z order. Non-finite
+/// values (`nan`, `inf`) are rejected — Rust's float parser accepts those
+/// spellings, but they are never valid coordinates.
 ///
 /// # Examples
 ///
@@ -83,9 +85,14 @@ pub fn parse_vector3(args: &[&str]) -> Option<Vector3> {
         return None;
     }
 
-    let x = args[0].parse::<f32>().ok()?;
-    let y = args[1].parse::<f32>().ok()?;
-    let z = args[2].parse::<f32>().ok()?;
+    // Reject non-finite values: Rust's `f32` parser accepts "nan", "inf",
+    // "-inf", "infinity" (case-insensitive), but a non-finite coordinate is
+    // never valid input — it poisons AoI distance math (NaN fails every
+    // ordering comparison, dropping the entity out of witness calc) and ships
+    // a garbage forced-position snap to the client.
+    let x = args[0].parse::<f32>().ok().filter(|v| v.is_finite())?;
+    let y = args[1].parse::<f32>().ok().filter(|v| v.is_finite())?;
+    let z = args[2].parse::<f32>().ok().filter(|v| v.is_finite())?;
 
     Some(Vector3::new(x, y, z))
 }
@@ -185,6 +192,19 @@ mod tests {
     #[test]
     fn parse_vector3_non_numeric() {
         assert!(parse_vector3(&["1.0", "abc", "3.0"]).is_none());
+    }
+
+    /// **Regression guard:** `nan`/`inf` (in any spelling Rust's float parser
+    /// accepts) must be rejected — a non-finite coordinate poisons AoI
+    /// distance math and the client forced-position snap. Dropping the
+    /// `is_finite` filter lets these through as a valid `Vector3`.
+    #[test]
+    fn parse_vector3_rejects_non_finite() {
+        assert!(parse_vector3(&["nan", "0", "0"]).is_none());
+        assert!(parse_vector3(&["NaN", "0", "0"]).is_none());
+        assert!(parse_vector3(&["inf", "0", "0"]).is_none());
+        assert!(parse_vector3(&["0", "-inf", "0"]).is_none());
+        assert!(parse_vector3(&["0", "0", "infinity"]).is_none());
     }
 
     #[test]

@@ -230,6 +230,23 @@ mod tests {
         ));
     }
 
+    /// **Regression guard:** `/goto nan 0 0` / `/goto inf 0 0` must reject
+    /// with usage, never produce a `GotoCoords` intent. Rust's float parser
+    /// accepts `nan`/`inf`, but a non-finite position poisons AoI distance
+    /// math and the client forced-position snap. Reverting `parse_vector3`'s
+    /// `is_finite` filter lets these through as a coords teleport.
+    #[test]
+    fn goto_rejects_non_finite_coords() {
+        let mut registry = CommandRegistry::new();
+        register_gm_commands(&mut registry);
+        for cmd in ["/goto nan 0 0", "/goto inf 0 0", "/goto 0 0 -inf"] {
+            assert!(
+                matches!(registry.dispatch(&gm_ctx(), cmd), CommandOutcome::Usage(_)),
+                "{cmd} must be rejected with usage, not teleport"
+            );
+        }
+    }
+
     #[test]
     fn kill_no_arg_targets_current() {
         let mut registry = CommandRegistry::new();

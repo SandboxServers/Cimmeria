@@ -1246,4 +1246,169 @@ mod tests {
             "chatSetAFKMessage is log-only and must not mutate connection state",
         );
     }
+
+    // ── GM command interception (the `/`-prefix trust boundary) ─────────
+    //
+    // A `/`-prefixed `sendPlayerCommunication` line is a command, not chat.
+    // The dispatch arm parses + authorizes it against the connection's
+    // SERVER-side access_level and then either ships a typed `GmCommand`
+    // intent to the cell, ships a `GmCommandFeedback` line (usage / error /
+    // denied), or — for ordinary chat — forwards a `ChatMessage`. A `/`-line
+    // is NEVER echoed as chat. These guards pin that boundary. `BaseToCellMsg`
+    // is not `Debug` (oneshot::Sender), so failure messages are static.
+
+    /// Drive SEND_PLAYER_COMMUNICATION with `text` from a caller at
+    /// `access_level`, returning every `BaseToCellMsg` forwarded to the cell.
+    /// `player_entity_id` is pre-set so the interception / chat-forward branch
+    /// is reached (a `None` eid swallows the line with no forward).
+    async fn drive_send_player_communication_msgs(
+        access_level: u32,
+        text: &str,
+    ) -> Vec<BaseToCellMsg> {
+        let addr: SocketAddr = "127.0.0.1:54500".parse().unwrap();
+        let key = [0u8; 32];
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
+
+        let mut state = test_default_connected_client_state();
+        state.player_entity_id = Some(1234);
+        state.access_level = access_level;
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::<u32, SocketAddr>::new()));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+
+        let (tx, mut rx) = mpsc::channel::<BaseToCellMsg>(8);
+        let cell_tx: Option<mpsc::Sender<BaseToCellMsg>> = Some(tx);
+
+        let payload = build_send_player_communication_payload(0, "", text);
+
+        dispatch_sgw_player_base_method(
+            sgw_player_base::SEND_PLAYER_COMMUNICATION,
+            &payload,
+            &Some("Tester".to_string()),
+            addr,
+            &transport,
+            key,
+            &connected,
+            &entity_manager,
+            &cell_tx,
+            &entity_to_addr,
+        )
+        .await
+        .expect("sendPlayerCommunication dispatch should not propagate Err");
+
+        // Drop the sender so the drain terminates instead of hanging.
+        drop(cell_tx);
+        let mut msgs = Vec::new();
+        while let Some(m) = rx.recv().await {
+            msgs.push(m);
+        }
+        msgs
+    }
+
+    /// **Security-seam guard.** A GameMaster's `/`-command is intercepted into
+    /// a typed `GmCommand` intent for the cell (threading the caller's
+    /// entity id) — NOT broadcast as chat. This is the trust boundary: client
+    /// chat text crossing into the privileged command path, gated on the
+    /// SERVER-side access_level. Reverting the `text.starts_with('/')`
+    /// interception (so it falls through to the chat broadcast) trips this.
+    #[tokio::test]
+    async fn gm_slash_command_intercepted_as_intent_not_chat() {
+        // access_level 2 == GameMaster; /spawn is GameMaster-gated.
+        let msgs = drive_send_player_communication_msgs(2, "/spawn drone 3").await;
+
+        let spawn = msgs.iter().find_map(|m| match m {
+            BaseToCellMsg::GmCommand {
+                caller_entity_id,
+                intent: cimmeria_commands::GmCommandIntent::Spawn { count, .. },
+            } => Some((*caller_entity_id, *count)),
+            _ => None,
+        });
+        assert_eq!(
+            spawn,
+            Some((1234, 3)),
+            "GM /spawn must forward GmCommand(Spawn{{count:3}}) for caller 1234"
+        );
+        assert!(
+            !msgs
+                .iter()
+                .any(|m| matches!(m, BaseToCellMsg::ChatMessage { .. })),
+            "a /-command must NEVER be broadcast as chat"
+        );
+    }
+
+    /// **Authorization guard.** A Player (access_level 0) typing a
+    /// GameMaster-gated `/`-command must get a denial `GmCommandFeedback` and
+    /// must NOT produce a `GmCommand` (no execution) nor a `ChatMessage` (not
+    /// echoed). Authorization is decided base-side from the connection's
+    /// access_level, never the client. Reverting the registry permission
+    /// check (or the access_level mapping) would let a Player's /spawn reach
+    /// the cell as a GmCommand.
+    #[tokio::test]
+    async fn non_gm_slash_command_denied_not_executed() {
+        let msgs = drive_send_player_communication_msgs(0, "/spawn drone").await;
+        assert!(
+            !msgs
+                .iter()
+                .any(|m| matches!(m, BaseToCellMsg::GmCommand { .. })),
+            "a Player must NOT produce a GmCommand intent"
+        );
+        assert!(
+            !msgs
+                .iter()
+                .any(|m| matches!(m, BaseToCellMsg::ChatMessage { .. })),
+            "a denied /-command must not be echoed as chat"
+        );
+        let denied = msgs.iter().any(|m| {
+            matches!(
+                m,
+                BaseToCellMsg::GmCommandFeedback { text, .. } if text.contains("Permission denied")
+            )
+        });
+        assert!(denied, "denied command must feed back a permission error");
+    }
+
+    /// **Non-regression guard.** Ordinary chat (no leading `/`) must still
+    /// forward as a `ChatMessage` — the command interception must not swallow
+    /// normal chat. Guards against an over-broad interception eating player
+    /// speech.
+    #[tokio::test]
+    async fn ordinary_chat_still_broadcast_not_intercepted() {
+        let msgs = drive_send_player_communication_msgs(2, "hello world").await;
+        assert!(
+            msgs.iter()
+                .any(|m| matches!(m, BaseToCellMsg::ChatMessage { .. })),
+            "ordinary chat must be forwarded as ChatMessage"
+        );
+        assert!(
+            !msgs.iter().any(|m| matches!(
+                m,
+                BaseToCellMsg::GmCommand { .. } | BaseToCellMsg::GmCommandFeedback { .. }
+            )),
+            "ordinary chat must not produce any GM command message"
+        );
+    }
+
+    /// **Fail-closed guard (server-authority audit LOW-2).** An out-of-range
+    /// access_level (bad DB data / migration drift) must map to Player and be
+    /// DENIED, never fail open to a privileged level. A GameMaster-gated
+    /// `/spawn` from an unmapped access_level (99) must produce a denial, not
+    /// a GmCommand. Reverting the catch-all arm to a privileged default trips
+    /// this.
+    #[tokio::test]
+    async fn unmapped_access_level_fails_closed_to_player() {
+        let msgs = drive_send_player_communication_msgs(99, "/spawn drone").await;
+        assert!(
+            !msgs
+                .iter()
+                .any(|m| matches!(m, BaseToCellMsg::GmCommand { .. })),
+            "an unmapped access_level must NOT be treated as privileged"
+        );
+        let denied = msgs.iter().any(|m| {
+            matches!(
+                m,
+                BaseToCellMsg::GmCommandFeedback { text, .. } if text.contains("Permission denied")
+            )
+        });
+        assert!(denied, "unmapped access_level /spawn must be denied");
+    }
 }
