@@ -155,12 +155,11 @@ pub(super) async fn handle_spawn_by_cmd(
         send_gm_feedback(entity_id, "gmSpawnByCmd: spawn request failed", tx).await;
         return true;
     }
-    send_gm_feedback(
-        entity_id,
-        &format!("gmSpawnByCmd: spawn requested (template {template_id})"),
-        tx,
-    )
-    .await;
+    // No optimistic "requested" feedback here — the definitive line is sent
+    // once the round-trip completes: the base confirms the template exists
+    // (failure line from `base::gm_spawn`), then the cell confirms the actual
+    // spawn took (`GmSpawnNpcReady` handler). See issue tracker / the
+    // "trust, but verify" refactor.
     true
 }
 

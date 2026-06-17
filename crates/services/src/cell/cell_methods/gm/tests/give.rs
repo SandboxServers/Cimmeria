@@ -20,12 +20,17 @@ async fn gm_give_item_emits_grant_with_clamped_qty() {
             item_id,
             container_id,
             count,
+            notify_gm,
         } => {
             assert_eq!(entity_id, 1);
             assert_eq!(player_id, 100);
             assert_eq!(item_id, 1234);
             assert_eq!(container_id, INV_MAIN);
             assert_eq!(count, 1000, "quantity must clamp to the cap");
+            assert!(
+                notify_gm,
+                "GM grant must set notify_gm for definitive feedback"
+            );
         }
         other => panic!("expected GrantItem, got {other:?}"),
     }
@@ -75,9 +80,14 @@ async fn gm_give_xp_emits_grant_and_rejects_nonpositive() {
         CellToBaseMsg::GrantXP {
             entity_id,
             xp_amount,
+            notify_gm,
         } => {
             assert_eq!(entity_id, 1);
             assert_eq!(xp_amount, 500);
+            assert!(
+                notify_gm,
+                "GM grant must set notify_gm for definitive feedback"
+            );
         }
         other => panic!("expected GrantXP, got {other:?}"),
     }
@@ -108,10 +118,15 @@ async fn gm_give_cash_emits_grant_and_rejects_nonpositive() {
             entity_id,
             player_id,
             amount,
+            notify_gm,
         } => {
             assert_eq!(entity_id, 1);
             assert_eq!(player_id, 100);
             assert_eq!(amount, 250);
+            assert!(
+                notify_gm,
+                "GM grant must set notify_gm for definitive feedback"
+            );
         }
         other => panic!("expected GrantCash, got {other:?}"),
     }
@@ -148,11 +163,16 @@ async fn gm_remove_item_emits_remove_and_rejects_nonpositive() {
             player_id,
             item_id,
             quantity,
+            notify_gm,
         } => {
             assert_eq!(entity_id, 1);
             assert_eq!(player_id, 100);
             assert_eq!(item_id, 42);
             assert_eq!(quantity, 3);
+            assert!(
+                notify_gm,
+                "GM remove must set notify_gm for definitive feedback"
+            );
         }
         other => panic!("expected RemoveInventoryItem, got {other:?}"),
     }
@@ -440,23 +460,34 @@ async fn crafting_grants_require_player_id() {
     );
 }
 
-/// Base round-trip success path: the grant message goes first, then a feedback
-/// line worded as a *request* (the cell can't confirm the base-side persist).
+/// Base round-trip success path: the cell emits ONLY the grant action and
+/// `notify_gm: true` — no cell-side success feedback. The definitive feedback
+/// line is now sent by the base after the DB write commits (the "trust, but
+/// verify" refactor), so the cell must NOT emit an optimistic "requested" line.
 #[tokio::test]
-async fn gm_give_item_success_feeds_back_request() {
+async fn gm_give_item_success_emits_action_without_cell_feedback() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
 
     assert!(dispatch(1, GM_GIVE_ITEM, &give_item_args("1124", 5), &tx, &mut mgr).await);
     let msgs = drain(&mut rx);
-    // Action is sent first.
+    // The grant action is emitted (and is the only message).
+    let granted = msgs.iter().any(|m| {
+        matches!(
+            m,
+            CellToBaseMsg::GrantItem {
+                notify_gm: true,
+                ..
+            }
+        )
+    });
     assert!(
-        matches!(msgs.first(), Some(CellToBaseMsg::GrantItem { .. })),
-        "the grant action must be the first message"
+        granted,
+        "the grant action must be emitted with notify_gm: true"
     );
-    let fb = feedback_text(&msgs, 1).expect("success must feed back");
+    // No cell-side feedback on success — the base owns the definitive line now.
     assert!(
-        fb.contains("requested"),
-        "base round-trip success must be worded as a request, got: {fb}"
+        feedback_text(&msgs, 1).is_none(),
+        "the cell must NOT emit success feedback on the base round-trip path"
     );
 }

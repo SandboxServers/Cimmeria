@@ -10,8 +10,14 @@
 use tokio::sync::mpsc;
 
 use sqlx::PgPool;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
+
+use crate::base::gm_feedback::send_gm_feedback_to_client;
+use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 use crate::cell::spawner::SpawnRecord;
 
@@ -39,6 +45,9 @@ pub async fn handle_gm_spawn_npc(
     position: [f32; 3],
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let pool = match db_pool {
         Some(p) => p,
@@ -61,6 +70,17 @@ pub async fn handle_gm_spawn_npc(
                     template_id,
                     "GmSpawnNpc: template not found in entity_templates — dropping spawn"
                 );
+                // Definitive failure feedback: the GM asked for a template the
+                // DB doesn't have. The success path stays silent here — the
+                // cell confirms the actual spawn once `GmSpawnNpcReady` lands.
+                send_gm_feedback_to_client(
+                    entity_id,
+                    &format!("gmSpawnByCmd: template {template_id} not found"),
+                    transport,
+                    connected,
+                    entity_to_addr,
+                )
+                .await;
                 return;
             }
             Err(e) => {
@@ -69,6 +89,14 @@ pub async fn handle_gm_spawn_npc(
                     template_id,
                     "GmSpawnNpc: entity_templates query failed: {e}"
                 );
+                send_gm_feedback_to_client(
+                    entity_id,
+                    &format!("gmSpawnByCmd: template {template_id} not found"),
+                    transport,
+                    connected,
+                    entity_to_addr,
+                )
+                .await;
                 return;
             }
         };
@@ -86,6 +114,7 @@ pub async fn handle_gm_spawn_npc(
             .send(BaseToCellMsg::GmSpawnNpcReady {
                 record: Box::new(record),
                 space_id,
+                requester_entity_id: entity_id,
             })
             .await
         {
@@ -96,6 +125,9 @@ pub async fn handle_gm_spawn_npc(
                 "GmSpawnNpc: GmSpawnNpcReady send to cell failed: {e}"
             );
         }
+        // Success path: do NOT feed back here. The cell sends the definitive
+        // "spawned npc <id>" line from its `GmSpawnNpcReady` handler once the
+        // NPC is actually placed in the space.
     } else {
         tracing::warn!(
             entity_id,
@@ -222,8 +254,23 @@ mod tests {
     //! `GmSpawnNpcReady`) against a seeded template, and the not-found path.
 
     use super::*;
-    use crate::test_support::require_db_or_skip;
+    use crate::test_support::{require_db_or_skip, TestTransport};
     use sqlx::Row;
+
+    /// Empty client-IO triple: the GM-feedback / not-found push is skipped
+    /// (`send_to_witness_reliable` no-ops on an empty `entity_to_addr`), but the
+    /// DB query + `GmSpawnNpcReady` reply still run — which is what these tests
+    /// assert.
+    fn empty_io() -> (
+        Arc<dyn Transport>,
+        Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+        Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    ) {
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+        (transport, connected, entity_to_addr)
+    }
 
     /// A real template (resolved from the seed, not hard-coded) must produce a
     /// `GmSpawnNpcReady` whose template-derived fields match the row and whose
@@ -247,6 +294,7 @@ mod tests {
 
         let (cell_tx, mut cell_rx) = mpsc::channel(8);
         let db_pool = Some(Arc::new(pool.clone()));
+        let (transport, connected, entity_to_addr) = empty_io();
 
         handle_gm_spawn_npc(
             42, // entity_id
@@ -256,12 +304,20 @@ mod tests {
             [10.0, 20.0, 30.0],
             &db_pool,
             &Some(cell_tx),
+            &transport,
+            &connected,
+            &entity_to_addr,
         )
         .await;
 
         match cell_rx.try_recv().expect("must reply GmSpawnNpcReady") {
-            BaseToCellMsg::GmSpawnNpcReady { record, space_id } => {
+            BaseToCellMsg::GmSpawnNpcReady {
+                record,
+                space_id,
+                requester_entity_id,
+            } => {
                 assert_eq!(space_id, 5, "space_id echoes the request");
+                assert_eq!(requester_entity_id, 42, "requester echoes the entity_id");
                 assert_eq!(record.template_id, template_id, "template-derived id");
                 assert_eq!(record.template_name, template_name, "template-derived name");
                 assert_eq!(
@@ -347,6 +403,7 @@ mod tests {
 
         let (cell_tx, mut cell_rx) = mpsc::channel(8);
         let db_pool = Some(Arc::new(pool.clone()));
+        let (transport, connected, entity_to_addr) = empty_io();
 
         // Run the handler against the malformed template. `try_get` + `?` turns
         // the NULL into an Err arm → graceful drop (no reply, no panic).
@@ -358,6 +415,9 @@ mod tests {
             [0.0; 3],
             &db_pool,
             &Some(cell_tx),
+            &transport,
+            &connected,
+            &entity_to_addr,
         )
         .await;
 
@@ -378,6 +438,7 @@ mod tests {
         let pool = require_db_or_skip!();
         let (cell_tx, mut cell_rx) = mpsc::channel(8);
         let db_pool = Some(Arc::new(pool.clone()));
+        let (transport, connected, entity_to_addr) = empty_io();
 
         handle_gm_spawn_npc(
             42,
@@ -387,6 +448,9 @@ mod tests {
             [0.0; 3],
             &db_pool,
             &Some(cell_tx),
+            &transport,
+            &connected,
+            &entity_to_addr,
         )
         .await;
 

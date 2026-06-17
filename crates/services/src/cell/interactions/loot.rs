@@ -210,6 +210,8 @@ pub async fn handle_loot_item(
                 item_id: design_id,
                 container_id,
                 count: removed_item.quantity,
+                // Loot pickup is not GM-sourced — no GM feedback line.
+                notify_gm: false,
             })
             .await;
     } else {
@@ -219,6 +221,8 @@ pub async fn handle_loot_item(
                 entity_id,
                 player_id,
                 amount: removed_item.quantity,
+                // Loot pickup is not GM-sourced — no GM feedback line.
+                notify_gm: false,
             })
             .await;
     }

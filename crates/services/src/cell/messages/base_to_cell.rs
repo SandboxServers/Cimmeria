@@ -241,8 +241,15 @@ pub enum BaseToCellMsg {
     /// `record` is boxed because `SpawnRecord` is ~380 bytes — large enough
     /// that carrying it inline would balloon every `BaseToCellMsg` variant
     /// (clippy `large_enum_variant`). Boxing keeps the channel cheap to move.
+    ///
+    /// `requester_entity_id` is the GM entity that issued `gmSpawnByCmd`. The
+    /// cell carries it through so it can send the *definitive* "spawned npc
+    /// <id>" feedback line to the GM only after `spawn_npc_from_record_in_space`
+    /// actually succeeds (the cell is the layer that knows the new NPC id and
+    /// whether the spawn took).
     GmSpawnNpcReady {
         record: Box<crate::cell::spawner::SpawnRecord>,
         space_id: u32,
+        requester_entity_id: u32,
     },
 }

@@ -363,10 +363,12 @@ pub(crate) async fn handle_cell_message(
         CellToBaseMsg::GrantXP {
             entity_id,
             xp_amount,
+            notify_gm,
         } => {
             handle_grant_xp(
                 entity_id,
                 xp_amount,
+                notify_gm,
                 db_pool,
                 transport,
                 connected,
@@ -397,6 +399,7 @@ pub(crate) async fn handle_cell_message(
             item_id,
             container_id,
             count,
+            notify_gm,
         } => {
             handle_grant_item(
                 entity_id,
@@ -404,6 +407,7 @@ pub(crate) async fn handle_cell_message(
                 item_id,
                 container_id,
                 count,
+                notify_gm,
                 db_pool,
                 cell_tx,
                 transport,
@@ -416,11 +420,13 @@ pub(crate) async fn handle_cell_message(
             entity_id,
             player_id,
             amount,
+            notify_gm,
         } => {
             handle_grant_cash(
                 entity_id,
                 player_id,
                 amount,
+                notify_gm,
                 db_pool,
                 transport,
                 connected,
@@ -452,7 +458,13 @@ pub(crate) async fn handle_cell_message(
             amount,
         } => {
             crate::base::crafting::handlers::handle_grant_applied_science(
-                entity_id, player_id, amount, db_pool,
+                entity_id,
+                player_id,
+                amount,
+                db_pool,
+                transport,
+                connected,
+                entity_to_addr,
             )
             .await;
         }
@@ -471,6 +483,9 @@ pub(crate) async fn handle_cell_message(
                 position,
                 db_pool,
                 cell_tx,
+                transport,
+                connected,
+                entity_to_addr,
             )
             .await;
         }
@@ -690,12 +705,14 @@ pub(crate) async fn handle_cell_message(
             player_id,
             item_id,
             quantity,
+            notify_gm,
         } => {
             handle_remove_inventory_item(
                 entity_id,
                 player_id,
                 item_id,
                 quantity,
+                notify_gm,
                 db_pool,
                 cell_tx,
                 transport,

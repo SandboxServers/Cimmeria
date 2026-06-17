@@ -14,6 +14,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use crate::base::crafting::persistence::{load_crafting_state, save_crafting_state};
+use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::helpers::send_to_witness_reliable;
 use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
@@ -68,6 +69,14 @@ pub async fn handle_grant_expertise(
                 discipline_id,
                 "GrantExpertise: load_crafting_state failed: {e}"
             );
+            send_gm_feedback_to_client(
+                entity_id,
+                &format!("gmGiveExpertise: failed (could not load crafting state for discipline {discipline_id})"),
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
             return;
         }
     };
@@ -95,6 +104,14 @@ pub async fn handle_grant_expertise(
             new_expertise,
             "GrantExpertise: save_crafting_state failed: {e}"
         );
+        send_gm_feedback_to_client(
+            entity_id,
+            &format!("gmGiveExpertise: failed (save error for discipline {discipline_id})"),
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
         return;
     }
 
@@ -105,6 +122,17 @@ pub async fn handle_grant_expertise(
         new_expertise,
         "GrantExpertise: persisted expertise"
     );
+
+    // Definitive success feedback: the write committed, so the GM gets the
+    // real persisted (clamped) expertise value.
+    send_gm_feedback_to_client(
+        entity_id,
+        &format!("gmGiveExpertise: discipline {discipline_id} now {new_expertise}"),
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
 
     // Push onUpdateDiscipline (method 136) to the client so the crafting UI
     // reflects the new discipline/percentage without a relog.
@@ -148,6 +176,9 @@ pub async fn handle_grant_applied_science(
     player_id: i32,
     amount: i32,
     db_pool: &Option<Arc<PgPool>>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let pool = match db_pool {
         Some(p) => p,
@@ -170,6 +201,14 @@ pub async fn handle_grant_applied_science(
                 player_id,
                 "GrantAppliedSciencePoints: load_crafting_state failed: {e}"
             );
+            send_gm_feedback_to_client(
+                entity_id,
+                "gmGiveAppliedSciencePoints: failed (could not load crafting state)",
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
             return;
         }
     };
@@ -183,17 +222,38 @@ pub async fn handle_grant_applied_science(
             amount,
             "GrantAppliedSciencePoints: save_crafting_state failed: {e}"
         );
+        send_gm_feedback_to_client(
+            entity_id,
+            "gmGiveAppliedSciencePoints: failed (save error)",
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
         return;
     }
 
+    let new_total = state.applied_science_points;
     tracing::info!(
         entity_id,
         player_id,
         amount,
-        total = state.applied_science_points,
+        total = new_total,
         "GrantAppliedSciencePoints: persisted ASP (no client push — client \
          refreshes on next crafting open / relog)"
     );
+
+    // Definitive success feedback: the write committed. (This is independent of
+    // the "no outbound ASP client method" note above — that's about the live
+    // ASP *display*; this is the GM-command confirmation line on CHAN_FEEDBACK.)
+    send_gm_feedback_to_client(
+        entity_id,
+        &format!("gmGiveAppliedSciencePoints: +{amount} (total {new_total})"),
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
 }
 
 #[cfg(test)]
@@ -343,9 +403,30 @@ mod tests {
         insert_minimal_player(&pool, account_id, player_id).await;
 
         let db_pool = Some(Arc::new(pool.clone()));
+        // Empty entity_to_addr → the GM-feedback client push is skipped
+        // (send_to_witness_reliable no-ops), but the load/save DB writes commit.
+        let (transport, connected, entity_to_addr) = empty_handler_io();
 
-        handle_grant_applied_science(999, player_id, 5, &db_pool).await;
-        handle_grant_applied_science(999, player_id, 7, &db_pool).await;
+        handle_grant_applied_science(
+            999,
+            player_id,
+            5,
+            &db_pool,
+            &transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
+        handle_grant_applied_science(
+            999,
+            player_id,
+            7,
+            &db_pool,
+            &transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
 
         let state = load_crafting_state(&pool, player_id).await.expect("reload");
         assert_eq!(

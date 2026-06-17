@@ -31,7 +31,7 @@
 //! lives in `docs/protocol/cell-method-dispatch-table.md`; the ADAPT roadmap
 //! is in `docs/architecture/gm-cell-method-adapt-plan.md`.
 
-mod feedback;
+pub(crate) mod feedback;
 mod give;
 mod missions;
 mod query;

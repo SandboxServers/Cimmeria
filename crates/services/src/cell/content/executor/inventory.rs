@@ -107,6 +107,8 @@ pub(super) async fn grant(
             item_id,
             container_id: cid,
             count,
+            // Content-chain grant is not GM-sourced — no GM feedback line.
+            notify_gm: false,
         })
         .await
     {
@@ -181,6 +183,8 @@ pub(super) async fn remove(
                 player_id,
                 item_id: instance,
                 quantity: count,
+                // Content-chain remove is not GM-sourced — no GM feedback line.
+                notify_gm: false,
             })
             .await
         }

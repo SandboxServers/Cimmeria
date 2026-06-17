@@ -44,12 +44,14 @@ async fn gm_spawn_by_cmd_emits_spawn_with_offset_position() {
         other => panic!("expected GmSpawnNpc, got {other:?}"),
     }
 
-    // Base round-trip: the spawn message goes first, then a feedback line worded
-    // as a *request* (the cell only asks the base to build the spawn record).
-    let fb = feedback_text(&drain(&mut rx), 1).expect("gmSpawnByCmd success must feed back");
+    // Base round-trip: the cell emits ONLY the spawn request — no cell-side
+    // feedback. The definitive "spawned npc <id>" line is sent later, from the
+    // cell's `GmSpawnNpcReady` handler once the spawn actually takes (and the
+    // base sends a "template not found" line if the lookup fails). The cell no
+    // longer feeds back an optimistic "requested" line here.
     assert!(
-        fb.contains("requested"),
-        "base round-trip success must be worded as a request, got: {fb}"
+        feedback_text(&drain(&mut rx), 1).is_none(),
+        "the cell must NOT emit success feedback when only requesting the spawn"
     );
 }
 

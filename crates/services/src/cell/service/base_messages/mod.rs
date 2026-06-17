@@ -599,7 +599,11 @@ pub(super) async fn handle_base_message(
             request_entity_update::handle(witness_id, entity_ids, tx, space_mgr).await;
         }
 
-        BaseToCellMsg::GmSpawnNpcReady { record, space_id } => {
+        BaseToCellMsg::GmSpawnNpcReady {
+            record,
+            space_id,
+            requester_entity_id,
+        } => {
             // Base resolved the gmSpawnByCmd template into a SpawnRecord —
             // allocate an NPC id and drop it into the target space. AoI fanout
             // handles client visibility on the next tick, so there's no extra
@@ -619,6 +623,19 @@ pub(super) async fn handle_base_message(
                         z = record.z,
                         "GmSpawnNpcReady: NPC spawned"
                     );
+                    // Definitive success line: the spawn actually took, so the
+                    // GM gets confirmation with the real new NPC id. This is
+                    // the cell-side completion of the gmSpawnByCmd round-trip
+                    // (the cell-side "requested" optimism was removed).
+                    crate::cell::cell_methods::gm::feedback::send_gm_feedback(
+                        requester_entity_id,
+                        &format!(
+                            "gmSpawnByCmd: spawned npc {id} (template {})",
+                            record.template_id
+                        ),
+                        tx,
+                    )
+                    .await;
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -627,6 +644,15 @@ pub(super) async fn handle_base_message(
                         space_id,
                         "GmSpawnNpcReady: spawn failed: {e}"
                     );
+                    crate::cell::cell_methods::gm::feedback::send_gm_feedback(
+                        requester_entity_id,
+                        &format!(
+                            "gmSpawnByCmd: spawn failed for template {}",
+                            record.template_id
+                        ),
+                        tx,
+                    )
+                    .await;
                 }
             }
         }

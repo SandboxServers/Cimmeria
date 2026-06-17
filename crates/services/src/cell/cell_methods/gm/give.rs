@@ -59,18 +59,15 @@ pub(super) async fn handle_give_xp(
         return true;
     }
     tracing::info!(entity_id, amount, "gmGiveXp: granting XP to GM");
+    // `notify_gm: true` — the base sends the definitive feedback line after the
+    // XP write commits. No optimistic "requested" line here.
     let _ = tx
         .send(CellToBaseMsg::GrantXP {
             entity_id,
             xp_amount: amount as u64,
+            notify_gm: true,
         })
         .await;
-    send_gm_feedback(
-        entity_id,
-        &format!("gmGiveXp: grant requested ({amount} xp)"),
-        tx,
-    )
-    .await;
     true
 }
 
@@ -164,6 +161,8 @@ pub(super) async fn handle_give_item(
     // Reuse the canonical grant primitive — base persists to sgw_inventory and
     // emits onUpdateItem. Container defaults to INV_Main; the base side
     // re-homes weapons/ammo to the bandolier via the item_containers cache.
+    // `notify_gm: true` — the base sends the definitive feedback line after the
+    // inventory write commits. No optimistic "requested" line here.
     let _ = tx
         .send(CellToBaseMsg::GrantItem {
             entity_id,
@@ -171,14 +170,9 @@ pub(super) async fn handle_give_item(
             item_id: type_id,
             container_id: INV_MAIN,
             count,
+            notify_gm: true,
         })
         .await;
-    send_gm_feedback(
-        entity_id,
-        &format!("gmGiveItem: grant requested (item {type_id} x{count})"),
-        tx,
-    )
-    .await;
     true
 }
 
@@ -228,19 +222,16 @@ pub(super) async fn handle_give_cash(
         amount,
         "gmGiveCash: granting cash to GM"
     );
+    // `notify_gm: true` — the base sends the definitive feedback line after the
+    // naquadah UPDATE commits. No optimistic "requested" line here.
     let _ = tx
         .send(CellToBaseMsg::GrantCash {
             entity_id,
             player_id,
             amount,
+            notify_gm: true,
         })
         .await;
-    send_gm_feedback(
-        entity_id,
-        &format!("gmGiveCash: grant requested ({amount} naquadah)"),
-        tx,
-    )
-    .await;
     true
 }
 
@@ -320,6 +311,8 @@ pub(super) async fn handle_give_expertise(
         amount,
         "gmGiveExpertise: granting expertise to GM"
     );
+    // No optimistic "requested" feedback — the base sends the definitive line
+    // ("discipline <d> now <newExpertise>") once `save_crafting_state` commits.
     let _ = tx
         .send(CellToBaseMsg::GrantExpertise {
             entity_id,
@@ -328,12 +321,6 @@ pub(super) async fn handle_give_expertise(
             amount,
         })
         .await;
-    send_gm_feedback(
-        entity_id,
-        &format!("gmGiveExpertise: grant requested (discipline {discipline_id}, +{amount})"),
-        tx,
-    )
-    .await;
     true
 }
 
@@ -402,6 +389,8 @@ pub(super) async fn handle_give_applied_science(
         amount,
         "gmGiveAppliedSciencePoints: granting ASP to GM"
     );
+    // No optimistic "requested" feedback — the base sends the definitive line
+    // ("+<amount> (total <newTotal>)") once `save_crafting_state` commits.
     let _ = tx
         .send(CellToBaseMsg::GrantAppliedSciencePoints {
             entity_id,
@@ -409,12 +398,6 @@ pub(super) async fn handle_give_applied_science(
             amount,
         })
         .await;
-    send_gm_feedback(
-        entity_id,
-        &format!("gmGiveAppliedSciencePoints: grant requested (+{amount})"),
-        tx,
-    )
-    .await;
     true
 }
 
@@ -488,19 +471,16 @@ pub(super) async fn handle_remove_item(
         quantity,
         "gmRemoveItem: removing item from GM"
     );
+    // `notify_gm: true` — the base sends the definitive feedback line after the
+    // inventory remove commits. No optimistic "requested" line here.
     let _ = tx
         .send(CellToBaseMsg::RemoveInventoryItem {
             entity_id,
             player_id,
             item_id,
             quantity: i32::from(quantity),
+            notify_gm: true,
         })
         .await;
-    send_gm_feedback(
-        entity_id,
-        &format!("gmRemoveItem: remove requested (item {item_id} x{quantity})"),
-        tx,
-    )
-    .await;
     true
 }

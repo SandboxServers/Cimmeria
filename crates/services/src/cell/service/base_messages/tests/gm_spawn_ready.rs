@@ -61,7 +61,7 @@ async fn gm_spawn_npc_ready_spawns_record_into_space() {
     let space_id = mgr.get_entity(1).unwrap().space_id.0 as u32;
     assert!(mgr.all_npc_entity_ids().is_empty(), "no NPCs to start");
 
-    let (tx, _rx) = mpsc::channel(8);
+    let (tx, mut rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let record = gm_record(4242, [12.0, 0.0, -7.0]);
 
@@ -69,6 +69,7 @@ async fn gm_spawn_npc_ready_spawns_record_into_space() {
         BaseToCellMsg::GmSpawnNpcReady {
             record: Box::new(record),
             space_id,
+            requester_entity_id: 1,
         },
         &tx,
         &mut mgr,
@@ -91,4 +92,35 @@ async fn gm_spawn_npc_ready_spawns_record_into_space() {
         "spawned at the record's position"
     );
     assert!(!e.is_player, "GM spawn is an NPC");
+
+    // Definitive feedback: the cell sends the "spawned npc <id>" line to the
+    // requesting GM (entity 1) once the spawn actually takes. This is the
+    // cell-side completion of the gmSpawnByCmd round-trip — the optimistic
+    // cell-side "requested" line was removed.
+    let fb = spawned_feedback_text(&mut rx, 1).expect("GmSpawnNpcReady must feed back to the GM");
+    assert!(
+        fb.contains("spawned npc") && fb.contains("template 4242"),
+        "definitive spawn feedback must name the new npc and template, got: {fb}"
+    );
+}
+
+/// Pull the decoded text of the first `onPlayerCommunication` (method 28)
+/// feedback line addressed to `entity_id`, draining the channel.
+fn spawned_feedback_text(rx: &mut mpsc::Receiver<CellToBaseMsg>, entity_id: u32) -> Option<String> {
+    std::iter::from_fn(|| rx.try_recv().ok()).find_map(|m| match m {
+        CellToBaseMsg::EntityMethodCall {
+            entity_id: e,
+            method_index: 28,
+            args,
+        } if e == entity_id => {
+            let spk = u32::from_le_bytes(args[0..4].try_into().ok()?) as usize;
+            let off = 4 + spk * 2 + 2; // + flags + channel
+            let tlen = u32::from_le_bytes(args[off..off + 4].try_into().ok()?) as usize;
+            let units: Vec<u16> = (0..tlen)
+                .map(|i| u16::from_le_bytes([args[off + 4 + i * 2], args[off + 5 + i * 2]]))
+                .collect();
+            Some(String::from_utf16_lossy(&units))
+        }
+        _ => None,
+    })
 }

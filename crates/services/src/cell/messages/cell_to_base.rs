@@ -130,7 +130,15 @@ pub enum CellToBaseMsg {
     /// The CellService computes the XP amount from the mob's level and sends
     /// this to BaseApp, which updates the player's XP/level and sends client
     /// notifications.
-    GrantXP { entity_id: u32, xp_amount: u64 },
+    ///
+    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
+    /// `entity_id` after the write commits. Only the GM `gmGiveXp` path sets
+    /// this; non-GM senders (mob-kill XP) leave it false.
+    GrantXP {
+        entity_id: u32,
+        xp_amount: u64,
+        notify_gm: bool,
+    },
 
     /// Train a new ability for a player — debit one training point and
     /// persist the new ability to `sgw_player.abilities`. The base side
@@ -154,12 +162,18 @@ pub enum CellToBaseMsg {
     },
 
     /// Grant an item to a player and persist to `sgw_inventory`.
+    ///
+    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
+    /// `entity_id` after the write commits. Only the GM `gmGiveItem` path sets
+    /// this; non-GM senders (loot pickup, content-chain `Action::GrantItem`)
+    /// leave it false.
     GrantItem {
         entity_id: u32,
         player_id: i32,
         item_id: i32,
         container_id: i32,
         count: i32,
+        notify_gm: bool,
     },
 
     /// Open a vendor store for a player using the vendor template lists.
@@ -211,11 +225,17 @@ pub enum CellToBaseMsg {
     },
 
     /// Remove quantity from an inventory item instance.
+    ///
+    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
+    /// `entity_id` after the write commits. Only the GM `gmRemoveItem` path
+    /// sets this; non-GM senders (content-chain `Action::RemoveItem`, the
+    /// `removeItem` inventory method) leave it false.
     RemoveInventoryItem {
         entity_id: u32,
         player_id: i32,
         item_id: i32,
         quantity: i32,
+        notify_gm: bool,
     },
 
     /// Remove `count` of an item by **design id** (`type_id`) — chains know
@@ -351,10 +371,15 @@ pub enum CellToBaseMsg {
     },
 
     /// Grant cash (naquadah) to a player and persist to the database.
+    ///
+    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
+    /// `entity_id` after the write commits. Only the GM `gmGiveCash` path sets
+    /// this; non-GM senders (loot pickup) leave it false.
     GrantCash {
         entity_id: u32,
         player_id: i32,
         amount: i32,
+        notify_gm: bool,
     },
 
     /// Grant crafting expertise in one discipline and persist to the database

@@ -41,6 +41,9 @@ pub(super) async fn handle_remove_item(
                     player_id,
                     item_id,
                     quantity,
+                    // The `removeItem` inventory method is a player-initiated
+                    // drop, not a GM command — no GM feedback line.
+                    notify_gm: false,
                 })
                 .await
             {
