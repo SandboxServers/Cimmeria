@@ -477,7 +477,7 @@ beyond the 3 verified handlers above.
   [gm-cell-method-adapt-plan.md](../architecture/gm-cell-method-adapt-plan.md).
 - **NEW** — no primitive; build from scratch (high effort).
 
-**Tally (of 117):** 35 DONE · 0 REUSE · 38 ADAPT · 44 NEW.
+**Tally (of 117):** 38 DONE · 0 REUSE · 35 ADAPT · 44 NEW.
 
 > **#518 expansion.** All 18 REUSE rows are now **DONE**. The 16 observable-effect
 > commands plus the single-recipient feedback channel (`gm/feedback.rs` —
@@ -549,8 +549,8 @@ beyond the 3 verified handlers above.
 | 136 | `gmGiveAbility(INT32 abilityID)` | `/GiveAbility` | `progression/mod.rs:400 handle_train_ability` (debits a point; need no-debit variant) | ADAPT |
 | 137 | `gmGiveTrainingPoints(INT32 n)` | — | — (no grant fn; XP path touches the field) | NEW |
 | 138 | `gmGiveRespawner(INT32 mobID)` | `/GiveRespawner` | — (respawner persistence not implemented) | NEW |
-| 139 | `gmGiveExpertise(INT32 disc, INT32 amt)` | — | `crafting/persistence.rs:208` (delete-all/insert-all; needs upsert) | ADAPT |
-| 140 | `gmGiveAppliedSciencePoints(INT32 pts)` | — | crafting field exists (no incremental grant fn) | ADAPT |
+| 139 | `gmGiveExpertise(INT32 disc, INT32 amt)` | — | `cell/cell_methods/gm/give.rs handle_give_expertise` → `CellToBaseMsg::GrantExpertise` → `base/crafting/handlers.rs handle_grant_expertise` (load/clamp/save + `onUpdateDiscipline` 136) | **DONE** |
+| 140 | `gmGiveAppliedSciencePoints(INT32 pts)` | — | `cell/cell_methods/gm/give.rs handle_give_applied_science` → `CellToBaseMsg::GrantAppliedSciencePoints` → `base/crafting/handlers.rs handle_grant_applied_science` (persist-only; no outbound ASP client method) | **DONE** |
 | 141 | `gmGiveRacialParadigmLevels(INT32 id, INT32 lvls)` | — | `racial_paradigm_levels` array column (needs edit fn) | ADAPT |
 
 #### Set player / target state (142–158)
@@ -620,7 +620,7 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 185 | `gmSpawnByCmd(WSTRING DesignId, FLOAT xOff, FLOAT zOff)` | `/Spawn` | `space_manager/spawn.rs:85 spawn_npc_from_record_in_space` (needs DesignId→`SpawnRecord`). Same primitive #517's chat `/spawn` used. | ADAPT |
+| 185 | `gmSpawnByCmd(WSTRING DesignId, FLOAT xOff, FLOAT zOff)` | `/Spawn` | `cell/cell_methods/gm/spawn.rs handle_spawn_by_cmd` → `CellToBaseMsg::GmSpawnNpc` → `base/crafting/handlers.rs handle_gm_spawn_npc` (entity_templates→`SpawnRecord`) → `BaseToCellMsg::GmSpawnNpcReady` → `space_manager/spawn.rs:85 spawn_npc_from_record_in_space`. Base round-trip (no cell template cache), mirrors `TrainAbility`→`AbilityGranted`. | **DONE** |
 | 186 | `gmDespawnByCmd(INT32 target)` | — | `cell/cell_methods/gm/world.rs` → `destroy_entity` (NPC-only) | **DONE** |
 | 187 | `gmRechargeItem(INT32 itemId)` | — | vendor `recharge.rs` (base-scoped; need GM cell→base route) | ADAPT |
 | 188 | `gmSetMobAttribute(INT32 target, WSTRING attr, WSTRING type, INT32 val)` | — | `queries.rs:35 get_entity_mut` (no reflection; hand-map attrs) | ADAPT |

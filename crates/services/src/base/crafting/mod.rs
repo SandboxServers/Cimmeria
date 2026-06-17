@@ -7,6 +7,7 @@
 //! Phases 2-5 (craft/research/alloy/reveng activities, full wire emission,
 //! respec) live in the cell layer and will land in follow-up PRs.
 
+pub mod handlers;
 pub mod persistence;
 
 // Re-exports are deferred until Phase 2 wires up the world-entry load + the

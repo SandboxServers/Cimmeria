@@ -14,17 +14,18 @@ primitive, and a status (**DONE** / **REUSE** / **ADAPT** / **NEW**), lives in
 the dispatch table:
 [cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md#full-gm-cell-method-inventory--cimmeria-handler-status).
 
-- **DONE** (35) — handlers wired in [`crates/services/src/cell/cell_methods/gm/`](../../crates/services/src/cell/cell_methods/gm/):
-  #518's verified + REUSE set, the feedback channel + its query consumers, and
-  (this round) the inspection trio, the rest of the query cluster
+- **DONE** (38) — handlers wired in [`crates/services/src/cell/cell_methods/gm/`](../../crates/services/src/cell/cell_methods/gm/):
+  #518's verified + REUSE set, the feedback channel + its query consumers, the
+  inspection trio, the rest of the query cluster
   (mission list/full/details, listAbilities, showFlag, getMobAttribute,
-  showMobCount, debugMobData), and the daily-driver mutates `gmGoto` (160),
-  `gmSummon` (161), `gmMissionAssign` (109).
+  showMobCount, debugMobData), the daily-driver mutates `gmGoto` (160),
+  `gmSummon` (161), `gmMissionAssign` (109), and (this round) the base-infra
+  commands `gmSpawnByCmd` (185, §2 cell↔base template round-trip) and the
+  crafting grants `gmGiveExpertise` (139) / `gmGiveAppliedSciencePoints` (140).
 - **REUSE** (0 remaining) — all thin-handler commands are done.
-- **ADAPT** (38 remaining) — this document. The big remaining items needing new
-  base-side infrastructure: `gmSpawnByCmd` (185, cell↔base template round-trip)
-  and the crafting grants `gmGiveExpertise` (139) / `gmGiveAppliedSciencePoints`
-  (140, new `CellToBaseMsg` + persistence).
+- **ADAPT** (35 remaining) — this document. The big base-infra items are now
+  done; the remaining ADAPTs are the smaller per-resource grant/edit handlers
+  (training points, racial paradigm levels, respawner) and stat/flag variants.
 - **NEW** (44) — out of scope here (new subsystems: god-mode flags, respec,
   stance, cover regen, etc.).
 
@@ -114,7 +115,7 @@ and one wrapper for "act on another entity."
 
 | Idx | Method (args) | Primitive | Tags | Note |
 |-----|---------------|-----------|------|------|
-| 185 | `gmSpawnByCmd(WSTRING DesignId, FLOAT xOff, zOff)` | `spawn_npc_from_record_in_space` | N | Resolve DesignId→`SpawnRecord`; spawn at caller pos + offset. Highest-value spawn command. |
+| 185 | `gmSpawnByCmd(WSTRING DesignId, FLOAT xOff, zOff)` — **DONE** | `spawn_npc_from_record_in_space` | N | DesignId is the numeric template id; cell→base `GmSpawnNpc` queries `entity_templates`→`SpawnRecord`→ replies `GmSpawnNpcReady`; cell spawns at caller pos + X/Z offset. Round-trip mirrors `TrainAbility`→`AbilityGranted`. |
 | 160 | `gmGoto(WSTRING nameOrID)` — **DONE** | `TeleportPlayer` to target pos | — | Numeric-id, same-space (cross-space → `gmGotoLocation`). |
 | 161 | `gmSummon(WSTRING nameOrID)` — **DONE** | `TeleportPlayer`/`update_entity_position` | — | Moves target to caller; player → forced snap, NPC → grid update. |
 | 109 | `gmMissionAssign(WSTRING DesignID, UINT8 popup)` — **DONE** | `accept_mission` | — | Numeric DesignID → mission-def first step + objectives → accept. |
@@ -194,8 +195,14 @@ so it isn't mistaken for a targeted reload.
    + `testLOS` shipped on it.
 2. **Query cluster** (§1) — batch of read-the-field + `send_gm_feedback` one-liners,
    now unblocked.
-3. **`resolve_design_id` helper + `gmSpawnByCmd` / `gmGoto` / `gmMissionAssign`**
-   (§2) — the daily-driver mutate commands.
+3. ~~**`gmSpawnByCmd` / `gmGoto` / `gmMissionAssign`** (§2)~~ — **done**. The
+   daily-driver mutate commands. `gmSpawnByCmd` (185) landed as a cell↔base
+   template round-trip (`GmSpawnNpc` → `entity_templates` lookup →
+   `GmSpawnNpcReady`); `gmGoto`/`gmMissionAssign` shipped earlier. The crafting
+   grants `gmGiveExpertise` (139) / `gmGiveAppliedSciencePoints` (140) also
+   landed this round (new `CellToBaseMsg` variants → `base/crafting/handlers.rs`
+   load/mutate/save; expertise pushes `onUpdateDiscipline` 136, ASP persists
+   only since the SGWPlayer method table has no outbound ASP client method).
 4. **`gmSetSpeed`** (§3) — quick win, mirrors the shipped set-stat handlers.
 5. **`loadX` family** (§5) — full-reload first cut for live content iteration.
 6. Remaining §3/§4 param-shape wrappers as needed.

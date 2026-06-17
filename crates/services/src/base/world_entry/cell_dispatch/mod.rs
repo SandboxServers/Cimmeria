@@ -428,6 +428,52 @@ pub(crate) async fn handle_cell_message(
             )
             .await;
         }
+        CellToBaseMsg::GrantExpertise {
+            entity_id,
+            player_id,
+            discipline_id,
+            amount,
+        } => {
+            crate::base::crafting::handlers::handle_grant_expertise(
+                entity_id,
+                player_id,
+                discipline_id,
+                amount,
+                db_pool,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
+        CellToBaseMsg::GrantAppliedSciencePoints {
+            entity_id,
+            player_id,
+            amount,
+        } => {
+            crate::base::crafting::handlers::handle_grant_applied_science(
+                entity_id, player_id, amount, db_pool,
+            )
+            .await;
+        }
+        CellToBaseMsg::GmSpawnNpc {
+            entity_id,
+            template_id,
+            space_id,
+            world_name,
+            position,
+        } => {
+            crate::base::gm_spawn::handle_gm_spawn_npc(
+                entity_id,
+                template_id,
+                space_id,
+                world_name,
+                position,
+                db_pool,
+                cell_tx,
+            )
+            .await;
+        }
         CellToBaseMsg::WitnessEntityMethod {
             witness_id,
             entity_id,

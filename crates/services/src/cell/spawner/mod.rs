@@ -45,6 +45,10 @@ pub use npcs::{
     class_id_for_class, load_spawns_from_db, spawn_instance_npcs_from_records,
     spawn_npcs_from_records, SpawnRecord,
 };
+// Internal helpers reused by the base-side GM spawn handler
+// (`base::crafting::handlers::load_spawn_record_for_template`). Crate-visible
+// only — not part of the spawner's public surface.
+pub(crate) use npcs::{load_patrol_points, normalize_respawn_secs};
 pub use regions::{load_regions_from_db, RegionLoadData};
 pub use respawners::{load_respawners, RespawnerDef};
 pub use stargates::{load_stargates, StargateEntry};

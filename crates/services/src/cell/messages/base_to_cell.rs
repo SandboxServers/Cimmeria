@@ -227,4 +227,22 @@ pub enum BaseToCellMsg {
         witness_id: u32,
         entity_ids: Vec<u32>,
     },
+
+    /// Base resolved a `gmSpawnByCmd` template into a `SpawnRecord` and is
+    /// handing it back to the cell to spawn. Response to
+    /// [`crate::cell::messages::CellToBaseMsg::GmSpawnNpc`] — the round-trip
+    /// exists because only the base side can query `resources.entity_templates`
+    /// to build the record (the cell has no template cache). The cell allocates
+    /// an NPC id and calls `spawn_npc_from_record_in_space(id, &record,
+    /// space_id)`; AoI fanout handles client visibility on the next tick, so no
+    /// extra send is needed. `record.x/y/z` already carry the computed spawn
+    /// position from the original command.
+    ///
+    /// `record` is boxed because `SpawnRecord` is ~380 bytes — large enough
+    /// that carrying it inline would balloon every `BaseToCellMsg` variant
+    /// (clippy `large_enum_variant`). Boxing keeps the channel cheap to move.
+    GmSpawnNpcReady {
+        record: Box<crate::cell::spawner::SpawnRecord>,
+        space_id: u32,
+    },
 }

@@ -598,5 +598,37 @@ pub(super) async fn handle_base_message(
         } => {
             request_entity_update::handle(witness_id, entity_ids, tx, space_mgr).await;
         }
+
+        BaseToCellMsg::GmSpawnNpcReady { record, space_id } => {
+            // Base resolved the gmSpawnByCmd template into a SpawnRecord —
+            // allocate an NPC id and drop it into the target space. AoI fanout
+            // handles client visibility on the next tick, so there's no extra
+            // send here (same as DB-seeded NPC spawns).
+            let id = space_mgr.allocate_npc_id();
+            match space_mgr.spawn_npc_from_record_in_space(id, &record, space_id) {
+                // `record` is a Box<SpawnRecord>; `&record` coerces to
+                // `&SpawnRecord` via auto-deref at the call site.
+                Ok(placed_space) => {
+                    tracing::info!(
+                        npc_entity_id = id,
+                        template_id = record.template_id,
+                        template_name = %record.template_name,
+                        space_id = placed_space,
+                        x = record.x,
+                        y = record.y,
+                        z = record.z,
+                        "GmSpawnNpcReady: NPC spawned"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        npc_entity_id = id,
+                        template_id = record.template_id,
+                        space_id,
+                        "GmSpawnNpcReady: spawn failed: {e}"
+                    );
+                }
+            }
+        }
     }
 }

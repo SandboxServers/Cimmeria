@@ -209,6 +209,140 @@ pub(super) async fn handle_give_cash(
     true
 }
 
+/// `gmGiveExpertise(INT32 aDisciplineId, INT32 aExpertise)` — grant crafting
+/// expertise in one discipline to the calling GM.
+///
+/// One-way sink mirroring `gmGiveCash` → `GrantCash`: the base owns the
+/// `CraftingState` load/clamp/save and the `onUpdateDiscipline` client push.
+/// Both fields must be positive — a non-positive `aExpertise` would be a no-op
+/// (or, cast through the clamp, a regression to 0), and a non-positive
+/// `aDisciplineId` can't name a real discipline.
+pub(super) async fn handle_give_expertise(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let discipline_id = match read_i32(args, 0) {
+        Some(v) => v,
+        None => {
+            tracing::warn!(
+                entity_id,
+                args_len = args.len(),
+                "gmGiveExpertise: truncated args (need INT32 disciplineId)"
+            );
+            return true;
+        }
+    };
+    let amount = match read_i32(args, 4) {
+        Some(v) => v,
+        None => {
+            tracing::warn!(
+                entity_id,
+                args_len = args.len(),
+                "gmGiveExpertise: truncated args (missing INT32 expertise)"
+            );
+            return true;
+        }
+    };
+    if discipline_id <= 0 {
+        tracing::warn!(
+            entity_id,
+            discipline_id,
+            "gmGiveExpertise: non-positive discipline id rejected"
+        );
+        return true;
+    }
+    if amount <= 0 {
+        tracing::warn!(
+            entity_id,
+            amount,
+            "gmGiveExpertise: non-positive amount rejected"
+        );
+        return true;
+    }
+    let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+        Some(pid) => pid,
+        None => {
+            tracing::warn!(entity_id, "gmGiveExpertise: caller has no player_id");
+            return true;
+        }
+    };
+    tracing::info!(
+        entity_id,
+        player_id,
+        discipline_id,
+        amount,
+        "gmGiveExpertise: granting expertise to GM"
+    );
+    let _ = tx
+        .send(CellToBaseMsg::GrantExpertise {
+            entity_id,
+            player_id,
+            discipline_id,
+            amount,
+        })
+        .await;
+    true
+}
+
+/// `gmGiveAppliedSciencePoints(INT32 aPoints)` — grant applied-science points
+/// to the calling GM.
+///
+/// One-way sink mirroring `gmGiveCash` → `GrantCash`. Additive-only: a
+/// non-positive amount could drive the balance negative on the base side, so
+/// `<= 0` is rejected.
+pub(super) async fn handle_give_applied_science(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let amount = match read_i32(args, 0) {
+        Some(v) => v,
+        None => {
+            tracing::warn!(
+                entity_id,
+                args_len = args.len(),
+                "gmGiveAppliedSciencePoints: truncated args (need INT32)"
+            );
+            return true;
+        }
+    };
+    if amount <= 0 {
+        tracing::warn!(
+            entity_id,
+            amount,
+            "gmGiveAppliedSciencePoints: non-positive amount rejected"
+        );
+        return true;
+    }
+    let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+        Some(pid) => pid,
+        None => {
+            tracing::warn!(
+                entity_id,
+                "gmGiveAppliedSciencePoints: caller has no player_id"
+            );
+            return true;
+        }
+    };
+    tracing::info!(
+        entity_id,
+        player_id,
+        amount,
+        "gmGiveAppliedSciencePoints: granting ASP to GM"
+    );
+    let _ = tx
+        .send(CellToBaseMsg::GrantAppliedSciencePoints {
+            entity_id,
+            player_id,
+            amount,
+        })
+        .await;
+    true
+}
+
 /// `gmRemoveItem(ItemID itemID, INT16 quantity)` — remove a quantity of an
 /// inventory **instance** from the calling GM.
 ///

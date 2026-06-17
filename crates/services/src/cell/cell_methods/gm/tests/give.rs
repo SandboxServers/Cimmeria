@@ -173,3 +173,151 @@ async fn remove_item_rejects_nonpositive_item_id() {
     assert!(dispatch(1, GM_REMOVE_ITEM, &args, &tx, &mut mgr).await);
     assert!(rx.try_recv().is_err(), "item_id 0 must not remove");
 }
+
+/// Build `(INT32 disciplineId, INT32 expertise)`.
+fn give_expertise_args(discipline_id: i32, expertise: i32) -> Vec<u8> {
+    let mut args = discipline_id.to_le_bytes().to_vec();
+    args.extend_from_slice(&expertise.to_le_bytes());
+    args
+}
+
+#[tokio::test]
+async fn gm_give_expertise_emits_grant() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let args = give_expertise_args(7, 25);
+    assert!(dispatch(1, GM_GIVE_EXPERTISE, &args, &tx, &mut mgr).await);
+    match rx
+        .try_recv()
+        .expect("gmGiveExpertise must emit GrantExpertise")
+    {
+        CellToBaseMsg::GrantExpertise {
+            entity_id,
+            player_id,
+            discipline_id,
+            amount,
+        } => {
+            assert_eq!(entity_id, 1);
+            assert_eq!(player_id, 100);
+            assert_eq!(discipline_id, 7);
+            assert_eq!(amount, 25);
+        }
+        other => panic!("expected GrantExpertise, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn gm_give_expertise_rejects_nonpositive_fields() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+
+    // Non-positive amount.
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_EXPERTISE,
+            &give_expertise_args(7, 0),
+            &tx,
+            &mut mgr
+        )
+        .await
+    );
+    assert!(rx.try_recv().is_err(), "expertise 0 must not grant");
+
+    // Non-positive discipline id.
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_EXPERTISE,
+            &give_expertise_args(0, 10),
+            &tx,
+            &mut mgr
+        )
+        .await
+    );
+    assert!(rx.try_recv().is_err(), "discipline id 0 must not grant");
+
+    // Truncated (missing the second INT32).
+    assert!(dispatch(1, GM_GIVE_EXPERTISE, &7i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        rx.try_recv().is_err(),
+        "truncated expertise args must not grant"
+    );
+}
+
+#[tokio::test]
+async fn gm_give_applied_science_emits_grant_and_rejects_nonpositive() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_APPLIED_SCIENCE_POINTS,
+            &15i32.to_le_bytes(),
+            &tx,
+            &mut mgr
+        )
+        .await
+    );
+    match rx
+        .try_recv()
+        .expect("gmGiveAppliedSciencePoints must emit GrantAppliedSciencePoints")
+    {
+        CellToBaseMsg::GrantAppliedSciencePoints {
+            entity_id,
+            player_id,
+            amount,
+        } => {
+            assert_eq!(entity_id, 1);
+            assert_eq!(player_id, 100);
+            assert_eq!(amount, 15);
+        }
+        other => panic!("expected GrantAppliedSciencePoints, got {other:?}"),
+    }
+
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_APPLIED_SCIENCE_POINTS,
+            &0i32.to_le_bytes(),
+            &tx,
+            &mut mgr
+        )
+        .await
+    );
+    assert!(rx.try_recv().is_err(), "zero ASP must not grant");
+}
+
+#[tokio::test]
+async fn crafting_grants_require_player_id() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.get_entity_mut(1).unwrap().player_id = None;
+    let (tx, mut rx) = mpsc::channel(8);
+
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_EXPERTISE,
+            &give_expertise_args(7, 25),
+            &tx,
+            &mut mgr
+        )
+        .await
+    );
+    assert!(
+        dispatch(
+            1,
+            GM_GIVE_APPLIED_SCIENCE_POINTS,
+            &15i32.to_le_bytes(),
+            &tx,
+            &mut mgr
+        )
+        .await
+    );
+    assert!(
+        drain(&mut rx).is_empty(),
+        "no player_id must block both crafting grants"
+    );
+}

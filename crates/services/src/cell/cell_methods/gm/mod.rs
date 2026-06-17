@@ -34,6 +34,7 @@ mod feedback;
 mod give;
 mod missions;
 mod query;
+mod spawn;
 mod stats;
 mod travel;
 mod world;
@@ -79,6 +80,17 @@ pub const GM_GIVE_CASH: u16 = 134;
 /// `gmRemoveItem(ItemID itemID, INT16 quantity)` — def line 196. Offset 26.
 /// `ItemID` resolves to INT32 (`entities/defs/alias.xml`).
 pub const GM_REMOVE_ITEM: u16 = 135;
+
+// -- Crafting grants (139, 140) -----------------------------------------------
+/// `gmGiveExpertise(INT32 aDisciplineId, INT32 aExpertise)` — offset 30.
+/// Grants crafting expertise in one discipline. Routes through
+/// `CellToBaseMsg::GrantExpertise` → `base::crafting::handle_grant_expertise`.
+pub const GM_GIVE_EXPERTISE: u16 = 139;
+/// `gmGiveAppliedSciencePoints(INT32 aPoints)` — offset 31. Grants
+/// applied-science points. Routes through
+/// `CellToBaseMsg::GrantAppliedSciencePoints` →
+/// `base::crafting::handle_grant_applied_science`.
+pub const GM_GIVE_APPLIED_SCIENCE_POINTS: u16 = 140;
 
 // -- Set health / focus (147–150) ---------------------------------------------
 /// `gmSetHealth(INT32 Amount, INT64 TargetId)` — def line 259. Offset 38.
@@ -136,7 +148,12 @@ pub const GM_SHOW_PLAYER: u16 = 131;
 /// (the stock `/Users` / `/Who` console binding).
 pub const GM_USERS: u16 = 166;
 
-// -- Spawn / mob (186, 189, 190) ----------------------------------------------
+// -- Spawn / mob (185, 186, 189, 190) -----------------------------------------
+/// `gmSpawnByCmd(WSTRING DesignId, FLOAT XOffset, FLOAT ZOffset)` — offset 76.
+/// Spawns an NPC by template id at the caller's position + X/Z offset. Routes
+/// through `CellToBaseMsg::GmSpawnNpc` → base template lookup →
+/// `BaseToCellMsg::GmSpawnNpcReady`.
+pub const GM_SPAWN_BY_CMD: u16 = 185;
 /// `gmDespawnByCmd(INT32 TargetID)` — def line 461. Offset 77.
 pub const GM_DESPAWN_BY_CMD: u16 = 186;
 /// `gmRespawn()` — def line 478. Offset 80. Respawns the calling GM.
@@ -175,6 +192,10 @@ pub async fn dispatch(
         GM_GIVE_ITEM => give::handle_give_item(entity_id, args, tx, space_mgr).await,
         GM_GIVE_CASH => give::handle_give_cash(entity_id, args, tx, space_mgr).await,
         GM_REMOVE_ITEM => give::handle_remove_item(entity_id, args, tx, space_mgr).await,
+        GM_GIVE_EXPERTISE => give::handle_give_expertise(entity_id, args, tx, space_mgr).await,
+        GM_GIVE_APPLIED_SCIENCE_POINTS => {
+            give::handle_give_applied_science(entity_id, args, tx, space_mgr).await
+        }
         // -- stats --
         GM_SET_HEALTH => stats::handle_set_health(entity_id, args, false, tx, space_mgr).await,
         GM_SET_HEALTH_MAX => stats::handle_set_health(entity_id, args, true, tx, space_mgr).await,
@@ -204,6 +225,7 @@ pub async fn dispatch(
             world::handle_despawn(entity_id, args, tx, space_mgr).await
         }
         GM_RESPAWN => world::handle_respawn_cmd(entity_id, tx, space_mgr).await,
+        GM_SPAWN_BY_CMD => spawn::handle_spawn_by_cmd(entity_id, args, tx, space_mgr).await,
         // -- query (report text via the feedback channel) --
         GM_USERS => query::handle_users(entity_id, tx, space_mgr).await,
         TEST_LOS => query::handle_test_los(entity_id, args, tx, space_mgr).await,

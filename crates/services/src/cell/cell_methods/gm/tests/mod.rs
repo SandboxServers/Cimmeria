@@ -29,6 +29,13 @@ fn gm_indices_match_def_document_order() {
     assert_eq!(GM_GIVE_ITEM, 109 + 24, "gmGiveItem (def line 185)");
     assert_eq!(GM_GIVE_CASH, 109 + 25, "gmGiveCash (def line 191)");
     assert_eq!(GM_REMOVE_ITEM, 109 + 26, "gmRemoveItem (def line 196)");
+    assert_eq!(GM_GIVE_EXPERTISE, 109 + 30, "gmGiveExpertise (offset 30)");
+    assert_eq!(
+        GM_GIVE_APPLIED_SCIENCE_POINTS,
+        109 + 31,
+        "gmGiveAppliedSciencePoints (offset 31)"
+    );
+    assert_eq!(GM_SPAWN_BY_CMD, 109 + 76, "gmSpawnByCmd (offset 76)");
     assert_eq!(GM_SET_HEALTH, 109 + 38, "gmSetHealth (def line 259)");
     assert_eq!(GM_SET_HEALTH_MAX, 109 + 39, "gmSetHealthMax (def line 265)");
     assert_eq!(GM_SET_FOCUS, 109 + 40, "gmSetFocus (def line 271)");
@@ -90,6 +97,9 @@ fn implemented_indices_are_in_gm_tail() {
         GM_GIVE_ITEM,
         GM_GIVE_CASH,
         GM_REMOVE_ITEM,
+        GM_GIVE_EXPERTISE,
+        GM_GIVE_APPLIED_SCIENCE_POINTS,
+        GM_SPAWN_BY_CMD,
         GM_SET_HEALTH,
         GM_SET_HEALTH_MAX,
         GM_SET_FOCUS,
@@ -203,6 +213,7 @@ async fn unimplemented_gm_index_returns_false() {
 mod give;
 mod missions;
 mod query;
+mod spawn;
 mod stats;
 mod travel;
 mod world;
