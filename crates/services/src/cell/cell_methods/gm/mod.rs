@@ -23,13 +23,17 @@
 //! - [`missions`] — clear/advance/abandon.
 //! - [`travel`] — goto-xyz / goto-location / DHD dial.
 //! - [`world`] — kill / despawn / respawn / set-target.
+//! - [`query`] — users / test-LOS (report text via [`feedback`]).
+//! - [`feedback`] — single-recipient `onPlayerCommunication` delivery.
 //!
 //! The full 117-method inventory + handler-status map (DONE/REUSE/ADAPT/NEW)
 //! lives in `docs/protocol/cell-method-dispatch-table.md`; the ADAPT roadmap
 //! is in `docs/architecture/gm-cell-method-adapt-plan.md`.
 
+mod feedback;
 mod give;
 mod missions;
+mod query;
 mod stats;
 mod travel;
 mod world;
@@ -93,6 +97,11 @@ pub const GM_GOTO_LOCATION: u16 = 162;
 /// Same-space snap teleport.
 pub const GM_GOTO_XYZ: u16 = 163;
 
+// -- Admin / social (166) -----------------------------------------------------
+/// `gmUsers()` — def line 363. Offset 57. Lists players in the caller's space
+/// (the stock `/Users` / `/Who` console binding).
+pub const GM_USERS: u16 = 166;
+
 // -- Spawn / mob (186, 189, 190) ----------------------------------------------
 /// `gmDespawnByCmd(INT32 TargetID)` — def line 461. Offset 77.
 pub const GM_DESPAWN_BY_CMD: u16 = 186;
@@ -101,10 +110,13 @@ pub const GM_RESPAWN: u16 = 189;
 /// `gmKillTarget(INT64 TargetId)` — def line 482. Offset 81. NPC-only.
 pub const GM_KILL_TARGET: u16 = 190;
 
-// -- Test (213) ---------------------------------------------------------------
+// -- Test (213, 216) ----------------------------------------------------------
 /// `despawnMob(INT32 entityID)` — def line 605. Offset 104. Test alias of
 /// gmDespawnByCmd (same `destroy_entity` primitive).
 pub const DESPAWN_MOB: u16 = 213;
+/// `testLOS(INT32 source, INT32 target)` — def line 619. Offset 107. Reports
+/// navmesh line-of-sight between two entities via the feedback channel.
+pub const TEST_LOS: u16 = 216;
 
 /// Dispatch an SGWGmPlayer own cell method (flattened index >= 109).
 ///
@@ -147,6 +159,9 @@ pub async fn dispatch(
             world::handle_despawn(entity_id, args, tx, space_mgr).await
         }
         GM_RESPAWN => world::handle_respawn_cmd(entity_id, tx, space_mgr).await,
+        // -- query (report text via the feedback channel) --
+        GM_USERS => query::handle_users(entity_id, tx, space_mgr).await,
+        TEST_LOS => query::handle_test_los(entity_id, args, tx, space_mgr).await,
         // Any other 109+ index is an unimplemented (but authorized) gm*
         // method — let the router fall through to its warn arm.
         _ => false,

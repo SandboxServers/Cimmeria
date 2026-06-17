@@ -477,14 +477,14 @@ beyond the 3 verified handlers above.
   [gm-cell-method-adapt-plan.md](../architecture/gm-cell-method-adapt-plan.md).
 - **NEW** — no primitive; build from scratch (high effort).
 
-**Tally (of 117):** 19 DONE · 2 REUSE · 52 ADAPT · 44 NEW.
+**Tally (of 117):** 21 DONE · 0 REUSE · 52 ADAPT · 44 NEW.
 
-> **#518 expansion.** The 16 observable-effect REUSE rows were implemented in
-> `cell/cell_methods/gm/` and are now **DONE**. The two remaining REUSE rows —
-> `gmUsers` (166) and `testLOS` (216) — are **query** commands whose only output
-> is text back to the GM; they're deferred until a single-recipient client
-> feedback channel (`CHAN_FEEDBACK` `onPlayerCommunication`, or the native
-> `onShow*` client tail) is available, and are tracked in the ADAPT plan.
+> **#518 expansion.** All 18 REUSE rows are now **DONE**. The 16 observable-effect
+> commands plus the single-recipient feedback channel (`gm/feedback.rs` —
+> `onPlayerCommunication` on `CHAN_FEEDBACK`, ported from the abandoned chat-command
+> PR #517) and its two query consumers, `gmUsers` (166, space-scoped) and `testLOS`
+> (216), all live in `cell/cell_methods/gm/`. The feedback channel also unblocks the
+> SHOW/LIST ADAPT cluster — see the ADAPT plan.
 
 > **Provenance.** Indices/args are byte-derived from `entities/defs/SGWGmPlayer.def`
 > (document order; `gmSetCallback` at def line 312 excluded — no `<Exposed/>`) and
@@ -591,7 +591,7 @@ beyond the 3 verified handlers above.
 |-----|---------------|-----------|--------------------|--------|
 | 164 | `gmReloadOrganizations()` | `/ReloadOrganizations` | — (org methods are stubs; no def hot-reload) | NEW |
 | 165 | `gmReloadInventory()` | `/ReloadInventory` | — (no inventory-def hot-reload) | NEW |
-| 166 | `gmUsers()` | `/Users`, `/Who` | `service.rs:82 online_players` (already used by admin API) | REUSE |
+| 166 | `gmUsers()` | `/Users`, `/Who` | **`gm/query.rs` → `all_player_entity_ids` + feedback (space-scoped; all-shard via base round-trip is future)** | **DONE** |
 | 167 | `gmSetHideGM(UINT8 on)` | `/SetHideGM` | — (`bHideGM` not implemented; `access_level` read-only at login) | NEW |
 | 168 | `gmPrintStats(WSTRING stat)` | `/PrintStats` | per-entity `stat_list.rs` + feedback (server-wide stats: none) | ADAPT |
 
@@ -671,7 +671,7 @@ beyond the 3 verified handlers above.
 | 213 | `despawnMob(INT32 entityID)` | — | `cell/cell_methods/gm/world.rs` → `destroy_entity` (NPC-only) | **DONE** |
 | 214 | `activateSpawnSet(INT32 id)` | — | — (no spawn-set runtime activation API) | NEW |
 | 215 | `deactivateSpawnSet(INT32 id)` | — | — | NEW |
-| 216 | `testLOS(INT32 source, INT32 target)` | — | `entity/navigation.rs:560 NavMesh::raycast` | REUSE |
+| 216 | `testLOS(INT32 source, INT32 target)` | — | **`gm/query.rs` → `has_line_of_sight` + feedback** | **DONE** |
 | 217 | `toggleCombatLOS()` | — | `bCombatLOS` def-only; no Rust enforcement toggle | NEW |
 | 218 | `trackMob()` | — | read `ai_state`; no debug-stream toggle | ADAPT |
 | 219 | `onXRayEyes(UINT8 on)` | — | client-side presentation only; no server state | NEW |

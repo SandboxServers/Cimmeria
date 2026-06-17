@@ -14,11 +14,12 @@ primitive, and a status (**DONE** / **REUSE** / **ADAPT** / **NEW**), lives in
 the dispatch table:
 [cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md#full-gm-cell-method-inventory--cimmeria-handler-status).
 
-- **DONE** (19) — handlers wired in [`crates/services/src/cell/cell_methods/gm/`](../../crates/services/src/cell/cell_methods/gm/),
-  via #518: the 3 originally-verified (`gmGiveItem`/`gmGotoXYZ`/`gmKillTarget`)
-  plus the 16 observable-effect REUSE commands.
-- **REUSE** (2 remaining) — `gmUsers` (166), `testLOS` (216): query commands
-  blocked only on a feedback channel (see [§1](#1-the-feedback-channel-unblocks-the-whole-query-surface)).
+- **DONE** (21) — handlers wired in [`crates/services/src/cell/cell_methods/gm/`](../../crates/services/src/cell/cell_methods/gm/),
+  via #518: the 3 originally-verified (`gmGiveItem`/`gmGotoXYZ`/`gmKillTarget`),
+  the 16 observable-effect REUSE commands, and — now that the feedback channel
+  is landed (`gm/feedback.rs`) — the two query consumers `gmUsers` (166) and
+  `testLOS` (216).
+- **REUSE** (0 remaining) — all thin-handler commands are done.
 - **ADAPT** (52) — this document.
 - **NEW** (44) — out of scope here (new subsystems: god-mode flags, respec,
   stance, cover regen, etc.).
@@ -51,34 +52,35 @@ and a whole cluster collapses to REUSE-level effort.
 
 ---
 
-## 1. The feedback channel unblocks the whole query surface
+## 1. The feedback channel — landed; it unblocks the whole query surface
 
-**This is the single highest-leverage piece of infrastructure.** Roughly a
-third of the ADAPT rows (and both remaining REUSE rows) are SHOW/LIST/PRINT
-"tell me something" commands. They all need the same thing: a way to send a
-line of text to **one** GM client. None of them are hard once that exists.
+**This was the single highest-leverage piece of infrastructure, and it is now
+in place.** Roughly a third of the ADAPT rows are SHOW/LIST/PRINT "tell me
+something" commands. They all need the same thing: a way to send a line of text
+to **one** GM client. None of them are hard now that it exists.
 
-Two delivery options, in order of preference:
+The landed helper is [`gm/feedback.rs`](../../crates/services/src/cell/cell_methods/gm/feedback.rs)
+`send_gm_feedback(entity_id, &str, tx)` — an `EntityMethodCall` to the GM's own
+client carrying `onPlayerCommunication` on `CHAN_FEEDBACK` (channel 8). It was
+ported from the abandoned chat-command PR #517 (whose chat *interception* layer
+is superseded by the native console — the client consumes `/`-commands
+client-side — but whose feedback channel is reusable infra). Its first two
+consumers, `gmUsers` (166) and `testLOS` (216), shipped with it.
 
-1. **`CHAN_FEEDBACK` `onPlayerCommunication`** — the single-recipient feedback
-   channel built by #517 (chat GM commands). Cheapest to adopt; renders as a
-   system/whisper line in the GM's chat window. (Note: #517's chat *interception*
-   layer is superseded by the native-console approach — the client consumes
-   `/`-commands client-side — but its feedback channel is reusable infra.)
-2. **Native `onShow*` client methods** — SGWGmPlayer's *client* method tail
-   (157+). Higher fidelity (the client has bespoke renderers for some of these),
-   but more wire surface to implement per command.
+A higher-fidelity alternative for specific commands is the native `onShow*`
+client-method tail (SGWGmPlayer client indices 157+), where the client has
+bespoke renderers — more wire surface per command, adopt per-command if the
+plain feedback line isn't rich enough.
 
-Recommended: land the `CHAN_FEEDBACK` helper first as a `gm/feedback.rs`
-submodule (`fn gm_feedback(entity_id, &str, tx)`), then the query cluster below
-is a batch of one-liners.
+### Query cluster (now unblocked by the landed feedback helper)
 
-### Query cluster (unblocked by the feedback helper)
+`gmUsers` and `testLOS` are **DONE**. The rest of the cluster is a batch of
+read-the-field + `send_gm_feedback(...)` one-liners:
 
 | Idx | Method | Reads | Tags |
 |-----|--------|-------|------|
-| 166 | `gmUsers` *(REUSE)* | `service.rs online_players` | F |
-| 216 | `testLOS` *(REUSE)* | `NavMesh::raycast` | F |
+| 166 | `gmUsers` — **DONE** | `all_player_entity_ids` (space-scoped) | — |
+| 216 | `testLOS` — **DONE** | `has_line_of_sight` | — |
 | 113 | `gmMissionList` | `entity.missions.active_missions` | F |
 | 114 | `gmMissionListFull` | `entity.missions.all_missions` | F |
 | 115 | `gmMissionDetails` | `entity.missions.get_mission` | F, N |
@@ -184,9 +186,10 @@ so it isn't mistaken for a targeted reload.
 
 ## Recommended sequencing
 
-1. **`gm/feedback.rs`** (`CHAN_FEEDBACK` helper) — unblocks §1 + both remaining
-   REUSE rows. Highest leverage.
-2. **Query cluster** (§1) — batch of one-liners once the helper lands.
+1. ~~**`gm/feedback.rs`** (`CHAN_FEEDBACK` helper)~~ — **done** (#518); `gmUsers`
+   + `testLOS` shipped on it.
+2. **Query cluster** (§1) — batch of read-the-field + `send_gm_feedback` one-liners,
+   now unblocked.
 3. **`resolve_design_id` helper + `gmSpawnByCmd` / `gmGoto` / `gmMissionAssign`**
    (§2) — the daily-driver mutate commands.
 4. **`gmSetSpeed`** (§3) — quick win, mirrors the shipped set-stat handlers.

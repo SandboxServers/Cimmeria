@@ -37,6 +37,8 @@ fn gm_indices_match_def_document_order() {
     assert_eq!(GM_SET_FOCUS_MAX, 109 + 41, "gmSetFocusMax (def line 277)");
     assert_eq!(GM_SET_TARGET, 109 + 47, "gmSetTarget (def line 302)");
     assert_eq!(GM_DHD, 109 + 50, "gmDHD (def line 325)");
+    assert_eq!(GM_USERS, 109 + 57, "gmUsers (def line 363)");
+    assert_eq!(TEST_LOS, 109 + 107, "testLOS (def line 619)");
     assert_eq!(GM_GOTO_LOCATION, 109 + 53, "gmGotoLocation (def line 340)");
     assert_eq!(GM_GOTO_XYZ, 109 + 54, "gmGotoXYZ (def line 348)");
     assert_eq!(GM_DESPAWN_BY_CMD, 109 + 77, "gmDespawnByCmd (def line 461)");
@@ -72,6 +74,8 @@ fn implemented_indices_are_in_gm_tail() {
         GM_RESPAWN,
         GM_KILL_TARGET,
         DESPAWN_MOB,
+        GM_USERS,
+        TEST_LOS,
     ] {
         assert!(
             idx >= GM_TAIL_BASE,
@@ -721,6 +725,90 @@ async fn set_target_rejects_malformed_and_non_numeric() {
     assert!(
         drain(&mut rx).is_empty(),
         "malformed gmSetTarget must emit nothing"
+    );
+}
+
+// ── query commands (feedback channel) ──────────────────────────────────────────
+
+/// Pull the decoded text of the first `onPlayerCommunication` feedback line
+/// addressed to `entity_id` (method index 28), if any.
+fn feedback_text(msgs: &[CellToBaseMsg], entity_id: u32) -> Option<String> {
+    msgs.iter().find_map(|m| match m {
+        CellToBaseMsg::EntityMethodCall {
+            entity_id: e,
+            method_index: 28,
+            args,
+        } if *e == entity_id => {
+            // Skip speaker WSTRING (u32 len + len*2) + flags + channel, then read text WSTRING.
+            let spk = u32::from_le_bytes(args[0..4].try_into().ok()?) as usize;
+            let off = 4 + spk * 2 + 2; // + flags + channel
+            let tlen = u32::from_le_bytes(args[off..off + 4].try_into().ok()?) as usize;
+            let units: Vec<u16> = (0..tlen)
+                .map(|i| u16::from_le_bytes([args[off + 4 + i * 2], args[off + 5 + i * 2]]))
+                .collect();
+            Some(String::from_utf16_lossy(&units))
+        }
+        _ => None,
+    })
+}
+
+#[tokio::test]
+async fn gm_users_lists_players_in_space() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.connect_entity(1); // all_player_entity_ids reads the connected set
+    let (tx, mut rx) = mpsc::channel(8);
+
+    assert!(dispatch(1, GM_USERS, &[], &tx, &mut mgr).await);
+    let fb = feedback_text(&drain(&mut rx), 1).expect("gmUsers must feed back to the caller");
+    assert!(
+        fb.contains("gmUsers"),
+        "feedback should be a gmUsers line, got: {fb}"
+    );
+    assert!(
+        fb.contains('1'),
+        "the connected player's entity id should appear, got: {fb}"
+    );
+}
+
+#[tokio::test]
+async fn test_los_reports_via_feedback() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.create_entity(2, "Castle", [5.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    let (tx, mut rx) = mpsc::channel(8);
+
+    // Both entities are in the caller's space; no navmesh is loaded in the
+    // fixture, so has_line_of_sight conservatively reports CLEAR.
+    let mut args = 1i32.to_le_bytes().to_vec();
+    args.extend_from_slice(&2i32.to_le_bytes());
+    assert!(dispatch(1, TEST_LOS, &args, &tx, &mut mgr).await);
+    let fb = feedback_text(&drain(&mut rx), 1).expect("testLOS must feed back to the caller");
+    assert!(
+        fb.contains("testLOS") && fb.contains("CLEAR"),
+        "expected a CLEAR verdict line, got: {fb}"
+    );
+}
+
+#[tokio::test]
+async fn test_los_truncated_and_missing_target_feed_back() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+
+    // Truncated (one id) → "need two" feedback, no panic.
+    assert!(dispatch(1, TEST_LOS, &1i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        feedback_text(&drain(&mut rx), 1).is_some(),
+        "truncated testLOS still feeds back"
+    );
+
+    // Well-formed but target not in space → "not found" feedback.
+    let mut args = 1i32.to_le_bytes().to_vec();
+    args.extend_from_slice(&4242i32.to_le_bytes());
+    assert!(dispatch(1, TEST_LOS, &args, &tx, &mut mgr).await);
+    let fb = feedback_text(&drain(&mut rx), 1).expect("missing-target testLOS feeds back");
+    assert!(
+        fb.contains("not found"),
+        "missing target should report not found, got: {fb}"
     );
 }
 
