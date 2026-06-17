@@ -214,3 +214,92 @@ async fn load_spawn_record_for_template(
 
     Ok(Some(record))
 }
+
+#[cfg(test)]
+mod tests {
+    //! Live-DB guard for the `gmSpawnByCmd` base half. Self-skips when
+    //! `DATABASE_URL` is unset via `require_db_or_skip!`. Drives the real
+    //! `handle_gm_spawn_npc` (entity_templates query → `SpawnRecord` →
+    //! `GmSpawnNpcReady`) against a seeded template, and the not-found path.
+
+    use super::*;
+    use crate::test_support::require_db_or_skip;
+    use sqlx::Row;
+
+    /// A real template (resolved from the seed, not hard-coded) must produce a
+    /// `GmSpawnNpcReady` whose template-derived fields match the row and whose
+    /// spawn-instance fields (position, world, spawn_id) come from the command.
+    /// Reverting the query or the record construction trips this.
+    #[tokio::test]
+    async fn gm_spawn_resolves_real_template_and_replies() {
+        let pool = require_db_or_skip!();
+        // Pick any fully-populated template — the handler reads template_name /
+        // class / body_set as NOT NULL, so filter to a row it can materialize.
+        let row = sqlx::query(
+            "SELECT template_id, template_name FROM resources.entity_templates \
+             WHERE template_name IS NOT NULL AND class IS NOT NULL AND body_set IS NOT NULL \
+             ORDER BY template_id LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("seed must contain at least one fully-populated entity_template");
+        let template_id: i32 = row.get("template_id");
+        let template_name: String = row.get("template_name");
+
+        let (cell_tx, mut cell_rx) = mpsc::channel(8);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        handle_gm_spawn_npc(
+            42, // entity_id
+            template_id,
+            5, // space_id
+            "Castle".to_string(),
+            [10.0, 20.0, 30.0],
+            &db_pool,
+            &Some(cell_tx),
+        )
+        .await;
+
+        match cell_rx.try_recv().expect("must reply GmSpawnNpcReady") {
+            BaseToCellMsg::GmSpawnNpcReady { record, space_id } => {
+                assert_eq!(space_id, 5, "space_id echoes the request");
+                assert_eq!(record.template_id, template_id, "template-derived id");
+                assert_eq!(record.template_name, template_name, "template-derived name");
+                assert_eq!(
+                    [record.x, record.y, record.z],
+                    [10.0, 20.0, 30.0],
+                    "position from command"
+                );
+                assert_eq!(record.world_name, "Castle", "world from command");
+                assert_eq!(record.spawn_id, -1, "GM spawns are non-DB (spawn_id -1)");
+                assert!(record.tag.is_none(), "GM spawn has no spawnlist tag");
+            }
+            _ => panic!("expected BaseToCellMsg::GmSpawnNpcReady"),
+        }
+    }
+
+    /// A template id that doesn't exist must drop the spawn — no
+    /// `GmSpawnNpcReady` reply (so the cell never spawns a bogus mob).
+    #[tokio::test]
+    async fn gm_spawn_missing_template_sends_nothing() {
+        let pool = require_db_or_skip!();
+        let (cell_tx, mut cell_rx) = mpsc::channel(8);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        handle_gm_spawn_npc(
+            42,
+            0x7FFF_FFF0, // template id that won't exist in the seed
+            5,
+            "Castle".to_string(),
+            [0.0; 3],
+            &db_pool,
+            &Some(cell_tx),
+        )
+        .await;
+
+        assert!(
+            cell_rx.try_recv().is_err(),
+            "missing template must not reply GmSpawnNpcReady"
+        );
+    }
+}

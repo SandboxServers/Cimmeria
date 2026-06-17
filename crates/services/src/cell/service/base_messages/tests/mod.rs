@@ -6,4 +6,5 @@ mod ability_granted_trainer_resend;
 mod bandolier_sync;
 mod bandolier_update;
 mod general;
+mod gm_spawn_ready;
 mod request_entity_update;
