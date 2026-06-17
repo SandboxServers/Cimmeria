@@ -547,3 +547,74 @@ fn destroy_client_entities_logs_reason_on_already_cleaned_short_circuit() {
         event.fields,
     );
 }
+
+// ── get_access_level ──────────────────────────────────────────────────
+
+/// `get_access_level` returns the connected session's account access
+/// level — the value `createCharacter` stamps onto the new character row.
+/// A regression that read the wrong field (or hardcoded a level) would let
+/// GM accounts create non-GM characters again.
+#[test]
+fn get_access_level_returns_session_level() {
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+
+    let addr: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+    let mut state = crate::test_support::test_default_connected_client_state();
+    state.access_level = 2; // GameMaster
+    let mut m = HashMap::new();
+    m.insert(addr, state);
+    let connected = Arc::new(Mutex::new(m));
+
+    assert_eq!(get_access_level(&connected, addr), 2);
+}
+
+/// **Fail-closed guard.** A request from an address that isn't in the
+/// connected map must return 0 (Player), never a privileged default — a
+/// missing session must not be treated as a GM. Reverting the
+/// `unwrap_or(0)` to a non-zero default trips this.
+#[test]
+fn get_access_level_fails_closed_for_unknown_addr() {
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+
+    let connected = Arc::new(Mutex::new(HashMap::new()));
+    let addr: SocketAddr = "127.0.0.1:5001".parse().unwrap();
+    assert_eq!(
+        get_access_level(&connected, addr),
+        0,
+        "unknown session must fail closed to Player (0), never privileged"
+    );
+}
+
+/// **Fail-closed guard (poisoned lock).** `get_access_level` reads the
+/// session under `.lock().ok()`, so a poisoned mutex (a thread panicked
+/// while holding it) yields `None` and must fall through to 0 (Player) —
+/// a poisoned lock must never be treated as a GM. Reverting the `.ok()`
+/// to an `.unwrap()` would panic here instead of returning 0.
+#[test]
+fn get_access_level_fails_closed_for_poisoned_lock() {
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+
+    let connected: Arc<Mutex<HashMap<SocketAddr, crate::base::ConnectedClientState>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let poison_target = Arc::clone(&connected);
+
+    // Poison the mutex by panicking while holding the guard.
+    let _ = std::thread::spawn(move || {
+        let _guard = poison_target.lock().unwrap();
+        panic!("poison connected mutex");
+    })
+    .join();
+
+    let addr: SocketAddr = "127.0.0.1:5002".parse().unwrap();
+    assert_eq!(
+        get_access_level(&connected, addr),
+        0,
+        "poisoned lock must fail closed to Player (0), never privileged"
+    );
+}

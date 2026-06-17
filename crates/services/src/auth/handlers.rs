@@ -516,6 +516,41 @@ pub(super) fn random_alphanumeric(char_count: usize) -> String {
 mod tests {
     use super::*;
 
+    /// **Seed-GM guard.** The dev/seed accounts must be at least GameMaster
+    /// (accesslevel 2) so they can run GM commands and reach protected shards
+    /// (the `access_level < 2` gate in `handle_server_selection`). A
+    /// regression that reverts any seeded account to Moderator (1) — below
+    /// the GM threshold — trips this. Covers every account the seed file
+    /// promotes, so a partial regression is caught too. Runs against the CI
+    /// live DB loaded from `db/database.sql` (which seeds the account table).
+    #[tokio::test]
+    async fn seed_dev_accounts_are_at_least_gamemaster() {
+        use crate::test_support::require_db_or_skip;
+        let pool = require_db_or_skip!();
+
+        // Every account promoted in db/sgw/Accounts/Seed/account.sql.
+        for name in [
+            "test",
+            "cady",
+            "jorsh",
+            "cake",
+            "lomiada1",
+            "nonwo1984",
+            "ishido972",
+        ] {
+            let level: i32 =
+                sqlx::query_scalar("SELECT accesslevel FROM account WHERE account_name = $1")
+                    .bind(name)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap_or_else(|e| panic!("seed account '{name}' must exist: {e}"));
+            assert!(
+                level >= 2,
+                "seed account '{name}' must be >= GameMaster (2) so it can run GM commands; got {level}"
+            );
+        }
+    }
+
     #[test]
     fn random_hex_length() {
         assert_eq!(random_hex(10).len(), 20); // ticket

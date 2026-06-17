@@ -207,6 +207,22 @@ pub(crate) fn get_account_entity_id(
     Ok(c.account_entity_id)
 }
 
+/// Read the session's account access level (from `account.accesslevel`,
+/// loaded at login). Returns 0 (Player) when the addr isn't connected or
+/// the lock is poisoned — a missing session must never be treated as
+/// privileged. Used by `createCharacter` to stamp the new character's
+/// `access_level` from the account so it persists into world entry.
+pub(crate) fn get_access_level(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> u32 {
+    connected
+        .lock()
+        .ok()
+        .and_then(|clients| clients.get(&addr).map(|c| c.access_level))
+        .unwrap_or(0)
+}
+
 /// Read the currently active entity ID for a connected client.
 ///
 /// After world entry, the Account entity is destroyed and replaced by the

@@ -2,7 +2,7 @@
 title: "Known Issues"
 type: reference
 audience: engineers, operators
-last_updated: 2026-05-27
+last_updated: 2026-06-16
 ---
 
 # Known Issues
@@ -67,10 +67,16 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 
 **Status**: Fixed by character creation visual pipeline. `createCharacter` now stores starting abilities from archetype definitions.
 
-### KI-11: createCharacter does not store access_level
+### ~~KI-11: createCharacter does not store access_level~~ — RESOLVED
 
-**Severity**: Low
-**Description**: GM accounts create normal characters instead of GM-flagged characters. C++ passes account access_level into the character INSERT.
+**Status**: Fixed. `createCharacter` now stamps the new character's
+`sgw_player.access_level` from the account's session access level
+(`get_access_level`, sourced from `account.accesslevel` at login), mirroring
+the C++ server. The persisted column is loaded at world entry and sent to the
+client as the `AccessLevel` entity property (propId 7 in the mapLoaded block),
+so a GM account's characters carry the correct marker instead of loading at
+access_level 0. (Server-side GM authority is gated on the session level, not
+this per-character column.)
 
 ### ~~KI-12: createCharacter does not validate visual choices~~ — RESOLVED
 

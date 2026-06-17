@@ -11,7 +11,7 @@ use crate::mercury::read_wstring;
 
 use super::character::{query_character_list, send_char_create_failed};
 use super::chardef::chardef_lookup;
-use super::helpers::{drain_acks_and_seq, get_account_entity_id};
+use super::helpers::{drain_acks_and_seq, get_access_level, get_account_entity_id};
 use super::resources::{bag_min_slot, pick_first_open_bag, BAG_FILL_ORDER};
 use super::ConnectedClientState;
 
@@ -374,12 +374,24 @@ pub(crate) async fn handle_create_character(
 
     // ── INSERT into sgw_player with components, world_id, abilities ───
 
+    // Stamp the new character's `access_level` from the account's session
+    // level (loaded from `account.accesslevel` at login), mirroring the C++
+    // server which passed the account access level into the character INSERT.
+    // The persisted column is loaded at world entry (player_load) and sent to
+    // the client as the `AccessLevel` entity property — propId 7 in the
+    // mapLoaded block (`mercury::world_data::map_loaded`) — i.e. the
+    // per-character marker the client uses for GM UI. (Server-side GM
+    // authorization gates on the session level, not this column.) Without it,
+    // a GM account's characters were created at access_level 0 and carried no
+    // GM marker on every load.
+    let access_level = get_access_level(connected, addr) as i32;
+
     let result = sqlx::query_scalar::<_, i32>(
         "INSERT INTO sgw_player \
          (account_id, player_name, extra_name, alignment, archetype, gender, \
           world_location, bodyset, level, title, pos_x, pos_y, pos_z, \
-          skin_color_id, components, world_id, abilities) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 0, $9, $10, $11, $12, $13, $14, $15) \
+          skin_color_id, components, world_id, abilities, access_level) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 0, $9, $10, $11, $12, $13, $14, $15, $16) \
          RETURNING player_id",
     )
     .bind(account_id as i32)
@@ -397,6 +409,7 @@ pub(crate) async fn handle_create_character(
     .bind(&body_components)
     .bind(world_id)
     .bind(&abilities)
+    .bind(access_level)
     .fetch_one(pool.as_ref())
     .await;
 
@@ -530,6 +543,10 @@ fn validate_character_name(name: &str) -> Result<(), &'static str> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "character_create_live_db_tests.rs"]
+mod character_create_live_db_tests;
 
 #[cfg(test)]
 mod tests {
