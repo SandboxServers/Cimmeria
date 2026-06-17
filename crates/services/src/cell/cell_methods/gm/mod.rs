@@ -97,6 +97,17 @@ pub const GM_GOTO_LOCATION: u16 = 162;
 /// Same-space snap teleport.
 pub const GM_GOTO_XYZ: u16 = 163;
 
+// -- Inspection / show (121, 122, 131) ----------------------------------------
+/// `gmShowTargetLocation()` — def line 127. Offset 12. Reports the current
+/// target's (or caller's) position. FanMMORPG `.location`.
+pub const GM_SHOW_TARGET_LOCATION: u16 = 121;
+/// `gmShowRotation()` — def line 131. Offset 13. Reports facing/heading.
+/// FanMMORPG `.rotation` / `.facing`.
+pub const GM_SHOW_ROTATION: u16 = 122;
+/// `gmShowPlayer(INT32 TargetID)` — def line 174. Offset 22. Dumps entity info.
+/// FanMMORPG `.info`.
+pub const GM_SHOW_PLAYER: u16 = 131;
+
 // -- Admin / social (166) -----------------------------------------------------
 /// `gmUsers()` — def line 363. Offset 57. Lists players in the caller's space
 /// (the stock `/Users` / `/Who` console binding).
@@ -162,6 +173,11 @@ pub async fn dispatch(
         // -- query (report text via the feedback channel) --
         GM_USERS => query::handle_users(entity_id, tx, space_mgr).await,
         TEST_LOS => query::handle_test_los(entity_id, args, tx, space_mgr).await,
+        GM_SHOW_TARGET_LOCATION => {
+            query::handle_show_target_location(entity_id, tx, space_mgr).await
+        }
+        GM_SHOW_ROTATION => query::handle_show_rotation(entity_id, tx, space_mgr).await,
+        GM_SHOW_PLAYER => query::handle_show_player(entity_id, args, tx, space_mgr).await,
         // Any other 109+ index is an unimplemented (but authorized) gm*
         // method — let the router fall through to its warn arm.
         _ => false,

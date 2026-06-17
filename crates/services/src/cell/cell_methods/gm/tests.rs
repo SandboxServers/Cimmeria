@@ -39,6 +39,13 @@ fn gm_indices_match_def_document_order() {
     assert_eq!(GM_DHD, 109 + 50, "gmDHD (def line 325)");
     assert_eq!(GM_USERS, 109 + 57, "gmUsers (def line 363)");
     assert_eq!(TEST_LOS, 109 + 107, "testLOS (def line 619)");
+    assert_eq!(
+        GM_SHOW_TARGET_LOCATION,
+        109 + 12,
+        "gmShowTargetLocation (def line 127)"
+    );
+    assert_eq!(GM_SHOW_ROTATION, 109 + 13, "gmShowRotation (def line 131)");
+    assert_eq!(GM_SHOW_PLAYER, 109 + 22, "gmShowPlayer (def line 174)");
     assert_eq!(GM_GOTO_LOCATION, 109 + 53, "gmGotoLocation (def line 340)");
     assert_eq!(GM_GOTO_XYZ, 109 + 54, "gmGotoXYZ (def line 348)");
     assert_eq!(GM_DESPAWN_BY_CMD, 109 + 77, "gmDespawnByCmd (def line 461)");
@@ -76,6 +83,9 @@ fn implemented_indices_are_in_gm_tail() {
         DESPAWN_MOB,
         GM_USERS,
         TEST_LOS,
+        GM_SHOW_TARGET_LOCATION,
+        GM_SHOW_ROTATION,
+        GM_SHOW_PLAYER,
     ] {
         assert!(
             idx >= GM_TAIL_BASE,
@@ -810,6 +820,78 @@ async fn test_los_truncated_and_missing_target_feed_back() {
         fb.contains("not found"),
         "missing target should report not found, got: {fb}"
     );
+}
+
+#[tokio::test]
+async fn show_target_location_reports_subject_position() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    // Target an NPC at a known position; gmShowTargetLocation has no args and
+    // uses the caller's current target.
+    mgr.create_entity(2, "Castle", [12.0, 3.0, -4.0], [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(1).unwrap().current_target_id = Some(2);
+    let (tx, mut rx) = mpsc::channel(8);
+
+    assert!(dispatch(1, GM_SHOW_TARGET_LOCATION, &[], &tx, &mut mgr).await);
+    let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
+    assert!(
+        fb.contains("[2]") && fb.contains("12.00") && fb.contains("-4.00"),
+        "got: {fb}"
+    );
+}
+
+#[tokio::test]
+async fn show_target_location_falls_back_to_self() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.get_entity_mut(1).unwrap().position = cimmeria_common::Vector3 {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    };
+    let (tx, mut rx) = mpsc::channel(8);
+    // No current target → reports the caller's own location.
+    assert!(dispatch(1, GM_SHOW_TARGET_LOCATION, &[], &tx, &mut mgr).await);
+    let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
+    assert!(fb.contains("[1]"), "no-target must report self, got: {fb}");
+}
+
+#[tokio::test]
+async fn show_rotation_reports_heading() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+    assert!(dispatch(1, GM_SHOW_ROTATION, &[], &tx, &mut mgr).await);
+    let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
+    assert!(fb.contains("heading") && fb.contains("[1]"), "got: {fb}");
+}
+
+#[tokio::test]
+async fn show_player_dumps_entity_info() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(e) = mgr.get_entity_mut(2) {
+        e.faction = 7;
+        e.level = 30;
+    }
+    let (tx, mut rx) = mpsc::channel(8);
+    assert!(dispatch(1, GM_SHOW_PLAYER, &2i32.to_le_bytes(), &tx, &mut mgr).await);
+    let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
+    assert!(
+        fb.contains("[2]")
+            && fb.contains("faction 7")
+            && fb.contains("lvl 30")
+            && fb.contains("hp"),
+        "got: {fb}"
+    );
+}
+
+#[tokio::test]
+async fn show_player_cross_space_and_missing_report_errors() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+    // Nonexistent id.
+    assert!(dispatch(1, GM_SHOW_PLAYER, &4242i32.to_le_bytes(), &tx, &mut mgr).await);
+    let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
+    assert!(fb.contains("no such entity"), "got: {fb}");
 }
 
 /// An unimplemented 109+ index returns `false` so the router falls through to

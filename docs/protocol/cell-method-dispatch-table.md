@@ -477,7 +477,7 @@ beyond the 3 verified handlers above.
   [gm-cell-method-adapt-plan.md](../architecture/gm-cell-method-adapt-plan.md).
 - **NEW** — no primitive; build from scratch (high effort).
 
-**Tally (of 117):** 21 DONE · 0 REUSE · 52 ADAPT · 44 NEW.
+**Tally (of 117):** 24 DONE · 0 REUSE · 49 ADAPT · 44 NEW.
 
 > **#518 expansion.** All 18 REUSE rows are now **DONE**. The 16 observable-effect
 > commands plus the single-recipient feedback channel (`gm/feedback.rs` —
@@ -526,8 +526,8 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 121 | `gmShowTargetLocation()` | — | read `CellEntity.position` + feedback | ADAPT |
-| 122 | `gmShowRotation()` | — | read `CellEntity.direction` + feedback | ADAPT |
+| 121 | `gmShowTargetLocation()` | — | **`gm/query.rs` → `CellEntity.position` + feedback** | **DONE** |
+| 122 | `gmShowRotation()` | — | **`gm/query.rs` → `CellEntity.direction` + feedback** | **DONE** |
 | 123 | `listAbilities()` | — | `entity/abilities.rs:534 known_ability_ids` + feedback | ADAPT |
 | 124 | `showPointSet(WSTRING Type)` | — | cover/nav point sets (partial) | ADAPT |
 | 125 | `gmShowFlag(INT32 flagId)` | — | `state_field` (no `get_flag(id)` helper) | ADAPT |
@@ -536,7 +536,7 @@ beyond the 3 verified handlers above.
 | 128 | `gmShowMobCount(INT32 spaceId)` | — | iterate space entities (no count fn) | ADAPT |
 | 129 | `gmShowIP(INT32 target)` | — | SocketAddr in `connected_clients` (no eid→addr index) | ADAPT |
 | 130 | `gmShowInventory(INT32 target)` | — | CellEntity has no inventory → base read / base→cell RPC | NEW |
-| 131 | `gmShowPlayer(INT32 target)` | — | `service.rs:82 online_players` (+ eid index) | ADAPT |
+| 131 | `gmShowPlayer(INT32 target)` | — | **`gm/query.rs` → entity-info dump (FanMMORPG `.info`) + feedback** | **DONE** |
 
 #### Give / grant (132–141)
 

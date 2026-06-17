@@ -84,14 +84,14 @@ read-the-field + `send_gm_feedback(...)` one-liners:
 | 113 | `gmMissionList` | `entity.missions.active_missions` | F |
 | 114 | `gmMissionListFull` | `entity.missions.all_missions` | F |
 | 115 | `gmMissionDetails` | `entity.missions.get_mission` | F, N |
-| 121 | `gmShowTargetLocation` | `CellEntity.position` | F |
-| 122 | `gmShowRotation` | `CellEntity.direction` | F |
+| 121 | `gmShowTargetLocation` — **DONE** | `CellEntity.position` | — |
+| 122 | `gmShowRotation` — **DONE** | `CellEntity.direction` | — |
 | 123 | `listAbilities` | `entity.abilities.known_ability_ids` | F |
 | 125 | `gmShowFlag` | `state_field` bit test | F |
 | 126 | `gmListInteractions` | `available_interactions` | F |
 | 127 | `gmGetMobAttribute` | `get_entity` (hand-mapped attrs) | F, P |
 | 128 | `gmShowMobCount` | iterate space entities | F |
-| 131 | `gmShowPlayer` | `online_players` + eid index | F |
+| 131 | `gmShowPlayer` — **DONE** | entity-info dump (FanMMORPG `.info`) | — |
 | 168 | `gmPrintStats` | per-entity `stat_list` | F |
 | 180 | `gmDebugMobData` | `get_entity` dump | F |
 
