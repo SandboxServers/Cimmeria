@@ -71,6 +71,7 @@ async fn entity_move_updates_position_in_space_manager() {
     handle_base_message(
         BaseToCellMsg::EntityMove {
             entity_id: 1,
+            claimed_space_id: 0,
             position: [10.0, 20.0, 30.0],
             direction: [0, 0, 0],
             velocity: [1.0, 2.0, 3.0],
@@ -131,6 +132,7 @@ async fn entity_move_out_of_bounds_rejects_and_emits_teleport_player_snap_back()
     handle_base_message(
         BaseToCellMsg::EntityMove {
             entity_id: 7777,
+            claimed_space_id: 0,
             position: attacker_pos,
             direction: [0, 0, 0],
             velocity: [0.0; 3],
@@ -188,9 +190,9 @@ async fn entity_move_out_of_bounds_rejects_and_emits_teleport_player_snap_back()
     //    trip this guard. The exact log message text is allowed to
     //    drift; field names are the contract.
     let event = capture
-        .find_event(Level::WARN, "movement.bounds_violation", "bounds")
+        .find_event(Level::WARN, "movement.validation_reject", "bounds")
         .expect(
-            "warn-level movement.bounds_violation with reason='bounds' must fire \
+            "warn-level movement.validation_reject with reason='bounds' must fire \
              — the negative-log convention pins this field shape across the \
              validator's evolution",
         );
@@ -216,6 +218,75 @@ async fn entity_move_out_of_bounds_rejects_and_emits_teleport_player_snap_back()
     assert!(
         event.fields.contains_key("client_x"),
         "warn log must carry client_x; got {event:#?}"
+    );
+}
+
+/// CAT-B-06 — server↔client space divergence. An `EntityMove` whose
+/// `claimed_space_id` differs from the cell's authoritative binding must:
+///   1. still apply the position (the check is warn-only — the write uses
+///      the server binding, never the client's claim, so it cannot
+///      corrupt the grid);
+///   2. emit a `warn!` on `target = "movement.validation"` with
+///      `reason = "space_mismatch"` and the `claimed_space_id` /
+///      `entity_id` fields so the race is observable in telemetry.
+///
+/// A `claimed_space_id` of 0 is the pre-confirmation sentinel and must
+/// NOT warn — the sibling `entity_move_updates_position_in_space_manager`
+/// test (claimed_space_id: 0) covers the no-warn path implicitly.
+#[tokio::test]
+async fn entity_move_space_mismatch_warns_but_still_applies() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    let space_id = mgr
+        .create_entity(4242, "Castle_CellBlock", [1.0, 2.0, 3.0], [0.0; 3])
+        .unwrap();
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+
+    // Claim a space that is definitely not the entity's (non-zero so the
+    // sentinel skip doesn't apply).
+    let bogus_space = space_id ^ 0x0F0F;
+    let new_pos = [5.0_f32, 2.0, 7.0];
+    handle_base_message(
+        BaseToCellMsg::EntityMove {
+            entity_id: 4242,
+            claimed_space_id: bogus_space,
+            position: new_pos,
+            direction: [0, 0, 0],
+            velocity: [0.0; 3],
+        },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+
+    // 1. The write is server-authoritative and still lands.
+    let entity = mgr.get_entity(4242).unwrap();
+    assert_eq!(entity.position.x, new_pos[0]);
+    assert_eq!(entity.position.z, new_pos[2]);
+
+    // 2. The divergence is logged with the contract field shape.
+    let event = capture
+        .find_event(Level::WARN, "movement.space_mismatch", "space_mismatch")
+        .expect("warn-level movement.space_mismatch with reason='space_mismatch' must fire");
+    assert!(
+        event.has_field("entity_id", "4242"),
+        "space-mismatch warn must carry entity_id=4242; got {event:#?}"
+    );
+    assert!(
+        event.fields.contains_key("claimed_space_id"),
+        "space-mismatch warn must carry claimed_space_id; got {event:#?}"
     );
 }
 
@@ -249,6 +320,7 @@ async fn snap_back_message_routes_through_compose_forced_position_body() {
     handle_base_message(
         BaseToCellMsg::EntityMove {
             entity_id: 0xCAFE,
+            claimed_space_id: 0,
             position: [1.0e9, 0.0, 0.0], // far out-of-bounds attacker pos
             direction: [0, 0, 0],
             velocity: [0.0; 3],
@@ -353,6 +425,7 @@ async fn snap_back_triggers_aoi_refresh_to_last_valid_position() {
     handle_base_message(
         BaseToCellMsg::EntityMove {
             entity_id: 200,
+            claimed_space_id: 0,
             position: [1.0e9_f32, 0.0, 1.0e9],
             direction: [0, 0, 0],
             velocity: [0.0; 3],
@@ -475,6 +548,7 @@ async fn test_authorized_teleport_does_not_trigger_bounds_anomaly() {
     handle_base_message(
         BaseToCellMsg::EntityMove {
             entity_id: 7777,
+            claimed_space_id: 0,
             position: client_pos,
             direction: [0, 0, 0],
             velocity: [0.0; 3],

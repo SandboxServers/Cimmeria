@@ -8,24 +8,41 @@
 //! positions must clear before the cell entity's `position` field is
 //! written.
 //!
-//! ## Layered design (4 PRs total)
+//! ## Layered design (all four layers live; see issue #478)
 //!
-//! 1. **Bounds** *(this layer)* — proposed point must lie inside the
-//!    active space's `[bmin, bmax]` AABB. Sourced from the loaded
-//!    navmesh's bounds with a generous fallback for spaces whose
-//!    navmesh failed to load.
-//! 2. **Speed** *(future)* — `|new - last| / dt_game_ticks` must not
-//!    exceed `top_speed × tolerance`. Game-tick delta, never wall-clock
-//!    (wall-clock is client-spoofable).
-//! 3. **Teleport detection** *(future)* — single-tick jumps beyond
-//!    `TELEPORT_JUMP_UNITS` are rejected unless the entity is on the
-//!    authorized-teleport allowlist set by `FORCED_POSITION` /
-//!    respawn / ring-transport paths.
-//! 4. **Navmesh containment** *(future, gated)* — the projected
-//!    destination must lie on a walkable polygon via Detour
-//!    `findNearestPoly`, and Y must be within `AGENT_CLIMB_TOLERANCE`
-//!    of the polygon surface (Z-axis omission is the documented
-//!    floor-clip exploit).
+//! 1. **Bounds** — proposed point must lie inside the active space's
+//!    `[bmin, bmax]` AABB. Sourced from the loaded navmesh's bounds with
+//!    a generous fallback for spaces whose navmesh failed to load.
+//!    Catches NaN / infinity / absurd-coordinate overflows and the
+//!    Z-axis floor-clip exploit. (`check_bounds`)
+//! 2. **Speed** *(warn-only)* — `|new - last| / dt` (server monotonic
+//!    clock, never a client-supplied timestamp) must not exceed
+//!    `top_speed × SPEED_WARN_TOLERANCE`. Over-tolerance moves are
+//!    **logged + counted but still accepted**: the production tolerance
+//!    is calibrated from SigNoz rejection telemetry before it is allowed
+//!    to snap legitimate high-RTT players back. (`check_kinematics`)
+//! 3. **Teleport detection** *(hard reject)* — a single update that is
+//!    both farther than `TELEPORT_JUMP_UNITS` **and** implies a speed
+//!    above `top_speed × TELEPORT_SPEED_FACTOR` is rejected with
+//!    snap-back. The dual gate (distance AND implied-speed) lets a
+//!    legitimately lagged client send one large-but-slow catch-up packet
+//!    without a false snap, while still rejecting the
+//!    100m-in-50ms teleport. (`check_kinematics`)
+//! 4. **Navmesh containment** — the proposed point must lie on a
+//!    walkable polygon (`SpaceManager::is_position_valid`, fail-open when
+//!    no navmesh is loaded). Wired at the cell seam, not here, because it
+//!    needs the per-space Detour handle.
+//!
+//! ## On "game tick, not wall-clock"
+//!
+//! The audit's warning is against trusting a **client-supplied**
+//! timestamp to compute `dt` — that is spoofable (set `dt` huge → any
+//! distance looks slow). The clock used here is the server's own
+//! monotonic [`std::time::Instant`], sampled at the moment the packet is
+//! processed. It is not client-influenced and is the same primitive the
+//! cell's tick loop already uses. `dt` is injected into
+//! [`MovementValidator::check_kinematics`] so the logic stays
+//! deterministic under test.
 //!
 //! ## Correction strategy
 //!
@@ -41,18 +58,57 @@
 //! Disconnect is reserved for repeated violations beyond a per-session
 //! threshold — out of scope for this layer.
 
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
 use cimmeria_common::Vector3;
 
-/// Why a proposed position was rejected. The variants map 1:1 to the
-/// validation layers; PR1 only emits `OutOfBounds`. The enum is kept
-/// extensible so PR2/3/4 can drop in their cases without re-shaping
-/// the public surface.
+/// Why a proposed position was rejected. Each variant maps to a hard
+/// (snap-back) validation layer. The speed layer is **warn-only** and
+/// therefore has no variant here — an over-tolerance-but-sub-teleport
+/// move is accepted and surfaces as a [`SpeedSample`] instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MovementReject {
     /// Proposed position lay outside the active space's `[bmin, bmax]`
-    /// AABB. Carried by every reject so log capture pins the failure
-    /// mode cleanly.
+    /// AABB (or was non-finite). Carried by every reject so log capture
+    /// pins the failure mode cleanly.
     OutOfBounds,
+    /// Proposed position was off the walkable navmesh. Only emitted for
+    /// spaces with a loaded navmesh — navmesh-less spaces fail open.
+    OffNavmesh,
+    /// Single-update jump that was both farther than
+    /// [`MovementValidator::TELEPORT_JUMP_UNITS`] and faster than
+    /// `top_speed × TELEPORT_SPEED_FACTOR` — i.e. a teleport/speed hack
+    /// no legitimate lagged client could produce.
+    Teleport,
+}
+
+/// Speed/teleport telemetry for a single update, returned by
+/// [`MovementValidator::check_kinematics`]. Carries the raw inputs so
+/// the cell seam's negative log and the SigNoz tolerance-calibration
+/// pipeline have the full `(distance, dt, implied_speed)` triple.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpeedSample {
+    /// World-unit distance from the last accepted position.
+    pub distance: f32,
+    /// Server-clock seconds since the last accepted update.
+    pub dt_secs: f32,
+    /// `distance / dt_secs`, in world units per second.
+    pub implied_speed: f32,
+    /// The class top speed the sample was compared against.
+    pub top_speed: f32,
+}
+
+/// Outcome of the stateful speed/teleport layer.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct KinematicsOutcome {
+    /// `Some(MovementReject::Teleport)` when the move must be hard-
+    /// rejected; `None` when it is accepted (possibly with a warn).
+    pub reject: Option<MovementReject>,
+    /// `Some(sample)` when the move exceeded the warn tolerance but was
+    /// still accepted under the warn-only speed policy. The caller logs
+    /// + counts it but does **not** snap the client.
+    pub speed_warn: Option<SpeedSample>,
 }
 
 /// World-space axis-aligned bounding box for a single space.
@@ -142,18 +198,55 @@ pub fn position_within_bounds(pos: Vector3, bounds: &SpaceBounds) -> bool {
 
 /// Server-authoritative movement validator.
 ///
-/// Stateless for PR1 (bounds-only). PR2 will add per-entity `last_pos`
-/// and a `Clock` handle for speed validation; PR3 will add an
-/// authorized-teleport allowlist. The public surface stays the same so
-/// callers wired here today do not churn when the layers extend.
+/// Holds the per-entity server-clock sample the speed/teleport layer
+/// needs (`move_clock`). The bounds and navmesh layers are stateless;
+/// they read everything from their arguments. State is keyed by
+/// `entity_id` and must be released via [`MovementValidator::forget`]
+/// when the entity is destroyed.
 #[derive(Debug, Default)]
-pub struct MovementValidator;
+pub struct MovementValidator {
+    /// Server-monotonic timestamp of each entity's last *processed*
+    /// client position update (accepted or hard-rejected). `dt` for the
+    /// next update is `now − this`. Absence means "no prior sample" — the
+    /// first update for an entity seeds the clock and skips the
+    /// speed/teleport check (no baseline to measure against).
+    move_clock: HashMap<u32, Instant>,
+}
 
 impl MovementValidator {
-    /// Construct a fresh validator. Stateless today; PR2/3 will add
-    /// internal state seeded here.
-    pub const fn new() -> Self {
-        Self
+    /// Class top speed (world units / second) used as the speed/teleport
+    /// baseline. Sourced from `db/resources/Worlds/Seed/worlds.sql`
+    /// `run_speed`, which is `8.125` for every populated world. A
+    /// per-world source (and reconciliation of the `runSpeed = 6.0`
+    /// drift in `mercury/world_data`) is a documented follow-up; the
+    /// warn-only speed policy and the generous tolerances below make the
+    /// single constant safe in the interim (it is the *higher* of the
+    /// two candidate numbers, so it cannot cause false warns relative to
+    /// what the client is told).
+    pub const DEFAULT_TOP_SPEED: f32 = 8.125;
+
+    /// Warn when `implied_speed > top_speed × this`. Warn-only — no
+    /// snap-back. 1.5× absorbs sprint bursts, slope/stair geometry, and
+    /// RTT jitter; the real tolerance is calibrated from telemetry later.
+    pub const SPEED_WARN_TOLERANCE: f32 = 1.5;
+
+    /// Distance gate for the teleport hard-reject. A single update must
+    /// move farther than this (world units) to be teleport-eligible. At
+    /// `DEFAULT_TOP_SPEED` this is ~6 s of continuous running in one
+    /// packet — implausible for legitimate traffic, even lagged.
+    pub const TELEPORT_JUMP_UNITS: f32 = 50.0;
+
+    /// Speed gate for the teleport hard-reject, as a multiple of
+    /// `top_speed`. Combined with the distance gate via AND: a far-but-
+    /// slow catch-up packet from a lagged client (large distance, small
+    /// implied speed) is **not** a teleport, but a far-and-fast jump is.
+    pub const TELEPORT_SPEED_FACTOR: f32 = 10.0;
+
+    /// Construct a fresh validator with no per-entity state.
+    pub fn new() -> Self {
+        Self {
+            move_clock: HashMap::new(),
+        }
     }
 
     /// Bounds layer. Returns `Ok(())` on accept,
@@ -171,7 +264,102 @@ impl MovementValidator {
             Err(MovementReject::OutOfBounds)
         }
     }
+
+    /// Speed + teleport layer.
+    ///
+    /// `last_pos` is the entity's current authoritative position (the
+    /// cell entity's `position` field — already advanced by any
+    /// server-authoritative teleport), `proposed` is the client's new
+    /// position, and `now` is the server's monotonic processing time.
+    ///
+    /// Sourcing `last_pos` from the post-teleport cell entity is what
+    /// makes this layer robust without an authorized-teleport allowlist:
+    /// after a ring/respawn/gate/content teleport writes the new position
+    /// through `update_entity_position`, the *next* client packet is
+    /// measured against the destination, so a legitimate teleport never
+    /// produces a self-inflicted false reject. [`note_authorized_teleport`]
+    /// exists only to reseed the clock so the post-teleport packet's `dt`
+    /// is measured from the teleport instant rather than a stale sample.
+    ///
+    /// [`note_authorized_teleport`]: Self::note_authorized_teleport
+    pub fn check_kinematics(
+        &mut self,
+        entity_id: u32,
+        now: Instant,
+        last_pos: Vector3,
+        proposed: Vector3,
+        top_speed: f32,
+    ) -> KinematicsOutcome {
+        // Reseed the clock to `now` on every processed packet and recover
+        // the previous sample in one map op. Reseeding even on reject
+        // keeps `dt` ~one tick for a spamming attacker, so the implied
+        // speed stays high and the teleport gate keeps firing (a stale
+        // baseline would let `dt` grow until the jump looked "slow").
+        let prior = self.move_clock.insert(entity_id, now);
+
+        let Some(prev) = prior else {
+            // First sample for this entity: nothing to measure against.
+            return KinematicsOutcome::default();
+        };
+
+        let distance = proposed.distance_to(&last_pos);
+        let dt_secs = now.saturating_duration_since(prev).as_secs_f32();
+        // dt can be ~0 when two packets share a clock instant; treat that
+        // as infinite implied speed so the distance gate alone decides.
+        let implied_speed = if dt_secs > 1e-4 {
+            distance / dt_secs
+        } else {
+            f32::INFINITY
+        };
+
+        let is_teleport = distance > Self::TELEPORT_JUMP_UNITS
+            && implied_speed > top_speed * Self::TELEPORT_SPEED_FACTOR;
+        if is_teleport {
+            return KinematicsOutcome {
+                reject: Some(MovementReject::Teleport),
+                speed_warn: None,
+            };
+        }
+
+        let speed_warn =
+            (implied_speed > top_speed * Self::SPEED_WARN_TOLERANCE).then_some(SpeedSample {
+                distance,
+                dt_secs,
+                implied_speed,
+                top_speed,
+            });
+        KinematicsOutcome {
+            reject: None,
+            speed_warn,
+        }
+    }
+
+    /// Reseed an entity's speed/teleport clock after a server-
+    /// authoritative position write (ring transport, respawn, gate
+    /// travel arrival, content-engine teleport, GM travel). The next
+    /// client packet's `dt` is then measured from the teleport instant,
+    /// which suppresses a spurious speed warn when an authoritative move
+    /// interrupts the client's update stream. It does **not** suppress
+    /// hard rejects — a stale in-flight packet pointing at the old
+    /// location *should* be snapped to the new one. See
+    /// `.claude/agent-memory/movement-teleport-advisor/authorized-teleport-paths.md`.
+    pub fn note_authorized_teleport(&mut self, entity_id: u32, now: Instant) {
+        self.move_clock.insert(entity_id, now);
+    }
+
+    /// Release an entity's per-entity validator state. Call on entity
+    /// destroy / disconnect so the clock map cannot leak or carry a
+    /// stale sample across `entity_id` reuse.
+    pub fn forget(&mut self, entity_id: u32) {
+        self.move_clock.remove(&entity_id);
+    }
 }
+
+/// Grace window kept for documentation parity with the design note. The
+/// current design does not need it (see [`MovementValidator::check_kinematics`]),
+/// but the constant pins the client's ~800 ms frame-history depth plus
+/// margin should a future refactor move `last_pos` into validator state.
+pub const TELEPORT_GRACE: Duration = Duration::from_millis(2000);
 
 #[cfg(test)]
 mod tests {
@@ -353,5 +541,160 @@ mod tests {
         // generous but not unbounded.
         let pos = Vector3::new(1.0e9, 0.0, 0.0);
         assert!(!position_within_bounds(pos, &SpaceBounds::FALLBACK));
+    }
+
+    // ── Speed / teleport layer (issue #478, layers 2+3) ─────────────────
+
+    const TOP: f32 = MovementValidator::DEFAULT_TOP_SPEED;
+
+    #[test]
+    fn first_kinematics_sample_seeds_and_accepts() {
+        let mut v = MovementValidator::new();
+        let t0 = Instant::now();
+        // No prior sample — even an absurd jump is accepted (nothing to
+        // measure against). The bounds layer is what guards the first
+        // packet; kinematics only constrains *deltas*.
+        let out = v.check_kinematics(1, t0, Vector3::zero(), Vector3::new(9_000.0, 0.0, 0.0), TOP);
+        assert_eq!(out, KinematicsOutcome::default());
+    }
+
+    #[test]
+    fn small_legitimate_move_neither_warns_nor_rejects() {
+        let mut v = MovementValidator::new();
+        let t0 = Instant::now();
+        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP); // seed
+                                                                          // ~0.8 u over 100 ms = top speed exactly — under the 1.5× warn.
+        let out = v.check_kinematics(
+            1,
+            t0 + Duration::from_millis(100),
+            Vector3::zero(),
+            Vector3::new(0.8, 0.0, 0.0),
+            TOP,
+        );
+        assert!(out.reject.is_none(), "legit move must not reject");
+        assert!(out.speed_warn.is_none(), "legit move must not warn");
+    }
+
+    /// Canonical issue #478 teleport shape: 100 units in 50 ms → 2000 u/s,
+    /// ~246× top speed. Both gates trip → hard reject.
+    #[test]
+    fn hundred_units_in_fifty_ms_is_teleport_rejected() {
+        let mut v = MovementValidator::new();
+        let t0 = Instant::now();
+        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP); // seed
+        let out = v.check_kinematics(
+            1,
+            t0 + Duration::from_millis(50),
+            Vector3::zero(),
+            Vector3::new(100.0, 0.0, 0.0),
+            TOP,
+        );
+        assert_eq!(out.reject, Some(MovementReject::Teleport));
+    }
+
+    /// A lagged client sending one large *but slow* catch-up packet
+    /// (60 u over 10 s = 6 u/s) must NOT be teleport-rejected — distance
+    /// gate trips but the speed gate does not. This is the false-positive
+    /// the dual gate exists to avoid.
+    #[test]
+    fn far_but_slow_catchup_is_not_teleport() {
+        let mut v = MovementValidator::new();
+        let t0 = Instant::now();
+        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP); // seed
+        let out = v.check_kinematics(
+            1,
+            t0 + Duration::from_secs(10),
+            Vector3::zero(),
+            Vector3::new(60.0, 0.0, 0.0),
+            TOP,
+        );
+        assert!(
+            out.reject.is_none(),
+            "far-but-slow catch-up must not be a teleport"
+        );
+    }
+
+    /// Sub-teleport but over-tolerance speed (5 u in 50 ms = 100 u/s,
+    /// distance under the 50 u gate) → warn, still accepted.
+    #[test]
+    fn over_tolerance_short_hop_warns_but_accepts() {
+        let mut v = MovementValidator::new();
+        let t0 = Instant::now();
+        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP); // seed
+        let out = v.check_kinematics(
+            1,
+            t0 + Duration::from_millis(50),
+            Vector3::zero(),
+            Vector3::new(5.0, 0.0, 0.0),
+            TOP,
+        );
+        assert!(out.reject.is_none(), "short hop must not reject");
+        let sample = out.speed_warn.expect("100 u/s must warn");
+        assert!(sample.implied_speed > 90.0 && sample.implied_speed < 110.0);
+    }
+
+    /// A spamming attacker who keeps the cell entity pinned (last_pos
+    /// unchanged) must be rejected on *every* packet — the clock reseed
+    /// keeps dt ~one tick so the implied speed never decays under the
+    /// teleport gate.
+    #[test]
+    fn sustained_teleport_spam_keeps_rejecting() {
+        let mut v = MovementValidator::new();
+        let mut t = Instant::now();
+        v.check_kinematics(1, t, Vector3::zero(), Vector3::zero(), TOP); // seed
+        for _ in 0..5 {
+            t += Duration::from_millis(100);
+            let out = v.check_kinematics(1, t, Vector3::zero(), Vector3::new(100.0, 0.0, 0.0), TOP);
+            assert_eq!(
+                out.reject,
+                Some(MovementReject::Teleport),
+                "each spam packet must re-reject; dt must not decay the speed gate"
+            );
+        }
+    }
+
+    #[test]
+    fn note_authorized_teleport_reseeds_clock_and_suppresses_followup_warn() {
+        let mut v = MovementValidator::new();
+        let t0 = Instant::now();
+        // Player moving normally, last sample at t0.
+        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP);
+        // Authoritative teleport 5 s later reseeds the clock.
+        let t_tp = t0 + Duration::from_secs(5);
+        v.note_authorized_teleport(1, t_tp);
+        // First post-teleport client packet, 100 ms after the teleport,
+        // a small delta from the new (destination) last_pos: dt is
+        // measured from t_tp, not t0, so the speed is sane.
+        let dst = Vector3::new(500.0, 0.0, 500.0);
+        let out = v.check_kinematics(
+            1,
+            t_tp + Duration::from_millis(100),
+            dst,
+            Vector3::new(500.5, 0.0, 500.0),
+            TOP,
+        );
+        assert!(out.reject.is_none());
+        assert!(
+            out.speed_warn.is_none(),
+            "reseeded clock must make the post-teleport packet look slow"
+        );
+    }
+
+    #[test]
+    fn forget_clears_clock_so_next_sample_reseeds() {
+        let mut v = MovementValidator::new();
+        let t0 = Instant::now();
+        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP); // seed
+        v.forget(1);
+        // After forget there is no baseline, so even a teleport-shaped
+        // delta is accepted as a fresh seed (next packet will constrain).
+        let out = v.check_kinematics(
+            1,
+            t0 + Duration::from_millis(50),
+            Vector3::zero(),
+            Vector3::new(100.0, 0.0, 0.0),
+            TOP,
+        );
+        assert_eq!(out, KinematicsOutcome::default());
     }
 }

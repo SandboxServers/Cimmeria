@@ -221,8 +221,15 @@ pub(crate) async fn handle_encrypted_datagram(
                             .get(&addr)
                             .and_then(|c| c.player_entity_id);
                         if let Some(entity_id) = entity_id {
-                            // payload[0..4] = spaceId (not used here -- client confirms which space)
+                            // payload[0..4] = spaceId the client claims it is
+                            // in. The cell never writes against it (the server
+                            // `entity_space` binding is authoritative); it is
+                            // forwarded only so the cell can warn on a
+                            // server↔client space divergence (CAT-B-06).
                             // payload[4..8] = vehicleId (unused)
+                            let claimed_space_id = u32::from_le_bytes([
+                                payload[0], payload[1], payload[2], payload[3],
+                            ]);
                             let pos = [
                                 f32::from_le_bytes([
                                     payload[8],
@@ -272,6 +279,7 @@ pub(crate) async fn handle_encrypted_datagram(
                             let _ = tx
                                 .send(BaseToCellMsg::EntityMove {
                                     entity_id,
+                                    claimed_space_id,
                                     position: pos,
                                     direction: dir,
                                     velocity: vel,

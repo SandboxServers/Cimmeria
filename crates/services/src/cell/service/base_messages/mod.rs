@@ -15,6 +15,18 @@ use super::super::content;
 use super::super::messages::{BaseToCellMsg, CellToBaseMsg};
 use super::super::space_manager::{ClientMoveOutcome, SpaceManager};
 use super::super::{chat, dispatch, spawner};
+use cimmeria_entity::movement_validation::MovementReject;
+
+/// Stable metric/log label for a movement reject reason. Kept low-
+/// cardinality (one token per layer) so the `movement_validation_rejects_total`
+/// counter stays aggregatable.
+fn movement_reject_label(reason: MovementReject) -> &'static str {
+    match reason {
+        MovementReject::OutOfBounds => "bounds",
+        MovementReject::OffNavmesh => "navmesh",
+        MovementReject::Teleport => "teleport",
+    }
+}
 
 mod bandolier;
 mod player_init;
@@ -156,11 +168,36 @@ pub(super) async fn handle_base_message(
 
         BaseToCellMsg::EntityMove {
             entity_id,
+            claimed_space_id,
             position,
             direction,
             velocity,
         } => {
             tracing::trace!(entity_id, ?position, "EntityMove");
+            // CAT-B-06 — server↔client space divergence. The write below
+            // is server-authoritative (it uses the cell's own
+            // `entity_space` binding, never `claimed_space_id`), so a
+            // mismatch cannot corrupt the spatial grid; it is warn-only
+            // and exists to make gate-travel / instance-reset races
+            // observable. A claimed id of 0 is the pre-confirmation
+            // sentinel the client sends before its space is bound — skip
+            // it to avoid logging benign startup noise.
+            let actual_space_id = space_mgr.get_entity_space_id(entity_id);
+            if claimed_space_id != 0 && actual_space_id != Some(claimed_space_id) {
+                tracing::warn!(
+                    target: "movement.validation",
+                    entity_id,
+                    claimed_space_id,
+                    actual_space_id = ?actual_space_id,
+                    reason = "space_mismatch",
+                    "movement.space_mismatch: client claims a different space than \
+                     the server binding (warn-only — write uses the server binding)"
+                );
+                cimmeria_observability::counter!(
+                    "movement_validation_warns_total",
+                    "reason" => "space_mismatch",
+                );
+            }
             // 1-in-N sampled debug log on the canonical player-move
             // target. Player movement is high volume (~10 Hz per
             // active player) and rarely the bug source, so sampling
@@ -213,9 +250,10 @@ pub(super) async fn handle_base_message(
                 } => {
                     // Negative-log per docs/architecture/negative-logging-convention.md.
                     // `reason` carries the validation layer that fired
-                    // (today only "bounds"); `bounds_min`/`bounds_max`
-                    // let an operator confirm which AABB rejected the
-                    // proposed position without grepping for it.
+                    // (`bounds` | `navmesh` | `teleport`); `bounds_min`/
+                    // `bounds_max` let an operator confirm which AABB the
+                    // proposed position was tested against without grepping.
+                    let reason_label = movement_reject_label(reason);
                     tracing::warn!(
                         target: "movement.validation",
                         entity_id,
@@ -232,17 +270,16 @@ pub(super) async fn handle_base_message(
                         bounds_max_x = bounds.max[0],
                         bounds_max_y = bounds.max[1],
                         bounds_max_z = bounds.max[2],
-                        reason = "bounds",
+                        reason = reason_label,
                         reject = ?reason,
-                        "movement.bounds_violation: client position outside space \
-                         AABB — snapping back to last valid via FORCED_POSITION"
+                        "movement.validation_reject: client position rejected by the \
+                         {reason_label} layer — snapping back to last valid via FORCED_POSITION"
                     );
-                    // Future validators will add `speed | teleport | navmesh`
-                    // reason labels; today only `bounds` fires. Aggregating
-                    // the rate without high-cardinality entity_id labels.
+                    // One low-cardinality `reason` label per layer so the
+                    // reject rate stays aggregatable without per-entity tags.
                     cimmeria_observability::counter!(
                         "movement_validation_rejects_total",
-                        "reason" => "bounds",
+                        "reason" => reason_label,
                     );
                     // Snap the offending client back. The cell entity's
                     // position was NOT advanced — the next AoI tick

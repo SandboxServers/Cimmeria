@@ -17,11 +17,16 @@
 //!   *current* space bounds, not a stale snapshot of where the entity
 //!   used to be.
 //!
-//! Future PRs add speed (PR2), teleport detection + allowlist (PR3),
-//! and navmesh containment (PR4) tests beside these.
+//! The speed/teleport (layers 2+3) and navmesh-containment (layer 4)
+//! seam tests live at the bottom of this file; they drive the time-
+//! injected [`SpaceManager::apply_client_position_update_at`] so the
+//! kinematics deltas are deterministic.
+
+use std::time::{Duration, Instant};
 
 use cimmeria_common::Vector3;
 use cimmeria_entity::movement_validation::MovementReject;
+use cimmeria_entity::navigation::NavMesh;
 
 use super::super::ClientMoveOutcome;
 use super::make_manager;
@@ -271,5 +276,242 @@ fn test_authorized_teleport_does_not_trigger_bounds_anomaly() {
         entity.position,
         Vector3::new(500.1, 0.0, 500.1),
         "post-teleport client update must have been written to cell_entity.position"
+    );
+}
+
+// ── Layers 2+3: speed (warn-only) + teleport (hard reject) ───────────────
+
+/// Seed the validator clock with a zero-delta update so the *next*
+/// update has a baseline to measure against. The first update for an
+/// entity always seeds-and-accepts (no prior sample), so kinematics
+/// tests need this priming call. Returns the seed instant.
+fn seed_clock(mgr: &mut super::super::SpaceManager, entity_id: u32, now: Instant) {
+    let outcome =
+        mgr.apply_client_position_update_at(now, entity_id, SPAWN_POS, [0, 0, 0], [0.0; 3]);
+    assert!(
+        matches!(outcome, ClientMoveOutcome::Accepted { .. }),
+        "clock seed (zero-delta) must be accepted, got {outcome:?}"
+    );
+}
+
+/// **Canonical issue #478 regression guard (criterion 2).** A captured
+/// `AVATAR_UPDATE_EXPLICIT` whose `new_pos` is 100 units from `last_pos`
+/// over 50 ms (= 2000 u/s, ~246× the 8.125 u/s class top speed) must be
+/// rejected at the validation seam, and the cell entity must NOT advance
+/// (so AoI never observes the teleported position).
+///
+/// Reverting the kinematics wiring in `apply_client_position_update_at`
+/// makes this Accept and writes the 100 u jump through — the guard fires.
+#[test]
+fn teleport_100m_over_50ms_is_rejected_and_not_observed() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    // 100 units along +X from spawn, 50 ms later. Inside the Agnos AABB
+    // (so bounds passes) and Agnos has no navmesh (so containment fails
+    // open) — kinematics is the only layer that can catch it.
+    let teleport = [SPAWN_POS[0] + 100.0, 0.0, SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(50),
+        100,
+        teleport,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+
+    match outcome {
+        ClientMoveOutcome::Rejected {
+            reason, last_valid, ..
+        } => {
+            assert_eq!(reason, MovementReject::Teleport);
+            assert_eq!(last_valid, SPAWN_POS);
+        }
+        other => panic!("expected Rejected(Teleport), got {other:?}"),
+    }
+    // AoI reads the cell entity position; it must still be spawn.
+    let entity = &mgr.spaces[&65536].entities[&100];
+    assert_eq!(
+        entity.position,
+        Vector3::new(SPAWN_POS[0], SPAWN_POS[1], SPAWN_POS[2]),
+        "teleport-rejected position must not have been written to the cell entity"
+    );
+}
+
+/// Sub-teleport but over-tolerance speed (5 u in 50 ms = 100 u/s): the
+/// warn-only speed layer accepts the move (and logs/counts it) — it must
+/// NOT snap the client back. This pins the warn-only policy: a fast-but-
+/// short hop is observed, not punished, until the tolerance is
+/// calibrated from telemetry.
+#[test]
+fn over_tolerance_short_hop_is_accepted_warn_only() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    // 5 u (< 50 u teleport gate) in 50 ms → 100 u/s (> 1.5× top speed).
+    let hop = [SPAWN_POS[0] + 5.0, 0.0, SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(50),
+        100,
+        hop,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(outcome, ClientMoveOutcome::Accepted { position } if position == hop),
+        "over-tolerance short hop must be accepted under the warn-only policy, got {outcome:?}"
+    );
+    let entity = &mgr.spaces[&65536].entities[&100];
+    assert_eq!(entity.position, Vector3::new(hop[0], hop[1], hop[2]));
+}
+
+/// Authorized server teleport followed by a client follow-up packet must
+/// not be teleport-rejected: `note_authorized_teleport` reseeds the clock
+/// and `last_pos` is the (already-written) destination, so the small
+/// follow-up delta is well within tolerance. This is the speed/teleport
+/// analogue of the bounds-layer authorized-teleport guard above.
+#[test]
+fn authorized_teleport_then_client_followup_is_accepted() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    // Server-authoritative jump far across the world (what ring/respawn/
+    // gate/GM travel do) + reseed, exactly as the production paths now do.
+    let dst = [900.0, 0.0, 900.0];
+    mgr.update_entity_position(100, dst, [0, 0, 0], [0.0; 3]);
+    mgr.note_authorized_teleport(100);
+
+    // Client's first post-teleport packet, a small delta from dst, 100 ms
+    // later. Distance from last_pos (= dst) is tiny → not a teleport.
+    let followup = [900.4, 0.0, 900.2];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(100),
+        100,
+        followup,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(outcome, ClientMoveOutcome::Accepted { position } if position == followup),
+        "post-authorized-teleport follow-up must be accepted, got {outcome:?}"
+    );
+}
+
+// ── Layer 4: navmesh containment ─────────────────────────────────────────
+
+/// **Canonical issue #478 regression guard (criterion 3).** A captured
+/// `AVATAR_UPDATE_EXPLICIT` whose `new_pos` is inside the space AABB but
+/// off the walkable navmesh must be rejected (snap-back), and the cell
+/// entity must not advance.
+///
+/// Uses the real `castle_cellblock.nav` fixture, injected into the
+/// instanced space (the production loader keys off a cwd-relative path
+/// that the crate test harness doesn't satisfy). Self-skips when the
+/// fixture is absent, per the repo's standard navmesh-test pattern.
+#[test]
+fn off_navmesh_position_is_rejected_and_not_observed() {
+    let nav_path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
+    if !nav_path.exists() {
+        return; // fixture-less CI — skip
+    }
+    let navmesh = NavMesh::load(nav_path).expect("load castle_cellblock.nav");
+    let (bmin, bmax) = (navmesh.bmin, navmesh.bmax);
+
+    let mut mgr = make_manager();
+    // Known on-navmesh guard spawn (shared with the entity-crate nav tests).
+    let on_mesh = [-289.465, 68.542, -154.276];
+    let space_id = mgr
+        .create_entity(100, "Castle_CellBlock", on_mesh, [0.0; 3])
+        .unwrap();
+    mgr.spaces.get_mut(&space_id).unwrap().navmesh = Some(navmesh);
+
+    assert!(
+        mgr.is_position_valid(100, &Vector3::new(on_mesh[0], on_mesh[1], on_mesh[2])),
+        "guard spawn must read as on-navmesh — fixture/precondition sanity"
+    );
+
+    // The nav AABB hugs the walkable polys, so corners snap to mesh
+    // (DEST_EXTENTS is a 3 u box). Scan the interior XZ grid at floor
+    // height for a point inside a wall / cell gap that reads off-mesh but
+    // stays within the bounds AABB. The cellblock is a prison interior —
+    // such points exist. Deterministic over the fixed fixture.
+    let mut off_mesh: Option<[f32; 3]> = None;
+    let y = on_mesh[1];
+    let (mut x, step) = (bmin[0] + 2.0, 2.0_f32);
+    'scan: while x < bmax[0] - 2.0 {
+        let mut z = bmin[2] + 2.0;
+        while z < bmax[2] - 2.0 {
+            let cand = [x, y, z];
+            if !mgr.is_position_valid(100, &Vector3::new(cand[0], cand[1], cand[2])) {
+                off_mesh = Some(cand);
+                break 'scan;
+            }
+            z += step;
+        }
+        x += step;
+    }
+    let off_mesh = match off_mesh {
+        Some(p) => p,
+        // Whole interior walkable (not expected for a cellblock) — skip
+        // rather than assert, so a future re-bake can't false-fail.
+        None => return,
+    };
+    assert!(
+        !mgr.is_position_valid(100, &Vector3::new(off_mesh[0], off_mesh[1], off_mesh[2])),
+        "scanned point must read as off-navmesh — precondition for the reject"
+    );
+
+    let outcome =
+        mgr.apply_client_position_update_at(Instant::now(), 100, off_mesh, [0, 0, 0], [0.0; 3]);
+    match outcome {
+        ClientMoveOutcome::Rejected { reason, .. } => {
+            assert_eq!(reason, MovementReject::OffNavmesh);
+        }
+        other => panic!("expected Rejected(OffNavmesh), got {other:?}"),
+    }
+    let entity = &mgr.spaces[&space_id].entities[&100];
+    assert_eq!(
+        entity.position,
+        Vector3::new(on_mesh[0], on_mesh[1], on_mesh[2]),
+        "off-navmesh position must not have been written to the cell entity"
+    );
+}
+
+/// A small legitimate move that stays on the navmesh must be accepted —
+/// the containment layer must not snap-fest players walking normally on a
+/// navmesh-backed space. Pairs with the reject guard above.
+#[test]
+fn on_navmesh_small_move_is_accepted() {
+    let nav_path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
+    if !nav_path.exists() {
+        return;
+    }
+    let navmesh = NavMesh::load(nav_path).expect("load castle_cellblock.nav");
+
+    let mut mgr = make_manager();
+    let on_mesh = [-289.465, 68.542, -154.276];
+    let space_id = mgr
+        .create_entity(100, "Castle_CellBlock", on_mesh, [0.0; 3])
+        .unwrap();
+    mgr.spaces.get_mut(&space_id).unwrap().navmesh = Some(navmesh);
+
+    // A nearby on-mesh point the sibling entity-crate pathfind test uses.
+    let nearby = [-280.0, 68.0, -150.0];
+    if !mgr.is_position_valid(100, &Vector3::new(nearby[0], nearby[1], nearby[2])) {
+        return; // geometry guard: skip if this sample isn't walkable here
+    }
+    let outcome =
+        mgr.apply_client_position_update_at(Instant::now(), 100, nearby, [0, 0, 0], [0.0; 3]);
+    assert!(
+        matches!(outcome, ClientMoveOutcome::Accepted { position } if position == nearby),
+        "small on-navmesh move must be accepted, got {outcome:?}"
     );
 }
