@@ -23,7 +23,15 @@ use crate::otel;
 
 /// Archive any `.log` files from a previous session into `logs/archive/<timestamp>/`.
 fn archive_previous_logs() {
-    let logs_dir = Path::new("logs");
+    archive_previous_logs_in(Path::new("logs"));
+}
+
+/// Archive any `.log` files in `logs_dir` into `<logs_dir>/archive/<timestamp>/`.
+///
+/// Split from [`archive_previous_logs`] (which pins the real `logs/` path) so the
+/// archival behaviour — move only `*.log`, leave everything else, no-op on an
+/// empty or missing directory — is unit-testable against a temp directory.
+fn archive_previous_logs_in(logs_dir: &Path) {
     if !logs_dir.exists() {
         return;
     }
@@ -388,4 +396,116 @@ pub(crate) fn init_logging(
     tracing_subscriber::registry().with(layers).init();
 
     guards
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{archive_previous_logs_in, chrono_timestamp, days_to_ymd};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    // A unique temp directory per call — process id + a monotonic counter — so
+    // tests don't collide under either `cargo test` (threads) or `cargo nextest`
+    // (processes), and without pulling in a temp-dir dependency.
+    fn unique_tempdir() -> PathBuf {
+        static N: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "cimmeria-log-test-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    // `days_to_ymd` implements Howard Hinnant's `civil_from_days`. These pin the
+    // boundaries that historically break naive date math: month rollover, the
+    // non-leap-year February, a leap-year February 29th, and year rollovers —
+    // including the year-2000 epoch the algorithm internally shifts to.
+    #[test]
+    fn days_to_ymd_epoch_and_month_boundaries() {
+        assert_eq!(days_to_ymd(0), (1970, 1, 1)); // Unix epoch
+        assert_eq!(days_to_ymd(30), (1970, 1, 31)); // last day of January
+        assert_eq!(days_to_ymd(31), (1970, 2, 1)); // first day of February
+        assert_eq!(days_to_ymd(59), (1970, 3, 1)); // 31 (Jan) + 28 (Feb 1970, non-leap)
+    }
+
+    #[test]
+    fn days_to_ymd_year_and_leap_boundaries() {
+        assert_eq!(days_to_ymd(365), (1971, 1, 1)); // 1970 is not a leap year
+        assert_eq!(days_to_ymd(789), (1972, 2, 29)); // 1972 IS a leap year
+        assert_eq!(days_to_ymd(790), (1972, 3, 1)); // the day after Feb 29
+        assert_eq!(days_to_ymd(10957), (2000, 1, 1)); // Hinnant era anchor
+    }
+
+    // `chrono_timestamp` reads the wall clock, so we can't assert an exact value.
+    // We can assert the filesystem-safe shape (no ':' that Windows rejects in a
+    // path) and that the embedded date/time fields parse into sane ranges — which
+    // exercises the full seconds→Y-M-D-H-M-S breakdown.
+    #[test]
+    fn chrono_timestamp_is_filesystem_safe_and_in_range() {
+        let ts = chrono_timestamp();
+        assert!(!ts.contains(':'), "timestamp must be path-safe: {ts}");
+
+        let (date, time) = ts.split_once('T').expect("expected 'T' separator");
+        let d: Vec<u64> = date.split('-').map(|p| p.parse().unwrap()).collect();
+        let t: Vec<u64> = time.split('-').map(|p| p.parse().unwrap()).collect();
+        assert_eq!(d.len(), 3);
+        assert_eq!(t.len(), 3);
+        assert!(d[0] >= 2020, "year looks wrong: {}", d[0]); // sanity vs. epoch math
+        assert!((1..=12).contains(&d[1]), "month out of range: {}", d[1]);
+        assert!((1..=31).contains(&d[2]), "day out of range: {}", d[2]);
+        assert!(
+            t[0] < 24 && t[1] < 60 && t[2] < 60,
+            "time out of range: {time}"
+        );
+    }
+
+    #[test]
+    fn archive_missing_dir_is_noop() {
+        let dir = unique_tempdir();
+        let missing = dir.join("does-not-exist");
+        archive_previous_logs_in(&missing); // must not panic
+        assert!(!missing.exists());
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn archive_empty_dir_creates_no_archive() {
+        let dir = unique_tempdir();
+        archive_previous_logs_in(&dir);
+        assert!(!dir.join("archive").exists(), "no .log files -> no archive");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn archive_moves_only_log_files() {
+        let dir = unique_tempdir();
+        fs::write(dir.join("server.log"), b"old").unwrap();
+        fs::write(dir.join("auth.log"), b"old").unwrap();
+        fs::write(dir.join("notes.txt"), b"keep").unwrap(); // non-.log: must stay
+
+        archive_previous_logs_in(&dir);
+
+        // The two .log files moved out of the top level...
+        assert!(!dir.join("server.log").exists());
+        assert!(!dir.join("auth.log").exists());
+        // ...the non-.log file stayed put...
+        assert!(dir.join("notes.txt").exists());
+        // ...and exactly one timestamped archive subdir was created holding them.
+        let archive = dir.join("archive");
+        let stamps: Vec<_> = fs::read_dir(&archive)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(stamps.len(), 1, "one timestamped archive subdir");
+        let moved: Vec<_> = fs::read_dir(stamps[0].path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(moved.len(), 2, "both .log files archived: {moved:?}");
+        fs::remove_dir_all(&dir).ok();
+    }
 }
