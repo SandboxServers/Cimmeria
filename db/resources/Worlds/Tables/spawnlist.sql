@@ -22,6 +22,14 @@ CREATE TABLE spawnlist (
     -- Minimum 3 seconds — see `entity_templates.respawn_secs`
     -- comment for the floor rationale.
     respawn_secs integer,
+    -- Per-spawn patrol override. When set, takes precedence over the
+    -- template's `entity_templates.patrol_path_id` / `patrol_point_delay` for
+    -- THIS spawn only. `patrol_path_id` references a `point_sets.set_id` whose
+    -- `point_set_points` are the ordered waypoints. NULL → fall back to the
+    -- template default (and NULL there → no patrol). Authored in-game via the
+    -- `.path_assign` console command.
+    patrol_path_id integer,
+    patrol_point_delay real,
     CONSTRAINT spawnlist_respawn_secs_min_3
         CHECK (respawn_secs IS NULL OR respawn_secs >= 3)
 );

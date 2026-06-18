@@ -224,6 +224,12 @@ pub struct CellEntity {
     /// Source template ID from `entity_templates.template_id`.
     pub template_id: Option<i32>,
 
+    /// Source `spawnlist.spawn_id` for record-spawned NPCs, or `None` for
+    /// players and command-spawned NPCs (which have no spawnlist row). Lets the
+    /// `.`-console authoring commands (`delspawn`, `path_assign`) target the
+    /// exact spawn row by id rather than matching on position.
+    pub spawn_id: Option<i32>,
+
     /// Spawn tag from `spawnlist.tag` — used by content chains to target this entity
     /// (e.g., `"ArmYourself_FrostBody"`, `"Preparation_Terminal"`).
     pub tag: Option<String>,
@@ -916,6 +922,7 @@ impl CellEntity {
             access_level: 0,
             level: 1,
             template_id: None,
+            spawn_id: None,
             tag: None,
             name_id: None,
             speaker_id: None,

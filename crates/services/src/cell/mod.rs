@@ -9,6 +9,7 @@ pub mod cell_methods;
 pub mod chat;
 pub mod client_methods;
 pub mod combat;
+pub mod console;
 pub mod content;
 pub mod cover;
 pub mod dispatch;

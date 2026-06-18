@@ -466,6 +466,111 @@ Reload data without a restart.
 
 ---
 
+## Dev console (`.`-commands)
+
+The 266 `/`-commands above are baked into the game client and can't be added to.
+The legacy server and the FanMMORPG fork shipped a second set of **dev/authoring
+commands** that the client never exposed as slash commands. Those use a separate
+**`.`-prefixed console**: the client doesn't intercept `.`-text — it sends it as
+an ordinary chat message, and the server intercepts it. (This is why `.` works
+where a new `/command` can't: the client *eats* unknown `/`-input but *forwards*
+`.`-input.)
+
+**Game-Master only.** A GM's `.`-command is consumed by the server and never
+appears in anyone else's chat. A normal player typing a `.`-message just says it
+in chat like any other text. Auth is checked against your account level
+server-side. Type `.help` (or `.help <word>`) in-game for the live list.
+
+### Database persistence & the seed-commit flow
+
+Some `.`-commands change **persistent game data** (spawns, patrol paths). These
+are the only commands in the console that touch the database, and how they
+persist is the most important thing to understand before you use them.
+
+> **⚠️ Live DB writes are TEMPORARY — you must commit the seed SQL to keep them.**
+>
+> When you run a persistence command, the server writes the change to the
+> **running database** immediately, so you see it work and it survives
+> reconnects and server restarts **within the current deploy**.
+>
+> **The next deploy rebuilds the database from the seed files in
+> `db/resources/` and erases anything that isn't committed there.** A live DB
+> write that you never commit to a seed file **is lost on the next deploy.**
+>
+> To preserve authored content deploy-over-deploy you **must** copy the
+> generated seed SQL into the right `db/resources/…` file and commit it to git
+> (steps below). This is deliberate: the seed files are the single source of
+> truth, and we never hand-write `db/scripts/*.sql` migrations.
+
+**Exactly which commands write to the database, and the seed file each one
+must be committed into:**
+
+| Command | DB operation | Table | Commit the SQL into |
+|---|---|---|---|
+| `.savespawn` | INSERT (new) or UPDATE (existing row) | `resources.spawnlist` | `db/resources/Worlds/Seed/spawnlist.sql` |
+| `.delspawn` | DELETE one row by `spawn_id` | `resources.spawnlist` | `db/resources/Worlds/Seed/spawnlist.sql` |
+| `.path_add` | INSERT a waypoint (+ a `point_sets` header row on the first waypoint) | `resources.point_set_points` (+ `resources.point_sets`) | `db/resources/Events/Seed/point_set_points.sql` (+ `point_sets.sql`) |
+| `.path_clear` | DELETE all waypoints + the header | `resources.point_set_points` + `resources.point_sets` | `db/resources/Events/Seed/point_set_points.sql` + `point_sets.sql` |
+| `.path_assign` | UPDATE the spawn's patrol override (`patrol_path_id`, `patrol_point_delay`) | `resources.spawnlist` | `db/resources/Worlds/Seed/spawnlist.sql` |
+| `.path_unassign` | UPDATE — clear the spawn's patrol override | `resources.spawnlist` | `db/resources/Worlds/Seed/spawnlist.sql` |
+| `.path_set_seq` · `.path_clear_seq` · `.path_set_tp` · `.path_clear_tp` · `.path_set_tp_seq` · `.path_set_tp_delay` | UPDATE one waypoint (sequence / teleport fields) | `resources.point_set_points` | `db/resources/Events/Seed/point_set_points.sql` |
+
+**Commands that do NOT persist (in-memory only — lost on the next server
+restart, never written to the DB):**
+
+- **All entity-authoring commands** (`.tag`, `.name`, `.alignment`, `.nameid`,
+  `.staticmesh`, `.bodyset`, `.eventset`, `.interactiontype`, `.lookat`,
+  `.visible`, `.setcombatant`, `.unsetcombatant`, `.addcomponent`,
+  `.delcomponent`, `.adddialog`, `.removedialog`, `.dynamicupdate`). To make an
+  edited entity stick, place/configure it, then `.savespawn` it.
+- `.respawnall` — a live reset of every NPC in your space; no DB write.
+- `.autosavespawn` — a per-session preference toggle; no DB write.
+
+**The record → confirm → commit workflow:**
+
+1. **Author in-game.** Run the persistence commands (`.savespawn`, `.path_add`,
+   …). Each one applies in memory, writes the live DB (you'll see e.g.
+   `savespawn: live DB write ok (1 row…)`), and **records** the exact SQL. The
+   raw SQL is **not** shown in-game — the client's chat can't be copy-pasted,
+   so it goes out-of-band instead.
+2. **It's logged on the server host.** Every recorded statement is appended as
+   it happens to a per-session file: **`logs/seed-authoring-<session>.sql`**
+   (override the directory with the `CIMMERIA_AUTHORING_LOG_DIR` env var). This
+   file is your durable copy even if you never confirm.
+3. **Confirm when satisfied.** Run **`.seedconfirm`** — it groups your pending
+   statements **per seed file** and emits each block to the server log (and, once
+   the colo Discord integration is enabled, to an authoring channel). Use
+   `.seedpending` to see what's buffered and `.seedcancel` to discard it.
+4. **Commit the SQL (required to survive a deploy).** Open the per-session log
+   (or the `.seedconfirm` output), copy each statement block into the
+   `db/resources/…` seed file named for it in the table above, and commit it to
+   git. **Until that commit lands, the change lives only in the running DB and
+   the next deploy will wipe it.**
+
+### Command families
+
+| Family | Commands | Works now? |
+|---|---|---|
+| Search | `.searchitem` `.searchmission` `.searchtemplate` `.players` | ✅ Yes |
+| Stat readouts | `.primarystats` `.speedstats` `.armorstats` `.qrstats` `.absorbstats` `.stealthstats` | ✅ Yes |
+| Entity authoring | `.tag` `.name` `.alignment` `.nameid` `.staticmesh` `.bodyset` `.eventset` `.interactiontype` `.lookat` `.visible` `.setcombatant` `.unsetcombatant` `.addcomponent` `.delcomponent` `.adddialog` `.removedialog` `.dynamicupdate` | 🚧 In-memory (pair with `.savespawn`) |
+| Net / AI debug | `.net_seq` `.net_seqto` `.net_seqfrom` `.net_timer` `.net_mapinfo` `.net_speak` `.net_dialog` `.net_challenge` `.debug_velocity` `.debug_controller` `.debug_follow` `.threaten` `.aggression` | ✅ Yes |
+| Crafting | `.learndiscipline` `.forgetdiscipline` `.allcraft` | 🚧 Partly |
+| Mission gaps | `.missionfail` `.missionrewards` | ✅ / 🚧 (preview) |
+| Spawn authoring | `.savespawn` `.delspawn` `.autosavespawn` `.respawnall` `.spawnrandom` | ✅ Yes — `.savespawn`/`.delspawn` **write the DB** (commit seed) |
+| Patrol authoring | `.path_add` `.path_show` `.path_clear` `.path_assign` `.path_unassign` `.path_set_seq` `.path_clear_seq` `.path_set_tp` `.path_clear_tp` `.path_set_tp_seq` `.path_set_tp_delay` | ✅ Yes — all except `.path_show` **write the DB** (commit seed) |
+| Server / maint | `.save` `.reloadmap` `.reloadres` `.removerespawner` `.loglevel` `.logclient` | ❌ Differs (see `.help`) |
+| Seed commit | `.seedconfirm` `.seedpending` `.seedcancel` | ✅ Yes |
+
+A few commands (`.debug_controller`, the server/maint family, `.allcraft`) report
+an honest limitation in-game where the Rust server handles the concern
+differently from the legacy Python (incremental persistence, startup resource
+loading, env-based log level). See the
+[dev-console-channel ADR](architecture/dev-console-channel.md) for the full
+design and the per-command status.
+
+---
+
 ## At a glance
 
 - **266 commands** total -- **105** for everyone, **161** Game-Master only.
