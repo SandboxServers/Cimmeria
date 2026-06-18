@@ -1,637 +1,481 @@
 ---
-title: "Commands Reference"
+title: "Slash Commands"
 type: reference
 audience: players, GMs, operators
 last_updated: 2026-06-17
 ---
 
-# Commands Reference
+# Slash Commands
 
-Every slash command Stargate Worlds exposes, with — for each one — what it does,
-whether **this** server actually handles it, whether there's an automated test
-guarding it, the access level you need, its parameters, and a sample.
+This is the complete list of every `/command` you can type in Stargate Worlds -- all **266** of them, captured straight from the game's own command list.
 
-Player commands work for everyone. GM and debug commands require an elevated
-account.
+## How to use a command
 
-## How to read the status columns
+1. Press **Enter** (or click the chat box) to start typing.
+2. Type a slash, the command, then any extra info it needs -- for example `/say hello` or `/yell incoming!`
+3. Press **Enter** again to send it.
 
-| Column | Meaning |
-|--------|---------|
-| **Handled?** | Does this server implement a handler for the command? ✅ implemented · 🚧 partial · ❌ not server-handled (the client may still act on it) |
-| **Tested?** | Is there an explicit automated test that exercises the handler? ✅ yes · — none |
-| **Access** | Minimum account level (User / GM). GM commands also work for Admin and Developer accounts. |
+Type `/help` in-game any time to see the list inside the game.
 
-> [!IMPORTANT]
-> **The server side is tested; the client round-trip is not yet confirmed.** Every
-> command marked ✅ Handled has server-side handler code and (where ✅ Tested) an
-> automated test that drives that handler with byte-accurate arguments. What has
-> **not** yet been verified by a manual UAT is that the real game client's console
-> actually fires each command end-to-end and renders the result. Treat ✅ as
-> "the server does the right thing when the call arrives", not "confirmed working
-> in a live client". A live-client pass is still pending.
+## Will it actually do something?
 
-<!-- -->
+This is a *fan-made* server, so not every command the game knows about is wired up on our end yet. The **"Works now?"** column tells you what to expect:
 
-> [!NOTE]
-> **Why some player commands show "not server-handled".** Many player-facing
-> console commands are handled entirely on the client, or map to game flows the
-> server has not yet implemented. Where the server has no handler for a command,
-> it's marked ❌ and the parameters/sample reflect the client's expected usage,
-> not a confirmed server contract. Commands marked ❌ are documented for
-> completeness — they are **not** evidence of a server feature.
+| You'll see | What it means for you |
+|---|---|
+| ✅ Yes | Works on our server right now. |
+| ✅ Yes *(game handles it)* | Works -- your game handles it locally, no server needed. |
+| 🚧 Partly | The server hears it but only does part of the job so far. |
+| ❌ Not yet | The game accepts it, but our server doesn't do anything with it yet. |
 
-<!-- -->
-
-> [!NOTE]
-> **How GM access is enforced.** Every GM/debug command is gated server-side by a
-> single rule: a caller whose account access level is below **Game Master** is
-> rejected before any handler runs. You do not need to be Admin or Developer for
-> any command below — Game Master is sufficient for all of them. No command in
-> this reference has been found to require Admin or Developer specifically.
-
----
-
-## Command count and the "256 / 266" reconciliation
-
-This catalog enumerates **all 256 commands the client dispatches**, grouped by
-category. Each one is a real, typed `/command` the game's console recognizes —
-the complete set extracted directly from the client binary.
-
-About the larger figure you may have seen:
-
-- The client's `/help` reports **"266 commands found"**. The client binary
-  contains exactly **256** distinct command classes — this is the authoritative,
-  enumerable set, and it is what this page documents.
-- The remaining **~10** entries in the `/help` total are typed aliases or
-  client-utility entries that share no dedicated command class. They could not be
-  enumerated from the binary without deeper analysis, so they are **not** invented
-  here. This page documents the 256 it can prove and is honest about the ~10 gap
-  rather than padding the list to 266.
-
-Every command below is listed under its real binary name (lower-cased to its
-typed form). Where the same effect has both a player and a more capable GM form,
-both are shown in their respective sections.
+> **Two kinds of commands.** Most commands are for everyone. Commands that start with **`/gm`** are **Game Master** tools -- they only work if you're signed in on a GM (or higher) account. If you're a normal player, you can ignore the whole "Game Master Commands" section near the bottom.
 
 ---
 
 ## Player Commands
 
-### Movement
+These work for everyone.
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/run` | Switch to running gait | ❌ client-side | — | User | none | `/run` |
-| `/walk` | Switch to walking gait | ❌ client-side | — | User | none | `/walk` |
-| `/location` | Show your current position | ❌ client-side | — | User | none | `/location` |
-| `/unstuck` | Attempt to free a stuck character | 🚧 partial (handler present) | — | User | none | `/unstuck` |
-| `/exit` | Exit the game | ❌ client-side | — | User | none | `/exit` |
-| `/logoff` | Log off | ❌ client-side | — | User | none | `/logoff` |
-| `/respawn` | Respawn after death | ✅ implemented | ✅ | User | none | `/respawn` |
+### Getting Around
 
-> `/respawn` drives the full health/focus reset, state-flag clear, and pawn
-> re-anchor on the server. `/unstuck` is wired but its server effect is limited.
+Move, find yourself, and get unstuck.
 
-### Chat & Communication
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/exit` | Exit the game | ✅ Yes *(game handles it)* | none | `/exit` |
+| `/location` | Show your current position | ✅ Yes *(game handles it)* | none | `/location` |
+| `/logoff` | Log off | ✅ Yes *(game handles it)* | none | `/logoff` |
+| `/logout` | Log off | ✅ Yes *(game handles it)* | none | `/logout` |
+| `/quit` | Exit the game | ✅ Yes *(game handles it)* | none | `/quit` |
+| `/run` | Switch to running gait | ✅ Yes *(game handles it)* | none | `/run` |
+| `/showlocation` | Show your current position | ✅ Yes *(game handles it)* | none | `/showlocation` |
+| `/unstuck` | Attempt to free a stuck character | 🚧 Partly | none | `/unstuck` |
+| `/walk` | Switch to walking gait | ✅ Yes *(game handles it)* | none | `/walk` |
 
-Spatial channels (**say / emote / yell**) are broadcast to everyone in your Area
-of Interest by the server. The remaining channels (team, squad, command/guild,
-officer, platoon, custom channels, private tells) are routed elsewhere and are
-**not** handled by the in-world cell service.
+### Talking to People
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/say` | Say something in local (spatial) chat | ✅ implemented | ✅ | User | `<text>` — the message | `/say hello there` |
-| `/emote` | Perform an emote (spatial) | ✅ implemented | ✅ | User | `<text>` — emote text | `/emote waves` |
-| `/yell` | Yell — wider spatial range than say | ✅ implemented | ✅ | User | `<text>` — the message | `/yell incoming!` |
-| `/tell` | Send a private message | ❌ not server-handled (cell) | — | User | `<player> <text>` | `/tell Jack on my way` |
-| `/ntell` | Send a private message by name (numeric form) | ❌ not server-handled (cell) | — | User | `<player> <text>` | `/ntell Jack on my way` |
-| `/sayteam` | Talk in team chat | ❌ not server-handled (cell) | — | User | `<text>` | `/sayteam push left` |
-| `/saysquad` | Talk in squad chat | ❌ not server-handled (cell) | — | User | `<text>` | `/saysquad regroup` |
-| `/saycommand` | Talk in command/guild chat | ❌ not server-handled (cell) | — | User | `<text>` | `/saycommand event tonight` |
-| `/sayofficer` | Talk in officer chat | ❌ not server-handled (cell) | — | User | `<text>` | `/sayofficer ranks updated` |
-| `/sayplatoon` | Talk in platoon chat | ❌ not server-handled (cell) | — | User | `<text>` | `/sayplatoon form up` |
-| `/saychannel` | Talk in a named custom channel | ❌ not server-handled (cell) | — | User | `<channel> <text>` | `/saychannel trade WTS naquadah` |
-| `/petition` | File a support petition | ❌ not server-handled | — | User | `<text>` | `/petition stuck in geometry` |
-| `/chatjoin` | Join a chat channel | ❌ not server-handled (cell) | — | User | `<channel>` | `/chatjoin trade` |
-| `/chatleave` | Leave a chat channel | ❌ not server-handled (cell) | — | User | `<channel>` | `/chatleave trade` |
-| `/chatlist` | List available channels | ❌ not server-handled (cell) | — | User | none | `/chatlist` |
-| `/chatsetafkmessage` | Set your AFK auto-reply | ❌ not server-handled (cell) | — | User | `<text>` | `/chatsetafkmessage afk, back soon` |
-| `/chatsetdndmessage` | Set your Do-Not-Disturb auto-reply | ❌ not server-handled (cell) | — | User | `<text>` | `/chatsetdndmessage in a mission` |
-| `/chatignore` | Ignore a player | ❌ not server-handled (cell) | — | User | `<player>` | `/chatignore Spammer` |
-| `/chatfriend` | Add a player as a friend | ❌ not server-handled (cell) | — | User | `<player>` | `/chatfriend Sam` |
-| `/chatunfriend` | Remove a friend | ❌ not server-handled (cell) | — | User | `<player>` | `/chatunfriend Sam` |
-| `/chatmute` | Mute a player | ❌ not server-handled (cell) | — | User | `<player>` | `/chatmute Loud` |
-| `/chatunmute` | Unmute a player | ❌ not server-handled (cell) | — | User | `<player>` | `/chatunmute Loud` |
-| `/chatkick` | Kick a player from a channel you own | ❌ not server-handled (cell) | — | User | `<channel> <player>` | `/chatkick trade Spammer` |
-| `/chatop` | Grant channel operator status | ❌ not server-handled (cell) | — | User | `<channel> <player>` | `/chatop trade Sam` |
-| `/chatban` | Ban a player from a channel | ❌ not server-handled (cell) | — | User | `<channel> <player>` | `/chatban trade Spammer` |
-| `/chatunban` | Lift a channel ban | ❌ not server-handled (cell) | — | User | `<channel> <player>` | `/chatunban trade Spammer` |
-| `/chatpassword` | Set or clear a channel password | ❌ not server-handled (cell) | — | User | `<channel> <password>` | `/chatpassword trade s3cret` |
+Chat channels, emotes, friends, and private messages.
 
-### Squad (Small Group)
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/afk` | Set your AFK auto-reply | ❌ Not yet | `<text>` | `/afk afk, back soon` |
+| `/ban` | Ban a player from a channel | ❌ Not yet | `<channel> <player>` | `/ban trade Spammer` |
+| `/chat` | Join a chat channel | ❌ Not yet | `<channel>` | `/chat trade` |
+| `/chatjoin` | Join a chat channel | ❌ Not yet | `<channel>` | `/chatjoin trade` |
+| `/chatleave` | Leave a chat channel | ❌ Not yet | `<channel>` | `/chatleave trade` |
+| `/chatlist` | List available channels | ❌ Not yet | none | `/chatlist` |
+| `/chatwho` | See who is in a chat channel | ❌ Not yet | none | `/chatwho trade` |
+| `/command` | Talk in command/guild chat | ❌ Not yet | `<text>` | `/command event tonight` |
+| `/csay` | Talk in your current chat channel | ❌ Not yet | <text> | `/csay hi all` |
+| `/dnd` | Set your Do-Not-Disturb auto-reply | ❌ Not yet | `<text>` | `/dnd in a mission` |
+| `/emote` | Perform an emote (spatial) | ✅ Yes | `<text>` — emote text | `/emote waves` |
+| `/friend` | Add a player as a friend | ❌ Not yet | `<player>` | `/friend Sam` |
+| `/ignore` | Ignore a player | ❌ Not yet | `<player>` | `/ignore Spammer` |
+| `/kick` | Kick a player from a channel you own | ❌ Not yet | `<channel> <player>` | `/kick trade Spammer` |
+| `/me` | Perform an emote (spatial) | ✅ Yes | `<text>` — emote text | `/me waves` |
+| `/moderator` | Grant channel moderator status | ❌ Not yet | <channel> <player> | `/moderator trade Sam` |
+| `/mute` | Mute a player | ❌ Not yet | `<player>` | `/mute Loud` |
+| `/ntell` | Send a private message by name (numeric form) | ❌ Not yet | `<player> <text>` | `/ntell Jack on my way` |
+| `/nwhisper` | Send a private message by name (numeric form) | ❌ Not yet | `<player> <text>` | `/nwhisper Jack on my way` |
+| `/officer` | Talk in officer chat | ❌ Not yet | `<text>` | `/officer ranks updated` |
+| `/password` | Set or clear a channel password | ❌ Not yet | `<channel> <password>` | `/password trade s3cret` |
+| `/petition` | File a support petition | ❌ Not yet | `<text>` | `/petition stuck in geometry` |
+| `/say` | Say something in local (spatial) chat | ✅ Yes | `<text>` — the message | `/say hello there` |
+| `/squad` | Talk in squad chat | ❌ Not yet | `<text>` | `/squad regroup` |
+| `/team` | Talk in team chat | ❌ Not yet | `<text>` | `/team push left` |
+| `/tell` | Send a private message | ❌ Not yet | `<player> <text>` | `/tell Jack on my way` |
+| `/unban` | Lift a channel ban | ❌ Not yet | `<channel> <player>` | `/unban trade Spammer` |
+| `/unfriend` | Remove a friend | ❌ Not yet | `<player>` | `/unfriend Sam` |
+| `/unmute` | Unmute a player | ❌ Not yet | `<player>` | `/unmute Loud` |
+| `/whisper` | Send a private message | ❌ Not yet | `<player> <text>` | `/whisper Jack on my way` |
+| `/yell` | Yell — wider spatial range than say | ✅ Yes | `<text>` — the message | `/yell incoming!` |
 
-These map to the organization-invite protocol; the in-world cell service does not
-implement the group state machine yet.
+### Squads, Teams & Guilds
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/squadinvite` | Invite a player to your squad | ❌ not server-handled | — | User | `<player>` | `/squadinvite Sam` |
-| `/squadinviteaccept` | Accept a squad invite | ❌ not server-handled | — | User | none | `/squadinviteaccept` |
-| `/squadinvitedecline` | Decline a squad invite | ❌ not server-handled | — | User | none | `/squadinvitedecline` |
-| `/squadkick` | Kick a squad member | ❌ not server-handled | — | User | `<player>` | `/squadkick Sam` |
-| `/squadpromote` | Promote a member to leader | ❌ not server-handled | — | User | `<player>` | `/squadpromote Sam` |
-| `/squadleave` | Leave your squad | ❌ not server-handled | — | User | none | `/squadleave` |
+Group up. Most grouping is still being built on our server.
 
-### Team (Mid-Size Group)
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/chooseorgname` | Choose organization name | 🚧 Partly | `<name>` | `/chooseorgname SG-Alpha` |
+| `/commanddemote` | Demote in guild | ❌ Not yet | `<player>` | `/commanddemote Sam` |
+| `/commandinvite` | Invite to guild | ❌ Not yet | `<player>` | `/commandinvite Sam` |
+| `/commandinviteaccept` | Accept guild invite | ❌ Not yet | none | `/commandinviteaccept` |
+| `/commandinvitedecline` | Decline guild invite | ❌ Not yet | none | `/commandinvitedecline` |
+| `/commandkick` | Kick from guild | ❌ Not yet | `<player>` | `/commandkick Sam` |
+| `/commandleave` | Leave guild | ❌ Not yet | none | `/commandleave` |
+| `/commandmotd` | Set guild MOTD | ❌ Not yet | `<text>` | `/commandmotd welcome!` |
+| `/commandpromote` | Promote in guild | ❌ Not yet | `<player>` | `/commandpromote Sam` |
+| `/setcommandnote` | Set a guild member note | ❌ Not yet | `<player> <text>` | `/setcommandnote Sam recruit` |
+| `/setcommandofficernote` | Set a guild officer note | ❌ Not yet | `<player> <text>` | `/setcommandofficernote Sam vouched` |
+| `/setteamnote` | Set a team member note | ❌ Not yet | `<player> <text>` | `/setteamnote Sam main tank` |
+| `/setteamofficernote` | Set a team officer note | ❌ Not yet | `<player> <text>` | `/setteamofficernote Sam promote soon` |
+| `/squadinvite` | Invite a player to your squad | ❌ Not yet | `<player>` | `/squadinvite Sam` |
+| `/squadinviteaccept` | Accept a squad invite | ❌ Not yet | none | `/squadinviteaccept` |
+| `/squadinvitedecline` | Decline a squad invite | ❌ Not yet | none | `/squadinvitedecline` |
+| `/squadkick` | Kick a squad member | ❌ Not yet | `<player>` | `/squadkick Sam` |
+| `/squadleave` | Leave your squad | ❌ Not yet | none | `/squadleave` |
+| `/squadpromote` | Promote a member to leader | ❌ Not yet | `<player>` | `/squadpromote Sam` |
+| `/teamdemote` | Demote in team | ❌ Not yet | `<player>` | `/teamdemote Sam` |
+| `/teaminvite` | Invite to team | ❌ Not yet | `<player>` | `/teaminvite Sam` |
+| `/teaminviteaccept` | Accept team invite | ❌ Not yet | none | `/teaminviteaccept` |
+| `/teaminvitedecline` | Decline team invite | ❌ Not yet | none | `/teaminvitedecline` |
+| `/teamkick` | Kick from team | ❌ Not yet | `<player>` | `/teamkick Sam` |
+| `/teamleave` | Leave team | ❌ Not yet | none | `/teamleave` |
+| `/teammotd` | Set team message of the day | ❌ Not yet | `<text>` | `/teammotd raid at 8` |
+| `/teampromote` | Promote in team | ❌ Not yet | `<player>` | `/teampromote Sam` |
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/teaminvite` | Invite to team | ❌ not server-handled | — | User | `<player>` | `/teaminvite Sam` |
-| `/teaminviteaccept` | Accept team invite | ❌ not server-handled | — | User | none | `/teaminviteaccept` |
-| `/teaminvitedecline` | Decline team invite | ❌ not server-handled | — | User | none | `/teaminvitedecline` |
-| `/teamleave` | Leave team | ❌ not server-handled | — | User | none | `/teamleave` |
-| `/teamkick` | Kick from team | ❌ not server-handled | — | User | `<player>` | `/teamkick Sam` |
-| `/teampromote` | Promote in team | ❌ not server-handled | — | User | `<player>` | `/teampromote Sam` |
-| `/teamdemote` | Demote in team | ❌ not server-handled | — | User | `<player>` | `/teamdemote Sam` |
-| `/teammotd` | Set team message of the day | ❌ not server-handled | — | User | `<text>` | `/teammotd raid at 8` |
-| `/setteamnote` | Set a team member note | ❌ not server-handled | — | User | `<player> <text>` | `/setteamnote Sam main tank` |
-| `/setteamofficernote` | Set a team officer note | ❌ not server-handled | — | User | `<player> <text>` | `/setteamofficernote Sam promote soon` |
+### Fighting & Abilities
 
-### Command (Guild)
+Use abilities, swap ammo, train skills.
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/commandinvite` | Invite to guild | ❌ not server-handled | — | User | `<player>` | `/commandinvite Sam` |
-| `/commandinviteaccept` | Accept guild invite | ❌ not server-handled | — | User | none | `/commandinviteaccept` |
-| `/commandinvitedecline` | Decline guild invite | ❌ not server-handled | — | User | none | `/commandinvitedecline` |
-| `/commandleave` | Leave guild | ❌ not server-handled | — | User | none | `/commandleave` |
-| `/commandkick` | Kick from guild | ❌ not server-handled | — | User | `<player>` | `/commandkick Sam` |
-| `/commandpromote` | Promote in guild | ❌ not server-handled | — | User | `<player>` | `/commandpromote Sam` |
-| `/commanddemote` | Demote in guild | ❌ not server-handled | — | User | `<player>` | `/commanddemote Sam` |
-| `/commandmotd` | Set guild MOTD | ❌ not server-handled | — | User | `<text>` | `/commandmotd welcome!` |
-| `/setcommandnote` | Set a guild member note | ❌ not server-handled | — | User | `<player> <text>` | `/setcommandnote Sam recruit` |
-| `/setcommandofficernote` | Set a guild officer note | ❌ not server-handled | — | User | `<player> <text>` | `/setcommandofficernote Sam vouched` |
-| `/chooseorgname` | Choose organization name | 🚧 partial (route only) | — | User | `<name>` | `/chooseorgname SG-Alpha` |
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/activatebandolierslot` | Switch equipment loadout | ✅ Yes | `<bagId> <slotId>` | `/activatebandolierslot 2 1` |
+| `/respecability` | Respec a single ability | ❌ Not yet | `<abilityId>` | `/respecability 4202` |
+| `/toggleautocycle` | Toggle ability auto-cycling | 🚧 Partly | `<enabled>` (0/1) | `/toggleautocycle 1` |
+| `/trainability` | Learn a new ability (spends a point) | ✅ Yes | `<abilityId>` | `/trainability 4202` |
 
-### Combat & Abilities
+### Items & Gear
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/invokeability` | Use an ability on a target | ✅ implemented | ✅ | User | `<abilityId> <targetId>` | `/invokeability 4201 5310` |
-| `/activatebandolierslot` | Switch equipment loadout | ✅ implemented | — | User | `<bagId> <slotId>` | `/activatebandolierslot 2 1` |
-| `/changeammo` | Switch ammo type | ✅ implemented | — | User | `<itemId> <ammoType>` | `/changeammo 8800 3` |
-| `/trainability` | Learn a new ability (spends a point) | ✅ implemented | — | User | `<abilityId>` | `/trainability 4202` |
-| `/resetabilities` | Reset all abilities | 🚧 partial | — | User | none | `/resetabilities` |
-| `/respec` | Full ability respec | ❌ not server-handled | — | User | none | `/respec` |
-| `/respecability` | Respec a single ability | ❌ not server-handled | — | User | `<abilityId>` | `/respecability 4202` |
-| `/toggleautocycleability` | Toggle ability auto-cycling | 🚧 partial | — | User | `<enabled>` (0/1) | `/toggleautocycleability 1` |
+Equip, use, move, buy, and repair gear.
 
-> `/invokeability` is the typed form of the in-world ability cast; it runs the
-> full damage/kill-credit pipeline. `/activatebandolierslot` and `/changeammo`
-> reach the vendor/inventory layer. `/trainability` debits a training point on
-> the server.
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/deleteitem` | Delete an item | ✅ Yes | `<itemId> <quantity>` | `/deleteitem 7700 1` |
+| `/equip` | Equip an item | 🚧 Partly | `<itemId>` | `/equip 8800` |
+| `/getiteminfo` | Show detail for one item | ❌ Not yet | `<itemId>` | `/getiteminfo 8800` |
+| `/listitems` | List your inventory items | ✅ Yes | none | `/listitems` |
+| `/lootitem` | Take an item from a loot container | ✅ Yes | `<index>` | `/lootitem 0` |
+| `/moveitem` | Move an item between containers | ✅ Yes | `<itemId> <targetBag> <targetSlot> <quantity>` | `/moveitem 7700 1 4 1` |
+| `/purchaseitem` | Buy from a vendor | ✅ Yes | `<itemIndex...> <quantity...>` | `/purchaseitem 12 1` |
+| `/unequip` | Unequip an item | 🚧 Partly | `<itemId>` | `/unequip 8800` |
+| `/useitem` | Use an item | ✅ Yes | `<itemId> <targetId>` | `/useitem 7700 0` |
 
-### Pets
+### Talking to NPCs & Objects
 
-The pet command protocol exists but the in-world handlers are stubs (they log and
-acknowledge, but don't yet drive pet behavior).
+Interact with the world and answer dialogs.
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/petinvokeability` | Command pet to use an ability | 🚧 partial (stub) | — | User | `<petId> <abilityId> <targetId>` | `/petinvokeability 9001 4300 5310` |
-| `/petinvokecommand` | Give pet a command | ❌ not server-handled | — | User | `<petId> <command>` | `/petinvokecommand 9001 attack` |
-| `/petabilitytoggle` | Toggle pet auto-ability | 🚧 partial (stub) | — | User | `<petId> <abilityId> <toggle>` | `/petabilitytoggle 9001 4300 1` |
-
-> The client also dispatches a pet stance-change call, but it is routed through
-> the inventory/ability layer rather than a dedicated typed command.
-
-### Items & Inventory
-
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/equipitem` | Equip an item | 🚧 partial | — | User | `<itemId>` | `/equipitem 8800` |
-| `/unequipitem` | Unequip an item | 🚧 partial | — | User | `<itemId>` | `/unequipitem 8800` |
-| `/useitem` | Use an item | ✅ implemented | — | User | `<itemId> <targetId>` | `/useitem 7700 0` |
-| `/deleteitem` | Delete an item | ✅ implemented | — | User | `<itemId> <quantity>` | `/deleteitem 7700 1` |
-| `/moveitem` | Move an item between containers | ✅ implemented | — | User | `<itemId> <targetBag> <targetSlot> <quantity>` | `/moveitem 7700 1 4 1` |
-| `/listitems` | List your inventory items | ✅ implemented | — | User | none | `/listitems` |
-| `/getiteminfo` | Show detail for one item | ❌ not server-handled | — | User | `<itemId>` | `/getiteminfo 8800` |
-| `/lootitem` | Take an item from a loot container | ✅ implemented | — | User | `<index>` | `/lootitem 0` |
-| `/purchaseitem` | Buy from a vendor | ✅ implemented | — | User | `<itemIndex...> <quantity...>` | `/purchaseitem 12 1` |
-| `/repairitem` | Repair an item | ✅ implemented | — | User | `<itemId...>` | `/repairitem 8800` |
-| `/rechargeitem` | Recharge an item | ✅ implemented | — | User | `<itemId...>` | `/rechargeitem 8800` |
-
-> Buy/sell/repair/recharge run through the server's vendor flow with server-side
-> validation. Equip/unequip are partially wired.
-
-### Interactions & Dialog
-
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/interact` | Interact with the targeted object/NPC | ✅ implemented | — | User | `<overrideTarget>` (0 = current target) | `/interact 0` |
-| `/initialresponse` | Open the initial dialog for an NPC | ✅ implemented | — | User | `<dialogSetMapId>` | `/initialresponse 12` |
-| `/dialogbuttonchoice` | Pick a dialog button | ✅ implemented | — | User | `<dialogId> <buttonId>` | `/dialogbuttonchoice 12 1` |
-| `/showdialog` | Re-show the active dialog | ❌ client-side | — | User | none | `/showdialog` |
-| `/confirmeffect` | Respond to an effect-confirmation prompt | ✅ implemented | — | User | `<choice>` | `/confirmeffect 1` |
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/dialogbuttonchoice` | Pick a dialog button | ✅ Yes | `<dialogId> <buttonId>` | `/dialogbuttonchoice 12 1` |
+| `/initialresponse` | Open the initial dialog for an NPC | ✅ Yes | `<dialogSetMapId>` | `/initialresponse 12` |
+| `/interact` | Interact with the targeted object/NPC | ✅ Yes | `<overrideTarget>` (0 = current target) | `/interact 0` |
 
 ### Missions
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/missionassign` | Accept a mission | 🚧 partial | — | User | `<missionId>` | `/missionassign 1001` |
-| `/missionabandon` | Abandon a mission | ✅ implemented | — | User | `<missionId>` | `/missionabandon 1001` |
-| `/abandonmission` | Abandon a mission (alternate form) | ✅ implemented | — | User | `<missionId>` | `/abandonmission 1001` |
-| `/missiondetails` | View mission details | ❌ not server-handled | — | User | `<missionId>` | `/missiondetails 1001` |
-| `/missionlist` | List your missions | ❌ not server-handled | — | User | none | `/missionlist` |
-| `/sharemission` | Share a mission with your team | ✅ implemented | — | User | `<missionId>` | `/sharemission 1001` |
-| `/sharemissionaccept` | Accept a shared mission | ✅ implemented | — | User | none | `/sharemissionaccept` |
-| `/sharemissiondecline` | Decline a shared mission | ✅ implemented | — | User | none | `/sharemissiondecline` |
+Accept, abandon, and share missions.
 
-> Player mission accept/abandon/share reach the server's per-player mission
-> state. The GM mission tools (below) are the more fully featured path.
-
-### Stargate
-
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/dhd` | Dial a Dial-Home Device | ✅ implemented | — | User | `<targetAddressId> <sourceAddressId>` | `/dhd 14 0` |
-| `/setringtransporterdestination` | Set ring transporter destination | ✅ implemented | — | User | `<regionId> <destinationId>` | `/setringtransporterdestination 3 7` |
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/abandonmission` | Abandon a mission (alternate form) | ✅ Yes | `<missionId>` | `/abandonmission 1001` |
+| `/sharemission` | Share a mission with your team | ✅ Yes | `<missionId>` | `/sharemission 1001` |
+| `/sharemissionaccept` | Accept a shared mission | ✅ Yes | none | `/sharemissionaccept` |
+| `/sharemissiondecline` | Decline a shared mission | ✅ Yes | none | `/sharemissiondecline` |
 
 ### Dueling
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/duelchallenge` | Challenge a player to a duel | ❌ not server-handled | — | User | `<player>` | `/duelchallenge Rival` |
-| `/duelresponse` | Accept or decline a duel challenge | ✅ implemented | — | User | `<response>` (accept/decline) | `/duelresponse 1` |
-| `/duelforfeit` | Forfeit an active duel | ✅ implemented | — | User | none | `/duelforfeit` |
+Challenge other players.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/duel` | Challenge a player to a duel | ❌ Not yet | `<player>` | `/duel Rival` |
+| `/duelforfeit` | Forfeit an active duel | ✅ Yes | none | `/duelforfeit` |
+| `/duelresponse` | Accept or decline a duel challenge | ✅ Yes | `<response>` (accept/decline) | `/duelresponse 1` |
 
 ### Crafting
 
-The crafting command protocol is routed but the actual crafting logic is not yet
-implemented — these reach the server but currently log and acknowledge only.
+Crafting is mostly driven by the UI; little of it is typed.
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/respeccraft` | Respec crafting skills | 🚧 partial (route only) | — | User | none | `/respeccraft` |
-
-> The remaining crafting actions (craft, alloy, research, reverse-engineer,
-> applied-science spend) are exposed to the server but are driven through the
-> crafting UI rather than dedicated typed commands.
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/respeccraft` | Respec crafting skills | 🚧 Partly | none | `/respeccraft` |
 
 ### Minigames
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/startminigame` | Start a minigame at a host object | 🚧 partial (route only) | — | User | `<hostEntityId> <gameDefId>` | `/startminigame 5400 3` |
-| `/minigamecomplete` | Report a minigame result | 🚧 partial (route only) | — | User | `<gameId> <winnerId> <loserId>` | `/minigamecomplete 1 5310 0` |
+Start and report minigames.
 
-### Squad / Map Tools
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/debugminigamecomplete` | Report a minigame result | 🚧 Partly | `<gameId> <winnerId> <loserId>` | `/debugminigamecomplete 1 5310 0` |
+| `/startminigame` | Start a minigame at a host object | 🚧 Partly | `<hostEntityId> <gameDefId>` | `/startminigame 5400 3` |
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/spacequeuestatus` | Query your space-instance queue status | ❌ not server-handled | — | User | none | `/spacequeuestatus` |
-| `/spacequeuedresponse` | Respond to a queued-for-space prompt | ❌ not server-handled | — | User | `<response>` | `/spacequeuedresponse 1` |
-| `/spacequeuereadyresponse` | Respond to a space-ready prompt | ❌ not server-handled | — | User | `<response>` | `/spacequeuereadyresponse 1` |
+### Other Handy Commands
 
-### Other
+Help, who is online, and odds and ends.
 
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/who` | List online players | 🚧 partial (stub) | — | User | none | `/who` |
-| `/users` | Show user count | ❌ not server-handled (player form) | — | User | none | `/users` |
-| `/help` | Show command help | ❌ client-side | — | User | none | `/help` |
-| `/helpfull` | Show all available commands | ❌ client-side | — | User | none | `/helpfull` |
-| `/testsequence` | Play a test animation sequence | ❌ client-side | — | User | `<sequenceName>` | `/testsequence idle` |
-| `/updatesystemoptions` | Push a client option change to the server | 🚧 partial (route only) | — | User | `<name> <value>` | `/updatesystemoptions gore 0` |
-
----
-
-## GM Commands
-
-All GM commands require a **Game Master** account (or higher). Authorization is
-enforced server-side before any handler runs.
-
-> [!NOTE]
-> **Numeric ids only.** The in-world GM handlers accept **numeric** ids for
-> design ids, mission ids, and entity targets. Name-to-id resolution (e.g.
-> `/goto SomePlayerName`) is **not** wired into the in-world handlers — pass the
-> numeric entity id instead. A non-numeric argument is rejected with a feedback
-> message.
->
-> **Same-space only.** Teleport, kill, summon, despawn, and inspect commands act
-> only on entities in the GM's own space instance. A cross-space target is
-> refused.
-
-### Teleportation & Travel
-
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/gotoxyz` | Teleport yourself to coordinates in your space | ✅ implemented | ✅ | GM | `<x> <y> <z>` (floats; must be finite) | `/gotoxyz 1200.5 64.0 -880.0` |
-| `/gotolocation` | Teleport yourself to a named world + coordinates (full reload) | ✅ implemented | ✅ | GM | `<worldName> <x> <y> <z>` | `/gotolocation Abydos 100 5 200` |
-| `/goto` | Teleport yourself to a target entity | ✅ implemented | ✅ | GM | `<entityId>` (numeric) | `/goto 5310` |
-| `/summon` | Move a target entity to you | ✅ implemented | ✅ | GM | `<entityId>` (numeric; not yourself) | `/summon 5310` |
-
-> `/gotoxyz` and `/goto` are same-space snaps. `/gotolocation` does a full
-> cross-world reload. `/summon` snaps players via a forced-position update; NPCs
-> move on the spatial grid and witnesses pick them up on the next refresh. The GM
-> `/dhd` form is listed under **Stargate (GM)** below.
-
-### Giving Things
-
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/givexp` | Give yourself experience | ✅ implemented | ✅ | GM | `<amount>` (positive int) | `/givexp 5000` |
-| `/giveitem` | Give an item to your inventory | ✅ implemented | ✅ | GM | `<designId> <quantity>` (numeric id; qty clamped 1–1000) | `/giveitem 8800 5` |
-| `/givenaqahdah` | Give yourself naquadah (currency) | ✅ implemented | ✅ | GM | `<amount>` (positive int) | `/givenaqahdah 10000` |
-| `/giveexpertise` | Give yourself crafting expertise in a discipline | ✅ implemented | ✅ | GM | `<disciplineId> <amount>` (both positive) | `/giveexpertise 3 50` |
-| `/giveappliedsciencepoints` | Give yourself applied-science points | ✅ implemented | ✅ | GM | `<points>` (positive int) | `/giveappliedsciencepoints 25` |
-| `/removeitem` | Remove a quantity of an inventory item from yourself | ✅ implemented | ✅ | GM | `<itemId> <quantity>` (both positive) | `/removeitem 8800 1` |
-
-> `/giveitem`, `/giveexpertise`, and the rest persist through the same base-side
-> sinks the normal game flows use, so they fire the proper client updates.
-
-The following give-commands are recognized by the client but **not yet
-implemented** server-side:
-
-| Command | What It Does | Handled? | Access | Parameters |
-|---------|--------------|----------|--------|------------|
-| `/giveability` | Give a specific ability | ❌ not server-handled | GM | `<abilityId>` |
-| `/giveallabilities` | Give every ability | ❌ not server-handled | GM | none |
-| `/givegearset` | Give a full gear set | ❌ not server-handled | GM | `<gearsetId>` |
-| `/giveinventory` | Give a full inventory loadout | ❌ not server-handled | GM | `<inventoryId>` |
-| `/givetrainingpoints` | Give training points | ❌ not server-handled | GM | `<count>` |
-| `/givestargateaddress` | Give a stargate address | ❌ not server-handled | GM | `<address> <target> <hidden>` |
-| `/removestargateaddress` | Remove a stargate address | ❌ not server-handled | GM | `<address> <target>` |
-| `/giveblueprint` | Give a crafting blueprint | ❌ not server-handled | GM | `<blueprintId>` |
-| `/giveammo` | Give ammunition | ❌ not server-handled | GM | `<ammoId> <quantity>` |
-| `/giverespawner` | Give a player respawner | ❌ not server-handled | GM | `<mobId>` |
-| `/giveracialparadigmlevels` | Give racial paradigm levels | ❌ not server-handled | GM | `<id> <levels>` |
-| `/givefaction` | Give faction standing | ❌ not server-handled | GM | `<factionId> <amount>` |
-| `/setfaction` | Set faction standing | ❌ not server-handled | GM | `<factionId> <value>` |
-| `/settechskill` | Set a tech (crafting) skill | ❌ not server-handled | GM | `<skillId> <value>` |
-
-### Character / Stat Modification
-
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/sethealth` | Set current health on yourself or a target | ✅ implemented | ✅ | GM | `<amount> <targetId>` (amount ≥ 0; target 0 = self) | `/sethealth 500 0` |
-| `/sethealthmax` | Set maximum health | ✅ implemented | ✅ | GM | `<amount> <targetId>` | `/sethealthmax 1000 0` |
-| `/setfocus` | Set current focus | ✅ implemented | ✅ | GM | `<amount> <targetId>` | `/setfocus 300 0` |
-| `/setfocusmax` | Set maximum focus | ✅ implemented | ✅ | GM | `<amount> <targetId>` | `/setfocusmax 400 0` |
-| `/settarget` | Set your current target | ✅ implemented | ✅ | GM | `<entityId>` (numeric; 0 = clear) | `/settarget 5310` |
-
-The following character-modification commands are recognized by the client but
-**not yet implemented** server-side:
-
-| Command | What It Does | Handled? | Access | Parameters |
-|---------|--------------|----------|--------|------------|
-| `/setlevel` | Set a character's level | ❌ not server-handled | GM | `<level>` |
-| `/setspeed` | Set movement speed | ❌ not server-handled | GM | `<multiplier>` |
-| `/setarchetype` | Set a character's archetype | ❌ not server-handled | GM | `<archetypeId>` |
-| `/setgodmode` | Toggle invincibility | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setinvulnerable` | Toggle invulnerability | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setomnipotent` | Toggle all-powerful debug mode | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setnodamagetimedmode` | Toggle timed damage immunity | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setnoxp` | Toggle XP gain off | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setnoaggro` | Toggle NPC aggro | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setinfiniteammo` | Toggle infinite ammo | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setignorefocus` | Ignore focus costs | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setignorehealth` | Ignore health damage | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setfly` | Toggle fly mode | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setghost` | Toggle ghost (no-collision) mode | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setspectator` | Toggle spectator mode | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setnotarget` | Make yourself untargetable | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setpvp` | Toggle your PvP flag | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/sethidegm` | Toggle GM visibility | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/setflag` | Force-set a state flag | ❌ not server-handled | GM | `<flagId> <force>` |
-| `/setmobstance` | Set an NPC's stance | ❌ not server-handled | GM | `<stance>` |
-| `/setmobabilityset` | Set an NPC's ability set | ❌ not server-handled | GM | `<setId>` |
-| `/setmobvariable` | Set a generic NPC variable | ❌ not server-handled | GM | `<var> <value>` |
-| `/setmobattribute` | Set an NPC attribute | ❌ not server-handled | GM | `<target> <attr> <type> <value>` |
-| `/resetabilities` | Reset abilities (GM) | ❌ not server-handled | GM | none |
-| `/respec` | Full respec (GM) | ❌ not server-handled | GM | none |
-| `/respecability` | Respec one ability (GM) | ❌ not server-handled | GM | `<abilityId>` |
-| `/respeccraft` | Respec crafting (GM) | ❌ not server-handled | GM | none |
-
-### Entity Control (Spawn / World)
-
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/spawn` | Spawn an NPC by template id at your position + offset | ✅ implemented | ✅ | GM | `<designId> <xOffset> <zOffset>` (numeric template id; float offsets) | `/spawn 3402 5.0 0.0` |
-| `/despawn` | Remove an NPC from the space (NPC-only) | ✅ implemented | ✅ | GM | `<entityId>` (numeric) | `/despawn 5400` |
-| `/kill` | Kill an NPC via the canonical death sequence (NPC-only) | ✅ implemented | ✅ | GM | `<entityId>` (numeric) | `/kill 5400` |
-
-> `/spawn` does a base round-trip: the server looks up the template, builds the
-> spawn record, and places the NPC. `/kill` and `/despawn` refuse player targets
-> by design. The GM `/respawn` form is implemented and respawns yourself.
-
-The following entity-control commands are recognized but **not implemented**:
-
-| Command | What It Does | Handled? | Access | Parameters |
-|---------|--------------|----------|--------|------------|
-| `/gmdeleteitem` | Force-delete an item by id | ❌ not server-handled | GM | `<itemId>` |
-| `/activatespawnset` | Activate a spawn set | ❌ not server-handled | GM | `<setId>` |
-| `/deactivatespawnset` | Deactivate a spawn set | ❌ not server-handled | GM | `<setId>` |
-| `/spawnentityloot` | Force-drop loot from an entity | ❌ not server-handled | GM | `<entity> <lootTableId>` |
-| `/dumpobjects` | Dump the object list to the log | ❌ not server-handled | GM | none |
-
-### Stargate (GM)
-
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/dhd` (GM) | Dial a stargate by numeric address | ✅ implemented | ✅ | GM | `<gateAddress>` (positive int) | `/dhd 14` |
-
-### Inspection / Query
-
-These report text back to you through the GM feedback channel.
-
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/showplayer` | Dump id / name / kind / faction / level / health / position for an entity | ✅ implemented | ✅ | GM | `<targetId>` (0 = current target, then self) | `/showplayer 5310` |
-| `/showtargetlocation` | Report the target's (or your) position | ✅ implemented | ✅ | GM | none | `/showtargetlocation` |
-| `/showrotation` | Report the target's (or your) heading | ✅ implemented | ✅ | GM | none | `/showrotation` |
-| `/showposition` | Report your exact position | ✅ implemented | ✅ | GM | none | `/showposition` |
-| `/listabilities` | List the known ability ids of the target (or you) | ✅ implemented | ✅ | GM | none | `/listabilities` |
-| `/showflag` | Report whether a state-flag bit is set | ✅ implemented | ✅ | GM | `<flagId>` (bit index 0–31) | `/showflag 4` |
-| `/getmobattribute` | Report one attribute of an NPC | ✅ implemented | ✅ | GM | `<targetId> <attribute>` (health/focus/level/faction/alignment/aistate/name/template/pos) | `/getmobattribute 5400 health` |
-| `/showmobcount` | Count NPCs in a space | ✅ implemented | ✅ | GM | `<spaceId>` (0 = your current space) | `/showmobcount 0` |
-| `/users` (GM) | List players in your space | ✅ implemented | ✅ | GM | none | `/users` |
-| `/who` (GM) | List players in your space | ✅ implemented | ✅ | GM | none | `/who` |
-| `/testlos` | Report navmesh line-of-sight between two entities | ✅ implemented | ✅ | GM | `<sourceId> <targetId>` (numeric, same space) | `/testlos 5310 5400` |
-
-The following inspection commands are recognized but **not implemented**:
-
-| Command | What It Does | Handled? | Access | Parameters |
-|---------|--------------|----------|--------|------------|
-| `/showinventory` | Show a player's inventory | ❌ not server-handled | GM | `<target>` |
-| `/showip` | Show a player's IP | ❌ not server-handled | GM | `<target>` |
-| `/listinteractions` | List interactions available on the target | ❌ not server-handled | GM | none |
-| `/printstats` | Print a named server statistic | ❌ not server-handled | GM | `<stat>` |
-
-### Mission (GM)
-
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/missionassign` (GM) | Assign a mission to yourself by numeric id | ✅ implemented | ✅ | GM | `<missionId> <popup>` (popup is a UI hint) | `/missionassign 1001 1` |
-| `/missionclear` | Abandon one mission by numeric id | ✅ implemented | ✅ | GM | `<missionId>` | `/missionclear 1001` |
-| `/missionabandon` (GM) | Alias of `/missionclear` | ✅ implemented | ✅ | GM | `<missionId>` | `/missionabandon 1001` |
-| `/missionadvance` | Jump a mission to a specific step | ✅ implemented | ✅ | GM | `<missionId> <step>` (step positive) | `/missionadvance 1001 3` |
-| `/missionlist` (GM) | List your active missions | ✅ implemented | ✅ | GM | none | `/missionlist` |
-| `/missionlistfull` | List all your missions (incl. completed/hidden) | ✅ implemented | ✅ | GM | none | `/missionlistfull` |
-| `/missiondetails` (GM) | Show one mission's detail by numeric id | ✅ implemented | ✅ | GM | `<missionId>` | `/missiondetails 1001` |
-
-The following mission GM commands are recognized but **not implemented**:
-
-| Command | What It Does | Handled? | Access | Parameters |
-|---------|--------------|----------|--------|------------|
-| `/missioncomplete` | Complete a mission | ❌ not server-handled | GM | `<missionId> <turnIn>` |
-| `/missionreset` | Revert a mission to a step | ❌ not server-handled | GM | `<missionId> <step>` |
-| `/missionclearactive` | Clear all active missions | ❌ not server-handled | GM | none |
-| `/missionclearhistory` | Clear mission history | ❌ not server-handled | GM | none |
-| `/missionsetavailable` | Make a mission available | ❌ not server-handled | GM | `<missionId>` |
-
-### Debug (GM)
-
-| Command | What It Does | Handled? | Tested? | Access | Parameters | Sample |
-|---------|--------------|----------|---------|--------|------------|--------|
-| `/mobdata` | Dump an NPC's debug data (template, AI state, faction, health, threat) | ✅ implemented | ✅ | GM | `<spaceId> <targetId>` | `/mobdata 0 5400` |
-
-Toggle-style debug commands map to the inherited combat/heal-debug methods. They
-are GM-gated but currently log-only stubs:
-
-| Command | What It Does | Handled? | Access | Parameters |
-|---------|--------------|----------|--------|------------|
-| `/combatdebug` | Toggle combat debug info | 🚧 partial (log-only stub) | GM | none |
-| `/combatdebugverbose` | Toggle verbose combat debug | 🚧 partial (log-only stub) | GM | none |
-| `/healdebug` | Toggle healing debug info | 🚧 partial (log-only stub) | GM | none |
-| `/worldinstancereset` | Reset the world instance | 🚧 gated, no handler (destructive) | GM | none |
-
-The remaining debug commands are recognized by the client but **not
-implemented** server-side:
-
-| Command | What It Does | Handled? | Access | Parameters |
-|---------|--------------|----------|--------|------------|
-| `/abilitydebug` | Toggle ability debug | ❌ not server-handled | GM | `<abilityId>` |
-| `/debugtarget` | Dump debug data for your target | ❌ not server-handled | GM | `<target>` |
-| `/debugevents` | Toggle event debug | ❌ not server-handled | GM | `<target> <level>` |
-| `/debugperformance` | Toggle performance debug | ❌ not server-handled | GM | none |
-| `/debugabilityonmob` | Run an ability on an NPC for debug | ❌ not server-handled | GM | `<abilityId>` |
-| `/debugbehaviorsonmob` | Stream an NPC's behavior state | ❌ not server-handled | GM | none |
-| `/debugpathsonmob` | Stream an NPC's nav path | ❌ not server-handled | GM | none |
-| `/debuginteract` | Force an interaction for debug | ❌ not server-handled | GM | none |
-| `/debugflash` | Toggle Flash UI debug | ❌ not server-handled | GM | none |
-| `/debugstartminigame` | Start a minigame for debug | ❌ not server-handled | GM | `<gameId>` |
-| `/debugminigameinstance` | Inspect a minigame instance | ❌ not server-handled | GM | `<instanceId>` |
-| `/debugspectateminigame` | Spectate a minigame for debug | ❌ not server-handled | GM | `<gameId>` |
-| `/debugjoinminigame` | Join a minigame for debug | ❌ not server-handled | GM | `<gameId>` |
-| `/giveminigamecontact` | Grant a minigame contact | ❌ not server-handled | GM | `<contactId> <target>` |
-| `/removeminigamecontact` | Remove a minigame contact | ❌ not server-handled | GM | `<contactId> <target>` |
-| `/emitbehavioreventonmob` | Emit a behavior event on an NPC | ❌ not server-handled | GM | `<id>` |
-| `/addbehavioreventset` | Add a behavior event set | ❌ not server-handled | GM | `<id>` |
-| `/removebehavioreventset` | Remove a behavior event set | ❌ not server-handled | GM | `<id>` |
-| `/entererroraistate` | Force an NPC into the error AI state | ❌ not server-handled | GM | none |
-| `/exiterroraistate` | Clear an NPC's error AI state | ❌ not server-handled | GM | none |
-| `/timeofday` | Set the time of day | ❌ not server-handled | GM | `<hour>` |
-| `/physics` | Toggle physics debug | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/togglecombatlos` | Toggle combat line-of-sight enforcement | ❌ not server-handled | GM | none |
-| `/forceclientcrash` | Force the client to crash (debug) | ❌ client-side | GM | none |
-| `/forcerenderthreadcrash` | Force the render thread to crash (debug) | ❌ client-side | GM | none |
-| `/perfstatsbychannel` | Toggle per-channel perf stats | ❌ not server-handled | GM | `<onOff>` |
-| `/gmchat` | Send a GM chat message | ❌ not server-handled | GM | `<text>` |
-| `/gmshout` | Shout as a GM (space or global) | ❌ not server-handled | GM | `<global> <text>` |
-
-### Visual / Client Debug
-
-These render entirely in the client (overlays, FPS counters, visualizers) or have
-no server state. They are **not server-handled**.
-
-| Command | What It Does | Handled? | Access | Parameters |
-|---------|--------------|----------|--------|------------|
-| `/showfps` | Show frames per second | ❌ client-side | GM | none |
-| `/showmemory` | Show memory usage | ❌ client-side | GM | none |
-| `/showlog` | Show log output | ❌ client-side | GM | none |
-| `/showcover` | Visualize cover links | ❌ client-side | GM | none |
-| `/shownavmesh` | Show navigation mesh | ❌ not server-handled | GM | none |
-| `/showspawns` | Show spawn points | ❌ not server-handled | GM | none |
-| `/showmobpaths` | Show NPC patrol paths | ❌ not server-handled | GM | none |
-| `/showwaypoints` | Show waypoints | ❌ client-side | GM | none |
-| `/showtriggers` | Show trigger volumes | ❌ client-side | GM | none |
-| `/showcommandwaypoints` | Show command-group waypoints | ❌ client-side | GM | none |
-| `/showspawnset` | Show a spawn set | ❌ not server-handled | GM | `<setId>` |
-| `/showarea` | Show area bounds | ❌ client-side | GM | none |
-| `/showregion` | Show region bounds | ❌ client-side | GM | none |
-| `/shownavigation` | Toggle navigation overlay | ❌ not server-handled | GM | `<onOff>` |
-| `/showinstanceflag` | Show a space-instance flag | ❌ not server-handled | GM | `<flag>` |
-| `/setinstanceflag` | Set a space-instance flag | ❌ not server-handled | GM | `<flag> <value>` |
-| `/xrayeyes` | Toggle x-ray vision | ❌ not server-handled | GM | `<on>` (0/1) |
-| `/invisible` | Toggle invisibility | ❌ not server-handled | GM | `<on>` (0/1) |
-
-### Cover System (GM)
-
-These tune the navmesh cover system. The cover loader is static-load only; none
-of the runtime regen/weight commands are implemented.
-
-| Command | What It Does | Handled? | Access | Parameters |
-|---------|--------------|----------|--------|------------|
-| `/regeneratecoverlinks` | Recompute cover links | ❌ not server-handled | GM | `<normLimit> <maxLinks> <maxDist>` |
-| `/changecoverweight` | Adjust cover scoring weights | ❌ not server-handled | GM | `<6 floats>` |
-| `/changecoverstanceweight` | Adjust per-stance cover weights | ❌ not server-handled | GM | `<stance> <6 values>` |
-| `/trackmob` | Toggle a debug track on an NPC | ❌ not server-handled | GM | none |
-
-### Hot-Loading / Content Reload (GM)
-
-These ask the server to reload a data definition without restarting. None are
-implemented as targeted reloads today.
-
-| Command | What It Does | Handled? | Access | Parameters |
-|---------|--------------|----------|--------|------------|
-| `/reload` | General data reload | ❌ not server-handled | GM | none |
-| `/loadconstants` | Reload game constants | ❌ not server-handled | GM | none |
-| `/loadability` | Reload an ability definition | ❌ not server-handled | GM | `<id>` |
-| `/loadabilityset` | Reload an ability set | ❌ not server-handled | GM | `<id>` |
-| `/loadnacsi` | Reload a NACSI definition | ❌ not server-handled | GM | `<id>` |
-| `/loadbehavior` | Reload an AI behavior | ❌ not server-handled | GM | `<id>` |
-| `/loadmob` | Reload an NPC definition | ❌ not server-handled | GM | `<id>` |
-| `/loadinteractionset` | Reload an interaction set | ❌ not server-handled | GM | `<id>` |
-| `/loaditem` | Reload an item definition | ❌ not server-handled | GM | `<id>` |
-| `/loadmission` | Reload a mission | ❌ not server-handled | GM | `<id>` |
-| `/reloadorganizations` | Reload organization defs | ❌ not server-handled | GM | none |
-| `/reloadinventory` | Reload inventory defs | ❌ not server-handled | GM | none |
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/debugperformance` | Toggle performance debug | ❌ Not yet | none | `/debugperformance` |
+| `/help` | Show command help | ✅ Yes *(game handles it)* | none | `/help` |
+| `/pvp` | Toggle your PvP flag | ❌ Not yet | `<on>` (0/1) | `/pvp` |
+| `/reload` | General data reload | ❌ Not yet | none | `/reload` |
+| `/reloadui` | Reload the in-game UI | ✅ Yes *(game handles it)* | none | `/reloadui` |
+| `/showfacing` | Report the target's (or your) heading | ✅ Yes | none | `/showfacing` |
+| `/showfps` | Show frames per second | ✅ Yes *(game handles it)* | none | `/showfps` |
+| `/showposition` | Report your exact position | ✅ Yes | none | `/showposition` |
+| `/showracialparadigmlevels` | Show your racial paradigm levels | ❌ Not yet | none | `/showracialparadigmlevels` |
+| `/showrotation` | Report the target's (or your) heading | ✅ Yes | none | `/showrotation` |
+| `/who` | List online players | 🚧 Partly | none | `/who` |
+| `/worldreset` | Reset the world instance | 🚧 Partly | none | `/worldreset` |
 
 ---
 
-## Summary
+## Game Master Commands
 
-| Group | Rows documented | Fully implemented (✅) | Partial (🚧) | Not server-handled (❌) | Tested (✅) |
-|-------|-----------------|------------------------|--------------|--------------------------|-------------|
-| Player | 113 | 29 | 14 | 70 | 5 |
-| GM / Debug | 159 | 38 | 4 | 117 | 38 |
-| **Total** | **272** | **67** | **18** | **187** | **43** |
+**You need a Game Master account for everything below.** Normal players can't use these -- the server checks your account level and refuses the command otherwise.
 
-- This page documents **all 256 distinct commands** the client dispatches. The
-  table above counts **272 rows** because some commands (`/dhd`, `/respawn`,
-  `/missionassign`, `/missionabandon`, `/missiondetails`, `/missionlist`, `/who`,
-  `/users`, `/showrotation`, `/resetabilities`, `/respec`, `/respecability`,
-  `/respeccraft`, and others) have both a player and a more capable GM form, so
-  they appear in both sections.
-- **67 rows** have a complete server-side handler (✅ Handled).
-- **43 rows** have an explicit automated test (✅ Tested) — the implemented GM
-  commands plus the spatial-chat / ability / respawn player commands (`/say`,
-  `/emote`, `/yell`, `/invokeability`, `/respawn`).
-- **18 rows** are partial (🚧): route-only stubs that acknowledge the call but
-  don't yet drive the full game effect.
-- **187 rows** are ❌ — client-side only, or recognized by the client but not yet
-  implemented server-side. They are documented for completeness, not as evidence
-  of a server feature.
+> **Tip for GMs:** these commands take **numbers**, not names. Use a target's numeric id (not a player's name), and they only affect things in your own area.
 
-> Counts above reflect the evidence in this server's handler code and tests as of
-> the `last_updated` date. The client-side round-trip for every command is still
-> pending a manual UAT.
+### Teleporting
+
+Jump yourself or pull others to you.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/gmgoto` | Teleport yourself to a target entity | ✅ Yes | `<entityId>` (numeric) | `/gmgoto 5310` |
+| `/gmgotolocation` | Teleport yourself to a named world + coordinates (full reload) | ✅ Yes | `<worldName> <x> <y> <z>` | `/gmgotolocation Abydos 100 5 200` |
+| `/gmgotoxyz` | Teleport yourself to coordinates in your space | ✅ Yes | `<x> <y> <z>` (floats; must be finite) | `/gmgotoxyz 1200.5 64.0 -880.0` |
+| `/gmsummon` | Move a target entity to you | ✅ Yes | `<entityId>` (numeric; not yourself) | `/gmsummon 5310` |
+
+### Giving Yourself Things
+
+XP, money, items, abilities, and more.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/gmgiveability` | Give a specific ability | ❌ Not yet | `<abilityId>` | `/gmgiveability` |
+| `/gmgiveallabilities` | Give every ability | ❌ Not yet | none | `/gmgiveallabilities` |
+| `/gmgiveammo` | Give ammunition | ❌ Not yet | `<ammoId> <quantity>` | `/gmgiveammo` |
+| `/gmgiveappliedsciencepoints` | Give yourself applied-science points | ✅ Yes | `<points>` (positive int) | `/gmgiveappliedsciencepoints 25` |
+| `/gmgiveblueprint` | Give a crafting blueprint | ❌ Not yet | `<blueprintId>` | `/gmgiveblueprint` |
+| `/gmgivecash` | Give yourself naquadah (currency) | ✅ Yes | `<amount>` (positive int) | `/gmgivecash 10000` |
+| `/gmgiveexpertise` | Give yourself crafting expertise in a discipline | ✅ Yes | `<disciplineId> <amount>` (both positive) | `/gmgiveexpertise 3 50` |
+| `/gmgivefaction` | Give faction standing | ❌ Not yet | `<factionId> <amount>` | `/gmgivefaction` |
+| `/gmgivegearset` | Give a full gear set | ❌ Not yet | `<gearsetId>` | `/gmgivegearset` |
+| `/gmgiveinventory` | Give a full inventory loadout | ❌ Not yet | `<inventoryId>` | `/gmgiveinventory` |
+| `/gmgiveitem` | Give an item to your inventory | ✅ Yes | `<designId> <quantity>` (numeric id; qty clamped 1–1000) | `/gmgiveitem 8800 5` |
+| `/gmgiveracialparadigmlevels` | Give racial paradigm levels | ❌ Not yet | `<id> <levels>` | `/gmgiveracialparadigmlevels` |
+| `/gmgiverespawner` | Give a player respawner | ❌ Not yet | `<mobId>` | `/gmgiverespawner` |
+| `/gmgivestargateaddress` | Give a stargate address | ❌ Not yet | `<address> <target> <hidden>` | `/gmgivestargateaddress` |
+| `/gmgivetrainingpoints` | Give training points | ❌ Not yet | `<count>` | `/gmgivetrainingpoints` |
+| `/gmgivexp` | Give yourself experience | ✅ Yes | `<amount>` (positive int) | `/gmgivexp 5000` |
+| `/gmrechargeitem` | Recharge an item | ✅ Yes | `<itemId...>` | `/gmrechargeitem 8800` |
+| `/gmremoveitem` | Remove a quantity of an inventory item from yourself | ✅ Yes | `<itemId> <quantity>` (both positive) | `/gmremoveitem 8800 1` |
+| `/gmremovestargateaddress` | Remove a stargate address | ❌ Not yet | `<address> <target>` | `/gmremovestargateaddress` |
+| `/gmrepairitem` | Repair an item | ✅ Yes | `<itemId...>` | `/gmrepairitem 8800` |
+| `/gmsetfaction` | Set faction standing | ❌ Not yet | `<factionId> <value>` | `/gmsetfaction` |
+| `/gmsettechskill` | Set a tech (crafting) skill | ❌ Not yet | `<skillId> <value>` | `/gmsettechskill` |
+
+### Changing Stats & Toggles
+
+Set health/focus, target, and debug toggles.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/gmchangeammo` | Switch ammo type | ✅ Yes | `<itemId> <ammoType>` | `/gmchangeammo 8800 3` |
+| `/gminvokeability` | Use an ability on a target | ✅ Yes | `<abilityId> <targetId>` | `/gminvokeability 4201 5310` |
+| `/gmresetabilities` | Reset abilities (GM) | ❌ Not yet | none | `/gmresetabilities` |
+| `/gmrespec` | Full respec (GM) | ❌ Not yet | none | `/gmrespec` |
+| `/gmsetarchetype` | Set a character's archetype | ❌ Not yet | `<archetypeId>` | `/gmsetarchetype` |
+| `/gmsetflag` | Force-set a state flag | ❌ Not yet | `<flagId> <force>` | `/gmsetflag` |
+| `/gmsetfly` | Toggle fly mode | ❌ Not yet | `<on>` (0/1) | `/gmsetfly` |
+| `/gmsetfocus` | Set current focus | ✅ Yes | `<amount> <targetId>` | `/gmsetfocus 300 0` |
+| `/gmsetfocusmax` | Set maximum focus | ✅ Yes | `<amount> <targetId>` | `/gmsetfocusmax 400 0` |
+| `/gmsetghost` | Toggle ghost (no-collision) mode | ❌ Not yet | `<on>` (0/1) | `/gmsetghost` |
+| `/gmsetgodmode` | Toggle invincibility | ❌ Not yet | `<on>` (0/1) | `/gmsetgodmode` |
+| `/gmsethealth` | Set current health on yourself or a target | ✅ Yes | `<amount> <targetId>` (amount ≥ 0; target 0 = self) | `/gmsethealth 500 0` |
+| `/gmsethealthmax` | Set maximum health | ✅ Yes | `<amount> <targetId>` | `/gmsethealthmax 1000 0` |
+| `/gmsethidegm` | Toggle GM visibility | ❌ Not yet | `<on>` (0/1) | `/gmsethidegm` |
+| `/gmsetignorefocus` | Ignore focus costs | ❌ Not yet | `<on>` (0/1) | `/gmsetignorefocus` |
+| `/gmsetignorehealth` | Ignore health damage | ❌ Not yet | `<on>` (0/1) | `/gmsetignorehealth` |
+| `/gmsetinfiniteammo` | Toggle infinite ammo | ❌ Not yet | `<on>` (0/1) | `/gmsetinfiniteammo` |
+| `/gmsetinvulnerable` | Toggle invulnerability | ❌ Not yet | `<on>` (0/1) | `/gmsetinvulnerable` |
+| `/gmsetlevel` | Set a character's level | ❌ Not yet | `<level>` | `/gmsetlevel` |
+| `/gmsetmobabilityset` | Set an NPC's ability set | ❌ Not yet | `<setId>` | `/gmsetmobabilityset` |
+| `/gmsetmobattribute` | Set an NPC attribute | ❌ Not yet | `<target> <attr> <type> <value>` | `/gmsetmobattribute` |
+| `/gmsetmobstance` | Set an NPC's stance | ❌ Not yet | `<stance>` | `/gmsetmobstance` |
+| `/gmsetmobvariable` | Set a generic NPC variable | ❌ Not yet | `<var> <value>` | `/gmsetmobvariable` |
+| `/gmsetnoaggro` | Toggle NPC aggro | ❌ Not yet | `<on>` (0/1) | `/gmsetnoaggro` |
+| `/gmsetnodamage` | Toggle timed damage immunity | ❌ Not yet | `<on>` (0/1) | `/gmsetnodamage` |
+| `/gmsetnotarget` | Make yourself untargetable | ❌ Not yet | `<on>` (0/1) | `/gmsetnotarget` |
+| `/gmsetnoxp` | Toggle XP gain off | ❌ Not yet | `<on>` (0/1) | `/gmsetnoxp` |
+| `/gmsetomnipotent` | Toggle all-powerful debug mode | ❌ Not yet | `<on>` (0/1) | `/gmsetomnipotent` |
+| `/gmsetpvp` | Toggle your PvP flag | ❌ Not yet | `<on>` (0/1) | `/gmsetpvp` |
+| `/gmsetspectator` | Toggle spectator mode | ❌ Not yet | `<on>` (0/1) | `/gmsetspectator` |
+| `/gmsetspeed` | Set movement speed | ❌ Not yet | `<multiplier>` | `/gmsetspeed` |
+| `/gmsettarget` | Set your current target | ✅ Yes | `<entityId>` (numeric; 0 = clear) | `/gmsettarget 5310` |
+| `/gmtoggleautocycleability` | Toggle ability auto-cycling | 🚧 Partly | `<enabled>` (0/1) | `/gmtoggleautocycleability 1` |
+
+### Spawning & World
+
+Spawn, kill, and despawn NPCs.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/gmdespawn` | Remove an NPC from the space (NPC-only) | ✅ Yes | `<entityId>` (numeric) | `/gmdespawn 5400` |
+| `/gmdumpobjects` | Dump the object list to the log | ❌ Not yet | none | `/gmdumpobjects` |
+| `/gmkilltarget` | Kill an NPC via the canonical death sequence (NPC-only) | ✅ Yes | `<entityId>` (numeric) | `/gmkilltarget 5400` |
+| `/gmrespawn` | Respawn after death | ✅ Yes | none | `/gmrespawn` |
+| `/gmspawnbycmd` | Spawn an NPC by template id at your position + offset | ✅ Yes | `<designId> <xOffset> <zOffset>` (numeric template id; float offsets) | `/gmspawnbycmd 3402 5.0 0.0` |
+| `/gmspawnentityloot` | Force-drop loot from an entity | ❌ Not yet | `<entity> <lootTableId>` | `/gmspawnentityloot` |
+
+### GM Stargate
+
+Dial a gate by raw address.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/gmdhd` | Dial a stargate by numeric address | ✅ Yes | `<gateAddress>` (positive int) | `/gmdhd 14` |
+
+### Looking Things Up
+
+Inspect players, NPCs, positions, and flags. These report back to you.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/gmgetmobattribute` | Report one attribute of an NPC | ✅ Yes | `<targetId> <attribute>` (health/focus/level/faction/alignment/aistate/name/template/pos) | `/gmgetmobattribute 5400 health` |
+| `/gmhelpfull` | Show all available commands | ✅ Yes *(game handles it)* | none | `/gmhelpfull` |
+| `/gmlistabilities` | List the known ability ids of the target (or you) | ✅ Yes | none | `/gmlistabilities` |
+| `/gmlistinteractions` | List interactions available on the target | ❌ Not yet | none | `/gmlistinteractions` |
+| `/gmprintstats` | Print a named server statistic | ❌ Not yet | `<stat>` | `/gmprintstats` |
+| `/gmshowflag` | Report whether a state-flag bit is set | ✅ Yes | `<flagId>` (bit index 0–31) | `/gmshowflag 4` |
+| `/gmshowinventory` | Show a player's inventory | ❌ Not yet | `<target>` | `/gmshowinventory` |
+| `/gmshowip` | Show a player's IP | ❌ Not yet | `<target>` | `/gmshowip` |
+| `/gmshowmobcount` | Count NPCs in a space | ✅ Yes | `<spaceId>` (0 = your current space) | `/gmshowmobcount 0` |
+| `/gmshowplayer` | Dump id / name / kind / faction / level / health / position for an entity | ✅ Yes | `<targetId>` (0 = current target, then self) | `/gmshowplayer 5310` |
+| `/gmshowtargetlocation` | Report the target's (or your) position | ✅ Yes | none | `/gmshowtargetlocation` |
+| `/gmtestlos` | Report navmesh line-of-sight between two entities | ✅ Yes | `<sourceId> <targetId>` (numeric, same space) | `/gmtestlos 5310 5400` |
+| `/gmtestsequence` | Play a test animation sequence | ✅ Yes *(game handles it)* | `<sequenceName>` | `/gmtestsequence idle` |
+| `/gmusers` | List players in your space | ✅ Yes | none | `/gmusers` |
+
+### GM Mission Tools
+
+Assign, advance, and inspect missions on yourself.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/gmmissionabandon` | Alias of `/missionclear` | ✅ Yes | `<missionId>` | `/gmmissionabandon 1001` |
+| `/gmmissionadvance` | Jump a mission to a specific step | ✅ Yes | `<missionId> <step>` (step positive) | `/gmmissionadvance 1001 3` |
+| `/gmmissionassign` | Assign a mission to yourself by numeric id | ✅ Yes | `<missionId> <popup>` (popup is a UI hint) | `/gmmissionassign 1001 1` |
+| `/gmmissionclear` | Abandon one mission by numeric id | ✅ Yes | `<missionId>` | `/gmmissionclear 1001` |
+| `/gmmissionclearactive` | Clear all active missions | ❌ Not yet | none | `/gmmissionclearactive` |
+| `/gmmissionclearhistory` | Clear mission history | ❌ Not yet | none | `/gmmissionclearhistory` |
+| `/gmmissioncomplete` | Complete a mission | ❌ Not yet | `<missionId> <turnIn>` | `/gmmissioncomplete` |
+| `/gmmissiondetails` | Show one mission's detail by numeric id | ✅ Yes | `<missionId>` | `/gmmissiondetails 1001` |
+| `/gmmissionlist` | List your active missions | ✅ Yes | none | `/gmmissionlist` |
+| `/gmmissionlistfull` | List all your missions (incl. completed/hidden) | ✅ Yes | none | `/gmmissionlistfull` |
+| `/gmmissionreset` | Revert a mission to a step | ❌ Not yet | `<missionId> <step>` | `/gmmissionreset` |
+| `/gmmissionsetavailable` | Make a mission available | ❌ Not yet | `<missionId>` | `/gmmissionsetavailable` |
+
+### Debugging
+
+Combat, AI, and minigame debug switches.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/gmaddbehavioreventset` | Add a behavior event set | ❌ Not yet | `<id>` | `/gmaddbehavioreventset` |
+| `/gmchat` | Send a GM chat message | ❌ Not yet | `<text>` | `/gmchat` |
+| `/gmconfirmeffect` | Respond to an effect-confirmation prompt | ✅ Yes | `<choice>` | `/gmconfirmeffect 1` |
+| `/gmdebugability` | Toggle ability debug | ❌ Not yet | `<abilityId>` | `/gmdebugability` |
+| `/gmdebugabilityonmob` | Run an ability on an NPC for debug | ❌ Not yet | `<abilityId>` | `/gmdebugabilityonmob` |
+| `/gmdebugbehaviorsonmob` | Stream an NPC's behavior state | ❌ Not yet | none | `/gmdebugbehaviorsonmob` |
+| `/gmdebugcombat` | Toggle combat debug info | 🚧 Partly | none | `/gmdebugcombat` |
+| `/gmdebugcombatverbose` | Toggle verbose combat debug | 🚧 Partly | none | `/gmdebugcombatverbose` |
+| `/gmdebugevents` | Toggle event debug | ❌ Not yet | `<target> <level>` | `/gmdebugevents` |
+| `/gmdebugflash` | Toggle Flash UI debug | ❌ Not yet | none | `/gmdebugflash` |
+| `/gmdebugheal` | Toggle healing debug info | 🚧 Partly | none | `/gmdebugheal` |
+| `/gmdebuginteract` | Force an interaction for debug | ❌ Not yet | none | `/gmdebuginteract` |
+| `/gmdebugjoinminigame` | Join a minigame for debug | ❌ Not yet | `<gameId>` | `/gmdebugjoinminigame` |
+| `/gmdebugminigameinstance` | Inspect a minigame instance | ❌ Not yet | `<instanceId>` | `/gmdebugminigameinstance` |
+| `/gmdebugpathsonmob` | Stream an NPC's nav path | ❌ Not yet | none | `/gmdebugpathsonmob` |
+| `/gmdebugspectateminigame` | Spectate a minigame for debug | ❌ Not yet | `<gameId>` | `/gmdebugspectateminigame` |
+| `/gmdebugstartminigame` | Start a minigame for debug | ❌ Not yet | `<gameId>` | `/gmdebugstartminigame` |
+| `/gmdebugtarget` | Dump debug data for your target | ❌ Not yet | `<target>` | `/gmdebugtarget` |
+| `/gmemitbehavioreventonmob` | Emit a behavior event on an NPC | ❌ Not yet | `<id>` | `/gmemitbehavioreventonmob` |
+| `/gmentererroraistate` | Force an NPC into the error AI state | ❌ Not yet | none | `/gmentererroraistate` |
+| `/gmexiterroraistate` | Clear an NPC's error AI state | ❌ Not yet | none | `/gmexiterroraistate` |
+| `/gmforceclientcrash` | Force the client to crash (debug) | ✅ Yes *(game handles it)* | none | `/gmforceclientcrash` |
+| `/gmforcerendercrash` | Force the render thread to crash (debug) | ✅ Yes *(game handles it)* | none | `/gmforcerendercrash` |
+| `/gmgiveminigamecontact` | Grant a minigame contact | ❌ Not yet | `<contactId> <target>` | `/gmgiveminigamecontact` |
+| `/gmmobdata` | Dump an NPC's debug data (template, AI state, faction, health, threat) | ✅ Yes | `<spaceId> <targetId>` | `/gmmobdata 0 5400` |
+| `/gmonphysics` | Toggle physics debug | ❌ Not yet | `<on>` (0/1) | `/gmonphysics` |
+| `/gmperfstatsbychannel` | Toggle per-channel perf stats | ❌ Not yet | `<onOff>` | `/gmperfstatsbychannel` |
+| `/gmpetabilitytoggle` | Toggle pet auto-ability | 🚧 Partly | `<petId> <abilityId> <toggle>` | `/gmpetabilitytoggle 9001 4300 1` |
+| `/gmpetinvokeability` | Command pet to use an ability | 🚧 Partly | `<petId> <abilityId> <targetId>` | `/gmpetinvokeability 9001 4300 5310` |
+| `/gmpetinvokecommand` | Give pet a command | ❌ Not yet | `<petId> <command>` | `/gmpetinvokecommand 9001 attack` |
+| `/gmremovebehavioreventset` | Remove a behavior event set | ❌ Not yet | `<id>` | `/gmremovebehavioreventset` |
+| `/gmremoveminigamecontact` | Remove a minigame contact | ❌ Not yet | `<contactId> <target>` | `/gmremoveminigamecontact` |
+| `/gmsendgmshout` | Shout as a GM (space or global) | ❌ Not yet | `<global> <text>` | `/gmsendgmshout` |
+| `/gmsetringdestination` | Set ring transporter destination | ✅ Yes | `<regionId> <destinationId>` | `/gmsetringdestination 3 7` |
+| `/gmspacequeuedresponse` | Respond to a queued-for-space prompt | ❌ Not yet | `<response>` | `/gmspacequeuedresponse 1` |
+| `/gmspacequeuereadyresponse` | Respond to a space-ready prompt | ❌ Not yet | `<response>` | `/gmspacequeuereadyresponse 1` |
+| `/gmspacequeuestatus` | Query your space-instance queue status | ❌ Not yet | none | `/gmspacequeuestatus` |
+| `/gmtimeofday` | Set the time of day | ❌ Not yet | `<hour>` | `/gmtimeofday` |
+| `/gmtogglecombatlos` | Toggle combat line-of-sight enforcement | ❌ Not yet | none | `/gmtogglecombatlos` |
+
+### Visual Overlays
+
+On-screen overlays: FPS, navmesh, cover, and more.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/gmoninvisible` | Toggle invisibility | ❌ Not yet | `<on>` (0/1) | `/gmoninvisible` |
+| `/gmonxrayeyes` | Toggle x-ray vision | ❌ Not yet | `<on>` (0/1) | `/gmonxrayeyes` |
+| `/gmsetinstanceflag` | Set a space-instance flag | ❌ Not yet | `<flag> <value>` | `/gmsetinstanceflag` |
+| `/gmshowarea` | Show area bounds | ✅ Yes *(game handles it)* | none | `/gmshowarea` |
+| `/gmshowcommandwaypoints` | Show command-group waypoints | ✅ Yes *(game handles it)* | none | `/gmshowcommandwaypoints` |
+| `/gmshowcover` | Visualize cover links | ✅ Yes *(game handles it)* | none | `/gmshowcover` |
+| `/gmshowinstanceflag` | Show a space-instance flag | ❌ Not yet | `<flag>` | `/gmshowinstanceflag` |
+| `/gmshowlog` | Show log output | ✅ Yes *(game handles it)* | none | `/gmshowlog` |
+| `/gmshowmemory` | Show memory usage | ✅ Yes *(game handles it)* | none | `/gmshowmemory` |
+| `/gmshownavmesh` | Show navigation mesh | ❌ Not yet | none | `/gmshownavmesh` |
+| `/gmshowregion` | Show region bounds | ✅ Yes *(game handles it)* | none | `/gmshowregion` |
+| `/gmshowspawnset` | Show a spawn set | ❌ Not yet | `<setId>` | `/gmshowspawnset` |
+| `/gmshowtriggers` | Show trigger volumes | ✅ Yes *(game handles it)* | none | `/gmshowtriggers` |
+| `/gmshowwaypoints` | Show waypoints | ✅ Yes *(game handles it)* | none | `/gmshowwaypoints` |
+
+### Cover System
+
+Tune the NPC cover system.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/gmchangecoverstanceweight` | Adjust per-stance cover weights | ❌ Not yet | `<stance> <6 values>` | `/gmchangecoverstanceweight` |
+| `/gmchangecoverweight` | Adjust cover scoring weights | ❌ Not yet | `<6 floats>` | `/gmchangecoverweight` |
+| `/gmregeneratecoverlinks` | Recompute cover links | ❌ Not yet | `<normLimit> <maxLinks> <maxDist>` | `/gmregeneratecoverlinks` |
+| `/gmtrackmob` | Toggle a debug track on an NPC | ❌ Not yet | none | `/gmtrackmob` |
+
+### Reloading Content
+
+Reload data without a restart.
+
+| Command | What it does | Works now? | Parameters | Example |
+|---|---|---|---|---|
+| `/gmloadability` | Reload an ability definition | ❌ Not yet | `<id>` | `/gmloadability` |
+| `/gmloadabilityset` | Reload an ability set | ❌ Not yet | `<id>` | `/gmloadabilityset` |
+| `/gmloadbehavior` | Reload an AI behavior | ❌ Not yet | `<id>` | `/gmloadbehavior` |
+| `/gmloadconstants` | Reload game constants | ❌ Not yet | none | `/gmloadconstants` |
+| `/gmloaddialogset` | Hot-reload a dialog-set definition | ❌ Not yet | <id> | `/gmloaddialogset 12` |
+| `/gmloadinteractionset` | Reload an interaction set | ❌ Not yet | `<id>` | `/gmloadinteractionset` |
+| `/gmloaditem` | Reload an item definition | ❌ Not yet | `<id>` | `/gmloaditem` |
+| `/gmloadmission` | Reload a mission | ❌ Not yet | `<id>` | `/gmloadmission` |
+| `/gmloadmob` | Reload an NPC definition | ❌ Not yet | `<id>` | `/gmloadmob` |
+| `/gmreloadinventory` | Reload inventory defs | ❌ Not yet | none | `/gmreloadinventory` |
+| `/gmreloadorganizations` | Reload organization defs | ❌ Not yet | none | `/gmreloadorganizations` |
+| `/gmreloadscripts` | Hot-reload content/mission scripts | ❌ Not yet | none | `/gmreloadscripts` |
+
+---
+
+## At a glance
+
+- **266 commands** total -- **105** for everyone, **161** Game-Master only.
+- **66** fully work on our server, **23** are handled by the game itself, **16** partly work, and **161** aren't wired up on our server yet.
+- **44** have an automated test guarding the server behavior.
+
+> The server side is tested where marked, but a full live-client pass (typing each one in the real game and watching the result) is still pending. Treat ✅ as "the server does the right thing when the command arrives."
 
 ## See also
 
-- [Chat system](gameplay/chat-system.md) — channels, whispers, emotes.
-- [Pet system](gameplay/pet-system.md) — pet commands and abilities.
-- [Service architecture](architecture/service-architecture.md) — how console
-  commands reach the cell/base services.
+- [Chat system](gameplay/chat-system.md) -- channels, whispers, emotes.
+- [Pet system](gameplay/pet-system.md) -- pet commands and abilities.
+- [Service architecture](architecture/service-architecture.md) -- how console commands reach the server.

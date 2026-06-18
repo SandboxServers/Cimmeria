@@ -63,7 +63,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Test Audit 2026-05-31](testing/audit-2026-05-31.md) | Point-in-time codebase-wide audit: real bugs surfaced by the test suite, tests to delete, tests to tighten, coverage gaps, strategic recommendations |
 | [Game Systems](game-systems.md) | Survey of every game feature: combat, abilities, stargates, missions, crafting |
 | [Game Data](game-data.md) | What game content exists (items, abilities, missions) and what is missing |
-| [Commands Reference](commands.md) | The complete 256-command client roster with per-command handled/tested status, access level, parameters, and samples |
+| [Slash Commands](commands.md) | Player-friendly guide to all 266 in-game `/commands` (the real typed names captured live), with what each does, whether it works on our server yet, access level, parameters, and examples |
 | [Connection Flow](connection-flow.md) | End-to-end login and world entry sequence |
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
 | [Project Status](project-status.md) | What works, what is left, and the roadmap |
