@@ -198,14 +198,14 @@ impl SpaceManager {
     /// client receives `BASEMSG_FORCED_POSITION` and snaps its own
     /// avatar back to the last-valid position.
     ///
-    /// All four issue #478 layers run here, in cheapest-first order:
+    /// All four validation layers run here, in cheapest-first order:
     /// bounds (catches NaN / infinity / absurd coordinates and the
     /// Z-floor-clip), navmesh containment (off-walkable-polygon), then
     /// the stateful speed/teleport kinematics. Bounds and navmesh both
     /// hard-reject; speed is warn-only (logged + counted, still
     /// accepted); teleport hard-rejects. The `spaceId` cross-check
-    /// (CAT-B-06) lives in the `EntityMove` handler, where the
-    /// client-claimed space id is in hand.
+    /// lives in the `EntityMove` handler, where the client-claimed space
+    /// id is in hand.
     ///
     /// Production callers use this 4-arg form (server `Instant::now()`);
     /// the time-injected [`Self::apply_client_position_update_at`] backs
@@ -265,6 +265,15 @@ impl SpaceManager {
 
         let proposed = Vector3::new(position[0], position[1], position[2]);
 
+        // Advance the per-entity processing clock up front and recover the
+        // previous sample, *before* any layer can short-circuit. This is
+        // what stops an attacker from spamming cheaply-rejected
+        // (out-of-bounds / off-navmesh) packets to inflate `dt`, then
+        // slipping one large jump past the teleport gate at an
+        // artificially low implied speed. Every processed packet advances
+        // the clock by exactly one tick regardless of which layer rejects.
+        let prev_sample = self.movement_validator.touch_clock(entity_id, now);
+
         // Layer 1 — bounds (also the Z-axis floor-clip / NaN / infinity gate).
         if let Err(reason) = self.movement_validator.check_bounds(proposed, &bounds) {
             return ClientMoveOutcome::Rejected {
@@ -293,8 +302,8 @@ impl SpaceManager {
         // against the entity's current authoritative position.
         let last_pos = Vector3::new(last_valid[0], last_valid[1], last_valid[2]);
         let kin = self.movement_validator.check_kinematics(
-            entity_id,
             now,
+            prev_sample,
             last_pos,
             proposed,
             MovementValidator::DEFAULT_TOP_SPEED,

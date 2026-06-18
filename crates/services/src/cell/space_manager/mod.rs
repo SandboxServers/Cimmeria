@@ -205,7 +205,7 @@ pub struct SpaceManager {
     /// double-check filter — the set is a "candidate" pointer set, not
     /// the source of truth.
     pub pending_ai_retries: std::collections::HashSet<u32>,
-    /// Server-authoritative movement validator (issue #478). Consulted by
+    /// Server-authoritative movement validator. Consulted by
     /// `apply_client_position_update` on every inbound client position:
     /// bounds + navmesh + teleport hard-reject, speed warn-only. Holds a
     /// per-entity server-clock sample for the speed/teleport layer; that

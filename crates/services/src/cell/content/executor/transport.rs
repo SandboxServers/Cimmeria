@@ -71,7 +71,8 @@ pub(super) async fn teleport(
     // previous version emitted does NOT move the avatar.
     // `update_entity_position` already writes `cell_entity.position`.
     space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
-    // Authorized teleport: reseed the movement-validator clock (issue #478).
+    // Authorized teleport: reseed the movement-validator clock so the
+    // first post-teleport client packet doesn't log a spurious speed warn.
     space_mgr.note_authorized_teleport(entity_id);
     // SpaceId is i32 in the cell (matches DB type) but the wire
     // forced-position packet is u32 — space ids are always

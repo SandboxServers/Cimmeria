@@ -337,7 +337,7 @@ pub(super) fn move_waypoint(
         space_mgr.update_entity_position(target_id, destination, [0, 0, 0], [0.0; 3]);
         // Authorized server move: reseed the movement-validator clock for
         // the moved entity (harmless for NPC targets — they never pass
-        // through the client-position validator). Issue #478.
+        // through the client-position validator).
         space_mgr.note_authorized_teleport(target_id);
     }
 }

@@ -284,7 +284,7 @@ fn test_authorized_teleport_does_not_trigger_bounds_anomaly() {
 /// Seed the validator clock with a zero-delta update so the *next*
 /// update has a baseline to measure against. The first update for an
 /// entity always seeds-and-accepts (no prior sample), so kinematics
-/// tests need this priming call. Returns the seed instant.
+/// tests need this priming call.
 fn seed_clock(mgr: &mut super::super::SpaceManager, entity_id: u32, now: Instant) {
     let outcome =
         mgr.apply_client_position_update_at(now, entity_id, SPAWN_POS, [0, 0, 0], [0.0; 3]);
@@ -294,7 +294,7 @@ fn seed_clock(mgr: &mut super::super::SpaceManager, entity_id: u32, now: Instant
     );
 }
 
-/// **Canonical issue #478 regression guard (criterion 2).** A captured
+/// **Canonical teleport regression guard.** A captured
 /// `AVATAR_UPDATE_EXPLICIT` whose `new_pos` is 100 units from `last_pos`
 /// over 50 ms (= 2000 u/s, ~246× the 8.125 u/s class top speed) must be
 /// rejected at the validation seam, and the cell entity must NOT advance
@@ -405,9 +405,74 @@ fn authorized_teleport_then_client_followup_is_accepted() {
     );
 }
 
+/// dt-inflation guard. The processing clock must advance on **every**
+/// packet, including ones a cheaper layer rejects — otherwise an attacker
+/// can spam out-of-bounds (or off-navmesh) packets to let `dt` grow, then
+/// send one large jump whose implied speed (`distance / dt`) looks slow
+/// enough to clear the teleport gate.
+///
+/// Shape: seed → bounds-rejected packet 5 s later → 100 u jump 50 ms after
+/// that. The jump must still be `Teleport` (dt measured from the rejected
+/// packet, ~50 ms → 2000 u/s). Reverting the up-front `touch_clock` so the
+/// clock only advances inside `check_kinematics` makes `dt` ≈ 5.05 s, the
+/// implied speed ≈ 20 u/s clears the gate, and the jump slips through —
+/// this guard fires.
+#[test]
+fn bounds_reject_spam_cannot_inflate_dt_to_slip_a_teleport() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    // 5 s of "silence" spent spamming a cheaply-rejected out-of-bounds
+    // packet (outside the fallback AABB). It must reject AND advance the
+    // clock to this instant.
+    let oob = [50_000.0, 0.0, SPAWN_POS[2]];
+    let spam = mgr.apply_client_position_update_at(
+        t0 + Duration::from_secs(5),
+        100,
+        oob,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(
+            spam,
+            ClientMoveOutcome::Rejected {
+                reason: MovementReject::OutOfBounds,
+                ..
+            }
+        ),
+        "spam packet must be bounds-rejected, got {spam:?}"
+    );
+
+    // 100 u jump, 50 ms after the rejected packet. dt must be measured
+    // from the rejected packet (~50 ms), not the seed (~5 s).
+    let jump = [SPAWN_POS[0] + 100.0, 0.0, SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_secs(5) + Duration::from_millis(50),
+        100,
+        jump,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(
+            outcome,
+            ClientMoveOutcome::Rejected {
+                reason: MovementReject::Teleport,
+                ..
+            }
+        ),
+        "jump after bounds-reject spam must still be Teleport-rejected — the \
+         clock must advance on rejects so dt can't be inflated; got {outcome:?}"
+    );
+}
+
 // ── Layer 4: navmesh containment ─────────────────────────────────────────
 
-/// **Canonical issue #478 regression guard (criterion 3).** A captured
+/// **Canonical off-navmesh regression guard.** A captured
 /// `AVATAR_UPDATE_EXPLICIT` whose `new_pos` is inside the space AABB but
 /// off the walkable navmesh must be rejected (snap-back), and the cell
 /// entity must not advance.

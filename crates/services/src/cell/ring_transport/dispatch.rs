@@ -295,7 +295,7 @@ async fn same_world_teleport(
     space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
     // Authorized teleport: reseed the movement-validator clock so the
     // first post-ring client packet isn't measured against the pre-ring
-    // sample (issue #478, layers 2+3).
+    // sample (which would log a spurious speed warning).
     space_mgr.note_authorized_teleport(entity_id);
 
     // Client-side: hand off to the base. The base sends `forcedPosition` (0x31)

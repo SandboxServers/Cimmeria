@@ -8,7 +8,7 @@
 //! positions must clear before the cell entity's `position` field is
 //! written.
 //!
-//! ## Layered design (all four layers live; see issue #478)
+//! ## Layered design (all four layers live)
 //!
 //! 1. **Bounds** — proposed point must lie inside the active space's
 //!    `[bmin, bmax]` AABB. Sourced from the loaded navmesh's bounds with
@@ -265,12 +265,32 @@ impl MovementValidator {
         }
     }
 
-    /// Speed + teleport layer.
+    /// Advance an entity's processing clock to `now` and return the
+    /// previous sample.
+    ///
+    /// Call this exactly once for **every** processed client position
+    /// packet — *before* the bounds / navmesh layers can short-circuit.
+    /// That is what closes the dt-inflation hole: if the clock only
+    /// advanced on the packets that reach the kinematics layer, an
+    /// attacker could spam cheaply-rejected (out-of-bounds / off-navmesh)
+    /// packets to let `dt` grow, then send one large jump whose implied
+    /// speed (`distance / dt`) looks slow enough to clear the teleport
+    /// gate. Advancing up front keeps `dt` ~one tick regardless of which
+    /// layer rejected the previous packet.
+    pub fn touch_clock(&mut self, entity_id: u32, now: Instant) -> Option<Instant> {
+        self.move_clock.insert(entity_id, now)
+    }
+
+    /// Speed + teleport layer (pure — no clock mutation; the caller
+    /// advances the clock via [`touch_clock`] and passes the recovered
+    /// `prev` sample in).
     ///
     /// `last_pos` is the entity's current authoritative position (the
     /// cell entity's `position` field — already advanced by any
     /// server-authoritative teleport), `proposed` is the client's new
-    /// position, and `now` is the server's monotonic processing time.
+    /// position, `now` is the server's monotonic processing time, and
+    /// `prev` is the previous processing-clock sample (`None` = no
+    /// baseline yet, so the first packet is accepted without measuring).
     ///
     /// Sourcing `last_pos` from the post-teleport cell entity is what
     /// makes this layer robust without an authorized-teleport allowlist:
@@ -281,24 +301,18 @@ impl MovementValidator {
     /// exists only to reseed the clock so the post-teleport packet's `dt`
     /// is measured from the teleport instant rather than a stale sample.
     ///
+    /// [`touch_clock`]: Self::touch_clock
     /// [`note_authorized_teleport`]: Self::note_authorized_teleport
     pub fn check_kinematics(
-        &mut self,
-        entity_id: u32,
+        &self,
         now: Instant,
+        prev: Option<Instant>,
         last_pos: Vector3,
         proposed: Vector3,
         top_speed: f32,
     ) -> KinematicsOutcome {
-        // Reseed the clock to `now` on every processed packet and recover
-        // the previous sample in one map op. Reseeding even on reject
-        // keeps `dt` ~one tick for a spamming attacker, so the implied
-        // speed stays high and the teleport gate keeps firing (a stale
-        // baseline would let `dt` grow until the jump looked "slow").
-        let prior = self.move_clock.insert(entity_id, now);
-
-        let Some(prev) = prior else {
-            // First sample for this entity: nothing to measure against.
+        let Some(prev) = prev else {
+            // No baseline yet: nothing to measure against.
             return KinematicsOutcome::default();
         };
 
@@ -344,7 +358,7 @@ impl MovementValidator {
     /// location *should* be snapped to the new one. See
     /// `.claude/agent-memory/movement-teleport-advisor/authorized-teleport-paths.md`.
     pub fn note_authorized_teleport(&mut self, entity_id: u32, now: Instant) {
-        self.move_clock.insert(entity_id, now);
+        self.touch_clock(entity_id, now);
     }
 
     /// Release an entity's per-entity validator state. Call on entity
@@ -543,30 +557,35 @@ mod tests {
         assert!(!position_within_bounds(pos, &SpaceBounds::FALLBACK));
     }
 
-    // ── Speed / teleport layer (issue #478, layers 2+3) ─────────────────
+    // ── Speed / teleport layer (kinematics) ─────────────────────────────
 
     const TOP: f32 = MovementValidator::DEFAULT_TOP_SPEED;
 
     #[test]
-    fn first_kinematics_sample_seeds_and_accepts() {
-        let mut v = MovementValidator::new();
+    fn no_baseline_sample_is_accepted() {
+        let v = MovementValidator::new();
         let t0 = Instant::now();
-        // No prior sample — even an absurd jump is accepted (nothing to
+        // `prev = None` — even an absurd jump is accepted (nothing to
         // measure against). The bounds layer is what guards the first
         // packet; kinematics only constrains *deltas*.
-        let out = v.check_kinematics(1, t0, Vector3::zero(), Vector3::new(9_000.0, 0.0, 0.0), TOP);
+        let out = v.check_kinematics(
+            t0,
+            None,
+            Vector3::zero(),
+            Vector3::new(9_000.0, 0.0, 0.0),
+            TOP,
+        );
         assert_eq!(out, KinematicsOutcome::default());
     }
 
     #[test]
     fn small_legitimate_move_neither_warns_nor_rejects() {
-        let mut v = MovementValidator::new();
+        let v = MovementValidator::new();
         let t0 = Instant::now();
-        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP); // seed
-                                                                          // ~0.8 u over 100 ms = top speed exactly — under the 1.5× warn.
+        // ~0.8 u over 100 ms = top speed exactly — under the 1.5× warn.
         let out = v.check_kinematics(
-            1,
             t0 + Duration::from_millis(100),
+            Some(t0),
             Vector3::zero(),
             Vector3::new(0.8, 0.0, 0.0),
             TOP,
@@ -575,16 +594,15 @@ mod tests {
         assert!(out.speed_warn.is_none(), "legit move must not warn");
     }
 
-    /// Canonical issue #478 teleport shape: 100 units in 50 ms → 2000 u/s,
+    /// Canonical teleport shape: 100 units in 50 ms → 2000 u/s,
     /// ~246× top speed. Both gates trip → hard reject.
     #[test]
     fn hundred_units_in_fifty_ms_is_teleport_rejected() {
-        let mut v = MovementValidator::new();
+        let v = MovementValidator::new();
         let t0 = Instant::now();
-        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP); // seed
         let out = v.check_kinematics(
-            1,
             t0 + Duration::from_millis(50),
+            Some(t0),
             Vector3::zero(),
             Vector3::new(100.0, 0.0, 0.0),
             TOP,
@@ -598,12 +616,11 @@ mod tests {
     /// the dual gate exists to avoid.
     #[test]
     fn far_but_slow_catchup_is_not_teleport() {
-        let mut v = MovementValidator::new();
+        let v = MovementValidator::new();
         let t0 = Instant::now();
-        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP); // seed
         let out = v.check_kinematics(
-            1,
             t0 + Duration::from_secs(10),
+            Some(t0),
             Vector3::zero(),
             Vector3::new(60.0, 0.0, 0.0),
             TOP,
@@ -618,12 +635,11 @@ mod tests {
     /// distance under the 50 u gate) → warn, still accepted.
     #[test]
     fn over_tolerance_short_hop_warns_but_accepts() {
-        let mut v = MovementValidator::new();
+        let v = MovementValidator::new();
         let t0 = Instant::now();
-        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP); // seed
         let out = v.check_kinematics(
-            1,
             t0 + Duration::from_millis(50),
+            Some(t0),
             Vector3::zero(),
             Vector3::new(5.0, 0.0, 0.0),
             TOP,
@@ -633,18 +649,31 @@ mod tests {
         assert!(sample.implied_speed > 90.0 && sample.implied_speed < 110.0);
     }
 
+    /// `touch_clock` advances the per-entity clock and hands back the
+    /// previous sample, which is what feeds `check_kinematics`'s `prev`.
+    #[test]
+    fn touch_clock_returns_prior_and_advances() {
+        let mut v = MovementValidator::new();
+        let t0 = Instant::now();
+        assert_eq!(v.touch_clock(1, t0), None, "first touch has no prior");
+        let t1 = t0 + Duration::from_millis(100);
+        assert_eq!(v.touch_clock(1, t1), Some(t0), "second touch returns t0");
+    }
+
     /// A spamming attacker who keeps the cell entity pinned (last_pos
-    /// unchanged) must be rejected on *every* packet — the clock reseed
-    /// keeps dt ~one tick so the implied speed never decays under the
-    /// teleport gate.
+    /// unchanged) must be rejected on *every* packet — touching the clock
+    /// each packet keeps dt ~one tick so the implied speed never decays
+    /// under the teleport gate.
     #[test]
     fn sustained_teleport_spam_keeps_rejecting() {
         let mut v = MovementValidator::new();
         let mut t = Instant::now();
-        v.check_kinematics(1, t, Vector3::zero(), Vector3::zero(), TOP); // seed
+        v.touch_clock(1, t); // seed
         for _ in 0..5 {
             t += Duration::from_millis(100);
-            let out = v.check_kinematics(1, t, Vector3::zero(), Vector3::new(100.0, 0.0, 0.0), TOP);
+            let prev = v.touch_clock(1, t);
+            let out =
+                v.check_kinematics(t, prev, Vector3::zero(), Vector3::new(100.0, 0.0, 0.0), TOP);
             assert_eq!(
                 out.reject,
                 Some(MovementReject::Teleport),
@@ -658,21 +687,22 @@ mod tests {
         let mut v = MovementValidator::new();
         let t0 = Instant::now();
         // Player moving normally, last sample at t0.
-        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP);
+        v.touch_clock(1, t0);
         // Authoritative teleport 5 s later reseeds the clock.
         let t_tp = t0 + Duration::from_secs(5);
         v.note_authorized_teleport(1, t_tp);
         // First post-teleport client packet, 100 ms after the teleport,
         // a small delta from the new (destination) last_pos: dt is
         // measured from t_tp, not t0, so the speed is sane.
-        let dst = Vector3::new(500.0, 0.0, 500.0);
-        let out = v.check_kinematics(
-            1,
-            t_tp + Duration::from_millis(100),
-            dst,
-            Vector3::new(500.5, 0.0, 500.0),
-            TOP,
+        let t_pkt = t_tp + Duration::from_millis(100);
+        let prev = v.touch_clock(1, t_pkt);
+        assert_eq!(
+            prev,
+            Some(t_tp),
+            "reseed must make the prior the teleport instant"
         );
+        let dst = Vector3::new(500.0, 0.0, 500.0);
+        let out = v.check_kinematics(t_pkt, prev, dst, Vector3::new(500.5, 0.0, 500.0), TOP);
         assert!(out.reject.is_none());
         assert!(
             out.speed_warn.is_none(),
@@ -681,16 +711,20 @@ mod tests {
     }
 
     #[test]
-    fn forget_clears_clock_so_next_sample_reseeds() {
+    fn forget_clears_clock_so_next_sample_has_no_baseline() {
         let mut v = MovementValidator::new();
         let t0 = Instant::now();
-        v.check_kinematics(1, t0, Vector3::zero(), Vector3::zero(), TOP); // seed
+        v.touch_clock(1, t0); // seed
         v.forget(1);
-        // After forget there is no baseline, so even a teleport-shaped
-        // delta is accepted as a fresh seed (next packet will constrain).
+        // After forget there is no baseline, so the next touch returns
+        // None and even a teleport-shaped delta is accepted as a fresh
+        // start (the following packet will constrain).
+        let t1 = t0 + Duration::from_millis(50);
+        let prev = v.touch_clock(1, t1);
+        assert_eq!(prev, None, "forget must clear the prior sample");
         let out = v.check_kinematics(
-            1,
-            t0 + Duration::from_millis(50),
+            t1,
+            prev,
             Vector3::zero(),
             Vector3::new(100.0, 0.0, 0.0),
             TOP,
