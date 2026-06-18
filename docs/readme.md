@@ -63,7 +63,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Test Audit 2026-05-31](testing/audit-2026-05-31.md) | Point-in-time codebase-wide audit: real bugs surfaced by the test suite, tests to delete, tests to tighten, coverage gaps, strategic recommendations |
 | [Game Systems](game-systems.md) | Survey of every game feature: combat, abilities, stargates, missions, crafting |
 | [Game Data](game-data.md) | What game content exists (items, abilities, missions) and what is missing |
-| [Commands Reference](commands.md) | Player commands, chat, GM tools, and debug commands |
+| [Commands Reference](commands.md) | Every slash command with per-command handled/tested status, access level, parameters, and samples |
 | [Connection Flow](connection-flow.md) | End-to-end login and world entry sequence |
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
 | [Project Status](project-status.md) | What works, what is left, and the roadmap |
