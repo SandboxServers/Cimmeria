@@ -206,9 +206,16 @@ pub async fn handle_remove_inventory_item(
     // Player drops / content-chain removes leave `notify_gm` false. Fired
     // post-commit so it reflects an actual removal.
     if notify_gm {
+        // On a full delete the row may hold fewer than the requested quantity, so
+        // report the count that actually committed rather than what was asked for.
+        let removed_qty = if removed_all {
+            source.stack_size
+        } else {
+            quantity
+        };
         send_gm_feedback_to_client(
             entity_id,
-            &format!("gmRemoveItem: removed {quantity}x item {item_id}"),
+            &format!("gmRemoveItem: removed {removed_qty}x item {item_id}"),
             transport,
             connected,
             entity_to_addr,

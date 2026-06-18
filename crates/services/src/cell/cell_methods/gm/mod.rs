@@ -322,5 +322,21 @@ pub(super) fn resolve_self_or_target(
     }
 }
 
+/// Forward a base-bound message for GM command `cmd`, logging a negative on a
+/// closed base channel rather than dropping a privileged write silently. The
+/// only failure is the base receiver being gone (server shutting down); returns
+/// `false` so callers can skip claiming success.
+pub(super) async fn forward_to_base(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    msg: CellToBaseMsg,
+    cmd: &str,
+) -> bool {
+    if let Err(e) = tx.send(msg).await {
+        tracing::warn!(cmd, error = %e, "GM cmd: base channel closed, command dropped");
+        return false;
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests;

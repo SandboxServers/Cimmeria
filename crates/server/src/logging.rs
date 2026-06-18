@@ -1,8 +1,6 @@
-//! Tracing subscriber setup for the Cimmeria server: log-file archival,
-//! the per-target file layers, the console layer, the in-memory admin-WS
-//! broadcast layer, and the optional OTLP layers. Extracted from `main.rs`
-//! to keep that file under the size cap; `main` calls [`init_logging`] once
-//! at startup and holds the returned `WorkerGuard`s for the process lifetime.
+//! Tracing subscriber setup. `main` calls [`init_logging`] once at startup and
+//! must hold the returned `WorkerGuard`s for the process lifetime — dropping one
+//! flushes and closes its log file.
 
 use std::fs;
 use std::path::Path;
@@ -47,8 +45,15 @@ fn archive_previous_logs_in(logs_dir: &Path) {
         return;
     }
 
+    // Second-resolution timestamps collide on two restarts in the same second;
+    // on Windows `fs::rename` into an existing dir fails, so disambiguate.
     let ts = chrono_timestamp();
-    let archive_dir = logs_dir.join("archive").join(&ts);
+    let mut archive_dir = logs_dir.join("archive").join(&ts);
+    let mut n = 1u32;
+    while archive_dir.exists() {
+        archive_dir = logs_dir.join("archive").join(format!("{ts}-{n:02}"));
+        n += 1;
+    }
     if let Err(e) = fs::create_dir_all(&archive_dir) {
         eprintln!(
             "Failed to create archive directory {}: {e}",
@@ -114,32 +119,12 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     (y as u64, m, d)
 }
 
-/// Initialise a layered tracing subscriber.
+/// Initialise the layered tracing subscriber (console + per-system `logs/*.log`
+/// files + admin-WS broadcast + optional OTLP). The returned `WorkerGuard`s must
+/// outlive the process.
 ///
-/// Returns `WorkerGuard`s that **must** be held alive in `main()` — dropping
-/// them flushes and closes the log files.
-///
-/// Layers:
-/// - **Console** (stdout): coloured, human-readable, level from `RUST_LOG` (default `info`).
-/// - **`logs/server.log`**: JSON, all modules at `info` (high-level milestones only).
-/// - **`logs/auth.log`**: auth module at `trace`.
-/// - **`logs/base.log`**: connection lifecycle (service, connect_loop, login, tick_sync, helpers) at `trace`.
-/// - **`logs/world_entry.log`**: player world entry, DB queries, appearance at `trace`.
-/// - **`logs/character.log`**: char list, creation, visuals, PAK serving at `trace`.
-/// - **`logs/protocol.log`**: wire-level packet building, encryption at `trace`.
-/// - **`logs/aoi.log`**: AoI tick, entity create/destroy, spatial grid at `trace`.
-/// - **`logs/combat.log`**: damage, abilities, NPC AI, death/respawn at `trace`.
-/// - **`logs/content.log`**: content chain triggers, conditions, actions at `trace`.
-/// - **`logs/missions.log`**: mission accept/complete/abandon, objectives at `trace`.
-/// - **`logs/interactions.log`**: dialogs, vendors, trainers, loot, chat, mail at `trace`.
-/// - **`logs/spawner.log`**: NPC spawning, stargate travel, ring transport at `trace`.
-/// - **`logs/dispatch.log`**: method routing (cell + base method dispatch) at `trace`.
-/// - **WebSocket broadcast**: `debug` for admin panel streaming.
-/// - **Cosmos DB** (optional): `debug` minus per-packet noise.
-///
-/// Correlation: most tracing calls include `entity_id`, `player_id`, or
-/// `witness_id` as structured fields.  To follow a player across files:
-/// `grep entity_id=42 logs/*.log`.
+/// Most events carry `entity_id` / `player_id` / `witness_id`, so a player can be
+/// followed across files with `grep entity_id=42 logs/*.log`.
 pub(crate) fn init_logging(
     log_tx: broadcast::Sender<LogEntry>,
     log_buffer: LogBuffer,
@@ -157,9 +142,8 @@ pub(crate) fn init_logging(
 
     type BoxLayer = Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>;
 
-    // Helper: create a plain-text, non-ANSI log file layer with a specific filter.
-    // Returns a boxed layer to avoid deeply nested generic types that cause
-    // the Rust type-checker to consume 50+ GB of RAM.
+    // Boxed (not nested generics) because the deeply-nested layer type otherwise
+    // makes the type-checker consume 50+ GB of RAM.
     macro_rules! log_layer {
         ($filename:expr, $filter:expr) => {{
             let file = tracing_appender::rolling::never("logs", $filename);
@@ -184,10 +168,12 @@ pub(crate) fn init_logging(
     // stream, and retransmit noise. These stay at full fidelity in the file
     // layers (protocol.log) and OTLP; they just don't belong on an operator's
     // console. `RUST_LOG`, when set, overrides this entirely.
-    const CONSOLE_DEFAULT: &str =
-        "info,mercury.packet=warn,wire.in=warn,wire.out=warn,mercury.retransmit=warn";
-    let console_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(CONSOLE_DEFAULT));
+    // The per-packet wire stream belongs in protocol.log + OTLP at full fidelity,
+    // not in human-facing sinks (console, server.log, admin WS). Mute it in each.
+    const WIRE_FIREHOSE_MUTED: &str =
+        "mercury.packet=warn,wire.in=warn,wire.out=warn,mercury.retransmit=warn";
+    let console_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(format!("info,{WIRE_FIREHOSE_MUTED}")));
     layers.push(Box::new(fmt::layer().with_filter(console_filter)));
 
     // ── server.log (JSON, all modules, info) ─────────────────────────────
@@ -199,7 +185,7 @@ pub(crate) fn init_logging(
             .json()
             .with_writer(server_writer)
             .with_target(true)
-            .with_filter(EnvFilter::new("info")),
+            .with_filter(EnvFilter::new(format!("info,{WIRE_FIREHOSE_MUTED}"))),
     ));
 
     // ── Per-system log files ─────────────────────────────────────────────
@@ -292,9 +278,9 @@ pub(crate) fn init_logging(
 
     // ── WebSocket broadcast (debug+, all modules) ─────────────────────
     layers.push(Box::new(
-        BroadcastLayer::new(log_tx, log_buffer).with_filter(EnvFilter::new(
-            "debug,tungstenite=info,tokio_tungstenite=info,hyper=info",
-        )),
+        BroadcastLayer::new(log_tx, log_buffer).with_filter(EnvFilter::new(format!(
+            "debug,tungstenite=info,tokio_tungstenite=info,hyper=info,{WIRE_FIREHOSE_MUTED}"
+        ))),
     ));
 
     // ── Discord notifications (optional — config-gated) ──────────────
@@ -314,21 +300,9 @@ pub(crate) fn init_logging(
     }
 
     // ── OpenTelemetry → SigNoz (optional) ─────────────────────────────
-    // Two layers come through together when OTLP is enabled:
-    //
-    //   * `trace_layer` — captures `tracing::span!` spans (and events
-    //     fired *inside* them) as OpenTelemetry spans. Shows up in the
-    //     SigNoz Traces view.
-    //   * `log_layer`   — captures every `tracing::*` event as an OTLP
-    //     log record, including root-level events that have no parent
-    //     span. The Mercury packet stream lives here. Shows up in the
-    //     SigNoz Logs view.
-    //
-    // Both layers share the same env-filter so the operator only has to
-    // tune visibility once. Filters ship `debug+` from our crates and
-    // drop the chatty HTTP middleware noise; `mercury.packet` is kept
-    // at info — it's the load-bearing analytical surface, sampling
-    // would defeat the purpose.
+    // Unlike the human-facing sinks above, OTLP keeps `mercury.packet` at info —
+    // it's the load-bearing analytical surface here, so muting/sampling it would
+    // defeat the purpose. The trace and log layers share one filter.
     let otel_filter = "info,\
                 cimmeria_services=debug,\
                 cimmeria_mercury=debug,\

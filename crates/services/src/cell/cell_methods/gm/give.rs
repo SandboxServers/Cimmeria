@@ -8,7 +8,7 @@ use cimmeria_entity::inventory::INV_MAIN;
 use tokio::sync::mpsc;
 
 use super::feedback::send_gm_feedback;
-use super::read_i32;
+use super::{forward_to_base, read_i32};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::read_wstring;
@@ -61,13 +61,16 @@ pub(super) async fn handle_give_xp(
     tracing::info!(entity_id, amount, "gmGiveXp: granting XP to GM");
     // `notify_gm: true` — the base sends the definitive feedback line after the
     // XP write commits. No optimistic "requested" line here.
-    let _ = tx
-        .send(CellToBaseMsg::GrantXP {
+    forward_to_base(
+        tx,
+        CellToBaseMsg::GrantXP {
             entity_id,
             xp_amount: amount as u64,
             notify_gm: true,
-        })
-        .await;
+        },
+        "gmGiveXp",
+    )
+    .await;
     true
 }
 
@@ -163,16 +166,19 @@ pub(super) async fn handle_give_item(
     // re-homes weapons/ammo to the bandolier via the item_containers cache.
     // `notify_gm: true` — the base sends the definitive feedback line after the
     // inventory write commits. No optimistic "requested" line here.
-    let _ = tx
-        .send(CellToBaseMsg::GrantItem {
+    forward_to_base(
+        tx,
+        CellToBaseMsg::GrantItem {
             entity_id,
             player_id,
             item_id: type_id,
             container_id: INV_MAIN,
             count,
             notify_gm: true,
-        })
-        .await;
+        },
+        "gmGiveItem",
+    )
+    .await;
     true
 }
 
@@ -224,14 +230,17 @@ pub(super) async fn handle_give_cash(
     );
     // `notify_gm: true` — the base sends the definitive feedback line after the
     // naquadah UPDATE commits. No optimistic "requested" line here.
-    let _ = tx
-        .send(CellToBaseMsg::GrantCash {
+    forward_to_base(
+        tx,
+        CellToBaseMsg::GrantCash {
             entity_id,
             player_id,
             amount,
             notify_gm: true,
-        })
-        .await;
+        },
+        "gmGiveCash",
+    )
+    .await;
     true
 }
 
@@ -313,14 +322,17 @@ pub(super) async fn handle_give_expertise(
     );
     // No optimistic "requested" feedback — the base sends the definitive line
     // ("discipline <d> now <newExpertise>") once `save_crafting_state` commits.
-    let _ = tx
-        .send(CellToBaseMsg::GrantExpertise {
+    forward_to_base(
+        tx,
+        CellToBaseMsg::GrantExpertise {
             entity_id,
             player_id,
             discipline_id,
             amount,
-        })
-        .await;
+        },
+        "gmGiveExpertise",
+    )
+    .await;
     true
 }
 
@@ -391,13 +403,16 @@ pub(super) async fn handle_give_applied_science(
     );
     // No optimistic "requested" feedback — the base sends the definitive line
     // ("+<amount> (total <newTotal>)") once `save_crafting_state` commits.
-    let _ = tx
-        .send(CellToBaseMsg::GrantAppliedSciencePoints {
+    forward_to_base(
+        tx,
+        CellToBaseMsg::GrantAppliedSciencePoints {
             entity_id,
             player_id,
             amount,
-        })
-        .await;
+        },
+        "gmGiveAppliedSciencePoints",
+    )
+    .await;
     true
 }
 
@@ -473,14 +488,17 @@ pub(super) async fn handle_remove_item(
     );
     // `notify_gm: true` — the base sends the definitive feedback line after the
     // inventory remove commits. No optimistic "requested" line here.
-    let _ = tx
-        .send(CellToBaseMsg::RemoveInventoryItem {
+    forward_to_base(
+        tx,
+        CellToBaseMsg::RemoveInventoryItem {
             entity_id,
             player_id,
             item_id,
             quantity: i32::from(quantity),
             notify_gm: true,
-        })
-        .await;
+        },
+        "gmRemoveItem",
+    )
+    .await;
     true
 }

@@ -8,6 +8,7 @@
 use tokio::sync::mpsc;
 
 use super::feedback::send_gm_feedback;
+use super::forward_to_base;
 use crate::cell::gate_travel::handle_dial_gate;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -67,14 +68,20 @@ pub(super) async fn handle_goto_xyz(
     // Keep the spatial grid consistent first (writes cell_entity.position),
     // then send the authoritative snap.
     space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
-    let _ = tx
-        .send(CellToBaseMsg::TeleportPlayer {
+    if !forward_to_base(
+        tx,
+        CellToBaseMsg::TeleportPlayer {
             entity_id,
             space_id,
             position,
             prev_pos,
-        })
-        .await;
+        },
+        "gmGotoXYZ",
+    )
+    .await
+    {
+        return true; // base channel closed — don't claim a snap that never sent.
+    }
     send_gm_feedback(
         entity_id,
         &format!(
@@ -296,14 +303,20 @@ pub(super) async fn handle_goto(
         "gmGoto: teleporting GM to target"
     );
     space_mgr.update_entity_position(entity_id, dest, [0, 0, 0], [0.0; 3]);
-    let _ = tx
-        .send(CellToBaseMsg::TeleportPlayer {
+    if !forward_to_base(
+        tx,
+        CellToBaseMsg::TeleportPlayer {
             entity_id,
             space_id,
             position: dest,
             prev_pos,
-        })
-        .await;
+        },
+        "gmGoto",
+    )
+    .await
+    {
+        return true; // base channel closed — don't claim a snap that never sent.
+    }
     send_gm_feedback(
         entity_id,
         &format!("gmGoto: teleported to entity {target_eid}"),
@@ -380,16 +393,21 @@ pub(super) async fn handle_summon(
         "gmSummon: moving target to caller"
     );
     space_mgr.update_entity_position(target_eid, caller_pos, [0, 0, 0], [0.0; 3]);
-    if is_player {
-        // Players need the authoritative forced-position snap to their client.
-        let _ = tx
-            .send(CellToBaseMsg::TeleportPlayer {
+    if is_player
+        && !forward_to_base(
+            tx,
+            // Players need the authoritative forced-position snap to their client.
+            CellToBaseMsg::TeleportPlayer {
                 entity_id: target_eid,
                 space_id: caller_space as u32,
                 position: caller_pos,
                 prev_pos: target_prev,
-            })
-            .await;
+            },
+            "gmSummon",
+        )
+        .await
+    {
+        return true; // base channel closed — don't claim a snap that never sent.
     }
     send_gm_feedback(
         entity_id,

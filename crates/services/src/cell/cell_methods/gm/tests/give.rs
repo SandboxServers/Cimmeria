@@ -471,23 +471,24 @@ async fn gm_give_item_success_emits_action_without_cell_feedback() {
 
     assert!(dispatch(1, GM_GIVE_ITEM, &give_item_args("1124", 5), &tx, &mut mgr).await);
     let msgs = drain(&mut rx);
-    // The grant action is emitted (and is the only message).
-    let granted = msgs.iter().any(|m| {
-        matches!(
-            m,
-            CellToBaseMsg::GrantItem {
-                notify_gm: true,
-                ..
-            }
-        )
-    });
-    assert!(
-        granted,
-        "the grant action must be emitted with notify_gm: true"
+    // The grant action is emitted, and it is the ONLY message.
+    let grants = msgs
+        .iter()
+        .filter(|m| {
+            matches!(
+                m,
+                CellToBaseMsg::GrantItem {
+                    notify_gm: true,
+                    ..
+                }
+            )
+        })
+        .count();
+    assert_eq!(grants, 1, "exactly one GrantItem with notify_gm: true");
+    assert_eq!(
+        msgs.len(),
+        1,
+        "the grant must be the only message; the base owns the definitive feedback line: {msgs:?}"
     );
-    // No cell-side feedback on success — the base owns the definitive line now.
-    assert!(
-        feedback_text(&msgs, 1).is_none(),
-        "the cell must NOT emit success feedback on the base round-trip path"
-    );
+    // (Implies no cell-side feedback on success.)
 }
