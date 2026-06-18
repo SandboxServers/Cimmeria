@@ -225,7 +225,7 @@ pub(crate) async fn handle_encrypted_datagram(
                             // in. The cell never writes against it (the server
                             // `entity_space` binding is authoritative); it is
                             // forwarded only so the cell can warn on a
-                            // server↔client space divergence (CAT-B-06).
+                            // server↔client space divergence.
                             // payload[4..8] = vehicleId (unused)
                             let claimed_space_id = u32::from_le_bytes([
                                 payload[0], payload[1], payload[2], payload[3],

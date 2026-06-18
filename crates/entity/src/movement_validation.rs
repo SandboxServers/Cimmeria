@@ -289,8 +289,9 @@ impl MovementValidator {
     /// cell entity's `position` field — already advanced by any
     /// server-authoritative teleport), `proposed` is the client's new
     /// position, `now` is the server's monotonic processing time, and
-    /// `prev` is the previous processing-clock sample (`None` = no
-    /// baseline yet, so the first packet is accepted without measuring).
+    /// `prev` is the previous processing-clock sample (`None` = no time
+    /// baseline yet — the first packet is gated on distance from
+    /// `last_pos` alone, since no speed can be computed).
     ///
     /// Sourcing `last_pos` from the post-teleport cell entity is what
     /// makes this layer robust without an authorized-teleport allowlist:
@@ -311,12 +312,24 @@ impl MovementValidator {
         proposed: Vector3,
         top_speed: f32,
     ) -> KinematicsOutcome {
+        let distance = proposed.distance_to(&last_pos);
+
         let Some(prev) = prev else {
-            // No baseline yet: nothing to measure against.
-            return KinematicsOutcome::default();
+            // No *time* baseline yet (first packet since spawn / forget),
+            // so we can't compute a speed. But `last_pos` is the
+            // authoritative spawn/teleport position, so gate on distance
+            // alone: a first move farther than the teleport jump distance
+            // is a teleport regardless of timing. This closes the "one
+            // free large jump on the very first packet" bypass — the
+            // dt-based speed gate below only kicks in once a baseline
+            // exists.
+            let reject = (distance > Self::TELEPORT_JUMP_UNITS).then_some(MovementReject::Teleport);
+            return KinematicsOutcome {
+                reject,
+                speed_warn: None,
+            };
         };
 
-        let distance = proposed.distance_to(&last_pos);
         let dt_secs = now.saturating_duration_since(prev).as_secs_f32();
         // dt can be ~0 when two packets share a clock instant; treat that
         // as infinite implied speed so the distance gate alone decides.
@@ -562,12 +575,25 @@ mod tests {
     const TOP: f32 = MovementValidator::DEFAULT_TOP_SPEED;
 
     #[test]
-    fn no_baseline_sample_is_accepted() {
+    fn no_baseline_small_first_move_is_accepted() {
         let v = MovementValidator::new();
         let t0 = Instant::now();
-        // `prev = None` — even an absurd jump is accepted (nothing to
-        // measure against). The bounds layer is what guards the first
-        // packet; kinematics only constrains *deltas*.
+        // `prev = None` (first packet since spawn). A small move from the
+        // authoritative spawn is fine — no speed to measure, distance is
+        // under the teleport gate.
+        let out = v.check_kinematics(t0, None, Vector3::zero(), Vector3::new(2.0, 0.0, 0.0), TOP);
+        assert_eq!(out, KinematicsOutcome::default());
+    }
+
+    /// First-packet bypass guard: with no time baseline we can't compute a
+    /// speed, but a first move farther than the teleport jump distance
+    /// from the authoritative spawn is still a teleport (distance gate).
+    /// Without this gate, the very first client packet after spawn could
+    /// jump anywhere in-bounds for free.
+    #[test]
+    fn no_baseline_large_first_move_is_teleport_rejected() {
+        let v = MovementValidator::new();
+        let t0 = Instant::now();
         let out = v.check_kinematics(
             t0,
             None,
@@ -575,7 +601,7 @@ mod tests {
             Vector3::new(9_000.0, 0.0, 0.0),
             TOP,
         );
-        assert_eq!(out, KinematicsOutcome::default());
+        assert_eq!(out.reject, Some(MovementReject::Teleport));
     }
 
     #[test]
@@ -716,19 +742,13 @@ mod tests {
         let t0 = Instant::now();
         v.touch_clock(1, t0); // seed
         v.forget(1);
-        // After forget there is no baseline, so the next touch returns
-        // None and even a teleport-shaped delta is accepted as a fresh
-        // start (the following packet will constrain).
+        // After forget there is no time baseline, so the next touch
+        // returns None and the move is gated on distance alone (a fresh
+        // start) — a small move is accepted.
         let t1 = t0 + Duration::from_millis(50);
         let prev = v.touch_clock(1, t1);
         assert_eq!(prev, None, "forget must clear the prior sample");
-        let out = v.check_kinematics(
-            t1,
-            prev,
-            Vector3::zero(),
-            Vector3::new(100.0, 0.0, 0.0),
-            TOP,
-        );
+        let out = v.check_kinematics(t1, prev, Vector3::zero(), Vector3::new(2.0, 0.0, 0.0), TOP);
         assert_eq!(out, KinematicsOutcome::default());
     }
 }

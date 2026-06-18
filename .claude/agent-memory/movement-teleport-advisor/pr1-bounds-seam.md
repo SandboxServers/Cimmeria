@@ -22,8 +22,8 @@ PR1 of issue #63 (bounds-check layer) landed on branch `feat/movement-validation
 
 **Negative-log shape pinned in tests:**
 
-- `target: "movement.validation"`, level `warn!`, message starts `"movement.bounds_violation:"`.
-- Fields: `reason="bounds"`, `entity_id`, `space_id`, `client_{x,y,z}`, `last_valid_{x,y,z}`, `bounds_{min,max}_{x,y,z}`, `reject=?MovementReject` (Debug-formatted).
+- `target: "movement.validation"`, level `warn!`, message starts `"movement.validation_reject"` (was `"movement.bounds_violation:"` in PR1; renamed when navmesh/teleport layers landed so one message covers all reject reasons).
+- Fields: `reason ∈ {bounds,navmesh,teleport}`, `entity_id`, `space_id`, `client_{x,y,z}`, `last_valid_{x,y,z}`, `bounds_{min,max}_{x,y,z}`, `reject=?MovementReject` (Debug-formatted).
 - LogCapture pinned in `cell::service::base_messages::tests::general::entity_move_out_of_bounds_rejects_and_emits_teleport_player_snap_back`.
 
 **Test seams worth knowing:**

@@ -305,7 +305,8 @@ fn seed_clock(mgr: &mut super::super::SpaceManager, entity_id: u32, now: Instant
 #[test]
 fn teleport_100m_over_50ms_is_rejected_and_not_observed() {
     let mut mgr = make_manager();
-    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+    let space_id = mgr
+        .create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
         .unwrap();
     let t0 = Instant::now();
     seed_clock(&mut mgr, 100, t0);
@@ -332,7 +333,7 @@ fn teleport_100m_over_50ms_is_rejected_and_not_observed() {
         other => panic!("expected Rejected(Teleport), got {other:?}"),
     }
     // AoI reads the cell entity position; it must still be spawn.
-    let entity = &mgr.spaces[&65536].entities[&100];
+    let entity = &mgr.spaces[&space_id].entities[&100];
     assert_eq!(
         entity.position,
         Vector3::new(SPAWN_POS[0], SPAWN_POS[1], SPAWN_POS[2]),
@@ -348,7 +349,8 @@ fn teleport_100m_over_50ms_is_rejected_and_not_observed() {
 #[test]
 fn over_tolerance_short_hop_is_accepted_warn_only() {
     let mut mgr = make_manager();
-    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+    let space_id = mgr
+        .create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
         .unwrap();
     let t0 = Instant::now();
     seed_clock(&mut mgr, 100, t0);
@@ -366,7 +368,7 @@ fn over_tolerance_short_hop_is_accepted_warn_only() {
         matches!(outcome, ClientMoveOutcome::Accepted { position } if position == hop),
         "over-tolerance short hop must be accepted under the warn-only policy, got {outcome:?}"
     );
-    let entity = &mgr.spaces[&65536].entities[&100];
+    let entity = &mgr.spaces[&space_id].entities[&100];
     assert_eq!(entity.position, Vector3::new(hop[0], hop[1], hop[2]));
 }
 

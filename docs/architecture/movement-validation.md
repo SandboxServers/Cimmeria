@@ -29,15 +29,19 @@ unchecked `update_entity_position` directly — they are the source of
 truth for those entities.
 
 The validator (`cimmeria_entity::movement_validation::MovementValidator`)
-runs four layers in cheapest-first order. Three hard-reject (snap-back);
-the speed layer is **warn-only** until calibrated.
+runs four layers. The table is in **execution order** as wired in
+`apply_client_position_update_at` — cheapest spatial gate first, then the
+stateful kinematics. Three layers hard-reject (snap-back); the speed
+sub-layer is **warn-only** until calibrated. Speed and teleport share one
+`check_kinematics` call (the kinematics layer); they are listed as two
+rows because they have different actions.
 
-| # | Layer | Action | Catches |
-|---|-------|--------|---------|
+| Order | Layer | Action | Catches |
+|-------|-------|--------|---------|
 | 1 | **Bounds** (`check_bounds`) | reject | NaN / ±∞ / absurd coords, **Z-axis floor-clip** (full X/Y/**Z** AABB test) |
-| 2 | **Speed** (`check_kinematics`) | **warn-only** | sustained over-tolerance velocity (`implied_speed > top_speed × 1.5`) |
-| 3 | **Teleport** (`check_kinematics`) | reject | single update both `> 50 u` **and** `> top_speed × 10` |
-| 4 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded |
+| 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded |
+| 3 | **Speed** (`check_kinematics`) | **warn-only** | sustained over-tolerance velocity (`implied_speed > top_speed × 1.5`) |
+| 4 | **Teleport** (`check_kinematics`) | reject | single update both `> 50 u` **and** `> top_speed × 10` (or, on the first packet with no time baseline, `> 50 u` from the authoritative spawn) |
 
 Bounds AABB is sourced from the active space's navmesh `bmin`/`bmax`, or
 `SpaceBounds::FALLBACK` (20 km × 12 km × 20 km) for navmesh-less spaces.

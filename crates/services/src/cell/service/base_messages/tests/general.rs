@@ -221,7 +221,7 @@ async fn entity_move_out_of_bounds_rejects_and_emits_teleport_player_snap_back()
     );
 }
 
-/// CAT-B-06 — server↔client space divergence. An `EntityMove` whose
+/// Server↔client space divergence. An `EntityMove` whose
 /// `claimed_space_id` differs from the cell's authoritative binding must:
 ///   1. still apply the position (the check is warn-only — the write uses
 ///      the server binding, never the client's claim, so it cannot
@@ -271,9 +271,11 @@ async fn entity_move_space_mismatch_warns_but_still_applies() {
     )
     .await;
 
-    // 1. The write is server-authoritative and still lands.
+    // 1. The write is server-authoritative and still lands — assert the
+    //    full 3D position so a Y-propagation regression also trips here.
     let entity = mgr.get_entity(4242).unwrap();
     assert_eq!(entity.position.x, new_pos[0]);
+    assert_eq!(entity.position.y, new_pos[1]);
     assert_eq!(entity.position.z, new_pos[2]);
 
     // 2. The divergence is logged with the contract field shape.
