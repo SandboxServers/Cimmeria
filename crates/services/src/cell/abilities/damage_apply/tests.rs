@@ -169,7 +169,14 @@ async fn lethal_hit_against_npc_emits_grant_xp_and_state_flip() {
         CellToBaseMsg::GrantXP {
             entity_id,
             xp_amount,
-        } => Some((*entity_id, *xp_amount)),
+            notify_gm,
+        } => {
+            assert!(
+                !notify_gm,
+                "combat kill XP must not request GM-only definitive feedback"
+            );
+            Some((*entity_id, *xp_amount))
+        }
         _ => None,
     });
     assert_eq!(

@@ -1,0 +1,242 @@
+use super::super::*; // gm module: dispatch + GM_* constants
+use super::*; // shared helpers from tests/mod.rs
+use crate::cell::messages::CellToBaseMsg;
+use tokio::sync::mpsc;
+
+#[tokio::test]
+async fn gm_kill_target_kills_npc_in_same_space() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    let (tx, mut rx) = mpsc::channel(32);
+
+    assert!(dispatch(1, GM_KILL_TARGET, &2i64.to_le_bytes(), &tx, &mut mgr).await);
+    let npc = mgr.get_entity(2).unwrap();
+    assert!(
+        crate::cell::combat::is_dead_state(npc.state_field),
+        "gmKillTarget must mark the NPC dead"
+    );
+    // Cell-local success: the kill action lands first, then a feedback line that
+    // states the kill happened.
+    let fb = feedback_text(&drain(&mut rx), 1).expect("gmKillTarget success must feed back");
+    assert!(
+        fb.contains("killed"),
+        "gmKillTarget success feedback must say it killed the npc, got: {fb}"
+    );
+}
+
+#[tokio::test]
+async fn gm_kill_target_refuses_player() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(e) = mgr.get_entity_mut(2) {
+        e.is_player = true;
+        e.player_id = Some(200);
+    }
+    let (tx, mut _rx) = mpsc::channel(32);
+
+    assert!(dispatch(1, GM_KILL_TARGET, &2i64.to_le_bytes(), &tx, &mut mgr).await);
+    let victim = mgr.get_entity(2).unwrap();
+    assert!(
+        !crate::cell::combat::is_dead_state(victim.state_field),
+        "gmKillTarget must refuse a player target"
+    );
+}
+
+#[tokio::test]
+async fn gm_despawn_removes_npc_but_refuses_player() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    // NPC at 2, player at 3.
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(3, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(e) = mgr.get_entity_mut(3) {
+        e.is_player = true;
+        e.player_id = Some(300);
+    }
+    let (tx, _rx) = mpsc::channel(8);
+
+    // Player target refused.
+    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &3i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        mgr.get_entity(3).is_some(),
+        "gmDespawn must refuse a player target"
+    );
+
+    // NPC despawned (despawnMob alias hits the same handler).
+    assert!(dispatch(1, DESPAWN_MOB, &2i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        mgr.get_entity(2).is_none(),
+        "despawnMob must remove the NPC"
+    );
+}
+
+#[tokio::test]
+async fn gm_respawn_requires_player_id() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    // Strip the player_id so the caller looks like an NPC.
+    mgr.get_entity_mut(1).unwrap().player_id = None;
+    let (tx, mut rx) = mpsc::channel(16);
+
+    assert!(dispatch(1, GM_RESPAWN, &[], &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
+    // The only thing emitted must be the rejection feedback line — no respawn
+    // sequence (which would open with the Defeat-Window close, method != 28).
+    assert!(
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall {
+                method_index,
+                ..
+            } if *method_index != 28
+        )),
+        "gmRespawn must not run the respawn sequence for a caller with no player_id"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "gmRespawn must feed back a rejection"
+    );
+}
+
+#[tokio::test]
+async fn gm_respawn_runs_for_player() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(16);
+
+    assert!(dispatch(1, GM_RESPAWN, &[], &tx, &mut mgr).await);
+    // The respawn sequence always opens by closing the Defeat Window, so at
+    // least one message must have been emitted.
+    assert!(
+        !drain(&mut rx).is_empty(),
+        "gmRespawn must drive the respawn sequence for a player"
+    );
+}
+
+#[tokio::test]
+async fn gm_set_target_sets_and_clears() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+
+    // Numeric id form: set target 42.
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "42");
+    assert!(dispatch(1, GM_SET_TARGET, &args, &tx, &mut mgr).await);
+    assert_eq!(mgr.get_entity(1).unwrap().current_target_id, Some(42));
+    assert!(
+        drain(&mut rx)
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::EntityMethodCall { entity_id: 1, .. })),
+        "gmSetTarget must emit onTargetUpdate to the owner"
+    );
+
+    // "0" clears the target.
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "0");
+    assert!(dispatch(1, GM_SET_TARGET, &args, &tx, &mut mgr).await);
+    assert_eq!(
+        mgr.get_entity(1).unwrap().current_target_id,
+        None,
+        "gmSetTarget(0) must clear the target"
+    );
+}
+
+#[tokio::test]
+async fn kill_target_rejects_bad_ids_and_missing_target() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    // A live NPC that must remain untouched by every rejected call.
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    let (tx, mut rx) = mpsc::channel(8);
+    // Truncated INT64 / out-of-u32-range / well-formed but nonexistent.
+    assert!(dispatch(1, GM_KILL_TARGET, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_KILL_TARGET, &(i64::MAX).to_le_bytes(), &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_KILL_TARGET, &4242i64.to_le_bytes(), &tx, &mut mgr).await);
+    // Postcondition: no side effects — the bystander NPC is alive and nothing
+    // was emitted on the wire. Fails if a reject path falls through to a kill.
+    let npc = mgr.get_entity(2).unwrap();
+    assert!(
+        !crate::cell::combat::is_dead_state(npc.state_field),
+        "no entity should have been killed"
+    );
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall { method_index, .. } if *method_index != 28
+        ) || matches!(m, CellToBaseMsg::WitnessEntityMethod { .. })),
+        "rejected kills must not emit a kill/death action"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "rejected kills must feed back a rejection"
+    );
+}
+
+#[tokio::test]
+async fn despawn_rejects_truncated_invalid_and_missing() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    // A live NPC that must survive every rejected call.
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    let before = mgr.all_entity_ids().len();
+    let (tx, mut rx) = mpsc::channel(8);
+    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &0i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &4242i32.to_le_bytes(), &tx, &mut mgr).await);
+    // Postcondition: nothing despawned, nothing emitted.
+    assert!(
+        mgr.get_entity(2).is_some(),
+        "bystander NPC must survive rejected despawns"
+    );
+    assert_eq!(
+        mgr.all_entity_ids().len(),
+        before,
+        "no entity should have been removed"
+    );
+    // Each rejected despawn now feeds back; the only messages are method-28
+    // feedback lines.
+    let msgs = drain(&mut rx);
+    assert!(
+        msgs.iter().all(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall {
+                method_index: 28,
+                ..
+            }
+        )),
+        "rejected despawns must emit nothing but feedback"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "rejected despawns must feed back a rejection"
+    );
+}
+
+#[tokio::test]
+async fn set_target_rejects_malformed_and_non_numeric() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    let (tx, mut rx) = mpsc::channel(8);
+    // Empty args → WSTRING parse fails.
+    assert!(dispatch(1, GM_SET_TARGET, &[], &tx, &mut mgr).await);
+    // Non-numeric name (no name→id resolution in the cell).
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "SomeMobName");
+    assert!(dispatch(1, GM_SET_TARGET, &args, &tx, &mut mgr).await);
+    assert_eq!(
+        mgr.get_entity(1).unwrap().current_target_id,
+        None,
+        "malformed/non-numeric must not set a target"
+    );
+    // onTargetUpdate is method 30; a reject must emit only the feedback line.
+    let msgs = drain(&mut rx);
+    assert!(
+        msgs.iter().all(|m| matches!(
+            m,
+            CellToBaseMsg::EntityMethodCall {
+                method_index: 28,
+                ..
+            }
+        )),
+        "malformed gmSetTarget must not emit an onTargetUpdate"
+    );
+    assert!(
+        feedback_text(&msgs, 1).is_some(),
+        "malformed gmSetTarget must feed back a rejection"
+    );
+}

@@ -137,7 +137,7 @@ mod handle_grant_item_tests {
         let db_pool = Some(Arc::new(pool.clone()));
 
         handle_grant_item(
-            entity_id, player_id, type_id, 1, 3, &db_pool, &None, &transport, &conn, &e2a,
+            entity_id, player_id, type_id, 1, 3, false, &db_pool, &None, &transport, &conn, &e2a,
         )
         .await;
 
@@ -217,7 +217,8 @@ mod handle_grant_item_tests {
                 // attempt at roughly the same moment.
                 barrier.wait().await;
                 handle_grant_item(
-                    entity_id, player_id, type_id, 1, 1, &db_pool, &None, &transport, &conn, &e2a,
+                    entity_id, player_id, type_id, 1, 1, false, &db_pool, &None, &transport, &conn,
+                    &e2a,
                 )
                 .await;
             }));
@@ -291,6 +292,7 @@ mod handle_grant_item_tests {
             SLAPPACK_TYPE_ID,
             1,
             2,
+            false,
             &db_pool,
             &None,
             &transport,
@@ -304,6 +306,7 @@ mod handle_grant_item_tests {
             SLAPPACK_TYPE_ID,
             1,
             3,
+            false,
             &db_pool,
             &None,
             &transport,
@@ -366,6 +369,7 @@ mod handle_grant_item_tests {
             SLAPPACK_TYPE_ID,
             1,
             SLAPPACK_MAX_STACK,
+            false,
             &db_pool,
             &None,
             &transport,
@@ -382,6 +386,7 @@ mod handle_grant_item_tests {
             SLAPPACK_TYPE_ID,
             1,
             1,
+            false,
             &db_pool,
             &None,
             &transport,
@@ -451,6 +456,7 @@ mod handle_grant_item_tests {
             SLAPPACK_TYPE_ID,
             1,
             1,
+            false,
             &db_pool,
             &None,
             &transport,
@@ -464,6 +470,7 @@ mod handle_grant_item_tests {
             other_type_id,
             1,
             1,
+            false,
             &db_pool,
             &None,
             &transport,

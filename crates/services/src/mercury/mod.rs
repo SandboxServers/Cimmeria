@@ -246,6 +246,7 @@ pub mod method_idx {
     pub const ON_EXP_UPDATE: u16 = 131;
     pub const ON_MAX_EXP_UPDATE: u16 = 132;
     pub const ON_RING_TRANSPORTER_LIST: u16 = 133;
+    pub const ON_UPDATE_DISCIPLINE: u16 = 136;
     pub const ON_UPDATE_KNOWN_CRAFTS: u16 = 139;
     pub const ON_ABILITY_TREE_INFO: u16 = 141;
     pub const ON_TRADE_STATE: u16 = 144;

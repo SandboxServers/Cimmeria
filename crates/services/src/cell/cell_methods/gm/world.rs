@@ -6,6 +6,7 @@
 
 use tokio::sync::mpsc;
 
+use super::feedback::send_gm_feedback;
 use super::{read_i32, read_i64};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -33,6 +34,7 @@ pub(super) async fn handle_kill_target(
                 args_len = args.len(),
                 "gmKillTarget: truncated args (need INT64 = 8 bytes)"
             );
+            send_gm_feedback(entity_id, "gmKillTarget: missing INT64 TargetId", tx).await;
             return true;
         }
     };
@@ -46,6 +48,7 @@ pub(super) async fn handle_kill_target(
                 target_i64,
                 "gmKillTarget: target id out of u32 range"
             );
+            send_gm_feedback(entity_id, "gmKillTarget: target id out of range", tx).await;
             return true;
         }
     };
@@ -58,6 +61,12 @@ pub(super) async fn handle_kill_target(
         Some(t) => t,
         None => {
             tracing::warn!(entity_id, target_eid, "gmKillTarget: target not found");
+            send_gm_feedback(
+                entity_id,
+                &format!("gmKillTarget: target {target_eid} not found"),
+                tx,
+            )
+            .await;
             return true;
         }
     };
@@ -69,6 +78,12 @@ pub(super) async fn handle_kill_target(
             caller_space = ?caller_space,
             "gmKillTarget: target is in a different space — refused"
         );
+        send_gm_feedback(
+            entity_id,
+            &format!("gmKillTarget: target {target_eid} is in a different space"),
+            tx,
+        )
+        .await;
         return true;
     }
     if target.is_player {
@@ -77,12 +92,25 @@ pub(super) async fn handle_kill_target(
             target_eid,
             "gmKillTarget: target is a player — refused (GM kill is NPC-only)"
         );
+        send_gm_feedback(
+            entity_id,
+            &format!("gmKillTarget: target {target_eid} is a player (NPC-only)"),
+            tx,
+        )
+        .await;
         return true;
     }
 
     tracing::info!(entity_id, target_eid, "gmKillTarget: killing NPC");
     let killed = crate::cell::abilities::gm_kill_npc(target_eid, entity_id, tx, space_mgr).await;
-    if !killed {
+    if killed {
+        send_gm_feedback(
+            entity_id,
+            &format!("gmKillTarget: killed npc {target_eid}"),
+            tx,
+        )
+        .await;
+    } else {
         // gm_kill_npc fails closed on already-dead / re-resolved-as-player —
         // surface it so the GM knows the command no-op'd.
         tracing::warn!(
@@ -90,6 +118,14 @@ pub(super) async fn handle_kill_target(
             target_eid,
             "gmKillTarget: kill not applied (target already dead or not an NPC)"
         );
+        send_gm_feedback(
+            entity_id,
+            &format!(
+                "gmKillTarget: kill not applied (npc {target_eid} already dead or not an NPC)"
+            ),
+            tx,
+        )
+        .await;
     }
     true
 }
@@ -105,7 +141,7 @@ pub(super) async fn handle_kill_target(
 pub(super) async fn handle_despawn(
     entity_id: u32,
     args: &[u8],
-    _tx: &mpsc::Sender<CellToBaseMsg>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
     let target_i32 = match read_i32(args, 0) {
@@ -116,6 +152,7 @@ pub(super) async fn handle_despawn(
                 args_len = args.len(),
                 "gmDespawn: truncated args (need INT32 TargetID)"
             );
+            send_gm_feedback(entity_id, "gmDespawn: missing INT32 TargetID", tx).await;
             return true;
         }
     };
@@ -123,6 +160,7 @@ pub(super) async fn handle_despawn(
         Ok(id) if id != 0 => id,
         _ => {
             tracing::warn!(entity_id, target_i32, "gmDespawn: invalid target id");
+            send_gm_feedback(entity_id, "gmDespawn: invalid target id", tx).await;
             return true;
         }
     };
@@ -137,6 +175,12 @@ pub(super) async fn handle_despawn(
                 caller_space = ?caller_space,
                 "gmDespawn: target in a different space — refused"
             );
+            send_gm_feedback(
+                entity_id,
+                &format!("gmDespawn: target {target_eid} is in a different space"),
+                tx,
+            )
+            .await;
             return true;
         }
         Some(t) if t.is_player => {
@@ -145,17 +189,35 @@ pub(super) async fn handle_despawn(
                 target_eid,
                 "gmDespawn: target is a player — refused (NPC-only)"
             );
+            send_gm_feedback(
+                entity_id,
+                &format!("gmDespawn: target {target_eid} is a player (NPC-only)"),
+                tx,
+            )
+            .await;
             return true;
         }
         Some(_) => {}
         None => {
             tracing::warn!(entity_id, target_eid, "gmDespawn: target not found");
+            send_gm_feedback(
+                entity_id,
+                &format!("gmDespawn: target {target_eid} not found"),
+                tx,
+            )
+            .await;
             return true;
         }
     }
 
     tracing::info!(entity_id, target_eid, "gmDespawn: despawning NPC");
     space_mgr.destroy_entity(target_eid);
+    send_gm_feedback(
+        entity_id,
+        &format!("gmDespawn: despawned npc {target_eid}"),
+        tx,
+    )
+    .await;
     true
 }
 
@@ -179,10 +241,12 @@ pub(super) async fn handle_respawn_cmd(
             entity_id,
             "gmRespawn: caller has no player_id (respawn is player-only)"
         );
+        send_gm_feedback(entity_id, "gmRespawn: caller is not a player", tx).await;
         return true;
     }
     tracing::info!(entity_id, "gmRespawn: respawning GM");
     crate::cell::cell_methods::player::combat::handle_respawn(entity_id, 0, tx, space_mgr).await;
+    send_gm_feedback(entity_id, "gmRespawn: respawned", tx).await;
     true
 }
 
@@ -202,6 +266,7 @@ pub(super) async fn handle_set_target(
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(entity_id, error = %e, "gmSetTarget: malformed NameOrID WSTRING");
+            send_gm_feedback(entity_id, "gmSetTarget: malformed NameOrID", tx).await;
             return true;
         }
     };
@@ -214,6 +279,12 @@ pub(super) async fn handle_set_target(
                 "gmSetTarget: NameOrID is not a non-negative numeric id — \
                  name resolution is not wired in the cell; rejecting"
             );
+            send_gm_feedback(
+                entity_id,
+                "gmSetTarget: NameOrID must be a non-negative numeric id",
+                tx,
+            )
+            .await;
             return true;
         }
     };
@@ -222,6 +293,7 @@ pub(super) async fn handle_set_target(
         Some(e) => e.current_target_id = if target_id > 0 { Some(target_id) } else { None },
         None => {
             tracing::warn!(entity_id, "gmSetTarget: caller entity not found");
+            send_gm_feedback(entity_id, "gmSetTarget: caller entity not found", tx).await;
             return true;
         }
     }
@@ -247,5 +319,11 @@ pub(super) async fn handle_set_target(
             })
             .await;
     }
+    let feedback = if target_id > 0 {
+        format!("gmSetTarget: target set to {target_id}")
+    } else {
+        "gmSetTarget: target cleared".to_string()
+    };
+    send_gm_feedback(entity_id, &feedback, tx).await;
     true
 }

@@ -219,7 +219,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
 /// of patrol points in a set. Empty `ids` short-circuits without a DB
 /// round-trip; sets with zero points produce an entry mapping to
 /// `vec![]` (caller treats as "no patrol").
-async fn load_patrol_points(
+pub(crate) async fn load_patrol_points(
     pool: &PgPool,
     ids: &[i32],
 ) -> Result<std::collections::HashMap<i32, Vec<cimmeria_common::Vector3>>, sqlx::Error> {

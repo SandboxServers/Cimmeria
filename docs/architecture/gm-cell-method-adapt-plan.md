@@ -14,13 +14,18 @@ primitive, and a status (**DONE** / **REUSE** / **ADAPT** / **NEW**), lives in
 the dispatch table:
 [cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md#full-gm-cell-method-inventory--cimmeria-handler-status).
 
-- **DONE** (21) — handlers wired in [`crates/services/src/cell/cell_methods/gm/`](../../crates/services/src/cell/cell_methods/gm/),
-  via #518: the 3 originally-verified (`gmGiveItem`/`gmGotoXYZ`/`gmKillTarget`),
-  the 16 observable-effect REUSE commands, and — now that the feedback channel
-  is landed (`gm/feedback.rs`) — the two query consumers `gmUsers` (166) and
-  `testLOS` (216).
+- **DONE** (38) — handlers wired in [`crates/services/src/cell/cell_methods/gm/`](../../crates/services/src/cell/cell_methods/gm/):
+  #518's verified + REUSE set, the feedback channel + its query consumers, the
+  inspection trio, the rest of the query cluster
+  (mission list/full/details, listAbilities, showFlag, getMobAttribute,
+  showMobCount, debugMobData), the daily-driver mutates `gmGoto` (160),
+  `gmSummon` (161), `gmMissionAssign` (109), and (this round) the base-infra
+  commands `gmSpawnByCmd` (185, §2 cell↔base template round-trip) and the
+  crafting grants `gmGiveExpertise` (139) / `gmGiveAppliedSciencePoints` (140).
 - **REUSE** (0 remaining) — all thin-handler commands are done.
-- **ADAPT** (52) — this document.
+- **ADAPT** (35 remaining) — this document. The big base-infra items are now
+  done; the remaining ADAPTs are the smaller per-resource grant/edit handlers
+  (training points, racial paradigm levels, respawner) and stat/flag variants.
 - **NEW** (44) — out of scope here (new subsystems: god-mode flags, respec,
   stance, cover regen, etc.).
 
@@ -81,19 +86,19 @@ read-the-field + `send_gm_feedback(...)` one-liners:
 |-----|--------|-------|------|
 | 166 | `gmUsers` — **DONE** | `all_player_entity_ids` (space-scoped) | — |
 | 216 | `testLOS` — **DONE** | `has_line_of_sight` | — |
-| 113 | `gmMissionList` | `entity.missions.active_missions` | F |
-| 114 | `gmMissionListFull` | `entity.missions.all_missions` | F |
-| 115 | `gmMissionDetails` | `entity.missions.get_mission` | F, N |
-| 121 | `gmShowTargetLocation` | `CellEntity.position` | F |
-| 122 | `gmShowRotation` | `CellEntity.direction` | F |
-| 123 | `listAbilities` | `entity.abilities.known_ability_ids` | F |
-| 125 | `gmShowFlag` | `state_field` bit test | F |
+| 113 | `gmMissionList` — **DONE** | `entity.missions.active_missions` | — |
+| 114 | `gmMissionListFull` — **DONE** | `entity.missions.all_missions` | — |
+| 115 | `gmMissionDetails` — **DONE** | `entity.missions.get_mission` (numeric id) | — |
+| 121 | `gmShowTargetLocation` — **DONE** | `CellEntity.position` | — |
+| 122 | `gmShowRotation` — **DONE** | `CellEntity.direction` | — |
+| 123 | `listAbilities` — **DONE** | `entity.abilities.known_ability_ids` | — |
+| 125 | `gmShowFlag` — **DONE** | `state_field` bit test | — |
 | 126 | `gmListInteractions` | `available_interactions` | F |
-| 127 | `gmGetMobAttribute` | `get_entity` (hand-mapped attrs) | F, P |
-| 128 | `gmShowMobCount` | iterate space entities | F |
-| 131 | `gmShowPlayer` | `online_players` + eid index | F |
+| 127 | `gmGetMobAttribute` — **DONE** | hand-mapped attr read | — |
+| 128 | `gmShowMobCount` — **DONE** | iterate space entities | — |
+| 131 | `gmShowPlayer` — **DONE** | entity-info dump (FanMMORPG `.info`) | — |
 | 168 | `gmPrintStats` | per-entity `stat_list` | F |
-| 180 | `gmDebugMobData` | `get_entity` dump | F |
+| 180 | `gmDebugMobData` — **DONE** | `get_entity` dump | — |
 
 **Effort after the helper exists:** each is read-the-field + format + one
 `gm_feedback(...)` call. `gmGetMobAttribute` (127) additionally needs a small
@@ -110,10 +115,10 @@ and one wrapper for "act on another entity."
 
 | Idx | Method (args) | Primitive | Tags | Note |
 |-----|---------------|-----------|------|------|
-| 185 | `gmSpawnByCmd(WSTRING DesignId, FLOAT xOff, zOff)` | `spawn_npc_from_record_in_space` | N | Resolve DesignId→`SpawnRecord`; spawn at caller pos + offset. Highest-value spawn command. |
-| 160 | `gmGoto(WSTRING nameOrID)` | `same_world_teleport` | N | Numeric-id → same path as `gmGotoXYZ` to the target's position; name resolution later. |
-| 161 | `gmSummon(WSTRING nameOrID)` | `same_world_teleport` (applied to the *other* entity) | N, P | Inverse of `gmGoto`: move the named entity to the caller. Needs a "move other" wrapper around the teleport primitive. |
-| 109 | `gmMissionAssign(WSTRING DesignID, UINT8 popup)` | `accept_mission` | N | DesignID→id, then the existing accept path. |
+| 185 | `gmSpawnByCmd(WSTRING DesignId, FLOAT xOff, zOff)` — **DONE** | `spawn_npc_from_record_in_space` | N | DesignId is the numeric template id; cell→base `GmSpawnNpc` queries `entity_templates`→`SpawnRecord`→ replies `GmSpawnNpcReady`; cell spawns at caller pos + X/Z offset. Round-trip mirrors `TrainAbility`→`AbilityGranted`. |
+| 160 | `gmGoto(WSTRING nameOrID)` — **DONE** | `TeleportPlayer` to target pos | — | Numeric-id, same-space (cross-space → `gmGotoLocation`). |
+| 161 | `gmSummon(WSTRING nameOrID)` — **DONE** | `TeleportPlayer`/`update_entity_position` | — | Moves target to caller; player → forced snap, NPC → grid update. |
+| 109 | `gmMissionAssign(WSTRING DesignID, UINT8 popup)` — **DONE** | `accept_mission` | — | Numeric DesignID → mission-def first step + objectives → accept. |
 | 118 | `gmMissionComplete(WSTRING DesignID, INT8 turnIn)` | `complete_mission_direct` | N, P | Does **not** fire rewards today; if `turnIn` is set, must route the reward dispatch. |
 | 111 | `gmMissionClearActive()` | loop `abandon_mission` over `active_missions()` | — | Pure REUSE-of-a-loop; trivially promotable. |
 
@@ -190,8 +195,14 @@ so it isn't mistaken for a targeted reload.
    + `testLOS` shipped on it.
 2. **Query cluster** (§1) — batch of read-the-field + `send_gm_feedback` one-liners,
    now unblocked.
-3. **`resolve_design_id` helper + `gmSpawnByCmd` / `gmGoto` / `gmMissionAssign`**
-   (§2) — the daily-driver mutate commands.
+3. ~~**`gmSpawnByCmd` / `gmGoto` / `gmMissionAssign`** (§2)~~ — **done**. The
+   daily-driver mutate commands. `gmSpawnByCmd` (185) landed as a cell↔base
+   template round-trip (`GmSpawnNpc` → `entity_templates` lookup →
+   `GmSpawnNpcReady`); `gmGoto`/`gmMissionAssign` shipped earlier. The crafting
+   grants `gmGiveExpertise` (139) / `gmGiveAppliedSciencePoints` (140) also
+   landed this round (new `CellToBaseMsg` variants → `base/crafting/handlers.rs`
+   load/mutate/save; expertise pushes `onUpdateDiscipline` 136, ASP persists
+   only since the SGWPlayer method table has no outbound ASP client method).
 4. **`gmSetSpeed`** (§3) — quick win, mirrors the shipped set-stat handlers.
 5. **`loadX` family** (§5) — full-reload first cut for live content iteration.
 6. Remaining §3/§4 param-shape wrappers as needed.

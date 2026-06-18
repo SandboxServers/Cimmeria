@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use super::super::vendor::serializers::reserve_free_inventory_slots;
 use super::appearance::refresh_player_appearance;
 use super::core::send_full_inventory_update;
+use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::base::{helpers, ConnectedClientState};
 use crate::cell::messages::BaseToCellMsg;
@@ -73,6 +74,7 @@ pub async fn handle_grant_item(
     item_id: i32,
     container_id: i32,
     count: i32,
+    notify_gm: bool,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     transport: &Arc<dyn Transport>,
@@ -278,6 +280,17 @@ pub async fn handle_grant_item(
         );
         if let Some(tx) = cell_tx {
             outbox::try_dispatch_now(pool.as_ref(), tx, outbox_id, entity_id, outbox_payload).await;
+        }
+        // Definitive GM feedback (merge path) — write committed.
+        if notify_gm {
+            send_gm_feedback_to_client(
+                entity_id,
+                &format!("gmGiveItem: gave {count}x item {item_id}"),
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
         return;
     }
@@ -485,6 +498,20 @@ pub async fn handle_grant_item(
         total_items,
         "Sent full onUpdateItem to client"
     );
+
+    // Definitive GM feedback (new-slot path) — the grant committed above.
+    // Fired here (post-commit, before the bandolier/visual epilogue) so every
+    // remaining `return` in this function is after the write has landed.
+    if notify_gm {
+        send_gm_feedback_to_client(
+            entity_id,
+            &format!("gmGiveItem: gave {count}x item {item_id}"),
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+    }
 
     if let Some(tx) = cell_tx {
         outbox::try_dispatch_now(pool.as_ref(), tx, outbox_id, entity_id, outbox_payload).await;

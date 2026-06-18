@@ -133,6 +133,11 @@ async fn gm_tail_method_executes_for_gm_caller() {
             } => {
                 saw_error = true;
             }
+            // onPlayerCommunication (28) — the GM feedback line ("grant
+            // requested ..."). Expected alongside the GrantItem now.
+            CellToBaseMsg::EntityMethodCall {
+                method_index: 28, ..
+            } => {}
             other => panic!("unexpected wire message in gmGiveItem happy-path: {other:?}"),
         }
     }

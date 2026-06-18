@@ -40,6 +40,7 @@ use crate::test_support::test_default_connected_client_state;
 
 mod aoi_defer_gate;
 mod fallible_handlers;
+mod gm_grant_arms;
 mod passthrough;
 mod witness_broadcast;
 

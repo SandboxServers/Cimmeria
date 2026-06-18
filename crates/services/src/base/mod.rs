@@ -25,6 +25,8 @@ pub(crate) mod cooked_data;
 pub(crate) mod crafting;
 pub(crate) mod deferred_aoi;
 pub(crate) mod dispatch;
+pub(crate) mod gm_feedback;
+pub(crate) mod gm_spawn;
 pub(crate) mod helpers;
 pub(crate) mod item_overrides;
 pub(crate) mod login;

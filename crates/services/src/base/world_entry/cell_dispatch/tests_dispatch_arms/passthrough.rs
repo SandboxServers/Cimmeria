@@ -163,6 +163,7 @@ async fn grant_xp_routes_to_handler_and_warns_when_entity_unknown() {
         CellToBaseMsg::GrantXP {
             entity_id: 8888,
             xp_amount: 250,
+            notify_gm: false,
         },
         &transport,
         &connected,

@@ -477,7 +477,7 @@ beyond the 3 verified handlers above.
   [gm-cell-method-adapt-plan.md](../architecture/gm-cell-method-adapt-plan.md).
 - **NEW** — no primitive; build from scratch (high effort).
 
-**Tally (of 117):** 21 DONE · 0 REUSE · 52 ADAPT · 44 NEW.
+**Tally (of 117):** 38 DONE · 0 REUSE · 35 ADAPT · 44 NEW.
 
 > **#518 expansion.** All 18 REUSE rows are now **DONE**. The 16 observable-effect
 > commands plus the single-recipient feedback channel (`gm/feedback.rs` —
@@ -509,13 +509,13 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 109 | `gmMissionAssign(WSTRING DesignID, UINT8 popup)` | `/MissionAssign` | `cell/missions.rs:177 accept_mission` (needs DesignID→id) | ADAPT |
+| 109 | `gmMissionAssign(WSTRING DesignID, UINT8 popup)` | `/MissionAssign` | **`gm/missions.rs` → `accept_mission` (mission-def first step + objectives)** | **DONE** |
 | 110 | `gmMissionClear(WSTRING DesignID)` | `/MissionClear` | `cell/cell_methods/gm/missions.rs` → `abandon_mission` | **DONE** |
 | 111 | `gmMissionClearActive()` | `/MissionClearActive` | loop `abandon_mission` over `active_missions()` | ADAPT |
 | 112 | `gmMissionClearHistory()` | `/MissionClearHistory` | — (no history-clear) | NEW |
-| 113 | `gmMissionList()` | `/MissionList` | `entity/missions.rs:155 active_missions` + feedback | ADAPT |
-| 114 | `gmMissionListFull()` | `/MissionListFull` | `all_missions` + feedback | ADAPT |
-| 115 | `gmMissionDetails(WSTRING DesignID)` | `/MissionDetails` | `entity/missions.rs:145 get_mission` + feedback | ADAPT |
+| 113 | `gmMissionList()` | `/MissionList` | **`gm/query.rs` → `active_missions` + feedback** | **DONE** |
+| 114 | `gmMissionListFull()` | `/MissionListFull` | **`gm/query.rs` → `all_missions` + feedback** | **DONE** |
+| 115 | `gmMissionDetails(WSTRING DesignID)` | `/MissionDetails` | **`gm/query.rs` → `get_mission` + feedback (numeric id)** | **DONE** |
 | 116 | `gmMissionAdvance(WSTRING DesignID, INT32 step)` | `/MissionAdvance` | `cell/cell_methods/gm/missions.rs` → `advance_step` | **DONE** |
 | 117 | `gmMissionReset(WSTRING DesignID, INT32 step)` | `/MissionReset` | — (no revert primitive) | NEW |
 | 118 | `gmMissionComplete(WSTRING DesignID, INT8 turnIn)` | `/MissionComplete` | `cell/missions.rs:409 complete_mission_direct` (does NOT fire rewards) | ADAPT |
@@ -526,17 +526,17 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 121 | `gmShowTargetLocation()` | — | read `CellEntity.position` + feedback | ADAPT |
-| 122 | `gmShowRotation()` | — | read `CellEntity.direction` + feedback | ADAPT |
-| 123 | `listAbilities()` | — | `entity/abilities.rs:534 known_ability_ids` + feedback | ADAPT |
+| 121 | `gmShowTargetLocation()` | — | **`gm/query.rs` → `CellEntity.position` + feedback** | **DONE** |
+| 122 | `gmShowRotation()` | — | **`gm/query.rs` → `CellEntity.direction` + feedback** | **DONE** |
+| 123 | `listAbilities()` | — | **`gm/query.rs` → `known_ability_ids` + feedback** | **DONE** |
 | 124 | `showPointSet(WSTRING Type)` | — | cover/nav point sets (partial) | ADAPT |
-| 125 | `gmShowFlag(INT32 flagId)` | — | `state_field` (no `get_flag(id)` helper) | ADAPT |
+| 125 | `gmShowFlag(INT32 flagId)` | — | **`gm/query.rs` → `has_state_flag` bit test + feedback** | **DONE** |
 | 126 | `gmListInteractions()` | — | read `available_interactions` + feedback | ADAPT |
-| 127 | `gmGetMobAttribute(INT32 target, WSTRING attr)` | — | `queries.rs:42 get_entity` (no reflection; hand-map attrs) | ADAPT |
-| 128 | `gmShowMobCount(INT32 spaceId)` | — | iterate space entities (no count fn) | ADAPT |
+| 127 | `gmGetMobAttribute(INT32 target, WSTRING attr)` | — | **`gm/query.rs` → hand-mapped attr read + feedback** | **DONE** |
+| 128 | `gmShowMobCount(INT32 spaceId)` | — | **`gm/query.rs` → `all_npc_entity_ids` (space-scoped) + feedback** | **DONE** |
 | 129 | `gmShowIP(INT32 target)` | — | SocketAddr in `connected_clients` (no eid→addr index) | ADAPT |
 | 130 | `gmShowInventory(INT32 target)` | — | CellEntity has no inventory → base read / base→cell RPC | NEW |
-| 131 | `gmShowPlayer(INT32 target)` | — | `service.rs:82 online_players` (+ eid index) | ADAPT |
+| 131 | `gmShowPlayer(INT32 target)` | — | **`gm/query.rs` → entity-info dump (FanMMORPG `.info`) + feedback** | **DONE** |
 
 #### Give / grant (132–141)
 
@@ -549,8 +549,8 @@ beyond the 3 verified handlers above.
 | 136 | `gmGiveAbility(INT32 abilityID)` | `/GiveAbility` | `progression/mod.rs:400 handle_train_ability` (debits a point; need no-debit variant) | ADAPT |
 | 137 | `gmGiveTrainingPoints(INT32 n)` | — | — (no grant fn; XP path touches the field) | NEW |
 | 138 | `gmGiveRespawner(INT32 mobID)` | `/GiveRespawner` | — (respawner persistence not implemented) | NEW |
-| 139 | `gmGiveExpertise(INT32 disc, INT32 amt)` | — | `crafting/persistence.rs:208` (delete-all/insert-all; needs upsert) | ADAPT |
-| 140 | `gmGiveAppliedSciencePoints(INT32 pts)` | — | crafting field exists (no incremental grant fn) | ADAPT |
+| 139 | `gmGiveExpertise(INT32 disc, INT32 amt)` | — | `cell/cell_methods/gm/give.rs handle_give_expertise` → `CellToBaseMsg::GrantExpertise` → `base/crafting/handlers.rs handle_grant_expertise` (load/clamp/save + `onUpdateDiscipline` 136) | **DONE** |
+| 140 | `gmGiveAppliedSciencePoints(INT32 pts)` | — | `cell/cell_methods/gm/give.rs handle_give_applied_science` → `CellToBaseMsg::GrantAppliedSciencePoints` → `base/crafting/handlers.rs handle_grant_applied_science` (persist-only; no outbound ASP client method) | **DONE** |
 | 141 | `gmGiveRacialParadigmLevels(INT32 id, INT32 lvls)` | — | `racial_paradigm_levels` array column (needs edit fn) | ADAPT |
 
 #### Set player / target state (142–158)
@@ -580,8 +580,8 @@ beyond the 3 verified handlers above.
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
 | 159 | `gmDHD(INT8 gateAddr)` | — | `cell/cell_methods/gm/travel.rs` → `handle_dial_gate` | **DONE** |
-| 160 | `gmGoto(WSTRING nameOrID)` | `/Goto` | `ring_transport/dispatch.rs:276 same_world_teleport` + name/id resolve | ADAPT |
-| 161 | `gmSummon(WSTRING nameOrID)` | — | `same_world_teleport` applied to the OTHER entity (no "move other" wrapper) | ADAPT |
+| 160 | `gmGoto(WSTRING nameOrID)` | `/Goto` | **`gm/travel.rs` → `TeleportPlayer` to target pos (numeric id, same-space)** | **DONE** |
+| 161 | `gmSummon(WSTRING nameOrID)` | — | **`gm/travel.rs` → move target (`TeleportPlayer`/`update_entity_position`)** | **DONE** |
 | 162 | `gmGotoLocation(WSTRING world, FLOAT x,y,z)` | `/GotoLocation` | `cell/cell_methods/gm/travel.rs` → `GateTravel` | **DONE** |
 | 163 | `gmGotoXYZ(FLOAT x,y,z)` | `/GotoXYZ` | **`gm/travel.rs` → `TeleportPlayer`** | **DONE** |
 
@@ -610,7 +610,7 @@ beyond the 3 verified handlers above.
 | 177 | `gmDebugBehaviorsOnMob()` | — | read `ai_state`/`threat_list` + stream callback | ADAPT |
 | 178 | `gmDebugPathsOnMob()` | — | read `cell_entity/mod.rs:493 nav_path` + `onShowPath` callback | ADAPT |
 | 179 | `gmDebugEvents(INT32 target, INT32 level)` | — | — | NEW |
-| 180 | `gmDebugMobData(INT32 space, INT32 target)` | — | `queries.rs:42 get_entity` + feedback | ADAPT |
+| 180 | `gmDebugMobData(INT32 space, INT32 target)` | — | **`gm/query.rs` → mob-data dump + feedback** | **DONE** |
 | 181 | `gmDebugInteract()` | — | — | NEW |
 | 182 | `gmEmitBehaviorEventOnMob(INT32 id)` | — | — | NEW |
 | 183 | `gmAddBehaviorEventSet(INT32 id)` | — | — | NEW |
@@ -620,7 +620,7 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 185 | `gmSpawnByCmd(WSTRING DesignId, FLOAT xOff, FLOAT zOff)` | `/Spawn` | `space_manager/spawn.rs:85 spawn_npc_from_record_in_space` (needs DesignId→`SpawnRecord`). Same primitive #517's chat `/spawn` used. | ADAPT |
+| 185 | `gmSpawnByCmd(WSTRING DesignId, FLOAT xOff, FLOAT zOff)` | `/Spawn` | `cell/cell_methods/gm/spawn.rs handle_spawn_by_cmd` → `CellToBaseMsg::GmSpawnNpc` → `base/gm_spawn.rs handle_gm_spawn_npc` (entity_templates→`SpawnRecord`) → `BaseToCellMsg::GmSpawnNpcReady` → `space_manager/spawn.rs:85 spawn_npc_from_record_in_space`. Base round-trip (no cell template cache), mirrors `TrainAbility`→`AbilityGranted`. | **DONE** |
 | 186 | `gmDespawnByCmd(INT32 target)` | — | `cell/cell_methods/gm/world.rs` → `destroy_entity` (NPC-only) | **DONE** |
 | 187 | `gmRechargeItem(INT32 itemId)` | — | vendor `recharge.rs` (base-scoped; need GM cell→base route) | ADAPT |
 | 188 | `gmSetMobAttribute(INT32 target, WSTRING attr, WSTRING type, INT32 val)` | — | `queries.rs:35 get_entity_mut` (no reflection; hand-map attrs) | ADAPT |
