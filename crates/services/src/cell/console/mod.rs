@@ -738,11 +738,12 @@ pub(crate) async fn handle_console_command(
 
     // Audit trail: log only AFTER the command passes arg-count + target
     // validation, so the "accepted" event marks commands we actually dispatch
-    // (not malformed/wrong-target ones rejected above). Record both the
-    // caller and their server-side `access_level` (the PR's audit objective).
-    // Command args may contain names/positions but never secrets, so logging
-    // the name + count (not the raw text) is the right privacy/observability
-    // balance — mirrors the chat.send span policy.
+    // (not malformed/wrong-target ones rejected above). Record both the caller
+    // and their server-side `access_level` so the audit line attributes the
+    // command to a privilege level, not just an entity id. Command args may
+    // contain names/positions but never secrets, so logging the name + count
+    // (not the raw text) is the right privacy/observability balance — mirrors
+    // the chat.send span policy.
     let access_level = space_mgr
         .get_entity(caller_id)
         .map(|e| e.access_level)
