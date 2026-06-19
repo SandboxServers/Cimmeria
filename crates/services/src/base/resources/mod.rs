@@ -150,6 +150,12 @@ const CATEGORY_MISSIONS: u32 = 3;
 /// Per-item icon, name, max-stack lookups land here on the client.
 const CATEGORY_ITEMS: u32 = 4;
 
+/// Category id for `CookedDataDialogs.pak` (see [`CATEGORY_PAKS`]).
+/// Per-dialog screen text is rendered from this catalogue client-side,
+/// not from any wire message — so a corrected or new dialog body must be
+/// pushed via the cooked-data invalidation handshake.
+const CATEGORY_DIALOGS: u32 = 5;
+
 /// Compute the deterministic metadata bump for a set of overrides.
 ///
 /// The bump is hashed from every field that affects what the client sees:
@@ -190,6 +196,28 @@ fn compute_item_metadata_bump(overrides: &[super::item_overrides::ItemOverride])
         ov.item_id.hash(&mut hasher);
         ov.new_icon_location.hash(&mut hasher);
         ov.new_max_stack_size.hash(&mut hasher);
+    }
+    ((hasher.finish() as u32) & 0xFFFF) | 0x1
+}
+
+/// Companion of [`compute_metadata_bump`] for the dialogs category.
+/// Hashes every field that affects the rendered XML (dialog id, flags,
+/// kismet/screen-type, and each screen's id/speaker/text) so two server
+/// starts on identical override content produce identical bumps and no
+/// re-invalidation churn; any edit changes the bump and refetches.
+fn compute_dialog_metadata_bump(overrides: &[super::dialog_overrides::DialogOverride]) -> u32 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for ov in overrides {
+        ov.dialog_id.hash(&mut hasher);
+        ov.dialog_flags.hash(&mut hasher);
+        ov.kismet_event_set_id.hash(&mut hasher);
+        ov.ui_screen_type.hash(&mut hasher);
+        for screen in ov.screens {
+            screen.screen_id.hash(&mut hasher);
+            screen.speaker_id.hash(&mut hasher);
+            screen.text.hash(&mut hasher);
+        }
     }
     ((hasher.finish() as u32) & 0xFFFF) | 0x1
 }
@@ -242,6 +270,11 @@ impl ResourceCache {
         // category.
         let item_overridden = Self::apply_item_overrides(&mut categories);
         overridden_elements.extend(item_overridden);
+        // Dialogs category (5) — disjoint from missions (3) / items (4),
+        // so the same `extend` discipline applies: each call owns its own
+        // category id and can't clobber another's invalid-keys list.
+        let dialog_overridden = Self::apply_dialog_overrides(&mut categories);
+        overridden_elements.extend(dialog_overridden);
 
         Ok(Self {
             categories: Arc::new(categories),
@@ -315,6 +348,65 @@ impl ResourceCache {
         overridden
     }
 
+    /// Patch the freshly-loaded `CookedDataDialogs` category with
+    /// Cimmeria's regenerated dialog entries, bumping the category
+    /// metadata so the client's next `versionInfoRequest` triggers the
+    /// per-key invalidation handshake.
+    ///
+    /// Unlike [`Self::apply_item_overrides`] / [`Self::apply_mission_overrides`],
+    /// each override *regenerates* the whole `<COOKED_DIALOG>` entry rather
+    /// than patching a substring, so it works whether or not the dialog id
+    /// was present in the PAK: a corrected existing dialog (Frost's 3995)
+    /// and a brand-new one (the Guard corpse's 3996) are both just an
+    /// `elements.insert(dialog_id, generated)`. There's no "entry not
+    /// present" skip and no "XML shape didn't match" failure — generation
+    /// is infallible.
+    fn apply_dialog_overrides(
+        categories: &mut HashMap<u32, CategoryData>,
+    ) -> HashMap<u32, Vec<u32>> {
+        use super::dialog_overrides::{generate_dialog_xml, DIALOG_OVERRIDES};
+
+        let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
+        if DIALOG_OVERRIDES.is_empty() {
+            return overridden;
+        }
+
+        let Some(dialogs) = categories.get_mut(&CATEGORY_DIALOGS) else {
+            tracing::warn!(
+                category = CATEGORY_DIALOGS,
+                "CookedDataDialogs not loaded; skipping dialog overrides"
+            );
+            return overridden;
+        };
+
+        let mut applied: Vec<u32> = Vec::with_capacity(DIALOG_OVERRIDES.len());
+        for ov in DIALOG_OVERRIDES {
+            let was_present = dialogs.elements.contains_key(&ov.dialog_id);
+            let patched = generate_dialog_xml(ov);
+            dialogs.elements.insert(ov.dialog_id, patched);
+            applied.push(ov.dialog_id);
+            tracing::info!(
+                dialog_id = ov.dialog_id,
+                replaced_existing = was_present,
+                "Applied Cimmeria dialog override",
+            );
+        }
+
+        let bump = compute_dialog_metadata_bump(DIALOG_OVERRIDES);
+        dialogs.metadata = dialogs.metadata.wrapping_add(bump);
+        applied.sort_unstable();
+        tracing::info!(
+            category = CATEGORY_DIALOGS,
+            count = applied.len(),
+            bump,
+            bumped_metadata = dialogs.metadata,
+            "Cimmeria dialog overrides applied; metadata bumped",
+        );
+        overridden.insert(CATEGORY_DIALOGS, applied);
+
+        overridden
+    }
+
     /// Mutate the freshly-loaded `CookedDataMissions` category to include
     /// Cimmeria's added mission steps, bumping the category metadata so
     /// the client's version check sees a fresh value and triggers the
@@ -354,7 +446,12 @@ impl ResourceCache {
             match apply_override(original, ov) {
                 Some(patched) => {
                     missions.elements.insert(ov.mission_id, patched);
-                    applied.push(ov.mission_id);
+                    // A mission can have multiple overrides (e.g. 622 injects
+                    // both the Guard-search and equip steps); list its id once
+                    // so InvalidKeys names each patched entry a single time.
+                    if !applied.contains(&ov.mission_id) {
+                        applied.push(ov.mission_id);
+                    }
                     tracing::info!(
                         mission_id = ov.mission_id,
                         "Applied Cimmeria mission override",

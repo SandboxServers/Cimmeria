@@ -77,13 +77,35 @@ pub struct MissionOverride {
 // real text on both produces a visibly duplicated line in the mission log
 // (the screenshot from the live UI on the Frost step).
 pub const MISSION_OVERRIDES: &[MissionOverride] = &[
+    // Mission 622's loot split is sequenced Frost → Guard via an intermediate
+    // step, so the corpse search survives a relog: each step gates the next
+    // body's binding (re-applied on login by chains 1006/1007). Two
+    // Cimmeria-introduced steps sit between the canonical step 2113 and the
+    // equip step, in XML index order:
+    //   index 0: 2113   (canonical) — search Cpl. Frost
+    //   index 1: 80623  (below)     — search the NID Guard's corpse
+    //   index 2: 80622  (below)     — equip the pistol
+    // The two overrides MUST stay in this array order: 80623 is injected after
+    // 2113 first, so the 80622 entry can anchor on 80623's `</Steps>`. Every
+    // advance is +1 in XML index (2113→80623, 80623→80622, 80622→complete),
+    // which the client's sequential-progression guard honours.
     MissionOverride {
         mission_id: 622,
-        // Insert immediately after step 2113 ("Search the nearby corpses").
-        // Chain 1003 advances 2113 → 80622 on Frost loot; for the client
-        // to render the new step instead of skipping it, 80622's XML
-        // index must equal current+1 = 1.
         insert_after_step_id: 2113,
+        injected_steps_xml:
+            "<Steps StepEnabled=\"false\" StepID=\"80623\" AwardXP=\"false\" Difficulty=\"1\">\
+             <StepDisplayLogText>Search the NID Guard's body for a weapon.</StepDisplayLogText>\
+             <Objectives IsOptional=\"false\" ObjectiveID=\"90623\" AwardXP=\"false\" \
+             IsHidden=\"false\" IsEnabled=\"false\" Difficulty=\"1\">\
+             <DisplayLogText> </DisplayLogText>\
+             </Objectives>\
+             </Steps>",
+    },
+    MissionOverride {
+        mission_id: 622,
+        // Anchor on 80623 (injected by the entry above), not 2113 — the equip
+        // step must land at XML index 2, one past the Guard-search step.
+        insert_after_step_id: 80623,
         injected_steps_xml:
             "<Steps StepEnabled=\"false\" StepID=\"80622\" AwardXP=\"false\" Difficulty=\"1\">\
              <StepDisplayLogText>Equip the pistol from your inventory.</StepDisplayLogText>\
@@ -288,21 +310,49 @@ mod tests {
         <StepDisplayLogText>Terminal</StepDisplayLogText></Steps>\
         </COOKED_MISSION>";
 
+    /// Mission 622 now injects TWO steps (80623 Guard-search, then 80622
+    /// equip) so the loot split is sequenced and relog-safe. Applying the 622
+    /// overrides in array order against the canonical single-step shape must
+    /// yield XML order 2113 → 80623 → 80622 — the same index-discipline the
+    /// 641 test pins, since the client treats XML order as the step index and
+    /// snaps forward on any advance that jumps the index by more than one.
     #[test]
-    fn override_inserts_immediately_after_named_step() {
-        let ov = &MISSION_OVERRIDES[0];
-        assert_eq!(ov.mission_id, 622);
+    fn override_622_injects_guard_then_equip_in_order() {
+        let ovs_622: Vec<&MissionOverride> = MISSION_OVERRIDES
+            .iter()
+            .filter(|o| o.mission_id == 622)
+            .collect();
+        assert_eq!(
+            ovs_622.len(),
+            2,
+            "mission 622 must have exactly two overrides (Guard-search + equip)",
+        );
 
-        let patched = apply_override(SAMPLE_622, ov).expect("override must apply");
-        let s = std::str::from_utf8(&patched).expect("output is utf-8");
+        // Apply both in registry order, compounding on the same XML.
+        let mut bytes = SAMPLE_622.to_vec();
+        for ov in &ovs_622 {
+            bytes = apply_override(&bytes, ov).unwrap_or_else(|| {
+                panic!(
+                    "622 override (after step {}) must apply",
+                    ov.insert_after_step_id
+                )
+            });
+        }
+        let s = std::str::from_utf8(&bytes).expect("output is utf-8");
 
-        assert!(s.contains("StepID=\"2113\""), "original step missing: {s}");
-        assert!(s.contains("StepID=\"80622\""), "new step missing: {s}");
-        let new_steps_at = s.find("StepID=\"80622\"").unwrap();
-        let close_at = s.find("</COOKED_MISSION>").unwrap();
+        let pos_2113 = s.find("StepID=\"2113\"").expect("step 2113 must remain");
+        let pos_80623 = s
+            .find("StepID=\"80623\"")
+            .expect("Guard-search step 80623 must appear");
+        let pos_80622 = s
+            .find("StepID=\"80622\"")
+            .expect("equip step 80622 must appear");
+        let close_at = s.find("</COOKED_MISSION>").expect("root close must remain");
+
         assert!(
-            new_steps_at < close_at,
-            "injected steps must precede closing tag",
+            pos_2113 < pos_80623 && pos_80623 < pos_80622 && pos_80622 < close_at,
+            "XML order must be 2113 → 80623 → 80622 → </COOKED_MISSION>; got \
+             2113={pos_2113} 80623={pos_80623} 80622={pos_80622} close={close_at}\n{s}",
         );
     }
 

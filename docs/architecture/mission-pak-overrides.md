@@ -110,7 +110,7 @@ The chain advances from step 2121 (index 0) to step 80641 (index 3). The client'
 
 The advance from index 0 → index 1 is a single-step delta, the guard accepts, and the player sees "Equip the P90".
 
-The same gotcha applies to mission 622: step 2113 ("Search the nearby corpses") is index 0, and 80622 ("Equip the pistol") must land at index 1 — which is why mission 622's override is `insert_after_step_id: 2113`. The chain-replay regression test that pins this is at `crates/services/src/base/mission_overrides.rs:193-225` (`override_641_lands_between_2121_and_3563`).
+The same gotcha applies to mission 622, which now injects **two** steps for its sequenced loot split: `2113` ("Search the nearby corpses") is index 0, `80623` ("Search the NID Guard's body") must land at index 1, and `80622` ("Equip the pistol") at index 2. This is why mission 622 has two `MissionOverride` entries that must stay in registry order — the first is `insert_after_step_id: 2113` (injects 80623), the second is `insert_after_step_id: 80623` (injects 80622, anchoring on the just-injected step). Each advance is a single-step delta (2113→80623→80622), which the guard accepts. The regression test that pins the ordering is `override_622_injects_guard_then_equip_in_order` in `crates/services/src/base/mission_overrides.rs` (and `override_641_lands_between_2121_and_3563` pins the same discipline for mission 641).
 
 ## Metadata bump policy
 
@@ -142,7 +142,7 @@ When you want a new client-visible step to appear in the quest log:
 1. **Add the server-side step row** in `db/resources/Missions/Seed/mission_steps.sql`. The chain engine reads this for `advance_step` / `step_status` evaluation. Pick a step ID well above the canonical PAK's range (the override modules use `80<mission_id>` — e.g., `80622` for a mission-622 step — so collisions are obvious).
 2. **Add the matching objective row** in `db/resources/Missions/Seed/mission_objectives.sql`. Use a single space (`" "`) for `display_log_text` — see [Why a single-space objective display text](#why-a-single-space-objective-display-text) below for the rationale.
 3. **Add a `MissionOverride` entry** to the `MISSION_OVERRIDES` slice in `crates/services/src/base/mission_overrides.rs`. The `injected_steps_xml` must use the same step ID and objective ID as the SQL rows; `insert_after_step_id` must be the step the chain is advancing **from** (not the one it's advancing to).
-4. **Reference the new step ID in the relevant content chain action.** Example: chain 1003's `advance_step` with `target_id=622, target_key='80622'` advances mission 622 from step 2113 to the new step 80622 (`db/resources/Content/Seed/castle_cellblock_chains.sql:50-88`).
+4. **Reference the new step ID in the relevant content chain action.** Example: chain 1003's `advance_step` with `target_id=622, target_key='80623'` advances mission 622 from step 2113 to the new Guard-search step 80623; chain 1005 then advances 80623 → 80622 (`db/resources/Content/Seed/castle_cellblock_chains.sql`, chains 1001–1007).
 
 Cross-check: the server-side seed (`mission_steps.sql`, `mission_objectives.sql`) and the client-side override (`MISSION_OVERRIDES`) must agree on `StepID`, `ObjectiveID`, and the `IsHidden` / `IsOptional` flags. The wire message `onObjectiveUpdate` only carries the ID and status, so any drift surfaces as a missing UI line on the player's screen even though the chain engine thinks it's making progress.
 
@@ -156,7 +156,7 @@ Three layers of regression coverage:
 
 - **Unit tests on the patcher** (`crates/services/src/base/mission_overrides.rs:146-271`, 5 tests) — XML insertion-point arithmetic, malformed-input refusal, the index-pinning guard for mission 641, and the duplicate-render guard for objective display text.
 - **Wire-format guard** on the encoder (`crates/services/src/mercury/protocol/tests.rs:159-171`) — pins that `build_version_info` accepts `&[u32]` and that empty vs populated keys produce different output sizes. Catches a future signature change that drops the slice or makes it optional.
-- **Chain-replay tests** for the two missions that use this mechanism (`crates/services/src/cell/content/chain_replay_tests/mission_622.rs`, 4 tests; `crates/services/src/cell/content/chain_replay_tests/mission_641.rs`, 4 new tests for chains 1055/1066). These exercise the full `chain_id → trigger → condition → action` round-trip against the seeded `resources.content_*` tables, including the equip-step gating.
+- **Chain-replay tests** for the two missions that use this mechanism (`crates/services/src/cell/content/chain_replay_tests/mission_622.rs` — the sequenced Frost → 80623 → Guard → 80622 → equip flow, the per-step re-loot guards, and the login-restore chains 1006/1007; `crates/services/src/cell/content/chain_replay_tests/mission_641.rs` for chains 1055/1066). These exercise the full `chain_id → trigger → condition → action` round-trip against the seeded `resources.content_*` tables, including the equip-step gating.
 
 See [TESTING.md](../../TESTING.md) for the picker that maps these test types to bug shapes.
 

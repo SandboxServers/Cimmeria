@@ -1,21 +1,30 @@
-//! Mission 622 — Arm Yourself! Pin the **loot-split** + equip-from-inventory
-//! flow:
+//! Mission 622 — Arm Yourself! Pin the **sequenced loot-split** +
+//! equip-from-inventory flow. The loot is split across the two stasis-room
+//! corpses and ordered Frost → Guard, with an intermediate step so the
+//! sequence survives a relog:
 //! - chain 1003 (Frost body, dialog 3995) grants ONLY the letter (3730) to the
-//!   mission inventory; it does not grant the pistol and does not advance.
+//!   mission inventory, binds the Guard's dialog set (5230), and advances
+//!   2113 → 80623 ("Search the NID Guard's body"). No pistol.
 //! - chain 1005 (Guard corpse, dialog 3996) grants the pistol (55) to the
-//!   backpack (container 1) and owns the 2113 → 80622 advance.
+//!   backpack (container 1) and advances 80623 → 80622 ("Equip the pistol").
 //! - chain 1004 fires on `item_equipped(55)` and is the only path that plays
 //!   kismet sequence 10000 (opens the stasis-room door) + completes the mission.
+//! - chains 1006/1007 re-bind Frost / the Guard on `player_loaded` at step
+//!   2113 / 80623 respectively (interaction bindings aren't persisted).
 //!
-//! The loot is split across the two stasis-room corpses; the order the player
-//! searches them in must not matter (see the order-independence tests below).
-//! Frost's letter chain is gated on `mission_status = active` (not step 2113)
-//! so it stays reachable after the Guard advances the step; its re-loot guard
-//! is the body's interaction-bit clear, since `once` is a no-op in the engine.
+//! Sequencing: the Guard corpse's dialog (5230 → template 21) is NOT bound at
+//! mission accept (chain 1001 binds only Frost's 5229), so the Guard is not
+//! searchable until chain 1003 binds 5230 on the Frost dialog_open. That
+//! binding gate lives at the interaction layer (`available_interactions` in
+//! cell/interactions/dispatch.rs), which the chain-replay harness here does
+//! not model — these tests pin the chain *conditions* and *actions*: the
+//! per-step gates (1003 on 2113, 1005 on 80623, 1004 on 80622), the advances,
+//! the re-loot guards (gates flip false on advance), and that the
+//! `add_dialog_set` unlocks live on the right chains (1003/1006/1007, not 1001).
 //!
-//! Step 80622 is a Cimmeria-introduced step whose matching `<Steps>` row is
-//! shipped to the client via a `mission_overrides` patch on `_622` in
-//! `CookedDataMissions.pak`; unchanged by the loot split.
+//! Steps 80623 + 80622 are Cimmeria-introduced; their matching `<Steps>` rows
+//! are shipped to the client via two `mission_overrides` patches on `_622` in
+//! `CookedDataMissions.pak` (XML order 2113 → 80623 → 80622).
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::ChainEngine;
@@ -25,10 +34,13 @@ use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 use super::super::engine_loader::load_single_chain_for_test;
 use crate::test_support::require_db_or_skip;
 
-/// Chain 1003 (Frost) must grant ONLY the letter — no pistol, no advance, no
-/// completion. The pistol + advance moved to chain 1005 (the Guard corpse).
+/// Chain 1003 (Frost) grants ONLY the letter, then advances to the
+/// intermediate Guard-search step 80623 (NOT the equip step 80622, and NOT
+/// straight to completion). The pistol comes from the Guard corpse (chain
+/// 1005). Frost owning the 2113 → 80623 advance is what self-gates it (the
+/// step-2113 gate flips false) and opens chain 1005's 80623 gate.
 #[tokio::test]
-async fn chain_1003_grants_letter_only_no_pistol_no_advance() {
+async fn chain_1003_grants_letter_and_advances_to_guard_search_step() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1003)
         .await
@@ -64,36 +76,50 @@ async fn chain_1003_grants_letter_only_no_pistol_no_advance() {
         .any(|a| matches!(a, Action::GrantItem { item_id: 55, .. }));
     assert!(
         !grants_pistol,
-        "chain 1003 (Frost) must NOT grant the pistol after the loot split; \
-         the pistol comes from the Guard corpse (chain 1005). Actions: {:?}",
+        "chain 1003 (Frost) must NOT grant the pistol; the pistol comes from the \
+         Guard corpse (chain 1005). Actions: {:?}",
         chain.actions,
     );
 
-    // No advance — Frost's chain must not own the step transition, or looting
-    // Frost first would skip past the search step before the pistol is found.
-    let advances = chain.actions.iter().any(|a| {
+    // Advances to 80623 (the Guard-search step), and ONLY to 80623 — never
+    // straight to the equip step 80622, which would skip the Guard search.
+    let advances_to_80623 = chain.actions.iter().any(|a| {
         matches!(
             a,
             Action::AdvanceStep {
                 mission_id: 622,
-                ..
+                step_id: 80623
             }
         )
     });
     assert!(
-        !advances,
-        "chain 1003 (Frost) must NOT advance mission 622; the Guard chain (1005) \
-         owns the 2113 → 80622 advance. Actions: {:?}",
+        advances_to_80623,
+        "chain 1003 (Frost) must advance mission 622 to the intermediate \
+         Guard-search step 80623. Actions: {:?}",
+        chain.actions,
+    );
+    let advances_to_80622 = chain.actions.iter().any(|a| {
+        matches!(
+            a,
+            Action::AdvanceStep {
+                mission_id: 622,
+                step_id: 80622
+            }
+        )
+    });
+    assert!(
+        !advances_to_80622,
+        "chain 1003 (Frost) must NOT advance straight to the equip step 80622 — \
+         that would skip the Guard search. Actions: {:?}",
         chain.actions,
     );
 }
 
-/// Order-independence: chain 1003 (Frost letter) must STILL fire when the
-/// player loots the Guard first (which advances 2113 → 80622). The letter gate
-/// is `mission_status = active`, not step 2113, so the prior advance does not
-/// lock Frost out. (This inverts the pre-split guard, which keyed on 2113.)
+/// Frost's gate is `step_status 2113 = active`: it fires on the opening step
+/// and self-limits once it advances to 80623 (a re-click can't re-grant the
+/// letter or re-advance). Pins the gate + the resolved 80623 advance together.
 #[tokio::test]
-async fn chain_1003_letter_still_fires_after_guard_advanced_the_step() {
+async fn chain_1003_fires_on_step_2113_and_advances_to_80623() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1003)
         .await
@@ -109,14 +135,62 @@ async fn chain_1003_letter_still_fires_after_guard_advanced_the_step() {
         "mission_622_status".to_string(),
         serde_json::json!("active"),
     );
-    // Guard was looted first: 2113 completed, now on 80622. Frost's letter
-    // must remain grantable.
+    ctx.set_param(
+        "mission_622_step_2113_status".to_string(),
+        serde_json::json!("active"),
+    );
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::DialogOpen,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let advances_to_80623 = resolved.actions.iter().any(|(id, a)| {
+        *id == 1003
+            && matches!(
+                a,
+                Action::AdvanceStep {
+                    mission_id: 622,
+                    step_id: 80623
+                }
+            )
+    });
+    assert!(
+        advances_to_80623,
+        "chain 1003 must fire on step 2113 and advance to 80623; got {:?}",
+        resolved.actions,
+    );
+}
+
+/// Re-loot guard: chain 1003 must NOT fire once it has advanced past step 2113
+/// (to 80623). Re-clicking Frost can't re-grant the letter or re-advance.
+#[tokio::test]
+async fn chain_1003_does_not_fire_after_advancing_to_80623() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1003)
+        .await
+        .expect("DB query for chain 1003 must succeed")
+        .expect("chain 1003 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("dialog_id".to_string(), serde_json::json!(3995));
+    ctx.set_param(
+        "mission_622_status".to_string(),
+        serde_json::json!("active"),
+    );
+    // Frost already searched: 2113 completed, now on 80623.
     ctx.set_param(
         "mission_622_step_2113_status".to_string(),
         serde_json::json!("completed"),
     );
     ctx.set_param(
-        "mission_622_step_80622_status".to_string(),
+        "mission_622_step_80623_status".to_string(),
         serde_json::json!("active"),
     );
 
@@ -130,10 +204,9 @@ async fn chain_1003_letter_still_fires_after_guard_advanced_the_step() {
     let resolved = engine.resolve_event(&event, &ctx);
     let chain_1003_fired = resolved.actions.iter().any(|(id, _)| *id == 1003);
     assert!(
-        chain_1003_fired,
-        "chain 1003 (Frost letter) must still fire after the Guard advanced the \
-         step — the letter gate is mission-active, not step 2113, so loot order \
-         doesn't matter. Got actions: {:?}",
+        !chain_1003_fired,
+        "chain 1003 must NOT re-fire after advancing to 80623 — the step-2113 \
+         gate is the re-loot guard. Got actions: {:?}",
         resolved.actions,
     );
 }
@@ -202,11 +275,11 @@ async fn chain_1005_grants_pistol_and_advances_to_equip_step() {
     );
 }
 
-/// Re-loot guard: chain 1005 (pistol) must NOT fire once step 2113 has been
-/// advanced past — re-searching the Guard corpse can't re-grant the pistol or
-/// re-advance. The step-gate flip is this chain's guard.
+/// Chain 1005's gate is `step_status 80623 = active` — the Guard is searchable
+/// only AFTER Frost advanced us to the intermediate step. Positive case: it
+/// fires (grants the pistol, advances to 80622) when 80623 is active.
 #[tokio::test]
-async fn chain_1005_does_not_fire_after_step_2113_advances() {
+async fn chain_1005_fires_on_step_80623() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1005)
         .await
@@ -223,8 +296,62 @@ async fn chain_1005_does_not_fire_after_step_2113_advances() {
         serde_json::json!("active"),
     );
     ctx.set_param(
+        "mission_622_step_80623_status".to_string(),
+        serde_json::json!("active"),
+    );
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::DialogOpen,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let advances_to_equip = resolved.actions.iter().any(|(id, a)| {
+        *id == 1005
+            && matches!(
+                a,
+                Action::AdvanceStep {
+                    mission_id: 622,
+                    step_id: 80622
+                }
+            )
+    });
+    assert!(
+        advances_to_equip,
+        "chain 1005 must fire on step 80623 and advance to the equip step 80622; \
+         got {:?}",
+        resolved.actions,
+    );
+}
+
+/// Order guard: chain 1005 must NOT fire while the player is still on the
+/// OPENING step 2113 (i.e. Frost not yet searched, so step 80623 isn't active).
+/// The Guard's dialog isn't even bound at that point, but gating defensively on
+/// 80623 (not 2113) means that even a spoofed dialog_open can't grant the
+/// pistol before Frost is searched.
+#[tokio::test]
+async fn chain_1005_does_not_fire_before_frost_searched() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1005)
+        .await
+        .expect("DB query for chain 1005 must succeed")
+        .expect("chain 1005 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("dialog_id".to_string(), serde_json::json!(3996));
+    ctx.set_param(
+        "mission_622_status".to_string(),
+        serde_json::json!("active"),
+    );
+    // Still on the opening step — Frost not yet searched.
+    ctx.set_param(
         "mission_622_step_2113_status".to_string(),
-        serde_json::json!("completed"),
+        serde_json::json!("active"),
     );
 
     let event = TriggerEvent {
@@ -238,8 +365,54 @@ async fn chain_1005_does_not_fire_after_step_2113_advances() {
     let chain_1005_fired = resolved.actions.iter().any(|(id, _)| *id == 1005);
     assert!(
         !chain_1005_fired,
-        "chain 1005 must NOT fire after step 2113 advances — re-searching the \
-         Guard would otherwise re-grant the pistol / re-advance. Got: {:?}",
+        "chain 1005 must NOT fire on step 2113 (before Frost is searched) — the \
+         gate is step 80623. Got: {:?}",
+        resolved.actions,
+    );
+}
+
+/// Re-loot guard: chain 1005 must NOT fire once it has advanced past 80623 (to
+/// the equip step 80622). Re-searching the Guard can't re-grant the pistol.
+#[tokio::test]
+async fn chain_1005_does_not_fire_after_advancing_to_80622() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1005)
+        .await
+        .expect("DB query for chain 1005 must succeed")
+        .expect("chain 1005 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("dialog_id".to_string(), serde_json::json!(3996));
+    ctx.set_param(
+        "mission_622_status".to_string(),
+        serde_json::json!("active"),
+    );
+    // Guard already searched: 80623 completed, now on the equip step 80622.
+    ctx.set_param(
+        "mission_622_step_80623_status".to_string(),
+        serde_json::json!("completed"),
+    );
+    ctx.set_param(
+        "mission_622_step_80622_status".to_string(),
+        serde_json::json!("active"),
+    );
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::DialogOpen,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let chain_1005_fired = resolved.actions.iter().any(|(id, _)| *id == 1005);
+    assert!(
+        !chain_1005_fired,
+        "chain 1005 must NOT re-fire after advancing to 80622 — the step-80623 \
+         gate is the re-loot guard. Got: {:?}",
         resolved.actions,
     );
 }
@@ -331,6 +504,181 @@ async fn chain_1004_does_not_fire_without_step_80622_active() {
         "chain 1004 must NOT fire before step 80622 is reached — \
          a pre-loot equip would otherwise complete the mission without \
          visiting Frost's body. Got actions: {:?}",
+        resolved.actions,
+    );
+}
+
+/// Sequencing guard: searching Frost is what unlocks the Guard corpse.
+/// Chain 1003 (Frost dialog_open) must bind the Guard's dialog set
+/// (5230 → template 21); chain 1001 (mission accept) must NOT. If the bind
+/// moved back to 1001, both corpses would be searchable at once and the
+/// Frost → Guard ordering the player asked for would be gone.
+#[tokio::test]
+async fn frost_loot_unlocks_guard_and_accept_does_not_bind_guard() {
+    let pool = require_db_or_skip!();
+
+    let chain_1001 = load_single_chain_for_test(&pool, 1001)
+        .await
+        .expect("DB query for chain 1001 must succeed")
+        .expect("chain 1001 must exist in seeded content_chains");
+    let chain_1003 = load_single_chain_for_test(&pool, 1003)
+        .await
+        .expect("DB query for chain 1003 must succeed")
+        .expect("chain 1003 must exist in seeded content_chains");
+
+    let binds_guard = |c: &cimmeria_content_engine::chain::Chain| {
+        c.actions.iter().any(|a| {
+            matches!(
+                a,
+                Action::AddDialogSet {
+                    dialog_set_id: 5230,
+                    slot: 21,
+                    ..
+                }
+            )
+        })
+    };
+
+    assert!(
+        binds_guard(&chain_1003),
+        "chain 1003 (Frost loot) must bind the Guard's dialog set (5230 → \
+         template 21) so searching Frost unlocks the Guard. Actions: {:?}",
+        chain_1003.actions,
+    );
+    assert!(
+        !binds_guard(&chain_1001),
+        "chain 1001 (mission accept) must NOT bind the Guard's dialog set — \
+         that would make the Guard searchable before Frost, defeating the \
+         Frost → Guard sequencing. Actions: {:?}",
+        chain_1001.actions,
+    );
+
+    // Frost's own dialog set (5229 → template 14) must STILL be bound at
+    // accept — only the Guard's bind moved.
+    let binds_frost_at_accept = chain_1001.actions.iter().any(|a| {
+        matches!(
+            a,
+            Action::AddDialogSet {
+                dialog_set_id: 5229,
+                slot: 14,
+                ..
+            }
+        )
+    });
+    assert!(
+        binds_frost_at_accept,
+        "chain 1001 must still bind Frost's dialog set (5229 → template 14) at \
+         mission accept. Actions: {:?}",
+        chain_1001.actions,
+    );
+}
+
+/// Relog safety: the corpse dialog bindings (`available_interactions`) are not
+/// persisted across a relog/restart, so login-restore chains must re-apply
+/// them. Chain 1006 re-binds Frost (5229) while step 2113 is active; chain 1007
+/// re-binds the Guard (5230) while the intermediate step 80623 is active. Both
+/// fire on `player_loaded`. Without 1007, the intermediate step would buy
+/// nothing — a player who searched Frost then logged out would lose the Guard
+/// binding and the pistol would be unobtainable.
+#[tokio::test]
+async fn login_restore_chains_rebind_corpses_per_step() {
+    let pool = require_db_or_skip!();
+
+    let chain_1006 = load_single_chain_for_test(&pool, 1006)
+        .await
+        .expect("DB query for chain 1006 must succeed")
+        .expect("chain 1006 (Frost login restore) must exist in seeded content_chains");
+    let chain_1007 = load_single_chain_for_test(&pool, 1007)
+        .await
+        .expect("DB query for chain 1007 must succeed")
+        .expect("chain 1007 (Guard login restore) must exist in seeded content_chains");
+
+    // Chain 1006 must re-bind Frost (5229 → template 14).
+    assert!(
+        chain_1006.actions.iter().any(|a| matches!(
+            a,
+            Action::AddDialogSet {
+                dialog_set_id: 5229,
+                slot: 14,
+                ..
+            }
+        )),
+        "chain 1006 must re-bind Frost's dialog set (5229 → template 14) on \
+         login. Actions: {:?}",
+        chain_1006.actions,
+    );
+
+    // Chain 1007 must re-bind the Guard (5230 → template 21).
+    assert!(
+        chain_1007.actions.iter().any(|a| matches!(
+            a,
+            Action::AddDialogSet {
+                dialog_set_id: 5230,
+                slot: 21,
+                ..
+            }
+        )),
+        "chain 1007 must re-bind the Guard's dialog set (5230 → template 21) on \
+         login. Actions: {:?}",
+        chain_1007.actions,
+    );
+}
+
+/// The login-restore chains must actually FIRE on `player_loaded` at their
+/// respective steps — pins the trigger + step gate together so a future edit
+/// that loosens the gate (or changes the trigger) trips here. Chain 1007 in
+/// particular is the whole point of the intermediate step: it must fire while
+/// step 80623 is active.
+#[tokio::test]
+async fn chain_1007_fires_on_login_at_step_80623() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1007)
+        .await
+        .expect("DB query for chain 1007 must succeed")
+        .expect("chain 1007 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    // OnPlayerLoaded matches on the `world_name` param (loaded from the
+    // trigger's event_key); the chain's key is 'Castle_CellBlock'.
+    ctx.set_param(
+        "world_name".to_string(),
+        serde_json::json!("Castle_CellBlock"),
+    );
+    ctx.set_param(
+        "mission_622_status".to_string(),
+        serde_json::json!("active"),
+    );
+    ctx.set_param(
+        "mission_622_step_80623_status".to_string(),
+        serde_json::json!("active"),
+    );
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::PlayerLoaded,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let rebinds_guard = resolved.actions.iter().any(|(id, a)| {
+        *id == 1007
+            && matches!(
+                a,
+                Action::AddDialogSet {
+                    dialog_set_id: 5230,
+                    slot: 21,
+                    ..
+                }
+            )
+    });
+    assert!(
+        rebinds_guard,
+        "chain 1007 must re-bind the Guard (5230) on player_loaded at step \
+         80623; got {:?}",
         resolved.actions,
     );
 }

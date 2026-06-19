@@ -25,6 +25,7 @@ pub(crate) mod console_authoring;
 pub(crate) mod cooked_data;
 pub(crate) mod crafting;
 pub(crate) mod deferred_aoi;
+pub(crate) mod dialog_overrides;
 pub(crate) mod dispatch;
 pub(crate) mod gm_feedback;
 pub(crate) mod gm_spawn;
