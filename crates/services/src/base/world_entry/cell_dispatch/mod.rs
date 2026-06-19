@@ -112,6 +112,24 @@ pub(crate) async fn handle_cell_message(
                     );
                     return;
                 }
+            } else {
+                // No addr mapping for this witness yet. `entered_aoi` below will
+                // call `send_to_witness_reliable`, which silently no-ops with no
+                // resolvable address — the CREATE_ENTITY + cascade are lost. The
+                // cell has ALREADY marked this entity in the witness set, so the
+                // idempotent AoI tick will NOT re-introduce it: the entity stays
+                // invisible to this witness for the whole session and only heals
+                // on relog (which resets the witness set). This is the suspected
+                // mechanism behind "static NPC missing until relog" — surface it
+                // loudly. See docs/architecture/negative-logging-convention.md.
+                tracing::warn!(
+                    target: "aoi.entered_no_witness_addr",
+                    witness_id,
+                    entity_id,
+                    class_id,
+                    reason = "witness_addr_unmapped",
+                    "EnteredAoI for unmapped witness — CREATE_ENTITY + cascade will be dropped; entity invisible to witness until relog"
+                );
             }
             aoi::entered_aoi(
                 witness_id,
