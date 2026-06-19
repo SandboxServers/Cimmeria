@@ -132,7 +132,11 @@ mod tests {
         let mut sorted = names.clone();
         sorted.sort_unstable();
         assert_eq!(names, sorted, ".help must be sorted alphabetically by name");
-        assert_eq!(all.len(), COMMANDS.len(), "unfiltered .help lists every command");
+        assert_eq!(
+            all.len(),
+            COMMANDS.len(),
+            "unfiltered .help lists every command"
+        );
     }
 
     #[test]
