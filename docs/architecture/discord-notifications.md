@@ -144,6 +144,57 @@ Helpers live in [`crates/discord/src/lib.rs`](../../crates/discord/src/lib.rs); 
 
 **For existing `warn!`/`error!` sites with structured fields**, do nothing — the tracing layer already harvests them into `Event::TracingEvent` automatically. The [negative-logging convention](negative-logging-convention.md) (`reason=`, `entity_id=`, `rows_affected=`, etc.) is what gives those tracing events their structure; the embed builder reads the fields into the embed's `fields` array.
 
+## Emit-site coverage
+
+Wiring `emit_*` calls into the server is incremental. Current state:
+
+| Channel | Live emit sites | Notes |
+|---|---|---|
+| `lifecycle` | `ServerStartup`, `ServerShutdown`, `ServerPanic` | from `server/src/main.rs` |
+| `auth` | `PlayerLogin`, `PlayerLogout`, `PlayerDisconnect`, `PlayerAuthFailed` | login/logoff/teardown in `base/`; auth-fail in `auth/handlers.rs` |
+| `world` | `PlayerWorldEntry`, `PlayerWorldExit` | entry in `play_character.rs`; exit on gate travel |
+| `gameplay` | `PlayerLevelUp`, `ItemUsed`, `MissionAccepted`, `MissionCompleted`, `MissionFailed`, `PlayerDeath`, `PlayerRespawn` | level-up/item-used base-layer; mission/death/respawn cell-side (see name cache below) |
+| `errors` | `Warning`/`Error` (harvest), `WireFormatError`, `DbError`, `MercuryTimeout` | decode/db/peer-silence seams in `base/` + `auth/` |
+| `gm` | `GmCommand` | `.`-console dispatch in `cell/console/mod.rs` |
+| `ops` | — | **deferred**: needs measurement infra |
+
+**`player_disconnect` is the single choke point.** Every teardown path
+(`logoff`, `inactivity_timeout`, `send_error`, `duplicate_login`,
+`client_disconnect`) funnels through `base::helpers::destroy_client_entities`,
+which maps the stable label to a typed [`DisconnectReason`] via
+`DisconnectReason::from_label`. A clean logoff fires *both* `PlayerLogout`
+(gameplay-level) and `PlayerDisconnect { reason: Clean }` (connection-level) —
+by design.
+
+**Cell-side name cache.** The cell service has no character/GM display name of
+its own — names live in the base `ConnectedClientState`. `GmCommand` and the
+cell-side gameplay events (`MissionAccepted/Completed/Failed`, `PlayerDeath`,
+`PlayerRespawn`) read `CellEntity::character_name`, which is threaded in from the
+base via `BaseToCellMsg::InitPlayerState` at world entry. Emits fall back to
+`entity:<id>` if the name isn't cached yet. (Mission embeds carry no mission
+*name* — `MissionDefEntry` has none cell-side — only the id.)
+
+### Deferred seams and why
+
+- **`LootGenerated`**: loot is rolled onto an NPC corpse at death
+  (`cell/abilities/loot_drop.rs`); the *looter* isn't known until someone takes
+  it, so there's no single character to attribute the generation to. Needs a
+  decision on whether to attribute to the killer or the looter before wiring.
+- **`GmTeleport` / `GmSpawn` / `GmItemGrant`**: the GM teleport/spawn/give command
+  *execution* is still TODO in `game/src/commands/gm_cmds.rs` — there's no
+  resolved position/template/quantity to put in the typed embed yet.
+- **`MissionRewardGranted`**: reward dispatch isn't implemented cell-side (no
+  reward catalog; see `cell/console/mission.rs`).
+- **`AssertionFailure`**: no explicit assertion-failure log site exists today;
+  invariant violations surface as generic `error!` and are caught by the
+  `errors` harvest.
+- **`ops` channel** (`HighLatency`, `PacketLossSpike`, `MemoryWarning`,
+  `TickStall`, `AoiBurstWarning`, `OutboxLag`): each needs a measurement +
+  threshold loop (RSS sampling, tick-duration timing, RTT thresholding) that
+  doesn't exist yet. Tracked separately.
+
+[`DisconnectReason`]: ../../crates/discord/src/event.rs
+
 ## Operations
 
 - **Stats**: `SenderStats { enqueued, sent, filtered, dropped_full, dropped_closed, dropped_rate_limit, retried, rate_limited_429, failed }`. Available via `cimmeria_discord::global().unwrap().stats()`.

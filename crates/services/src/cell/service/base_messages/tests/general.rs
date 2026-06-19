@@ -1273,3 +1273,57 @@ async fn item_used_drops_event_when_no_player_id() {
         "entity without player_id must drop ItemUsed event silently"
     );
 }
+
+/// `InitPlayerState` threads the base-side player name onto the cell entity
+/// (`CellEntity::character_name`). The cell otherwise has no display name for
+/// a player, and the cell-side Discord seams (GM `.`-console audit trail,
+/// mission/death/respawn emits) attribute events to it. The dispatcher sets
+/// it before delegating to `handle_init_player_state`; dropping that line
+/// would silently regress every cell-side emit to `entity:<id>` and trips
+/// this guard.
+#[tokio::test]
+async fn init_player_state_caches_character_name_on_cell_entity() {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+    }
+    mgr.connect_entity(1);
+
+    let (tx, _rx) = mpsc::channel(16);
+    let engine = ChainEngine::new();
+
+    handle_base_message(
+        BaseToCellMsg::InitPlayerState {
+            entity_id: 1,
+            player_id: 100,
+            world_name: "Castle_CellBlock".into(),
+            archetype_id: 1,
+            saved_missions: vec![],
+            abilities: vec![],
+            active_bandolier_slot: 0,
+            bandolier_items: vec![],
+            system_options: cimmeria_entity::cell_entity::SystemOptions::default(),
+            state_field: 0,
+            access_level: 0,
+            character_name: Some("Daniel".into()),
+        },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+
+    assert_eq!(
+        mgr.get_entity(1).unwrap().character_name.as_deref(),
+        Some("Daniel"),
+        "InitPlayerState must cache the player name on the cell entity so \
+         cell-side seams can attribute events to a name rather than an id",
+    );
+}

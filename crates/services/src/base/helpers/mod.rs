@@ -261,7 +261,7 @@ pub(crate) fn destroy_client_entities(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     reason: &'static str,
 ) {
-    let (account_eid, player_eid) = {
+    let (account_eid, player_eid, account_id, player_name, session_secs) = {
         let mut clients = match connected.lock() {
             Ok(c) => c,
             Err(_) => return,
@@ -274,8 +274,19 @@ pub(crate) fn destroy_client_entities(
         c.cancelled.store(true, Ordering::Relaxed);
         let account_eid = c.account_entity_id;
         let player_eid = c.player_entity_id;
+        // Snapshot identity + session length for the Discord disconnect emit
+        // before `remove` drops the state.
+        let account_id = c.account_id;
+        let player_name = c.player_name.clone();
+        let session_secs = c.connected_at.elapsed().as_secs();
         clients.remove(&addr);
-        (account_eid, player_eid)
+        (
+            account_eid,
+            player_eid,
+            account_id,
+            player_name,
+            session_secs,
+        )
     };
 
     let mut mgr = entity_manager.lock().unwrap();
@@ -303,6 +314,17 @@ pub(crate) fn destroy_client_entities(
         account_entity_id = account_eid,
         player_entity_id = ?player_eid,
         "Client entities cleaned up"
+    );
+
+    // Discord auth-channel: every teardown path funnels through here, so this
+    // is the one place that reports *why* a player dropped. The stable
+    // `reason` label maps to a typed `DisconnectReason` for the embed.
+    cimmeria_discord::emit_player_disconnect(
+        Some(account_id),
+        player_name,
+        addr,
+        cimmeria_discord::DisconnectReason::from_label(reason),
+        session_secs,
     );
 }
 

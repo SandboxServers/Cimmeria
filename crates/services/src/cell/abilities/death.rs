@@ -52,6 +52,25 @@ pub(super) async fn apply_death_transition(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    // Discord gameplay-channel (off by default — content/debug signal). Only
+    // player deaths post. Killer name + pvp/pve cause are best-effort from the
+    // attacker entity; read before the mutation bursts below.
+    if target_is_player {
+        let character_name = space_mgr
+            .get_entity(target_eid)
+            .and_then(|e| e.character_name.clone())
+            .unwrap_or_else(|| format!("entity:{target_eid}"));
+        let killer = space_mgr.get_entity(attacker_id).and_then(|e| {
+            if attacker_is_player {
+                e.character_name.clone()
+            } else {
+                e.npc_name.clone()
+            }
+        });
+        let cause = if attacker_is_player { "pvp" } else { "pve" };
+        cimmeria_discord::emit_player_death(character_name, killer, cause);
+    }
+
     // Phase J: any channelled effects the dying target was running die
     // with them. `cancel_channels_from_attacker` walks every entity's
     // active_effects list looking for entries sourced by this target,

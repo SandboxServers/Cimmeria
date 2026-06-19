@@ -148,6 +148,12 @@ pub(crate) async fn handle_play_character(
         cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
     );
 
+    // Snapshot the world-channel emit fields before the store block below
+    // moves `entry_info` / `player_load_data` into the connected state.
+    let entry_character_name = player_load_data.player_name.clone();
+    let entry_world_name = entry_info.world_name.clone();
+    let entry_position = entry_info.pos;
+
     // Store the world entry info and player load data for the create-player step.
     {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
@@ -172,6 +178,15 @@ pub(crate) async fn handle_play_character(
     }
 
     tracing::info!(%addr, "Entity teardown sent -- waiting for ENABLE_ENTITIES from client");
+
+    // Discord world-channel: the character is now known (unlike the auth-time
+    // login emit), so this carries name + world + spawn position.
+    cimmeria_discord::emit_player_world_entry(
+        account_id,
+        entry_character_name,
+        entry_world_name,
+        entry_position,
+    );
 
     Ok(())
 }
@@ -218,6 +233,7 @@ mod tests {
             next_seq_unreliable: Arc::new(AtomicU32::new(0)),
             pending_acks: Arc::new(Mutex::new(Vec::new())),
             last_recv: Arc::new(Mutex::new(Instant::now())),
+            connected_at: Instant::now(),
             account_entity_id: 1,
             next_data_id: 0,
             pending_world_entry: None,

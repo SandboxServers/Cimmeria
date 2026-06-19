@@ -83,6 +83,11 @@ pub(crate) async fn handle_encrypted_datagram(
         Ok(p) => p,
         Err(e) => {
             tracing::warn!(%addr, "Packet parse failed after decrypt: {e}");
+            // Discord errors-channel: a decrypted-but-undecodable datagram is
+            // a wire-format break worth a structured embed (the generic warn
+            // harvest would lose the addr/kind structure). The sender's
+            // bounded queue + per-channel rate limit absorb a flood.
+            cimmeria_discord::emit_wire_format_error("parse_incoming", Some(addr), e.to_string());
             return Ok(());
         }
     };

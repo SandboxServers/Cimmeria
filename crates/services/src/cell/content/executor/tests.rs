@@ -1330,3 +1330,99 @@ async fn set_npc_ai_state_idle_on_patroller_preserves_patrol_index() {
         "patrol_next_index must persist across SetNpcAiState(Idle) so the AI tick can resume the route",
     );
 }
+
+/// `Action::AcceptMission` happy path: a known mission def with the player
+/// having no prior instance inserts a fresh ACTIVE mission. Also exercises
+/// the accept-side Discord `mission_accepted` seam (no-op without a runtime,
+/// but the name-capture path runs). The complement of the offer-refused
+/// branch — without this, the accepted path had no executor-level coverage.
+#[tokio::test]
+async fn accept_mission_action_inserts_active_instance() {
+    use crate::cell::spawner::{MissionDefEntry, MissionObjectiveDef};
+    use cimmeria_entity::missions::MISSION_ACTIVE;
+
+    let mut mgr = make_space_mgr();
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(42);
+        // Cached name the accept seam reads when attributing the emit.
+        e.character_name = Some("Teal'c".into());
+    }
+    mgr.connect_entity(1);
+    mgr.mission_defs.insert(
+        700,
+        MissionDefEntry {
+            step_id: 2100,
+            objectives: vec![MissionObjectiveDef {
+                objective_id: 3000,
+                is_hidden: false,
+                is_optional: false,
+            }],
+            is_hidden: false,
+            num_repeats: 0,
+            can_repeat_on_fail: false,
+        },
+    );
+
+    let (tx, _rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(9000, Action::AcceptMission { mission_id: 700 })],
+    };
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let m = mgr
+        .get_entity(1)
+        .unwrap()
+        .missions
+        .get_mission(700)
+        .expect("AcceptMission must insert a mission instance");
+    assert_eq!(
+        m.status, MISSION_ACTIVE,
+        "a freshly accepted mission is ACTIVE"
+    );
+}
+
+/// `Action::CompleteMission` happy path: an ACTIVE mission transitions to
+/// COMPLETED. This is the positive complement of
+/// `complete_mission_action_against_failed_mission_does_not_fire_completion_event`
+/// and exercises the complete-side `mission_completed` seam (the
+/// `transitioned_from_active` branch that the failure test deliberately
+/// avoids).
+#[tokio::test]
+async fn complete_mission_action_against_active_mission_marks_completed() {
+    use cimmeria_entity::missions::{MissionInstance, MISSION_ACTIVE, MISSION_COMPLETED};
+
+    let mut mgr = make_space_mgr();
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(42);
+        e.character_name = Some("Teal'c".into());
+        let m = MissionInstance::new(700, 2100, vec![]);
+        assert_eq!(m.status, MISSION_ACTIVE, "new mission starts ACTIVE");
+        e.missions.add_mission(m);
+    }
+    mgr.connect_entity(1);
+
+    let (tx, _rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(9000, Action::CompleteMission { mission_id: 700 })],
+    };
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let m = mgr
+        .get_entity(1)
+        .unwrap()
+        .missions
+        .get_mission(700)
+        .expect("mission instance must still exist after completion");
+    assert_eq!(
+        m.status, MISSION_COMPLETED,
+        "an ACTIVE mission must transition to COMPLETED"
+    );
+}

@@ -756,6 +756,16 @@ pub(crate) async fn handle_console_command(
         "GM .-console command accepted"
     );
 
+    // Discord gm-channel audit trail. Attribute to the caller's cached name
+    // (threaded in via InitPlayerState); fall back to the entity id if the
+    // name isn't cached yet. Args are name/position tokens, never secrets —
+    // the same privacy balance as the audit log above.
+    let gm_name = space_mgr
+        .get_entity(caller_id)
+        .and_then(|e| e.character_name.clone())
+        .unwrap_or_else(|| format!("entity:{caller_id}"));
+    cimmeria_discord::emit_gm_command(gm_name, format!(".{name}"), args.join(" "));
+
     exec(name, caller_id, &args, target_id, tx, space_mgr, engine).await;
 }
 

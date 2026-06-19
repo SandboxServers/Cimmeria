@@ -513,6 +513,23 @@ impl DisconnectReason {
             Self::ServerInitiated => "server_initiated",
         }
     }
+
+    /// Map the stable internal disconnect label that
+    /// `base::helpers::destroy_client_entities` stamps on every teardown
+    /// (`"client_disconnect"`, `"logoff"`, `"inactivity_timeout"`,
+    /// `"send_error"`, `"duplicate_login"`) onto a typed reason for the
+    /// embed. Unknown labels collapse to [`Self::ServerInitiated`] — the
+    /// conservative "the server closed this" bucket — so a new label added
+    /// upstream degrades to a sane default rather than failing to compile
+    /// at a distance.
+    pub fn from_label(label: &str) -> Self {
+        match label {
+            "client_disconnect" | "logoff" => Self::Clean,
+            "inactivity_timeout" => Self::Timeout,
+            "send_error" => Self::PeerReset,
+            _ => Self::ServerInitiated,
+        }
+    }
 }
 
 /// Chat channel sub-kind. Mapped to its own `EventKind` for routing.
@@ -676,6 +693,40 @@ mod tests {
             assert!(seen.insert(c.as_str()));
         }
         assert_eq!(seen.len(), ChannelKind::ALL.len());
+    }
+
+    /// `DisconnectReason::from_label` is the single mapping the auth-channel
+    /// `player_disconnect` seam relies on. Pin every label the
+    /// `destroy_client_entities` choke point stamps, plus the unknown-label
+    /// fallback. Reverting the mapping (or renaming a label upstream without
+    /// updating it) trips this.
+    #[test]
+    fn disconnect_reason_from_label_maps_every_teardown_label() {
+        assert_eq!(
+            DisconnectReason::from_label("client_disconnect"),
+            DisconnectReason::Clean
+        );
+        assert_eq!(
+            DisconnectReason::from_label("logoff"),
+            DisconnectReason::Clean
+        );
+        assert_eq!(
+            DisconnectReason::from_label("inactivity_timeout"),
+            DisconnectReason::Timeout
+        );
+        assert_eq!(
+            DisconnectReason::from_label("send_error"),
+            DisconnectReason::PeerReset
+        );
+        assert_eq!(
+            DisconnectReason::from_label("duplicate_login"),
+            DisconnectReason::ServerInitiated
+        );
+        // Unknown label degrades to the conservative server-initiated bucket.
+        assert_eq!(
+            DisconnectReason::from_label("something_new"),
+            DisconnectReason::ServerInitiated
+        );
     }
 
     /// `EventKind::ALL` length is the canonical count of toggleable event

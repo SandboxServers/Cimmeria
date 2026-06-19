@@ -978,6 +978,7 @@ dependencies = [
  "cimmeria-commands",
  "cimmeria-common",
  "cimmeria-content-engine",
+ "cimmeria-discord",
  "cimmeria-entity",
  "cimmeria-game",
  "cimmeria-mercury",

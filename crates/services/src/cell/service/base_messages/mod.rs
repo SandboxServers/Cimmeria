@@ -375,7 +375,27 @@ pub(super) async fn handle_base_message(
             system_options,
             state_field,
             access_level,
+            character_name,
         } => {
+            // Cache the display name on the cell entity so cell-side seams (GM
+            // `.`-console audit, mission/death/respawn Discord emits) can
+            // attribute events to a name — the cell has no other source for it.
+            // Set here rather than threaded through `handle_init_player_state`
+            // to keep that function under the argument-count lint; the entity
+            // already exists (created by the prior `ConnectEntity`).
+            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                entity.character_name = character_name;
+            } else {
+                // The entity should already exist (ConnectEntity precedes
+                // InitPlayerState). If it doesn't, the name cache silently
+                // fails and every cell-side emit for this player degrades to
+                // `entity:<id>` — surface the ordering bug rather than hiding it.
+                tracing::warn!(
+                    entity_id,
+                    "InitPlayerState: entity absent when caching character_name -- \
+                     ConnectEntity ordering bug; cell-side emits will fall back to entity id"
+                );
+            }
             player_init::handle_init_player_state(
                 entity_id,
                 player_id,

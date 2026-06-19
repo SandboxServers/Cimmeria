@@ -65,7 +65,7 @@ pub async fn handle_grant_xp(
     // a failed grant onto the next successful one: the next GrantXP would
     // saturate-add on top of the unpersisted value and then write the
     // combined sum, effectively persisting the grant we tried to drop.
-    let (player_id, total_xp, new_level, training_points, levels_gained) = {
+    let (player_id, total_xp, new_level, training_points, levels_gained, player_name) = {
         // Tolerate poison instead of panicking — another thread crashing the
         // mutex shouldn't stop XP grants from continuing on the recovered state.
         let map = match connected.lock() {
@@ -97,7 +97,7 @@ pub async fn handle_grant_xp(
             gained.push(level);
         }
 
-        (player_id, xp, level, tp, gained)
+        (player_id, xp, level, tp, gained, state.player_name.clone())
     };
 
     // Persist first. On DB failure we return WITHOUT mutating in-memory
@@ -183,6 +183,15 @@ pub async fn handle_grant_xp(
         levels_up = levels_gained.len(),
         "GrantXP processed"
     );
+
+    // Discord gameplay-channel: only on an actual level boundary crossing,
+    // and only once per grant (reporting the final level even on a multi-level
+    // catch-up grant). Skipped when the name isn't cached yet (pre-character).
+    if !levels_gained.is_empty() {
+        if let Some(name) = &player_name {
+            cimmeria_discord::emit_level_up(name.clone(), new_level);
+        }
+    }
 
     // Bundle the post-grant notifications into a single Mercury frame.
     //

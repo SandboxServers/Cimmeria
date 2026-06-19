@@ -319,6 +319,85 @@ pub fn emit_gm_command(
     });
 }
 
+pub fn emit_item_used(
+    character_name: impl Into<String>,
+    item_type_id: i32,
+    target: Option<String>,
+) {
+    emit(Event::ItemUsed {
+        character_name: character_name.into(),
+        item_type_id,
+        target,
+        timestamp: chrono::Utc::now(),
+    });
+}
+
+pub fn emit_wire_format_error(
+    kind: impl Into<String>,
+    addr: Option<SocketAddr>,
+    details: impl Into<String>,
+) {
+    emit(Event::WireFormatError {
+        kind: kind.into(),
+        addr,
+        details: details.into(),
+        timestamp: chrono::Utc::now(),
+    });
+}
+
+pub fn emit_db_error(operation: impl Into<String>, details: impl Into<String>) {
+    emit(Event::DbError {
+        operation: operation.into(),
+        details: details.into(),
+        timestamp: chrono::Utc::now(),
+    });
+}
+
+pub fn emit_mercury_timeout(addr: SocketAddr, account_id: Option<u32>, silence_secs: u64) {
+    emit(Event::MercuryTimeout {
+        addr,
+        account_id,
+        silence_secs,
+        timestamp: chrono::Utc::now(),
+    });
+}
+
+pub fn emit_mission_failed(
+    character_name: impl Into<String>,
+    mission_id: i32,
+    mission_name: Option<String>,
+    reason: impl Into<String>,
+) {
+    emit(Event::MissionFailed {
+        character_name: character_name.into(),
+        mission_id,
+        mission_name,
+        reason: reason.into(),
+        timestamp: chrono::Utc::now(),
+    });
+}
+
+pub fn emit_player_death(
+    character_name: impl Into<String>,
+    killer: Option<String>,
+    cause: impl Into<String>,
+) {
+    emit(Event::PlayerDeath {
+        character_name: character_name.into(),
+        killer,
+        cause: cause.into(),
+        timestamp: chrono::Utc::now(),
+    });
+}
+
+pub fn emit_player_respawn(character_name: impl Into<String>, world_name: impl Into<String>) {
+    emit(Event::PlayerRespawn {
+        character_name: character_name.into(),
+        world_name: world_name.into(),
+        timestamp: chrono::Utc::now(),
+    });
+}
+
 /// Install a panic hook that posts a [`Event::ServerPanic`] to the
 /// lifecycle channel before the default hook aborts the process.
 ///
@@ -489,7 +568,7 @@ mod tests {
             .await;
 
         let cfg = all_on_config(&server.uri());
-        let _rt = init_with_config(cfg);
+        let rt = init_with_config(cfg);
         // Belt-and-braces: if a stale GLOBAL slipped in from a
         // future test, mark the guard so the next reader of this
         // file knows what's going on. (No actual coordination —
@@ -518,21 +597,44 @@ mod tests {
         emit_mission_accepted("alice", 1234, Some("Find Ambernol".into()));
         emit_mission_completed("alice", 1234, Some("Find Ambernol".into()));
         emit_gm_command("steve", "/teleport", "alice 1,2,3");
+        emit_item_used("alice", 5001, Some("self".into()));
+        emit_wire_format_error(
+            "seq_out_of_range",
+            Some(addr),
+            "seq 0x1fffffff >= NULL_SEQUENCE",
+        );
+        emit_db_error("auth_user", "connection refused");
+        emit_mercury_timeout(addr, Some(1), 60);
+        emit_mission_failed("alice", 1234, Some("Find Ambernol".into()), "timer expired");
+        emit_player_death("alice", Some("Jaffa Guard".into()), "staff blast");
+        emit_player_respawn("alice", "Castle");
 
-        const EXPECTED_EMITS: usize = 13;
+        const EXPECTED_EMITS: u64 = 20;
 
-        // Drain the queue. The send task is async; give it a
-        // generous wait but bounded so a hung test doesn't hang the
-        // suite. 2 s is well above the steady-state turnaround for
-        // a localhost wiremock + 150/min rate-limit budget.
+        // The typed-wrapper regression target: every `emit_*` helper must
+        // enqueue exactly one event. `enqueued` is bumped synchronously in
+        // `SenderHandle::try_send` BEFORE the per-channel token bucket, so
+        // this count is immune to rate-limit drops — which matters now that
+        // the gameplay channel has 7 helper types but only a 5-msg burst
+        // budget (the tight loop here would otherwise drop ~2 gameplay
+        // posts). A future hand that drops `emit_player_login` or stops a
+        // helper from constructing its event trips this.
+        assert_eq!(
+            rt.stats().enqueued,
+            EXPECTED_EMITS,
+            "every emit_* helper must enqueue exactly one event through the global runtime"
+        );
+
+        // Drain briefly so the routing-diversity check below has traffic to
+        // inspect. Not pinning an exact POST count — the gameplay burst cap
+        // drops a couple, and the enqueue assertion above already guards the
+        // count. 15 is comfortably below 20-minus-drops and above the
+        // 5-channel diversity floor.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         loop {
             let count = server.received_requests().await.unwrap().len();
-            if count >= EXPECTED_EMITS {
+            if count >= 15 || std::time::Instant::now() >= deadline {
                 break;
-            }
-            if std::time::Instant::now() >= deadline {
-                panic!("drained {count} requests but expected ≥ {EXPECTED_EMITS} within deadline");
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
