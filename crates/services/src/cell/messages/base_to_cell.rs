@@ -100,6 +100,14 @@ pub enum BaseToCellMsg {
         /// `gm*`/debug methods from non-privileged callers. Authoritative
         /// server-side value — never client-supplied. (#475 / CAT-N-03)
         access_level: u32,
+        /// The selected character's display name, sourced from the base
+        /// `ConnectedClientState.player_name`. Cached on
+        /// `CellEntity::character_name` so cell-side seams (the `.`-console
+        /// GM audit trail, mission/death/respawn notifications) can attribute
+        /// events to a name instead of a bare entity id — the cell otherwise
+        /// has no name for a player. `None` only if the base session somehow
+        /// reached world entry without a cached name.
+        character_name: Option<String>,
     },
 
     /// Update one bandolier slot after a runtime item grant.

@@ -163,6 +163,7 @@ pub(crate) async fn handle_login(
                 next_seq_unreliable,
                 pending_acks,
                 last_recv,
+                connected_at: Instant::now(),
                 account_entity_id: entity_manager.lock().unwrap().create_entity("Account").0 as u32,
                 next_data_id: 0,
                 pending_world_entry: None,
@@ -190,6 +191,11 @@ pub(crate) async fn handle_login(
     };
 
     tracing::info!(%addr, "Phase 3 complete -- channel registered, starting tick-sync");
+
+    // Discord auth-channel ping. Character isn't selected yet at Phase 3
+    // (that happens at playCharacter), so the name is `None` here — the
+    // world-entry emit carries the character once it's known.
+    cimmeria_discord::emit_player_login(login.account_id, None, addr);
 
     // Start tick-sync immediately after Phase 3 (matches C++ onConnected() behavior).
     // The C++ server starts gameTick() as soon as the Account entity is created,
@@ -310,7 +316,10 @@ pub(crate) async fn handle_log_off(
     tracing::info!(%addr, "Client requests logOff -- sending LOGGED_OFF and cleaning up");
 
     // Signal the tick-sync loop to stop and grab seq/acks for the final packet.
-    let (acks, seq) = {
+    // Snapshot the identity + session duration here too, before
+    // `destroy_client_entities` removes the session from the map — the
+    // Discord logout emit below needs them.
+    let (acks, seq, account_id, player_name, session_secs) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let client = clients.get_mut(&addr).ok_or("no session for addr")?;
         client
@@ -321,7 +330,10 @@ pub(crate) async fn handle_log_off(
             .next_seq
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK;
-        (acks, seq)
+        let account_id = client.account_id;
+        let player_name = client.player_name.clone();
+        let session_secs = client.connected_at.elapsed().as_secs();
+        (acks, seq, account_id, player_name, session_secs)
     };
 
     // Send LOGGED_OFF (0x37) with reason=0 to trigger immediate client-side
@@ -340,6 +352,13 @@ pub(crate) async fn handle_log_off(
         entity_to_addr,
         "logoff",
     );
+
+    // Discord auth-channel: clean logout carries the session length. The
+    // lower-level teardown in `destroy_client_entities` also fires a
+    // `PlayerDisconnect { reason: Clean }` — by design (see the
+    // `DisconnectReason::Clean` doc): logout is the gameplay-level event,
+    // disconnect the connection-level one.
+    cimmeria_discord::emit_player_logout(account_id, player_name, session_secs);
 
     Ok(())
 }

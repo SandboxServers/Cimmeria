@@ -122,17 +122,28 @@ pub(super) async fn handle_user_auth(
             Err(AuthCredError::InvalidCredentials) => {
                 tracing::info!(user = %req.account_name, "Invalid credentials");
                 audit!("invalid_credentials");
+                cimmeria_discord::emit_player_auth_failed(
+                    req.account_name.as_str(),
+                    addr,
+                    "invalid_credentials",
+                );
                 // C++ FailureCode::BadUserPassword = 4 (not 3, which is InvalidService).
                 return login_error(4, "The account name or password is incorrect.");
             }
             Err(AuthCredError::AccountDisabled) => {
                 tracing::info!(user = %req.account_name, "Account disabled");
                 audit!("account_disabled");
+                cimmeria_discord::emit_player_auth_failed(
+                    req.account_name.as_str(),
+                    addr,
+                    "account_disabled",
+                );
                 return login_error(5, "This account has been suspended.");
             }
             Err(AuthCredError::DbError(e)) => {
                 tracing::error!(user = %req.account_name, error = %e, "DB query failed");
                 audit!("db_error");
+                cimmeria_discord::emit_db_error("auth_credential_check", e.to_string());
                 return login_error(10, "A request to the database server failed.");
             }
         }

@@ -151,6 +151,13 @@ pub(crate) struct ConnectedClientState {
     pub next_seq_unreliable: Arc<AtomicU32>,
     pub pending_acks: Arc<Mutex<Vec<u32>>>,
     pub last_recv: Arc<Mutex<Instant>>,
+    /// Wall-clock instant the session completed Phase 3 (channel registered).
+    /// Distinct from [`last_recv`], which slides forward on every packet —
+    /// this one is fixed at connect so logout/disconnect emits can report a
+    /// true `session_secs` rather than idle time.
+    ///
+    /// [`last_recv`]: Self::last_recv
+    pub connected_at: Instant,
     pub account_entity_id: u32,
     pub next_data_id: u16,
     pub pending_world_entry: Option<WorldEntryInfo>,

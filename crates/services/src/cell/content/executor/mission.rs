@@ -105,6 +105,15 @@ pub(super) async fn accept_or_advance(
             entity_id, player_id, mission_id, engine, tx, space_mgr,
         )
         .await;
+
+        // Discord gameplay-channel. Mission defs carry no name cell-side, so
+        // the mission id is the identifier; the player name comes from the
+        // entity's InitPlayerState-cached value.
+        let character_name = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.character_name.clone())
+            .unwrap_or_else(|| format!("entity:{entity_id}"));
+        cimmeria_discord::emit_mission_accepted(character_name, mission_id, None);
     } else {
         tracing::warn!(
             mission_id,
@@ -184,6 +193,15 @@ pub(super) async fn complete(
             entity_id, player_id, mission_id, engine, tx, space_mgr,
         )
         .await;
+
+        // Discord gameplay-channel — only on the real active→completed
+        // transition (guarded by `transitioned_from_active`), so retries and
+        // failure-conversions don't post.
+        let character_name = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.character_name.clone())
+            .unwrap_or_else(|| format!("entity:{entity_id}"));
+        cimmeria_discord::emit_mission_completed(character_name, mission_id, None);
     } else {
         tracing::debug!(
             entity_id,

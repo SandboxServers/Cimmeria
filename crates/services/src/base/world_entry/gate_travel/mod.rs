@@ -60,8 +60,9 @@ pub(crate) async fn handle_gate_travel(
         .copied()
         .ok_or("Gate travel: no client addr for entity")?;
 
-    // Get client state
-    let (key, account_id, _access_level, pending_acks_arc, next_seq) = {
+    // Get client state. Also snapshot the name + current world for the
+    // Discord world-exit emit before they're overwritten by the new world.
+    let (key, account_id, _access_level, pending_acks_arc, next_seq, exit_name, exit_from_world) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients
             .get(&addr)
@@ -72,12 +73,24 @@ pub(crate) async fn handle_gate_travel(
             c.access_level,
             Arc::clone(&c.pending_acks),
             Arc::clone(&c.next_seq),
+            c.player_name.clone(),
+            c.world_name.clone(),
         )
     };
 
     tracing::info!(
         entity_id, %addr, world = %target_world_name,
         "Gate travel: sending RESET_ENTITIES for world transition"
+    );
+
+    // Discord world-channel: leaving the current world for the gate target.
+    // `from_world` is whatever the session was last in; the emit's `to_world`
+    // is the gate destination.
+    cimmeria_discord::emit_player_world_exit(
+        account_id,
+        exit_name.unwrap_or_else(|| "<unknown>".to_string()),
+        exit_from_world.unwrap_or_else(|| "<unknown>".to_string()),
+        Some(target_world_name.to_string()),
     );
 
     // Tell CellService to create the entity in the new space and await the

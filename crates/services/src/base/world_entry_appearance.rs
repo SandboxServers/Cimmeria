@@ -379,6 +379,7 @@ pub(crate) async fn handle_on_client_ready(
                 system_options,
                 state_field,
                 access_level,
+                character_name: player_name.clone(),
             })
             .await
         {

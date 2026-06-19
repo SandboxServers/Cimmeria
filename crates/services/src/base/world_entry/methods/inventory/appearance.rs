@@ -136,6 +136,7 @@ mod tests {
             next_seq_unreliable: Arc::new(AtomicU32::new(0)),
             pending_acks: Arc::new(Mutex::new(Vec::new())),
             last_recv: Arc::new(Mutex::new(Instant::now())),
+            connected_at: Instant::now(),
             account_entity_id: 1,
             next_data_id: 0,
             pending_world_entry: None,

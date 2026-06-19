@@ -334,7 +334,17 @@ pub(super) async fn handle_base_message(
             system_options,
             state_field,
             access_level,
+            character_name,
         } => {
+            // Cache the display name on the cell entity so cell-side seams (GM
+            // `.`-console audit, mission/death/respawn Discord emits) can
+            // attribute events to a name — the cell has no other source for it.
+            // Set here rather than threaded through `handle_init_player_state`
+            // to keep that function under the argument-count lint; the entity
+            // already exists (created by the prior `ConnectEntity`).
+            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                entity.character_name = character_name;
+            }
             player_init::handle_init_player_state(
                 entity_id,
                 player_id,

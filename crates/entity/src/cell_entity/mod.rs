@@ -198,6 +198,14 @@ pub struct CellEntity {
     /// Display name for NPCs (sent in dialog headers, etc.).
     pub npc_name: Option<String>,
 
+    /// Display name for player entities, cached from the base
+    /// `ConnectedClientState.player_name` via `BaseToCellMsg::InitPlayerState`.
+    /// The cell has no other source for a player's name — it's needed so
+    /// cell-side seams (the `.`-console GM audit trail, mission/death/respawn
+    /// Discord emits) can attribute events to a name rather than a bare
+    /// entity id. `None` for NPCs and until `InitPlayerState` arrives.
+    pub character_name: Option<String>,
+
     /// Mission tracking for player entities.
     pub missions: MissionManager,
 
@@ -916,6 +924,7 @@ impl CellEntity {
             abilities: AbilityManager::new(),
             interaction_type: None,
             npc_name: None,
+            character_name: None,
             missions: MissionManager::new(),
             player_id: None,
             archetype_id: None,
