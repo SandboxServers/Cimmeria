@@ -124,6 +124,24 @@ pub(super) async fn handle_base_message(
         BaseToCellMsg::ConnectEntity { entity_id } => {
             tracing::debug!(entity_id, "ConnectEntity (player)");
             space_mgr.connect_entity(entity_id);
+            // Introduce the just-connected player to everything already in
+            // range immediately, rather than waiting for the next AoI tick.
+            // The cell loop's `select!` can run an AoI tick before this
+            // `ConnectEntity` is processed; that tick skips the space because
+            // the player isn't in `space.players` yet, so NPCs spawned during
+            // instance creation (e.g. the Castle_CellBlock stasis-room corpses)
+            // would otherwise stay un-introduced until a later tick or a relog.
+            for event in space_mgr.compute_aoi_changes_for_player(entity_id) {
+                if let Err(e) = tx.send(event).await {
+                    tracing::warn!(
+                        entity_id,
+                        error = %e,
+                        "ConnectEntity: AoI introduction send failed — \
+                         player may see a delayed entity population"
+                    );
+                    break;
+                }
+            }
         }
 
         BaseToCellMsg::DisconnectEntity { entity_id } => {
