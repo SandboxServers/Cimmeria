@@ -355,6 +355,46 @@ async fn missionfail_on_absent_mission_reports_no_active() {
     );
 }
 
+/// `.missionfail` happy path: a target holding an ACTIVE mission transitions
+/// it to FAILED and reports the transition. Complements
+/// `missionfail_on_absent_mission_reports_no_active` (the guard branch) and
+/// exercises the success branch's `mission_failed` Discord seam — a no-op
+/// without a runtime, but the character-name capture path runs.
+#[tokio::test]
+async fn missionfail_on_active_mission_transitions_to_failed() {
+    use cimmeria_entity::missions::{MissionInstance, MISSION_ACTIVE, MISSION_FAILED};
+
+    let (mut mgr, gm, npc) = setup();
+    if let Some(e) = mgr.get_entity_mut(npc) {
+        e.is_player = true;
+        e.player_id = Some(500);
+        // The name the missionfail seam reads when attributing the emit.
+        e.character_name = Some("Bra'tac".into());
+        let m = MissionInstance::new(687, 2113, vec![]);
+        assert_eq!(m.status, MISSION_ACTIVE, "seeded mission starts ACTIVE");
+        e.missions.add_mission(m);
+    }
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+    handle_console_command(gm, ".missionfail 687", &tx, &mut mgr, &engine).await;
+
+    assert_eq!(
+        mgr.get_entity(npc)
+            .unwrap()
+            .missions
+            .get_mission(687)
+            .unwrap()
+            .status,
+        MISSION_FAILED,
+        "an ACTIVE mission must transition to FAILED via .missionfail",
+    );
+    let (_, feedback) = drain_grant_and_feedback(&mut rx);
+    assert!(
+        feedback.as_deref().is_some_and(|t| t.contains("FAILED")),
+        "missionfail success must report the FAILED transition; got {feedback:?}"
+    );
+}
+
 /// Critical-fix guard: a GM's session buffers (`authoring_changes`,
 /// `autosave_spawns`, both keyed by entity_id) must be dropped when the entity
 /// is destroyed, so pending authoring SQL / the autosave flag can't leak or
