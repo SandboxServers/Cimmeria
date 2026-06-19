@@ -68,6 +68,7 @@ pub(super) async fn handle_goto_xyz(
     // Keep the spatial grid consistent first (writes cell_entity.position),
     // then send the authoritative snap.
     space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
+    space_mgr.note_authorized_teleport(entity_id); // reseed validator clock
     if !forward_to_base(
         tx,
         CellToBaseMsg::TeleportPlayer {
@@ -303,6 +304,7 @@ pub(super) async fn handle_goto(
         "gmGoto: teleporting GM to target"
     );
     space_mgr.update_entity_position(entity_id, dest, [0, 0, 0], [0.0; 3]);
+    space_mgr.note_authorized_teleport(entity_id); // reseed validator clock
     if !forward_to_base(
         tx,
         CellToBaseMsg::TeleportPlayer {
@@ -393,6 +395,7 @@ pub(super) async fn handle_summon(
         "gmSummon: moving target to caller"
     );
     space_mgr.update_entity_position(target_eid, caller_pos, [0, 0, 0], [0.0; 3]);
+    space_mgr.note_authorized_teleport(target_eid); // reseed validator clock
     if is_player
         && !forward_to_base(
             tx,

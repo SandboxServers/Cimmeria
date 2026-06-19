@@ -180,6 +180,11 @@ pub(crate) async fn handle_respawn(
     entity.threatened_mobs.clear();
 
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
+    // Authorized teleport (death → respawn point): reseed the movement-
+    // validator clock so the first post-respawn client packet isn't
+    // measured against the pre-death sample (which would log a spurious
+    // speed warning).
+    space_mgr.note_authorized_teleport(entity_id);
 
     // Push the refreshed HEALTH/FOCUS to the HUD via onStatUpdate.
     if !stat_update.is_empty() {

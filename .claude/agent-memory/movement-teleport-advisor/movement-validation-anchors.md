@@ -8,20 +8,23 @@ metadata:
 Reference points for movement-validation design (issue #63):
 
 **Client teleport-snap threshold (upper bound on what client smooths).** `USGWAvatarFilter::Input` at `0x00e81970` in SGW.exe contains the load-bearing decision:
+
 ```c
 if (_DAT_01e69c90 < SQRT(dz*dz + dx*dx + dy*dy) * (1.0 / dt)) { hard_snap(); }
 ```
+
 `_DAT_01e69c90 @ 0x01e69c90` = `0x451C4000 f32` = **2500.0 units/second**. Anything above this ratio is hard-snapped by the client without interpolation. This is the **upper ceiling, not the cheat threshold** — server-side anti-cheat tolerance sits 3 orders of magnitude below this (`top_speed × 1.5 ≈ 12 u/s`).
 
 **Frame buffer depth.** `DAT_01e69c8c @ 0x01e69c8c` = `8` (ring buffer of 56-byte frames, minimum asserted 5 via "FrameCount > 4"). Tells us client carries ~800 ms history at 10 Hz — `TELEPORT_GRACE = 2.0 s` comfortably exceeds this.
 
 **Top-speed data source.** Per-world from `db/resources/Worlds/Seed/worlds.sql` `run_speed` column. Every populated world uses `8.125 u/s`. The `worlds` table also carries `walk_speed`, `swim_speed`, `crouch_run_speed`, `jump_speed`, etc. (see schema in `worlds.sql`). Python source reads them as `WorldInfo.runSpeed` in `deprecated/python/common/defs/WorldInfo.py:18`.
 
-**Drift bug — pre-existing.** `crates/services/src/mercury/world_data/mod.rs:112` hardcodes `runSpeed = 6.0` in `build_world_params_args`, while DB says 8.125. Server tells client one number, validator must use the same — PR2 of #63 reconciles by sourcing both from `WorldInfo`.
+**Drift bug — still open after #478.** `crates/services/src/mercury/world_data/mod.rs:112` hardcodes `runSpeed = 6.0` in `build_world_params_args`, while DB says 8.125. #478 did NOT reconcile this — the validator uses a `MovementValidator::DEFAULT_TOP_SPEED = 8.125` constant (the higher number, safe for the warn-only speed layer) and deferred per-world sourcing + the 6.0→8.125 client-facing fix to a follow-up. When that follow-up lands, source the validator top-speed and the `world_data` runSpeed from the same `WorldInfo`/DB value.
 
 **Server tick rate.** 100 ms / 10 Hz per `deprecated/cpp-config/config/BaseService.config` `<tick_rate>100</tick_rate>`. Use this as the implicit cadence assumption when calibrating tolerance.
 
 **Inbound client position seam.**
+
 - Wire: `0x03 AVATAR_UPDATE_EXPLICIT` (40 bytes), parsed at `crates/services/src/base/connect_loop/encrypted/mod.rs:214`.
 - Forwarded as `BaseToCellMsg::EntityMove`, handled in `crates/services/src/cell/service/base_messages/mod.rs:138`.
 - Final write at `crates/services/src/cell/space_manager/entities.rs::update_entity_position:147`.

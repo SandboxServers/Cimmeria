@@ -30,6 +30,12 @@ pub enum BaseToCellMsg {
     /// Client position/movement update forwarded from `avatarUpdateExplicit`.
     EntityMove {
         entity_id: u32,
+        /// Space id the client claims it is in (payload[0..4] of the 0x03
+        /// packet). The authoritative write always uses the server's
+        /// `entity_space` binding, never this value — it exists only so
+        /// the cell can warn on a server↔client space divergence
+        /// (CAT-B-06), which surfaces gate-travel / instance-reset races.
+        claimed_space_id: u32,
         position: [f32; 3],
         direction: [i8; 3],
         velocity: [f32; 3],
