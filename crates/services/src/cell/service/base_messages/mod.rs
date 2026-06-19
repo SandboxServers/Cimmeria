@@ -344,6 +344,16 @@ pub(super) async fn handle_base_message(
             // already exists (created by the prior `ConnectEntity`).
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.character_name = character_name;
+            } else {
+                // The entity should already exist (ConnectEntity precedes
+                // InitPlayerState). If it doesn't, the name cache silently
+                // fails and every cell-side emit for this player degrades to
+                // `entity:<id>` — surface the ordering bug rather than hiding it.
+                tracing::warn!(
+                    entity_id,
+                    "InitPlayerState: entity absent when caching character_name -- \
+                     ConnectEntity ordering bug; cell-side emits will fall back to entity id"
+                );
             }
             player_init::handle_init_player_state(
                 entity_id,

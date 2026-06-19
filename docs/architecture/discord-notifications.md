@@ -146,7 +146,7 @@ Helpers live in [`crates/discord/src/lib.rs`](../../crates/discord/src/lib.rs); 
 
 ## Emit-site coverage
 
-Wiring `emit_*` calls into the server is incremental (issue #527). Current state:
+Wiring `emit_*` calls into the server is incremental. Current state:
 
 | Channel | Live emit sites | Notes |
 |---|---|---|

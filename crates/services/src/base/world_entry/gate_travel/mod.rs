@@ -83,16 +83,6 @@ pub(crate) async fn handle_gate_travel(
         "Gate travel: sending RESET_ENTITIES for world transition"
     );
 
-    // Discord world-channel: leaving the current world for the gate target.
-    // `from_world` is whatever the session was last in; the emit's `to_world`
-    // is the gate destination.
-    cimmeria_discord::emit_player_world_exit(
-        account_id,
-        exit_name.unwrap_or_else(|| "<unknown>".to_string()),
-        exit_from_world.unwrap_or_else(|| "<unknown>".to_string()),
-        Some(target_world_name.to_string()),
-    );
-
     // Tell CellService to create the entity in the new space and await the
     // resolved space_id via oneshot (needed for the world-entry wire packet).
     let space_id = if let Some(tx) = cell_tx {
@@ -223,6 +213,20 @@ pub(crate) async fn handle_gate_travel(
         addr,
         seq,
         cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+    );
+
+    // Discord world-channel: emit only here, once the transition is
+    // committed — past the active_player_id fail-closed early-returns and
+    // the RESET_ENTITIES send (which `?`-returns on a send error). Firing it
+    // at the top of the handler would post a false "world exit" whenever
+    // gate travel aborts. `from_world` is the session's last world; `to_world`
+    // is the gate destination. (Snapshotted above before the new world
+    // overwrites the connected state.)
+    cimmeria_discord::emit_player_world_exit(
+        account_id,
+        exit_name.unwrap_or_else(|| "<unknown>".to_string()),
+        exit_from_world.unwrap_or_else(|| "<unknown>".to_string()),
+        Some(target_world_name.to_string()),
     );
 
     // Store pending world entry for the create-player step (ENABLE_ENTITIES handler)
