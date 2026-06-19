@@ -5097,6 +5097,8 @@ INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_
 INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (5228, 803, 2141, 'Search Guard Corpse', 0, 1, '{}', '{}', '{}', '{}');
 
 INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (5229, 803, 3995, 'Search Cpl. Frost''s Corpse', 1073741824, 1, '{}', '{}', '{}', '{}');
+-- Mission 622 loot split: bind dialog 3996 to the Guard corpse (added to template 21 via chain 1001). Same INT_MissionWorldObject flag (0x40000000) as Frost's 5229.
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (5230, 803, 3996, 'Search the Guard''s Corpse', 1073741824, 1, '{}', '{}', '{}', '{}');
 
 INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (5231, 1419, 4457, 'Meet The Praxis', 0, 1, '{}', '{}', '{}', '{}');
 
