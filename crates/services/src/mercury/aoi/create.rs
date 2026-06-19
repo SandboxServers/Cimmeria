@@ -373,8 +373,25 @@ fn append_appearance(body: &mut Vec<u8>, entity_id: u32, idbase: u8, d: &NpcAoID
             write_wstring(&mut args, body_set_str);
             // onStaticMeshNameUpdate is method index 0
             append_entity_method(body, 0, idbase, entity_id, &args);
+            return;
         }
     }
+
+    // Neither appearance branch fired. The cascade still sends onVisible(1),
+    // but with no mesh the client builds an unrenderable entity that reads as
+    // "missing" to every witness — and because the witness set is marked
+    // before delivery, the idempotent AoI tick won't re-introduce it. This is
+    // a template-data gap (null/empty static_mesh AND body_set/components);
+    // surface it loudly. See docs/architecture/negative-logging-convention.md.
+    tracing::warn!(
+        target: "aoi.cascade_appearance_missing",
+        entity_id,
+        body_set = d.body_set.as_deref().unwrap_or("<none>"),
+        static_mesh = d.static_mesh.as_deref().unwrap_or("<none>"),
+        components_count = d.components.len(),
+        reason = "no_appearance_data",
+        "AoI cascade: NPC has no appearance data — entity will be invisible to witnesses (check template static_mesh / body_set / components)"
+    );
 }
 
 #[cfg(test)]
