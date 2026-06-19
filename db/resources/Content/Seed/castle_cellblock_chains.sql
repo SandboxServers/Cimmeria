@@ -36,7 +36,10 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1001, 'accept_mission',  622,  NULL, '{}', 0, 0),
   (1001, 'display_dialog',  2982, NULL, '{}', 0, 1),
-  (1001, 'add_dialog_set',  5229, NULL, '{"slot": 14, "mission_id": 622}', 0, 2);
+  (1001, 'add_dialog_set',  5229, NULL, '{"slot": 14, "mission_id": 622}', 0, 2),
+  -- Bind the Guard corpse's body-loot dialog (3996) to template 21 so it
+  -- becomes searchable, the same way 5229/slot-14 makes Frost searchable.
+  (1001, 'add_dialog_set',  5230, NULL, '{"slot": 21, "mission_id": 622}', 0, 3);
 
 -- Chain 1002: zone entry when 622 already completed → play cinematic
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -67,27 +70,29 @@ VALUES (1002, 'play_sequence', 10000, NULL, '{}', 0, 0);
 -- the PAK override the client UI would silently skip the unknown step
 -- and render either nothing or the next client-known step.
 --
--- Re-loot guard: the gate `step_status 622 2113 = active` flips false the
--- moment we advance past 2113, so a second dialog open won't re-fire the
--- chain. Same shape as chain 1031 (Ambernol vial pickup).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1003, '622 - Dialog 3995 (loot body): grant items + advance to equip step', 'mission', 622, true, 0);
+VALUES (1003, '622 - Dialog 3995 (loot Frost): grant letter only', 'mission', 622, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1003, 'dialog_open', '3995', 'player', false, 0);
 
+-- Loot split (Frost = letter only): the pistol + the 2113→80622 advance moved
+-- to the Guard-corpse chain (1005). Frost now grants ONLY the letter and does
+-- NOT advance, so its gate is loosened to `mission_status = active` (not step
+-- 2113) — otherwise looting the Guard first (which advances past 2113) would
+-- make the letter unreachable. Re-loot guard is the body's search-bit clear
+-- (mirrors ArmYourself.py:48); `once` on the trigger is a no-op (never enforced
+-- by the engine), and this chain no longer advances a step to self-gate.
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (1003, 'step_status', 622, '2113', 'eq', 'active', 0);
+VALUES (1003, 'mission_status', 622, NULL, 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
+  -- Clear the body's "search corpse" bit FIRST so a re-click can't re-open
+  -- dialog 3995 and re-grant the letter.
   (1003, 'set_interaction_type', NULL, 'ArmYourself_FrostBody', '{"op": "~", "mask": 4194304}', 0, 0),
-  -- Pistol → backpack (container 1) instead of bandolier (container 3) so
-  -- the player must equip it themselves. Letter (3730) keeps its container 0
-  -- mission-inventory placement.
-  (1003, 'add_item',     55,   NULL,    '{"container": 1, "qty": 1}', 0, 1),
-  (1003, 'add_item',     3730, NULL,    '{"container": 0, "qty": 1}', 0, 2),
-  (1003, 'advance_step', 622,  '80622', '{}',                          0, 3);
+  -- Letter (3730) → container 0 (mission inventory).
+  (1003, 'add_item',     3730, NULL,    '{"container": 0, "qty": 1}', 0, 1);
 
 -- Chain 1004: player equips the pistol (item 55) while step 80622 is
 -- active → play kismet sequence 10000 (opens the stasis-room door — the
@@ -107,6 +112,33 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1004, 'play_sequence',    10000, NULL, '{}', 0, 0),
   (1004, 'complete_mission', 622,   NULL, '{}', 0, 1);
+
+-- Chain 1005: player opens dialog 3996 (the Guard corpse, `ArmYourself_GuardBody`,
+-- template 21) while step 2113 is active → grant the pistol (55) to the backpack
+-- and advance 2113 → 80622 ("Equip the pistol"). This chain OWNS the step advance
+-- (Frost's chain 1003 no longer does), so the equip → door → complete flow
+-- (chain 1004) is unchanged. The pistol goes to container 1 (backpack), not the
+-- bandolier, so the player must equip it manually — exercising the same
+-- ammo/appearance/fire-animation paths the equip pattern was built for.
+--
+-- Re-loot guard: the gate `step_status 622 2113 = active` flips false the moment
+-- we advance past 2113, so a second dialog open can't re-grant. The body's
+-- search bit is also cleared (client-side) so it stops being clickable.
+-- The Guard becomes searchable via `add_dialog_set(5230, slot 21)` in chain 1001.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1005, '622 - Dialog 3996 (loot Guard): grant pistol + advance to equip step', 'mission', 622, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1005, 'dialog_open', '3996', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1005, 'step_status', 622, '2113', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1005, 'set_interaction_type', NULL, 'ArmYourself_GuardBody', '{"op": "~", "mask": 4194304}', 0, 0),
+  (1005, 'add_item',     55,   NULL,    '{"container": 1, "qty": 1}', 0, 1),
+  (1005, 'advance_step', 622,  '80622', '{}',                          0, 2);
 
 -- ============================================================
 -- MISSION 638 — Speak to Prisoner 329
