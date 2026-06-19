@@ -287,3 +287,119 @@ async fn path_add_buffers_and_records() {
         "first path_add waypoint must record exactly the point_sets header + one point row"
     );
 }
+
+/// Drain every queued message, returning whether a `GrantExpertise` was sent
+/// and the last decoded GM feedback line.
+fn drain_grant_and_feedback(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> (bool, Option<String>) {
+    let mut saw_grant = false;
+    let mut feedback = None;
+    while let Ok(msg) = rx.try_recv() {
+        if matches!(msg, CellToBaseMsg::GrantExpertise { .. }) {
+            saw_grant = true;
+        }
+        if let Some(t) = decode_feedback(&msg) {
+            feedback = Some(t);
+        }
+    }
+    (saw_grant, feedback)
+}
+
+/// `.learndiscipline` / `.forgetdiscipline` must reject a non-positive
+/// disciplineId BEFORE sending a `GrantExpertise`, so an invalid key can't be
+/// written to the target's expertise rows.
+#[tokio::test]
+async fn discipline_commands_reject_non_positive_id() {
+    for cmd in [".learndiscipline 0", ".forgetdiscipline -3"] {
+        let (mut mgr, gm, npc) = setup();
+        // Crafting commands need a Player target carrying a player_id to reach
+        // the disciplineId guard.
+        if let Some(e) = mgr.get_entity_mut(npc) {
+            e.is_player = true;
+            e.player_id = Some(500);
+        }
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(16);
+        handle_console_command(gm, cmd, &tx, &mut mgr, &engine).await;
+
+        let (saw_grant, feedback) = drain_grant_and_feedback(&mut rx);
+        assert!(
+            !saw_grant,
+            "{cmd} must NOT send GrantExpertise for a non-positive disciplineId"
+        );
+        assert!(
+            feedback.as_deref().is_some_and(|t| t.contains("positive")),
+            "{cmd} must explain disciplineId must be positive; got {feedback:?}"
+        );
+    }
+}
+
+/// `.missionfail` on a target with no active mission must report it and not
+/// fabricate a FAILED transition (the handler guards on `MISSION_ACTIVE`).
+#[tokio::test]
+async fn missionfail_on_absent_mission_reports_no_active() {
+    let (mut mgr, gm, npc) = setup();
+    if let Some(e) = mgr.get_entity_mut(npc) {
+        e.is_player = true;
+        e.player_id = Some(500);
+    }
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+    handle_console_command(gm, ".missionfail 9999", &tx, &mut mgr, &engine).await;
+
+    let (_, feedback) = drain_grant_and_feedback(&mut rx);
+    assert!(
+        feedback
+            .as_deref()
+            .is_some_and(|t| t.contains("no active mission")),
+        "missionfail on a missing mission must report no active mission; got {feedback:?}"
+    );
+}
+
+/// Critical-fix guard: a GM's session buffers (`authoring_changes`,
+/// `autosave_spawns`, both keyed by entity_id) must be dropped when the entity
+/// is destroyed, so pending authoring SQL / the autosave flag can't leak or
+/// dangle across an entity-id reuse.
+#[test]
+fn destroy_entity_clears_gm_session_buffers() {
+    let (mut mgr, gm, _npc) = setup();
+    mgr.authoring_changes.insert(
+        gm,
+        vec![("f.sql".into(), "INSERT INTO x VALUES (1);".into())],
+    );
+    mgr.autosave_spawns.insert(gm);
+
+    mgr.destroy_entity(gm);
+
+    assert!(
+        !mgr.authoring_changes.contains_key(&gm),
+        "destroy_entity must drop the GM's pending authoring SQL"
+    );
+    assert!(
+        !mgr.autosave_spawns.contains(&gm),
+        "destroy_entity must clear the GM's autosave-spawn flag"
+    );
+}
+
+/// Companion of `destroy_entity_clears_gm_session_buffers` for the disconnect
+/// path — same buffers, same cleanup.
+#[tokio::test]
+async fn disconnect_entity_clears_gm_session_buffers() {
+    let (mut mgr, gm, _npc) = setup();
+    mgr.authoring_changes.insert(
+        gm,
+        vec![("f.sql".into(), "INSERT INTO x VALUES (1);".into())],
+    );
+    mgr.autosave_spawns.insert(gm);
+
+    let (tx, _rx) = mpsc::channel(16);
+    mgr.disconnect_entity(gm, &tx).await;
+
+    assert!(
+        !mgr.authoring_changes.contains_key(&gm),
+        "disconnect_entity must drop the GM's pending authoring SQL"
+    );
+    assert!(
+        !mgr.autosave_spawns.contains(&gm),
+        "disconnect_entity must clear the GM's autosave-spawn flag"
+    );
+}
