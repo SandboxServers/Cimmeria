@@ -26,6 +26,7 @@ async fn init_player_state_seeds_ammo_stats() {
         (
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 100,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -36,6 +37,7 @@ async fn init_player_state_seeds_ammo_stats() {
         (
             1,
             BandolierItem {
+                instance_id: 0,
                 item_id: 101,
                 clip_size: 12,
                 default_ammo_type: 5,
@@ -108,6 +110,9 @@ async fn logout_flushes_all_dirty_bandolier_slots() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                // Distinct from item_id (design id) so the flush assertion
+                // proves the guard keys on the instance PK.
+                instance_id: 1010,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -118,6 +123,7 @@ async fn logout_flushes_all_dirty_bandolier_slots() {
         e.bandolier_items.insert(
             1,
             BandolierItem {
+                instance_id: 1011,
                 item_id: 11,
                 clip_size: 12,
                 default_ammo_type: 7,
@@ -151,13 +157,13 @@ async fn logout_flushes_all_dirty_bandolier_slots() {
         if let CellToBaseMsg::BandolierAmmoUpdate {
             player_id,
             slot_id,
-            expected_item_id,
+            expected_instance_id,
             current_ammo,
             cur_ammo_type,
         } = msg
         {
             assert_eq!(player_id, 100);
-            updates.insert(slot_id, (expected_item_id, current_ammo, cur_ammo_type));
+            updates.insert(slot_id, (expected_instance_id, current_ammo, cur_ammo_type));
         }
     }
     assert_eq!(
@@ -165,8 +171,9 @@ async fn logout_flushes_all_dirty_bandolier_slots() {
         2,
         "expected one BandolierAmmoUpdate per dirty slot"
     );
-    assert_eq!(updates.get(&0), Some(&(10, 17, 1)));
-    assert_eq!(updates.get(&1), Some(&(11, 4, 7)));
+    // Guard carries the instance PK (sgw_inventory.item_id), not the design id.
+    assert_eq!(updates.get(&0), Some(&(1010, 17, 1)));
+    assert_eq!(updates.get(&1), Some(&(1011, 4, 7)));
 
     // Entity removed from the space manager.
     assert!(
@@ -196,6 +203,9 @@ async fn disconnect_entity_flushes_dirty_ammo_before_destroy() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                // Distinct from item_id (design id) so the flush assertion
+                // proves the guard keys on the instance PK.
+                instance_id: 1010,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -228,14 +238,17 @@ async fn disconnect_entity_flushes_dirty_ammo_before_destroy() {
         if let CellToBaseMsg::BandolierAmmoUpdate {
             player_id,
             slot_id,
-            expected_item_id,
+            expected_instance_id,
             current_ammo,
             cur_ammo_type,
         } = msg
         {
             assert_eq!(player_id, 100);
             assert_eq!(slot_id, 0);
-            assert_eq!(expected_item_id, 10, "should carry the slot's item_id");
+            assert_eq!(
+                expected_instance_id, 1010,
+                "should carry the slot's instance PK (sgw_inventory.item_id), not the design id"
+            );
             assert_eq!(current_ammo, 17);
             assert_eq!(cur_ammo_type, 1);
             got_ammo_update = true;

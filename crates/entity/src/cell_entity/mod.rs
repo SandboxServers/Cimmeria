@@ -812,7 +812,21 @@ pub struct LootItem {
 /// An item slot in the player's bandolier (quick-access equipment bar).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BandolierItem {
-    /// Item design ID.
+    /// The `sgw_inventory.item_id` value — the per-row *instance* id of the
+    /// physical item row backing this slot. It's a server-allocated surrogate
+    /// (sequence default, never reused), unique per slot via the
+    /// `sgw_inventory_unique_slot` index — unique by construction rather than
+    /// by a declared PK/UNIQUE constraint. This is the TOCTOU guard for
+    /// ammo persistence: it flows into `BandolierAmmoUpdate.expected_instance_id`
+    /// and the WHERE clause of `update_bandolier_ammo`. Two physical items of
+    /// the same weapon *design* share `item_id` (the design id below) but have
+    /// distinct `instance_id`, so keying the persist guard on this — not the
+    /// design id — is what closes the same-type-swap dupe window.
+    pub instance_id: i32,
+    /// Item *design* ID (`resources.items.item_id` / `sgw_inventory.type_id`).
+    /// Used for design lookups (clip size, abilities, holster animation, ammo
+    /// type). NOT unique per physical item — do NOT use as the ammo-persist
+    /// TOCTOU guard; use `instance_id` for that.
     pub item_id: i32,
     /// Magazine/clip size for weapons.
     pub clip_size: i32,

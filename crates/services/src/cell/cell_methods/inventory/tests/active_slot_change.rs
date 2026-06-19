@@ -95,6 +95,7 @@ async fn request_active_slot_change_translates_wire_to_server_slot() {
                 e.bandolier_items.insert(
                     slot_id,
                     BandolierItem {
+                        instance_id: 0,
                         item_id: 100 + slot_id,
                         clip_size: 30,
                         default_ammo_type: 1,
@@ -202,6 +203,7 @@ async fn weapon_to_weapon_swap_ooc_defers_via_item_unequip() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -212,6 +214,7 @@ async fn weapon_to_weapon_swap_ooc_defers_via_item_unequip() {
         e.bandolier_items.insert(
             1,
             BandolierItem {
+                instance_id: 0,
                 item_id: 11,
                 clip_size: 12,
                 default_ammo_type: 7,
@@ -328,6 +331,7 @@ async fn slot_swap_uses_outgoing_weapon_holster_duration() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 50,
                 clip_size: 50,
                 default_ammo_type: 1,
@@ -338,6 +342,7 @@ async fn slot_swap_uses_outgoing_weapon_holster_duration() {
         e.bandolier_items.insert(
             1,
             BandolierItem {
+                instance_id: 0,
                 item_id: 51,
                 clip_size: 8,
                 default_ammo_type: 2,
@@ -403,6 +408,7 @@ async fn weapon_to_empty_slot_skips_choreography() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -465,6 +471,7 @@ async fn weapon_to_weapon_swap_in_combat_still_triggers_choreography() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -475,6 +482,7 @@ async fn weapon_to_weapon_swap_in_combat_still_triggers_choreography() {
         e.bandolier_items.insert(
             1,
             BandolierItem {
+                instance_id: 0,
                 item_id: 11,
                 clip_size: 12,
                 default_ammo_type: 7,
@@ -545,6 +553,7 @@ async fn weapon_attack_blocked_while_slot_swap_in_progress() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -625,6 +634,7 @@ async fn slot_change_clears_auto_cycle_stash_and_broadcasts() {
             e.bandolier_items.insert(
                 slot_id,
                 BandolierItem {
+                    instance_id: 0,
                     item_id: 100 + slot_id,
                     clip_size: 30,
                     default_ammo_type: 1,
@@ -728,6 +738,7 @@ async fn same_slot_change_preserves_auto_cycle_stash() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 100,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -810,6 +821,7 @@ async fn slot_change_to_p90_revokes_pistol_abilities_grants_smg_and_broadcasts()
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: PISTOL_ITEM_ID,
                 clip_size: 12,
                 default_ammo_type: 1,
@@ -820,6 +832,7 @@ async fn slot_change_to_p90_revokes_pistol_abilities_grants_smg_and_broadcasts()
         e.bandolier_items.insert(
             1,
             BandolierItem {
+                instance_id: 0,
                 item_id: P90_ITEM_ID,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -955,6 +968,7 @@ async fn slot_change_to_empty_slot_revokes_weapon_abilities_and_broadcasts() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: PISTOL_ITEM_ID,
                 clip_size: 12,
                 default_ammo_type: 1,
@@ -1042,6 +1056,7 @@ async fn same_slot_swap_does_not_broadcast_known_abilities_update() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: PISTOL_ITEM_ID,
                 clip_size: 12,
                 default_ammo_type: 1,

@@ -208,7 +208,7 @@ pub async fn handle_grant_item(
 
     if let Some(target) = merge_candidate {
         // Merge into the existing stack. The UPDATE is keyed by
-        // item_id (the primary key of sgw_inventory) so it can
+        // item_id (the per-row instance id of sgw_inventory) so it can
         // only touch the exact row we locked above.
         if let Err(e) =
             sqlx::query("UPDATE sgw_inventory SET stack_size = stack_size + $1 WHERE item_id = $2")
@@ -360,7 +360,12 @@ pub async fn handle_grant_item(
     // a single round-trip and gives us COALESCE for ammo_type so items with
     // a NULL default still get a sane sentinel rather than NULL (the column
     // is NOT NULL in the schema).
-    let result = sqlx::query(
+    // `RETURNING item_id` hands back the freshly-allocated `sgw_inventory.item_id`
+    // per-row instance id, which the bandolier fast-path below needs
+    // as the ammo-persist TOCTOU guard. The design id is the `item_id` param; the
+    // instance id is unique per physical row and is what distinguishes two copies
+    // of the same weapon design occupying the bandolier over time.
+    let result = sqlx::query_scalar::<_, i32>(
         "INSERT INTO sgw_inventory \
             (character_id, type_id, stack_size, slot_id, container_id, \
              bound, durability, charges, \
@@ -368,7 +373,8 @@ pub async fn handle_grant_item(
          SELECT $1, ri.item_id, $2, $3, $4, false, 100, $5, \
                 COALESCE(ri.default_ammo_type, 'AMMO_NONE'::resources.\"EAmmoType\"), \
                 ri.ammo_types, ri.charges, 0 \
-         FROM resources.items ri WHERE ri.item_id = $6",
+         FROM resources.items ri WHERE ri.item_id = $6 \
+         RETURNING item_id",
     )
     .bind(player_id)
     .bind(count)
@@ -376,24 +382,28 @@ pub async fn handle_grant_item(
     .bind(container_id)
     .bind(default_charges)
     .bind(item_id)
-    .execute(&mut *db_tx)
+    .fetch_one(&mut *db_tx)
     .await;
 
-    match result {
-        Ok(_) => tracing::debug!(
-            player_id,
-            item_id,
-            container_id,
-            slot = next_slot,
-            charges = default_charges,
-            "Item persisted to inventory"
-        ),
+    let instance_id: i32 = match result {
+        Ok(id) => {
+            tracing::debug!(
+                player_id,
+                item_id,
+                instance_id = id,
+                container_id,
+                slot = next_slot,
+                charges = default_charges,
+                "Item persisted to inventory"
+            );
+            id
+        }
         Err(e) => {
             let _ = db_tx.rollback().await;
             tracing::error!(player_id, item_id, "Failed to persist item: {e}");
             return;
         }
-    }
+    };
 
     // For bandolier grants, persist `bandolier_slot` in the SAME transaction so
     // the inventory insert and the active-slot move are atomic — a separate
@@ -582,6 +592,10 @@ pub async fn handle_grant_item(
             match row {
                 Ok(Some(row)) => {
                     let item = cimmeria_entity::cell_entity::BandolierItem {
+                        // The instance PK captured from the grant INSERT's
+                        // RETURNING above — this is the ammo-persist TOCTOU
+                        // guard, distinct from the design id (`row.item_id`).
+                        instance_id,
                         item_id: row.item_id,
                         clip_size: row.clip_size,
                         default_ammo_type: row.default_ammo_type_id,

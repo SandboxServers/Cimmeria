@@ -253,6 +253,7 @@ async fn dispatch_reload_sends_entity_property() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -446,6 +447,7 @@ async fn dispatch_reload_already_full_no_message() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 0,

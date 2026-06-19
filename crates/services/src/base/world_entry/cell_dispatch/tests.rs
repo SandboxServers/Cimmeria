@@ -183,7 +183,7 @@ async fn invalid_bandolier_ammo_update_drops_before_side_effects() {
         CellToBaseMsg::BandolierAmmoUpdate {
             player_id: 10,
             slot_id: -1,
-            expected_item_id: 42,
+            expected_instance_id: 42,
             current_ammo: 17,
             cur_ammo_type: 1,
         },

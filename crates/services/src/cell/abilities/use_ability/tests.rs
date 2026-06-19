@@ -179,6 +179,7 @@ async fn no_ammo_for_player_blocks_fire() {
         p.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -395,6 +396,7 @@ async fn attack_while_holstered_queues_and_draws_without_committing() {
         p.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -487,6 +489,7 @@ async fn attack_while_queued_is_rejected_input() {
         p.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -845,6 +848,7 @@ async fn weapon_granted_ability_commits_even_when_not_in_known_set() {
         p.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 55,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -906,6 +910,7 @@ async fn ungranted_ability_still_rejected_when_active_weapon_does_not_grant_it()
         p.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 55,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -963,6 +968,7 @@ async fn use_ability_redirects_pistol_shot_to_smg_when_p90_equipped() {
         p.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 21,
                 clip_size: 30,
                 default_ammo_type: 2,
@@ -1062,6 +1068,7 @@ async fn use_ability_does_not_redirect_when_called_ability_is_already_weapon_bin
         p.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 21,
                 clip_size: 30,
                 default_ammo_type: 2,

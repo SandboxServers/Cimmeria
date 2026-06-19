@@ -923,14 +923,14 @@ pub(crate) async fn handle_cell_message(
         CellToBaseMsg::BandolierAmmoUpdate {
             player_id,
             slot_id,
-            expected_item_id,
+            expected_instance_id,
             current_ammo,
             cur_ammo_type,
         } => {
             bandolier::bandolier_ammo_update(
                 player_id,
                 slot_id,
-                expected_item_id,
+                expected_instance_id,
                 current_ammo,
                 cur_ammo_type,
                 db_pool,

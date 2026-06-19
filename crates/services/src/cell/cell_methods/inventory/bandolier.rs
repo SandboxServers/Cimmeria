@@ -28,19 +28,27 @@ pub async fn flush_dirty_bandolier_ammo(
     // marker in place and the next flush retries it.
     let dirty: Vec<i32> = entity.bandolier_ammo_dirty.iter().copied().collect();
     for slot_id in dirty {
-        let (item_id, current_ammo, cur_ammo_type) = match entity.bandolier_items.get(&slot_id) {
-            Some(item) => (item.item_id, item.current_ammo, item.cur_ammo_type),
-            None => {
-                // Dirty slot with no item -- nothing to persist. Drop marker.
-                entity.bandolier_ammo_dirty.remove(&slot_id);
-                continue;
-            }
-        };
+        // `instance_id` is the persist TOCTOU guard (`sgw_inventory.item_id` PK);
+        // `item_id` (design id) is kept only for log context here.
+        let (instance_id, item_id, current_ammo, cur_ammo_type) =
+            match entity.bandolier_items.get(&slot_id) {
+                Some(item) => (
+                    item.instance_id,
+                    item.item_id,
+                    item.current_ammo,
+                    item.cur_ammo_type,
+                ),
+                None => {
+                    // Dirty slot with no item -- nothing to persist. Drop marker.
+                    entity.bandolier_ammo_dirty.remove(&slot_id);
+                    continue;
+                }
+            };
         match tx
             .send(CellToBaseMsg::BandolierAmmoUpdate {
                 player_id,
                 slot_id,
-                expected_item_id: item_id,
+                expected_instance_id: instance_id,
                 current_ammo,
                 cur_ammo_type,
             })
@@ -51,7 +59,7 @@ pub async fn flush_dirty_bandolier_ammo(
             }
             Err(e) => {
                 tracing::warn!(
-                    player_id, slot_id, item_id, current_ammo, cur_ammo_type,
+                    player_id, slot_id, instance_id, item_id, current_ammo, cur_ammo_type,
                     error = %e,
                     "BandolierAmmoUpdate send failed; leaving slot dirty for retry"
                 );
@@ -248,8 +256,11 @@ pub(crate) async fn handle_request_active_slot_change(
     // drains the active slot when reloads finish; this catches
     // mid-magazine swaps where the player swaps weapons before
     // reloading the empty one.
+    // prev_persist tuple: (prev_slot, instance_id, item_id, current_ammo,
+    // cur_ammo_type). `instance_id` (sgw_inventory.item_id PK) is the persist
+    // TOCTOU guard; `item_id` (design id) is carried only for log context.
     let (prev_persist, new_ammo_type, prev_slot_for_log, auto_cycle_clear_state): (
-        Option<(i32, i32, i32, i32)>,
+        Option<(i32, i32, i32, i32, i32)>,
         Option<i32>,
         i32,
         Option<u32>,
@@ -263,6 +274,7 @@ pub(crate) async fn handle_request_active_slot_change(
             entity.bandolier_items.get(&prev_slot).map(|item| {
                 (
                     prev_slot,
+                    item.instance_id,
                     item.item_id,
                     item.current_ammo,
                     item.cur_ammo_type,
@@ -392,12 +404,12 @@ pub(crate) async fn handle_request_active_slot_change(
     // dirty marker for the previously-active slot only after the persist
     // message is accepted by the channel.
     if let Some(player_id) = player_id {
-        if let Some((p_slot, item_id, current_ammo, cur_ammo_type)) = prev_persist {
+        if let Some((p_slot, instance_id, item_id, current_ammo, cur_ammo_type)) = prev_persist {
             match tx
                 .send(CellToBaseMsg::BandolierAmmoUpdate {
                     player_id,
                     slot_id: p_slot,
-                    expected_item_id: item_id,
+                    expected_instance_id: instance_id,
                     current_ammo,
                     cur_ammo_type,
                 })
@@ -411,7 +423,7 @@ pub(crate) async fn handle_request_active_slot_change(
                 Err(e) => {
                     tracing::warn!(
                         entity_id, player_id, slot_id = p_slot,
-                        expected_item_id = item_id,
+                        expected_instance_id = instance_id, item_id,
                         error = %e,
                         "BandolierAmmoUpdate (slot swap) send failed; dirty marker preserved for retry"
                     );
@@ -780,14 +792,23 @@ pub(super) async fn handle_request_ammo_change(
         // channel; if the send fails the next flush picks the change up.
         let item = entity.bandolier_items.get_mut(&slot).unwrap();
         item.cur_ammo_type = ammo_type;
-        let item_id_for_persist = item.item_id;
+        // `instance_id` (sgw_inventory.item_id PK) is the persist TOCTOU guard;
+        // `item_id` (design id) is carried only for log context.
+        let instance_id_for_persist = item.instance_id;
+        let item_id_for_log = item.item_id;
         let current_ammo = item.current_ammo;
         entity.bandolier_ammo_dirty.insert(slot);
         let is_active = slot == entity.active_bandolier_slot;
         let player_id = entity.player_id;
         (
             player_id,
-            (slot, item_id_for_persist, current_ammo, ammo_type),
+            (
+                slot,
+                instance_id_for_persist,
+                item_id_for_log,
+                current_ammo,
+                ammo_type,
+            ),
             is_active,
         )
     };
@@ -799,12 +820,12 @@ pub(super) async fn handle_request_ammo_change(
     // "no player_id, skipped." Without this distinction the operator
     // sees "ammo type changed" and assumes the slot stuck.
     let persistence: &'static str = if let Some(player_id) = player_id {
-        let (slot_id, expected_item_id, current_ammo, cur_ammo_type) = persist;
+        let (slot_id, expected_instance_id, item_id_for_log, current_ammo, cur_ammo_type) = persist;
         match tx
             .send(CellToBaseMsg::BandolierAmmoUpdate {
                 player_id,
                 slot_id,
-                expected_item_id,
+                expected_instance_id,
                 current_ammo,
                 cur_ammo_type,
             })
@@ -818,7 +839,8 @@ pub(super) async fn handle_request_ammo_change(
             }
             Err(e) => {
                 tracing::warn!(
-                    entity_id, player_id, slot_id, expected_item_id, cur_ammo_type,
+                    entity_id, player_id, slot_id, expected_instance_id,
+                    item_id = item_id_for_log, cur_ammo_type,
                     error = %e,
                     "BandolierAmmoUpdate (ammo change) send failed; dirty marker preserved for retry"
                 );
