@@ -7,7 +7,7 @@
 //! Legacy reference: `deprecated/python/cell/commands/Mission.py`
 //! (`failMission`, `displayMissionRewards`).
 
-use cimmeria_entity::missions::MISSION_FAILED;
+use cimmeria_entity::missions::{MISSION_ACTIVE, MISSION_FAILED};
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
@@ -32,9 +32,14 @@ pub(super) async fn fail(
         return;
     };
 
+    // Only fail a mission that is currently ACTIVE. `get_mission_mut` returns
+    // the record regardless of status, and `fail()` unconditionally sets
+    // FAILED + bumps `repeats`, so without this filter `.missionfail` would
+    // re-fail an already-completed/failed mission and corrupt its state.
     let failed = if let Some(m) = space_mgr
         .get_entity_mut(target)
         .and_then(|e| e.missions.get_mission_mut(mission_id))
+        .filter(|m| m.status == MISSION_ACTIVE)
     {
         m.fail();
         true

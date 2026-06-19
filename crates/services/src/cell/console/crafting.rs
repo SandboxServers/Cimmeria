@@ -54,6 +54,12 @@ async fn learn(
     let Some(discipline_id) = super::parse_i32(caller_id, args, 0, "disciplineId", tx).await else {
         return;
     };
+    // Discipline ids are positive keys; reject 0/negative before sending the
+    // grant so an invalid key can't be written to the player's expertise.
+    if discipline_id <= 0 {
+        send_gm_feedback(caller_id, "disciplineId must be a positive integer.", tx).await;
+        return;
+    }
     let expertise = match args.get(1) {
         Some(s) => match s.parse::<i32>() {
             Ok(v) if v > 0 => v,
@@ -92,6 +98,10 @@ async fn forget(
     let Some(discipline_id) = super::parse_i32(caller_id, args, 0, "disciplineId", tx).await else {
         return;
     };
+    if discipline_id <= 0 {
+        send_gm_feedback(caller_id, "disciplineId must be a positive integer.", tx).await;
+        return;
+    }
     let _ = tx
         .send(CellToBaseMsg::GrantExpertise {
             entity_id: target,

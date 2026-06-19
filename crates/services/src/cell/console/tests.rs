@@ -278,6 +278,12 @@ async fn path_add_buffers_and_records() {
         Some(1),
         "path_add should buffer one waypoint"
     );
-    // First waypoint records the point_sets header + the point row.
-    assert!(mgr.authoring_changes.get(&gm).is_some_and(|v| v.len() >= 2));
+    // First waypoint records EXACTLY two seed statements: the point_sets
+    // header + the point row. Asserting the exact count (not `>= 2`) catches
+    // a fan-out regression where extra authoring statements start landing.
+    assert_eq!(
+        mgr.authoring_changes.get(&gm).map(Vec::len),
+        Some(2),
+        "first path_add waypoint must record exactly the point_sets header + one point row"
+    );
 }

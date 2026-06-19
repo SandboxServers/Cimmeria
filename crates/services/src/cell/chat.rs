@@ -79,7 +79,7 @@ pub async fn handle_chat_message(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    // GM `.`-console interception (#523). The 2009 client forwards `.`-prefixed
+    // GM `.`-console interception. The 2009 client forwards `.`-prefixed
     // input as an ordinary CHAN_SAY chat message rather than eating it (unlike
     // `/`, which the client consumes). When the sender is a GM, we consume the
     // line as a dev/authoring console command and never broadcast it to other
@@ -358,7 +358,7 @@ mod tests {
     }
 
     /// A GM's `.`-command is consumed by the console and never broadcast to
-    /// witnesses (acceptance criterion #523: never appears in others' chat).
+    /// witnesses (never appears in others' chat).
     #[tokio::test]
     async fn gm_dot_command_is_intercepted_not_broadcast() {
         let mut mgr = super::super::space_manager::SpaceManager::new(1);

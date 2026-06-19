@@ -80,6 +80,11 @@ impl SpaceManager {
     /// If the entity was in an instanced space and was the last player, the
     /// entire space instance is destroyed (all remaining NPCs removed).
     pub fn destroy_entity(&mut self, entity_id: u32) {
+        // GM-only session buffers are keyed by entity_id; drop them so a
+        // destroyed (and possibly later reused) id can't inherit stale pending
+        // authoring SQL or the autosave-spawn flag.
+        self.authoring_changes.remove(&entity_id);
+        self.autosave_spawns.remove(&entity_id);
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 
@@ -127,6 +132,11 @@ impl SpaceManager {
         entity_id: u32,
         tx: &tokio::sync::mpsc::Sender<CellToBaseMsg>,
     ) {
+        // Drop GM-only session buffers (keyed by entity_id) on disconnect so
+        // pending authoring SQL / the autosave-spawn flag don't outlive the
+        // session. Same rationale as `destroy_entity`.
+        self.authoring_changes.remove(&entity_id);
+        self.autosave_spawns.remove(&entity_id);
         if let Some(&space_id) = self.entity_space.get(&entity_id) {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.remove(&entity_id);

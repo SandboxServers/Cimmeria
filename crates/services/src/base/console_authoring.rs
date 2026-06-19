@@ -71,15 +71,40 @@ pub(crate) async fn handle_execute_authoring_sql(
     match sqlx::query(sql).execute(pool.as_ref()).await {
         Ok(res) => {
             let rows = res.rows_affected();
-            tracing::info!(entity_id, label, rows, "authoring SQL executed");
-            send_gm_feedback_to_client(
-                entity_id,
-                &format!("{label}: live DB write ok ({rows} row(s); wiped on next deploy)"),
-                transport,
-                connected,
-                entity_to_addr,
-            )
-            .await;
+            if rows == 0 {
+                // A zero-row result means the statement ran but matched
+                // nothing (e.g. an UPDATE/DELETE whose WHERE found no row, or
+                // an idempotent re-run). The seed SQL is still recorded, but
+                // the live DB is unchanged — report that distinctly rather
+                // than as a successful write, or the GM thinks their authoring
+                // edit took effect when it didn't.
+                tracing::warn!(
+                    entity_id,
+                    label,
+                    "authoring SQL affected 0 rows — live DB unchanged"
+                );
+                send_gm_feedback_to_client(
+                    entity_id,
+                    &format!(
+                        "{label}: live DB UNCHANGED (0 rows matched) — seed SQL recorded; \
+                         check the target exists"
+                    ),
+                    transport,
+                    connected,
+                    entity_to_addr,
+                )
+                .await;
+            } else {
+                tracing::info!(entity_id, label, rows, "authoring SQL executed");
+                send_gm_feedback_to_client(
+                    entity_id,
+                    &format!("{label}: live DB write ok ({rows} row(s); wiped on next deploy)"),
+                    transport,
+                    connected,
+                    entity_to_addr,
+                )
+                .await;
+            }
         }
         Err(e) => {
             tracing::warn!(entity_id, label, error = %e, "authoring SQL failed");

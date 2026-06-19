@@ -337,10 +337,17 @@ mod tests {
         let mut mgr = SpaceManager::new(1);
         let (tx, mut rx) = mpsc::channel(16);
         confirm(9, &tx, &mut mgr).await;
-        // Exactly one feedback line, no live writes.
+        // Exactly one feedback line, and nothing else — no live-write message
+        // (ExecuteAuthoringSql) and no second feedback. Assert both the single
+        // expected message AND that the channel is then empty, so a future
+        // change that emits an extra message in the no-op path trips here.
         assert!(matches!(
             rx.try_recv(),
             Ok(CellToBaseMsg::EntityMethodCall { .. })
         ));
+        assert!(
+            rx.try_recv().is_err(),
+            "no-op confirm must emit exactly one feedback message and nothing else"
+        );
     }
 }

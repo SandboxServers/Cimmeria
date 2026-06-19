@@ -30,15 +30,6 @@ const ON_CLIENT_CHALLENGE: u16 = 142;
 /// say (`0`).
 const CHAN_SAY: u8 = 0;
 
-/// Append a WSTRING (`u32` char count + UTF-16LE) to a wire buffer.
-fn push_wstring(buf: &mut Vec<u8>, s: &str) {
-    let utf16: Vec<u16> = s.encode_utf16().collect();
-    buf.extend_from_slice(&(utf16.len() as u32).to_le_bytes());
-    for ch in utf16 {
-        buf.extend_from_slice(&ch.to_le_bytes());
-    }
-}
-
 pub(super) async fn dispatch(
     name: &str,
     caller_id: u32,
@@ -301,10 +292,10 @@ async fn speak(
         .unwrap_or_else(|| format!("Entity {target}"));
 
     let mut buf = Vec::new();
-    push_wstring(&mut buf, &speaker);
+    crate::mercury::write_wstring(&mut buf, &speaker);
     buf.push(0); // SpeakerFlags
     buf.push(channel);
-    push_wstring(&mut buf, message);
+    crate::mercury::write_wstring(&mut buf, message);
     send_entity_method_to_self_and_witnesses(target, ON_PLAYER_COMMUNICATION, buf, tx, space_mgr)
         .await;
     send_gm_feedback(
@@ -361,7 +352,7 @@ async fn challenge(caller_id: u32, args: &[&str], tx: &mpsc::Sender<CellToBaseMs
     let mut buf = Vec::new();
     buf.extend_from_slice(&challenge.to_le_bytes());
     buf.extend_from_slice(&ty.to_le_bytes());
-    push_wstring(&mut buf, object);
+    crate::mercury::write_wstring(&mut buf, object);
     buf.extend_from_slice(&id1.to_le_bytes());
     buf.extend_from_slice(&id2.to_le_bytes());
     let _ = tx
@@ -388,6 +379,12 @@ async fn debug_velocity(
     space_mgr: &mut SpaceManager,
 ) {
     let Some(target) = target_id else {
+        send_gm_feedback(
+            caller_id,
+            "debug_velocity: select a target entity first.",
+            tx,
+        )
+        .await;
         return;
     };
     let Some(x) = super::parse_f32(caller_id, args, 0, "velocityX", tx).await else {

@@ -700,17 +700,6 @@ pub(crate) async fn handle_console_command(
         return;
     };
 
-    // Audit trail: every accepted GM console command, with the
-    // caller + arg count. Command args may contain names/positions but never
-    // secrets, so logging the name + count (not the raw text) is the right
-    // privacy/observability balance — mirrors the chat.send span policy.
-    tracing::info!(
-        entity_id = caller_id,
-        command = name,
-        argc = args.len(),
-        "GM .-console command accepted"
-    );
-
     if args.len() < spec.min {
         send_gm_feedback(
             caller_id,
@@ -746,6 +735,25 @@ pub(crate) async fn handle_console_command(
             return;
         }
     };
+
+    // Audit trail: log only AFTER the command passes arg-count + target
+    // validation, so the "accepted" event marks commands we actually dispatch
+    // (not malformed/wrong-target ones rejected above). Record both the
+    // caller and their server-side `access_level` (the PR's audit objective).
+    // Command args may contain names/positions but never secrets, so logging
+    // the name + count (not the raw text) is the right privacy/observability
+    // balance — mirrors the chat.send span policy.
+    let access_level = space_mgr
+        .get_entity(caller_id)
+        .map(|e| e.access_level)
+        .unwrap_or(0);
+    tracing::info!(
+        entity_id = caller_id,
+        access_level,
+        command = name,
+        argc = args.len(),
+        "GM .-console command accepted"
+    );
 
     exec(name, caller_id, &args, target_id, tx, space_mgr, engine).await;
 }

@@ -263,6 +263,7 @@ async fn spawn_random(
         return;
     };
 
+    let mut delivered = 0i32;
     for i in 0..count {
         // Deterministic scatter: place copies evenly on a ring within the
         // x/z range (no RNG dependency, reproducible for authoring).
@@ -272,7 +273,7 @@ async fn spawn_random(
             origin.y,
             origin.z + theta.sin() * z_range,
         ];
-        let _ = tx
+        match tx
             .send(CellToBaseMsg::GmSpawnNpc {
                 entity_id: caller_id,
                 template_id,
@@ -280,12 +281,40 @@ async fn spawn_random(
                 world_name: world_name.clone(),
                 position: pos,
             })
-            .await;
+            .await
+        {
+            Ok(()) => delivered += 1,
+            Err(e) => {
+                // The cell→base channel is closed/full — remaining sends will
+                // fail too, so stop and report the partial count rather than
+                // claiming all `count` were spawned.
+                tracing::warn!(
+                    caller_id,
+                    template_id,
+                    delivered,
+                    requested = count,
+                    "spawnrandom: GmSpawnNpc send failed — aborting remaining spawns: {e}"
+                );
+                break;
+            }
+        }
     }
-    send_gm_feedback(
-        caller_id,
-        &format!("spawnrandom: requested {count} x template {template_id}"),
-        tx,
-    )
-    .await;
+    if delivered == count {
+        send_gm_feedback(
+            caller_id,
+            &format!("spawnrandom: requested {count} x template {template_id}"),
+            tx,
+        )
+        .await;
+    } else {
+        send_gm_feedback(
+            caller_id,
+            &format!(
+                "spawnrandom: only {delivered}/{count} spawn requests delivered for \
+                 template {template_id} (cell→base channel error)"
+            ),
+            tx,
+        )
+        .await;
+    }
 }

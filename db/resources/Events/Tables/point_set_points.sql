@@ -24,7 +24,20 @@ CREATE TABLE point_set_points (
     teleport_y real,
     teleport_z real,
     teleport_sequence_id integer,
-    teleport_delay real
+    teleport_delay real,
+    -- The teleport destination is all-or-none: either all three coords are
+    -- set (a real destination) or all NULL (no teleport on this waypoint).
+    -- The `.path_set_teleport` console flow treats them as one destination,
+    -- so a partial coordinate set is an invalid state — reject it here.
+    CONSTRAINT point_set_points_teleport_xyz_all_or_none
+        CHECK (
+            (teleport_x IS NULL AND teleport_y IS NULL AND teleport_z IS NULL)
+            OR (teleport_x IS NOT NULL AND teleport_y IS NOT NULL AND teleport_z IS NOT NULL)
+        ),
+    -- `teleport_delay` is a dwell in seconds before the teleport fires; a
+    -- negative value is meaningless. Guard it at the schema boundary.
+    CONSTRAINT point_set_points_teleport_delay_nonneg
+        CHECK (teleport_delay IS NULL OR teleport_delay >= 0)
 );
 
 --

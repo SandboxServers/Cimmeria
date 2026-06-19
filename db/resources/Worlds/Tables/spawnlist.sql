@@ -31,7 +31,12 @@ CREATE TABLE spawnlist (
     patrol_path_id integer,
     patrol_point_delay real,
     CONSTRAINT spawnlist_respawn_secs_min_3
-        CHECK (respawn_secs IS NULL OR respawn_secs >= 3)
+        CHECK (respawn_secs IS NULL OR respawn_secs >= 3),
+    -- `patrol_point_delay` is a per-waypoint dwell in seconds; a negative
+    -- value is meaningless and would poison the patrol scheduler. Guard it
+    -- at the schema boundary so a bad seed edit can't persist.
+    CONSTRAINT spawnlist_patrol_point_delay_nonneg
+        CHECK (patrol_point_delay IS NULL OR patrol_point_delay >= 0)
 );
 
 --
