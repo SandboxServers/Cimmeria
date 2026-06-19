@@ -317,6 +317,7 @@ pub(super) async fn handle_base_message(
                 &text,
                 tx,
                 space_mgr,
+                engine,
             )
             .await;
         }

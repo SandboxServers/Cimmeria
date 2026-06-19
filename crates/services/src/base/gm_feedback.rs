@@ -24,9 +24,14 @@ use crate::base::helpers::send_to_witness_reliable;
 use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
-/// Feedback chat channel id (`EChannel.CHAN_FEEDBACK = 8`, from
-/// `python/Atrea/enums.py`). Mirrors the cell-side feedback channel.
-const CHAN_FEEDBACK: u8 = 8;
+/// GM-feedback chat channel. The 2009 client only registers the channels in the
+/// base's `DEFAULT_CHAT_CHANNELS` (say/emote/yell/team/squad/command/server=7/
+/// tell=9); there is **no** dedicated feedback channel. Sending on an
+/// *unregistered* channel — the old value `8` — makes the client fall back to
+/// its **red unknown-channel splash popup**. So GM feedback rides the registered
+/// `tell` channel (`9`), the same one the inline welcome message uses. Mirrors
+/// the cell-side feedback channel.
+const CHAN_FEEDBACK: u8 = 9;
 
 /// Serialize `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)`.
 ///
@@ -103,7 +108,7 @@ mod tests {
     use super::*;
 
     /// Feedback wire shape: speaker "SYSTEM" (6 UTF-16 chars), flags 0,
-    /// channel 8 (CHAN_FEEDBACK), then the text WSTRING. A drift here means
+    /// channel 9 (CHAN_feedback), then the text WSTRING. A drift here means
     /// the GM's client renders the feedback on the wrong channel or not at
     /// all. Byte-identical to the cell-side serializer's pinned shape.
     #[test]
@@ -116,8 +121,9 @@ mod tests {
         assert_eq!(
             args[flags_off + 1],
             CHAN_FEEDBACK,
-            "channel must be feedback (8)"
+            "channel must be feedback (9), not server (8)"
         );
+        assert_eq!(CHAN_FEEDBACK, 9, "feedback must use CHAN_feedback=9");
         // Text WSTRING char count follows speaker + flags + channel.
         let text_len_off = flags_off + 2;
         assert_eq!(

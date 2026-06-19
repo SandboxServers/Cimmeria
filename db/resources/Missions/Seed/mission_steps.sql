@@ -5672,12 +5672,18 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2113, 622, false, 1, false, 'Search the nearby corpses to locate a weapon.', 0);
 
--- Cimmeria-introduced step. The matching client-side row is injected into
+-- Cimmeria-introduced steps. The matching client-side rows are injected into
 -- `_622` inside `CookedDataMissions.pak` at server startup by
 -- [`crates/services/src/base/mission_overrides.rs`] and shipped to the
 -- client via the per-key `InvalidKeys` channel of `onVersionInfo`.
--- Display text + step/objective ids must agree with the override XML.
-INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (80622, 622, false, 1, false, 'Equip the pistol from your inventory.', 1);
+-- Display text + step/objective ids + index must agree with the override XML.
+--
+-- The loot split is sequenced Frost → Guard via the intermediate step 80623:
+--   index 0: 2113   search Cpl. Frost          (chain 1003 → advance 80623)
+--   index 1: 80623  search the NID Guard corpse (chain 1005 → advance 80622)
+--   index 2: 80622  equip the pistol           (chain 1004 → complete)
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (80623, 622, false, 1, false, 'Search the NID Guard''s body for a weapon.', 1);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (80622, 622, false, 1, false, 'Equip the pistol from your inventory.', 2);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2148, 623, false, 2, true, 'Return to Beta Site and speak with Mimir near the Stargate.', 0);
 

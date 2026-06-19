@@ -410,6 +410,42 @@ pub enum CellToBaseMsg {
         amount: i32,
     },
 
+    /// Execute a server-generated authoring SQL statement against the live DB
+    /// (`.`-console). The cell has no DB pool, so the spawn/patrol
+    /// authoring commands hand their `INSERT`/`UPDATE`/`DELETE` to the base,
+    /// which runs it and reports the row count back to the GM via the feedback
+    /// channel. The write is intentionally transient — it lets the developer
+    /// see the change hold across reconnects within the current deploy, but the
+    /// next deploy rebuilds from `db/resources/` seeds and wipes it (the
+    /// durable artifact is the seed SQL emitted by `.seedconfirm`).
+    ///
+    /// **Trust model:** the `.`-channel is GM-gated server-side, and `sql` is
+    /// *server-generated* — numeric values are formatted from cell-parsed
+    /// `i32`/`f32` and strings are escaped through
+    /// [`crate::cell::console::seed::sql_str`], so no raw client text is
+    /// concatenated into the statement. This mirrors the legacy
+    /// `Atrea.dbQuery` authoring path. `label` is a short human tag for the
+    /// feedback line (e.g. `"savespawn"`).
+    ExecuteAuthoringSql {
+        entity_id: u32,
+        label: String,
+        sql: String,
+    },
+
+    /// Run a read-only name search against a resource table and feed the
+    /// matches back to the GM (`.searchitem` / `.searchmission` /
+    /// `.searchtemplate`). The cell caches resource ids but not their display
+    /// names (those live only in the base-side DB), so the search runs base-side
+    /// and reports `id: name` lines on the feedback channel. `kind` selects the
+    /// table (`0` items, `1` missions, `2` entity_templates); `query` is the
+    /// case-insensitive substring (used as a parameterized `ILIKE` bind — no
+    /// string concatenation).
+    ConsoleSearch {
+        entity_id: u32,
+        kind: u8,
+        query: String,
+    },
+
     /// Spawn an NPC by template id at a computed position (`gmSpawnByCmd`).
     ///
     /// Round-trip sink, mirroring `TrainAbility` → `AbilityGranted`: the cell

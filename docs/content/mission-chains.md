@@ -138,16 +138,23 @@ These 5 missions run in parallel with the main chain after the Mess Hall. All ar
 
 **Sequences**: 10000
 
-**Live data-driven shape (chains 1003 + 1004)** [CONFIRMED]
+**Live data-driven shape (sequenced loot split, chains 1003–1007)** [CONFIRMED]
 
-The Cimmeria runtime no longer force-equips the pistol; it routes the grant through the player's manual equip path to keep the bandolier ammo / fire-animation state consistent. See [docs/content/equip-from-inventory-pattern.md](equip-from-inventory-pattern.md) for the rationale and [docs/architecture/mission-pak-overrides.md](../architecture/mission-pak-overrides.md) for how the new step reaches the client UI.
+The loot is split across the two stasis-room corpses (Cpl. Frost = letter, the NID Guard = pistol) and **sequenced Frost → Guard**: the Guard corpse is not searchable until the player searches Frost. A corpse only opens a dialog when its template has an entry in the player's `available_interactions` (`crates/services/src/cell/interactions/dispatch.rs`), so the gate is simply *which `add_dialog_set` has run*. Chain 1001 (mission accept) binds only Frost (5229 → template 14); chain 1003 binds the Guard (5230 → template 21) on the Frost search. An intermediate step **80623** ("Search the NID Guard's body…") sits between 2113 and the equip step so the sequencing survives a relog — login-restore chains 1006/1007 re-apply the bindings per active step (interaction bindings are not persisted).
+
+The Cimmeria runtime no longer force-equips the pistol; it routes the grant through the player's manual equip path to keep the bandolier ammo / fire-animation state consistent. See [docs/content/equip-from-inventory-pattern.md](equip-from-inventory-pattern.md) for the rationale and [docs/architecture/mission-pak-overrides.md](../architecture/mission-pak-overrides.md) for how the new steps reach the client UI.
+
+Step indices (XML order, which the client uses for sequential progression): `2113` (0, search Frost) → `80623` (1, search Guard) → `80622` (2, equip pistol).
 
 | Chain | Trigger | Condition | Actions |
 |---|---|---|---|
-| 1003 | `dialog_open('3995')` (Frost body) | `step_status(622, 2113) = 'active'` | Grant pistol (item 55) → backpack (container 1); grant Frost's letter (item 3730) → mission inventory; `advance_step(622, 80622)` |
+| 1003 | `dialog_open('3995')` (Frost body) | `step_status(622, 2113) = 'active'` | Clear Frost's search bit; grant Frost's letter (item 3730) → mission inventory; `add_dialog_set(5230 → template 21)` (unlock Guard); `advance_step(622, 80623)` |
+| 1005 | `dialog_open('3996')` (Guard body) | `step_status(622, 80623) = 'active'` | Clear Guard's search bit; grant pistol (item 55) → backpack (container 1); `advance_step(622, 80622)` |
 | 1004 | `item_equipped('55')` | `step_status(622, 80622) = 'active'` | `play_sequence(10000)` (open stasis door); `complete_mission(622)` |
+| 1006 | `player_loaded('Castle_CellBlock')` | `step_status(622, 2113) = 'active'` | `add_dialog_set(5229 → template 14)` — re-bind Frost on login |
+| 1007 | `player_loaded('Castle_CellBlock')` | `step_status(622, 80623) = 'active'` | `add_dialog_set(5230 → template 21)` — re-bind Guard on login |
 
-Step 80622 ("Equip the pistol from your inventory.") is **not** in the canonical PAK. It's added by `MissionOverride { mission_id: 622, insert_after_step_id: 2113 }` in `crates/services/src/base/mission_overrides.rs:74-90`, served to the client via the `versionInfoRequest` / `onVersionInfo` (`InvalidKeys`) / `resourceFragment` handshake. Server-side seed rows live in `db/resources/Missions/Seed/mission_steps.sql` (step 80622) and `mission_objectives.sql` (objective 90622). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql:50-105`. Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_622.rs` (4 chain-replay tests).
+Steps 80623 ("Search the NID Guard's body for a weapon.") and 80622 ("Equip the pistol from your inventory.") are **not** in the canonical PAK. They're added by two `MissionOverride` entries for mission 622 (`insert_after_step_id: 2113` then `insert_after_step_id: 80623`) in `crates/services/src/base/mission_overrides.rs`, served to the client via the `versionInfoRequest` / `onVersionInfo` (`InvalidKeys`) / `resourceFragment` handshake. Server-side seed rows live in `db/resources/Missions/Seed/mission_steps.sql` (steps 80623, 80622) and `mission_objectives.sql` (objectives 90623, 90622). The Guard's search dialog 3996 is a Cimmeria dialog shipped via a `CookedDataDialogs.pak` override (`crates/services/src/base/dialog_overrides.rs`). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (chains 1001–1007). Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_622.rs`.
 
 **Link to next**: Mission 622 does NOT explicitly call `missions.accept(638)`. The link is handled by the space script -- when the player enters `Castle_Cellblock.Region2`, mission 638 is accepted if not already active. [CONFIRMED -- `Castle_CellBlock.py` line 338-348]
 

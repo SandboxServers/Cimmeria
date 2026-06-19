@@ -117,6 +117,9 @@ impl SpaceManager {
 
         // Template-driven fields
         e.template_id = Some(record.template_id);
+        // `-1` is the GM/command-spawn sentinel (no spawnlist row) — keep only
+        // real positive ids so authoring commands don't target a phantom row.
+        e.spawn_id = (record.spawn_id > 0).then_some(record.spawn_id);
         e.tag = record.tag.clone();
         e.name_id = record.name_id;
         e.speaker_id = record.speaker_id;

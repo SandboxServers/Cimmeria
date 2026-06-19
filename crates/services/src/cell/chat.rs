@@ -5,8 +5,10 @@
 //!
 //! Reference: `python/cell/SGWPlayer.py:processPlayerCommunication()`
 
+use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
+use super::console;
 use super::messages::CellToBaseMsg;
 use super::space_manager::SpaceManager;
 
@@ -28,8 +30,13 @@ pub const CHAN_COMMAND: u8 = 5;
 pub const CHAN_OFFICER: u8 = 6;
 /// Server channel — system broadcasts only.
 pub const CHAN_SERVER: u8 = 7;
-/// Feedback channel — system feedback.
-pub const CHAN_FEEDBACK: u8 = 8;
+/// GM-feedback channel. The client only registers the channels in the base's
+/// `DEFAULT_CHAT_CHANNELS` (say/emote/yell/team/squad/command/server=7/tell=9);
+/// there is **no** dedicated feedback channel, and an *unregistered* channel
+/// (e.g. 8) falls back to the client's red unknown-channel splash popup. So GM
+/// feedback rides the registered `tell` channel (9) — the same channel the
+/// base's inline welcome message uses (`world_entry_chat::CHAN_TELL`).
+pub const CHAN_FEEDBACK: u8 = 9;
 /// Tell channel — direct player-to-player (handled by BaseApp, not here).
 pub const CHAN_TELL: u8 = 9;
 /// Splash screen channel.
@@ -69,8 +76,26 @@ pub async fn handle_chat_message(
     channel: u8,
     text: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &SpaceManager,
+    space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) {
+    // GM `.`-console interception. The 2009 client forwards `.`-prefixed
+    // input as an ordinary CHAN_SAY chat message rather than eating it (unlike
+    // `/`, which the client consumes). When the sender is a GM, we consume the
+    // line as a dev/authoring console command and never broadcast it to other
+    // players; a non-GM's `.`-text falls through to normal chat. Auth is on the
+    // server-side `access_level`, never a client-asserted byte.
+    if channel == CHAN_SAY && text.starts_with('.') {
+        let access_level = space_mgr
+            .get_entity(entity_id)
+            .map_or(0, |e| e.access_level);
+        if console::is_gm(access_level) {
+            console::handle_console_command(entity_id, text, tx, space_mgr, engine).await;
+            return;
+        }
+        // Non-GM `.`-text is ordinary chat — fall through to broadcast.
+    }
+
     match channel {
         CHAN_SAY | CHAN_EMOTE | CHAN_YELL => {
             broadcast_to_witnesses(
@@ -252,10 +277,11 @@ mod tests {
 
     #[tokio::test]
     async fn broadcast_to_nonexistent_entity_is_noop() {
-        let mgr = super::super::space_manager::SpaceManager::new(1);
+        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let engine = ChainEngine::new();
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
 
-        handle_chat_message(999, "Bob", 0, CHAN_SAY, "Hello", &tx, &mgr).await;
+        handle_chat_message(999, "Bob", 0, CHAN_SAY, "Hello", &tx, &mut mgr, &engine).await;
 
         // No messages should be sent
         assert!(rx.try_recv().is_err());
@@ -283,8 +309,19 @@ mod tests {
         }
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+        let engine = ChainEngine::new();
 
-        handle_chat_message(1, "Alice", 0, CHAN_SAY, "Hello world", &tx, &mgr).await;
+        handle_chat_message(
+            1,
+            "Alice",
+            0,
+            CHAN_SAY,
+            "Hello world",
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
 
         // Should get 2 messages: one for witness (entity 2) + one for sender (entity 1)
         let mut msgs = Vec::new();
@@ -320,6 +357,76 @@ mod tests {
         }
     }
 
+    /// A GM's `.`-command is consumed by the console and never broadcast to
+    /// witnesses (never appears in others' chat).
+    #[tokio::test]
+    async fn gm_dot_command_is_intercepted_not_broadcast() {
+        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
+        mgr.create_entity(2, "Agnos", [15.0, 0.0, 15.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+        mgr.connect_entity(2);
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.access_level = 2; // GameMaster
+            e.witnesses.insert(cimmeria_common::EntityId(2));
+        }
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+
+        handle_chat_message(1, "Gm", 0, CHAN_SAY, ".players", &tx, &mut mgr, &engine).await;
+
+        // Witness (entity 2) must receive NOTHING — the command was consumed.
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall { entity_id, .. } = msg {
+                assert_ne!(entity_id, 2, "GM .-command must not broadcast to witnesses");
+            }
+        }
+    }
+
+    /// A non-GM's `.`-text is ordinary chat and DOES broadcast.
+    #[tokio::test]
+    async fn non_gm_dot_text_is_normal_chat() {
+        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
+        mgr.create_entity(2, "Agnos", [15.0, 0.0, 15.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+        mgr.connect_entity(2);
+        if let Some(e) = mgr.get_entity_mut(1) {
+            // access_level stays 0 (Player)
+            e.witnesses.insert(cimmeria_common::EntityId(2));
+        }
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+
+        handle_chat_message(1, "Joe", 0, CHAN_SAY, ".hello", &tx, &mut mgr, &engine).await;
+
+        // Witness (entity 2) should receive the chat broadcast.
+        let mut witness_got_chat = false;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall { entity_id, .. } = msg {
+                if entity_id == 2 {
+                    witness_got_chat = true;
+                }
+            }
+        }
+        assert!(
+            witness_got_chat,
+            "non-GM .-text must broadcast as normal chat"
+        );
+    }
+
     #[tokio::test]
     async fn non_cell_channel_ignored() {
         let mut mgr = super::super::space_manager::SpaceManager::new(1);
@@ -331,9 +438,10 @@ mod tests {
             .unwrap();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        let engine = ChainEngine::new();
 
         // Tell channel should not be handled by CellService
-        handle_chat_message(1, "Bob", 0, CHAN_TELL, "Hi", &tx, &mgr).await;
+        handle_chat_message(1, "Bob", 0, CHAN_TELL, "Hi", &tx, &mut mgr, &engine).await;
         assert!(rx.try_recv().is_err());
     }
 }

@@ -468,6 +468,38 @@ pub(crate) async fn handle_cell_message(
             )
             .await;
         }
+        CellToBaseMsg::ExecuteAuthoringSql {
+            entity_id,
+            label,
+            sql,
+        } => {
+            crate::base::console_authoring::handle_execute_authoring_sql(
+                entity_id,
+                &label,
+                &sql,
+                db_pool,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
+        CellToBaseMsg::ConsoleSearch {
+            entity_id,
+            kind,
+            query,
+        } => {
+            crate::base::console_authoring::handle_console_search(
+                entity_id,
+                kind,
+                &query,
+                db_pool,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
         CellToBaseMsg::GmSpawnNpc {
             entity_id,
             template_id,

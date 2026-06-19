@@ -191,7 +191,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 24 documents.
+How the Cimmeria emulator itself is structured. 25 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -208,7 +208,9 @@ How the Cimmeria emulator itself is structured. 24 documents.
 | [abilities-and-effects-system.md](architecture/abilities-and-effects-system.md) | ADR for the abilities + effects design decisions shipped in PR #420: EffectScript trait shape, stacking semantics, channel cancellation triggers, absorption pool drain ordering, TCM dispatch routing, AF_CHANNEL_ALLOWS_MOVEMENT default | Complete |
 | [state-field-bits.md](architecture/state-field-bits.md) | Verified `bStateField` bit layout (bits 0-7 only), client dispatch table, BSF_Holster retirement notice with Ghidra anchors, relog persistence of `BSF_AutoCycling` | Complete |
 | [gm-cell-method-gating.md](architecture/gm-cell-method-gating.md) | ADR for the server-authoritative GM gate (#475 / CAT-N-03): `access_level` plumbing into `CellEntity`, the dispatch-layer `gm_gate`, how to add the next `gm*` method | Complete |
+| [movement-validation.md](architecture/movement-validation.md) | ADR for server-authoritative position validation (#478 / CAT-B-01,-06,-09): the 4-layer seam (bounds / speed warn-only / teleport / navmesh), dual teleport gate, server-clock dt, authorized-teleport reseed, warn-only spaceId cross-check, tolerances + calibration path | Complete |
 | [gm-cell-method-adapt-plan.md](architecture/gm-cell-method-adapt-plan.md) | Roadmap for the developer-useful ADAPT `gm*` cell methods (#473/#518): the feedback-channel blocker that unlocks the query surface, name→id resolution, the `loadX` hot-reload family, recommended sequencing | Complete |
+| [dev-console-channel.md](architecture/dev-console-channel.md) | ADR for the GM `.`-console (#523): chat-intercept channel for the ~66 dev/authoring commands with no native slash binding, registry dispatch, record→confirm seed-SQL authoring (live write + per-session log + Discord hook), FanMMORPG patrol authoring + schema, per-command status | Complete |
 | [integration-test-infra.md](architecture/integration-test-infra.md) | Live-DB test infrastructure: why no testcontainers, why no `sqlx::test`, local setup, isolation patterns | Complete |
 | [transport-trait.md](architecture/transport-trait.md) | ADR: `Transport` trait for the Mercury send side — `UdpTransport`/`TestTransport`, the send/recv asymmetric split, why `Nub` I/O (#57) was retired, and the fan-out byte test seam | Complete |
 | [mercury-bundle.md](architecture/mercury-bundle.md) | `ChannelBundle` accumulator: cross-entity bundling rule, transaction-state hazard, AoI burst migration (#356), follow-up migration playbook | Complete |
