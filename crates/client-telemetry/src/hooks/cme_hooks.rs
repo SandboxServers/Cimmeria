@@ -35,8 +35,7 @@ use std::ffi::c_void;
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use crate::cme::{
-    lookup_by_name, placeholder_slot, subscribe, CmeMemberCallback, FakeVtable,
-    ADDR_INVOKE_MEMBER_CALLBACK,
+    lookup_by_name, subscribe, CmeMemberCallback, FakeVtable, ADDR_INVOKE_MEMBER_CALLBACK,
 };
 
 /// Install both CME hooks. Reports success/failure as one event

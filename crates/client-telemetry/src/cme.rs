@@ -123,6 +123,11 @@ unsafe impl Sync for FakeVtable {}
 /// `extern "thiscall" fn(this) -> *mut c_void` per the C++ ABI
 /// for a virtual destructor, but we just return null and ignore
 /// `this` since static subscribers never get destroyed.
+///
+/// # Safety
+/// Installed only as a vtable slot the host invokes via the C++ `thiscall`
+/// ABI. `_this` is ignored and never dereferenced, so any pointer value the
+/// host passes is sound — the function performs no memory access.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 pub unsafe extern "thiscall" fn noop_destructor(_this: *mut c_void) -> *mut c_void {
     std::ptr::null_mut()

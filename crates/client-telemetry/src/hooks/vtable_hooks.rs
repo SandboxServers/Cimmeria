@@ -63,7 +63,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// CEGUI::DefaultLogger vtable @ `0x01ac1ba8`, slot 1 (logEvent).
 /// Slot ptr = `0x01ac1ba8 + 1*4` = `0x01ac1bac`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
-const VTSLOT_CEGUI_LOG_EVENT: usize = 0x01ac1ba8 + 1 * 4;
+const VTSLOT_CEGUI_LOG_EVENT: usize = 0x01ac1ba8 + 4;
 
 /// AActor vtable @ `0x0183c40c`, slot 88 (Tick).
 /// Slot ptr = `0x0183c40c + 88*4` = `0x0183c56c`.
