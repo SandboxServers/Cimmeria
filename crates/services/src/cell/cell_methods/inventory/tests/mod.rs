@@ -1,11 +1,13 @@
 //! Behaviour tests for the inventory cell-method dispatch surface,
 //! grouped by tested message: slot-swap, ammo-change, active-slot
-//! change, and move-item.
+//! change (wire/choreography in `active_slot_change`, ability-side
+//! effects in `active_slot_abilities`), and move-item.
 
 use cimmeria_entity::abilities::AbilityDef;
 
 use crate::cell::space_manager::SpaceManager;
 
+mod active_slot_abilities;
 mod active_slot_change;
 mod ammo_change;
 mod move_item;
