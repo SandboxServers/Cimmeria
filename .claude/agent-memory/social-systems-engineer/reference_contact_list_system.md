@@ -40,8 +40,9 @@ Rust constants: `ON_CONTACT_LIST_UPDATE=85`, `ON_CONTACT_LIST_DELETE=86`,
 `ON_CONTACT_LIST_ADD_MEMBERS=87`, `ON_CONTACT_LIST_REMOVE_MEMBERS=88`,
 `ON_CONTACT_LIST_EVENT=89`.
 
-EContactListEvent values: 0=LoggedInStatus (data_value: 1=online, 0=offline),
-1=GainLevel, 2=Death, 3=GateTravel.
+EContactListEvent is a UINT32 bitfield (powers of two, per entities/defs/enumerations.xml):
+1=LoggedInStatus (data_value: 1=online, 0=offline), 2=GainLevel (data_value=new level),
+4=Death, 8=GateTravel. NOT a 0-based index — sending 0 for LoggedInStatus never matches.
 
 ### DB schema
 
@@ -98,7 +99,7 @@ deferred to Phase 5 (TODO #572).
 `fanout_login_status` in `handlers/presence_fanout.rs`:
 1. Calls `find_watchers(pool, player_name)` → Vec<i32> of watcher player_ids
 2. Finds each watcher's entity_id via `collect_watcher_entity_ids` (pure fn, unit-tested)
-3. Sends CM 89 (onContactListEvent, eventId=0, data_value=1/0) to each online watcher
+3. Sends CM 89 (onContactListEvent, eventId=1 [LoggedInStatus bitfield], data_value=1/0) to each online watcher
 
 ### db_pool threading
 
@@ -124,7 +125,7 @@ instead. Discovered when fixing persistence.rs during #572 impl.
 
 ### Deferred (Phase 5)
 
-- GainLevel/Death/GateTravel events (CM 89, eventId 1/2/3)
+- GainLevel/Death/GateTravel events (CM 89, eventId bitfield 2/4/8)
 - Abrupt-disconnect offline fanout via `destroy_client_entities`
 - Ignore-list check before queueing fanout events
 - Slash commands and modify-button routing

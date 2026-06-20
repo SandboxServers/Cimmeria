@@ -57,9 +57,14 @@ pub(crate) fn build_on_contact_list_remove_members(list_id: i32, names: &[String
 
 /// Serialize `onContactListEvent` (CM 89) args.
 ///
-/// `event_id` values (EContactListEvent):
-///   0 = LoggedInStatus (data_value 1=online / 0=offline)
-///   1 = GainLevel, 2 = Death, 3 = GateTravel  [TODO: data values need x64dbg runtime capture]
+/// `event_id` is the `EContactListEvent` **bitfield** value (UINT32), per
+/// `entities/defs/enumerations.xml` (mirrored in `db/resources/Social/Types/
+/// EContactListEvent.sql` and the original `Atrea/enums.py`):
+///   1 = LoggedInStatus (data_value 1=online / 0=offline)
+///   2 = GainLevel (data_value = new level), 4 = Death, 8 = GateTravel
+/// NOTE: these are power-of-two bit flags, NOT a 0-based index — the client tests
+/// the flag value, so sending 0 for LoggedInStatus never matches. Death/GateTravel
+/// data_value semantics are still unconfirmed (UI-asset RE; not in the binary).
 pub(crate) fn build_on_contact_list_event(
     player_name: &str,
     event_id: u32,
@@ -81,10 +86,22 @@ pub(crate) fn build_on_contact_list_event(
 /// contact-list wire module — so both layers share a single definition.
 pub(crate) const MAX_MEMBERS_PER_REQUEST: usize = 100;
 
-// ── EContactListEvent integer codes ─────────────────────────────────────────
+// ── EContactListEvent bitfield values (UINT32) ───────────────────────────────
+// Power-of-two flags from entities/defs/enumerations.xml — NOT a 0-based index.
 
-/// `EContactListEvent::ECONTACT_LIST_EVENT_LoggedInStatus`
-pub(crate) const EVENT_LOGGED_IN_STATUS: u32 = 0;
+/// `EContactListEvent::ECONTACT_LIST_EVENT_LoggedInStatus` (bit 0).
+pub(crate) const EVENT_LOGGED_IN_STATUS: u32 = 1;
+// Defined now for protocol completeness; not yet emitted (the GainLevel/Death/
+// GateTravel presence events are deferred — see #572). allow(dead_code) until wired.
+/// `ECONTACT_LIST_EVENT_GainLevel` (bit 1). data_value = the player's new level.
+#[allow(dead_code)]
+pub(crate) const EVENT_GAIN_LEVEL: u32 = 2;
+/// `ECONTACT_LIST_EVENT_Death` (bit 2). data_value semantics unconfirmed.
+#[allow(dead_code)]
+pub(crate) const EVENT_DEATH: u32 = 4;
+/// `ECONTACT_LIST_EVENT_GateTravel` (bit 3). data_value semantics unconfirmed.
+#[allow(dead_code)]
+pub(crate) const EVENT_GATE_TRAVEL: u32 = 8;
 
 /// `dataValue` for LoggedInStatus: player came online.
 pub(crate) const DATA_ONLINE: i32 = 1;
@@ -199,6 +216,12 @@ mod tests {
 
         let event_id = u32::from_le_bytes(payload[consumed..consumed + 4].try_into().unwrap());
         assert_eq!(event_id, EVENT_LOGGED_IN_STATUS);
+        // Pin the literal wire value: LoggedInStatus is the bitfield flag 1, NOT 0.
+        // (A self-referential `== EVENT_LOGGED_IN_STATUS` check let the 0 bug ship.)
+        assert_eq!(
+            event_id, 1,
+            "LoggedInStatus must serialize as bitfield value 1"
+        );
 
         let data_value =
             i32::from_le_bytes(payload[consumed + 4..consumed + 8].try_into().unwrap());
@@ -216,5 +239,15 @@ mod tests {
         let data_value =
             i32::from_le_bytes(payload[consumed + 4..consumed + 8].try_into().unwrap());
         assert_eq!(data_value, DATA_OFFLINE);
+    }
+
+    /// Guard: EContactListEvent values are the power-of-two bit flags from
+    /// `entities/defs/enumerations.xml` (1/2/4/8), not a 0-based index.
+    #[test]
+    fn event_ids_match_canonical_bitfield() {
+        assert_eq!(EVENT_LOGGED_IN_STATUS, 1);
+        assert_eq!(EVENT_GAIN_LEVEL, 2);
+        assert_eq!(EVENT_DEATH, 4);
+        assert_eq!(EVENT_GATE_TRAVEL, 8);
     }
 }
