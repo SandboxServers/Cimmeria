@@ -110,10 +110,10 @@ pub(super) async fn handle_user_auth(
             audit!("plaintext_requires_tls");
             // Reuse the malformed-password code: the client must not learn that
             // a plaintext-over-TLS path exists.
-            return login_error(2, "The specified password has is invalid.");
+            return login_error(2, "The specified password is invalid.");
         }
         Err(CredentialGateError::PlaintextLength) => {
-            return login_error(2, "The specified password has is invalid.");
+            return login_error(2, "The specified password is invalid.");
         }
     };
     let name_ok = req.account_name.len() >= 3
