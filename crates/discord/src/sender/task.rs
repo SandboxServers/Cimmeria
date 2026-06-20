@@ -14,7 +14,7 @@ use crate::embed::build_embed_body;
 use crate::event::{ChannelKind, Event};
 use crate::router::channel_for;
 
-use super::handle::{DiscordSender, SenderHandle, SendError};
+use super::handle::{DiscordSender, SendError, SenderHandle};
 use super::stats::Stats;
 use super::token_bucket::TokenBucket;
 use super::{MAX_RETRIES, QUEUE_CAPACITY, RETRY_BASE};

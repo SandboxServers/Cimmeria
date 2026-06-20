@@ -131,9 +131,9 @@ pub(super) fn total_chars(embed: &Value) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::builder::build_embed;
     use super::super::{MAX_DESC, MAX_TITLE};
+    use super::*;
     use crate::event::{Event, TracingEventKind};
     use chrono::Utc;
 
