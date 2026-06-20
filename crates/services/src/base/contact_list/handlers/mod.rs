@@ -32,7 +32,7 @@ pub(crate) mod presence_fanout;
 // can import from `handlers::*` without knowing the split.
 pub(crate) use header_ops::{handle_create, handle_delete, handle_flags_update, handle_rename};
 pub(crate) use member_ops::{handle_add_members, handle_remove_members};
-pub(crate) use presence_fanout::fanout_login_status;
+pub(crate) use presence_fanout::{fanout_contact_event, fanout_login_status};
 
 /// Push all contact lists + members to the player's client on world entry.
 ///

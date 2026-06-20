@@ -6,8 +6,8 @@
 //! the appropriate handler.
 
 use crate::base::contact_list::handlers::{
-    handle_add_members, handle_create, handle_delete, handle_flags_update, handle_remove_members,
-    handle_rename,
+    fanout_contact_event, handle_add_members, handle_create, handle_delete, handle_flags_update,
+    handle_remove_members, handle_rename,
 };
 use crate::cell::messages::CellToBaseMsg;
 
@@ -129,6 +129,31 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.entity_to_addr,
             )
             .await
+        }
+
+        CellToBaseMsg::ContactListPresenceEvent {
+            player_name,
+            event_id,
+            data_value,
+        } => {
+            // Fire-and-forget: spawn so the cell channel drains immediately
+            // rather than blocking on the DB lookup + network fan-out.
+            let db_pool = ctx.db_pool.clone();
+            let transport = std::sync::Arc::clone(ctx.transport);
+            let connected = std::sync::Arc::clone(ctx.connected);
+            let entity_to_addr = std::sync::Arc::clone(ctx.entity_to_addr);
+            tokio::spawn(async move {
+                fanout_contact_event(
+                    &player_name,
+                    event_id,
+                    data_value,
+                    &db_pool,
+                    &transport,
+                    &connected,
+                    &entity_to_addr,
+                )
+                .await;
+            });
         }
 
         // Unreachable by construction — the outer match only routes

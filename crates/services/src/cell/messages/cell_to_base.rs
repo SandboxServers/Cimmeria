@@ -629,6 +629,22 @@ pub enum CellToBaseMsg {
         names: Vec<String>,
     },
 
+    /// Fan out a contact-list presence event to all online players who have
+    /// `player_name` in any of their contact lists (CM 89, eventId = event_id).
+    ///
+    /// Generic cell→base hop for events that originate cell-side (e.g., Death)
+    /// but need base context to reach the DB and the transport layer.
+    ///
+    /// `event_id` is one of the `EVENT_*` bitfield constants in
+    /// `base::contact_list::wire` (1=LoggedInStatus, 2=GainLevel, 4=Death,
+    /// 8=GateTravel). `data_value` is the event-specific payload (new level,
+    /// 0 for death, destination world_id for gate travel).
+    ContactListPresenceEvent {
+        player_name: String,
+        event_id: u32,
+        data_value: i32,
+    },
+
     /// Both players in a trade reached `LockedAndConfirmed` — base must
     /// now perform the atomic swap (items + cash) inside a single sqlx
     /// transaction, then send `onTradeResults` to both clients.

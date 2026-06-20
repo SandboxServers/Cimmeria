@@ -1,5 +1,10 @@
-//! `fanout_login_status` — broadcast CM 89 (onContactListEvent / LoggedInStatus)
-//! to all online players who have `player_name` in any of their contact lists.
+//! Presence fan-out helpers — broadcast CM 89 (`onContactListEvent`) to all
+//! online players who have a given player in any of their contact lists.
+//!
+//! `fanout_login_status` is a thin wrapper around the generic
+//! `fanout_contact_event` for the `LoggedInStatus` case. All three new
+//! presence events (GainLevel / Death / GateTravel) use `fanout_contact_event`
+//! directly with the appropriate `event_id` + `data_value` pair.
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
@@ -33,25 +38,25 @@ fn collect_watcher_entity_ids(
         .collect()
 }
 
-/// Fan out `onContactListEvent` (CM 89, eventId=LoggedInStatus) to all online
-/// players who have `player_name` in any of their contact lists.
+/// Fan out `onContactListEvent` (CM 89) to all online players who have
+/// `player_name` in any of their contact lists.
 ///
-/// Called on player login (`data_value = DATA_ONLINE`) and logout
-/// (`data_value = DATA_OFFLINE`).
+/// Generic core used by `fanout_login_status` and the three new presence
+/// events (GainLevel, Death, GateTravel). `event_id` is one of the
+/// `EVENT_*` bitfield constants from `wire.rs`; `data_value` is the
+/// event-specific payload (new level, 0, or world_id).
+///
+/// Fire-and-forget — spawn this via `tokio::spawn` at call sites that must
+/// not block a critical path (gate travel, XP grant, death burst).
 ///
 /// # Invariant #5 (ignore-list leak)
-/// This function is for the *caller's* presence fanout only — it does NOT
-/// check the recipient's ignore list because the spec does not filter
-/// LoggedInStatus events on the notifier's side. If that becomes a
-/// requirement (e.g., muted players), add a join against the recipient's
-/// Ignore list in `find_watchers` or filter here before the send.
-///
-/// # TODO: presence dataValues for level/death/gate events (needs runtime capture)
-/// GainLevel / Death / GateTravel events (eventId 1/2/3) are deferred —
-/// their data values need x64dbg confirmation.
-pub(crate) async fn fanout_login_status(
+/// Does NOT filter on the recipient's ignore list — `find_watchers` returns
+/// all contact-list watchers regardless. Ignore-list filtering before fanout
+/// is deferred to Phase 5.
+pub(crate) async fn fanout_contact_event(
     player_name: &str,
-    is_online: bool,
+    event_id: u32,
+    data_value: i32,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -62,7 +67,8 @@ pub(crate) async fn fanout_login_status(
         None => {
             tracing::warn!(
                 player_name,
-                "ContactList LoginStatus fanout: no DB pool, skipping"
+                event_id,
+                "ContactList presence fanout: no DB pool, skipping"
             );
             return;
         }
@@ -73,7 +79,8 @@ pub(crate) async fn fanout_login_status(
         Err(e) => {
             tracing::error!(
                 player_name,
-                "ContactList LoginStatus fanout: find_watchers failed: {e}"
+                event_id,
+                "ContactList presence fanout: find_watchers failed: {e}"
             );
             return;
         }
@@ -86,8 +93,7 @@ pub(crate) async fn fanout_login_status(
     // Build a HashSet for O(1) membership tests during the connected scan below.
     let watcher_set: HashSet<i32> = watcher_ids.iter().copied().collect();
 
-    let data_value = if is_online { DATA_ONLINE } else { DATA_OFFLINE };
-    let args = build_on_contact_list_event(player_name, EVENT_LOGGED_IN_STATUS, data_value);
+    let args = build_on_contact_list_event(player_name, event_id, data_value);
 
     // Map player_id → entity_id for online players only.
     // Locks `connected` to iterate active sessions; does NOT take entity_to_addr.
@@ -97,7 +103,8 @@ pub(crate) async fn fanout_login_status(
             Err(_) => {
                 tracing::error!(
                     player_name,
-                    "ContactList LoginStatus fanout: connected lock poisoned"
+                    event_id,
+                    "ContactList presence fanout: connected lock poisoned"
                 );
                 return;
             }
@@ -129,15 +136,45 @@ pub(crate) async fn fanout_login_status(
 
     tracing::debug!(
         player_name,
-        is_online,
+        event_id,
+        data_value,
         watcher_count = watcher_ids.len(),
-        "ContactList: LoginStatus fanout complete"
+        "ContactList: presence fanout complete"
     );
+}
+
+/// Fan out `onContactListEvent` (CM 89, eventId=LoggedInStatus) to all online
+/// players who have `player_name` in any of their contact lists.
+///
+/// Called on player login (`data_value = DATA_ONLINE`) and logout
+/// (`data_value = DATA_OFFLINE`). Thin wrapper around `fanout_contact_event`.
+pub(crate) async fn fanout_login_status(
+    player_name: &str,
+    is_online: bool,
+    db_pool: &Option<Arc<PgPool>>,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    let data_value = if is_online { DATA_ONLINE } else { DATA_OFFLINE };
+    fanout_contact_event(
+        player_name,
+        EVENT_LOGGED_IN_STATUS,
+        data_value,
+        db_pool,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::base::contact_list::wire::{
+        EVENT_DEATH, EVENT_GAIN_LEVEL, EVENT_GATE_TRAVEL, EVENT_LOGGED_IN_STATUS,
+    };
     use crate::test_support::test_default_connected_client_state;
     use std::net::{IpAddr, Ipv4Addr};
 
@@ -249,5 +286,88 @@ mod tests {
 
         let entity_ids = collect_watcher_entity_ids(&clients, &watcher_set);
         assert!(entity_ids.is_empty());
+    }
+
+    // ── fanout_contact_event wire-arg correctness ────────────────────────────
+    // These tests drive `build_on_contact_list_event` through the same path the
+    // fanout takes so a refactor that passes the wrong (event_id, data_value)
+    // pair fails here before the wire desync reaches the client.
+
+    /// Helper: decode WSTRING and return (decoded_string, bytes_consumed).
+    fn read_wstring(buf: &[u8]) -> (String, usize) {
+        let count = u32::from_le_bytes(buf[0..4].try_into().unwrap()) as usize;
+        let mut chars = Vec::with_capacity(count);
+        for i in 0..count {
+            let off = 4 + i * 2;
+            chars.push(u16::from_le_bytes(buf[off..off + 2].try_into().unwrap()));
+        }
+        (String::from_utf16(&chars).unwrap(), 4 + count * 2)
+    }
+
+    /// Helper: build a CM 89 payload and decode (event_id, data_value).
+    fn decode_event(player_name: &str, event_id: u32, data_value: i32) -> (u32, i32) {
+        let buf = build_on_contact_list_event(player_name, event_id, data_value);
+        let (_, consumed) = read_wstring(&buf);
+        let eid = u32::from_le_bytes(buf[consumed..consumed + 4].try_into().unwrap());
+        let dv = i32::from_le_bytes(buf[consumed + 4..consumed + 8].try_into().unwrap());
+        (eid, dv)
+    }
+
+    /// GainLevel: event_id must be EVENT_GAIN_LEVEL (2); data_value is the new
+    /// level. Regression guard: a refactor using EVENT_LOGGED_IN_STATUS here
+    /// would produce (1, level) and the client's `if flags == 2` branch never
+    /// fires, silently dropping the notification.
+    #[test]
+    fn gain_level_arg_correctness() {
+        let new_level = 7i32;
+        let (eid, dv) = decode_event("Teal'c", EVENT_GAIN_LEVEL, new_level);
+        assert_eq!(
+            eid, EVENT_GAIN_LEVEL,
+            "GainLevel must use event_id 2 (EVENT_GAIN_LEVEL), not {eid}"
+        );
+        assert_eq!(
+            dv, new_level,
+            "GainLevel data_value must be the new level ({new_level}), got {dv}"
+        );
+    }
+
+    /// Death: event_id must be EVENT_DEATH (4); data_value is always 0
+    /// (client ignores the value but shows "{Name} has died").
+    #[test]
+    fn death_arg_correctness() {
+        let (eid, dv) = decode_event("O'Neill", EVENT_DEATH, 0);
+        assert_eq!(
+            eid, EVENT_DEATH,
+            "Death must use event_id 4 (EVENT_DEATH), not {eid}"
+        );
+        assert_eq!(
+            dv, 0,
+            "Death data_value must be 0 (client ignores it), got {dv}"
+        );
+    }
+
+    /// GateTravel: event_id must be EVENT_GATE_TRAVEL (8); data_value is the
+    /// destination world_id that the client passes to getWorldInfo(value).Name.
+    #[test]
+    fn gate_travel_arg_correctness() {
+        let world_id = 19i32; // Tollana from resources.worlds seed
+        let (eid, dv) = decode_event("Carter", EVENT_GATE_TRAVEL, world_id);
+        assert_eq!(
+            eid, EVENT_GATE_TRAVEL,
+            "GateTravel must use event_id 8 (EVENT_GATE_TRAVEL), not {eid}"
+        );
+        assert_eq!(
+            dv, world_id,
+            "GateTravel data_value must be the destination world_id ({world_id}), got {dv}"
+        );
+    }
+
+    /// LoggedInStatus (via fanout_login_status path) still uses event_id 1.
+    /// Regression guard for the wrapper that calls fanout_contact_event.
+    #[test]
+    fn logged_in_status_event_id_unchanged() {
+        let (eid, dv) = decode_event("Jackson", EVENT_LOGGED_IN_STATUS, 1);
+        assert_eq!(eid, EVENT_LOGGED_IN_STATUS);
+        assert_eq!(dv, 1);
     }
 }

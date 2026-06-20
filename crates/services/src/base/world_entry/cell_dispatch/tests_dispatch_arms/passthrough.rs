@@ -251,6 +251,68 @@ async fn execute_trade_routes_to_handler_and_warns_when_no_db_pool() {
     );
 }
 
+/// `ContactListPresenceEvent` is a cell→base hop for contact-list presence
+/// events that originate cell-side (currently: Death). The dispatcher routes
+/// it to `contact_list_dispatch::route`, which spawns a fire-and-forget
+/// `fanout_contact_event`. With `db_pool: None`, `fanout_contact_event`
+/// short-circuits with `warn!("ContactList presence fanout: no DB pool")`.
+///
+/// Revert-verifier: removing or mis-routing the
+/// `ContactListPresenceEvent` arm in `handle_cell_message` causes this
+/// test to fail because the no-pool warning is never emitted from
+/// `fanout_contact_event`.
+#[tokio::test]
+async fn contact_list_presence_event_routes_to_fanout_and_warns_when_no_pool() {
+    use crate::base::contact_list::wire::EVENT_DEATH;
+    let capture = LogCapture::install();
+    let typed_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed_transport.clone();
+    let (connected, entity_to_addr) = empty_maps();
+
+    handle_cell_message(
+        CellToBaseMsg::ContactListPresenceEvent {
+            player_name: "O'Neill".to_string(),
+            event_id: EVENT_DEATH,
+            data_value: 0,
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None, // db_pool: None — fanout short-circuits with warn
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    // The spawn is fire-and-forget; yield to let the spawned task run.
+    tokio::task::yield_now().await;
+
+    assert!(
+        typed_transport.is_empty(),
+        "ContactListPresenceEvent is DB-only fan-out — no wire emit expected"
+    );
+    let event = capture
+        .find_message(
+            tracing::Level::WARN,
+            "ContactList presence fanout: no DB pool",
+        )
+        .expect(
+            "dispatch must reach fanout_contact_event's no-pool branch. \
+             If this assertion fails, either (a) the ContactListPresenceEvent arm \
+             was removed or mis-routed, or (b) the no-pool warn was renamed.",
+        );
+    assert!(
+        event.has_field("player_name", "O'Neill"),
+        "fanout warn must record player_name: {event:#?}"
+    );
+    assert!(
+        event.has_field("event_id", &EVENT_DEATH.to_string()),
+        "fanout warn must record event_id: {event:#?}"
+    );
+}
+
 /// `TeleportPlayer` is delegated to `handle_teleport_player`. With no
 /// entity_to_addr mapping, the handler logs
 /// `warn!("TeleportPlayer: no client addr for entity")` and returns

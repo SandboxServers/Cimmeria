@@ -21,6 +21,8 @@
 
 use tokio::sync::mpsc;
 
+use crate::base::contact_list::wire::EVENT_DEATH;
+
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::loot_drop::generate_loot_on_death;
@@ -55,6 +57,12 @@ pub(super) async fn apply_death_transition(
     // Discord gameplay-channel (off by default — content/debug signal). Only
     // player deaths post. Killer name + pvp/pve cause are best-effort from the
     // attacker entity; read before the mutation bursts below.
+    //
+    // Also sends `CellToBaseMsg::ContactListPresenceEvent` for PLAYER deaths so
+    // base can fan out CM 89 (eventId=Death, data_value=0) to the deceased
+    // player's contact-list watchers. NPC/mob deaths do NOT trigger a fanout —
+    // the event makes no sense for mobs and would flood the channel during
+    // combat.
     {
         let killer = space_mgr.get_entity(attacker_id).and_then(|e| {
             if attacker_is_player {
@@ -69,7 +77,18 @@ pub(super) async fn apply_death_transition(
                 .and_then(|e| e.character_name.clone())
                 .unwrap_or_else(|| format!("entity:{target_eid}"));
             let cause = if attacker_is_player { "pvp" } else { "pve" };
-            cimmeria_discord::emit_player_death(character_name, killer, cause);
+            cimmeria_discord::emit_player_death(character_name.clone(), killer, cause);
+
+            // Contact-list Death fanout — cell→base hop. The base handler calls
+            // `fanout_contact_event` with the player's name and EVENT_DEATH.
+            // data_value=0 per spec (client ignores it; shows "{Name} has died").
+            let _ = tx
+                .send(CellToBaseMsg::ContactListPresenceEvent {
+                    player_name: character_name,
+                    event_id: EVENT_DEATH,
+                    data_value: 0,
+                })
+                .await;
         } else {
             // NPC / mob death (off by default — high volume during combat).
             let npc_name = space_mgr
@@ -622,6 +641,80 @@ mod tests {
         assert!(
             auto_cycle_broadcast,
             "dying player must receive an onStateFieldUpdate clearing BSF_AUTO_CYCLING",
+        );
+    }
+
+    /// When a PLAYER dies, `apply_death_transition` must route a
+    /// `ContactListPresenceEvent` (event_id=EVENT_DEATH, data_value=0) through
+    /// the `tx` channel so the base-side contact-list fanout fires.
+    ///
+    /// Regression guard: removing the `tx.send(ContactListPresenceEvent {...})`
+    /// block from the `if target_is_player` branch causes this test to fail
+    /// because no `ContactListPresenceEvent` appears in the drained messages.
+    #[tokio::test]
+    async fn player_death_emits_contact_list_presence_event() {
+        use crate::base::contact_list::wire::EVENT_DEATH;
+
+        let mut mgr = make_mgr_with_player_and_npc();
+        // Promote entity 2 (the target) to a player with a known character name.
+        if let Some(t) = mgr.get_entity_mut(2) {
+            t.is_player = true;
+            t.player_id = Some(200);
+            t.character_name = Some("Teal'c".to_string());
+        }
+        let (tx, mut rx) = mpsc::channel(64);
+
+        apply_death_transition(2, 1, DEAD_STATE, true, true, &tx, &mut mgr).await;
+
+        let msgs = drain(&mut rx);
+        let presence_event = msgs.iter().find(|m| {
+            matches!(
+                m,
+                CellToBaseMsg::ContactListPresenceEvent {
+                    event_id,
+                    data_value: 0,
+                    ..
+                } if *event_id == EVENT_DEATH
+            )
+        });
+        assert!(
+            presence_event.is_some(),
+            "player death must emit ContactListPresenceEvent(EVENT_DEATH, 0); \
+             got: {msgs:?}"
+        );
+
+        // Pin the player_name carried in the event — it must be the entity's
+        // character_name, not a fallback like "entity:2".
+        if let Some(CellToBaseMsg::ContactListPresenceEvent { player_name, .. }) = presence_event {
+            assert_eq!(
+                player_name, "Teal'c",
+                "ContactListPresenceEvent must carry the entity's character_name"
+            );
+        }
+    }
+
+    /// NPC death must NOT emit a `ContactListPresenceEvent` — the event is
+    /// player-only. High-volume NPC kills during combat must not flood the
+    /// contact-list fanout channel.
+    ///
+    /// Regression guard: moving the `tx.send(ContactListPresenceEvent {...})`
+    /// block outside the `if target_is_player` guard would cause this test to
+    /// fail by finding an unexpected presence event for an NPC target.
+    #[tokio::test]
+    async fn npc_death_does_not_emit_contact_list_presence_event() {
+        let mut mgr = make_mgr_with_player_and_npc();
+        // entity 2 stays as NPC (is_player = false by default from the fixture).
+        let (tx, mut rx) = mpsc::channel(64);
+
+        apply_death_transition(2, 1, DEAD_STATE, true, false, &tx, &mut mgr).await;
+
+        let msgs = drain(&mut rx);
+        let has_presence = msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::ContactListPresenceEvent { .. }));
+        assert!(
+            !has_presence,
+            "NPC death must NOT emit ContactListPresenceEvent; got: {msgs:?}"
         );
     }
 
