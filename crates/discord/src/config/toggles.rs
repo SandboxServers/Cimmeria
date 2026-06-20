@@ -201,4 +201,135 @@ mod tests {
         assert!(!t.player_death);
         assert!(!t.loot_generated);
     }
+
+    // -- NET-NEW coverage (#531): is_enabled mapping + default branches --
+
+    /// `is_enabled` must round-trip every `EventKind` against the matching
+    /// struct field. We mutate one field at a time from a known baseline
+    /// and assert `is_enabled(kind)` tracks it -- this walks every arm of
+    /// the big `match` (previously only a handful were touched indirectly).
+    #[test]
+    fn is_enabled_tracks_every_field() {
+        // Start from a default and flip each field both ways, asserting
+        // `is_enabled(kind)` follows the field. The on-then-off pair makes
+        // the result independent of each field's default value and proves
+        // every `match` arm is bound to the field it names.
+        let mut t = EventToggles::default();
+        macro_rules! check {
+            ($field:ident, $kind:expr) => {{
+                t.$field = true;
+                assert!(
+                    t.is_enabled($kind),
+                    concat!("is_enabled must read ", stringify!($field), " when true")
+                );
+                t.$field = false;
+                assert!(
+                    !t.is_enabled($kind),
+                    concat!("is_enabled must read ", stringify!($field), " when false")
+                );
+            }};
+        }
+
+        check!(server_startup, EventKind::ServerStartup);
+        check!(server_shutdown, EventKind::ServerShutdown);
+        check!(server_panic, EventKind::ServerPanic);
+        check!(player_login, EventKind::PlayerLogin);
+        check!(player_logout, EventKind::PlayerLogout);
+        check!(player_disconnect, EventKind::PlayerDisconnect);
+        check!(player_auth_failed, EventKind::PlayerAuthFailed);
+        check!(player_world_entry, EventKind::PlayerWorldEntry);
+        check!(player_world_exit, EventKind::PlayerWorldExit);
+        check!(chat_global, EventKind::ChatGlobal);
+        check!(chat_say, EventKind::ChatSay);
+        check!(chat_whisper, EventKind::ChatWhisper);
+        check!(chat_guild, EventKind::ChatGuild);
+        check!(chat_team, EventKind::ChatTeam);
+        check!(chat_command, EventKind::ChatCommand);
+        check!(player_level_up, EventKind::PlayerLevelUp);
+        check!(player_death, EventKind::PlayerDeath);
+        check!(player_respawn, EventKind::PlayerRespawn);
+        check!(mission_accepted, EventKind::MissionAccepted);
+        check!(mission_completed, EventKind::MissionCompleted);
+        check!(mission_failed, EventKind::MissionFailed);
+        check!(mission_reward_granted, EventKind::MissionRewardGranted);
+        check!(loot_generated, EventKind::LootGenerated);
+        check!(item_used, EventKind::ItemUsed);
+        check!(character_created, EventKind::CharacterCreated);
+        check!(npc_death, EventKind::NpcDeath);
+        check!(minigame_result, EventKind::MinigameResult);
+        check!(dialog, EventKind::Dialog);
+        check!(gm_command, EventKind::GmCommand);
+        check!(gm_teleport, EventKind::GmTeleport);
+        check!(gm_spawn, EventKind::GmSpawn);
+        check!(gm_item_grant, EventKind::GmItemGrant);
+        check!(warning, EventKind::Warning);
+        check!(error, EventKind::Error);
+        check!(wire_format_error, EventKind::WireFormatError);
+        check!(db_error, EventKind::DbError);
+        check!(assertion_failure, EventKind::AssertionFailure);
+        check!(mercury_timeout, EventKind::MercuryTimeout);
+        check!(high_latency, EventKind::HighLatency);
+        check!(packet_loss_spike, EventKind::PacketLossSpike);
+        check!(memory_warning, EventKind::MemoryWarning);
+        check!(tick_stall, EventKind::TickStall);
+        check!(aoi_burst_warning, EventKind::AoiBurstWarning);
+        check!(outbox_lag, EventKind::OutboxLag);
+    }
+
+    /// Pin the documented default-OFF gameplay/chat events that the doc
+    /// comment in `Default` calls out explicitly. These complement the
+    /// existing `default_toggles_match_documented_defaults` test without
+    /// duplicating its assertions.
+    #[test]
+    fn additional_default_off_events_pinned() {
+        let t = EventToggles::default();
+        assert!(!t.player_respawn, "respawn is noise -> off");
+        assert!(!t.mission_failed, "mission_failed off by default");
+        assert!(!t.mission_reward_granted, "reward_granted off by default");
+        assert!(!t.item_used, "item_used off by default");
+        assert!(!t.npc_death, "npc_death high-volume -> off");
+        assert!(!t.dialog, "dialog high-volume -> off");
+        assert!(!t.chat_guild);
+        assert!(!t.chat_team);
+        assert!(!t.chat_command);
+    }
+
+    /// Pin the documented default-ON events not already asserted by the
+    /// existing default test: the new gameplay events, GM events, and the
+    /// ops/error alerts that ship enabled.
+    #[test]
+    fn additional_default_on_events_pinned() {
+        let t = EventToggles::default();
+        // New gameplay events.
+        assert!(t.character_created, "character_created on by default");
+        assert!(t.minigame_result, "minigame_result on by default");
+        // World.
+        assert!(t.player_world_entry);
+        assert!(t.player_world_exit);
+        // GM (all on -- privileged visibility).
+        assert!(t.gm_teleport);
+        assert!(t.gm_spawn);
+        assert!(t.gm_item_grant);
+        // Error/diagnostic alerts.
+        assert!(t.wire_format_error);
+        assert!(t.db_error);
+        assert!(t.assertion_failure);
+        assert!(t.mercury_timeout);
+        // Ops alerts.
+        assert!(t.high_latency);
+        assert!(t.packet_loss_spike);
+        assert!(t.memory_warning);
+        assert!(t.tick_stall);
+        assert!(t.aoi_burst_warning);
+        assert!(t.outbox_lag);
+        // Lifecycle / auth.
+        assert!(t.server_shutdown);
+        assert!(t.server_panic);
+        assert!(t.player_logout);
+        assert!(t.player_disconnect);
+        assert!(t.player_auth_failed);
+        assert!(t.mission_accepted);
+        assert!(t.mission_completed);
+        assert!(t.player_level_up);
+    }
 }
