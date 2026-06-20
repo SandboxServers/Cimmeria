@@ -312,7 +312,13 @@ fn hash_file(path: &Path) -> std::io::Result<String> {
         }
         hasher.update(&buf[..n]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    // digest 0.11's `Array` output no longer implements `LowerHex`, so the old
+    // `{:x}` no longer compiles — hex-encode the bytes explicitly.
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
 }
 
 fn extract_zip(
