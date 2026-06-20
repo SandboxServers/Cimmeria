@@ -54,3 +54,32 @@ pub(crate) async fn fire_item_sequence(
         })
         .await;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::make_space_manager_with_player;
+    use tokio::sync::mpsc;
+
+    /// An entity with no `archetype_id` (the default for a freshly-created
+    /// entity) resolves no event set, so the per-event sequence lookup
+    /// misses and `fire_item_sequence` must early-return WITHOUT emitting an
+    /// `onSequence` frame. Guards the `let Some(seq_id) = seq_id else
+    /// { return; }` fallthrough — a regression that dropped the guard would
+    /// send a malformed `seq_id = ?` animation packet.
+    #[tokio::test]
+    async fn no_archetype_emits_no_sequence() {
+        let mut mgr = make_space_manager_with_player(1);
+        // archetype_id is left None (the create_entity default).
+        let (tx, mut rx) = mpsc::channel(8);
+
+        fire_item_sequence(1, crate::cell::spawner::EVENT_ITEM_EQUIP, &tx, &mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "missing archetype must produce no onSequence frame"
+        );
+        // Touch `mgr` after the call to prove the borrow released cleanly.
+        let _ = mgr.get_entity_mut(1);
+    }
+}
