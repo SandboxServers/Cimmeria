@@ -407,6 +407,18 @@ mod tests {
         );
     }
 
+    /// A corrupt stored PHC string must be rejected (verification fails),
+    /// never panic. Guards the parse-error branch in `verify_argon2id`.
+    #[test]
+    fn verify_argon2id_rejects_malformed_phc() {
+        assert!(
+            !verify_argon2id("anything", "not-a-valid-phc-string"),
+            "a malformed stored hash must fail verification, not panic"
+        );
+        // A syntactically PHC-shaped but non-argon2 hash is also rejected.
+        assert!(!verify_argon2id("anything", "$1$abc$def"));
+    }
+
     // ── Live-DB credential + migration guards ───────────────────────────
     //
     // These exercise `validate_credentials` against a real `account` table
@@ -591,5 +603,63 @@ mod tests {
             matches!(res, Err(AuthCredError::InvalidCredentials)),
             "unknown account must be InvalidCredentials, not a distinct error"
         );
+    }
+
+    /// An account flagged argon2id (algo 2) but whose `password_hash_v2` is
+    /// NULL must fail closed (InvalidCredentials), never panic. Guards the
+    /// `argon2_hash_missing` branch — a corrupt/half-migrated row.
+    #[tokio::test]
+    async fn argon2_account_with_null_hash_is_invalid() {
+        let pool = require_db_or_skip!();
+        let id = TEST_BASE + 6;
+        let name = format!("cred-argon-nullhash-{id}");
+        cleanup(&pool, id).await;
+        sqlx::query(
+            "INSERT INTO account (account_id, account_name, password, password_hash_v2, password_algo, accesslevel, enabled) \
+             VALUES ($1, $2, NULL, NULL, 2, 2, true)",
+        )
+        .bind(id)
+        .bind(&name)
+        .execute(&pool)
+        .await
+        .expect("insert argon2 account with NULL hash");
+
+        let res = validate_credentials(&pool, &name, ClientCredential::Plaintext("whatever")).await;
+        assert!(
+            matches!(res, Err(AuthCredError::InvalidCredentials)),
+            "argon2id account with NULL hash must fail closed"
+        );
+
+        cleanup(&pool, id).await;
+    }
+
+    /// An account with an unrecognised `password_algo` must fail closed, never
+    /// authenticate. Guards the catch-all arm against a future/garbage algo.
+    #[tokio::test]
+    async fn unknown_password_algo_is_invalid() {
+        let pool = require_db_or_skip!();
+        let id = TEST_BASE + 7;
+        let name = format!("cred-badalgo-{id}");
+        cleanup(&pool, id).await;
+        sqlx::query(
+            "INSERT INTO account (account_id, account_name, password, password_algo, accesslevel, enabled) \
+             VALUES ($1, $2, $3, 99, 2, true)",
+        )
+        .bind(id)
+        .bind(&name)
+        .bind(sha1_upper_hex("whatever"))
+        .execute(&pool)
+        .await
+        .expect("insert account with unknown algo");
+
+        // Even the matching SHA-1 hash must not authenticate an unknown-algo row.
+        let hash = sha1_upper_hex("whatever");
+        let res = validate_credentials(&pool, &name, ClientCredential::LegacySha1Hex(&hash)).await;
+        assert!(
+            matches!(res, Err(AuthCredError::InvalidCredentials)),
+            "unrecognised password_algo must fail closed"
+        );
+
+        cleanup(&pool, id).await;
     }
 }
