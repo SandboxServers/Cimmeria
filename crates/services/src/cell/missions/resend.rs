@@ -67,4 +67,21 @@ mod tests {
         // 1 mission × (1 update + 1 step + 1 objective) = 3
         assert_eq!(msgs.len(), 3);
     }
+
+    /// When the requested entity isn't in the space manager, `resend_missions`
+    /// takes the `None => return` early-out and sends nothing — guards the
+    /// uncovered missing-entity branch. No entity is created, so the lookup
+    /// misses purely in-memory (no DB / fixtures).
+    #[tokio::test]
+    async fn resend_missing_entity_sends_nothing() {
+        let mgr = SpaceManager::new(1);
+        let (tx, mut rx) = mpsc::channel(16);
+
+        resend_missions(999, &tx, &mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "unknown entity must produce no messages"
+        );
+    }
 }

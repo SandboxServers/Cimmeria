@@ -69,3 +69,135 @@ pub(crate) async fn parse_bool(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn channel() -> (mpsc::Sender<CellToBaseMsg>, mpsc::Receiver<CellToBaseMsg>) {
+        mpsc::channel(8)
+    }
+
+    /// `true` iff at least one GM-facing feedback message landed on the channel.
+    fn fed_back(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> bool {
+        rx.try_recv().is_ok()
+    }
+
+    // ---- parse_i32 ---------------------------------------------------------
+
+    #[tokio::test]
+    async fn parse_i32_valid_returns_value_no_feedback() {
+        let (tx, mut rx) = channel();
+        let got = parse_i32(7, &["-42", "x"], 0, "count", &tx).await;
+        assert_eq!(got, Some(-42));
+        assert!(!fed_back(&mut rx), "valid input must not feed back");
+    }
+
+    #[tokio::test]
+    async fn parse_i32_non_numeric_returns_none_and_feeds_back() {
+        let (tx, mut rx) = channel();
+        let got = parse_i32(7, &["abc"], 0, "count", &tx).await;
+        assert_eq!(got, None);
+        assert!(fed_back(&mut rx), "malformed input must feed back");
+    }
+
+    #[tokio::test]
+    async fn parse_i32_missing_arg_returns_none_and_feeds_back() {
+        let (tx, mut rx) = channel();
+        // idx past the end of the slice exercises the `args.get` -> None arm.
+        let got = parse_i32(7, &["1"], 5, "count", &tx).await;
+        assert_eq!(got, None);
+        assert!(fed_back(&mut rx));
+    }
+
+    #[tokio::test]
+    async fn parse_i32_float_string_is_rejected() {
+        let (tx, mut rx) = channel();
+        // "1.5" is not a valid i32 literal.
+        let got = parse_i32(7, &["1.5"], 0, "count", &tx).await;
+        assert_eq!(got, None);
+        assert!(fed_back(&mut rx));
+    }
+
+    // ---- parse_f32 ---------------------------------------------------------
+
+    #[tokio::test]
+    async fn parse_f32_valid_returns_value_no_feedback() {
+        let (tx, mut rx) = channel();
+        let got = parse_f32(7, &["3.5"], 0, "x", &tx).await;
+        assert_eq!(got, Some(3.5));
+        assert!(!fed_back(&mut rx));
+    }
+
+    #[tokio::test]
+    async fn parse_f32_non_numeric_returns_none_and_feeds_back() {
+        let (tx, mut rx) = channel();
+        let got = parse_f32(7, &["nope"], 0, "x", &tx).await;
+        assert_eq!(got, None);
+        assert!(fed_back(&mut rx));
+    }
+
+    #[tokio::test]
+    async fn parse_f32_missing_arg_returns_none_and_feeds_back() {
+        let (tx, mut rx) = channel();
+        let got = parse_f32(7, &[], 0, "x", &tx).await;
+        assert_eq!(got, None);
+        assert!(fed_back(&mut rx));
+    }
+
+    #[tokio::test]
+    async fn parse_f32_nan_is_rejected_by_finite_filter() {
+        let (tx, mut rx) = channel();
+        // "NaN" parses to f32 but fails the `is_finite` filter -> None branch.
+        let got = parse_f32(7, &["NaN"], 0, "x", &tx).await;
+        assert_eq!(got, None);
+        assert!(fed_back(&mut rx));
+    }
+
+    #[tokio::test]
+    async fn parse_f32_inf_is_rejected_by_finite_filter() {
+        let (tx, mut rx) = channel();
+        let got = parse_f32(7, &["inf"], 0, "x", &tx).await;
+        assert_eq!(got, None);
+        assert!(fed_back(&mut rx));
+    }
+
+    // ---- parse_bool --------------------------------------------------------
+
+    #[tokio::test]
+    async fn parse_bool_truthy_values() {
+        for s in ["1", "true", "TRUE", "True"] {
+            let (tx, mut rx) = channel();
+            let got = parse_bool(7, &[s], 0, "flag", &tx).await;
+            assert_eq!(got, Some(true), "{s} should parse true");
+            assert!(!fed_back(&mut rx), "{s} should not feed back");
+        }
+    }
+
+    #[tokio::test]
+    async fn parse_bool_falsy_values() {
+        for s in ["0", "false", "FALSE", "False"] {
+            let (tx, mut rx) = channel();
+            let got = parse_bool(7, &[s], 0, "flag", &tx).await;
+            assert_eq!(got, Some(false), "{s} should parse false");
+            assert!(!fed_back(&mut rx), "{s} should not feed back");
+        }
+    }
+
+    #[tokio::test]
+    async fn parse_bool_invalid_returns_none_and_feeds_back() {
+        let (tx, mut rx) = channel();
+        let got = parse_bool(7, &["maybe"], 0, "flag", &tx).await;
+        assert_eq!(got, None);
+        assert!(fed_back(&mut rx));
+    }
+
+    #[tokio::test]
+    async fn parse_bool_missing_arg_returns_none_and_feeds_back() {
+        let (tx, mut rx) = channel();
+        // `args.get(idx)` -> None falls into the catch-all `_` arm.
+        let got = parse_bool(7, &[], 0, "flag", &tx).await;
+        assert_eq!(got, None);
+        assert!(fed_back(&mut rx));
+    }
+}
