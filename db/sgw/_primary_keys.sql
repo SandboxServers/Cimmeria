@@ -62,3 +62,24 @@ ALTER TABLE ONLY sgw_player
 ALTER TABLE ONLY shards
     ADD CONSTRAINT shards_pkey PRIMARY KEY (shard_id);
 
+--
+-- Name: sgw_contact_list_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_contact_list
+    ADD CONSTRAINT sgw_contact_list_pkey PRIMARY KEY (list_id);
+
+--
+-- Name: sgw_contact_list_player_id_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_contact_list
+    ADD CONSTRAINT sgw_contact_list_player_id_name_key UNIQUE (player_id, name);
+
+--
+-- Name: sgw_contact_list_member_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_contact_list_member
+    ADD CONSTRAINT sgw_contact_list_member_pkey PRIMARY KEY (list_id, player_name);
+

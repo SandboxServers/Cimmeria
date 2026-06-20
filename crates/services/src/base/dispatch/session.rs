@@ -9,6 +9,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
+use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -24,19 +25,22 @@ pub(super) async fn handle_log_off(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let disconnect = if !payload.is_empty() { payload[0] } else { 0 };
     tracing::info!(%addr, disconnect, "SGWPlayer.logOff");
 
-    // Get entity info before cleanup. Capture the session's wire-encryption
-    // version here too — the logoff / reset-entities packets below must be
-    // built with the version this session speaks.
-    let (entity_id, enc_version) = {
+    // Snapshot entity info before cleanup. Capture the session's wire-encryption
+    // version (the logoff / reset-entities packets below must be built with the
+    // version this session speaks) and the player_name (needed for the
+    // contact-list offline fanout).
+    let (entity_id, enc_version, player_name) = {
         let clients = connected.lock().unwrap();
         let c = clients.get(&addr);
         (
             c.and_then(|c| c.player_entity_id),
             c.map(|c| c.enc_version).unwrap_or_default(),
+            c.and_then(|c| c.player_name.clone()),
         )
     };
 
@@ -70,6 +74,22 @@ pub(super) async fn handle_log_off(
 
         // Remove entity→addr mapping
         entity_to_addr.lock().unwrap().remove(&entity_id);
+    }
+
+    // Fan out offline status to contact-list watchers. Runs regardless of
+    // disconnect type (return-to-select or full exit) because in both cases
+    // this character is no longer in-world. Uses the player_name snapshotted
+    // before cleanup above so the session row doesn't need to be re-read.
+    if let Some(ref name) = player_name {
+        crate::base::contact_list::handlers::fanout_login_status(
+            name,
+            false, // offline
+            db_pool,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
     }
 
     if disconnect != 0 {

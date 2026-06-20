@@ -38,6 +38,7 @@ use super::super::ConnectedClientState;
 mod aoi;
 mod aoi_dispatch;
 mod bandolier;
+mod contact_list_dispatch;
 mod gate_teleport_dispatch;
 mod inventory_dispatch;
 mod minigame;
@@ -125,6 +126,15 @@ pub(crate) async fn handle_cell_message(
         | CellToBaseMsg::GmSpawnNpc { .. }
         | CellToBaseMsg::StartMinigame { .. }
         | CellToBaseMsg::MinigameResult { .. } => progression_dispatch::route(msg, &ctx).await,
+
+        CellToBaseMsg::ContactListCreate { .. }
+        | CellToBaseMsg::ContactListDelete { .. }
+        | CellToBaseMsg::ContactListRename { .. }
+        | CellToBaseMsg::ContactListFlagsUpdate { .. }
+        | CellToBaseMsg::ContactListAddMembers { .. }
+        | CellToBaseMsg::ContactListRemoveMembers { .. } => {
+            contact_list_dispatch::route(msg, &ctx).await
+        }
 
         CellToBaseMsg::OpenVendorStore { .. }
         | CellToBaseMsg::PurchaseVendorItems { .. }

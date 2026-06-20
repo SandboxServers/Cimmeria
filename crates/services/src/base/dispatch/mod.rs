@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
+use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
@@ -97,6 +98,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
     entity_manager: &Arc<Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match msg_id {
         sgw_player_base::SEND_PLAYER_COMMUNICATION => {
@@ -129,6 +131,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 connected,
                 cell_tx,
                 entity_to_addr,
+                db_pool,
             )
             .await?;
         }

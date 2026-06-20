@@ -369,6 +369,36 @@ pub(crate) async fn handle_on_client_ready(
         build_on_client_ready_burst_bundle(entity_id, &appearance_args, &tint_args, &welcome_args);
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
 
+    // Push contact lists (Friends / Ignore + any custom lists) to the client.
+    // Runs after the burst bundle so the entity is fully live on the client
+    // before we start sending list-method packets. Also creates the system
+    // lists on first login (idempotent via ensure_system_lists).
+    super::super::contact_list::handlers::push_contact_lists_on_login(
+        entity_id,
+        pending.player_id,
+        db_pool,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+
+    // Fan out online status (CM 89, eventId=LoggedInStatus, data=1) to all
+    // online players who have this character in any of their contact lists.
+    // Runs after the list-push so the player is fully set up before watchers
+    // are notified. Uses the player_name snapshotted at the top of this fn.
+    if let Some(ref name) = player_name {
+        super::super::contact_list::handlers::fanout_login_status(
+            name,
+            true, // online
+            db_pool,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+    }
+
     // First-login cinematic — fires AFTER appearance is bound to the now-live
     // possessed pawn. Sending it inside the mapLoaded bundle (before this
     // gate) lets the cinematic-exit CollectGarbage reclaim the in-flight
