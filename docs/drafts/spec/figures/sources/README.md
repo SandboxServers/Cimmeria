@@ -1,8 +1,9 @@
 # Figure source DSLs
 
-Source DSL for every diagram embedded in the Mercury wire-format chapter. The
-rendered SVGs in `../` are the build artifacts; **these files are the canonical
-source** and must be edited here before re-rendering.
+Source DSL for every diagram embedded in the Mercury wire-format and
+entity-property-sync chapters. The rendered SVGs in `../` are the build
+artifacts; **these files are the canonical source** and must be edited here
+before re-rendering.
 
 These were originally authored in [Prixmaviz](https://prixmaviz.ailuxis.com) and
 extracted to disk after a Prixmaviz session became unreachable. Authoring can
@@ -13,11 +14,11 @@ to enable offline rendering.
 
 | Extension | Renderer | Tool / CLI | Diagrams |
 |---|---|---|---|
-| `.dot` | Graphviz | `dot -Tsvg input.dot -o out.svg` | mercury-01, -02, -22, -23, -24 |
-| `.mmd` | Mermaid | `npx -p @mermaid-js/mermaid-cli mmdc -i input.mmd -o out.svg` | mercury-03, -04, -10, -11, -12, -13, -15, -16, -19 |
-| `.edn` | bytefield-svg | `bytefield-svg input.edn > out.svg` ([install](https://github.com/Deep-Symmetry/bytefield-svg)) | mercury-05, -06, -08, -25 |
-| `.json` | WaveDrom | `wavedrom-cli -i input.json -s out.svg` ([install](https://github.com/wavedrom/wavedrom-cli)) | mercury-07 |
-| `.txt` | svgbob | `svgbob input.txt -o out.svg` ([install](https://github.com/ivanceras/svgbob)) | mercury-14, -20 |
+| `.dot` | Graphviz | `dot -Tsvg input.dot -o out.svg` | mercury-01, -02, -22, -23, -24, -36, -37, -38, -39, -40, -41 |
+| `.mmd` | Mermaid | `npx -p @mermaid-js/mermaid-cli mmdc -i input.mmd -o out.svg` | mercury-03, -04, -10, -11, -12, -13, -15, -16, -19, -14b, -14c, -27, -32, -33; entity-property-sync-01, -03, -04, -05, -07, -08, -09 |
+| `.edn` | bytefield-svg | `bytefield-svg input.edn > out.svg` ([install](https://github.com/Deep-Symmetry/bytefield-svg)) | mercury-05, -06, -08, -14a, -25, -26, -28, -29, -31, -34, -35; entity-property-sync-06 |
+| `.json` | WaveDrom | `wavedrom-cli -i input.json -s out.svg` ([install](https://github.com/wavedrom/wavedrom-cli)) | mercury-07; entity-property-sync-02 |
+| `.txt` | svgbob | `svgbob input.txt -o out.svg` ([install](https://github.com/ivanceras/svgbob)) | mercury-20, -30 |
 
 ## After re-rendering
 

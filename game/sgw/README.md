@@ -33,14 +33,14 @@ After extraction, the game client files will be organized here for development a
 
 ## Development Usage
 
-The extracted game client cache files in this directory are automatically copied by the bootstrap script for server development:
+The extracted game client cache files in this directory are automatically copied by the bootstrap pipeline for server development:
 
-- When `setup.ps1` runs, it checks this directory for game cache files (pak, dat, res, etc.)
-- If present, cache files are copied to `data/cache/` for the server to use
+- When `setup.ps1` runs, the `Sync-CimmeriaGameData` step checks this directory (and other common client locations) for cooked `.pak` files
+- If present, the matching `Cache.en-US/*.pak` files are copied to `data/cache/` for the server to use
 - These cached files support server and patch development activities without requiring additional setup
 - Developers working on server features, content, or patch systems have immediate access to game data
 
-This happens automatically during the database initialization step — no manual copy needed.
+This is handled by the dedicated `Sync-CimmeriaGameData` bootstrap step (which runs before database initialization), not by the database init itself — no manual copy needed.
 
 ## Notes
 

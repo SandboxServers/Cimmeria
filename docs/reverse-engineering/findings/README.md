@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains per-system reverse engineering findings with evidence.
+This directory contains 55 per-system reverse engineering findings with evidence.
 
 ## Documents
 
@@ -39,6 +39,28 @@ This directory contains per-system reverse engineering findings with evidence.
 | `dialog-portrait-lookup.md` | V5 | Dialog portrait + speaker-name lookup — wire EntityId path (not DatabaseId) through LookupEntityListenerEntry → slot 17 → UnitMappingChanged → createCharacterPortrait; CookedData SpeakerID PAK parse at piVar2[7]; empty-name fallback to player name; Prisoner 329 + Col Marsh root-cause diagnoses | HIGH |
 | `client-wire-emit-suppression.md` | V5 | Client-side gates suppressing wire emit — Heal Focus arg-validation drop at `0x00aa2910`; P90 bandolier-swap Lua `getActiveSlotForContainer` no-op gate; in-flight ability queue at `GameEntityManager+0x228`; proposed server-side mitigations (resend `onActiveSlotUpdate` post-`onClientReady`, ensure `AbilityCooldownUpdate` drains the in-flight queue) | HIGH (binary anatomy) / MEDIUM (proposed mitigations need playtest) |
 | `auth-and-crypto-modernization-targets.md` | #434 | Auth login transport (libcurl), client SHA-1 site, anti-debug status, Mercury crypto v2 targets | HIGH |
+| `animation-system.md` | V5 | Animation system — sequence lookup, playback dispatch, and combat/weapon animation wiring in the client binary | HIGH |
+| `annotation-script-shift-bugs.md` | Tooling | Annotation-script cyclic-shift bugs — how a growing strings table mis-aligns named functions, and the incidents to watch for on re-run | HIGH |
+| `atrea-editor.md` | V5 | Atrea Editor (in-game UnrealEd) — architecture and developer-tool surface recovered from the binary | MEDIUM |
+| `character-creation-pipeline.md` | V5 | Character creation pipeline — full analysis of the create-character flow from UI through wire to entity instantiation | HIGH |
+| `client-instrumentation-hookpoints.md` | V5 | Client instrumentation hookpoints — addresses suitable for telemetry/RE hooks into client subsystems | HIGH |
+| `combat-damage-analysis.md` | V5 | Combat damage system — client-binary analysis of damage resolution and the numbers the client expects | HIGH |
+| `cover-system.md` | V5 | Cover system — client-binary analysis of cover nodes and how cover affects combat | MEDIUM |
+| `crafting-state-machine.md` | V5 | Crafting state machine — client-side craft/research/reverse-engineer state transitions | HIGH |
+| `effect-execution-model.md` | V5 | Effect execution model — client-binary analysis of how effects/buffs/debuffs are applied and ticked | HIGH |
+| `faction-alignment-system.md` | V5 | Faction / alignment system — how faction standing and alignment are tracked and surfaced to the client | MEDIUM |
+| `inventory-state-machine.md` | V5 | Inventory state machine — client-side analysis of inventory operation transitions and locks | HIGH |
+| `loot-generation.md` | V5 | Loot generation pipeline — how loot rolls and container contents are produced and delivered | MEDIUM |
+| `mercury-protocol-internals.md` | V5 | Mercury protocol internals — client-binary analysis of the Mercury transport layer beyond the Nub anatomy | HIGH |
+| `minigame-architecture.md` | V5 | Minigame architecture — client-binary analysis of the SmartFoxServer-based minigame subsystem | HIGH |
+| `npc-ai-state-machine.md` | V5 | NPC AI state machine — client-binary analysis of mob aiState transitions (Idle/Fighting/Dead/Leashing) | HIGH |
+| `npc-movement-pathfinding.md` | V5 | NPC movement and pathfinding — client-binary analysis of mob movement, navmesh use, and patrol routing | MEDIUM |
+| `right-click-routing-on-corpse.md` | V5 | Right-click routing — why corpses fail to open loot; the corpse-context-menu dispatch diagnosis | HIGH |
+| `spawn-system-mechanics.md` | V5 | Spawn system mechanics — client-binary analysis of spawn sets, regions, and spawnable-entity wiring | HIGH |
+| `stargate-dhd-state-machine.md` | V5 | Stargate DHD state machine — dial-home-device interaction states and gate-activation flow | HIGH |
+| `stat-scaling-formulas.md` | V5 | Stat scaling & XP progression — recovered stat-scaling and leveling formulas | MEDIUM |
+| `struct-field-layouts.md` | V5 | FIXED_DICT struct field layouts — client-binary anatomy of key FIXED_DICT structures | HIGH |
+| `weapon-ammo-pipeline.md` | V5 | Weapon / ammo pipeline — clip sizes, ammo consumption, and bandolier-slot wiring recovered from the binary | HIGH |
 
 ## Finding Format
 

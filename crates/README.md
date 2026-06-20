@@ -1,16 +1,85 @@
 # crates/ — Rust Server (Active Development)
 
-This directory is the primary codebase. All active server development happens here. The C++ code in `src/` is the legacy reference implementation.
+This directory is the primary codebase. All active server development happens here. The C++ code in `deprecated/cpp/` is the legacy reference implementation.
 
 For testing conventions across these crates — test types, when to use which, common gotchas — see **[../TESTING.md](../TESTING.md)**.
 
 ## Crate Overview
 
+The 23 workspace crates and their **actual** inter-crate dependencies, generated
+from each crate's `Cargo.toml` (an arrow **A → B** means *A depends on B*):
+
+```mermaid
+%%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
+flowchart TD
+    %% entry points / binaries
+    server --> adminApi["admin-api"]
+    server --> services
+    server --> discord
+    server --> observability
+    server --> common
+    app["app (src-tauri, cimmeria-app)"] --> adminApi
+    app --> services
+    app --> common
+    wireclient --> services
+    wireclient --> mercury
+    wireclient --> common
+
+    %% service + domain layer
+    adminApi --> services
+    adminApi --> contentEngine["content-engine"]
+    adminApi --> entity
+    adminApi --> commands
+    adminApi --> common
+    services --> game
+    services --> contentEngine
+    services --> entity
+    services --> mercury
+    services --> discord
+    services --> observability
+    services --> commands
+    services --> common
+    game --> entity
+    game --> commands
+    game --> common
+    contentEngine --> entity
+    contentEngine --> common
+    entity --> defs
+    entity --> mercury
+    entity --> commands
+    entity --> common
+
+    %% foundation
+    mercury --> common
+    defs --> common
+    commands --> common
+
+    %% UPK / navmesh toolchain (independent of the server spine)
+    navmeshExtractor["navmesh-extractor"] --> upkObjects["upk-objects"]
+    navmeshExtractor --> upk
+    sceneEditor["scene-editor (tool)"] --> upkObjects
+    sceneEditor --> upk
+    upkObjects --> upk
+
+    %% standalone crates with no intra-workspace dependencies
+    subgraph standalone["Standalone (no intra-workspace deps)"]
+        supervisor
+        clientTelemetry["client-telemetry"]
+        launcher["launcher (sgw-launcher)"]
+        contentEditor["content-editor (tool)"]
+        specLint["spec-lint (tool)"]
+    end
 ```
-common ──┬──► mercury ──► entity ──► game ──────► services ──► server
-         ├──► defs    ──►         ──► content-engine ──►
-         └──► commands ──────────────────────────►
-```
+
+The DAG is rooted at **common**. **services** is the hub — it pulls in `game`,
+`content-engine`, `entity`, `mercury`, `discord`, and `observability`, and is
+what `server`, `admin-api`, the `app` desktop GUI, and `wireclient` build on. The
+`upk` / `upk-objects` / `navmesh-extractor` crates (plus the `scene-editor` tool)
+are an independent Unreal-package / navmesh toolchain; `supervisor`,
+`client-telemetry`, `launcher`, `content-editor`, and `spec-lint` have no
+intra-workspace deps. All 19 crates in `crates/` are catalogued below; the
+diagram additionally shows the `src-tauri` app and the `tools/` editors, which
+are workspace members that live outside `crates/`.
 
 | Crate | Package Name | Purpose |
 |---|---|---|
@@ -48,20 +117,22 @@ cargo build -p cimmeria-server --release
 # Run tests for one crate:
 cargo test -p cimmeria-services
 
-# Full workspace check (high memory on WSL — skip the Tauri apps):
-cargo check --workspace --exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor
+# Full workspace check (high memory on WSL — skip the GUI apps and the
+# Windows-only client-telemetry cdylib):
+cargo check --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
+  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry
 ```
 
 See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
 
 ## Testing
 
-The workspace currently carries **2,012 `#[test]` / `#[tokio::test]` cases across 305 files**, of which 155 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+The workspace currently carries **~2,690 `#[test]` / `#[tokio::test]` cases across ~400 files**, of which 155 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
 
 ```bash
-# Unit + non-DB integration (covers ~1,854 tests):
+# Unit + non-DB integration:
 cargo test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher
+  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry
 
 # Live-DB tests (start the bundled Postgres on :5433 first, then):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
@@ -80,5 +151,5 @@ DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
 | `services/src/mercury/` | Mercury transport glue — AoI, protocol dispatch, world data |
 | `mercury/src/lib.rs` | Mercury packet framing, encryption, reliability |
 | `game/src/combat/` | Combat system |
-| `game/src/inventory/`, `missions/`, `interactions/`, `social/`, `world/` | Per-system game logic |
+| `game/src/inventory/`, `missions/`, `commands/`, `social/`, `world/` | Per-system game logic |
 | `content-engine/src/lib.rs` | Content pipeline (missions, dialogs, sequences) |

@@ -2,7 +2,7 @@
 
 PostgreSQL 17.9 schema files. The database runs on port 5433 with role `w-testing`.
 
-348 SQL files organized by game system.
+362 SQL files organized by game system.
 
 ## Structure
 
@@ -12,11 +12,12 @@ db/
 ├── split_schemas.py    Utility script that generated the resources/ split
 ├── sgw/                Game schema — accounts, characters, items, etc.
 ├── resources/          Content data — 18 game systems (see below)
-├── scripts/            Additional utility scripts
-└── deprecated/         Old monolithic files (reference only — do not load)
-    ├── resources.sql   23 MB original monolithic content data
-    └── sgw.sql         Original monolithic game schema
+└── scripts/            Additional utility scripts
 ```
+
+> **Schema policy:** the seed data lives in `db/resources/` and is edited
+> **directly**. Do not add migration scripts under `db/scripts/` — there is no
+> migration framework; the schema is reloaded from source on setup.
 
 ## resources/ — Content Data (18 Game Systems)
 
@@ -65,7 +66,8 @@ pwsh setup.ps1 -SkipBuild -ForceDatabase
 ## Connection Details
 
 - Host: `localhost:5433`
-- Database: `w-testing` (configured in `config/BaseService.config`)
+- Database: `sgw`
+- Role / credentials: `w-testing` / `w-testing` (local-dev trust auth)
 - Test account: `test` / `test` (SHA1 hashed)
 
 ## Content Coverage
