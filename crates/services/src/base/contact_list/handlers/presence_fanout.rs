@@ -112,7 +112,7 @@ pub(crate) async fn fanout_login_status(
             connected,
             entity_to_addr,
             entity_id,
-            move |key, seq, acks| {
+            move |key, version, seq, acks| {
                 build_player_entity_method_packet(
                     key,
                     seq,
@@ -120,6 +120,7 @@ pub(crate) async fn fanout_login_status(
                     entity_id,
                     method_idx::ON_CONTACT_LIST_EVENT,
                     &args_clone,
+                    version,
                 )
             },
         )

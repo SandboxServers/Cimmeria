@@ -58,7 +58,7 @@ pub(crate) async fn handle_create(
                 connected,
                 entity_to_addr,
                 entity_id,
-                |key, seq, acks| {
+                |key, version, seq, acks| {
                     build_player_entity_method_packet(
                         key,
                         seq,
@@ -66,6 +66,7 @@ pub(crate) async fn handle_create(
                         entity_id,
                         method_idx::ON_CONTACT_LIST_UPDATE,
                         &args,
+                        version,
                     )
                 },
             )
@@ -114,7 +115,7 @@ pub(crate) async fn handle_delete(
                 connected,
                 entity_to_addr,
                 entity_id,
-                |key, seq, acks| {
+                |key, version, seq, acks| {
                     build_player_entity_method_packet(
                         key,
                         seq,
@@ -122,6 +123,7 @@ pub(crate) async fn handle_delete(
                         entity_id,
                         method_idx::ON_CONTACT_LIST_DELETE,
                         &args,
+                        version,
                     )
                 },
             )
@@ -182,7 +184,7 @@ pub(crate) async fn handle_rename(
                         connected,
                         entity_to_addr,
                         entity_id,
-                        |key, seq, acks| {
+                        |key, version, seq, acks| {
                             build_player_entity_method_packet(
                                 key,
                                 seq,
@@ -190,6 +192,7 @@ pub(crate) async fn handle_rename(
                                 entity_id,
                                 method_idx::ON_CONTACT_LIST_UPDATE,
                                 &args,
+                                version,
                             )
                         },
                     )
@@ -272,7 +275,7 @@ pub(crate) async fn handle_flags_update(
                     connected,
                     entity_to_addr,
                     entity_id,
-                    |key, seq, acks| {
+                    |key, version, seq, acks| {
                         build_player_entity_method_packet(
                             key,
                             seq,
@@ -280,6 +283,7 @@ pub(crate) async fn handle_flags_update(
                             entity_id,
                             method_idx::ON_CONTACT_LIST_UPDATE,
                             &args,
+                            version,
                         )
                     },
                 )
@@ -373,7 +377,7 @@ pub(crate) async fn handle_add_members(
                 connected,
                 entity_to_addr,
                 entity_id,
-                |key, seq, acks| {
+                |key, version, seq, acks| {
                     build_player_entity_method_packet(
                         key,
                         seq,
@@ -381,6 +385,7 @@ pub(crate) async fn handle_add_members(
                         entity_id,
                         method_idx::ON_CONTACT_LIST_ADD_MEMBERS,
                         &args,
+                        version,
                     )
                 },
             )
@@ -465,7 +470,7 @@ pub(crate) async fn handle_remove_members(
                 connected,
                 entity_to_addr,
                 entity_id,
-                |key, seq, acks| {
+                |key, version, seq, acks| {
                     build_player_entity_method_packet(
                         key,
                         seq,
@@ -473,6 +478,7 @@ pub(crate) async fn handle_remove_members(
                         entity_id,
                         method_idx::ON_CONTACT_LIST_REMOVE_MEMBERS,
                         &args,
+                        version,
                     )
                 },
             )
