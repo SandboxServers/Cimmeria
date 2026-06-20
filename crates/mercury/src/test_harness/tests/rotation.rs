@@ -167,9 +167,11 @@ async fn rotate_under_load_loses_no_plaintext() {
     session.shutdown();
 }
 
-/// The on-wire rotation message must not contain the new key in plaintext.
-/// Captures the raw datagram off B's socket (bypassing decrypt) and asserts the
-/// raw key bytes never appear as a contiguous run.
+/// The rotation message must not contain the new key in plaintext. Asserts on
+/// the inner rotation payload returned by `arm_rotation` (the bytes that go in
+/// the bundle body): the raw key never appears as a contiguous run and the
+/// payload is a v2 frame. The outer session encryption wraps this again on the
+/// wire, so the actual datagram is doubly removed from the raw key.
 #[tokio::test]
 async fn rotation_message_does_not_leak_key_on_wire() {
     let session = connected_v2_rotating().await;

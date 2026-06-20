@@ -88,8 +88,10 @@ pub struct LoopbackPeer {
     /// inner `Channel` reads from. Test code advances this directly.
     pub clock: Arc<TestClock>,
     /// Optional encryption context. When `Some`, every outbound bundle is
-    /// AES-256-CBC + HMAC-MD5 encrypted before going on the wire and
-    /// every inbound datagram is decrypted before parse.
+    /// encrypted under the installed [`MercuryEncryption`] context — v1
+    /// (AES-256-CBC + HMAC-MD5, zero IV) or v2 (AES-256-CBC + HMAC-SHA256,
+    /// random IV, HKDF-split keys) — before going on the wire, and every
+    /// inbound datagram is decrypted before parse.
     ///
     /// When [`rotation`](Self::rotation) is also set it takes precedence — the
     /// static context is only the pre-rotation seed. Tests that exercise key

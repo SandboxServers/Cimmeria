@@ -101,6 +101,15 @@ pub fn build_rotation_payload(
     current: &MercuryEncryption,
     new_key: &[u8; SESSION_KEY_LEN],
 ) -> Result<Vec<u8>> {
+    // Defense-in-depth: rotation is a v2-only protocol. Refuse to build a
+    // payload under a v1 context so a future caller can never accidentally
+    // emit a RotateSessionKey on a v1 session (which the stock client cannot
+    // parse) — even if the `rotation_enabled` gate upstream is bypassed.
+    if !current.is_v2() {
+        return Err(CimmeriaError::Encryption(
+            "session-key rotation requires a v2 context".to_string(),
+        ));
+    }
     current.encrypt(new_key)
 }
 
@@ -115,6 +124,13 @@ pub fn recover_rotation_key(
     current: &MercuryEncryption,
     payload: &[u8],
 ) -> Result<[u8; SESSION_KEY_LEN]> {
+    // Mirror the v2 gate in `build_rotation_payload`: only a v2 context ever
+    // legitimately carries a rotation payload.
+    if !current.is_v2() {
+        return Err(CimmeriaError::Encryption(
+            "session-key rotation requires a v2 context".to_string(),
+        ));
+    }
     let plaintext = current.decrypt(payload)?;
     if plaintext.len() != SESSION_KEY_LEN {
         return Err(CimmeriaError::Encryption(format!(
@@ -214,11 +230,20 @@ impl RotationState {
     /// until [`commit_outbound`](Self::commit_outbound) runs — so the rotation
     /// message itself is decryptable by the peer under the key it still holds.
     ///
-    /// Returns the rotation message payload to ship on the channel. A second
-    /// `arm` while one is already pending overwrites the pending key — callers
-    /// should not arm twice before committing, but the last-writer-wins
-    /// behavior keeps the state consistent if they do.
+    /// Returns the rotation message payload to ship on the channel.
+    ///
+    /// Refuses to arm a second rotation while one is still pending: the first
+    /// payload may already be on the wire and applied by the peer, so minting a
+    /// different key before committing would desync the two sides. Callers must
+    /// [`commit_outbound`](Self::commit_outbound) (or otherwise resolve the
+    /// pending rotation) before arming again.
     pub fn arm(&mut self, new_key: [u8; SESSION_KEY_LEN]) -> Result<Vec<u8>> {
+        if self.pending.is_some() {
+            return Err(CimmeriaError::Encryption(
+                "rotation already armed; commit the pending rotation before arming another"
+                    .to_string(),
+            ));
+        }
         let payload = build_rotation_payload(&self.current, &new_key)?;
         let new_ctx = MercuryEncryption::from_session_key_versioned(new_key, self.version);
         self.pending = Some(PendingRotation { new_key, new_ctx });
@@ -427,5 +452,37 @@ mod tests {
 
         let p2s = peer.encrypt(b"peer to server").unwrap();
         assert_eq!(server.decrypt(&p2s).unwrap(), b"peer to server");
+    }
+
+    #[test]
+    fn build_and_recover_reject_v1_context() {
+        // Defense-in-depth: the rotation primitives must refuse a v1 context
+        // even though the upstream `rotation_enabled` gate would normally keep
+        // them away from v1 sessions.
+        let v1 = MercuryEncryption::from_session_key_versioned(key(0x10), EncryptionVersion::V1);
+        assert!(
+            build_rotation_payload(&v1, &key(0x20)).is_err(),
+            "rotation payload must not be built under a v1 context"
+        );
+        assert!(
+            recover_rotation_key(&v1, &[0u8; 64]).is_err(),
+            "rotation key must not be recovered under a v1 context"
+        );
+    }
+
+    #[test]
+    fn arm_twice_without_commit_errors() {
+        let mut server = RotationState::new(key(0x88), EncryptionVersion::V2);
+        server.arm(key(0xA1)).expect("first arm succeeds");
+        assert!(
+            server.arm(key(0xA2)).is_err(),
+            "arming again before commit must error to avoid a server/peer desync"
+        );
+        // Once the pending rotation is committed, arming is allowed again.
+        server.commit_outbound();
+        assert!(
+            server.arm(key(0xA3)).is_ok(),
+            "arming after commit must succeed"
+        );
     }
 }

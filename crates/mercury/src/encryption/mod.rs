@@ -270,6 +270,13 @@ impl MercuryEncryption {
         }
     }
 
+    /// True if this context speaks the v2 wire format. The rotation layer uses
+    /// this as a defense-in-depth gate so its primitives refuse to operate on a
+    /// v1 (legacy) session, which the stock client cannot rekey.
+    pub fn is_v2(&self) -> bool {
+        matches!(self.version, Version::V2)
+    }
+
     /// Encrypt `plaintext` according to this context's pinned wire version.
     ///
     /// - **v1:** `[ ciphertext || 16-byte HMAC-MD5 ]` (zero IV, encrypt-then-MAC).
