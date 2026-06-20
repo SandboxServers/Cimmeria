@@ -1,8 +1,9 @@
 //! Cimmeria server binary.
 //!
 //! Starts all three game services (Auth HTTP on 13001, Base UDP on 32832,
-//! Cell UDP on 32833), the admin REST API (HTTP on 8443), and waits for
-//! Ctrl-C.
+//! Cell UDP on 32833), the admin REST API (HTTP on 8443), and waits for a
+//! shutdown signal (SIGINT/Ctrl-C, or SIGTERM from `docker stop` /
+//! Watchtower / systemd) before tearing down gracefully.
 //!
 //! # Environment variables
 //!
@@ -205,12 +206,18 @@ async fn main() {
         );
     }
 
-    // Wait for Ctrl-C.
-    tokio::signal::ctrl_c()
-        .await
-        .expect("failed to listen for Ctrl-C");
+    // Wait for a shutdown signal. On Unix we listen for BOTH SIGINT
+    // (Ctrl-C) and SIGTERM. `docker stop`, Watchtower container swaps, and
+    // systemd all deliver SIGTERM — without handling it the process is
+    // SIGKILLed once the stop grace period elapses, so `stop_all` never
+    // runs, the ServerShutdown notification never fires, and the lingering
+    // process can race the replacement container's port binds (which is
+    // why the post-update startup event looked "missing"). The captured
+    // reason flows into the Discord embed so the channel shows *why* the
+    // server went down.
+    let shutdown_reason = wait_for_shutdown_signal().await;
 
-    tracing::info!("Shutting down…");
+    tracing::info!(reason = shutdown_reason, "Shutting down…");
     tracing::trace!("Calling stop_all");
     orch.stop_all().await;
     tracing::trace!("stop_all complete");
@@ -219,7 +226,7 @@ async fn main() {
     // ServerShutdown event being routable — `discord_runtime` is `Some`
     // even when the config file was missing (we hand back a disabled
     // runtime so the tracing layer + emit_* helpers no-op uniformly),
-    // and we don't want to pay 1 s on every Ctrl-C just for that.
+    // and we don't want to pay 1 s on every shutdown just for that.
     if discord_enabled
         && discord_runtime
             .config
@@ -227,15 +234,44 @@ async fn main() {
             .should_post(cimmeria_discord::EventKind::ServerShutdown)
     {
         let uptime = server_start.elapsed().as_secs();
-        cimmeria_discord::emit_server_shutdown("Ctrl-C", uptime);
+        cimmeria_discord::emit_server_shutdown(shutdown_reason, uptime);
         // Give the Discord sender task ~1 s to drain before the runtime
-        // shuts down. Beyond that, drop on the floor — the user is
-        // waiting for shutdown to complete.
+        // shuts down. Beyond that, drop on the floor — the orchestrator
+        // (or container runtime) is waiting for shutdown to complete.
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 
     tracing::info!("Goodbye.");
     tracing::trace!(pid = std::process::id(), "Process exiting with code 0");
+}
+
+/// Block until the process receives a shutdown signal, returning a short
+/// human-readable reason for the Discord `ServerShutdown` embed + logs.
+///
+/// On Unix we select over SIGTERM and SIGINT: `docker stop`, Watchtower
+/// container swaps, and systemd all deliver SIGTERM, while Ctrl-C in an
+/// interactive shell delivers SIGINT. Catching SIGTERM is what lets the
+/// graceful path (`stop_all` + shutdown notification + drain) run before
+/// the container's stop grace period elapses and the kernel SIGKILLs us.
+#[cfg(unix)]
+async fn wait_for_shutdown_signal() -> &'static str {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut sigterm = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
+    let mut sigint = signal(SignalKind::interrupt()).expect("failed to install SIGINT handler");
+    tokio::select! {
+        _ = sigterm.recv() => "SIGTERM (container stop / update)",
+        _ = sigint.recv() => "SIGINT (Ctrl-C)",
+    }
+}
+
+/// Windows has no SIGTERM; Ctrl-C (and the console-close events tokio maps
+/// onto it) is the only graceful stop signal.
+#[cfg(not(unix))]
+async fn wait_for_shutdown_signal() -> &'static str {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("failed to listen for Ctrl-C");
+    "Ctrl-C"
 }
 
 // ── Audit persistence ────────────────────────────────────────────────────────
