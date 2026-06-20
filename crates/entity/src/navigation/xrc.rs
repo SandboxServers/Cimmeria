@@ -142,6 +142,66 @@ pub(super) fn checked_alloc_size(
 mod tests {
     use super::*;
 
+    // ── scalar reader helpers ────────────────────────────────────────────
+
+    /// Each reader decodes its little-endian scalar from an exact-length
+    /// slice. Pins the success path of all four readers, which the
+    /// header-cap tests never exercise directly.
+    #[test]
+    fn readers_decode_little_endian_scalars() {
+        let mut r = &[0x78u8, 0x56, 0x34, 0x12][..];
+        assert_eq!(read_u32(&mut r).unwrap(), 0x1234_5678);
+
+        let mut r = &1.5f32.to_le_bytes()[..];
+        assert_eq!(read_f32(&mut r).unwrap(), 1.5);
+
+        let mut r = &[0xCDu8, 0xAB][..];
+        assert_eq!(read_u16(&mut r).unwrap(), 0xABCD);
+
+        let mut r = &[0x2Au8][..];
+        assert_eq!(read_u8(&mut r).unwrap(), 0x2A);
+    }
+
+    /// A reader whose source ends before the field is fully read must
+    /// surface the `read_exact` short-read error rather than returning a
+    /// truncated/zero value. Covers the hostile-input `?`-propagation
+    /// branch in each reader (the `Err(_)` arm of `read_exact`). A
+    /// truncated `.nav` file is exactly this shape.
+    #[test]
+    fn readers_propagate_short_read_error() {
+        // f32/u32 need 4 bytes — give 3.
+        let mut r = &[0x00u8, 0x01, 0x02][..];
+        assert!(read_u32(&mut r).is_err());
+        let mut r = &[0x00u8, 0x01, 0x02][..];
+        assert!(read_f32(&mut r).is_err());
+
+        // u16 needs 2 bytes — give 1.
+        let mut r = &[0x00u8][..];
+        assert!(read_u16(&mut r).is_err());
+
+        // u8 needs 1 byte — give 0 (empty).
+        let mut r = &[][..];
+        assert!(read_u8(&mut r).is_err());
+    }
+
+    /// `check_count` returns the value unchanged when it is within the
+    /// cap (including the boundary `value == max`). The existing
+    /// `check_count_emits_error_log_on_reject` test only covers the
+    /// over-cap reject path; this pins the `Ok(value)` accept path.
+    #[test]
+    fn check_count_accepts_value_at_or_below_cap() {
+        assert_eq!(check_count(0, MAX_NVERTS, "nverts").unwrap(), 0);
+        assert_eq!(
+            check_count(MAX_NVERTS, MAX_NVERTS, "nverts").unwrap(),
+            MAX_NVERTS,
+            "boundary value == max must be accepted"
+        );
+        assert_eq!(
+            check_count(MAX_NPOLYS - 1, MAX_NPOLYS, "npolys").unwrap(),
+            MAX_NPOLYS - 1
+        );
+    }
+
     /// Pin the u32→u64 widening contract of `checked_alloc_size`.
     ///
     /// Reviewer flagged that the existing hostile-input guards exercise
