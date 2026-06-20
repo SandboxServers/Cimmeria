@@ -26,11 +26,17 @@ rand = { workspace = true }
 rand_chacha = { workspace = true }
 async-trait = { workspace = true }
 
-# Cryptography (AES-256-CBC + HMAC-MD5 — must be byte-identical to C++ implementation)
+# Cryptography
+#  - v1 (legacy, byte-identical to the C++ client): AES-256-CBC + HMAC-MD5.
+#  - v2 (#434 Phase 3): AES-256-CBC + HMAC-SHA256 (truncated to 16 bytes),
+#    per-packet random IV, HKDF-SHA256 key separation.
 aes = { workspace = true }
 cbc = { workspace = true }
 hmac = { workspace = true }
 md-5 = { workspace = true }
+# v2 key separation (HKDF-SHA256) + integrity (HMAC-SHA256 via sha2).
+hkdf = { workspace = true }
+sha2 = { workspace = true }
 
 # Codec / framing
 tokio-util = { version = "0.7", features = ["codec"] }
