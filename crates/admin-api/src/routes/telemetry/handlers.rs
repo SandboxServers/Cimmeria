@@ -4,7 +4,7 @@ use std::io::Read;
 use std::sync::Arc;
 
 use axum::extract::{Multipart, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::HeaderMap;
 use axum::Json;
 use bytes::Bytes;
 use flate2::read::GzDecoder;
