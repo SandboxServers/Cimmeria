@@ -134,7 +134,14 @@ fn create_player_with_load_data_prewarms_bodyset_before_map_load() {
 
     let info = sample_world_entry();
     let load = sample_player_load_data();
-    let pkt = build_create_player(&TEST_KEY, 1, &[], &info, Some(&load));
+    let pkt = build_create_player(
+        &TEST_KEY,
+        1,
+        &[],
+        &info,
+        Some(&load),
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&pkt).unwrap();
     // Body starts at offset 1 (offset 0 is flags). The first record must be
@@ -190,7 +197,14 @@ fn create_base_player_class_id_byte_reflects_gm_vs_player() {
     fn class_byte(class_id: u8) -> u8 {
         let mut info = sample_world_entry();
         info.class_id = class_id;
-        let pkt = build_create_player(&TEST_KEY, 1, &[], &info, None);
+        let pkt = build_create_player(
+            &TEST_KEY,
+            1,
+            &[],
+            &info,
+            None,
+            cimmeria_mercury::encryption::EncryptionVersion::V1,
+        );
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
         let pt = enc.decrypt(&pkt).unwrap();
         assert_eq!(
@@ -228,7 +242,14 @@ fn create_player_without_load_data_emits_only_create_and_map_load() {
     use crate::mercury::method_idx;
 
     let info = sample_world_entry();
-    let pkt = build_create_player(&TEST_KEY, 1, &[], &info, None);
+    let pkt = build_create_player(
+        &TEST_KEY,
+        1,
+        &[],
+        &info,
+        None,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&pkt).unwrap();
     assert_eq!(pt[1], crate::mercury::BASEMSG_CREATE_BASE_PLAYER);

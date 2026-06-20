@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 
 use cimmeria_common::{EntityId, ServerConfig};
 use cimmeria_entity::manager::EntityManager;
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::transport::{Transport, UdpTransport};
 
 use crate::auth::PendingLogin;
@@ -54,6 +55,12 @@ pub struct BaseService {
     /// Minigame server external host/port for URL construction.
     minigame_external_host: String,
     minigame_external_port: u16,
+
+    /// Wire-encryption version every session on this service speaks. Pinned
+    /// from server config at construction; threaded into each session's
+    /// `ConnectedClientState` at login. Server-wide today — no per-client
+    /// negotiation yet.
+    enc_version: EncryptionVersion,
 }
 
 impl BaseService {
@@ -75,6 +82,7 @@ impl BaseService {
             minigame_registry: SessionRegistry::new(),
             minigame_external_host: config.base_external_host.clone(),
             minigame_external_port: config.minigame_port,
+            enc_version: EncryptionVersion::from_config_u8(config.mercury_encryption_version),
         }
     }
 
@@ -175,6 +183,7 @@ impl BaseService {
         let connected_for_loop = Arc::clone(&connected);
         let entity_manager_for_loop = Arc::clone(&entity_manager);
         let entity_to_addr_for_loop = Arc::clone(&entity_to_addr);
+        let enc_version = self.enc_version;
         tokio::spawn(async move {
             tracing::trace!("Base service UDP receive loop started");
             run_connect_loop(
@@ -186,6 +195,7 @@ impl BaseService {
                 connected_for_loop,
                 entity_manager_for_loop,
                 entity_to_addr_for_loop,
+                enc_version,
             )
             .await;
             tracing::trace!("Base service UDP receive loop exited");

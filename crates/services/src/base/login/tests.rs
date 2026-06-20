@@ -1,5 +1,68 @@
 use super::*;
 
+/// Byte-exact default-version regression: with the DEFAULT server config, the
+/// version selected for a session resolves to v1 and the outbound handshake
+/// bytes are identical to an explicit v1 build. This is the guard that fails if
+/// someone flips `ServerConfig::default().mercury_encryption_version` to 2 (or
+/// the `from_config_u8` mapping changes) — producing v2 frames by default would
+/// silently break every unpatched client. Reverting the default to v1 makes it
+/// pass again; setting it to 2 makes it fail.
+#[test]
+fn default_config_session_produces_v1_handshake_bytes() {
+    use cimmeria_common::ServerConfig;
+    use cimmeria_mercury::encryption::EncryptionVersion;
+
+    let config = ServerConfig::default();
+    let selected = EncryptionVersion::from_config_u8(config.mercury_encryption_version);
+    assert_eq!(
+        selected,
+        EncryptionVersion::V1,
+        "default config must select v1 — unpatched clients only understand v1"
+    );
+
+    let key = [0x42u8; 32];
+    let request_id = 0xDEAD_BEEF;
+    let ticket = [0x11u8; 20];
+
+    // The version threaded from the default config must reproduce the explicit
+    // v1 bytes for both handshake builders.
+    let reply_default = build_connect_reply(request_id, &ticket, &key, 1, selected);
+    let reply_v1 = build_connect_reply(request_id, &ticket, &key, 1, EncryptionVersion::V1);
+    assert_eq!(reply_default, reply_v1, "default connect_reply must be v1");
+
+    let sync_default = build_time_sync(&key, 2, selected);
+    let sync_v1 = build_time_sync(&key, 2, EncryptionVersion::V1);
+    assert_eq!(sync_default, sync_v1, "default time_sync must be v1");
+
+    // And the v1 frame must NOT start with the v2 version byte — the actual
+    // wire-shape assertion, not just "two builders agree".
+    assert_ne!(
+        reply_default.first(),
+        Some(&0x02),
+        "v1 handshake frame must not carry the v2 version byte"
+    );
+}
+
+/// A session built with v2 produces v2 handshake frames (leading `0x02`) — the
+/// version selection actually reaches the outbound builders. Pairs with
+/// `default_config_session_produces_v1_handshake_bytes` to prove the switch is
+/// live in both directions of the config mapping.
+#[test]
+fn v2_config_session_produces_v2_handshake_frame() {
+    use cimmeria_mercury::encryption::EncryptionVersion;
+
+    let selected = EncryptionVersion::from_config_u8(2);
+    assert_eq!(selected, EncryptionVersion::V2);
+
+    let key = [0x42u8; 32];
+    let reply = build_connect_reply(0xCAFE, &[0x22u8; 20], &key, 1, selected);
+    assert_eq!(
+        reply.first(),
+        Some(&0x02),
+        "v2-configured session must emit a v2 frame"
+    );
+}
+
 #[test]
 fn decode_session_key_valid() {
     let hex = "AABBCCDD".repeat(8); // 64 chars
@@ -212,6 +275,7 @@ async fn login_consumes_ticket_and_registers_connected_client_state() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
     .expect("Phase 3 handoff");
@@ -300,6 +364,7 @@ async fn login_pushes_discord_player_login_event() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
     .expect("Phase 3 handoff");
@@ -353,6 +418,7 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
     .expect("Phase 3 handoff");
@@ -370,12 +436,18 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
     assert_eq!(sent[1].0, addr, "time_sync goes to the connecting addr");
     assert_eq!(
         sent[0].1,
-        build_connect_reply(request_id, ticket.as_bytes(), &key, 1),
+        build_connect_reply(
+            request_id,
+            ticket.as_bytes(),
+            &key,
+            1,
+            cimmeria_mercury::encryption::EncryptionVersion::V1,
+        ),
         "phase-3 connect_reply bytes (seq 1)"
     );
     assert_eq!(
         sent[1].1,
-        build_time_sync(&key, 2),
+        build_time_sync(&key, 2, cimmeria_mercury::encryption::EncryptionVersion::V1),
         "initial time_sync bytes (seq 2)"
     );
 }
@@ -406,6 +478,7 @@ async fn login_with_unknown_ticket_does_not_register_state() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
     .expect("Phase 3 with unknown ticket returns Ok and logs");
@@ -450,6 +523,7 @@ async fn second_login_for_same_account_evicts_first_session() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
     .expect("first login");
@@ -473,6 +547,7 @@ async fn second_login_for_same_account_evicts_first_session() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     )
     .await
     .expect("second login");

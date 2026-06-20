@@ -11,7 +11,9 @@ use crate::mercury::read_wstring;
 
 use super::character::{query_character_list, send_char_create_failed};
 use super::chardef::chardef_lookup;
-use super::helpers::{drain_acks_and_seq, get_access_level, get_account_entity_id};
+use super::helpers::{
+    drain_acks_and_seq, get_access_level, get_account_entity_id, get_enc_version,
+};
 use super::resources::{bag_min_slot, pick_first_open_bag, BAG_FILL_ORDER};
 use super::ConnectedClientState;
 
@@ -509,8 +511,15 @@ pub(crate) async fn handle_create_character(
             let characters = query_character_list(db_pool, account_id).await;
             let account_eid = get_account_entity_id(connected, addr)?;
             let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-            let pkt =
-                crate::mercury::build_on_character_list(&key, seq, &acks, &characters, account_eid);
+            let enc_version = get_enc_version(connected, addr);
+            let pkt = crate::mercury::build_on_character_list(
+                &key,
+                seq,
+                &acks,
+                &characters,
+                account_eid,
+                enc_version,
+            );
             tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list");
             transport.send_to(&pkt, addr).await?;
         }

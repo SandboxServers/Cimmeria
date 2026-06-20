@@ -23,7 +23,7 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_char_list, build_create_player};
 
 use super::super::character::query_character_list;
-use super::super::helpers::{drain_acks_and_seq, get_account_entity_id};
+use super::super::helpers::{drain_acks_and_seq, get_account_entity_id, get_enc_version};
 use super::super::ConnectedClientState;
 
 /// Handle `ENABLE_ENTITIES` (0x08) -- dispatches char list or create-player step.
@@ -85,7 +85,15 @@ pub(crate) async fn handle_enable_entities(
             "Create player: sending CREATE_BASE_PLAYER + onClientMapLoad (waiting for mapLoaded)"
         );
 
-        let pkt = build_create_player(&key, seq, &acks, &entry_info, load_data.as_ref());
+        let enc_version = get_enc_version(connected, addr);
+        let pkt = build_create_player(
+            &key,
+            seq,
+            &acks,
+            &entry_info,
+            load_data.as_ref(),
+            enc_version,
+        );
         if let Err(e) = transport.send_to(&pkt, addr).await {
             // surface the failure before the early-return so
             // ops can correlate against the staged `pending_map_loaded`
@@ -158,7 +166,8 @@ pub(crate) async fn handle_enable_entities(
     );
 
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let pkt = build_char_list(&key, seq, &acks, &characters, account_eid);
+    let enc_version = get_enc_version(connected, addr);
+    let pkt = build_char_list(&key, seq, &acks, &characters, account_eid, enc_version);
     tracing::trace!(%addr, len = pkt.len(), seq, hex = %super::super::helpers::to_hex(&pkt), "UDP_OUT char_list");
     transport.send_to(&pkt, addr).await?;
     // Char list is a one-shot state delivery; retransmit on loss.

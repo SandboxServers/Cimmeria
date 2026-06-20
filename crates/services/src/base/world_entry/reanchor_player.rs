@@ -35,6 +35,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 use cimmeria_mercury::transport::Transport;
 
@@ -87,11 +88,12 @@ fn build_reanchor_packets(
     appearance_args: Option<&[u8]>,
     tint_args: Option<&[u8]>,
     acks: &[u32],
+    version: EncryptionVersion,
 ) -> Vec<Vec<u8>> {
     let burst = build_reanchor_burst_body(entity_id, info);
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let burst_plaintext = build_outgoing(flags, &burst, Some(base_seq), acks, None);
-    let mut packets = vec![encrypt_packet(&burst_plaintext, key)];
+    let mut packets = vec![encrypt_packet(&burst_plaintext, key, version)];
 
     // Both must be cached. A partial replay would re-create the pawn with
     // body geometry but no skin tint (or vice versa), worse than no replay.
@@ -103,6 +105,7 @@ fn build_reanchor_packets(
             entity_id,
             method_idx::BEING_APPEARANCE,
             appearance,
+            version,
         ));
         packets.push(build_player_entity_method_packet(
             key,
@@ -111,6 +114,7 @@ fn build_reanchor_packets(
             entity_id,
             method_idx::ON_ENTITY_TINT,
             tint,
+            version,
         ));
     }
 
@@ -147,13 +151,14 @@ pub(crate) async fn handle_reanchor_player(
         .copied()
         .ok_or("Reanchor: no client addr for entity")?;
 
-    let (key, pending_acks_arc, next_seq, appearance_args, tint_args) = {
+    let (key, enc_version, pending_acks_arc, next_seq, appearance_args, tint_args) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients
             .get(&addr)
             .ok_or("Reanchor: client state not found")?;
         (
             c.key,
+            c.enc_version,
             Arc::clone(&c.pending_acks),
             Arc::clone(&c.next_seq),
             c.cached_appearance_args.clone(),
@@ -194,6 +199,7 @@ pub(crate) async fn handle_reanchor_player(
         appearance_args.as_deref(),
         tint_args.as_deref(),
         &acks,
+        enc_version,
     );
 
     for (i, pkt) in packets.iter().enumerate() {
@@ -320,6 +326,7 @@ mod tests {
             Some(&appearance),
             Some(&tint),
             &[],
+            EncryptionVersion::V1,
         );
 
         assert_eq!(
@@ -335,7 +342,16 @@ mod tests {
     #[test]
     fn build_reanchor_packets_emits_one_when_neither_cached() {
         let info = sample_info(0x1234);
-        let pkts = build_reanchor_packets(&TEST_KEY, 100, 0x1234, &info, None, None, &[]);
+        let pkts = build_reanchor_packets(
+            &TEST_KEY,
+            100,
+            0x1234,
+            &info,
+            None,
+            None,
+            &[],
+            EncryptionVersion::V1,
+        );
 
         assert_eq!(
             pkts.len(),
@@ -353,10 +369,26 @@ mod tests {
         let appearance = vec![0xAA];
         let tint = vec![0xBB];
 
-        let only_appearance =
-            build_reanchor_packets(&TEST_KEY, 100, 0x1234, &info, Some(&appearance), None, &[]);
-        let only_tint =
-            build_reanchor_packets(&TEST_KEY, 100, 0x1234, &info, None, Some(&tint), &[]);
+        let only_appearance = build_reanchor_packets(
+            &TEST_KEY,
+            100,
+            0x1234,
+            &info,
+            Some(&appearance),
+            None,
+            &[],
+            EncryptionVersion::V1,
+        );
+        let only_tint = build_reanchor_packets(
+            &TEST_KEY,
+            100,
+            0x1234,
+            &info,
+            None,
+            Some(&tint),
+            &[],
+            EncryptionVersion::V1,
+        );
 
         assert_eq!(
             only_appearance.len(),
@@ -388,6 +420,7 @@ mod tests {
             Some(&appearance),
             Some(&tint),
             &[],
+            EncryptionVersion::V1,
         );
         let with_acks = build_reanchor_packets(
             &TEST_KEY,
@@ -397,6 +430,7 @@ mod tests {
             Some(&appearance),
             Some(&tint),
             &[42, 43],
+            EncryptionVersion::V1,
         );
 
         assert_ne!(
@@ -435,6 +469,7 @@ mod tests {
             Some(&appearance),
             Some(&tint),
             &[],
+            EncryptionVersion::V1,
         );
 
         let expected_appearance = build_player_entity_method_packet(
@@ -444,6 +479,7 @@ mod tests {
             0x1234,
             method_idx::BEING_APPEARANCE,
             &appearance,
+            EncryptionVersion::V1,
         );
         let expected_tint = build_player_entity_method_packet(
             &TEST_KEY,
@@ -452,6 +488,7 @@ mod tests {
             0x1234,
             method_idx::ON_ENTITY_TINT,
             &tint,
+            EncryptionVersion::V1,
         );
 
         assert_eq!(
@@ -525,7 +562,16 @@ mod tests {
             class_id: SGWPLAYER_CLASS_ID,
             world_stargates: Vec::new(),
         };
-        let expected = build_reanchor_packets(&[0u8; 32], 0, entity_id, &info, None, None, &[]);
+        let expected = build_reanchor_packets(
+            &[0u8; 32],
+            0,
+            entity_id,
+            &info,
+            None,
+            None,
+            &[],
+            EncryptionVersion::V1,
+        );
         assert_eq!(expected.len(), 1, "test premise: burst-only");
         assert_eq!(sent[0].1, expected[0], "reanchor burst wire bytes (seq 0)");
     }

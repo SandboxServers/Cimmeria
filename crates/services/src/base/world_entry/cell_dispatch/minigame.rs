@@ -71,8 +71,10 @@ pub(super) async fn start_minigame(
                 connected,
                 entity_to_addr,
                 entity_id,
-                |key, seq, acks| {
-                    build_player_entity_method_packet(key, seq, acks, entity_id, method, &args)
+                |key, version, seq, acks| {
+                    build_player_entity_method_packet(
+                        key, seq, acks, entity_id, method, &args, version,
+                    )
                 },
             )
             .await;
@@ -104,7 +106,9 @@ pub(super) async fn minigame_result(
         connected,
         entity_to_addr,
         entity_id,
-        |key, seq, acks| build_player_entity_method_packet(key, seq, acks, entity_id, method, &[]),
+        |key, version, seq, acks| {
+            build_player_entity_method_packet(key, seq, acks, entity_id, method, &[], version)
+        },
     )
     .await;
     // Forward to CellApp for victory chain processing

@@ -1,6 +1,7 @@
 //! World entry builders: create player, enter world, and standalone entity method packets.
 
 use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
 use super::{
@@ -37,6 +38,7 @@ pub fn build_create_player(
     acks: &[u32],
     info: &WorldEntryInfo,
     load: Option<&PlayerLoadData>,
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     let mut body = Vec::with_capacity(256);
 
@@ -123,7 +125,7 @@ pub fn build_create_player(
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Build raw body bytes for the enter-world step:
@@ -252,11 +254,12 @@ pub fn build_enter_world(
     acks: &[u32],
     info: &WorldEntryInfo,
     load: Option<&PlayerLoadData>,
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     let body = build_enter_world_body(info, load);
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Cell->client entity method: `onPlayerDataLoaded` (no args).
@@ -271,6 +274,7 @@ pub fn build_on_player_data_loaded(
     seq: u32,
     acks: &[u32],
     entity_id: u32,
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     let mut body = Vec::new();
     append_entity_method(
@@ -283,7 +287,7 @@ pub fn build_on_player_data_loaded(
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Cell->client entity method: `setupWorldParameters` (22 args: 5xi32 + 17xf32).
@@ -295,6 +299,7 @@ pub fn build_setup_world_parameters(
     seq: u32,
     acks: &[u32],
     entity_id: u32,
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     let mut body = Vec::new();
     let args = build_world_params_args("CombatSim");
@@ -308,5 +313,5 @@ pub fn build_setup_world_parameters(
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }

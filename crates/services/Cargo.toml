@@ -19,10 +19,21 @@ cimmeria-observability = { workspace = true }
 cimmeria-discord = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
+# Auth TLS termination. `tokio-rustls` re-exports `rustls`;
+# `rustls-pemfile` loads the PEM cert chain + private key; `arc-swap` holds the
+# live `rustls::ServerConfig` so `reload_certs()` can hot-swap it per-connection
+# without dropping the listener.
+tokio-rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+arc-swap = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
 rand_chacha = { workspace = true }
 quick-xml = { workspace = true }
+# Password storage: argon2id for stored hashes, sha1 to recompute the legacy
+# client hash during opportunistic on-login migration.
+argon2 = { workspace = true }
+sha1 = { workspace = true }
 sqlx = { workspace = true }
 zip = { workspace = true }
 serde = { workspace = true }
@@ -59,3 +70,13 @@ async-trait = { workspace = true }
 # event fired with the expected structured fields. Without this, a
 # reverted log change goes undetected. See `test_support::LogCapture`.
 tracing-subscriber = { workspace = true }
+
+# Self-signed cert generation for the auth-TLS integration test. Crate-local
+# dev-dependency (not a workspace dep) so it stays out of the production
+# dependency graph. Emits PEM, which the same `rustls-pemfile` path the
+# production loader uses then parses.
+rcgen = "0.13"
+
+# `ServiceExt::oneshot` for driving the HSTS middleware through a Router in a
+# unit test without standing up a socket.
+tower = { workspace = true }

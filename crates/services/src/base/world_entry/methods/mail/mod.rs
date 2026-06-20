@@ -130,7 +130,7 @@ pub async fn handle_mail_request(
                 connected,
                 entity_to_addr,
                 entity_id,
-                |key, seq, acks| {
+                |key, version, seq, acks| {
                     build_player_entity_method_packet(
                         key,
                         seq,
@@ -138,6 +138,7 @@ pub async fn handle_mail_request(
                         entity_id,
                         method_idx::ON_MAIL_HEADER_INFO,
                         &args,
+                        version,
                     )
                 },
             )
@@ -212,7 +213,7 @@ pub async fn handle_mail_request(
                 connected,
                 entity_to_addr,
                 entity_id,
-                |key, seq, acks| {
+                |key, version, seq, acks| {
                     build_player_entity_method_packet(
                         key,
                         seq,
@@ -220,6 +221,7 @@ pub async fn handle_mail_request(
                         entity_id,
                         method_idx::ON_MAIL_READ,
                         &args,
+                        version,
                     )
                 },
             )
@@ -255,7 +257,7 @@ pub async fn handle_mail_request(
                 connected,
                 entity_to_addr,
                 entity_id,
-                |key, seq, acks| {
+                |key, version, seq, acks| {
                     build_player_entity_method_packet(
                         key,
                         seq,
@@ -263,6 +265,7 @@ pub async fn handle_mail_request(
                         entity_id,
                         method_idx::ON_MAIL_HEADER_REMOVE,
                         &args,
+                        version,
                     )
                 },
             )
@@ -295,7 +298,7 @@ pub async fn handle_mail_request(
                 connected,
                 entity_to_addr,
                 entity_id,
-                |key, seq, acks| {
+                |key, version, seq, acks| {
                     build_player_entity_method_packet(
                         key,
                         seq,
@@ -303,6 +306,7 @@ pub async fn handle_mail_request(
                         entity_id,
                         method_idx::ON_MAIL_HEADER_REMOVE,
                         &args,
+                        version,
                     )
                 },
             )

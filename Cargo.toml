@@ -86,6 +86,9 @@ aes = "0.9"
 cbc = "0.2"
 hmac = "0.13"
 md-5 = "0.11"
+# HKDF-SHA256 for Mercury v2 key separation (derive distinct AES + MAC keys
+# from the session key). Tracks the hmac 0.13 / digest 0.11 generation.
+hkdf = "0.13"
 rand = "0.10"
 rand_distr = "0.6"
 rand_chacha = "0.10"
@@ -110,6 +113,18 @@ wiremock = "0.6"
 
 # Hashing
 sha2 = "0.11"
+# Legacy login hash recomputation: the original client sent an uppercase-hex
+# SHA-1 of the password. Used to verify a plaintext login against a not-yet-
+# migrated (legacy) account before re-hashing it with argon2id.
+sha1 = "0.10"
+# Password storage. argon2id with explicit OWASP parameters; `std` pulls the
+# OsRng-backed salt generator used per hash.
+argon2 = { version = "0.5", features = ["std"] }
+
+# TLS termination for the auth server. `tokio-rustls` re-exports `rustls`;
+# `rustls-pemfile` loads PEM cert/key files.
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
 
 # Encoding
 base64 = "0.22"

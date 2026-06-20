@@ -140,7 +140,7 @@ pub async fn send_full_inventory_resync(
             connected,
             entity_to_addr,
             entity_id,
-            |key, seq, acks| {
+            |key, version, seq, acks| {
                 build_player_entity_method_packet(
                     key,
                     seq,
@@ -148,6 +148,7 @@ pub async fn send_full_inventory_resync(
                     entity_id,
                     method_idx::ON_BAG_INFO,
                     &bag_info,
+                    version,
                 )
             },
         )
@@ -188,7 +189,7 @@ pub async fn send_full_inventory_resync(
             connected,
             entity_to_addr,
             entity_id,
-            |key, seq, acks| {
+            |key, version, seq, acks| {
                 build_player_entity_method_packet(
                     key,
                     seq,
@@ -196,6 +197,7 @@ pub async fn send_full_inventory_resync(
                     entity_id,
                     method_idx::ON_ACTIVE_SLOT_UPDATE,
                     &args,
+                    version,
                 )
             },
         )
@@ -207,7 +209,7 @@ pub async fn send_full_inventory_resync(
             connected,
             entity_to_addr,
             entity_id,
-            |key, seq, acks| {
+            |key, version, seq, acks| {
                 build_player_entity_method_packet(
                     key,
                     seq,
@@ -215,6 +217,7 @@ pub async fn send_full_inventory_resync(
                     entity_id,
                     method_idx::ON_CASH_CHANGED,
                     &cash_args,
+                    version,
                 )
             },
         )
@@ -289,7 +292,7 @@ pub async fn send_full_inventory_update(
         connected,
         entity_to_addr,
         entity_id,
-        |key, seq, acks| {
+        |key, version, seq, acks| {
             build_player_entity_method_packet(
                 key,
                 seq,
@@ -297,6 +300,7 @@ pub async fn send_full_inventory_update(
                 entity_id,
                 method_idx::ON_UPDATE_ITEM,
                 &args,
+                version,
             )
         },
     )
@@ -330,7 +334,7 @@ pub(super) async fn send_on_remove_item(
         connected,
         entity_to_addr,
         entity_id,
-        |key, seq, acks| {
+        |key, version, seq, acks| {
             build_player_entity_method_packet(
                 key,
                 seq,
@@ -338,6 +342,7 @@ pub(super) async fn send_on_remove_item(
                 entity_id,
                 method_idx::ON_REMOVE_ITEM,
                 &args,
+                version,
             )
         },
     )

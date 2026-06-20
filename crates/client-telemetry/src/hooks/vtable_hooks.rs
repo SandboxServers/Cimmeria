@@ -149,45 +149,29 @@ unsafe fn install_one(
     detour: usize,
     orig_slot: &AtomicUsize,
 ) {
-    use windows_sys::Win32::System::Memory::{
-        VirtualProtect, PAGE_PROTECTION_FLAGS, PAGE_READWRITE,
+    // Vtable swap is the same protect → swap → restore mechanic as
+    // the IAT swap; delegate to the shared primitive. The
+    // `vtable.protect_failed` event is preserved on failure.
+    let original = match super::primitives::swap_vtable_slot(slot_addr, detour) {
+        Ok(orig) => orig,
+        Err(_) => {
+            super::emit_warn(
+                producer,
+                "client.hooks.vtable.protect_failed",
+                [
+                    ("hook", serde_json::Value::String(hook_name.into())),
+                    (
+                        "address",
+                        serde_json::Value::String(format!("0x{slot_addr:08x}")),
+                    ),
+                ],
+            );
+            return;
+        }
     };
 
-    let slot_ptr = slot_addr as *mut usize;
-    let mut old_protect: PAGE_PROTECTION_FLAGS = 0;
-
-    let ok = VirtualProtect(
-        slot_ptr as *const c_void,
-        std::mem::size_of::<usize>(),
-        PAGE_READWRITE,
-        &mut old_protect,
-    );
-    if ok == 0 {
-        super::emit_warn(
-            producer,
-            "client.hooks.vtable.protect_failed",
-            [
-                ("hook", serde_json::Value::String(hook_name.into())),
-                (
-                    "address",
-                    serde_json::Value::String(format!("0x{slot_addr:08x}")),
-                ),
-            ],
-        );
-        return;
-    }
-
-    let original = *slot_ptr;
-    *slot_ptr = detour;
+    // `Release` store pairs with the detour's `Acquire` load.
     orig_slot.store(original, Ordering::Release);
-
-    let mut _unused: PAGE_PROTECTION_FLAGS = 0;
-    let _ = VirtualProtect(
-        slot_ptr as *const c_void,
-        std::mem::size_of::<usize>(),
-        old_protect,
-        &mut _unused,
-    );
 
     super::emit_info(
         producer,

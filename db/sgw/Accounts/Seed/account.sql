@@ -10,6 +10,11 @@
 -- 2 clears the GameMaster threshold the GM command paths gate on, without
 -- granting Admin-only commands (e.g. /shutdown). Bump an individual account
 -- to 3/4 locally if you need Admin/Developer-tier commands.
+--
+-- These explicit-column INSERTs omit password_algo and password_hash_v2, so
+-- each account starts as legacy SHA-1 (password_algo defaults to 1,
+-- password_hash_v2 NULL) and transparently migrates to argon2id on its first
+-- plaintext login over TLS.
 INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (2, 'test',     'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
 INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (3, 'cady',     'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
 INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (4, 'jorsh',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);

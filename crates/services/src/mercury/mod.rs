@@ -15,7 +15,7 @@
 //! [`build_map_loaded`] returns `(Vec<Vec<u8>>, u32)` — Mercury-fragmented
 //! packets that the client reassembles into a single bundle before processing.
 
-use cimmeria_mercury::encryption::MercuryEncryption;
+use cimmeria_mercury::encryption::{EncryptionVersion, MercuryEncryption};
 use cimmeria_mercury::packet::{FLAG_HAS_SEQUENCE, FLAG_ON_CHANNEL, FLAG_RELIABLE};
 
 // ── Submodules ───────────────────────────────────────────────────────────────
@@ -383,8 +383,17 @@ pub fn read_wstring(buf: &[u8], offset: usize) -> Result<(String, usize), String
 // ── Encryption helper ─────────────────────────────────────────────────────────
 
 /// Encrypt a plaintext Mercury packet (flags + body + footers).
-pub(crate) fn encrypt_packet(plaintext: &[u8], key: &[u8; 32]) -> Vec<u8> {
-    let enc = MercuryEncryption::from_session_key(*key);
+///
+/// `version` is the session's pinned wire version. The whole session — both
+/// directions and every handshake builder — must pass the *same* version, so
+/// the bytes a client sees are internally consistent (a v2 handshake followed
+/// by v1 data, or vice-versa, would fail the peer's decrypt).
+pub(crate) fn encrypt_packet(
+    plaintext: &[u8],
+    key: &[u8; 32],
+    version: EncryptionVersion,
+) -> Vec<u8> {
+    let enc = MercuryEncryption::from_session_key_versioned(*key, version);
     enc.encrypt(plaintext)
         .expect("Mercury packet encryption failed")
 }
@@ -496,7 +505,7 @@ mod tests {
         assert!(read_wstring(&buf, 0).is_err());
     }
 
-    /// `encrypt_packet` produces byte-identical output to
+    /// `encrypt_packet` with the v1 version produces byte-identical output to
     /// `MercuryEncryption::from_session_key(key).encrypt(plaintext).unwrap()`.
     /// Pin so a refactor that swaps the wrapper for a different code
     /// path can't silently change the wire bytes.
@@ -504,10 +513,24 @@ mod tests {
     fn encrypt_packet_matches_direct_encryption_call() {
         let key = [0x42u8; 32];
         let plaintext = b"hello mercury";
-        let via_helper = encrypt_packet(plaintext, &key);
+        let via_helper = encrypt_packet(plaintext, &key, EncryptionVersion::V1);
         let via_direct = MercuryEncryption::from_session_key(key)
             .encrypt(plaintext)
             .unwrap();
         assert_eq!(via_helper, via_direct);
+    }
+
+    /// `encrypt_packet` with the v2 version produces a v2 frame (leading
+    /// `0x02`) that is NOT byte-identical to the v1 frame for the same input —
+    /// proves the version argument actually switches the wire shape rather
+    /// than being ignored.
+    #[test]
+    fn encrypt_packet_v2_differs_and_is_versioned() {
+        let key = [0x42u8; 32];
+        let plaintext = b"hello mercury";
+        let v1 = encrypt_packet(plaintext, &key, EncryptionVersion::V1);
+        let v2 = encrypt_packet(plaintext, &key, EncryptionVersion::V2);
+        assert_ne!(v1, v2, "v2 frame must differ from v1 frame");
+        assert_eq!(v2[0], 0x02, "v2 frame must begin with the version byte");
     }
 }

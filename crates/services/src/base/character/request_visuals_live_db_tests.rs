@@ -278,6 +278,7 @@ async fn handle_request_character_visuals_happy_path_sends_one_packet() {
         0xFF,
         skin_tint,
         account_entity_id,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     let expected_b = build_character_visuals(
         &key,
@@ -290,6 +291,7 @@ async fn handle_request_character_visuals_happy_path_sends_one_packet() {
         0xFF,
         skin_tint,
         account_entity_id,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert!(
         actual == &expected_a || actual == &expected_b,

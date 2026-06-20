@@ -378,7 +378,7 @@ pub async fn handle_grant_cash(
             connected,
             entity_to_addr,
             entity_id,
-            |key, seq, acks| {
+            |key, version, seq, acks| {
                 build_player_entity_method_packet(
                     key,
                     seq,
@@ -386,6 +386,7 @@ pub async fn handle_grant_cash(
                     entity_id,
                     method_idx::ON_CASH_CHANGED,
                     &total.to_le_bytes(),
+                    version,
                 )
             },
         )

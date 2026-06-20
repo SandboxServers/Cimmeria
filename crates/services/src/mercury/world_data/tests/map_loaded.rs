@@ -8,7 +8,13 @@ use cimmeria_mercury::encryption::MercuryEncryption;
 
 #[test]
 fn build_on_player_data_loaded_uses_correct_msg_id() {
-    let out = build_on_player_data_loaded(&TEST_KEY, 1, &[], 42);
+    let out = build_on_player_data_loaded(
+        &TEST_KEY,
+        1,
+        &[],
+        42,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&out).unwrap();
     // body starts at offset 1, method_index=115 >= 61, so extended: 0xBD
@@ -17,7 +23,13 @@ fn build_on_player_data_loaded_uses_correct_msg_id() {
 
 #[test]
 fn build_setup_world_parameters_uses_correct_msg_id() {
-    let out = build_setup_world_parameters(&TEST_KEY, 1, &[], 42);
+    let out = build_setup_world_parameters(
+        &TEST_KEY,
+        1,
+        &[],
+        42,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&out).unwrap();
     // method_index=122 >= 61, so extended: 0xBD
@@ -63,7 +75,15 @@ fn build_map_loaded_produces_multiple_packets() {
         class_id: 0x02,
         world_stargates: vec![],
     };
-    let (packets, seqs) = build_map_loaded(&TEST_KEY, 5, &[], 42, &data, &entry);
+    let (packets, seqs) = build_map_loaded(
+        &TEST_KEY,
+        5,
+        &[],
+        42,
+        &data,
+        &entry,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert!(
         !packets.is_empty(),
         "mapLoaded should produce at least one packet"
@@ -200,7 +220,15 @@ fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
         world_stargates: vec![],
     };
 
-    let (packets, seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
+    let (packets, seqs) = build_map_loaded(
+        &TEST_KEY,
+        5,
+        &[],
+        100,
+        &data,
+        &entry,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_eq!(
         seqs as usize,
         packets.len(),
@@ -259,7 +287,15 @@ fn build_map_loaded_each_packet_decrypts_within_limit() {
         class_id: 0x02,
         world_stargates: vec![],
     };
-    let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
+    let (packets, _seqs) = build_map_loaded(
+        &TEST_KEY,
+        5,
+        &[],
+        100,
+        &data,
+        &entry,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     // Mercury MAX_BODY_LENGTH is 1411 bytes
     const MAX_PLAINTEXT: usize = 1411;
@@ -314,7 +350,15 @@ fn build_map_loaded_contains_setup_world_params_and_player_data_loaded() {
         class_id: 0x02,
         world_stargates: vec![],
     };
-    let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
+    let (packets, _seqs) = build_map_loaded(
+        &TEST_KEY,
+        5,
+        &[],
+        100,
+        &data,
+        &entry,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
 
     // Collect all decrypted plaintext across all packets
@@ -383,7 +427,15 @@ fn build_map_loaded_uses_mercury_fragmentation() {
         class_id: 0x02,
         world_stargates: vec![],
     };
-    let (packets, seqs) = build_map_loaded(&TEST_KEY, 10, &[], 100, &data, &entry);
+    let (packets, seqs) = build_map_loaded(
+        &TEST_KEY,
+        10,
+        &[],
+        100,
+        &data,
+        &entry,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
 
     // Must produce multiple packets (body > 1300 bytes)

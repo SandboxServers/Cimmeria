@@ -44,15 +44,25 @@ client-side change must therefore be a **binary patch via injection + hooking**.
 
 A four-phase rollout, plus one deliberate non-change.
 
-### Phase 0 — shared hook foundation
+### Phase 0 — shared hook foundation (**delivered by #504**)
 
-Build a **shared inline / IAT / vtable hooking crate** as the foundation for all
-client patching.
+Provide the **inline / IAT / vtable hooking** layer all client patching needs.
 
-*Rationale:* the existing `cimmeria-client-telemetry` cdylib already has the
-injection vehicle (it loads into the client) but **no general hook layer** —
-nothing to place an inline detour, swap an IAT slot, or replace a vtable entry.
-Phases 1–3 all need that layer, so it is built once, first.
+**Status update (2026-06-20):** [#504](https://github.com/SandboxServers/Cimmeria/pull/504)
+(`cimmeria-client-telemetry` Phases 2–5) **built and shipped this layer** — it is
+no longer from-scratch work. #504 provides the injection vehicle
+(`crates/launcher/src/inject.rs::inject_dll`, LoadLibraryW-in-target) plus three
+hook techniques in `crates/client-telemetry/src/hooks/`: `inline_hooks.rs`
+(trampoline detours), `iat_hooks.rs` (IAT-slot replace), and `vtable_hooks.rs`
+(vtable swap), all i686-CI-tested. They map 1:1 to the client patches below:
+inline → `curl_easy_setopt @ 0x013A96E0` (Phase 1) and `LoginReplyHandler ctor @
+0x00DDED60` (Phase 2); vtable → `Mercury::Channel::send @ 0x01576F90` (Phase 3).
+
+So Phase 0 is re-scoped to **extracting #504's hook primitives into a reusable
+API** (a behaviour-preserving refactor exposing `place_trampoline` /
+`replace_iat_slot` / `swap_vtable_slot`) that the client patch crates call — not
+a new from-scratch crate. This resolves the original "new crate vs. extend
+client-telemetry" open decision in favour of **extending client-telemetry**.
 
 ### Phase 1 — auth TLS
 
@@ -70,15 +80,31 @@ shim's rustls proxy does the real TLS. This sidesteps the dead OpenSSL entirely.
 
 ### Phase 2 — argon2id password hashing
 
-- **Schema:** a **dual-column** scheme (legacy SHA-1 column retained alongside a
-  new argon2id column), edited directly in the `db/sgw/` schema and the
-  `db/resources/` seed — **not** in `db/scripts/` (per project convention: never
-  hand-write migration scripts; edit the seed).
-- **Migration:** **opportunistic, on-login.** When a user authenticates and only
-  the legacy hash exists, verify against it, then compute and store the argon2id
-  hash transparently. No mass re-hash, no forced reset.
-- **Client side:** patch the `LoginReplyHandler` ctor (`0x00DDED60`) to send the
-  **plaintext** password (read from `ServerConnection + 0x3C`) over the
+**Status (server half): Implemented.** The server-side storage, verification,
+on-login migration, and the plaintext-over-TLS gate are in
+`crates/services/src/auth/credentials.rs`. The client-side plaintext patch
+(below) is still pending.
+
+- **Schema (implemented):** a **dual-column** scheme — the legacy SHA-1
+  `account.password` column (now NULLable) retained alongside a new
+  `account.password_hash_v2` (argon2id PHC string) and a `account.password_algo`
+  selector (`1`=sha1_legacy, `2`=argon2id). Edited directly in the `db/sgw/`
+  schema + seed — **not** in `db/scripts/` (per project convention: never
+  hand-write migration scripts; edit the seed). Seed accounts start at algo 1.
+- **Migration (implemented): opportunistic, on-login.** When an account
+  authenticates with a **plaintext** password and only the legacy hash exists,
+  the server recomputes the client-side SHA-1, verifies it against the stored
+  hash, then computes and stores the argon2id hash, flips `password_algo` to 2,
+  and NULLs the legacy column — all in the same login. No mass re-hash, no forced
+  reset. Migration failure is logged but never fails an already-verified login.
+- **Plaintext is TLS-gated (implemented):** a request is classified as legacy
+  hash (40-char hex, allowed on either listener) or plaintext (anything else).
+  Plaintext is **only** accepted on the TLS listener — a marker inserted by a
+  middleware layered solely onto the HTTPS Router clone. Plaintext over plain
+  HTTP is rejected. argon2id params are explicit OWASP: 64 MiB / 3 iterations /
+  1 lane, random per-hash salt.
+- **Client side (pending):** patch the `LoginReplyHandler` ctor (`0x00DDED60`) to
+  send the **plaintext** password (read from `ServerConnection + 0x3C`) over the
   now-TLS-protected channel, in place of the client SHA-1 hash. The server does
   the modern hashing.
 
@@ -87,6 +113,21 @@ transport in TLS**. Server-side argon2id is the actual defense; the client can n
 longer dictate the hash. Dual-column + opportunistic migration avoids a flag day.
 
 ### Phase 3 — Mercury v2 packet crypto
+
+**Status (server v2 wiring): Implemented; default v1; per-client negotiation
+pending the client patch.** The v2 crypto primitive (HKDF-split keys, per-packet
+random IV, truncated HMAC-SHA256, version-byte downgrade defense) and the server
+wiring that selects a version per session both exist. A session is pinned to one
+wire version at login (`MercuryEncryption::from_session_key_versioned`), and that
+version is applied consistently for both directions and every handshake/outbound
+builder. Selection is **server-wide**, sourced from
+`ServerConfig::mercury_encryption_version` (env `MERCURY_ENCRYPTION_VERSION`),
+**defaulting to `1`**: the stock client only understands v1, so producing v2
+frames by default would break every unpatched connection. A byte-exact
+regression guard pins the default-v1 handshake output. There is **no per-client
+negotiation yet** — every session uses the configured version; negotiation
+arrives with the client patch that teaches `SGW.exe` to speak v2. Until then v2
+is selectable only for a patched client or a test harness.
 
 - **Wire format:** version-byte-gated
   `[ version ][ IV ][ ciphertext ][ HMAC ]`, with a **random per-packet IV**,

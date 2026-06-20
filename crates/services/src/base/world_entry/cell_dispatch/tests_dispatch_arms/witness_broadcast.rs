@@ -89,6 +89,7 @@ async fn witness_entity_method_routes_one_packet_to_witness_addr_only() {
         0x20,
         IDBASE_NPC_DEFAULT,
         &[0xDE, 0xAD],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert_eq!(
         sent[0], expected,
@@ -147,7 +148,13 @@ async fn entity_invisible_routes_one_packet_to_witness_addr_only() {
     // events) or that swapped `entity_id`/`witness_id` in the body.
     let sent = typed_transport.filter_to(witness_addr);
     assert_eq!(sent.len(), 1, "exactly one packet recorded for filter_to");
-    let expected = build_entity_invisible(&[0u8; 32], 0, &[], observee_id);
+    let expected = build_entity_invisible(
+        &[0u8; 32],
+        0,
+        &[],
+        observee_id,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_eq!(
         sent[0], expected,
         "witness packet bytes must match build_entity_invisible \

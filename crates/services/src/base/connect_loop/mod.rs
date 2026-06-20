@@ -15,7 +15,7 @@ use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
-use cimmeria_mercury::encryption::MercuryEncryption;
+use cimmeria_mercury::encryption::{EncryptionVersion, MercuryEncryption};
 use cimmeria_mercury::packet::{FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE};
 use cimmeria_mercury::transport::{BidirectionalTransport, Transport};
 
@@ -51,6 +51,7 @@ pub(crate) async fn run_connect_loop(
     connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: Arc<Mutex<EntityManager>>,
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    enc_version: EncryptionVersion,
 ) {
     let mut buf = [0u8; 4096];
 
@@ -74,6 +75,7 @@ pub(crate) async fn run_connect_loop(
                     &entity_manager,
                     &cell_tx,
                     &entity_to_addr,
+                    enc_version,
                 )
                 .await
                 {
@@ -125,6 +127,7 @@ async fn handle_datagram(
     entity_manager: &Arc<Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    enc_version: EncryptionVersion,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if raw.is_empty() {
         return Ok(());
@@ -191,6 +194,7 @@ async fn handle_datagram(
                 entity_manager,
                 cell_tx,
                 entity_to_addr,
+                enc_version,
             )
             .await
         }
