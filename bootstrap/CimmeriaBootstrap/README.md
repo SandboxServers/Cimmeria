@@ -19,10 +19,24 @@ Import-Module ./bootstrap/CimmeriaBootstrap
 |------|----------|--------------|
 | 1 | `Assert-CimmeriaPrerequisites` | Check for Rust toolchain, optionally Node.js |
 | 2 | `Install-CimmeriaDependencies` | Download PostgreSQL (Windows) or verify system PG |
-| 3 | `Build-CimmeriaServer` | `cargo build --workspace` |
-| 4 | `Build-CimmeriaApp` | `npm install` + `cargo tauri build` (optional) |
-| 5 | `Initialize-CimmeriaDatabase` | PostgreSQL init + schema load (port 5433) |
-| 6 | `Start-CimmeriaServer` | Launch cimmeria-server binary |
+| 3 | `Build-CimmeriaServer` | `cargo build --workspace` excluding the GUI apps (see below) |
+| 4 | `Build-CimmeriaApp` | `npm install` + `cargo tauri build` (optional, `-WithAdmin`) |
+| 5 | `Build-CimmeriaLauncher` | Build the `sgw-launcher` Tauri app (optional, `-WithLauncher`) |
+| 6 | `Sync-CimmeriaGameData` | Copy client PAK files into `data/cache/` |
+| 7 | `Initialize-CimmeriaDatabase` | PostgreSQL init + schema load (port 5433) |
+| 8 | `Start-CimmeriaServer` | Launch cimmeria-server binary |
+
+Step 3 (`Build-CimmeriaServer`) runs:
+
+```powershell
+cargo build --workspace `
+  --exclude cimmeria-app --exclude sgw-launcher `
+  --exclude cimmeria-content-editor --exclude cimmeria-scene-editor
+```
+
+The four GUI apps (Tauri admin panel, game launcher, and the two Tauri editors)
+are excluded from the default build and only built on demand via `-WithAdmin` /
+`-WithLauncher` or their dedicated functions.
 
 `Invoke-CimmeriaBootstrap` runs all steps in order with fail-fast semantics.
 
@@ -30,12 +44,14 @@ Import-Module ./bootstrap/CimmeriaBootstrap
 
 ### Build
 
-- **`Build-CimmeriaServer`** - Build the Rust server workspace via Cargo
+- **`Build-CimmeriaServer`** - Build the Rust server workspace via Cargo (excludes the GUI apps)
 - **`Build-CimmeriaApp`** - Build the Tauri admin app (SolidJS frontend + Rust backend)
+- **`Build-CimmeriaLauncher`** - Build the `sgw-launcher` Tauri game launcher
 
 ### Setup & Database
 
 - **`Install-CimmeriaDependencies`** - Download/verify PostgreSQL
+- **`Sync-CimmeriaGameData`** - Copy cooked client PAK files into `data/cache/`
 - **`Initialize-CimmeriaDatabase`** - Set up PostgreSQL and load schemas
 
 ### Server Lifecycle
@@ -46,6 +62,7 @@ Import-Module ./bootstrap/CimmeriaBootstrap
 ### Client & Orchestration
 
 - **`Update-CimmeriaClient`** - Patch game client Login.lua to connect locally
+- **`Install-CimmeriaReToolchain`** - Install the reverse-engineering toolchain (opt-in, Windows)
 - **`Invoke-CimmeriaBootstrap`** - Full pipeline orchestrator
 
 ## Common Options
@@ -121,16 +138,19 @@ CimmeriaBootstrap/
 ├── README.md                       # This file
 ├── Data/
 │   └── Dependencies.psd1           # Dependency registry (PostgreSQL)
-├── Public/                         # Exported functions (8 files)
+├── Public/                         # Exported functions (11 files)
 │   ├── Install-CimmeriaDependencies.ps1
 │   ├── Build-CimmeriaServer.ps1
 │   ├── Build-CimmeriaApp.ps1
+│   ├── Build-CimmeriaLauncher.ps1
 │   ├── Initialize-CimmeriaDatabase.ps1
+│   ├── Sync-CimmeriaGameData.ps1
 │   ├── Start-CimmeriaServer.ps1
 │   ├── Stop-CimmeriaServer.ps1
 │   ├── Update-CimmeriaClient.ps1
+│   ├── Install-CimmeriaReToolchain.ps1
 │   └── Invoke-CimmeriaBootstrap.ps1
-└── Private/                        # Internal helpers (7 files)
+└── Private/                        # Internal helpers (9 files)
     ├── Assert-CimmeriaPrerequisites.ps1
     ├── Write-Step.ps1
     ├── Write-Status.ps1

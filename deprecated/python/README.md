@@ -2,7 +2,7 @@
 
 Python 3.4.1 scripts embedded in the C++ server via Boost.Python. These are the **reference implementation** of game logic — the Rust server (`crates/`) reimplements this behavior in Rust, using these scripts as the source of truth for how things should work.
 
-164 files across 4 directories.
+163 files across 4 top-level directories (`Atrea/`, `base/`, `cell/`, `common/`).
 
 ## Directory Structure
 
@@ -23,7 +23,7 @@ python/
 │   │   └── General/           Generic mission scripts
 │   ├── profiles/   Entity spawn profiles
 │   ├── spaces/     Per-zone space scripts
-│   └── *.py        SGWPlayer, SGWMob, AbilityManager, EffectManager, etc.
+│   └── *.py        SGWPlayer, SGWMob, AbilityManager, etc.
 ├── common/         Shared utilities used by both base and cell
 │   └── defs/       Common type definitions
 └── Atrea/          Atrea-specific entity scripts
@@ -33,14 +33,14 @@ python/
 
 | File | Lines | Purpose |
 |---|---|---|
-| `cell/AbilityManager.py` | 1091 | Ability activation, cooldowns, combat sequences |
-| `cell/EffectManager.py` | ~600 | Effect application, removal, pulsing |
-| `cell/SGWPlayer.py` | ~700 | Player entity: movement, combat, XP, stats |
+| `cell/AbilityManager.py` | 1090 | Ability activation, cooldowns, combat sequences |
+| `cell/effects/` + `common/defs/Effect.py` | — | Effect application, removal, pulsing |
+| `cell/SGWPlayer.py` | ~2307 | Player entity: movement, combat, XP, stats |
 | `cell/SGWMob.py` | 397 | NPC AI: Fighting state, threat, ability selection |
 | `base/Account.py` | ~300 | Character creation/deletion, login flow |
-| `cell/Lootable.py` | 221 | Loot generation algorithm |
-| `base/Crafter.py` | 575 | Crafting: disciplines, research, alloys |
-| `base/Trade.py` | 244 | Player-to-player trade |
+| `cell/interactions/Lootable.py` | 221 | Loot generation algorithm |
+| `cell/Crafter.py` | 575 | Crafting: disciplines, research, alloys |
+| `cell/Trade.py` | 244 | Player-to-player trade |
 
 ## Language Constraints (Python 3.4.1)
 
@@ -55,4 +55,4 @@ python/
 
 The Python scripts are **not executed by the Rust server**. When implementing a feature in Rust, read the corresponding Python script to understand the expected behavior, then implement it in the appropriate Rust crate (usually `crates/services/` or `crates/game/`).
 
-For implementation status of each system, see [docs/gameplay/README.md](../docs/gameplay/README.md).
+For implementation status of each system, see [docs/gameplay/README.md](../../docs/gameplay/README.md).

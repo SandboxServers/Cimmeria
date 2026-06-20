@@ -2,7 +2,7 @@
 
 Entity type definitions for all BigWorld entities in Stargate Worlds. These XML files define the contract between the game client, server, and Python scripts — every property, method, and interface that entities expose.
 
-50 files across 3 directories.
+48 files in one subdirectory (`defs/`).
 
 ## Structure
 
@@ -13,13 +13,13 @@ entities/
 ├── spaces.xml              Space configuration
 ├── custom_alias.xml        Type aliases (e.g., EntityID, MailID)
 ├── custom_enumerations.xml Enumerations (StatType, AbilityType, AIState, etc. — 70+ types)
-├── defs/                   Per-entity .def files
-│   ├── SGWPlayer.def       Player entity (68 properties, 175+ methods with interfaces)
-│   ├── SGWMob.def          NPC/enemy entity
-│   ├── SGWBeing.def        Base being interface
-│   ├── Account.def         Account management entity
-│   └── ...                 (18 total entities, 18 interfaces)
-└── editor/                 Editor-facing entity definitions
+├── Copyright.txt           Copyright notice
+└── defs/                   Per-entity .def files (plus interface .def mixins)
+    ├── SGWPlayer.def       Player entity (68 properties, 175+ methods with interfaces)
+    ├── SGWMob.def          NPC/enemy entity
+    ├── SGWBeing.def        Base being interface
+    ├── Account.def         Account management entity
+    └── ...                 (18 total entities + interface mixins under defs/interfaces/)
 ```
 
 ## Entity Types (18 total)

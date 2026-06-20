@@ -1,16 +1,25 @@
 # crates/ — Rust Server (Active Development)
 
-This directory is the primary codebase. All active server development happens here. The C++ code in `src/` is the legacy reference implementation.
+This directory is the primary codebase. All active server development happens here. The C++ code in `deprecated/cpp/` is the legacy reference implementation.
 
 For testing conventions across these crates — test types, when to use which, common gotchas — see **[../TESTING.md](../TESTING.md)**.
 
 ## Crate Overview
 
+The main service spine:
+
 ```
-common ──┬──► mercury ──► entity ──► game ──────► services ──► server
-         ├──► defs    ──►         ──► content-engine ──►
-         └──► commands ──────────────────────────►
+common ──┬──► mercury ──► entity ──► game ──────► services ──┬──► server
+         ├──► defs    ──►         ──► content-engine ──►     ├──► admin-api
+         └──► commands ──────────────────────────►           └──► supervisor
 ```
+
+Off the spine sit the support and tooling crates: `discord` and `observability`
+(server-side notifications + OTLP metrics), `wireclient` (headless Tier 3 test
+client), `upk` / `upk-objects` (Unreal Package parsing), `navmesh-extractor`
+(UE3 geometry export for NavBuilder), `launcher` (the egui game launcher), and
+`client-telemetry` (a Windows-only cdylib injected into the client). All 19
+crates are catalogued in the table below.
 
 | Crate | Package Name | Purpose |
 |---|---|---|
@@ -48,20 +57,22 @@ cargo build -p cimmeria-server --release
 # Run tests for one crate:
 cargo test -p cimmeria-services
 
-# Full workspace check (high memory on WSL — skip the Tauri apps):
-cargo check --workspace --exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor
+# Full workspace check (high memory on WSL — skip the GUI apps and the
+# Windows-only client-telemetry cdylib):
+cargo check --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
+  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry
 ```
 
 See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
 
 ## Testing
 
-The workspace currently carries **2,012 `#[test]` / `#[tokio::test]` cases across 305 files**, of which 155 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+The workspace currently carries **~2,690 `#[test]` / `#[tokio::test]` cases across ~400 files**, of which 155 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
 
 ```bash
-# Unit + non-DB integration (covers ~1,854 tests):
+# Unit + non-DB integration:
 cargo test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher
+  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry
 
 # Live-DB tests (start the bundled Postgres on :5433 first, then):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
@@ -80,5 +91,5 @@ DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
 | `services/src/mercury/` | Mercury transport glue — AoI, protocol dispatch, world data |
 | `mercury/src/lib.rs` | Mercury packet framing, encryption, reliability |
 | `game/src/combat/` | Combat system |
-| `game/src/inventory/`, `missions/`, `interactions/`, `social/`, `world/` | Per-system game logic |
+| `game/src/inventory/`, `missions/`, `commands/`, `social/`, `world/` | Per-system game logic |
 | `content-engine/src/lib.rs` | Content pipeline (missions, dialogs, sequences) |

@@ -38,7 +38,7 @@ Recast wrapper later if it buys anything.
 |---|---|
 | 0 — `.nav` round-trip smoke | **shipped** — see `tests/nav_roundtrip_castle_cellblock.rs` |
 | 1.1 — crate scaffold | **shipped** — modules `chunk_id`, `geometry`, `obj`, `umap`, `nav_roundtrip` |
-| 1.2 — StaticMesh instancing | **shipped** — modules `transform`, `staticmesh`; archetype-based actors deferred |
+| 1.2 — StaticMesh instancing | **shipped** — modules `transform`, `staticmesh`; see `tests/staticmesh_castle_cellblock.rs` (actor-walk) and `tests/extract_map_castle_cellblock.rs` (full `extract_map` OBJ output); archetype-based actors deferred |
 | 1.3 — Terrain decoder | follow-up (recipe in `.claude/agent-memory/game-archaeology-specialist/ue3-terrain-serialize.md`) |
 | 1.4 — BSP `Model` / `Polys` decoder | follow-up (needs Ghidra trace) |
 | 2 — NavBuilder rebuild + Castle_CellBlock acceptance | follow-up |
