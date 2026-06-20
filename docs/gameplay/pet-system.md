@@ -7,8 +7,8 @@ last_updated: 2026-05-27
 
 # Pet System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~0% implemented
+> **Last updated**: 2026-06-20
+> **Status**: ~10% — engine support, content, and client are complete; the server-side summon/command/despawn lifecycle is unimplemented (tracked in #570). Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
 
 ## Overview
 
@@ -82,11 +82,13 @@ The `SGWPet` entity is defined in `entities/defs/SGWPet.def` (parent: `SGWMob`).
 ## Pet Stance System
 
 Stances control pet AI behavior mode. The `petStance` property defaults to 1.
+Confirmed values (from `db/resources/AI/Types/EPetStance.sql`):
 
-```
-TODO: Decompile stance enum values from client
-Likely values: Passive, Defensive, Aggressive, Follow
-```
+| Value | Stance | Notes |
+|-------|--------|-------|
+| 0 | Passive | Won't engage |
+| 1 | Defensive | Default — fights when owner/itself is attacked |
+| 2 | Aggressive | Engages on sight |
 
 ## Pet Ability Toggling
 
@@ -105,6 +107,75 @@ The `toggledAbilities` array tracks abilities that the player has turned OFF. Wh
 3. **Pet persistence** - `saveToDB` schema and what is saved
 4. **Leash distance** - How `lastOwnerPositionCheck` triggers `onOwnerLeash`
 5. **Spawn ability** - How `abilityToResolve` is used when pet spawns
+
+## What pets are (overview)
+
+Pets are summoned combat companions you command. The roster is Goa'uld-themed, and
+each pet type has its own authored ability kit:
+
+- **Jaffa** — *Double Blast*
+- **Lo'taur** — *Heal Health* (a healer pet)
+- **Prime** (a First Prime) — *Focus Degeneration*
+- **Ashrak** (Goa'uld assassin) — a full dagger move-set: *Back Slash, Onslaught,
+  Paralyze, Crippling Slash, Dervish, Decimation Wound, Double Slash, Inevitable
+  End, Prolong Agony, Assassin*
+- **Straegis** (enemy line) — *Disengage, Dissonance, Explode*
+- **Turret** (deployable) — *Burst, Cone Attack, AOE Attack, Enhance (Shield /
+  Contamination Damage), Repair (Full / Restoration)*, plus *Dual Turrets* and
+  *Prototype* summon variants
+- **System Lord** summon
+
+Player abilities also buff pets: *Lord's Concentration* (interrupt resist to **all**
+pets), *Defend Your God*, *Holy Warrior*, *To The Death*, *Heed Our Calling*. About
+**65** summon/command/buff abilities are authored in `db/resources/Abilities/Seed/abilities.sql`.
+
+The client supports three stances and targeting up to **6 party members' pets** at once.
+
+## Built vs. concept
+
+Pets are a real, built-out system at every layer except the original server's lifecycle:
+
+- **Engine — first-class.** The entity flag set (`db/resources/Entities/Types/EEntityFlags.sql`)
+  includes `ENTITYFLAG_Pet`, `ENTITYFLAG_DetectionPet`, `ENTITYFLAG_PetUseOwnFaction`,
+  `ENTITYFLAG_PetWaitToDespawn`, `ENTITYFLAG_NoPetLeveling`, `ENTITYFLAG_NoPetTargeting`.
+  Ownership is a `GENERICPROPERTY_PetOwnerId` entity property, and there's a
+  `RESOURCE_PetCommand` resource type. A mob *becomes* a pet by setting the Pet flag + owner id.
+- **Content — authored.** Summon abilities and per-pet ability kits are present.
+- **Client — complete.** The 2009 binary has a full `GamePet` class, the stance/command/
+  ability UI, and party-pet targeting (Ghidra-confirmed).
+- **Original server — stubbed.** Python `SGWPet` only sent the ability/stance lists on
+  spawn; summon/despawn/command/follow logic was never finished. Our restoration (#570)
+  is therefore greenfield on the server.
+
+## Models
+
+We have a large model library, in two styles:
+
+- **Dedicated creature meshes** — e.g. the Straegis line (`MOB_StraegisBeacon`,
+  `MOB_StraegisTitan`, `MOB_StraegisFighter`) and `MOB_AncientDrone`.
+- **Jaffa "kit" models** — every Jaffa shares one base body (`BS_JaffaMale`) and gets
+  its look from swappable **armor component sets**, so a few base meshes yield dozens of
+  variants: Standard (`AR_J_Standard.*`), Eagle (`AR_J_Eagle.*`), Praxis (`AR_J_Praxis.*`),
+  plus Bull/Cat/Cobra/Croc/Demon/Dragon/Falcon/Horse/Hyena/Jackal/Mayan/Morrigan/Naga/Ra/
+  Svarog/Tiki/Viking — full **Female** sets — and the **Unas 1–6** beasts.
+
+Model *references* live in `db/resources/Entities/Seed/entity_templates.sql` (133 mob
+templates); the model *binaries* ship in the cooked client art (available via the game
+cache; not in git).
+
+## How summoning works — and the one real gap
+
+Using a summon ability spawns a mob, flags it as a Pet, and stamps the caster's
+`PetOwnerId`; the player then commands it via the stance/ability UI.
+
+**The unresolved binding:** summoning runs through a generic **"Spawn Mob" effect** that
+carries **no template id** in the data — *which* creature it spawns was decided by that
+effect's *script*. Tellingly, the seed has **no dedicated `Lo'taur` / `Prime` / `Ashrak` /
+`Turret` entity templates** by name, even though their summon + command abilities are fully
+authored. (The **Straegis** line is the one fully-wired example: abilities **and** templates
+**and** models all present.) So the *summon → specific creature/model* mapping for the
+player-pet types still needs recovering from the effect scripts / a debugger capture — see
+the dynamic-analysis list in [`pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
 
 ## Related Docs
 
