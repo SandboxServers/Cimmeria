@@ -18,9 +18,9 @@ pub use player_data::query_player_load_data;
 // they don't trip `unused_imports` in non-test builds — `mod.rs` itself now
 // only holds constants (both loaders moved to submodules).
 #[cfg(test)]
-use std::sync::Arc;
-#[cfg(test)]
 use sqlx::PgPool;
+#[cfg(test)]
+use std::sync::Arc;
 
 /// Container IDs used in equipment-visual queries. Mirrors the DB schema:
 /// 3 = bandolier, 4..=14 = the eleven equipment slots (head, torso, etc.).

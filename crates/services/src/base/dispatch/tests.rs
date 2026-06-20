@@ -391,8 +391,7 @@ async fn send_player_communication_access_level_one_sets_gm_flag() {
 #[tokio::test]
 async fn send_player_communication_dnd_message_sets_dnd_flag() {
     let flags =
-        drive_send_player_communication_and_get_flags(0, Some("busy raiding".to_string()))
-            .await;
+        drive_send_player_communication_and_get_flags(0, Some("busy raiding".to_string())).await;
     assert_eq!(
         flags & speaker_flags::DND,
         speaker_flags::DND,
@@ -410,8 +409,7 @@ async fn send_player_communication_dnd_message_sets_dnd_flag() {
 #[tokio::test]
 async fn send_player_communication_gm_with_dnd_sets_both_flags() {
     let flags =
-        drive_send_player_communication_and_get_flags(2, Some("on duty, dnd".to_string()))
-            .await;
+        drive_send_player_communication_and_get_flags(2, Some("on duty, dnd".to_string())).await;
     assert_eq!(
         flags,
         speaker_flags::GM | speaker_flags::DND,
@@ -725,9 +723,7 @@ async fn chat_set_afk_handler_is_log_only_and_preserves_state() {
             &entity_to_addr,
         )
         .await
-        .unwrap_or_else(|e| {
-            panic!("chatSetAFKMessage (payload {i}) must not propagate Err: {e}")
-        });
+        .unwrap_or_else(|e| panic!("chatSetAFKMessage (payload {i}) must not propagate Err: {e}"));
     }
 
     // Every per-connection field the speaker_flags wiring touches
