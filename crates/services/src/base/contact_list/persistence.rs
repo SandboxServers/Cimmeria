@@ -71,10 +71,9 @@ pub(crate) async fn load_contact_lists(
 
 /// Ensure the two system lists (Friends / Ignore) exist for a player.
 ///
-/// Uses `INSERT ... ON CONFLICT DO NOTHING` so it is idempotent — safe to call
-/// on every login regardless of whether the lists already exist. Returns the
-/// (friends_list_id, ignore_list_id) pair (either freshly inserted or the ids
-/// of pre-existing rows).
+/// Idempotent — safe to call on every login. On conflict (returning player)
+/// uses a UNION ALL fallback select so **no WAL write** is emitted for
+/// existing rows. Returns the (friends_list_id, ignore_list_id) pair.
 ///
 /// Flags 300 / 301 are the EMoniker text monikers from the spec that identify
 /// the system lists to the client.
@@ -82,23 +81,37 @@ pub(crate) async fn ensure_system_lists(
     pool: &PgPool,
     player_id: i32,
 ) -> Result<(i32, i32), sqlx::Error> {
-    // Friends
+    // Friends — insert-or-select without touching the row on conflict.
     let friends_id: i32 = sqlx::query_scalar(
-        "INSERT INTO sgw_contact_list (player_id, name, flags) \
-         VALUES ($1, 'Friends', 300) \
-         ON CONFLICT (player_id, name) DO UPDATE SET player_id = EXCLUDED.player_id \
-         RETURNING list_id",
+        "WITH ins AS ( \
+             INSERT INTO sgw_contact_list (player_id, name, flags) \
+             VALUES ($1, 'Friends', 300) \
+             ON CONFLICT (player_id, name) DO NOTHING \
+             RETURNING list_id \
+         ) \
+         SELECT list_id FROM ins \
+         UNION ALL \
+         SELECT list_id FROM sgw_contact_list \
+         WHERE player_id = $1 AND name = 'Friends' \
+         LIMIT 1",
     )
     .bind(player_id)
     .fetch_one(pool)
     .await?;
 
-    // Ignore
+    // Ignore — same pattern.
     let ignore_id: i32 = sqlx::query_scalar(
-        "INSERT INTO sgw_contact_list (player_id, name, flags) \
-         VALUES ($1, 'Ignore', 301) \
-         ON CONFLICT (player_id, name) DO UPDATE SET player_id = EXCLUDED.player_id \
-         RETURNING list_id",
+        "WITH ins AS ( \
+             INSERT INTO sgw_contact_list (player_id, name, flags) \
+             VALUES ($1, 'Ignore', 301) \
+             ON CONFLICT (player_id, name) DO NOTHING \
+             RETURNING list_id \
+         ) \
+         SELECT list_id FROM ins \
+         UNION ALL \
+         SELECT list_id FROM sgw_contact_list \
+         WHERE player_id = $1 AND name = 'Ignore' \
+         LIMIT 1",
     )
     .bind(player_id)
     .fetch_one(pool)

@@ -386,17 +386,25 @@ pub(crate) async fn handle_on_client_ready(
     // Fan out online status (CM 89, eventId=LoggedInStatus, data=1) to all
     // online players who have this character in any of their contact lists.
     // Runs after the list-push so the player is fully set up before watchers
-    // are notified. Uses the player_name snapshotted at the top of this fn.
+    // are notified. Fire-and-forget via tokio::spawn — the login burst is
+    // already complete and we must not block it on per-watcher DB + sends.
     if let Some(ref name) = player_name {
-        super::super::contact_list::handlers::fanout_login_status(
-            name,
-            true, // online
-            db_pool,
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
+        let name_owned = name.clone();
+        let pool_c = db_pool.clone();
+        let transport_c = transport.clone();
+        let connected_c = connected.clone();
+        let entity_to_addr_c = entity_to_addr.clone();
+        tokio::spawn(async move {
+            super::super::contact_list::handlers::fanout_login_status(
+                &name_owned,
+                true, // online
+                &pool_c,
+                &transport_c,
+                &connected_c,
+                &entity_to_addr_c,
+            )
+            .await;
+        });
     }
 
     // First-login cinematic — fires AFTER appearance is bound to the now-live

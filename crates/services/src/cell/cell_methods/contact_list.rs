@@ -12,6 +12,7 @@
 //! via `CellToBaseMsg` variants. The base owns all DB mutations and client
 //! echo responses.
 
+use crate::base::contact_list::wire::MAX_MEMBERS_PER_REQUEST;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::read_wstring;
@@ -23,9 +24,6 @@ pub const RENAME: u16 = 57;
 pub const FLAGS_UPDATE: u16 = 58;
 pub const ADD_MEMBERS: u16 = 59;
 pub const REMOVE_MEMBERS: u16 = 60;
-
-/// Hard limit on names per ADD/REMOVE request. Mirrors the base-side clamp.
-const MAX_MEMBERS_PER_REQUEST: usize = 100;
 
 // ── Wire parse helpers ────────────────────────────────────────────────────────
 
@@ -104,14 +102,22 @@ pub async fn dispatch(
                 return true;
             };
             tracing::debug!(entity_id, player_id, name, flags, "contactListCreate");
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::ContactListCreate {
                     entity_id,
                     player_id,
                     name,
                     flags,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    error = %e,
+                    "contactListCreate send to base failed — mutation dropped"
+                );
+            }
             true
         }
 
@@ -125,13 +131,22 @@ pub async fn dispatch(
                 return true;
             };
             tracing::debug!(entity_id, player_id, list_id, "contactListDelete");
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::ContactListDelete {
                     entity_id,
                     player_id,
                     list_id,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    list_id,
+                    error = %e,
+                    "contactListDelete send to base failed — mutation dropped"
+                );
+            }
             true
         }
 
@@ -153,14 +168,23 @@ pub async fn dispatch(
                 return true;
             };
             tracing::debug!(entity_id, player_id, list_id, name, "contactListRename");
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::ContactListRename {
                     entity_id,
                     player_id,
                     list_id,
                     name,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    list_id,
+                    error = %e,
+                    "contactListRename send to base failed — mutation dropped"
+                );
+            }
             true
         }
 
@@ -181,14 +205,23 @@ pub async fn dispatch(
                 flags,
                 "contactListFlagsUpdate"
             );
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::ContactListFlagsUpdate {
                     entity_id,
                     player_id,
                     list_id,
                     flags,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    list_id,
+                    error = %e,
+                    "contactListFlagsUpdate send to base failed — mutation dropped"
+                );
+            }
             true
         }
 
@@ -216,14 +249,23 @@ pub async fn dispatch(
                 count = names.len(),
                 "contactListAddMembers"
             );
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::ContactListAddMembers {
                     entity_id,
                     player_id,
                     list_id,
                     names,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    list_id,
+                    error = %e,
+                    "contactListAddMembers send to base failed — mutation dropped"
+                );
+            }
             true
         }
 
@@ -252,14 +294,23 @@ pub async fn dispatch(
                 count = names.len(),
                 "contactListRemoveMembers"
             );
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::ContactListRemoveMembers {
                     entity_id,
                     player_id,
                     list_id,
                     names,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    list_id,
+                    error = %e,
+                    "contactListRemoveMembers send to base failed — mutation dropped"
+                );
+            }
             true
         }
 

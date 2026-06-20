@@ -76,20 +76,25 @@ pub(super) async fn handle_log_off(
         entity_to_addr.lock().unwrap().remove(&entity_id);
     }
 
-    // Fan out offline status to contact-list watchers. Runs regardless of
-    // disconnect type (return-to-select or full exit) because in both cases
-    // this character is no longer in-world. Uses the player_name snapshotted
-    // before cleanup above so the session row doesn't need to be re-read.
-    if let Some(ref name) = player_name {
-        crate::base::contact_list::handlers::fanout_login_status(
-            name,
-            false, // offline
-            db_pool,
-            transport,
-            connected,
-            entity_to_addr,
-        )
-        .await;
+    // Fan out offline status to contact-list watchers. Fire-and-forget via
+    // tokio::spawn so the logout response (loggedOff / RESET_ENTITIES) is
+    // not blocked on the DB query + per-watcher sends.
+    if let Some(name) = player_name {
+        let pool_c = db_pool.clone();
+        let transport_c = transport.clone();
+        let connected_c = connected.clone();
+        let entity_to_addr_c = entity_to_addr.clone();
+        tokio::spawn(async move {
+            crate::base::contact_list::handlers::fanout_login_status(
+                &name,
+                false, // offline
+                &pool_c,
+                &transport_c,
+                &connected_c,
+                &entity_to_addr_c,
+            )
+            .await;
+        });
     }
 
     if disconnect != 0 {

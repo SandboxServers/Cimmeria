@@ -12,5 +12,6 @@
 
 CREATE TABLE sgw_contact_list_member (
     list_id integer NOT NULL,
-    player_name character varying(128) NOT NULL
+    player_name character varying(128) NOT NULL,
+    CONSTRAINT sgw_contact_list_member_player_name_nonempty CHECK (char_length(player_name) > 0)
 );

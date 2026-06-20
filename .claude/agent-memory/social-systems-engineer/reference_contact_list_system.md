@@ -54,7 +54,8 @@ Two tables (in `db/sgw/Social/Tables/`):
   - CASCADE DELETE on list_id FK
 
 System lists: Friends (flags=300), Ignore (flags=301). Created idempotently via
-`ensure_system_lists()` using INSERT…ON CONFLICT on every login.
+`ensure_system_lists()` using `WITH ins AS (INSERT … ON CONFLICT DO NOTHING RETURNING list_id) SELECT … UNION ALL SELECT … LIMIT 1`
+— no WAL write on conflict (no-write-amplification pattern).
 
 Sequence: `sgw_contact_list_list_id_seq` in `db/sgw/Social/Sequences/`.
 
@@ -65,35 +66,38 @@ Seed data (player_ids 62-68, list_ids 1-14) in `db/sgw/Social/Seed/`.
 ```
 crates/services/src/
   base/contact_list/
-    mod.rs           — pub(crate) re-exports
-    wire.rs          — S→C packet builders (5 functions)
-    persistence.rs   — DB CRUD + live-DB tests
-    handlers.rs      — push_contact_lists_on_login, handle_*, fanout_login_status
+    mod.rs                   — pub(crate) re-exports
+    wire.rs                  — S→C packet builders (5 functions) + MAX_MEMBERS_PER_REQUEST
+    persistence.rs           — DB CRUD + live-DB tests
+    handlers/
+      mod.rs                 — push_contact_lists_on_login + re-exports
+      crud.rs                — handle_create/delete/rename/flags_update/add_members/remove_members
+      presence_fanout.rs     — fanout_login_status + collect_watcher_entity_ids
   base/world_entry/cell_dispatch/
-    mod.rs           — routes ContactList* cell→base msgs to contact_list_dispatch
-    contact_list_dispatch.rs  — route() fn
+    mod.rs                   — routes ContactList* cell→base msgs to contact_list_dispatch
+    contact_list_dispatch.rs — route() fn
   cell/cell_methods/
-    contact_list.rs  — CM 55-60 cell-side handlers, WSTRING parsing
+    contact_list.rs          — CM 55-60 cell-side handlers, WSTRING parsing; imports MAX_MEMBERS_PER_REQUEST from wire
   cell/messages/cell_to_base.rs  — ContactList* variants (6 total)
 ```
 
 ### Login/logout fanout (Phase 4, LoggedInStatus only)
 
-Login fanout: `client_ready.rs::handle_on_client_ready` calls
-`contact_list::handlers::fanout_login_status(name, true, ...)` after
-`push_contact_lists_on_login`.
+Login fanout: `client_ready.rs::handle_on_client_ready` spawns
+`fanout_login_status(name, true, ...)` via `tokio::spawn` (fire-and-forget)
+after `push_contact_lists_on_login`. The list-push itself stays on the critical path.
 
-Logout fanout: `dispatch/session.rs::handle_log_off` calls
-`fanout_login_status(name, false, ...)` on voluntary logout.
-Player name is snapshotted from session state before cleanup.
+Logout fanout: `dispatch/session.rs::handle_log_off` spawns
+`fanout_login_status(name, false, ...)` via `tokio::spawn` (fire-and-forget).
+Player name is snapshotted before cleanup; Arcs are cloned into the spawned task.
 
 Abrupt disconnect (`destroy_client_entities` in `helpers/mod.rs`) is
 synchronous and lacks db_pool — offline fanout on abrupt disconnect is
 deferred to Phase 5 (TODO #572).
 
-`fanout_login_status` in `handlers.rs`:
+`fanout_login_status` in `handlers/presence_fanout.rs`:
 1. Calls `find_watchers(pool, player_name)` → Vec<i32> of watcher player_ids
-2. Finds each watcher's SocketAddr via entity_to_addr + connected maps
+2. Finds each watcher's entity_id via `collect_watcher_entity_ids` (pure fn, unit-tested)
 3. Sends CM 89 (onContactListEvent, eventId=0, data_value=1/0) to each online watcher
 
 ### db_pool threading

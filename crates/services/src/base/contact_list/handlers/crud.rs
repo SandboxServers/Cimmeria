@@ -17,14 +17,11 @@ use crate::base::contact_list::persistence::{
 };
 use crate::base::contact_list::wire::{
     build_on_contact_list_add_members, build_on_contact_list_delete,
-    build_on_contact_list_remove_members, build_on_contact_list_update,
+    build_on_contact_list_remove_members, build_on_contact_list_update, MAX_MEMBERS_PER_REQUEST,
 };
 use crate::base::helpers::send_to_witness_reliable;
 use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
-
-/// Hard limit on names per ADD/REMOVE request. Prevents abuse.
-pub(crate) const MAX_MEMBERS_PER_REQUEST: usize = 100;
 
 /// Handle `ContactListCreate` — insert a new list and echo CM 85.
 pub(crate) async fn handle_create(

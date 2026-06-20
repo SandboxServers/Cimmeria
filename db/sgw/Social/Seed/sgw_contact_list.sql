@@ -36,4 +36,4 @@ INSERT INTO sgw_contact_list (list_id, player_id, name, flags) VALUES (14, 68, '
 -- Advance sequence past the seeded rows.
 --
 
-SELECT pg_catalog.setval('sgw_contact_list_list_id_seq', 14, true);
+SELECT setval('sgw_contact_list_list_id_seq', (SELECT COALESCE(MAX(list_id), 1) FROM sgw_contact_list), true);

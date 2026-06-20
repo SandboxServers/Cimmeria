@@ -72,6 +72,15 @@ pub(crate) fn build_on_contact_list_event(
     buf
 }
 
+// ── Protocol constants ───────────────────────────────────────────────────────
+
+/// Hard limit on names per ADD/REMOVE request (C→S and B→B).
+///
+/// Referenced by both the cell-side wire parser (`cell_methods/contact_list.rs`)
+/// and the base-side handler (`handlers/crud.rs`). Defined here — the
+/// contact-list wire module — so both layers share a single definition.
+pub(crate) const MAX_MEMBERS_PER_REQUEST: usize = 100;
+
 // ── EContactListEvent integer codes ─────────────────────────────────────────
 
 /// `EContactListEvent::ECONTACT_LIST_EVENT_LoggedInStatus`
