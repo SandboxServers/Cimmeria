@@ -11,6 +11,9 @@
 mod inventory_items;
 mod player_data;
 
+// Internal callers reach this via `inventory_items::`; only this module's
+// test mod uses the bare re-export, so gate it to the test build.
+#[cfg(test)]
 pub use inventory_items::query_inventory_items;
 pub use player_data::query_player_load_data;
 

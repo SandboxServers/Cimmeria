@@ -26,5 +26,5 @@ mod cinematic;
 mod client_ready;
 
 pub(crate) use builders::{build_appearance_args, build_tint_args};
-pub(crate) use cinematic::{handle_cancel_movie, send_cinematic};
+pub(crate) use cinematic::handle_cancel_movie;
 pub(crate) use client_ready::handle_on_client_ready;
