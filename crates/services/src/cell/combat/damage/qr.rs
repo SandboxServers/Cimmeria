@@ -1,0 +1,366 @@
+//! QR (Quality Rating) roll: hit/miss/crit outcome sampling.
+//!
+//! Computes a Quality Rating from attacker vs defender stats, then samples
+//! a result via a simplified two-branch beta distribution and maps the
+//! sample onto a result code (hit/miss/glancing/crit/double-crit).
+//!
+//! Reference: `python/cell/AbilityManager.py:181-230` (DamageCalc class)
+
+use super::pipeline::stat_cur;
+use cimmeria_entity::abilities::{
+    RC_CRITICAL, RC_DOUBLE_CRITICAL, RC_GLANCING, RC_HIT, RC_MISS,
+};
+use cimmeria_entity::stats::{
+    StatList, ACCURACY, AWARENESS, COORDINATION, DEFENSE, ENGAGEMENT, PERCEPTION, QR_MOD,
+};
+
+// ── QR Configuration ─────────────────────────────────────────────────────────
+// From `python/common/Config.py` and `python/cell/AbilityManager.py`.
+
+/// Beta distribution base parameter. Used as the floor for both the alpha
+/// and beta sides — `qr` then perturbs whichever side is on the "stronger"
+/// end of the formula (see [`calculate_result`]).
+const QR_ALPHA_BETA: f64 = 1.4;
+/// How aggressively QR shifts the perturbed side. Python ref:
+/// `python/cell/AbilityManager.py:181-184`.
+const QR_MULTIPLIER: f64 = 2.0;
+
+// Result code thresholds (from qrRand in [0.0, 1.0])
+const THRESHOLD_MISS: f64 = 0.07;
+const THRESHOLD_GLANCING: f64 = 0.20;
+const THRESHOLD_CRITICAL: f64 = 0.80;
+const THRESHOLD_DOUBLE_CRIT: f64 = 0.93;
+
+// ── DamageCalc ───────────────────────────────────────────────────────────────
+
+/// Result of a QR calculation: the random value and the result code.
+pub struct QrResult {
+    /// Random value from beta distribution, in [0.0, 1.0].
+    pub qr_rand: f64,
+    /// Result code (RC_HIT, RC_MISS, RC_CRITICAL, etc.).
+    pub result_code: u8,
+    /// The QR score (attacker stats - defender stats).
+    pub qr: f64,
+}
+
+/// Calculate Quality Rating from attacker vs defender stats.
+///
+/// Simplified version: uses stat values directly without per-entity
+/// crouch/cover state (those are tracked as stat modifiers).
+///
+/// Reference: `python/cell/AbilityManager.py:200-230`
+pub fn calculate_qr(attacker: &StatList, defender: &StatList, ranged: bool) -> f64 {
+    let mut qr = 0.0;
+
+    // Primary stat contribution
+    if ranged {
+        qr += stat_cur(attacker, COORDINATION) as f64 * 0.05;
+    } else {
+        qr += stat_cur(attacker, ENGAGEMENT) as f64 * 0.05;
+    }
+    qr -= stat_cur(defender, PERCEPTION) as f64 * 0.05;
+
+    // Accuracy vs defense
+    qr += stat_cur(attacker, ACCURACY) as f64 * 0.01;
+    qr -= stat_cur(defender, DEFENSE) as f64 * 0.01;
+
+    // QR modifiers (buffs/debuffs)
+    qr += stat_cur(attacker, QR_MOD) as f64;
+    qr -= stat_cur(defender, QR_MOD) as f64;
+
+    // Awareness
+    qr += stat_cur(attacker, AWARENESS) as f64 * 0.01;
+
+    qr
+}
+
+/// Map a QR value to a result code by sampling from the python reference's
+/// two-branch beta distribution. From `AbilityManager.py:181-184`:
+///
+/// ```text
+/// if qr >= 0: betavariate(α, α + qr * mult)        # β grows -> mean ↓
+/// else:       betavariate(α - qr * mult, α)        # α grows -> mean ↑
+/// ```
+///
+/// The retail damage curve depends on the beta distribution's tails (the
+/// crit/double-crit bands), so a linear-bias approximation is silently
+/// off-spec at every QR value other than 0 — the prior Rust port took
+/// that shortcut.
+///
+/// Note the counter-intuitive sign convention preserved from python:
+/// positive QR (attacker stronger) yields LOWER `qr_rand`; the `(1 + qr)`
+/// post-multiply at [`super::pipeline::calculate_damage`] is what
+/// compensates the damage scaling. See the `mean_*` tests below for the
+/// expected per-QR distribution mean.
+///
+/// `seed` makes the roll deterministic per (entity, ability, sequence) so
+/// unit tests and live combat behave the same on the same input. Uses
+/// `ChaCha8Rng` (not `StdRng`) so the deterministic stream is stable
+/// across `rand` releases — `StdRng`'s underlying algorithm is allowed to
+/// change between minor versions, which would silently shift replay
+/// results.
+pub fn calculate_result(qr: f64, seed: u64) -> QrResult {
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+    use rand_distr::{Beta, Distribution};
+
+    let (alpha, beta) = if qr >= 0.0 {
+        (QR_ALPHA_BETA, QR_ALPHA_BETA + qr * QR_MULTIPLIER)
+    } else {
+        // qr is negative, so `-qr * mult` is positive; alpha grows.
+        (QR_ALPHA_BETA - qr * QR_MULTIPLIER, QR_ALPHA_BETA)
+    };
+    // Both params are ≥ QR_ALPHA_BETA in their respective branches (the
+    // perturbed side only ever grows), so Beta::new can't fail unless
+    // QR is NaN/inf — which we treat as a programming error.
+    let dist = Beta::new(alpha, beta).expect("alpha/beta both > 0 by construction");
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
+    let qr_rand = dist.sample(&mut rng);
+
+    QrResult {
+        qr_rand,
+        result_code: qr_rand_to_result_code(qr_rand),
+        qr,
+    }
+}
+
+/// Pure threshold mapping from a sampled qr_rand in [0, 1] to a result code.
+/// Factored out of [`calculate_result`] so the threshold table can be
+/// unit-tested without coupling to the (random) beta sample.
+pub fn qr_rand_to_result_code(qr_rand: f64) -> u8 {
+    if qr_rand < THRESHOLD_MISS {
+        RC_MISS
+    } else if qr_rand < THRESHOLD_GLANCING {
+        RC_GLANCING
+    } else if qr_rand < THRESHOLD_CRITICAL {
+        RC_HIT
+    } else if qr_rand < THRESHOLD_DOUBLE_CRIT {
+        RC_CRITICAL
+    } else {
+        RC_DOUBLE_CRITICAL
+    }
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cimmeria_entity::stats::ArchetypeStatValues;
+
+    fn make_attacker() -> StatList {
+        let mut stats = StatList::new();
+        stats.apply_archetype(&ArchetypeStatValues {
+            coordination: 5,
+            engagement: 4,
+            fortitude: 3,
+            morale: 4,
+            perception: 3,
+            intelligence: 2,
+            health: 760,
+            focus: 1570,
+            health_per_level: 10,
+            focus_per_level: 70,
+        });
+        stats
+    }
+
+    fn make_defender() -> StatList {
+        let mut stats = StatList::new();
+        stats.apply_archetype(&ArchetypeStatValues {
+            coordination: 3,
+            engagement: 3,
+            fortitude: 3,
+            morale: 3,
+            perception: 3,
+            intelligence: 2,
+            health: 500,
+            focus: 500,
+            health_per_level: 10,
+            focus_per_level: 70,
+        });
+        stats
+    }
+
+    #[test]
+    fn qr_positive_when_attacker_stronger() {
+        let attacker = make_attacker();
+        let defender = make_defender();
+        let qr = calculate_qr(&attacker, &defender, true);
+        // coordination 5 vs perception 3: (5-3)*0.05 = 0.1 > 0
+        assert!(qr > 0.0, "QR should be positive: {qr}");
+    }
+
+    #[test]
+    fn qr_negative_when_defender_stronger() {
+        let attacker = make_defender(); // weaker
+        let defender = make_attacker(); // stronger perception
+        let qr = calculate_qr(&attacker, &defender, true);
+        // coord 3 vs perception 3: 0, but attacker has less accuracy
+        assert!(qr <= 0.0, "QR should be non-positive: {qr}");
+    }
+
+    // ── Result-code thresholds ────────────────────────────────────────
+    // Pure threshold checks decoupled from the (random) beta sample.
+    // The beta sampler doesn't permit "pass me a specific qr_rand", so
+    // the threshold table is exposed as its own helper for direct testing.
+    #[test]
+    fn result_code_miss_below_miss_threshold() {
+        assert_eq!(qr_rand_to_result_code(0.03), RC_MISS);
+    }
+
+    #[test]
+    fn result_code_glancing_in_glancing_band() {
+        assert_eq!(qr_rand_to_result_code(0.15), RC_GLANCING);
+    }
+
+    #[test]
+    fn result_code_hit_in_hit_band() {
+        assert_eq!(qr_rand_to_result_code(0.5), RC_HIT);
+    }
+
+    #[test]
+    fn result_code_critical_above_crit_threshold() {
+        assert_eq!(qr_rand_to_result_code(0.85), RC_CRITICAL);
+    }
+
+    #[test]
+    fn result_code_double_crit_above_double_crit_threshold() {
+        assert_eq!(qr_rand_to_result_code(0.95), RC_DOUBLE_CRITICAL);
+    }
+
+    #[test]
+    fn calculate_result_is_deterministic_per_seed() {
+        // Same seed + same QR must always produce the same QR sample.
+        // This is what makes combat reproducible for tests / replay.
+        let a = calculate_result(0.5, 0xDEAD_BEEF);
+        let b = calculate_result(0.5, 0xDEAD_BEEF);
+        assert_eq!(a.qr_rand, b.qr_rand);
+        assert_eq!(a.result_code, b.result_code);
+    }
+
+    // ── Beta-distribution shape ───────────────────────────────────────
+    //
+    // Statistical tests pinning the python-reference two-branch shape:
+    //
+    //   if qr >= 0: Beta(α, α + qr*mult)   → β grows → mean drops below 0.5
+    //   else:       Beta(α - qr*mult, α)   → α grows → mean climbs above 0.5
+    //
+    // Counter-intuitive but preserved on purpose (see `calculate_result`
+    // doc): positive QR pulls the mean DOWN — the `(1 + qr)` post-multiply
+    // in `calculate_damage` is what makes the damage curve increase with
+    // attacker advantage despite the lower sampled value.
+    //
+    // Tolerances are generous (~3%) because we're sampling 10k draws, not
+    // computing the analytic CDF — small variance is expected.
+
+    fn distribution_mean(qr: f64, samples: usize) -> f64 {
+        let total: f64 = (0..samples)
+            .map(|i| calculate_result(qr, i as u64).qr_rand)
+            .sum();
+        total / samples as f64
+    }
+
+    fn miss_fraction(qr: f64, samples: usize) -> f64 {
+        let misses = (0..samples)
+            .filter(|&i| calculate_result(qr, i as u64).result_code == RC_MISS)
+            .count();
+        misses as f64 / samples as f64
+    }
+
+    fn crit_or_better_fraction(qr: f64, samples: usize) -> f64 {
+        let crits = (0..samples)
+            .filter(|&i| {
+                let rc = calculate_result(qr, i as u64).result_code;
+                rc == RC_CRITICAL || rc == RC_DOUBLE_CRITICAL
+            })
+            .count();
+        crits as f64 / samples as f64
+    }
+
+    #[test]
+    fn mean_at_qr_zero_matches_beta_1_4_1_4() {
+        // Beta(1.4, 1.4) is symmetric: mean α/(α+β) = 1.4/2.8 = 0.5.
+        let mean = distribution_mean(0.0, 10_000);
+        assert!(
+            (mean - 0.5).abs() < 0.02,
+            "mean at QR=0 should be ~0.5, got {mean}"
+        );
+    }
+
+    #[test]
+    fn mean_drops_at_positive_qr() {
+        // Per python branch `qr >= 0`: Beta(1.4, 1.4 + 1*2) = Beta(1.4, 3.4),
+        // mean = 1.4/4.8 ≈ 0.292. Note this is *counter-intuitive* — positive
+        // QR (attacker stronger) yields LOWER qr_rand. The (1+qr) post-multiply
+        // in `calculate_damage` is what makes the damage scaling work out;
+        // the threshold logic is the same on both sides of QR=0.
+        let mean = distribution_mean(1.0, 10_000);
+        assert!(
+            (mean - 0.292).abs() < 0.03,
+            "mean at QR=+1 should be ~0.29, got {mean}"
+        );
+    }
+
+    #[test]
+    fn mean_climbs_at_negative_qr() {
+        // Per python branch `qr < 0`: Beta(1.4 - (-1)*2, 1.4) = Beta(3.4, 1.4),
+        // mean = 3.4/4.8 ≈ 0.708. Negative QR (defender stronger) yields
+        // HIGHER qr_rand — but `(1+qr)` at calculate_damage time scales the
+        // resulting damage down sharply (and to 0 once qr ≤ -1).
+        let mean = distribution_mean(-1.0, 10_000);
+        assert!(
+            (mean - 0.708).abs() < 0.03,
+            "mean at QR=-1 should be ~0.71, got {mean}"
+        );
+    }
+
+    #[test]
+    fn extreme_qr_does_not_panic() {
+        // Both python formulas only ever GROW one of the beta parameters
+        // away from QR_ALPHA_BETA, so neither side can go non-positive
+        // for any finite QR. This test pins that invariant — a future
+        // refactor that flipped a sign would surface here.
+        let _ = calculate_result(50.0, 0xAAAA);
+        let _ = calculate_result(-50.0, 0xBBBB);
+    }
+
+    #[test]
+    fn crit_band_remains_reachable_at_zero_qr() {
+        // Sanity: at QR=0 we should still see some crits (the right tail
+        // of Beta(1.4, 1.4) extends past 0.8). Without this, a regression
+        // to a degenerate distribution would silently zero out crits.
+        let crit_rate = crit_or_better_fraction(0.0, 10_000);
+        assert!(
+            crit_rate > 0.05,
+            "crit rate at QR=0 should be >5%, got {crit_rate}"
+        );
+    }
+
+    #[test]
+    fn negative_qr_increases_crit_band_observance() {
+        // Python: negative qr → higher mean → more crits land in the
+        // crit/double-crit bands at the high end. Pin this so a future
+        // sign-flip in the formula (which would silently invert the
+        // distribution) surfaces here.
+        let crit_at_zero = crit_or_better_fraction(0.0, 10_000);
+        let crit_at_neg = crit_or_better_fraction(-1.0, 10_000);
+        assert!(
+            crit_at_neg > crit_at_zero,
+            "neg QR should crit MORE per python (counter-intuitive); zero={crit_at_zero}, neg={crit_at_neg}"
+        );
+    }
+
+    #[test]
+    fn positive_qr_increases_miss_band_observance() {
+        // Python: positive qr → lower mean → more samples land in the
+        // miss/glancing bands at the low end. Same regression-pin as
+        // `negative_qr_increases_crit_band_observance` for the other side.
+        let miss_at_zero = miss_fraction(0.0, 10_000);
+        let miss_at_pos = miss_fraction(1.0, 10_000);
+        assert!(
+            miss_at_pos > miss_at_zero,
+            "pos QR should miss MORE per python (counter-intuitive); zero={miss_at_zero}, pos={miss_at_pos}"
+        );
+    }
+}
