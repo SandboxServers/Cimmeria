@@ -202,7 +202,7 @@ mod tests {
         assert!(!t.loot_generated);
     }
 
-    // -- NET-NEW coverage (#531): is_enabled mapping + default branches --
+    // -- NET-NEW coverage: is_enabled mapping + default branches --
 
     /// `is_enabled` must round-trip every `EventKind` against the matching
     /// struct field. We mutate one field at a time from a known baseline

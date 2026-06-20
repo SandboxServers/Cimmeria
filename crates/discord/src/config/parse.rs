@@ -456,7 +456,7 @@ rate_limit_per_min = 9999
         assert!(matches!(err, ConfigError::UnclosedEnvVar { .. }));
     }
 
-    // -- NET-NEW coverage (#531): config-parse error paths --
+    // -- NET-NEW coverage: config-parse error paths --
 
     /// Malformed TOML must surface as [`ConfigError::Toml`], not panic.
     /// The deserialize step in `from_toml_str` is the only producer of
