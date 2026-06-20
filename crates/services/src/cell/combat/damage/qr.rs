@@ -7,9 +7,7 @@
 //! Reference: `python/cell/AbilityManager.py:181-230` (DamageCalc class)
 
 use super::pipeline::stat_cur;
-use cimmeria_entity::abilities::{
-    RC_CRITICAL, RC_DOUBLE_CRITICAL, RC_GLANCING, RC_HIT, RC_MISS,
-};
+use cimmeria_entity::abilities::{RC_CRITICAL, RC_DOUBLE_CRITICAL, RC_GLANCING, RC_HIT, RC_MISS};
 use cimmeria_entity::stats::{
     StatList, ACCURACY, AWARENESS, COORDINATION, DEFENSE, ENGAGEMENT, PERCEPTION, QR_MOD,
 };
