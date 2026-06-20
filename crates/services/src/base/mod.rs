@@ -113,6 +113,11 @@ pub(crate) struct ConnectedClientState {
     pub enc: MercuryEncryption,
     pub key: [u8; 32],
     pub account_id: u32,
+    /// Human-readable account name (login username), threaded from the
+    /// login ticket. Surfaced in Discord notifications alongside the
+    /// numeric `account_id`. `None` only if a future login path forgets
+    /// to populate it.
+    pub account_name: Option<String>,
     /// Account access level, populated from the login row. Used by
     /// chat dispatch to set the `SPEAKER_GM` bit on `speaker_flags`
     /// when `access_level > 0` (matches

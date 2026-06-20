@@ -126,6 +126,7 @@ mod tests {
             enc: MercuryEncryption::from_session_key([0u8; 32]),
             key: [0u8; 32],
             account_id,
+            account_name: None,
             access_level: 0,
             dnd_message: None,
             char_list_sent: false,

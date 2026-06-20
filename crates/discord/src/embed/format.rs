@@ -49,8 +49,9 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
         // ── Auth ────────────────────────────────────────────────────────
         Event::PlayerLogin {
             account_id,
+            account_name,
             character_name,
-            addr,
+            addr: _,
             timestamp,
         } => (
             format!(
@@ -58,14 +59,16 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
                 character_name.as_deref().unwrap_or("(character select)")
             ),
             String::new(),
-            vec![
-                ("Account".into(), account_id.to_string(), true),
-                ("Addr".into(), addr.to_string(), true),
-            ],
+            vec![(
+                "Account".into(),
+                account_value(Some(*account_id), account_name.as_deref()),
+                true,
+            )],
             timestamp.to_rfc3339(),
         ),
         Event::PlayerLogout {
             account_id,
+            account_name,
             character_name,
             session_secs,
             timestamp,
@@ -76,15 +79,20 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
             ),
             String::new(),
             vec![
-                ("Account".into(), account_id.to_string(), true),
+                (
+                    "Account".into(),
+                    account_value(Some(*account_id), account_name.as_deref()),
+                    true,
+                ),
                 ("Session".into(), format_duration(*session_secs), true),
             ],
             timestamp.to_rfc3339(),
         ),
         Event::PlayerDisconnect {
             account_id,
+            account_name,
             character_name,
-            addr,
+            addr: _,
             reason,
             session_secs,
             timestamp,
@@ -94,47 +102,50 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
             vec![
                 (
                     "Account".into(),
-                    account_id.map_or("?".into(), |a| a.to_string()),
+                    account_value(*account_id, account_name.as_deref()),
                     true,
                 ),
-                ("Addr".into(), addr.to_string(), true),
                 ("Session".into(), format_duration(*session_secs), true),
             ],
             timestamp.to_rfc3339(),
         ),
         Event::PlayerAuthFailed {
             account_name,
-            addr,
+            addr: _,
             reason,
             timestamp,
         } => (
             "🚫 Auth failed".to_string(),
             reason.clone(),
-            vec![
-                ("Account".into(), account_name.clone(), true),
-                ("Addr".into(), addr.to_string(), true),
-            ],
+            vec![("Account".into(), account_name.clone(), true)],
             timestamp.to_rfc3339(),
         ),
 
         // ── World ───────────────────────────────────────────────────────
         Event::PlayerWorldEntry {
             account_id,
+            account_name,
             character_name,
             world_name,
             position,
             timestamp,
         } => (
             format!("🌍 Entered {}", world_name),
-            character_name.clone(),
+            String::new(),
             vec![
-                ("Account".into(), account_id.to_string(), true),
+                ("Character".into(), character_name.clone(), true),
+                (
+                    "Account".into(),
+                    account_value(Some(*account_id), account_name.as_deref()),
+                    true,
+                ),
                 ("Position".into(), format_vec3(*position), true),
             ],
             timestamp.to_rfc3339(),
         ),
         Event::PlayerWorldExit {
             account_id,
+            account_name,
             character_name,
             from_world,
             to_world,
@@ -145,8 +156,15 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
                 from_world,
                 to_world.as_deref().unwrap_or("(unknown)")
             ),
-            character_name.clone(),
-            vec![("Account".into(), account_id.to_string(), true)],
+            String::new(),
+            vec![
+                ("Character".into(), character_name.clone(), true),
+                (
+                    "Account".into(),
+                    account_value(Some(*account_id), account_name.as_deref()),
+                    true,
+                ),
+            ],
             timestamp.to_rfc3339(),
         ),
 
@@ -212,8 +230,8 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
                 "📜 Mission accepted: {}",
                 mission_label(*mission_id, mission_name.as_deref())
             ),
-            character_name.clone(),
-            Vec::new(),
+            String::new(),
+            vec![("Character".into(), character_name.clone(), true)],
             timestamp.to_rfc3339(),
         ),
         Event::MissionCompleted {
@@ -226,8 +244,8 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
                 "✅ Mission completed: {}",
                 mission_label(*mission_id, mission_name.as_deref())
             ),
-            character_name.clone(),
-            Vec::new(),
+            String::new(),
+            vec![("Character".into(), character_name.clone(), true)],
             timestamp.to_rfc3339(),
         ),
         Event::MissionFailed {
@@ -241,8 +259,8 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
                 "❌ Mission failed: {}",
                 mission_label(*mission_id, mission_name.as_deref())
             ),
-            format!("{}\n_{}_", character_name, reason),
-            Vec::new(),
+            format!("_{}_", reason),
+            vec![("Character".into(), character_name.clone(), true)],
             timestamp.to_rfc3339(),
         ),
         Event::MissionRewardGranted {
@@ -254,8 +272,9 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
             timestamp,
         } => (
             format!("🎁 Rewards: mission {}", mission_id),
-            character_name.clone(),
+            String::new(),
             vec![
+                ("Character".into(), character_name.clone(), true),
                 ("XP".into(), xp.to_string(), true),
                 ("Cash".into(), cash.to_string(), true),
                 ("Items".into(), format_item_list(items), false),
@@ -269,8 +288,11 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
             timestamp,
         } => (
             format!("💰 Loot from {}", source),
-            character_name.clone(),
-            vec![("Items".into(), format_item_list(items), false)],
+            String::new(),
+            vec![
+                ("Character".into(), character_name.clone(), true),
+                ("Items".into(), format_item_list(items), false),
+            ],
             timestamp.to_rfc3339(),
         ),
         Event::ItemUsed {
@@ -280,11 +302,89 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
             timestamp,
         } => (
             format!("🧪 Item used: type {}", item_type_id),
-            character_name.clone(),
-            target
-                .as_ref()
-                .map(|t| vec![("Target".into(), t.clone(), true)])
-                .unwrap_or_default(),
+            String::new(),
+            {
+                let mut f = vec![("Character".into(), character_name.clone(), true)];
+                if let Some(t) = target {
+                    f.push(("Target".into(), t.clone(), true));
+                }
+                f
+            },
+            timestamp.to_rfc3339(),
+        ),
+        Event::CharacterCreated {
+            account_id,
+            account_name,
+            character_name,
+            archetype,
+            world_name,
+            timestamp,
+        } => (
+            format!("✨ Character created: {}", character_name),
+            String::new(),
+            vec![
+                (
+                    "Account".into(),
+                    account_value(Some(*account_id), account_name.as_deref()),
+                    true,
+                ),
+                ("Archetype".into(), archetype.to_string(), true),
+                ("Start".into(), world_name.clone(), true),
+            ],
+            timestamp.to_rfc3339(),
+        ),
+        Event::NpcDeath {
+            npc_name,
+            killer,
+            cause,
+            world_name,
+            timestamp,
+        } => (
+            format!("☠️ NPC killed: {}", npc_name),
+            String::new(),
+            {
+                let mut f = vec![
+                    (
+                        "Killer".into(),
+                        killer.clone().unwrap_or_else(|| "(none)".into()),
+                        true,
+                    ),
+                    ("Cause".into(), cause.clone(), true),
+                ];
+                if let Some(w) = world_name {
+                    f.push(("World".into(), w.clone(), true));
+                }
+                f
+            },
+            timestamp.to_rfc3339(),
+        ),
+        Event::MinigameResult {
+            game,
+            character_name,
+            success,
+            timestamp,
+        } => (
+            format!(
+                "🎮 Minigame {}: {}",
+                if *success { "win" } else { "loss" },
+                game
+            ),
+            String::new(),
+            vec![("Character".into(), character_name.clone(), true)],
+            timestamp.to_rfc3339(),
+        ),
+        Event::Dialog {
+            character_name,
+            dialog_id,
+            choice,
+            timestamp,
+        } => (
+            match choice {
+                Some(b) => format!("💬 Dialog choice: #{} → option {}", dialog_id, b),
+                None => format!("💬 Dialog opened: #{}", dialog_id),
+            },
+            String::new(),
+            vec![("Character".into(), character_name.clone(), true)],
             timestamp.to_rfc3339(),
         ),
 
@@ -375,14 +475,13 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
         }
         Event::WireFormatError {
             kind,
-            addr,
+            addr: _,
             details,
             timestamp,
         } => (
             format!("🧩 Wire format error: {}", kind),
             details.clone(),
-            addr.map(|a| vec![("Addr".into(), a.to_string(), true)])
-                .unwrap_or_default(),
+            Vec::new(),
             timestamp.to_rfc3339(),
         ),
         Event::DbError {
@@ -406,37 +505,31 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
             timestamp.to_rfc3339(),
         ),
         Event::MercuryTimeout {
-            addr,
+            addr: _,
             account_id,
             silence_secs,
             timestamp,
         } => (
             "⏱️ Mercury timeout".to_string(),
             format!("No traffic for {} s", silence_secs),
-            vec![
-                ("Addr".into(), addr.to_string(), true),
-                (
-                    "Account".into(),
-                    account_id.map_or("?".into(), |a| a.to_string()),
-                    true,
-                ),
-            ],
+            vec![(
+                "Account".into(),
+                account_id.map_or("?".into(), |a| a.to_string()),
+                true,
+            )],
             timestamp.to_rfc3339(),
         ),
 
         // ── Ops ─────────────────────────────────────────────────────────
         Event::HighLatency {
-            addr,
+            addr: _,
             rtt_ms,
             threshold_ms,
             timestamp,
         } => (
             format!("📡 High latency: {} ms", rtt_ms),
             String::new(),
-            vec![
-                ("Addr".into(), addr.to_string(), true),
-                ("Threshold".into(), format!("{} ms", threshold_ms), true),
-            ],
+            vec![("Threshold".into(), format!("{} ms", threshold_ms), true)],
             timestamp.to_rfc3339(),
         ),
         Event::PacketLossSpike {
@@ -527,6 +620,17 @@ fn mission_label(id: i32, name: Option<&str>) -> String {
     match name {
         Some(n) => format!("`{}` ({})", n, id),
         None => format!("#{}", id),
+    }
+}
+
+/// Render the "Account" field value, preferring the human-readable name and
+/// falling back to the numeric id. Player IPs are deliberately never shown.
+fn account_value(id: Option<u32>, name: Option<&str>) -> String {
+    match (name, id) {
+        (Some(n), Some(i)) => format!("{n} (#{i})"),
+        (Some(n), None) => n.to_string(),
+        (None, Some(i)) => format!("#{i}"),
+        (None, None) => "?".to_string(),
     }
 }
 

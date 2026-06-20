@@ -490,6 +490,21 @@ pub(crate) async fn handle_create_character(
 
             tracing::info!(%addr, player_id, name = %name, "Character created successfully");
 
+            // Discord gameplay-channel: a new character was created (on by
+            // default — low volume / high signal). Account name is best-effort
+            // from the live session state.
+            let account_name = connected
+                .lock()
+                .ok()
+                .and_then(|c| c.get(&addr).and_then(|s| s.account_name.clone()));
+            cimmeria_discord::emit_character_created(
+                account_id,
+                account_name,
+                name.clone(),
+                archetype,
+                world_location,
+            );
+
             // Send updated character list (Account entity already exists)
             let characters = query_character_list(db_pool, account_id).await;
             let account_eid = get_account_entity_id(connected, addr)?;

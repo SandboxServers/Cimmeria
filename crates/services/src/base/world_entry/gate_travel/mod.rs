@@ -62,7 +62,16 @@ pub(crate) async fn handle_gate_travel(
 
     // Get client state. Also snapshot the name + current world for the
     // Discord world-exit emit before they're overwritten by the new world.
-    let (key, account_id, _access_level, pending_acks_arc, next_seq, exit_name, exit_from_world) = {
+    let (
+        key,
+        account_id,
+        account_name,
+        _access_level,
+        pending_acks_arc,
+        next_seq,
+        exit_name,
+        exit_from_world,
+    ) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients
             .get(&addr)
@@ -70,6 +79,7 @@ pub(crate) async fn handle_gate_travel(
         (
             c.key,
             c.account_id,
+            c.account_name.clone(),
             c.access_level,
             Arc::clone(&c.pending_acks),
             Arc::clone(&c.next_seq),
@@ -224,6 +234,7 @@ pub(crate) async fn handle_gate_travel(
     // overwrites the connected state.)
     cimmeria_discord::emit_player_world_exit(
         account_id,
+        account_name,
         exit_name.unwrap_or_else(|| "<unknown>".to_string()),
         exit_from_world.unwrap_or_else(|| "<unknown>".to_string()),
         Some(target_world_name.to_string()),

@@ -264,6 +264,7 @@ pub(super) async fn handle_server_selection(
             ticket.clone(),
             PendingLogin {
                 account_id: session.account_id,
+                account_name: session.account_name.clone(),
                 access_level: session.access_level,
                 ticket: ticket.clone(),
                 session_key: session_key.clone(),

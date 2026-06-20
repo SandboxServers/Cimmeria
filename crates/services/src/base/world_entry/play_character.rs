@@ -155,9 +155,11 @@ pub(crate) async fn handle_play_character(
     let entry_position = entry_info.pos;
 
     // Store the world entry info and player load data for the create-player step.
+    let mut entry_account_name = None;
     {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         if let Some(c) = clients.get_mut(&addr) {
+            entry_account_name = c.account_name.clone();
             c.pending_player_entity_id = Some(entry_info.player_entity_id);
             c.player_entity_id = Some(entry_info.player_entity_id);
             c.player_name = Some(player_load_data.player_name.clone());
@@ -183,6 +185,7 @@ pub(crate) async fn handle_play_character(
     // login emit), so this carries name + world + spawn position.
     cimmeria_discord::emit_player_world_entry(
         account_id,
+        entry_account_name,
         entry_character_name,
         entry_world_name,
         entry_position,
@@ -223,6 +226,7 @@ mod tests {
             enc: MercuryEncryption::from_session_key([0xCDu8; 32]),
             key: [0xCDu8; 32],
             account_id,
+            account_name: Some("testacct".into()),
             access_level: 0,
             dnd_message: None,
             char_list_sent: false,

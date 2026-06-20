@@ -35,6 +35,17 @@ async fn send_minigame_result(
     on_victory_chains: Vec<i64>,
     phase: &'static str,
 ) {
+    // Discord gameplay-channel: a minigame finished (on by default — low
+    // volume / high signal). The minigame server only holds the entity id,
+    // so the character name is best-effort (`entity:<id>`); resolving the
+    // display name would require a cross-service round-trip not worth the
+    // coupling here. `result_code` 1 = victory, anything else = loss.
+    cimmeria_discord::emit_minigame_result(
+        game_name,
+        format!("entity:{entity_id}"),
+        result_code == 1,
+    );
+
     let chain_count = on_victory_chains.len();
     if let Err(e) = result_tx
         .send(CellToBaseMsg::MinigameResult {

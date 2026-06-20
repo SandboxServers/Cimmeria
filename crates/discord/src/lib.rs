@@ -179,18 +179,30 @@ pub fn emit_server_shutdown(reason: impl Into<String>, uptime_secs: u64) {
     });
 }
 
-pub fn emit_player_login(account_id: u32, character_name: Option<String>, addr: SocketAddr) {
+pub fn emit_player_login(
+    account_id: u32,
+    account_name: Option<String>,
+    character_name: Option<String>,
+    addr: SocketAddr,
+) {
     emit(Event::PlayerLogin {
         account_id,
+        account_name,
         character_name,
         addr,
         timestamp: chrono::Utc::now(),
     });
 }
 
-pub fn emit_player_logout(account_id: u32, character_name: Option<String>, session_secs: u64) {
+pub fn emit_player_logout(
+    account_id: u32,
+    account_name: Option<String>,
+    character_name: Option<String>,
+    session_secs: u64,
+) {
     emit(Event::PlayerLogout {
         account_id,
+        account_name,
         character_name,
         session_secs,
         timestamp: chrono::Utc::now(),
@@ -199,6 +211,7 @@ pub fn emit_player_logout(account_id: u32, character_name: Option<String>, sessi
 
 pub fn emit_player_disconnect(
     account_id: Option<u32>,
+    account_name: Option<String>,
     character_name: Option<String>,
     addr: SocketAddr,
     reason: DisconnectReason,
@@ -206,6 +219,7 @@ pub fn emit_player_disconnect(
 ) {
     emit(Event::PlayerDisconnect {
         account_id,
+        account_name,
         character_name,
         addr,
         reason,
@@ -229,12 +243,14 @@ pub fn emit_player_auth_failed(
 
 pub fn emit_player_world_entry(
     account_id: u32,
+    account_name: Option<String>,
     character_name: impl Into<String>,
     world_name: impl Into<String>,
     position: [f32; 3],
 ) {
     emit(Event::PlayerWorldEntry {
         account_id,
+        account_name,
         character_name: character_name.into(),
         world_name: world_name.into(),
         position,
@@ -244,12 +260,14 @@ pub fn emit_player_world_entry(
 
 pub fn emit_player_world_exit(
     account_id: u32,
+    account_name: Option<String>,
     character_name: impl Into<String>,
     from_world: impl Into<String>,
     to_world: Option<String>,
 ) {
     emit(Event::PlayerWorldExit {
         account_id,
+        account_name,
         character_name: character_name.into(),
         from_world: from_world.into(),
         to_world,
@@ -328,6 +346,60 @@ pub fn emit_item_used(
         character_name: character_name.into(),
         item_type_id,
         target,
+        timestamp: chrono::Utc::now(),
+    });
+}
+
+pub fn emit_character_created(
+    account_id: u32,
+    account_name: Option<String>,
+    character_name: impl Into<String>,
+    archetype: i32,
+    world_name: impl Into<String>,
+) {
+    emit(Event::CharacterCreated {
+        account_id,
+        account_name,
+        character_name: character_name.into(),
+        archetype,
+        world_name: world_name.into(),
+        timestamp: chrono::Utc::now(),
+    });
+}
+
+pub fn emit_npc_death(
+    npc_name: impl Into<String>,
+    killer: Option<String>,
+    cause: impl Into<String>,
+    world_name: Option<String>,
+) {
+    emit(Event::NpcDeath {
+        npc_name: npc_name.into(),
+        killer,
+        cause: cause.into(),
+        world_name,
+        timestamp: chrono::Utc::now(),
+    });
+}
+
+pub fn emit_minigame_result(
+    game: impl Into<String>,
+    character_name: impl Into<String>,
+    success: bool,
+) {
+    emit(Event::MinigameResult {
+        game: game.into(),
+        character_name: character_name.into(),
+        success,
+        timestamp: chrono::Utc::now(),
+    });
+}
+
+pub fn emit_dialog(character_name: impl Into<String>, dialog_id: i32, choice: Option<i32>) {
+    emit(Event::Dialog {
+        character_name: character_name.into(),
+        dialog_id,
+        choice,
         timestamp: chrono::Utc::now(),
     });
 }
@@ -526,6 +598,10 @@ mod tests {
             mission_reward_granted: true,
             loot_generated: true,
             item_used: true,
+            character_created: true,
+            npc_death: true,
+            minigame_result: true,
+            dialog: true,
             warning: true,
             ..EventToggles::default()
         };
@@ -580,24 +656,40 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:50000".parse().unwrap();
         emit_server_startup("0.1.0", vec!["addr".into()]);
         emit_server_shutdown("test", 100);
-        emit_player_login(1, Some("alice".into()), addr);
-        emit_player_logout(1, Some("alice".into()), 60);
+        emit_player_login(1, Some("steve".into()), Some("alice".into()), addr);
+        emit_player_logout(1, Some("steve".into()), Some("alice".into()), 60);
         emit_player_disconnect(
             Some(1),
+            Some("steve".into()),
             Some("alice".into()),
             addr,
             DisconnectReason::Timeout,
             42,
         );
         emit_player_auth_failed("badname", addr, "invalid password");
-        emit_player_world_entry(1, "alice", "Castle", [1.0, 2.0, 3.0]);
-        emit_player_world_exit(1, "alice", "Castle", Some("Tollana".into()));
+        emit_player_world_entry(1, Some("steve".into()), "alice", "Castle", [1.0, 2.0, 3.0]);
+        emit_player_world_exit(
+            1,
+            Some("steve".into()),
+            "alice",
+            "Castle",
+            Some("Tollana".into()),
+        );
         emit_chat(ChatKind::Global, "alice", None, "hello");
         emit_level_up("alice", 5);
         emit_mission_accepted("alice", 1234, Some("Find Ambernol".into()));
         emit_mission_completed("alice", 1234, Some("Find Ambernol".into()));
         emit_gm_command("steve", "/teleport", "alice 1,2,3");
         emit_item_used("alice", 5001, Some("self".into()));
+        emit_character_created(1, Some("steve".into()), "asg", 2, "Castle");
+        emit_npc_death(
+            "Jaffa Guard",
+            Some("alice".into()),
+            "player",
+            Some("Castle".into()),
+        );
+        emit_minigame_result("Livewire", "alice", true);
+        emit_dialog("alice", 4242, Some(1));
         emit_wire_format_error(
             "seq_out_of_range",
             Some(addr),
@@ -609,7 +701,7 @@ mod tests {
         emit_player_death("alice", Some("Jaffa Guard".into()), "staff blast");
         emit_player_respawn("alice", "Castle");
 
-        const EXPECTED_EMITS: u64 = 20;
+        const EXPECTED_EMITS: u64 = 24;
 
         // The typed-wrapper regression target: every `emit_*` helper must
         // enqueue exactly one event. `enqueued` is bumped synchronously in
