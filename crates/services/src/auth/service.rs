@@ -29,10 +29,9 @@ pub struct AuthService {
     pub listener_addr: SocketAddr,
     /// HTTP port for client SOAP login requests (8081).
     pub logon_addr: SocketAddr,
-    /// HTTPS port for TLS-terminated SOAP login requests (#434 Phase 1). The
-    /// TLS listener runs in parallel with the HTTP listener during the
-    /// transition window. Only started when `tls_cert_path` + `tls_key_path`
-    /// are both set.
+    /// HTTPS port for TLS-terminated SOAP login requests. The TLS listener runs
+    /// in parallel with the HTTP listener during the transition window. Only
+    /// started when `tls_cert_path` + `tls_key_path` are both set.
     pub tls_addr: SocketAddr,
     /// PEM cert chain path; `None` disables the TLS listener.
     tls_cert_path: Option<PathBuf>,
@@ -144,9 +143,10 @@ impl AuthService {
             login_buffer: self.login_buffer.clone(),
         });
 
-        // HSTS is layered on the shared Router so *both* the HTTP and HTTPS
-        // listeners stamp `Strict-Transport-Security` on every response (#434
-        // Phase 1, spec item 4).
+        // HSTS is layered on the shared Router so *both* listeners stamp
+        // `Strict-Transport-Security` on every response. (Per RFC 6797 a UA
+        // only *honours* it when received over HTTPS; stamping it on the HTTP
+        // path too is harmless and simplifies the shared-Router wiring.)
         let app = Router::new()
             .route("/SGWLogin/UserAuth", post(handle_user_auth))
             .route("/SGWLogin/ServerSelection", post(handle_server_selection))
@@ -193,7 +193,7 @@ impl AuthService {
             });
         }
 
-        // ── TLS listener (parallel, #434 Phase 1) ───────────────────────────
+        // ── TLS listener (parallel HTTPS) ───────────────────────────────────
         // Start the HTTPS listener *before* moving `app` into the HTTP server
         // task — both listeners serve the same Router (cloned cheaply; a Router
         // clone shares the inner service). The TLS listener only starts when
@@ -212,7 +212,10 @@ impl AuthService {
                 tracing::error!(addr = %self.tls_addr, error = %e, "Failed to bind auth TLS listener");
                 e
             })?;
-            tracing::info!(addr = %tls_listener.local_addr().unwrap(), "Auth TLS listener bound");
+            // Fall back to the configured bind addr rather than panicking —
+            // `local_addr()` can fail on an unusual socket state and we already
+            // know where we bound.
+            tracing::info!(addr = %tls_listener.local_addr().unwrap_or(self.tls_addr), "Auth TLS listener bound");
 
             // `tap_io` (a no-op here) routes the custom listener through axum's
             // blanket `Connected<IncomingStream<TapIo<L,F>>> for L::Addr` impl,

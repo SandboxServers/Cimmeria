@@ -1,4 +1,4 @@
-//! Auth-server TLS termination (#434 Phase 1).
+//! Auth-server TLS termination for the SOAP login service.
 //!
 //! The auth login is a SOAP POST that historically crosses the network over
 //! **plain HTTP** (see `docs/architecture/encryption-modernization.md`). Phase 1
@@ -176,9 +176,10 @@ fn load_private_key(path: &Path) -> Result<PrivateKeyDer<'static>, TlsError> {
 /// The HSTS header value applied to every auth response.
 ///
 /// `max-age=63072000` is two years (the RFC 6797 / preload-list recommended
-/// floor); `includeSubDomains` extends the policy to every subdomain. Sent on
-/// *both* the HTTP and HTTPS paths: a client that reaches the plain-HTTP
-/// listener still learns it must upgrade to TLS for subsequent requests.
+/// floor); `includeSubDomains` extends the policy to every subdomain. Stamped
+/// on *both* the HTTP and HTTPS paths for wiring simplicity, but per RFC 6797
+/// a user agent only **honours** the header when it is received over HTTPS —
+/// the plain-HTTP copy has no effect and is not relied upon for protection.
 pub const HSTS_VALUE: &str = "max-age=63072000; includeSubDomains";
 
 /// axum middleware that stamps `Strict-Transport-Security` onto every response.

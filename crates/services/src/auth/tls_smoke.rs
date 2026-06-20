@@ -1,4 +1,4 @@
-//! Auth-TLS smoke (#434 Phase 1): generate a self-signed cert at runtime, boot
+//! Auth-TLS smoke: generate a self-signed cert at runtime, boot
 //! the `AuthService` with the TLS listener on an ephemeral port, and drive a
 //! Phase-1 login request **over TLS** with a reqwest client that pins the
 //! self-signed cert as a trusted root.

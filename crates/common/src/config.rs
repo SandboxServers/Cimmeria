@@ -22,7 +22,7 @@ pub struct ServerConfig {
     pub logon_port: u16,
 
     /// HTTPS port the auth server listens on for TLS-terminated SOAP login
-    /// requests (#434 Phase 1). The TLS listener runs **in parallel** with the
+    /// requests. The TLS listener runs **in parallel** with the
     /// plain-HTTP listener on `logon_port` during the transition window, serving
     /// the same axum `Router`. It only starts when **both** `auth_tls_cert_path`
     /// and `auth_tls_key_path` are set; otherwise the server is HTTP-only.

@@ -53,7 +53,7 @@ mod vtable_hooks;
 pub use sampling::SamplingCounter;
 
 // Reusable low-level hooking mechanics, shared by the IAT/vtable
-// telemetry hooks here and consumed by the #434 client-patch crates.
+// telemetry hooks here and consumed by the future client-patch crates.
 #[cfg(target_arch = "x86")]
 pub use primitives::{install_inline_hook, InlineHook, JMP_REL32_LEN};
 pub use primitives::{replace_iat_slot, swap_vtable_slot, HookError};

@@ -19,7 +19,7 @@ cimmeria-observability = { workspace = true }
 cimmeria-discord = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
-# Auth TLS termination (#434 Phase 1). `tokio-rustls` re-exports `rustls`;
+# Auth TLS termination. `tokio-rustls` re-exports `rustls`;
 # `rustls-pemfile` loads the PEM cert chain + private key; `arc-swap` holds the
 # live `rustls::ServerConfig` so `reload_certs()` can hot-swap it per-connection
 # without dropping the listener.
@@ -67,11 +67,10 @@ async-trait = { workspace = true }
 # reverted log change goes undetected. See `test_support::LogCapture`.
 tracing-subscriber = { workspace = true }
 
-# Self-signed cert generation for the auth-TLS integration test (#434
-# Phase 1). Crate-local dev-dependency (not a workspace dep) so it stays
-# out of the production dependency graph and doesn't collide with parallel
-# #434 work that edits the root manifest. Emits PEM, which the same
-# `rustls-pemfile` path the production loader uses then parses.
+# Self-signed cert generation for the auth-TLS integration test. Crate-local
+# dev-dependency (not a workspace dep) so it stays out of the production
+# dependency graph. Emits PEM, which the same `rustls-pemfile` path the
+# production loader uses then parses.
 rcgen = "0.13"
 
 # `ServiceExt::oneshot` for driving the HSTS middleware through a Router in a
