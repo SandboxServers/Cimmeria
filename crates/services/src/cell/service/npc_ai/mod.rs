@@ -49,6 +49,10 @@ mod wander;
 // Keeping the names re-exported here means those paths are identical
 // after the split — this is an internal refactor, not a public-surface
 // change.
+// Only the sibling `cell/service/tests/` suite reaches this via the
+// `npc_ai::` re-export; production callers use `ability_select::` directly.
+// Gate to the test build so clippy's non-test pass doesn't flag it unused.
+#[cfg(test)]
 pub(super) use ability_select::choose_npc_ability;
 pub(super) use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
 
