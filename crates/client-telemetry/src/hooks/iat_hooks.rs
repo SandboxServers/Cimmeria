@@ -161,11 +161,11 @@ unsafe fn install_inner(producer: Producer) {
     );
 }
 
-/// Generic IAT slot swap. Writes `detour` into the 4-byte slot at
-/// `iat_slot_addr`, saves the previously-stored address in
-/// `orig_slot` for the detour to chain through. Toggles
-/// `VirtualProtect` to `PAGE_READWRITE` for the swap and restores
-/// the original protection afterward.
+/// Install one IAT hook: swap the slot via
+/// [`primitives::replace_iat_slot`](super::primitives::replace_iat_slot)
+/// (which owns the `VirtualProtect` → write → restore dance), stash
+/// the displaced original in `orig_slot` for the detour to chain
+/// through, and emit the per-hook install/failure event.
 ///
 /// # Safety
 ///
@@ -180,51 +180,30 @@ unsafe fn install_one(
     detour: usize,
     orig_slot: &AtomicUsize,
 ) {
-    use windows_sys::Win32::System::Memory::{
-        VirtualProtect, PAGE_PROTECTION_FLAGS, PAGE_READWRITE,
+    // Delegate the protect → swap → restore mechanics to the shared
+    // primitive. On failure it returns `ProtectFailed`, which we map
+    // to the same `protect_failed` event this hook always emitted.
+    let original = match super::primitives::replace_iat_slot(iat_slot_addr, detour) {
+        Ok(orig) => orig,
+        Err(_) => {
+            super::emit_warn(
+                producer,
+                "client.hooks.iat.protect_failed",
+                [
+                    ("hook", serde_json::Value::String(hook_name.into())),
+                    (
+                        "address",
+                        serde_json::Value::String(format!("0x{iat_slot_addr:08x}")),
+                    ),
+                ],
+            );
+            return;
+        }
     };
 
-    let slot_ptr = iat_slot_addr as *mut usize;
-    let mut old_protect: PAGE_PROTECTION_FLAGS = 0;
-
-    // Step 1: open the page for writing.
-    let ok = VirtualProtect(
-        slot_ptr as *const c_void,
-        std::mem::size_of::<usize>(),
-        PAGE_READWRITE,
-        &mut old_protect,
-    );
-    if ok == 0 {
-        super::emit_warn(
-            producer,
-            "client.hooks.iat.protect_failed",
-            [
-                ("hook", serde_json::Value::String(hook_name.into())),
-                (
-                    "address",
-                    serde_json::Value::String(format!("0x{iat_slot_addr:08x}")),
-                ),
-            ],
-        );
-        return;
-    }
-
-    // Step 2: read original + write detour. The IAT slot is one
-    // dword; non-atomic write is fine because the page is single-
-    // threaded at this point (we're still in DLL bootstrap, no
-    // other code is calling through the slot concurrently).
-    let original = *slot_ptr;
-    *slot_ptr = detour;
+    // Publish the displaced original so the detour can chain through.
+    // `Release` pairs with the detour's `Acquire` load.
     orig_slot.store(original, Ordering::Release);
-
-    // Step 3: restore the original page protection.
-    let mut _unused: PAGE_PROTECTION_FLAGS = 0;
-    let _ = VirtualProtect(
-        slot_ptr as *const c_void,
-        std::mem::size_of::<usize>(),
-        old_protect,
-        &mut _unused,
-    );
 
     super::emit_info(
         producer,
