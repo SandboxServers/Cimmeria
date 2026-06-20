@@ -21,9 +21,12 @@ mod system_options;
 // `cell_methods::player::world::<item>`.
 pub(crate) use item_sequence::fire_item_sequence;
 pub(crate) use reload::{handle_reload, maybe_trigger_reload_on_activate, UNHOLSTER_DRAW_DURATION};
-// Also visible to the in-module test files (`tests.rs`,
-// `system_options_tests.rs`) which reach these through `super::*`.
+// Only the in-module test files (`tests.rs`, `system_options_tests.rs`)
+// reach these through `super::*`; gate the re-exports so the non-test build
+// doesn't flag them unused.
+#[cfg(test)]
 pub(crate) use reload::ABILITY_RELOAD_WEAPON;
+#[cfg(test)]
 pub(super) use system_options::parse_name_value_pairs;
 
 pub async fn dispatch(
