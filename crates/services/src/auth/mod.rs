@@ -9,6 +9,7 @@
 //!
 //! See `docs/protocol/login-handshake.md` for the full protocol spec.
 
+mod credentials;
 mod handlers;
 mod service;
 mod tls;
@@ -135,6 +136,15 @@ struct SessionRecord {
     account_name: String,
     created: Instant,
 }
+
+/// Request-extension marker inserted only by the TLS listener's middleware.
+///
+/// Its presence in a request's extensions proves the request arrived over the
+/// TLS-terminated listener. The handler uses it to gate plaintext-password
+/// acceptance: a plaintext credential is only honoured when this marker is
+/// present, so a plaintext password can never be accepted over plain HTTP.
+#[derive(Clone, Copy)]
+pub(super) struct TlsConn;
 
 /// State shared between the axum HTTP handlers.
 #[derive(Clone)]

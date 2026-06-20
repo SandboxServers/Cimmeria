@@ -4,6 +4,7 @@
 
 - [security-audit.md](security-audit.md) — **[RE-VERIFY]** — captures behavioral comparison from 2026-03-04; needs re-verification against current Rust before promoting to `spec.protocol.cipher-and-auth` section 5. The deprecated C++ half is immutable and chapter-ready.
 - [security-audit-2026-05-31.md](security-audit-2026-05-31.md) — **CURRENT** — full red-team pass against commit `14827c9c`. Ten findings: 2 Critical (admin-api unauth, /ws/logs credential leak), 3 High (dev-session mint, ticket IP-binding, plain-HTTP SOAP), 4 Medium, 1 Low. Use as the starting point for the next audit; check "Re-verification notes" for which prior-audit items are now FIXED vs OPEN.
+- [password-storage-argon2id.md](password-storage-argon2id.md) — Phase 2a argon2id storage (server half) in `auth/credentials.rs`: dual-column schema, TLS-gated plaintext (`TlsConn` marker + `tls_marker_layer`), opportunistic on-login migration. Partly closes the "plain-HTTP SOAP" High and the "non-constant-time password comparison" Medium (argon2id verify is constant-time for migrated accounts; legacy SHA-1 compare remains).
 
 Inline-content section status:
 

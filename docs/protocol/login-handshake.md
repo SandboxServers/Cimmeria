@@ -42,16 +42,38 @@ The client sends credentials to the Authentication Server on port 8081 (configur
 |-----------|------|-------------|
 | `SKU` | string | Product identifier. Must be `"SGW_BETA"` |
 | `AccountName` | string | 3-20 characters, alphanumeric plus `-` and `_` |
-| `Password` | string | 40-character uppercase hex string (SHA-1 hash of plaintext password) |
+| `Password` | string | Either a 40-char uppercase-hex SHA-1 hash (original client) **or** a plaintext password (patched client over TLS only). See *Credential formats* below. |
 | `ProtocolDigest` | string | 32-character MD5 hex string. Must match server's `protocol_digest` config |
+
+**Credential formats (dual acceptance):**
+
+The server accepts two credential shapes and classifies by the supplied value:
+
+- **Legacy SHA-1 hash** — a 40-char all-hex string, as the original (unpatched)
+  client sends. Accepted on the plain-HTTP **and** TLS listeners.
+- **Plaintext password** — anything else. Accepted **only** over the TLS
+  listener (the entire argon2id rationale depends on the transport being
+  TLS-wrapped); a plaintext password offered over plain HTTP is rejected with
+  the malformed-password error. Bounded to 1–128 bytes.
+
+Stored passwords use one of two schemes per account, selected by
+`account.password_algo` (`1`=legacy SHA-1 in `account.password`, `2`=argon2id PHC
+string in `account.password_hash_v2`). A legacy account that authenticates with a
+**plaintext** password is verified against its SHA-1 hash and then
+**opportunistically migrated** to argon2id in the same login (algo flips to 2,
+`password_hash_v2` populated, `password` NULLed). Migration failure is logged but
+never fails an already-verified login. See
+[../architecture/encryption-modernization.md](../architecture/encryption-modernization.md)
+Phase 2.
 
 **Server-side validation order:**
 
 1. SKU must equal `"SGW_BETA"` (else `InvalidService`)
-2. Password must be exactly 40 hex characters `[0-9A-F]` (else `MalformedPassword`)
+2. Classify the credential: a 40-char hex string is a legacy hash; anything else
+   is plaintext and requires TLS, else `MalformedPassword`
 3. AccountName must be 3-20 chars from `[0-9a-zA-Z_-]` (else `MalformedUserId`)
-4. Database lookup: `SELECT account_id, upper(password), accesslevel, enabled FROM account WHERE account_name = :accname`
-5. Password compared against stored SHA-1 hash (uppercase hex comparison)
+4. Database lookup: `SELECT account_id, password, password_hash_v2, password_algo, accesslevel, enabled FROM account WHERE account_name = :accname`
+5. Credential verified per `(password_algo, credential shape)`: argon2id verify, legacy uppercase-hex compare, or legacy plaintext → SHA-1 recompute + compare (then migrate)
 6. Account must be enabled (`enabled = 't'`)
 
 ### Response: Login Success

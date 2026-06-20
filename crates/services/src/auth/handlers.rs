@@ -9,16 +9,19 @@ use axum::{
     extract::{ConnectInfo, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
+    Extension,
 };
 use quick_xml::{events::Event, Reader};
 use rand::RngExt;
-use sqlx::PgPool;
 
 use crate::audit::emit_login_event;
 
+use super::credentials::{
+    classify_credential, validate_credentials, AuthCredError, CredentialGateError,
+};
 use super::{
-    HandlerState, LoginReq, PendingLogin, SessionRecord, LOGIN_NS, PROTOCOL_DIGEST, SELECT_NS,
-    SESSION_TTL, XML_DECL,
+    HandlerState, LoginReq, PendingLogin, SessionRecord, TlsConn, LOGIN_NS, PROTOCOL_DIGEST,
+    SELECT_NS, SESSION_TTL, XML_DECL,
 };
 
 // ── Axum handlers ────────────────────────────────────────────────────────────
@@ -27,7 +30,7 @@ use super::{
 #[tracing::instrument(
     name = "auth.user_auth",
     level = "info",
-    skip(state, body),
+    skip(state, over_tls, body),
     fields(
         peer = %addr,
         account_name = tracing::field::Empty,
@@ -38,9 +41,14 @@ use super::{
 pub(super) async fn handle_user_auth(
     State(state): State<Arc<HandlerState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    // Present only when the request arrived over the TLS listener (the TLS
+    // Router clone carries `tls_marker_layer`). Gates plaintext-password
+    // acceptance — plaintext is never honoured over plain HTTP.
+    over_tls: Option<Extension<TlsConn>>,
     body: String,
 ) -> Response {
-    tracing::debug!("Phase 1: UserAuth");
+    let over_tls = over_tls.is_some();
+    tracing::debug!(over_tls, "Phase 1: UserAuth");
     tracing::trace!(body = %body, "Phase 1 raw SOAP request");
 
     let client_ip = addr.ip().to_string();
@@ -92,9 +100,22 @@ pub(super) async fn handle_user_auth(
     if req.sku != "SGW_BETA" {
         return login_error(3, "The specified service does not exist.");
     }
-    if req.password.len() != 40 || !req.password.chars().all(|c| c.is_ascii_hexdigit()) {
-        return login_error(2, "The specified password has is invalid.");
-    }
+    // Classify the supplied credential: a 40-char hex string is the original
+    // client's SHA-1 hash (allowed over HTTP or TLS); anything else is treated
+    // as a plaintext password, which is only honoured over TLS.
+    let credential = match classify_credential(&req.password, over_tls) {
+        Ok(c) => c,
+        Err(CredentialGateError::PlaintextRequiresTls) => {
+            tracing::warn!(user = %req.account_name, "plaintext credential rejected over plain HTTP");
+            audit!("plaintext_requires_tls");
+            // Reuse the malformed-password code: the client must not learn that
+            // a plaintext-over-TLS path exists.
+            return login_error(2, "The specified password has is invalid.");
+        }
+        Err(CredentialGateError::PlaintextLength) => {
+            return login_error(2, "The specified password has is invalid.");
+        }
+    };
     let name_ok = req.account_name.len() >= 3
         && req.account_name.len() <= 20
         && req
@@ -117,7 +138,7 @@ pub(super) async fn handle_user_auth(
     // If DB is available, validate against the account table.
     // In developer mode without DB, any valid-format credentials are accepted.
     let (account_id, access_level): (u32, u32) = if let Some(ref db) = state.db {
-        match validate_credentials(db, &req.account_name, &req.password).await {
+        match validate_credentials(db, &req.account_name, credential).await {
             Ok(acct) => (acct.account_id, acct.access_level),
             Err(AuthCredError::InvalidCredentials) => {
                 tracing::info!(user = %req.account_name, "Invalid credentials");
@@ -437,69 +458,6 @@ fn server_location_xml(shard: &super::ShardInfo, session_key: &str, ticket: &str
     )
 }
 
-// ── DB credential validation ──────────────────────────────────────────────────
-
-enum AuthCredError {
-    InvalidCredentials,
-    AccountDisabled,
-    DbError(String),
-}
-
-/// Validated account info returned by [`validate_credentials`].
-struct ValidatedAccount {
-    account_id: u32,
-    access_level: u32,
-}
-
-/// Validate credentials against the `account` table.
-///
-/// The C++ server stores passwords as uppercase hex SHA-1 and queries with
-/// `upper(password)`.  We normalise both sides to uppercase for comparison
-/// so it works regardless of how the DB row was inserted.
-async fn validate_credentials(
-    db: &PgPool,
-    account_name: &str,
-    client_password_hash: &str,
-) -> Result<ValidatedAccount, AuthCredError> {
-    #[derive(sqlx::FromRow)]
-    struct AccountRow {
-        account_id: i32,
-        password: String,
-        accesslevel: i32,
-        enabled: bool,
-    }
-
-    let row: Option<AccountRow> = sqlx::query_as(
-        "SELECT account_id, password, accesslevel, enabled \
-         FROM account WHERE account_name = $1",
-    )
-    .bind(account_name)
-    .fetch_optional(db)
-    .await
-    .map_err(|e| AuthCredError::DbError(e.to_string()))?;
-
-    let row = match row {
-        Some(r) => r,
-        // Don't reveal whether the account exists — same error as bad password
-        // (matches C++ `BadUserPassword` behaviour).
-        None => return Err(AuthCredError::InvalidCredentials),
-    };
-
-    if !row.enabled {
-        return Err(AuthCredError::AccountDisabled);
-    }
-
-    // Compare password hashes as uppercase hex (matches C++ `upper(password)`).
-    if row.password.to_uppercase() != client_password_hash.to_uppercase() {
-        return Err(AuthCredError::InvalidCredentials);
-    }
-
-    Ok(ValidatedAccount {
-        account_id: row.account_id as u32,
-        access_level: row.accesslevel.max(0) as u32,
-    })
-}
-
 /// Generate `byte_count` random bytes as uppercase hex.
 pub(super) fn random_hex(byte_count: usize) -> String {
     let mut rng = rand::rng();
@@ -660,5 +618,81 @@ mod tests {
         let body = r#"<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;
         let sel = parse_server_selection(body);
         assert!(sel.is_err(), "missing ServerSelection attribute must fail");
+    }
+
+    /// Build a minimal `HandlerState` for driving `handle_user_auth` through
+    /// the Router without a DB or event channel. `developer_mode` is true so
+    /// the credential check short-circuits — but the plaintext-over-HTTP gate
+    /// runs *before* that, which is exactly what the test below pins.
+    fn test_handler_state() -> Arc<HandlerState> {
+        use std::collections::HashMap;
+        use std::sync::Mutex;
+        Arc::new(HandlerState {
+            shards: vec![super::super::ShardInfo {
+                name: "TestShard".into(),
+                host: "127.0.0.1".into(),
+                port: 32832,
+                protected: false,
+            }],
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+            pending_logins: Arc::new(Mutex::new(HashMap::new())),
+            developer_mode: true,
+            db: None,
+            login_tx: None,
+            login_buffer: None,
+        })
+    }
+
+    /// **TLS-gate guard.** A plaintext password (not 40-char hex) offered over
+    /// the plain-HTTP listener — i.e. with no `TlsConn` extension present —
+    /// must be rejected with a login error, never accepted. This drives the
+    /// real `handle_user_auth` (in developer_mode, so no DB) through the
+    /// Router *without* the `tls_marker_layer`, mirroring the production
+    /// plain-HTTP path. Reverting the `over_tls` gate in the handler (or in
+    /// `classify_credential`) would let this plaintext through to a success
+    /// response and trip this guard.
+    #[tokio::test]
+    async fn plaintext_password_over_plain_http_is_rejected() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use axum::routing::post;
+        use axum::Router;
+        use std::net::SocketAddr;
+        use tower::ServiceExt; // oneshot
+
+        // No tls_marker_layer here — this is the plain-HTTP Router shape.
+        let app = Router::new()
+            .route("/SGWLogin/UserAuth", post(handle_user_auth))
+            .with_state(test_handler_state());
+
+        // A plaintext password (well-formed request otherwise). It is NOT a
+        // 40-char hex string, so it classifies as plaintext.
+        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="someuser" Password="my-plaintext-password" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/SGWLogin/UserAuth")
+            .header("Content-Type", "text/xml")
+            // Drive connect-info so ConnectInfo<SocketAddr> resolves.
+            .extension(axum::extract::ConnectInfo(
+                "127.0.0.1:5555".parse::<SocketAddr>().unwrap(),
+            ))
+            .body(Body::from(body))
+            .unwrap();
+
+        let response = app.oneshot(request).await.expect("request");
+        assert_eq!(response.status(), StatusCode::OK, "auth always returns 200");
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let xml = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            xml.contains("SGWLoginError"),
+            "plaintext over plain HTTP must produce a login error, got: {xml}"
+        );
+        assert!(
+            !xml.contains("SGWLoginSuccess"),
+            "plaintext over plain HTTP must NOT succeed, got: {xml}"
+        );
     }
 }

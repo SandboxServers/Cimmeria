@@ -201,6 +201,21 @@ pub async fn hsts_layer(
     response
 }
 
+/// axum middleware that tags every request with the [`super::TlsConn`] marker.
+///
+/// Layered **only** on the TLS listener's Router clone (never on the plain-HTTP
+/// Router), so a downstream handler can prove a request arrived over TLS by
+/// extracting `Extension<TlsConn>`. This is the gate that lets the login
+/// handler accept a plaintext password over HTTPS while continuing to reject it
+/// over plain HTTP.
+pub async fn tls_marker_layer(
+    mut request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    request.extensions_mut().insert(super::TlsConn);
+    next.run(request).await
+}
+
 /// A TLS-terminating listener that implements [`axum::serve::Listener`].
 ///
 /// `accept()` performs the TCP accept *and* the rustls handshake, reading the

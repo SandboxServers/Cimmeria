@@ -16,7 +16,7 @@ use cimmeria_common::ServerConfig;
 use crate::audit::{LoginEvent, LoginEventBuffer};
 
 use super::handlers::{handle_server_selection, handle_user_auth};
-use super::tls::{hsts_layer, TlsCertStore, TlsListener};
+use super::tls::{hsts_layer, tls_marker_layer, TlsCertStore, TlsListener};
 use super::{
     AuthError, HandlerState, PendingLogin, ShardInfo, REAPER_INTERVAL, SESSION_TTL, TICKET_TTL,
 };
@@ -228,7 +228,12 @@ impl AuthService {
             // surface the peer address exactly like the HTTP path.
             let tls_listener = tls_listener.tap_io(|_io| {});
 
-            let tls_app = app.clone();
+            // Layer the TLS marker onto the TLS Router clone *only*. This is
+            // what lets the login handler distinguish a TLS request (plaintext
+            // password allowed) from a plain-HTTP one (plaintext rejected).
+            let tls_app = app
+                .clone()
+                .layer(axum::middleware::from_fn(tls_marker_layer));
             tokio::spawn(async move {
                 tracing::trace!("Auth TLS server task started");
                 if let Err(e) = axum::serve(

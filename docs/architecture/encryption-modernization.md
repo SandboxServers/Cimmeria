@@ -80,15 +80,31 @@ shim's rustls proxy does the real TLS. This sidesteps the dead OpenSSL entirely.
 
 ### Phase 2 — argon2id password hashing
 
-- **Schema:** a **dual-column** scheme (legacy SHA-1 column retained alongside a
-  new argon2id column), edited directly in the `db/sgw/` schema and the
-  `db/resources/` seed — **not** in `db/scripts/` (per project convention: never
-  hand-write migration scripts; edit the seed).
-- **Migration:** **opportunistic, on-login.** When a user authenticates and only
-  the legacy hash exists, verify against it, then compute and store the argon2id
-  hash transparently. No mass re-hash, no forced reset.
-- **Client side:** patch the `LoginReplyHandler` ctor (`0x00DDED60`) to send the
-  **plaintext** password (read from `ServerConnection + 0x3C`) over the
+**Status (server half): Implemented.** The server-side storage, verification,
+on-login migration, and the plaintext-over-TLS gate are in
+`crates/services/src/auth/credentials.rs`. The client-side plaintext patch
+(below) is still pending.
+
+- **Schema (implemented):** a **dual-column** scheme — the legacy SHA-1
+  `account.password` column (now NULLable) retained alongside a new
+  `account.password_hash_v2` (argon2id PHC string) and a `account.password_algo`
+  selector (`1`=sha1_legacy, `2`=argon2id). Edited directly in the `db/sgw/`
+  schema + seed — **not** in `db/scripts/` (per project convention: never
+  hand-write migration scripts; edit the seed). Seed accounts start at algo 1.
+- **Migration (implemented): opportunistic, on-login.** When an account
+  authenticates with a **plaintext** password and only the legacy hash exists,
+  the server recomputes the client-side SHA-1, verifies it against the stored
+  hash, then computes and stores the argon2id hash, flips `password_algo` to 2,
+  and NULLs the legacy column — all in the same login. No mass re-hash, no forced
+  reset. Migration failure is logged but never fails an already-verified login.
+- **Plaintext is TLS-gated (implemented):** a request is classified as legacy
+  hash (40-char hex, allowed on either listener) or plaintext (anything else).
+  Plaintext is **only** accepted on the TLS listener — a marker inserted by a
+  middleware layered solely onto the HTTPS Router clone. Plaintext over plain
+  HTTP is rejected. argon2id params are explicit OWASP: 64 MiB / 3 iterations /
+  1 lane, random per-hash salt.
+- **Client side (pending):** patch the `LoginReplyHandler` ctor (`0x00DDED60`) to
+  send the **plaintext** password (read from `ServerConnection + 0x3C`) over the
   now-TLS-protected channel, in place of the client SHA-1 hash. The server does
   the modern hashing.
 

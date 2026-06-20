@@ -30,6 +30,10 @@ rand = { workspace = true }
 rand_distr = { workspace = true }
 rand_chacha = { workspace = true }
 quick-xml = { workspace = true }
+# Password storage: argon2id for stored hashes, sha1 to recompute the legacy
+# client hash during opportunistic on-login migration.
+argon2 = { workspace = true }
+sha1 = { workspace = true }
 sqlx = { workspace = true }
 zip = { workspace = true }
 serde = { workspace = true }
