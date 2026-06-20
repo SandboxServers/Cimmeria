@@ -46,6 +46,8 @@ pub async fn dispatch(
                 // Also notify witnesses so they see who we're targeting
                 let witnesses = space_mgr.get_witnesses_of(entity_id);
                 if !witnesses.is_empty() {
+                    let entity_is_player =
+                        space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
                     let mut witness_args = Vec::with_capacity(4);
                     witness_args.extend_from_slice(&target_id.to_le_bytes());
                     for witness_id in witnesses {
@@ -55,6 +57,7 @@ pub async fn dispatch(
                                 entity_id,
                                 method_index: 16,
                                 args: witness_args.clone(),
+                                entity_is_player,
                             })
                             .await;
                     }

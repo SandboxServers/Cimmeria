@@ -309,6 +309,7 @@ pub(super) async fn handle_set_target(
         })
         .await;
     // Fan out to witnesses so peers see who the GM is targeting.
+    let entity_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
     for witness_id in space_mgr.get_witnesses_of(entity_id) {
         let _ = tx
             .send(CellToBaseMsg::WitnessEntityMethod {
@@ -316,6 +317,7 @@ pub(super) async fn handle_set_target(
                 entity_id,
                 method_index: ON_TARGET_UPDATE,
                 args: target_id.to_le_bytes().to_vec(),
+                entity_is_player,
             })
             .await;
     }

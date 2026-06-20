@@ -26,7 +26,7 @@ use crate::base::contact_list::wire::EVENT_DEATH;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::loot_drop::generate_loot_on_death;
-use super::messaging::send_entity_method;
+use super::messaging::{send_entity_method, send_entity_method_to_self_and_witnesses};
 
 /// Apply the death-transition message sequence for a target that just died.
 ///
@@ -246,7 +246,10 @@ pub(super) async fn apply_death_transition(
     }
 
     // 4. Flip dead-state bit on the corpse — visuals + cursor change client-side.
-    send_entity_method(
+    // Fan to self+witnesses so a spectator sees the entity become a corpse.
+    // For NPC targets the self send is a no-op; for player targets it notifies
+    // the dying player and all observers simultaneously.
+    send_entity_method_to_self_and_witnesses(
         target_eid,
         crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
         target_state.to_le_bytes().to_vec(),

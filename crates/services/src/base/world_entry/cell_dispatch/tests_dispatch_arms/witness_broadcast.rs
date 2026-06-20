@@ -48,6 +48,7 @@ async fn witness_entity_method_routes_one_packet_to_witness_addr_only() {
             entity_id: observee_id,
             method_index: 0x20,
             args: vec![0xDE, 0xAD],
+            entity_is_player: false,
         },
         &transport,
         &connected,
@@ -159,5 +160,127 @@ async fn entity_invisible_routes_one_packet_to_witness_addr_only() {
         sent[0], expected,
         "witness packet bytes must match build_entity_invisible \
          with the observee entity_id"
+    );
+}
+
+/// idbase selection regression guard: `WitnessEntityMethod` for a player
+/// ghost entity must encode with `IDBASE_SGW_PLAYER` (61), not
+/// `IDBASE_NPC_DEFAULT` (62). Method indices ≥61 encode differently under
+/// each idbase; wrong selection corrupts the wire byte.
+///
+/// Also verifies the NPC path is unchanged — NPC observees still use
+/// `IDBASE_NPC_DEFAULT` (no regression).
+#[tokio::test]
+async fn witness_entity_method_player_ghost_uses_idbase_61_npc_uses_62() {
+    use crate::mercury::build_entity_method_packet;
+    use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
+
+    let typed_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed_transport.clone();
+
+    // High-index method to make the encoding difference visible.
+    // Method 61 is the first index that encodes differently between
+    // IDBASE_SGW_PLAYER (61 → extended) and IDBASE_NPC_DEFAULT (61 → direct).
+    let method_index: u16 = 61;
+    let args: Vec<u8> = vec![0xAB];
+
+    let witness_id = 1000u32;
+    let player_entity_id = 2000u32;
+    let npc_entity_id = 2001u32;
+    let witness_addr: SocketAddr = "127.0.0.1:56000".parse().unwrap();
+    let player_addr: SocketAddr = "127.0.0.1:56001".parse().unwrap(); // player ghost has addr too
+
+    let connected = Arc::new(Mutex::new(HashMap::from([
+        (witness_addr, test_default_connected_client_state()),
+        (player_addr, test_default_connected_client_state()),
+    ])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([
+        (witness_id, witness_addr),
+        (player_entity_id, player_addr),
+    ])));
+
+    // ── Player ghost (entity_is_player = true) ──
+    handle_cell_message(
+        CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id: player_entity_id,
+            method_index,
+            args: args.clone(),
+            entity_is_player: true,
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let sent = typed_transport.drain();
+    assert_eq!(sent.len(), 1);
+    let expected_player = build_entity_method_packet(
+        &[0u8; 32],
+        0,
+        &[],
+        player_entity_id,
+        method_index,
+        IDBASE_SGW_PLAYER,
+        &args,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    assert_eq!(
+        sent[0].1, expected_player,
+        "player ghost method 61 must encode with IDBASE_SGW_PLAYER (61), \
+         not IDBASE_NPC_DEFAULT (62)"
+    );
+
+    // ── NPC ghost (entity_is_player = false) — no regression ──
+    // Reset the witness session to next_seq=0 so the second send's wire bytes
+    // are comparable against a fresh `build_entity_method_packet(seq=0)`. The
+    // first send above advanced the witness session's sequence number; without
+    // this reset the NPC packet would carry seq 1 and the byte-exact compare
+    // would fail for sequence reasons unrelated to the idbase under test.
+    {
+        let mut guard = connected.lock().unwrap();
+        guard.insert(witness_addr, test_default_connected_client_state());
+    }
+
+    handle_cell_message(
+        CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id: npc_entity_id,
+            method_index,
+            args: args.clone(),
+            entity_is_player: false,
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let sent_npc = typed_transport.drain();
+    assert_eq!(sent_npc.len(), 1);
+    let expected_npc = build_entity_method_packet(
+        &[0u8; 32],
+        0,
+        &[],
+        npc_entity_id,
+        method_index,
+        IDBASE_NPC_DEFAULT,
+        &args,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    assert_eq!(
+        sent_npc[0].1, expected_npc,
+        "NPC ghost method 61 must still encode with IDBASE_NPC_DEFAULT (62) — no regression"
     );
 }

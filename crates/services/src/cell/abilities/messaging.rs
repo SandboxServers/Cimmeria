@@ -75,6 +75,8 @@ pub(crate) async fn send_entity_method(
                     entity_id,
                     method_index,
                     args: args.clone(),
+                    // NPC branch only — `is_player` is `false` here.
+                    entity_is_player: is_player,
                 })
                 .await;
         }
@@ -93,10 +95,6 @@ pub(crate) async fn send_entity_method(
 /// the "NPC with no witnesses" warning — that signal indicates a routing bug
 /// for ghost entities, which doesn't apply when the caller has explicitly
 /// asked for witness-only fanout.
-//
-// Allowed until #278's first child PR (#232, #249, #270, …) adopts this
-// helper at a callsite. Tests in this file exercise it directly.
-#[allow(dead_code)]
 pub(crate) async fn send_entity_method_to_witnesses(
     entity_id: u32,
     method_index: u16,
@@ -114,6 +112,9 @@ pub(crate) async fn send_entity_method_to_witnesses(
         );
         return 0;
     }
+    // Compute once before the loop — the observee's player-ness is the same for
+    // every witness and drives the idbase selection at wire-encode time.
+    let entity_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
     for witness_id in witnesses {
         let _ = tx
             .send(CellToBaseMsg::WitnessEntityMethod {
@@ -121,6 +122,7 @@ pub(crate) async fn send_entity_method_to_witnesses(
                 entity_id,
                 method_index,
                 args: args.clone(),
+                entity_is_player,
             })
             .await;
     }
@@ -148,10 +150,6 @@ pub(crate) async fn send_entity_method_to_witnesses(
 /// player without forcing a branch at every callsite.
 ///
 /// Returns the witness count actually addressed (excludes the self send).
-//
-// Allowed until #278's first child PR (#232, #249, #270, …) adopts this
-// helper at a callsite. Tests in this file exercise it directly.
-#[allow(dead_code)]
 pub(crate) async fn send_entity_method_to_self_and_witnesses(
     entity_id: u32,
     method_index: u16,
@@ -392,6 +390,7 @@ mod tests {
                 entity_id,
                 method_index,
                 args,
+                ..
             } => {
                 assert_eq!(*witness_id, 2);
                 assert_eq!(*entity_id, 1);

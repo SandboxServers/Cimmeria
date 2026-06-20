@@ -19,7 +19,9 @@ use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
 use super::loot_drop::kill_xp;
-use super::messaging::{flush_attacker_ammo_stat, send_entity_method};
+use super::messaging::{
+    flush_attacker_ammo_stat, send_entity_method, send_entity_method_to_self_and_witnesses,
+};
 use super::rng::pseudo_random_seed;
 
 /// Resolve damage from `entity_id` to `target_eid` for ability `ability_id`.
@@ -254,8 +256,10 @@ pub(super) async fn apply_damage_to_target(
         .get_entity(target_eid)
         .is_some_and(|e| e.is_player);
 
-    // Send to attacker
-    send_entity_method(
+    // Fan out the attacker's effect results to self + all AoI witnesses so a
+    // spectator sees the ability fire. For NPC attackers the self send is a
+    // no-op (NPCs have no client) and this collapses to witness-only.
+    send_entity_method_to_self_and_witnesses(
         entity_id,
         crate::mercury::method_idx::ON_EFFECT_RESULTS,
         effect_args.clone(),
@@ -264,11 +268,13 @@ pub(super) async fn apply_damage_to_target(
     )
     .await;
 
-    // Only send to target if the target is a player (so they see incoming damage).
-    // If target is an NPC, the attacker (as witness) already received it above via
-    // send_entity_method routing.
-    if target_is_player && !attacker_is_player {
-        send_entity_method(
+    // On-target effect results — fan out for any player target so witnesses
+    // see the hit land on them. For NPC targets the attacker's self+witness
+    // send above already carries the result (entity_id = attacker, target_eid
+    // in the payload). Player targets are tracked by a different entity_id, so
+    // they need a separate fanout keyed on target_eid.
+    if target_is_player {
+        send_entity_method_to_self_and_witnesses(
             target_eid,
             crate::mercury::method_idx::ON_EFFECT_RESULTS,
             effect_args,
@@ -280,8 +286,9 @@ pub(super) async fn apply_damage_to_target(
 
     // ── Send stat updates ──
 
-    // onStatUpdate to target (their health bar changes)
-    send_entity_method(
+    // onStatUpdate to target — health bar changes must reach witnesses so the
+    // spectator sees the health drain. Fan out to self+witnesses of the target.
+    send_entity_method_to_self_and_witnesses(
         target_eid,
         crate::mercury::method_idx::ON_STAT_UPDATE,
         target_stat_update,
@@ -344,7 +351,10 @@ pub(super) async fn apply_damage_to_target(
                     seq_args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs count
                     seq_args.push(0); // ViewType
                     seq_args.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
-                    send_entity_method(
+                                                                     // Death animation — fan to self+witnesses so a spectator
+                                                                     // sees the entity fall. This closes the death
+                                                                     // visibility gap.
+                    send_entity_method_to_self_and_witnesses(
                         target_eid,
                         crate::mercury::method_idx::ON_SEQUENCE,
                         seq_args,
@@ -470,7 +480,10 @@ pub(super) async fn apply_damage_to_target(
             _total_health_damage as f32,
         ) {
             super::messaging::request_appearance_refresh(entity_id, tx, space_mgr).await;
-            send_entity_method(
+            // BSF_InCombat flip — broadcast to self+witnesses so a spectator
+            // sees the entity enter the combat stance. This is the primary
+            // trigger site for the witness-fanout requirement.
+            send_entity_method_to_self_and_witnesses(
                 entity_id,
                 crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
                 new_state.to_le_bytes().to_vec(),

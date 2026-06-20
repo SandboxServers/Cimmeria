@@ -234,12 +234,14 @@ pub(super) async fn remove_dialog_set(
                 .unwrap_or(0);
             let merged = base_flags | removed_flags.unwrap_or(0);
 
+            let target_is_player = space_mgr.get_entity(target_id).is_some_and(|e| e.is_player);
             if let Err(e) = tx
                 .send(CellToBaseMsg::WitnessEntityMethod {
                     witness_id: entity_id,
                     entity_id: target_id,
                     method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                     args: (merged as u64).to_le_bytes().to_vec(),
+                    entity_is_player: target_is_player,
                 })
                 .await
             {
@@ -363,12 +365,14 @@ async fn send_interaction_update_if_visible(
                 label
             );
 
+            let target_is_player = space_mgr.get_entity(target_id).is_some_and(|e| e.is_player);
             if let Err(e) = tx
                 .send(CellToBaseMsg::WitnessEntityMethod {
                     witness_id: entity_id,
                     entity_id: target_id,
                     method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                     args: (merged as u64).to_le_bytes().to_vec(),
+                    entity_is_player: target_is_player,
                 })
                 .await
             {

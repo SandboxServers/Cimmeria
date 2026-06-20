@@ -126,6 +126,8 @@ pub(super) async fn send_visible(
     let mut targets: std::collections::HashSet<u32> =
         space_mgr.get_witnesses_of(entity_id).into_iter().collect();
     targets.insert(entity_id);
+    // The observee's player-ness drives the wire idbase; compute once.
+    let entity_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
     for witness_id in targets {
         let msg = if visible {
             CellToBaseMsg::WitnessEntityMethod {
@@ -133,6 +135,7 @@ pub(super) async fn send_visible(
                 entity_id,
                 method_index: ON_VISIBLE,
                 args: vec![1],
+                entity_is_player,
             }
         } else {
             CellToBaseMsg::EntityInvisible {
