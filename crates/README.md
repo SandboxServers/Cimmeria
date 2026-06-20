@@ -6,20 +6,80 @@ For testing conventions across these crates — test types, when to use which, c
 
 ## Crate Overview
 
-The main service spine:
+The 23 workspace crates and their **actual** inter-crate dependencies, generated
+from each crate's `Cargo.toml` (an arrow **A → B** means *A depends on B*):
 
-```
-common ──┬──► mercury ──► entity ──► game ──────► services ──┬──► server
-         ├──► defs    ──►         ──► content-engine ──►     ├──► admin-api
-         └──► commands ──────────────────────────►           └──► supervisor
+```mermaid
+%%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
+flowchart TD
+    %% entry points / binaries
+    server --> adminApi["admin-api"]
+    server --> services
+    server --> discord
+    server --> observability
+    server --> common
+    app["app (src-tauri, cimmeria-app)"] --> adminApi
+    app --> services
+    app --> common
+    wireclient --> services
+    wireclient --> mercury
+    wireclient --> common
+
+    %% service + domain layer
+    adminApi --> services
+    adminApi --> contentEngine["content-engine"]
+    adminApi --> entity
+    adminApi --> commands
+    adminApi --> common
+    services --> game
+    services --> contentEngine
+    services --> entity
+    services --> mercury
+    services --> discord
+    services --> observability
+    services --> commands
+    services --> common
+    game --> entity
+    game --> commands
+    game --> common
+    contentEngine --> entity
+    contentEngine --> common
+    entity --> defs
+    entity --> mercury
+    entity --> commands
+    entity --> common
+
+    %% foundation
+    mercury --> common
+    defs --> common
+    commands --> common
+
+    %% UPK / navmesh toolchain (independent of the server spine)
+    navmeshExtractor["navmesh-extractor"] --> upkObjects["upk-objects"]
+    navmeshExtractor --> upk
+    sceneEditor["scene-editor (tool)"] --> upkObjects
+    sceneEditor --> upk
+    upkObjects --> upk
+
+    %% standalone crates with no intra-workspace dependencies
+    subgraph standalone["Standalone (no intra-workspace deps)"]
+        supervisor
+        clientTelemetry["client-telemetry"]
+        launcher["launcher (sgw-launcher)"]
+        contentEditor["content-editor (tool)"]
+        specLint["spec-lint (tool)"]
+    end
 ```
 
-Off the spine sit the support and tooling crates: `discord` and `observability`
-(server-side notifications + OTLP metrics), `wireclient` (headless Tier 3 test
-client), `upk` / `upk-objects` (Unreal Package parsing), `navmesh-extractor`
-(UE3 geometry export for NavBuilder), `launcher` (the egui game launcher), and
-`client-telemetry` (a Windows-only cdylib injected into the client). All 19
-crates are catalogued in the table below.
+The DAG is rooted at **common**. **services** is the hub — it pulls in `game`,
+`content-engine`, `entity`, `mercury`, `discord`, and `observability`, and is
+what `server`, `admin-api`, the `app` desktop GUI, and `wireclient` build on. The
+`upk` / `upk-objects` / `navmesh-extractor` crates (plus the `scene-editor` tool)
+are an independent Unreal-package / navmesh toolchain; `supervisor`,
+`client-telemetry`, `launcher`, `content-editor`, and `spec-lint` have no
+intra-workspace deps. All 19 crates in `crates/` are catalogued below; the
+diagram additionally shows the `src-tauri` app and the `tools/` editors, which
+are workspace members that live outside `crates/`.
 
 | Crate | Package Name | Purpose |
 |---|---|---|

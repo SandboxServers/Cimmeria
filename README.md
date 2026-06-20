@@ -86,49 +86,86 @@ docker run -d --name cimmeria \
 
 ## Crate Dependency Graph
 
-```
-                    ┌──────────┐
-                    │  common  │  (no deps on other crates)
-                    └────┬─────┘
-                         │
-              ┌──────────┼───────────┐
-              ▼          ▼           ▼
-         ┌────────┐ ┌────────┐ ┌──────────┐
-         │mercury │ │  defs  │ │ commands │
-         └───┬────┘ └───┬────┘ └────┬─────┘
-             │          │           │
-             ▼          ▼           │
-         ┌───────────────────┐      │
-         │      entity       │◄─────┘
-         └────────┬──────────┘
-                  │
-         ┌────────┼──────────────┐
-         ▼        ▼              ▼
-    ┌────────┐ ┌────────────────┐│
-    │  game  │ │content-engine  ││
-    └───┬────┘ └───────┬────────┘│
-        │              │         │
-        ▼              ▼         ▼
-    ┌──────────────────────────────┐
-    │          services            │
-    └──────────────┬───────────────┘
-                   │
-          ┌────────┼────────────┐
-          ▼        ▼            ▼
-    ┌────────┐┌─────────┐┌────────────┐
-    │ server ││admin-api││ supervisor │
-    └────────┘└─────────┘└────────────┘
+The 23 workspace crates and their **actual** inter-crate dependencies (an arrow
+**A → B** means *crate A depends on crate B*). Generated from each crate's
+`Cargo.toml`; GitHub renders the Mermaid below.
 
-Support / tooling crates (off the main service spine):
-  discord, observability         — server-side notifications + OTLP metrics
-  wireclient                     — headless test client (Tier 3)
-  upk, upk-objects               — UPK (Unreal Package) parsing
-  navmesh-extractor              — UE3 .umap → .obj geometry for NavBuilder
-  launcher (sgw-launcher)        — egui game launcher + DLL injection
-  client-telemetry               — Windows-only cdylib injected into SGW.exe
+```mermaid
+%%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
+flowchart TD
+    %% entry points / binaries
+    server --> adminApi["admin-api"]
+    server --> services
+    server --> discord
+    server --> observability
+    server --> common
+    app["app (src-tauri, cimmeria-app)"] --> adminApi
+    app --> services
+    app --> common
+    wireclient --> services
+    wireclient --> mercury
+    wireclient --> common
+
+    %% service + domain layer
+    adminApi --> services
+    adminApi --> contentEngine["content-engine"]
+    adminApi --> entity
+    adminApi --> commands
+    adminApi --> common
+    services --> game
+    services --> contentEngine
+    services --> entity
+    services --> mercury
+    services --> discord
+    services --> observability
+    services --> commands
+    services --> common
+    game --> entity
+    game --> commands
+    game --> common
+    contentEngine --> entity
+    contentEngine --> common
+    entity --> defs
+    entity --> mercury
+    entity --> commands
+    entity --> common
+
+    %% foundation
+    mercury --> common
+    defs --> common
+    commands --> common
+
+    %% UPK / navmesh toolchain (independent of the server spine)
+    navmeshExtractor["navmesh-extractor"] --> upkObjects["upk-objects"]
+    navmeshExtractor --> upk
+    sceneEditor["scene-editor (tool)"] --> upkObjects
+    sceneEditor --> upk
+    upkObjects --> upk
+
+    %% standalone crates with no intra-workspace dependencies
+    subgraph standalone["Standalone (no intra-workspace deps)"]
+        supervisor
+        clientTelemetry["client-telemetry"]
+        launcher["launcher (sgw-launcher)"]
+        contentEditor["content-editor (tool)"]
+        specLint["spec-lint (tool)"]
+    end
 ```
 
-Each box is a separate Rust crate that compiles independently. **common** has the basic types everything needs. **mercury** handles the BigWorld reliable UDP protocol and AES-256 encryption. **defs** parses entity definitions from XML. **entity** manages game objects. **game** and **content-engine** implement gameplay rules and the data-driven content pipeline. **services** ties it all together into Auth, Base, and Cell services. The main entry points are **server** (the headless game server), **admin-api** (a REST API), and **supervisor** (process supervision). Alongside the service spine sit the support and tooling crates — **discord** and **observability** (notifications + OTLP metrics), **wireclient** (headless test client), **upk**/**upk-objects** (Unreal Package parsing), **navmesh-extractor** (UE3 geometry export), **launcher** (the egui game launcher), and **client-telemetry** (a Windows-only cdylib injected into the client). The repo-root `src-tauri/` package (`cimmeria-app`) is a separate Tauri desktop GUI that wraps the server; it is not a member of the `crates/` workspace graph above.
+Every node is a workspace crate; the graph is a DAG rooted at **common** (the
+shared types / config / error layer everything builds on). **mercury** (reliable
+UDP + AES-256), **defs** (entity-definition XML parser) and **commands**
+(command + permission model) sit on `common`; **entity** composes them into live
+game objects; **game** and **content-engine** add gameplay rules and the
+data-driven content pipeline; **services** ties Auth / Base / Cell together and is
+what the **server** binary, the **admin-api** REST layer, the **app** desktop GUI
+(repo-root `src-tauri/`, package `cimmeria-app`) and the headless **wireclient**
+test client all build on. **discord** (notifications) and **observability** (OTLP
+metrics) are cross-cutting libraries pulled in by `services` + `server`. The
+**upk** / **upk-objects** / **navmesh-extractor** crates plus the `scene-editor`
+tool form an independent Unreal-package / navmesh toolchain. **supervisor**,
+**client-telemetry**, **launcher** (`sgw-launcher`), and the `content-editor` /
+`spec-lint` tools carry no intra-workspace dependencies.
 
 ## Project Structure
 
