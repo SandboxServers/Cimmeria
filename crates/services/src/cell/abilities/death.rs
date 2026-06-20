@@ -55,11 +55,7 @@ pub(super) async fn apply_death_transition(
     // Discord gameplay-channel (off by default — content/debug signal). Only
     // player deaths post. Killer name + pvp/pve cause are best-effort from the
     // attacker entity; read before the mutation bursts below.
-    if target_is_player {
-        let character_name = space_mgr
-            .get_entity(target_eid)
-            .and_then(|e| e.character_name.clone())
-            .unwrap_or_else(|| format!("entity:{target_eid}"));
+    {
         let killer = space_mgr.get_entity(attacker_id).and_then(|e| {
             if attacker_is_player {
                 e.character_name.clone()
@@ -67,8 +63,23 @@ pub(super) async fn apply_death_transition(
                 e.npc_name.clone()
             }
         });
-        let cause = if attacker_is_player { "pvp" } else { "pve" };
-        cimmeria_discord::emit_player_death(character_name, killer, cause);
+        if target_is_player {
+            let character_name = space_mgr
+                .get_entity(target_eid)
+                .and_then(|e| e.character_name.clone())
+                .unwrap_or_else(|| format!("entity:{target_eid}"));
+            let cause = if attacker_is_player { "pvp" } else { "pve" };
+            cimmeria_discord::emit_player_death(character_name, killer, cause);
+        } else {
+            // NPC / mob death (off by default — high volume during combat).
+            let npc_name = space_mgr
+                .get_entity(target_eid)
+                .and_then(|e| e.npc_name.clone())
+                .unwrap_or_else(|| format!("entity:{target_eid}"));
+            let cause = if attacker_is_player { "player" } else { "npc" };
+            let world_name = space_mgr.get_entity_world_name(target_eid);
+            cimmeria_discord::emit_npc_death(npc_name, killer, cause, world_name);
+        }
     }
 
     // Phase J: any channelled effects the dying target was running die

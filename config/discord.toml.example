@@ -124,6 +124,12 @@ mission_failed = false
 mission_reward_granted = false
 loot_generated = false
 item_used = false
+character_created = true
+minigame_result = true
+# NPC/mob deaths and dialog interactions are very high-volume during play;
+# off by default, flip on when you want the firehose.
+npc_death = false
+dialog = false
 
 # ─── GM (default: all ON — privileged actions need visibility) ─────────
 gm_command = true

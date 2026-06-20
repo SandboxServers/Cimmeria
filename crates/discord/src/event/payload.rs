@@ -54,20 +54,26 @@ pub enum Event {
     },
 
     // ─── Auth ───────────────────────────────────────────────────────────
+    //
+    // `addr` is carried for correlation but is NOT rendered in the embed —
+    // player IPs are deliberately kept out of Discord (see `embed::format`).
     PlayerLogin {
         account_id: u32,
+        account_name: Option<String>,
         character_name: Option<String>,
         addr: SocketAddr,
         timestamp: DateTime<Utc>,
     },
     PlayerLogout {
         account_id: u32,
+        account_name: Option<String>,
         character_name: Option<String>,
         session_secs: u64,
         timestamp: DateTime<Utc>,
     },
     PlayerDisconnect {
         account_id: Option<u32>,
+        account_name: Option<String>,
         character_name: Option<String>,
         addr: SocketAddr,
         reason: DisconnectReason,
@@ -84,6 +90,7 @@ pub enum Event {
     // ─── World ──────────────────────────────────────────────────────────
     PlayerWorldEntry {
         account_id: u32,
+        account_name: Option<String>,
         character_name: String,
         world_name: String,
         position: [f32; 3],
@@ -91,6 +98,7 @@ pub enum Event {
     },
     PlayerWorldExit {
         account_id: u32,
+        account_name: Option<String>,
         character_name: String,
         from_world: String,
         to_world: Option<String>,
@@ -164,6 +172,42 @@ pub enum Event {
         character_name: String,
         item_type_id: i32,
         target: Option<String>,
+        timestamp: DateTime<Utc>,
+    },
+    /// A new character was created on an account.
+    CharacterCreated {
+        account_id: u32,
+        account_name: Option<String>,
+        character_name: String,
+        archetype: i32,
+        world_name: String,
+        timestamp: DateTime<Utc>,
+    },
+    /// An NPC / mob died. The player-side counterpart is [`Self::PlayerDeath`].
+    NpcDeath {
+        npc_name: String,
+        killer: Option<String>,
+        /// `"pvp"` is impossible here; `cause` is `"player"` (killed by a
+        /// player) or `"npc"` (killed by another NPC / environment).
+        cause: String,
+        world_name: Option<String>,
+        timestamp: DateTime<Utc>,
+    },
+    /// A minigame finished and reported a result upstream. `character_name`
+    /// is best-effort — the minigame server only holds the entity id, so it
+    /// falls back to `entity:<id>` when the name can't be resolved.
+    MinigameResult {
+        game: String,
+        character_name: String,
+        success: bool,
+        timestamp: DateTime<Utc>,
+    },
+    /// A player interacted with an NPC dialog (opened it or picked an option).
+    Dialog {
+        character_name: String,
+        dialog_id: i32,
+        /// `None` = the dialog was opened; `Some(button)` = an option chosen.
+        choice: Option<i32>,
         timestamp: DateTime<Utc>,
     },
 
@@ -377,6 +421,10 @@ impl Event {
             Self::MissionRewardGranted { .. } => EventKind::MissionRewardGranted,
             Self::LootGenerated { .. } => EventKind::LootGenerated,
             Self::ItemUsed { .. } => EventKind::ItemUsed,
+            Self::CharacterCreated { .. } => EventKind::CharacterCreated,
+            Self::NpcDeath { .. } => EventKind::NpcDeath,
+            Self::MinigameResult { .. } => EventKind::MinigameResult,
+            Self::Dialog { .. } => EventKind::Dialog,
             Self::GmCommand { .. } => EventKind::GmCommand,
             Self::GmTeleport { .. } => EventKind::GmTeleport,
             Self::GmSpawn { .. } => EventKind::GmSpawn,
@@ -400,7 +448,9 @@ impl Event {
     /// glance.
     pub fn severity(&self) -> Severity {
         match self {
-            Self::ServerStartup { .. } | Self::PlayerLevelUp { .. } => Severity::Good,
+            Self::ServerStartup { .. }
+            | Self::PlayerLevelUp { .. }
+            | Self::CharacterCreated { .. } => Severity::Good,
 
             Self::ServerShutdown { .. }
             | Self::PlayerLogin { .. }
@@ -413,7 +463,10 @@ impl Event {
             | Self::MissionCompleted { .. }
             | Self::MissionRewardGranted { .. }
             | Self::ItemUsed { .. }
-            | Self::LootGenerated { .. } => Severity::Info,
+            | Self::LootGenerated { .. }
+            | Self::NpcDeath { .. }
+            | Self::MinigameResult { .. }
+            | Self::Dialog { .. } => Severity::Info,
 
             Self::PlayerDisconnect { .. }
             | Self::PlayerDeath { .. }

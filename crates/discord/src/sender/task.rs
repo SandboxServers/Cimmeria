@@ -194,6 +194,7 @@ mod tests {
     fn login_event() -> Event {
         Event::PlayerLogin {
             account_id: 1,
+            account_name: Some("steve".into()),
             character_name: Some("alice".into()),
             addr: "127.0.0.1:50000".parse().unwrap(),
             timestamp: Utc::now(),

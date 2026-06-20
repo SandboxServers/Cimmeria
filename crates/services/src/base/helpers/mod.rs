@@ -261,7 +261,7 @@ pub(crate) fn destroy_client_entities(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     reason: &'static str,
 ) {
-    let (account_eid, player_eid, account_id, player_name, session_secs) = {
+    let (account_eid, player_eid, account_id, account_name, player_name, session_secs) = {
         let mut clients = match connected.lock() {
             Ok(c) => c,
             Err(_) => return,
@@ -277,6 +277,7 @@ pub(crate) fn destroy_client_entities(
         // Snapshot identity + session length for the Discord disconnect emit
         // before `remove` drops the state.
         let account_id = c.account_id;
+        let account_name = c.account_name.clone();
         let player_name = c.player_name.clone();
         let session_secs = c.connected_at.elapsed().as_secs();
         clients.remove(&addr);
@@ -284,6 +285,7 @@ pub(crate) fn destroy_client_entities(
             account_eid,
             player_eid,
             account_id,
+            account_name,
             player_name,
             session_secs,
         )
@@ -321,6 +323,7 @@ pub(crate) fn destroy_client_entities(
     // `reason` label maps to a typed `DisconnectReason` for the embed.
     cimmeria_discord::emit_player_disconnect(
         Some(account_id),
+        account_name,
         player_name,
         addr,
         cimmeria_discord::DisconnectReason::from_label(reason),

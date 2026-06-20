@@ -31,6 +31,10 @@ pub struct EventToggles {
     pub mission_reward_granted: bool,
     pub loot_generated: bool,
     pub item_used: bool,
+    pub character_created: bool,
+    pub npc_death: bool,
+    pub minigame_result: bool,
+    pub dialog: bool,
     pub gm_command: bool,
     pub gm_teleport: bool,
     pub gm_spawn: bool,
@@ -92,6 +96,14 @@ impl Default for EventToggles {
             loot_generated: false,
             item_used: false,
 
+            // New gameplay events: character creation + minigame results are
+            // low-volume / high-signal → on. NPC death + dialog are very
+            // high-volume during play → off by default, toggleable.
+            character_created: true,
+            npc_death: false,
+            minigame_result: true,
+            dialog: false,
+
             // GM: all on (privileged actions need visibility).
             gm_command: true,
             gm_teleport: true,
@@ -147,6 +159,10 @@ impl EventToggles {
             EventKind::MissionRewardGranted => self.mission_reward_granted,
             EventKind::LootGenerated => self.loot_generated,
             EventKind::ItemUsed => self.item_used,
+            EventKind::CharacterCreated => self.character_created,
+            EventKind::NpcDeath => self.npc_death,
+            EventKind::MinigameResult => self.minigame_result,
+            EventKind::Dialog => self.dialog,
             EventKind::GmCommand => self.gm_command,
             EventKind::GmTeleport => self.gm_teleport,
             EventKind::GmSpawn => self.gm_spawn,

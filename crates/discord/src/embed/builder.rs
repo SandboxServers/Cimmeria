@@ -141,18 +141,21 @@ mod tests {
             },
             Event::PlayerLogin {
                 account_id: 1,
+                account_name: Some("steve".into()),
                 character_name: Some("alice".into()),
                 addr,
                 timestamp: ts,
             },
             Event::PlayerLogout {
                 account_id: 1,
+                account_name: Some("steve".into()),
                 character_name: Some("alice".into()),
                 session_secs: 100,
                 timestamp: ts,
             },
             Event::PlayerDisconnect {
                 account_id: Some(1),
+                account_name: None,
                 character_name: Some("alice".into()),
                 addr,
                 reason: DisconnectReason::Timeout,
@@ -167,6 +170,7 @@ mod tests {
             },
             Event::PlayerWorldEntry {
                 account_id: 1,
+                account_name: Some("steve".into()),
                 character_name: "alice".into(),
                 world_name: "Castle".into(),
                 position: [1.0, 2.0, 3.0],
@@ -174,6 +178,7 @@ mod tests {
             },
             Event::PlayerWorldExit {
                 account_id: 1,
+                account_name: Some("steve".into()),
                 character_name: "alice".into(),
                 from_world: "Castle".into(),
                 to_world: Some("Tollana".into()),
@@ -239,6 +244,33 @@ mod tests {
                 character_name: "alice".into(),
                 item_type_id: 5168,
                 target: None,
+                timestamp: ts,
+            },
+            Event::CharacterCreated {
+                account_id: 3,
+                account_name: Some("steve".into()),
+                character_name: "asg".into(),
+                archetype: 2,
+                world_name: "Castle_CellBlock".into(),
+                timestamp: ts,
+            },
+            Event::NpcDeath {
+                npc_name: "Jaffa Guard".into(),
+                killer: Some("alice".into()),
+                cause: "player".into(),
+                world_name: Some("Castle_CellBlock".into()),
+                timestamp: ts,
+            },
+            Event::MinigameResult {
+                game: "Livewire".into(),
+                character_name: "alice".into(),
+                success: true,
+                timestamp: ts,
+            },
+            Event::Dialog {
+                character_name: "alice".into(),
+                dialog_id: 4242,
+                choice: Some(1),
                 timestamp: ts,
             },
             Event::GmCommand {

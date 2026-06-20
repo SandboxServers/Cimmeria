@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-// ── EventKind: 28-variant discriminant ──────────────────────────────────
+// ── EventKind: 44-variant discriminant ──────────────────────────────────
 
 /// Discriminant of [`Event`](super::Event) — used as the key for the
 /// per-event toggle map in [`crate::config::EventToggles`] and as the value
@@ -48,6 +48,10 @@ pub enum EventKind {
     MissionRewardGranted,
     LootGenerated,
     ItemUsed,
+    CharacterCreated,
+    NpcDeath,
+    MinigameResult,
+    Dialog,
 
     // GM
     GmCommand,
@@ -100,6 +104,10 @@ impl EventKind {
         Self::MissionRewardGranted,
         Self::LootGenerated,
         Self::ItemUsed,
+        Self::CharacterCreated,
+        Self::NpcDeath,
+        Self::MinigameResult,
+        Self::Dialog,
         Self::GmCommand,
         Self::GmTeleport,
         Self::GmSpawn,
@@ -145,6 +153,10 @@ impl EventKind {
             Self::MissionRewardGranted => "mission_reward_granted",
             Self::LootGenerated => "loot_generated",
             Self::ItemUsed => "item_used",
+            Self::CharacterCreated => "character_created",
+            Self::NpcDeath => "npc_death",
+            Self::MinigameResult => "minigame_result",
+            Self::Dialog => "dialog",
             Self::GmCommand => "gm_command",
             Self::GmTeleport => "gm_teleport",
             Self::GmSpawn => "gm_spawn",
@@ -193,6 +205,6 @@ mod tests {
         // Update this when adding/removing an EventKind variant. The
         // doc-comment on EventKind enumerates the three places to touch
         // (event.rs, EventToggles, router).
-        assert_eq!(EventKind::ALL.len(), 40);
+        assert_eq!(EventKind::ALL.len(), 44);
     }
 }

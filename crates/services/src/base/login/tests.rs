@@ -142,6 +142,7 @@ use cimmeria_entity::manager::EntityManager;
 fn make_pending_login(account_id: u32, key_byte: u8) -> PendingLogin {
     PendingLogin {
         account_id,
+        account_name: format!("acct{account_id}"),
         access_level: 0,
         ticket: "TICKET00000000000001".to_string(),
         // 32-byte key encoded as 64 hex chars, all the same byte.
