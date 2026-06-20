@@ -1,4 +1,5 @@
 use super::*;
+use cimmeria_common::{EntityId, SpaceId};
 
 fn make_entity() -> CellEntity {
     CellEntity::new(EntityId(1), SpaceId(100), Vector3::new(10.0, 0.0, 20.0))
