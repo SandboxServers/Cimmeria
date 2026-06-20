@@ -11,11 +11,16 @@
 
 mod handlers;
 mod service;
+mod tls;
 
 #[cfg(test)]
 mod login_smoke;
 
+#[cfg(test)]
+mod tls_smoke;
+
 pub use service::AuthService;
+pub use tls::{TlsCertStore, TlsError, TlsListener};
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

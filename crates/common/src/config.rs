@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Server configuration loaded from XML config files.
 ///
@@ -20,6 +20,23 @@ pub struct ServerConfig {
     /// HTTP port the auth server listens on for client SOAP login requests.
     /// Default: 8081 (from `AuthenticationService.config:logon_service_port`)
     pub logon_port: u16,
+
+    /// HTTPS port the auth server listens on for TLS-terminated SOAP login
+    /// requests (#434 Phase 1). The TLS listener runs **in parallel** with the
+    /// plain-HTTP listener on `logon_port` during the transition window, serving
+    /// the same axum `Router`. It only starts when **both** `auth_tls_cert_path`
+    /// and `auth_tls_key_path` are set; otherwise the server is HTTP-only.
+    /// Default: 13443 (TLS off by default, no cert/key configured).
+    pub auth_tls_port: u16,
+
+    /// Path to the PEM-encoded TLS certificate chain (leaf first) for the auth
+    /// HTTPS listener. `None` disables TLS. Both this and `auth_tls_key_path`
+    /// must be set for the TLS listener to start.
+    pub auth_tls_cert_path: Option<PathBuf>,
+
+    /// Path to the PEM-encoded TLS private key (PKCS#8, PKCS#1/RSA, or SEC1/EC)
+    /// for the auth HTTPS listener. `None` disables TLS.
+    pub auth_tls_key_path: Option<PathBuf>,
 
     /// BaseApp bind address (the interface the UDP socket is bound to).
     /// Use `0.0.0.0` to listen on all interfaces.
@@ -71,6 +88,12 @@ impl Default for ServerConfig {
             auth_host: "0.0.0.0".to_string(),
             auth_port: 13001,
             logon_port: 8081,
+            // TLS is opt-in: the listener stays down until an operator points
+            // both cert and key paths at real PEM files. 13443 is a stable
+            // default so the dual-stack window has a known HTTPS port.
+            auth_tls_port: 13443,
+            auth_tls_cert_path: None,
+            auth_tls_key_path: None,
             base_host: "0.0.0.0".to_string(),
             base_external_host: "127.0.0.1".to_string(),
             base_port: 32832,
@@ -142,6 +165,17 @@ mod tests {
     fn default_config_developer_mode_off() {
         let config = ServerConfig::default();
         assert!(!config.developer_mode);
+    }
+
+    #[test]
+    fn default_config_tls_off_with_stable_port() {
+        // TLS must be disabled by default — both paths None means the auth
+        // server stays HTTP-only. The port is set regardless so enabling TLS
+        // is a two-path change, not a port-hunt.
+        let config = ServerConfig::default();
+        assert_eq!(config.auth_tls_port, 13443);
+        assert!(config.auth_tls_cert_path.is_none());
+        assert!(config.auth_tls_key_path.is_none());
     }
 
     #[test]
