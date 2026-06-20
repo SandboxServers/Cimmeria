@@ -455,4 +455,231 @@ rate_limit_per_min = 9999
         let err = interpolate_env_vars("${OOPS", "test").unwrap_err();
         assert!(matches!(err, ConfigError::UnclosedEnvVar { .. }));
     }
+
+    // -- NET-NEW coverage: config-parse error paths --
+
+    /// Malformed TOML must surface as [`ConfigError::Toml`], not panic.
+    /// The deserialize step in `from_toml_str` is the only producer of
+    /// this variant and was previously unexercised.
+    #[test]
+    fn malformed_toml_returns_toml_error() {
+        // `enabled = ` with no value is a syntax error for the TOML parser.
+        let toml_src = r#"
+[discord]
+enabled =
+"#;
+        let err = Config::from_toml_str(toml_src).unwrap_err();
+        assert!(matches!(err, ConfigError::Toml(_)));
+    }
+
+    /// A type mismatch on a typed field (string where a bool is expected)
+    /// also routes through the `toml::from_str` deserialize error path.
+    #[test]
+    fn wrong_type_for_enabled_returns_toml_error() {
+        let toml_src = r#"
+[discord]
+enabled = "yes"
+"#;
+        let err = Config::from_toml_str(toml_src).unwrap_err();
+        assert!(matches!(err, ConfigError::Toml(_)));
+    }
+
+    /// A `[discord.channels.<name>]` block missing the required `url`
+    /// field fails at deserialize time (the field has no `#[serde(default)]`).
+    #[test]
+    fn channel_missing_url_field_returns_toml_error() {
+        let toml_src = r#"
+[discord]
+enabled = true
+
+[discord.channels.lifecycle]
+rate_limit_per_min = 30
+"#;
+        let err = Config::from_toml_str(toml_src).unwrap_err();
+        assert!(matches!(err, ConfigError::Toml(_)));
+    }
+
+    /// An unclosed `${...` reaching `from_toml_str` (not just the unit
+    /// helper) must produce [`ConfigError::UnclosedEnvVar`] carrying the
+    /// offending channel name.
+    #[test]
+    fn unclosed_env_var_via_from_toml_str_names_channel() {
+        let toml_src = r#"
+[discord]
+enabled = true
+
+[discord.channels.errors]
+url = "https://discord.com/api/webhooks/${OOPS"
+"#;
+        let err = Config::from_toml_str(toml_src).unwrap_err();
+        assert!(
+            matches!(err, ConfigError::UnclosedEnvVar { ref channel } if channel == "errors"),
+            "expected UnclosedEnvVar for `errors`, got {err:?}"
+        );
+    }
+
+    /// The `discordapp.com` host is the legacy-but-still-valid webhook
+    /// domain. The validate() OR-branch that accepts it was uncovered.
+    #[test]
+    fn legacy_discordapp_webhook_url_accepted() {
+        let toml_src = r#"
+[discord]
+enabled = true
+
+[discord.channels.lifecycle]
+url = "https://discordapp.com/api/webhooks/1/legacyABC"
+"#;
+        let cfg = Config::from_toml_str(toml_src).expect("discordapp.com host must be accepted");
+        let lc = cfg.channels.get(&ChannelKind::Lifecycle).unwrap();
+        assert_eq!(lc.url, "https://discordapp.com/api/webhooks/1/legacyABC");
+    }
+
+    /// When no `rate_limit_per_min` is given the `default_rate_limit`
+    /// serde default (60) applies, then survives the clamp unchanged.
+    #[test]
+    fn rate_limit_defaults_to_sixty_when_omitted() {
+        let toml_src = r#"
+[discord]
+enabled = true
+
+[discord.channels.lifecycle]
+url = "https://discord.com/api/webhooks/1/abc"
+"#;
+        let cfg = Config::from_toml_str(toml_src).unwrap();
+        let lc = cfg.channels.get(&ChannelKind::Lifecycle).unwrap();
+        assert_eq!(lc.rate_limit_per_min, 60, "serde default must be 60");
+    }
+
+    /// A `rate_limit_per_min` of 0 is below Discord's floor; the clamp
+    /// raises it to the minimum of 1 (the lower clamp bound, previously
+    /// untested -- only the upper bound was exercised).
+    #[test]
+    fn rate_limit_zero_clamped_up_to_one() {
+        let toml_src = r#"
+[discord]
+enabled = true
+
+[discord.channels.lifecycle]
+url = "https://discord.com/api/webhooks/1/abc"
+rate_limit_per_min = 0
+"#;
+        let cfg = Config::from_toml_str(toml_src).unwrap();
+        let lc = cfg.channels.get(&ChannelKind::Lifecycle).unwrap();
+        assert_eq!(lc.rate_limit_per_min, 1, "must clamp up to the floor of 1");
+    }
+
+    /// A `${VAR}` that resolves successfully through `from_toml_str`
+    /// produces a usable webhook URL -- the happy interpolation path that
+    /// passes the `validate()` webhook-prefix check end to end.
+    /// Restores (or removes) a process-global env var on drop so env-mutating
+    /// tests don't leak state to parallel siblings (cargo runs tests in a
+    /// binary in parallel by default).
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+    impl EnvGuard {
+        fn set(key: &'static str, val: &str) -> Self {
+            let prev = std::env::var(key).ok();
+            std::env::set_var(key, val);
+            Self { key, prev }
+        }
+        fn unset(key: &'static str) -> Self {
+            let prev = std::env::var(key).ok();
+            std::env::remove_var(key);
+            Self { key, prev }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(v) => std::env::set_var(self.key, v),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
+    #[test]
+    fn env_var_substitution_produces_valid_webhook_url() {
+        let _guard = EnvGuard::set(
+            "TEST_SUBST_OK_WEBHOOK",
+            "https://discord.com/api/webhooks/42/substituted",
+        );
+        let toml_src = r#"
+[discord]
+enabled = true
+
+[discord.channels.lifecycle]
+url = "${TEST_SUBST_OK_WEBHOOK}"
+"#;
+        let cfg = Config::from_toml_str(toml_src).unwrap();
+        let lc = cfg.channels.get(&ChannelKind::Lifecycle).unwrap();
+        assert_eq!(lc.url, "https://discord.com/api/webhooks/42/substituted");
+    }
+
+    /// `interpolate_env_vars` passes a bare `$` (not followed by `{`)
+    /// through untouched and emits a string with no placeholders intact.
+    #[test]
+    fn interpolate_passes_through_bare_dollar_and_plain_text() {
+        let out = interpolate_env_vars("cost is $5 flat", "test").unwrap();
+        assert_eq!(out, "cost is $5 flat");
+        let plain = interpolate_env_vars("no placeholders here", "test").unwrap();
+        assert_eq!(plain, "no placeholders here");
+    }
+
+    /// The `MissingEnvVar` error must carry the channel name as well as
+    /// the variable name (the channel field was only spot-checked before).
+    #[test]
+    fn missing_env_var_error_carries_channel_name() {
+        let _guard = EnvGuard::unset("TEST_MISSING_NAMED_WEBHOOK");
+        let toml_src = r#"
+[discord]
+enabled = true
+
+[discord.channels.world]
+url = "${TEST_MISSING_NAMED_WEBHOOK}"
+"#;
+        let err = Config::from_toml_str(toml_src).unwrap_err();
+        match err {
+            ConfigError::MissingEnvVar { channel, var } => {
+                assert_eq!(channel, "world");
+                assert_eq!(var, "TEST_MISSING_NAMED_WEBHOOK");
+            }
+            other => panic!("expected MissingEnvVar, got {other:?}"),
+        }
+    }
+
+    /// Spot-check the human-facing `Display` text for the validation
+    /// errors. The `#[error("...")]` formats are part of the operator UX
+    /// (they appear in startup logs) and were entirely uncovered.
+    #[test]
+    fn config_error_display_messages() {
+        let unknown_chan = ConfigError::UnknownChannel("audit".to_string());
+        assert!(unknown_chan.to_string().contains("audit"));
+        assert!(unknown_chan.to_string().contains("unknown channel"));
+
+        let unknown_evt = ConfigError::UnknownEvent("playr_login".to_string());
+        assert!(unknown_evt.to_string().contains("playr_login"));
+
+        let bad_url = ConfigError::BadWebhookUrl {
+            channel: "errors".to_string(),
+            url: "https://example.com/hook".to_string(),
+        };
+        let bad_url_str = bad_url.to_string();
+        assert!(bad_url_str.contains("errors"));
+        assert!(bad_url_str.contains("https://example.com/hook"));
+
+        let missing = ConfigError::MissingEnvVar {
+            channel: "world".to_string(),
+            var: "DISCORD_WORLD_WEBHOOK".to_string(),
+        };
+        let missing_str = missing.to_string();
+        assert!(missing_str.contains("world"));
+        assert!(missing_str.contains("DISCORD_WORLD_WEBHOOK"));
+
+        let unclosed = ConfigError::UnclosedEnvVar {
+            channel: "chat".to_string(),
+        };
+        assert!(unclosed.to_string().contains("chat"));
+    }
 }
