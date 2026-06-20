@@ -19,8 +19,9 @@
 //!   [`TlsCertStore::reload`] re-reads the cert/key files and atomically swaps
 //!   the config in. In-flight connections keep the config they handshook with;
 //!   new connections pick up the rotated cert — no listener restart, no dropped
-//!   socket. The mtime/SIGHUP watcher that *calls* `reload` is a documented
-//!   follow-up; this module exposes the reload seam now.
+//!   socket. The background mtime watcher in [`super::cert_watcher`] calls
+//!   `reload` on a poll interval so an operator's cert rotation is picked up
+//!   without restarting the server.
 //!
 //! - **Handshake failures never kill the listener.** Per the `Listener` trait
 //!   contract, `accept()` must log-and-retry on error. A client speaking plain
@@ -58,6 +59,23 @@ pub enum TlsError {
     Rustls(#[from] tokio_rustls::rustls::Error),
 }
 
+/// The live, served TLS material: the assembled `rustls::ServerConfig` plus the
+/// DER of the leaf certificate it serves.
+///
+/// Bundling the leaf DER with the config (rather than digging it back out of
+/// rustls, which hides its cert chain behind a private `ClientHello`) lets the
+/// reload path and tests observe *which* cert is currently live with a cheap
+/// byte comparison — proving a hot-swap installed *different* material, not just
+/// a fresh-but-identical config.
+struct LiveTls {
+    config: Arc<ServerConfig>,
+    // Only read by the test-only `current_leaf_cert_der` observability hook; in
+    // a release build nothing reads it back out, but it is still captured on
+    // every (re)build so the hook is always accurate when tests run.
+    #[cfg_attr(not(test), allow(dead_code))]
+    leaf_cert_der: Vec<u8>,
+}
+
 /// Holds the live `rustls::ServerConfig` behind an `ArcSwap` so the cert can be
 /// hot-reloaded without restarting the listener.
 ///
@@ -66,7 +84,7 @@ pub enum TlsError {
 pub struct TlsCertStore {
     cert_path: PathBuf,
     key_path: PathBuf,
-    config: Arc<ArcSwap<ServerConfig>>,
+    live: Arc<ArcSwap<LiveTls>>,
 }
 
 impl std::fmt::Debug for TlsCertStore {
@@ -86,24 +104,25 @@ impl TlsCertStore {
     pub fn load(cert_path: impl AsRef<Path>, key_path: impl AsRef<Path>) -> Result<Self, TlsError> {
         let cert_path = cert_path.as_ref().to_path_buf();
         let key_path = key_path.as_ref().to_path_buf();
-        let config = build_server_config(&cert_path, &key_path)?;
+        let live = build_live_tls(&cert_path, &key_path)?;
         Ok(Self {
             cert_path,
             key_path,
-            config: Arc::new(ArcSwap::from_pointee(config)),
+            live: Arc::new(ArcSwap::from_pointee(live)),
         })
     }
 
     /// Re-read the cert/key files from their original paths and atomically swap
     /// the active `ServerConfig`.
     ///
-    /// This is the reload **seam** — an mtime/SIGHUP watcher that calls this on
-    /// a schedule is a documented follow-up. On error the previous config is
-    /// left in place (the swap only happens after a successful rebuild), so a
-    /// botched cert rotation can't take the listener down.
+    /// This is the reload **seam** — the background mtime watcher in
+    /// [`super::cert_watcher`] calls this on a poll interval. On error the
+    /// previous config is left in place (the swap only happens after a
+    /// successful rebuild), so a botched cert rotation can't take the listener
+    /// down.
     pub fn reload(&self) -> Result<(), TlsError> {
-        let new_config = build_server_config(&self.cert_path, &self.key_path)?;
-        self.config.store(Arc::new(new_config));
+        let new_live = build_live_tls(&self.cert_path, &self.key_path)?;
+        self.live.store(Arc::new(new_live));
         tracing::info!(
             cert = %self.cert_path.display(),
             "Reloaded auth TLS certificate"
@@ -113,12 +132,42 @@ impl TlsCertStore {
 
     /// Snapshot the current config (read per-connection in the accept loop).
     fn current(&self) -> Arc<ServerConfig> {
-        self.config.load_full()
+        Arc::clone(&self.live.load().config)
+    }
+
+    /// The configured cert chain path. Used by the mtime watcher to stat the
+    /// file it must reload from.
+    pub(super) fn cert_path(&self) -> &Path {
+        &self.cert_path
+    }
+
+    /// The configured private key path. Used by the mtime watcher to stat the
+    /// file it must reload from.
+    pub(super) fn key_path(&self) -> &Path {
+        &self.key_path
+    }
+
+    /// Return the DER bytes of the leaf certificate the store is *currently*
+    /// serving.
+    ///
+    /// The leaf DER carries the SPKI + serial, so a reload test can prove a
+    /// hot-swap installed *different* cert material — not merely that a swap
+    /// occurred — by comparing this value across a reload. Captured at build
+    /// time and carried alongside the live config (see [`LiveTls`]) so it always
+    /// reflects exactly what the listener serves.
+    #[cfg(test)]
+    pub(super) fn current_leaf_cert_der(&self) -> Vec<u8> {
+        self.live.load().leaf_cert_der.clone()
     }
 }
 
-/// Read a PEM cert chain + private key and assemble a `rustls::ServerConfig`
-/// with no client-cert verification (standard server-auth-only TLS).
+/// Read a PEM cert chain + private key, assemble a `rustls::ServerConfig` with
+/// no client-cert verification (standard server-auth-only TLS), and capture the
+/// leaf certificate's DER for the live-cert observability hook.
+///
+/// Both the initial [`TlsCertStore::load`] and every [`TlsCertStore::reload`]
+/// go through here, so the leaf DER carried in [`LiveTls`] always matches the
+/// config actually built — there is no second read that could drift.
 ///
 /// The provider is pinned to **aws-lc-rs** explicitly rather than relying on
 /// `ServerConfig::builder()`'s process-default: this crate's dependency graph
@@ -126,16 +175,34 @@ impl TlsCertStore {
 /// other deps each pull one), and with two providers present rustls 0.23
 /// refuses to auto-select and panics. Pinning the provider here makes the auth
 /// listener deterministic regardless of what the rest of the binary links.
-fn build_server_config(cert_path: &Path, key_path: &Path) -> Result<ServerConfig, TlsError> {
+fn build_live_tls(cert_path: &Path, key_path: &Path) -> Result<LiveTls, TlsError> {
     let certs = load_certs(cert_path)?;
     let key = load_private_key(key_path)?;
 
+    // `load_certs` guarantees a non-empty, leaf-first chain.
+    let leaf_cert_der = certs[0].as_ref().to_vec();
+
     let provider = Arc::new(tokio_rustls::rustls::crypto::aws_lc_rs::default_provider());
+
+    // Verify the private key actually matches the leaf certificate BEFORE
+    // building the live config. `with_single_cert` does NOT cross-check this,
+    // so without the guard a non-atomic rotation (new cert written, old key
+    // still on disk for a tick) could install a mismatched pair that fails
+    // every TLS handshake until the next reload. On mismatch we error here;
+    // `reload` then retains the previous good config and the watcher retries on
+    // the next tick once both files are consistent.
+    let signing_key = provider.key_provider.load_private_key(key.clone_key())?;
+    let certified = tokio_rustls::rustls::sign::CertifiedKey::new(certs.clone(), signing_key);
+    certified.keys_match()?;
+
     let config = ServerConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()?
         .with_no_client_auth()
         .with_single_cert(certs, key)?;
-    Ok(config)
+    Ok(LiveTls {
+        config: Arc::new(config),
+        leaf_cert_der,
+    })
 }
 
 /// Parse the leaf-first PEM certificate chain.

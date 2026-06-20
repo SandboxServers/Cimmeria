@@ -15,6 +15,7 @@ use cimmeria_common::ServerConfig;
 
 use crate::audit::{LoginEvent, LoginEventBuffer};
 
+use super::cert_watcher::spawn_cert_watcher;
 use super::handlers::{handle_server_selection, handle_user_auth};
 use super::tls::{hsts_layer, tls_marker_layer, TlsCertStore, TlsListener};
 use super::{
@@ -37,6 +38,9 @@ pub struct AuthService {
     tls_cert_path: Option<PathBuf>,
     /// PEM private key path; `None` disables the TLS listener.
     tls_key_path: Option<PathBuf>,
+    /// How often (seconds) the background watcher polls the cert/key mtimes and
+    /// hot-reloads on change. `0` disables the watcher.
+    tls_reload_interval_secs: u64,
     /// Live cert store (set once `start` loads the cert). Held so `reload_certs`
     /// can hot-swap the cert without restarting the listener.
     cert_store: Option<TlsCertStore>,
@@ -71,6 +75,7 @@ impl AuthService {
             tls_addr,
             tls_cert_path: config.auth_tls_cert_path.clone(),
             tls_key_path: config.auth_tls_key_path.clone(),
+            tls_reload_interval_secs: config.auth_tls_reload_interval_secs,
             cert_store: None,
             is_running: false,
             shards: Vec::new(),
@@ -210,6 +215,10 @@ impl AuthService {
             })?;
             // Stash the store so reload_certs() can hot-swap the cert later.
             self.cert_store = Some(store.clone());
+            // Hold a handle for the mtime watcher, which we start only *after* a
+            // successful bind — a bind failure (e.g. port in use) returns below
+            // and must not leave a watcher task running orphaned.
+            let watcher_store = store.clone();
 
             let tls_listener = TlsListener::bind(self.tls_addr, store).await.map_err(|e| {
                 tracing::error!(addr = %self.tls_addr, error = %e, "Failed to bind auth TLS listener");
@@ -246,6 +255,12 @@ impl AuthService {
                 }
                 tracing::trace!("Auth TLS server task exited");
             });
+
+            // Listener is bound and serving — now start the background mtime
+            // watcher so an operator's cert rotation (e.g. a Let's Encrypt
+            // renewal) is hot-reloaded without a restart. `0` disables it; the
+            // watcher no-ops in that case.
+            spawn_cert_watcher(watcher_store, self.tls_reload_interval_secs);
         } else {
             tracing::debug!("Auth TLS listener not configured (cert/key paths unset); HTTP-only");
         }

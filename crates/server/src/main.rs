@@ -12,6 +12,7 @@
 //! | `AUTH_HOST` | `0.0.0.0` | Auth service bind address |
 //! | `AUTH_PORT` | `13001` | Auth service port (BaseApp connections) |
 //! | `LOGON_PORT` | `8081` | Auth HTTP port (SOAP client login) |
+//! | `AUTH_TLS_RELOAD_INTERVAL_SECS` | `30` | How often the background watcher polls the auth TLS cert/key file mtimes and hot-reloads the live config when either changes (e.g. a Let's Encrypt renewal), without restarting the server. `0` disables the watcher. Only active when the TLS listener is configured (cert + key paths set). |
 //! | `BASE_HOST` | `0.0.0.0` | BaseApp UDP bind address |
 //! | `BASE_EXTERNAL` | `127.0.0.1` | BaseApp address advertised to game clients |
 //! | `BASE_PORT` | `32832` | BaseApp UDP port |
@@ -329,6 +330,16 @@ fn config_from_env() -> ServerConfig {
     if let Ok(v) = std::env::var("LOGON_PORT") {
         if let Ok(p) = v.parse() {
             cfg.logon_port = p;
+        }
+    }
+    if let Ok(v) = std::env::var("AUTH_TLS_RELOAD_INTERVAL_SECS") {
+        if let Ok(secs) = v.parse() {
+            cfg.auth_tls_reload_interval_secs = secs;
+        } else {
+            tracing::warn!(
+                value = %v,
+                "AUTH_TLS_RELOAD_INTERVAL_SECS is not a number; keeping default"
+            );
         }
     }
     if let Ok(v) = std::env::var("BASE_HOST") {
