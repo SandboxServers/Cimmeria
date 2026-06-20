@@ -127,6 +127,9 @@ config/*.local
 *.local.config
 .env
 .env.*
+# ...but DO track committable templates (no secrets — placeholders only).
+!.env.example
+!**/.env.example
 
 # =============================================================================
 # Server Runtime (PostgreSQL data, logs)
