@@ -44,15 +44,25 @@ client-side change must therefore be a **binary patch via injection + hooking**.
 
 A four-phase rollout, plus one deliberate non-change.
 
-### Phase 0 — shared hook foundation
+### Phase 0 — shared hook foundation (**delivered by #504**)
 
-Build a **shared inline / IAT / vtable hooking crate** as the foundation for all
-client patching.
+Provide the **inline / IAT / vtable hooking** layer all client patching needs.
 
-*Rationale:* the existing `cimmeria-client-telemetry` cdylib already has the
-injection vehicle (it loads into the client) but **no general hook layer** —
-nothing to place an inline detour, swap an IAT slot, or replace a vtable entry.
-Phases 1–3 all need that layer, so it is built once, first.
+**Status update (2026-06-20):** [#504](https://github.com/SandboxServers/Cimmeria/pull/504)
+(`cimmeria-client-telemetry` Phases 2–5) **built and shipped this layer** — it is
+no longer from-scratch work. #504 provides the injection vehicle
+(`crates/launcher/src/inject.rs::inject_dll`, LoadLibraryW-in-target) plus three
+hook techniques in `crates/client-telemetry/src/hooks/`: `inline_hooks.rs`
+(trampoline detours), `iat_hooks.rs` (IAT-slot replace), and `vtable_hooks.rs`
+(vtable swap), all i686-CI-tested. They map 1:1 to the client patches below:
+inline → `curl_easy_setopt @ 0x013A96E0` (Phase 1) and `LoginReplyHandler ctor @
+0x00DDED60` (Phase 2); vtable → `Mercury::Channel::send @ 0x01576F90` (Phase 3).
+
+So Phase 0 is re-scoped to **extracting #504's hook primitives into a reusable
+API** (a behaviour-preserving refactor exposing `place_trampoline` /
+`replace_iat_slot` / `swap_vtable_slot`) that the client patch crates call — not
+a new from-scratch crate. This resolves the original "new crate vs. extend
+client-telemetry" open decision in favour of **extending client-telemetry**.
 
 ### Phase 1 — auth TLS
 
