@@ -67,7 +67,16 @@ client-telemetry" open decision in favour of **extending client-telemetry**.
 ### Phase 1 — auth TLS
 
 - **Server side:** terminate TLS with **tokio-rustls**, with **arc-swap**-based
-  hot certificate reload (rotate the cert without dropping the listener).
+  hot certificate reload (rotate the cert without dropping the listener). **Cert
+  hot-reload is implemented:** a background mtime watcher
+  (`crates/services/src/auth/cert_watcher.rs`) polls the cert/key files and
+  atomically swaps the live `rustls::ServerConfig` via `TlsCertStore::reload`
+  when either file changes, so an operator's cert rotation (e.g. a Let's Encrypt
+  renewal) is picked up without a server restart. The poll interval is
+  `auth_tls_reload_interval_secs` (env `AUTH_TLS_RELOAD_INTERVAL_SECS`, default
+  30s; `0` disables the watcher). A mid-write/corrupt PEM on a tick is logged and
+  retried on the next tick — the swap only happens after a successful rebuild, so
+  a botched rotation never takes the listener down.
 - **Client side:** hook `curl_easy_setopt` (`0x013A96E0`), intercept
   `CURLOPT_URL` (`0x2712`), and rewrite the URL to a **localhost loopback**. A
   **local rustls proxy inside the injected shim** then re-originates the request

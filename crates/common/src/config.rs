@@ -38,6 +38,15 @@ pub struct ServerConfig {
     /// for the auth HTTPS listener. `None` disables TLS.
     pub auth_tls_key_path: Option<PathBuf>,
 
+    /// How often (in seconds) the background watcher polls the auth TLS
+    /// cert/key file mtimes and hot-reloads the live `rustls::ServerConfig`
+    /// when either file changes on disk. This lets an operator's cert rotation
+    /// (e.g. a Let's Encrypt renewal) take effect without restarting the
+    /// server. `0` disables the watcher entirely. The watcher is only spawned
+    /// when the TLS listener itself is configured (both cert and key paths set).
+    /// Default: 30.
+    pub auth_tls_reload_interval_secs: u64,
+
     /// BaseApp bind address (the interface the UDP socket is bound to).
     /// Use `0.0.0.0` to listen on all interfaces.
     /// Default: `0.0.0.0`
@@ -122,6 +131,10 @@ impl Default for ServerConfig {
             auth_tls_port: 13443,
             auth_tls_cert_path: None,
             auth_tls_key_path: None,
+            // Poll the cert/key mtimes every 30s by default. Cheap (two stats)
+            // and picks up a rotated cert within half a minute. Operators who
+            // rotate via SIGHUP or never rotate can set this to 0 to disable.
+            auth_tls_reload_interval_secs: 30,
             base_host: "0.0.0.0".to_string(),
             base_external_host: "127.0.0.1".to_string(),
             base_port: 32832,
@@ -229,6 +242,15 @@ mod tests {
         // documented hour so flipping to v2 gives the intended cadence.
         let config = ServerConfig::default();
         assert_eq!(config.mercury_key_rotation_secs, 3600);
+    }
+
+    #[test]
+    fn default_config_cert_reload_interval_is_30s() {
+        // The watcher defaults to a 30-second poll. `0` would disable it; this
+        // guard pins the on-by-default behaviour so a cert rotation is picked
+        // up without a server restart out of the box.
+        let config = ServerConfig::default();
+        assert_eq!(config.auth_tls_reload_interval_secs, 30);
     }
 
     #[test]
