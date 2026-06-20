@@ -638,4 +638,125 @@ mod tests {
         mgr.add_ability(597);
         assert_eq!(mgr.first_known_ability(), Some(597));
     }
+
+    // ── cooldown edge branches ───────────────────────────────────────────
+
+    /// `is_on_cooldown` must return `false` for an entry that is *present*
+    /// but already expired (now >= expires_at), not just for a missing
+    /// entry. Covers the `Some(entry)` arm's false-comparison branch that
+    /// the happy-path `cooldown_tracking` test never reaches.
+    #[test]
+    fn is_on_cooldown_false_for_expired_present_entry() {
+        let mut mgr = AbilityManager::with_abilities(&[597]);
+        mgr.ability_cooldowns.insert(
+            597,
+            CooldownEntry {
+                expires_at: Instant::now() - Duration::from_secs(1),
+                total_duration: Duration::from_secs(5),
+            },
+        );
+        assert!(
+            !mgr.is_on_cooldown(597),
+            "an expired-but-present entry must read as not-on-cooldown"
+        );
+    }
+
+    /// Companion to the above for the moniker map's `Some(entry)`
+    /// expired branch.
+    #[test]
+    fn is_moniker_on_cooldown_false_for_expired_present_entry() {
+        let mut mgr = AbilityManager::new();
+        mgr.moniker_cooldowns.insert(
+            42,
+            CooldownEntry {
+                expires_at: Instant::now() - Duration::from_secs(1),
+                total_duration: Duration::from_secs(5),
+            },
+        );
+        assert!(!mgr.is_moniker_on_cooldown(42));
+    }
+
+    /// `start_cooldowns` with a sub-0.002s cooldown takes the `else`
+    /// branch: moniker_duration == the full ability duration (no
+    /// 0.001s shave). The happy-path test only exercises the
+    /// `> 0.002` arm.
+    #[test]
+    fn start_cooldowns_tiny_cooldown_uses_full_moniker_duration() {
+        let mut mgr = AbilityManager::with_abilities(&[597]);
+        let ability = test_ability(); // moniker_ids = [42]
+        mgr.start_cooldowns(&ability, 0.001);
+        let entry = mgr
+            .moniker_cooldowns
+            .get(&42)
+            .expect("moniker cooldown must be set");
+        // else branch: total_duration is the full (un-shaved) duration.
+        assert_eq!(entry.total_duration, Duration::from_secs_f32(0.001));
+    }
+
+    /// `can_use_ability` must reject when a moniker group is on cooldown
+    /// even though the ability itself is known and off cooldown. Covers
+    /// the moniker-on-cooldown error arm.
+    #[test]
+    fn can_use_ability_rejects_on_moniker_cooldown() {
+        let mut mgr = AbilityManager::with_abilities(&[597]);
+        let ability = test_ability(); // moniker_ids = [42]
+                                      // Put only the moniker on cooldown, not the ability.
+        mgr.moniker_cooldowns.insert(
+            42,
+            CooldownEntry {
+                expires_at: Instant::now() + Duration::from_secs(5),
+                total_duration: Duration::from_secs(5),
+            },
+        );
+        assert!(!mgr.is_on_cooldown(597), "ability itself is off cooldown");
+        assert_eq!(
+            mgr.can_use_ability(&ability).unwrap_err(),
+            "moniker on cooldown"
+        );
+    }
+
+    /// `clear_all_cooldowns` empties both the ability and moniker maps.
+    #[test]
+    fn clear_all_cooldowns_empties_both_maps() {
+        let mut mgr = AbilityManager::with_abilities(&[597]);
+        let ability = test_ability();
+        mgr.start_cooldowns(&ability, 5.0);
+        assert!(!mgr.ability_cooldowns.is_empty());
+        assert!(!mgr.moniker_cooldowns.is_empty());
+        mgr.clear_all_cooldowns();
+        assert!(mgr.ability_cooldowns.is_empty());
+        assert!(mgr.moniker_cooldowns.is_empty());
+    }
+
+    /// `cleanup_expired` must also prune the moniker map (not just the
+    /// ability map) and must keep entries that are still live.
+    #[test]
+    fn cleanup_expired_prunes_monikers_keeps_live() {
+        let mut mgr = AbilityManager::new();
+        // Expired moniker.
+        mgr.moniker_cooldowns.insert(
+            42,
+            CooldownEntry {
+                expires_at: Instant::now() - Duration::from_secs(1),
+                total_duration: Duration::from_secs(5),
+            },
+        );
+        // Still-live moniker.
+        mgr.moniker_cooldowns.insert(
+            43,
+            CooldownEntry {
+                expires_at: Instant::now() + Duration::from_secs(60),
+                total_duration: Duration::from_secs(60),
+            },
+        );
+        mgr.cleanup_expired();
+        assert!(
+            !mgr.moniker_cooldowns.contains_key(&42),
+            "expired moniker pruned"
+        );
+        assert!(
+            mgr.moniker_cooldowns.contains_key(&43),
+            "live moniker retained"
+        );
+    }
 }

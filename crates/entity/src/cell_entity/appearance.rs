@@ -119,3 +119,55 @@ impl CellEntity {
         self.set_weapon_holstered(!in_combat)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn comps(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Holstered with a weapon visual present in the list → the weapon
+    /// entry is dropped and every other component survives.
+    #[test]
+    fn holstered_filters_matching_weapon_entry() {
+        let components = comps(&["body", "head", "WEAP_P90"]);
+        let out = filter_holstered_weapon(&components, Some("WEAP_P90"), true);
+        assert_eq!(out, comps(&["body", "head"]));
+    }
+
+    /// Not holstered → list returned unchanged even when a weapon_visual
+    /// is set (drawn pose keeps the weapon entry). Pins the early-return
+    /// `else` arm of the `.filter(|_| holstered)` guard.
+    #[test]
+    fn not_holstered_returns_components_unchanged() {
+        let components = comps(&["body", "WEAP_P90"]);
+        let out = filter_holstered_weapon(&components, Some("WEAP_P90"), false);
+        assert_eq!(out, components);
+    }
+
+    /// Holstered but no weapon_visual (e.g. unarmed / NPC) → unchanged.
+    /// Pins the `None` arm of the `let Some(weapon) = ... else` guard.
+    #[test]
+    fn holstered_without_weapon_visual_returns_unchanged() {
+        let components = comps(&["body", "head"]);
+        let out = filter_holstered_weapon(&components, None, true);
+        assert_eq!(out, components);
+    }
+
+    /// Invariant-violation edge: holstered with a weapon_visual that is
+    /// NOT present in the list. The filter is a no-op (post-filter length
+    /// equals input length), which fires the `warn` and — in debug/test
+    /// builds — the `debug_assert!(false, ...)`. This `should_panic`
+    /// guard covers the previously-uncovered warn + debug_assert branch.
+    /// Reverting the `debug_assert!` would make this test fail (no panic).
+    #[test]
+    #[should_panic(expected = "invariant violated")]
+    fn holstered_with_missing_weapon_visual_trips_invariant() {
+        let components = comps(&["body", "head"]);
+        // "WEAP_P90" is not in `components` — drift between weapon_visual
+        // and the components query. Filter can't remove what isn't there.
+        let _ = filter_holstered_weapon(&components, Some("WEAP_P90"), true);
+    }
+}
