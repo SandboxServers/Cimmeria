@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use cimmeria_common::EntityId;
 use cimmeria_mercury::channel::Channel;
-use cimmeria_mercury::encryption::MercuryEncryption;
+use cimmeria_mercury::encryption::{EncryptionVersion, MercuryEncryption};
 
 use serde::Serialize;
 
@@ -112,6 +112,12 @@ pub(crate) struct PendingClientReadyInfo {
 pub(crate) struct ConnectedClientState {
     pub enc: MercuryEncryption,
     pub key: [u8; 32],
+    /// Wire-encryption version this session speaks, for BOTH directions and
+    /// every handshake/outbound builder. Pinned at login from server config;
+    /// `enc` is constructed with this version, so it never disagrees with the
+    /// version the outbound builders use. Server-wide today — no per-client
+    /// negotiation yet.
+    pub enc_version: EncryptionVersion,
     pub account_id: u32,
     /// Human-readable account name (login username), threaded from the
     /// login ticket. Surfaced in Discord notifications alongside the

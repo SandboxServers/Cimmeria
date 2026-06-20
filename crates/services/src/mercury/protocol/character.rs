@@ -4,6 +4,7 @@
 //! All of these target the Account entity on the client, sent during the
 //! character-select phase before world entry.
 
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::FLAG_HAS_ACKS;
 
 use super::{
@@ -45,6 +46,7 @@ pub fn build_char_list(
     acks: &[u32],
     characters: &[CharacterInfo],
     account_entity_id: u32,
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
@@ -76,7 +78,7 @@ pub fn build_char_list(
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Build and encrypt an `onCharacterList` entity method call (without CREATE_BASE_PLAYER).
@@ -90,6 +92,7 @@ pub fn build_on_character_list(
     acks: &[u32],
     characters: &[CharacterInfo],
     account_entity_id: u32,
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
@@ -114,7 +117,7 @@ pub fn build_on_character_list(
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Build and encrypt `onCharacterCreateFailed` (0x83).
@@ -127,6 +130,7 @@ pub fn build_char_create_failed(
     acks: &[u32],
     error_code: i32,
     account_entity_id: u32,
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
@@ -140,7 +144,7 @@ pub fn build_char_create_failed(
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Build and encrypt `onCharacterVisuals` (0x84).
@@ -158,6 +162,7 @@ pub fn build_character_visuals(
     secondary_tint: u32,
     skin_tint: u32,
     account_entity_id: u32,
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
@@ -199,5 +204,5 @@ pub fn build_character_visuals(
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }

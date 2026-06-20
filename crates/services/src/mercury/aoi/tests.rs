@@ -25,6 +25,7 @@ fn forced_position_wire_layout() {
         0x0001_0010,
         [10.0, 20.0, 30.0],
         [9.0, 19.0, 29.0],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&pkt).unwrap();
@@ -66,6 +67,7 @@ fn create_entity_base_wire_layout() {
         0x42,
         [10.0, 20.0, 30.0],
         [0.0, 0.0, 0.0],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&pkt).unwrap();
@@ -121,7 +123,13 @@ fn create_entity_base_wire_layout() {
 /// vanish but not be deleted from the client's entity table.
 #[test]
 fn entity_invisible_wire_layout() {
-    let pkt = build_entity_invisible(&TEST_KEY, 1, &[], 0x12345678);
+    let pkt = build_entity_invisible(
+        &TEST_KEY,
+        1,
+        &[],
+        0x12345678,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&pkt).unwrap();
 
@@ -137,7 +145,13 @@ fn entity_invisible_wire_layout() {
 /// the wire in this order.
 #[test]
 fn entity_leave_emits_invisible_then_leave_aoi() {
-    let pkt = build_entity_leave(&TEST_KEY, 1, &[], 0xCAFEF00D);
+    let pkt = build_entity_leave(
+        &TEST_KEY,
+        1,
+        &[],
+        0xCAFEF00D,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&pkt).unwrap();
 
@@ -171,6 +185,7 @@ fn avatar_update_wire_layout() {
         [100.0, 200.0, 300.0],
         [0.0, 0.0, 0.0], // zero velocity — packed to 5 zero bytes
         [0.0, 0.0, 0.0], // zero direction — yaw/pitch/roll all 0
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&pkt).unwrap();
@@ -238,6 +253,7 @@ fn ghost_lifecycle_emits_create_cascade_update_invisible_leave_in_order() {
         0x04,
         [10.0, 20.0, 30.0],
         [0.0, 0.0, 0.0],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     let pt1a = enc.decrypt(&p1a).unwrap();
     assert_eq!(
@@ -265,7 +281,16 @@ fn ghost_lifecycle_emits_create_cascade_update_invisible_leave_in_order() {
     // A regression that fired the cascade against the wrong entity_id,
     // dropped the body entirely, or reordered the records would surface
     // here.
-    let p1b = build_create_entity_cascade(&TEST_KEY, 2, &[], ENTITY_ID, 0x00, 0, None);
+    let p1b = build_create_entity_cascade(
+        &TEST_KEY,
+        2,
+        &[],
+        ENTITY_ID,
+        0x00,
+        0,
+        None,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let pt1b = enc.decrypt(&p1b).unwrap();
     // Record 1: onEntityFlags @ pt1b[1..16]
     //   [msg_id=0x84][word_len=12 LE][entity_id u32][entity_flags u64]
@@ -324,6 +349,7 @@ fn ghost_lifecycle_emits_create_cascade_update_invisible_leave_in_order() {
         [11.0, 20.0, 31.0],
         [0.0, 0.0, 0.0],
         [0.0, 0.0, 0.0],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     let pt2 = enc.decrypt(&p2).unwrap();
     assert_eq!(
@@ -350,7 +376,13 @@ fn ghost_lifecycle_emits_create_cascade_update_invisible_leave_in_order() {
     );
 
     // ── phase 3: ENTITY_INVISIBLE then LEAVE_AOI ──────────────────
-    let p3 = build_entity_leave(&TEST_KEY, 4, &[], ENTITY_ID);
+    let p3 = build_entity_leave(
+        &TEST_KEY,
+        4,
+        &[],
+        ENTITY_ID,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let pt3 = enc.decrypt(&p3).unwrap();
     assert_eq!(
         pt3[1], BASEMSG_ENTITY_INVISIBLE,
@@ -412,6 +444,7 @@ fn compose_create_entity_base_body_matches_build_create_entity_base_body() {
         0x42,
         [10.0, 20.0, 30.0],
         [0.0, 0.0, 0.0],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&pkt).unwrap();
@@ -489,8 +522,15 @@ fn channel_bundle_append_entity_method_matches_build_entity_method_packet_body()
         let bundle_body = &packets[0][1..packets[0].len() - 4];
 
         // Standalone-packet path: decrypt and strip flags+seq footer.
-        let pkt =
-            build_player_entity_method_packet(&TEST_KEY, 1, &[], ENTITY_ID, method_index, args);
+        let pkt = build_player_entity_method_packet(
+            &TEST_KEY,
+            1,
+            &[],
+            ENTITY_ID,
+            method_index,
+            args,
+            cimmeria_mercury::encryption::EncryptionVersion::V1,
+        );
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
         let pt = enc.decrypt(&pkt).unwrap();
         let standalone_body = &pt[1..pt.len() - 4];
@@ -514,8 +554,15 @@ fn channel_bundle_append_entity_method_matches_build_entity_method_packet_body()
         assert_eq!(packets.len(), 1);
         let bundle_body = &packets[0][1..packets[0].len() - 4];
 
-        let pkt =
-            build_player_entity_method_packet(&TEST_KEY, 1, &[], ENTITY_ID, method_index, args);
+        let pkt = build_player_entity_method_packet(
+            &TEST_KEY,
+            1,
+            &[],
+            ENTITY_ID,
+            method_index,
+            args,
+            cimmeria_mercury::encryption::EncryptionVersion::V1,
+        );
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
         let pt = enc.decrypt(&pkt).unwrap();
         let standalone_body = &pt[1..pt.len() - 4];
@@ -546,7 +593,16 @@ fn compose_create_entity_cascade_body_matches_build_create_entity_cascade_body()
 
     let composed = compose_create_entity_cascade_body(0x12345678, 0x42, 7, None);
 
-    let pkt = build_create_entity_cascade(&TEST_KEY, 1, &[], 0x12345678, 0x42, 7, None);
+    let pkt = build_create_entity_cascade(
+        &TEST_KEY,
+        1,
+        &[],
+        0x12345678,
+        0x42,
+        7,
+        None,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&pkt).unwrap();
     let standalone_body = &pt[1..pt.len() - 4];
@@ -585,7 +641,16 @@ fn compose_forced_position_body_matches_build_forced_position_body() {
 
     let composed = compose_forced_position_body(ENTITY_ID, SPACE_ID, POS, PREV_POS);
 
-    let pkt = build_forced_position(&TEST_KEY, 1, &[], ENTITY_ID, SPACE_ID, POS, PREV_POS);
+    let pkt = build_forced_position(
+        &TEST_KEY,
+        1,
+        &[],
+        ENTITY_ID,
+        SPACE_ID,
+        POS,
+        PREV_POS,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&pkt).unwrap();
     let standalone_body = &pt[1..pt.len() - 4];

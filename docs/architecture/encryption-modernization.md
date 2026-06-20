@@ -114,6 +114,21 @@ longer dictate the hash. Dual-column + opportunistic migration avoids a flag day
 
 ### Phase 3 — Mercury v2 packet crypto
 
+**Status (server v2 wiring): Implemented; default v1; per-client negotiation
+pending the client patch.** The v2 crypto primitive (HKDF-split keys, per-packet
+random IV, truncated HMAC-SHA256, version-byte downgrade defense) and the server
+wiring that selects a version per session both exist. A session is pinned to one
+wire version at login (`MercuryEncryption::from_session_key_versioned`), and that
+version is applied consistently for both directions and every handshake/outbound
+builder. Selection is **server-wide**, sourced from
+`ServerConfig::mercury_encryption_version` (env `MERCURY_ENCRYPTION_VERSION`),
+**defaulting to `1`**: the stock client only understands v1, so producing v2
+frames by default would break every unpatched connection. A byte-exact
+regression guard pins the default-v1 handshake output. There is **no per-client
+negotiation yet** — every session uses the configured version; negotiation
+arrives with the client patch that teaches `SGW.exe` to speak v2. Until then v2
+is selectable only for a patched client or a test harness.
+
 - **Wire format:** version-byte-gated
   `[ version ][ IV ][ ciphertext ][ HMAC ]`, with a **random per-packet IV**,
   **HKDF-SHA256** splitting separate encryption and MAC keys from the session

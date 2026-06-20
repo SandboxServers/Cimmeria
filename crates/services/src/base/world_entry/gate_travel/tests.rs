@@ -42,6 +42,7 @@ fn make_state() -> ConnectedClientState {
     ConnectedClientState {
         enc: MercuryEncryption::from_session_key([0xCDu8; 32]),
         key: [0xCDu8; 32],
+        enc_version: cimmeria_mercury::encryption::EncryptionVersion::V1,
         account_id: 0xAABB,
         account_name: Some("testacct".into()),
         access_level: 0,

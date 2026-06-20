@@ -89,20 +89,27 @@ pub(crate) async fn handle_map_loaded(
     // Reserve 1 seq for the standalone enter-world packet + N seqs for map fragments.
     let total_seqs = 1 + map_frags;
 
-    let (acks, base_seq) = {
+    let (acks, base_seq, enc_version) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
         let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
         let seq = c.next_seq.fetch_add(total_seqs, Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK;
-        (acks, seq)
+        (acks, seq, c.enc_version)
     };
 
     // Packet 1: VIEWPORT + (BeingAppearance + onEntityTint) + CELL_PLAYER + FORCED_POSITION.
     // The appearance methods sit before createCellPlayer so the client's
     // cell-entity-creation handler picks up the bodyset during its internal
     // appearance evaluation, eliminating the dev-cube placeholder flash.
-    let enter_world_pkt = build_enter_world(&key, base_seq, &acks, &entry_info, Some(&player_data));
+    let enter_world_pkt = build_enter_world(
+        &key,
+        base_seq,
+        &acks,
+        &entry_info,
+        Some(&player_data),
+        enc_version,
+    );
     tracing::debug!(%addr, len = enter_world_pkt.len(), seq = base_seq,
         "UDP_OUT enter world: VIEWPORT+CELL+FORCED (standalone)");
     transport.send_to(&enter_world_pkt, addr).await?;
@@ -123,7 +130,8 @@ pub(crate) async fn handle_map_loaded(
     // when `base_seq` is near `SEQUENCE_MASK`, which would be rejected
     // by the peer's parser and break ACK draining.
     let map_base_seq = base_seq.wrapping_add(1) & cimmeria_mercury::packet::SEQUENCE_MASK;
-    let (map_packets, map_seqs) = fragment_map_loaded(&key, map_base_seq, &[], &map_body);
+    let (map_packets, map_seqs) =
+        fragment_map_loaded(&key, map_base_seq, &[], &map_body, enc_version);
     debug_assert_eq!(map_seqs, map_frags);
     tracing::info!(
         %addr,

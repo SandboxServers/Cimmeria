@@ -1,6 +1,7 @@
 //! Position-update packet builders — `UPDATE_AVATAR (0x10)` for AoI ghost
 //! relays and `FORCED_POSITION (0x31)` for authoritative own-avatar snaps.
 
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
 use crate::mercury::{
@@ -26,6 +27,7 @@ pub fn build_avatar_update(
     position: [f32; 3],
     velocity: [f32; 3],
     direction: [f32; 3],
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     let mut body = Vec::with_capacity(32);
 
@@ -46,7 +48,7 @@ pub fn build_avatar_update(
 
     let flags = REPLY_FLAGS_UNRELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Build `FORCED_POSITION (0x31)` — authoritative position snap for the
@@ -78,6 +80,7 @@ pub fn build_forced_position(
     space_id: u32,
     position: [f32; 3],
     prev_pos: [f32; 3],
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     let body = compose_forced_position_body(entity_id, space_id, position, prev_pos);
     // Reliable — the spawn snap is one-shot state; losing it leaves the
@@ -87,7 +90,7 @@ pub fn build_forced_position(
     // retransmit covers loss-in-flight.
     let flags = REPLY_FLAGS_RELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Compose the wire body for `FORCED_POSITION (0x31)` WITHOUT packet

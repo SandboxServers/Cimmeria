@@ -12,7 +12,7 @@ use crate::mercury::{
     SKIN_TINTS,
 };
 
-use super::helpers::{drain_acks_and_seq, get_account_entity_id};
+use super::helpers::{drain_acks_and_seq, get_account_entity_id, get_enc_version};
 use super::ConnectedClientState;
 
 #[cfg(test)]
@@ -96,7 +96,8 @@ pub(crate) async fn send_char_create_failed(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let account_eid = get_account_entity_id(connected, addr)?;
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let pkt = build_char_create_failed(&key, seq, &acks, error_code, account_eid);
+    let enc_version = get_enc_version(connected, addr);
+    let pkt = build_char_create_failed(&key, seq, &acks, error_code, account_eid, enc_version);
     transport.send_to(&pkt, addr).await?;
     Ok(())
 }
@@ -148,7 +149,8 @@ pub(crate) async fn handle_delete_character(
     let characters = query_character_list(db_pool, account_id).await;
     let account_eid = get_account_entity_id(connected, addr)?;
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let pkt = build_on_character_list(&key, seq, &acks, &characters, account_eid);
+    let enc_version = get_enc_version(connected, addr);
+    let pkt = build_on_character_list(&key, seq, &acks, &characters, account_eid, enc_version);
     tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list after delete");
     transport.send_to(&pkt, addr).await?;
 
@@ -246,6 +248,7 @@ pub(crate) async fn handle_request_character_visuals(
                 .unwrap_or(0x2F1308FF);
             let account_eid = get_account_entity_id(connected, addr)?;
             let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+            let enc_version = get_enc_version(connected, addr);
             let pkt = build_character_visuals(
                 &key,
                 seq,
@@ -257,6 +260,7 @@ pub(crate) async fn handle_request_character_visuals(
                 0xFF,
                 skin_tint,
                 account_eid,
+                enc_version,
             );
             tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT onCharacterVisuals");
             transport.send_to(&pkt, addr).await?;

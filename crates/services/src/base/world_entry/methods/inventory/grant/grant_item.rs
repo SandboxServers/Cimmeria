@@ -510,7 +510,7 @@ pub async fn handle_grant_item(
                 connected,
                 entity_to_addr,
                 entity_id,
-                |key, seq, acks| {
+                |key, version, seq, acks| {
                     build_player_entity_method_packet(
                         key,
                         seq,
@@ -518,6 +518,7 @@ pub async fn handle_grant_item(
                         entity_id,
                         method_idx::ON_ACTIVE_SLOT_UPDATE,
                         &args,
+                        version,
                     )
                 },
             )

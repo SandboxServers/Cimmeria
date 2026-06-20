@@ -53,6 +53,7 @@ pub(crate) async fn handle_play_character(
                     Arc::clone(&c.pending_acks),
                     Arc::clone(&c.next_seq),
                     c.access_level,
+                    c.enc_version,
                 ))
             } else {
                 None
@@ -63,7 +64,7 @@ pub(crate) async fn handle_play_character(
         }
     };
 
-    let (pending_acks_arc, next_seq, access_level) = match arcs {
+    let (pending_acks_arc, next_seq, access_level, enc_version) = match arcs {
         Some(a) => a,
         None => return Ok(()),
     };
@@ -137,7 +138,7 @@ pub(crate) async fn handle_play_character(
     // tears down all entities, then sends ENABLE_ENTITIES, which triggers
     // the create-player step (CREATE_BASE_PLAYER + viewport + cell + forced position).
     let seq = next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
-    let pkt = build_reset_entities(&key, seq, &acks);
+    let pkt = build_reset_entities(&key, seq, &acks, enc_version);
     tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT RESET_ENTITIES (entity teardown)");
     transport.send_to(&pkt, addr).await?;
     // Kick-off RESET_ENTITIES is reliable state-change.
@@ -225,6 +226,7 @@ mod tests {
         ConnectedClientState {
             enc: MercuryEncryption::from_session_key([0xCDu8; 32]),
             key: [0xCDu8; 32],
+            enc_version: cimmeria_mercury::encryption::EncryptionVersion::V1,
             account_id,
             account_name: Some("testacct".into()),
             access_level: 0,

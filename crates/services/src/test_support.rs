@@ -144,6 +144,7 @@ pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
     ConnectedClientState {
         enc: MercuryEncryption::from_session_key(key),
         key,
+        enc_version: cimmeria_mercury::encryption::EncryptionVersion::V1,
         account_id: 0,
         account_name: None,
         access_level: 0,

@@ -64,6 +64,7 @@ pub(crate) async fn handle_gate_travel(
     // Discord world-exit emit before they're overwritten by the new world.
     let (
         key,
+        enc_version,
         account_id,
         account_name,
         _access_level,
@@ -78,6 +79,7 @@ pub(crate) async fn handle_gate_travel(
             .ok_or("Gate travel: client state not found")?;
         (
             c.key,
+            c.enc_version,
             c.account_id,
             c.account_name.clone(),
             c.access_level,
@@ -214,7 +216,7 @@ pub(crate) async fn handle_gate_travel(
         pending.drain(..).collect()
     };
     let seq = next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
-    let pkt = build_reset_entities(&key, seq, &acks);
+    let pkt = build_reset_entities(&key, seq, &acks, enc_version);
     transport.send_to(&pkt, addr).await?;
     // RESET_ENTITIES is one-shot state — kicks off the cross-world
     // handoff. Channel retransmit covers loss.

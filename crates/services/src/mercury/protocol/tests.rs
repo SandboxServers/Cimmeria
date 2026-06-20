@@ -15,7 +15,13 @@ const TEST_KEY: [u8; 32] = [0x42u8; 32];
 #[test]
 fn connect_reply_size() {
     let ticket = b"12345678901234567890";
-    let out = build_connect_reply(0xDEADBEEF, ticket, &TEST_KEY, 1);
+    let out = build_connect_reply(
+        0xDEADBEEF,
+        ticket,
+        &TEST_KEY,
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_eq!(
         out.len(),
         64,
@@ -25,7 +31,11 @@ fn connect_reply_size() {
 
 #[test]
 fn time_sync_size() {
-    let out = build_time_sync(&TEST_KEY, 2);
+    let out = build_time_sync(
+        &TEST_KEY,
+        2,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_eq!(
         out.len(),
         48,
@@ -36,8 +46,20 @@ fn time_sync_size() {
 #[test]
 fn connect_reply_deterministic() {
     let ticket = b"AABBCCDDEEFF00112233";
-    let a = build_connect_reply(1, ticket, &TEST_KEY, 1);
-    let b = build_connect_reply(1, ticket, &TEST_KEY, 1);
+    let a = build_connect_reply(
+        1,
+        ticket,
+        &TEST_KEY,
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    let b = build_connect_reply(
+        1,
+        ticket,
+        &TEST_KEY,
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_eq!(
         a, b,
         "same inputs → same encrypted output (deterministic CBC with zero IV)"
@@ -46,23 +68,48 @@ fn connect_reply_deterministic() {
 
 #[test]
 fn time_sync_deterministic() {
-    let a = build_time_sync(&TEST_KEY, 2);
-    let b = build_time_sync(&TEST_KEY, 2);
+    let a = build_time_sync(
+        &TEST_KEY,
+        2,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    let b = build_time_sync(
+        &TEST_KEY,
+        2,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_eq!(a, b);
 }
 
 #[test]
 fn reply_and_time_sync_differ() {
     let ticket = b"12345678901234567890";
-    let reply = build_connect_reply(0, ticket, &TEST_KEY, 1);
-    let sync = build_time_sync(&TEST_KEY, 2);
+    let reply = build_connect_reply(
+        0,
+        ticket,
+        &TEST_KEY,
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    let sync = build_time_sync(
+        &TEST_KEY,
+        2,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_ne!(reply, sync, "reply and time sync packets must differ");
 }
 
 #[test]
 fn char_list_empty() {
     // Empty char list → creation screen
-    let out = build_char_list(&TEST_KEY, 3, &[], &[], 1);
+    let out = build_char_list(
+        &TEST_KEY,
+        3,
+        &[],
+        &[],
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert!(!out.is_empty());
 }
 
@@ -81,39 +128,91 @@ fn char_list_with_one_character() {
         player_type: 0,
         playable: 1,
     }];
-    let out = build_char_list(&TEST_KEY, 3, &[], &chars, 1);
+    let out = build_char_list(
+        &TEST_KEY,
+        3,
+        &[],
+        &chars,
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert!(!out.is_empty());
 }
 
 #[test]
 fn char_list_empty_deterministic() {
-    let a = build_char_list(&TEST_KEY, 3, &[], &[], 1);
-    let b = build_char_list(&TEST_KEY, 3, &[], &[], 1);
+    let a = build_char_list(
+        &TEST_KEY,
+        3,
+        &[],
+        &[],
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    let b = build_char_list(
+        &TEST_KEY,
+        3,
+        &[],
+        &[],
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_eq!(a, b);
 }
 
 #[test]
 fn char_list_with_ack() {
-    let out = build_char_list(&TEST_KEY, 3, &[0], &[], 1);
+    let out = build_char_list(
+        &TEST_KEY,
+        3,
+        &[0],
+        &[],
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert!(!out.is_empty());
 }
 
 #[test]
 fn ongoing_tick_sync_size() {
-    let out = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[]);
+    let out = build_ongoing_tick_sync(
+        &TEST_KEY,
+        4,
+        0,
+        &[],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_eq!(out.len(), 32, "tick sync should be 32 bytes");
 }
 
 #[test]
 fn ongoing_tick_sync_with_acks() {
-    let out = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[0]);
+    let out = build_ongoing_tick_sync(
+        &TEST_KEY,
+        4,
+        0,
+        &[0],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_eq!(out.len(), 48, "tick sync with 1 ack should be 48 bytes");
 }
 
 #[test]
 fn ongoing_tick_sync_changes_with_tick() {
-    let a = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[]);
-    let b = build_ongoing_tick_sync(&TEST_KEY, 4, 1, &[]);
+    let a = build_ongoing_tick_sync(
+        &TEST_KEY,
+        4,
+        0,
+        &[],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    let b = build_ongoing_tick_sync(
+        &TEST_KEY,
+        4,
+        1,
+        &[],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_ne!(
         a, b,
         "different tick values must produce different ciphertexts"
@@ -122,8 +221,20 @@ fn ongoing_tick_sync_changes_with_tick() {
 
 #[test]
 fn ongoing_tick_sync_changes_with_seq() {
-    let a = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[]);
-    let b = build_ongoing_tick_sync(&TEST_KEY, 5, 0, &[]);
+    let a = build_ongoing_tick_sync(
+        &TEST_KEY,
+        4,
+        0,
+        &[],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    let b = build_ongoing_tick_sync(
+        &TEST_KEY,
+        5,
+        0,
+        &[],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert_ne!(a, b, "different seq_ids must produce different ciphertexts");
 }
 
@@ -147,7 +258,13 @@ fn ongoing_tick_sync_flags_byte_is_unreliable_with_or_without_acks() {
     // No ACKs: outer flags should be exactly REPLY_FLAGS_UNRELIABLE
     // (FLAG_HAS_SEQUENCE | FLAG_ON_CHANNEL), with FLAG_RELIABLE cleared
     // and FLAG_HAS_ACKS not set.
-    let no_acks = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[]);
+    let no_acks = build_ongoing_tick_sync(
+        &TEST_KEY,
+        4,
+        0,
+        &[],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let plaintext = enc.decrypt(&no_acks).expect("decrypt failed");
     let flags = plaintext[0];
@@ -170,7 +287,13 @@ fn ongoing_tick_sync_flags_byte_is_unreliable_with_or_without_acks() {
 
     // ACK-piggyback form: flags should add FLAG_HAS_ACKS, still no
     // FLAG_RELIABLE.
-    let with_acks = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[0]);
+    let with_acks = build_ongoing_tick_sync(
+        &TEST_KEY,
+        4,
+        0,
+        &[0],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let plaintext_acks = enc.decrypt(&with_acks).expect("decrypt failed");
     let flags_acks = plaintext_acks[0];
     assert_eq!(
@@ -192,7 +315,14 @@ fn ongoing_tick_sync_flags_byte_is_unreliable_with_or_without_acks() {
 
 #[test]
 fn char_create_failed_produces_output() {
-    let out = build_char_create_failed(&TEST_KEY, 5, &[], 1, 1);
+    let out = build_char_create_failed(
+        &TEST_KEY,
+        5,
+        &[],
+        1,
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert!(!out.is_empty());
 }
 
@@ -210,13 +340,25 @@ fn resource_fragment_produces_output() {
         Some(7), // category_id = char_creation
         Some(1), // element_id
         xml,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert!(!out.is_empty());
 }
 
 #[test]
 fn version_info_produces_output() {
-    let out = build_version_info(&TEST_KEY, 5, &[], 7, 1, 23, true, &[], 1);
+    let out = build_version_info(
+        &TEST_KEY,
+        5,
+        &[],
+        7,
+        1,
+        23,
+        true,
+        &[],
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert!(!out.is_empty());
 }
 
@@ -242,6 +384,7 @@ fn version_info_invalid_keys_payload_layout_is_byte_exact() {
         false,
         &invalid_keys,
         account_eid,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
 
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
@@ -309,7 +452,18 @@ fn version_info_invalid_keys_payload_layout_is_byte_exact() {
 /// after the flag is the count word, not stray data.
 #[test]
 fn version_info_invalidate_all_writes_zero_count_array() {
-    let out = build_version_info(&TEST_KEY, 5, &[], 7, 1, 23, true, &[], 1);
+    let out = build_version_info(
+        &TEST_KEY,
+        5,
+        &[],
+        7,
+        1,
+        23,
+        true,
+        &[],
+        1,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let plaintext = enc.decrypt(&out).expect("decrypt failed");
 
@@ -364,6 +518,7 @@ fn resource_fragment_uses_u16_length_prefix() {
         Some(7), // category_id
         Some(1), // element_id
         xml,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
 
     // Decrypt to get the plaintext Mercury packet
@@ -462,6 +617,7 @@ fn resource_fragment_first_frag_at_max_chunk_fits_within_mercury_body_limit() {
         Some(7),  // category_id
         Some(42), // element_id
         &xml,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
 
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
@@ -510,6 +666,7 @@ fn resource_fragment_non_first_frag_at_max_chunk_fits_within_mercury_body_limit(
         None, // category_id omitted
         None, // element_id omitted
         &xml,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
 
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
@@ -553,6 +710,7 @@ fn resource_fragment_first_frag_at_cooked_data_max_chunk_has_safety_margin() {
         Some(7),
         Some(42),
         &xml,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
 
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
@@ -575,13 +733,23 @@ fn resource_fragment_first_frag_at_cooked_data_max_chunk_has_safety_margin() {
 
 #[test]
 fn logged_off_produces_output() {
-    let out = build_logged_off(&TEST_KEY, 10, &[]);
+    let out = build_logged_off(
+        &TEST_KEY,
+        10,
+        &[],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     assert!(!out.is_empty(), "logged_off packet should not be empty");
 }
 
 #[test]
 fn logged_off_body_contains_msg_id_and_reason() {
-    let out = build_logged_off(&TEST_KEY, 10, &[]);
+    let out = build_logged_off(
+        &TEST_KEY,
+        10,
+        &[],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     // Decrypt to verify body contents.
     let enc = MercuryEncryption::new(TEST_KEY, [0u8; 16], TEST_KEY);
     let plaintext = enc.decrypt(&out).unwrap();
@@ -597,7 +765,12 @@ fn logged_off_body_contains_msg_id_and_reason() {
 
 #[test]
 fn logged_off_with_acks_includes_ack_flag() {
-    let out = build_logged_off(&TEST_KEY, 10, &[3, 4]);
+    let out = build_logged_off(
+        &TEST_KEY,
+        10,
+        &[3, 4],
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
     let enc = MercuryEncryption::new(TEST_KEY, [0u8; 16], TEST_KEY);
     let plaintext = enc.decrypt(&out).unwrap();
     // flags byte should include FLAG_HAS_ACKS (0x04)

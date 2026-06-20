@@ -8,6 +8,7 @@ use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::SEQUENCE_MASK;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -30,9 +31,13 @@ pub(crate) fn tick_sync_packet(
     key: &[u8; 32],
     tick: u32,
     acks: &[u32],
+    version: EncryptionVersion,
 ) -> (u32, Vec<u8>) {
     let seq_id = counter.fetch_add(1, Ordering::Relaxed) & SEQUENCE_MASK;
-    (seq_id, build_ongoing_tick_sync(key, seq_id, tick, acks))
+    (
+        seq_id,
+        build_ongoing_tick_sync(key, seq_id, tick, acks, version),
+    )
 }
 
 /// Per-connection tick-sync heartbeat task.
@@ -61,6 +66,7 @@ pub(crate) async fn run_tick_loop(
     transport: Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
+    enc_version: EncryptionVersion,
     next_seq_unreliable: Arc<AtomicU32>,
     pending_acks: Arc<Mutex<Vec<u32>>>,
     last_recv: Arc<Mutex<Instant>>,
@@ -133,7 +139,7 @@ pub(crate) async fn run_tick_loop(
         // Unreliable on its own counter sidesteps both: fire-and-forget,
         // reliable stream stays contiguous (client's `inSeqAt` only tracks
         // reliable arrivals), no TX window pressure.
-        let (seq_id, pkt) = tick_sync_packet(&next_seq_unreliable, &key, tick, &acks);
+        let (seq_id, pkt) = tick_sync_packet(&next_seq_unreliable, &key, tick, &acks, enc_version);
         if let Err(e) = transport.send_to(&pkt, addr).await {
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
             break "send_error";

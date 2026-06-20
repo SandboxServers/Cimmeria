@@ -23,7 +23,7 @@ pub async fn send_cash_changed_to_client(
         connected,
         entity_to_addr,
         entity_id,
-        |key, seq, acks| {
+        |key, version, seq, acks| {
             build_player_entity_method_packet(
                 key,
                 seq,
@@ -31,6 +31,7 @@ pub async fn send_cash_changed_to_client(
                 entity_id,
                 method_idx::ON_CASH_CHANGED,
                 &total.to_le_bytes(),
+                version,
             )
         },
     )
@@ -235,7 +236,7 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
             connected,
             entity_to_addr,
             entity_id,
-            |key, seq, acks| {
+            |key, version, seq, acks| {
                 build_player_entity_method_packet(
                     key,
                     seq,
@@ -243,6 +244,7 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
                     entity_id,
                     method_idx::ON_ACTIVE_SLOT_UPDATE,
                     &args,
+                    version,
                 )
             },
         )

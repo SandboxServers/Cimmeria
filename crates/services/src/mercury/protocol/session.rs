@@ -5,6 +5,7 @@
 //! the start, periodic tick sync during play, and the teardown signals when
 //! the server closes the session.
 
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::FLAG_HAS_ACKS;
 
 use super::{
@@ -18,7 +19,13 @@ use super::{
 /// This is the server's response to the `baseAppLogin` connect request.
 /// The reply echoes `request_id` and the 20-byte `ticket` back to the client
 /// so it can verify the server is legitimate.
-pub fn build_connect_reply(request_id: u32, ticket: &[u8], key: &[u8; 32], seq_id: u32) -> Vec<u8> {
+pub fn build_connect_reply(
+    request_id: u32,
+    ticket: &[u8],
+    key: &[u8; 32],
+    seq_id: u32,
+    version: EncryptionVersion,
+) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
     assert_eq!(ticket.len(), 20, "ticket must be exactly 20 bytes");
@@ -31,14 +38,14 @@ pub fn build_connect_reply(request_id: u32, ticket: &[u8], key: &[u8; 32], seq_i
     body.extend_from_slice(ticket);
 
     let plaintext = build_outgoing(REPLY_FLAGS, &body, Some(seq_id), &[], None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Build and encrypt the time-sync bundle packet.
 ///
 /// Packs three constant-length messages into one packet, matching the C++
 /// `ClientHandler::onConnected()` sequence.
-pub fn build_time_sync(key: &[u8; 32], seq_id: u32) -> Vec<u8> {
+pub fn build_time_sync(key: &[u8; 32], seq_id: u32, version: EncryptionVersion) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
     const UPDATE_FREQ: u8 = 10;
@@ -58,7 +65,7 @@ pub fn build_time_sync(key: &[u8; 32], seq_id: u32) -> Vec<u8> {
     body.extend_from_slice(&TICKS.to_le_bytes());
 
     let plaintext = build_outgoing(REPLY_FLAGS, &body, Some(seq_id), &[], None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Build and encrypt a single `BASEMSG_TICK_SYNC` heartbeat packet.
@@ -96,7 +103,13 @@ pub fn build_time_sync(key: &[u8; 32], seq_id: u32) -> Vec<u8> {
 ///
 /// See `spec.protocol.mercury-wire-format` §1.7 + the disassembly of
 /// `queueAckForPacket` for the receiver model.
-pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u32]) -> Vec<u8> {
+pub fn build_ongoing_tick_sync(
+    key: &[u8; 32],
+    seq_id: u32,
+    tick: u32,
+    acks: &[u32],
+    version: EncryptionVersion,
+) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
     const TICK_RATE: u32 = 100;
@@ -108,7 +121,7 @@ pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u
 
     let flags = REPLY_FLAGS_UNRELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Build and encrypt the entity teardown step: RESET_ENTITIES only.
@@ -116,7 +129,12 @@ pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u
 /// The C++ server sends RESET_ENTITIES in its own flushed bundle, separate from
 /// the cell/viewport data.  The client tears down all entities, then sends
 /// ENABLE_ENTITIES, at which point the create-player step fires.
-pub fn build_reset_entities(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8> {
+pub fn build_reset_entities(
+    key: &[u8; 32],
+    seq_id: u32,
+    acks: &[u32],
+    version: EncryptionVersion,
+) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
     let mut body = Vec::with_capacity(4);
@@ -125,7 +143,7 @@ pub fn build_reset_entities(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Build and encrypt a `LOGGED_OFF` message (0x37, CONSTANT_LENGTH = 1).
@@ -137,7 +155,12 @@ pub fn build_reset_entities(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8
 ///
 /// C++ reference: `client_handler.cpp:461` — `BASEMSG_LOGGED_OFF` with
 /// `reason = 0` followed by `flushBundle` + `channel->condemn()`.
-pub fn build_logged_off(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8> {
+pub fn build_logged_off(
+    key: &[u8; 32],
+    seq_id: u32,
+    acks: &[u32],
+    version: EncryptionVersion,
+) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
     let body = vec![
@@ -147,5 +170,5 @@ pub fn build_logged_off(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8> {
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }

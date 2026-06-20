@@ -9,7 +9,7 @@ use crate::mercury::{
     FRAG_MIDDLE,
 };
 
-use super::helpers::{drain_acks_and_seq, get_active_entity_id};
+use super::helpers::{drain_acks_and_seq, get_active_entity_id, get_enc_version};
 use super::resources::{CategoryData, ResourceCache};
 use super::ConnectedClientState;
 
@@ -96,6 +96,7 @@ pub(crate) async fn handle_version_info_request(
 
     let active_eid = get_active_entity_id(connected, addr)?;
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+    let enc_version = get_enc_version(connected, addr);
     // RequiredUpdates tells the client how many resourceFragment packets
     // are about to land — set to the InvalidKeys count when we're shipping
     // overrides so the client doesn't try to lazy-fetch via elementDataRequest
@@ -115,6 +116,7 @@ pub(crate) async fn handle_version_info_request(
         invalidate_all,
         &invalid_keys,
         active_eid,
+        enc_version,
     );
     transport.send_to(&pkt, addr).await?;
     // versionInfo response is one-shot state — register for retransmit.
@@ -197,6 +199,7 @@ async fn push_overridden_elements(
             "Pushing overridden element fragments"
         );
 
+        let enc_version = get_enc_version(connected, addr);
         for (i, chunk) in chunks.iter().enumerate() {
             let frag_flags = match (i == 0, i == total_chunks - 1) {
                 (true, true) => FRAG_FIRST_AND_LAST,
@@ -211,7 +214,17 @@ async fn push_overridden_elements(
             };
             let (acks, seq) = drain_acks_and_seq(connected, addr)?;
             let pkt = build_resource_fragment(
-                &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat, elem, chunk,
+                &key,
+                seq,
+                &acks,
+                data_id,
+                i as u8,
+                frag_flags,
+                mt,
+                cat,
+                elem,
+                chunk,
+                enc_version,
             );
             transport.send_to(&pkt, addr).await?;
             super::helpers::shadow_register_reliable_send(
@@ -266,6 +279,7 @@ pub(crate) async fn send_category_resources(
         let chunks: Vec<&[u8]> = xml_data.chunks(MAX_CHUNK).collect();
         let total_chunks = chunks.len();
 
+        let enc_version = get_enc_version(connected, addr);
         for (i, chunk) in chunks.iter().enumerate() {
             let frag_flags = match (i == 0, i == total_chunks - 1) {
                 (true, true) => FRAG_FIRST_AND_LAST,
@@ -282,7 +296,17 @@ pub(crate) async fn send_category_resources(
 
             let (acks, seq) = drain_acks_and_seq(connected, addr)?;
             let pkt = build_resource_fragment(
-                &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat_id, elem, chunk,
+                &key,
+                seq,
+                &acks,
+                data_id,
+                i as u8,
+                frag_flags,
+                mt,
+                cat_id,
+                elem,
+                chunk,
+                enc_version,
             );
             transport.send_to(&pkt, addr).await?;
             super::helpers::shadow_register_reliable_send(
@@ -382,6 +406,7 @@ pub(crate) async fn handle_element_data_request(
         );
     }
 
+    let enc_version = get_enc_version(connected, addr);
     for (i, chunk) in chunks.iter().enumerate() {
         let frag_flags = match (i == 0, i == total_chunks - 1) {
             (true, true) => FRAG_FIRST_AND_LAST,
@@ -399,7 +424,17 @@ pub(crate) async fn handle_element_data_request(
 
         let (acks, seq) = drain_acks_and_seq(connected, addr)?;
         let pkt = build_resource_fragment(
-            &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat, elem, chunk,
+            &key,
+            seq,
+            &acks,
+            data_id,
+            i as u8,
+            frag_flags,
+            mt,
+            cat,
+            elem,
+            chunk,
+            enc_version,
         );
         transport.send_to(&pkt, addr).await?;
         super::helpers::shadow_register_reliable_send(

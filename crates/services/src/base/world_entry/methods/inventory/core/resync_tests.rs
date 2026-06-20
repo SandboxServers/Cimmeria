@@ -157,6 +157,7 @@ async fn resync_sends_bag_info_active_slot_cash_then_items_in_order() {
         entity_id,
         method_idx::ON_BAG_INFO,
         &bag_args,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert_eq!(
         sent[0].1, expected_bag,
@@ -174,6 +175,7 @@ async fn resync_sends_bag_info_active_slot_cash_then_items_in_order() {
         entity_id,
         method_idx::ON_ACTIVE_SLOT_UPDATE,
         &slot_args,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert_eq!(
         sent[1].1, expected_slot,
@@ -188,6 +190,7 @@ async fn resync_sends_bag_info_active_slot_cash_then_items_in_order() {
         entity_id,
         method_idx::ON_CASH_CHANGED,
         &cash_args,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert_eq!(
         sent[2].1, expected_cash,

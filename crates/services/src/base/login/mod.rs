@@ -8,7 +8,7 @@ use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
-use cimmeria_mercury::encryption::MercuryEncryption;
+use cimmeria_mercury::encryption::{EncryptionVersion, MercuryEncryption};
 use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE};
 
 use crate::auth::PendingLogin;
@@ -40,6 +40,7 @@ pub(crate) async fn handle_login(
     entity_manager: &Arc<Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    enc_version: EncryptionVersion,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let login = {
         let mut map = pending_logins
@@ -69,17 +70,17 @@ pub(crate) async fn handle_login(
     // C++ checks ChannelManager.isPlayerOnline() at play-character time
     // (Account.py:286-290), but we also guard at login to prevent stale sessions.
     {
-        let evict_addr: Option<(SocketAddr, [u8; 32])> = {
+        let evict_addr: Option<(SocketAddr, [u8; 32], EncryptionVersion)> = {
             let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
             clients.iter().find_map(|(existing_addr, c)| {
                 if c.account_id == login.account_id && *existing_addr != addr {
-                    Some((*existing_addr, c.key))
+                    Some((*existing_addr, c.key, c.enc_version))
                 } else {
                     None
                 }
             })
         };
-        if let Some((old_addr, old_key)) = evict_addr {
+        if let Some((old_addr, old_key, old_version)) = evict_addr {
             tracing::warn!(
                 account_id = login.account_id,
                 %old_addr,
@@ -100,7 +101,7 @@ pub(crate) async fn handle_login(
                     (vec![], 0)
                 }
             };
-            let pkt = build_logged_off(&old_key, seq, &acks);
+            let pkt = build_logged_off(&old_key, seq, &acks, old_version);
             let _ = transport.send_to(&pkt, old_addr).await;
             destroy_client_entities(
                 connected,
@@ -119,12 +120,12 @@ pub(crate) async fn handle_login(
     );
 
     // connect_reply at seq=1.
-    let reply = build_connect_reply(request_id, ticket.as_bytes(), &key, 1);
+    let reply = build_connect_reply(request_id, ticket.as_bytes(), &key, 1, enc_version);
     tracing::trace!(%addr, len = reply.len(), hex = %to_hex(&reply), "UDP_OUT connect_reply");
     transport.send_to(&reply, addr).await?;
 
     // time-sync bundle at seq=2.
-    let sync = build_time_sync(&key, 2);
+    let sync = build_time_sync(&key, 2, enc_version);
     tracing::trace!(%addr, len = sync.len(), hex = %to_hex(&sync), "UDP_OUT time_sync");
     transport.send_to(&sync, addr).await?;
 
@@ -150,8 +151,9 @@ pub(crate) async fn handle_login(
         clients.insert(
             addr,
             ConnectedClientState {
-                enc: MercuryEncryption::from_session_key(key),
+                enc: MercuryEncryption::from_session_key_versioned(key, enc_version),
                 key,
+                enc_version,
                 account_id: login.account_id,
                 account_name: Some(login.account_name.clone()),
                 access_level: login.access_level,
@@ -212,6 +214,7 @@ pub(crate) async fn handle_login(
         Arc::clone(transport),
         addr,
         key,
+        enc_version,
         next_seq_unreliable_arc,
         pending_acks_arc,
         last_recv_arc,
@@ -325,7 +328,7 @@ pub(crate) async fn handle_log_off(
     // Snapshot the identity + session duration here too, before
     // `destroy_client_entities` removes the session from the map — the
     // Discord logout emit below needs them.
-    let (acks, seq, account_id, account_name, player_name, session_secs) = {
+    let (acks, seq, enc_version, account_id, account_name, player_name, session_secs) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let client = clients.get_mut(&addr).ok_or("no session for addr")?;
         client
@@ -336,6 +339,7 @@ pub(crate) async fn handle_log_off(
             .next_seq
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK;
+        let enc_version = client.enc_version;
         let account_id = client.account_id;
         let account_name = client.account_name.clone();
         let player_name = client.player_name.clone();
@@ -343,6 +347,7 @@ pub(crate) async fn handle_log_off(
         (
             acks,
             seq,
+            enc_version,
             account_id,
             account_name,
             player_name,
@@ -353,7 +358,7 @@ pub(crate) async fn handle_log_off(
     // Send LOGGED_OFF (0x37) with reason=0 to trigger immediate client-side
     // channel teardown.  This fires ServerConnection::loggedOff -> Event_Net_Disconnected
     // which triggers the relogin flow (Change Server) or disconnect UI (Back).
-    let pkt = build_logged_off(&key, seq, &acks);
+    let pkt = build_logged_off(&key, seq, &acks, enc_version);
     transport.send_to(&pkt, addr).await?;
     tracing::debug!(%addr, seq, "Sent LOGGED_OFF (0x37)");
 

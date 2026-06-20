@@ -59,6 +59,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::transport::Transport;
 
 use cimmeria_common::EntityId;
@@ -195,6 +196,25 @@ pub(crate) fn drain_acks_and_seq(
     let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
     let seq = c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     Ok((acks, seq))
+}
+
+/// Read the session's wire-encryption version for a connected client.
+///
+/// Returns [`EncryptionVersion::default`] (V1) when the addr isn't connected
+/// or the lock is poisoned — a missing session falls back to the legacy v1
+/// cipher rather than failing the send. Used by the direct-key outbound
+/// handlers (char list, version info, resource fragments) that need the
+/// session's version to build their packets but don't otherwise hold a
+/// `ConnectedClientState` reference.
+pub(crate) fn get_enc_version(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> EncryptionVersion {
+    connected
+        .lock()
+        .ok()
+        .and_then(|clients| clients.get(&addr).map(|c| c.enc_version))
+        .unwrap_or_default()
 }
 
 /// Read the dynamically allocated account entity ID for a connected client.
@@ -348,7 +368,7 @@ pub(crate) async fn send_to_witness<F>(
     witness_id: u32,
     build_packet: F,
 ) where
-    F: FnOnce(&[u8; 32], u32, &[u32]) -> Vec<u8>,
+    F: FnOnce(&[u8; 32], EncryptionVersion, u32, &[u32]) -> Vec<u8>,
 {
     // Extract all data from locks in a sync block so no MutexGuard crosses an await.
     let send_data = {
@@ -387,6 +407,7 @@ pub(crate) async fn send_to_witness<F>(
         match clients.get(&addr) {
             Some(c) => {
                 let key = c.key;
+                let version = c.enc_version;
                 // Unreliable counter — kept separate from `next_seq` so the
                 // reliable seq stream remains contiguous. The receiver's
                 // `inSeqAt` only advances for reliable arrivals; sharing the
@@ -395,7 +416,7 @@ pub(crate) async fn send_to_witness<F>(
                 // encapsulated fetch-add + mask.
                 let seq = c.next_unreliable_seq();
                 let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
-                Some((addr, key, seq, acks))
+                Some((addr, key, version, seq, acks))
             }
             None => {
                 // Transient disconnect: client closed mid-AoI-update.
@@ -413,8 +434,8 @@ pub(crate) async fn send_to_witness<F>(
         }
     };
 
-    if let Some((addr, key, seq, acks)) = send_data {
-        let packet = build_packet(&key, seq, &acks);
+    if let Some((addr, key, version, seq, acks)) = send_data {
+        let packet = build_packet(&key, version, seq, &acks);
         if let Err(e) = transport.send_to(&packet, addr).await {
             tracing::warn!(witness_id, %addr, "AoI: failed to send packet: {e}");
         }
@@ -446,7 +467,7 @@ pub(crate) async fn send_to_witness_reliable<F>(
     witness_id: u32,
     build_packet: F,
 ) where
-    F: FnOnce(&[u8; 32], u32, &[u32]) -> Vec<u8>,
+    F: FnOnce(&[u8; 32], EncryptionVersion, u32, &[u32]) -> Vec<u8>,
 {
     let send_data = {
         // Read addr + map_size in one lock scope; see the unreliable
@@ -477,10 +498,11 @@ pub(crate) async fn send_to_witness_reliable<F>(
         match clients.get(&addr) {
             Some(c) => {
                 let key = c.key;
+                let version = c.enc_version;
                 let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
                     & cimmeria_mercury::packet::SEQUENCE_MASK;
                 let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
-                Some((addr, key, seq, acks))
+                Some((addr, key, version, seq, acks))
             }
             None => {
                 tracing::debug!(
@@ -494,8 +516,8 @@ pub(crate) async fn send_to_witness_reliable<F>(
         }
     };
 
-    if let Some((addr, key, seq, acks)) = send_data {
-        let packet = build_packet(&key, seq, &acks);
+    if let Some((addr, key, version, seq, acks)) = send_data {
+        let packet = build_packet(&key, version, seq, &acks);
         if let Err(e) = transport.send_to(&packet, addr).await {
             tracing::warn!(witness_id, %addr, "AoI reliable: failed to send packet: {e}");
             return;
@@ -612,10 +634,11 @@ pub(crate) async fn send_bundle_to_witness_reliable(
         // re-masked by build_fragmented_bundle internally.
         let base_seq = c.next_seq.fetch_add(packet_count as u32, Ordering::Relaxed) & SEQUENCE_MASK;
         let key = c.key;
-        Some((addr, key, base_seq, packet_count))
+        let version = c.enc_version;
+        Some((addr, key, version, base_seq, packet_count))
     };
 
-    let Some((addr, key, base_seq, packet_count)) = send_data else {
+    let Some((addr, key, version, base_seq, packet_count)) = send_data else {
         return;
     };
 
@@ -627,7 +650,7 @@ pub(crate) async fn send_bundle_to_witness_reliable(
     // FLAG_FRAGMENTED, FLAG_HAS_ACKS internally as needed per fragment.
     let base_flags = FLAG_RELIABLE | FLAG_ON_CHANNEL;
     let (packets, seqs_consumed) = bundle.finalize(base_flags, base_seq, |plaintext| {
-        crate::mercury::encrypt_packet(plaintext, &key)
+        crate::mercury::encrypt_packet(plaintext, &key, version)
     });
 
     debug_assert_eq!(

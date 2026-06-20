@@ -206,8 +206,10 @@ pub(super) async fn entered_aoi(
         connected,
         entity_to_addr,
         witness_id,
-        |key, seq, acks| {
-            build_create_entity_base(key, seq, acks, entity_id, class_id, position, direction)
+        |key, version, seq, acks| {
+            build_create_entity_base(
+                key, seq, acks, entity_id, class_id, position, direction, version,
+            )
         },
     )
     .await;
@@ -217,7 +219,7 @@ pub(super) async fn entered_aoi(
         connected,
         entity_to_addr,
         witness_id,
-        |key, seq, acks| {
+        |key, version, seq, acks| {
             build_create_entity_cascade(
                 key,
                 seq,
@@ -226,6 +228,7 @@ pub(super) async fn entered_aoi(
                 class_id,
                 level,
                 npc_data.as_ref(),
+                version,
             )
         },
     )
@@ -247,7 +250,7 @@ pub(super) async fn left_aoi(
         connected,
         entity_to_addr,
         witness_id,
-        |key, seq, acks| build_entity_leave(key, seq, acks, entity_id),
+        |key, version, seq, acks| build_entity_leave(key, seq, acks, entity_id, version),
     )
     .await;
 }
@@ -273,8 +276,10 @@ pub(super) async fn entity_moved(
         connected,
         entity_to_addr,
         witness_id,
-        |key, seq, acks| {
-            build_avatar_update(key, seq, acks, entity_id, position, velocity, direction)
+        |key, version, seq, acks| {
+            build_avatar_update(
+                key, seq, acks, entity_id, position, velocity, direction, version,
+            )
         },
     )
     .await;
@@ -338,7 +343,7 @@ pub(super) async fn entity_method_call(
         connected,
         entity_to_addr,
         entity_id,
-        |key, seq, acks| {
+        |key, version, seq, acks| {
             build_entity_method_packet(
                 key,
                 seq,
@@ -347,6 +352,7 @@ pub(super) async fn entity_method_call(
                 method_index,
                 IDBASE_SGW_PLAYER,
                 &args,
+                version,
             )
         },
     )
@@ -384,7 +390,7 @@ pub(super) async fn witness_entity_method(
         connected,
         entity_to_addr,
         witness_id,
-        |key, seq, acks| {
+        |key, version, seq, acks| {
             build_entity_method_packet(
                 key,
                 seq,
@@ -393,6 +399,7 @@ pub(super) async fn witness_entity_method(
                 method_index,
                 IDBASE_NPC_DEFAULT,
                 &args,
+                version,
             )
         },
     )
@@ -417,7 +424,7 @@ pub(super) async fn entity_invisible(
         connected,
         entity_to_addr,
         witness_id,
-        |key, seq, acks| build_entity_invisible(key, seq, acks, entity_id),
+        |key, version, seq, acks| build_entity_invisible(key, seq, acks, entity_id, version),
     )
     .await;
 }
@@ -493,7 +500,13 @@ mod tests {
 
         // Both witnesses start at next_seq=0 with the all-zero key, so the
         // leave packet is byte-identical for each.
-        let expected = build_entity_leave(&[0u8; 32], 0, &[], entity_id);
+        let expected = build_entity_leave(
+            &[0u8; 32],
+            0,
+            &[],
+            entity_id,
+            cimmeria_mercury::encryption::EncryptionVersion::V1,
+        );
         assert_eq!(sent[0].1, expected, "witness A leave bytes (seq 0)");
         assert_eq!(sent[1].1, expected, "witness B leave bytes (seq 0)");
     }

@@ -480,3 +480,84 @@ fn v1_path_unchanged_by_v2_addition() {
     // Round-trips on the v1 path.
     assert_eq!(enc.decrypt(&ct).unwrap(), pt);
 }
+
+/// `from_config_u8` maps `1 → V1`, `2 → V2`, and anything else falls back to
+/// the always-compatible v1 default. The fallback must never silently produce
+/// v2 frames on a typo'd config.
+#[test]
+fn config_u8_maps_to_version() {
+    assert_eq!(EncryptionVersion::from_config_u8(1), EncryptionVersion::V1);
+    assert_eq!(EncryptionVersion::from_config_u8(2), EncryptionVersion::V2);
+    assert_eq!(EncryptionVersion::from_config_u8(0), EncryptionVersion::V1);
+    assert_eq!(EncryptionVersion::from_config_u8(3), EncryptionVersion::V1);
+    assert_eq!(
+        EncryptionVersion::from_config_u8(255),
+        EncryptionVersion::V1
+    );
+}
+
+/// The default `EncryptionVersion` is v1 — the only version unpatched clients
+/// understand. A regression that flips the default would break every stock
+/// client, so pin it.
+#[test]
+fn default_version_is_v1() {
+    assert_eq!(EncryptionVersion::default(), EncryptionVersion::V1);
+}
+
+/// `from_session_key_versioned(key, V1)` is byte-identical to
+/// `from_session_key(key)` — the versioned constructor must dispatch to the
+/// exact legacy path, not a re-derived one, or the default session would stop
+/// being wire-compatible with the stock client.
+#[test]
+fn versioned_v1_byte_identical_to_legacy() {
+    let key = [0x42u8; 32];
+    let pt = b"versioned v1 == legacy v1";
+    let legacy = MercuryEncryption::from_session_key(key)
+        .encrypt(pt)
+        .unwrap();
+    let versioned = MercuryEncryption::from_session_key_versioned(key, EncryptionVersion::V1)
+        .encrypt(pt)
+        .unwrap();
+    assert_eq!(versioned, legacy);
+}
+
+/// `from_session_key_versioned(key, V2)` produces a v2 frame (leading `0x02`)
+/// that round-trips through a v2 context built the same way, and is byte-identical
+/// to the dedicated `from_session_key_v2` path for a pinned IV is not testable
+/// here (random IV), so we assert frame shape + round-trip instead.
+#[test]
+fn versioned_v2_produces_v2_frame_and_round_trips() {
+    let key = [0x99u8; 32];
+    let enc = MercuryEncryption::from_session_key_versioned(key, EncryptionVersion::V2);
+    let pt = b"versioned v2 frame";
+    let ct = enc.encrypt(pt).unwrap();
+    assert_eq!(ct[0], 0x02, "v2 frame must begin with the version byte");
+    assert_eq!(enc.decrypt(&ct).unwrap(), pt);
+}
+
+/// Cross-version incompatibility through the versioned constructor: a v2 frame
+/// fed to a v1 context fails, and a v1 frame fed to a v2 context fails (the
+/// downgrade defense). This is the session-level assertion that the version
+/// selection actually isolates the two wire formats.
+#[test]
+fn versioned_cross_version_frames_are_rejected() {
+    let key = [0x77u8; 32];
+    let v1 = MercuryEncryption::from_session_key_versioned(key, EncryptionVersion::V1);
+    let v2 = MercuryEncryption::from_session_key_versioned(key, EncryptionVersion::V2);
+    let pt = b"cross version";
+
+    let v1_frame = v1.encrypt(pt).unwrap();
+    let v2_frame = v2.encrypt(pt).unwrap();
+
+    // v2 context rejects the v1 frame (no 0x02 version byte → downgrade defense).
+    assert!(
+        v2.decrypt(&v1_frame).is_err(),
+        "v2 context must reject a v1 frame"
+    );
+    // v1 context cannot make sense of a v2 frame (HMAC-MD5 over the wrong
+    // bytes / bad padding) → it must error rather than silently mis-decrypt.
+    assert!(
+        v1.decrypt(&v2_frame).is_err(),
+        "v1 context must reject a v2 frame"
+    );
+}

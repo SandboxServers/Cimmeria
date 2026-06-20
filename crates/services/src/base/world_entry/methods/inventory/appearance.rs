@@ -99,7 +99,7 @@ pub async fn refresh_player_appearance(
         connected,
         entity_to_addr,
         entity_id,
-        |key, seq, acks| {
+        |key, version, seq, acks| {
             build_player_entity_method_packet(
                 key,
                 seq,
@@ -107,6 +107,7 @@ pub async fn refresh_player_appearance(
                 entity_id,
                 method_idx::BEING_APPEARANCE,
                 &appearance_args,
+                version,
             )
         },
     )
@@ -125,6 +126,7 @@ mod tests {
         ConnectedClientState {
             enc: MercuryEncryption::from_session_key([0u8; 32]),
             key: [0u8; 32],
+            enc_version: cimmeria_mercury::encryption::EncryptionVersion::V1,
             account_id,
             account_name: None,
             access_level: 0,

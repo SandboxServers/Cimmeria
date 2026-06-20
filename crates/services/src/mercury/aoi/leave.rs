@@ -2,6 +2,7 @@
 //! ring-transport teleport-out fades, or paired with `LEAVE_AOI (0x0C)` for
 //! a full client-side delete.
 
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
 use crate::mercury::{encrypt_packet, REPLY_FLAGS};
@@ -20,6 +21,7 @@ pub fn build_entity_invisible(
     seq_id: u32,
     acks: &[u32],
     entity_id: u32,
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     let mut body = Vec::with_capacity(8);
     body.push(BASEMSG_ENTITY_INVISIBLE);
@@ -28,7 +30,7 @@ pub fn build_entity_invisible(
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Build and encrypt `ENTITY_INVISIBLE (0x0B)` + `LEAVE_AOI (0x0C)` for when
@@ -36,7 +38,13 @@ pub fn build_entity_invisible(
 ///
 /// Matches C++ `ClientHandler::leaveAoI(id, deleteEntity=true)` from
 /// `client_handler.cpp:516-539`.
-pub fn build_entity_leave(key: &[u8; 32], seq_id: u32, acks: &[u32], entity_id: u32) -> Vec<u8> {
+pub fn build_entity_leave(
+    key: &[u8; 32],
+    seq_id: u32,
+    acks: &[u32],
+    entity_id: u32,
+    version: EncryptionVersion,
+) -> Vec<u8> {
     let mut body = Vec::with_capacity(24);
 
     // ENTITY_INVISIBLE (0x0B, CONSTANT_LENGTH = 5)
@@ -52,5 +60,5 @@ pub fn build_entity_leave(key: &[u8; 32], seq_id: u32, acks: &[u32], entity_id: 
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }

@@ -515,7 +515,7 @@ async fn send_on_trade_results(
         connected,
         entity_to_addr,
         entity_id,
-        |key, seq, acks| {
+        |key, version, seq, acks| {
             build_player_entity_method_packet(
                 key,
                 seq,
@@ -523,6 +523,7 @@ async fn send_on_trade_results(
                 entity_id,
                 method_idx::ON_TRADE_RESULTS,
                 &args,
+                version,
             )
         },
     )

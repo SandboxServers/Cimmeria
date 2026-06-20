@@ -2,6 +2,7 @@
 //! client game state initialization, then fragments into encrypted Mercury packets.
 
 use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::build_fragmented_bundle;
 
 use super::stats::{archetype_stats, level_exp};
@@ -40,9 +41,10 @@ pub fn build_map_loaded(
     entity_id: u32,
     data: &PlayerLoadData,
     world_entry: &WorldEntryInfo,
+    version: EncryptionVersion,
 ) -> (Vec<Vec<u8>>, u32) {
     let body = build_map_loaded_body(entity_id, data, world_entry);
-    fragment_map_loaded(key, base_seq, acks, &body)
+    fragment_map_loaded(key, base_seq, acks, &body, version)
 }
 
 /// Build just the raw body bytes for the `mapLoaded()` entity method sequence.
@@ -84,10 +86,11 @@ pub fn fragment_map_loaded(
     base_seq: u32,
     acks: &[u32],
     body: &[u8],
+    version: EncryptionVersion,
 ) -> (Vec<Vec<u8>>, u32) {
     let key_copy = *key;
     build_fragmented_bundle(REPLY_FLAGS, body, base_seq, acks, |plaintext| {
-        encrypt_packet(plaintext, &key_copy)
+        encrypt_packet(plaintext, &key_copy, version)
     })
 }
 

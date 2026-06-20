@@ -80,6 +80,21 @@ pub struct ServerConfig {
     /// Port the minigame SmartFoxServer TCP listener binds to.
     /// Default: 30000
     pub minigame_port: u16,
+
+    /// Mercury packet-encryption wire version applied to every session.
+    ///
+    /// - `1` = legacy v1 (AES-256-CBC + HMAC-MD5, byte-identical to the
+    ///   unmodified game client).
+    /// - `2` = modernized v2 (per-packet random IV, HKDF-split keys,
+    ///   truncated HMAC-SHA256).
+    ///
+    /// Default `1` for the duration of the client-transition window: the
+    /// stock client only understands v1, so producing v2 frames would break
+    /// every unpatched connection. Selection is **server-wide** — there is no
+    /// per-client negotiation yet; that arrives with the client patch. Any
+    /// value other than `1` or `2` falls back to v1 with a warning (see
+    /// [`mercury_encryption_version`](ServerConfig::mercury_encryption_version)).
+    pub mercury_encryption_version: u8,
 }
 
 impl Default for ServerConfig {
@@ -105,6 +120,10 @@ impl Default for ServerConfig {
             protocol_digest: "58AFA196AD3AC4F65CADD99BFF23B799".to_string(),
             developer_mode: false,
             minigame_port: 30000,
+            // v1 is the only version unpatched clients understand; the default
+            // stays v1 until the client patch lands. Operators opt into v2
+            // explicitly (and only for patched clients / test harnesses).
+            mercury_encryption_version: 1,
         }
     }
 }
@@ -165,6 +184,15 @@ mod tests {
     fn default_config_developer_mode_off() {
         let config = ServerConfig::default();
         assert!(!config.developer_mode);
+    }
+
+    #[test]
+    fn default_config_mercury_encryption_is_v1() {
+        // The default MUST stay v1 — the stock client only understands v1, so
+        // flipping this default would break every unpatched connection. This
+        // guard fails loudly if the default is ever changed to 2.
+        let config = ServerConfig::default();
+        assert_eq!(config.mercury_encryption_version, 1);
     }
 
     #[test]

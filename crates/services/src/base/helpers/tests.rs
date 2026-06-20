@@ -129,7 +129,13 @@ fn tick_sync_emission_does_not_consume_reliable_tx_window_slots() {
     // The UDP send is omitted — the TX-window-pressure failure mode is
     // about register_sent_packet calls, not socket I/O.
     for tick in 0..10u32 {
-        let (_seq_id, _pkt) = tick_sync_packet(&state.next_seq_unreliable, &state.key, tick, &[]);
+        let (_seq_id, _pkt) = tick_sync_packet(
+            &state.next_seq_unreliable,
+            &state.key,
+            tick,
+            &[],
+            cimmeria_mercury::encryption::EncryptionVersion::V1,
+        );
     }
 
     // The reliable TX window must be unchanged. If a future refactor
@@ -212,7 +218,7 @@ async fn send_to_witness_emits_warn_when_entity_to_addr_misses() {
         &connected,
         &entity_to_addr,
         999, // witness_id not in map
-        |_key, _seq, _acks| vec![],
+        |_key, _version, _seq, _acks| vec![],
     )
     .await;
 
@@ -251,7 +257,7 @@ async fn send_to_witness_reliable_emits_warn_when_entity_to_addr_misses() {
         &connected,
         &entity_to_addr,
         42,
-        |_key, _seq, _acks| vec![],
+        |_key, _version, _seq, _acks| vec![],
     )
     .await;
 
@@ -341,7 +347,7 @@ async fn send_to_witness_emits_debug_when_client_disconnected() {
         &connected,
         &entity_to_addr,
         111,
-        |_key, _seq, _acks| vec![],
+        |_key, _version, _seq, _acks| vec![],
     )
     .await;
 
@@ -372,7 +378,7 @@ async fn send_to_witness_reliable_emits_debug_when_client_disconnected() {
         &connected,
         &entity_to_addr,
         222,
-        |_key, _seq, _acks| vec![],
+        |_key, _version, _seq, _acks| vec![],
     )
     .await;
 

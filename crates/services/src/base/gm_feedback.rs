@@ -89,7 +89,7 @@ pub(crate) async fn send_gm_feedback_to_client(
         connected,
         entity_to_addr,
         entity_id,
-        |key, seq, acks| {
+        |key, version, seq, acks| {
             build_player_entity_method_packet(
                 key,
                 seq,
@@ -97,6 +97,7 @@ pub(crate) async fn send_gm_feedback_to_client(
                 entity_id,
                 method_idx::ON_PLAYER_COMMUNICATION,
                 &payload,
+                version,
             )
         },
     )

@@ -104,6 +104,59 @@ enum Version {
     V2,
 }
 
+/// Public selector for the Mercury wire-encryption version a session speaks.
+///
+/// This is the caller-facing handle on the otherwise-private [`Version`]. A
+/// session picks one variant at construction (server-wide, from config) and
+/// uses it for both directions and every handshake builder — the version is
+/// never negotiated per packet, and never mixed within a session.
+///
+/// - [`V1`](Self::V1): legacy AES-256-CBC + HMAC-MD5, byte-identical to the
+///   unmodified C++ client. The only version unpatched clients understand.
+/// - [`V2`](Self::V2): modernized AES-256-CBC + truncated HMAC-SHA256 with
+///   per-packet random IV and HKDF-split keys. Selectable for a patched client
+///   or a test harness; no shipping client speaks it yet.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum EncryptionVersion {
+    /// Legacy v1 — the default, and the only version unpatched clients accept.
+    #[default]
+    V1,
+    /// Modern v2 — off unless explicitly selected.
+    V2,
+}
+
+impl EncryptionVersion {
+    /// Map a config-supplied version number onto an [`EncryptionVersion`].
+    ///
+    /// `1` → [`V1`](Self::V1), `2` → [`V2`](Self::V2). Any other value is
+    /// treated as a misconfiguration and falls back to v1 (the
+    /// always-compatible default) with a warning, rather than failing the
+    /// session — a typo'd config should not take the shard offline, and
+    /// silently emitting v2 frames on an unknown value would break clients.
+    pub fn from_config_u8(value: u8) -> Self {
+        match value {
+            1 => EncryptionVersion::V1,
+            2 => EncryptionVersion::V2,
+            other => {
+                tracing::warn!(
+                    value = other,
+                    "unknown mercury_encryption_version, defaulting to v1"
+                );
+                EncryptionVersion::V1
+            }
+        }
+    }
+}
+
+impl From<EncryptionVersion> for Version {
+    fn from(v: EncryptionVersion) -> Self {
+        match v {
+            EncryptionVersion::V1 => Version::V1,
+            EncryptionVersion::V2 => Version::V2,
+        }
+    }
+}
+
 /// Derive the v2 encryption and MAC keys from the 32-byte session key via
 /// HKDF-SHA256 with distinct `info` labels (no salt).
 ///
@@ -169,6 +222,22 @@ impl MercuryEncryption {
             aes_key: key,
             iv: [0u8; 16],
             hmac_key: key,
+        }
+    }
+
+    /// Create an encryption context from a 32-byte session key, selecting the
+    /// wire version explicitly.
+    ///
+    /// Dispatches to [`from_session_key`](Self::from_session_key) for
+    /// [`EncryptionVersion::V1`] and
+    /// [`from_session_key_v2`](Self::from_session_key_v2) for
+    /// [`EncryptionVersion::V2`], so the per-version key derivation and wire
+    /// shape are identical to the dedicated constructors. This is the seam the
+    /// session layer uses to honor the server-wide version selection.
+    pub fn from_session_key_versioned(key: [u8; 32], version: EncryptionVersion) -> Self {
+        match version {
+            EncryptionVersion::V1 => Self::from_session_key(key),
+            EncryptionVersion::V2 => Self::from_session_key_v2(key),
         }
     }
 

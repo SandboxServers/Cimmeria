@@ -3,6 +3,7 @@
 //! These power the ClientCache: the client requests resource categories
 //! (CharDefs, item defs, etc.) and the server streams XML fragments back.
 
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::FLAG_HAS_ACKS;
 
 use super::{encrypt_packet, BASEMSG_ON_VERSION_INFO, BASEMSG_RESOURCE_FRAGMENT, REPLY_FLAGS};
@@ -30,6 +31,7 @@ pub fn build_resource_fragment(
     category_id: Option<u32>,
     element_id: Option<u32>,
     xml_chunk: &[u8],
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
@@ -62,7 +64,7 @@ pub fn build_resource_fragment(
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Build and encrypt `onVersionInfo` (0x80) for a ClientCache method call.
@@ -91,6 +93,7 @@ pub fn build_version_info(
     invalidate_all: bool,
     invalid_keys: &[u32],
     account_entity_id: u32,
+    enc_version: EncryptionVersion,
 ) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
@@ -113,5 +116,5 @@ pub fn build_version_info(
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, enc_version)
 }

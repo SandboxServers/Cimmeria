@@ -2,6 +2,7 @@
 //! an `onTimerUpdate`, `onEffectResults`, etc. to one client.
 
 use cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER;
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
 use crate::mercury::{append_entity_method, encrypt_packet, REPLY_FLAGS};
@@ -24,12 +25,13 @@ pub fn build_entity_method_packet(
     method_index: u16,
     idbase: u8,
     args: &[u8],
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     let mut body = Vec::with_capacity(32 + args.len());
     append_entity_method(&mut body, method_index, idbase, entity_id, args);
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// SGWPlayer-target convenience wrapper for [`build_entity_method_packet`].
@@ -41,6 +43,7 @@ pub fn build_player_entity_method_packet(
     entity_id: u32,
     method_index: u16,
     args: &[u8],
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     build_entity_method_packet(
         key,
@@ -50,5 +53,6 @@ pub fn build_player_entity_method_packet(
         method_index,
         IDBASE_SGW_PLAYER,
         args,
+        version,
     )
 }

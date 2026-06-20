@@ -3,6 +3,7 @@
 //! NPC stat and appearance helpers.
 
 use cimmeria_mercury::channel_bundle::{IDBASE_NPC_DEFAULT, IDBASE_SGW_PLAYER};
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
 use crate::cell::messages::NpcAoIData;
@@ -50,11 +51,12 @@ pub fn build_create_entity_base(
     class_id: u8,
     position: [f32; 3],
     direction: [f32; 3],
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     let body = compose_create_entity_base_body(entity_id, class_id, position, direction);
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Compose the wire body for the phase-1 CREATE_ENTITY + UPDATE_AVATAR
@@ -118,11 +120,12 @@ pub fn build_create_entity_cascade(
     class_id: u8,
     level: u32,
     npc_data: Option<&NpcAoIData>,
+    version: EncryptionVersion,
 ) -> Vec<u8> {
     let body = compose_create_entity_cascade_body(entity_id, class_id, level, npc_data);
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
-    encrypt_packet(&plaintext, key)
+    encrypt_packet(&plaintext, key, version)
 }
 
 /// Compose the wire body for the phase-2 `createOnClient()` property

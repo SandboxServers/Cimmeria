@@ -28,10 +28,16 @@ pub(super) async fn handle_log_off(
     let disconnect = if !payload.is_empty() { payload[0] } else { 0 };
     tracing::info!(%addr, disconnect, "SGWPlayer.logOff");
 
-    // Get entity info before cleanup
-    let entity_id = {
+    // Get entity info before cleanup. Capture the session's wire-encryption
+    // version here too — the logoff / reset-entities packets below must be
+    // built with the version this session speaks.
+    let (entity_id, enc_version) = {
         let clients = connected.lock().unwrap();
-        clients.get(&addr).and_then(|c| c.player_entity_id)
+        let c = clients.get(&addr);
+        (
+            c.and_then(|c| c.player_entity_id),
+            c.map(|c| c.enc_version).unwrap_or_default(),
+        )
     };
 
     if let Some(entity_id) = entity_id {
@@ -70,7 +76,7 @@ pub(super) async fn handle_log_off(
         // Full exit: send loggedOff system message (msg_id 0x06) and let client disconnect
         tracing::info!(%addr, "logOff: full exit — sending loggedOff");
         let (acks, seq) = super::super::helpers::drain_acks_and_seq(connected, addr)?;
-        let pkt = crate::mercury::build_logged_off(&key, seq, &acks);
+        let pkt = crate::mercury::build_logged_off(&key, seq, &acks, enc_version);
         transport.send_to(&pkt, addr).await?;
     } else {
         // Return to character select: reset state and send RESET_ENTITIES + char list
@@ -109,7 +115,7 @@ pub(super) async fn handle_log_off(
 
         // Send RESET_ENTITIES to tear down the world
         let (acks, seq) = super::super::helpers::drain_acks_and_seq(connected, addr)?;
-        let pkt = crate::mercury::build_reset_entities(&key, seq, &acks);
+        let pkt = crate::mercury::build_reset_entities(&key, seq, &acks, enc_version);
         transport.send_to(&pkt, addr).await?;
 
         // The client responds with ENABLE_ENTITIES, which triggers the
