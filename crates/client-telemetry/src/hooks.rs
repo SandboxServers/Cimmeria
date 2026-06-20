@@ -46,10 +46,17 @@ use crate::queue::Producer;
 mod cme_hooks;
 mod iat_hooks;
 mod inline_hooks;
+mod primitives;
 mod sampling;
 mod vtable_hooks;
 
 pub use sampling::SamplingCounter;
+
+// Reusable low-level hooking mechanics, shared by the IAT/vtable
+// telemetry hooks here and consumed by the #434 client-patch crates.
+#[cfg(target_arch = "x86")]
+pub use primitives::{install_inline_hook, InlineHook, JMP_REL32_LEN};
+pub use primitives::{replace_iat_slot, swap_vtable_slot, HookError};
 
 /// Install every Phase-2 tier-1 hook. Called once from
 /// `boot::bootstrap_phase2` after the queue + uploader are up.
