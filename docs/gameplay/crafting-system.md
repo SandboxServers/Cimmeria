@@ -7,8 +7,8 @@ last_updated: 2026-05-27
 
 # Crafting System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~30% implemented
+> **Last updated**: 2026-06-20
+> **Status**: ~28% — state/persistence/skills/GM-grants done; the six activity handlers are stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
 
 ## Overview
 
@@ -133,6 +133,65 @@ Crafter.alloy(blueprintId, currentTierItemId, lowerTierItems)
 3. **Tech competency** - How `techCompetency` affects crafting beyond research chance
 4. **Quality system** - Item quality tiers and their effect on alloying
 5. **Crafting busy state** - Why `beginBusy`/`endBusy` are commented out
+
+## Concrete recipe examples
+
+The catalog is a multi-stage production chain: raw materials → intermediate parts
+("subcombines") → alloys → finished gear. All examples below are pulled directly from the
+seed data (`db/resources/Entities/Seed/blueprints.sql` + `blueprints_components.sql`,
+resolved against `Items/Seed/items.sql`).
+
+**One product, several recipes.** A blueprint can have multiple *component sets*, so you
+build with whatever you have. "IC-K-layer" (skill: *Electronic Engineering*) can be made
+four ways:
+
+- 13× Integrated Circuit, **or**
+- 5× Integrated Pseudocore, **or**
+- 6× Integrated Circuit + 1× Signal Damp, **or**
+- 1× Particle Dynamo + 1× Wave Guide
+
+**Materials refining.** "Steel Plating" (*Materials Engineering*) ← 13× Steel Core (or 5×
+Titanium Core). "Optical Fiber" (*Power Systems Engineering*) ← Wave Guides + Particle parts.
+
+**Alloying / tier-up.** 1× tier-1 "Cell" or "Drug" → **2× "Blend" (Bio-Medical Alloy)**,
+which jumps from quality *Normal* to *Great* and tier 1 → tier 2. (40 of the 498 recipes
+are alloy recipes.)
+
+**Finished consumables.** The chain ends in usable gear — e.g. the **"Mark III Stimpack"**
+line (Coordination / Engagement / Fortitude / Intellect — stat-boost consumables). The
+Intellect stim (skill: *Robotics*) = 1× IC-K-layer + 2× Signal Damp + 1× Integrated Pseudocore.
+
+Skills (disciplines) form faction-gated tech trees with prerequisites — e.g. *Biomedical
+Engineering → Retroviral Engineering*, *Electronic Engineering → Robotics → Drone Robotics*,
+*Power Systems Engineering → Naquadah Energy Systems → Energy Shielding*, plus faction-locked
+branches like *Goa'uld Synesthesia*.
+
+## Where materials come from
+
+- **Loot** — mobs and containers drop crafting components (see [loot-system.md](loot-system.md)).
+- **Salvage** — reverse-engineer gear you don't want back into parts.
+- **Vendors** — buy some base materials.
+- **Research is a sink, not a source** — it consumes items to train skills; it doesn't yield materials.
+
+(No evidence of gathering/mining nodes — SGW used loot + salvage + vendors.)
+
+## Balancing
+
+The balance is the authentic 2009 game's, recovered from the client data: every recipe's
+exact ingredient counts and outputs, item quality/tier, skill-training costs, and the
+research success formula (`chance = 100 − yourExpertise + 5×kickers`, so mastering a skill
+gets progressively harder). We restore these numbers rather than design them — but they're
+fully editable in the seed if we ever want to tune the economy.
+
+## Querying the data today
+
+The full crafting catalog is queryable now, even before the activity handlers land:
+
+- Recipes: `db/resources/Entities/Seed/blueprints.sql` + `blueprints_components.sql`
+- Skills: `db/resources/Archetypes/Seed/disciplines.sql`
+- Items/materials: `db/resources/Items/Seed/items.sql`
+
+Totals: **498 blueprints** (40 alloy), **78 disciplines**, ~**5,958 items**.
 
 ## Related Docs
 
