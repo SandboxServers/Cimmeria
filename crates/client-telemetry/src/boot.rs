@@ -158,19 +158,157 @@ unsafe extern "system" fn bootstrap_thread_proc(_arg: *mut c_void) -> u32 {
 }
 
 /// Bootstrap entry point. Runs on a dedicated thread after
-/// `DllMain` returns and loader lock has cleared. This is where all
-/// real init lands as future phases ship — hook installation, CME
-/// subscriber registration, uploader thread spawn.
+/// `DllMain` returns and loader lock has cleared.
 ///
-/// Phase 1 scope: capture `AttachDiagnostics`, do nothing else.
-/// Returning leaves the thread to exit normally; future phases will
-/// park here to keep the bootstrap thread alive for shutdown
-/// coordination.
+/// **Phase 2 scope** (this file):
+/// 1. Resolve the host (SGW.exe) executable path via
+///    `GetModuleFileNameW(NULL, …)` so we can locate
+///    `current-session.json`.
+/// 2. Load + parse the launcher's marker file. If telemetry is
+///    disabled (`telemetry.enabled = false` — the launcher's
+///    kill-switch path), park the bootstrap thread silently —
+///    the DLL stays loaded but inert. Hooks installed by Phase 2c
+///    / 2d will gate their producer side on a check we add later.
+/// 3. Construct the event queue (producer/consumer pair).
+/// 4. Store the producer in a process-global static so future hook
+///    installers can clone it.
+/// 5. Emit the first event — `client.dll.attached` — carrying the
+///    install_id / machine_id / session_id from the marker file
+///    plus the DLL's on-disk path.
+/// 6. Spawn the uploader thread; transfer ownership of the consumer.
+/// 7. Park the bootstrap thread for process lifetime. Returning
+///    would let the thread exit cleanly but we keep it alive so a
+///    future shutdown hook (Phase 7) can drain the queue.
+///
+/// All work guarded by the outer `catch_unwind` in
+/// `bootstrap_thread_proc` — a panic in any of the steps above
+/// returns 1 from the thread proc and SGW.exe keeps running
+/// without telemetry.
 pub fn bootstrap_main() {
-    // Touch the static so we can prove (in tests) that
-    // `DllMain` ran. Future phases will pass this into the
-    // telemetry uploader as the first event.
     let _ = ATTACH_DIAG.get();
+    #[cfg(windows)]
+    bootstrap_phase2();
+}
+
+/// Process-global producer handle. Installed by `bootstrap_phase2`
+/// after the session loads successfully; read by every hook
+/// installer that needs to emit events.
+///
+/// `OnceLock` because the producer is constructed exactly once per
+/// process; cloning is cheap (it's `Arc`-backed inside
+/// crossbeam-channel) so each hook holds its own clone.
+#[cfg(windows)]
+static PRODUCER: OnceLock<crate::queue::Producer> = OnceLock::new();
+
+/// Returns the global producer if Phase 2 init succeeded. Hook
+/// installers call this from their attach paths; `None` means
+/// telemetry is disabled or the session-file load failed (the
+/// hook should install itself as a no-op in that case).
+#[cfg(windows)]
+pub fn producer() -> Option<&'static crate::queue::Producer> {
+    PRODUCER.get()
+}
+
+#[cfg(windows)]
+fn bootstrap_phase2() {
+    // Step 1: find the host executable. `GetModuleFileNameW(NULL)`
+    // returns the path to the .exe that loaded us (SGW.exe).
+    let host_exe = match host_exe_path() {
+        Some(p) => p,
+        None => return, // can't locate; can't proceed
+    };
+
+    // Step 2: load `current-session.json`. Errors here include
+    // file-missing (launcher didn't write it — likely user
+    // launched SGW.exe directly without going through the
+    // launcher), parse errors, and the explicit
+    // `telemetry.enabled = false` kill-switch case. All map to
+    // "park, do nothing."
+    let session = match crate::session::session_path_for_host(&host_exe)
+        .and_then(|p| crate::session::load_session(&p))
+    {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    // Step 3 + 4: queue + global producer.
+    let (producer, consumer) = crate::queue::channel();
+    if PRODUCER.set(producer.clone()).is_err() {
+        // Double-init shouldn't happen (the bootstrap-thread
+        // guard above is single-shot), but if it does, leave the
+        // first producer in place and quietly bail.
+        return;
+    }
+
+    // Step 5: first event — `client.dll.attached`. Carries the
+    // identity fields the server-side replay uses to pivot
+    // SigNoz queries on session.
+    let mut builder = crate::events::ClientNativeEvent::builder("client.dll.attached", "info");
+    for (k, v) in crate::session::identity_fields(&session) {
+        builder = builder.field(&k, v);
+    }
+    if let Some(diag) = ATTACH_DIAG.get() {
+        if let Some(p) = &diag.dll_path {
+            builder = builder.field(
+                "dll_path",
+                serde_json::Value::String(p.display().to_string()),
+            );
+        }
+    }
+    builder = builder.field(
+        "host_exe",
+        serde_json::Value::String(host_exe.display().to_string()),
+    );
+    let _ = producer.try_emit(builder);
+
+    // Step 6: spawn the uploader thread. It owns the consumer
+    // end and runs for the lifetime of the process. We
+    // intentionally don't keep the JoinHandle — Phase 7's
+    // shutdown hook will use a stop-flag and a sibling JoinHandle
+    // static when it lands.
+    let cfg = crate::uploader::UploaderConfig::from_session(&session.telemetry);
+    std::thread::Builder::new()
+        .name("cimmeria-uploader".into())
+        .spawn(move || {
+            crate::uploader::run_uploader(consumer, cfg, || false);
+        })
+        .ok();
+
+    // Step 6.5: install hooks. Each hook clones the producer
+    // handle (Arc-backed inside crossbeam-channel) so the clones
+    // are cheap. Per-hook success/failure events flow through the
+    // queue and ship like any other telemetry. Hook installation
+    // is best-effort — a missing CME signal or a failed MinHook
+    // create logs a warn event and the hook becomes a no-op.
+    crate::hooks::install_all(producer);
+
+    // Step 7: park the bootstrap thread. Future Phase 7 hooks can
+    // wake us via an `Event` to drive shutdown drain. For now,
+    // `thread::park()` blocks until the OS reclaims the thread at
+    // process exit.
+    loop {
+        std::thread::park();
+    }
+}
+
+#[cfg(windows)]
+fn host_exe_path() -> Option<std::path::PathBuf> {
+    use windows_sys::Win32::Foundation::MAX_PATH;
+    let mut buf = [0u16; MAX_PATH as usize];
+    // SAFETY: NULL module handle = main executable per Win32 docs.
+    let len = unsafe {
+        windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW(
+            std::ptr::null_mut::<core::ffi::c_void>() as HMODULE,
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+        )
+    };
+    if len == 0 || (len as usize) >= buf.len() {
+        return None;
+    }
+    Some(std::path::PathBuf::from(String::from_utf16_lossy(
+        &buf[..len as usize],
+    )))
 }
 
 /// Returns the diagnostics captured by `DllMain`, if attach has run.

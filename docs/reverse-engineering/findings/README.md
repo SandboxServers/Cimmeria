@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains 55 per-system reverse engineering findings with evidence.
+This directory contains 56 per-system reverse engineering findings with evidence.
 
 ## Documents
 
@@ -44,6 +44,7 @@ This directory contains 55 per-system reverse engineering findings with evidence
 | `atrea-editor.md` | V5 | Atrea Editor (in-game UnrealEd) — architecture and developer-tool surface recovered from the binary | MEDIUM |
 | `character-creation-pipeline.md` | V5 | Character creation pipeline — full analysis of the create-character flow from UI through wire to entity instantiation | HIGH |
 | `client-instrumentation-hookpoints.md` | V5 | Client instrumentation hookpoints — addresses suitable for telemetry/RE hooks into client subsystems | HIGH |
+| `client-instrumentation-entry-points.md` | Phase 3-6 manifest | Companion to hookpoints — resolved function entries + IAT slots for all Phase 3-6 `cimmeria-client-telemetry` hooks: state-flag dispatcher `0x00e01c90`, anim notify `0x00e974b0`/`0x00e97070`, cooked-data load `0x00420074`, ConsoleCommand `0x00539850`, CEGUI logEvent `0x012129E0`, Bink tick `0x0050BBC0`, Lua/OS/crash IAT slots | HIGH (Ghidra-resolved 2026-06-04) |
 | `combat-damage-analysis.md` | V5 | Combat damage system — client-binary analysis of damage resolution and the numbers the client expects | HIGH |
 | `cover-system.md` | V5 | Cover system — client-binary analysis of cover nodes and how cover affects combat | MEDIUM |
 | `crafting-state-machine.md` | V5 | Crafting state machine — client-side craft/research/reverse-engineer state transitions | HIGH |

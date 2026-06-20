@@ -2,8 +2,10 @@
 
 > **Diátaxis type**: reference
 > **Audience**: engineers writing or reviewing `cimmeria-client-telemetry` hooks (issue #417)
-> **Last updated**: 2026-05-26
-> **Confidence**: HIGH for Tier-1 anchors validated by Ghidra decompile + string-search pre-issue. MEDIUM for Tier-2+ anchors derived from existing RE docs without per-anchor re-verification.
+> **Last updated**: 2026-06-04
+> **Confidence**: HIGH for Tier-1 anchors validated by Ghidra decompile + string-search pre-issue. HIGH for Tier-3 through Tier-7 anchors after the 2026-06-04 upfront Ghidra pass that resolved every anchor to a function entry or IAT slot. HIGH for `AActor::Tick` (slot 88 @ `0x005e4200`) and `USequence::UpdateOp` (slot 84 @ `0x006c61c0`) after the second-pass vtable walk. MEDIUM for the 2 remaining deferred vtable-swap targets (`UObject::ProcessEvent` — vtable identified, 5 slots ruled out, ~35 remain to scan; `PropertyNode<T>` get/set — RTTI + COL identified but heavy templated specialization needs per-T enumeration).
+>
+> **See also**: [`client-instrumentation-entry-points.md`](client-instrumentation-entry-points.md) — the resolved Phase 3-6 manifest with all addresses + IAT slots + recommended detour signatures. Read that doc first if you're implementing a Phase 3-6 hook; this doc is the per-tier anchor catalog the manifest derives from.
 
 The injected client-side telemetry DLL (issue #417) hooks SGW.exe at the addresses and entry points catalogued here. Anchors are stable because SGW.exe has ASLR disabled (`AtreaFixASLR.bat` clears `IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE` on-disk), so addresses are the same on every run.
 
@@ -65,13 +67,13 @@ See [`cme-event-signal.md`](cme-event-signal.md) for the full Pattern A vs Patte
 
 The minimum hook set that turns "client froze somewhere during world entry" into a SigNoz trace.
 
-| Function | Anchor | Technique | Event name | Status |
+| Function | Anchor → Entry | Technique | Event name | Status |
 |---|---|---|---|---|
-| `FEngineLoop::Tick` | RTTI `0x01d8f838` | Inline | `client.frame_tick` (sampled 1/100) | CONFIRMED |
-| `UWorld::UpdateLevelStreaming` | StreamingLevel xref @ `0x01837518` | Inline | `client.streaming.update` | CONFIRMED |
+| `FEngineLoop::Tick` | RTTI `0x01d8f838` → **entry `0x00416ec0`** | Inline | `client.engine.tick` (sampled 1/100) | ENABLED (PR #504) |
+| `UWorld::UpdateLevelStreamingInner(ULevelStreaming*, FVector*)` | StreamingLevel xref @ `0x01837518` → **entry `0x0054e9c0`** | Inline | `client.engine.update_level_streaming` (sampled 1/10) | ENABLED (PR #504) — signature confirmed via decompile: __thiscall, 3 args. Outer `UWorld::UpdateLevelStreaming` (the iterator) is at `0x005527a0`. |
 | `ULevelStreaming::SetLevelStatus` | `0x01837518`, `0x01906e30` | Inline | `client.streaming.state_change` | CONFIRMED |
-| `FArchiveAsync::Read*` | RTTI `0x01dafd0c` | Inline | `client.async_io.read` | CONFIRMED |
-| `LoadPackage` | "FailedLoadPackage" xref @ `0x0180f104` | Inline | `client.package.load` | CONFIRMED |
+| `FArchiveAsync::Serialize` (vtbl slot 1) | RTTI `0x01dafd0c` → vtable `0x01814198` → **entry `0x004c7ae0`** | Inline | `client.engine.async_archive_serialize` (sampled 1/1000) | ENABLED (PR #504) |
+| `UObject::StaticLoadObject(UClass*, UObject*, TCHAR*, TCHAR*, DWORD, UPackageMap*, UBOOL)` | "FailedLoadPackage" wstring xref @ `0x0180f104` → **entry `0x004a8e10`** | Inline | `client.engine.static_load_object` (sampled 1/10, captures `package_name` field) | ENABLED (PR #504) — initially mis-identified as `LoadPackageInternal`; decompile shows check macros `ObjectClass` + `InName` matching UE3 leaked-source `StaticLoadObject` exactly. 7 cdecl args. The "FailedLoadPackage" string is the error key StaticLoadObject reports when the inner LoadPackage fails. |
 | `Event_NetIn_onClientMapLoad` handler | TypedEmitInfo `0x01e4da90` | CME subscribe | `client.network.on_client_map_load` | CONFIRMED |
 | `Event_NetIn_onClientReady` handler | string `0x019c2828` ("onClientReady") | CME subscribe | `client.network.on_client_ready` | CONFIRMED (string at address is the bare `onClientReady` — the full `Event_NetIn_onClientReady` is the RTTI-derived signal name) |
 | `recvfrom` / `WSARecv` | `ws2_32.dll` IAT | IAT | `client.os.udp_recv` (sampled) | DEFERRED — IAT walker work |

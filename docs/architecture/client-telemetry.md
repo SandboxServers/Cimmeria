@@ -2,8 +2,8 @@
 
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
-> **Last updated**: 2026-05-26
-> **Status**: Phase 1 foundation landed; tier-1 hooks in follow-up PR
+> **Last updated**: 2026-06-05
+> **Status**: Phases 2-5 substantially landed. **23 hooks total** across 4 techniques: 2 CME subscribers (`onClientMapLoad`, `onClientReady`), 11 inline JMP hooks (Mercury dispatch + 4 engine + 6 Phase-3/5 additions: state-flag dispatcher, anim notify A+B, cooked-data load, console command, Bink tick), 7 IAT-swap hooks (3 Lua + 4 OS), 3 vtable-swap hooks (CEGUI logger + AActor::Tick + USequence::UpdateOp). All addresses + signatures sourced from the upfront Ghidra manifest. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter.
 
 How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
 
@@ -161,12 +161,13 @@ To preserve "observe without changing behavior":
 |---|---|---|
 | 0 | RE prep — anchor table, Unsubscribe decompile, ABI doc | LANDED |
 | 1 | Foundation — crate skeleton, DllMain bootstrap, injector + launch wiring, `ClientNative` variant on both sides, CI | LANDED |
-| 2 | Tier-1 hooks (10 hooks: frame tick, level streaming, async IO, Mercury dispatch, log4cxx tee, CME `onClientMapLoad` / `onClientReady`, WinSock recv) | NEXT |
-| 3 | CME EventSignal full coverage — RTTI walk, auto-generated `Event_NetIn_*` / `Event_NetOut_*` subscriptions | |
-| 4 | Game state + animation + effects + cooked data | |
-| 5 | UI / Lua / kismet / dispatcher | |
-| 6 | Subsystem correlators — FMOD, Bink, PropertyNode | |
-| 7 | Crash + on-disk artifact shipping | |
+| 2a | Event queue (crossbeam-channel MPMC) + in-DLL uploader (ureq+rustls, gzipped NDJSON) + session.json loader + `client.dll.attached` first event | LANDED (PR #504) |
+| 2b/c/d | Tier-1 hooks — both CME EventSignal subscribes (`Event_NetIn_onClientReady`, `Event_NetIn_onClientMapLoad`) + `Mercury::Nub::handleMessage` inline hook via MinHook. Sampling counter for hot-path hooks. Phase-status update. | LANDED |
+| 2-deferred | The remaining 4 tier-1 inline hooks (`FEngineLoop::Tick`, `UWorld::UpdateLevelStreaming`, `FArchiveAsync::Read*`, `LoadPackage`) — resolved + landed during the upfront Ghidra pass on 2026-06-04. | LANDED |
+| 3 | Game state + kismet + tick — state-flag dispatcher, anim notify A+B, cooked-data PAK load, APlayerController::execConsoleCommand (inline) + AActor::Tick, USequence::UpdateOp (vtable swap). **CME RTTI auto-discovery** (~270 events) and **UObject::ProcessEvent** vtable-swap deferred. | LANDED (manifest-driven 2026-06-05) — partial |
+| 4 | UI / Lua — CEGUI::DefaultLogger::logEvent (vtable swap) + lua_pcall, lua_call, lua_newstate (IAT swap). Console command already covered in Phase 3. | LANDED (manifest-driven 2026-06-05) |
+| 5 | Subsystem correlators — Bink tick (inline, in Phase-3 commit) + CreateThread, LoadLibraryW/A, GetForegroundWindow (IAT swap). **FMOD** runtime vtable traversal and **PropertyNode<T>** per-T enumeration deferred. | LANDED (manifest-driven 2026-06-05) — partial |
+| 6 | Crash + on-disk artifact shipping (SetUnhandledExceptionFilter IAT, MiniDumpWriteDump call, log/dump file tailers). IAT slots known; not yet implemented. | DEFERRED |
 
 ## CI
 
@@ -177,6 +178,7 @@ To preserve "observe without changing behavior":
 ## Cross-references
 
 - [`docs/reverse-engineering/findings/client-instrumentation-hookpoints.md`](../reverse-engineering/findings/client-instrumentation-hookpoints.md) — per-anchor hook table
+- [`docs/reverse-engineering/findings/client-instrumentation-entry-points.md`](../reverse-engineering/findings/client-instrumentation-entry-points.md) — **resolved Phase 3-6 entry points** (companion to hookpoints — all addresses + IAT slots + signatures pre-resolved so Phase 3-6 implementation skips the RE round-trip)
 - [`docs/reverse-engineering/findings/cme-event-signal.md`](../reverse-engineering/findings/cme-event-signal.md) — full CME EventSignal emit pipeline
 - [`docs/architecture/observability.md`](observability.md) — the broader OTLP / SigNoz pipeline this plugs into
 - [`docs/architecture/dev-session-telemetry.md`](dev-session-telemetry.md) — the launcher telemetry pipeline the DLL reuses
