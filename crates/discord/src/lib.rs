@@ -506,7 +506,7 @@ mod tests {
                     url: format!("{}/{}", wiremock_uri, c.as_str()),
                     // Above Discord's 150/min hard cap on purpose — the
                     // config sanitiser clamps to 150 (we exercised that
-                    // in config::tests::rate_limit_clamped_to_safe_range),
+                    // in config::parse::tests::rate_limit_clamped_to_safe_range),
                     // and 150 is plenty of burst for 14 sequential
                     // emits in this test.
                     rate_limit_per_min: 150,
@@ -545,7 +545,7 @@ mod tests {
     ///
     /// Pinning the COUNT (not the bodies) is deliberate: the per-
     /// variant body format is already covered by
-    /// `embed::tests::every_event_variant_builds` + the per-event
+    /// `embed::builder::tests::every_event_variant_builds` + the per-event
     /// formatter tests. This test's regression target is the typed-
     /// wrapper layer — a future hand that drops `emit_player_login`
     /// or routes it through the wrong `Event` variant trips this.
