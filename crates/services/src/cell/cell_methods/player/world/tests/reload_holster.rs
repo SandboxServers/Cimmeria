@@ -335,7 +335,7 @@ async fn reload_in_isolation_does_not_flip_bsf_in_combat() {
 /// then manually presses R during the ~half-second animation
 /// window before Phase 2 elapses. Pre-fix Phase B was missing the
 /// `holster_animation_complete_at = None` clear that Phase A
-/// already had (line 554), so the holster timer kept running.
+/// already had (the Phase A path), so the holster timer kept running.
 ///
 /// Pin: stage `holster_animation_complete_at = Some(future)`,
 /// drain the clip, call `handle_reload` with the weapon drawn
