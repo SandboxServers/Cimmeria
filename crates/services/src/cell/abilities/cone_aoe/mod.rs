@@ -69,4 +69,9 @@ mod tests;
 // stable for callers (and `super::*` resolution for `tests`).
 pub use fan_out::fan_out_cone_effects;
 pub use flag_categories::log_effect_flag_categories;
-pub use geometry::{collect_cone_targets, is_cone_effect};
+pub use geometry::collect_cone_targets;
+// `is_cone_effect` is reached internally via `geometry::` and otherwise only
+// by the test module through `super::*`; gate the re-export so the non-test
+// build doesn't flag it unused.
+#[cfg(test)]
+pub use geometry::is_cone_effect;

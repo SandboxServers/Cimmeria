@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn archetype_default_with_no_weapon_passes_through() {
         // No bandolier item equipped → lookup misses → no redirect.
-        let mut mgr = make_mgr();
+        let mgr = make_mgr();
         let pistol_def = Some(make_def(
             ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK,
             "Pistol Shot",
