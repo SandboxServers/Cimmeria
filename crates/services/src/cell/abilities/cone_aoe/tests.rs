@@ -14,7 +14,8 @@ fn spawn_npc(mgr: &mut SpaceManager, eid: u32, world: &str, pos: [f32; 3]) {
 fn make_mgr_with_attacker() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /><Space WorldName="W2" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
-    let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /><Space WorldName="W2" /></Spaces>"#;
+    let cxml =
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /><Space WorldName="W2" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();
     mgr.create_startup_spaces(cxml).unwrap();
     mgr.create_entity(1, "W", [0.0; 3], [0.0; 3]).unwrap();
@@ -107,8 +108,7 @@ fn narrow_cone_excludes_what_wide_cone_includes() {
     spawn_npc(&mut mgr, 3, "W", [5.0, 0.0, 4.0]); // ~38° off axis
 
     // Wide cone (67.5° half-angle) includes it
-    let wide =
-        collect_cone_targets(&mgr, 1, 2, 10.0, EffectDef::tcm_half_angle_radians("Wide"));
+    let wide = collect_cone_targets(&mgr, 1, 2, 10.0, EffectDef::tcm_half_angle_radians("Wide"));
     assert!(wide.contains(&3), "Wide (67.5°) cone includes 38° entity");
 
     // Narrow cone (22.5° half-angle) excludes it

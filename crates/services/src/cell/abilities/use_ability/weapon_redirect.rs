@@ -162,8 +162,10 @@ mod tests {
         let mut mgr = SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
-        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#)
-            .unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#,
+        )
+        .unwrap();
         mgr.create_entity(1, "W", [0.0; 3], [0.0; 3]).unwrap();
         if let Some(e) = mgr.get_entity_mut(1) {
             e.is_player = true;
@@ -186,7 +188,10 @@ mod tests {
             );
         }
         mgr.item_event_set_abilities.insert(
-            (WEAPON_ITEM_ID, super::super::super::super::spawner::EVENT_ITEM_RANGED),
+            (
+                WEAPON_ITEM_ID,
+                super::super::super::super::spawner::EVENT_ITEM_RANGED,
+            ),
             ranged_ability,
         );
     }
@@ -205,17 +210,21 @@ mod tests {
     fn archetype_default_redirects_to_active_weapon_ranged_binding() {
         let mut mgr = make_mgr();
         equip_weapon(&mut mgr, SMG_AUTO_ATTACK);
-        mgr.ability_defs
-            .insert(SMG_AUTO_ATTACK, make_def(SMG_AUTO_ATTACK, "SMG Auto Attack"));
-        let pistol_def = Some(make_def(ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK, "Pistol Shot"));
-
-        let (id, out_def) = resolve_weapon_redirect(
-            1,
-            ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK,
-            pistol_def,
-            &mgr,
+        mgr.ability_defs.insert(
+            SMG_AUTO_ATTACK,
+            make_def(SMG_AUTO_ATTACK, "SMG Auto Attack"),
         );
-        assert_eq!(id, SMG_AUTO_ATTACK, "592 redirects to the weapon's RANGED binding");
+        let pistol_def = Some(make_def(
+            ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK,
+            "Pistol Shot",
+        ));
+
+        let (id, out_def) =
+            resolve_weapon_redirect(1, ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK, pistol_def, &mgr);
+        assert_eq!(
+            id, SMG_AUTO_ATTACK,
+            "592 redirects to the weapon's RANGED binding"
+        );
         assert_eq!(
             out_def.map(|d| d.ability_id),
             Some(SMG_AUTO_ATTACK),
@@ -227,14 +236,16 @@ mod tests {
     fn archetype_default_with_no_weapon_passes_through() {
         // No bandolier item equipped → lookup misses → no redirect.
         let mut mgr = make_mgr();
-        let pistol_def = Some(make_def(ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK, "Pistol Shot"));
-        let (id, out_def) = resolve_weapon_redirect(
-            1,
+        let pistol_def = Some(make_def(
             ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK,
-            pistol_def,
-            &mgr,
+            "Pistol Shot",
+        ));
+        let (id, out_def) =
+            resolve_weapon_redirect(1, ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK, pistol_def, &mgr);
+        assert_eq!(
+            id, ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK,
+            "no weapon = no redirect"
         );
-        assert_eq!(id, ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK, "no weapon = no redirect");
         assert_eq!(
             out_def.map(|d| d.ability_id),
             Some(ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK)
@@ -247,14 +258,16 @@ mod tests {
         // no redirect, original def preserved unchanged.
         let mut mgr = make_mgr();
         equip_weapon(&mut mgr, ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK);
-        let pistol_def = Some(make_def(ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK, "Pistol Shot"));
-        let (id, out_def) = resolve_weapon_redirect(
-            1,
+        let pistol_def = Some(make_def(
             ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK,
-            pistol_def,
-            &mgr,
+            "Pistol Shot",
+        ));
+        let (id, out_def) =
+            resolve_weapon_redirect(1, ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK, pistol_def, &mgr);
+        assert_eq!(
+            id, ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK,
+            "same binding = no rewrite"
         );
-        assert_eq!(id, ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK, "same binding = no rewrite");
         assert_eq!(
             out_def.map(|d| d.ability_id),
             Some(ARCHETYPE_DEFAULT_RANGED_AUTO_ATTACK)
