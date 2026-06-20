@@ -17,7 +17,9 @@
 
 use aes::Aes256;
 use cbc::{Decryptor, Encryptor};
-use cipher::{BlockModeDecrypt, BlockModeEncrypt, KeyIvInit};
+// `KeyInit` (the source of `new_from_slice`) moved off the `Mac` trait in
+// hmac 0.13 / digest 0.11 — import it explicitly now.
+use cipher::{BlockModeDecrypt, BlockModeEncrypt, KeyInit, KeyIvInit};
 use hmac::{Hmac, Mac};
 use md5::Md5;
 

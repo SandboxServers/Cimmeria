@@ -89,7 +89,15 @@ pub fn compute_content_digest(install_dir: &Path) -> Result<Option<String>, LogE
         hasher.update(&data);
         hasher.update([0u8]);
     }
-    Ok(Some(format!("{:x}", hasher.finalize())))
+    // digest 0.11's `Array` output no longer implements `LowerHex`; hex-encode
+    // the bytes explicitly instead of the old `{:x}`.
+    Ok(Some(
+        hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect(),
+    ))
 }
 
 pub fn build_log_zip(install_dir: &Path) -> Result<Option<Vec<u8>>, LogError> {

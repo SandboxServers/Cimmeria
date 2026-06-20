@@ -29,7 +29,8 @@ use axum::routing::post;
 use axum::{Json, Router};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use hmac::{Hmac, Mac};
+// `new_from_slice` lives on `KeyInit` (not `Mac`) as of hmac 0.13 / digest 0.11.
+use hmac::{digest::KeyInit, Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
@@ -307,7 +308,7 @@ pub fn encode_token(claims: &TokenClaims, secret: &[u8]) -> Result<String, AuthE
     let payload_json = serde_json::to_vec(claims)?;
     let payload_b64 = URL_SAFE_NO_PAD.encode(&payload_json);
     let mut mac =
-        <Hmac<Sha256> as Mac>::new_from_slice(secret).expect("HMAC accepts any key length");
+        <Hmac<Sha256> as KeyInit>::new_from_slice(secret).expect("HMAC accepts any key length");
     mac.update(payload_b64.as_bytes());
     let sig = mac.finalize().into_bytes();
     let sig_b64 = URL_SAFE_NO_PAD.encode(sig);
@@ -327,7 +328,7 @@ pub fn decode_token(token: &str, secret: &[u8]) -> Result<TokenClaims, AuthError
         .decode(sig_b64)
         .map_err(|e| AuthError::BadPayload(format!("signature base64: {e}")))?;
     let mut mac =
-        <Hmac<Sha256> as Mac>::new_from_slice(secret).expect("HMAC accepts any key length");
+        <Hmac<Sha256> as KeyInit>::new_from_slice(secret).expect("HMAC accepts any key length");
     mac.update(payload_b64.as_bytes());
     // verify_slice is constant-time — defends against timing oracle
     // attacks on the signature comparison.
