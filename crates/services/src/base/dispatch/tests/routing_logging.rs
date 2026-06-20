@@ -2,8 +2,8 @@
 //! logoff send-failure surfacing, the unhandled-method WARN, and the
 //! explicit DEBUG handlers for `perfStats` / `elementDataRequest`.
 //!
-//! Split out of the monolithic `dispatch/tests.rs` (issue #529) — every
-//! test body and assertion is byte-identical to the original.
+//! Split out of the monolithic `dispatch/tests.rs`; test bodies and
+//! assertions were moved verbatim from the original.
 
 use super::super::*;
 use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
