@@ -21,7 +21,7 @@ use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 
 use crate::channel::Channel;
-use crate::encryption::MercuryEncryption;
+use crate::encryption::{MercuryEncryption, RotationState};
 use crate::packet::{
     build_fragmented_bundle, build_outgoing, parse_incoming, FLAG_HAS_ACKS, FLAG_HAS_SEQUENCE,
     FLAG_ON_CHANNEL, FLAG_RELIABLE, FRAGMENT_BODY_SIZE,
@@ -90,7 +90,15 @@ pub struct LoopbackPeer {
     /// Optional encryption context. When `Some`, every outbound bundle is
     /// AES-256-CBC + HMAC-MD5 encrypted before going on the wire and
     /// every inbound datagram is decrypted before parse.
+    ///
+    /// When [`rotation`](Self::rotation) is also set it takes precedence — the
+    /// static context is only the pre-rotation seed. Tests that exercise key
+    /// rotation install a [`RotationState`] via [`Self::enable_rotation`].
     pub encryption: Option<Arc<MercuryEncryption>>,
+    /// Optional swappable rotation state. When `Some`, the recv pump and the
+    /// send path encrypt/decrypt through it (honoring the dual-key inbound
+    /// window across a switch) instead of the static `encryption` context.
+    pub rotation: Option<Arc<Mutex<RotationState>>>,
     /// Direction tag for outbound-policy lookups.
     direction: Direction,
     /// Shared policy with the paired peer.
@@ -133,10 +141,15 @@ impl LoopbackPeer {
         let inbox_notify = Arc::new(Notify::new());
         let pending_acks = Arc::new(Mutex::new(Vec::new()));
 
+        // Rotation is opt-in per test via `enable_rotation`; sessions that
+        // don't rotate keep the plain static-context path unchanged.
+        let rotation: Option<Arc<Mutex<RotationState>>> = None;
+
         let recv_task = spawn_recv_pump(
             socket.clone(),
             channel.clone(),
             encryption.clone(),
+            rotation.clone(),
             inbox.clone(),
             inbox_notify.clone(),
             pending_acks.clone(),
@@ -149,6 +162,7 @@ impl LoopbackPeer {
             peer_addr,
             clock,
             encryption,
+            rotation,
             direction,
             policy,
             inbox,
@@ -156,6 +170,115 @@ impl LoopbackPeer {
             pending_acks,
             recv_task,
         })
+    }
+
+    /// Encrypt `plaintext` through the rotation state if one is installed,
+    /// otherwise through the static context, otherwise pass through.
+    ///
+    /// Centralizes the encrypt-side branch so the send paths
+    /// ([`Self::build_and_register`], [`Self::send_large_bundle`], the keepalive
+    /// in [`Self::tick`]) all honor an in-progress rotation identically.
+    fn encrypt_outbound(&self, plaintext: &[u8]) -> Vec<u8> {
+        if let Some(rot) = &self.rotation {
+            return rot
+                .lock()
+                .expect("rotation poisoned")
+                .encrypt(plaintext)
+                .expect("rotation encrypt failed in harness");
+        }
+        match &self.encryption {
+            Some(enc) => enc
+                .encrypt(plaintext)
+                .expect("encryption failed in harness"),
+            None => plaintext.to_vec(),
+        }
+    }
+
+    /// Install a [`RotationState`] seeded from `key`, taking over both the
+    /// encrypt (send) and decrypt (recv) paths from the static context. Restarts
+    /// the recv pump so the running pump sees the rotation arc.
+    ///
+    /// Returns the shared `Arc<Mutex<RotationState>>` so tests can drive the
+    /// rotation directly (arm/commit/apply) and assert on the current key.
+    pub fn enable_rotation(
+        &mut self,
+        key: [u8; crate::encryption::SESSION_KEY_LEN],
+        version: crate::encryption::EncryptionVersion,
+    ) -> Arc<Mutex<RotationState>> {
+        let rot = Arc::new(Mutex::new(RotationState::new(key, version)));
+        self.rotation = Some(rot.clone());
+
+        // The recv pump captured the pre-rotation arguments; restart it so the
+        // running pump decrypts through the rotation state.
+        self.recv_task.abort();
+        self.recv_task = spawn_recv_pump(
+            self.socket.clone(),
+            self.channel.clone(),
+            self.encryption.clone(),
+            self.rotation.clone(),
+            self.inbox.clone(),
+            self.inbox_notify.clone(),
+            self.pending_acks.clone(),
+        );
+        rot
+    }
+
+    /// Arm a rotation on this peer (server role): mint `new_key`, build the
+    /// `RotateSessionKey` payload, and return it. Outbound stays on the old key
+    /// until [`Self::commit_outbound_rotation`].
+    ///
+    /// Panics if rotation was not enabled via [`Self::enable_rotation`].
+    pub fn arm_rotation(
+        &self,
+        new_key: [u8; crate::encryption::SESSION_KEY_LEN],
+    ) -> cimmeria_common::Result<Vec<u8>> {
+        self.rotation
+            .as_ref()
+            .expect("rotation not enabled on this peer")
+            .lock()
+            .expect("rotation poisoned")
+            .arm(new_key)
+    }
+
+    /// Promote the armed rotation to current (server role) — call after the
+    /// `RotateSessionKey` message is on the wire so subsequent outbound packets
+    /// use the new key. No-op if nothing is armed.
+    pub fn commit_outbound_rotation(&self) {
+        if let Some(rot) = &self.rotation {
+            rot.lock().expect("rotation poisoned").commit_outbound();
+        }
+    }
+
+    /// Apply a key recovered from an inbound `RotateSessionKey` payload (peer
+    /// role): rebuild both directions from the new key, keeping the old context
+    /// in the inbound window. Returns the recovered key on success.
+    ///
+    /// Panics if rotation was not enabled via [`Self::enable_rotation`].
+    pub fn apply_received_rotation(
+        &self,
+        payload: &[u8],
+    ) -> cimmeria_common::Result<[u8; crate::encryption::SESSION_KEY_LEN]> {
+        let rot = self
+            .rotation
+            .as_ref()
+            .expect("rotation not enabled on this peer");
+        let mut guard = rot.lock().expect("rotation poisoned");
+        let key = guard.recover_received_key(payload)?;
+        guard.apply_received_key(key);
+        Ok(key)
+    }
+
+    /// Snapshot the current rotation key — exposed so tests can assert both
+    /// peers converged on the same key after a switch.
+    ///
+    /// Panics if rotation was not enabled via [`Self::enable_rotation`].
+    pub fn rotation_current_key(&self) -> [u8; crate::encryption::SESSION_KEY_LEN] {
+        self.rotation
+            .as_ref()
+            .expect("rotation not enabled on this peer")
+            .lock()
+            .expect("rotation poisoned")
+            .current_key()
     }
 
     /// Send `body` to the paired peer. When `reliable` is `true`, the
@@ -201,11 +324,9 @@ impl LoopbackPeer {
 
         let flags = FLAG_ON_CHANNEL | if reliable { FLAG_RELIABLE } else { 0 };
 
-        let enc = self.encryption.clone();
         let (encrypted_packets, num_frags) =
-            build_fragmented_bundle(flags, body, base_seq, &acks, |plaintext| match &enc {
-                Some(e) => e.encrypt(plaintext).expect("encryption failed in harness"),
-                None => plaintext.to_vec(),
+            build_fragmented_bundle(flags, body, base_seq, &acks, |plaintext| {
+                self.encrypt_outbound(plaintext)
             });
 
         if reliable {
@@ -270,13 +391,7 @@ impl LoopbackPeer {
         let pkt = build_outgoing(flags, body, seq, &acks, None);
         let plaintext = pkt.freeze();
 
-        let raw = match &self.encryption {
-            Some(enc) => Bytes::from(
-                enc.encrypt(&plaintext)
-                    .expect("encryption failed in harness"),
-            ),
-            None => plaintext.clone(),
-        };
+        let raw = Bytes::from(self.encrypt_outbound(&plaintext));
 
         if reliable {
             let packet = crate::packet::Packet {
@@ -507,13 +622,7 @@ impl LoopbackPeer {
             // shape from `tick_sync.rs`.
             let pkt = build_outgoing(FLAG_ON_CHANNEL, &[], None, &[], None);
             let plaintext = pkt.freeze();
-            let raw = match &self.encryption {
-                Some(enc) => Bytes::from(
-                    enc.encrypt(&plaintext)
-                        .expect("encryption failed in harness"),
-                ),
-                None => plaintext.clone(),
-            };
+            let raw = Bytes::from(self.encrypt_outbound(&plaintext));
             self.send_with_policy(raw.clone()).await?;
             self.channel.lock().expect("channel poisoned").touch_sent();
             actions.keepalives.push(raw);
@@ -588,10 +697,12 @@ impl Drop for LoopbackPeer {
 /// (if encryption is set), parses, feeds packets into the channel,
 /// queues acks for piggyback on the next send, and pushes reassembled
 /// bundles onto the inbox.
+#[allow(clippy::too_many_arguments)]
 fn spawn_recv_pump(
     socket: Arc<UdpSocket>,
     channel: Arc<Mutex<Channel>>,
     encryption: Option<Arc<MercuryEncryption>>,
+    rotation: Option<Arc<Mutex<RotationState>>>,
     inbox: Arc<Mutex<VecDeque<Bytes>>>,
     inbox_notify: Arc<Notify>,
     pending_acks: Arc<Mutex<Vec<u32>>>,
@@ -605,12 +716,23 @@ fn spawn_recv_pump(
             };
             let raw = &buf[..n];
 
-            let plaintext = match &encryption {
-                Some(enc) => match enc.decrypt(raw) {
+            // Rotation state (if installed) takes precedence — it implements
+            // the dual-key inbound window so a packet sent under the old key
+            // just before a switch still decrypts. Falls back to the static
+            // context, then to plaintext pass-through.
+            let plaintext = if let Some(rot) = &rotation {
+                match rot.lock().expect("rotation poisoned").decrypt(raw) {
                     Ok(v) => v,
                     Err(_) => continue,
-                },
-                None => raw.to_vec(),
+                }
+            } else {
+                match &encryption {
+                    Some(enc) => match enc.decrypt(raw) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    },
+                    None => raw.to_vec(),
+                }
             };
 
             let pkt = match parse_incoming(&plaintext) {

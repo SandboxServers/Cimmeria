@@ -10,6 +10,8 @@
 //! - `handshake` — channel lifecycle handshake.
 //! - `ack` — ack aggregation.
 //! - `rto` — adaptive RTO convergence on loopback.
+//! - `rotation` — server-initiated v2 session-key rotation across a live
+//!   session, including rotate-under-load.
 
 mod ack;
 mod chaos;
@@ -22,5 +24,6 @@ mod kat_vectors;
 mod keepalive;
 mod policy_effects;
 mod reliable;
+mod rotation;
 mod rto;
 mod smoke;

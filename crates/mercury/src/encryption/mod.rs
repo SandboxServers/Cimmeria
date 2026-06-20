@@ -61,6 +61,16 @@ use sha2::Sha256;
 
 use cimmeria_common::{CimmeriaError, Result};
 
+/// Server-initiated session-key rotation (v2 sessions only). See
+/// [`rotation`] for the wire message, the v1 gate, and the switch
+/// state machine.
+pub mod rotation;
+
+pub use rotation::{
+    build_rotation_payload, generate_session_key, recover_rotation_key, rotation_enabled,
+    RotationState, SESSION_KEY_LEN,
+};
+
 /// HMAC tag length in bytes (both v1 MD5 full-width and v2 SHA-256 truncated).
 const HMAC_TAG_LEN: usize = 16;
 

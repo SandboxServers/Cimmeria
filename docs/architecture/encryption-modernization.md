@@ -142,6 +142,57 @@ behind an SEH frame, which makes a stable inline patch on the filters fragile.
 Hooking one layer up at `Channel::send` gives a clean, heap-resident vtable
 target. The version byte lets v1 and v2 coexist during transition.
 
+### Phase 3 — Mercury v2 session-key rotation
+
+**Status (server side): Implemented, v2-gated; client rotation handling and the
+production scheduler hookup pending the client patch.** Rotation is a
+server-initiated, periodic refresh of the v2 session key that bounds how much
+ciphertext is ever produced under one key and gives forward secrecy across each
+rotation boundary.
+
+- **Gated to v2 only.** The stock v1 client has no code path to receive a
+  rotation control message, so rotation is hard-gated:
+  `rotation_enabled(version, cadence_secs)` returns true **only** for v2 with a
+  non-zero cadence. A v1 session never arms a rotation and never emits a
+  `RotateSessionKey` message — today's clients are byte-identical to the
+  pre-rotation behavior. With the default v1 server-wide version, the rotation
+  cadence setting is inert.
+- **Cadence:** `ServerConfig::mercury_key_rotation_secs`, default `3600`
+  (one hour); `0` disables rotation.
+- **Wire message:** a `RotateSessionKey` Mercury control message
+  (`MsgId::RotateSessionKey = 9`) whose body is the new 32-byte key **encrypted
+  under the current session context**. The raw key never appears in the clear;
+  it rides inside the existing v2 envelope (random IV, HKDF-split keys,
+  encrypt-then-MAC), so it is confidential and integrity-protected.
+- **Switch semantics (server → peer):**
+  1. **Arm.** Server mints a fresh CSPRNG key, builds the `RotateSessionKey`
+     payload (encrypted under the *current* key), and stages the new context as
+     pending — but keeps encrypting outbound under the **old** key so the
+     rotation message is decryptable by the peer.
+  2. **Commit outbound.** After the rotation message is on the wire, the server
+     promotes pending → current; every subsequent outbound packet uses the new
+     key.
+  3. **Peer applies on receipt.** The peer decrypts the message under the key it
+     still holds, recovers the new key, and rebuilds both directions from it.
+  4. **Dual-key inbound window.** Between arming and observing the first inbound
+     packet that decrypts under the new key, the server accepts **both** keys
+     (new first, old as fallback) so an in-flight old-key packet that crosses
+     the switch boundary still decrypts. The window closes on the first
+     new-key success.
+  A dropped `RotateSessionKey` message is retransmitted by the transport layer
+  (byte-identically, under the old key) until acked, so the data plane is
+  loss-tolerant across the switch.
+- **Narrowed scope:** the rotation **primitives and switch state machine** live
+  in `cimmeria-mercury` (`encryption::rotation`) and are proven end-to-end
+  through the **loopback test harness** simulating a cooperating v2 peer
+  (`test_harness::tests::rotation`), including a rotate-under-load test. **No
+  real client is exercised** — the stock client speaks v1 and is never sent a
+  rotation message. The production hookup that drives a per-session rotation
+  scheduler against the live BaseApp recv/send loop, and the client-side
+  handling of `RotateSessionKey`, both land with the client patch; deferring
+  them avoids adding race surface to the live session path with no validation
+  target.
+
 ### Non-change — leave the session-key handshake as-is
 
 The Mercury session key continues to be exchanged as it is today.
