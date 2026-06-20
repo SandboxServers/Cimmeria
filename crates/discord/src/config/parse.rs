@@ -571,9 +571,37 @@ rate_limit_per_min = 0
     /// A `${VAR}` that resolves successfully through `from_toml_str`
     /// produces a usable webhook URL -- the happy interpolation path that
     /// passes the `validate()` webhook-prefix check end to end.
+    /// Restores (or removes) a process-global env var on drop so env-mutating
+    /// tests don't leak state to parallel siblings (cargo runs tests in a
+    /// binary in parallel by default).
+    struct EnvGuard {
+        key: &'static str,
+        prev: Option<String>,
+    }
+    impl EnvGuard {
+        fn set(key: &'static str, val: &str) -> Self {
+            let prev = std::env::var(key).ok();
+            std::env::set_var(key, val);
+            Self { key, prev }
+        }
+        fn unset(key: &'static str) -> Self {
+            let prev = std::env::var(key).ok();
+            std::env::remove_var(key);
+            Self { key, prev }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(v) => std::env::set_var(self.key, v),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+
     #[test]
     fn env_var_substitution_produces_valid_webhook_url() {
-        std::env::set_var(
+        let _guard = EnvGuard::set(
             "TEST_SUBST_OK_WEBHOOK",
             "https://discord.com/api/webhooks/42/substituted",
         );
@@ -603,7 +631,7 @@ url = "${TEST_SUBST_OK_WEBHOOK}"
     /// the variable name (the channel field was only spot-checked before).
     #[test]
     fn missing_env_var_error_carries_channel_name() {
-        std::env::remove_var("TEST_MISSING_NAMED_WEBHOOK");
+        let _guard = EnvGuard::unset("TEST_MISSING_NAMED_WEBHOOK");
         let toml_src = r#"
 [discord]
 enabled = true
