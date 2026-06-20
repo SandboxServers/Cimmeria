@@ -31,7 +31,7 @@ mod npc_state;
 mod stats;
 mod teleport;
 
-/// Castle "Agnos" startup fixture shared by every executor test.
+/// Non-instanced "Agnos" startup fixture shared by every executor test.
 pub(super) fn make_space_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
