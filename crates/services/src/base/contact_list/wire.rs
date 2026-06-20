@@ -59,7 +59,7 @@ pub(crate) fn build_on_contact_list_remove_members(list_id: i32, names: &[String
 ///
 /// `event_id` values (EContactListEvent):
 ///   0 = LoggedInStatus (data_value 1=online / 0=offline)
-///   1 = GainLevel, 2 = Death, 3 = GateTravel  [TODO(#572 Phase 5) — data values TBD]
+///   1 = GainLevel, 2 = Death, 3 = GateTravel  [TODO: data values need x64dbg runtime capture]
 pub(crate) fn build_on_contact_list_event(
     player_name: &str,
     event_id: u32,

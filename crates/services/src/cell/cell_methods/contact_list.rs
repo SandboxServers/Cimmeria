@@ -14,6 +14,7 @@
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use crate::mercury::read_wstring;
 use tokio::sync::mpsc;
 
 pub const CREATE: u16 = 55;
@@ -28,39 +29,13 @@ const MAX_MEMBERS_PER_REQUEST: usize = 100;
 
 // ── Wire parse helpers ────────────────────────────────────────────────────────
 
-/// Parse a WSTRING from a byte slice at `offset`.
-///
-/// Wire: `[u32 char_count LE][UTF-16LE × char_count]`
-/// Returns `Some((string, bytes_consumed))` or `None` if the buffer is too short
-/// or contains invalid UTF-16.
-fn parse_wstring(args: &[u8], offset: usize) -> Option<(String, usize)> {
-    if args.len() < offset + 4 {
-        return None;
-    }
-    let char_count = u32::from_le_bytes([
-        args[offset],
-        args[offset + 1],
-        args[offset + 2],
-        args[offset + 3],
-    ]) as usize;
-    let bytes_needed = 4 + char_count * 2;
-    if args.len() < offset + bytes_needed {
-        return None;
-    }
-    let mut units = Vec::with_capacity(char_count);
-    for i in 0..char_count {
-        let pos = offset + 4 + i * 2;
-        units.push(u16::from_le_bytes([args[pos], args[pos + 1]]));
-    }
-    let s = String::from_utf16(&units).ok()?;
-    Some((s, bytes_needed))
-}
-
 /// Parse an ARRAY<WSTRING> from a byte slice at `offset`.
 ///
 /// Wire: `[u32 count LE][WSTRING × count]`
 /// Returns `Some((names, bytes_consumed))` or `None` if malformed.
 /// Clamps count to `MAX_MEMBERS_PER_REQUEST` to mirror the base-side guard.
+///
+/// Individual WSTRINGs are decoded via `crate::mercury::read_wstring`.
 fn parse_wstring_array(args: &[u8], offset: usize) -> Option<(Vec<String>, usize)> {
     if args.len() < offset + 4 {
         return None;
@@ -75,7 +50,7 @@ fn parse_wstring_array(args: &[u8], offset: usize) -> Option<(Vec<String>, usize
     let mut names = Vec::with_capacity(count);
     let mut pos = offset + 4;
     for _ in 0..count {
-        let (name, consumed) = parse_wstring(args, pos)?;
+        let (name, consumed) = read_wstring(args, pos).ok()?;
         names.push(name);
         pos += consumed;
     }
@@ -110,7 +85,7 @@ pub async fn dispatch(
     match method_index {
         CREATE => {
             // WSTRING name, UINT32 flags
-            let Some((name, consumed)) = parse_wstring(args, 0) else {
+            let Some((name, consumed)) = read_wstring(args, 0).ok() else {
                 tracing::warn!(entity_id, "contactListCreate: malformed WSTRING name");
                 return true;
             };
@@ -165,7 +140,7 @@ pub async fn dispatch(
                 return true;
             }
             let list_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-            let Some((name, _)) = parse_wstring(args, 4) else {
+            let Some((name, _)) = read_wstring(args, 4).ok() else {
                 tracing::warn!(
                     entity_id,
                     list_id,
@@ -295,6 +270,7 @@ pub async fn dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mercury::read_wstring;
 
     // Helper: encode a WSTRING.
     fn wstring(s: &str) -> Vec<u8> {
@@ -316,30 +292,30 @@ mod tests {
         buf
     }
 
-    /// parse_wstring round-trips an ASCII string correctly.
+    /// read_wstring round-trips an ASCII string correctly.
     #[test]
     fn parse_wstring_ascii_round_trip() {
         let encoded = wstring("Friends");
-        let (s, consumed) = parse_wstring(&encoded, 0).expect("parse");
+        let (s, consumed) = read_wstring(&encoded, 0).expect("parse");
         assert_eq!(s, "Friends");
         assert_eq!(consumed, encoded.len());
     }
 
-    /// parse_wstring at a non-zero offset works correctly.
+    /// read_wstring at a non-zero offset works correctly.
     #[test]
     fn parse_wstring_at_offset() {
         let mut buf = 99i32.to_le_bytes().to_vec(); // list_id prefix
         buf.extend(wstring("Renamed"));
-        let (name, _) = parse_wstring(&buf, 4).expect("parse at offset 4");
+        let (name, _) = read_wstring(&buf, 4).expect("parse at offset 4");
         assert_eq!(name, "Renamed");
     }
 
-    /// parse_wstring returns None for a truncated buffer (body shorter than declared).
+    /// read_wstring returns Err for a truncated buffer (body shorter than declared).
     #[test]
     fn parse_wstring_truncated_returns_none() {
         let encoded = wstring("Hello");
         // Only the 4-byte count prefix, no body.
-        assert!(parse_wstring(&encoded[..4], 0).is_none());
+        assert!(read_wstring(&encoded[..4], 0).is_err());
     }
 
     /// parse_wstring_array round-trips two names.
@@ -384,7 +360,7 @@ mod tests {
         let mut args = wstring("MyList");
         args.extend_from_slice(&42u32.to_le_bytes()); // flags
 
-        let (name, consumed) = parse_wstring(&args, 0).unwrap();
+        let (name, consumed) = read_wstring(&args, 0).unwrap();
         assert_eq!(name, "MyList");
         let flags = u32::from_le_bytes(args[consumed..consumed + 4].try_into().unwrap());
         assert_eq!(flags, 42);
@@ -399,8 +375,38 @@ mod tests {
 
         let list_id = i32::from_le_bytes(args[0..4].try_into().unwrap());
         assert_eq!(list_id, 99);
-        let (name, _) = parse_wstring(&args, 4).unwrap();
+        let (name, _) = read_wstring(&args, 4).unwrap();
         assert_eq!(name, "Renamed");
+    }
+
+    /// Wire-format test: CM 56 contactListDelete layout.
+    /// `[i32 list_id]`
+    #[test]
+    fn delete_args_layout() {
+        let args: Vec<u8> = 42i32.to_le_bytes().to_vec();
+        assert!(args.len() >= 4);
+        let list_id = i32::from_le_bytes(args[0..4].try_into().unwrap());
+        assert_eq!(list_id, 42);
+    }
+
+    /// Wire-format test: CM 56 contactListDelete rejects buffers shorter than 4 bytes.
+    #[test]
+    fn delete_args_too_short_is_rejected() {
+        let short: Vec<u8> = vec![1, 2, 3]; // only 3 bytes
+        assert!(short.len() < 4);
+    }
+
+    /// Wire-format test: CM 58 contactListFlagsUpdate layout.
+    /// `[i32 list_id][u32 flags]`
+    #[test]
+    fn flags_update_args_layout() {
+        let mut args = 13i32.to_le_bytes().to_vec();
+        args.extend_from_slice(&300u32.to_le_bytes()); // flags = 300 (Friends moniker)
+
+        let list_id = i32::from_le_bytes(args[0..4].try_into().unwrap());
+        assert_eq!(list_id, 13);
+        let flags = u32::from_le_bytes(args[4..8].try_into().unwrap());
+        assert_eq!(flags, 300);
     }
 
     /// Wire-format test: CM 59 contactListAddMembers layout.
@@ -414,5 +420,49 @@ mod tests {
         assert_eq!(list_id, 7);
         let (names, _) = parse_wstring_array(&args, 4).unwrap();
         assert_eq!(names, vec!["Alice".to_string(), "Bob".to_string()]);
+    }
+
+    /// Wire-format test: CM 60 contactListRemoveMembers layout.
+    /// Same layout as CM 59: `[i32 list_id][u32 count][WSTRING × count]`
+    #[test]
+    fn remove_members_args_layout() {
+        let mut args = 8i32.to_le_bytes().to_vec();
+        args.extend(wstring_array(&["Enemy"]));
+
+        let list_id = i32::from_le_bytes(args[0..4].try_into().unwrap());
+        assert_eq!(list_id, 8);
+        let (names, _) = parse_wstring_array(&args, 4).unwrap();
+        assert_eq!(names, vec!["Enemy".to_string()]);
+    }
+
+    /// parse_wstring_array with a malformed element (truncated body) returns None.
+    #[test]
+    fn parse_wstring_array_malformed_element_returns_none() {
+        // count=1, then only 2 bytes of a WSTRING body (needs 4 + char_count*2 = 6).
+        let mut buf = 1u32.to_le_bytes().to_vec(); // count = 1
+        buf.extend_from_slice(&1u32.to_le_bytes()); // char_count = 1
+        buf.push(0x41); // only 1 byte of UTF-16LE body — too short
+        assert!(
+            parse_wstring_array(&buf, 0).is_none(),
+            "malformed WSTRING element must cause array parse to fail"
+        );
+    }
+
+    /// The ≤100-name clamp in parse_wstring_array is a parse-level guard that
+    /// a malicious client cannot bypass by sending exactly MAX+1 names.
+    #[test]
+    fn parse_wstring_array_clamps_at_exact_boundary() {
+        let one = wstring("x");
+        let total = MAX_MEMBERS_PER_REQUEST + 1;
+        let mut buf = (total as u32).to_le_bytes().to_vec();
+        for _ in 0..total {
+            buf.extend_from_slice(&one);
+        }
+        let (names, _) = parse_wstring_array(&buf, 0).expect("should parse up to the clamp");
+        assert_eq!(
+            names.len(),
+            MAX_MEMBERS_PER_REQUEST,
+            "exactly MAX+1 names must be clamped to MAX"
+        );
     }
 }

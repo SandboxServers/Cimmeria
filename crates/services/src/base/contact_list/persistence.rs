@@ -197,14 +197,17 @@ pub(crate) async fn load_list_header(
 }
 
 /// Add member names to a contact list. Ignores duplicates via ON CONFLICT DO
-/// NOTHING. Returns the count of rows actually inserted.
+/// NOTHING. Returns the names that were actually inserted (not already present).
+///
+/// Uses a single batched INSERT with an UNNEST array binding to avoid
+/// per-name round-trips for large requests.
 pub(crate) async fn add_members(
     pool: &PgPool,
     player_id: i32,
     list_id: i32,
     names: &[String],
 ) -> Result<Vec<String>, sqlx::Error> {
-    // First verify ownership in one query.
+    // Verify ownership in one query before touching member rows.
     let owned: Option<i32> = sqlx::query_scalar(
         "SELECT list_id FROM sgw_contact_list WHERE list_id = $1 AND player_id = $2",
     )
@@ -216,32 +219,36 @@ pub(crate) async fn add_members(
         return Err(sqlx::Error::RowNotFound);
     }
 
-    let mut added = Vec::new();
-    for name in names {
-        let result = sqlx::query(
-            "INSERT INTO sgw_contact_list_member (list_id, player_name) \
-             VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        )
-        .bind(list_id)
-        .bind(name)
-        .execute(pool)
-        .await?;
-        if result.rows_affected() > 0 {
-            added.push(name.clone());
-        }
+    if names.is_empty() {
+        return Ok(Vec::new());
     }
+
+    // Single batched INSERT; RETURNING gives us only the rows actually written.
+    let added: Vec<String> = sqlx::query_scalar(
+        "INSERT INTO sgw_contact_list_member (list_id, player_name) \
+         SELECT $1, name FROM UNNEST($2::text[]) AS t(name) \
+         ON CONFLICT DO NOTHING \
+         RETURNING player_name",
+    )
+    .bind(list_id)
+    .bind(names)
+    .fetch_all(pool)
+    .await?;
+
     Ok(added)
 }
 
 /// Remove member names from a contact list. Returns the names that were
 /// actually present (and thus deleted). Verifies ownership before touching rows.
+///
+/// Uses a single batched DELETE with ANY to avoid per-name round-trips.
 pub(crate) async fn remove_members(
     pool: &PgPool,
     player_id: i32,
     list_id: i32,
     names: &[String],
 ) -> Result<Vec<String>, sqlx::Error> {
-    // Verify ownership.
+    // Verify ownership before touching member rows.
     let owned: Option<i32> = sqlx::query_scalar(
         "SELECT list_id FROM sgw_contact_list WHERE list_id = $1 AND player_id = $2",
     )
@@ -253,19 +260,21 @@ pub(crate) async fn remove_members(
         return Err(sqlx::Error::RowNotFound);
     }
 
-    let mut removed = Vec::new();
-    for name in names {
-        let result = sqlx::query(
-            "DELETE FROM sgw_contact_list_member WHERE list_id = $1 AND player_name = $2",
-        )
-        .bind(list_id)
-        .bind(name)
-        .execute(pool)
-        .await?;
-        if result.rows_affected() > 0 {
-            removed.push(name.clone());
-        }
+    if names.is_empty() {
+        return Ok(Vec::new());
     }
+
+    // Single batched DELETE; RETURNING gives us only rows that existed.
+    let removed: Vec<String> = sqlx::query_scalar(
+        "DELETE FROM sgw_contact_list_member \
+         WHERE list_id = $1 AND player_name = ANY($2::text[]) \
+         RETURNING player_name",
+    )
+    .bind(list_id)
+    .bind(names)
+    .fetch_all(pool)
+    .await?;
+
     Ok(removed)
 }
 
