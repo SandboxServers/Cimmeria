@@ -6701,6 +6701,8 @@ INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (3984, 0, NULL, 'DUIST_DefaultBlurb', NULL, NULL, NULL);
 
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (3995, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+-- Mission 622 loot split: Guard-corpse search dialog (yields the pistol). Mirrors 3995 (Frost).
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (3996, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
 
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (3998, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
 

@@ -96,6 +96,14 @@ pub(crate) async fn run_tick_loop(
                 "Tick-sync stopping: client inactive for {}s",
                 idle.as_secs()
             );
+            // Discord errors-channel: the peer went silent past the dead
+            // threshold. Account id is best-effort — the session is still
+            // in the map at this point (teardown runs after the loop).
+            let account_id = connected
+                .lock()
+                .ok()
+                .and_then(|c| c.get(&addr).map(|s| s.account_id));
+            cimmeria_discord::emit_mercury_timeout(addr, account_id, idle.as_secs());
             break "inactivity_timeout";
         }
 

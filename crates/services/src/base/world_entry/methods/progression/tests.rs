@@ -109,6 +109,7 @@ async fn credits_only_target_character_when_account_has_multiple() {
         entity_id,
         player_a,
         50,
+        false, // notify_gm: this is a persistence test, not a GM grant
         &db_pool,
         &transport,
         &connected,
@@ -160,6 +161,7 @@ async fn does_not_credit_when_player_row_missing() {
         entity_id,
         nonexistent,
         50,
+        false, // notify_gm: persistence test, not a GM grant
         &db_pool,
         &transport,
         &connected,
@@ -186,6 +188,48 @@ async fn does_not_credit_when_player_row_missing() {
             .await
             .unwrap();
     assert_eq!(nonexistent_count, 0, "missing-row branch must not INSERT");
+
+    cleanup(&pool, account_id).await;
+}
+
+/// GM-sourced grant: `handle_grant_cash` with `notify_gm: true` must run the
+/// definitive-feedback branch (the `send_gm_feedback_to_client` call on the
+/// post-UPDATE success path) without panicking, and the naquadah write must
+/// still commit. `connected` is empty so the actual feedback packet is skipped
+/// gracefully — but the success branch (and its feedback call) is exercised.
+/// Reverting the `if notify_gm { send_gm_feedback_to_client(...) }` block would
+/// leave this test green (it asserts DB state, not the wire), but a panic in
+/// that branch — or moving the feedback to a failure path — would surface here.
+#[tokio::test]
+async fn grant_cash_with_notify_gm_commits_and_does_not_panic() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_PLAYER_BASE + 200;
+    let player = TEST_PLAYER_BASE + 201;
+    cleanup(&pool, account_id).await;
+    insert_test_account(&pool, account_id).await;
+    insert_test_player(&pool, account_id, player, 10).await;
+
+    let (transport, entity_to_addr, connected, entity_id) = make_state().await;
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    handle_grant_cash(
+        entity_id,
+        player,
+        40,
+        true, // notify_gm: exercise the definitive-feedback success branch
+        &db_pool,
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    let naq: i32 = sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1")
+        .bind(player)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(naq, 50, "GM cash grant must commit (10 + 40 = 50)");
 
     cleanup(&pool, account_id).await;
 }

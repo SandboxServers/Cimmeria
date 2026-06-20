@@ -130,7 +130,15 @@ pub enum CellToBaseMsg {
     /// The CellService computes the XP amount from the mob's level and sends
     /// this to BaseApp, which updates the player's XP/level and sends client
     /// notifications.
-    GrantXP { entity_id: u32, xp_amount: u64 },
+    ///
+    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
+    /// `entity_id` after the write commits. Only the GM `gmGiveXp` path sets
+    /// this; non-GM senders (mob-kill XP) leave it false.
+    GrantXP {
+        entity_id: u32,
+        xp_amount: u64,
+        notify_gm: bool,
+    },
 
     /// Train a new ability for a player — debit one training point and
     /// persist the new ability to `sgw_player.abilities`. The base side
@@ -154,12 +162,18 @@ pub enum CellToBaseMsg {
     },
 
     /// Grant an item to a player and persist to `sgw_inventory`.
+    ///
+    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
+    /// `entity_id` after the write commits. Only the GM `gmGiveItem` path sets
+    /// this; non-GM senders (loot pickup, content-chain `Action::GrantItem`)
+    /// leave it false.
     GrantItem {
         entity_id: u32,
         player_id: i32,
         item_id: i32,
         container_id: i32,
         count: i32,
+        notify_gm: bool,
     },
 
     /// Open a vendor store for a player using the vendor template lists.
@@ -211,11 +225,17 @@ pub enum CellToBaseMsg {
     },
 
     /// Remove quantity from an inventory item instance.
+    ///
+    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
+    /// `entity_id` after the write commits. Only the GM `gmRemoveItem` path
+    /// sets this; non-GM senders (content-chain `Action::RemoveItem`, the
+    /// `removeItem` inventory method) leave it false.
     RemoveInventoryItem {
         entity_id: u32,
         player_id: i32,
         item_id: i32,
         quantity: i32,
+        notify_gm: bool,
     },
 
     /// Remove `count` of an item by **design id** (`type_id`) — chains know
@@ -297,6 +317,18 @@ pub enum CellToBaseMsg {
         reload_on_activate: bool,
     },
 
+    /// Persist the user-preference bits of the player's `state_field`
+    /// after a toggle (today: `setAutoCycle`, player method 83, flipping
+    /// `BSF_AutoCycling`). Same cell-mutates / base-persists split as
+    /// `SystemOptionsUpdate`. The cell side sends the value already
+    /// masked to `PERSISTED_STATE_FIELD_MASK`; the base-side handler
+    /// masks again defensively so transient combat bits (BSF_Dead,
+    /// BSF_InCombat, BSF_MovementLock) can never reach the DB even if a
+    /// future send site forgets. Restored onto the entity (and
+    /// re-broadcast to the client) by `InitPlayerState` on the next
+    /// world entry. (#412)
+    StateFieldUpdate { player_id: i32, state_field: u32 },
+
     /// Re-broadcast `BeingAppearance` to the player's AoI with a fresh
     /// holster state. Used by the combat enter/exit path (and any other
     /// runtime holster toggle, e.g. the `requestHolsterWeapon` button)
@@ -326,23 +358,114 @@ pub enum CellToBaseMsg {
     /// docs/gameplay/weapon-ammo-reload.md (TBD). `player_id` here matches the
     /// DB `character_id`, mirroring the field naming used by `ActiveSlotUpdate`.
     ///
-    /// `expected_item_id` guards against TOCTOU: if the slot's item changes
-    /// between the cell sending this message and the base writing the row,
-    /// the SQL `WHERE type_id = $expected_item_id` clause skips the write
-    /// rather than scribbling stale ammo onto the new weapon.
+    /// `expected_instance_id` guards against TOCTOU: it is the
+    /// `sgw_inventory.item_id` per-row instance id (NOT the design id) of the
+    /// slot's item at the time the writeback was computed.
+    /// If the slot's physical item changes between the cell sending this
+    /// message and the base writing the row, the SQL
+    /// `WHERE item_id = $expected_instance_id` clause skips the write rather
+    /// than scribbling stale ammo onto the new weapon — even when the new
+    /// weapon shares the same design as the old one.
     BandolierAmmoUpdate {
         player_id: i32,
         slot_id: i32,
-        expected_item_id: i32,
+        expected_instance_id: i32,
         current_ammo: i32,
         cur_ammo_type: i32,
     },
 
     /// Grant cash (naquadah) to a player and persist to the database.
+    ///
+    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
+    /// `entity_id` after the write commits. Only the GM `gmGiveCash` path sets
+    /// this; non-GM senders (loot pickup) leave it false.
     GrantCash {
         entity_id: u32,
         player_id: i32,
         amount: i32,
+        notify_gm: bool,
+    },
+
+    /// Grant crafting expertise in one discipline and persist to the database
+    /// (`gmGiveExpertise`). One-way sink, mirroring `GrantCash`: the cell has
+    /// already authorized the GM and resolved `player_id`; the base loads the
+    /// `CraftingState`, clamps the new expertise to `[0, 100]`, adds the
+    /// discipline to `discipline_ids` if absent, saves, and pushes
+    /// `onUpdateDiscipline` (method 136) to the client. `amount` is the
+    /// additive delta (validated `> 0` cell-side), `discipline_id` the target
+    /// discipline (validated `> 0` cell-side).
+    GrantExpertise {
+        entity_id: u32,
+        player_id: i32,
+        discipline_id: i32,
+        amount: i32,
+    },
+
+    /// Grant applied-science points and persist to the database
+    /// (`gmGiveAppliedSciencePoints`). One-way sink, mirroring `GrantCash`:
+    /// the base loads the `CraftingState`, adds `amount` to
+    /// `applied_science_points`, and saves. `amount` is validated `> 0`
+    /// cell-side. There is no outbound applied-science-points client method in
+    /// the SGWPlayer method table, so the base persists only — the client
+    /// refreshes its ASP display on the next crafting-window open or relog.
+    GrantAppliedSciencePoints {
+        entity_id: u32,
+        player_id: i32,
+        amount: i32,
+    },
+
+    /// Execute a server-generated authoring SQL statement against the live DB
+    /// (`.`-console). The cell has no DB pool, so the spawn/patrol
+    /// authoring commands hand their `INSERT`/`UPDATE`/`DELETE` to the base,
+    /// which runs it and reports the row count back to the GM via the feedback
+    /// channel. The write is intentionally transient — it lets the developer
+    /// see the change hold across reconnects within the current deploy, but the
+    /// next deploy rebuilds from `db/resources/` seeds and wipes it (the
+    /// durable artifact is the seed SQL emitted by `.seedconfirm`).
+    ///
+    /// **Trust model:** the `.`-channel is GM-gated server-side, and `sql` is
+    /// *server-generated* — numeric values are formatted from cell-parsed
+    /// `i32`/`f32` and strings are escaped through
+    /// [`crate::cell::console::seed::sql_str`], so no raw client text is
+    /// concatenated into the statement. This mirrors the legacy
+    /// `Atrea.dbQuery` authoring path. `label` is a short human tag for the
+    /// feedback line (e.g. `"savespawn"`).
+    ExecuteAuthoringSql {
+        entity_id: u32,
+        label: String,
+        sql: String,
+    },
+
+    /// Run a read-only name search against a resource table and feed the
+    /// matches back to the GM (`.searchitem` / `.searchmission` /
+    /// `.searchtemplate`). The cell caches resource ids but not their display
+    /// names (those live only in the base-side DB), so the search runs base-side
+    /// and reports `id: name` lines on the feedback channel. `kind` selects the
+    /// table (`0` items, `1` missions, `2` entity_templates); `query` is the
+    /// case-insensitive substring (used as a parameterized `ILIKE` bind — no
+    /// string concatenation).
+    ConsoleSearch {
+        entity_id: u32,
+        kind: u8,
+        query: String,
+    },
+
+    /// Spawn an NPC by template id at a computed position (`gmSpawnByCmd`).
+    ///
+    /// Round-trip sink, mirroring `TrainAbility` → `AbilityGranted`: the cell
+    /// cannot build a `SpawnRecord` for an arbitrary `template_id` (it has no
+    /// template cache), so it hands the request to the base, which queries
+    /// `resources.entity_templates`, materializes a `SpawnRecord`, and sends it
+    /// back via [`crate::cell::messages::BaseToCellMsg::GmSpawnNpcReady`]. The
+    /// cell then allocates an NPC id and spawns it into `space_id`. `position`
+    /// is the final spawn position (caller position + the command's X/Z
+    /// offsets, already validated finite cell-side).
+    GmSpawnNpc {
+        entity_id: u32,
+        template_id: i32,
+        space_id: u32,
+        world_name: String,
+        position: [f32; 3],
     },
 
     /// Re-anchor the local pawn to a fresh actor without `RESET_ENTITIES`.

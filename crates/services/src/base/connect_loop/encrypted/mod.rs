@@ -83,6 +83,11 @@ pub(crate) async fn handle_encrypted_datagram(
         Ok(p) => p,
         Err(e) => {
             tracing::warn!(%addr, "Packet parse failed after decrypt: {e}");
+            // Discord errors-channel: a decrypted-but-undecodable datagram is
+            // a wire-format break worth a structured embed (the generic warn
+            // harvest would lose the addr/kind structure). The sender's
+            // bounded queue + per-channel rate limit absorb a flood.
+            cimmeria_discord::emit_wire_format_error("parse_incoming", Some(addr), e.to_string());
             return Ok(());
         }
     };
@@ -221,8 +226,15 @@ pub(crate) async fn handle_encrypted_datagram(
                             .get(&addr)
                             .and_then(|c| c.player_entity_id);
                         if let Some(entity_id) = entity_id {
-                            // payload[0..4] = spaceId (not used here -- client confirms which space)
+                            // payload[0..4] = spaceId the client claims it is
+                            // in. The cell never writes against it (the server
+                            // `entity_space` binding is authoritative); it is
+                            // forwarded only so the cell can warn on a
+                            // server↔client space divergence.
                             // payload[4..8] = vehicleId (unused)
+                            let claimed_space_id = u32::from_le_bytes([
+                                payload[0], payload[1], payload[2], payload[3],
+                            ]);
                             let pos = [
                                 f32::from_le_bytes([
                                     payload[8],
@@ -272,6 +284,7 @@ pub(crate) async fn handle_encrypted_datagram(
                             let _ = tx
                                 .send(BaseToCellMsg::EntityMove {
                                     entity_id,
+                                    claimed_space_id,
                                     position: pos,
                                     direction: dir,
                                     velocity: vel,

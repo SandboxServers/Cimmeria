@@ -152,7 +152,7 @@ jobs:
           path: target/coverage/
           retention-days: 14
       - name: upload to Codecov
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: target/coverage/cobertura.xml
           flags: launcher

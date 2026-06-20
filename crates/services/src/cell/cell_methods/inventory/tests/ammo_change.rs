@@ -24,6 +24,10 @@ async fn request_ammo_change_updates_slot_and_sends_property() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                // Distinct from item_id (design id) so the BandolierAmmoUpdate
+                // assertion proves the guard now keys on the instance PK, not
+                // the design id.
+                instance_id: 4242,
                 item_id: 42,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -58,15 +62,15 @@ async fn request_ammo_change_updates_slot_and_sends_property() {
         CellToBaseMsg::BandolierAmmoUpdate {
             player_id,
             slot_id,
-            expected_item_id,
+            expected_instance_id,
             current_ammo,
             cur_ammo_type,
         } => {
             assert_eq!(player_id, 100);
             assert_eq!(slot_id, 0);
             assert_eq!(
-                expected_item_id, 42,
-                "should carry the slot's item_id for TOCTOU guard"
+                expected_instance_id, 4242,
+                "should carry the slot's instance PK (sgw_inventory.item_id) for TOCTOU guard, not the design id"
             );
             assert_eq!(current_ammo, 20);
             assert_eq!(cur_ammo_type, 3);
@@ -117,6 +121,7 @@ async fn request_ammo_change_rejects_non_positive() {
             e.bandolier_items.insert(
                 0,
                 BandolierItem {
+                    instance_id: 0,
                     item_id: 42,
                     clip_size: 30,
                     default_ammo_type: 1,
@@ -186,6 +191,7 @@ async fn request_ammo_change_rejects_unlisted_subtype() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 42,
                 clip_size: 30,
                 default_ammo_type: 1,

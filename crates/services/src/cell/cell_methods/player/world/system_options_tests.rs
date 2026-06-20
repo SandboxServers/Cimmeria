@@ -68,6 +68,7 @@ fn make_player_with_ability() -> SpaceManager {
         p.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 55,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -404,6 +405,7 @@ async fn auto_reload_skips_for_melee_weapon_with_zero_clip_size() {
         p.bandolier_items.insert(
             0,
             cimmeria_entity::cell_entity::BandolierItem {
+                instance_id: 0,
                 item_id: 99,
                 clip_size: 0,
                 default_ammo_type: 0,

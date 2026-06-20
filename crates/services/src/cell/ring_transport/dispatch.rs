@@ -293,6 +293,10 @@ async fn same_world_teleport(
     // ticks broadcast the new position to other witnesses (build_avatar_update).
     // `update_entity_position` already writes `cell_entity.position`.
     space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
+    // Authorized teleport: reseed the movement-validator clock so the
+    // first post-ring client packet isn't measured against the pre-ring
+    // sample (which would log a spurious speed warning).
+    space_mgr.note_authorized_teleport(entity_id);
 
     // Client-side: hand off to the base. The base sends `forcedPosition` (0x31)
     // to authoritatively snap the player's own avatar, then `onPlayerTeleport`

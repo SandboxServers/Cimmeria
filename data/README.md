@@ -1,15 +1,14 @@
 # data/ — Cooked Game Data
 
-Pre-processed game assets and scripts loaded by the server at runtime.
+Pre-processed game assets loaded by the server at runtime.
 
-56 files across 3 directories.
+27 files across 2 directories.
 
 ## Structure
 
 ```
 data/
 ├── cache/      Cooked .pak files — binary game data ready for serving to the client
-├── scripts/    Space and effect script files
 └── spaces/     Space/zone definitions (navmesh references, chunk layouts)
 ```
 
@@ -20,10 +19,6 @@ Binary packages containing game resource data that the server sends to the game 
 Contents include: abilities, effects, archetypes, items, dialog trees, visual components, and other client-facing resource definitions.
 
 **Do not edit these files directly.** They are binary-encoded. To modify game data, edit the source SQL in `db/resources/` or the entity definitions in `entities/` and re-cook.
-
-## scripts/ — Space and Effect Scripts
-
-Lua/Python-style scripts that define space-specific behavior and effect triggers. These are loaded by the C++ server. The Rust server has the content-engine crate (`crates/content-engine/`) which handles this layer.
 
 ## spaces/ — Zone Definitions
 

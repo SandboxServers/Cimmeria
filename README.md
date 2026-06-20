@@ -29,7 +29,7 @@ See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
 
 ## Tests & CI
 
-The Rust workspace currently carries **2,012 `#[test]` / `#[tokio::test]` cases** across **305 files**, of which **155 are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and `cargo nextest run -p cimmeria-services --lib` against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace currently carries **~2,690 `#[test]` / `#[tokio::test]` cases** across **~400 files**, of which **155 are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and `cargo nextest run -p cimmeria-services --lib` against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency / chain-replay), when each is appropriate, common gotchas, and the patterns reviewers expect to see, read **[TESTING.md](TESTING.md)**.
 
@@ -86,47 +86,92 @@ docker run -d --name cimmeria \
 
 ## Crate Dependency Graph
 
-```
-                    ┌──────────┐
-                    │  common  │  (no deps on other crates)
-                    └────┬─────┘
-                         │
-              ┌──────────┼───────────┐
-              ▼          ▼           ▼
-         ┌────────┐ ┌────────┐ ┌──────────┐
-         │mercury │ │  defs  │ │ commands │
-         └───┬────┘ └───┬────┘ └────┬─────┘
-             │          │           │
-             ▼          ▼           │
-         ┌───────────────────┐      │
-         │      entity       │◄─────┘
-         └────────┬──────────┘
-                  │
-         ┌────────┼──────────────┐
-         ▼        ▼              ▼
-    ┌────────┐ ┌────────────────┐│
-    │  game  │ │content-engine  ││
-    └───┬────┘ └───────┬────────┘│
-        │              │         │
-        ▼              ▼         ▼
-    ┌──────────────────────────────┐
-    │          services            │
-    └──────────────┬───────────────┘
-                   │
-          ┌────────┼────────┐
-          ▼        ▼        ▼
-    ┌────────┐┌─────────┐┌─────────┐
-    │ server ││admin-api││src-tauri│
-    └────────┘└─────────┘└─────────┘
+The 23 workspace crates and their **actual** inter-crate dependencies (an arrow
+**A → B** means *crate A depends on crate B*). Generated from each crate's
+`Cargo.toml`; GitHub renders the Mermaid below.
+
+```mermaid
+%%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
+flowchart TD
+    %% entry points / binaries
+    server --> adminApi["admin-api"]
+    server --> services
+    server --> discord
+    server --> observability
+    server --> common
+    app["app (src-tauri, cimmeria-app)"] --> adminApi
+    app --> services
+    app --> common
+    wireclient --> services
+    wireclient --> mercury
+    wireclient --> common
+
+    %% service + domain layer
+    adminApi --> services
+    adminApi --> contentEngine["content-engine"]
+    adminApi --> entity
+    adminApi --> commands
+    adminApi --> common
+    services --> game
+    services --> contentEngine
+    services --> entity
+    services --> mercury
+    services --> discord
+    services --> observability
+    services --> commands
+    services --> common
+    game --> entity
+    game --> commands
+    game --> common
+    contentEngine --> entity
+    contentEngine --> common
+    entity --> defs
+    entity --> mercury
+    entity --> commands
+    entity --> common
+
+    %% foundation
+    mercury --> common
+    defs --> common
+    commands --> common
+
+    %% UPK / navmesh toolchain (independent of the server spine)
+    navmeshExtractor["navmesh-extractor"] --> upkObjects["upk-objects"]
+    navmeshExtractor --> upk
+    sceneEditor["scene-editor (tool)"] --> upkObjects
+    sceneEditor --> upk
+    upkObjects --> upk
+
+    %% standalone crates with no intra-workspace dependencies
+    subgraph standalone["Standalone (no intra-workspace deps)"]
+        supervisor
+        clientTelemetry["client-telemetry"]
+        launcher["launcher (sgw-launcher)"]
+        contentEditor["content-editor (tool)"]
+        specLint["spec-lint (tool)"]
+    end
 ```
 
-Each box is a separate Rust crate that compiles independently. **common** has the basic types everything needs. **mercury** handles the BigWorld reliable UDP protocol and AES-256 encryption. **defs** parses entity definitions from XML. **entity** manages game objects. **game** and **content-engine** implement gameplay rules and the data-driven content pipeline. **services** ties it all together into Auth, Base, and Cell services. The bottom row are entry points: **server** is the headless game server, **admin-api** exposes a REST API, and **src-tauri** wraps it in a desktop GUI.
+Every node is a workspace crate; the graph is a DAG rooted at **common** (the
+shared types / config / error layer everything builds on). **mercury** (reliable
+UDP + AES-256), **defs** (entity-definition XML parser) and **commands**
+(command + permission model) sit on `common`; **entity** composes them into live
+game objects; **game** and **content-engine** add gameplay rules and the
+data-driven content pipeline; **services** ties Auth / Base / Cell together and is
+what the **server** binary, the **admin-api** REST layer, the **app** desktop GUI
+(repo-root `src-tauri/`, package `cimmeria-app`) and the headless **wireclient**
+test client all build on. **discord** (notifications) and **observability** (OTLP
+metrics) are cross-cutting libraries pulled in by `services` + `server`. The
+**upk** / **upk-objects** / **navmesh-extractor** crates plus the `scene-editor`
+tool form an independent Unreal-package / navmesh toolchain. **supervisor**,
+**client-telemetry**, **launcher** (`sgw-launcher`), and the `content-editor` /
+`spec-lint` tools carry no intra-workspace dependencies.
 
 ## Project Structure
 
 ```
 Cimmeria/
-├── crates/                 Rust server (active development)
+├── crates/                 Rust server (active development — 19 crates)
 │   ├── common/             Shared types, config, error handling
 │   ├── mercury/            Mercury reliable UDP + AES-256 encryption
 │   ├── defs/               Entity definition parser (XML → Rust types)
@@ -136,14 +181,24 @@ Cimmeria/
 │   ├── content-engine/     Data-driven content pipeline
 │   ├── services/           Auth, Base, Cell service implementations
 │   ├── admin-api/          REST administration API
-│   └── server/             Binary entry point (cargo run -p cimmeria-server)
+│   ├── supervisor/         Process supervision and service lifecycle
+│   ├── server/             Binary entry point (cargo run -p cimmeria-server)
+│   ├── discord/            Discord notification dispatch
+│   ├── observability/      Metrics facade over the OpenTelemetry SDK
+│   ├── wireclient/         Headless test client (Tier 3)
+│   ├── upk/                UPK (Unreal Package) file parser
+│   ├── upk-objects/        UPK object type definitions
+│   ├── navmesh-extractor/  UE3 .umap geometry → .obj for NavBuilder
+│   ├── launcher/           egui game launcher + DLL injection (sgw-launcher)
+│   └── client-telemetry/   Windows-only cdylib injected into SGW.exe
+├── src-tauri/              Tauri desktop GUI wrapping the server (cimmeria-app)
 ├── entities/               XML entity definitions and type registry
 ├── data/                   Cooked game data (.pak) and navmeshes
 ├── db/                     PostgreSQL schemas
 │   ├── database.sql        Database and role setup
 │   ├── sgw/                Game schema (accounts, characters, items)
 │   └── resources/          Resource data (abilities, effects, archetypes — 18 game systems)
-├── docs/                   243 documents
+├── docs/                   ~270 documents
 ├── tools/                  Editor tools, RE utilities, and live-DB smoke SQL scripts (vendor_store_smoke.sql, inventory_move_smoke.sql, progression_smoke.sql)
 └── deprecated/             Retired C++/Python/MSVC sources kept for reference
 ```
@@ -156,6 +211,9 @@ Cimmeria/
 | `cimmeria-services` | Auth, Base, Cell service orchestration |
 | `cimmeria-defs` | Entity definition parsing from XML |
 | `cimmeria-content-engine` | Data-driven mission/effect/dialog runtime |
+| `cimmeria-discord` | Discord notification dispatch (server + colo events) |
+| `cimmeria-observability` | Metrics facade over the OpenTelemetry SDK (OTLP) |
+| `cimmeria-wireclient` | Headless Tier 3 test client (SOAP + Mercury + pcap replay) |
 | `tokio` | Async runtime and networking |
 | `axum` | HTTP/REST for auth and admin API |
 | `sqlx` | PostgreSQL async driver |
@@ -172,7 +230,7 @@ Test account: **test** / **test** (SHA1 hashed).
 
 ## Documentation
 
-[docs/](docs/readme.md) contains **243 documents** covering protocol, gameplay, engine internals, architecture, and reverse engineering.
+[docs/](docs/readme.md) contains **~270 documents** covering protocol, gameplay, engine internals, architecture, and reverse engineering.
 
 **New here? Start with:**
 

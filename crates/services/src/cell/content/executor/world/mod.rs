@@ -335,5 +335,9 @@ pub(super) fn move_waypoint(
     if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
         tracing::debug!(entity_id, %entity_tag, target_id, ?destination, chain_id, "Content: move waypoint");
         space_mgr.update_entity_position(target_id, destination, [0, 0, 0], [0.0; 3]);
+        // Authorized server move: reseed the movement-validator clock for
+        // the moved entity (harmless for NPC targets — they never pass
+        // through the client-position validator).
+        space_mgr.note_authorized_teleport(target_id);
     }
 }

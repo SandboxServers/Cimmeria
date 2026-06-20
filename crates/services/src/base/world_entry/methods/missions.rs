@@ -514,6 +514,19 @@ mod tests {
         mgr.create_startup_spaces(cxml).unwrap();
         mgr.create_entity(ENTITY_ID, "Agnos", [0.0; 3], [0.0; 3])
             .unwrap();
+        // Repeatable def (num_repeats=2 → two completions stay under the
+        // `repeats > num_repeats` cap) so the post-relog re-accept passes
+        // the offer guard. Without a def the guard fails closed.
+        mgr.mission_defs.insert(
+            MISSION_ID,
+            crate::cell::spawner::MissionDefEntry {
+                step_id: STEP_ID,
+                objectives: vec![],
+                is_hidden: false,
+                num_repeats: 2,
+                can_repeat_on_fail: true,
+            },
+        );
 
         let (tx, _rx) = mpsc::channel::<crate::cell::messages::CellToBaseMsg>(64);
         let objectives = || {

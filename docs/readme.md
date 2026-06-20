@@ -38,7 +38,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 243 |
+| Documentation files | 272 |
 | Rust tests (`#[test]` / `#[tokio::test]`) | 2,012 across 305 files |
 | Live-DB regression guards | 155 |
 | End-to-end PL/pgSQL smoke scripts | 3 |
@@ -63,7 +63,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | [Test Audit 2026-05-31](testing/audit-2026-05-31.md) | Point-in-time codebase-wide audit: real bugs surfaced by the test suite, tests to delete, tests to tighten, coverage gaps, strategic recommendations |
 | [Game Systems](game-systems.md) | Survey of every game feature: combat, abilities, stargates, missions, crafting |
 | [Game Data](game-data.md) | What game content exists (items, abilities, missions) and what is missing |
-| [Commands Reference](commands.md) | Player commands, chat, GM tools, and debug commands |
+| [Slash Commands](commands.md) | Player-friendly guide to all 266 in-game `/commands` (the real typed names captured live), with what each does, whether it works on our server yet, access level, parameters, and examples |
 | [Connection Flow](connection-flow.md) | End-to-end login and world entry sequence |
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
 | [Project Status](project-status.md) | What works, what is left, and the roadmap |
@@ -135,12 +135,14 @@ See also: [technical/mercury-protocol.md](technical/mercury-protocol.md), [techn
 
 ### `gameplay/` -- Game System Documentation
 
-Per-system breakdowns of game mechanics, derived from RE analysis, entity definitions, and Python scripts. 25 per-system documents covering combat, abilities, effects, stats, inventory, crafting, missions, travel, cinematics, ring transport, minigames, social systems, NPC AI, spawning, loot, progression, and character creation.
+Per-system breakdowns of game mechanics, derived from RE analysis, entity definitions, and Python scripts. 27 per-system documents covering combat, weapon/ammo, abilities, effects, stats, inventory, crafting, missions, travel, cinematics, ring transport, minigames, social systems, NPC AI, spawning, loot, progression, death/respawn, and character creation.
 
 | Document | Description | Status |
 |----------|-------------|--------|
 | [README.md](gameplay/README.md) | **HUB** -- System dashboard with status and cross-references for every gameplay system | Complete |
 | [combat-system.md](gameplay/combat-system.md) | Cover mechanics, threat/aggro, damage resolution, death/respawn | Complete |
+| [weapon-ammo-reload.md](gameplay/weapon-ammo-reload.md) | Per-bandolier-slot ammo, fire-gate validation, `requestReload` warmup, magazine refill, persistence batching | Complete |
+| [death-respawn-system.md](gameplay/death-respawn-system.md) | Death state, corpse lifecycle, respawn placement and the respawn-point selection flow | Complete |
 | [ability-system.md](gameplay/ability-system.md) | Ability activation, cooldowns, targeting, channeling, combos | Complete |
 | [effect-system.md](gameplay/effect-system.md) | Buffs, debuffs, DoTs, HoTs, effect stacking and priority | Complete |
 | [stat-system.md](gameplay/stat-system.md) | Base stats, derived stats, level scaling, equipment modifiers | Complete |
@@ -184,6 +186,10 @@ How the underlying BigWorld engine and CME game framework operate inside sgw.exe
 | [space-management.md](engine/space-management.md) | WorldGrid AoI, 24 spaces, BSP trees, ghost entities, load balancing | Complete |
 | [entity-lod-system.md](engine/entity-lod-system.md) | BigWorld entity property LOD and volatile info (not used by SGW) | Complete |
 | [distributed-checkpointing.md](engine/distributed-checkpointing.md) | BigWorld backup/recovery system, Cimmeria gap analysis | Complete |
+| [entity-def-guide.md](engine/entity-def-guide.md) | Reference for the entity definition (`.def`) file format: property/method declarations, interfaces, type aliases | Complete |
+| [character-visual-components.md](engine/character-visual-components.md) | Character visual components: how avatar appearance (model, skin, equipment) is composited on the client | Complete |
+| [client-visual-system.md](engine/client-visual-system.md) | Client visual system: rendering, scene graph, and how entities are drawn in the BigWorld/UE3 client | Complete |
+| [cooked-data-pak-format.md](engine/cooked-data-pak-format.md) | Cooked-data PAK file format: on-disk layout, entry table, compression, and how the client reads resource packs | Complete |
 
 See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-analysis.md), [technical/sgw-binary-overview.md](technical/sgw-binary-overview.md)
 
@@ -191,7 +197,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 24 documents.
+How the Cimmeria emulator itself is structured. 30 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -206,12 +212,25 @@ How the Cimmeria emulator itself is structured. 24 documents.
 | [migration-roadmap.md](architecture/migration-roadmap.md) | Dependency migration roadmap (PostgreSQL ✅, MSVC ✅, OpenSSL pending) and per-migration agent definitions | Complete |
 | [state-flag-conventions.md](architecture/state-flag-conventions.md) | Reference for state-flag write conventions: refcounted vs raw, who can clear, auth flow | Complete |
 | [abilities-and-effects-system.md](architecture/abilities-and-effects-system.md) | ADR for the abilities + effects design decisions shipped in PR #420: EffectScript trait shape, stacking semantics, channel cancellation triggers, absorption pool drain ordering, TCM dispatch routing, AF_CHANNEL_ALLOWS_MOVEMENT default | Complete |
-| [state-field-bits.md](architecture/state-field-bits.md) | Verified `bStateField` bit layout (bits 0-7 only), client dispatch table, BSF_Holster retirement notice with Ghidra anchors | Complete |
+| [state-field-bits.md](architecture/state-field-bits.md) | Verified `bStateField` bit layout (bits 0-7 only), client dispatch table, BSF_Holster retirement notice with Ghidra anchors, relog persistence of `BSF_AutoCycling` | Complete |
+| [gm-cell-method-gating.md](architecture/gm-cell-method-gating.md) | ADR for the server-authoritative GM gate (#475 / CAT-N-03): `access_level` plumbing into `CellEntity`, the dispatch-layer `gm_gate`, how to add the next `gm*` method | Complete |
+| [movement-validation.md](architecture/movement-validation.md) | ADR for server-authoritative position validation (#478 / CAT-B-01,-06,-09): the 4-layer seam (bounds / speed warn-only / teleport / navmesh), dual teleport gate, server-clock dt, authorized-teleport reseed, warn-only spaceId cross-check, tolerances + calibration path | Complete |
+| [gm-cell-method-adapt-plan.md](architecture/gm-cell-method-adapt-plan.md) | Roadmap for the developer-useful ADAPT `gm*` cell methods (#473/#518): the feedback-channel blocker that unlocks the query surface, name→id resolution, the `loadX` hot-reload family, recommended sequencing | Complete |
+| [dev-console-channel.md](architecture/dev-console-channel.md) | ADR for the GM `.`-console (#523): chat-intercept channel for the ~66 dev/authoring commands with no native slash binding, registry dispatch, record→confirm seed-SQL authoring (live write + per-session log + Discord hook), FanMMORPG patrol authoring + schema, per-command status | Complete |
 | [integration-test-infra.md](architecture/integration-test-infra.md) | Live-DB test infrastructure: why no testcontainers, why no `sqlx::test`, local setup, isolation patterns | Complete |
 | [transport-trait.md](architecture/transport-trait.md) | ADR: `Transport` trait for the Mercury send side — `UdpTransport`/`TestTransport`, the send/recv asymmetric split, why `Nub` I/O (#57) was retired, and the fan-out byte test seam | Complete |
 | [mercury-bundle.md](architecture/mercury-bundle.md) | `ChannelBundle` accumulator: cross-entity bundling rule, transaction-state hazard, AoI burst migration (#356), follow-up migration playbook | Complete |
 | [negative-logging-convention.md](architecture/negative-logging-convention.md) | Negative-logging convention (issue #304): three patterns, field-naming rules, level discipline, defensible silent sends, `LogCapture` regression-guard helper | Complete |
 | [instrumentation-discipline.md](architecture/instrumentation-discipline.md) | Instrumentation discipline (issue #482): success-side rules — dispatch-entrypoint info spans, debug-event discriminators, hot-loop span discipline, metric-label cardinality | Complete |
+| [encryption-modernization.md](architecture/encryption-modernization.md) | ADR (Proposed) for issue #434: auth TLS (rustls loopback proxy around libcurl), argon2id passwords, Mercury v2 wire crypto (HKDF/random-IV/HMAC-SHA256, version-gated). RE targets in [findings/auth-and-crypto-modernization-targets.md](reverse-engineering/findings/auth-and-crypto-modernization-targets.md) | Proposed |
+| [observability.md](architecture/observability.md) | ADR for server-side observability: OTLP exporter, Mercury packet instrumentation, SigNoz overlay, target catalog, `decision_outcome` enum | Complete |
+| [dev-session-telemetry.md](architecture/dev-session-telemetry.md) | Dev-session telemetry pipeline: the `/auth/dev-session` HMAC token, launcher `telemetry/` capture, storage layout | Complete |
+| [client-telemetry.md](architecture/client-telemetry.md) | Client-side telemetry architecture: from-scratch instrumentation hookpoints in the launcher, capture surface, transport | Complete |
+| [discord-notifications.md](architecture/discord-notifications.md) | Discord notification design + ops: `EventKind` catalogue, channel routing, embed formatting, default toggles | Complete |
+| [atrea-editor-bridge.md](architecture/atrea-editor-bridge.md) | ADR for the Atrea Editor bridge — an MCP server exposing the in-game UnrealEd surface | Complete |
+| [mercury-loopback-harness.md](architecture/mercury-loopback-harness.md) | ADR for the Tier-2 Mercury loopback session harness: channel state, retransmit, fragmentation, keepalive, ack, RTO test seam | Complete |
+| [network-chaos-testing.md](architecture/network-chaos-testing.md) | ADR for the network-chaos apparatus: lossy-socket wrappers, pcap-replay infra, chaos scenarios over the L2 trait | Complete |
+| [wireclient.md](architecture/wireclient.md) | ADR for `cimmeria-wireclient`: headless wire-level test client, `session_trace` JSONL schema, pcap exporter | Complete |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
 
@@ -229,6 +248,8 @@ Analysis of game client binaries, launcher tools, and client asset inventories. 
 | [audio-voice-inventory.md](client/audio-voice-inventory.md) | Complete FMOD audio inventory: 280 .fev + 566 .fsb files, zone ambience, music, weapons, abilities, UI, dialog VO gap analysis | Complete |
 | [facefx-lip-sync.md](client/facefx-lip-sync.md) | FaceFX lip sync system: .fxa animation files, phoneme mapping, engine integration | Complete |
 | [ui-layout-inventory.md](client/ui-layout-inventory.md) | UI layout inventory: all Scaleform .swf files, Lua bindings, screen types, HUD elements | Complete |
+| [crash-dumps.md](client/crash-dumps.md) | SGW crash-dump pipeline: minidump capture, symbolication, what the dumps reveal about client state | Complete |
+| [ue3-package-splicer.md](client/ue3-package-splicer.md) | UE3 package splicer: editing Unreal Engine 3 `.upk`/package files for client asset overrides | Complete |
 
 See also: [client-tools.md](client-tools.md), [technical/launcher-exe.md](technical/launcher-exe.md), [technical/atrealoader-exe.md](technical/atrealoader-exe.md)
 
@@ -288,28 +309,31 @@ See [reverse-engineering/README.md](reverse-engineering/README.md) for the top-l
 | [STATUS.md](reverse-engineering/STATUS.md) | RE status: 101,909/168,239 functions named (60.6%), all 5 phases complete | Complete |
 | [function-naming-progress.md](reverse-engineering/function-naming-progress.md) | Naming conventions, coverage metrics, per-script results | Complete |
 | [address-map.md](reverse-engineering/address-map.md) | Key address table: vtables, global objects, critical functions in sgw.exe | Complete |
+| [editor-source-mapping.md](reverse-engineering/editor-source-mapping.md) | Editor Ghidra map: SGW.exe function ↔ reference-source mapping for the in-game editor surface | Complete |
 | [toolchain/install-ghidra-mcp.md](reverse-engineering/toolchain/install-ghidra-mcp.md) | GhidraMCP plugin install reference — manual + bootstrap-driven paths, port-fallback gotcha | Complete |
 
 #### `binaries/` -- Binary Analysis
 
 | Document | Description | Status |
 |----------|-------------|--------|
+| [sgw-exe.md](reverse-engineering/binaries/sgw-exe.md) | sgw.exe binary overview from Ghidra: sections, RTTI, function counts, layout | Complete |
 | [launcher-exe.md](reverse-engineering/binaries/launcher-exe.md) | CME Launcher.exe RE analysis: patch client internals, SOAP protocol | Complete |
 
 #### `annotation-scripts/` -- Ghidra Jython Scripts (Phase 1 — all run)
 
-| Script | Functions Named | Status |
-|--------|----------------|--------|
-| `01_label_rtti_typeinfo.py` | 5,063 | Complete |
-| `02_label_defined_strings.py` | 1,006 | Complete |
-| `03_label_entity_types.py` | 1,476 | Complete |
-| `04_label_event_handlers.py` | 4,085 | Complete |
-| `05_label_bw_common.py` | 1,367 | Complete |
-| `06_label_boost_python.py` | 1,127 | Complete |
-| `07_label_vtable_methods.py` | 34,367 | Complete |
-| `08_label_import_callers.py` | 12,553 | Complete |
-| `09_label_pattern_match.py` | 16,423 | Complete |
-| `10_export_stats.py` | (export) | Complete |
+| Script | Purpose | Status |
+|--------|---------|--------|
+| `01_rtti_annotator.py` | Annotate functions from RTTI type-info / typeinfo structures | Complete |
+| `02_ue3_exec_annotator.py` | Annotate UE3 `exec`/native-function dispatch points | Complete |
+| `03_bigworld_source_annotator.py` | Map BigWorld reference-source symbols onto sgw.exe functions | Complete |
+| `04_event_signal_annotator.py` | Annotate CME EventSignal emit/subscribe handlers | Complete |
+| `05_mercury_annotator.py` | Annotate Mercury networking functions (Nub, Channel, Connection) | Complete |
+| `06_cme_framework_annotator.py` | Annotate CME framework functions (PropertyNode, SpaceViewport, etc.) | Complete |
+| `07_vtable_annotator.py` | Name vtable methods from class layouts | Complete |
+| `07b_targeted_vtable_annotator.py` | Targeted follow-up pass for specific class vtables | Complete |
+| `08_lua_binding_annotator.py` | Annotate Lua/Scaleform binding glue functions | Complete |
+| `09_string_discovery.py` | Discover and label functions via referenced string constants | Complete |
+| `10_xref_propagation.py` | Propagate names across the call graph via cross-references | Complete |
 
 #### `findings/` -- Per-System Wire Format Findings (Phases 2–4)
 
@@ -332,8 +356,61 @@ See [reverse-engineering/README.md](reverse-engineering/README.md) for the top-l
 | [trade-wire-formats.md](reverse-engineering/findings/trade-wire-formats.md) | 5 | Trade initiate, offer, accept/cancel | HIGH |
 | [duel-wire-formats.md](reverse-engineering/findings/duel-wire-formats.md) | 3 | Duel request, accept, resolution | HIGH |
 | [pet-wire-formats.md](reverse-engineering/findings/pet-wire-formats.md) | 2 | Pet summon, commands | HIGH |
+| [system-protocol-wire-formats.md](reverse-engineering/findings/system-protocol-wire-formats.md) | — | Ghidra decompilation evidence for the system/connection protocol message handlers | HIGH |
+| [space-viewport-wire-formats.md](reverse-engineering/findings/space-viewport-wire-formats.md) | — | Space, viewport, and entity-lifecycle wire formats (spaceViewportInfo, enter/leave AoI) | HIGH |
+| [position-movement-wire-formats.md](reverse-engineering/findings/position-movement-wire-formats.md) | — | Position and movement wire formats: avatarUpdate variants, forced position, packed coords | HIGH |
+| [entity-creation-wire-formats.md](reverse-engineering/findings/entity-creation-wire-formats.md) | — | Entity creation wire formats: createBasePlayer / createCellPlayer, cache stamps | HIGH |
 | [cme-event-signal.md](reverse-engineering/findings/cme-event-signal.md) | — | CME EventSignal emit pipeline + `TypedEmitInfo`/`CallbackImpl` class anatomy (V5 campaign session 1) | HIGH |
 | [mercury-nub-anatomy.md](reverse-engineering/findings/mercury-nub-anatomy.md) | — | Mercury `Nub` / `BaseNub` / `ChannelInternal` / `Connection` class layouts (22 functions, 4 struct anatomies); two-channel-map design; network thread loop; `Nub::send` 4-phase pipeline; rdtsc inactivity vs our `MAX_RETRIES`; two latent wire gaps | HIGH |
+| [mercury-protocol-internals.md](reverse-engineering/findings/mercury-protocol-internals.md) | — | Mercury protocol internals from the client binary: reliable sequencing, ack/nack, fragmentation | HIGH |
+| [struct-field-layouts.md](reverse-engineering/findings/struct-field-layouts.md) | — | FIXED_DICT struct field layouts recovered from the client binary | HIGH |
+| [combat-damage-analysis.md](reverse-engineering/findings/combat-damage-analysis.md) | — | Combat damage system from the client binary: resolution chain, multipliers, result codes | HIGH |
+| [ability-resolution-pipeline.md](reverse-engineering/findings/ability-resolution-pipeline.md) | — | Ability resolution pipeline: activation → targeting → effect dispatch | HIGH |
+| [effect-execution-model.md](reverse-engineering/findings/effect-execution-model.md) | — | Effect execution model from the client binary: apply/remove, pulsing, stacking | HIGH |
+| [cover-system.md](reverse-engineering/findings/cover-system.md) | — | Cover system from the client binary: reservation state, surfacing channels (no direct claim message) | HIGH |
+| [stat-scaling-formulas.md](reverse-engineering/findings/stat-scaling-formulas.md) | — | Stat scaling and XP progression formulas | HIGH |
+| [faction-alignment-system.md](reverse-engineering/findings/faction-alignment-system.md) | — | Faction / alignment system: single-byte ClientMethod broadcasts of alignment state | HIGH |
+| [state-flag-broadcast.md](reverse-engineering/findings/state-flag-broadcast.md) | — | State-flag (`BSF_*`) broadcast: how `bStateField` bits propagate to witnesses | HIGH |
+| [inventory-state-machine.md](reverse-engineering/findings/inventory-state-machine.md) | — | Client-side inventory state machine: the `Inventory` class, 14 CME signals, item-tree model | HIGH |
+| [weapon-ammo-pipeline.md](reverse-engineering/findings/weapon-ammo-pipeline.md) | — | Weapon / ammo pipeline: fire-gate, ammo decrement, reload warmup | HIGH |
+| [crafting-state-machine.md](reverse-engineering/findings/crafting-state-machine.md) | — | Crafting state machine: discipline / research / reverse-engineer flow | HIGH |
+| [loot-generation.md](reverse-engineering/findings/loot-generation.md) | — | Loot generation pipeline: roll model, eligibility, the ephemeral loot window | HIGH |
+| [mission-state-machine.md](reverse-engineering/findings/mission-state-machine.md) | — | Client-side mission state machine: `MissionSet` singleton, five incoming wire messages | HIGH |
+| [character-creation-pipeline.md](reverse-engineering/findings/character-creation-pipeline.md) | — | Character creation pipeline: createCharacter RPC path, validation, starting loadout | HIGH |
+| [world-entry-pipeline.md](reverse-engineering/findings/world-entry-pipeline.md) | — | World entry pipeline: login → entity creation → AoI bootstrap sequence | HIGH |
+| [npc-ai-state-machine.md](reverse-engineering/findings/npc-ai-state-machine.md) | — | NPC AI state machine from the client binary: states, threat, ability selection | HIGH |
+| [npc-movement-pathfinding.md](reverse-engineering/findings/npc-movement-pathfinding.md) | — | NPC movement and pathfinding: navmesh use, patrol, leash behavior | HIGH |
+| [spawn-system-mechanics.md](reverse-engineering/findings/spawn-system-mechanics.md) | — | Spawn system mechanics from the client binary: spawn regions/sets, population, respawn | HIGH |
+| [respawn-lifecycle.md](reverse-engineering/findings/respawn-lifecycle.md) | — | Respawn lifecycle: death → respawn-point selection → placement | HIGH |
+| [animation-system.md](reverse-engineering/findings/animation-system.md) | — | Animation system: sequence lookup, combat/weapon animation triggers | HIGH |
+| [minigame-architecture.md](reverse-engineering/findings/minigame-architecture.md) | — | Minigame architecture from the client binary: SmartFoxServer session, per-game flow | HIGH |
+| [stargate-dhd-state-machine.md](reverse-engineering/findings/stargate-dhd-state-machine.md) | — | Stargate DHD state machine; finding that `onDHDReply` is a comms channel, not a travel event | HIGH |
+| [dialog-portrait-lookup.md](reverse-engineering/findings/dialog-portrait-lookup.md) | — | Dialog portrait and speaker-name lookup path | HIGH |
+| [client-instrumentation-hookpoints.md](reverse-engineering/findings/client-instrumentation-hookpoints.md) | — | Client instrumentation hookpoints for from-scratch telemetry | HIGH |
+| [client-wire-emit-suppression.md](reverse-engineering/findings/client-wire-emit-suppression.md) | — | Client-side wire-emit suppression cases (heal-focus, P90 swap) | HIGH |
+| [right-click-routing-on-corpse.md](reverse-engineering/findings/right-click-routing-on-corpse.md) | — | Right-click routing on corpses: why some corpses fail to open the loot window | HIGH |
+| [cooked-data-pipeline.md](reverse-engineering/findings/cooked-data-pipeline.md) | — | Cooked-data pipeline binary findings: PAK read path, resource delivery | HIGH |
+| [atrea-editor.md](reverse-engineering/findings/atrea-editor.md) | — | Atrea Editor (in-game UnrealEd): architecture and exposed surface | HIGH |
+| [architectural-anomalies.md](reverse-engineering/findings/architectural-anomalies.md) | — | Architectural anomalies in the CME EventSignal subsystem | MEDIUM |
+| [annotation-script-shift-bugs.md](reverse-engineering/findings/annotation-script-shift-bugs.md) | — | Cyclic-shift bugs in the Ghidra annotation scripts and their impact on naming | MEDIUM |
+
+#### `decompiled/` -- Bulk Decompiled Source Dump
+
+Bulk Ghidra decompiler output, grouped by subsystem (`.c` files), with an index. Reference material — read the index first, not the raw dumps.
+
+| Document | Description |
+|----------|-------------|
+| [00_INDEX.md](reverse-engineering/decompiled/00_INDEX.md) | **INDEX** -- Map of the 14 decompiled `.c` group files to their subsystems (game classes, BigWorld network, CEGUI, Crypto++, Scaleform, events, entities, data, systems, libraries, debug/config) |
+
+#### `v5-campaign/` -- V5 Function-Naming Campaign
+
+Coordination and checkpoint artifacts from the V5 mass function-naming campaign (status docs plus per-worker checkpoint JSON).
+
+| Document | Description |
+|----------|-------------|
+| [CAMPAIGN_STATUS.md](reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md) | **STATUS** -- Overall V5 campaign progress and per-worker rollup |
+| [SESSION_2_PLAN.md](reverse-engineering/v5-campaign/SESSION_2_PLAN.md) | Session 2 plan: target areas and worker assignments |
+| [WORKER_BRIEF.md](reverse-engineering/v5-campaign/WORKER_BRIEF.md) | Per-worker brief: scope, conventions, handoff format |
 
 ---
 

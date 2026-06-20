@@ -166,18 +166,18 @@ pub(super) async fn refresh_appearance(
 
 /// `CellToBaseMsg::BandolierAmmoUpdate` — persist a per-shot ammo writeback
 /// from the cell. Validates bounds (slot in 0..5, ammo / type non-negative,
-/// expected_item_id positive) at the service boundary so out-of-range
+/// expected_instance_id positive) at the service boundary so out-of-range
 /// values can't become durable corruption.
 #[tracing::instrument(
     name = "bandolier.ammo_update",
     level = "debug",
     skip_all,
-    fields(player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type)
+    fields(player_id, slot_id, expected_instance_id, current_ammo, cur_ammo_type)
 )]
 pub(super) async fn bandolier_ammo_update(
     player_id: i32,
     slot_id: i32,
-    expected_item_id: i32,
+    expected_instance_id: i32,
     current_ammo: i32,
     cur_ammo_type: i32,
     db_pool: &Option<Arc<PgPool>>,
@@ -188,13 +188,17 @@ pub(super) async fn bandolier_ammo_update(
     // Validate bounds before persisting — these payloads cross a
     // service boundary, and any out-of-range value would become
     // durable corruption. Bandolier holds 5 slots (0-4); ammo and
-    // ammo_type IDs are non-negative.
-    if !(0..5).contains(&slot_id) || current_ammo < 0 || cur_ammo_type < 0 || expected_item_id <= 0
+    // ammo_type IDs are non-negative. `expected_instance_id` is the
+    // `sgw_inventory.item_id` PK and is always positive for a real row.
+    if !(0..5).contains(&slot_id)
+        || current_ammo < 0
+        || cur_ammo_type < 0
+        || expected_instance_id <= 0
     {
         tracing::warn!(
             player_id,
             slot_id,
-            expected_item_id,
+            expected_instance_id,
             current_ammo,
             cur_ammo_type,
             "BandolierAmmoUpdate: dropping out-of-range payload"
@@ -206,14 +210,14 @@ pub(super) async fn bandolier_ammo_update(
             pool.as_ref(),
             player_id,
             slot_id,
-            expected_item_id,
+            expected_instance_id,
             current_ammo,
             cur_ammo_type,
         )
         .await
         {
             tracing::warn!(
-                player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type, error = %e,
+                player_id, slot_id, expected_instance_id, current_ammo, cur_ammo_type, error = %e,
                 "BandolierAmmoUpdate: DB write failed"
             );
         }

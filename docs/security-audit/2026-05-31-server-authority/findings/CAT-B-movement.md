@@ -1,5 +1,15 @@
 # CAT-B — Movement / Teleport / Position
 
+> **Update (issue #478)**: CAT-B-01, CAT-B-06, and CAT-B-09 are
+> **resolved**. Inbound `AVATAR_UPDATE_EXPLICIT` now passes through the
+> `SpaceManager::apply_client_position_update` seam: bounds (Z-axis
+> included), navmesh containment, and a dual-gate teleport hard-reject,
+> plus a warn-only speed layer and a warn-only `spaceId` cross-check. See
+> [architecture/movement-validation.md](../../../architecture/movement-validation.md).
+> CAT-B-02/-03/-04 (location-bypass on dial/ring/region handlers),
+> CAT-B-05 (anti-replay, → #477), and CAT-B-10 (0x02/0x04/0x05 dispatch)
+> remain open.
+
 ## Trust posture summary
 
 The movement subsystem trusts the client to be the authoritative source of
@@ -29,6 +39,9 @@ this primitive and is corrupted in turn.
 
 ### CAT-B-01 — `AVATAR_UPDATE_EXPLICIT` writes client position with no validation
 
+> **Resolved (#478).** Validation seam + speed/teleport/navmesh/bounds
+> layers landed; see [movement-validation.md](../../../architecture/movement-validation.md).
+
 **Severity**: Critical
 **Class**: Speed hack / teleport / position spoofing
 **Wire surface**: System message `0x03` (`AVATAR_UPDATE_EXPLICIT`)
@@ -53,6 +66,7 @@ AoI, region triggers, gating quests, threat radius — every downstream
 system reads from this state.
 
 **Evidence**
+
 - Ghidra: `019d08b8` — string literal `avatarUpdateExplicit` confirms the
   client-side message name; the 0x03 system-message payload shape is
   pinned by the spec-cited `messages.cpp` table.
@@ -65,6 +79,7 @@ system reads from this state.
   (write).
 
 **Attack scenario**
+
 1. Stand at any reachable position to establish a baseline.
 2. Send one 0x03 packet with `pos = (any_x, any_y, any_z)` for the
    destination world's coordinate range.
@@ -111,6 +126,7 @@ into a world they shouldn't have access to without ever having to walk
 to a gate or have completed the unlock quest.
 
 **Evidence**
+
 - Ghidra: client emits `onDialGate` via the standard `Event_NetOut_*` path
   (no Cheats prefix); the cell method index 35 is the documented GateTravel
   interface (see `crates/services/src/cell/cell_methods/gate_travel.rs:7`).
@@ -120,6 +136,7 @@ to a gate or have completed the unlock quest.
   `crates/services/src/cell/gate_travel.rs:35-108` (handle).
 
 **Attack scenario**
+
 1. Player creates a low-level character on the starter world.
 2. Without walking to any stargate, send `onDialGate(target=2, source=0)`
    where target=2 is a stargate to an end-game world that requires
@@ -168,6 +185,7 @@ ring's state into `SendWait`, and (when auto-start fires) eventually
 running the full transport ceremony.
 
 **Evidence**
+
 - Ghidra: `019b3ec8` cluster confirms the `Event_NetOut_SetRingTransporterDestination`
   vtable (`00ae9ed0`, `00ae9ff0`) and `SGWNetworkManager::EventHandler<...>`
   (`00d68c30`) — emit path is the standard cell-method dispatch.
@@ -179,6 +197,7 @@ running the full transport ceremony.
   (`validate_destination` — note: doesn't check player position).
 
 **Attack scenario**
+
 1. Discover ring-region IDs via `onRingTransporterList` (server broadcasts
    the list when any player interacts with a ring, which AoI replays).
 2. Without standing on any ring pad, send
@@ -233,6 +252,7 @@ single handler is sufficient to *also* prepare the ring-transporter
 exploit described in [[CAT-B-03]] without a position check.
 
 **Evidence**
+
 - Ghidra: client-emit path identical to other cell methods (standard
   `Event_NetOut_*` shape); spec source is
   `entities/defs/interfaces/SGWPlayer.def`.
@@ -243,6 +263,7 @@ exploit described in [[CAT-B-03]] without a position check.
   (`handle_region_trigger` — region_triggered call).
 
 **Attack scenario**
+
 1. Enumerate loaded region IDs by entering the world normally and
    observing `triggerClientHintedGenericRegion` round-trips, OR
    bruteforce u32 region_ids until log-grep shows `region_tag` was
@@ -289,6 +310,7 @@ captured value. Combined with [[CAT-B-01]] (no movement validation),
 replay → rewind is a one-packet primitive.
 
 **Evidence**
+
 - Ghidra: `019d08b8` `avatarUpdateExplicit` — emit path is one packet per
   position update; the SGW client doesn't sign or chain them.
 - Client behavioral log: n/a.
@@ -298,6 +320,7 @@ replay → rewind is a one-packet primitive.
   constant-length consumer but never inspected).
 
 **Attack scenario**
+
 1. Attacker (or a passive observer in possession of pre-encryption
    packets) captures a 0x03 packet for player P at position A.
 2. Player P walks across the world to position B.
@@ -322,6 +345,11 @@ documentation.
 
 ### CAT-B-06 — Client spaceId in 0x03 ignored — no cross-space sanity check
 
+> **Resolved (#478).** `spaceId` is now parsed and cross-checked against
+> the server's `entity_space` binding; mismatches emit a warn-only
+> `movement.space_mismatch` (the write was already server-authoritative,
+> so a mismatch cannot corrupt the grid — the warn surfaces the race).
+
 **Severity**: Medium
 **Class**: Position smuggling / space-grid corruption
 **Wire surface**: System message `0x03` (`AVATAR_UPDATE_EXPLICIT`)
@@ -343,6 +371,7 @@ that space. There's no check that the client-supplied `spaceId`
 matches `space_mgr.entity_space.get(&entity_id)`.
 
 **Evidence**
+
 - Ghidra: client emits `spaceId` as the first u32 — see Ghidra wire
   shape in `encrypted/mod.rs:211-213`.
 - Client behavioral log: n/a.
@@ -352,6 +381,7 @@ matches `space_mgr.entity_space.get(&entity_id)`.
   space)`").
 
 **Attack scenario**
+
 1. Trigger a gate-travel; race the `BaseToCellMsg::CreateEntity` reply.
 2. Send a flood of 0x03 packets with the old world's `spaceId` while the
    cell's `entity_space` map still points to the old space. The first
@@ -398,11 +428,13 @@ on mismatch) is a regression-resistant pin for the substitution
 invariant.
 
 **Evidence**
+
 - Cross-ref to Rust handler:
   `crates/services/src/base/connect_loop/cell_arms.rs:86-89` (parse) +
   `:122, :134` (substitute).
 
 **Attack scenario**
+
 1. Send `cell method N` with `entityId = 0xDEADBEEF` (a foreign player's
    id). Server silently accepts the message and dispatches the method
    against the attacker's own `player_eid` — no protocol-level error
@@ -439,6 +471,7 @@ primitive at zero cost) and must reject during combat (no escape from
 threat). Filing as a pre-emptive pin so the future PR catches review.
 
 **Evidence**
+
 - Ghidra: `019b4374` `Event_NetOut_Unstuck` confirms the client
   emit path; the handler stub is at the cited Rust line.
 - Cross-ref to Rust handler:
@@ -462,6 +495,10 @@ No.
 
 ### CAT-B-09 — Navmesh `is_position_valid` exists but is unused on the inbound write path
 
+> **Resolved (#478).** `is_position_valid` is now wired into
+> `apply_client_position_update` as layer 4 — off-navmesh positions are
+> rejected and snapped back (fail-open for navmesh-less spaces).
+
 **Severity**: Medium
 **Class**: Defense-in-depth / navmesh containment
 **Wire surface**: System message `0x03` (`AVATAR_UPDATE_EXPLICIT`)
@@ -483,6 +520,7 @@ already exists. Wiring it into the inbound path is one conditional
 plus a rejection (or snap-to-nearest, depending on policy).
 
 **Evidence**
+
 - Cross-ref to Rust handler:
   `crates/services/src/cell/space_manager/spatial.rs:53-67`
   (`is_position_valid` defined);
@@ -490,6 +528,7 @@ plus a rejection (or snap-to-nearest, depending on policy).
   (`update_entity_position` — no call to `is_position_valid`).
 
 **Attack scenario**
+
 1. Send 0x03 with `pos = (x, y_underground_terrain, z)` for a known
    underground vault containing high-value loot spawns.
 2. Server writes the position. AoI tick fires `EnteredAoI` for loot
@@ -533,6 +572,7 @@ stale), but it confounds any future server-side movement-validation
 heuristic that relies on the per-tick delta being well-defined.
 
 **Evidence**
+
 - Cross-ref to Rust handler:
   `crates/services/src/base/connect_loop/encrypted/mod.rs:484-491`
   (parse), `:444` (silent fall-through).

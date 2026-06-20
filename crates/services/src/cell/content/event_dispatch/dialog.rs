@@ -36,6 +36,15 @@ pub async fn fire_dialog_open(
         populate_mission_context(entity, &mut ctx);
     }
 
+    // Discord gameplay-channel: dialog opened (off by default — high volume).
+    {
+        let character_name = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.character_name.clone())
+            .unwrap_or_else(|| format!("entity:{entity_id}"));
+        cimmeria_discord::emit_dialog(character_name, dialog_id, None);
+    }
+
     let event = TriggerEvent {
         trigger_type: TriggerType::DialogOpen,
         source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
@@ -81,6 +90,15 @@ pub async fn fire_dialog_choice(
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
+    }
+
+    // Discord gameplay-channel: dialog choice (off by default — high volume).
+    {
+        let character_name = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.character_name.clone())
+            .unwrap_or_else(|| format!("entity:{entity_id}"));
+        cimmeria_discord::emit_dialog(character_name, dialog_id, Some(button_id));
     }
 
     let event = TriggerEvent {

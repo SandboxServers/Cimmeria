@@ -84,8 +84,8 @@ quick-xml = "0.39"
 # Cryptography (client requires AES-256-CBC + HMAC-MD5)
 aes = "0.9"
 cbc = "0.2"
-hmac = "0.12"
-md-5 = "0.10"
+hmac = "0.13"
+md-5 = "0.11"
 rand = "0.10"
 rand_distr = "0.6"
 rand_chacha = "0.10"
@@ -94,7 +94,7 @@ rand_chacha = "0.10"
 reqwest = { version = "0.13", features = ["json"] }
 
 # Config file parsing
-toml = "0.9"
+toml = "1.1"
 
 # Filesystem watch (Discord config live-reload)
 notify = { version = "8", default-features = false, features = ["macos_kqueue"] }
@@ -109,7 +109,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 wiremock = "0.6"
 
 # Hashing
-sha2 = "0.10"
+sha2 = "0.11"
 
 # Encoding
 base64 = "0.22"

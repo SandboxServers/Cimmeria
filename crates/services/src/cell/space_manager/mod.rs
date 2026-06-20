@@ -206,9 +206,10 @@ pub struct SpaceManager {
     /// the source of truth.
     pub pending_ai_retries: std::collections::HashSet<u32>,
     /// Server-authoritative movement validator. Consulted by
-    /// `apply_client_position_update` on every inbound client position;
-    /// stateless for the bounds layer (PR1), will accrete per-entity
-    /// state for the speed / teleport-detection layers (PR2/3).
+    /// `apply_client_position_update` on every inbound client position:
+    /// bounds + navmesh + teleport hard-reject, speed warn-only. Holds a
+    /// per-entity server-clock sample for the speed/teleport layer; that
+    /// state is released in `destroy_entity` via `forget`.
     pub movement_validator: MovementValidator,
     /// Cover-system service handle. Loaded from `resources.cover_sets` +
     /// `resources.cover_nodes` at startup; carries the spatial index,
@@ -221,6 +222,22 @@ pub struct SpaceManager {
     /// currently inside (drives `onEnterCoverSet` / `onLeaveCoverSet`
     /// fanout + content-engine `OnPlayerEnteredCover` triggers).
     pub cover_detection: super::cover::CoverDetectionTable,
+    /// Per-GM `.`-console authoring buffer: `entity_id → [(seed_file, sql)]`.
+    /// Spawn/patrol authoring commands push their generated seed SQL here;
+    /// `.seedconfirm` groups it per file and emits it, `.seedcancel` discards
+    /// it. Server-side, ephemeral (never persisted) — the durable artifact is
+    /// the per-session authoring log file and the committed seed. See
+    /// `crate::cell::console::seed`.
+    pub authoring_changes: HashMap<u32, Vec<(String, String)>>,
+    /// GMs (`entity_id`) who toggled `.autosavespawn` on. A session preference;
+    /// informational hook for spawn-authoring. Never persisted.
+    pub autosave_spawns: HashSet<u32>,
+    /// In-memory patrol-path authoring buffer: `path_id → [waypoint]`, for
+    /// `.path_add`/`.path_show`/`.path_assign`. Holds the waypoints a GM is
+    /// authoring this session so `.path_assign` can apply them to an NPC's
+    /// `patrol_path` immediately; the durable copy is the recorded
+    /// `point_set_points` seed SQL. Path id == `point_sets.set_id`.
+    pub patrol_authoring: HashMap<i32, Vec<cimmeria_common::Vector3>>,
 }
 
 impl SpaceManager {
@@ -259,6 +276,9 @@ impl SpaceManager {
             movement_validator: MovementValidator::new(),
             cover: super::cover::Cover::empty(),
             cover_detection: super::cover::CoverDetectionTable::new(),
+            authoring_changes: HashMap::new(),
+            autosave_spawns: HashSet::new(),
+            patrol_authoring: HashMap::new(),
         }
     }
 }

@@ -130,7 +130,8 @@ async fn move_and_concurrent_grant_serialize_on_container_lock() {
         tokio::spawn(async move {
             barrier.wait().await;
             handle_grant_item(
-                entity_id, player_id, grant_type, 1, 1, &db_pool, &None, &transport, &conn, &e2a,
+                entity_id, player_id, grant_type, 1, 1, false, &db_pool, &None, &transport, &conn,
+                &e2a,
             )
             .await;
         })

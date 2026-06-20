@@ -1,4 +1,5 @@
 use super::*;
+use cimmeria_common::{EntityId, SpaceId};
 
 fn make_entity() -> CellEntity {
     CellEntity::new(EntityId(1), SpaceId(100), Vector3::new(10.0, 0.0, 20.0))
@@ -154,6 +155,7 @@ fn spawn_position_stores_and_retrieves() {
 
 fn make_bandolier_item(item_id: i32, clip: i32) -> BandolierItem {
     BandolierItem {
+        instance_id: 0,
         item_id,
         clip_size: clip,
         default_ammo_type: 1,
@@ -180,6 +182,7 @@ fn active_ammo_helpers_read_from_active_slot() {
     entity.bandolier_items.insert(
         1,
         BandolierItem {
+            instance_id: 0,
             item_id: 200,
             clip_size: 12,
             default_ammo_type: 2,
@@ -240,6 +243,7 @@ fn refill_active_slot_fills_to_clip_size() {
     entity.bandolier_items.insert(
         0,
         BandolierItem {
+            instance_id: 0,
             item_id: 100,
             clip_size: 30,
             default_ammo_type: 1,

@@ -10,6 +10,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use super::super::super::super::super::gm_feedback::send_gm_feedback_to_client;
 use super::super::super::super::super::ConnectedClientState;
 use super::super::super::vendor::helpers::sync_bandolier_after_inventory_change;
 use super::{send_full_inventory_update, send_on_remove_item, InventoryInstanceRow};
@@ -28,6 +29,7 @@ pub async fn handle_remove_inventory_item(
     player_id: i32,
     item_id: i32,
     quantity: i32,
+    notify_gm: bool,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     transport: &Arc<dyn Transport>,
@@ -199,6 +201,27 @@ pub async fn handle_remove_inventory_item(
         total_items,
         "Inventory remove persisted"
     );
+
+    // Definitive GM feedback — only for GM-sourced removes (`gmRemoveItem`).
+    // Player drops / content-chain removes leave `notify_gm` false. Fired
+    // post-commit so it reflects an actual removal.
+    if notify_gm {
+        // On a full delete the row may hold fewer than the requested quantity, so
+        // report the count that actually committed rather than what was asked for.
+        let removed_qty = if removed_all {
+            source.stack_size
+        } else {
+            quantity
+        };
+        send_gm_feedback_to_client(
+            entity_id,
+            &format!("gmRemoveItem: removed {removed_qty}x item {item_id}"),
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+    }
 
     if let (Some((outbox_id, payload)), Some(tx)) = (outbox_payload_id, cell_tx) {
         outbox::try_dispatch_now(pool.as_ref(), tx, outbox_id, entity_id, payload).await;

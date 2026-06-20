@@ -99,6 +99,10 @@ pub struct ShardInfo {
 #[derive(Clone)]
 pub struct PendingLogin {
     pub account_id: u32,
+    /// Human-readable account name (login username). Threaded from the
+    /// Phase-1 `SessionRecord` so the BaseApp can surface it (e.g. Discord
+    /// notifications) without a second DB lookup at Mercury login.
+    pub account_name: String,
     /// Account privilege level (0 = normal, 2+ = admin/GM).
     pub access_level: u32,
     /// 20-char uppercase hex ticket ID.

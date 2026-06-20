@@ -47,6 +47,7 @@ fn build_map_loaded_seeds_ammo_slot_stats_from_bandolier_items() {
             (
                 0,
                 BandolierItem {
+                    instance_id: 0,
                     item_id: 100,
                     clip_size: 15,
                     default_ammo_type: 1,
@@ -57,6 +58,7 @@ fn build_map_loaded_seeds_ammo_slot_stats_from_bandolier_items() {
             (
                 2,
                 BandolierItem {
+                    instance_id: 0,
                     item_id: 101,
                     clip_size: 12,
                     default_ammo_type: 7,
@@ -164,6 +166,7 @@ fn build_map_loaded_seeds_active_slot_indicator_from_persisted_slot() {
         bandolier_items: vec![(
             2,
             BandolierItem {
+                instance_id: 0,
                 item_id: 100,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -224,6 +227,7 @@ fn active_bandolier_slot_drives_ammo_type_id_property() {
         (
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 100,
                 clip_size: 15,
                 default_ammo_type: 1,
@@ -234,6 +238,7 @@ fn active_bandolier_slot_drives_ammo_type_id_property() {
         (
             2,
             BandolierItem {
+                instance_id: 0,
                 item_id: 200,
                 clip_size: 12,
                 default_ammo_type: 7,
@@ -284,6 +289,7 @@ fn active_bandolier_slot_with_no_item_emits_ammo_type_zero() {
     data.bandolier_items = vec![(
         0,
         BandolierItem {
+            instance_id: 0,
             item_id: 100,
             clip_size: 15,
             default_ammo_type: 9,

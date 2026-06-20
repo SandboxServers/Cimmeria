@@ -7,7 +7,7 @@ last_updated: 2026-05-27
 
 # Gameplay Systems Dashboard
 
-> **Last updated**: 2026-03-05
+> **Last updated**: 2026-05-27
 
 Overview of every game system in Stargate Worlds, with implementation status, key network events, entity interfaces, and Python scripts.
 
@@ -27,6 +27,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 | [NPC AI](#npc-ai) | IM | SGWMob (direct) | SGWMob.py | HIGH |
 | [Spawn System](#spawn-system) | KM | SGWSpawnRegion | SGWSpawnRegion.py | HIGH |
 | [Loot](#loot) | NT | Lootable | Lootable.py | HIGH |
+| [Death & Respawn](#death--respawn) | IM | SGWCombatant / SGWPlayerRespawner | SGWPlayer.py | HIGH |
 | [XP & Leveling](#xp--leveling) | IM | SGWCombatant | SGWPlayer.py | HIGH |
 | [Character Creation](#character-creation) | NT | Account | Account.py | MEDIUM |
 | [Gate Travel](#gate-travel) | IM | GateTravel | GateTravel.py | MEDIUM |
@@ -49,21 +50,21 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ## Combat
 
-**Status**: 70% — Basic ability use, damage, death/respawn work. Missing: AoE/cone targeting, channeled abilities, threat/aggro, diminishing returns.
+**Status**: IM — Ability use, damage, death/respawn, cone AoE, channeled abilities (with movement-interrupt), pulsing DoT/HoT, absorption shields, stun/suppression debuffs, and threat/aggro all work (shipped in PR #420 — see [../architecture/abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md)). Remaining gaps: diminishing returns and some targeting refinements.
 
 **Key Events (NetOut → server)**:
 - `UseAbility` — Activate an ability on a target
-- `useAbilityOnGroundTarget` — AoE ability at position (NOT IMPLEMENTED)
+- `useAbilityOnGroundTarget` — AoE/cone ability at position
 - `SetAutoCycle` — Toggle auto-attack
-- `ConfirmEffect` — Client confirms effect application (NOT IMPLEMENTED)
-- `SetCrouched` — Toggle cover/crouch stance (NOT IMPLEMENTED)
+- `ConfirmEffect` — Client confirms effect application
+- `SetCrouched` — Toggle cover/crouch stance
 
 **Key Events (NetIn → client)**:
 - `onEffectResults` — Damage/heal numbers, effect application
 - `TimerUpdate` — Cooldown and warmup timers
 - `onStatUpdate` / `onStatBaseUpdate` — HP, focus, stat changes
 - `onMeleeRangeUpdate` — Melee range for current weapon
-- `onThreatenedMobsUpdate` — Threat list (NOT IMPLEMENTED)
+- `onThreatenedMobsUpdate` — Threat list
 
 **Interface**: `SGWCombatant.def` — 44 properties, 15 cell methods, 4 client methods
 **Python**: `python/cell/AbilityManager.py` (1091 lines), `python/cell/EffectManager.py`
@@ -73,7 +74,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ## Abilities
 
-**Status**: 60% — Ability activation works for direct-target abilities. Missing: targeting modes (cone, AoE, chain), channeled abilities, combo system.
+**Status**: IM — Ability activation works for direct-target, cone, and AoE abilities, plus channeled abilities (shipped in PR #420 — see [../architecture/abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md)). Remaining gaps: chain targeting and the combo system.
 
 **Data**: 1,887 abilities defined in `db/resources.sql`
 **Schema**: `Ability.xsd` defines ability structure
@@ -100,7 +101,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ## Effects
 
-**Status**: 60% — Basic effect application/removal works. Missing: pulsing effects, diminishing returns, effect stacking rules, absorption shields.
+**Status**: IM — Effect application/removal, pulsing DoT/HoT effects, stacking semantics, and absorption shields all work (shipped in PR #420 — see [../architecture/abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md)). Remaining gap: diminishing returns.
 
 **Data**: 3,217 effects defined in `db/resources.sql`
 **Schema**: `Effect.xsd` defines effect structure
@@ -193,6 +194,18 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ---
 
+## Vendors
+
+**Status**: NT — Vendor buy/sell works; repair, recharge, and buyback are in progress. Handled through the inventory manager rather than a dedicated vendor entity.
+
+**Key Events (NetOut)**: `PurchaseItems`, `SellItems`, `BuybackItems`, `RepairItem`, `RechargeItem`
+**Key Events (NetIn)**: `onStoreOpen`, `onStoreClose`, `onUpdateItem`
+**Interface**: `SGWInventoryManager` (vendor flows route through the inventory manager)
+**Python**: `python/cell/Vendor.py`
+**See also**: [inventory-system.md](inventory-system.md)
+
+---
+
 ## Organizations
 
 **Status**: 5% — Basic stub exists. Not functional.
@@ -208,9 +221,9 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ## Minigames
 
-**Status**: 0% — Framework scaffolded but no minigames functional.
+**Status**: IM — Framework in place with 3 of 10 minigames implemented; 7 remaining. See [minigame-system.md](minigame-system.md).
 
-**Known minigames**: At least 5 minigame types referenced in data
+**Known minigames**: 10 minigame types referenced in data
 **Architecture**: MinigamePlayer interface (25 properties, 78 methods) — the largest interface by method count
 
 **Key Events**: `StartMinigame`, `EndMinigame`, `MinigameCallRequest/Accept/Decline/Abort`
@@ -321,6 +334,18 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 **Key concepts**: Independent probability rolls per entry, eligibility checks, loot interaction handler
 **Python**: `python/cell/Lootable.py` (221 lines)
 **RE doc**: [loot-system.md](loot-system.md)
+
+---
+
+## Death & Respawn
+
+**Status**: IM — Death state, corpse lifecycle, and respawn placement work. On death the player enters a downed/dead state; respawn returns the player to a selected respawn point.
+
+**Key concepts**: Death-state transition on zero health, corpse entity lifecycle, respawn-point selection, post-respawn AoI refresh
+**Interface**: `SGWCombatant` (death state) / `SGWPlayerRespawner` (respawn placement)
+**Python**: `python/cell/SGWPlayer.py`
+**RE doc**: [death-respawn-system.md](death-respawn-system.md)
+**See also**: [respawn-lifecycle (RE findings)](../reverse-engineering/findings/respawn-lifecycle.md)
 
 ---
 

@@ -36,6 +36,13 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1001, 'accept_mission',  622,  NULL, '{}', 0, 0),
   (1001, 'display_dialog',  2982, NULL, '{}', 0, 1),
+  -- Bind ONLY Frost's body-loot dialog (3995 → template 14) at mission
+  -- accept. The Guard corpse (3996 → template 21) is deliberately left
+  -- UNBOUND here so it is not yet searchable: a corpse only opens a dialog
+  -- when its template has an entry in the player's available_interactions
+  -- (cell/interactions/dispatch.rs), and the Guard's spawn carries no static
+  -- interaction type. Chain 1003 binds 5230 once the player searches Frost,
+  -- sequencing the two bodies Frost → Guard instead of exposing both at once.
   (1001, 'add_dialog_set',  5229, NULL, '{"slot": 14, "mission_id": 622}', 0, 2);
 
 -- Chain 1002: zone entry when 622 already completed → play cinematic
@@ -67,27 +74,45 @@ VALUES (1002, 'play_sequence', 10000, NULL, '{}', 0, 0);
 -- the PAK override the client UI would silently skip the unknown step
 -- and render either nothing or the next client-known step.
 --
--- Re-loot guard: the gate `step_status 622 2113 = active` flips false the
--- moment we advance past 2113, so a second dialog open won't re-fire the
--- chain. Same shape as chain 1031 (Ambernol vial pickup).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1003, '622 - Dialog 3995 (loot body): grant items + advance to equip step', 'mission', 622, true, 0);
+VALUES (1003, '622 - Dialog 3995 (loot Frost): grant letter only', 'mission', 622, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1003, 'dialog_open', '3995', 'player', false, 0);
 
+-- Loot split, step 1 of 2 (Frost): grant ONLY the letter, advance to the
+-- intermediate Guard-search step 80623, and unlock the Guard corpse. The pistol
+-- + the final advance to 80622 live on the Guard chain (1005).
+--
+-- Gate is `step_status 2113 = active`: Frost is the FIRST search, valid only
+-- while on the opening step. Advancing 2113 → 80623 flips this false, which is
+-- the re-loot guard (a re-click can't re-grant the letter or re-advance). The
+-- body's search-bit is also cleared (mirrors ArmYourself.py:48). `once` on the
+-- trigger is a no-op (never enforced by the engine).
+--
+-- Sequencing: the Guard's dialog (5230 → template 21) is NOT bound at mission
+-- accept (chain 1001 binds only Frost's 5229); it is bound here, on the Frost
+-- dialog_open, so the player must search Frost before the Guard exposes its
+-- dialog. Relog-safe: chain 1007 re-binds the Guard on login while step 80623
+-- is active, and chain 1006 re-binds Frost on login while step 2113 is active.
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES (1003, 'step_status', 622, '2113', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
+  -- Clear the body's "search corpse" bit FIRST so a re-click can't re-open
+  -- dialog 3995 and re-grant the letter.
   (1003, 'set_interaction_type', NULL, 'ArmYourself_FrostBody', '{"op": "~", "mask": 4194304}', 0, 0),
-  -- Pistol → backpack (container 1) instead of bandolier (container 3) so
-  -- the player must equip it themselves. Letter (3730) keeps its container 0
-  -- mission-inventory placement.
-  (1003, 'add_item',     55,   NULL,    '{"container": 1, "qty": 1}', 0, 1),
-  (1003, 'add_item',     3730, NULL,    '{"container": 0, "qty": 1}', 0, 2),
-  (1003, 'advance_step', 622,  '80622', '{}',                          0, 3);
+  -- Letter (3730) → container 0 (mission inventory).
+  (1003, 'add_item',     3730, NULL,    '{"container": 0, "qty": 1}', 0, 1),
+  -- Unlock the Guard corpse: bind dialog 3996 (5230) to template 21 now that
+  -- Frost has been searched. add_dialog_set stores the binding in the player's
+  -- available_interactions and pushes the INT_MissionWorldObject highlight to
+  -- the Guard if it is already in AoI (else on AoI create).
+  (1003, 'add_dialog_set', 5230, NULL, '{"slot": 21, "mission_id": 622}', 0, 2),
+  -- Advance to the intermediate Guard-search step (XML index 1). This both
+  -- self-gates Frost (gate above flips false) and opens chain 1005's gate.
+  (1003, 'advance_step', 622, '80623', '{}', 0, 3);
 
 -- Chain 1004: player equips the pistol (item 55) while step 80622 is
 -- active → play kismet sequence 10000 (opens the stasis-room door — the
@@ -107,6 +132,71 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1004, 'play_sequence',    10000, NULL, '{}', 0, 0),
   (1004, 'complete_mission', 622,   NULL, '{}', 0, 1);
+
+-- Loot split, step 2 of 2 (Guard): player opens dialog 3996 (the Guard corpse,
+-- `ArmYourself_GuardBody`, template 21) while the intermediate step 80623 is
+-- active → grant the pistol (55) to the backpack and advance 80623 → 80622
+-- ("Equip the pistol"). The pistol goes to container 1 (backpack), not the
+-- bandolier, so the player must equip it manually — exercising the same
+-- ammo/appearance/fire-animation paths the equip pattern was built for. The
+-- equip → door → complete flow (chain 1004) is unchanged.
+--
+-- Gate is `step_status 622 80623 = active`: the Guard is searchable only AFTER
+-- Frost advanced us to 80623, and the gate flips false the moment we advance to
+-- 80622, so a second dialog open can't re-grant (re-loot guard). The body's
+-- search bit is also cleared (client-side) so it stops being clickable. The
+-- Guard's dialog is bound by chain 1003 on the Frost search (relog: chain 1007).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1005, '622 - Dialog 3996 (loot Guard): grant pistol + advance to equip step', 'mission', 622, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1005, 'dialog_open', '3996', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1005, 'step_status', 622, '80623', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1005, 'set_interaction_type', NULL, 'ArmYourself_GuardBody', '{"op": "~", "mask": 4194304}', 0, 0),
+  (1005, 'add_item',     55,   NULL,    '{"container": 1, "qty": 1}', 0, 1),
+  (1005, 'advance_step', 622,  '80622', '{}',                          0, 2);
+
+-- Chain 1006: player_loaded + step 2113 active → re-bind Frost's dialog set on
+-- login. interaction bindings (available_interactions) are not persisted across
+-- a relog/restart, so without this a player who logs out before searching Frost
+-- would find his corpse inert and the mission stuck. Same restart-resilience
+-- pattern as the mission-640/641 restore chains (1045/1046/1062…). Mirrors
+-- chain 1001's accept-time bind of 5229, but gated on the step rather than
+-- mission-accept so it fires on every login while step 2113 is open.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1006, '622 - Restore Frost dialog binding on login (step 2113)', 'mission', 622, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1006, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1006, 'step_status', 622, '2113', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1006, 'add_dialog_set', 5229, NULL, '{"slot": 14, "mission_id": 622}', 0, 0);
+
+-- Chain 1007: player_loaded + step 80623 active → re-bind the Guard's dialog
+-- set on login. This is the relog-safety the intermediate step 80623 exists
+-- for: a player who searched Frost (now on 80623) and logged out before
+-- searching the Guard gets the Guard binding back so the pistol stays
+-- obtainable. Frost is already done at this point (its gate, step 2113, is
+-- false and its search bit cleared), so only the Guard needs re-binding.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1007, '622 - Restore Guard dialog binding on login (step 80623)', 'mission', 622, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1007, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1007, 'step_status', 622, '80623', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1007, 'add_dialog_set', 5230, NULL, '{"slot": 21, "mission_id": 622}', 0, 0);
 
 -- ============================================================
 -- MISSION 638 — Speak to Prisoner 329

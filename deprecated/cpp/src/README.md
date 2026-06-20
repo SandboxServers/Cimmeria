@@ -4,7 +4,7 @@
 
 This C++ code is the original Cimmeria server implementation and serves as the **reference implementation** — the ground truth for how the BigWorld protocol works, how entities behave, and what wire formats the game client expects. When implementing features in Rust, read the corresponding C++ code to understand the expected behavior.
 
-194 files across 11 directories.
+196 files across 11 directories.
 
 ## Directory Structure
 
@@ -40,12 +40,13 @@ Requires Windows, Visual Studio 2026 (v145 toolset), and all external dependenci
 # Full bootstrap (downloads and builds all deps):
 pwsh setup.ps1 -SkipApp -NoLaunch
 
-# Or build the solution directly:
-msbuild W-NG.sln /p:Configuration=Debug /p:Platform=x64
+# Or build the solution directly. The solution lives in the sibling
+# deprecated/cpp-build/ tree, not alongside this source:
+msbuild ../../cpp-build/W-NG.sln /p:Configuration=Debug /p:Platform=x64
 ```
 
 See `bootstrap/README.md` for dependency setup details.
 
 ## Migration Status
 
-The C++ dependency stack has several pending upgrades. See [docs/architecture/migration-roadmap.md](../docs/architecture/migration-roadmap.md) for the full roadmap. TL;DR: OpenSSL 0.9.8i is the most critical — do not expose this server to the internet.
+The C++ dependency stack has several pending upgrades. See [docs/architecture/migration-roadmap.md](../../../docs/architecture/migration-roadmap.md) for the full roadmap. TL;DR: OpenSSL 0.9.8i is the most critical — do not expose this server to the internet.

@@ -3,6 +3,7 @@
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
+use crate::cell::space_manager::SpaceManager;
 
 /// Send `onDialogDisplay` (flat index 105) to the player.
 ///
@@ -14,6 +15,17 @@ use crate::cell::messages::CellToBaseMsg;
 /// `dialog-portrait-lookup.md`). Recording it as a span field on
 /// every send lets operators verify "did the right NPC id reach
 /// the wire?" without a packet capture.
+///
+/// This is the single choke point all dialog-display paths route through
+/// (interact-open, monologue, chain `display_dialog`/`start_dialog`,
+/// offer-mission), so it's where the server pins
+/// [`CellEntity::open_dialog_id`](cimmeria_entity::cell_entity::CellEntity::open_dialog_id) —
+/// the "is this dialog open?" precondition the `DialogButtonChoice`
+/// handler validates against (CAT-J-01 / #479). The pin is set
+/// unconditionally (before the best-effort channel send) because the
+/// client treats the dialog as open the moment this method is dispatched;
+/// the existing send-failure `warn!` below covers the rare case where the
+/// packet never reaches the client.
 #[tracing::instrument(
     name = "dialog.send_display",
     level = "info",
@@ -25,7 +37,17 @@ pub async fn send_dialog_display(
     npc_entity_id: i32,
     dialog_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
 ) {
+    // Pin the open dialog on the player so DialogButtonChoice can verify
+    // the dialog was actually shown before firing its content chain.
+    // Overwrites any prior pin — SGW dialogs are strictly sequential, so
+    // a new display always supersedes the last (mirrors python
+    // `SGWPlayer.displayDialog` setting `self.displayedDialogs[dialogId]`).
+    if let Some(player) = space_mgr.get_entity_mut(player_id) {
+        player.open_dialog_id = Some(dialog_id);
+    }
+
     let mut args = Vec::with_capacity(17);
     args.extend_from_slice(&npc_entity_id.to_le_bytes()); // EntityId
     args.extend_from_slice(&dialog_id.to_le_bytes()); // DialogID
@@ -75,9 +97,11 @@ mod tests {
         let capture = LogCapture::install();
         let (tx, rx) = mpsc::channel(1);
         drop(rx);
+        let mut mgr = crate::test_support::make_space_manager();
 
         send_dialog_display(
             /* player_id */ 1, /* npc_entity_id */ 100, /* dialog_id */ 42, &tx,
+            &mut mgr,
         )
         .await;
 
@@ -87,6 +111,29 @@ mod tests {
                 .is_some(),
             "negative-logging convention: send_dialog_display must WARN when cell→base channel is closed; \
              reverting to `let _` breaks player-stuck-on-NPC diagnosability"
+        );
+    }
+
+    /// **#479 set-side guard.** `send_dialog_display` must pin
+    /// `open_dialog_id` on the player so the `DialogButtonChoice` handler
+    /// has a precondition to validate against. Without this, the gate in
+    /// the choice handler can never pass and every dialog choice would be
+    /// rejected (the inverse failure mode).
+    #[tokio::test]
+    async fn send_dialog_display_pins_open_dialog_id() {
+        let mut mgr = crate::test_support::make_space_manager();
+        mgr.create_entity(7, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        let (tx, _rx) = mpsc::channel(4);
+
+        send_dialog_display(
+            7, /* npc */ 100, /* dialog_id */ 5354, &tx, &mut mgr,
+        )
+        .await;
+
+        assert_eq!(
+            mgr.get_entity(7).and_then(|e| e.open_dialog_id),
+            Some(5354),
+            "send_dialog_display must pin the dialog so DialogButtonChoice can verify it"
         );
     }
 

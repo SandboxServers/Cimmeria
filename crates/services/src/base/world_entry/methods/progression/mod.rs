@@ -8,6 +8,7 @@ use sqlx::PgPool;
 
 use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
 
+use super::super::super::gm_feedback::send_gm_feedback_to_client;
 use super::super::super::helpers::{send_bundle_to_witness_reliable, send_to_witness_reliable};
 use super::super::super::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
@@ -41,6 +42,7 @@ const GENERICPROPERTY_TRAINING_POINTS: i32 = 1;
 pub async fn handle_grant_xp(
     entity_id: u32,
     xp_amount: u64,
+    notify_gm: bool,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -63,7 +65,7 @@ pub async fn handle_grant_xp(
     // a failed grant onto the next successful one: the next GrantXP would
     // saturate-add on top of the unpersisted value and then write the
     // combined sum, effectively persisting the grant we tried to drop.
-    let (player_id, total_xp, new_level, training_points, levels_gained) = {
+    let (player_id, total_xp, new_level, training_points, levels_gained, player_name) = {
         // Tolerate poison instead of panicking — another thread crashing the
         // mutex shouldn't stop XP grants from continuing on the recovered state.
         let map = match connected.lock() {
@@ -95,7 +97,7 @@ pub async fn handle_grant_xp(
             gained.push(level);
         }
 
-        (player_id, xp, level, tp, gained)
+        (player_id, xp, level, tp, gained, state.player_name.clone())
     };
 
     // Persist first. On DB failure we return WITHOUT mutating in-memory
@@ -182,6 +184,15 @@ pub async fn handle_grant_xp(
         "GrantXP processed"
     );
 
+    // Discord gameplay-channel: only on an actual level boundary crossing,
+    // and only once per grant (reporting the final level even on a multi-level
+    // catch-up grant). Skipped when the name isn't cached yet (pre-character).
+    if !levels_gained.is_empty() {
+        if let Some(name) = &player_name {
+            cimmeria_discord::emit_level_up(name.clone(), new_level);
+        }
+    }
+
     // Bundle the post-grant notifications into a single Mercury frame.
     //
     // **Transaction-state audit**: every message in this bundle targets the
@@ -207,6 +218,20 @@ pub async fn handle_grant_xp(
         &levels_gained,
     );
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+
+    // Definitive GM feedback (only for GM-sourced grants — mob-kill XP leaves
+    // `notify_gm` false). Fired only here, on the true success path: every
+    // failure branch above returns early without reaching this point.
+    if notify_gm {
+        send_gm_feedback_to_client(
+            entity_id,
+            &format!("gmGiveXp: now level {new_level} ({total_xp} xp total)"),
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+    }
 }
 
 /// Compose the post-grant_xp notification burst into a single Mercury bundle.
@@ -296,6 +321,7 @@ pub async fn handle_grant_cash(
     entity_id: u32,
     player_id: i32,
     amount: i32,
+    notify_gm: bool,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -364,6 +390,20 @@ pub async fn handle_grant_cash(
             },
         )
         .await;
+
+        // Definitive GM feedback — only for GM-sourced grants (loot pickup
+        // leaves `notify_gm` false). Inside the `Some(pool)` + `Ok(Some(total))`
+        // success path: the row was found and updated.
+        if notify_gm {
+            send_gm_feedback_to_client(
+                entity_id,
+                &format!("gmGiveCash: +{amount} naquadah (total {total})"),
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
     } else {
         // No-DB-pool mode: we have no authoritative balance to send. Drop the
         // grant entirely rather than emitting onCashChanged with the *delta*

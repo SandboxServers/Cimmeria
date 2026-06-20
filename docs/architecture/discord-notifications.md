@@ -2,8 +2,11 @@
 
 The server posts structured events to Discord channels via webhooks for
 development-time ops visibility — login bursts, world entry, errors,
-panic, etc. Eight logical channels, 40 toggleable event types, live
+panic, etc. Eight logical channels, 44 toggleable event types, live
 reload, automatic warn/error harvest from the tracing layer.
+
+Player IP addresses are deliberately **never** rendered in any embed — see
+[Privacy](#privacy-whisper-content-is-always-hidden) below.
 
 ## Why webhooks (not a bot)
 
@@ -46,7 +49,7 @@ Eight logical channels, each backed by one webhook URL in the TOML config:
 | `auth` | PlayerLogin, PlayerLogout, PlayerDisconnect, PlayerAuthFailed |
 | `world` | PlayerWorldEntry, PlayerWorldExit |
 | `chat` | ChatGlobal (others off by default — see Privacy below) |
-| `gameplay` | PlayerLevelUp, MissionAccepted, MissionCompleted (others off) |
+| `gameplay` | PlayerLevelUp, MissionAccepted, MissionCompleted, CharacterCreated, MinigameResult (others off) |
 | `gm` | GmCommand, GmTeleport, GmSpawn, GmItemGrant |
 | `errors` | Error, WireFormatError, DbError, AssertionFailure, MercuryTimeout (Warning off) |
 | `ops` | HighLatency, PacketLossSpike, MemoryWarning, TickStall, AoiBurstWarning, OutboxLag |
@@ -55,7 +58,7 @@ The routing table is in [`crates/discord/src/router.rs`](../../crates/discord/sr
 
 ## Event types — full list
 
-40 variants. Each has an explicit on/off toggle in `[discord.events]`.
+44 variants. Each has an explicit on/off toggle in `[discord.events]`.
 
 ```
 Lifecycle:   server_startup, server_shutdown, server_panic
@@ -64,7 +67,8 @@ World:       player_world_entry, player_world_exit
 Chat:        chat_global, chat_say, chat_whisper, chat_guild, chat_team, chat_command
 Gameplay:    player_level_up, player_death, player_respawn,
              mission_accepted, mission_completed, mission_failed, mission_reward_granted,
-             loot_generated, item_used
+             loot_generated, item_used,
+             character_created, npc_death, minigame_result, dialog
 GM:          gm_command, gm_teleport, gm_spawn, gm_item_grant
 Errors:      warning, error, wire_format_error, db_error, assertion_failure, mercury_timeout
 Ops:         high_latency, packet_loss_spike, memory_warning, tick_stall,
@@ -78,8 +82,8 @@ Unknown toggle keys in the TOML are rejected at parse time (typo guard:
 
 The defaults in [`EventToggles::default`](../../crates/discord/src/config.rs) prioritise signal:
 
-- **High-signal, always on**: every lifecycle event, every auth event, every world event, every GM event, every ops alert, level-up, mission accept/complete.
-- **Low-signal, off by default but toggleable**: warning (noisy), all chat except global (volume + privacy), death/respawn (volume), mission failed/reward (per-event noise), loot/item-used (very noisy), chat command (every `/who` would post).
+- **High-signal, always on**: every lifecycle event, every auth event, every world event, every GM event, every ops alert, level-up, mission accept/complete, character creation, minigame result.
+- **Low-signal, off by default but toggleable**: warning (noisy), all chat except global (volume + privacy), death/respawn (volume), mission failed/reward (per-event noise), loot/item-used (very noisy), chat command (every `/who` would post), npc_death + dialog (very high-volume during combat/questing).
 
 ## Privacy: whisper content is always hidden
 
@@ -88,6 +92,26 @@ The defaults in [`EventToggles::default`](../../crates/discord/src/config.rs) pr
 enforced in [`embed::format_chat`](../../crates/discord/src/embed.rs) regardless of how the channel is configured. A test (`whisper_content_is_hidden_regardless_of_input`) pins this; reverting the privacy branch trips it.
 
 If you ever need to investigate harassment reports without a code change, the right move is to add an `EventKind::ChatWhisperContent` and route it to a separate audit channel with much stricter access — not to soften this guard.
+
+## Privacy: player IPs are never rendered
+
+Events still carry the connection `SocketAddr` for internal correlation, but
+[`embed.rs`](../../crates/discord/src/embed.rs) **never** writes it into an
+embed field — login, disconnect, auth-failed, mercury-timeout, wire-format
+error, and high-latency embeds all omit it. Identity is reported by account
+name + id (and character name where known), not by IP. This keeps player IPs
+out of Discord, which is a less-controlled surface than the server logs /
+SigNoz where the addr is still available for debugging.
+
+## Account + character naming
+
+Auth and world embeds show the **account name** (the login username) instead
+of a bare numeric id — `account_value` in `embed.rs` renders `name (#id)`,
+falling back to `#id` then `?`. The name is threaded from the login ticket
+(`PendingLogin.account_name` → `ConnectedClientState.account_name`), so no
+extra DB lookup happens at the Mercury login seam. Gameplay/world embeds also
+label the character on its own `Character` field rather than dropping a bare
+name into the description.
 
 ## Live reload
 
@@ -144,6 +168,68 @@ Helpers live in [`crates/discord/src/lib.rs`](../../crates/discord/src/lib.rs); 
 
 **For existing `warn!`/`error!` sites with structured fields**, do nothing — the tracing layer already harvests them into `Event::TracingEvent` automatically. The [negative-logging convention](negative-logging-convention.md) (`reason=`, `entity_id=`, `rows_affected=`, etc.) is what gives those tracing events their structure; the embed builder reads the fields into the embed's `fields` array.
 
+## Emit-site coverage
+
+Wiring `emit_*` calls into the server is incremental. Current state:
+
+| Channel | Live emit sites | Notes |
+|---|---|---|
+| `lifecycle` | `ServerStartup`, `ServerShutdown`, `ServerPanic` | from `server/src/main.rs` |
+| `auth` | `PlayerLogin`, `PlayerLogout`, `PlayerDisconnect`, `PlayerAuthFailed` | login/logoff/teardown in `base/`; auth-fail in `auth/handlers.rs` |
+| `world` | `PlayerWorldEntry`, `PlayerWorldExit` | entry in `play_character.rs`; exit on gate travel |
+| `gameplay` | `PlayerLevelUp`, `ItemUsed`, `MissionAccepted`, `MissionCompleted`, `MissionFailed`, `PlayerDeath`, `PlayerRespawn`, `CharacterCreated`, `NpcDeath`, `MinigameResult`, `Dialog` | level-up/item-used base-layer; mission/death/respawn/npc-death cell-side (see name cache below); character-create in `base/character_create.rs`; minigame in `minigame/server.rs` (entity-id only, no name); dialog in `cell/content/event_dispatch/dialog.rs` |
+| `errors` | `Warning`/`Error` (harvest), `WireFormatError`, `DbError`, `MercuryTimeout` | decode/db/peer-silence seams in `base/` + `auth/`. **`movement.validation` warns are suppressed** — see below |
+| `gm` | `GmCommand` | `.`-console dispatch in `cell/console/mod.rs` |
+| `ops` | — | **deferred**: needs measurement infra |
+
+**`player_disconnect` is the single choke point.** Every teardown path
+(`logoff`, `inactivity_timeout`, `send_error`, `duplicate_login`,
+`client_disconnect`) funnels through `base::helpers::destroy_client_entities`,
+which maps the stable label to a typed [`DisconnectReason`] via
+`DisconnectReason::from_label`. A clean logoff fires *both* `PlayerLogout`
+(gameplay-level) and `PlayerDisconnect { reason: Clean }` (connection-level) —
+by design.
+
+**`movement.validation` is filtered from the harvest.** The speed/teleport
+validator emits warn-only telemetry (`movement.speed_warning`,
+`movement.validation_reject`) under `target: "movement.validation"`. It's
+calibration data destined for SigNoz (to compute the legitimate p99.9 speed
+before the speed layer is ever promoted to snap-back) and it fires during
+normal play — sub-tick deltas produce huge / infinite implied-speed ratios.
+[`DiscordLayer::on_event`](../../crates/discord/src/layer.rs) drops this target
+outright (same mechanism as the recursion guard) so it never floods the errors
+channel; the data still flows to logs and SigNoz. Pinned by
+`movement_validation_target_filtered`.
+
+**Cell-side name cache.** The cell service has no character/GM display name of
+its own — names live in the base `ConnectedClientState`. `GmCommand` and the
+cell-side gameplay events (`MissionAccepted/Completed/Failed`, `PlayerDeath`,
+`PlayerRespawn`) read `CellEntity::character_name`, which is threaded in from the
+base via `BaseToCellMsg::InitPlayerState` at world entry. Emits fall back to
+`entity:<id>` if the name isn't cached yet. (Mission embeds carry no mission
+*name* — `MissionDefEntry` has none cell-side — only the id.)
+
+### Deferred seams and why
+
+- **`LootGenerated`**: loot is rolled onto an NPC corpse at death
+  (`cell/abilities/loot_drop.rs`); the *looter* isn't known until someone takes
+  it, so there's no single character to attribute the generation to. Needs a
+  decision on whether to attribute to the killer or the looter before wiring.
+- **`GmTeleport` / `GmSpawn` / `GmItemGrant`**: the GM teleport/spawn/give command
+  *execution* is still TODO in `game/src/commands/gm_cmds.rs` — there's no
+  resolved position/template/quantity to put in the typed embed yet.
+- **`MissionRewardGranted`**: reward dispatch isn't implemented cell-side (no
+  reward catalog; see `cell/console/mission.rs`).
+- **`AssertionFailure`**: no explicit assertion-failure log site exists today;
+  invariant violations surface as generic `error!` and are caught by the
+  `errors` harvest.
+- **`ops` channel** (`HighLatency`, `PacketLossSpike`, `MemoryWarning`,
+  `TickStall`, `AoiBurstWarning`, `OutboxLag`): each needs a measurement +
+  threshold loop (RSS sampling, tick-duration timing, RTT thresholding) that
+  doesn't exist yet. Tracked separately.
+
+[`DisconnectReason`]: ../../crates/discord/src/event.rs
+
 ## Operations
 
 - **Stats**: `SenderStats { enqueued, sent, filtered, dropped_full, dropped_closed, dropped_rate_limit, retried, rate_limited_429, failed }`. Available via `cimmeria_discord::global().unwrap().stats()`.
@@ -173,7 +259,7 @@ See [colo-deploy.md → Discord notifications](../operations/colo-deploy.md#opti
 
 ## Testing
 
-- Unit tests in `crates/discord/src/` (41 tests; covers formula, embed shape, truncation, rate limiter, retry/429 handling, layer harvest, recursion guard, whisper privacy).
+- Unit tests in `crates/discord/src/` (61 tests; covers formula, embed shape, truncation, rate limiter, retry/429 handling, layer harvest, recursion guard, whisper privacy, `movement.validation` suppression).
 - `MockSender` for tests that need to assert wire bytes without HTTP.
 - Wire-format tests for the embed JSON shape — title/description/field caps + `total_chars ≤ 6000` enforcement.
 

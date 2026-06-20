@@ -1,8 +1,9 @@
 //! Cimmeria server binary.
 //!
 //! Starts all three game services (Auth HTTP on 13001, Base UDP on 32832,
-//! Cell UDP on 32833), the admin REST API (HTTP on 8443), and waits for
-//! Ctrl-C.
+//! Cell UDP on 32833), the admin REST API (HTTP on 8443), and waits for a
+//! shutdown signal (SIGINT/Ctrl-C, or SIGTERM from `docker stop` /
+//! Watchtower / systemd) before tearing down gracefully.
 //!
 //! # Environment variables
 //!
@@ -36,23 +37,16 @@
 //! RUST_LOG=debug cargo run -p cimmeria-server
 //! ```
 
-use std::fs;
-use std::path::Path;
 use std::sync::Arc;
 
 use tokio::sync::broadcast;
-use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::fmt;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::Layer;
 
-use cimmeria_admin_api::ws::broadcast_layer::{BroadcastLayer, LogBuffer, LogEntry};
+use cimmeria_admin_api::ws::broadcast_layer::{LogBuffer, LogEntry};
 use cimmeria_common::ServerConfig;
 use cimmeria_services::audit::{LoginEvent, LoginEventBuffer};
 use cimmeria_services::orchestrator::Orchestrator;
 
+mod logging;
 mod otel;
 
 #[tokio::main]
@@ -112,7 +106,7 @@ async fn main() {
     };
 
     // Initialise layered tracing — guards must live until shutdown.
-    let _guards = init_logging(
+    let _guards = logging::init_logging(
         log_tx.clone(),
         log_buffer.clone(),
         otel_trace_layer,
@@ -212,12 +206,18 @@ async fn main() {
         );
     }
 
-    // Wait for Ctrl-C.
-    tokio::signal::ctrl_c()
-        .await
-        .expect("failed to listen for Ctrl-C");
+    // Wait for a shutdown signal. On Unix we listen for BOTH SIGINT
+    // (Ctrl-C) and SIGTERM. `docker stop`, Watchtower container swaps, and
+    // systemd all deliver SIGTERM — without handling it the process is
+    // SIGKILLed once the stop grace period elapses, so `stop_all` never
+    // runs, the ServerShutdown notification never fires, and the lingering
+    // process can race the replacement container's port binds (which is
+    // why the post-update startup event looked "missing"). The captured
+    // reason flows into the Discord embed so the channel shows *why* the
+    // server went down.
+    let shutdown_reason = wait_for_shutdown_signal().await;
 
-    tracing::info!("Shutting down…");
+    tracing::info!(reason = shutdown_reason, "Shutting down…");
     tracing::trace!("Calling stop_all");
     orch.stop_all().await;
     tracing::trace!("stop_all complete");
@@ -226,7 +226,7 @@ async fn main() {
     // ServerShutdown event being routable — `discord_runtime` is `Some`
     // even when the config file was missing (we hand back a disabled
     // runtime so the tracing layer + emit_* helpers no-op uniformly),
-    // and we don't want to pay 1 s on every Ctrl-C just for that.
+    // and we don't want to pay 1 s on every shutdown just for that.
     if discord_enabled
         && discord_runtime
             .config
@@ -234,15 +234,44 @@ async fn main() {
             .should_post(cimmeria_discord::EventKind::ServerShutdown)
     {
         let uptime = server_start.elapsed().as_secs();
-        cimmeria_discord::emit_server_shutdown("Ctrl-C", uptime);
+        cimmeria_discord::emit_server_shutdown(shutdown_reason, uptime);
         // Give the Discord sender task ~1 s to drain before the runtime
-        // shuts down. Beyond that, drop on the floor — the user is
-        // waiting for shutdown to complete.
+        // shuts down. Beyond that, drop on the floor — the orchestrator
+        // (or container runtime) is waiting for shutdown to complete.
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 
     tracing::info!("Goodbye.");
     tracing::trace!(pid = std::process::id(), "Process exiting with code 0");
+}
+
+/// Block until the process receives a shutdown signal, returning a short
+/// human-readable reason for the Discord `ServerShutdown` embed + logs.
+///
+/// On Unix we select over SIGTERM and SIGINT: `docker stop`, Watchtower
+/// container swaps, and systemd all deliver SIGTERM, while Ctrl-C in an
+/// interactive shell delivers SIGINT. Catching SIGTERM is what lets the
+/// graceful path (`stop_all` + shutdown notification + drain) run before
+/// the container's stop grace period elapses and the kernel SIGKILLs us.
+#[cfg(unix)]
+async fn wait_for_shutdown_signal() -> &'static str {
+    use tokio::signal::unix::{signal, SignalKind};
+    let mut sigterm = signal(SignalKind::terminate()).expect("failed to install SIGTERM handler");
+    let mut sigint = signal(SignalKind::interrupt()).expect("failed to install SIGINT handler");
+    tokio::select! {
+        _ = sigterm.recv() => "SIGTERM (container stop / update)",
+        _ = sigint.recv() => "SIGINT (Ctrl-C)",
+    }
+}
+
+/// Windows has no SIGTERM; Ctrl-C (and the console-close events tokio maps
+/// onto it) is the only graceful stop signal.
+#[cfg(not(unix))]
+async fn wait_for_shutdown_signal() -> &'static str {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("failed to listen for Ctrl-C");
+    "Ctrl-C"
 }
 
 // ── Audit persistence ────────────────────────────────────────────────────────
@@ -280,367 +309,6 @@ async fn audit_writer_loop(pool: sqlx::PgPool, mut rx: broadcast::Receiver<Login
         }
     }
     tracing::info!("Audit writer shutting down");
-}
-
-// ── Logging ──────────────────────────────────────────────────────────────────
-
-/// Archive any `.log` files from a previous session into `logs/archive/<timestamp>/`.
-fn archive_previous_logs() {
-    let logs_dir = Path::new("logs");
-    if !logs_dir.exists() {
-        return;
-    }
-
-    let entries: Vec<_> = fs::read_dir(logs_dir)
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "log"))
-        .collect();
-
-    if entries.is_empty() {
-        return;
-    }
-
-    let ts = chrono_timestamp();
-    let archive_dir = logs_dir.join("archive").join(&ts);
-    if let Err(e) = fs::create_dir_all(&archive_dir) {
-        eprintln!(
-            "Failed to create archive directory {}: {e}",
-            archive_dir.display()
-        );
-        return;
-    }
-
-    for entry in &entries {
-        let src = entry.path();
-        let dst = archive_dir.join(entry.file_name());
-        if let Err(e) = fs::rename(&src, &dst) {
-            eprintln!("Failed to archive {}: {e}", src.display());
-        }
-    }
-
-    eprintln!(
-        "Archived {} log file(s) to {}",
-        entries.len(),
-        archive_dir.display()
-    );
-}
-
-/// Generate a filesystem-safe timestamp like `2026-03-03T14-30-22`.
-fn chrono_timestamp() -> String {
-    use std::time::SystemTime;
-
-    let now = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    // Simple UTC breakdown (no chrono dependency needed).
-    let secs_per_day: u64 = 86400;
-    let days = now / secs_per_day;
-    let day_secs = now % secs_per_day;
-    let hours = day_secs / 3600;
-    let minutes = (day_secs % 3600) / 60;
-    let seconds = day_secs % 60;
-
-    // Days since epoch to Y-M-D (simplified Gregorian).
-    let (year, month, day) = days_to_ymd(days);
-
-    format!(
-        "{:04}-{:02}-{:02}T{:02}-{:02}-{:02}",
-        year, month, day, hours, minutes, seconds
-    )
-}
-
-/// Convert days since Unix epoch to (year, month, day).
-fn days_to_ymd(days: u64) -> (u64, u64, u64) {
-    // Algorithm from Howard Hinnant's `civil_from_days`.
-    let z = days as i64 + 719468;
-    let era = if z >= 0 { z } else { z - 146096 } / 146097;
-    let doe = (z - era * 146097) as u64;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe as i64 + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y as u64, m, d)
-}
-
-/// Initialise a layered tracing subscriber.
-///
-/// Returns `WorkerGuard`s that **must** be held alive in `main()` — dropping
-/// them flushes and closes the log files.
-///
-/// Layers:
-/// - **Console** (stdout): coloured, human-readable, level from `RUST_LOG` (default `info`).
-/// - **`logs/server.log`**: JSON, all modules at `info` (high-level milestones only).
-/// - **`logs/auth.log`**: auth module at `trace`.
-/// - **`logs/base.log`**: connection lifecycle (service, connect_loop, login, tick_sync, helpers) at `trace`.
-/// - **`logs/world_entry.log`**: player world entry, DB queries, appearance at `trace`.
-/// - **`logs/character.log`**: char list, creation, visuals, PAK serving at `trace`.
-/// - **`logs/protocol.log`**: wire-level packet building, encryption at `trace`.
-/// - **`logs/aoi.log`**: AoI tick, entity create/destroy, spatial grid at `trace`.
-/// - **`logs/combat.log`**: damage, abilities, NPC AI, death/respawn at `trace`.
-/// - **`logs/content.log`**: content chain triggers, conditions, actions at `trace`.
-/// - **`logs/missions.log`**: mission accept/complete/abandon, objectives at `trace`.
-/// - **`logs/interactions.log`**: dialogs, vendors, trainers, loot, chat, mail at `trace`.
-/// - **`logs/spawner.log`**: NPC spawning, stargate travel, ring transport at `trace`.
-/// - **`logs/dispatch.log`**: method routing (cell + base method dispatch) at `trace`.
-/// - **WebSocket broadcast**: `debug` for admin panel streaming.
-/// - **Cosmos DB** (optional): `debug` minus per-packet noise.
-///
-/// Correlation: most tracing calls include `entity_id`, `player_id`, or
-/// `witness_id` as structured fields.  To follow a player across files:
-/// `grep entity_id=42 logs/*.log`.
-fn init_logging(
-    log_tx: broadcast::Sender<LogEntry>,
-    log_buffer: LogBuffer,
-    otel_trace_layer: Option<otel::OtelTraceLayer>,
-    otel_log_layer: Option<otel::OtelLogLayer>,
-    otel_network_log_layer: Option<otel::OtelLogLayer>,
-) -> Vec<WorkerGuard> {
-    // Move previous session's logs into archive/.
-    archive_previous_logs();
-
-    // Ensure logs/ directory exists.
-    let _ = fs::create_dir_all("logs");
-
-    let mut guards = Vec::new();
-
-    type BoxLayer = Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>;
-
-    // Helper: create a plain-text, non-ANSI log file layer with a specific filter.
-    // Returns a boxed layer to avoid deeply nested generic types that cause
-    // the Rust type-checker to consume 50+ GB of RAM.
-    macro_rules! log_layer {
-        ($filename:expr, $filter:expr) => {{
-            let file = tracing_appender::rolling::never("logs", $filename);
-            let (writer, guard) = tracing_appender::non_blocking(file);
-            guards.push(guard);
-            Box::new(
-                fmt::layer()
-                    .with_writer(writer)
-                    .with_ansi(false)
-                    .with_target(true)
-                    .with_filter(EnvFilter::new($filter)),
-            ) as BoxLayer
-        }};
-    }
-
-    // ── Collect all layers into a Vec<BoxLayer> ─────────────────────────
-    let mut layers: Vec<BoxLayer> = Vec::new();
-
-    // ── Console (stdout, coloured, RUST_LOG or info) ─────────────────────
-    let console_filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    layers.push(Box::new(fmt::layer().with_filter(console_filter)));
-
-    // ── server.log (JSON, all modules, info) ─────────────────────────────
-    let server_file = tracing_appender::rolling::never("logs", "server.log");
-    let (server_writer, guard) = tracing_appender::non_blocking(server_file);
-    guards.push(guard);
-    layers.push(Box::new(
-        fmt::layer()
-            .json()
-            .with_writer(server_writer)
-            .with_target(true)
-            .with_filter(EnvFilter::new("info")),
-    ));
-
-    // ── Per-system log files ─────────────────────────────────────────────
-    layers.push(log_layer!("auth.log", "off,cimmeria_services::auth=trace"));
-
-    layers.push(log_layer!(
-        "base.log",
-        "off,\
-         cimmeria_services::base::service=trace,\
-         cimmeria_services::base::connect_loop=trace,\
-         cimmeria_services::base::login=trace,\
-         cimmeria_services::base::tick_sync=trace,\
-         cimmeria_services::base::helpers=trace"
-    ));
-
-    layers.push(log_layer!(
-        "world_entry.log",
-        "off,\
-         cimmeria_services::base::world_entry=trace,\
-         cimmeria_services::base::world_entry_player=trace,\
-         cimmeria_services::base::world_entry_appearance=trace"
-    ));
-
-    layers.push(log_layer!(
-        "character.log",
-        "off,\
-         cimmeria_services::base::character=trace,\
-         cimmeria_services::base::character_create=trace,\
-         cimmeria_services::base::chardef=trace,\
-         cimmeria_services::base::cooked_data=trace,\
-         cimmeria_services::base::resources=trace"
-    ));
-
-    layers.push(log_layer!(
-        "protocol.log",
-        "off,\
-         cimmeria_services::mercury=trace,\
-         cimmeria_mercury=trace"
-    ));
-
-    layers.push(log_layer!(
-        "aoi.log",
-        "off,\
-         cimmeria_services::cell::service=trace,\
-         cimmeria_services::cell::space_manager=trace"
-    ));
-
-    layers.push(log_layer!(
-        "combat.log",
-        "off,\
-         cimmeria_services::cell::combat=trace,\
-         cimmeria_services::cell::abilities=trace"
-    ));
-
-    layers.push(log_layer!(
-        "content.log",
-        "off,cimmeria_services::cell::content=trace"
-    ));
-
-    layers.push(log_layer!(
-        "missions.log",
-        "off,cimmeria_services::cell::missions=trace"
-    ));
-
-    layers.push(log_layer!(
-        "interactions.log",
-        "off,\
-         cimmeria_services::cell::interactions=trace,\
-         cimmeria_services::cell::chat=trace,\
-         cimmeria_services::cell::mail=trace"
-    ));
-
-    layers.push(log_layer!(
-        "spawner.log",
-        "off,\
-         cimmeria_services::cell::spawner=trace,\
-         cimmeria_services::cell::gate_travel=trace,\
-         cimmeria_services::cell::ring_transport=trace"
-    ));
-
-    layers.push(log_layer!(
-        "dispatch.log",
-        "off,\
-         cimmeria_services::cell::dispatch=trace,\
-         cimmeria_services::base::dispatch=trace"
-    ));
-
-    // ── WebSocket broadcast (debug+, all modules) ─────────────────────
-    layers.push(Box::new(
-        BroadcastLayer::new(log_tx, log_buffer).with_filter(EnvFilter::new(
-            "debug,tungstenite=info,tokio_tungstenite=info,hyper=info",
-        )),
-    ));
-
-    // ── Discord notifications (optional — config-gated) ──────────────
-    // The layer harvests `warn!`/`error!` events with structured fields
-    // and posts them to the configured Discord channels. Disabled events
-    // and missing channels short-circuit before the queue, so the layer
-    // is cheap when Discord is off.
-    if let Some(rt) = cimmeria_discord::global() {
-        layers.push(Box::new(
-            cimmeria_discord::DiscordLayer::new(rt.handle.clone(), rt.config.handle())
-                // Layer applies its own per-event toggle gating inside
-                // on_event — no env-filter needed here. Keep the
-                // env-filter wide so we don't pre-filter out events the
-                // user might want to enable at runtime via toggle.
-                .with_filter(EnvFilter::new("warn")),
-        ));
-    }
-
-    // ── OpenTelemetry → SigNoz (optional) ─────────────────────────────
-    // Two layers come through together when OTLP is enabled:
-    //
-    //   * `trace_layer` — captures `tracing::span!` spans (and events
-    //     fired *inside* them) as OpenTelemetry spans. Shows up in the
-    //     SigNoz Traces view.
-    //   * `log_layer`   — captures every `tracing::*` event as an OTLP
-    //     log record, including root-level events that have no parent
-    //     span. The Mercury packet stream lives here. Shows up in the
-    //     SigNoz Logs view.
-    //
-    // Both layers share the same env-filter so the operator only has to
-    // tune visibility once. Filters ship `debug+` from our crates and
-    // drop the chatty HTTP middleware noise; `mercury.packet` is kept
-    // at info — it's the load-bearing analytical surface, sampling
-    // would defeat the purpose.
-    let otel_filter = "info,\
-                cimmeria_services=debug,\
-                cimmeria_mercury=debug,\
-                mercury.packet=info,\
-                mercury.retransmit=info,\
-                mercury.backpressure=warn,\
-                wire.in=info,wire.out=info,\
-                aoi.entity_enter=debug,aoi.entity_leave=debug,\
-                movement.npc=debug,movement.player=debug,\
-                npc_ai=debug,\
-                threat=info,\
-                auth=info,\
-                world_entry=info,\
-                vendor=info,mail=info,progression=info,inventory=info,mission=info,\
-                sqlx::query=debug,\
-                tungstenite=off,tokio_tungstenite=off,hyper=off,\
-                h2=off,tower=off,tonic=off,reqwest=off,opentelemetry=off";
-
-    if let Some(layer) = otel_trace_layer {
-        layers.push(Box::new(layer.with_filter(EnvFilter::new(otel_filter))));
-    }
-    // The log signal splits across TWO OTLP providers (cimmeria-server +
-    // cimmeria-network — see `otel::init`). Per-layer FilterFn routes:
-    //
-    // - `cimmeria-server` layer: receive everything EXCEPT TRACE/DEBUG/
-    //   INFO from network-noise scopes. WARN+ from network-noise scopes
-    //   still goes here so elevated severity surfaces in the operator's
-    //   primary view without dual-querying.
-    // - `cimmeria-network` layer: receive ONLY TRACE/DEBUG/INFO from
-    //   network-noise scopes. WARN+ is suppressed (it's already in the
-    //   server index).
-    //
-    // Composition: each branch is `EnvFilter::new(otel_filter)` AND a
-    // `FilterFn` doing the noise routing. Together they cover all events
-    // with no overlap (a single event lands in exactly one log index).
-    //
-    // We use `tracing_subscriber::filter::FilterExt::and` to combine the
-    // two filters, and `Box::new` at the end because the layer push
-    // signature wants a homogeneous trait object.
-    if let Some(layer) = otel_log_layer {
-        use tracing_subscriber::filter::{filter_fn, FilterExt};
-        let routing = filter_fn(|meta| {
-            // Server index: non-noise OR severity is WARN/ERROR.
-            !otel::is_network_noise_target(meta.target()) || *meta.level() <= tracing::Level::WARN
-        });
-        layers.push(Box::new(
-            layer.with_filter(EnvFilter::new(otel_filter).and(routing)),
-        ));
-    }
-    if let Some(layer) = otel_network_log_layer {
-        use tracing_subscriber::filter::{filter_fn, FilterExt};
-        let routing = filter_fn(|meta| {
-            // Network index: noise scopes only, at non-elevated severity.
-            // `level <= Level::WARN` is "WARN or more severe" (numerically
-            // smaller); the negation here means "less severe than WARN"
-            // i.e. INFO/DEBUG/TRACE.
-            otel::is_network_noise_target(meta.target()) && *meta.level() > tracing::Level::WARN
-        });
-        layers.push(Box::new(
-            layer.with_filter(EnvFilter::new(otel_filter).and(routing)),
-        ));
-    }
-
-    // Assemble the subscriber — one `.with()` call on the whole Vec.
-    tracing_subscriber::registry().with(layers).init();
-
-    guards
 }
 
 // ── Config ───────────────────────────────────────────────────────────────────

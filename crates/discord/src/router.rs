@@ -43,7 +43,11 @@ pub const fn channel_for(kind: EventKind) -> ChannelKind {
         | EventKind::MissionFailed
         | EventKind::MissionRewardGranted
         | EventKind::LootGenerated
-        | EventKind::ItemUsed => ChannelKind::Gameplay,
+        | EventKind::ItemUsed
+        | EventKind::CharacterCreated
+        | EventKind::NpcDeath
+        | EventKind::MinigameResult
+        | EventKind::Dialog => ChannelKind::Gameplay,
 
         // GM channel
         EventKind::GmCommand

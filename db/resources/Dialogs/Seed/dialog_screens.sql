@@ -16313,7 +16313,9 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (3984, 101999, 'Find the Jaffa, Trik''na.', 0, 0);
 
-INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (3995, 96108, 'There are no obvious wounds on Cpl. Frost, though it appears he died soon after killing that NID Guard. On his body you find a pistol and a letter addressed to "Jess" - Frost''s wife.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (3995, 96108, 'There are no obvious wounds on Cpl. Frost, though it appears he died soon after killing that NID Guard. On his body you find a letter addressed to "Jess" - Frost''s wife.', 0, 0);
+-- Mission 622 loot split: Guard-corpse search text (the pistol now comes from this body).
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (3996, 96109, 'The NID Guard died with his weapon still drawn. You pry the pistol from his grip - it''s still serviceable.', 0, 0);
 
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (3998, 96246, 'You succesfully bypass the security systems - the Stasis Pods for the East Wing slowly begin to open.', 934, 0);
 

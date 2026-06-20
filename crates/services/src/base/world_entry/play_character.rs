@@ -40,13 +40,20 @@ pub(crate) async fn handle_play_character(
     entity_manager: &Arc<Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Guard: only send once per connection.
+    // Guard: only send once per connection. Capture access_level under the
+    // same lock so the class-id decision in query_world_entry uses the
+    // server-authoritative session value (sourced from account.accesslevel
+    // at login), never a client-supplied byte.
     let arcs = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         if let Some(c) = clients.get_mut(&addr) {
             if !c.world_entry_sent {
                 c.world_entry_sent = true;
-                Some((Arc::clone(&c.pending_acks), Arc::clone(&c.next_seq)))
+                Some((
+                    Arc::clone(&c.pending_acks),
+                    Arc::clone(&c.next_seq),
+                    c.access_level,
+                ))
             } else {
                 None
             }
@@ -56,14 +63,22 @@ pub(crate) async fn handle_play_character(
         }
     };
 
-    let (pending_acks_arc, next_seq) = match arcs {
+    let (pending_acks_arc, next_seq, access_level) = match arcs {
         Some(a) => a,
         None => return Ok(()),
     };
 
-    // Query character data from DB and resolve space via CellService
-    let entry_info =
-        query_world_entry(db_pool, account_id, player_id, entity_manager, cell_tx).await;
+    // Query character data from DB and resolve space via CellService.
+    // access_level selects the entity class id (SGWPlayer vs SGWGmPlayer).
+    let entry_info = query_world_entry(
+        db_pool,
+        account_id,
+        player_id,
+        access_level,
+        entity_manager,
+        cell_tx,
+    )
+    .await;
 
     // query_world_entry returns NO_ENTITY_ID as a "world entry failed"
     // sentinel (DB error or character not found). Bail before dispatching any
@@ -86,12 +101,21 @@ pub(crate) async fn handle_play_character(
     // Also query the full player data needed for mapLoaded
     let player_load_data = query_player_load_data(db_pool, account_id, player_id).await;
 
-    // NOTE: C++ Account.py:293-296 uses SGWGmPlayer (0x03) for access_level > 0,
-    // but SGWGmPlayer adds 6 ClientMethods and 80+ CellMethods that shift ALL
-    // flattened method indices. Our hardcoded method_idx constants (BeingAppearance=26,
-    // etc.) only work for SGWPlayer. Until we build a separate SGWGmPlayer index
-    // table, always use SGWPlayer (0x02) regardless of access_level.
-    // TODO: Build SGWGmPlayer method index table to enable GM entity type.
+    // class_id selection: GMs (access_level > 0) come up as
+    // SGWGmPlayer (0x03), regular players as SGWPlayer (0x02). Decided in
+    // query_world_entry from the session access_level captured above.
+    //
+    // SGWGmPlayer declares <Parent>SGWPlayer</Parent> with empty <Implements>,
+    // so its own methods APPEND at the end of the flattened tables (cell 109+,
+    // client 157+); the inherited 0-108 / 0-156 indices do NOT renumber, and
+    // the wire idbase stays 61. So our SGWPlayer method_idx constants
+    // (BeingAppearance=26, etc.) and cell-dispatch ranges remain correct under
+    // 0x03 — the earlier "shifts ALL indices" note was wrong about the
+    // mechanism. The real reason 0x02 was hardcoded before was twofold and
+    // both are now resolved: (a) no handlers existed for the gm* indices 109+,
+    // and (b) the cell layer had no access_level to gate them. With
+    // the GM gate (gm_gate.rs) covering 109+ and a verified gm* subset wired
+    // in the cell router, flipping the class for GMs is safe.
 
     tracing::info!(
         %addr,
@@ -124,10 +148,18 @@ pub(crate) async fn handle_play_character(
         cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
     );
 
+    // Snapshot the world-channel emit fields before the store block below
+    // moves `entry_info` / `player_load_data` into the connected state.
+    let entry_character_name = player_load_data.player_name.clone();
+    let entry_world_name = entry_info.world_name.clone();
+    let entry_position = entry_info.pos;
+
     // Store the world entry info and player load data for the create-player step.
+    let mut entry_account_name = None;
     {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         if let Some(c) = clients.get_mut(&addr) {
+            entry_account_name = c.account_name.clone();
             c.pending_player_entity_id = Some(entry_info.player_entity_id);
             c.player_entity_id = Some(entry_info.player_entity_id);
             c.player_name = Some(player_load_data.player_name.clone());
@@ -148,6 +180,16 @@ pub(crate) async fn handle_play_character(
     }
 
     tracing::info!(%addr, "Entity teardown sent -- waiting for ENABLE_ENTITIES from client");
+
+    // Discord world-channel: the character is now known (unlike the auth-time
+    // login emit), so this carries name + world + spawn position.
+    cimmeria_discord::emit_player_world_entry(
+        account_id,
+        entry_account_name,
+        entry_character_name,
+        entry_world_name,
+        entry_position,
+    );
 
     Ok(())
 }
@@ -184,6 +226,7 @@ mod tests {
             enc: MercuryEncryption::from_session_key([0xCDu8; 32]),
             key: [0xCDu8; 32],
             account_id,
+            account_name: Some("testacct".into()),
             access_level: 0,
             dnd_message: None,
             char_list_sent: false,
@@ -194,6 +237,7 @@ mod tests {
             next_seq_unreliable: Arc::new(AtomicU32::new(0)),
             pending_acks: Arc::new(Mutex::new(Vec::new())),
             last_recv: Arc::new(Mutex::new(Instant::now())),
+            connected_at: Instant::now(),
             account_entity_id: 1,
             next_data_id: 0,
             pending_world_entry: None,

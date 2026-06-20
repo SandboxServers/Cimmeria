@@ -373,8 +373,25 @@ fn append_appearance(body: &mut Vec<u8>, entity_id: u32, idbase: u8, d: &NpcAoID
             write_wstring(&mut args, body_set_str);
             // onStaticMeshNameUpdate is method index 0
             append_entity_method(body, 0, idbase, entity_id, &args);
+            return;
         }
     }
+
+    // Neither appearance branch fired. The cascade still sends onVisible(1),
+    // but with no mesh the client builds an unrenderable entity that reads as
+    // "missing" to every witness — and because the witness set is marked
+    // before delivery, the idempotent AoI tick won't re-introduce it. This is
+    // a template-data gap (null/empty static_mesh AND body_set/components);
+    // surface it loudly. See docs/architecture/negative-logging-convention.md.
+    tracing::warn!(
+        target: "aoi.cascade_appearance_missing",
+        entity_id,
+        body_set = d.body_set.as_deref().unwrap_or("<none>"),
+        static_mesh = d.static_mesh.as_deref().unwrap_or("<none>"),
+        components_count = d.components.len(),
+        reason = "no_appearance_data",
+        "AoI cascade: NPC has no appearance data — entity will be invisible to witnesses (check template static_mesh / body_set / components)"
+    );
 }
 
 #[cfg(test)]
@@ -392,5 +409,69 @@ mod cascade_idbase_tests {
     #[test]
     fn cascade_idbase_player_branch_returns_sgw_player() {
         assert_eq!(cascade_idbase(None), IDBASE_SGW_PLAYER);
+    }
+}
+
+#[cfg(test)]
+mod appearance_cascade_tests {
+    use super::*;
+
+    /// A cascade whose NPC has NO appearance data (no static_mesh, no
+    /// body_set/components) emits the `aoi.cascade_appearance_missing`
+    /// negative-log — the seam that surfaces an entity which will be
+    /// invisible to witnesses. Reverting the `warn!` in `append_appearance`
+    /// trips this. (`#[tokio::test]` because `LogCapture::install` requires
+    /// the current-thread runtime.)
+    #[tokio::test]
+    async fn no_appearance_data_emits_warn() {
+        let capture = crate::test_support::LogCapture::install();
+
+        let npc = NpcAoIData {
+            static_mesh: None,
+            body_set: None,
+            components: vec![],
+            ..NpcAoIData::default()
+        };
+        let _ = compose_create_entity_cascade_body(4242, 0x00, 1, Some(&npc));
+
+        let event = capture
+            .find_event(
+                tracing::Level::WARN,
+                "no appearance data",
+                "no_appearance_data",
+            )
+            .expect("missing appearance must emit the aoi.cascade_appearance_missing warn");
+        assert!(
+            event.has_field("entity_id", "4242"),
+            "warn must carry the entity_id field: {event:#?}"
+        );
+    }
+
+    /// Companion guard: an NPC WITH a static mesh (the real Castle_CellBlock
+    /// corpse shape — body_set present but components empty, so the
+    /// static-mesh branch fires) must NOT trip the appearance-missing warn.
+    /// Proves the seam doesn't false-positive on well-formed props.
+    #[tokio::test]
+    async fn static_mesh_present_does_not_warn() {
+        let capture = crate::test_support::LogCapture::install();
+
+        let npc = NpcAoIData {
+            static_mesh: Some("CA-Props.CA-GuardCorpse02".to_string()),
+            body_set: Some("GLB_Components.WorldObject_Small".to_string()),
+            components: vec![],
+            ..NpcAoIData::default()
+        };
+        let _ = compose_create_entity_cascade_body(4243, 0x00, 1, Some(&npc));
+
+        assert!(
+            capture
+                .find_event(
+                    tracing::Level::WARN,
+                    "no appearance data",
+                    "no_appearance_data",
+                )
+                .is_none(),
+            "a static-mesh NPC must not trip the appearance-missing warn"
+        );
     }
 }

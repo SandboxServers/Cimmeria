@@ -4,9 +4,11 @@
 //! entities are tracked in `SpaceInstance::players`; their disconnection
 //! triggers AoI cleanup via the BaseService channel.
 
+use std::time::Instant;
+
 use cimmeria_common::{EntityId, SpaceId, Vector3};
 use cimmeria_entity::cell_entity::CellEntity;
-use cimmeria_entity::movement_validation::{MovementReject, SpaceBounds};
+use cimmeria_entity::movement_validation::{MovementReject, MovementValidator, SpaceBounds};
 
 use super::super::messages::CellToBaseMsg;
 use super::SpaceManager;
@@ -80,6 +82,11 @@ impl SpaceManager {
     /// If the entity was in an instanced space and was the last player, the
     /// entire space instance is destroyed (all remaining NPCs removed).
     pub fn destroy_entity(&mut self, entity_id: u32) {
+        // GM-only session buffers are keyed by entity_id; drop them so a
+        // destroyed (and possibly later reused) id can't inherit stale pending
+        // authoring SQL or the autosave-spawn flag.
+        self.authoring_changes.remove(&entity_id);
+        self.autosave_spawns.remove(&entity_id);
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 
@@ -104,6 +111,9 @@ impl SpaceManager {
                 self.destroy_space(space_id);
             }
         }
+        // Release the entity's movement-validator clock so it can't leak
+        // or carry a stale speed sample across `entity_id` reuse.
+        self.movement_validator.forget(entity_id);
         tracing::debug!(entity_id, "Cell entity destroyed");
     }
 
@@ -127,6 +137,11 @@ impl SpaceManager {
         entity_id: u32,
         tx: &tokio::sync::mpsc::Sender<CellToBaseMsg>,
     ) {
+        // Drop GM-only session buffers (keyed by entity_id) on disconnect so
+        // pending authoring SQL / the autosave-spawn flag don't outlive the
+        // session. Same rationale as `destroy_entity`.
+        self.authoring_changes.remove(&entity_id);
+        self.autosave_spawns.remove(&entity_id);
         if let Some(&space_id) = self.entity_space.get(&entity_id) {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.remove(&entity_id);
@@ -193,11 +208,40 @@ impl SpaceManager {
     /// client receives `BASEMSG_FORCED_POSITION` and snaps its own
     /// avatar back to the last-valid position.
     ///
-    /// PR1 wires the bounds layer only; PR2/3/4 will add speed,
-    /// teleport-detection, and navmesh-containment respectively. The
-    /// outcome type is shared across all four PRs.
+    /// All four validation layers run here, in cheapest-first order:
+    /// bounds (catches NaN / infinity / absurd coordinates and the
+    /// Z-floor-clip), navmesh containment (off-walkable-polygon), then
+    /// the stateful speed/teleport kinematics. Bounds and navmesh both
+    /// hard-reject; speed is warn-only (logged + counted, still
+    /// accepted); teleport hard-rejects. The `spaceId` cross-check
+    /// lives in the `EntityMove` handler, where the client-claimed space
+    /// id is in hand.
+    ///
+    /// Production callers use this 4-arg form (server `Instant::now()`);
+    /// the time-injected [`Self::apply_client_position_update_at`] backs
+    /// it so the speed/teleport layer is deterministic under test.
     pub fn apply_client_position_update(
         &mut self,
+        entity_id: u32,
+        position: [f32; 3],
+        direction: [i8; 3],
+        velocity: [f32; 3],
+    ) -> ClientMoveOutcome {
+        self.apply_client_position_update_at(
+            Instant::now(),
+            entity_id,
+            position,
+            direction,
+            velocity,
+        )
+    }
+
+    /// Time-injected core of [`Self::apply_client_position_update`]. `now`
+    /// is the server's monotonic processing time, threaded in so unit
+    /// tests can drive the speed/teleport layer with controlled deltas.
+    pub fn apply_client_position_update_at(
+        &mut self,
+        now: Instant,
         entity_id: u32,
         position: [f32; 3],
         direction: [i8; 3],
@@ -230,6 +274,17 @@ impl SpaceManager {
         };
 
         let proposed = Vector3::new(position[0], position[1], position[2]);
+
+        // Advance the per-entity processing clock up front and recover the
+        // previous sample, *before* any layer can short-circuit. This is
+        // what stops an attacker from spamming cheaply-rejected
+        // (out-of-bounds / off-navmesh) packets to inflate `dt`, then
+        // slipping one large jump past the teleport gate at an
+        // artificially low implied speed. Every processed packet advances
+        // the clock by exactly one tick regardless of which layer rejects.
+        let prev_sample = self.movement_validator.touch_clock(entity_id, now);
+
+        // Layer 1 — bounds (also the Z-axis floor-clip / NaN / infinity gate).
         if let Err(reason) = self.movement_validator.check_bounds(proposed, &bounds) {
             return ClientMoveOutcome::Rejected {
                 reason,
@@ -239,8 +294,77 @@ impl SpaceManager {
             };
         }
 
+        // Layer 4 — navmesh containment. `is_position_valid` fails open
+        // for spaces with no loaded navmesh, so this is a no-op there and
+        // the bounds AABB remains the only spatial gate. Checked before
+        // kinematics so an off-mesh point is reported as `OffNavmesh`
+        // regardless of how far it is from the last position.
+        if !self.is_position_valid(entity_id, &proposed) {
+            return ClientMoveOutcome::Rejected {
+                reason: MovementReject::OffNavmesh,
+                last_valid,
+                space_id,
+                bounds,
+            };
+        }
+
+        // Layers 2+3 — speed (warn-only) + teleport (hard reject). Measured
+        // against the entity's current authoritative position.
+        let last_pos = Vector3::new(last_valid[0], last_valid[1], last_valid[2]);
+        let kin = self.movement_validator.check_kinematics(
+            now,
+            prev_sample,
+            last_pos,
+            proposed,
+            MovementValidator::DEFAULT_TOP_SPEED,
+        );
+        if let Some(reason) = kin.reject {
+            return ClientMoveOutcome::Rejected {
+                reason,
+                last_valid,
+                space_id,
+                bounds,
+            };
+        }
+        if let Some(sample) = kin.speed_warn {
+            // Warn-only: the move is accepted. Surface the full
+            // (distance, dt, implied_speed) triple so the SigNoz
+            // tolerance-calibration pipeline can compute the legitimate
+            // p99.9 before the speed layer is ever promoted to snap-back.
+            tracing::warn!(
+                target: "movement.validation",
+                entity_id,
+                space_id,
+                client_x = position[0],
+                client_y = position[1],
+                client_z = position[2],
+                distance = sample.distance,
+                dt_secs = sample.dt_secs,
+                implied_speed = sample.implied_speed,
+                top_speed = sample.top_speed,
+                ratio = sample.implied_speed / sample.top_speed,
+                reason = "speed",
+                "movement.speed_warning: client move exceeded speed tolerance \
+                 (warn-only — accepted; calibrate before enforcing)"
+            );
+            cimmeria_observability::counter!(
+                "movement_validation_warns_total",
+                "reason" => "speed",
+            );
+        }
+
         self.update_entity_position(entity_id, position, direction, velocity);
         ClientMoveOutcome::Accepted { position }
+    }
+
+    /// Reseed an entity's movement-validator clock after a server-
+    /// authoritative position write (ring transport, respawn, gate
+    /// arrival, content-engine teleport, GM travel). Suppresses a
+    /// spurious speed warn on the first post-teleport client packet; see
+    /// [`MovementValidator::note_authorized_teleport`].
+    pub fn note_authorized_teleport(&mut self, entity_id: u32) {
+        self.movement_validator
+            .note_authorized_teleport(entity_id, Instant::now());
     }
 
     /// Update an entity's position from a client movement packet.

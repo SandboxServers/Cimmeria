@@ -15,6 +15,11 @@ use super::constants::*;
 
 mod respawn;
 
+// Re-exported for the native GM `gmRespawn` handler
+// (`cell_methods::gm::world`), which reuses the same respawn sequence as the
+// combat Defeat-Window path rather than duplicating it.
+pub(crate) use respawn::handle_respawn;
+
 #[cfg(test)]
 mod tests;
 

@@ -1,8 +1,8 @@
 ---
-title: "SGWPlayer Exposed CellMethod Dispatch Table"
+title: "SGWPlayer / SGWGmPlayer Exposed CellMethod Dispatch Table"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-06-15
 ---
 
 # SGWPlayer Exposed CellMethod Dispatch Table
@@ -410,3 +410,297 @@ This table was derived by reading every `<CellMethods>` section across the entit
 hierarchy .def files, counting only `<Exposed/>` methods in file order.
 Triple-checked 2026-03-16. The OrganizationMember interface has **12** exposed
 methods (not 11 -- `organizationLeave` at line 287 is easily missed).
+
+---
+
+## SGWGmPlayer extension (indices 109+) — #473 / CAT-N-04
+
+GMs (account `access_level > 0`) enter the world as **SGWGmPlayer** (`class_id =
+0x03`) instead of SGWPlayer (`0x02`). The single `class_id` byte in
+CREATE_BASE_PLAYER is what the client uses to bind the entity method table.
+
+`SGWGmPlayer.def` declares `<Parent>SGWPlayer</Parent>` with an empty
+`<Implements>`, so its own `<Exposed/>` CellMethods **append at the end** of the
+flattened table. The inherited SGWPlayer indices 0-108 do **not** renumber, and
+the wire `idbase` stays 61 (the exposed-method-count staircase doesn't step
+between 157 and 163). The first own SGWGmPlayer method (`gmMissionAssign`, def
+line 65) is index **109**; counting forward in document order (skipping
+`gmSetCallback` at def line 312, which has no `<Exposed/>`) runs to index **225**
+(`changeCoverStanceWeight`, def line 673) — 117 gm*/debug methods total
+(indices 109-225 inclusive).
+
+### Authorization
+
+The **entire** SGWGmPlayer tail (`index >= 109`) is GM-gated by
+`crates/services/src/cell/dispatch/gm_gate.rs`: a caller whose
+`CellEntity::access_level` is below `GameMaster` is rejected with an `onErrorCode`
+(method 121) **before** any handler runs. One range rule (`index >= 109`) secures
+every gm* method, implemented or not. See
+[gm-cell-method-gating.md](../architecture/gm-cell-method-gating.md).
+
+### Implemented handlers
+
+A verified subset is wired into the cell router (the rest fall through to the
+already-authorized "unhandled cell method" warn arm — harmless). Each index is
+counted against `SGWGmPlayer.def` document order and asserted in
+`cell::cell_methods::gm::tests::gm_indices_match_def_document_order`.
+
+| Index | Method | Def line | Args | Behaviour |
+|-------|--------|----------|------|-----------|
+| 133 | `gmGiveItem` | 185 | `WSTRING DesignId, INT32 Quantity` | Grants the item to the GM's own inventory via `GrantItem`. DesignId resolved as a positive numeric design id (internal-name resolution not wired in the cell — rejected with a warn). Quantity clamped to `[1, 1000]`. |
+| 163 | `gmGotoXYZ` | 348 | `FLOAT aX, FLOAT aY, FLOAT aZ` | Teleports the GM to the coordinate in their current space via `TeleportPlayer` (same-space FORCED_POSITION snap). Non-finite coordinates rejected. |
+| 190 | `gmKillTarget` | 482 | `INT64 TargetId` | Kills an NPC via the canonical death sequence (`abilities::gm_kill_npc`). Refuses player targets and targets in a different space; INT64 ids out of `u32` range rejected. |
+
+> The `class_id` flip and the per-method index counts are byte-verified server
+> side (see the wire-format test
+> `mercury::world_data::tests::player_creation::create_base_player_class_id_byte_reflects_gm_vs_player`).
+> **Client-side GM-console verification still needs a manual UAT with a real
+> client** — the server emits the correct class id and method indices, but only
+> a live client confirms the GM method table binds and the console commands
+> round-trip.
+
+### Full gm* cell-method inventory + Cimmeria handler status
+
+Every SGWGmPlayer own cell method (indices 109–225), its wire args, the stock
+client console command that fires it (where one exists in the client's
+`SGWTextCommandMgr`), and whether Cimmeria already has a server-side primitive to
+service it. This is the implementation map for expanding the native GM surface
+beyond the 3 verified handlers above.
+
+**Status legend:**
+
+- **DONE** — handler wired in `cell/cell_methods/gm/` (#518).
+- **REUSE** — a direct primitive exists; a thin handler just calls it (low effort).
+- **ADAPT** — a close primitive exists but needs a wrapper, a `pub(crate)`
+  visibility widen, a param/target-vs-self tweak, or a client feedback callback
+  (medium effort). The developer-useful ADAPT roadmap is in
+  [gm-cell-method-adapt-plan.md](../architecture/gm-cell-method-adapt-plan.md).
+- **NEW** — no primitive; build from scratch (high effort).
+
+**Tally (of 117):** 38 DONE · 0 REUSE · 35 ADAPT · 44 NEW.
+
+> **#518 expansion.** All 18 REUSE rows are now **DONE**. The 16 observable-effect
+> commands plus the single-recipient feedback channel (`gm/feedback.rs` —
+> `onPlayerCommunication` on `CHAN_FEEDBACK`, ported from the abandoned chat-command
+> PR #517) and its two query consumers, `gmUsers` (166, space-scoped) and `testLOS`
+> (216), all live in `cell/cell_methods/gm/`. The feedback channel also unblocks the
+> SHOW/LIST ADAPT cluster — see the ADAPT plan.
+
+> **Provenance.** Indices/args are byte-derived from `entities/defs/SGWGmPlayer.def`
+> (document order; `gmSetCallback` at def line 312 excluded — no `<Exposed/>`) and
+> match the client's baked method table. Stock console commands are from
+> `SGWTextCommandMgr` / `Event_SlashCmd_*` / `Event_NetOut_*` strings in `SGW.exe`
+> (QA build) — note the client emits cell calls **by name**, and a few `Event_NetOut`
+> names differ from the cell-method name (`/Spawn`→`gmSpawnByCmd`,
+> `/GiveNaqahdah`→`gmGiveCash`, `/Users`/`/Who`→`gmUsers`); those bindings are by
+> semantics and should be confirmed against a live client / pcap. `file:line`
+> primitives below were surveyed on `main`; the **DONE** rows live in this branch's
+> `cell/cell_methods/gm/` directory. The bigger blocker for *any* new handler is per-call `access_level` at the
+> cell-dispatch boundary — already solved on this branch by `gm_gate` (every index
+> ≥109 is GM-gated), so handlers added here inherit authorization for free.
+
+> **Note on "SHOW/LIST/PRINT" rows (ADAPT):** the *read* is trivial, but delivering
+> text to the GM needs a client-facing callback. The cheapest path is the
+> single-recipient feedback channel #517 already built (`onPlayerCommunication` on
+> `CHAN_FEEDBACK`); the native `onShow*` client methods (SGWGmPlayer client tail,
+> 157+) are the higher-fidelity option.
+
+#### Missions (109–120)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 109 | `gmMissionAssign(WSTRING DesignID, UINT8 popup)` | `/MissionAssign` | **`gm/missions.rs` → `accept_mission` (mission-def first step + objectives)** | **DONE** |
+| 110 | `gmMissionClear(WSTRING DesignID)` | `/MissionClear` | `cell/cell_methods/gm/missions.rs` → `abandon_mission` | **DONE** |
+| 111 | `gmMissionClearActive()` | `/MissionClearActive` | loop `abandon_mission` over `active_missions()` | ADAPT |
+| 112 | `gmMissionClearHistory()` | `/MissionClearHistory` | — (no history-clear) | NEW |
+| 113 | `gmMissionList()` | `/MissionList` | **`gm/query.rs` → `active_missions` + feedback** | **DONE** |
+| 114 | `gmMissionListFull()` | `/MissionListFull` | **`gm/query.rs` → `all_missions` + feedback** | **DONE** |
+| 115 | `gmMissionDetails(WSTRING DesignID)` | `/MissionDetails` | **`gm/query.rs` → `get_mission` + feedback (numeric id)** | **DONE** |
+| 116 | `gmMissionAdvance(WSTRING DesignID, INT32 step)` | `/MissionAdvance` | `cell/cell_methods/gm/missions.rs` → `advance_step` | **DONE** |
+| 117 | `gmMissionReset(WSTRING DesignID, INT32 step)` | `/MissionReset` | — (no revert primitive) | NEW |
+| 118 | `gmMissionComplete(WSTRING DesignID, INT8 turnIn)` | `/MissionComplete` | `cell/missions.rs:409 complete_mission_direct` (does NOT fire rewards) | ADAPT |
+| 119 | `gmMissionSetAvailable(WSTRING DesignID)` | `/MissionSetAvailable` | — (availability not tracked in entity state) | NEW |
+| 120 | `gmMissionAbandon(WSTRING DesignID)` | — | `cell/cell_methods/gm/missions.rs` → `abandon_mission` | **DONE** |
+
+#### Show / query (121–131)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 121 | `gmShowTargetLocation()` | — | **`gm/query.rs` → `CellEntity.position` + feedback** | **DONE** |
+| 122 | `gmShowRotation()` | — | **`gm/query.rs` → `CellEntity.direction` + feedback** | **DONE** |
+| 123 | `listAbilities()` | — | **`gm/query.rs` → `known_ability_ids` + feedback** | **DONE** |
+| 124 | `showPointSet(WSTRING Type)` | — | cover/nav point sets (partial) | ADAPT |
+| 125 | `gmShowFlag(INT32 flagId)` | — | **`gm/query.rs` → `has_state_flag` bit test + feedback** | **DONE** |
+| 126 | `gmListInteractions()` | — | read `available_interactions` + feedback | ADAPT |
+| 127 | `gmGetMobAttribute(INT32 target, WSTRING attr)` | — | **`gm/query.rs` → hand-mapped attr read + feedback** | **DONE** |
+| 128 | `gmShowMobCount(INT32 spaceId)` | — | **`gm/query.rs` → `all_npc_entity_ids` (space-scoped) + feedback** | **DONE** |
+| 129 | `gmShowIP(INT32 target)` | — | SocketAddr in `connected_clients` (no eid→addr index) | ADAPT |
+| 130 | `gmShowInventory(INT32 target)` | — | CellEntity has no inventory → base read / base→cell RPC | NEW |
+| 131 | `gmShowPlayer(INT32 target)` | — | **`gm/query.rs` → entity-info dump (FanMMORPG `.info`) + feedback** | **DONE** |
+
+#### Give / grant (132–141)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 132 | `gmGiveXp(INT32 amount)` | `/GiveXp` | `cell/cell_methods/gm/give.rs` → `GrantXP` | **DONE** |
+| 133 | `gmGiveItem(WSTRING DesignId, INT32 qty)` | `/GiveItem` | **`gm/give.rs` → `GrantItem`** | **DONE** |
+| 134 | `gmGiveCash(INT32 amount)` | `/GiveNaqahdah` | `cell/cell_methods/gm/give.rs` → `GrantCash` | **DONE** |
+| 135 | `gmRemoveItem(ItemID id, INT16 qty)` | — | `cell/cell_methods/gm/give.rs` → `RemoveInventoryItem` | **DONE** |
+| 136 | `gmGiveAbility(INT32 abilityID)` | `/GiveAbility` | `progression/mod.rs:400 handle_train_ability` (debits a point; need no-debit variant) | ADAPT |
+| 137 | `gmGiveTrainingPoints(INT32 n)` | — | — (no grant fn; XP path touches the field) | NEW |
+| 138 | `gmGiveRespawner(INT32 mobID)` | `/GiveRespawner` | — (respawner persistence not implemented) | NEW |
+| 139 | `gmGiveExpertise(INT32 disc, INT32 amt)` | — | `cell/cell_methods/gm/give.rs handle_give_expertise` → `CellToBaseMsg::GrantExpertise` → `base/crafting/handlers.rs handle_grant_expertise` (load/clamp/save + `onUpdateDiscipline` 136) | **DONE** |
+| 140 | `gmGiveAppliedSciencePoints(INT32 pts)` | — | `cell/cell_methods/gm/give.rs handle_give_applied_science` → `CellToBaseMsg::GrantAppliedSciencePoints` → `base/crafting/handlers.rs handle_grant_applied_science` (persist-only; no outbound ASP client method) | **DONE** |
+| 141 | `gmGiveRacialParadigmLevels(INT32 id, INT32 lvls)` | — | `racial_paradigm_levels` array column (needs edit fn) | ADAPT |
+
+#### Set player / target state (142–158)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 142 | `gmSetGodMode(UINT8 on)` | `/SetGodMode` | — (no godmode flag; gate would live in `cell/combat/damage.rs:161`) | NEW |
+| 143 | `gmSetNoXP()` | `/SetNoXP` | — (no XP-immunity flag) | NEW |
+| 144 | `gmSetNoDamage()` | `/SetNoDamageTimedMode` | — (no damage-immunity flag) | NEW |
+| 145 | `gmSetNoAggro(UINT8 on)` | `/SetNoAggro` | — (NPC threat seeding has no gate) | NEW |
+| 146 | `gmSetSpeed(FLOAT mult)` | — | `stats/stat.rs:51 set_current` on MOVEMENT_SPEED_MOD | ADAPT |
+| 147 | `gmSetHealth(INT32 amt, INT64 target)` | — | `cell/cell_methods/gm/stats.rs` → `set_current(HEALTH)` | **DONE** |
+| 148 | `gmSetHealthMax(INT32 amt, INT64 target)` | — | `cell/cell_methods/gm/stats.rs` → `set_max(HEALTH)` | **DONE** |
+| 149 | `gmSetFocus(INT32 amt, INT64 target)` | — | `cell/cell_methods/gm/stats.rs` → `set_current(FOCUS)` | **DONE** |
+| 150 | `gmSetFocusMax(INT32 amt, INT64 target)` | — | `cell/cell_methods/gm/stats.rs` → `set_max(FOCUS)` | **DONE** |
+| 151 | `gmSetFlag(INT32 flagId, UINT8 force)` | — | `state_flags.rs:36 set_state_flag` (ref-counted; raw force-set caveat) | ADAPT |
+| 152 | `gmSetLevel(INT32 level)` | — | `stat_list.rs:305 scale_for_level` + level write + recompute (no single fn) | ADAPT |
+| 153 | `gmResetAbilities()` | — | — | NEW |
+| 154 | `gmGiveAllAbilities()` | — | — (enumerate archetype tree + bulk insert + burst) | NEW |
+| 155 | `gmRespec()` | — | — | NEW |
+| 156 | `gmSetTarget(WSTRING nameOrID)` | — | `cell/cell_methods/gm/world.rs` → `current_target_id` + onTargetUpdate (numeric id only) | **DONE** |
+| 157 | `gmSetMobStance(INT32 stance)` | — | — (no stance field separate from `AiState`) | NEW |
+| 158 | `gmSetMobAbilitySet(INT32 setId)` | — | `entity/abilities.rs` mutate `known_abilities` (player-oriented) | ADAPT |
+
+#### Travel (159–163)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 159 | `gmDHD(INT8 gateAddr)` | — | `cell/cell_methods/gm/travel.rs` → `handle_dial_gate` | **DONE** |
+| 160 | `gmGoto(WSTRING nameOrID)` | `/Goto` | **`gm/travel.rs` → `TeleportPlayer` to target pos (numeric id, same-space)** | **DONE** |
+| 161 | `gmSummon(WSTRING nameOrID)` | — | **`gm/travel.rs` → move target (`TeleportPlayer`/`update_entity_position`)** | **DONE** |
+| 162 | `gmGotoLocation(WSTRING world, FLOAT x,y,z)` | `/GotoLocation` | `cell/cell_methods/gm/travel.rs` → `GateTravel` | **DONE** |
+| 163 | `gmGotoXYZ(FLOAT x,y,z)` | `/GotoXYZ` | **`gm/travel.rs` → `TeleportPlayer`** | **DONE** |
+
+#### Admin / social (164–168)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 164 | `gmReloadOrganizations()` | `/ReloadOrganizations` | — (org methods are stubs; no def hot-reload) | NEW |
+| 165 | `gmReloadInventory()` | `/ReloadInventory` | — (no inventory-def hot-reload) | NEW |
+| 166 | `gmUsers()` | `/Users`, `/Who` | **`gm/query.rs` → `all_player_entity_ids` + feedback (space-scoped; all-shard via base round-trip is future)** | **DONE** |
+| 167 | `gmSetHideGM(UINT8 on)` | `/SetHideGM` | — (`bHideGM` not implemented; `access_level` read-only at login) | NEW |
+| 168 | `gmPrintStats(WSTRING stat)` | `/PrintStats` | per-entity `stat_list.rs` + feedback (server-wide stats: none) | ADAPT |
+
+#### Debug (169–184)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 169 | `gmDebugAbility(INT32 abilityId)` | — | — | NEW |
+| 170 | `gmDebugCombat()` | — | stub `cell_methods/ability_manager.rs:22` (also gated as in-range idx 2) | ADAPT |
+| 171 | `gmDebugCombatVerbose()` | — | log-only stub (in-range idx 3) | ADAPT |
+| 172 | `gmDebugHeal()` | — | stub `cell_methods/combatant.rs:59` (in-range idx 6) | ADAPT |
+| 173 | `gmDebugStartMinigame(INT32 gameId)` | — | `minigame/session.rs:60 register` + cell dispatch stub | ADAPT |
+| 174 | `gmDebugSpectateMinigame()` | — | cell stub `cell_methods/minigame.rs` | ADAPT |
+| 175 | `gmDebugJoinMinigame()` | — | cell stub | ADAPT |
+| 176 | `gmDebugAbilityOnMob(INT32 abilityID)` | — | — | NEW |
+| 177 | `gmDebugBehaviorsOnMob()` | — | read `ai_state`/`threat_list` + stream callback | ADAPT |
+| 178 | `gmDebugPathsOnMob()` | — | read `cell_entity/mod.rs:493 nav_path` + `onShowPath` callback | ADAPT |
+| 179 | `gmDebugEvents(INT32 target, INT32 level)` | — | — | NEW |
+| 180 | `gmDebugMobData(INT32 space, INT32 target)` | — | **`gm/query.rs` → mob-data dump + feedback** | **DONE** |
+| 181 | `gmDebugInteract()` | — | — | NEW |
+| 182 | `gmEmitBehaviorEventOnMob(INT32 id)` | — | — | NEW |
+| 183 | `gmAddBehaviorEventSet(INT32 id)` | — | — | NEW |
+| 184 | `gmRemoveBehaviorEventSet(INT32 id)` | — | — | NEW |
+
+#### Spawn / mob (185–190)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 185 | `gmSpawnByCmd(WSTRING DesignId, FLOAT xOff, FLOAT zOff)` | `/Spawn` | `cell/cell_methods/gm/spawn.rs handle_spawn_by_cmd` → `CellToBaseMsg::GmSpawnNpc` → `base/gm_spawn.rs handle_gm_spawn_npc` (entity_templates→`SpawnRecord`) → `BaseToCellMsg::GmSpawnNpcReady` → `space_manager/spawn.rs:85 spawn_npc_from_record_in_space`. Base round-trip (no cell template cache), mirrors `TrainAbility`→`AbilityGranted`. | **DONE** |
+| 186 | `gmDespawnByCmd(INT32 target)` | — | `cell/cell_methods/gm/world.rs` → `destroy_entity` (NPC-only) | **DONE** |
+| 187 | `gmRechargeItem(INT32 itemId)` | — | vendor `recharge.rs` (base-scoped; need GM cell→base route) | ADAPT |
+| 188 | `gmSetMobAttribute(INT32 target, WSTRING attr, WSTRING type, INT32 val)` | — | `queries.rs:35 get_entity_mut` (no reflection; hand-map attrs) | ADAPT |
+| 189 | `gmRespawn()` | `/Respawn` | `cell/cell_methods/gm/world.rs` → `handle_respawn` | **DONE** |
+| 190 | `gmKillTarget(INT64 target)` | `/Kill` | **`gm/world.rs` → `abilities::gm_kill_npc`** | **DONE** |
+
+#### Minigame (191–193)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 191 | `debugMinigameComplete(INT32 resultCode)` | — | base `cell_dispatch/minigame.rs:90 minigame_result` | ADAPT |
+| 192 | `gmGiveMinigameContact(WSTRING contactId, INT64 target)` | — | stub `cell_methods/minigame.rs:159` | NEW |
+| 193 | `gmRemoveMinigameContact(WSTRING contactId, INT64 target)` | — | stub | NEW |
+
+#### Stargate / content reload (194–207)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 194 | `gmGiveStargateAddress(WSTRING addr, INT64 target, UINT8 hidden)` | — | `spawner/stargates.rs:20 load_stargates` is startup-cache only; no per-player grant | NEW |
+| 195 | `gmRemoveStargateAddress(WSTRING addr, INT64 target)` | — | — | NEW |
+| 196 | `loadConstants()` | — | — (no constants module / hot-reload) | NEW |
+| 197 | `loadAbility(INT32 id)` | — | `spawner/abilities.rs:85 load_ability_defs` (full reload only) | ADAPT |
+| 198 | `loadNACSI(INT32 id)` | — | — (no NACSI table) | NEW |
+| 199 | `loadAbilitySet(INT32 id)` | — | `spawner/abilities.rs:174 load_archetype_ability_trees` (full) | ADAPT |
+| 200 | `loadBehavior(INT32 id)` | — | — (no loadable behavior defs) | NEW |
+| 201 | `loadMOB(INT32 id)` | — | — (no per-mob-def reload) | NEW |
+| 202 | `loadDialogSet(INT32 id)` | — | `spawner/dialogs.rs:28 load_dialog_set_maps` (full) | ADAPT |
+| 203 | `loadItem(INT32 id)` | — | `spawner/loot.rs:173 load_item_defs` (full, weapons only) | ADAPT |
+| 204 | `loadMission(INT32 id)` | — | `spawner/missions.rs:40 load_mission_defs` (full) | ADAPT |
+| 205 | `setMobVariable(INT32 var, INT32 val)` | — | — (no generic KV store on mob) | NEW |
+| 206 | `enterErrorAIState()` | — | `service/npc_ai.rs:1595` + `ai_state = AiState::Error` (also content `Action::SetNpcAiState`) | ADAPT |
+| 207 | `exitErrorAIState()` | — | clear `AiState::Error` (no GM entrypoint) | ADAPT |
+
+#### Instance / perf / nav (208–211)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 208 | `gmPerfStatsByChannel(INT8 onOff)` | — | — (no per-channel perf counters) | NEW |
+| 209 | `gmShowInstanceFlag(INT32 flag)` | — | — (no `instance_flags` on SpaceInstance) | NEW |
+| 210 | `gmSetInstanceFlag(INT32 flag, INT8 val)` | — | — | NEW |
+| 211 | `gmShowNavigation(INT8 onOff)` | — | `space_manager/mod.rs:84 navmesh` readable; no overlay callback | ADAPT |
+
+#### Test / loot / vision / cover (212–225)
+
+| Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
+|-----|---------------|-----------|--------------------|--------|
+| 212 | `spawnEntityLoot(INT32 entity, LootTableID)` | — | `abilities/loot_drop.rs:29 generate_loot_on_death` (`pub(super)`) | ADAPT |
+| 213 | `despawnMob(INT32 entityID)` | — | `cell/cell_methods/gm/world.rs` → `destroy_entity` (NPC-only) | **DONE** |
+| 214 | `activateSpawnSet(INT32 id)` | — | — (no spawn-set runtime activation API) | NEW |
+| 215 | `deactivateSpawnSet(INT32 id)` | — | — | NEW |
+| 216 | `testLOS(INT32 source, INT32 target)` | — | **`gm/query.rs` → `has_line_of_sight` + feedback** | **DONE** |
+| 217 | `toggleCombatLOS()` | — | `bCombatLOS` def-only; no Rust enforcement toggle | NEW |
+| 218 | `trackMob()` | — | read `ai_state`; no debug-stream toggle | ADAPT |
+| 219 | `onXRayEyes(UINT8 on)` | — | client-side presentation only; no server state | NEW |
+| 220 | `onInvisible(UINT8 on)` | — | `mercury/aoi/leave.rs:18 build_entity_invisible` (wire only); no visibility-toggle state | NEW |
+| 221 | `onPhysics(UINT8 on)` | — | — | NEW |
+| 222 | `sendGMShout(UINT8 global, WSTRING text)` | — | `cell/chat.rs:101 broadcast_to_witnesses` (need space/all-shard variant) | ADAPT |
+| 223 | `regenerateCoverLinks(FLOAT normLimit, UINT32 maxLinks, FLOAT maxDist)` | — | `cover/loader.rs:88` static-load only; no regen algorithm | NEW |
+| 224 | `changeCoverWeight(6×FLOAT)` | — | `cover/scoring.rs:38 CoverWeights` (compile-time const; needs RwLock) | ADAPT |
+| 225 | `changeCoverStanceWeight(WSTRING stance, 6×WSTRING)` | — | — (no stance-weight system) | NEW |
+
+#### Also gated (in-range SGWPlayer indices, not in the 109+ tail)
+
+These GM/debug methods share the inherited SGWPlayer interface range and are named
+explicitly in `requires_gm` (see [gm-cell-method-gating.md](../architecture/gm-cell-method-gating.md)):
+`2 toggleCombatDebug`, `3 toggleCombatVerboseDebug`, `6 toggleHealDebug` (log-only
+stubs today), and `92 onWorldInstanceReset` (CAT-N-01, High — destroys + recreates
+the space instance; **NEW**, keep gated, no handler).
+
+#### How to add a handler
+
+Each native command is `Event_SlashCmd_X` → `Event_NetOut_X` (client-side, already
+in the binary) → the cell-method index above. Server-side you only implement the
+cell handler: add an arm to `cell/cell_methods/gm::dispatch` (in
+`cell/cell_methods/gm/mod.rs`) keyed on the index, put the handler in the right
+family submodule (`give`/`stats`/`missions`/`travel`/`world`), parse the args per
+the def, call the primitive in the table (widening visibility / adding a wrapper
+as the status notes), and — for SHOW/LIST rows — emit text via the
+`CHAN_FEEDBACK` `onPlayerCommunication` path. The `gm_gate` already authorized the
+caller, so handlers must **not** re-check access level. Pin the new index in
+`gm_indices_match_def_document_order`. The roadmap for the developer-useful
+ADAPT commands is in
+[gm-cell-method-adapt-plan.md](../architecture/gm-cell-method-adapt-plan.md).

@@ -227,6 +227,25 @@ pub async fn handle_use_inventory_item(
         "UseInventoryItem: firing ItemUsed (no consumption — chain decides)"
     );
 
+    // Discord gameplay-channel (off by default — high volume). Resolve the
+    // player's name through entity_to_addr → connected; skip the emit if the
+    // name isn't cached. `target` carries the numeric target id when one was
+    // supplied (cell-side has the name; base only has the id).
+    if let Some(character_name) = entity_to_addr
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&entity_id).copied())
+        .and_then(|a| {
+            connected
+                .lock()
+                .ok()
+                .and_then(|c| c.get(&a).and_then(|s| s.player_name.clone()))
+        })
+    {
+        let target = (target_id != 0).then(|| format!("entity:{target_id}"));
+        cimmeria_discord::emit_item_used(character_name, type_id, target);
+    }
+
     let payload = CellOutboxPayload::ItemUsed {
         instance_id: item_id,
         type_id,

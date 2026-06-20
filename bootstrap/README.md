@@ -14,10 +14,12 @@ This will:
 
 1. Check prerequisites (Rust toolchain, Node.js)
 2. Download PostgreSQL 17.9 server binaries (~50 MB, Windows only)
-3. Build the Rust server (`cargo build --workspace`)
+3. Build the Rust server (`cargo build --workspace` minus the GUI apps —
+   see [`CimmeriaBootstrap/README.md`](CimmeriaBootstrap/README.md))
 4. Build the Tauri admin app (optional, requires Node.js)
-5. Initialize PostgreSQL on port 5433 with game schemas
-6. Launch the cimmeria-server binary
+5. Sync cooked game data (PAK files) from the SGW client into `data/cache/`
+6. Initialize PostgreSQL on port 5433 with game schemas
+7. Launch the cimmeria-server binary
 
 When it finishes, connect with the game client using **test** / **test**.
 
@@ -34,10 +36,13 @@ Import-Module ./bootstrap/CimmeriaBootstrap
 # Examples:
 Build-CimmeriaServer -Configuration Release  # Build release
 Build-CimmeriaApp -Configuration Release     # Build Tauri admin app
+Build-CimmeriaLauncher                       # Build the SGW game launcher
+Sync-CimmeriaGameData                        # Copy client PAK files into data/cache/
 Initialize-CimmeriaDatabase -Force           # Wipe and reload database
 Start-CimmeriaServer                         # Launch server
 Stop-CimmeriaServer                          # Shut down everything
 Update-CimmeriaClient                        # Patch game client
+Install-CimmeriaReToolchain                  # Install the RE toolchain (opt-in)
 ```
 
 ## Prerequisites
@@ -101,11 +106,6 @@ The bootstrap runs on **Windows**, **Linux**, and **macOS** via PowerShell 7.
 | Windows | Auto-downloaded binary distribution | Managed instance in `server/pgdata/` |
 | Linux | System package (`apt install postgresql-17`) | Must be running before bootstrap |
 | macOS | Homebrew (`brew install postgresql@17`) | Must be running before bootstrap |
-
-## Legacy Script
-
-The original `setup-dependencies.ps1` in the project root is now a compatibility
-shim that calls `setup.ps1 -NoLaunch -SkipApp`.
 
 ## Connecting a Game Client
 

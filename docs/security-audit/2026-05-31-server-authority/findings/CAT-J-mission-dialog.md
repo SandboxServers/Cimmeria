@@ -45,6 +45,18 @@ movement-physics-advisor should consult-review on **CAT-J-01** and **CAT-J-04**.
 
 ### CAT-J-01 — DialogButtonChoice fires arbitrary content chain with no "is this dialog open?" check
 
+**Status**: ✅ RESOLVED (#479) — `CellEntity::open_dialog_id` is pinned by
+`send_dialog_display` (the single choke point all display paths route
+through) and matched on strict equality in the `DIALOG_BUTTON_CHOICE`
+handler; a forged/replayed choice for an un-opened `dialog_id` is dropped
+with a `warn!` and never fires the chain. The pin is cleared one-shot on a
+valid choice (mirrors python `SGWPlayer.displayedDialogs`), which also
+makes a replayed choice idempotent (closes the replay sub-finding). The
+`button_id` stays unvalidated by design — `OnDialogChoice` matches
+`dialog_id` only. **Does not** address CAT-J-04 (no level/faction/prereq
+gate on `accept_or_advance`); a legitimately-opened reward dialog still
+accepts without prereq checks — that's the separate follow-up finding.
+
 **Severity**: Critical
 **Class**: Missing server-side state precondition; chain-engine event spoofing
 **Wire surface**: `Event_NetOut_DialogButtonChoice` (cell method 75)

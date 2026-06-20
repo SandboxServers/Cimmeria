@@ -60,8 +60,18 @@ pub(crate) async fn handle_gate_travel(
         .copied()
         .ok_or("Gate travel: no client addr for entity")?;
 
-    // Get client state
-    let (key, account_id, _access_level, pending_acks_arc, next_seq) = {
+    // Get client state. Also snapshot the name + current world for the
+    // Discord world-exit emit before they're overwritten by the new world.
+    let (
+        key,
+        account_id,
+        account_name,
+        _access_level,
+        pending_acks_arc,
+        next_seq,
+        exit_name,
+        exit_from_world,
+    ) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients
             .get(&addr)
@@ -69,9 +79,12 @@ pub(crate) async fn handle_gate_travel(
         (
             c.key,
             c.account_id,
+            c.account_name.clone(),
             c.access_level,
             Arc::clone(&c.pending_acks),
             Arc::clone(&c.next_seq),
+            c.player_name.clone(),
+            c.world_name.clone(),
         )
     };
 
@@ -210,6 +223,21 @@ pub(crate) async fn handle_gate_travel(
         addr,
         seq,
         cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+    );
+
+    // Discord world-channel: emit only here, once the transition is
+    // committed — past the active_player_id fail-closed early-returns and
+    // the RESET_ENTITIES send (which `?`-returns on a send error). Firing it
+    // at the top of the handler would post a false "world exit" whenever
+    // gate travel aborts. `from_world` is the session's last world; `to_world`
+    // is the gate destination. (Snapshotted above before the new world
+    // overwrites the connected state.)
+    cimmeria_discord::emit_player_world_exit(
+        account_id,
+        account_name,
+        exit_name.unwrap_or_else(|| "<unknown>".to_string()),
+        exit_from_world.unwrap_or_else(|| "<unknown>".to_string()),
+        Some(target_world_name.to_string()),
     );
 
     // Store pending world entry for the create-player step (ENABLE_ENTITIES handler)

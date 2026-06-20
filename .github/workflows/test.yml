@@ -144,7 +144,7 @@ jobs:
         # on cancellation), so failing tests still get their JUnit uploaded
         # for Test Analytics annotations on the PR.
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: target/nextest/ci/junit.xml
@@ -212,7 +212,7 @@ jobs:
         run: cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
       - name: upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: target/nextest/ci-live-db/junit.xml
@@ -328,7 +328,7 @@ jobs:
         # upload (the action exits 0 when no token is present); coverage
         # deltas for fork PRs come via Codecov's GitHub App on the merge
         # commit instead.
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           files: target/coverage/cobertura.xml
           token: ${{ secrets.CODECOV_TOKEN }}

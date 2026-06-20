@@ -380,6 +380,8 @@ pub(super) async fn apply_damage_to_target(
                     .send(CellToBaseMsg::GrantXP {
                         entity_id,
                         xp_amount: xp,
+                        // Mob-kill XP is not GM-sourced — no GM feedback line.
+                        notify_gm: false,
                     })
                     .await
                 {

@@ -113,6 +113,16 @@ wrong (they can't reproduce the racing client ordering).
 
 ### CAT-D-02 — `lootItem` does not recheck range, line-of-sight, or alive-state
 
+**Status**: ✅ PARTIALLY RESOLVED (#446) — `handle_loot_item`
+(`cell/interactions/loot.rs`) now re-validates the looter's live distance
+to the corpse against `MAX_INTERACT_DISTANCE` on **every** `lootItem`
+call, denying out-of-range takes (drop preserved, nothing granted,
+`warn!` logged). This closes the position-spoof "vacuum loot" chain — the
+highest-impact half of the finding. **Still open**: kill-credit / loot
+ownership (a 0-damage player can still loot a corpse they walk up to) and
+LOS/alive-state rechecks — the larger SGW lootability-window model, routed
+through the combat-systems advisor as the #446 follow-up.
+
 **Severity**: High
 **Class**: Missing range/state recheck on stateful action
 **Wire surface**: cell method 84 (`lootItem`) — index dispatched from

@@ -13,6 +13,10 @@ cimmeria-game = { workspace = true }
 cimmeria-content-engine = { workspace = true }
 cimmeria-commands = { workspace = true }
 cimmeria-observability = { workspace = true }
+# Discord notification emits at semantic seams (login/world-entry/disconnect/
+# errors/…). The crate's global-singleton `emit_*` API means no handle
+# threading — calls are no-ops until the server bin runs `cimmeria_discord::init`.
+cimmeria-discord = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
 rand = { workspace = true }

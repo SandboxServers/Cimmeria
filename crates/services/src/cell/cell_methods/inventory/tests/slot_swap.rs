@@ -38,6 +38,9 @@ async fn slot_swap_preserves_per_slot_ammo() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                // Distinct from item_id (design id) so the swap-flush
+                // assertion proves the guard keys on the instance PK.
+                instance_id: 1010,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -48,6 +51,7 @@ async fn slot_swap_preserves_per_slot_ammo() {
         e.bandolier_items.insert(
             1,
             BandolierItem {
+                instance_id: 1011,
                 item_id: 11,
                 clip_size: 12,
                 default_ammo_type: 7,
@@ -124,15 +128,15 @@ async fn slot_swap_preserves_per_slot_ammo() {
         CellToBaseMsg::BandolierAmmoUpdate {
             player_id,
             slot_id,
-            expected_item_id,
+            expected_instance_id,
             current_ammo,
             cur_ammo_type,
         } => {
             assert_eq!(player_id, 100);
             assert_eq!(slot_id, 0, "first swap msg should flush prev slot 0");
             assert_eq!(
-                expected_item_id, 10,
-                "should carry slot 0's item_id for TOCTOU guard"
+                expected_instance_id, 1010,
+                "should carry slot 0's instance PK (sgw_inventory.item_id) for TOCTOU guard, not the design id"
             );
             assert_eq!(current_ammo, 28);
             assert_eq!(cur_ammo_type, 1);
@@ -269,6 +273,7 @@ async fn slot_swap_cancels_in_flight_reload() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -279,6 +284,7 @@ async fn slot_swap_cancels_in_flight_reload() {
         e.bandolier_items.insert(
             1,
             BandolierItem {
+                instance_id: 0,
                 item_id: 11,
                 clip_size: 12,
                 default_ammo_type: 7,
@@ -353,6 +359,7 @@ async fn slot_swap_cancels_pending_attack_queue() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -363,6 +370,7 @@ async fn slot_swap_cancels_pending_attack_queue() {
         e.bandolier_items.insert(
             1,
             BandolierItem {
+                instance_id: 0,
                 item_id: 11,
                 clip_size: 12,
                 default_ammo_type: 7,
@@ -428,6 +436,7 @@ async fn slot_swap_cancels_pending_reload_phase_a() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,
@@ -438,6 +447,7 @@ async fn slot_swap_cancels_pending_reload_phase_a() {
         e.bandolier_items.insert(
             1,
             BandolierItem {
+                instance_id: 0,
                 item_id: 11,
                 clip_size: 12,
                 default_ammo_type: 7,
@@ -492,6 +502,7 @@ async fn same_slot_no_op_preserves_pending_attack_queue() {
         e.bandolier_items.insert(
             0,
             BandolierItem {
+                instance_id: 0,
                 item_id: 10,
                 clip_size: 30,
                 default_ammo_type: 1,

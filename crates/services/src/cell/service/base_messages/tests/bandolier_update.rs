@@ -11,6 +11,7 @@ async fn update_bandolier_item_inserts_slot_and_sets_active() {
         .unwrap();
 
     let item = BandolierItem {
+        instance_id: 0,
         item_id: 42,
         clip_size: 25,
         default_ammo_type: 2,
@@ -80,6 +81,7 @@ async fn update_bandolier_item_draws_weapon_and_arms_holster_timer_when_active()
         .insert((804, crate::cell::spawner::EVENT_ITEM_EQUIP), 1872);
 
     let item = BandolierItem {
+        instance_id: 0,
         item_id: 42,
         clip_size: 25,
         default_ammo_type: 2,
@@ -183,6 +185,7 @@ async fn update_bandolier_item_make_active_false_but_slot_matches_active_still_d
         .insert((804, crate::cell::spawner::EVENT_ITEM_EQUIP), 1872);
 
     let item = BandolierItem {
+        instance_id: 0,
         item_id: 42,
         clip_size: 25,
         default_ammo_type: 2,
@@ -280,6 +283,7 @@ async fn update_bandolier_item_make_active_false_into_non_active_slot_does_not_d
     mgr.connect_entity(1);
 
     let item = BandolierItem {
+        instance_id: 0,
         item_id: 99,
         clip_size: 30,
         default_ammo_type: 1,
@@ -383,6 +387,7 @@ async fn update_bandolier_item_in_combat_does_not_arm_holster_timer() {
     mgr.connect_entity(1);
 
     let item = BandolierItem {
+        instance_id: 0,
         item_id: 42,
         clip_size: 25,
         default_ammo_type: 2,
@@ -455,6 +460,7 @@ async fn update_bandolier_item_active_emits_ammo_type_id() {
         .insert((804, crate::cell::spawner::EVENT_ITEM_EQUIP), 1872);
 
     let item = BandolierItem {
+        instance_id: 0,
         item_id: 77,
         clip_size: 30,
         default_ammo_type: AMMO_TYPE,

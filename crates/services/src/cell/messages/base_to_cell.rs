@@ -30,6 +30,12 @@ pub enum BaseToCellMsg {
     /// Client position/movement update forwarded from `avatarUpdateExplicit`.
     EntityMove {
         entity_id: u32,
+        /// Space id the client claims it is in (payload[0..4] of the 0x03
+        /// packet). The authoritative write always uses the server's
+        /// `entity_space` binding, never this value — it exists only so
+        /// the cell can warn on a server↔client space divergence
+        /// (CAT-B-06), which surfaces gate-travel / instance-reset races.
+        claimed_space_id: u32,
         position: [f32; 3],
         direction: [i8; 3],
         velocity: [f32; 3],
@@ -86,6 +92,28 @@ pub enum BaseToCellMsg {
         /// so the auto-reload and reload-on-activate triggers honour the
         /// player's saved preferences instead of falling back to defaults.
         system_options: cimmeria_entity::cell_entity::SystemOptions,
+        /// Persisted user-preference state bits from `sgw_player.state_field`
+        /// (today: `BSF_AutoCycling` only — see `PERSISTED_STATE_FIELD_MASK`).
+        /// The handler masks again on restore, ORs the bits onto
+        /// `CellEntity::state_field`, re-arms `abilities.auto_cycle`, and
+        /// re-broadcasts `onStateFieldUpdate` so the client's button
+        /// highlight survives the relog. (#412)
+        state_field: u32,
+        /// Account access level (0=Player … 4=Developer) from the login
+        /// session (`ConnectedClientState.access_level`, itself sourced from
+        /// the `account.accesslevel` DB column). Stored on
+        /// `CellEntity::access_level` so the cell-method GM gate can reject
+        /// `gm*`/debug methods from non-privileged callers. Authoritative
+        /// server-side value — never client-supplied. (#475 / CAT-N-03)
+        access_level: u32,
+        /// The selected character's display name, sourced from the base
+        /// `ConnectedClientState.player_name`. Cached on
+        /// `CellEntity::character_name` so cell-side seams (the `.`-console
+        /// GM audit trail, mission/death/respawn notifications) can attribute
+        /// events to a name instead of a bare entity id — the cell otherwise
+        /// has no name for a player. `None` only if the base session somehow
+        /// reached world entry without a cached name.
+        character_name: Option<String>,
     },
 
     /// Update one bandolier slot after a runtime item grant.
@@ -212,5 +240,30 @@ pub enum BaseToCellMsg {
     RequestEntityUpdate {
         witness_id: u32,
         entity_ids: Vec<u32>,
+    },
+
+    /// Base resolved a `gmSpawnByCmd` template into a `SpawnRecord` and is
+    /// handing it back to the cell to spawn. Response to
+    /// [`crate::cell::messages::CellToBaseMsg::GmSpawnNpc`] — the round-trip
+    /// exists because only the base side can query `resources.entity_templates`
+    /// to build the record (the cell has no template cache). The cell allocates
+    /// an NPC id and calls `spawn_npc_from_record_in_space(id, &record,
+    /// space_id)`; AoI fanout handles client visibility on the next tick, so no
+    /// extra send is needed. `record.x/y/z` already carry the computed spawn
+    /// position from the original command.
+    ///
+    /// `record` is boxed because `SpawnRecord` is ~380 bytes — large enough
+    /// that carrying it inline would balloon every `BaseToCellMsg` variant
+    /// (clippy `large_enum_variant`). Boxing keeps the channel cheap to move.
+    ///
+    /// `requester_entity_id` is the GM entity that issued `gmSpawnByCmd`. The
+    /// cell carries it through so it can send the *definitive* "spawned npc
+    /// <id>" feedback line to the GM only after `spawn_npc_from_record_in_space`
+    /// actually succeeds (the cell is the layer that knows the new NPC id and
+    /// whether the spawn took).
+    GmSpawnNpcReady {
+        record: Box<crate::cell::spawner::SpawnRecord>,
+        space_id: u32,
+        requester_entity_id: u32,
     },
 }

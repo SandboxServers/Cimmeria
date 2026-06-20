@@ -142,6 +142,7 @@ use cimmeria_entity::manager::EntityManager;
 fn make_pending_login(account_id: u32, key_byte: u8) -> PendingLogin {
     PendingLogin {
         account_id,
+        account_name: format!("acct{account_id}"),
         access_level: 0,
         ticket: "TICKET00000000000001".to_string(),
         // 32-byte key encoded as 64 hex chars, all the same byte.
@@ -246,6 +247,69 @@ async fn login_consumes_ticket_and_registers_connected_client_state() {
         "world_entry_sent starts false (no playCharacter yet)"
     );
     assert!(!state.4, "char_list_sent starts false");
+
+    cancel_session(&connected, addr);
+}
+
+/// Regression guard for the Discord auth-channel wiring: a successful
+/// `handle_login` must push a `player_login` event into the Discord pipeline.
+/// Inits the global runtime with a *disabled* config so no webhook/HTTP is
+/// involved — `try_send`'s pre-filter short-circuits a disabled config into
+/// the `filtered` counter rather than `enqueued`, and both mean "the emit
+/// fired and the event reached the pipeline", so we sum them. Reverting the
+/// `emit_player_login` call in `handle_login` leaves the sum flat and trips
+/// this.
+///
+/// Reliable under nextest (process-per-test isolates the global counters).
+/// The strict-`>` on the summed delta still can't false-fail under parallel
+/// `cargo test` — a concurrent login sharing the process-global only adds to
+/// the count.
+#[tokio::test]
+async fn login_pushes_discord_player_login_event() {
+    let rt = cimmeria_discord::init_with_config(cimmeria_discord::Config::disabled());
+    // "Entered the pipeline" = enqueued (would post) + filtered (toggle/
+    // disabled short-circuit). Summing keeps the guard config-agnostic.
+    let pipelined = |rt: &cimmeria_discord::DiscordRuntime| {
+        let s = rt.stats();
+        s.enqueued + s.filtered
+    };
+    let before = pipelined(rt);
+
+    let transport = make_transport();
+    let addr: SocketAddr = "127.0.0.1:55557".parse().unwrap();
+    let pending_logins = Arc::new(Mutex::new(HashMap::new()));
+    let connected = Arc::new(Mutex::new(HashMap::new()));
+    let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+    let cell_tx = None;
+
+    let pending = make_pending_login(0x0000_1234, 0xCD);
+    let ticket = pending.ticket.clone();
+    pending_logins
+        .lock()
+        .unwrap()
+        .insert(ticket.clone(), pending);
+
+    handle_login(
+        &transport,
+        addr,
+        0x1234_5678,
+        &ticket,
+        &pending_logins,
+        &connected,
+        &entity_manager,
+        &cell_tx,
+        &entity_to_addr,
+    )
+    .await
+    .expect("Phase 3 handoff");
+
+    let after = pipelined(rt);
+    assert!(
+        after > before,
+        "successful handle_login must push a player_login Discord event into \
+         the pipeline (enqueued+filtered {before} -> {after})"
+    );
 
     cancel_session(&connected, addr);
 }

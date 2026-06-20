@@ -163,6 +163,17 @@ No — wire surface is fully specified by the .def.
 
 ### CAT-N-03 — Cell-method dispatch has no access to `access_level`; every future `gm*` handler is unauthenticated-by-default
 
+**Status**: ✅ RESOLVED (#475) — `CellEntity::access_level` is plumbed from
+`ConnectedClientState.access_level` via `InitPlayerState`, and a
+dispatch-layer gate (`crates/services/src/cell/dispatch/gm_gate.rs`)
+rejects GM/debug indices from non-privileged callers before routing, with
+a `warn!` audit log + `onErrorCode` wire response. See
+[gm-cell-method-gating.md](../../../architecture/gm-cell-method-gating.md).
+The reachable GM-shaped methods (CM 2/3/6 debug toggles, CM 92
+`onWorldInstanceReset`) are gated; the rest of the CAT-N surface lands
+behind the same gate as each handler is implemented (add the index to
+`requires_gm`).
+
 **Severity**: Critical
 **Class**: GM auth bypass — missing infrastructure / systemic
 **Wire surface**: Every `gm*` cell method (~85 entries on SGWGmPlayer.def +

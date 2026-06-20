@@ -32,6 +32,13 @@ fn make_mgr_player_vs_npc() -> SpaceManager {
         p.is_player = true;
         p.player_id = Some(100);
     }
+    if let Some(npc) = mgr.get_entity_mut(2) {
+        // The NPC target is the enemy under attack — hostile so the #444
+        // single-target target-validity gate in `handle_use_ability` lets
+        // the damage path run. Tests that call `apply_damage_to_target`
+        // directly are unaffected (they bypass the gate).
+        npc.faction = crate::cell::combat::HOSTILE_FACTION;
+    }
     mgr.connect_entity(1);
     let _ = mgr.compute_aoi_changes();
     mgr
@@ -162,7 +169,14 @@ async fn lethal_hit_against_npc_emits_grant_xp_and_state_flip() {
         CellToBaseMsg::GrantXP {
             entity_id,
             xp_amount,
-        } => Some((*entity_id, *xp_amount)),
+            notify_gm,
+        } => {
+            assert!(
+                !notify_gm,
+                "combat kill XP must not request GM-only definitive feedback"
+            );
+            Some((*entity_id, *xp_amount))
+        }
         _ => None,
     });
     assert_eq!(

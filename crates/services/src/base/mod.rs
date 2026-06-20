@@ -21,10 +21,14 @@ pub(crate) mod character;
 pub(crate) mod character_create;
 pub(crate) mod chardef;
 pub(crate) mod connect_loop;
+pub(crate) mod console_authoring;
 pub(crate) mod cooked_data;
 pub(crate) mod crafting;
 pub(crate) mod deferred_aoi;
+pub(crate) mod dialog_overrides;
 pub(crate) mod dispatch;
+pub(crate) mod gm_feedback;
+pub(crate) mod gm_spawn;
 pub(crate) mod helpers;
 pub(crate) mod item_overrides;
 pub(crate) mod login;
@@ -109,6 +113,11 @@ pub(crate) struct ConnectedClientState {
     pub enc: MercuryEncryption,
     pub key: [u8; 32],
     pub account_id: u32,
+    /// Human-readable account name (login username), threaded from the
+    /// login ticket. Surfaced in Discord notifications alongside the
+    /// numeric `account_id`. `None` only if a future login path forgets
+    /// to populate it.
+    pub account_name: Option<String>,
     /// Account access level, populated from the login row. Used by
     /// chat dispatch to set the `SPEAKER_GM` bit on `speaker_flags`
     /// when `access_level > 0` (matches
@@ -147,6 +156,13 @@ pub(crate) struct ConnectedClientState {
     pub next_seq_unreliable: Arc<AtomicU32>,
     pub pending_acks: Arc<Mutex<Vec<u32>>>,
     pub last_recv: Arc<Mutex<Instant>>,
+    /// Wall-clock instant the session completed Phase 3 (channel registered).
+    /// Distinct from [`last_recv`], which slides forward on every packet —
+    /// this one is fixed at connect so logout/disconnect emits can report a
+    /// true `session_secs` rather than idle time.
+    ///
+    /// [`last_recv`]: Self::last_recv
+    pub connected_at: Instant,
     pub account_entity_id: u32,
     pub next_data_id: u16,
     pub pending_world_entry: Option<WorldEntryInfo>,

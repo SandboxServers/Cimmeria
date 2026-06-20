@@ -25,9 +25,12 @@
 //! - [`names`] — the [`cell_method_name`] lookup used for logging.
 
 mod constants;
+mod gm_gate;
 mod names;
 mod router;
 
+#[cfg(test)]
+mod gm_dispatch_tests;
 #[cfg(test)]
 mod tests;
 

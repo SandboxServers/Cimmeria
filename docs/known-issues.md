@@ -2,7 +2,7 @@
 title: "Known Issues"
 type: reference
 audience: engineers, operators
-last_updated: 2026-05-27
+last_updated: 2026-06-16
 ---
 
 # Known Issues
@@ -67,10 +67,16 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 
 **Status**: Fixed by character creation visual pipeline. `createCharacter` now stores starting abilities from archetype definitions.
 
-### KI-11: createCharacter does not store access_level
+### ~~KI-11: createCharacter does not store access_level~~ — RESOLVED
 
-**Severity**: Low
-**Description**: GM accounts create normal characters instead of GM-flagged characters. C++ passes account access_level into the character INSERT.
+**Status**: Fixed. `createCharacter` now stamps the new character's
+`sgw_player.access_level` from the account's session access level
+(`get_access_level`, sourced from `account.accesslevel` at login), mirroring
+the C++ server. The persisted column is loaded at world entry and sent to the
+client as the `AccessLevel` entity property (propId 7 in the mapLoaded block),
+so a GM account's characters carry the correct marker instead of loading at
+access_level 0. (Server-side GM authority is gated on the session level, not
+this per-character column.)
 
 ### ~~KI-12: createCharacter does not validate visual choices~~ — RESOLVED
 
@@ -80,10 +86,13 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 
 **Status**: Fixed. `FragmentAssembler` in `crates/mercury/src/unpacker.rs` handles multi-fragment messages with out-of-order delivery, stale entry cleanup, and bounds validation. Full test coverage.
 
-### KI-14: SGWGmPlayer entity type never used
+### ~~KI-14: SGWGmPlayer entity type never used~~ — RESOLVED
 
-**Severity**: Low
-**Description**: All players are created as SGWPlayer regardless of access_level. C++ creates SGWGmPlayer for accounts with access_level > 0.
+**Severity**: ~~Low~~ Resolved
+**Status**: Fixed (CAT-N-04).
+**Description**: All players were created as SGWPlayer regardless of access_level; C++ creates SGWGmPlayer for accounts with access_level > 0.
+
+**Resolution**: `query_world_entry` now selects the CREATE_BASE_PLAYER `class_id` byte from the session access_level — `0x03` (`SGWGMPLAYER_CLASS_ID`) for access_level > 0, `0x02` (`SGWPLAYER_CLASS_ID`) otherwise. The class id is the single byte the client reads to bind the entity method table. Because SGWGmPlayer declares `<Parent>SGWPlayer</Parent>` with empty `<Implements>`, its own gm*/debug methods APPEND at the end of the flattened tables (cell index 109+, client 157+) and the inherited 0-108 / 0-156 indices do not renumber — so the existing SGWPlayer wire path is byte-identical for regular players. The native gm* cell surface (109+) is fully GM-gated by `cell::dispatch::gm_gate` (any index >= 109 requires `access_level >= GameMaster`), and a verified subset of gm* handlers (gmGiveItem 133, gmGotoXYZ 163, gmKillTarget 190) is wired into the cell router. Server side is byte-verified; client-side GM-console behaviour needs a manual UAT with a real client. See `docs/protocol/cell-method-dispatch-table.md` (SGWGmPlayer 109+ section) and `docs/architecture/gm-cell-method-gating.md`.
 
 ### ~~KI-15: CellService is entirely stubbed~~ — RESOLVED
 

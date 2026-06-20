@@ -106,7 +106,7 @@ Defined at [triggers.rs:20-98](../../crates/content-engine/src/triggers.rs#L20-L
 | `OnCustomEvent { event_name }` | Generic invoke escape hatch / synthetic for triggerless chains |
 | `OnPlayerLoaded { world_name? }` | Player completes mapLoaded |
 | `OnDialogOpen { dialog_id }` | Server sent `onDialogDisplay` |
-| `OnDialogChoice { dialog_id }` | Player clicked a dialog button |
+| `OnDialogChoice { dialog_id }` | Player clicked a dialog button. **Server-gated**: the `DialogButtonChoice` handler rejects the event unless `CellEntity::open_dialog_id == dialog_id` (the dialog was actually displayed to this player via `send_dialog_display`); a forged/replayed choice for an un-opened `dialog_id` is dropped with a `warn!` and never fires the chain (CAT-J-01 / #479). |
 | `OnInteractTag { entity_tag }` | Right-click on tagged NPC/object |
 | `OnInteractTemplate { template_name }` | Right-click on entity from named template |
 | `OnItemUse { item_id }` | Player double-clicked inventory item |

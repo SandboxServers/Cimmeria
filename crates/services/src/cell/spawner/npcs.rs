@@ -128,8 +128,8 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                t.alignment, t.faction, t.name_id, t.speaker_id, \
                t.static_interaction_sets, t.has_dynamic_properties, \
                t.loot_table_id, \
-               t.patrol_path_id, \
-               COALESCE(t.patrol_point_delay, 2.0) AS patrol_point_delay, \
+               COALESCE(s.patrol_path_id, t.patrol_path_id) AS patrol_path_id, \
+               COALESCE(s.patrol_point_delay, t.patrol_point_delay, 2.0) AS patrol_point_delay, \
                COALESCE(t.wander_radius, 0.0) AS wander_radius, \
                COALESCE(t.wander_min_dwell_secs, 3.0) AS wander_min_dwell_secs, \
                COALESCE(t.wander_max_dwell_secs, 8.0) AS wander_max_dwell_secs, \
@@ -219,7 +219,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
 /// of patrol points in a set. Empty `ids` short-circuits without a DB
 /// round-trip; sets with zero points produce an entry mapping to
 /// `vec![]` (caller treats as "no patrol").
-async fn load_patrol_points(
+pub(crate) async fn load_patrol_points(
     pool: &PgPool,
     ids: &[i32],
 ) -> Result<std::collections::HashMap<i32, Vec<cimmeria_common::Vector3>>, sqlx::Error> {

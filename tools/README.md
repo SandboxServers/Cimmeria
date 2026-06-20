@@ -29,22 +29,37 @@ Scripts for reverse-engineering the game client (UE3/BigWorld binaries).
 
 | Script | Purpose |
 |---|---|
-| `upk_parser.py` (31KB) | Parse Unreal Package (.upk) files — extract assets, classes, object lists |
-| `kismet_extractor.py` (31KB) | Extract Kismet sequence data from UPK files |
+| `upk_parser.py` | Parse Unreal Package (.upk) files — extract assets, classes, object lists |
+| `kismet_extractor.py` | Extract Kismet sequence data from UPK files |
 | `extract_actors.py` | Extract actor placements from map packages |
+| `ue3_extract_cover_nodes.py` | Extract UE3 cover-node placements from map packages |
 | `pcap_dissect.py` | Dissect captured Mercury UDP network traffic |
-| `generate_effect_stubs.py` | Generate Python stub scripts for effects from DB data |
+| `pcap_to_session.py` | Convert a pcap capture into a wireclient `session_trace` JSONL |
+| `wire_decoder_codegen.py` | Generate wire-format decoder code from the message catalog |
+| `mercury_dispute_resolver.py` | Reconcile Mercury wire-format disputes against captures |
+| `entity_property_sync_resolver.py` | Resolve entity property-sync ordering questions |
+| `generate-mercury-kat.py` | Generate Mercury known-answer test (KAT) vectors |
+| `generate_effect_stubs.py` | Generate Rust effect stub scripts from DB data |
+| `backfill_template_speaker_ids.py` | Backfill dialog template speaker IDs |
+| `apply_speaker_id_inplace.py` | Apply resolved speaker IDs to dialog templates in place |
+| `add_doc_metadata.py` | Add/normalize front-matter metadata across docs |
 | `frag_debug.py` / `frag_debug2.py` | Debug Mercury packet fragmentation |
 | `investigate_corruption.py` | Investigate packet/data corruption patterns |
 
 These scripts run standalone with Python 3.x — they don't need the server running.
 
+## Lint & Check Scripts
+
+Load-bearing scripts run as part of the pre-PR checklist (see [`CLAUDE.md`](../CLAUDE.md)). Each ships in both a POSIX (`.sh`) and PowerShell (`.ps1`) flavor:
+
+| Script | Purpose |
+|---|---|
+| `lint-md.sh` / `lint-md.ps1` | Markdown lint via `markdownlint-cli2` (warn-only; `--fix` auto-fixes) |
+| `check-figure-sources.sh` / `check-figure-sources.ps1` | Verify each figure source DSL has a re-rendered SVG (blocking in CI) |
+| `lint-figure-style.sh` / `lint-figure-style.ps1` | Figure style + format lint — Mermaid init directives, theme backdrops, caption numbering (blocking in CI) |
+
+`spec-lint/` is a small Rust crate (`cargo run -p spec-lint`) used for spec-document linting.
+
 ## ServerEd (Qt Legacy)
 
-`ServerEd/` — Qt 5.x-based server administration editor. Provides:
-- Configuration dialog for service settings
-- Database-backed object browser
-- Visual node graph editor (for scripting/logic visualization)
-- PostgreSQL integration via Qt5Sql
-
-This is a legacy tool that predates the Tauri admin apps. Build with Visual Studio (see `W-NG.sln`).
+The legacy Qt 5.x server administration editor is **not** under `tools/`. Its Visual Studio solution lives at [`deprecated/cpp-build/W-NG.sln`](../deprecated/cpp-build/W-NG.sln) and predates the Tauri admin apps. It is reference-only — the Tauri apps above are the supported editors.

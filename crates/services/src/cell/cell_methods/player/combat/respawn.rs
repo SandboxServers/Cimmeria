@@ -70,7 +70,10 @@ use crate::cell::space_manager::SpaceManager;
         same_world = tracing::field::Empty,
     ),
 )]
-pub(super) async fn handle_respawn(
+// `pub(crate)` (widened from `pub(super)`) so the native GM `gmRespawn`
+// handler (`cell_methods::gm::world`) can reuse the exact same respawn
+// sequence as the combat Defeat-Window path — no duplicate respawn logic.
+pub(crate) async fn handle_respawn(
     entity_id: u32,
     respawner_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -96,6 +99,16 @@ pub(super) async fn handle_respawn(
     let span = tracing::Span::current();
     span.record("target_world", target_world.as_str());
     span.record("same_world", same_world);
+
+    // Discord gameplay-channel (off by default). Fires for both the
+    // same-world reanchor and the cross-world gate path; `target_world` is the
+    // world the player comes back up in. Cloned because it's moved into the
+    // GateTravel message on the cross-world branch below.
+    let respawn_character_name = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.character_name.clone())
+        .unwrap_or_else(|| format!("entity:{entity_id}"));
+    cimmeria_discord::emit_player_respawn(respawn_character_name, target_world.clone());
 
     // Close the Defeat Window first.
     let _ = tx
@@ -177,6 +190,11 @@ pub(super) async fn handle_respawn(
     entity.threatened_mobs.clear();
 
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
+    // Authorized teleport (death → respawn point): reseed the movement-
+    // validator clock so the first post-respawn client packet isn't
+    // measured against the pre-death sample (which would log a spurious
+    // speed warning).
+    space_mgr.note_authorized_teleport(entity_id);
 
     // Push the refreshed HEALTH/FOCUS to the HUD via onStatUpdate.
     if !stat_update.is_empty() {

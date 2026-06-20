@@ -81,6 +81,18 @@ impl<S: Subscriber> Layer<S> for DiscordLayer {
             return;
         }
 
+        // Movement-validation telemetry is warn-only calibration data
+        // destined for SigNoz (used to compute the legitimate p99.9 speed
+        // before the speed layer is ever promoted to snap-back). It fires
+        // during normal play — sub-tick deltas produce huge / infinite
+        // implied-speed ratios — so harvesting it would flood the Discord
+        // errors channel with non-actionable noise. It still flows to logs
+        // and SigNoz; it just never posts to Discord. The `movement.validation`
+        // target covers both `speed_warning` and `validation_reject`.
+        if metadata.target() == "movement.validation" {
+            return;
+        }
+
         // Pre-filter: skip if Discord is off or the kind is toggled off
         // or the routed channel isn't configured. Same gate the
         // SenderHandle applies, hoisted up so we don't run the visitor
@@ -264,6 +276,34 @@ mod tests {
             recorded.is_empty(),
             "events tagged `target: cimmeria_discord` must be filtered to prevent recursion, got {:?}",
             recorded
+        );
+    }
+
+    /// `movement.validation` warns (speed_warning / validation_reject) are
+    /// calibration telemetry for SigNoz and must NOT reach Discord — they
+    /// fire on normal play and would flood the errors channel. Reverting the
+    /// target filter trips this.
+    #[tokio::test(flavor = "current_thread")]
+    async fn movement_validation_target_filtered() {
+        let mock = MockSender::new();
+        let calls = mock.calls_handle();
+        let cfg = errors_only_config(/* warning */ true, /* error */ true);
+        let (handle, _task) = spawn(mock, cfg.clone());
+
+        let subscriber = tracing_subscriber::registry().with(DiscordLayer::new(handle, cfg));
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        tracing::warn!(
+            target: "movement.validation",
+            entity_id = 2,
+            reason = "speed",
+            "movement.speed_warning: client move exceeded speed tolerance"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        assert!(
+            calls.lock().await.is_empty(),
+            "movement.validation warns must never post to Discord (calibration noise)"
         );
     }
 
