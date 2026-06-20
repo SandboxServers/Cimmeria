@@ -41,6 +41,16 @@ pub enum MsgId {
 
     /// Keepalive ping/pong for idle channel maintenance.
     Keepalive = 8,
+
+    /// Server-initiated session-key rotation (v2 sessions only).
+    ///
+    /// Carries a fresh 32-byte session key encrypted under the *current*
+    /// session encryption context, so the new key is confidential and
+    /// authenticated by the existing AEAD-ish layer. The unmodified game
+    /// client cannot process this message, so it is gated to v2 sessions and
+    /// MUST never be sent to a v1/unpatched client. See
+    /// [`crate::encryption::rotation`].
+    RotateSessionKey = 9,
 }
 
 impl MsgId {
@@ -55,6 +65,7 @@ impl MsgId {
             6 => Some(Self::PositionUpdate),
             7 => Some(Self::RpcCall),
             8 => Some(Self::Keepalive),
+            9 => Some(Self::RotateSessionKey),
             _ => None,
         }
     }
@@ -76,6 +87,7 @@ impl std::fmt::Display for MsgId {
             Self::PositionUpdate => write!(f, "PositionUpdate"),
             Self::RpcCall => write!(f, "RpcCall"),
             Self::Keepalive => write!(f, "Keepalive"),
+            Self::RotateSessionKey => write!(f, "RotateSessionKey"),
         }
     }
 }
@@ -103,6 +115,7 @@ mod tests {
             MsgId::PositionUpdate,
             MsgId::RpcCall,
             MsgId::Keepalive,
+            MsgId::RotateSessionKey,
         ];
 
         for id in &ids {

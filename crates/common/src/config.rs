@@ -95,6 +95,19 @@ pub struct ServerConfig {
     /// value other than `1` or `2` falls back to v1 with a warning (see
     /// [`mercury_encryption_version`](ServerConfig::mercury_encryption_version)).
     pub mercury_encryption_version: u8,
+
+    /// Cadence, in seconds, for server-initiated Mercury session-key rotation.
+    ///
+    /// When non-zero, a v2 session periodically mints a fresh 32-byte session
+    /// key, hands it to the peer encrypted under the current key, and both
+    /// sides switch. `0` disables rotation. Default `3600` (one hour).
+    ///
+    /// Rotation is **only** performed for v2 sessions: the stock client speaks
+    /// v1 and cannot process a rotation control message, so the rotation
+    /// scheduler is hard-gated to v2 regardless of this value. With the
+    /// default v1 server-wide version, this setting has no effect until v2 is
+    /// selected.
+    pub mercury_key_rotation_secs: u64,
 }
 
 impl Default for ServerConfig {
@@ -124,6 +137,9 @@ impl Default for ServerConfig {
             // stays v1 until the client patch lands. Operators opt into v2
             // explicitly (and only for patched clients / test harnesses).
             mercury_encryption_version: 1,
+            // One hour. Only takes effect on v2 sessions; v1 sessions never
+            // rotate regardless of this value.
+            mercury_key_rotation_secs: 3600,
         }
     }
 }
@@ -204,6 +220,15 @@ mod tests {
         assert_eq!(config.auth_tls_port, 13443);
         assert!(config.auth_tls_cert_path.is_none());
         assert!(config.auth_tls_key_path.is_none());
+    }
+
+    #[test]
+    fn default_config_key_rotation_is_one_hour() {
+        // Default cadence is one hour. It only engages on v2 sessions; with the
+        // default v1 version this value is inert, but it must default to the
+        // documented hour so flipping to v2 gives the intended cadence.
+        let config = ServerConfig::default();
+        assert_eq!(config.mercury_key_rotation_secs, 3600);
     }
 
     #[test]

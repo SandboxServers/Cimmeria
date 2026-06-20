@@ -168,6 +168,24 @@ For tests that need to inspect plaintext mid-flight, the harness
 exposes the same `MercuryEncryption` clone via
 `session.a.encryption` — call `enc.decrypt(bytes)` to read.
 
+### Session-key rotation integration
+
+For server-initiated v2 session-key rotation tests, a peer can opt into
+a swappable `RotationState` via `peer.enable_rotation(key, version)`.
+When installed it supersedes the static `encryption` context on both the
+send and recv paths and restarts the recv pump so the running pump
+decrypts through the rotation state (honoring the dual-key inbound
+window across a switch). The peer then drives a rotation directly:
+`arm_rotation(new_key)` returns the `RotateSessionKey` payload to ship on
+the channel, `commit_outbound_rotation()` promotes the server's outbound
+switch after the message is on the wire, `apply_received_rotation(payload)`
+recovers + applies a key on the peer side, and `rotation_current_key()`
+snapshots the active key for convergence assertions. Tests live in
+`crates/mercury/src/test_harness/tests/rotation.rs` (including a
+rotate-under-load case). No real client is exercised — the simulated peer
+is a cooperating v2 endpoint; the stock v1 client never receives a
+rotation message.
+
 ### Known-answer test vectors
 
 The issue spec for category-4 originally called for 3 Ghidra-

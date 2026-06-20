@@ -61,6 +61,16 @@ use sha2::Sha256;
 
 use cimmeria_common::{CimmeriaError, Result};
 
+/// Server-initiated session-key rotation (v2 sessions only). See
+/// [`rotation`] for the wire message, the v1 gate, and the switch
+/// state machine.
+pub mod rotation;
+
+pub use rotation::{
+    build_rotation_payload, generate_session_key, recover_rotation_key, rotation_enabled,
+    RotationState, SESSION_KEY_LEN,
+};
+
 /// HMAC tag length in bytes (both v1 MD5 full-width and v2 SHA-256 truncated).
 const HMAC_TAG_LEN: usize = 16;
 
@@ -258,6 +268,13 @@ impl MercuryEncryption {
             iv: [0u8; 16],
             hmac_key: mac_key,
         }
+    }
+
+    /// True if this context speaks the v2 wire format. The rotation layer uses
+    /// this as a defense-in-depth gate so its primitives refuse to operate on a
+    /// v1 (legacy) session, which the stock client cannot rekey.
+    pub fn is_v2(&self) -> bool {
+        matches!(self.version, Version::V2)
     }
 
     /// Encrypt `plaintext` according to this context's pinned wire version.
