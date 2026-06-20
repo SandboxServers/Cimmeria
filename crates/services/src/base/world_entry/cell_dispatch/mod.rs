@@ -132,7 +132,8 @@ pub(crate) async fn handle_cell_message(
         | CellToBaseMsg::ContactListRename { .. }
         | CellToBaseMsg::ContactListFlagsUpdate { .. }
         | CellToBaseMsg::ContactListAddMembers { .. }
-        | CellToBaseMsg::ContactListRemoveMembers { .. } => {
+        | CellToBaseMsg::ContactListRemoveMembers { .. }
+        | CellToBaseMsg::ContactListPresenceEvent { .. } => {
             contact_list_dispatch::route(msg, &ctx).await
         }
 

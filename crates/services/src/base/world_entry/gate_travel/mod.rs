@@ -14,6 +14,8 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use crate::base::contact_list::handlers::fanout_contact_event;
+use crate::base::contact_list::wire::EVENT_GATE_TRAVEL;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_reset_entities, WorldEntryInfo, SGWPLAYER_CLASS_ID};
 
@@ -237,10 +239,61 @@ pub(crate) async fn handle_gate_travel(
     cimmeria_discord::emit_player_world_exit(
         account_id,
         account_name,
-        exit_name.unwrap_or_else(|| "<unknown>".to_string()),
+        exit_name.clone().unwrap_or_else(|| "<unknown>".to_string()),
         exit_from_world.unwrap_or_else(|| "<unknown>".to_string()),
         Some(target_world_name.to_string()),
     );
+
+    // Contact-list GateTravel fanout (CM 89, eventId=GateTravel).
+    //
+    // data_value = the destination world_id from `resources.worlds`. The client
+    // passes this value to `getWorldInfo(value).Name` to display the world name.
+    // We use the same table the gate_travel persistence UPDATE already uses for
+    // COALESCE world_id lookup — this is the canonical source. If the client's
+    // getWorldInfo index space differs from resources.worlds.world_id, confirm
+    // via send-and-observe in playtest and adjust the lookup accordingly.
+    //
+    // Fire-and-forget: spawned so the pending_world_entry store below (which
+    // drives the client's create-player step) is not delayed by the DB lookup.
+    if let Some(traveler_name) = exit_name {
+        let db_pool_clone = db_pool.clone();
+        let transport_clone = Arc::clone(transport);
+        let connected_clone = Arc::clone(connected);
+        let entity_to_addr_clone = Arc::clone(entity_to_addr);
+        let dest_world = target_world_name.to_string();
+        tokio::spawn(async move {
+            // Resolve the numeric world_id the client expects.
+            let world_id: i32 = if let Some(pool) = &db_pool_clone {
+                sqlx::query_scalar::<_, i32>(
+                    "SELECT world_id FROM resources.worlds WHERE world = $1",
+                )
+                .bind(&dest_world)
+                .fetch_optional(pool.as_ref())
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        world = %dest_world,
+                        "GateTravel fanout: world_id lookup failed: {e}"
+                    );
+                    None
+                })
+                .unwrap_or(0)
+            } else {
+                0
+            };
+
+            fanout_contact_event(
+                &traveler_name,
+                EVENT_GATE_TRAVEL,
+                world_id,
+                &db_pool_clone,
+                &transport_clone,
+                &connected_clone,
+                &entity_to_addr_clone,
+            )
+            .await;
+        });
+    }
 
     // Store pending world entry for the create-player step (ENABLE_ENTITIES handler)
     {

@@ -8,6 +8,8 @@ use sqlx::PgPool;
 
 use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
 
+use super::super::super::contact_list::handlers::fanout_contact_event;
+use super::super::super::contact_list::wire::EVENT_GAIN_LEVEL;
 use super::super::super::gm_feedback::send_gm_feedback_to_client;
 use super::super::super::helpers::{send_bundle_to_witness_reliable, send_to_witness_reliable};
 use super::super::super::ConnectedClientState;
@@ -187,9 +189,33 @@ pub async fn handle_grant_xp(
     // Discord gameplay-channel: only on an actual level boundary crossing,
     // and only once per grant (reporting the final level even on a multi-level
     // catch-up grant). Skipped when the name isn't cached yet (pre-character).
+    //
+    // Also fans out `onContactListEvent` (CM 89, eventId=GainLevel) to all
+    // online players who have this player in any contact list. Fire-and-forget:
+    // the tokio::spawn ensures the fanout doesn't block the XP grant bundle
+    // emit below. Only fires on an actual level-boundary crossing and only
+    // when the player name is cached (same gate as the Discord emit).
     if !levels_gained.is_empty() {
         if let Some(name) = &player_name {
             cimmeria_discord::emit_level_up(name.clone(), new_level);
+
+            let name_owned = name.clone();
+            let db_pool_clone = db_pool.clone();
+            let transport_clone = Arc::clone(transport);
+            let connected_clone = Arc::clone(connected);
+            let entity_to_addr_clone = Arc::clone(entity_to_addr);
+            tokio::spawn(async move {
+                fanout_contact_event(
+                    &name_owned,
+                    EVENT_GAIN_LEVEL,
+                    new_level as i32,
+                    &db_pool_clone,
+                    &transport_clone,
+                    &connected_clone,
+                    &entity_to_addr_clone,
+                )
+                .await;
+            });
         }
     }
 

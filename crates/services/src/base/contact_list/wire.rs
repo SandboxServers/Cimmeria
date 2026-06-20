@@ -61,10 +61,11 @@ pub(crate) fn build_on_contact_list_remove_members(list_id: i32, names: &[String
 /// `entities/defs/enumerations.xml` (mirrored in `db/resources/Social/Types/
 /// EContactListEvent.sql` and the original `Atrea/enums.py`):
 ///   1 = LoggedInStatus (data_value 1=online / 0=offline)
-///   2 = GainLevel (data_value = new level), 4 = Death, 8 = GateTravel
+///   2 = GainLevel     (data_value = new level)
+///   4 = Death         (data_value = 0 — client ignores it)
+///   8 = GateTravel    (data_value = destination world_id from resources.worlds)
 /// NOTE: these are power-of-two bit flags, NOT a 0-based index — the client tests
-/// the flag value, so sending 0 for LoggedInStatus never matches. Death/GateTravel
-/// data_value semantics are still unconfirmed (UI-asset RE; not in the binary).
+/// the flag value, so sending 0 for LoggedInStatus never matches.
 pub(crate) fn build_on_contact_list_event(
     player_name: &str,
     event_id: u32,
@@ -91,16 +92,13 @@ pub(crate) const MAX_MEMBERS_PER_REQUEST: usize = 100;
 
 /// `EContactListEvent::ECONTACT_LIST_EVENT_LoggedInStatus` (bit 0).
 pub(crate) const EVENT_LOGGED_IN_STATUS: u32 = 1;
-// Defined now for protocol completeness; not yet emitted (the GainLevel/Death/
-// GateTravel presence events are deferred — see #572). allow(dead_code) until wired.
 /// `ECONTACT_LIST_EVENT_GainLevel` (bit 1). data_value = the player's new level.
-#[allow(dead_code)]
 pub(crate) const EVENT_GAIN_LEVEL: u32 = 2;
-/// `ECONTACT_LIST_EVENT_Death` (bit 2). data_value semantics unconfirmed.
-#[allow(dead_code)]
+/// `ECONTACT_LIST_EVENT_Death` (bit 2). data_value = 0 (client ignores it).
 pub(crate) const EVENT_DEATH: u32 = 4;
-/// `ECONTACT_LIST_EVENT_GateTravel` (bit 3). data_value semantics unconfirmed.
-#[allow(dead_code)]
+/// `ECONTACT_LIST_EVENT_GateTravel` (bit 3). data_value = destination world_id
+/// from `resources.worlds` — client passes it to `getWorldInfo(value).Name`.
+/// Confirm the exact id-space via send-and-observe in playtest if needed.
 pub(crate) const EVENT_GATE_TRAVEL: u32 = 8;
 
 /// `dataValue` for LoggedInStatus: player came online.
