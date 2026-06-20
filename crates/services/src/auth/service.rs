@@ -158,7 +158,10 @@ impl AuthService {
             tracing::error!(addr = %self.logon_addr, error = %e, "Failed to bind auth TCP listener");
             e
         })?;
-        tracing::info!(addr = %listener.local_addr().unwrap(), "Auth HTTP listener bound");
+        // Fall back to the configured bind addr rather than panicking —
+        // `local_addr()` can fail on an unusual socket state and we already
+        // know where we bound.
+        tracing::info!(addr = %listener.local_addr().unwrap_or(self.logon_addr), "Auth HTTP listener bound");
 
         // Spawn the session/ticket reaper before the HTTP server so it's
         // already running when the first request arrives.

@@ -200,7 +200,7 @@ impl MercuryEncryption {
         match self.version {
             Version::V1 => self.encrypt_v1(plaintext),
             Version::V2 => {
-                // Fresh per-packet IV from the OS CSPRNG.
+                // Fresh per-packet IV from a CSPRNG (`rand`, seeded by the OS).
                 let iv: [u8; V2_IV_LEN] = rand::random();
                 self.encrypt_v2_with_iv(plaintext, iv)
             }
