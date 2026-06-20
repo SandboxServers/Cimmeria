@@ -216,6 +216,7 @@ How the Cimmeria emulator itself is structured. 25 documents.
 | [mercury-bundle.md](architecture/mercury-bundle.md) | `ChannelBundle` accumulator: cross-entity bundling rule, transaction-state hazard, AoI burst migration (#356), follow-up migration playbook | Complete |
 | [negative-logging-convention.md](architecture/negative-logging-convention.md) | Negative-logging convention (issue #304): three patterns, field-naming rules, level discipline, defensible silent sends, `LogCapture` regression-guard helper | Complete |
 | [instrumentation-discipline.md](architecture/instrumentation-discipline.md) | Instrumentation discipline (issue #482): success-side rules — dispatch-entrypoint info spans, debug-event discriminators, hot-loop span discipline, metric-label cardinality | Complete |
+| [encryption-modernization.md](architecture/encryption-modernization.md) | ADR (Proposed) for issue #434: auth TLS (rustls loopback proxy around libcurl), argon2id passwords, Mercury v2 wire crypto (HKDF/random-IV/HMAC-SHA256, version-gated). RE targets in [findings/auth-and-crypto-modernization-targets.md](reverse-engineering/findings/auth-and-crypto-modernization-targets.md) | Proposed |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
 

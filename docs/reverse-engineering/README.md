@@ -52,6 +52,12 @@ The end-to-end "from `git clone` to MCPs reachable" walkthrough lives one level 
 
 [`findings/`](findings/) holds the per-system findings docs that earlier phases produced. As of 2026-05-12, 19 docs cover combat, inventory, missions, organizations, crafting, gate travel, minigames, chat, mail, black market, contact list, group, trade, duel, pet, entity types, entity creation, position/movement, space/viewport, system protocol, and the CME EventSignal pipeline. All rated HIGH confidence at time of writing — but per [`evidence-standards.md`](evidence-standards.md) and the [`reverse-engineering-with-claude.md`](../guides/reverse-engineering-with-claude.md) "verify load-bearing claims" rule, pre-V5 docs are hypotheses; re-verify before pinning a claim into a bible chapter or production Rust.
 
+Beyond the V5 evidence pool, [`findings/`](findings/) also carries issue-scoped
+de-risking findings — e.g. [`auth-and-crypto-modernization-targets.md`](findings/auth-and-crypto-modernization-targets.md)
+(issue #434), which maps the client's login transport, SHA-1 password site,
+anti-debug posture, and Mercury crypto to exact `SGW.exe` addresses for the
+encryption-modernization patch work.
+
 See [`findings/README.md`](findings/README.md) for the full per-doc index.
 
 ## Bible relationship
