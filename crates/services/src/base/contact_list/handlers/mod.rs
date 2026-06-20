@@ -1,7 +1,8 @@
 //! BaseApp-side handlers for contact-list CellToBaseMsg variants.
 //!
 //! Split by lifecycle phase:
-//! - `crud`           — per-operation handlers (create/delete/rename/flags/add/remove members)
+//! - `header_ops`     — list-header operations (create/delete/rename/flags_update)
+//! - `member_ops`     — member operations (add_members/remove_members)
 //! - `presence_fanout` — login/logout broadcast to watchers
 //!
 //! `push_contact_lists_on_login` lives here because it is the single entry
@@ -23,15 +24,14 @@ use crate::base::helpers::send_to_witness_reliable;
 use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
-pub(crate) mod crud;
+pub(crate) mod header_ops;
+pub(crate) mod member_ops;
 pub(crate) mod presence_fanout;
 
 // Re-export the public surface so callers (cell_dispatch, login path, etc.)
 // can import from `handlers::*` without knowing the split.
-pub(crate) use crud::{
-    handle_add_members, handle_create, handle_delete, handle_flags_update, handle_remove_members,
-    handle_rename,
-};
+pub(crate) use header_ops::{handle_create, handle_delete, handle_flags_update, handle_rename};
+pub(crate) use member_ops::{handle_add_members, handle_remove_members};
 pub(crate) use presence_fanout::fanout_login_status;
 
 /// Push all contact lists + members to the player's client on world entry.
