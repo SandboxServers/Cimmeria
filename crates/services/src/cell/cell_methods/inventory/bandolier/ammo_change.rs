@@ -38,7 +38,7 @@ use super::super::constants::{build_entity_property_args, GENERICPROPERTY_AMMO_T
 /// - If the swapped slot is the **active** weapon, broadcasts
 ///   `onEntityProperty(GENERICPROPERTY_AMMO_TYPE_ID, ammo_type)` so the
 ///   client's ammo-type indicator UI refreshes immediately.
-pub(super) async fn handle_request_ammo_change(
+pub(crate) async fn handle_request_ammo_change(
     entity_id: u32,
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,

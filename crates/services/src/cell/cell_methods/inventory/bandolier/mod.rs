@@ -10,4 +10,4 @@ mod ammo_change;
 // re-exports and `dispatch.rs` reaches for identical after the split.
 pub use active_slot::flush_dirty_bandolier_ammo;
 pub(crate) use active_slot::handle_request_active_slot_change;
-pub(super) use ammo_change::handle_request_ammo_change;
+pub(crate) use ammo_change::handle_request_ammo_change;

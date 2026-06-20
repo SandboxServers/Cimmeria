@@ -42,9 +42,7 @@ pub(super) async fn handle_interact(
     // the loot interaction never fired (proven via x32dbg trace at
     // FUN_00e84b20: client correctly sent interact, server intercepted).
     let is_hostile = space_mgr.get_entity(target_entity_u32).is_some_and(|t| {
-        !t.is_player
-            && t.faction == 10
-            && !crate::cell::combat::is_dead_state(t.state_field)
+        !t.is_player && t.faction == 10 && !crate::cell::combat::is_dead_state(t.state_field)
     });
     if is_hostile {
         tracing::info!(
@@ -63,7 +61,8 @@ pub(super) async fn handle_interact(
             .await
         {
             tracing::warn!(
-                entity_id, target_entity_id,
+                entity_id,
+                target_entity_id,
                 "interact: cell->base channel closed sending hostile-NPC combat method: {e}"
             );
             return;
@@ -155,13 +154,9 @@ pub(super) async fn handle_interact(
     // is the single source-of-truth path. The fallback below
     // (`handle_interact`) handles non-trainer interaction types
     // and the deprecated `NpcInteractionType::Trainer` tag arm.
-    let mut handled = crate::cell::interactions::try_open_trainer(
-        entity_id,
-        target_entity_u32,
-        tx,
-        space_mgr,
-    )
-    .await;
+    let mut handled =
+        crate::cell::interactions::try_open_trainer(entity_id, target_entity_u32, tx, space_mgr)
+            .await;
 
     if !handled {
         if let Some(target) = space_mgr.get_entity(target_entity_u32) {
@@ -203,13 +198,9 @@ pub(super) async fn handle_interact(
     }
 
     if !handled {
-        let dialog_id = crate::cell::interactions::handle_interact(
-            entity_id,
-            target_entity_u32,
-            tx,
-            space_mgr,
-        )
-        .await;
+        let dialog_id =
+            crate::cell::interactions::handle_interact(entity_id, target_entity_u32, tx, space_mgr)
+                .await;
 
         if let Some(did) = dialog_id {
             let player_id = space_mgr
