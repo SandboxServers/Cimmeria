@@ -98,7 +98,11 @@ ignore:
   # split it into a directory.
   - "crates/services/src/base/connect_loop/**"
   - "crates/services/src/base/cooked_data.rs"
-  - "crates/services/src/base/dispatch.rs"
+  # Was originally a single `dispatch.rs` file; the path was widened to `**`
+  # after issue #529 split it into a directory (mod.rs + chat.rs + session.rs
+  # + diagnostics.rs + tests.rs). Same rationale as connect_loop above — the
+  # SGWPlayer base-method dispatch arms are session-glue/integration territory.
+  - "crates/services/src/base/dispatch/**"
   - "crates/services/src/minigame/server.rs"
   # ── Cell→Base dispatcher arms that wrap wire builders or session glue ──
   #
