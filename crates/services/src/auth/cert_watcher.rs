@@ -307,6 +307,43 @@ mod tests {
     }
 
     #[test]
+    fn mismatched_cert_and_key_is_rejected_and_old_config_retained() {
+        let dir = TempDir::new("mismatch");
+        let cert_path = dir.path().join("cert.pem");
+        let key_path = dir.path().join("key.pem");
+        write_self_signed(&cert_path, &key_path);
+
+        let store = TlsCertStore::load(&cert_path, &key_path).expect("store loads");
+        let good_der = store.current_leaf_cert_der();
+        let last = FileMtimes::read(&cert_path, &key_path);
+
+        // Non-atomic rotation: a NEW cert lands but the key file is still the
+        // OLD key (operator hasn't rewritten it yet), so the pair no longer
+        // matches. mtime advances, so the poll attempts a reload.
+        let other = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
+            .expect("other self-signed cert");
+        std::fs::write(&cert_path, other.cert.pem()).expect("write mismatched cert");
+        bump_mtime(&cert_path);
+
+        let new_snapshot = check_and_reload(&store, last);
+
+        // The mismatched pair must be rejected (keys_match guard): the snapshot
+        // must NOT advance (so it retries once the key is rewritten too) and the
+        // live config must still serve the original, self-consistent cert. If
+        // the keys_match check is removed, with_single_cert accepts the bad pair
+        // and both assertions fail.
+        assert_eq!(
+            new_snapshot, last,
+            "snapshot must stay put when the cert/key pair is mismatched"
+        );
+        assert_eq!(
+            good_der,
+            store.current_leaf_cert_der(),
+            "a cert that does not match the live key must never be swapped in"
+        );
+    }
+
+    #[test]
     fn spawn_with_zero_interval_is_disabled() {
         // A zero interval must not spawn a polling task. We can't easily observe
         // "no task spawned" directly, but the function must return without panic

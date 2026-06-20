@@ -183,6 +183,18 @@ fn build_live_tls(cert_path: &Path, key_path: &Path) -> Result<LiveTls, TlsError
     let leaf_cert_der = certs[0].as_ref().to_vec();
 
     let provider = Arc::new(tokio_rustls::rustls::crypto::aws_lc_rs::default_provider());
+
+    // Verify the private key actually matches the leaf certificate BEFORE
+    // building the live config. `with_single_cert` does NOT cross-check this,
+    // so without the guard a non-atomic rotation (new cert written, old key
+    // still on disk for a tick) could install a mismatched pair that fails
+    // every TLS handshake until the next reload. On mismatch we error here;
+    // `reload` then retains the previous good config and the watcher retries on
+    // the next tick once both files are consistent.
+    let signing_key = provider.key_provider.load_private_key(key.clone_key())?;
+    let certified = tokio_rustls::rustls::sign::CertifiedKey::new(certs.clone(), signing_key);
+    certified.keys_match()?;
+
     let config = ServerConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()?
         .with_no_client_auth()

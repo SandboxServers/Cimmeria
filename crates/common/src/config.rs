@@ -133,7 +133,7 @@ impl Default for ServerConfig {
             auth_tls_key_path: None,
             // Poll the cert/key mtimes every 30s by default. Cheap (two stats)
             // and picks up a rotated cert within half a minute. Operators who
-            // rotate via SIGHUP or never rotate can set this to 0 to disable.
+            // never rotate certs at runtime can set this to 0 to disable polling.
             auth_tls_reload_interval_secs: 30,
             base_host: "0.0.0.0".to_string(),
             base_external_host: "127.0.0.1".to_string(),

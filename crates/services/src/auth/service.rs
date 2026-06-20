@@ -215,11 +215,10 @@ impl AuthService {
             })?;
             // Stash the store so reload_certs() can hot-swap the cert later.
             self.cert_store = Some(store.clone());
-
-            // Spawn the background mtime watcher so an operator's cert rotation
-            // (e.g. a Let's Encrypt renewal) is hot-reloaded without restarting
-            // the server. `0` disables it; the watcher no-ops in that case.
-            spawn_cert_watcher(store.clone(), self.tls_reload_interval_secs);
+            // Hold a handle for the mtime watcher, which we start only *after* a
+            // successful bind — a bind failure (e.g. port in use) returns below
+            // and must not leave a watcher task running orphaned.
+            let watcher_store = store.clone();
 
             let tls_listener = TlsListener::bind(self.tls_addr, store).await.map_err(|e| {
                 tracing::error!(addr = %self.tls_addr, error = %e, "Failed to bind auth TLS listener");
@@ -256,6 +255,12 @@ impl AuthService {
                 }
                 tracing::trace!("Auth TLS server task exited");
             });
+
+            // Listener is bound and serving — now start the background mtime
+            // watcher so an operator's cert rotation (e.g. a Let's Encrypt
+            // renewal) is hot-reloaded without a restart. `0` disables it; the
+            // watcher no-ops in that case.
+            spawn_cert_watcher(watcher_store, self.tls_reload_interval_secs);
         } else {
             tracing::debug!("Auth TLS listener not configured (cert/key paths unset); HTTP-only");
         }
