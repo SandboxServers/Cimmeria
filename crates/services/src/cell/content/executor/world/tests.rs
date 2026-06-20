@@ -104,6 +104,7 @@ async fn set_interaction_type_add_op_or_masks_flags_and_broadcasts_to_each_witne
                 entity_id,
                 method_index,
                 args,
+                ..
             } => emitted.push((witness_id, entity_id, method_index, args)),
             other => panic!("expected WitnessEntityMethod, got {other:?}"),
         }

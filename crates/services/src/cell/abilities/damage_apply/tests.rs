@@ -530,3 +530,153 @@ async fn player_death_clears_pending_weapon_action_state() {
     assert_eq!(player.holster_animation_complete_at, None);
     assert_eq!(player.combat_exit_at, None);
 }
+
+/// Fan-out regression guard: player A attacks player B while player C
+/// spectates. C must receive `onEffectResults` (observing A's ability) and
+/// `onStatUpdate` (observing B's health drain) via `WitnessEntityMethod`.
+///
+/// This test FAILS if any of the emit paths revert to `send_entity_method`
+/// (own-client-only) — the witness fanout is the load-bearing part.
+#[tokio::test]
+async fn spectator_receives_effect_results_and_stat_update_from_pvp_hit() {
+    // Build a space with three players: A (attacker=1), B (target=2), C (spectator=3).
+    // All co-located so C is in both A's and B's AoI witness sets.
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(3, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    for id in [1u32, 2, 3] {
+        if let Some(e) = mgr.get_entity_mut(id) {
+            e.is_player = true;
+            e.player_id = Some(id as i32 * 100);
+        }
+    }
+    // Make B hostile so target-validity doesn't block the hit.
+    if let Some(b) = mgr.get_entity_mut(2) {
+        b.faction = crate::cell::combat::HOSTILE_FACTION;
+        if let Some(h) = b.stats.get_mut(cimmeria_entity::stats::HEALTH) {
+            h.update(0, 1000, 1000);
+            h.clear_dirty();
+        }
+    }
+    mgr.connect_entity(1);
+    mgr.connect_entity(2);
+    mgr.connect_entity(3);
+    let _ = mgr.compute_aoi_changes();
+
+    let ability = make_ability(7, vec![100]);
+    mgr.ability_defs.insert(7, ability.clone());
+    mgr.effect_defs.insert(100, make_effect(100, 10)); // non-lethal
+
+    let (tx, mut rx) = mpsc::channel(128);
+    apply_damage_to_target(1, 2, 7, &Some(ability), 1, false, &tx, &mut mgr).await;
+
+    let msgs = drain(&mut rx);
+
+    // C (entity_id=3) must receive a WitnessEntityMethod for A's effect results
+    // (observee = A, entity_id=1 in the WitnessEntityMethod).
+    let c_sees_a_effect = msgs.iter().any(|m| {
+        matches!(m,
+            CellToBaseMsg::WitnessEntityMethod { witness_id: 3, entity_id: 1, method_index, .. }
+            if *method_index == method_idx::ON_EFFECT_RESULTS
+        )
+    });
+    assert!(
+        c_sees_a_effect,
+        "spectator C must receive WitnessEntityMethod(entity=A, ON_EFFECT_RESULTS) — \
+         got {msgs:?}"
+    );
+
+    // C must receive a WitnessEntityMethod for B's stat update (health bar drain).
+    let c_sees_b_stat = msgs.iter().any(|m| {
+        matches!(m,
+            CellToBaseMsg::WitnessEntityMethod { witness_id: 3, entity_id: 2, method_index, .. }
+            if *method_index == method_idx::ON_STAT_UPDATE
+        )
+    });
+    assert!(
+        c_sees_b_stat,
+        "spectator C must receive WitnessEntityMethod(entity=B, ON_STAT_UPDATE) — \
+         got {msgs:?}"
+    );
+}
+
+/// Death broadcast regression guard: player B is killed while C spectates.
+/// C must receive the dead-state `ON_STATE_FIELD_UPDATE` AND the death
+/// `ON_SEQUENCE` via `WitnessEntityMethod` targeting B.
+///
+/// This closes the death visibility gap: without witness fanout, C only sees
+/// B disappear or stand frozen — no corpse state, no death animation.
+#[tokio::test]
+async fn spectator_receives_death_state_and_sequence_on_player_kill() {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap(); // A (attacker NPC)
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap(); // B (player target)
+    mgr.create_entity(3, "Castle", [0.0; 3], [0.0; 3]).unwrap(); // C (spectator player)
+    if let Some(b) = mgr.get_entity_mut(2) {
+        b.is_player = true;
+        b.player_id = Some(200);
+        if let Some(h) = b.stats.get_mut(cimmeria_entity::stats::HEALTH) {
+            h.update(0, 1, 100);
+            h.clear_dirty();
+        }
+    }
+    if let Some(c) = mgr.get_entity_mut(3) {
+        c.is_player = true;
+        c.player_id = Some(300);
+    }
+    // Wire up the death event set so ON_SEQUENCE fires.
+    // Event set 1025 maps (esid=1025, EVENT_ENTITY_DEATH=5001) → some seq_id.
+    mgr.sequence_map.insert((1025, 5001), 9001);
+
+    mgr.connect_entity(2);
+    mgr.connect_entity(3);
+    let _ = mgr.compute_aoi_changes();
+
+    let ability = make_ability(99, vec![777]);
+    mgr.ability_defs.insert(99, ability.clone());
+    mgr.effect_defs.insert(777, make_effect(777, 9_999)); // lethal
+
+    let (tx, mut rx) = mpsc::channel(128);
+    apply_damage_to_target(1, 2, 99, &Some(ability), 1, false, &tx, &mut mgr).await;
+
+    let msgs = drain(&mut rx);
+
+    // C must receive the dead-state flip for B.
+    let c_sees_b_dead = msgs.iter().any(|m| {
+        matches!(m,
+            CellToBaseMsg::WitnessEntityMethod { witness_id: 3, entity_id: 2, method_index, .. }
+            if *method_index == method_idx::ON_STATE_FIELD_UPDATE
+        )
+    });
+    assert!(
+        c_sees_b_dead,
+        "spectator C must receive WitnessEntityMethod(entity=B, ON_STATE_FIELD_UPDATE) \
+         carrying the dead-state bit — got {msgs:?}"
+    );
+
+    // C must receive the death animation for B.
+    let c_sees_b_death_anim = msgs.iter().any(|m| {
+        matches!(m,
+            CellToBaseMsg::WitnessEntityMethod { witness_id: 3, entity_id: 2, method_index, .. }
+            if *method_index == method_idx::ON_SEQUENCE
+        )
+    });
+    assert!(
+        c_sees_b_death_anim,
+        "spectator C must receive WitnessEntityMethod(entity=B, ON_SEQUENCE) \
+         for the death animation — got {msgs:?}"
+    );
+}

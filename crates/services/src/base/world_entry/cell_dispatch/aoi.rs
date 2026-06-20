@@ -366,6 +366,7 @@ pub(super) async fn witness_entity_method(
     entity_id: u32,
     method_index: u16,
     args: Vec<u8>,
+    entity_is_player: bool,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -374,17 +375,25 @@ pub(super) async fn witness_entity_method(
         witness_id,
         entity_id,
         method_index,
+        entity_is_player,
         "Broadcast entity method to witness"
     );
     // RELIABLE — witness-broadcast entity methods are state-change traffic,
     // same shape as the owning-client `entity_method_call` above.
     //
     // `entity_id` here is the *target* (ghost) entity in the witness's AoI,
-    // NOT the witness itself. Targets are NPCs (or rarely other player
-    // ghosts) — use `IDBASE_NPC_DEFAULT` since the current schema's NPC
-    // types all have ≤62 exposed methods. The wire-byte difference vs
-    // `IDBASE_SGW_PLAYER` only matters for method indices ≥61; today's
-    // witness methods (InteractionType, etc.) are all far below that.
+    // NOT the witness itself. The idbase selects how the method index is
+    // wire-encoded: player ghosts use `IDBASE_SGW_PLAYER` (61), NPC ghosts
+    // use `IDBASE_NPC_DEFAULT` (62). Method indices ≥61 encode differently
+    // under each idbase — a player ghost firing a high-index method
+    // (onEffectResults, onStateFieldUpdate, onSequence) corrupts on the wire
+    // if forced through the NPC idbase. The cell side stamps `entity_is_player`
+    // when it builds the message so this selection is correct per observee.
+    let idbase = if entity_is_player {
+        IDBASE_SGW_PLAYER
+    } else {
+        IDBASE_NPC_DEFAULT
+    };
     send_to_witness_reliable(
         transport,
         connected,
@@ -397,7 +406,7 @@ pub(super) async fn witness_entity_method(
                 acks,
                 entity_id,
                 method_index,
-                IDBASE_NPC_DEFAULT,
+                idbase,
                 &args,
                 version,
             )

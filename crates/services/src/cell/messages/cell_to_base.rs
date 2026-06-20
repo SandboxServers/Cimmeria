@@ -536,6 +536,12 @@ pub enum CellToBaseMsg {
         entity_id: u32,
         method_index: u16,
         args: Vec<u8>,
+        /// Whether `entity_id` is a player entity. Controls the idbase used
+        /// in the wire encoding: players use `IDBASE_SGW_PLAYER` (61),
+        /// non-players use `IDBASE_NPC_DEFAULT` (62). Method indices ≥61
+        /// encode differently under each idbase; wrong selection corrupts
+        /// the wire byte for high-index methods.
+        entity_is_player: bool,
     },
 
     /// Send `BASEMSG_ENTITY_INVISIBLE (0x0B)` to a single witness without the

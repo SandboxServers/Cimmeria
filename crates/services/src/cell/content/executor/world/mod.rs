@@ -44,6 +44,7 @@ pub(super) async fn set_interaction_type(
         };
 
         if let Some(flags) = new_flags {
+            let target_is_player = space_mgr.get_entity(target_id).is_some_and(|e| e.is_player);
             let witnesses = space_mgr.get_witnesses_of(target_id);
             for witness_id in witnesses {
                 let _ = tx
@@ -52,6 +53,7 @@ pub(super) async fn set_interaction_type(
                         entity_id: target_id,
                         method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                         args: (flags as u64).to_le_bytes().to_vec(),
+                        entity_is_player: target_is_player,
                     })
                     .await;
             }

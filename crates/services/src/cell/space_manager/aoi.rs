@@ -175,6 +175,7 @@ impl SpaceManager {
                                         entity_id: eid,
                                         method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                                         args: (merged as u64).to_le_bytes().to_vec(),
+                                        entity_is_player: other.is_player,
                                     });
 
                                     // Register the entity as interactable on the client.
