@@ -38,6 +38,7 @@ This directory contains per-system reverse engineering findings with evidence.
 | `mercury-nub-anatomy.md` | V5 | Mercury `Nub` / `BaseNub` / `ChannelInternal` / `Connection` class layouts (22 functions, 4 struct anatomies); two-channel-map design; network thread loop; `Nub::send` 4-phase pipeline; rdtsc inactivity vs our `MAX_RETRIES`; two latent wire gaps (REPLY piggyback XOR-inverted length, ACK batching per 10ms tick) | HIGH |
 | `dialog-portrait-lookup.md` | V5 | Dialog portrait + speaker-name lookup — wire EntityId path (not DatabaseId) through LookupEntityListenerEntry → slot 17 → UnitMappingChanged → createCharacterPortrait; CookedData SpeakerID PAK parse at piVar2[7]; empty-name fallback to player name; Prisoner 329 + Col Marsh root-cause diagnoses | HIGH |
 | `client-wire-emit-suppression.md` | V5 | Client-side gates suppressing wire emit — Heal Focus arg-validation drop at `0x00aa2910`; P90 bandolier-swap Lua `getActiveSlotForContainer` no-op gate; in-flight ability queue at `GameEntityManager+0x228`; proposed server-side mitigations (resend `onActiveSlotUpdate` post-`onClientReady`, ensure `AbilityCooldownUpdate` drains the in-flight queue) | HIGH (binary anatomy) / MEDIUM (proposed mitigations need playtest) |
+| `auth-and-crypto-modernization-targets.md` | #434 | Auth login transport (libcurl), client SHA-1 site, anti-debug status, Mercury crypto v2 targets | HIGH |
 
 ## Finding Format
 
