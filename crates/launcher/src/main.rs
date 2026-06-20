@@ -17,7 +17,7 @@ mod worker;
 use std::sync::Arc;
 
 use eframe::egui;
-use fs4::fs_std::FileExt;
+use fs4::FileExt;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
@@ -56,7 +56,12 @@ fn main() -> eframe::Result<()> {
             std::process::exit(2);
         }
     };
-    if FileExt::try_lock_exclusive(&lock_file).is_err() {
+    // fs4 1.0 renamed `try_lock_exclusive` → `try_lock` (aligning with std's
+    // file-locking API). Keep the fully-qualified `FileExt::` form so this
+    // resolves to fs4's trait method (`Result<(), TryLockError>`, `is_err()` =
+    // contended) rather than std's inherent `File::try_lock` (`Ok(false)` on
+    // contention), whose semantics differ.
+    if FileExt::try_lock(&lock_file).is_err() {
         let msg = format!(
             "Another Stargate Worlds Launcher instance appears to be running \
              (lock held at {}). Close the other instance and retry.",
