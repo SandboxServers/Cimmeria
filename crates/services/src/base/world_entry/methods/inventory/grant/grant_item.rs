@@ -14,9 +14,9 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
-use super::super::vendor::serializers::reserve_free_inventory_slots;
-use super::appearance::refresh_player_appearance;
-use super::core::send_full_inventory_update;
+use super::super::super::vendor::serializers::reserve_free_inventory_slots;
+use super::super::appearance::refresh_player_appearance;
+use super::super::core::send_full_inventory_update;
 use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::base::{helpers, ConnectedClientState};
@@ -603,7 +603,7 @@ pub async fn handle_grant_item(
                     } else {
                         tracing::warn!(item_id, "GrantItem: no resources.items row for granted bandolier item; falling back to full bandolier resync");
                     }
-                    super::super::vendor::helpers::sync_bandolier_after_inventory_change(
+                    super::super::super::vendor::helpers::sync_bandolier_after_inventory_change(
                         entity_id,
                         player_id,
                         db_pool,
