@@ -74,3 +74,21 @@ ALTER TABLE ONLY sgw_player
 ALTER TABLE ONLY sgw_player_discipline_expertise
     ADD CONSTRAINT sgw_player_discipline_expertise_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
+--
+-- Name: sgw_contact_list_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- ON DELETE CASCADE ensures all lists (and via FK below, all members) are
+-- removed when the owning character is deleted — invariant #4 (no orphaned
+-- social data after character deletion).
+--
+
+ALTER TABLE ONLY sgw_contact_list
+    ADD CONSTRAINT sgw_contact_list_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
+-- Name: sgw_contact_list_member_list_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_contact_list_member
+    ADD CONSTRAINT sgw_contact_list_member_list_id_fkey FOREIGN KEY (list_id) REFERENCES sgw_contact_list(list_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+

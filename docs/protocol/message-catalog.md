@@ -45,7 +45,7 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 | Inventory & Items | 17 | Partial (~80%) |
 | Missions | 16 | Partial (~40%) |
 | Chat & Communication | 14 | Implemented |
-| Contact Lists | 6 | Not implemented |
+| Contact Lists | 6 | Implemented |
 | Organizations | 15 | Stub (~5%) |
 | Mail | 9 | Not implemented |
 | Trading | 4 | Not implemented |
@@ -274,12 +274,12 @@ Wire formats: see [`../reverse-engineering/findings/contact-list-wire-formats.md
 
 | Event Name | String Addr | Handler Addr | .def Method | Impl |
 |------------|-------------|--------------|-------------|------|
-| `Event_NetOut_contactListCreate` | — | TBD | ContactListManager.contactListCreate | NO |
-| `Event_NetOut_contactListDelete` | — | TBD | ContactListManager.contactListDelete | NO |
-| `Event_NetOut_contactListRename` | — | `0x00e5f990` | ContactListManager.contactListRename | NO |
-| `Event_NetOut_contactListFlagsUpdate` | — | `0x00e5f9b0` | ContactListManager.contactListFlagsUpdate | NO |
-| `Event_NetOut_contactListAddMembers` | — | `0x00e5f9d0` | ContactListManager.contactListAddMembers | NO |
-| `Event_NetOut_contactListRemoveMembers` | — | `0x00e5f9f0` | ContactListManager.contactListRemoveMembers | NO |
+| `Event_NetOut_contactListCreate` | — | TBD | ContactListManager.contactListCreate | YES |
+| `Event_NetOut_contactListDelete` | — | TBD | ContactListManager.contactListDelete | YES |
+| `Event_NetOut_contactListRename` | — | `0x00e5f990` | ContactListManager.contactListRename | YES |
+| `Event_NetOut_contactListFlagsUpdate` | — | `0x00e5f9b0` | ContactListManager.contactListFlagsUpdate | YES |
+| `Event_NetOut_contactListAddMembers` | — | `0x00e5f9d0` | ContactListManager.contactListAddMembers | YES |
+| `Event_NetOut_contactListRemoveMembers` | — | `0x00e5f9f0` | ContactListManager.contactListRemoveMembers | YES |
 
 ### Abilities & Training
 
@@ -333,7 +333,7 @@ Messages sent FROM the server TO the client. These correspond to `ClientMethods`
 | Missions | 7 | Partial (~40%) |
 | Chat | 7 | Implemented |
 | Organizations | 18 | Not implemented |
-| Contact Lists | 5 | Not implemented |
+| Contact Lists | 5 | Implemented |
 | Mail | 4 | Not implemented |
 | Stargates | 8 | Partial (~20%) |
 | Crafting | 6 | Not implemented |
@@ -417,7 +417,7 @@ The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment
 | Minigames | 0 | 14 | 0 | 12 | 0% |
 | Dueling | 0 | 3 | 0 | 4 | 0% |
 | Pets | 0 | 3 | 0 | 3 | 0% |
-| Contact Lists | 0 | 6 | 0 | 5 | 0% |
+| Contact Lists | 6 | 6 | 5 | 5 | 100% |
 | World/Entity | — | — | 13 | 13 | 100% |
 | GM/Debug | ~20 | 59 | — | — | ~34% |
 | Protocol | 4 | 7 | — | — | 57% |

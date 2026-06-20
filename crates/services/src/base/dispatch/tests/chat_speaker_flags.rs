@@ -74,6 +74,7 @@ async fn drive_send_player_communication_and_get_flags(
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None, // db_pool
     )
     .await
     .expect("sendPlayerCommunication dispatch should not propagate Err");
@@ -179,6 +180,7 @@ async fn chat_set_dnd_handler_sets_then_clears_dnd_message() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None, // db_pool
     )
     .await
     .expect("chatSetDNDMessage (set) must not propagate Err");
@@ -208,6 +210,7 @@ async fn chat_set_dnd_handler_sets_then_clears_dnd_message() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None, // db_pool
     )
     .await
     .expect("chatSetDNDMessage (clear) must not propagate Err");
@@ -260,6 +263,7 @@ async fn chat_set_dnd_handler_one_char_payload_clears_dnd_message() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None, // db_pool
     )
     .await
     .expect("chatSetDNDMessage (1-char) must not propagate Err");
@@ -314,6 +318,7 @@ async fn chat_set_dnd_handler_malformed_payload_preserves_dnd_message() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None, // db_pool
     )
     .await
     .expect("chatSetDNDMessage (malformed) must not propagate Err -- just warn + skip");
@@ -389,6 +394,7 @@ async fn logoff_disconnect_zero_clears_dnd_message_for_next_character() {
         &entity_manager,
         &cell_tx,
         &entity_to_addr,
+        &None, // db_pool — None suppresses contact-list fanout in tests
     )
     .await
     .expect("logOff (disconnect=0) must not propagate Err");
@@ -453,6 +459,7 @@ async fn chat_set_afk_handler_is_log_only_and_preserves_state() {
             &entity_manager,
             &cell_tx,
             &entity_to_addr,
+            &None, // db_pool
         )
         .await
         .unwrap_or_else(|e| panic!("chatSetAFKMessage (payload {i}) must not propagate Err: {e}"));

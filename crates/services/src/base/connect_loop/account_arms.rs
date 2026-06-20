@@ -77,6 +77,7 @@ pub(super) async fn dispatch_base_method(
                     entity_manager,
                     cell_tx,
                     entity_to_addr,
+                    db_pool,
                 )
                 .await?;
             }

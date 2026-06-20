@@ -364,6 +364,7 @@
 \ir sgw/Inventory/Sequences/sgw_inventory_item_id_seq.sql
 \ir sgw/Mail/Sequences/sgw_gate_mail_mail_id_seq.sql
 \ir sgw/Players/Sequences/sgw_characters_character_id_seq.sql
+\ir sgw/Social/Sequences/sgw_contact_list_list_id_seq.sql
 
 -- Tables
 \ir sgw/Accounts/Tables/account.sql
@@ -373,6 +374,8 @@
 \ir sgw/Missions/Tables/sgw_mission.sql
 \ir sgw/Players/Tables/sgw_player.sql
 \ir sgw/Players/Tables/sgw_player_discipline_expertise.sql
+\ir sgw/Social/Tables/sgw_contact_list.sql
+\ir sgw/Social/Tables/sgw_contact_list_member.sql
 \ir sgw/Shards/Tables/shards.sql
 \ir sgw/Audit/Tables/login_audit.sql
 \ir sgw/Outbox/Tables/cell_event_outbox.sql
@@ -387,6 +390,8 @@
 \ir sgw/Inventory/Seed/sgw_inventory_base.sql
 \ir sgw/Mail/Seed/sgw_gate_mail.sql
 \ir sgw/Players/Seed/sgw_player.sql
+\ir sgw/Social/Seed/sgw_contact_list.sql
+\ir sgw/Social/Seed/sgw_contact_list_member.sql
 \ir sgw/Shards/Seed/shards.sql
 
 \ir sgw/_foreign_keys.sql

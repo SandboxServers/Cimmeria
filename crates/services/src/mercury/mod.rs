@@ -222,6 +222,13 @@ pub mod method_idx {
     pub const ON_STORE_OPEN: u16 = 80;
     pub const ON_STORE_UPDATE: u16 = 81;
 
+    // SGWContactListManager interface (85–89)
+    pub const ON_CONTACT_LIST_UPDATE: u16 = 85;
+    pub const ON_CONTACT_LIST_DELETE: u16 = 86;
+    pub const ON_CONTACT_LIST_ADD_MEMBERS: u16 = 87;
+    pub const ON_CONTACT_LIST_REMOVE_MEMBERS: u16 = 88;
+    pub const ON_CONTACT_LIST_EVENT: u16 = 89;
+
     // SGWPlayer own methods (base offset 98)
     pub const ON_BEGIN_AID_WAIT: u16 = 98;
     pub const ON_END_AID_WAIT: u16 = 99;

@@ -562,6 +562,73 @@ pub enum CellToBaseMsg {
         on_victory_chains: Vec<i64>,
     },
 
+    /// Create a new contact list for the player.
+    ///
+    /// Base assigns the server-side `list_id` (sequence), inserts the row,
+    /// and echoes `onContactListUpdate` (CM 85) back to the client with the
+    /// assigned id.
+    ContactListCreate {
+        entity_id: u32,
+        player_id: i32,
+        name: String,
+        flags: u32,
+    },
+
+    /// Delete a contact list owned by the player.
+    ///
+    /// Base validates ownership, deletes the list (members cascade), and
+    /// echoes `onContactListDelete` (CM 86).
+    ContactListDelete {
+        entity_id: u32,
+        player_id: i32,
+        list_id: i32,
+    },
+
+    /// Rename a contact list owned by the player.
+    ///
+    /// Base validates ownership, updates the name, and echoes
+    /// `onContactListUpdate` (CM 85) with the new name.
+    ContactListRename {
+        entity_id: u32,
+        player_id: i32,
+        list_id: i32,
+        name: String,
+    },
+
+    /// Update the flags bitmask on a contact list owned by the player.
+    ///
+    /// Base validates ownership, updates flags, and echoes
+    /// `onContactListUpdate` (CM 85).
+    ContactListFlagsUpdate {
+        entity_id: u32,
+        player_id: i32,
+        list_id: i32,
+        flags: u32,
+    },
+
+    /// Add members to a contact list owned by the player.
+    ///
+    /// Base validates ownership, inserts the member rows (ignoring duplicates),
+    /// and echoes `onContactListAddMembers` (CM 87) with the names that were
+    /// successfully added.
+    ContactListAddMembers {
+        entity_id: u32,
+        player_id: i32,
+        list_id: i32,
+        names: Vec<String>,
+    },
+
+    /// Remove members from a contact list owned by the player.
+    ///
+    /// Base validates ownership, deletes the member rows, and echoes
+    /// `onContactListRemoveMembers` (CM 88).
+    ContactListRemoveMembers {
+        entity_id: u32,
+        player_id: i32,
+        list_id: i32,
+        names: Vec<String>,
+    },
+
     /// Both players in a trade reached `LockedAndConfirmed` — base must
     /// now perform the atomic swap (items + cash) inside a single sqlx
     /// transaction, then send `onTradeResults` to both clients.
