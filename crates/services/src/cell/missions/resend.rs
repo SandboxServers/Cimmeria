@@ -80,8 +80,8 @@ mod tests {
         resend_missions(999, &tx, &mgr).await;
 
         assert!(
-            rx.try_recv().is_err(),
-            "unknown entity must produce no messages"
+            matches!(rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
+            "unknown entity must produce no messages (channel empty, not disconnected)"
         );
     }
 }

@@ -80,7 +80,15 @@ mod tests {
 
     /// `true` iff at least one GM-facing feedback message landed on the channel.
     fn fed_back(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> bool {
-        rx.try_recv().is_ok()
+        // Exactly-one semantics: a parser emits a single feedback message per
+        // failure, so a double-feedback regression panics here instead of
+        // passing silently.
+        let first = rx.try_recv().is_ok();
+        assert!(
+            rx.try_recv().is_err(),
+            "expected at most one GM-feedback message"
+        );
+        first
     }
 
     // ---- parse_i32 ---------------------------------------------------------
