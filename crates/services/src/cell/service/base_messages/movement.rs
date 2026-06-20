@@ -40,7 +40,7 @@ pub(super) async fn handle_entity_move(
     entity_id: u32,
     claimed_space_id: u32,
     position: [f32; 3],
-    direction: [f32; 3],
+    direction: [i8; 3],
     velocity: [f32; 3],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
