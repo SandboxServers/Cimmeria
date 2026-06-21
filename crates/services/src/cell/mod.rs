@@ -21,6 +21,7 @@ pub mod messages;
 pub mod missions;
 pub mod ring_transport;
 mod service;
+pub mod social;
 pub mod space_manager;
 pub mod spawner;
 

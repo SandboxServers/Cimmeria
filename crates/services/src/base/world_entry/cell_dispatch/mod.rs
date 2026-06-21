@@ -42,6 +42,7 @@ mod contact_list_dispatch;
 mod gate_teleport_dispatch;
 mod inventory_dispatch;
 mod minigame;
+mod organization_dispatch;
 mod progression_dispatch;
 mod state_field;
 mod system_options;
@@ -156,5 +157,13 @@ pub(crate) async fn handle_cell_message(
         | CellToBaseMsg::StateFieldUpdate { .. }
         | CellToBaseMsg::RefreshAppearance { .. }
         | CellToBaseMsg::BandolierAmmoUpdate { .. } => inventory_dispatch::route(msg, &ctx).await,
+
+        CellToBaseMsg::OrgSquadSendInvite { .. }
+        | CellToBaseMsg::OrgSquadAccepted { .. }
+        | CellToBaseMsg::OrgSquadMemberLeft { .. }
+        | CellToBaseMsg::OrgSquadLootMode { .. }
+        | CellToBaseMsg::OrgSquadMinimapPing { .. } => {
+            organization_dispatch::route(msg, &ctx).await
+        }
     }
 }

@@ -34,6 +34,7 @@ pub(crate) mod helpers;
 pub(crate) mod item_overrides;
 pub(crate) mod login;
 pub(crate) mod mission_overrides;
+pub(crate) mod organization;
 pub(crate) mod outbox;
 pub(crate) mod resources;
 mod service;

@@ -202,6 +202,27 @@ pub mod method_idx {
     pub const ON_CHAT_JOINED: u16 = 31;
     pub const ON_CHAT_LEFT: u16 = 32;
 
+    // OrganizationMember interface (34–51)
+    // Source: entities/defs/interfaces/OrganizationMember.def + organization-wire-formats.md
+    pub const ON_ORGANIZATION_INVITE: u16 = 34;
+    pub const ON_ORGANIZATION_JOINED: u16 = 35;
+    pub const ON_ORGANIZATION_LEFT: u16 = 36;
+    pub const ON_MEMBER_JOINED_ORGANIZATION: u16 = 37;
+    pub const ON_ORGANIZATION_ROSTER_INFO: u16 = 38;
+    pub const ON_MEMBER_LEFT_ORGANIZATION: u16 = 39;
+    pub const ON_MEMBER_RANK_CHANGED_ORGANIZATION: u16 = 40;
+    pub const ON_STRIKE_TEAM_UPDATE: u16 = 41;
+    pub const ON_PVP_ORGANIZATION_LEAVE_REQUEST: u16 = 42;
+    pub const ON_ORGANIZATION_NAME_UPDATE: u16 = 43;
+    pub const ON_ORGANIZATION_EXPERIENCE_UPDATE: u16 = 44;
+    pub const ON_ORGANIZATION_MOTD_UPDATE: u16 = 45;
+    pub const ON_ORGANIZATION_NOTE_UPDATE: u16 = 46;
+    pub const ON_ORGANIZATION_OFFICER_NOTE_UPDATE: u16 = 47;
+    pub const ON_ORGANIZATION_CASH_UPDATE: u16 = 48;
+    pub const ON_ORGANIZATION_RANK_UPDATE: u16 = 49;
+    pub const ON_ORGANIZATION_RANK_NAME_UPDATE: u16 = 50;
+    pub const ON_SQUAD_LOOT_TYPE: u16 = 51;
+
     // GateTravel interface (65–68)
     pub const SETUP_STARGATE_INFO: u16 = 65;
 

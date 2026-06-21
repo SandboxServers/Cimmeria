@@ -676,4 +676,84 @@ pub enum CellToBaseMsg {
         p2_item_instance_ids: Vec<i32>,
         p2_cash: i32,
     },
+
+    // ── Squad (Organization) messages ────────────────────────────────────────
+    /// A player sent `organizationInviteByType` (base method) or
+    /// `organizationInviteResponse` was accepted — send `onOrganizationInvite`
+    /// [34] to the target, then wait for `organizationInviteResponse` [CM 8].
+    OrgSquadSendInvite {
+        /// Entity that issued the invite.
+        inviter_entity_id: u32,
+        /// Display name of the inviting player (for the wire message).
+        inviter_name: String,
+        /// Entity the invite is addressed to.
+        target_entity_id: u32,
+        /// Unique request token — echoed back in `organizationInviteResponse`.
+        request_id: i32,
+        /// Squad org_id (or 0 for a new squad being formed).
+        org_id: i32,
+        /// Organization name (empty string for a forming squad).
+        org_name: String,
+    },
+
+    /// The target accepted a squad invite (`organizationInviteResponse`, response ≠ 0).
+    /// Cell resolved the state-machine transition; base must now fan out:
+    /// - `onMemberJoinedOrganization` [37] to every existing member
+    /// - `onOrganizationJoined` [35] to the new joiner
+    /// - `onOrganizationRosterInfo` [38] to the new joiner
+    OrgSquadAccepted {
+        /// Squad identifier.
+        org_id: i32,
+        /// Entity ID of the new member.
+        new_member_entity_id: u32,
+        /// DB player_id of the new member (for the roster record).
+        new_member_player_id: i32,
+        /// Display name of the new member.
+        new_member_name: String,
+        /// Initial rank assigned to the new member.
+        new_member_rank: u8,
+        /// Entity IDs of all other squad members (existing + leader).
+        existing_member_entity_ids: Vec<u32>,
+        /// Full roster snapshot (including the new member) for `onOrganizationRosterInfo`.
+        roster: Vec<crate::cell::social::squad_manager::RosterEntry>,
+    },
+
+    /// A player left or was removed from a squad — fan out
+    /// `onMemberLeftOrganization` [39] to all remaining members and
+    /// `onOrganizationLeft` [36] to the departing entity.
+    OrgSquadMemberLeft {
+        org_id: i32,
+        leaving_entity_id: u32,
+        leaving_player_id: i32,
+        leaving_name: String,
+        /// EReasons: 0=Disbanded, 1=Left, 2=Kicked.
+        /// UNCONFIRMED — x64dbg needed. Using Left=1 as default.
+        reason: u8,
+        /// Entity IDs of all members who remain (empty means squad disbanded).
+        remaining_member_entity_ids: Vec<u32>,
+    },
+
+    /// A player set the squad loot mode — fan out `onSquadLootType` [51].
+    OrgSquadLootMode {
+        org_id: i32,
+        loot_mode: i32,
+        /// All squad member entity IDs (including the setter).
+        member_entity_ids: Vec<u32>,
+    },
+
+    /// Minimap ping from a squad member — fan out `onPlayerCommunication`
+    /// (reused channel) to squad members.
+    ///
+    /// The client sends `BroadcastMinimapPing` [CM 10]; the response is
+    /// `receivedMinimapPing` cell method fanned out server-side.  We route
+    /// this via EntityMethodCall on each squad member's entity_id so the
+    /// existing aoi_dispatch path handles the wire serialization.
+    OrgSquadMinimapPing {
+        org_id: i32,
+        /// Entity that pinged.
+        sender_entity_id: u32,
+        location: [f32; 3],
+        /// All squad member entity IDs (including the sender).
+        member_entity_ids: Vec<u32>,
+    },
 }
