@@ -676,4 +676,44 @@ pub enum CellToBaseMsg {
         p2_item_instance_ids: Vec<i32>,
         p2_cash: i32,
     },
+
+    /// Create a Black Market auction listing (`SGWBlackMarket.createAuction`).
+    ///
+    /// `SGWBlackMarket` is a ServerOnly BASE entity; the client RPC lands at the
+    /// cell (method 62) which forwards here. The base validates ownership +
+    /// auctionability, escrows the item out of inventory, inserts the
+    /// `sgw_auction` row, and replies to the seller's client. `auction_length`
+    /// is the UINT8 duration enum from the wire (decoded via the D.5 placeholder
+    /// into an expiry timestamp base-side).
+    BMCreateAuction {
+        entity_id: u32,
+        player_id: i32,
+        item_id: i32,
+        starting_price: i32,
+        buyout_price: i32,
+        auction_length: u8,
+    },
+
+    /// Place a bid on an active auction (`SGWBlackMarket.placeBid`, method 63).
+    ///
+    /// The base validates the auction is active, the bidder isn't the seller,
+    /// the amount clears the next-min-bid, and the bidder has funds; it then
+    /// refunds the prior bidder, holds the new bid, and pushes
+    /// `onBMAuctionUpdate`.
+    BMPlaceBid {
+        entity_id: u32,
+        player_id: i32,
+        sequence_id: i32,
+        bid_amount: i32,
+    },
+
+    /// Cancel an owned auction (`SGWBlackMarket.cancelAuction`, method 64).
+    ///
+    /// Seller-only: the base returns the escrowed item, refunds the current
+    /// bidder if any, sets status=cancelled, and pushes `onBMAuctionRemove`.
+    BMCancelAuction {
+        entity_id: u32,
+        player_id: i32,
+        sequence_id: i32,
+    },
 }

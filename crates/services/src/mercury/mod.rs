@@ -229,6 +229,14 @@ pub mod method_idx {
     pub const ON_CONTACT_LIST_REMOVE_MEMBERS: u16 = 88;
     pub const ON_CONTACT_LIST_EVENT: u16 = 89;
 
+    // SGWBlackMarketManager interface (90–95)
+    pub const ON_BM_OPEN: u16 = 90;
+    pub const ON_BM_ERROR: u16 = 91;
+    pub const ON_BM_AUCTIONS: u16 = 92;
+    pub const ON_BM_AUCTION_REMOVE: u16 = 93;
+    pub const ON_BM_AUCTION_UPDATE: u16 = 94;
+    pub const ON_BM_WATCHED_ITEMS_UPDATE: u16 = 95;
+
     // SGWPlayer own methods (base offset 98)
     pub const ON_BEGIN_AID_WAIT: u16 = 98;
     pub const ON_END_AID_WAIT: u16 = 99;

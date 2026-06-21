@@ -38,6 +38,7 @@ use super::super::ConnectedClientState;
 mod aoi;
 mod aoi_dispatch;
 mod bandolier;
+mod black_market_dispatch;
 mod contact_list_dispatch;
 mod gate_teleport_dispatch;
 mod inventory_dispatch;
@@ -142,6 +143,10 @@ pub(crate) async fn handle_cell_message(
         | CellToBaseMsg::SellVendorItems { .. }
         | CellToBaseMsg::BuybackVendorItems { .. }
         | CellToBaseMsg::ExecuteTrade { .. } => vendor_dispatch::route(msg, &ctx).await,
+
+        CellToBaseMsg::BMCreateAuction { .. }
+        | CellToBaseMsg::BMPlaceBid { .. }
+        | CellToBaseMsg::BMCancelAuction { .. } => black_market_dispatch::route(msg, &ctx).await,
 
         CellToBaseMsg::ListInventoryItems { .. }
         | CellToBaseMsg::MoveInventoryItem { .. }

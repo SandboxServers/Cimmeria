@@ -170,6 +170,11 @@ impl BaseService {
         let bidi_transport: Arc<dyn cimmeria_mercury::transport::BidirectionalTransport> =
             Arc::new(UdpTransport::new(Arc::clone(&socket)));
         let transport_for_cell: Arc<dyn Transport> = bidi_transport.clone();
+        // Clones for the Black Market expiry sweep, captured before the cell
+        // handler / recv loop move their copies.
+        let transport_for_bm_sweep: Arc<dyn Transport> = bidi_transport.clone();
+        let connected_for_bm_sweep = Arc::clone(&connected);
+        let entity_to_addr_for_bm_sweep = Arc::clone(&entity_to_addr);
         let connected_for_cell = Arc::clone(&connected);
         let entity_to_addr_for_cell = Arc::clone(&entity_to_addr);
         let cell_tx_for_cell = cell_tx.clone();
@@ -232,6 +237,20 @@ impl BaseService {
             tracing::debug!(
                 "Skipping cell_event_outbox drainer: db_pool or cell_tx not configured"
             );
+        }
+
+        // Spawn the Black Market expiry sweep. Settles auctions past their
+        // `expires_at`: sold → mail seller cash + buyer item; unsold → mail the
+        // item back to the seller. Requires a DB pool.
+        if let Some(pool) = self.db_pool.clone() {
+            crate::base::black_market::sweep::spawn_sweep(
+                pool,
+                transport_for_bm_sweep,
+                connected_for_bm_sweep,
+                entity_to_addr_for_bm_sweep,
+            );
+        } else {
+            tracing::debug!("Skipping black_market expiry sweep: db_pool not configured");
         }
 
         self.is_running = true;
