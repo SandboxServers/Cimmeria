@@ -90,7 +90,7 @@ fn push_auction_item(out: &mut Vec<u8>, row: &AuctionRow, seller_name: &str) {
     out.extend_from_slice(&row.buyout_price.to_le_bytes());
     // endTimeValue is the UINT8 duration enum echoed back to the client.
     out.push(row.auction_length as u8);
-    let next = next_min_bid(row.current_bid as i64);
+    let next = next_min_bid(row.current_bid as i64).min(i32::MAX as i64);
     out.extend_from_slice(&(next as i32).to_le_bytes());
     push_string(out, seller_name);
 }
@@ -172,6 +172,33 @@ mod tests {
         assert_eq!(next_min_bid(0), 1);
         assert_eq!(next_min_bid(10), 11); // 10/20 = 0 -> max(1)
         assert_eq!(next_min_bid(100), 105); // 100/20 = 5
+    }
+
+    #[test]
+    fn next_min_bid_clamps_at_i32_max_on_wire() {
+        // current_bid near i32::MAX: the raw next_min_bid exceeds i32 range, so
+        // the serializer must clamp to i32::MAX, never wrap negative on the wire.
+        let row = AuctionRow {
+            sequence_id: 1,
+            seller_id: 2,
+            item_id: 3,
+            item_def_id: 4,
+            stack_size: 1,
+            durability: 0,
+            charges: 0,
+            starting_price: 0,
+            buyout_price: 0,
+            current_bid: i32::MAX,
+            current_bidder: None,
+            auction_length: 0,
+            created_at: 0,
+            expires_at: 0,
+            status: 0,
+        };
+        let args = serialize_on_bm_auction_update(&row, "");
+        let next = i32::from_le_bytes([args[29], args[30], args[31], args[32]]);
+        assert_eq!(next, i32::MAX, "must clamp to i32::MAX");
+        assert!(next > 0, "must never wrap negative on the wire");
     }
 
     #[test]

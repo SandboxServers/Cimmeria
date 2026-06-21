@@ -154,7 +154,16 @@ pub async fn handle_place_bid(
         }
     };
 
-    if let Err(code) = validate_bid(&auction, player_id, bid_amount, balance) {
+    // A bidder raising their OWN current high bid has their prior bid refunded
+    // below before the new debit, so validate against the post-refund effective
+    // balance — otherwise a valid self-raise is wrongly rejected on the
+    // pre-refund snapshot.
+    let effective_balance = if auction.current_bidder == Some(player_id) {
+        balance + auction.current_bid as i64
+    } else {
+        balance
+    };
+    if let Err(code) = validate_bid(&auction, player_id, bid_amount, effective_balance) {
         let _ = tx.rollback().await;
         tracing::info!(
             entity_id,

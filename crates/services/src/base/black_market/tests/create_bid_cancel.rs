@@ -211,3 +211,69 @@ async fn cancel_auction_returns_item_and_refunds_bidder() {
 
     cleanup(&pool, &[acc_seller, acc_bidder], &[seller, bidder]).await;
 }
+
+/// A bidder raising their OWN current high bid must have the held prior bid
+/// credited during validation. Bug-shape guard: the bidder is funded with
+/// EXACTLY the raise amount, so the self-raise only clears if the held prior
+/// bid is added back to the validated balance — reverting the effective-balance
+/// fix leaves `current_bid` stuck at the first bid.
+#[tokio::test]
+async fn place_bid_self_raise_credits_held_bid() {
+    let pool = require_db_or_skip!();
+    let entity_id: u32 = 0x7000_0913;
+    let acc_seller = TEST_BASE + 130;
+    let acc_b1 = TEST_BASE + 131;
+    let seller = TEST_BASE + 140;
+    let bidder1 = TEST_BASE + 141;
+    cleanup(&pool, &[acc_seller, acc_b1], &[seller, bidder1]).await;
+    insert_account_and_player(&pool, acc_seller, seller, 0).await;
+    // Funded with exactly 500: the self-raise to 500 only validates if the held
+    // 200 is credited back (300 free + 200 held = 500).
+    insert_account_and_player(&pool, acc_b1, bidder1, 500).await;
+    let item = insert_item(&pool, seller, ITEM_DEF_ID).await;
+
+    let (transport, e2a, conn) = make_state(entity_id);
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    create::handle_create_auction(
+        entity_id, seller, item, 100, 0, 1, &db_pool, &transport, &conn, &e2a,
+    )
+    .await;
+    let seq: i32 = sqlx::query_scalar("SELECT sequence_id FROM sgw_auction WHERE seller_id = $1")
+        .bind(seller)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    bid::handle_place_bid(
+        entity_id, bidder1, seq, 200, &db_pool, &transport, &conn, &e2a,
+    )
+    .await;
+    assert_eq!(naquadah_of(&pool, bidder1).await, 300, "first bid held");
+
+    // Self-raise to 500 (>= next-min 210): refund 200, hold 500 -> net balance 0.
+    bid::handle_place_bid(
+        entity_id, bidder1, seq, 500, &db_pool, &transport, &conn, &e2a,
+    )
+    .await;
+
+    let (cur_bid, cur_bidder): (i32, Option<i32>) = sqlx::query_as(
+        "SELECT current_bid, current_bidder FROM sgw_auction WHERE sequence_id = $1",
+    )
+    .bind(seq)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        cur_bid, 500,
+        "self-raise accepted: held bid credited in validation"
+    );
+    assert_eq!(cur_bidder, Some(bidder1));
+    assert_eq!(
+        naquadah_of(&pool, bidder1).await,
+        0,
+        "net deduction = new bid minus refunded prior"
+    );
+
+    cleanup(&pool, &[acc_seller, acc_b1], &[seller, bidder1]).await;
+}

@@ -100,8 +100,8 @@ pub async fn adjust_player_cash(
     delta: i64,
 ) -> Result<i64, CashError> {
     let updated = sqlx::query_scalar::<_, i64>(
-        "UPDATE sgw_player SET naquadah = naquadah + $1 \
-         WHERE player_id = $2 AND naquadah + $1 >= 0 \
+        "UPDATE sgw_player SET naquadah = naquadah + $1::int \
+         WHERE player_id = $2 AND naquadah + $1::int >= 0 \
          RETURNING naquadah::bigint",
     )
     .bind(delta)
