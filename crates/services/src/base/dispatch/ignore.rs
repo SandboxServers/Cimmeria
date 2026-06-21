@@ -23,21 +23,17 @@ use tokio::sync::mpsc;
 
 use crate::base::contact_list::handlers::{handle_add_members, handle_remove_members};
 use crate::base::contact_list::persistence::{
-    ensure_system_lists, load_contact_lists, load_list_header,
+    ensure_system_lists, load_contact_lists, load_list_header, IGNORE_LIST_FLAGS,
 };
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::read_wstring;
-
-/// Flags value identifying the system 'Ignore' contact list.
-const IGNORE_LIST_FLAGS: i32 = 301;
 
 /// Handle `chatIgnore(WSTRING playerName, UINT8 flag)`.
 ///
 /// `flag == 1` adds `playerName` to the Ignore list; any other value removes
 /// it. The `.def` file carries both args even though the dispatch table lists
 /// only the WSTRING — the UINT8 flag is authoritative.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_chat_ignore(
     payload: &[u8],
     addr: SocketAddr,
@@ -235,12 +231,18 @@ pub(crate) async fn resync_ignore_after_member_change(
 
     // Push to the cell so the AoI filter re-evaluates.
     if let Some(ref tx) = cell_tx {
-        let _ = tx
+        if let Err(e) = tx
             .send(BaseToCellMsg::UpdateIgnoreList {
                 entity_id,
                 ignore_names,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(
+                entity_id,
+                "ignore resync: failed to push UpdateIgnoreList to cell: {e}"
+            );
+        }
     }
 }
 

@@ -261,7 +261,7 @@ async fn chat_ignore_add_then_remove_updates_ignore_list() {
     let lists = load_contact_lists(&pool, player_id).await.expect("load");
     let ignore = lists
         .iter()
-        .find(|l| l.flags == 301)
+        .find(|l| l.flags == IGNORE_LIST_FLAGS)
         .expect("Ignore list present");
     assert_eq!(ignore.list_id, ignore_id);
     assert!(ignore.members.contains(&"Spammer".to_string()));
@@ -277,7 +277,7 @@ async fn chat_ignore_add_then_remove_updates_ignore_list() {
         .expect("load after remove");
     let ignore2 = lists2
         .iter()
-        .find(|l| l.flags == 301)
+        .find(|l| l.flags == IGNORE_LIST_FLAGS)
         .expect("Ignore list still present");
     assert!(
         !ignore2.members.contains(&"Spammer".to_string()),

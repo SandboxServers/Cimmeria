@@ -9,6 +9,11 @@
 
 use sqlx::PgPool;
 
+/// EMoniker text-moniker flag identifying the system 'Ignore' list. Single
+/// source of truth for the ignore-list contract — reused by the AoI/chat
+/// ignore enforcement instead of re-hard-coding `301`. (Friends is 300.)
+pub(crate) const IGNORE_LIST_FLAGS: i32 = 301;
+
 /// A loaded contact list, including its members.
 #[derive(Debug, Clone)]
 pub(crate) struct ContactList {

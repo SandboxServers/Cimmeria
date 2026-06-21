@@ -17,7 +17,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use crate::base::contact_list::persistence::{
-    ensure_system_lists, load_contact_lists, ContactList,
+    ensure_system_lists, load_contact_lists, ContactList, IGNORE_LIST_FLAGS,
 };
 use crate::base::contact_list::wire::{
     build_on_contact_list_add_members, build_on_contact_list_event, build_on_contact_list_update,
@@ -271,12 +271,12 @@ fn dedup_online(candidate_names: &[String], online_names: &HashSet<String>) -> V
     out
 }
 
-/// Flatten the member names of the player's 'Ignore' list(s) (flags 301) into a
-/// set. Pure helper, unit-tested; seeds the in-memory `ignore_set` at login.
+/// Flatten the member names of the player's 'Ignore' list(s) into a set. Pure
+/// helper, unit-tested; seeds the in-memory `ignore_set` at login.
 fn ignore_names_from_lists(lists: &[ContactList]) -> HashSet<String> {
     lists
         .iter()
-        .filter(|l| l.flags == 301)
+        .filter(|l| l.flags == IGNORE_LIST_FLAGS)
         .flat_map(|l| l.members.iter().cloned())
         .collect()
 }
@@ -297,7 +297,7 @@ mod presence_login_tests {
             ContactList {
                 list_id: 2,
                 name: "Ignore".into(),
-                flags: 301,
+                flags: IGNORE_LIST_FLAGS,
                 members: vec!["BadGuy".into(), "Jerk".into()],
             },
         ];

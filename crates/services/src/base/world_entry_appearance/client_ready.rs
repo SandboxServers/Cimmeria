@@ -393,12 +393,18 @@ pub(crate) async fn handle_on_client_ready(
             .ok()
             .and_then(|clients| clients.get(&addr).map(|c| c.ignore_set.clone()))
             .unwrap_or_default();
-        let _ = tx
+        if let Err(e) = tx
             .send(BaseToCellMsg::UpdateIgnoreList {
                 entity_id,
                 ignore_names,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(
+                entity_id,
+                "ignore seed: failed to push UpdateIgnoreList to cell on world entry: {e}"
+            );
+        }
     }
 
     // Fan out online status (CM 89, eventId=LoggedInStatus, data=1) to all
