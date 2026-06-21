@@ -67,25 +67,13 @@ impl SpaceManager {
             return;
         };
         {
-            let (
-                player_pos,
-                aoi_radius,
-                player_interactions,
-                player_char_name,
-                player_ignore_names,
-            ) = match space.entities.get(&player_id) {
-                Some(e) => (
-                    e.position,
-                    e.aoi_radius,
-                    e.available_interactions.clone(),
-                    // Snapshot the player's name + ignore set up front. They
-                    // don't change during the candidates loop, and snapshotting
-                    // avoids a simultaneous borrow of `space.entities` for both
-                    // the player and each candidate (the candidate borrow below
-                    // is the live one).
-                    e.character_name.clone(),
-                    e.ignore_names.clone(),
-                ),
+            // Copy the cheap scalars; the name + ignore set are *borrowed* for
+            // the candidate scan below (no per-tick clone of the ignore set —
+            // AoI is a hot loop). `available_interactions` is needed after the
+            // scan, so it's cloned here as before.
+            let (player_pos, aoi_radius, player_interactions) = match space.entities.get(&player_id)
+            {
+                Some(e) => (e.position, e.aoi_radius, e.available_interactions.clone()),
                 None => return,
             };
 
@@ -94,40 +82,52 @@ impl SpaceManager {
 
             // Filter to actual AoI: all entities in range (players + NPCs)
             let mut current_aoi: HashSet<u32> = HashSet::new();
-            for candidate_eid in &candidates {
-                let cid = candidate_eid.0 as u32;
-                if cid == player_id {
-                    continue; // skip self
-                }
-                // Exact distance check
-                if let Some(other) = space.entities.get(&cid) {
-                    let dist_sq = player_pos.distance_squared_to(&other.position);
-                    if dist_sq > aoi_radius * aoi_radius {
-                        continue;
-                    }
+            {
+                // Borrow the player's name + ignore set for the scan. This is an
+                // immutable borrow of `space.entities` that coexists with each
+                // candidate `get` below (both shared); it ends with this block,
+                // before the witness-set `get_mut` further down.
+                let player = match space.entities.get(&player_id) {
+                    Some(e) => e,
+                    None => return,
+                };
+                let player_char_name = player.character_name.as_deref();
+                let player_ignore_names = &player.ignore_names;
 
-                    // Symmetric ignore exclusion (players only — NPCs are never
-                    // filtered, so an ignoree still sees NPCs react to the
-                    // invisible player; that cosmetic is an accepted tradeoff).
-                    // Exclude the pair if EITHER side ignores the other:
-                    //   - player ignores candidate  (candidate's name in player's set)
-                    //   - candidate ignores player   (player's name in candidate's set)
-                    // Symmetry is achieved because B's own `compute_player_aoi`
-                    // pass runs the mirror check, so a one-directional ignore
-                    // hides the pair from BOTH witness sets.
-                    if other.is_player {
-                        let other_name = other.character_name.as_deref().unwrap_or("");
-                        let player_ignores_other =
-                            !other_name.is_empty() && player_ignore_names.contains(other_name);
-                        let other_ignores_player = player_char_name
-                            .as_deref()
-                            .is_some_and(|pn| other.ignore_names.contains(pn));
-                        if player_ignores_other || other_ignores_player {
+                for candidate_eid in &candidates {
+                    let cid = candidate_eid.0 as u32;
+                    if cid == player_id {
+                        continue; // skip self
+                    }
+                    // Exact distance check
+                    if let Some(other) = space.entities.get(&cid) {
+                        let dist_sq = player_pos.distance_squared_to(&other.position);
+                        if dist_sq > aoi_radius * aoi_radius {
                             continue;
                         }
-                    }
 
-                    current_aoi.insert(cid);
+                        // Symmetric ignore exclusion (players only — NPCs are never
+                        // filtered, so an ignoree still sees NPCs react to the
+                        // invisible player; that cosmetic is an accepted tradeoff).
+                        // Exclude the pair if EITHER side ignores the other:
+                        //   - player ignores candidate  (candidate's name in player's set)
+                        //   - candidate ignores player   (player's name in candidate's set)
+                        // Symmetry is achieved because B's own `compute_player_aoi`
+                        // pass runs the mirror check, so a one-directional ignore
+                        // hides the pair from BOTH witness sets.
+                        if other.is_player {
+                            let other_name = other.character_name.as_deref().unwrap_or("");
+                            let player_ignores_other =
+                                !other_name.is_empty() && player_ignore_names.contains(other_name);
+                            let other_ignores_player =
+                                player_char_name.is_some_and(|pn| other.ignore_names.contains(pn));
+                            if player_ignores_other || other_ignores_player {
+                                continue;
+                            }
+                        }
+
+                        current_aoi.insert(cid);
+                    }
                 }
             }
 

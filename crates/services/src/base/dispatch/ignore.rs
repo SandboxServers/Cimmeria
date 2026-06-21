@@ -142,45 +142,23 @@ pub(super) async fn handle_chat_ignore(
         .await;
     }
 
-    // Update the in-memory ignore_set and snapshot it for the cell sync.
-    let ignore_snapshot = {
-        let mut clients = match connected.lock() {
-            Ok(c) => c,
-            Err(_) => {
-                tracing::error!(%addr, "chatIgnore: connected lock poisoned on update");
-                return;
-            }
-        };
-        match clients.get_mut(&addr) {
-            Some(c) => {
-                if add {
-                    c.ignore_set.insert(target_name.clone());
-                } else {
-                    c.ignore_set.remove(&target_name);
-                }
-                c.ignore_set.clone()
-            }
-            None => return,
-        }
-    };
-
-    tracing::info!(
+    // Re-sync the in-memory cache (and the cell AoI seed) from the authoritative
+    // DB Ignore membership rather than optimistically mutating it: if the
+    // add/remove above hit a DB error, the cache must still reflect what
+    // actually persisted, not what we intended. `resync_ignore_after_member_change`
+    // reloads the Ignore list and re-pushes `UpdateIgnoreList` to the cell.
+    resync_ignore_after_member_change(
         entity_id,
         player_id,
-        add,
-        ignore_count = ignore_snapshot.len(),
-        "chatIgnore: ignore list updated"
-    );
+        ignore_list_id,
+        db_pool,
+        connected,
+        entity_to_addr,
+        cell_tx,
+    )
+    .await;
 
-    // Push the updated set to the cell so the AoI filter re-evaluates.
-    if let Some(ref tx) = cell_tx {
-        let _ = tx
-            .send(BaseToCellMsg::UpdateIgnoreList {
-                entity_id,
-                ignore_names: ignore_snapshot,
-            })
-            .await;
-    }
+    tracing::info!(entity_id, player_id, add, "chatIgnore: ignore list updated");
 }
 
 /// Re-sync the ignore cache after a contact-list member add/remove, but only
