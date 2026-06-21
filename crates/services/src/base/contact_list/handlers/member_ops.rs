@@ -84,6 +84,13 @@ pub(crate) async fn handle_add_members(
                 },
             )
             .await;
+
+            // Light up any just-added contact who is ALREADY online, so the
+            // adder sees them online immediately. Mirrors the login reverse
+            // sync (`notify_online_contacts`); without it, a freshly-added
+            // online friend stays dim until one side relogs.
+            super::notify_online_contacts(entity_id, &added, transport, connected, entity_to_addr)
+                .await;
         }
         Ok(_) => {
             // All names were duplicates — nothing to echo.
