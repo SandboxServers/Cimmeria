@@ -86,7 +86,7 @@ pub async fn load_all_orgs(pool: &PgPool) -> Result<Vec<Org>, sqlx::Error> {
     // Join to sgw_player for the character name (display name for roster).
     let member_rows: Vec<(i32, i32, i16, Option<String>, String)> =
         sqlx::query_as::<_, (i32, i32, i16, Option<String>, String)>(
-            "SELECT m.org_id, m.player_id, m.rank_value, m.notes, p.character_name \
+            "SELECT m.org_id, m.player_id, m.rank_value, m.notes, p.player_name \
              FROM sgw_organization_members m \
              JOIN sgw_player p USING (player_id) \
              WHERE m.org_id = ANY($1) ORDER BY m.org_id, m.player_id",
