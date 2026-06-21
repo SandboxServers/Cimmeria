@@ -83,3 +83,17 @@ ALTER TABLE ONLY sgw_contact_list
 ALTER TABLE ONLY sgw_contact_list_member
     ADD CONSTRAINT sgw_contact_list_member_pkey PRIMARY KEY (list_id, player_name);
 
+--
+-- Name: sgw_auction_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_auction
+    ADD CONSTRAINT sgw_auction_pkey PRIMARY KEY (sequence_id);
+
+--
+-- Name: sgw_auction_bid_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_auction_bid
+    ADD CONSTRAINT sgw_auction_bid_pkey PRIMARY KEY (bid_id);
+

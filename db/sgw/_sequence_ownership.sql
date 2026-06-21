@@ -44,3 +44,15 @@ ALTER SEQUENCE sgw_inventory_item_id_seq OWNED BY sgw_inventory.item_id;
 
 ALTER SEQUENCE sgw_contact_list_list_id_seq OWNED BY sgw_contact_list.list_id;
 
+--
+-- Name: sgw_auction_sequence_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE sgw_auction_sequence_id_seq OWNED BY sgw_auction.sequence_id;
+
+--
+-- Name: sgw_auction_bid_bid_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE sgw_auction_bid_bid_id_seq OWNED BY sgw_auction_bid.bid_id;
+

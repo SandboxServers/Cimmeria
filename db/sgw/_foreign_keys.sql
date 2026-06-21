@@ -92,3 +92,37 @@ ALTER TABLE ONLY sgw_contact_list
 ALTER TABLE ONLY sgw_contact_list_member
     ADD CONSTRAINT sgw_contact_list_member_list_id_fkey FOREIGN KEY (list_id) REFERENCES sgw_contact_list(list_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
+--
+-- Name: sgw_auction_seller_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- Deleting the seller removes their listings (the escrowed item is handled
+-- server-side before the row goes away in later phases).
+--
+
+ALTER TABLE ONLY sgw_auction
+    ADD CONSTRAINT sgw_auction_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
+-- Name: sgw_auction_current_bidder_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- current_bidder is nullable (no bids yet); on bidder deletion the high-bid
+-- pointer is cleared rather than dropping the auction.
+--
+
+ALTER TABLE ONLY sgw_auction
+    ADD CONSTRAINT sgw_auction_current_bidder_fkey FOREIGN KEY (current_bidder) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE SET NULL;
+
+--
+-- Name: sgw_auction_bid_sequence_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_auction_bid
+    ADD CONSTRAINT sgw_auction_bid_sequence_id_fkey FOREIGN KEY (sequence_id) REFERENCES sgw_auction(sequence_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
+-- Name: sgw_auction_bid_bidder_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_auction_bid
+    ADD CONSTRAINT sgw_auction_bid_bidder_id_fkey FOREIGN KEY (bidder_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
