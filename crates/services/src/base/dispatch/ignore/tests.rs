@@ -118,15 +118,45 @@ async fn resync_reloads_ignore_list_and_pushes_to_cell() {
     use crate::test_support::require_db_or_skip;
 
     let pool = require_db_or_skip!();
-    let player_id: i32 = 0x7000_2C01;
+    // Sentinel ids distinct from the persistence (0x7000_4000) + crafting
+    // (0x7000_2000/3000) bases. sgw_contact_list.player_id FKs to sgw_player,
+    // so seed a sentinel account + player first (lists cascade on player DELETE).
+    let account_id: i32 = 0x7000_5000;
+    let player_id: i32 = 0x7000_5001;
     let entity_id: u32 = 720_001;
     let addr: SocketAddr = "127.0.0.1:7100".parse().unwrap();
 
-    // Clean + seed: Ignore list (301) with one member.
-    let _ = sqlx::query("DELETE FROM sgw_contact_list WHERE player_id = $1")
+    // Clean any prior run, then seed account + player.
+    let _ = sqlx::query("DELETE FROM sgw_player WHERE player_id = $1")
         .bind(player_id)
         .execute(&pool)
         .await;
+    let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+        .bind(account_id)
+        .execute(&pool)
+        .await;
+    sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
+        .bind(account_id)
+        .bind(format!("ign-test-{account_id}"))
+        .execute(&pool)
+        .await
+        .expect("insert account");
+    sqlx::query(
+        "INSERT INTO sgw_player (\
+            account_id, player_id, level, alignment, archetype, gender, \
+            player_name, extra_name, world_location, bodyset, \
+            pos_x, pos_y, pos_z, skin_color_id\
+         ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+                   0.0, 0.0, 0.0, 0)",
+    )
+    .bind(account_id)
+    .bind(player_id)
+    .bind(format!("ign-{player_id}"))
+    .execute(&pool)
+    .await
+    .expect("insert player");
+
+    // Ignore list (301) with one member.
     let (_friends, ignore_id) = ensure_system_lists(&pool, player_id)
         .await
         .expect("ensure system lists");
@@ -175,8 +205,12 @@ async fn resync_reloads_ignore_list_and_pushes_to_cell() {
         _ => panic!("resync must push UpdateIgnoreList to the cell"),
     }
 
-    let _ = sqlx::query("DELETE FROM sgw_contact_list WHERE player_id = $1")
+    let _ = sqlx::query("DELETE FROM sgw_player WHERE player_id = $1")
         .bind(player_id)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+        .bind(account_id)
         .execute(&pool)
         .await;
 }
