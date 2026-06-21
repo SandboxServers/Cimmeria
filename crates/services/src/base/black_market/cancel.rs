@@ -134,7 +134,7 @@ pub async fn handle_cancel_auction(
     // Refund the current bidder, if any.
     if let Some(bidder) = auction.current_bidder {
         if auction.current_bid > 0 {
-            match adjust_player_cash(&mut *tx, bidder, auction.current_bid as i64).await {
+            match adjust_player_cash(&mut tx, bidder, auction.current_bid as i64).await {
                 Ok(_) => {}
                 Err(CashError::NoSuchPlayer) => {
                     tracing::warn!(

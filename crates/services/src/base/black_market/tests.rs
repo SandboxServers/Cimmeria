@@ -2,9 +2,10 @@
 //!
 //! Skip cleanly when `DATABASE_URL` is unset (via `require_db_or_skip!`).
 //! Against the bundled local Postgres they exercise: createAuction (row insert
-//! + escrow), placeBid (current_bid update + prior-bidder refund + bid-history
-//! row), cancelAuction (item return + bidder refund), and the expiry sweep
-//! (sold → two mail rows + status SOLD; unsold → item return + status EXPIRED).
+//! plus escrow), placeBid (current_bid update, prior-bidder refund, bid-history
+//! row), cancelAuction (item return plus bidder refund), and the expiry sweep
+//! (sold yields two mail rows and status SOLD; unsold returns the item and sets
+//! status EXPIRED).
 //!
 //! Sentinels fit in i32 and cleanup deletes by exact sentinel — never by range.
 
@@ -97,7 +98,7 @@ async fn insert_item(pool: &PgPool, player_id: i32, type_id: i32) -> i32 {
 }
 
 async fn naquadah_of(pool: &PgPool, player_id: i32) -> i64 {
-    sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1")
+    sqlx::query_scalar("SELECT naquadah::bigint FROM sgw_player WHERE player_id = $1")
         .bind(player_id)
         .fetch_one(pool)
         .await

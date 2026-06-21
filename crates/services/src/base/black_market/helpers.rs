@@ -102,7 +102,7 @@ pub async fn adjust_player_cash(
     let updated = sqlx::query_scalar::<_, i64>(
         "UPDATE sgw_player SET naquadah = naquadah + $1 \
          WHERE player_id = $2 AND naquadah + $1 >= 0 \
-         RETURNING naquadah",
+         RETURNING naquadah::bigint",
     )
     .bind(delta)
     .bind(player_id)
@@ -167,11 +167,17 @@ pub struct EscrowedItem {
 }
 
 /// Return an escrowed item to a player's inventory by re-inserting an instance
-/// in the default backpack container (container_id 0, slot -1 = auto-place).
+/// in the default backpack container (container_id 0) at the next free slot.
 ///
 /// Used by `cancelAuction` (seller reclaim) and the sweep's unsold path. The
 /// instance gets a fresh `item_id` from the sequence — the original instance id
 /// was consumed by the escrow DELETE. Returns the new instance id.
+///
+/// Slot placement mirrors `grant_item`: the new row lands at
+/// `COALESCE(MAX(slot_id), -1) + 1` for this character's container 0, i.e. the
+/// first slot past the current high-water mark. It must never insert at
+/// `slot_id = -1` — that value is the inventory swap sentinel elsewhere in the
+/// codebase, and a global row parked there breaks the inventory move/swap path.
 pub async fn return_item<'e, E>(
     exec: E,
     player_id: i32,
@@ -188,7 +194,10 @@ where
             (character_id, type_id, stack_size, slot_id, container_id, \
              bound, durability, charges, \
              ammo_type, ammo_types, ammo, flags) \
-         SELECT $1, ri.item_id, $2, -1, 0, false, $3, $4, \
+         SELECT $1, ri.item_id, $2, \
+                (SELECT COALESCE(MAX(inv.slot_id), -1) + 1 FROM sgw_inventory inv \
+                  WHERE inv.character_id = $1 AND inv.container_id = 0), \
+                0, false, $3, $4, \
                 COALESCE(ri.default_ammo_type, 'AMMO_NONE'::resources.\"EAmmoType\"), \
                 ri.ammo_types, ri.charges, 0 \
          FROM resources.items ri WHERE ri.item_id = $5 \

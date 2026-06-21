@@ -118,40 +118,41 @@ pub async fn handle_place_bid(
 
     // Read the bidder's balance (without mutating) to validate funds. The
     // authoritative debit below re-checks via the SQL overdraw guard.
-    let balance =
-        match sqlx::query_scalar::<_, i64>("SELECT naquadah FROM sgw_player WHERE player_id = $1")
-            .bind(player_id)
-            .fetch_optional(&mut *tx)
-            .await
-        {
-            Ok(Some(b)) => b,
-            Ok(None) => {
-                let _ = tx.rollback().await;
-                tracing::warn!(entity_id, player_id, "placeBid: bidder row missing");
-                send_bm_error(
-                    entity_id,
-                    error_code::NOT_ENOUGH_FUNDS,
-                    transport,
-                    connected,
-                    entity_to_addr,
-                )
-                .await;
-                return;
-            }
-            Err(e) => {
-                let _ = tx.rollback().await;
-                tracing::error!(entity_id, player_id, "placeBid: balance query failed: {e}");
-                send_bm_error(
-                    entity_id,
-                    error_code::INTERNAL,
-                    transport,
-                    connected,
-                    entity_to_addr,
-                )
-                .await;
-                return;
-            }
-        };
+    let balance = match sqlx::query_scalar::<_, i64>(
+        "SELECT naquadah::bigint FROM sgw_player WHERE player_id = $1",
+    )
+    .bind(player_id)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(Some(b)) => b,
+        Ok(None) => {
+            let _ = tx.rollback().await;
+            tracing::warn!(entity_id, player_id, "placeBid: bidder row missing");
+            send_bm_error(
+                entity_id,
+                error_code::NOT_ENOUGH_FUNDS,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+            return;
+        }
+        Err(e) => {
+            let _ = tx.rollback().await;
+            tracing::error!(entity_id, player_id, "placeBid: balance query failed: {e}");
+            send_bm_error(
+                entity_id,
+                error_code::INTERNAL,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+            return;
+        }
+    };
 
     if let Err(code) = validate_bid(&auction, player_id, bid_amount, balance) {
         let _ = tx.rollback().await;
@@ -170,7 +171,7 @@ pub async fn handle_place_bid(
     // person re-bidding — though that's still correct: refund then re-deduct).
     if let Some(prev_bidder) = auction.current_bidder {
         if auction.current_bid > 0 {
-            match adjust_player_cash(&mut *tx, prev_bidder, auction.current_bid as i64).await {
+            match adjust_player_cash(&mut tx, prev_bidder, auction.current_bid as i64).await {
                 Ok(_) => {}
                 Err(CashError::NoSuchPlayer) => {
                     // Prior bidder's account is gone; the held cash is
@@ -201,7 +202,7 @@ pub async fn handle_place_bid(
 
     // Hold the new bid (debit the bidder). The overdraw guard makes this safe
     // even though we validated against a pre-refund balance snapshot.
-    if let Err(e) = adjust_player_cash(&mut *tx, player_id, -(bid_amount as i64)).await {
+    if let Err(e) = adjust_player_cash(&mut tx, player_id, -(bid_amount as i64)).await {
         let _ = tx.rollback().await;
         let code = match e {
             CashError::InsufficientFunds | CashError::NoSuchPlayer => error_code::NOT_ENOUGH_FUNDS,
