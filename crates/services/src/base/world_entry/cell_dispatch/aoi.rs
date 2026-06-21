@@ -18,9 +18,120 @@ use crate::mercury::{
 
 use super::super::super::deferred_aoi::{self, DeferredAoiMsg};
 use super::super::super::helpers::{
-    send_bundle_to_witness_reliable, send_to_witness, send_to_witness_reliable,
+    send_bundle_to_witness_reliable, send_to_witness, send_to_witness_reliable, BundleSendOutcome,
+    WitnessSendOutcome,
 };
 use super::super::super::ConnectedClientState;
+
+/// Emit the success-side (`aoi.create_emit`, DEBUG) or failure-side
+/// (`aoi.create_send_failed`, WARN) observability seam for one packet of
+/// the entity-introduction pair.
+///
+/// `phase` is `"create_base"` (CREATE_ENTITY + UPDATE_AVATAR) or
+/// `"cascade"` (createOnClient property cascade). This is the visibility
+/// the invisible-static-NPC (Castle_CellBlock GuardBody corpse) bug needs:
+/// the entity-create/cascade packets ride Mercury and were previously
+/// unlogged, and `entered_aoi`'s two reliable sends discarded their
+/// outcomes — so an addr-resolution miss or a swallowed enqueue failure on
+/// either packet was invisible. See
+/// `docs/architecture/negative-logging-convention.md` (failure side) and
+/// `docs/architecture/instrumentation-discipline.md` (success side).
+fn log_create_emit(
+    witness_id: u32,
+    entity_id: u32,
+    class_id: u8,
+    phase: &'static str,
+    outcome: WitnessSendOutcome,
+) {
+    match outcome {
+        WitnessSendOutcome::Sent { seq, bytes, .. } => {
+            tracing::debug!(
+                target: "aoi.create_emit",
+                event = "create_emit",
+                witness_id,
+                entity_id,
+                class_id,
+                phase,
+                addr_resolved = true,
+                bytes,
+                seq,
+                "AoI create emit: {phase} packet delivered to witness"
+            );
+        }
+        failed => {
+            // reason is one of: entity_to_addr_miss / client_disconnected /
+            // send_error. The helper already logged its own line; this seam
+            // is the AoI-create-specific WARN that names the phase + entity
+            // so the invisible-corpse repro can be pinned to CREATE vs CASCADE.
+            tracing::warn!(
+                target: "aoi.create_send_failed",
+                event = "create_send_failed",
+                witness_id,
+                entity_id,
+                class_id,
+                phase,
+                addr_resolved = failed.addr_resolved(),
+                reason = failed.failure_reason().unwrap_or("unknown"),
+                "AoI create emit: {phase} packet NOT delivered to witness -- \
+                 entity may be invisible until relog"
+            );
+        }
+    }
+}
+
+/// Bundle-path analogue of [`log_create_emit`] — emits the success
+/// (`aoi.create_emit`, DEBUG) or failure (`aoi.create_send_failed`, WARN)
+/// seam for the pre-onClientReady bundled introduction in
+/// [`flush_deferred_aoi`]. `entered` is the NPC count folded into the
+/// bundle; `phase` distinguishes the phase-1 (`"create_base"`) and
+/// phase-2 (`"cascade"`) bundles. Per-entity ids aren't available here —
+/// the bundle carries N entities — so the seam reports the aggregate
+/// count instead.
+fn log_bundle_emit(
+    witness_id: u32,
+    entered: usize,
+    phase: &'static str,
+    outcome: BundleSendOutcome,
+) {
+    match outcome {
+        BundleSendOutcome::Sent {
+            base_seq,
+            packets,
+            bytes,
+            ..
+        } => {
+            tracing::debug!(
+                target: "aoi.create_emit",
+                event = "create_emit",
+                witness_id,
+                entered,
+                phase,
+                addr_resolved = true,
+                bytes,
+                seq = base_seq,
+                packets,
+                "AoI create emit: {phase} bundle ({entered} NPC) delivered to witness"
+            );
+        }
+        // Empty bundle is a benign no-op (the caller already gates on
+        // `is_empty()`), so it never reaches here in practice; treat it as
+        // non-failure to avoid a spurious WARN if that gate ever changes.
+        BundleSendOutcome::Empty => {}
+        failed => {
+            tracing::warn!(
+                target: "aoi.create_send_failed",
+                event = "create_send_failed",
+                witness_id,
+                entered,
+                phase,
+                addr_resolved = failed.addr_resolved(),
+                reason = failed.failure_reason().unwrap_or("unknown"),
+                "AoI create emit: {phase} bundle ({entered} NPC) NOT delivered to witness -- \
+                 entities may be invisible until relog"
+            );
+        }
+    }
+}
 
 /// Drain a session's deferred-AoI buffer and dispatch each held message
 /// through the normal AoI handlers.
@@ -142,8 +253,15 @@ pub(crate) async fn flush_deferred_aoi(
             phase1_packets = phase1.estimated_packet_count(),
             "AoI flush: phase-1 bundle (CREATE_ENTITY + UPDATE_AVATAR per NPC)"
         );
-        send_bundle_to_witness_reliable(transport, connected, entity_to_addr, witness_id, phase1)
-            .await;
+        let outcome = send_bundle_to_witness_reliable(
+            transport,
+            connected,
+            entity_to_addr,
+            witness_id,
+            phase1,
+        )
+        .await;
+        log_bundle_emit(witness_id, entered_count, "create_base", outcome);
     }
     if !phase2.is_empty() {
         tracing::debug!(
@@ -153,8 +271,15 @@ pub(crate) async fn flush_deferred_aoi(
             phase2_packets = phase2.estimated_packet_count(),
             "AoI flush: phase-2 bundle (createOnClient() cascade per NPC)"
         );
-        send_bundle_to_witness_reliable(transport, connected, entity_to_addr, witness_id, phase2)
-            .await;
+        let outcome = send_bundle_to_witness_reliable(
+            transport,
+            connected,
+            entity_to_addr,
+            witness_id,
+            phase2,
+        )
+        .await;
+        log_bundle_emit(witness_id, entered_count, "cascade", outcome);
     }
 
     for msg in tail {
@@ -201,7 +326,7 @@ pub(super) async fn entered_aoi(
     );
     // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate) — RELIABLE.
     // NPC spawn into player AoI; loss = NPC permanently invisible.
-    send_to_witness_reliable(
+    let base_outcome = send_to_witness_reliable(
         transport,
         connected,
         entity_to_addr,
@@ -213,8 +338,9 @@ pub(super) async fn entered_aoi(
         },
     )
     .await;
+    log_create_emit(witness_id, entity_id, class_id, "create_base", base_outcome);
     // Packet 2: createOnClient() property cascade (CellApp round-trip) — RELIABLE
-    send_to_witness_reliable(
+    let cascade_outcome = send_to_witness_reliable(
         transport,
         connected,
         entity_to_addr,
@@ -233,6 +359,7 @@ pub(super) async fn entered_aoi(
         },
     )
     .await;
+    log_create_emit(witness_id, entity_id, class_id, "cascade", cascade_outcome);
 }
 
 /// `CellToBaseMsg::LeftAoI` — entity left a witness's range.
@@ -441,7 +568,8 @@ pub(super) async fn entity_invisible(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{test_default_connected_client_state, TestTransport};
+    use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
+    use tracing::Level;
 
     /// Domain A (fan-out byte test): one AoI event (entity 200 leaves) routed
     /// to two witnesses lands as exactly two packets — one per witness — each
@@ -518,5 +646,147 @@ mod tests {
         );
         assert_eq!(sent[0].1, expected, "witness A leave bytes (seq 0)");
         assert_eq!(sent[1].1, expected, "witness B leave bytes (seq 0)");
+    }
+
+    /// Build the single-witness IO triple used by the create-emit seam
+    /// tests: one witness wired into both maps with a fresh client state.
+    fn single_witness_io(
+        witness_id: u32,
+        addr: SocketAddr,
+    ) -> (
+        Arc<TestTransport>,
+        Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+        Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    ) {
+        let transport = Arc::new(TestTransport::new());
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(witness_id, addr)])));
+        let connected = Arc::new(Mutex::new(HashMap::from([(
+            addr,
+            test_default_connected_client_state(),
+        )])));
+        (transport, connected, entity_to_addr)
+    }
+
+    /// Success-side seam: `entered_aoi` emits the `aoi.create_emit` DEBUG
+    /// event for BOTH the `create_base` and `cascade` phases when the
+    /// witness addr resolves. This is the success-path visibility the
+    /// invisible-static-NPC (Castle_CellBlock GuardBody corpse, class_id=0)
+    /// bug needs — the two reliable sends previously discarded their
+    /// outcomes, so a delivered CREATE/CASCADE was unobservable. Reverting
+    /// the `log_create_emit` calls (or downgrading them below DEBUG) trips
+    /// this guard.
+    #[tokio::test]
+    async fn entered_aoi_emits_create_and_cascade_success_seams() {
+        let capture = LogCapture::install();
+
+        let witness_id = 100u32;
+        let addr: SocketAddr = "127.0.0.1:50200".parse().unwrap();
+        let (transport, connected, entity_to_addr) = single_witness_io(witness_id, addr);
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+
+        // class_id = 0 is the GuardBody corpse class from the colo repro.
+        entered_aoi(
+            witness_id,
+            777, // entity_id
+            0,   // class_id (corpse)
+            [1.0, 2.0, 3.0],
+            [0.0, 0.0, 0.0],
+            1, // level
+            None,
+            &dyn_transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
+
+        // Both packets actually hit the wire (the bug is about delivery).
+        assert_eq!(
+            transport.send_count_to(addr),
+            2,
+            "create_base + cascade both sent to the witness"
+        );
+
+        let base = capture
+            .all()
+            .into_iter()
+            .find(|c| c.has_field("phase", "create_base") && c.level == Level::DEBUG)
+            .expect("create_base DEBUG seam must fire");
+        assert!(
+            base.has_field("phase", "create_base"),
+            "create_base seam carries phase=create_base: {base:#?}"
+        );
+        assert!(
+            base.has_field("addr_resolved", "true"),
+            "create_base seam carries addr_resolved=true: {base:#?}"
+        );
+        assert!(
+            base.has_field("class_id", "0"),
+            "create_base seam carries the corpse class_id: {base:#?}"
+        );
+
+        let cascade = capture
+            .all()
+            .into_iter()
+            .find(|c| c.has_field("phase", "cascade") && c.level == Level::DEBUG)
+            .expect("cascade DEBUG seam must fire");
+        assert!(
+            cascade.has_field("addr_resolved", "true"),
+            "cascade seam carries addr_resolved=true: {cascade:#?}"
+        );
+        assert!(
+            cascade.has_field("entity_id", "777"),
+            "cascade seam carries the entity_id: {cascade:#?}"
+        );
+    }
+
+    /// Failure-side seam: when the witness addr is missing from
+    /// `entity_to_addr`, `entered_aoi` emits the `aoi.create_send_failed`
+    /// WARN with `reason=entity_to_addr_miss` for the (failed) create_base
+    /// packet — the negative-logging seam that names the invisible-corpse
+    /// drop. Reverting the helper-return plumbing or the WARN seam trips
+    /// this guard.
+    #[tokio::test]
+    async fn entered_aoi_emits_failure_seam_on_missing_witness_addr() {
+        let capture = LogCapture::install();
+
+        // entity_to_addr is EMPTY — the witness has no resolvable address.
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        entered_aoi(
+            999, // witness_id with no addr mapping
+            777, // entity_id
+            0,   // class_id (corpse)
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            1,
+            None,
+            &dyn_transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
+
+        assert_eq!(
+            transport.len(),
+            0,
+            "no packet leaves the transport when the witness addr is unresolved"
+        );
+
+        let failed = capture
+            .find_event(Level::WARN, "AoI create emit", "entity_to_addr_miss")
+            .expect("create_send_failed WARN seam must fire with reason=entity_to_addr_miss");
+        assert!(
+            failed.has_field("addr_resolved", "false"),
+            "failure seam reports addr_resolved=false: {failed:#?}"
+        );
+        assert!(
+            failed.has_field("phase", "create_base"),
+            "failure seam names the failing phase: {failed:#?}"
+        );
     }
 }
