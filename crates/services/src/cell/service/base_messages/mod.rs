@@ -224,9 +224,7 @@ pub(super) async fn handle_base_message(
             // check read this to exclude ignored player pairs. If the entity
             // is absent (message raced ahead of CreateEntity), log at debug and
             // skip — the next UpdateIgnoreList (or login seed) re-applies it.
-            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-                entity.ignore_names = ignore_names;
-            } else {
+            if !space_mgr.set_entity_ignore_names(entity_id, ignore_names) {
                 tracing::debug!(
                     entity_id,
                     "UpdateIgnoreList: entity absent -- ignore set dropped"

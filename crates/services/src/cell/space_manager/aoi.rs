@@ -321,6 +321,21 @@ mod tests {
         mgr
     }
 
+    /// `set_entity_ignore_names` applies to a present player and reports absence
+    /// (the seam the `UpdateIgnoreList` base→cell handler routes through).
+    #[test]
+    fn set_entity_ignore_names_applies_and_reports_absence() {
+        let mut mgr = three_player_space();
+        let names: HashSet<String> = ["Bob".to_string(), "Carol".to_string()]
+            .into_iter()
+            .collect();
+        // Present entity → applied, returns true.
+        assert!(mgr.set_entity_ignore_names(1, names.clone()));
+        assert_eq!(mgr.get_entity(1).unwrap().ignore_names, names);
+        // Absent entity → false, nothing applied.
+        assert!(!mgr.set_entity_ignore_names(999, names));
+    }
+
     /// A ignores B → the pair is symmetrically excluded from each other's
     /// witness set, but C (the third player) still sees and is seen by both,
     /// even though A only set its own ignore list (B's stays empty).
