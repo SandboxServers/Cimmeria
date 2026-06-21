@@ -10,13 +10,15 @@ The Black Market window never opened in the stock client, even though the server
 
 It is restored with a small **runtime binary patch** of the client process — a *deferred wide-Lua-injection*. Confirmed: interacting with the in-world auctioneer opens the full Black Market window (Search / My Auctions / My Bids).
 
+> **Scope of the current patch:** it revives **only method 90** (`onBMOpen`), so the window *chrome* opens but its tabs render empty — the five data/notification methods (91–95) are still silently dropped. A complete restoration must bind all six (see *The full surface* below).
+
 > The patch is currently applied by hand via x64dbg (in-memory, lost on client close). Shipping it is tracked by the launcher-integration issue (see **Implementation Impact**).
 
 ## Root cause
 
 1. Server sends `onBMOpen` = the player's client-method **90** (`SGWBlackMarketManager` is the 10th `<Implements>` interface; its 6 client methods occupy indices **90–95**, calibrated against the working `ContactListManager` at 85–89 and `onDialogDisplay` at 105).
 2. Incoming entity methods are routed by the universal client dispatcher **`Client_NetIn_EntityMethodDispatch` @ `0x00c6f8f0`** (renamed from `FUN_00c6f8f0`; runs on a **network thread**, tid ≠ main). It reads the method index and searches the entity description's red-black **method-handler map** at `desc+0xe0`, keyed by `(componentKey = *(desc+0x1e), methodIndex)`, walking the type hierarchy.
-3. **The BM methods get array indices but have no map node.** Their `Event_NetIn_BM*` descriptors exist in `.rdata` and are well-formed (identical CME type to the working dialog/contact events) but were **never bound** into the map — the feature was shelved before final wiring. So method 90 falls to the **silent-drop path at `0x00c6fa8a`** (`FUN_01590f30(desc+0xe0, idx)` then `return`).
+3. **The BM methods get array indices but have no map node.** Their `Event_NetIn_BM*` descriptors exist in `.rdata` and are well-formed (identical CME type to the working dialog/contact events) but were **never bound** into the map — the feature was shelved before final wiring. So method 90 falls to the **silent-drop path at `0x00c6fa8a`** (`FUN_01590f30(desc+0xe0, idx)` then `return`). **All six BM methods (90–95) share this gap** — not just 90 (confirmed byte-level below).
 
 **Live proof**: a non-freezing log breakpoint at `0x00c6fa8a` logged `idx=5A` (= 90) exactly once per auctioneer interaction, while `ContactList` (85–89) and `DialogDisplay` (105) dispatch normally through the same machinery.
 
@@ -108,6 +110,58 @@ Wide script payload: `"BlackMarketMod.onBMOpen()"` (25 chars / 50 bytes UTF-16LE
 - **Alternative — on-disk exe patch**: relocate the two caves + strings into unused space inside `SGW.exe` at fixed VAs and write the two detours; the patched exe persists without launcher code.
 - **Addresses are build-specific** to this client; re-resolve symbols before applying to any other `SGW.exe` build.
 - **Server side** (PR #586 / #571) is independent and proven against the open window; the recovered values still to finalize: `createAuction` decode field order (`item, buyout, length, starting`), `EBlackMarketError` = `1/2`, `auctionLength` = `EBlackMarketTime` 1–5, `nextMinBid` = server-provided.
+
+## The full surface — all six BM methods (90–95)
+
+`SGWBlackMarketManager` contributes six server→client (NetIn) methods. Confirmed live by walking the player method vector and reading each `MethodDescription` name (`std::string` SSO at `+0x4`; ≥16-char names are a heap pointer at `+0x4`):
+
+| Idx | Method | Args | Role | Status |
+|---|---|---|---|---|
+| 90 | `onBMOpen` | `INT32 entityId` | Open the window; bind to the auctioneer | **revived** (Lua-injection) |
+| 91 | `onBMError` | `INT32 errorId` | Show an error (funds / bid-too-low / gone) | dropped |
+| 92 | `onBMAuctions` | `ARRAY<AuctionItem>` | The search-result listing — the main data payload | dropped |
+| 93 | `onBMAuctionRemove` | `INT32 sequenceId` | Remove a row (sold / cancelled / expired) | dropped |
+| 94 | `onBMAuctionUpdate` | `AuctionItem` | Add/update one row (new bid / new listing) | dropped |
+| 95 | `onBMWatchedItemsUpdate` | `ARRAY<INT32>` | Update the watched-items set | dropped |
+
+All six are parsed + Exposed but unbound — the *same* gap. The current patch revives only **90**, so the window opens but stays empty: `onBMAuctions` (92) and `onBMAuctionUpdate` (94) — the actual listing data — never reach the client.
+
+**Why 90 is the easy one:** its only arg (`entityId`) is unused by the Lua open, so a **no-arg** Lua call (`BlackMarketMod.onBMOpen()`) suffices. **91–95 carry data** — some complex (`ARRAY<AuctionItem>`) — so they cannot be revived by a no-arg call; their wire args must be **decoded** first. That asymmetry decides the implementation strategy below.
+
+## Byte-level confirmation & native-binding analysis (2026-06-21 dig)
+
+A follow-up dig (Ghidra build-path trace + live reads of the loaded descriptions) pinned the gap exactly and answered "can we bind it natively instead of injecting Lua?"
+
+**`onBMOpen` is byte-identical to the working `onDialogDisplay`.** Reading the player desc's `MethodDescription` for both (`GameEntityManager [0x01ef244c]` → `+0x90` EntityDescriptionMap → desc array `[EDM+0x10..+0x14]`, stride `0x110` → client-Methods object at `desc+0xe0` → vector `[desc+0xf0]`, `0x50` stride):
+
+| Field | `onBMOpen` [90] | `onDialogDisplay` [105] |
+|---|---|---|
+| name (`std::string` @ +0x4) | `onBMOpen` | `onDialogDisplay` |
+| flags (+0x1c) | `4` (**Exposed**) | `4` (**Exposed**) |
+| exposed ordinal (+0x44) | `90` | `105` |
+| sentinel (+0x48) | `0xFFFFFFFF` | `0xFFFFFFFF` |
+| DetailDistance (+0x4c) | `FLT_MAX` | `FLT_MAX` |
+
+They differ only in name / ordinal / arg count — **no per-method flag** distinguishes the dropped method from the working one. (Both player-class descs — array indices 2 and 3, componentKey `*(desc+0x1e)` = 2/3, 157 and 163 client methods — carry `onBMOpen` at index 90.) This eliminates every alternative theory: **not** a parse/`<Implements>` failure (it's parsed + named at 90), **not** a server-side index mismatch (the client's method 90 *is* `onBMOpen`), **not** a malformed/`ServerOnly` descriptor (identical to dialog).
+
+**The `Event_NetIn_BM*` descriptors are inert.** Hardware read-watches on the `onBMOpen` (`0x019c9108`) and `onDialogDisplay` (`0x019bb4e0`) descriptors, armed from process start, **never fired** through login + world-entry. With no static code xrefs either, the descriptors are vestigial type-info — the dispatch binding is **not** descriptor-driven.
+
+**The gap is purely a missing incoming-event subscriber.** A method's dispatch node is created when a handler *subscribes* to its incoming event (`CmeEventSignal_Subscribe @ 0x00a5c150`). `onDialogDisplay` has one; the BM methods do not — matching the separate finding that BM has the `TypedEmitInfo` event-*type* but no `CallbackImpl` subscriber-glue (see [`architectural-anomalies.md`](architectural-anomalies.md)). The BM window was wired to the **Lua** `Events.BMOpen`, never to the NetIn events.
+
+**Native binding — reachable, but not a shortcut for *opening*.** Subscribing a handler would create the dispatch node so the method dispatches natively. For `onBMOpen` alone it is *more* work than the Lua-injection (you'd construct the signal + `CallbackImpl`, and the handler would still have to open the window — exactly what the injection already does). The **general key** is real, though: shelved client methods are "perfect but unsubscribed," so subscribing revives native dispatch for any of them — and crucially, **the native path gets the engine's arg-decoding for free**, which is what the data methods (91–95) need.
+
+## Shipping the full feature without repeated patching
+
+The manual x64dbg patching is a **development convenience**, not the shipping model. The delivered feature is a **single patch applied automatically at every client launch** — you never hand-patch the running game.
+
+- **One install, every launch.** The launcher (or an on-disk exe patch) writes the cave(s) + detour(s) once at startup; thereafter it just works. The "constant patching" seen during RE is only re-attaching x64dbg each dev session.
+- **Cover all six in that one install.** Two shapes:
+  - **(a) Native binding — recommended for 91–95.** Subscribe handlers for 90–95 via `CmeEventSignal_Subscribe @ 0x00a5c150`. The engine's normal path then decodes each method's wire args (from the `MethodDescription` arg types that already exist) and hands them to the handler, which forwards to `BlackMarketMod.onBMXxx(args)`. This is the only approach that decodes the data methods correctly without re-implementing the wire parser.
+  - **(b) Dispatcher marshaling cave.** Extend the network cave to catch idx ∈ [90, 95]. Trivial for 90 (no args); for 91–95 you'd have to replicate the engine's arg-decode in the cave — much more work and fragile. Best reserved for 90.
+  - A **hybrid** is fine: keep the proven Lua-injection for 90, add native subscribers for 91–95.
+- **Server side is already real** (PR #586 / #571): all six are sent correctly; only the client binding is missing.
+
+**Bottom line:** yes — implementable as a one-time, auto-applied client patch. The remaining work is (1) extend coverage from method 90 to 90–95 (prefer native binding so the data methods decode), and (2) finish the launcher integration so it applies on every launch.
 
 ## Ghidra annotations applied
 
