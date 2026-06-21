@@ -1,0 +1,5 @@
+--
+-- No seed rows for organizations — player characters create them at runtime.
+-- This file is present to satisfy the Tables/Sequences/Seed directory convention
+-- mirrored from db/sgw/Social/.
+--

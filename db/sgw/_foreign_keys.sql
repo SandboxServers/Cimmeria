@@ -92,3 +92,40 @@ ALTER TABLE ONLY sgw_contact_list
 ALTER TABLE ONLY sgw_contact_list_member
     ADD CONSTRAINT sgw_contact_list_member_list_id_fkey FOREIGN KEY (list_id) REFERENCES sgw_contact_list(list_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
+--
+-- Name: sgw_organizations_leader_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- Leader column tracks current leader. ON DELETE RESTRICT prevents deleting a
+-- character who is still a guild leader — the application must transfer or
+-- disband first.
+--
+
+ALTER TABLE ONLY sgw_organizations
+    ADD CONSTRAINT sgw_organizations_leader_player_id_fkey FOREIGN KEY (leader_player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
+-- Name: sgw_organization_ranks_org_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- Rank rows cascade-delete when the organization is deleted.
+--
+
+ALTER TABLE ONLY sgw_organization_ranks
+    ADD CONSTRAINT sgw_organization_ranks_org_id_fkey FOREIGN KEY (org_id) REFERENCES sgw_organizations(org_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
+-- Name: sgw_organization_members_org_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_organization_members
+    ADD CONSTRAINT sgw_organization_members_org_id_fkey FOREIGN KEY (org_id) REFERENCES sgw_organizations(org_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
+-- Name: sgw_organization_members_player_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- ON DELETE CASCADE removes the member row when the owning character is deleted
+-- (invariant: no orphaned roster rows after character deletion).
+--
+
+ALTER TABLE ONLY sgw_organization_members
+    ADD CONSTRAINT sgw_organization_members_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
