@@ -161,6 +161,33 @@ This sharpens the native-binding cost **and** its risk. The dispatcher's found-p
 
 That's two live RB-tree inserts plus object construction on the server-connected client — the full Pattern-A wiring BM's developers omitted. For `onBMOpen` it is strictly more work and more crash-risk than the proven Lua-injection, for the identical result, so a "quick" native test of method 90 is **not** a quick node-splice: a bare node would null-deref on the next auctioneer interact.
 
+## PROVEN: fully-native dispatch, in-memory (2026-06-21)
+
+The registry-walk conclusion above (native needs an opaque CME signal registration / two RB-tree inserts) is **superseded** — native dispatch was achieved live, and `onBMOpen` now opens the Black Market window driven entirely by a hand-built dispatch node, **with no code patch on the dispatcher**. The trick is that you do **not** register a signal — you borrow an existing one's name only to satisfy the resolve, and do the real work in the node's own arg-handler vector.
+
+**The recipe (generalises to any shelved client method):**
+
+1. **Splice a dispatch node** for `(componentKey, methodIndex)` into the live method-map (std::map at `[dispatchThis+8]`; `dispatchThis` captured at the drop path = `0xECEB7C00`, the player's componentKey = 3). Node is pure data: links + key (`+0xc`/`+0x10`) + MethodDescription ptr (`+0x14`) + eventKey (`+0x18`) + color/nil (`+0x34`/`+0x35`). Attach as a BST leaf — the dispatcher search is a plain BST descent, so no rebalance is needed.
+2. **Point `node+0x18` at an *already-registered* signal's name** (we reused `"Event_NetIn_onPlayerDataLoaded"`), purely to satisfy the found-path's unconditional resolve+deref (`0x00c6fbf9`) and avoid the null crash. **No new signal is registered.**
+3. **Point `node+0x14` at a custom MethodDescription** whose arg-handler vector is `[real-argtype, your-callback]` (with the parallel 0x1c-stride arg-info vector likewise). The found-path iterates that vector calling `entry->vtable[+0x10](&decoded, arginfo, msg)`: the real arg-type decodes the wire args into `&decoded` (so the borrowed signal's shim doesn't crash on garbage), then **your callback runs and is handed `&decoded`** — i.e. it receives the decoded arguments for free.
+4. The callback sets a flag (atomic, network-thread-safe); the main-thread tick cave (`FEngineLoop::Tick @ 0x00416ec0`) runs `BlackMarketMod.onBMOpen()` on the flag.
+
+**Gotcha that cost a frame:** the `lua_State` check must be a **byte** compare — `[L+4]` (the `tt` tag) reads as dword `0x..08`; a dword `cmp [L+4],8` wrongly fails and skips the Lua call. The original patch never validated at all.
+
+So the **general key for reviving any shelved client method**: splice a node, borrow any registered signal name for the resolve, and put your handler in the node's arg-vector (where it gets the decoded args). No opaque signal registration required.
+
+> Correction to two earlier notes: `0x00a5c150` is a find/contains check, **not** `CmeEventSignal_Subscribe`; and native binding does **not** require registering a signal — both the "Registry walk" and "Shipping → (a)" notes are corrected by this live result.
+
+### Applying it to 91–95
+
+The client Lua (`Content/UI/Core/BlackMarket/BlackMarket.lua`) defines only **two** NetIn-facing handlers: `BlackMarketMod.onBMOpen()` (no args) and `BlackMarketMod.onBMError(this, errorText)` (a string). The **listing data does not flow through Lua** — `onBMAuctions`/`onBMAuctionUpdate`/`onBMAuctionRemove`/`onBMWatchedItemsUpdate` (92–95) populate a **C++ auction store** that Lua only *reads* via `getAuctionItemInfo` / `getAuctionViewItems` / `getAuctionVisibleCount` (read-side bindings; see [`black-market-restoration.md`](black-market-restoration.md)). Consequences:
+
+- **91 `onBMError`** is directly Lua-marshalable: the node-vector callback reads the decoded string from `&decoded` and calls `BlackMarketMod.onBMError(nil, str)`.
+- **92–95** must invoke the *real* (shelved) C++ store-write handlers, not a Lua call — locating those store-write functions is the next RE step.
+- **Testing 91–95 is blocked on the server**: the create/bid/search handlers are still stubbed (PR #586/#571), so the server emits none of `onBMAuctions`/`onBMError` yet.
+
+> Still in-memory (lost on client close). For *shipping*, the simpler drop-path Lua-injection (one cave + flag + tick) remains the pragmatic launcher patch for method 90; the native node+callback is the "proper" path and the one that scales to the data methods (free arg-decode).
+
 ## Shipping the full feature without repeated patching
 
 The manual x64dbg patching is a **development convenience**, not the shipping model. The delivered feature is a **single patch applied automatically at every client launch** — you never hand-patch the running game.
