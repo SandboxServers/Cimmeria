@@ -16,9 +16,7 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use crate::base::contact_list::persistence::{
-    ensure_system_lists, load_contact_lists, ContactList,
-};
+use crate::base::contact_list::persistence::{ensure_system_lists, load_contact_lists};
 use crate::base::contact_list::wire::{
     build_on_contact_list_add_members, build_on_contact_list_event, build_on_contact_list_update,
     DATA_ONLINE, EVENT_LOGGED_IN_STATUS,
@@ -142,30 +140,46 @@ pub(crate) async fn push_contact_lists_on_login(
     // ALREADY online. The login fanout (`fanout_login_status`) only notifies
     // *other* players that this player just came online; without this step a
     // player who logs in second sees their already-online friends as offline.
-    push_initial_contact_presence(entity_id, &lists, transport, connected, entity_to_addr).await;
+    let member_names: Vec<String> = lists
+        .iter()
+        .flat_map(|l| l.members.iter().cloned())
+        .collect();
+    notify_online_contacts(
+        entity_id,
+        &member_names,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
 }
 
-/// Send the logging-in player a CM 89 (`onContactListEvent`, LoggedInStatus =
-/// online) for every contact on their lists who is currently online.
+/// Send `recipient_entity_id` a CM 89 (`onContactListEvent`, LoggedInStatus =
+/// online) for each name in `candidate_names` that belongs to a currently
+/// online player.
 ///
-/// Mirrors `fanout_login_status` but in the opposite direction: that notifies
-/// watchers about one player; this notifies one player about their watched
-/// contacts. Online status is read from the in-memory `connected` sessions
-/// (by character name), so no DB round-trip is needed.
-async fn push_initial_contact_presence(
-    entity_id: u32,
-    lists: &[ContactList],
+/// Shared by the login reverse-sync (all contact members) and add-members (the
+/// just-added names), so a contact who is already online lights up immediately
+/// — whether you logged in after them *or* just added them.
+///
+/// Mirrors `fanout_login_status` in the opposite direction: that notifies
+/// watchers about one player; this notifies one player about their contacts.
+/// Online status is read from the in-memory `connected` sessions (by character
+/// name), so no DB round-trip is needed.
+pub(crate) async fn notify_online_contacts(
+    recipient_entity_id: u32,
+    candidate_names: &[String],
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // Character names of all currently-online players except this one.
+    // Character names of all currently-online players except the recipient.
     let online_names = match connected.lock() {
-        Ok(clients) => collect_online_names(&clients, entity_id),
+        Ok(clients) => collect_online_names(&clients, recipient_entity_id),
         Err(_) => {
             tracing::error!(
-                entity_id,
-                "ContactList initial presence: connected lock poisoned"
+                recipient_entity_id,
+                "ContactList presence: connected lock poisoned"
             );
             return;
         }
@@ -174,20 +188,20 @@ async fn push_initial_contact_presence(
         return;
     }
 
-    let to_notify = collect_online_member_names(lists, &online_names);
+    let to_notify = dedup_online(candidate_names, &online_names);
     for name in &to_notify {
         let args = build_on_contact_list_event(name, EVENT_LOGGED_IN_STATUS, DATA_ONLINE);
         send_to_witness_reliable(
             transport,
             connected,
             entity_to_addr,
-            entity_id,
+            recipient_entity_id,
             |key, version, seq, acks| {
                 build_player_entity_method_packet(
                     key,
                     seq,
                     acks,
-                    entity_id,
+                    recipient_entity_id,
                     method_idx::ON_CONTACT_LIST_EVENT,
                     &args,
                     version,
@@ -199,9 +213,9 @@ async fn push_initial_contact_presence(
 
     if !to_notify.is_empty() {
         tracing::debug!(
-            entity_id,
+            recipient_entity_id,
             online_contacts = to_notify.len(),
-            "ContactList: sent initial online presence for already-online contacts"
+            "ContactList: sent online presence for already-online contacts"
         );
     }
 }
@@ -221,21 +235,16 @@ fn collect_online_names(
         .collect()
 }
 
-/// Distinct contact-member names (across all of `lists`) that appear in
-/// `online_names`. Pure helper, unit-tested separately. Deduplicates a name
-/// that is present in more than one list so the client gets one event per
-/// online contact.
-fn collect_online_member_names(
-    lists: &[ContactList],
-    online_names: &HashSet<String>,
-) -> Vec<String> {
+/// Distinct `candidate_names` that appear in `online_names`, preserving
+/// first-seen order. Pure helper, unit-tested separately. Deduplicates a name
+/// that appears more than once (e.g. present in two of the player's lists) so
+/// the client gets one event per online contact.
+fn dedup_online(candidate_names: &[String], online_names: &HashSet<String>) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
-    for list in lists {
-        for member in &list.members {
-            if online_names.contains(member) && seen.insert(member.as_str()) {
-                out.push(member.clone());
-            }
+    for name in candidate_names {
+        if online_names.contains(name) && seen.insert(name.as_str()) {
+            out.push(name.clone());
         }
     }
     out
@@ -245,46 +254,35 @@ fn collect_online_member_names(
 mod presence_login_tests {
     use super::*;
 
-    fn list(name: &str, members: &[&str]) -> ContactList {
-        ContactList {
-            list_id: 1,
-            name: name.to_string(),
-            flags: 0,
-            members: members.iter().map(|s| s.to_string()).collect(),
-        }
+    fn names(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+    fn online_set(v: &[&str]) -> HashSet<String> {
+        v.iter().map(|s| s.to_string()).collect()
     }
 
     #[test]
-    fn only_online_members_are_notified() {
-        let lists = vec![
-            list("Friends", &["Friendly", "Offliner"]),
-            list("Ignore", &["BadGuy"]),
-        ];
-        let online: HashSet<String> = ["Friendly", "BadGuy", "Stranger"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let got = collect_online_member_names(&lists, &online);
-        // Friendly (online friend) + BadGuy (online, on Ignore) — symmetric with
-        // the watcher fanout, which also ignores list type. Offliner excluded.
-        assert_eq!(got, vec!["Friendly".to_string(), "BadGuy".to_string()]);
+    fn dedup_online_keeps_only_online_in_order() {
+        let online = online_set(&["Friendly", "BadGuy", "Stranger"]);
+        // Candidate order preserved; Offliner dropped (not online).
+        let got = dedup_online(&names(&["Friendly", "Offliner", "BadGuy"]), &online);
+        assert_eq!(got, names(&["Friendly", "BadGuy"]));
     }
 
     #[test]
-    fn duplicate_member_across_lists_notified_once() {
-        let lists = vec![list("Friends", &["Dup"]), list("Squad", &["Dup"])];
-        let online: HashSet<String> = ["Dup"].iter().map(|s| s.to_string()).collect();
+    fn dedup_online_deduplicates_repeats() {
+        let online = online_set(&["Dup"]);
+        // Same name appearing twice (e.g. flattened from two lists) → one event.
         assert_eq!(
-            collect_online_member_names(&lists, &online),
-            vec!["Dup".to_string()]
+            dedup_online(&names(&["Dup", "Dup"]), &online),
+            names(&["Dup"])
         );
     }
 
     #[test]
-    fn no_online_contacts_yields_empty() {
-        let lists = vec![list("Friends", &["A", "B"])];
-        let online: HashSet<String> = ["C"].iter().map(|s| s.to_string()).collect();
-        assert!(collect_online_member_names(&lists, &online).is_empty());
+    fn dedup_online_empty_when_none_online() {
+        let online = online_set(&["C"]);
+        assert!(dedup_online(&names(&["A", "B"]), &online).is_empty());
     }
 
     // ── collect_online_names + full reverse-sync send path ──────────────────
@@ -320,7 +318,7 @@ mod presence_login_tests {
     }
 
     #[tokio::test]
-    async fn initial_presence_sends_event_for_online_contact() {
+    async fn notify_online_contacts_sends_for_online_contact() {
         let me_addr: SocketAddr = "127.0.0.1:5001".parse().unwrap();
         let friend_addr: SocketAddr = "127.0.0.1:5002".parse().unwrap();
 
@@ -338,12 +336,18 @@ mod presence_login_tests {
         let tt = Arc::new(TestTransport::new());
         let transport: Arc<dyn Transport> = tt.clone();
 
-        let lists = vec![list("Friends", &["Friendly", "Offliner"])];
-        push_initial_contact_presence(10, &lists, &transport, &connected, &entity_to_addr).await;
+        notify_online_contacts(
+            10,
+            &names(&["Friendly", "Offliner"]),
+            &transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
 
-        // The logging-in player gets exactly one CM 89 (for the online Friendly);
-        // nothing is sent to the friend in this reverse sync. Reverting the
-        // push_initial_contact_presence call makes `to_me` empty.
+        // The recipient gets exactly one CM 89 (for the online Friendly); nothing
+        // is sent to the friend in this reverse sync. Reverting the
+        // notify_online_contacts call makes `to_me` empty.
         assert_eq!(
             tt.filter_to(me_addr).len(),
             1,
@@ -353,7 +357,7 @@ mod presence_login_tests {
     }
 
     #[tokio::test]
-    async fn initial_presence_silent_when_no_contact_online() {
+    async fn notify_online_contacts_silent_when_none_online() {
         let me_addr: SocketAddr = "127.0.0.1:5003".parse().unwrap();
         let mut me = test_default_connected_client_state();
         me.player_entity_id = Some(10);
@@ -363,8 +367,14 @@ mod presence_login_tests {
         let tt = Arc::new(TestTransport::new());
         let transport: Arc<dyn Transport> = tt.clone();
 
-        let lists = vec![list("Friends", &["Friendly"])];
-        push_initial_contact_presence(10, &lists, &transport, &connected, &entity_to_addr).await;
+        notify_online_contacts(
+            10,
+            &names(&["Friendly"]),
+            &transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
 
         assert!(
             tt.drain().is_empty(),
