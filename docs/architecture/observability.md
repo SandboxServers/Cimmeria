@@ -180,6 +180,8 @@ to crate-rename churn) and **named for the question they answer**.
 | `mercury.backpressure` | WARN | `Channel::send_packet` when TX window ≥ 50% full | Send-window saturation — early warning for stalled clients |
 | `wire.in` / `wire.out` | INFO | `wire_log::{log_inbound, log_outbound_entity_method}` | Decoded entity-method calls |
 | `aoi.entity_enter` / `aoi.entity_leave` | DEBUG | AoI tick witness fanout | Per-entity AoI transitions |
+| `aoi.create_emit` | DEBUG | `base::world_entry::cell_dispatch::aoi::{entered_aoi, flush_deferred_aoi}` | Per-packet entity-introduction delivery (CREATE_ENTITY+UPDATE_AVATAR / createOnClient cascade) — fields `witness_id`, `entity_id`, `class_id`, `phase` (`create_base` \| `cascade`), `addr_resolved`, `bytes`, `seq`. Success-side visibility for the invisible-static-NPC drop |
+| `aoi.create_send_failed` | WARN | `base::world_entry::cell_dispatch::aoi::{entered_aoi, flush_deferred_aoi}` | Entity-introduction packet/bundle that could NOT be delivered — `reason` (`entity_to_addr_miss` \| `client_disconnected` \| `send_error`), `phase`, `addr_resolved`. Negative-logging seam for the invisible-corpse class |
 | `movement.player` | DEBUG (1-in-10 sampled) | `cell::service::base_messages` position-update path | Player avatar position updates |
 | `movement.npc` | DEBUG (1-in-10 sampled `step`, always `waypoint_reached`) | `cell::service::ticks::npc_movement` | NPC nav-path movement |
 | `npc_ai` | DEBUG / INFO | `cell::service::npc_ai_fight` | NPC AI tick outcomes — see `decision_outcome` |

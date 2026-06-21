@@ -69,6 +69,118 @@ use crate::cell::messages::BaseToCellMsg;
 
 use super::ConnectedClientState;
 
+/// Outcome of a single-packet witness send ([`send_to_witness`] /
+/// [`send_to_witness_reliable`]).
+///
+/// Both helpers already emit their own structured `warn!`/`debug!` on the
+/// failure arms; this return value exists so a *caller* that wants
+/// success-side visibility (the AoI entity-introduction emit path —
+/// `aoi.create_emit` / `aoi.create_send_failed`) can log per-packet
+/// `seq`/`bytes`/`addr_resolved` without re-resolving the address itself.
+///
+/// Returning a value is purely additive: existing call sites use these
+/// helpers as `...await;` statements and ignore the result. The type is
+/// intentionally NOT `#[must_use]` so those sites compile unchanged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WitnessSendOutcome {
+    /// Packet hit the wire. `seq` is the reliable/unreliable sequence
+    /// number consumed; `bytes` is the encrypted datagram length.
+    Sent {
+        addr: SocketAddr,
+        seq: u32,
+        bytes: usize,
+    },
+    /// `witness_id` had no entry in `entity_to_addr` — packet dropped.
+    /// Mirrors the helper's `reason = "entity_to_addr_miss"` warn.
+    AddrUnresolved,
+    /// The session was gone from `connected` mid-send (logoff race) —
+    /// packet dropped. Mirrors the helper's `reason = "client_disconnected"`
+    /// debug.
+    ClientDisconnected,
+    /// Address resolved and session present, but `transport.send_to`
+    /// returned an I/O error. Mirrors the helper's send-failure warn.
+    SendError,
+}
+
+impl WitnessSendOutcome {
+    /// `true` only for [`WitnessSendOutcome::Sent`]. Test-only inspector
+    /// (the seams match the variant directly).
+    #[cfg(test)]
+    pub(crate) fn is_sent(&self) -> bool {
+        matches!(self, WitnessSendOutcome::Sent { .. })
+    }
+
+    /// `true` when the address was successfully resolved from
+    /// `entity_to_addr` — i.e. anything other than
+    /// [`WitnessSendOutcome::AddrUnresolved`]. Used as the `addr_resolved`
+    /// field on the AoI create-emit seam.
+    pub(crate) fn addr_resolved(&self) -> bool {
+        !matches!(self, WitnessSendOutcome::AddrUnresolved)
+    }
+
+    /// Stable `reason` token for the failure arms, or `None` on success.
+    /// Pinned by the negative-logging regression guards — treat as API.
+    pub(crate) fn failure_reason(&self) -> Option<&'static str> {
+        match self {
+            WitnessSendOutcome::Sent { .. } => None,
+            WitnessSendOutcome::AddrUnresolved => Some("entity_to_addr_miss"),
+            WitnessSendOutcome::ClientDisconnected => Some("client_disconnected"),
+            WitnessSendOutcome::SendError => Some("send_error"),
+        }
+    }
+}
+
+/// Outcome of a bundle witness send ([`send_bundle_to_witness_reliable`]).
+///
+/// Same rationale as [`WitnessSendOutcome`] but carries the multi-fragment
+/// shape: a bundle finalizes to `packets` fragments starting at `base_seq`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BundleSendOutcome {
+    /// All fragments hit the wire. `base_seq` is the first reserved seq;
+    /// `packets` is the fragment count; `bytes` is the total accumulated
+    /// body length.
+    Sent {
+        addr: SocketAddr,
+        base_seq: u32,
+        packets: usize,
+        bytes: usize,
+    },
+    /// `witness_id` had no entry in `entity_to_addr` — bundle dropped.
+    AddrUnresolved,
+    /// Session gone from `connected` mid-send — bundle dropped.
+    ClientDisconnected,
+    /// Empty bundle (no messages, no acks) — nothing reserved, no-op.
+    Empty,
+    /// A fragment failed to send mid-bundle; the reliable seq stream now
+    /// has a gap and the channel will be reaped on inactivity timeout.
+    SendError,
+}
+
+impl BundleSendOutcome {
+    /// `true` only for [`BundleSendOutcome::Sent`]. Test-only inspector
+    /// (the seams match the variant directly).
+    #[cfg(test)]
+    pub(crate) fn is_sent(&self) -> bool {
+        matches!(self, BundleSendOutcome::Sent { .. })
+    }
+
+    /// `true` when the address resolved from `entity_to_addr`.
+    pub(crate) fn addr_resolved(&self) -> bool {
+        !matches!(self, BundleSendOutcome::AddrUnresolved)
+    }
+
+    /// Stable `reason` token for the non-sent arms, or `None` on success.
+    pub(crate) fn failure_reason(&self) -> Option<&'static str> {
+        match self {
+            BundleSendOutcome::Sent { .. } => None,
+            BundleSendOutcome::AddrUnresolved => Some("entity_to_addr_miss"),
+            BundleSendOutcome::ClientDisconnected => Some("client_disconnected"),
+            BundleSendOutcome::Empty => Some("empty_bundle"),
+            BundleSendOutcome::SendError => Some("send_error"),
+        }
+    }
+}
+
 /// Format a byte slice as a hex string for trace logging.
 pub(crate) fn to_hex(data: &[u8]) -> String {
     data.iter()
@@ -367,7 +479,8 @@ pub(crate) async fn send_to_witness<F>(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     witness_id: u32,
     build_packet: F,
-) where
+) -> WitnessSendOutcome
+where
     F: FnOnce(&[u8; 32], EncryptionVersion, u32, &[u32]) -> Vec<u8>,
 {
     // Extract all data from locks in a sync block so no MutexGuard crosses an await.
@@ -399,7 +512,7 @@ pub(crate) async fn send_to_witness<F>(
                     entity_count_in_map = map_size,
                     "AoI: no client addr for witness -- packet dropped"
                 );
-                return;
+                return WitnessSendOutcome::AddrUnresolved;
             }
         };
 
@@ -434,12 +547,16 @@ pub(crate) async fn send_to_witness<F>(
         }
     };
 
-    if let Some((addr, key, version, seq, acks)) = send_data {
-        let packet = build_packet(&key, version, seq, &acks);
-        if let Err(e) = transport.send_to(&packet, addr).await {
-            tracing::warn!(witness_id, %addr, "AoI: failed to send packet: {e}");
-        }
+    let Some((addr, key, version, seq, acks)) = send_data else {
+        return WitnessSendOutcome::ClientDisconnected;
+    };
+    let packet = build_packet(&key, version, seq, &acks);
+    let bytes = packet.len();
+    if let Err(e) = transport.send_to(&packet, addr).await {
+        tracing::warn!(witness_id, %addr, "AoI: failed to send packet: {e}");
+        return WitnessSendOutcome::SendError;
     }
+    WitnessSendOutcome::Sent { addr, seq, bytes }
 }
 
 /// Send an AoI packet to a specific witness's client — **reliable**
@@ -466,7 +583,8 @@ pub(crate) async fn send_to_witness_reliable<F>(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     witness_id: u32,
     build_packet: F,
-) where
+) -> WitnessSendOutcome
+where
     F: FnOnce(&[u8; 32], EncryptionVersion, u32, &[u32]) -> Vec<u8>,
 {
     let send_data = {
@@ -490,7 +608,7 @@ pub(crate) async fn send_to_witness_reliable<F>(
                     entity_count_in_map = map_size,
                     "AoI reliable: no client addr for witness -- packet dropped"
                 );
-                return;
+                return WitnessSendOutcome::AddrUnresolved;
             }
         };
 
@@ -516,21 +634,24 @@ pub(crate) async fn send_to_witness_reliable<F>(
         }
     };
 
-    if let Some((addr, key, version, seq, acks)) = send_data {
-        let packet = build_packet(&key, version, seq, &acks);
-        if let Err(e) = transport.send_to(&packet, addr).await {
-            tracing::warn!(witness_id, %addr, "AoI reliable: failed to send packet: {e}");
-            return;
-        }
-        // Register the encrypted bytes with the per-session Channel so
-        // the retransmit driver in tick_sync re-sends on RTO expiry.
-        shadow_register_reliable_send(
-            connected,
-            addr,
-            seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(&packet),
-        );
+    let Some((addr, key, version, seq, acks)) = send_data else {
+        return WitnessSendOutcome::ClientDisconnected;
+    };
+    let packet = build_packet(&key, version, seq, &acks);
+    let bytes = packet.len();
+    if let Err(e) = transport.send_to(&packet, addr).await {
+        tracing::warn!(witness_id, %addr, "AoI reliable: failed to send packet: {e}");
+        return WitnessSendOutcome::SendError;
     }
+    // Register the encrypted bytes with the per-session Channel so
+    // the retransmit driver in tick_sync re-sends on RTO expiry.
+    shadow_register_reliable_send(
+        connected,
+        addr,
+        seq,
+        cimmeria_mercury::packet::Bytes::copy_from_slice(&packet),
+    );
+    WitnessSendOutcome::Sent { addr, seq, bytes }
 }
 
 /// Send a [`ChannelBundle`] of N messages to a witness's client as a
@@ -572,7 +693,7 @@ pub(crate) async fn send_bundle_to_witness_reliable(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     witness_id: u32,
     mut bundle: cimmeria_mercury::channel_bundle::ChannelBundle,
-) {
+) -> BundleSendOutcome {
     use cimmeria_mercury::packet::{FLAG_ON_CHANNEL, FLAG_RELIABLE, SEQUENCE_MASK};
 
     let send_data = {
@@ -596,7 +717,7 @@ pub(crate) async fn send_bundle_to_witness_reliable(
                     entity_count_in_map = map_size,
                     "AoI bundle: no client addr for witness -- bundle dropped"
                 );
-                return;
+                return BundleSendOutcome::AddrUnresolved;
             }
         };
 
@@ -610,7 +731,7 @@ pub(crate) async fn send_bundle_to_witness_reliable(
                     reason = "client_disconnected",
                     "AoI bundle: client disconnected mid-send -- bundle dropped"
                 );
-                return;
+                return BundleSendOutcome::ClientDisconnected;
             }
         };
 
@@ -625,7 +746,7 @@ pub(crate) async fn send_bundle_to_witness_reliable(
         // otherwise ceil(body / FRAGMENT_BODY_SIZE)).
         let packet_count = bundle.estimated_packet_count();
         if packet_count == 0 {
-            return;
+            return BundleSendOutcome::Empty;
         }
 
         // Atomically reserve `packet_count` consecutive sequence numbers.
@@ -639,7 +760,9 @@ pub(crate) async fn send_bundle_to_witness_reliable(
     };
 
     let Some((addr, key, version, base_seq, packet_count)) = send_data else {
-        return;
+        // Unreachable: every None path inside the block above early-returns
+        // a specific outcome. Defensive fallback keeps the match exhaustive.
+        return BundleSendOutcome::Empty;
     };
 
     let num_messages = bundle.num_messages();
@@ -696,7 +819,7 @@ pub(crate) async fn send_bundle_to_witness_reliable(
                 frag_seq,
                 base_seq.wrapping_add(packet_count as u32) & SEQUENCE_MASK,
             );
-            return;
+            return BundleSendOutcome::SendError;
         }
         shadow_register_reliable_send(
             connected,
@@ -704,6 +827,13 @@ pub(crate) async fn send_bundle_to_witness_reliable(
             frag_seq,
             cimmeria_mercury::packet::Bytes::copy_from_slice(pkt),
         );
+    }
+
+    BundleSendOutcome::Sent {
+        addr,
+        base_seq,
+        packets: packets.len(),
+        bytes: body_len,
     }
 }
 

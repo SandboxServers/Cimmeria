@@ -624,3 +624,152 @@ fn get_access_level_fails_closed_for_poisoned_lock() {
         "poisoned lock must fail closed to Player (0), never privileged"
     );
 }
+
+// ──────────────────────────────────────────────────────────────────
+// Witness-send OUTCOME plumbing guards. The AoI create-emit
+// observability seam (`aoi.create_emit` / `aoi.create_send_failed`)
+// relies on the witness-send helpers RETURNING their outcome instead
+// of swallowing it. These guards pin the return contract so a refactor
+// that drops the return value (back to `-> ()`) trips here.
+// ──────────────────────────────────────────────────────────────────
+
+/// A reliable send to a resolvable, connected witness returns
+/// `Sent { addr, seq, bytes }` with the consumed seq (0 on a fresh
+/// session) and the encrypted-packet length. This is the success-side
+/// data the `aoi.create_emit` DEBUG seam logs per packet.
+#[tokio::test]
+async fn send_to_witness_reliable_returns_sent_outcome_on_success() {
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+
+    let transport: Arc<dyn cimmeria_mercury::transport::Transport> =
+        Arc::new(TestTransport::default());
+    let addr: SocketAddr = "127.0.0.1:55800".parse().unwrap();
+    let witness_id = 500u32;
+    let connected = Arc::new(Mutex::new(HashMap::from([(
+        addr,
+        crate::test_support::test_default_connected_client_state(),
+    )])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(witness_id, addr)])));
+
+    let outcome = send_to_witness_reliable(
+        &transport,
+        &connected,
+        &entity_to_addr,
+        witness_id,
+        |_key, _version, _seq, _acks| vec![0xAA; 12],
+    )
+    .await;
+
+    assert!(
+        outcome.is_sent(),
+        "resolvable witness must report Sent: {outcome:?}"
+    );
+    assert!(
+        outcome.addr_resolved(),
+        "Sent outcome must report addr_resolved=true"
+    );
+    assert_eq!(outcome.failure_reason(), None, "Sent has no failure reason");
+    match outcome {
+        WitnessSendOutcome::Sent {
+            addr: got_addr,
+            seq,
+            bytes,
+        } => {
+            assert_eq!(got_addr, addr, "Sent carries the resolved witness addr");
+            assert_eq!(seq, 0, "fresh session consumes reliable seq 0");
+            assert_eq!(bytes, 12, "Sent carries the on-wire packet length");
+        }
+        other => panic!("expected Sent, got {other:?}"),
+    }
+}
+
+/// A reliable send to a witness with no `entity_to_addr` entry returns
+/// `AddrUnresolved` — `addr_resolved()` is false and `failure_reason()`
+/// is the stable `entity_to_addr_miss` token the create-emit failure
+/// seam pivots on.
+#[tokio::test]
+async fn send_to_witness_reliable_returns_addr_unresolved_on_miss() {
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+
+    let transport: Arc<dyn cimmeria_mercury::transport::Transport> =
+        Arc::new(TestTransport::default());
+    let connected = Arc::new(Mutex::new(
+        HashMap::<SocketAddr, ConnectedClientState>::new(),
+    ));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::<u32, SocketAddr>::new()));
+
+    let outcome = send_to_witness_reliable(
+        &transport,
+        &connected,
+        &entity_to_addr,
+        4242,
+        |_key, _version, _seq, _acks| vec![0u8; 4],
+    )
+    .await;
+
+    assert!(!outcome.is_sent(), "unresolvable witness must not be Sent");
+    assert_eq!(outcome, WitnessSendOutcome::AddrUnresolved);
+    assert!(!outcome.addr_resolved());
+    assert_eq!(outcome.failure_reason(), Some("entity_to_addr_miss"));
+}
+
+/// The bundle helper returns `BundleSendOutcome::Sent { base_seq,
+/// packets, bytes }` on a successful multi-message flush — the shape the
+/// bundled create-emit seam logs for the pre-onClientReady burst path.
+#[tokio::test]
+async fn send_bundle_to_witness_reliable_returns_sent_outcome_on_success() {
+    use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+
+    let tt = Arc::new(TestTransport::default());
+    let transport: Arc<dyn cimmeria_mercury::transport::Transport> = tt.clone();
+    let addr: SocketAddr = "127.0.0.1:55801".parse().unwrap();
+    let witness_id = 600u32;
+    let connected = Arc::new(Mutex::new(HashMap::from([(
+        addr,
+        crate::test_support::test_default_connected_client_state(),
+    )])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(witness_id, addr)])));
+
+    let mut bundle = ChannelBundle::new(true);
+    bundle.append_entity_method(5, IDBASE_SGW_PLAYER, witness_id, &[1, 2, 3]);
+    bundle.append_entity_method(6, IDBASE_SGW_PLAYER, witness_id, &[4, 5]);
+
+    let outcome = send_bundle_to_witness_reliable(
+        &transport,
+        &connected,
+        &entity_to_addr,
+        witness_id,
+        bundle,
+    )
+    .await;
+
+    assert!(
+        outcome.is_sent(),
+        "resolvable witness must report Sent: {outcome:?}"
+    );
+    match outcome {
+        BundleSendOutcome::Sent {
+            addr: got_addr,
+            base_seq,
+            packets,
+            ..
+        } => {
+            assert_eq!(got_addr, addr);
+            assert_eq!(base_seq, 0, "fresh session reserves from seq 0");
+            assert_eq!(packets, 1, "small body fits in one fragment");
+            assert_eq!(
+                tt.send_count_to(addr),
+                1,
+                "exactly one fragment hit the wire"
+            );
+        }
+        other => panic!("expected Sent, got {other:?}"),
+    }
+}
