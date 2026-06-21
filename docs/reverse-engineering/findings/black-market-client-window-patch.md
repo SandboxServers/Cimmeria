@@ -201,6 +201,40 @@ The manual x64dbg patching is a **development convenience**, not the shipping mo
 
 **Bottom line:** yes — implementable as a one-time, auto-applied client patch. The remaining work is (1) extend coverage from method 90 to 90–95 (prefer native binding so the data methods decode), and (2) finish the launcher integration so it applies on every launch.
 
+## 92–95 data methods: store-write spec (RE'd 2026-06-21)
+
+### Store lifecycle (allocated, live)
+
+- `[GEM+0x8c]` → manager `0xEF726800`; `[manager+0x5c]` → store container `0xEC1CC600`. Both non-null at world-entry → constructed at manager/login init (not lazily on BM-open).
+- The container holds **3 inline view sub-objects** (`+0x0`/`+0x24`/`+0x48` = SearchResults / MyAuctions / MyBids), plus a vector at `+0x70` = `[&view0,&view1,&view2]`. **Each view has a `std::map<auctionId, AuctionItem*>` at `view+4`** (refcounted values).
+- Read path: `getAuctionItemInfo` (`0x00aac260`) → `FUN_00ae1ad0` → `FUN_00e58b50` (iterate the 3 views) → `FUN_00e58a80` (lookup in `view+4`). No null guards — safe because allocated; empty maps just return "not found".
+- **The data path is real:** populate a view's map and the existing CEGUI UI renders it. Nothing writes those maps today.
+
+### AuctionItem store record (read-side layout)
+
+`itemDef@+0xc` (def: name@`+0x10`, icon@`+0x48`, techCompetency@`+0x78`), `auctionId@+0x10`, `stackSize@+0x14`, `durability@+0x18`, `charges@+0x1c`, `currentBid@+0x20`, `buyoutPrice@+0x24`, `nextBidPrice@+0x28`, `timeLeft@+0x2c` (byte); `itemId` via `FUN_00e587f0`, `sellerName` via `FUN_00ae0df0`, `bidderName` via `FUN_00ae0e50`. Refcount at `+0x4`.
+
+### Wire decode chain (onBMAuctions = 92)
+
+`onBMAuctions(ARRAY<AuctionItem>, INT32 viewType, INT32 totalCount)`; arg-types `[0xEF6F1C40 (array), 0xEF8A1570 (INT32), 0xEF8A1570 (INT32)]`.
+- Array decoder `FUN_015a2e60`: reads an **INT32 count**, loops `count×` the element decoder, then `FUN_00d1f690` stores the result array.
+- Element type `0xEF8A8180` ("DefIAuctionItem"), decoder `0x015A3440`: builds a **`CME::BasicPropertyTree`** (variant dict), iterating **10 field descriptors at `0xEF770400`** (stride `0x28`, type-ptr @ `+0x1c`, name SSO @ `+0x4`).
+- **Field order — matches `wire.rs` exactly:** `sequenceId, itemDefId, stackSize, durability, charges, currentBid, buyoutPrice` = INT32 (`0xEF8A1570`); `endTimeValue` = UINT8 (`0xEF8A1468`); `nextMinBidPrice` = INT32; `sellerName` = StringDataType (`0xEF8A0D00`).
+
+### Open-verification checkboxes (wire-format landmines)
+
+- [x] **`sellerName` narrow-STRING — RESOLVED, and it's a hard blocker.** The field is `StringDataType` (narrow); its stream decoder `0x01597FF0` **throws** `"streamToProperty(List): StringDataType should not be used between the client and server"`. So the engine **cannot decode the AuctionItem FIXED_DICT on the wire** — the array→element→field decode throws before any handler runs. **Almost certainly why the BM data side was shelved.** Implication: 92/94 native callbacks must **parse the raw wire manually** (count + 8×INT32 + UINT8 + length-prefixed *narrow* string) and must **not** route through the engine arg-decode. `wire.rs`'s narrow-STRING `sellerName` is wire-correct *for a manual parser*, but would throw under the engine decoder — do not "fix" it to WSTRING.
+- [ ] **`onBMError` INT32 vs Lua string — OPEN.** Method 91's wire arg is `INT32 errorId` (arg-type `0xEF8A1570`), but Lua `BlackMarketMod.onBMError(this, errorText)` wants a **string**. Needs an `errorId → string` map before the Lua call. Verify the `EBlackMarketError` ordinals and whether a client-side localized table exists, else format the int.
+
+### Write-architecture fork → B (own store + repoint read bindings)
+
+Both deciding inputs point away from native reconstruction (A):
+
+1. The engine AuctionItem decode **throws** (above) — we parse the wire ourselves regardless; the "free arg-decode" advantage is gone for the data methods.
+2. The `AuctionItem` store record is **refcounted** (`+0x4`) with an `itemDef` sub-object and string members, and its **constructor/writers are dead code** — the store accessors (`FUN_00e587f0`/`FUN_00e587d0`/`FUN_00ae0df0`/`FUN_00ae0e50`) have **no callers except the read binding**. Reviving dead refcounted-object construction is exactly the refcount/lifecycle landmine seen throughout this finding.
+
+**Decision: maintain our own per-view auction store and repoint the (small, known) read surface** — `getAuctionItemInfo` (`0x00aac260`), `getAuctionViewItems`, `getAuctionVisibleCount`, `getAuctionTotalCount` (or their shared accessor `FUN_00ae1ad0`/`FUN_00e58b50`) — to read it. The native callbacks for 92/94/93/95 then do a **manual wire parse → write our store**; the existing CEGUI UI reads it through the repointed bindings. No CME `AuctionItem` construction, no refcount dance. (90 `onBMOpen` + 91 `onBMError` stay simple Lua calls; they never touch the store.)
+
 ## Ghidra annotations applied
 
 `Client_NetIn_EntityMethodDispatch` (`0x00c6f8f0`) + plate comment; `Lua_doString_wide` (`0x00404030`) + plate comment; `g_SGWUIManager_ptr` label (`0x01ee2a58`); disassembly comments at the two hook sites; `register_NetIn_BMOpen` plate comment ("descriptor present, never bound").
