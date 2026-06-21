@@ -178,6 +178,63 @@ So the **general key for reviving any shelved client method**: splice a node, bo
 
 > Correction to two earlier notes: `0x00a5c150` is a find/contains check, **not** `CmeEventSignal_Subscribe`; and native binding does **not** require registering a signal — both the "Registry walk" and "Shipping → (a)" notes are corrected by this live result.
 
+### Concrete artifacts — the working in-memory build (method 90)
+
+The exact build that opened the window, for rebuild/extension. Heap addresses (`0xEC*`/`0xEF*`/cave bases) are **session-specific** (cave allocs + deterministic heap); the **static** addresses, the cave **code**, and the structure **templates** are reusable.
+
+**Static anchors (stable):** `0x00c6f8f0` dispatcher; `0x00c6fa8a` drop-path (capture `this`=`[esp+0x18]`, desc=`[esp+0x14]`, idx=`[esp+0x10]`); `0x00416ec0` `FEngineLoop::Tick` (first insn `mov eax,fs:[0]` = `64 A1 00 00 00 00`); `0x00404030` `Lua_doString_wide`; `0x01ee2a58` `g_SGWUIManager_ptr`.
+
+**Runtime-resolved per session (how to find each):**
+- `dispatchThis` (tree owner) = `[esp+0x18]` at the drop path (was `0xECEB7C00`); tree = std::map at `dispatchThis+8`.
+- player desc = `[esp+0x14]` at drop path (was `0xEF712E30`, ck=3); client-Methods vector begin = `[desc+0xf0]`; `onBMOpen` MD = `vector[90]` (was `0x13CC1C2C`).
+- borrowable signal = copy the `+0x18` eventKey (hash + `std::string`) from any *working* dispatch node (we used `onPlayerDataLoaded` → `"Event_NetIn_onPlayerDataLoaded"`).
+- `onBMOpen` real arg-type = `[MD+0x24][0]` (was `0xEF8A1570` = INT32); real arg-info = `[MD+0x34]` (0x1c bytes).
+
+**Code-cave layout (one RWX page, base `C`):**
+
+| Off | Contents |
+|---|---|
+| `C+0x00` | `flag` (dword) |
+| `C+0x10` | vector1 = `[realArgType, callbackObj]` (begin `C+0x10`, end `C+0x18`) |
+| `C+0x20` | callbackObj = `{ &vtable = C+0x30 }` |
+| `C+0x30` | vtable — only `+0x10` used → `flagSetCave` (`C+0x50`) |
+| `C+0x50` | flagSetCave: `C7 05 <&flag> 01 00 00 00  C2 0C 00` (`mov dword[flag],1; ret 0xC`) |
+| `C+0x80` | vector2 = `[realArgInfo(0x1c copy), dummy(0x1c)]` (begin `C+0x80`, end `C+0xB8`) |
+| `C+0xC0` | customMD = 0x50-byte copy of `onBMOpen` MD, with `+0x24/+0x28/+0x2c → vector1` and `+0x34/+0x38/+0x3c → vector2` |
+| `C+0x200` | wscript `"BlackMarketMod.onBMOpen()"` UTF-16LE (50 bytes) |
+| `C+0x240` | wname `"bm"` UTF-16LE |
+| `C+0x250` | tickCave (below) |
+
+**Dispatch node (0x40, own cave `N`):** `+0x0` left=nil, `+0x4` parent=splicePoint, `+0x8` right=nil, `+0xc` key1=componentKey (3), `+0x10` key2=90, `+0x14`=`customMD`, `+0x18..+0x33` borrowed eventKey (`+0x18` hash=0, `+0x1c` name `_Ptr`, `+0x2c` size, `+0x30` cap), `+0x34` color=0, `+0x35` nil=0.
+**Splice:** `[splicePoint+0]` (BST-leaf slot for `(3,90)`) `= N`, as a single atomic write after `N` is fully built. Search-only descent → no rebalance.
+
+**Tick-cave assembly (working version — the L-check is omitted on purpose):**
+```asm
+cmp  dword [flag], 1
+jne  .skip
+mov  dword [flag], 0
+pushad
+mov  eax, [0x01ee2a58]        ; g_SGWUIManager
+test eax,eax / jz .done
+mov  eax, [eax+0x10]
+test eax,eax / jz .done
+mov  eax, [eax]               ; L (lua_State).  DO NOT dword-cmp [L+4],8 -> 0x01597FF0-style throw path; tt=8 is the LOW BYTE
+test eax,eax / jz .done
+push <wname  C+0x240>
+push 0x19                     ; len = 25 CHARACTERS (not bytes)
+push <wscript C+0x200>
+push eax                      ; L
+mov  edx, 0x00404030 / call edx / add esp, 0x10
+.done: popad
+.skip: mov eax, fs:[0]        ; replay overwritten insn
+       jmp 0x00416ec6
+```
+**Tick detour:** overwrite the 6 bytes at `0x00416ec0` with `E9 <rel32 = tickCave - (0x00416ec0+5)> 90`.
+
+**Flow:** auctioneer → server method 90 → node found → loop decodes the real INT32 arg (keeps the borrowed shim from reading garbage) → **our callback sets `flag`** (network thread) → next `FEngineLoop::Tick` runs the Lua on the main thread → window opens. The borrowed `onPlayerDataLoaded` shim also fires — harmless (it otherwise only runs at login).
+
+**Carry-forward gotchas:** wide Lua strings are UTF-16LE with `len` = char count; the node fires on the **network thread** (callback must *only* set the flag, never call Lua); `lua_State` `tt` check is a **byte** compare; MCP `write_memory` rejects stray line-wrap characters in `hex_data`.
+
 ### Applying it to 91–95
 
 The client Lua (`Content/UI/Core/BlackMarket/BlackMarket.lua`) defines only **two** NetIn-facing handlers: `BlackMarketMod.onBMOpen()` (no args) and `BlackMarketMod.onBMError(this, errorText)` (a string). The **listing data does not flow through Lua** — `onBMAuctions`/`onBMAuctionUpdate`/`onBMAuctionRemove`/`onBMWatchedItemsUpdate` (92–95) populate a **C++ auction store** that Lua only *reads* via `getAuctionItemInfo` / `getAuctionViewItems` / `getAuctionVisibleCount` (read-side bindings; see [`black-market-restoration.md`](black-market-restoration.md)). Consequences:
