@@ -189,7 +189,6 @@ async fn sweep_settles_multiple_expired_in_one_pass() {
     insert_account_and_player(&pool, acc_seller, seller, 0).await;
     insert_account_and_player(&pool, acc_bidder, bidder, 10_000).await;
     let item_sold = insert_item(&pool, seller, ITEM_DEF_ID).await;
-    let item_unsold = insert_item(&pool, seller, ITEM_DEF_ID).await;
 
     let (transport, e2a, conn) = make_state(entity_id);
     let db_pool = Some(Arc::new(pool.clone()));
@@ -199,7 +198,10 @@ async fn sweep_settles_multiple_expired_in_one_pass() {
         entity_id, seller, item_sold, 100, 0, 1, &db_pool, &transport, &conn, &e2a,
     )
     .await;
-    // Auction B: no bid → should settle EXPIRED.
+    // Auction B: no bid → should settle EXPIRED. item_sold was escrowed by
+    // auction A above, freeing backpack slot 0 for this second item (a seller
+    // can't hold two items in the same container slot).
+    let item_unsold = insert_item(&pool, seller, ITEM_DEF_ID).await;
     create::handle_create_auction(
         entity_id,
         seller,
