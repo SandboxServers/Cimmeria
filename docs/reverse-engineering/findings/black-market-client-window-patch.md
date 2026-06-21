@@ -150,6 +150,17 @@ They differ only in name / ordinal / arg count — **no per-method flag** distin
 
 **Native binding — reachable, but not a shortcut for *opening*.** Subscribing a handler would create the dispatch node so the method dispatches natively. For `onBMOpen` alone it is *more* work than the Lua-injection (you'd construct the signal + `CallbackImpl`, and the handler would still have to open the window — exactly what the injection already does). The **general key** is real, though: shelved client methods are "perfect but unsubscribed," so subscribing revives native dispatch for any of them — and crucially, **the native path gets the engine's arg-decoding for free**, which is what the data methods (91–95) need.
 
+### Registry walk (2026-06-21): the BM signals are entirely unregistered
+
+Confirmed the hard way with a live walk of the **CME signal registry** (`BW__unknown_0155f790` → std::map at `0x01f11fc4`, **723 events**, name-sorted; `CmeEventSignal_LookupByName @ 0x00a5c0f0` returns 0 on miss): **no `Event_NetIn_onBM*` signal exists at all.** Tracing toward `onBMOpen` lands in the *empty* gap between `onArchetypeUpdate` and `onBeginAidWait` (a nil child), and the whole `onBM*` family sorts into that same gap — so none of the six are registered. Every non-BM neighbour (`onActiveSlotUpdate`, `onArchetypeUpdate`, `onBeginAidWait`, `onBeingNameIDUpdate`, `onCharacterLoadFailed`, `onErrorCode`, `onPlayerDataLoaded`, …) is present; the registry is healthy, BM was simply never wired in. So it's not "registered without a subscriber" — the **signal itself is absent**.
+
+This sharpens the native-binding cost **and** its risk. The dispatcher's found-path calls the lookup and **dereferences the result unconditionally** (`0x00c6fbf9: EDX=[signal]`), so a bare dispatch node whose eventKey doesn't resolve is a **guaranteed null-deref crash** — there is no inert "found but does nothing" node. Native binding therefore requires, in order:
+
+1. **Register a CME signal** for the method — construct a signal object (a vtable whose `+8` shim opens the window, deferred to the main thread) and **insert it into the `0x01f11fc4` registry** (one red-black-tree splice).
+2. **Splice the dispatch node** `(componentKey, methodIndex)` into the per-entity tree at `this+8` (a second red-black-tree splice), with `+0x18` pointing at the registered name.
+
+That's two live RB-tree inserts plus object construction on the server-connected client — the full Pattern-A wiring BM's developers omitted. For `onBMOpen` it is strictly more work and more crash-risk than the proven Lua-injection, for the identical result, so a "quick" native test of method 90 is **not** a quick node-splice: a bare node would null-deref on the next auctioneer interact.
+
 ## Shipping the full feature without repeated patching
 
 The manual x64dbg patching is a **development convenience**, not the shipping model. The delivered feature is a **single patch applied automatically at every client launch** — you never hand-patch the running game.
