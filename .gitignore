@@ -82,6 +82,9 @@ Win32/
 # =============================================================================
 logs/**
 !logs/*/.keep
+# Nested runtime log dirs (e.g. crates/services/logs/seed-authoring-*.sql from
+# console-authoring during live-DB test runs) — the root `logs/**` is anchored.
+**/logs/
 
 # =============================================================================
 # Python
