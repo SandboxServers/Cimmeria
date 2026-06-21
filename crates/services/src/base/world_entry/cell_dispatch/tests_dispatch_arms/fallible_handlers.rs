@@ -38,6 +38,7 @@ async fn gate_travel_logs_error_when_entity_has_no_session() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -74,6 +75,7 @@ async fn reanchor_player_logs_error_when_entity_has_no_session() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 

@@ -1,5 +1,10 @@
-//! Routes `OrgSquad*` `CellToBaseMsg` variants to `base::organization::handlers`.
+//! Routes `OrgSquad*` and `OrgPersistent*` `CellToBaseMsg` variants to
+//! `base::organization::handlers`.
 
+use crate::base::organization::handlers::persistent::{
+    handle_persistent_create, handle_persistent_invite_accepted, handle_persistent_kick,
+    handle_persistent_rank_change, handle_persistent_set_motd,
+};
 use crate::base::organization::handlers::{
     handle_squad_accepted, handle_squad_loot_mode, handle_squad_member_left,
     handle_squad_minimap_ping,
@@ -90,6 +95,148 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             member_entity_ids,
         } => {
             handle_squad_minimap_ping(org_id, sender_entity_id, location, member_entity_ids).await;
+        }
+
+        // ── Persistent-org variants (Phase 3) ────────────────────────────────
+        CellToBaseMsg::OrgPersistentCreate {
+            entity_id,
+            player_id,
+            player_name,
+            org_type,
+            name,
+        } => {
+            let (Some(auth), Some(pool)) = (ctx.org_authority.as_ref(), ctx.db_pool.as_ref())
+            else {
+                tracing::warn!("OrgPersistentCreate: no OrgAuthority or db_pool, skipping");
+                return;
+            };
+            handle_persistent_create(
+                entity_id,
+                player_id,
+                player_name,
+                org_type,
+                name,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                auth,
+                pool,
+            )
+            .await;
+        }
+
+        CellToBaseMsg::OrgPersistentSendInvite { .. } => {
+            // OrgPersistentSendInvite triggers the wire invite (onOrganizationInvite [34])
+            // to the target player. The actual DB write happens in OrgPersistentInviteAccepted
+            // after the target accepts (CM 8). For now log intent and no-op until
+            // the base-method handler is wired (needs player name → entity_id lookup).
+            tracing::debug!(
+                "OrgPersistentSendInvite: forwarding invite (base method not yet wired)"
+            );
+        }
+
+        CellToBaseMsg::OrgPersistentInviteAccepted {
+            new_member_entity_id,
+            new_member_player_id,
+            new_member_name,
+            actor_player_id,
+            org_id,
+        } => {
+            let (Some(auth), Some(pool)) = (ctx.org_authority.as_ref(), ctx.db_pool.as_ref())
+            else {
+                tracing::warn!("OrgPersistentInviteAccepted: no OrgAuthority or db_pool, skipping");
+                return;
+            };
+            handle_persistent_invite_accepted(
+                new_member_entity_id,
+                new_member_player_id,
+                new_member_name,
+                actor_player_id,
+                org_id,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                auth,
+                pool,
+            )
+            .await;
+        }
+
+        CellToBaseMsg::OrgPersistentKick {
+            actor_entity_id,
+            actor_player_id,
+            org_id,
+            target_player_name,
+        } => {
+            let (Some(auth), Some(pool)) = (ctx.org_authority.as_ref(), ctx.db_pool.as_ref())
+            else {
+                tracing::warn!("OrgPersistentKick: no OrgAuthority or db_pool, skipping");
+                return;
+            };
+            handle_persistent_kick(
+                actor_entity_id,
+                actor_player_id,
+                org_id,
+                target_player_name,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                auth,
+                pool,
+            )
+            .await;
+        }
+
+        CellToBaseMsg::OrgPersistentRankChange {
+            actor_entity_id,
+            actor_player_id,
+            org_id,
+            target_player_name,
+            new_rank,
+        } => {
+            let (Some(auth), Some(pool)) = (ctx.org_authority.as_ref(), ctx.db_pool.as_ref())
+            else {
+                tracing::warn!("OrgPersistentRankChange: no OrgAuthority or db_pool, skipping");
+                return;
+            };
+            handle_persistent_rank_change(
+                actor_entity_id,
+                actor_player_id,
+                org_id,
+                target_player_name,
+                new_rank,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                auth,
+                pool,
+            )
+            .await;
+        }
+
+        CellToBaseMsg::OrgPersistentSetMotd {
+            actor_entity_id,
+            actor_player_id,
+            org_id,
+            motd,
+        } => {
+            let (Some(auth), Some(pool)) = (ctx.org_authority.as_ref(), ctx.db_pool.as_ref())
+            else {
+                tracing::warn!("OrgPersistentSetMotd: no OrgAuthority or db_pool, skipping");
+                return;
+            };
+            handle_persistent_set_motd(
+                actor_entity_id,
+                actor_player_id,
+                org_id,
+                motd,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                auth,
+                pool,
+            )
+            .await;
         }
 
         // Exhaustiveness guard — all other variants handled by sibling dispatchers.

@@ -677,6 +677,99 @@ pub enum CellToBaseMsg {
         p2_cash: i32,
     },
 
+    // ── Persistent Organization messages (Team / Command) ────────────────────
+    /// A player sent `organizationCreation` (base method, UINT8 type + WSTRING name).
+    ///
+    /// Base: gate eligibility → `OrgAuthority::create_org` → send
+    /// `onOrganizationCreationResult` [134] + `onOrganizationJoined` [35] to the creator.
+    OrgPersistentCreate {
+        /// Entity that triggered creation.
+        entity_id: u32,
+        /// DB player_id of the creator (becomes the first Leader).
+        player_id: i32,
+        /// Display name of the creator (for the in-memory member record).
+        player_name: String,
+        /// Org type (must be Team=1 or Command=2 — Squad is ephemeral).
+        org_type: u8,
+        /// Requested org name.
+        name: String,
+    },
+
+    /// A player sent `organizationInvite` (base method) and the invite should be
+    /// forwarded to the target. Base resolves the name, permission-gates, then
+    /// sends `onOrganizationInvite` [34] to the target.
+    ///
+    /// After the target accepts (CM 8), `OrgPersistentInviteAccepted` is sent.
+    OrgPersistentSendInvite {
+        /// Entity that sent the invite.
+        actor_entity_id: u32,
+        /// player_id of the acting player (for permission check against OrgAuthority).
+        actor_player_id: i32,
+        /// Display name of the inviting player (wire: `aInviterName`).
+        actor_name: String,
+        /// Org to invite into.
+        org_id: i32,
+        /// Name of the target player (name-resolution must find them online).
+        target_player_name: String,
+    },
+
+    /// The target accepted a persistent-org invite (CM 8 response, `accepted = true`).
+    ///
+    /// Base: `OrgAuthority::accept_invite` → DB add_member → fanout:
+    /// - `onMemberJoinedOrganization` [37] to all other online org members
+    /// - `onOrganizationJoined` [35] to the new member
+    /// - `onOrganizationRosterInfo` [38] to the new member
+    OrgPersistentInviteAccepted {
+        /// Entity ID of the new member.
+        new_member_entity_id: u32,
+        /// player_id of the new member.
+        new_member_player_id: i32,
+        /// Display name of the new member.
+        new_member_name: String,
+        /// actor_player_id that issued the invite (for permission gate).
+        actor_player_id: i32,
+        /// Org they're joining.
+        org_id: i32,
+    },
+
+    /// A player sent `organizationKick` (base method).
+    ///
+    /// Base: `OrgAuthority::kick_member` (EJECT perm gate) → DB → fanout
+    /// `onMemberLeftOrganization` [39] to remaining members +
+    /// `onOrganizationLeft` [36] to the kicked player.
+    OrgPersistentKick {
+        actor_entity_id: u32,
+        actor_player_id: i32,
+        org_id: i32,
+        /// Name of the player to kick (name-based wire format).
+        target_player_name: String,
+    },
+
+    /// A player sent `organizationRankChange` (base method).
+    ///
+    /// Base: `OrgAuthority::change_rank` (PROMOTE/DEMOTE perm gate) → DB →
+    /// fanout `onMemberRankChangedOrganization` [40] to all online members.
+    OrgPersistentRankChange {
+        actor_entity_id: u32,
+        actor_player_id: i32,
+        org_id: i32,
+        /// Target player name (name-based wire format).
+        target_player_name: String,
+        /// New rank (wire UINT8, 0–8).
+        new_rank: u8,
+    },
+
+    /// A player sent `organizationMOTD` (cell method CM 13).
+    ///
+    /// Base: `OrgAuthority::set_motd` (MOTD perm gate) → DB →
+    /// fanout `onOrganizationMOTDUpdate` [45] to all online members.
+    OrgPersistentSetMotd {
+        actor_entity_id: u32,
+        actor_player_id: i32,
+        org_id: i32,
+        motd: String,
+    },
+
     // ── Squad (Organization) messages ────────────────────────────────────────
     /// A player sent `organizationInviteByType` (base method) or
     /// `organizationInviteResponse` was accepted — send `onOrganizationInvite`

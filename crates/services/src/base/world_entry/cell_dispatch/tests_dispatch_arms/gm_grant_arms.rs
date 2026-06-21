@@ -40,6 +40,7 @@ async fn grant_expertise_routes_to_handler_and_warns_when_no_pool() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -91,6 +92,7 @@ async fn grant_applied_science_routes_to_handler_and_warns_when_no_pool() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -140,6 +142,7 @@ async fn gm_spawn_npc_routes_to_handler_and_warns_when_no_pool() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 

@@ -55,6 +55,16 @@ impl OrgType {
     pub fn is_persistent(self) -> bool {
         matches!(self, Self::Team | Self::Command)
     }
+
+    /// Construct from a raw wire byte. Returns `None` if the value is out of range.
+    pub fn from_u8(v: u8) -> Option<Self> {
+        match v {
+            0 => Some(Self::Squad),
+            1 => Some(Self::Team),
+            2 => Some(Self::Command),
+            _ => None,
+        }
+    }
 }
 
 /// 26-bit permission bitmask matching `EORG_PERM_*`.
@@ -131,6 +141,40 @@ impl OrgPermission {
         Self(v & Self::ALL.0)
     }
 }
+
+/// Default permission ladder indexed by `OrgRank as u8` (0 = None, 8 = Leader).
+///
+/// This is the canonical default for new orgs. Both `Org::new()` and the
+/// persistence `create_org` DB seed use this array so the in-memory model
+/// and the DB row are always initialised to the same values.
+///
+/// Values are `u32` permission bitmasks (see `OrgPermission` constants).
+pub const DEFAULT_RANK_PERMISSIONS: [u32; 9] = [
+    0,                                                             // None (0)
+    0,                                                             // Initiate (1)
+    OrgPermission::ROSTER_NOTES.0,                                 // Member (2)
+    OrgPermission::ROSTER_NOTES.0,                                 // SeniorMember (3)
+    OrgPermission::ROSTER_NOTES.0 | OrgPermission::OFFICER_CHAT.0, // Veteran (4)
+    OrgPermission::ROSTER_NOTES.0 | OrgPermission::OFFICER_CHAT.0, // SeniorVeteran (5)
+    // Officer (6): invite/eject/roster_notes/officer_notes/officer_chat/motd
+    OrgPermission::INVITE.0
+        | OrgPermission::EJECT.0
+        | OrgPermission::ROSTER_NOTES.0
+        | OrgPermission::OFFICER_NOTES.0
+        | OrgPermission::OFFICER_CHAT.0
+        | OrgPermission::MOTD.0,
+    // SeniorOfficer (7): adds PROMOTE/DEMOTE/RANK_NAMES
+    OrgPermission::INVITE.0
+        | OrgPermission::EJECT.0
+        | OrgPermission::PROMOTE.0
+        | OrgPermission::DEMOTE.0
+        | OrgPermission::ROSTER_NOTES.0
+        | OrgPermission::OFFICER_NOTES.0
+        | OrgPermission::RANK_NAMES.0
+        | OrgPermission::OFFICER_CHAT.0
+        | OrgPermission::MOTD.0,
+    OrgPermission::ALL.0, // Leader (8)
+];
 
 /// Per-rank configuration: optional custom display name and permission mask.
 ///
@@ -211,19 +255,20 @@ impl Org {
             },
         );
 
-        // Default rank configs: all empty.
+        // Default rank configs: apply the canonical permission ladder so the
+        // in-memory model is consistent with what the DB row will contain after
+        // `create_org` seeds the DEFAULT_PERMISSION_LADDER. Each rank starts
+        // with no custom name.
         let mut rank_configs = HashMap::new();
-        for r in 0u8..=8u8 {
-            rank_configs.insert(r, OrgRankConfig::empty());
+        for (rank_value, &perm_bits) in DEFAULT_RANK_PERMISSIONS.iter().enumerate() {
+            rank_configs.insert(
+                rank_value as u8,
+                OrgRankConfig {
+                    custom_name: None,
+                    permissions: OrgPermission(perm_bits),
+                },
+            );
         }
-        // Leader rank gets all permissions by default.
-        rank_configs.insert(
-            OrgRank::Leader as u8,
-            OrgRankConfig {
-                custom_name: None,
-                permissions: OrgPermission::ALL,
-            },
-        );
 
         Self {
             org_id,

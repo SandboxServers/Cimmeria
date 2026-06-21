@@ -80,10 +80,7 @@ pub async fn dispatch(
             true
         }
         MOTD => {
-            if args.len() >= 4 {
-                let org_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, org_id, "UNIMPLEMENTED: organizationMOTD");
-            }
+            handle_org_motd(entity_id, args, tx, space_mgr).await;
             true
         }
         NOTE => {
@@ -388,4 +385,55 @@ async fn handle_squad_set_loot_mode(
             tracing::debug!(entity_id, loot_mode, "squadSetLootMode: not in a squad");
         }
     }
+}
+
+// ── CM 13: organizationMOTD ───────────────────────────────────────────────────
+
+/// Wire: INT32 org_id + WSTRING motd.
+///
+/// Sends `OrgPersistentSetMotd` to base for DB write and fanout.
+async fn handle_org_motd(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    if args.len() < 8 {
+        // INT32 + at least u32 wstring-len = 8 bytes minimum
+        tracing::warn!(
+            entity_id,
+            len = args.len(),
+            "organizationMOTD: args too short"
+        );
+        return;
+    }
+    let org_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+    let motd = match crate::mercury::read_wstring(args, 4) {
+        Ok((s, _)) => s,
+        Err(e) => {
+            tracing::warn!(entity_id, org_id, reason = %e, "organizationMOTD: failed to parse WSTRING");
+            return;
+        }
+    };
+
+    let (actor_player_id, _actor_name) = match space_mgr.get_entity(entity_id) {
+        Some(e) => (
+            e.player_id.unwrap_or(0),
+            e.character_name.clone().unwrap_or_default(),
+        ),
+        None => {
+            tracing::warn!(entity_id, org_id, "organizationMOTD: entity not in space");
+            return;
+        }
+    };
+
+    tracing::debug!(entity_id, org_id, "organizationMOTD: dispatching to base");
+    let _ = tx
+        .send(CellToBaseMsg::OrgPersistentSetMotd {
+            actor_entity_id: entity_id,
+            actor_player_id,
+            org_id,
+            motd,
+        })
+        .await;
 }

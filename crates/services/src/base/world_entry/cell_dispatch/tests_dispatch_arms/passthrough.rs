@@ -37,6 +37,7 @@ async fn space_data_routes_to_register_space_and_logs_world_name() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -87,6 +88,7 @@ async fn mission_update_routes_to_handler_and_returns_without_emitting_when_no_p
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -136,6 +138,7 @@ async fn mail_request_routes_to_handler_and_returns_without_emitting_when_no_poo
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -173,6 +176,7 @@ async fn grant_xp_routes_to_handler_and_warns_when_entity_unknown() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -224,6 +228,7 @@ async fn execute_trade_routes_to_handler_and_warns_when_no_db_pool() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -283,6 +288,7 @@ async fn contact_list_presence_event_routes_to_fanout_and_warns_when_no_pool() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -339,6 +345,7 @@ async fn teleport_player_routes_to_handler_and_warns_when_entity_unknown() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 

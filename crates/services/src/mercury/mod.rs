@@ -280,6 +280,15 @@ pub mod method_idx {
     pub const ON_TRADE_STATE: u16 = 144;
     pub const ON_TRADE_RESULTS: u16 = 145;
     pub const ON_PLAY_MOVIE: u16 = 155;
+
+    // SGWPlayer org-creation methods (base + extended encoding)
+    /// `onOrganizationCreationResult(Result UINT8, RetCode UINT8)` — method 134
+    /// on SGWPlayer (extended encoding, sub_index = 134 - 61 = 73).
+    pub const ON_ORGANIZATION_CREATION_RESULT: u16 = 134;
+    /// `launchOrganizationCreation(aOrgType UINT8)` — method 135 on SGWPlayer
+    /// (extended encoding, sub_index = 135 - 61 = 74).
+    /// UNCONFIRMED trigger timing — x64dbg needed (open Q from org-restoration.md §3).
+    pub const LAUNCH_ORGANIZATION_CREATION: u16 = 135;
 }
 
 // ── Entity method encoding ───────────────────────────────────────────────────

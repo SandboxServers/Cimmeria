@@ -167,6 +167,54 @@ pub fn build_on_squad_loot_type(org_id: i32, loot_type: i32) -> Vec<u8> {
     buf
 }
 
+// ── CM 40: onMemberRankChangedOrganization ────────────────────────────────────
+
+/// `onMemberRankChangedOrganization(aMember INT32, aRank UINT8,
+///                                   aOrganizationId INT32,
+///                                   aMemberName WSTRING)`
+///
+/// Broadcast to all online org members when a rank changes.
+pub fn build_on_member_rank_changed_organization(
+    member_player_id: i32,
+    rank: u8,
+    org_id: i32,
+    member_name: &str,
+) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&member_player_id.to_le_bytes());
+    buf.push(rank);
+    buf.extend_from_slice(&org_id.to_le_bytes());
+    push_wstring(&mut buf, member_name);
+    buf
+}
+
+// ── CM 45: onOrganizationMOTDUpdate ──────────────────────────────────────────
+
+/// `onOrganizationMOTDUpdate(aOrganizationId INT32, aMOTD WSTRING)`
+///
+/// Broadcast to all online org members when the MOTD changes.
+pub fn build_on_organization_motd_update(org_id: i32, motd: &str) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&org_id.to_le_bytes());
+    push_wstring(&mut buf, motd);
+    buf
+}
+
+// ── SGWPlayer CM 134: onOrganizationCreationResult ───────────────────────────
+
+/// `onOrganizationCreationResult(Result UINT8, RetCode UINT8)`
+///
+/// Sent to the player who attempted to create an org.
+/// `result` 0 = success, non-zero = failure. `ret_code` is a more specific
+/// reason code (values UNCONFIRMED — needs x64dbg).
+///
+/// Method 134 is a SGWPlayer own method (base offset 98 + offset within own
+/// list), not an OrganizationMember interface method. It uses the SGWPlayer
+/// extended-encoding path.
+pub fn build_on_organization_creation_result(result: u8, ret_code: u8) -> Vec<u8> {
+    vec![result, ret_code]
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -419,5 +467,82 @@ mod tests {
         assert_eq!(args.len(), 4, "size literal pin");
         let loot_mode = i32::from_le_bytes(args);
         assert_eq!(loot_mode, 3, "loot_mode literal pin");
+    }
+
+    // ── Phase 3 S→C wire tests ─────────────────────────────────────────────
+
+    /// CM 40 — onMemberRankChangedOrganization:
+    /// INT32 member_id + UINT8 rank + INT32 org_id + WSTRING name.
+    #[test]
+    fn on_member_rank_changed_organization_layout() {
+        let buf = super::build_on_member_rank_changed_organization(500, 6, 12, "Officer");
+
+        let member_id = i32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+        assert_eq!(member_id, 500, "member_id literal pin");
+        assert_eq!(buf[4], 6, "rank Officer=6 literal pin");
+        let org_id = i32::from_le_bytes([buf[5], buf[6], buf[7], buf[8]]);
+        assert_eq!(org_id, 12, "org_id literal pin");
+        let (name, end) = decode_wstring(&buf, 9);
+        assert_eq!(name, "Officer", "name literal pin");
+        assert_eq!(end, buf.len(), "no trailing bytes");
+    }
+
+    /// CM 45 — onOrganizationMOTDUpdate: INT32 org_id + WSTRING motd.
+    #[test]
+    fn on_organization_motd_update_layout() {
+        let buf = super::build_on_organization_motd_update(7, "Welcome");
+
+        let org_id = i32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+        assert_eq!(org_id, 7, "org_id literal pin");
+        let (motd, end) = decode_wstring(&buf, 4);
+        assert_eq!(motd, "Welcome", "motd literal pin");
+        // decode_wstring returns the offset *after* the wstring — must equal buf.len()
+        assert_eq!(end, buf.len(), "no trailing bytes");
+    }
+
+    /// CM 45 — empty MOTD (clear) encodes as zero-length WSTRING.
+    #[test]
+    fn on_organization_motd_update_empty_motd() {
+        let buf = super::build_on_organization_motd_update(3, "");
+        // INT32 (4) + u32 char_count=0 (4) = 8 bytes total.
+        assert_eq!(buf.len(), 8, "empty MOTD must be 8 bytes");
+        let char_count = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
+        assert_eq!(char_count, 0, "empty MOTD char_count must be 0");
+    }
+
+    /// SGWPlayer CM 134 — onOrganizationCreationResult: UINT8 result + UINT8 ret_code.
+    #[test]
+    fn on_organization_creation_result_layout() {
+        let buf = super::build_on_organization_creation_result(0, 0);
+        assert_eq!(buf.len(), 2, "size literal pin: 2 bytes");
+        assert_eq!(buf[0], 0, "result=0 (success) literal pin");
+        assert_eq!(buf[1], 0, "ret_code=0 literal pin");
+    }
+
+    #[test]
+    fn on_organization_creation_result_failure() {
+        let buf = super::build_on_organization_creation_result(1, 2);
+        assert_eq!(buf[0], 1, "result=1 (failure) literal pin");
+        assert_eq!(buf[1], 2, "ret_code=2 literal pin");
+    }
+
+    /// C→S CM 13 — organizationMOTD: INT32 org_id + WSTRING motd.
+    #[test]
+    fn parse_cm13_organization_motd() {
+        let mut args = Vec::new();
+        args.extend_from_slice(&42i32.to_le_bytes()); // org_id
+        let motd = "Hello world";
+        let utf16: Vec<u16> = motd.encode_utf16().collect();
+        args.extend_from_slice(&(utf16.len() as u32).to_le_bytes());
+        for ch in &utf16 {
+            args.extend_from_slice(&ch.to_le_bytes());
+        }
+
+        assert_eq!(args.len(), 4 + 4 + motd.len() * 2, "size literal pin");
+        let org_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+        assert_eq!(org_id, 42, "org_id literal pin");
+
+        let (parsed_motd, _) = decode_wstring(&args, 4);
+        assert_eq!(parsed_motd, motd, "MOTD round-trip literal pin");
     }
 }

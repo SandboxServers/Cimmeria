@@ -31,6 +31,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use crate::base::organization::authority::OrgAuthority;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 
 use super::super::ConnectedClientState;
@@ -70,9 +71,17 @@ pub(super) struct DispatchCtx<'a> {
     pub minigame_registry: &'a Option<crate::minigame::SessionRegistry>,
     pub minigame_external_host: &'a str,
     pub minigame_external_port: u16,
+    /// Persistent-organization authority. `None` when the DB is not available
+    /// (dev/test mode without a live DB); the org-dispatch arms skip
+    /// persistence gracefully when this is `None`.
+    ///
+    /// Uses `tokio::sync::Mutex` so the guard can be held across `.await` points
+    /// in the async mutation methods on `OrgAuthority`.
+    pub org_authority: &'a Option<Arc<tokio::sync::Mutex<OrgAuthority>>>,
 }
 
 /// Handle a message from CellService -- dispatches AoI packets to witness clients.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn handle_cell_message(
     msg: CellToBaseMsg,
     transport: &Arc<dyn Transport>,
@@ -83,6 +92,7 @@ pub(crate) async fn handle_cell_message(
     minigame_registry: &Option<crate::minigame::SessionRegistry>,
     minigame_external_host: &str,
     minigame_external_port: u16,
+    org_authority: &Option<Arc<tokio::sync::Mutex<OrgAuthority>>>,
 ) {
     let ctx = DispatchCtx {
         transport,
@@ -93,6 +103,7 @@ pub(crate) async fn handle_cell_message(
         minigame_registry,
         minigame_external_host,
         minigame_external_port,
+        org_authority,
     };
 
     // Two-level routing: the outer match only decides which family owns the
@@ -162,7 +173,13 @@ pub(crate) async fn handle_cell_message(
         | CellToBaseMsg::OrgSquadAccepted { .. }
         | CellToBaseMsg::OrgSquadMemberLeft { .. }
         | CellToBaseMsg::OrgSquadLootMode { .. }
-        | CellToBaseMsg::OrgSquadMinimapPing { .. } => {
+        | CellToBaseMsg::OrgSquadMinimapPing { .. }
+        | CellToBaseMsg::OrgPersistentCreate { .. }
+        | CellToBaseMsg::OrgPersistentSendInvite { .. }
+        | CellToBaseMsg::OrgPersistentInviteAccepted { .. }
+        | CellToBaseMsg::OrgPersistentKick { .. }
+        | CellToBaseMsg::OrgPersistentRankChange { .. }
+        | CellToBaseMsg::OrgPersistentSetMotd { .. } => {
             organization_dispatch::route(msg, &ctx).await
         }
     }

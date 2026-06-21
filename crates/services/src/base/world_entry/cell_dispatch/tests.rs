@@ -33,6 +33,7 @@ async fn minigame_result_forwards_to_cell_service() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -195,6 +196,7 @@ async fn invalid_bandolier_ammo_update_drops_before_side_effects() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -554,6 +556,7 @@ async fn system_options_update_routes_without_panic_and_emits_nothing() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 

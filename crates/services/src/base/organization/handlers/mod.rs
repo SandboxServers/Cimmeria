@@ -1,9 +1,12 @@
-//! BaseApp-side handlers for Squad (ephemeral organization) messages.
+//! BaseApp-side handlers for organization messages.
 //!
-//! Every `OrgSquad*` variant that arrives via `CellToBaseMsg` is routed here
-//! from `cell_dispatch::organization_dispatch`.  Handlers fan out S→C client
-//! methods to the affected entity IDs using `send_to_witness_reliable` (the
-//! same pattern as `base::contact_list::handlers`).
+//! - `mod.rs` (this file) — Squad (ephemeral) handlers.
+//! - `persistent` — Team/Command (persistent) handlers (Phase 3).
+//!
+//! Every `OrgSquad*` / `OrgPersistent*` variant that arrives via `CellToBaseMsg`
+//! is routed here from `cell_dispatch::organization_dispatch`.  Handlers fan out
+//! S→C client methods to the affected entity IDs using `send_to_witness_reliable`
+//! (the same pattern as `base::contact_list::handlers`).
 //!
 //! # Fan-out convention
 //! Fan-out is fire-and-forget: we `tokio::spawn` independent sends per
@@ -12,6 +15,8 @@
 //!
 //! # OrgType::Squad = 0
 //! All wire messages use `org_type = 0` (Squad).
+
+pub mod persistent;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

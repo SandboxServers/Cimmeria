@@ -58,6 +58,7 @@ async fn witness_entity_method_routes_one_packet_to_witness_addr_only() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -135,6 +136,7 @@ async fn entity_invisible_routes_one_packet_to_witness_addr_only() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -216,6 +218,7 @@ async fn witness_entity_method_player_ghost_uses_idbase_61_npc_uses_62() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -264,6 +267,7 @@ async fn witness_entity_method_player_ghost_uses_idbase_61_npc_uses_62() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
