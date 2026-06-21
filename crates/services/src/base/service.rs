@@ -206,6 +206,10 @@ impl BaseService {
         let entity_manager_for_loop = Arc::clone(&entity_manager);
         let entity_to_addr_for_loop = Arc::clone(&entity_to_addr);
         let enc_version = self.enc_version;
+        // Clone the Arc so both the connect loop (login/logout tracking)
+        // and the cell-message handler (persistent org mutations) share the
+        // same OrgAuthority instance.
+        let org_authority_for_loop = org_authority_for_cell.clone();
         tokio::spawn(async move {
             tracing::trace!("Base service UDP receive loop started");
             run_connect_loop(
@@ -218,6 +222,7 @@ impl BaseService {
                 entity_manager_for_loop,
                 entity_to_addr_for_loop,
                 enc_version,
+                org_authority_for_loop,
             )
             .await;
             tracing::trace!("Base service UDP receive loop exited");

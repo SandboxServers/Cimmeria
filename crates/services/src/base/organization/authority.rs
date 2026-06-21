@@ -4,12 +4,18 @@
 //! player_id), and serializes mutations by being driven from the single-threaded
 //! base-side dispatch loop. All mutations write through to the DB before returning.
 //!
-//! # Design: message-driven, single owner
+//! # Ownership and locking
 //!
-//! `OrgAuthority` is NOT wrapped in a Mutex or Arc — it lives exclusively inside
-//! `WorldEntryBase` (or equivalent base-side state). The dispatch loop calls methods
-//! on it directly. This mirrors `contact_list::ContactListManager` and avoids
-//! lock contention: the whole base dispatch loop is already `async` and single-owner.
+//! `OrgAuthority` is owned by the base service as
+//! `Option<Arc<tokio::sync::Mutex<OrgAuthority>>>`. The `Arc` is cloned so
+//! both the connect loop (login/logout tracking via `on_player_login` /
+//! `on_player_logout`) and the `CellToBase` message handler (persistent org
+//! mutations) share the same instance without data races.
+//!
+//! Lock discipline: always acquire the `tokio::sync::Mutex` guard, perform the
+//! mutation or read, then drop the guard before starting any fan-out. Fan-out
+//! sends are fire-and-forget (`broadcast_to_org` spawns per-recipient tasks)
+//! and must never hold the authority lock.
 //!
 //! # Online tracking
 //!
@@ -111,17 +117,15 @@ impl OrgAuthority {
 
     // ── Online tracking ───────────────────────────────────────────────────────
 
-    /// Mark a player as online (called from the base connect/world-entry path).
+    /// Mark a player as online (called from `handle_on_client_ready` after world entry).
     /// If the player is not a member of any persistent org this is a no-op.
-    #[allow(dead_code)] // wired from base connect path in Phase 4
     pub fn on_player_login(&mut self, player_id: i32, entity_id: u32) {
         if self.membership.contains_key(&player_id) {
             self.online.insert(player_id, entity_id);
         }
     }
 
-    /// Mark a player as offline (called from the base disconnect path).
-    #[allow(dead_code)] // wired from base disconnect path in Phase 4
+    /// Mark a player as offline (called from `handle_log_off` on the in-world logoff path).
     pub fn on_player_logout(&mut self, player_id: i32) {
         self.online.remove(&player_id);
     }
@@ -533,5 +537,53 @@ mod tests {
 
         let eids = auth.online_member_entity_ids(1);
         assert_eq!(eids, vec![2001], "only the online member's entity_id");
+    }
+
+    /// Bug shape: broadcast_to_org targets members after login is called.
+    ///
+    /// Regression guard: if `on_player_login` is removed from the login path,
+    /// `online_member_entity_ids` returns an empty Vec and no fanout reaches
+    /// any member — this test will fail.
+    ///
+    /// Mirrors the fix for Copilot review item 2 (online tracking never wired).
+    #[test]
+    fn broadcast_target_list_populated_after_login() {
+        let mut auth = make_authority_with_org(1, 100);
+        // Add two more members beyond the leader.
+        let org = auth.orgs.get_mut(&1).unwrap();
+        org.add_member(200, "Alice".into());
+        org.add_member(300, "Bob".into());
+        auth.membership.entry(200).or_default().insert(1);
+        auth.membership.entry(300).or_default().insert(1);
+
+        // Before any login call, no online members.
+        assert!(
+            auth.online_member_entity_ids(1).is_empty(),
+            "no members should be online before on_player_login is called"
+        );
+
+        // Simulate login for leader and Alice.
+        auth.on_player_login(100, 1001);
+        auth.on_player_login(200, 2001);
+
+        let eids = auth.online_member_entity_ids(1);
+        assert_eq!(eids.len(), 2, "two members marked online after login");
+        assert!(
+            eids.contains(&1001),
+            "leader entity_id must be in fanout set"
+        );
+        assert!(
+            eids.contains(&2001),
+            "Alice entity_id must be in fanout set"
+        );
+
+        // Simulate logout for the leader — they must leave the fanout set.
+        auth.on_player_logout(100);
+        let eids_after = auth.online_member_entity_ids(1);
+        assert_eq!(
+            eids_after,
+            vec![2001],
+            "only Alice remains after leader logout"
+        );
     }
 }

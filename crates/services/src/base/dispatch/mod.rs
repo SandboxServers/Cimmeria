@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
 
+use crate::base::organization::authority::OrgAuthority;
 use crate::cell::messages::BaseToCellMsg;
 
 use super::ConnectedClientState;
@@ -99,6 +100,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<PgPool>>,
+    org_authority: &Option<Arc<tokio::sync::Mutex<OrgAuthority>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match msg_id {
         sgw_player_base::SEND_PLAYER_COMMUNICATION => {
@@ -132,6 +134,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 cell_tx,
                 entity_to_addr,
                 db_pool,
+                org_authority,
             )
             .await?;
         }

@@ -269,20 +269,26 @@ pub async fn handle_squad_loot_mode(
 
 /// Handle `OrgSquadMinimapPing` — fan out `receivedMinimapPing` to squad members.
 ///
-/// `receivedMinimapPing` is a cell method (server-distributed).  The correct
-/// method index is UNCONFIRMED — needs x64dbg.  Fanout is deferred until the
-/// index is confirmed.  This handler logs the event so the server is not silent.
+/// `receivedMinimapPing` is a client cell method (server-distributed).
 ///
-/// When the method index is confirmed, replace this stub with a
-/// `send_to_witness_reliable` fan-out loop over `member_entity_ids`, similar to
-/// `handle_squad_loot_mode`.
+/// # TODO: fanout deferred — method index unconfirmed
+///
+/// The `receivedMinimapPing` method index is blocked on x64dbg confirmation.
+/// Do NOT assign a speculative index — sending on the wrong index will silently
+/// invoke an unrelated client method. Once the index is confirmed via x64dbg
+/// tracing the OrganizationMember interface dispatch table, replace this stub
+/// with a `send_to_witness_reliable` fan-out loop over `member_entity_ids`,
+/// matching the pattern in `handle_squad_loot_mode` and update
+/// `docs/protocol/client-method-dispatch-table.md` with the confirmed value.
+///
+/// Until then this handler logs the event so the server is not silent on ping.
 pub async fn handle_squad_minimap_ping(
     org_id: i32,
     sender_entity_id: u32,
     location: [f32; 3],
     member_entity_ids: Vec<u32>,
 ) {
-    // UNCONFIRMED: receivedMinimapPing method index.  Fanout deferred.
+    // TODO: wire fanout once receivedMinimapPing method index is confirmed via x64dbg.
     tracing::debug!(
         org_id,
         sender_entity_id,

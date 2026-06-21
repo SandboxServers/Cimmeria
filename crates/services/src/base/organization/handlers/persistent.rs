@@ -33,7 +33,7 @@ use crate::base::organization::fanout::broadcast_to_org;
 use crate::base::organization::wire::{
     build_on_member_joined_organization, build_on_member_left_organization,
     build_on_member_rank_changed_organization, build_on_organization_creation_result,
-    build_on_organization_joined, build_on_organization_motd_update,
+    build_on_organization_joined, build_on_organization_left, build_on_organization_motd_update,
 };
 use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
@@ -290,8 +290,9 @@ pub async fn handle_persistent_kick(
             );
 
             // If the kicked player is online, send `onOrganizationLeft` to them.
+            // Wire: UINT8 reason, INT32 org_id — matches the .def field order.
             if let Some(eid) = target_entity_id {
-                let org_left_payload = build_organization_left(org_id, REASON_KICKED, &kicked_name);
+                let org_left_payload = build_on_organization_left(REASON_KICKED, org_id);
                 send_to_entity(
                     eid,
                     method_idx::ON_ORGANIZATION_LEFT,
@@ -523,13 +524,6 @@ async fn send_to_entity(
     .await;
 }
 
-/// Build `onOrganizationLeft` payload.
-///
-/// Wire layout (UNCONFIRMED — needs x64dbg to pin reason-code enum):
-/// INT32 org_id + UINT8 reason.
-fn build_organization_left(org_id: i32, reason: u8, _member_name: &str) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(5);
-    buf.extend_from_slice(&org_id.to_le_bytes());
-    buf.push(reason);
-    buf
-}
+// `build_organization_left` was removed. Use `wire::build_on_organization_left` directly,
+// which encodes UINT8 reason then INT32 org_id — matching the .def field order:
+//   onOrganizationLeft(aReason UINT8, aOrganizationId INT32)

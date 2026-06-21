@@ -179,11 +179,20 @@ async fn handle_invite_response(
     }
 
     // Resolve the accepting entity's live state from the space.
+    // If player_id is absent the invite is corrupted — cancel and drop.
     let (target_player_id, target_name) = match space_mgr.get_entity(entity_id) {
-        Some(e) => (
-            e.player_id.unwrap_or(0),
-            e.character_name.clone().unwrap_or_default(),
-        ),
+        Some(e) => {
+            let Some(pid) = e.player_id else {
+                tracing::warn!(
+                    entity_id,
+                    request_id,
+                    "organizationInviteResponse: accepting entity has no player_id — dropping"
+                );
+                space_mgr.squads.cancel_invite(request_id);
+                return;
+            };
+            (pid, e.character_name.clone().unwrap_or_default())
+        }
         None => {
             tracing::warn!(
                 entity_id,
@@ -196,12 +205,22 @@ async fn handle_invite_response(
     };
 
     // Resolve inviter's player_id for squad creation (new-squad path).
-    let inviter_player_id = space_mgr
+    // A missing inviter player_id means the inviter entity is already gone;
+    // cancel and drop rather than attributing to player_id 0.
+    let Some(inviter_player_id) = space_mgr
         .squads
         .get_invite(request_id)
         .and_then(|inv| space_mgr.get_entity(inv.inviter_entity_id))
         .and_then(|e| e.player_id)
-        .unwrap_or(0);
+    else {
+        tracing::warn!(
+            entity_id,
+            request_id,
+            "organizationInviteResponse: inviter entity has no player_id — dropping"
+        );
+        space_mgr.squads.cancel_invite(request_id);
+        return;
+    };
 
     match space_mgr.squads.accept_invite(
         request_id,
@@ -273,10 +292,16 @@ async fn handle_leave(
     }
 
     let (player_id, name) = match space_mgr.get_entity(entity_id) {
-        Some(e) => (
-            e.player_id.unwrap_or(0),
-            e.character_name.clone().unwrap_or_default(),
-        ),
+        Some(e) => {
+            let Some(pid) = e.player_id else {
+                tracing::warn!(
+                    entity_id,
+                    "organizationLeave: entity has no player_id — dropping"
+                );
+                return;
+            };
+            (pid, e.character_name.clone().unwrap_or_default())
+        }
         None => {
             tracing::warn!(entity_id, "organizationLeave: entity not found");
             return;
@@ -416,11 +441,18 @@ async fn handle_org_motd(
         }
     };
 
-    let (actor_player_id, _actor_name) = match space_mgr.get_entity(entity_id) {
-        Some(e) => (
-            e.player_id.unwrap_or(0),
-            e.character_name.clone().unwrap_or_default(),
-        ),
+    let actor_player_id = match space_mgr.get_entity(entity_id) {
+        Some(e) => {
+            let Some(pid) = e.player_id else {
+                tracing::warn!(
+                    entity_id,
+                    org_id,
+                    "organizationMOTD: entity has no player_id — dropping"
+                );
+                return;
+            };
+            pid
+        }
         None => {
             tracing::warn!(entity_id, org_id, "organizationMOTD: entity not in space");
             return;

@@ -17,6 +17,7 @@ use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
 
+use crate::base::organization::authority::OrgAuthority;
 use crate::cell::messages::BaseToCellMsg;
 
 use super::super::character::{handle_delete_character, handle_request_character_visuals};
@@ -41,6 +42,7 @@ pub(super) async fn dispatch_base_method(
     entity_manager: &Arc<Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    org_authority: &Option<Arc<tokio::sync::Mutex<OrgAuthority>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (in_world, player_name) = {
         let clients = connected.lock().unwrap();
@@ -61,6 +63,7 @@ pub(super) async fn dispatch_base_method(
                     transport,
                     entity_to_addr,
                     db_pool,
+                    org_authority,
                 )
                 .await?;
             }
@@ -78,6 +81,7 @@ pub(super) async fn dispatch_base_method(
                     cell_tx,
                     entity_to_addr,
                     db_pool,
+                    org_authority,
                 )
                 .await?;
             }

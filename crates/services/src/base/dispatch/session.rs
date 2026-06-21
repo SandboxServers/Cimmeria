@@ -12,6 +12,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use crate::base::organization::authority::OrgAuthority;
 use crate::cell::messages::BaseToCellMsg;
 
 use super::super::ConnectedClientState;
@@ -26,6 +27,7 @@ pub(super) async fn handle_log_off(
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<PgPool>>,
+    org_authority: &Option<Arc<tokio::sync::Mutex<OrgAuthority>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let disconnect = if !payload.is_empty() { payload[0] } else { 0 };
     tracing::info!(%addr, disconnect, "SGWPlayer.logOff");
@@ -43,6 +45,21 @@ pub(super) async fn handle_log_off(
             c.and_then(|c| c.player_name.clone()),
         )
     };
+
+    // Mark the player offline in OrgAuthority so broadcast_to_org fanout
+    // targets are updated before the next login event is processed.
+    // `active_player_id` is set during `playCharacter` and is the canonical
+    // per-session player_id. If absent (pre-world-entry path), this is a no-op.
+    if let Some(ref auth_arc) = org_authority {
+        let pid: Option<i32> = {
+            let clients = connected.lock().unwrap();
+            clients.get(&addr).and_then(|c| c.active_player_id)
+        };
+        if let Some(pid) = pid {
+            let mut auth = auth_arc.lock().await;
+            auth.on_player_logout(pid);
+        }
+    }
 
     if let Some(entity_id) = entity_id {
         // Tell CellService to disconnect and destroy the entity

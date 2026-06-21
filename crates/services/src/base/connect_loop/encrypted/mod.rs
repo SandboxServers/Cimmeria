@@ -18,6 +18,7 @@ use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::{parse_incoming, FLAG_RELIABLE};
 
+use crate::base::organization::authority::OrgAuthority;
 use crate::cell::messages::BaseToCellMsg;
 
 use super::super::cooked_data::{handle_element_data_request, handle_version_info_request};
@@ -59,6 +60,7 @@ pub(crate) async fn handle_encrypted_datagram(
     entity_manager: &Arc<Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    org_authority: &Option<Arc<tokio::sync::Mutex<OrgAuthority>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let plaintext = match enc.decrypt(raw) {
         Ok(p) => p,
@@ -428,6 +430,7 @@ pub(crate) async fn handle_encrypted_datagram(
                     entity_manager,
                     cell_tx,
                     entity_to_addr,
+                    org_authority,
                 )
                 .await?;
             }
