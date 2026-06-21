@@ -383,6 +383,24 @@ pub(crate) async fn handle_on_client_ready(
     )
     .await;
 
+    // Seed the cell-side ignore set so the AoI filter excludes ignored player
+    // pairs from the moment this player enters the world. `push_contact_lists_on_login`
+    // populated `ConnectedClientState::ignore_set` from the 'Ignore' list above;
+    // read it back and forward to the cell.
+    if let Some(ref tx) = cell_tx {
+        let ignore_names = connected
+            .lock()
+            .ok()
+            .and_then(|clients| clients.get(&addr).map(|c| c.ignore_set.clone()))
+            .unwrap_or_default();
+        let _ = tx
+            .send(BaseToCellMsg::UpdateIgnoreList {
+                entity_id,
+                ignore_names,
+            })
+            .await;
+    }
+
     // Fan out online status (CM 89, eventId=LoggedInStatus, data=1) to all
     // online players who have this character in any of their contact lists.
     // Runs after the list-push so the player is fully set up before watchers

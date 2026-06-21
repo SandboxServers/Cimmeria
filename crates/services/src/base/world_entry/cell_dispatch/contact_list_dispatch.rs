@@ -109,7 +109,19 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.connected,
                 ctx.entity_to_addr,
             )
-            .await
+            .await;
+            // If this targeted the Ignore list, re-sync the ignore cache + cell
+            // AoI filter (no-op for Friends/custom lists).
+            crate::base::dispatch::ignore::resync_ignore_after_member_change(
+                entity_id,
+                player_id,
+                list_id,
+                ctx.db_pool,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.cell_tx,
+            )
+            .await;
         }
 
         CellToBaseMsg::ContactListRemoveMembers {
@@ -128,7 +140,17 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.connected,
                 ctx.entity_to_addr,
             )
-            .await
+            .await;
+            crate::base::dispatch::ignore::resync_ignore_after_member_change(
+                entity_id,
+                player_id,
+                list_id,
+                ctx.db_pool,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.cell_tx,
+            )
+            .await;
         }
 
         CellToBaseMsg::ContactListPresenceEvent {

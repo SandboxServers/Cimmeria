@@ -215,6 +215,25 @@ pub(super) async fn handle_base_message(
             .await;
         }
 
+        BaseToCellMsg::UpdateIgnoreList {
+            entity_id,
+            ignore_names,
+        } => {
+            // Apply the player's ignore-name set to the cell entity. The AoI
+            // filter (`compute_player_aoi`) and the chat belt-and-suspenders
+            // check read this to exclude ignored player pairs. If the entity
+            // is absent (message raced ahead of CreateEntity), drop silently
+            // — the next UpdateIgnoreList (or login seed) re-applies it.
+            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                entity.ignore_names = ignore_names;
+            } else {
+                tracing::debug!(
+                    entity_id,
+                    "UpdateIgnoreList: entity absent -- ignore set dropped"
+                );
+            }
+        }
+
         BaseToCellMsg::UpdateBandolierItem {
             entity_id,
             slot_id,

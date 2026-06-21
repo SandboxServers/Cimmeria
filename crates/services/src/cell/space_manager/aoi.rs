@@ -67,9 +67,25 @@ impl SpaceManager {
             return;
         };
         {
-            let (player_pos, aoi_radius, player_interactions) = match space.entities.get(&player_id)
-            {
-                Some(e) => (e.position, e.aoi_radius, e.available_interactions.clone()),
+            let (
+                player_pos,
+                aoi_radius,
+                player_interactions,
+                player_char_name,
+                player_ignore_names,
+            ) = match space.entities.get(&player_id) {
+                Some(e) => (
+                    e.position,
+                    e.aoi_radius,
+                    e.available_interactions.clone(),
+                    // Snapshot the player's name + ignore set up front. They
+                    // don't change during the candidates loop, and snapshotting
+                    // avoids a simultaneous borrow of `space.entities` for both
+                    // the player and each candidate (the candidate borrow below
+                    // is the live one).
+                    e.character_name.clone(),
+                    e.ignore_names.clone(),
+                ),
                 None => return,
             };
 
@@ -86,9 +102,32 @@ impl SpaceManager {
                 // Exact distance check
                 if let Some(other) = space.entities.get(&cid) {
                     let dist_sq = player_pos.distance_squared_to(&other.position);
-                    if dist_sq <= aoi_radius * aoi_radius {
-                        current_aoi.insert(cid);
+                    if dist_sq > aoi_radius * aoi_radius {
+                        continue;
                     }
+
+                    // Symmetric ignore exclusion (players only — NPCs are never
+                    // filtered, so an ignoree still sees NPCs react to the
+                    // invisible player; that cosmetic is an accepted tradeoff).
+                    // Exclude the pair if EITHER side ignores the other:
+                    //   - player ignores candidate  (candidate's name in player's set)
+                    //   - candidate ignores player   (player's name in candidate's set)
+                    // Symmetry is achieved because B's own `compute_player_aoi`
+                    // pass runs the mirror check, so a one-directional ignore
+                    // hides the pair from BOTH witness sets.
+                    if other.is_player {
+                        let other_name = other.character_name.as_deref().unwrap_or("");
+                        let player_ignores_other =
+                            !other_name.is_empty() && player_ignore_names.contains(other_name);
+                        let other_ignores_player = player_char_name
+                            .as_deref()
+                            .is_some_and(|pn| other.ignore_names.contains(pn));
+                        if player_ignores_other || other_ignores_player {
+                            continue;
+                        }
+                    }
+
+                    current_aoi.insert(cid);
                 }
             }
 
@@ -254,6 +293,93 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    /// Witness ids in `player`'s current witness set after a full AoI tick.
+    fn witnesses_of(mgr: &SpaceManager, player: u32) -> Vec<u32> {
+        let mut v: Vec<u32> = mgr
+            .get_entity(player)
+            .map(|e| e.witnesses.iter().map(|eid| eid.0 as u32).collect())
+            .unwrap_or_default();
+        v.sort_unstable();
+        v
+    }
+
+    fn three_player_space() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        // Three near-colocated players.
+        for (id, name) in [(1u32, "Alice"), (2u32, "Bob"), (3u32, "Carol")] {
+            mgr.create_entity(id, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+                .unwrap();
+            mgr.connect_entity(id);
+            mgr.get_entity_mut(id).unwrap().character_name = Some(name.to_string());
+        }
+        mgr
+    }
+
+    /// A ignores B → the pair is symmetrically excluded from each other's
+    /// witness set, but C (the third player) still sees and is seen by both,
+    /// even though A only set its own ignore list (B's stays empty).
+    #[test]
+    fn ignore_symmetric_excludes_pair_from_aoi() {
+        let mut mgr = three_player_space();
+        // Alice (1) ignores Bob (2). Bob's ignore_names stays empty.
+        mgr.get_entity_mut(1)
+            .unwrap()
+            .ignore_names
+            .insert("Bob".to_string());
+
+        mgr.compute_aoi_changes();
+
+        // Alice does not witness Bob, and Bob does not witness Alice (symmetry
+        // via Bob's pass checking Alice's ignore_names for "Bob").
+        assert!(
+            !witnesses_of(&mgr, 1).contains(&2),
+            "Alice must not witness ignored Bob"
+        );
+        assert!(
+            !witnesses_of(&mgr, 2).contains(&1),
+            "Bob must not witness Alice who ignores him (symmetry)"
+        );
+
+        // Both still see Carol, and Carol sees both.
+        assert!(witnesses_of(&mgr, 1).contains(&3), "Alice still sees Carol");
+        assert!(witnesses_of(&mgr, 2).contains(&3), "Bob still sees Carol");
+        assert_eq!(
+            witnesses_of(&mgr, 3),
+            vec![1, 2],
+            "Carol (not in the pair) sees both Alice and Bob"
+        );
+    }
+
+    /// NPCs are never filtered by ignore — an ignoring player still witnesses
+    /// NPCs in range.
+    #[test]
+    fn ignore_npc_never_filtered() {
+        let mut mgr = three_player_space();
+        // Alice ignores Bob, and an NPC is in range.
+        mgr.get_entity_mut(1)
+            .unwrap()
+            .ignore_names
+            .insert("Bob".to_string());
+        let npc = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc, "Agnos", [5.0, 0.0, 5.0], [0.0; 3])
+            .unwrap();
+
+        mgr.compute_aoi_changes();
+
+        assert!(
+            witnesses_of(&mgr, 1).contains(&npc),
+            "ignoring player must still witness NPCs in range"
+        );
+        assert!(
+            !witnesses_of(&mgr, 1).contains(&2),
+            "but still does not witness the ignored player"
+        );
     }
 
     /// Regression guard for the `ConnectEntity` ↔ AoI-tick race: an AoI tick

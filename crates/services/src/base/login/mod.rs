@@ -158,6 +158,7 @@ pub(crate) async fn handle_login(
                 account_name: Some(login.account_name.clone()),
                 access_level: login.access_level,
                 dnd_message: None,
+                ignore_set: std::collections::HashSet::new(),
                 char_list_sent: false,
                 world_entry_sent: false,
                 pending_player_entity_id: None,

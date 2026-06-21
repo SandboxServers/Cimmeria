@@ -237,6 +237,56 @@ async fn find_watchers_returns_correct_player_ids() {
     cleanup(&pool, account_id, player_id).await;
 }
 
+/// chatIgnore add-then-remove drives the 'Ignore' list (flags=301): the name
+/// lands on the Ignore list after add and is gone after remove, and the list
+/// keeps its 301 flags throughout.
+#[tokio::test]
+async fn chat_ignore_add_then_remove_updates_ignore_list() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 70;
+    let player_id = TEST_BASE + 71;
+    cleanup(&pool, account_id, player_id).await;
+    insert_minimal_player(&pool, account_id, player_id).await;
+
+    // ensure_system_lists creates the Ignore list (flags=301) idempotently.
+    let (_friends, ignore_id) = ensure_system_lists(&pool, player_id).await.expect("ensure");
+
+    // Add a name to the Ignore list (the chatIgnore add path).
+    let added = add_members(&pool, player_id, ignore_id, &["Spammer".to_string()])
+        .await
+        .expect("add to ignore");
+    assert_eq!(added, vec!["Spammer".to_string()]);
+
+    // The name must be on the Ignore list (flags == 301).
+    let lists = load_contact_lists(&pool, player_id).await.expect("load");
+    let ignore = lists
+        .iter()
+        .find(|l| l.flags == 301)
+        .expect("Ignore list present");
+    assert_eq!(ignore.list_id, ignore_id);
+    assert!(ignore.members.contains(&"Spammer".to_string()));
+
+    // Remove it (the chatIgnore remove path).
+    let removed = remove_members(&pool, player_id, ignore_id, &["Spammer".to_string()])
+        .await
+        .expect("remove from ignore");
+    assert_eq!(removed, vec!["Spammer".to_string()]);
+
+    let lists2 = load_contact_lists(&pool, player_id)
+        .await
+        .expect("load after remove");
+    let ignore2 = lists2
+        .iter()
+        .find(|l| l.flags == 301)
+        .expect("Ignore list still present");
+    assert!(
+        !ignore2.members.contains(&"Spammer".to_string()),
+        "name must be gone from the Ignore list after remove"
+    );
+
+    cleanup(&pool, account_id, player_id).await;
+}
+
 /// Character delete cascades: after deleting the owning `sgw_player` row,
 /// no `sgw_contact_list` or `sgw_contact_list_member` rows may survive.
 /// This is invariant #4 (no orphaned social data after character deletion).

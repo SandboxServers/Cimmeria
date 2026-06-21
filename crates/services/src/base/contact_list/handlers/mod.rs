@@ -128,6 +128,29 @@ pub(crate) async fn push_contact_lists_on_login(
         .await;
     }
 
+    // Seed the in-memory ignore_set from the 'Ignore' list (flags=301) so the
+    // base-side tell filter and the cell-side AoI seed have it immediately.
+    // The caller (`handle_on_client_ready`) reads ignore_set right after this
+    // to push `BaseToCellMsg::UpdateIgnoreList` to the cell.
+    {
+        let ignore_names: HashSet<String> = lists
+            .iter()
+            .filter(|l| l.flags == 301)
+            .flat_map(|l| l.members.iter().cloned())
+            .collect();
+        let addr = entity_to_addr
+            .lock()
+            .ok()
+            .and_then(|m| m.get(&entity_id).copied());
+        if let Some(addr) = addr {
+            if let Ok(mut clients) = connected.lock() {
+                if let Some(c) = clients.get_mut(&addr) {
+                    c.ignore_set = ignore_names;
+                }
+            }
+        }
+    }
+
     tracing::debug!(
         entity_id,
         player_id,
