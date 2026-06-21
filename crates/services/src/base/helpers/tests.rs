@@ -727,8 +727,8 @@ async fn send_bundle_to_witness_reliable_returns_sent_outcome_on_success() {
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
 
-    let transport: Arc<dyn cimmeria_mercury::transport::Transport> =
-        Arc::new(TestTransport::default());
+    let tt = Arc::new(TestTransport::default());
+    let transport: Arc<dyn cimmeria_mercury::transport::Transport> = tt.clone();
     let addr: SocketAddr = "127.0.0.1:55801".parse().unwrap();
     let witness_id = 600u32;
     let connected = Arc::new(Mutex::new(HashMap::from([(
@@ -765,7 +765,7 @@ async fn send_bundle_to_witness_reliable_returns_sent_outcome_on_success() {
             assert_eq!(base_seq, 0, "fresh session reserves from seq 0");
             assert_eq!(packets, 1, "small body fits in one fragment");
             assert_eq!(
-                transport.send_count_to(addr),
+                tt.send_count_to(addr),
                 1,
                 "exactly one fragment hit the wire"
             );
