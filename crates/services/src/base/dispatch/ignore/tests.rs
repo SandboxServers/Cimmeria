@@ -107,3 +107,76 @@ async fn tell_to_third_party_not_dropped() {
         "tell to a non-ignored third party must be routed"
     );
 }
+
+/// Live-DB: `resync_ignore_after_member_change` reloads the authoritative Ignore
+/// membership, updates the in-memory `ignore_set`, and pushes
+/// `UpdateIgnoreList` to the cell. This is the path both `chatIgnore` and the
+/// contact-list-UI member edit funnel through. Self-skips without `DATABASE_URL`.
+#[tokio::test]
+async fn resync_reloads_ignore_list_and_pushes_to_cell() {
+    use crate::base::contact_list::persistence::{add_members, ensure_system_lists};
+    use crate::test_support::require_db_or_skip;
+
+    let pool = require_db_or_skip!();
+    let player_id: i32 = 0x7000_2C01;
+    let entity_id: u32 = 720_001;
+    let addr: SocketAddr = "127.0.0.1:7100".parse().unwrap();
+
+    // Clean + seed: Ignore list (301) with one member.
+    let _ = sqlx::query("DELETE FROM sgw_contact_list WHERE player_id = $1")
+        .bind(player_id)
+        .execute(&pool)
+        .await;
+    let (_friends, ignore_id) = ensure_system_lists(&pool, player_id)
+        .await
+        .expect("ensure system lists");
+    add_members(&pool, player_id, ignore_id, &["Griefer".to_string()])
+        .await
+        .expect("add ignore member");
+
+    let mut me = session("Me", entity_id);
+    me.ignore_set.clear();
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, me)])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+    let (tx, mut rx) = mpsc::channel::<BaseToCellMsg>(8);
+    let db_opt = Some(Arc::new(pool.clone()));
+
+    super::resync_ignore_after_member_change(
+        entity_id,
+        player_id,
+        ignore_id,
+        &db_opt,
+        &connected,
+        &entity_to_addr,
+        &Some(tx),
+    )
+    .await;
+
+    // In-memory cache reflects the DB Ignore membership.
+    assert!(
+        connected
+            .lock()
+            .unwrap()
+            .get(&addr)
+            .unwrap()
+            .ignore_set
+            .contains("Griefer"),
+        "resync must update the session ignore_set from the DB"
+    );
+    // Cell received the seed for its AoI filter.
+    match rx.try_recv() {
+        Ok(BaseToCellMsg::UpdateIgnoreList {
+            entity_id: eid,
+            ignore_names,
+        }) => {
+            assert_eq!(eid, entity_id);
+            assert!(ignore_names.contains("Griefer"));
+        }
+        _ => panic!("resync must push UpdateIgnoreList to the cell"),
+    }
+
+    let _ = sqlx::query("DELETE FROM sgw_contact_list WHERE player_id = $1")
+        .bind(player_id)
+        .execute(&pool)
+        .await;
+}
