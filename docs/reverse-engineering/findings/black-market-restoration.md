@@ -21,9 +21,34 @@ existing `sgw_gate_mail` table.
 |---|---|
 | Wire format docs | ~90% (`filterFlags` gap below) |
 | Entity model | ~85% (SGWEscrow misclassification clarified) |
-| Server logic | ~0% |
+| Server logic | ~5% (player-reachable `onBMOpen` entry implemented; create/bid/cancel still stubbed) |
 | DB persistence (auction tables) | ~0% (none exist) |
-| **Overall** | **~0% functional** |
+| **Overall** | **~5% functional** |
+
+## Player-reachable entry — `onBMOpen` (Phase 6a)
+
+`onBMOpen` (client method **90**, wire `INT32 entityId`) is now implemented as a
+real player path — no GM hack required:
+
+- **Auctioneer NPC**: `BlackMarket_Auctioneer` (spawn 238, template 168 — a
+  friendly standing human) stands in the **Castle_CellBlock (world 12) stasis
+  room** at `(-325.0, 73.47, -206.5)`, beside the `ArmYourself_GuardBody` /
+  `ArmYourself_FrostBody` corpses (same `Y=73.47` floor). Seeds:
+  `db/resources/Entities/Seed/entity_templates.sql` (template 168) +
+  `db/resources/Worlds/Seed/spawnlist.sql` (spawn 238).
+- **Interaction**: content chain **5030** (`player_loaded`) sets the
+  `INT_Auction` (mask 4) interaction bit so the client shows the prompt and
+  survives relog; chain **5031** (`interact_tag 'BlackMarket_Auctioneer'`) runs
+  the new `open_black_market` content action. Both in
+  `db/resources/Content/Seed/space_castle_cellblock_chains.sql`.
+- **Action → wire**: `Action::OpenBlackMarket` (content-engine) → executor
+  `cell/content/executor/black_market.rs::open` resolves the auctioneer entity
+  id (same `target_entity_id` source `DisplayDialog` uses) and sends
+  `onBMOpen(auctioneerEntityId)` via `CellToBaseMsg::EntityMethodCall`.
+  Serializer: `base/black_market/wire.rs::serialize_on_bm_open` (LE INT32).
+
+This opens the CEGUI auction window on the client. The create/bid/cancel/search
+handlers behind it remain stubbed (see "Server logic" above).
 
 ## ⚠️ Corrections to existing artifacts
 

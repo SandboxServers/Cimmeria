@@ -234,6 +234,49 @@ mod live_db {
         }
     }
 
+    /// **Seed guard for the Black Market auctioneer (#571 Phase 6a).**
+    /// Spawn 238 places the auctioneer (template 168) in Castle_CellBlock
+    /// (world 12) with tag `BlackMarket_Auctioneer`. The interact_tag
+    /// chain 5031 keys off that exact tag, so a drift in the spawn row
+    /// (wrong world, wrong template, renamed tag) would silently make the
+    /// auctioneer unreachable. Pin the row's identity through the loader
+    /// (which JOINs spawnlist → worlds → entity_templates).
+    #[tokio::test]
+    async fn load_spawns_includes_black_market_auctioneer_in_castle_cellblock() {
+        const AUCTIONEER_SPAWN_ID: i32 = 238;
+        const AUCTIONEER_TEMPLATE_ID: i32 = 168;
+        const AUCTIONEER_TAG: &str = "BlackMarket_Auctioneer";
+        const CASTLE_CELLBLOCK_WORLD: &str = "Castle_CellBlock";
+
+        let pool = require_db_or_skip!();
+        let records = load_spawns_from_db(&pool)
+            .await
+            .expect("load_spawns_from_db must succeed");
+
+        let auctioneer = records
+            .iter()
+            .find(|r| r.spawn_id == AUCTIONEER_SPAWN_ID)
+            .expect("spawn 238 (Black Market auctioneer) must be in the seeded spawnlist");
+
+        assert_eq!(
+            auctioneer.tag.as_deref(),
+            Some(AUCTIONEER_TAG),
+            "auctioneer spawn tag must match the interact_tag chain 5031 key"
+        );
+        assert_eq!(
+            auctioneer.template_id, AUCTIONEER_TEMPLATE_ID,
+            "auctioneer must use the dedicated auctioneer template 168"
+        );
+        assert_eq!(
+            auctioneer.world_name, CASTLE_CELLBLOCK_WORLD,
+            "auctioneer must spawn in Castle_CellBlock (world 12)"
+        );
+        assert!(
+            !auctioneer.template_name.is_empty(),
+            "auctioneer template 168 must JOIN to a non-empty entity_templates row"
+        );
+    }
+
     #[tokio::test]
     async fn load_mission_defs_only_includes_missions_with_a_step() {
         let pool = require_db_or_skip!();

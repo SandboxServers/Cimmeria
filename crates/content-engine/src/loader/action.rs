@@ -431,6 +431,11 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                 threat_level,
             })
         }
+        // Open the Black Market window. No target_id/target_key/params —
+        // the auctioneer entity is resolved at execution time from the
+        // interact trigger's `target_entity_id` (same source DisplayDialog
+        // uses for the dialog portrait entity).
+        "open_black_market" => Some(Action::OpenBlackMarket),
         _ => None,
     }
 }

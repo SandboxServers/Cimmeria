@@ -310,11 +310,19 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id) VALUES (167, '', 'BS_GoauldMale.BS_GoauldMale', '{AR_G_Praxis.AR_GM_PB1_PH100,AR_G_Praxis.AR_GM_PL1_PB100,AR_G_Praxis.AR_GM_PL1_PL100,AR_G_Praxis.AR_GM_PT1_PT100,AR_G_Praxis.AR_GM_PT1_PT102,AR_G_Praxis.AR_GM_PT1_PT105,BS_GoauldMale.BS_GM_Base_Boots00_00,BS_GoauldMale.BS_GM_Base_Hands00_00,BS_GoauldMale.BS_GM_Base_Legs00_00,BS_GoauldMale.BS_GM_Base_Torso00_00,NPC_Goauld.NPC_GM_Baal_Head_BC}', 0, 0, 570, 50, 0, 1, 8186, '', NULL, NULL, 'Sandbox Ba''al', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -1014470144, NULL, '{}', NULL, 942, true, 100001);
 
+-- Black Market Auctioneer (template 168): friendly standing human male,
+-- non-hostile (faction 1, no ability_set / ammo_type / aggression), modeled
+-- on templates 166/167. Interactivity is granted at runtime by the
+-- castle_cellblock content chain's `set_interaction_type` on tag
+-- 'BlackMarket_Auctioneer'; on interact the chain runs `open_black_market`
+-- which sends onBMOpen (client method 90) to open the auction-house window.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id) VALUES (168, '', 'BS_HumanMale.BS_HumanMale', '{BS_HumanMale.BS_HM_Base_Torso00_00,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Legs_00,NPC_Human.NPC_HM_Nerus_Boots_BC,NPC_Human.NPC_HM_Nerus_Hands_BC,NPC_Human.NPC_HM_Nerus_Head_BC,NPC_Human.NPC_HM_Nerus_Legs_BC,NPC_Human.NPC_HM_Nerus_Robe_BC,NPC_Human.NPC_HM_Nerus_Torso_BC}', 0, 0, 570, 50, 0, 1, NULL, 'Black Market Auctioneer', NULL, NULL, 'Black Market Auctioneer', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -52773120, NULL, '{}', NULL, NULL, true, NULL);
+
 --
 -- TOC entry 3316 (class 0 OID 0)
 -- Dependencies: 210
 -- Name: entity_templates_template_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('entity_templates_template_id_seq', 167, true);
+SELECT pg_catalog.setval('entity_templates_template_id_seq', 168, true);
 

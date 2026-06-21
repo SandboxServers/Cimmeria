@@ -540,3 +540,36 @@ VALUES
   (5029, 'accept_mission', 687, NULL,
    '{}', 0, 2);
 
+-- ── Black Market auctioneer (#571 Phase 6a) ──────────────────────────────────
+-- Curated, not auto-generated. The auctioneer (spawn 238, tag
+-- 'BlackMarket_Auctioneer') stands in the stasis room near the GuardBody/
+-- FrostBody corpses. Chain 5030 makes it interactable on every player load
+-- (interaction flags don't persist across restart — see the content-chain
+-- instructions' "set/clear pairing" note); chain 5031 opens the Black Market
+-- window when the player interacts. No clear is paired because the auctioneer
+-- is a permanent fixture, not a mission-gated entity.
+
+-- Chain 5030: restore the auction interaction bit on player load.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (5030, 'Castle_CellBlock → Black Market auctioneer interactable', 'space', 8, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (5030, 'player_loaded', NULL, 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (5030, 'set_interaction_type', NULL, 'BlackMarket_Auctioneer',
+   '{"mask":"INT_Auction","op":"|"}', 0, 0);
+
+-- Chain 5031: open the Black Market on interact.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (5031, 'Castle_CellBlock → Black Market auctioneer open', 'space', 8, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (5031, 'interact_tag', 'BlackMarket_Auctioneer', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (5031, 'open_black_market', NULL, NULL,
+   '{}', 0, 0);
+

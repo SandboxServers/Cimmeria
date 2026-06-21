@@ -95,6 +95,16 @@ fn push_auction_item(out: &mut Vec<u8>, row: &AuctionRow, seller_name: &str) {
     push_string(out, seller_name);
 }
 
+/// Serialize `onBMOpen` args: `INT32 entityId`.
+///
+/// The single argument is the auctioneer NPC's entity id — the client
+/// `BlackMarket` window binds to it as the conversation partner when the
+/// player interacts with the in-world auctioneer. Little-endian INT32,
+/// 4 bytes, no string fields.
+pub fn serialize_on_bm_open(entity_id: i32) -> Vec<u8> {
+    entity_id.to_le_bytes().to_vec()
+}
+
 /// Serialize `onBMError` args: `INT32 errorId`.
 pub fn serialize_on_bm_error(error_id: i32) -> Vec<u8> {
     error_id.to_le_bytes().to_vec()
@@ -115,6 +125,19 @@ pub fn serialize_on_bm_auction_update(row: &AuctionRow, seller_name: &str) -> Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bm_open_serializes_to_four_le_entity_id_bytes() {
+        let args = serialize_on_bm_open(0x0123_4567);
+        assert_eq!(args.len(), 4, "onBMOpen carries exactly one INT32");
+        assert_eq!(
+            i32::from_le_bytes([args[0], args[1], args[2], args[3]]),
+            0x0123_4567,
+            "onBMOpen arg must be the entity id in little-endian"
+        );
+        // Explicit byte order pin: low byte first.
+        assert_eq!(args, vec![0x67, 0x45, 0x23, 0x01]);
+    }
 
     #[test]
     fn error_serializes_to_four_le_bytes() {
