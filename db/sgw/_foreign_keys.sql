@@ -129,3 +129,14 @@ ALTER TABLE ONLY sgw_organization_members
 ALTER TABLE ONLY sgw_organization_members
     ADD CONSTRAINT sgw_organization_members_player_id_fkey FOREIGN KEY (player_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
+--
+-- Name: sgw_organization_members_rank_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- A member's (org_id, rank_value) must reference a configured rank row, so a
+-- member can't sit at a rank with no permission/name config. REQUIRES org
+-- creation to seed all nine rank rows (0-8) per org (Phase 3 OrgAuthority).
+--
+
+ALTER TABLE ONLY sgw_organization_members
+    ADD CONSTRAINT sgw_organization_members_rank_fkey FOREIGN KEY (org_id, rank_value) REFERENCES sgw_organization_ranks(org_id, rank_value) ON UPDATE RESTRICT ON DELETE CASCADE;
+

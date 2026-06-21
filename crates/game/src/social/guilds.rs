@@ -124,9 +124,11 @@ impl OrgPermission {
         self.0
     }
 
-    /// Construct from a raw `u32`.
+    /// Construct from a raw `u32`, masking to the 26 defined permission bits.
+    /// Out-of-range / high bits (e.g. `0xFFFFFFFF` from a buggy or hostile wire
+    /// path) are dropped before they can reach a permission check or be persisted.
     pub fn from_bits(v: u32) -> Self {
-        Self(v)
+        Self(v & Self::ALL.0)
     }
 }
 
@@ -192,6 +194,12 @@ impl Org {
         leader_player_id: i32,
         leader_name: String,
     ) -> Self {
+        // `Org` is the persistent model (Team/Command); Squad is ephemeral and
+        // never built here. Fail fast on misuse during development/testing.
+        debug_assert!(
+            org_type.is_persistent(),
+            "Org::new is persistent-only (Team/Command); Squad must not be persisted"
+        );
         let mut members = HashMap::new();
         members.insert(
             leader_player_id,

@@ -27,5 +27,8 @@ CREATE TABLE sgw_organizations (
     cash bigint NOT NULL DEFAULT 0,
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT sgw_organizations_org_type_check
-        CHECK (org_type IN (1, 2))
+        CHECK (org_type IN (1, 2)),
+    -- Treasury is never negative; guard against bugs / manual edits.
+    CONSTRAINT sgw_organizations_cash_nonneg_check
+        CHECK (cash >= 0)
 );

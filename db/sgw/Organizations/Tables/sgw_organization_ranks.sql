@@ -23,5 +23,9 @@ CREATE TABLE sgw_organization_ranks (
     custom_name character varying(64),
     permission_mask integer NOT NULL DEFAULT 0,
     CONSTRAINT sgw_organization_ranks_rank_value_check
-        CHECK (rank_value >= 0 AND rank_value <= 8)
+        CHECK (rank_value >= 0 AND rank_value <= 8),
+    -- OrgPermission is a 26-bit mask (0x3FFFFFF = 67108863). Reject negative or
+    -- out-of-range values so a buggy/hostile path can't persist e.g. 0xFFFFFFFF.
+    CONSTRAINT sgw_organization_ranks_permission_mask_check
+        CHECK (permission_mask >= 0 AND permission_mask <= 67108863)
 );
