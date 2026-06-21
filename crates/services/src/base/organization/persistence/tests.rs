@@ -33,18 +33,36 @@ use sqlx::PgPool;
 const SENTINEL_PLAYER_ID: i32 = -97531;
 const SENTINEL_PLAYER_ID_2: i32 = -97532;
 
-/// Insert a sentinel sgw_player row if it doesn't exist.
+/// Insert a sentinel account + sgw_player row if they don't exist.
+/// Mirrors the contact-list `insert_minimal_player` helper — sgw_player has
+/// many NOT NULL columns and no `character_name` (the name column is
+/// `player_name`); the account FK must exist first. account_id reuses the
+/// (negative, unique) sentinel player_id.
 async fn ensure_sentinel_player(pool: &PgPool, player_id: i32) {
     sqlx::query(
-        "INSERT INTO sgw_player (player_id, character_name, account_id) \
-         VALUES ($1, $2, 0) \
+        "INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '') \
+         ON CONFLICT (account_id) DO NOTHING",
+    )
+    .bind(player_id)
+    .bind(format!("org-persist-test-{player_id}"))
+    .execute(pool)
+    .await
+    .expect("ensure_sentinel_player: account insert failed");
+
+    sqlx::query(
+        "INSERT INTO sgw_player (\
+            account_id, player_id, level, alignment, archetype, gender, \
+            player_name, extra_name, world_location, bodyset, \
+            pos_x, pos_y, pos_z, skin_color_id\
+         ) VALUES ($1, $1, 1, 0, 1, 1, $2, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+                   0.0, 0.0, 0.0, 0) \
          ON CONFLICT (player_id) DO NOTHING",
     )
     .bind(player_id)
     .bind(format!("TestOrg_{player_id}"))
     .execute(pool)
     .await
-    .expect("ensure_sentinel_player: insert failed");
+    .expect("ensure_sentinel_player: player insert failed");
 }
 
 /// Delete all org data created with the sentinel player_id(s).
