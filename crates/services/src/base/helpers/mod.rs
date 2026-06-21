@@ -103,7 +103,9 @@ pub(crate) enum WitnessSendOutcome {
 }
 
 impl WitnessSendOutcome {
-    /// `true` only for [`WitnessSendOutcome::Sent`].
+    /// `true` only for [`WitnessSendOutcome::Sent`]. Test-only inspector
+    /// (the seams match the variant directly).
+    #[cfg(test)]
     pub(crate) fn is_sent(&self) -> bool {
         matches!(self, WitnessSendOutcome::Sent { .. })
     }
@@ -155,7 +157,9 @@ pub(crate) enum BundleSendOutcome {
 }
 
 impl BundleSendOutcome {
-    /// `true` only for [`BundleSendOutcome::Sent`].
+    /// `true` only for [`BundleSendOutcome::Sent`]. Test-only inspector
+    /// (the seams match the variant directly).
+    #[cfg(test)]
     pub(crate) fn is_sent(&self) -> bool {
         matches!(self, BundleSendOutcome::Sent { .. })
     }
