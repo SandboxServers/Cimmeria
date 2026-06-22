@@ -41,6 +41,10 @@
 
 - [witness-entity-method-dual-fn.md](witness-entity-method-dual-fn.md) — `WitnessEntityMethod` has TWO `witness_entity_method` fns (logging wrapper in aoi_dispatch.rs + emitter in aoi.rs); both need signature changes. idbase via `entity_is_player` (61 player / 62 NPC, matters for method idx ≥61).
 
+## Ignore enforcement (chat + AoI)
+
+- [ignore-enforcement.md](ignore-enforcement.md) — chatIgnore=0xC5 (WSTRING+UINT8); Ignore list flags=301; symmetric AoI exclusion in `compute_player_aoi` gates all witness-iterating broadcasts (chat/combat/position); base `ignore_set` + cell `ignore_names` synced via `BaseToCellMsg::UpdateIgnoreList`; NPCs never filtered; `ConnectedClientState` has 5 literal construction sites.
+
 ## Testing patterns
 
 - [db-test-revert-verification.md](db-test-revert-verification.md) — split async DB-touching function into pure sync helper + DB shell; unit-test the helper so local revert-verification works when live-DB is the canonical guard.
