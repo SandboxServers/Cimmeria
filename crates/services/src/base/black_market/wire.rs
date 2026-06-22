@@ -161,7 +161,7 @@ mod tests {
     /// Wire format: `[u32 count] [AuctionItem×N] [i32 view] [i32 total]`.
     /// Each AuctionItem is 33 fixed bytes + STRING (4-byte len + body).
     /// With seller "A" (1 byte): per-item = 33 + 4 + 1 = 38.
-    /// Two rows: 4 + 38 + 38 + 4 + 4 = 58 bytes.
+    /// Two rows: 4 + 38 + 38 + 4 + 4 = 88 bytes.
     #[test]
     fn on_bm_auctions_layout_is_byte_exact() {
         fn make_row(seq: i32) -> AuctionRow {

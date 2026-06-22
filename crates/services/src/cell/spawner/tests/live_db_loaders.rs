@@ -234,7 +234,7 @@ mod live_db {
         }
     }
 
-    /// **Seed guard for the Black Market auctioneer (#571 Phase 6a).**
+    /// **Seed guard for the Black Market auctioneer.**
     /// Spawn 238 places the auctioneer (template 168) in Castle_CellBlock
     /// (world 12) with tag `BlackMarket_Auctioneer`. The interact_tag
     /// chain 5031 keys off that exact tag, so a drift in the spawn row

@@ -540,7 +540,7 @@ VALUES
   (5029, 'accept_mission', 687, NULL,
    '{}', 0, 2);
 
--- ── Black Market auctioneer (#571 Phase 6a) ──────────────────────────────────
+-- ── Black Market auctioneer ──────────────────────────────────────────────────
 -- Curated, not auto-generated. The auctioneer (spawn 238, tag
 -- 'BlackMarket_Auctioneer') stands in the stasis room near the GuardBody/
 -- FrostBody corpses. Chain 5030 makes it interactable on every player load
