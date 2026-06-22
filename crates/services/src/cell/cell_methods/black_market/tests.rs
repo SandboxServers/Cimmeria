@@ -243,23 +243,28 @@ async fn search_arm_forwards_bm_search_msg() {
     let (tx, mut rx) = mpsc::channel(8);
 
     // Minimal valid BMSearchOptions: scalars + three empty strings + 4 i32.
+    // sort_id=2 and max_tc=999 are non-zero so the assertions below prove
+    // the dispatcher decoded and forwarded the right fields, not defaults.
     let mut wire = Vec::new();
-    wire.push(2u8); // sort_id (non-zero so we can assert it landed)
-    wire.extend_from_slice(&11i32.to_le_bytes()); // client_key
-    wire.extend_from_slice(&22i32.to_le_bytes()); // sequence_id
-    wire.push(1u8); // b_forward
+    wire.push(2u8);
+    wire.extend_from_slice(&11i32.to_le_bytes());
+    wire.extend_from_slice(&22i32.to_le_bytes());
+    wire.push(1u8);
     for _ in 0..3 {
-        wire.extend_from_slice(&0u32.to_le_bytes()); // empty STRING
+        wire.extend_from_slice(&0u32.to_le_bytes());
     }
-    wire.extend_from_slice(&0i32.to_le_bytes()); // min_tc
-    wire.extend_from_slice(&999i32.to_le_bytes()); // max_tc
-    wire.extend_from_slice(&0i32.to_le_bytes()); // quality
-    wire.extend_from_slice(&0i32.to_le_bytes()); // filter_flags
+    wire.extend_from_slice(&0i32.to_le_bytes());
+    wire.extend_from_slice(&999i32.to_le_bytes());
+    wire.extend_from_slice(&0i32.to_le_bytes());
+    wire.extend_from_slice(&0i32.to_le_bytes());
 
     let handled = dispatch(TEST_ENTITY, SEARCH, &wire, &tx, &mut mgr).await;
     assert!(handled, "dispatch must recognise SEARCH");
 
-    match rx.try_recv().expect("SEARCH must forward a CellToBaseMsg::BMSearch") {
+    match rx
+        .try_recv()
+        .expect("SEARCH must forward a CellToBaseMsg::BMSearch")
+    {
         CellToBaseMsg::BMSearch {
             entity_id,
             player_id,

@@ -134,7 +134,10 @@ async fn seed_active_auctions(pool: &PgPool) {
         match res {
             Ok(_) => inserted += 1,
             Err(e) => {
-                tracing::warn!(item_def_id = spec.item_def_id, "BM seed: insert failed: {e}")
+                tracing::warn!(
+                    item_def_id = spec.item_def_id,
+                    "BM seed: insert failed: {e}"
+                )
             }
         }
     }

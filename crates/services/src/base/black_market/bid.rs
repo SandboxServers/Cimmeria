@@ -33,7 +33,6 @@ use crate::base::ConnectedClientState;
     skip_all,
     fields(entity_id, player_id, sequence_id, bid_amount)
 )]
-#[allow(clippy::too_many_arguments)]
 pub async fn handle_place_bid(
     entity_id: u32,
     player_id: i32,

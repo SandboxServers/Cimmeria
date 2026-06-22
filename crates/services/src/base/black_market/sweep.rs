@@ -87,29 +87,34 @@ async fn settle_one(
 ) -> Result<Option<SettledAuction>, sqlx::Error> {
     let mut tx = pool.begin().await?;
 
-    // Re-lock with the status guard so concurrent sweeps don't double-settle.
-    let locked = sqlx::query_scalar::<_, i16>(
-        "SELECT status FROM sgw_auction WHERE sequence_id = $1 FOR UPDATE",
+    // Re-lock and re-read the live row so concurrent sweeps don't double-settle
+    // and so the sold/unsold decision uses the post-lock current_bid /
+    // current_bidder (not the pre-lock snapshot which may be stale).
+    let locked = sqlx::query_as::<_, AuctionRow>(
+        "SELECT sequence_id, seller_id, item_id, item_def_id, stack_size, durability, \
+                charges, starting_price, buyout_price, current_bid, current_bidder, \
+                auction_length, created_at, expires_at, status \
+         FROM sgw_auction WHERE sequence_id = $1 FOR UPDATE",
     )
     .bind(auction.sequence_id)
     .fetch_optional(&mut *tx)
     .await?;
-    match locked {
-        Some(s) if s == auction_status::ACTIVE => {}
+    let live = match locked {
+        Some(row) if row.status == auction_status::ACTIVE => row,
         _ => {
             tx.rollback().await?;
             return Ok(None);
         }
-    }
+    };
 
-    let sold = auction.current_bidder.is_some() && auction.current_bid > 0;
+    let sold = live.current_bidder.is_some() && live.current_bid > 0;
 
-    if let Some(buyer_id) = auction.current_bidder.filter(|_| sold) {
+    if let Some(buyer_id) = live.current_bidder.filter(|_| sold) {
         // Sold: seller gets cash mail, buyer gets item mail.
         send_mail_to_player(
             &mut *tx,
-            auction.seller_id,
-            auction.current_bid as i64,
+            live.seller_id,
+            live.current_bid as i64,
             None,
             0,
             SOLD_SELLER_SUBJECT,
@@ -122,10 +127,10 @@ async fn settle_one(
         let item_id = super::helpers::return_item(
             &mut *tx,
             buyer_id,
-            auction.item_def_id,
-            auction.stack_size,
-            auction.durability,
-            auction.charges,
+            live.item_def_id,
+            live.stack_size,
+            live.durability,
+            live.charges,
         )
         .await?;
         send_mail_to_player(
@@ -142,14 +147,14 @@ async fn settle_one(
 
         sqlx::query("UPDATE sgw_auction SET status = $1 WHERE sequence_id = $2")
             .bind(auction_status::SOLD)
-            .bind(auction.sequence_id)
+            .bind(live.sequence_id)
             .execute(&mut *tx)
             .await?;
 
         tx.commit().await?;
         Ok(Some(SettledAuction {
-            sequence_id: auction.sequence_id,
-            seller_id: auction.seller_id,
+            sequence_id: live.sequence_id,
+            seller_id: live.seller_id,
             buyer_id: Some(buyer_id),
             sold: true,
         }))
@@ -157,16 +162,16 @@ async fn settle_one(
         // Unsold: mail the escrowed item back to the seller.
         let item_id = super::helpers::return_item(
             &mut *tx,
-            auction.seller_id,
-            auction.item_def_id,
-            auction.stack_size,
-            auction.durability,
-            auction.charges,
+            live.seller_id,
+            live.item_def_id,
+            live.stack_size,
+            live.durability,
+            live.charges,
         )
         .await?;
         send_mail_to_player(
             &mut *tx,
-            auction.seller_id,
+            live.seller_id,
             0,
             Some(item_id),
             0,
@@ -178,14 +183,14 @@ async fn settle_one(
 
         sqlx::query("UPDATE sgw_auction SET status = $1 WHERE sequence_id = $2")
             .bind(auction_status::EXPIRED)
-            .bind(auction.sequence_id)
+            .bind(live.sequence_id)
             .execute(&mut *tx)
             .await?;
 
         tx.commit().await?;
         Ok(Some(SettledAuction {
-            sequence_id: auction.sequence_id,
-            seller_id: auction.seller_id,
+            sequence_id: live.sequence_id,
+            seller_id: live.seller_id,
             buyer_id: None,
             sold: false,
         }))

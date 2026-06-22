@@ -12,6 +12,7 @@ Symmetric ignore enforcement shipped in worktree `C:\Users\Steve\source\projects
 **Unifier**: `compute_player_aoi` in `cell/space_manager/aoi.rs` excludes ignored player-pairs from each other's witness set. Every downstream broadcast that iterates witnesses (say/emote/yell, #278 combat/death fanout, EntityMoved, WitnessEntityMethod) is automatically gated. NPCs are never filtered (`other.is_player` gate).
 
 **Data flow (base→cell)**:
+
 - `ConnectedClientState::ignore_set: HashSet<String>` — base-side in-memory cache, flags=301 Ignore contact list members.
 - `CellEntity::ignore_names: HashSet<String>` — cell-side mirror, seeded via `BaseToCellMsg::UpdateIgnoreList`.
 - `UpdateIgnoreList` is sent from: (1) `world_entry_appearance/client_ready.rs` after `push_contact_lists_on_login`; (2) `base/dispatch/ignore.rs::handle_chat_ignore`; (3) `resync_ignore_after_member_change` for UI-driven contact-list edits to the Ignore list.

@@ -72,7 +72,12 @@ pub async fn handle_search(
     };
 
     let total = rows.len() as i32;
-    tracing::info!(entity_id, player_id, total, "search: returning active listings");
+    tracing::info!(
+        entity_id,
+        player_id,
+        total,
+        "search: returning active listings"
+    );
 
     // Resolve seller display names. Online players resolve from the session map;
     // offline sellers fall back to an empty string (cosmetic only — the client

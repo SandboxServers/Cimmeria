@@ -49,13 +49,21 @@ pub async fn dispatch(
             match BMSearchOptions::from_wire(args) {
                 Some(opts) => {
                     if let Some(player_id) = resolve_player_id(entity_id, space_mgr, "search") {
-                        let _ = tx
+                        if tx
                             .send(CellToBaseMsg::BMSearch {
                                 entity_id,
                                 player_id,
                                 options: opts,
                             })
-                            .await;
+                            .await
+                            .is_err()
+                        {
+                            tracing::warn!(
+                                entity_id,
+                                reason = "base_channel_closed",
+                                "BMSearch: base channel closed, player action dropped"
+                            );
+                        }
                     }
                 }
                 None => {
@@ -76,7 +84,7 @@ pub async fn dispatch(
                 // auctionLength is UINT8 — a single byte at offset 12.
                 let auction_length = args[12];
                 if let Some(player_id) = resolve_player_id(entity_id, space_mgr, "createAuction") {
-                    let _ = tx
+                    if tx
                         .send(CellToBaseMsg::BMCreateAuction {
                             entity_id,
                             player_id,
@@ -85,7 +93,15 @@ pub async fn dispatch(
                             buyout_price,
                             auction_length,
                         })
-                        .await;
+                        .await
+                        .is_err()
+                    {
+                        tracing::warn!(
+                            entity_id,
+                            reason = "base_channel_closed",
+                            "BMCreateAuction: base channel closed, player action dropped"
+                        );
+                    }
                 }
             } else {
                 tracing::warn!(
@@ -101,14 +117,22 @@ pub async fn dispatch(
                 let sequence_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let bid_amount = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 if let Some(player_id) = resolve_player_id(entity_id, space_mgr, "placeBid") {
-                    let _ = tx
+                    if tx
                         .send(CellToBaseMsg::BMPlaceBid {
                             entity_id,
                             player_id,
                             sequence_id,
                             bid_amount,
                         })
-                        .await;
+                        .await
+                        .is_err()
+                    {
+                        tracing::warn!(
+                            entity_id,
+                            reason = "base_channel_closed",
+                            "BMPlaceBid: base channel closed, player action dropped"
+                        );
+                    }
                 }
             } else {
                 tracing::warn!(
@@ -123,13 +147,21 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let sequence_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 if let Some(player_id) = resolve_player_id(entity_id, space_mgr, "cancelAuction") {
-                    let _ = tx
+                    if tx
                         .send(CellToBaseMsg::BMCancelAuction {
                             entity_id,
                             player_id,
                             sequence_id,
                         })
-                        .await;
+                        .await
+                        .is_err()
+                    {
+                        tracing::warn!(
+                            entity_id,
+                            reason = "base_channel_closed",
+                            "BMCancelAuction: base channel closed, player action dropped"
+                        );
+                    }
                 }
             } else {
                 tracing::warn!(

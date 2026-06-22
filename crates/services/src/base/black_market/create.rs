@@ -27,7 +27,6 @@ use crate::base::ConnectedClientState;
     skip_all,
     fields(entity_id, player_id, item_id)
 )]
-#[allow(clippy::too_many_arguments)]
 pub async fn handle_create_auction(
     entity_id: u32,
     player_id: i32,

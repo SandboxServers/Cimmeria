@@ -10,7 +10,7 @@ CREATE TABLE sgw_auction_bid (
     bid_id integer NOT NULL,
     sequence_id integer NOT NULL,
     bidder_id integer NOT NULL,
-    amount integer NOT NULL,
+    amount bigint NOT NULL,
     created_at integer NOT NULL
 );
 

@@ -90,7 +90,17 @@ fn push_auction_item(out: &mut Vec<u8>, row: &AuctionRow, seller_name: &str) {
     out.extend_from_slice(&row.buyout_price.to_le_bytes());
     // endTimeValue is the UINT8 duration enum echoed back to the client.
     out.push(row.auction_length as u8);
-    let next = next_min_bid(row.current_bid as i64).min(i32::MAX as i64);
+    // For a fresh auction (current_bid == 0) the next required bid is the
+    // starting_price floor, not next_min_bid(0) == 1. The validate layer
+    // enforces `bid >= starting_price`, so a nextMinBidPrice of 1 on a
+    // 100-naquadah listing would let the client offer a legal-looking 1-bid
+    // that the server then correctly rejects — confusing UX. Use
+    // next_min_bid only once there is already a live bid.
+    let next = if row.current_bid > 0 {
+        next_min_bid(row.current_bid as i64).min(i32::MAX as i64)
+    } else {
+        (row.starting_price as i64).max(1)
+    };
     out.extend_from_slice(&(next as i32).to_le_bytes());
     push_string(out, seller_name);
 }
@@ -104,11 +114,7 @@ fn push_auction_item(out: &mut Vec<u8>, row: &AuctionRow, seller_name: &str) {
 /// back from the search request,
 /// then `INT32 total` (LE) — total number of listings matching the
 /// search filter (may exceed `count` if results are paginated).
-pub fn serialize_on_bm_auctions(
-    rows: &[(AuctionRow, String)],
-    view: i32,
-    total: i32,
-) -> Vec<u8> {
+pub fn serialize_on_bm_auctions(rows: &[(AuctionRow, String)], view: i32, total: i32) -> Vec<u8> {
     let mut out = Vec::with_capacity(4 + rows.len() * 44 + 8);
     out.extend_from_slice(&(rows.len() as u32).to_le_bytes());
     for (row, name) in rows {
@@ -335,5 +341,43 @@ mod tests {
         assert_eq!(auction_length_seconds(4), 96 * 3600);
         // out-of-range clamps to the longest tier
         assert_eq!(auction_length_seconds(200), 96 * 3600);
+    }
+
+    /// Regression guard for the fresh-auction `nextMinBidPrice` fix.
+    ///
+    /// When `current_bid == 0` (no bids yet), `nextMinBidPrice` must equal
+    /// `starting_price` (the validate layer requires `bid >= starting_price`).
+    /// Before the fix, `next_min_bid(0) = 1` was used, which would show 1 on
+    /// a 100-naquadah listing — a misleading floor the server then rejects.
+    ///
+    /// Bug shape: reverting to `next_min_bid(row.current_bid as i64)` for all
+    /// cases causes a fresh auction with `starting_price = 100` to serialise
+    /// `nextMinBidPrice = 1` instead of `100`, failing this assertion.
+    #[test]
+    fn fresh_auction_next_min_bid_price_equals_starting_price() {
+        let row = AuctionRow {
+            sequence_id: 1,
+            seller_id: 2,
+            item_id: 3,
+            item_def_id: 4,
+            stack_size: 1,
+            durability: 100,
+            charges: 0,
+            starting_price: 100,
+            buyout_price: 500,
+            current_bid: 0,
+            current_bidder: None,
+            auction_length: 1,
+            created_at: 0,
+            expires_at: 0,
+            status: 0,
+        };
+        let args = serialize_on_bm_auction_update(&row, "");
+        // nextMinBidPrice is at offset 29..33 (after 7×INT32 + 1 UINT8 endTime).
+        let next_min = i32::from_le_bytes([args[29], args[30], args[31], args[32]]);
+        assert_eq!(
+            next_min, 100,
+            "fresh auction nextMinBidPrice must equal starting_price, not next_min_bid(0)=1"
+        );
     }
 }
