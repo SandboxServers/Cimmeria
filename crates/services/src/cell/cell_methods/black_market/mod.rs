@@ -48,21 +48,15 @@ pub async fn dispatch(
         SEARCH => {
             match BMSearchOptions::from_wire(args) {
                 Some(opts) => {
-                    tracing::info!(
-                        entity_id,
-                        sort_id = opts.sort_id,
-                        client_key = opts.client_key,
-                        sequence_id = opts.sequence_id,
-                        b_forward = opts.b_forward,
-                        seller_name = %opts.seller_name,
-                        bidder_name = %opts.bidder_name,
-                        item_name = %opts.item_name,
-                        min_tc = opts.min_tc,
-                        max_tc = opts.max_tc,
-                        quality = opts.quality,
-                        filter_flags = opts.filter_flags,
-                        "UNIMPLEMENTED: BMSearch (parsed)"
-                    );
+                    if let Some(player_id) = resolve_player_id(entity_id, space_mgr, "search") {
+                        let _ = tx
+                            .send(CellToBaseMsg::BMSearch {
+                                entity_id,
+                                player_id,
+                                options: opts,
+                            })
+                            .await;
+                    }
                 }
                 None => {
                     tracing::warn!(

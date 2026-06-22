@@ -1,10 +1,10 @@
-//! Black Market auction dispatch arms (create / bid / cancel).
+//! Black Market auction dispatch arms (search / create / bid / cancel).
 //!
 //! Each function is the body of one `CellToBaseMsg::BM*` arm carved out of the
 //! [`super::handle_cell_message`] match, routing into the
 //! [`crate::base::black_market`] state machine.
 
-use crate::base::black_market::{bid, cancel, create};
+use crate::base::black_market::{bid, cancel, create, search};
 use crate::cell::messages::CellToBaseMsg;
 
 use super::DispatchCtx;
@@ -15,6 +15,22 @@ use super::DispatchCtx;
 /// `msg` to this family; any other variant is `unreachable!` by construction.
 pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
     match msg {
+        CellToBaseMsg::BMSearch {
+            entity_id,
+            player_id,
+            options,
+        } => {
+            search::handle_search(
+                entity_id,
+                player_id,
+                options,
+                ctx.db_pool,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+            )
+            .await
+        }
         CellToBaseMsg::BMCreateAuction {
             entity_id,
             player_id,

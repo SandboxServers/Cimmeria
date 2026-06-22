@@ -15,6 +15,8 @@
 //!   `adjust_player_cash`, item `escrow_item` / `return_item`.
 //! - [`validate`] — pure accept/reject predicates (unit-tested).
 //! - [`send`]    — `onBM*` server→client send wrappers.
+//! - [`search`]  — the `BMSearch` handler: queries active listings, resolves
+//!   seller names, and sends `onBMAuctions` back to the requesting entity.
 //! - [`create`] / [`bid`] / [`cancel`] — the create/bid/cancel state machine.
 //! - [`sweep`]   — the periodic expiry-settlement background task.
 
@@ -28,6 +30,8 @@ pub mod bid;
 pub mod cancel;
 pub mod create;
 pub mod helpers;
+pub mod search;
+pub mod seed;
 pub mod send;
 pub mod sweep;
 pub mod types;

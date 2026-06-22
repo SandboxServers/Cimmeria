@@ -232,33 +232,49 @@ async fn cancel_auction_forwards_decoded_fields() {
     }
 }
 
-/// SEARCH parses `BMSearchOptions` off the wire and is recognised by
-/// dispatch (handled=true). It is Phase-1 unimplemented so it forwards
-/// nothing — the channel must stay empty.
+/// SEARCH parses `BMSearchOptions` off the wire, resolves `player_id`, and
+/// forwards `CellToBaseMsg::BMSearch` to the base. Guards that the forward
+/// now happens (regression: before the serve was wired this arm forwarded
+/// nothing; if the `send` call is removed the channel stays empty and this
+/// test fails).
 #[tokio::test]
-async fn search_arm_is_handled_and_forwards_nothing() {
+async fn search_arm_forwards_bm_search_msg() {
     let mut mgr = make_mgr_with_player();
     let (tx, mut rx) = mpsc::channel(8);
 
     // Minimal valid BMSearchOptions: scalars + three empty strings + 4 i32.
     let mut wire = Vec::new();
-    wire.push(0u8); // sort_id
-    wire.extend_from_slice(&0i32.to_le_bytes()); // client_key
-    wire.extend_from_slice(&0i32.to_le_bytes()); // sequence_id
-    wire.push(0u8); // b_forward
+    wire.push(2u8); // sort_id (non-zero so we can assert it landed)
+    wire.extend_from_slice(&11i32.to_le_bytes()); // client_key
+    wire.extend_from_slice(&22i32.to_le_bytes()); // sequence_id
+    wire.push(1u8); // b_forward
     for _ in 0..3 {
         wire.extend_from_slice(&0u32.to_le_bytes()); // empty STRING
     }
-    for _ in 0..4 {
-        wire.extend_from_slice(&0i32.to_le_bytes()); // min/max/quality/flags
-    }
+    wire.extend_from_slice(&0i32.to_le_bytes()); // min_tc
+    wire.extend_from_slice(&999i32.to_le_bytes()); // max_tc
+    wire.extend_from_slice(&0i32.to_le_bytes()); // quality
+    wire.extend_from_slice(&0i32.to_le_bytes()); // filter_flags
 
     let handled = dispatch(TEST_ENTITY, SEARCH, &wire, &tx, &mut mgr).await;
     assert!(handled, "dispatch must recognise SEARCH");
-    assert!(
-        rx.try_recv().is_err(),
-        "SEARCH is Phase-1 unimplemented — it must not forward a CellToBaseMsg",
-    );
+
+    match rx.try_recv().expect("SEARCH must forward a CellToBaseMsg::BMSearch") {
+        CellToBaseMsg::BMSearch {
+            entity_id,
+            player_id,
+            options,
+        } => {
+            assert_eq!(entity_id, TEST_ENTITY);
+            assert_eq!(player_id, TEST_PLAYER, "player_id resolved from entity");
+            assert_eq!(options.sort_id, 2, "sort_id decoded from wire");
+            assert_eq!(options.client_key, 11);
+            assert_eq!(options.sequence_id, 22);
+            assert_eq!(options.b_forward, 1);
+            assert_eq!(options.max_tc, 999);
+        }
+        other => panic!("expected BMSearch, got {other:?}"),
+    }
 }
 
 /// An entity with no `player_id` must NOT forward an auction op — keying a

@@ -243,6 +243,12 @@ impl BaseService {
         // `expires_at`: sold → mail seller cash + buyer item; unsold → mail the
         // item back to the seller. Requires a DB pool.
         if let Some(pool) = self.db_pool.clone() {
+            // Boot seed: ensure the auction house has active listings to serve
+            // for end-to-end validation even before a player posts one. These
+            // are real sgw_auction rows — served by search and expired by the
+            // sweep like any player auction (idempotent; seeds only an empty
+            // house). Spawned before the sweep; benign race (future expiry).
+            crate::base::black_market::seed::spawn_seed(pool.clone());
             crate::base::black_market::sweep::spawn_sweep(
                 pool,
                 transport_for_bm_sweep,

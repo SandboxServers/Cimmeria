@@ -144,7 +144,8 @@ pub(crate) async fn handle_cell_message(
         | CellToBaseMsg::BuybackVendorItems { .. }
         | CellToBaseMsg::ExecuteTrade { .. } => vendor_dispatch::route(msg, &ctx).await,
 
-        CellToBaseMsg::BMCreateAuction { .. }
+        CellToBaseMsg::BMSearch { .. }
+        | CellToBaseMsg::BMCreateAuction { .. }
         | CellToBaseMsg::BMPlaceBid { .. }
         | CellToBaseMsg::BMCancelAuction { .. } => black_market_dispatch::route(msg, &ctx).await,
 

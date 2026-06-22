@@ -95,6 +95,30 @@ fn push_auction_item(out: &mut Vec<u8>, row: &AuctionRow, seller_name: &str) {
     push_string(out, seller_name);
 }
 
+/// Serialize `onBMAuctions` args for a search-result page.
+///
+/// Wire layout (per the recovered client handler):
+/// `UINT32 count` (LE) — number of `AuctionItem` entries that follow,
+/// then `count` × `AuctionItem` FIXED_DICT (via [`push_auction_item`]),
+/// then `INT32 view` (LE) — opaque client-side view/sort index echoed
+/// back from the search request,
+/// then `INT32 total` (LE) — total number of listings matching the
+/// search filter (may exceed `count` if results are paginated).
+pub fn serialize_on_bm_auctions(
+    rows: &[(AuctionRow, String)],
+    view: i32,
+    total: i32,
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(4 + rows.len() * 44 + 8);
+    out.extend_from_slice(&(rows.len() as u32).to_le_bytes());
+    for (row, name) in rows {
+        push_auction_item(&mut out, row, name);
+    }
+    out.extend_from_slice(&view.to_le_bytes());
+    out.extend_from_slice(&total.to_le_bytes());
+    out
+}
+
 /// Serialize `onBMOpen` args: `INT32 entityId`.
 ///
 /// The single argument is the auctioneer NPC's entity id — the client
@@ -125,6 +149,84 @@ pub fn serialize_on_bm_auction_update(row: &AuctionRow, seller_name: &str) -> Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Byte-exact layout guard for `onBMAuctions` with two rows.
+    ///
+    /// Wire format: `[u32 count] [AuctionItem×N] [i32 view] [i32 total]`.
+    /// Each AuctionItem is 33 fixed bytes + STRING (4-byte len + body).
+    /// With seller "A" (1 byte): per-item = 33 + 4 + 1 = 38.
+    /// Two rows: 4 + 38 + 38 + 4 + 4 = 58 bytes.
+    #[test]
+    fn on_bm_auctions_layout_is_byte_exact() {
+        fn make_row(seq: i32) -> AuctionRow {
+            AuctionRow {
+                sequence_id: seq,
+                seller_id: 1,
+                item_id: 10,
+                item_def_id: 20,
+                stack_size: 1,
+                durability: 100,
+                charges: 0,
+                starting_price: 50,
+                buyout_price: 200,
+                current_bid: 0,
+                current_bidder: None,
+                auction_length: 1,
+                created_at: 0,
+                expires_at: 0,
+                status: 0,
+            }
+        }
+        let rows: Vec<(AuctionRow, String)> = vec![
+            (make_row(1), "A".to_string()),
+            (make_row(2), "A".to_string()),
+        ];
+        let args = serialize_on_bm_auctions(&rows, 7, 99);
+
+        // Header: 4 (count)
+        // Per item: 7*4(fixed i32s) + 1(endTime) + 4(nextMinBid) + 4(name len) + 1(name) = 38
+        // Trailer: 4 (view) + 4 (total)
+        assert_eq!(args.len(), 4 + 38 + 38 + 4 + 4, "total byte count");
+
+        // count = 2
+        assert_eq!(u32::from_le_bytes([args[0], args[1], args[2], args[3]]), 2);
+
+        // First row: sequenceId at offset 4
+        assert_eq!(
+            i32::from_le_bytes([args[4], args[5], args[6], args[7]]),
+            1,
+            "first row sequenceId"
+        );
+
+        // Second row starts at 4 + 38 = 42
+        assert_eq!(
+            i32::from_le_bytes([args[42], args[43], args[44], args[45]]),
+            2,
+            "second row sequenceId"
+        );
+
+        // view at 4 + 38 + 38 = 80
+        assert_eq!(
+            i32::from_le_bytes([args[80], args[81], args[82], args[83]]),
+            7,
+            "view echoed"
+        );
+
+        // total at 84
+        assert_eq!(
+            i32::from_le_bytes([args[84], args[85], args[86], args[87]]),
+            99,
+            "total count"
+        );
+    }
+
+    /// Empty result set serializes to [0u32 count] + [i32 view] + [i32 total] = 12 bytes.
+    #[test]
+    fn on_bm_auctions_empty_is_twelve_bytes() {
+        let args = serialize_on_bm_auctions(&[], 0, 0);
+        assert_eq!(args.len(), 12);
+        assert_eq!(u32::from_le_bytes([args[0], args[1], args[2], args[3]]), 0);
+    }
 
     #[test]
     fn bm_open_serializes_to_four_le_entity_id_bytes() {

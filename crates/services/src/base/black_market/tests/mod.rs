@@ -23,6 +23,7 @@ use crate::test_support::TestTransport;
 
 mod create_bid_cancel;
 mod helpers;
+mod search;
 mod state_helpers;
 mod sweep;
 

@@ -677,6 +677,17 @@ pub enum CellToBaseMsg {
         p2_cash: i32,
     },
 
+    /// Search active Black Market listings (`SGWBlackMarket.search`, method 61).
+    ///
+    /// The cell decodes `BMSearchOptions` off the wire and forwards the struct
+    /// here. The base queries `sgw_auction WHERE status = 0`, applies optional
+    /// filters from `options`, and replies with `onBMAuctions` (method 92).
+    BMSearch {
+        entity_id: u32,
+        player_id: i32,
+        options: crate::base::black_market::BMSearchOptions,
+    },
+
     /// Create a Black Market auction listing (`SGWBlackMarket.createAuction`).
     ///
     /// `SGWBlackMarket` is a ServerOnly BASE entity; the client RPC lands at the
