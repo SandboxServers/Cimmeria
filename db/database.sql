@@ -365,6 +365,8 @@
 \ir sgw/Mail/Sequences/sgw_gate_mail_mail_id_seq.sql
 \ir sgw/Players/Sequences/sgw_characters_character_id_seq.sql
 \ir sgw/Social/Sequences/sgw_contact_list_list_id_seq.sql
+\ir sgw/BlackMarket/Sequences/sgw_auction_sequence_id_seq.sql
+\ir sgw/BlackMarket/Sequences/sgw_auction_bid_bid_id_seq.sql
 
 -- Tables
 \ir sgw/Accounts/Tables/account.sql
@@ -376,6 +378,8 @@
 \ir sgw/Players/Tables/sgw_player_discipline_expertise.sql
 \ir sgw/Social/Tables/sgw_contact_list.sql
 \ir sgw/Social/Tables/sgw_contact_list_member.sql
+\ir sgw/BlackMarket/Tables/sgw_auction.sql
+\ir sgw/BlackMarket/Tables/sgw_auction_bid.sql
 \ir sgw/Shards/Tables/shards.sql
 \ir sgw/Audit/Tables/login_audit.sql
 \ir sgw/Outbox/Tables/cell_event_outbox.sql

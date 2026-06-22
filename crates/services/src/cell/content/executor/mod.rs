@@ -10,6 +10,7 @@
 //! - [`world`]     — interaction-type/visibility/destroy/move/threat/aggression
 //! - [`counter`]   — increment/reset
 //! - [`transport`] — teleport, ring transporter
+//! - [`black_market`] — open the client Black Market window (`onBMOpen`)
 //!
 //! Single-arm actions with no shared helpers (PlaySequence, StartMinigame,
 //! SystemMessage, SendMessage, SetActiveSlot, TriggerChain, fallback) stay
@@ -23,6 +24,7 @@ use cimmeria_content_engine::chain::ResolvedActions;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+mod black_market;
 mod counter;
 mod dialog;
 mod inventory;
@@ -392,6 +394,9 @@ pub(super) async fn execute_actions(
                         "SetActiveSlot: cell→base send failed -- active slot not synced: {e}"
                     );
                 }
+            }
+            Action::OpenBlackMarket => {
+                black_market::open(entity_id, chain_id, &params, tx, space_mgr).await;
             }
             Action::TriggerChain {
                 chain_id: target_chain_id,

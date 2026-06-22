@@ -27,3 +27,24 @@ CREATE INDEX "sgw_inventory_Index01" ON sgw_inventory USING btree (character_id)
 
 CREATE INDEX sgw_contact_list_member_player_name_idx ON sgw_contact_list_member USING btree (player_name);
 
+--
+-- Index: sgw_auction_expiry_idx
+-- Supports the Phase 3 expiry sweep: WHERE status = 0 AND expires_at <= now.
+--
+
+CREATE INDEX sgw_auction_expiry_idx ON sgw_auction USING btree (status, expires_at);
+
+--
+-- Index: sgw_auction_seller_idx
+-- Supports "my listings" lookups by seller.
+--
+
+CREATE INDEX sgw_auction_seller_idx ON sgw_auction USING btree (seller_id);
+
+--
+-- Index: sgw_auction_bid_sequence_idx
+-- Supports bid-history lookups for one auction.
+--
+
+CREATE INDEX sgw_auction_bid_sequence_idx ON sgw_auction_bid USING btree (sequence_id);
+

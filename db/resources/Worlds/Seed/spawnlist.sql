@@ -338,11 +338,19 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (237, 5.97424412, 0.351500005, 11.9172192, 3.58337903, 2, 166, NULL, NULL);
 
+-- Black Market Auctioneer: Castle_CellBlock (world 12) stasis room, standing
+-- near the GuardBody (-322.51, 73.47, -209.83) and FrostBody (-328.30, 73.47,
+-- -210.27) corpses (same Y=73.47 floor). Heading ~3.14 (PI) faces -Z, back
+-- toward the corpses/room. Template 168 = friendly standing human; the
+-- interact_tag chain in space_castle_cellblock_chains.sql makes tag
+-- 'BlackMarket_Auctioneer' interactable and opens the Black Market on use.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (238, -325.0, 73.4720001, -206.5, 3.14159265, 12, 168, 'BlackMarket_Auctioneer', NULL);
+
 --
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256
 -- Name: spawnlist_spawn_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 237, true);
+SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 238, true);
 

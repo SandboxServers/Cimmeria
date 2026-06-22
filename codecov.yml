@@ -125,6 +125,27 @@ ignore:
   # ignore is scoped to the file because codecov can't carve out a single
   # function.
   - "crates/services/src/base/world_entry/cell_dispatch/minigame.rs"
+  # `cell_dispatch/black_market_dispatch.rs::route` is pure cell→base
+  # routing — one `CellToBaseMsg::BM*` match that unpacks the variant and
+  # forwards to the `black_market::{create,bid,cancel}` handler with the
+  # same `DispatchCtx` fields. Same shape as `cell_dispatch/minigame.rs`
+  # above: the decode lives in `cell/cell_methods/black_market.rs` (unit
+  # tested), the handlers live in `base/black_market/{create,bid,cancel}`
+  # (live-DB tested), and this file is the glue that wires the two. The
+  # unit-test value of "the match arm forwards the variant it just matched"
+  # is low; a real regression surfaces in the decode test or the handler's
+  # live-DB guard.
+  - "crates/services/src/base/world_entry/cell_dispatch/black_market_dispatch.rs"
+  # `base/black_market/send.rs` is three `onBM*` send wrappers, each shaped
+  # `send_to_witness_reliable(transport, connected, entity_to_addr,
+  # entity_id, |..| build_player_entity_method_packet(.., method_idx::ON_BM_*,
+  # &args, ..))`. Same rationale as `cell_dispatch/aoi.rs` above: the
+  # `send_to_witness_reliable` glue is internal plumbing that needs a real
+  # UdpSocket fixture for any non-trivial assertion, and the serializers it
+  # wraps (`serialize_on_bm_error` / `_auction_remove` / `_auction_update`)
+  # are byte-exact tested in `base/black_market/wire.rs`. The unit-test
+  # value of "with empty fixtures the wrapper doesn't panic" is low.
+  - "crates/services/src/base/black_market/send.rs"
 
 # Components let the PR comment break coverage out by subsystem. Mirrors
 # the crate dependency graph in README.md so reviewers can see "the

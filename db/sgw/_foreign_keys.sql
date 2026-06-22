@@ -92,3 +92,41 @@ ALTER TABLE ONLY sgw_contact_list
 ALTER TABLE ONLY sgw_contact_list_member
     ADD CONSTRAINT sgw_contact_list_member_list_id_fkey FOREIGN KEY (list_id) REFERENCES sgw_contact_list(list_id) ON UPDATE RESTRICT ON DELETE CASCADE;
 
+--
+-- Name: sgw_auction_seller_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- ON DELETE RESTRICT: the escrow-return handler (Phase 2) must cancel active
+-- listings and return the escrowed item via mail before the character row can
+-- be deleted. Premature CASCADE would lose the escrowed item with no recovery
+-- path. Flip to CASCADE once the deletion cascade handler is wired.
+--
+
+ALTER TABLE ONLY sgw_auction
+    ADD CONSTRAINT sgw_auction_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
+-- Name: sgw_auction_current_bidder_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+-- ON DELETE RESTRICT: SET NULL would leave current_bid > 0 with
+-- current_bidder IS NULL, creating phantom bids that the sweep and validator
+-- cannot handle cleanly. RESTRICT is safe until the bidder-deletion refund
+-- handler (Phase 2) is wired to return held cash before the row is removed.
+--
+
+ALTER TABLE ONLY sgw_auction
+    ADD CONSTRAINT sgw_auction_current_bidder_fkey FOREIGN KEY (current_bidder) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+--
+-- Name: sgw_auction_bid_sequence_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_auction_bid
+    ADD CONSTRAINT sgw_auction_bid_sequence_id_fkey FOREIGN KEY (sequence_id) REFERENCES sgw_auction(sequence_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+
+--
+-- Name: sgw_auction_bid_bidder_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_auction_bid
+    ADD CONSTRAINT sgw_auction_bid_bidder_id_fkey FOREIGN KEY (bidder_id) REFERENCES sgw_player(player_id) ON UPDATE RESTRICT ON DELETE CASCADE;
+

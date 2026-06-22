@@ -470,32 +470,12 @@ pub enum CellToBaseMsg {
 
     /// Re-anchor the local pawn to a fresh actor without `RESET_ENTITIES`.
     ///
-    /// BaseApp's `handle_reanchor_player` sends two packets to the client:
-    /// 1. A burst combining `BASEMSG_CREATE_BASE_PLAYER` +
-    ///    `BASEMSG_SPACE_VIEWPORT_INFO` + `BASEMSG_CREATE_CELL_PLAYER` +
-    ///    `BASEMSG_FORCED_POSITION`.
-    /// 2. A separate bundle with `BeingAppearance` + `onEntityTint`
-    ///    pulled from the client's cached world-entry args.
-    ///
-    /// `CREATE_BASE_PLAYER` (0x05) is the load-bearing piece — it invokes
-    /// the client's `createBasePlayer` callback (the same hook used on
-    /// initial login), which destroys the existing pawn actor (carrying
-    /// the ragdoll physics state from the `Entity_Death` kismet) and
-    /// instantiates a fresh standing one. The trailing VIEWPORT/CELL/
-    /// FORCED_POSITION keep the client's space tables consistent with
-    /// the new pawn, and the property replay repopulates its visuals.
-    ///
-    /// **No `RESET_ENTITIES` is sent**, so all other client-side state —
-    /// AoI entities, kismet sequence state (door open/closed, triggered
-    /// events), the level itself — survives the respawn untouched.
-    ///
-    /// Used by `handle_respawn`. Cross-world respawn falls back to `GateTravel`
-    /// since the player is leaving the space anyway.
-    ///
-    /// Why it's separate from `TeleportPlayer`: TeleportPlayer sends only
-    /// `BASEMSG_FORCED_POSITION` (a position snap), which doesn't re-create
-    /// the pawn actor and so doesn't clear ragdoll state. ReanchorPlayer
-    /// is the stronger primitive that drives a full pawn rebuild.
+    /// Sends `CREATE_BASE_PLAYER` (0x05) + `SPACE_VIEWPORT_INFO` +
+    /// `CREATE_CELL_PLAYER` + `FORCED_POSITION` + `BeingAppearance` +
+    /// `onEntityTint`. Destroys the old ragdoll pawn and instantiates a
+    /// fresh standing one; other AoI state (door/kismet/level) survives.
+    /// Used by `handle_respawn`; cross-world falls back to `GateTravel`.
+    /// Contrast with `TeleportPlayer` (position-only snap, no pawn rebuild).
     ReanchorPlayer {
         entity_id: u32,
         space_id: u32,
@@ -675,5 +655,43 @@ pub enum CellToBaseMsg {
         p1_cash: i32,
         p2_item_instance_ids: Vec<i32>,
         p2_cash: i32,
+    },
+
+    /// Search active Black Market listings (cell method 61 → base handler).
+    /// Base queries `sgw_auction WHERE status = 0` and replies with `onBMAuctions` (92).
+    BMSearch {
+        entity_id: u32,
+        player_id: i32,
+        options: crate::base::black_market::BMSearchOptions,
+    },
+
+    /// Create a Black Market auction listing (cell method 62 → base handler).
+    /// Base escrows the item, inserts the `sgw_auction` row, replies with
+    /// `onBMAuctionUpdate`. `auction_length` is the UINT8 duration enum (D.5).
+    BMCreateAuction {
+        entity_id: u32,
+        player_id: i32,
+        item_id: i32,
+        starting_price: i32,
+        buyout_price: i32,
+        auction_length: u8,
+    },
+
+    /// Place a bid on an active auction (cell method 63 → base handler).
+    /// Base refunds the prior bidder, holds the new bid, pushes `onBMAuctionUpdate`.
+    BMPlaceBid {
+        entity_id: u32,
+        player_id: i32,
+        sequence_id: i32,
+        bid_amount: i32,
+    },
+
+    /// Cancel an owned auction (cell method 64 → base handler).
+    /// Base returns the escrowed item, refunds the current bidder, pushes
+    /// `onBMAuctionRemove`.
+    BMCancelAuction {
+        entity_id: u32,
+        player_id: i32,
+        sequence_id: i32,
     },
 }

@@ -151,6 +151,9 @@ Defined at [actions.rs:20-237](../../crates/content-engine/src/actions.rs#L20-L2
 **Space-script actions** (auto-converted from level scripts):
 `MoveWaypoint`, `SetActiveSlot`, `LaunchAbility`, `AddDialog`, `GenerateThreat`.
 
+**UI-open actions**:
+`OpenBlackMarket` (seed verb `open_black_market`) — sends `onBMOpen(auctioneerEntityId)` (client method 90) to open the client Black Market / auction-house window. Takes no params; the auctioneer entity is resolved at execution time from the interact trigger's `target_entity_id` (the same source `DisplayDialog` uses), with a `warn!`-and-abort when no auctioneer resolves. Pair it with a `set_interaction_type` (`INT_Auction`, mask 4) on the auctioneer tag so the client renders the interact prompt — see the `BlackMarket_Auctioneer` chains (5030/5031) in `space_castle_cellblock_chains.sql`.
+
 > Several variants are **defined but not executed** today: `ApplyEffect`, `RemoveEffect`, `StartTimer`, `CancelTimer`, `RollLootTable`, `SpawnEntity`, `GrantXP`. The loader accepts them and the engine resolves them, but `executor.rs` has no match arm — they fall through to a `debug!` no-op. See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
 
 ---
