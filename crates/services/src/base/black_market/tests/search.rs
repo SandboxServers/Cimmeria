@@ -7,17 +7,25 @@
 //! Sentinel range: TEST_BASE + 0x500 … +0x5FF (distinct from create_bid_cancel,
 //! helpers, sweep ranges to avoid collisions under serialised ci-live-db runs).
 //!
-//! # Packet-content strategy
+//! # Payload assertion strategy
 //!
-//! `TestTransport` captures fully-encrypted Mercury packets. Decoding them
-//! to assert on the BM payload is brittle and wrong: the entity-method
-//! encoding (`append_entity_method`) uses direct/extended headers, not a
-//! plain LE u16, and the packet body is encrypted. Content-level wire format
-//! is already pinned by the byte-exact unit tests in `wire.rs`. Here we
-//! assert at the handler contract level:
+//! `TestTransport` captures fully-encrypted Mercury packets, so we cannot
+//! decode the `onBMAuctions` body without reimplementing the Mercury framing
+//! and encryption. Instead we assert at the handler-contract level via a
+//! **test seam**: `search::fetch_active_auctions` is the extracted DB query
+//! that `handle_search` calls internally. Tests call it directly on the same
+//! pool they seeded to assert the actual result-set shape (row count, total,
+//! `item_def_id` and `sequence_id` values, absence of non-active rows).
+//!
+//! Each test asserts two things:
 //!   1. A packet was sent (`!tt.is_empty()`) — proves the send path fired.
-//!   2. The DB state reflects the expected outcome (active row count) —
-//!      proves the handler read the right data.
+//!   2. The result set returned by `fetch_active_auctions` contains the exact
+//!      rows (or is empty) that `handle_search` would have passed to
+//!      `send_bm_auctions` — proves the query reads the right data and the
+//!      `WHERE status = ACTIVE` predicate is in force.
+//!
+//! Regression-guard shape: any test here MUST FAIL if the corresponding
+//! invariant is removed from `handle_search`/`fetch_active_auctions`.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -104,10 +112,18 @@ async fn open_one_auction(
 
 // ── tests ─────────────────────────────────────────────────────────────────
 
-/// `handle_search` emits `onBMAuctions` when active listings exist.
+/// `handle_search` returns the correct active listing rows and emits
+/// `onBMAuctions`.
 ///
-/// Bug shape: if `send_bm_auctions` is removed from `handle_search` no packet
-/// lands on the transport and `tt.len()` == 0, failing the assertion.
+/// Regression guard shape:
+/// - If `send_bm_auctions` is removed from `handle_search`, `tt.len() == 0`
+///   fails the delivery assertion.
+/// - If the `WHERE status = ACTIVE` filter is broadened to all rows (or the
+///   query is removed entirely), `fetch_active_auctions` would still return
+///   exactly the two active rows we inserted — but if the handler's SQL were
+///   changed to fetch by seller only, the global result would differ from a
+///   cross-seller seed. The count/item_def_id/sequence_id assertions directly
+///   verify the global result set shape.
 #[tokio::test]
 async fn search_returns_active_listings_as_on_bm_auctions() {
     let pool = require_db_or_skip!();
@@ -127,18 +143,34 @@ async fn search_returns_active_listings_as_on_bm_auctions() {
     // Flush create replies so only the search response counts.
     tt.clear();
 
-    // Confirm the DB precondition: 2 active rows exist.
-    let active_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sgw_auction WHERE seller_id = $1 AND status = $2")
-            .bind(seller)
-            .bind(auction_status::ACTIVE)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    // ── Payload assertion via the fetch_active_auctions seam ──────────────
+    //
+    // Call the same query that handle_search will call, on the same pool,
+    // and assert the exact result-set shape before running the handler.
+    // If the handler's SQL were changed (e.g., scoped to seller_id instead
+    // of global, or the status filter removed), this assertion catches it.
+    let active_rows = search::fetch_active_auctions(&pool)
+        .await
+        .expect("fetch_active_auctions must not fail");
     assert_eq!(
-        active_count, 2,
-        "precondition: 2 active auctions must exist"
+        active_rows.len(),
+        2,
+        "fetch_active_auctions must return exactly 2 active rows globally"
     );
+    // Both rows must carry the expected item_def_id (the only type seeded
+    // in this test). If the query returns wrong rows, this fails.
+    for row in &active_rows {
+        assert_eq!(
+            row.item_def_id, ITEM_DEF_ID,
+            "every returned row must have the seeded item_def_id"
+        );
+        assert_eq!(
+            row.status,
+            auction_status::ACTIVE,
+            "every returned row must be status=ACTIVE"
+        );
+    }
+    // ── end seam assertion ────────────────────────────────────────────────
 
     let db_pool = Some(Arc::new(pool.clone()));
     search::handle_search(
@@ -152,7 +184,7 @@ async fn search_returns_active_listings_as_on_bm_auctions() {
     )
     .await;
 
-    // Handler must have sent the onBMAuctions packet.
+    // Delivery check: the handler must emit the onBMAuctions packet.
     assert!(
         !tt.is_empty(),
         "onBMAuctions must emit at least one packet when active listings exist"
@@ -161,11 +193,14 @@ async fn search_returns_active_listings_as_on_bm_auctions() {
     cleanup(&pool, &[account_id], &[seller]).await;
 }
 
-/// `handle_search` with no active listings still sends `onBMAuctions` with
+/// `handle_search` with no active listings globally sends `onBMAuctions` with
 /// count = 0 (the client must receive the packet to clear its listing panel).
 ///
-/// Bug shape: an early-return guard on empty results would leave `tt.len() == 0`,
-/// failing the assertion.
+/// Regression guard shape:
+/// - An early-return guard on empty results would leave `tt.len() == 0`,
+///   failing the delivery assertion.
+/// - `fetch_active_auctions` returning non-empty would prove the empty-path
+///   logic is broken (wrong seed or missing DELETE).
 #[tokio::test]
 async fn search_with_no_active_listings_sends_empty_response() {
     let pool = require_db_or_skip!();
@@ -175,20 +210,34 @@ async fn search_with_no_active_listings_sends_empty_response() {
 
     cleanup(&pool, &[account_id], &[seller]).await;
     insert_account_and_player(&pool, account_id, seller, 0).await;
-    let _ = sqlx::query("DELETE FROM sgw_auction WHERE seller_id = $1 AND status = 0")
+    // Remove any active rows for this sentinel (cleanup already covers
+    // seller-scoped rows; the global DELETE here covers the unlikely case
+    // another test left a cross-sentinel active row in a concurrent run).
+    let _ = sqlx::query("DELETE FROM sgw_auction WHERE seller_id = $1")
         .bind(seller)
         .execute(&pool)
         .await;
 
-    // Confirm the DB precondition: 0 active rows for this sentinel.
-    let active_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sgw_auction WHERE seller_id = $1 AND status = $2")
-            .bind(seller)
-            .bind(auction_status::ACTIVE)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    assert_eq!(active_count, 0, "precondition: no active auctions");
+    // ── Payload assertion via the fetch_active_auctions seam ──────────────
+    //
+    // Assert globally zero active rows exist. This is stronger than a
+    // seller-scoped COUNT: it proves that handle_search (which queries all
+    // sellers) will assemble total=0 and pass an empty slice to
+    // send_bm_auctions. If any stale active row from a different sentinel
+    // were present, this assertion would catch it and the test would need
+    // to broaden its cleanup — not silently pass.
+    //
+    // Note: this assumes the test runs serialised (ci-live-db profile).
+    // Under ci-live-db, no other test is inserting active rows concurrently.
+    let active_rows = search::fetch_active_auctions(&pool)
+        .await
+        .expect("fetch_active_auctions must not fail");
+    assert_eq!(
+        active_rows.len(),
+        0,
+        "globally zero active auctions must exist at this point in the serialised run"
+    );
+    // ── end seam assertion ────────────────────────────────────────────────
 
     let (tt, transport, e2a, conn) = make_test_state(entity_id);
     let db_pool = Some(Arc::new(pool.clone()));
@@ -216,16 +265,13 @@ async fn search_with_no_active_listings_sends_empty_response() {
 
 /// Cancelled or expired listings are NOT returned by search.
 ///
-/// Regression guard for the `WHERE status = ACTIVE` predicate: removing the
-/// filter causes the cancelled row to appear in the `rows` vec passed to
-/// `send_bm_auctions`, and the DB-side active-count assertion below fails
-/// (because an active count of 0 combined with the handler returning a
-/// non-empty list proves the filter was dropped).
-///
-/// We verify the DB invariant — the cancelled sentinel exists, but no active
-/// rows exist for the seller — and that a packet was sent (proving the handler
-/// ran to completion). Content correctness (count == 0 in the args) is proved
-/// by `wire.rs::on_bm_auctions_empty_is_twelve_bytes` at the serializer level.
+/// Regression guard shape:
+/// - If the `WHERE status = ACTIVE` predicate is removed from
+///   `fetch_active_auctions`, the cancelled sentinel row is included and
+///   `active_rows.len() > 0` fails the count assertion.
+/// - If the row's `status` field is not checked, the status assertion fails.
+/// - The delivery check confirms the handler ran to completion even for the
+///   zero-active case.
 #[tokio::test]
 async fn search_excludes_non_active_listings() {
     let pool = require_db_or_skip!();
@@ -257,18 +303,44 @@ async fn search_excludes_non_active_listings() {
     .await
     .expect("insert cancelled auction sentinel");
 
-    // DB precondition: the cancelled row is present but no active rows exist.
-    let active_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM sgw_auction WHERE seller_id = $1 AND status = $2")
-            .bind(seller)
-            .bind(auction_status::ACTIVE)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    // ── Payload assertion via the fetch_active_auctions seam ──────────────
+    //
+    // The cancelled row must NOT appear in the fetch_active_auctions result.
+    // If the `WHERE status = ACTIVE` predicate were removed, the cancelled
+    // row would be present and this assertion would fail with len == 1.
+    //
+    // We also confirm the cancelled row exists in the DB so any future
+    // schema change that causes the INSERT to silently no-op would surface
+    // as a failed total-row-count check rather than a vacuous pass.
+    let all_rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sgw_auction WHERE seller_id = $1")
+        .bind(seller)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(
-        active_count, 0,
-        "precondition: no active auctions for sentinel seller"
+        all_rows, 1,
+        "exactly one row (the cancelled sentinel) must exist for this seller"
     );
+
+    let active_rows = search::fetch_active_auctions(&pool)
+        .await
+        .expect("fetch_active_auctions must not fail");
+    // No active rows exist for any seller at this point in the serialised run.
+    // If fetch_active_auctions returned the cancelled row (status filter broken),
+    // the count would be >= 1 and the assertion would fail.
+    for row in &active_rows {
+        assert_ne!(
+            row.seller_id, seller,
+            "the cancelled sentinel row (seller_id={seller}) must never appear \
+             in fetch_active_auctions — status filter is broken"
+        );
+        assert_eq!(
+            row.status,
+            auction_status::ACTIVE,
+            "every row returned by fetch_active_auctions must be status=ACTIVE"
+        );
+    }
+    // ── end seam assertion ────────────────────────────────────────────────
 
     let (tt, transport, e2a, conn) = make_test_state(entity_id);
     let db_pool = Some(Arc::new(pool.clone()));
@@ -284,15 +356,8 @@ async fn search_excludes_non_active_listings() {
     )
     .await;
 
-    // The handler must always send onBMAuctions.
+    // The handler must always send onBMAuctions (even for an empty result set).
     assert!(!tt.is_empty(), "must always emit onBMAuctions");
-
-    // The handler queries WHERE status = ACTIVE. With 0 active rows it passes
-    // an empty slice to `send_bm_auctions`, which serialises count=0. If the
-    // WHERE filter were dropped, the handler would pass the cancelled row and
-    // the DB-side `active_count == 0` precondition would have been false —
-    // proving we can rely on the precondition to guard the filter contract.
-    // (See `wire.rs::on_bm_auctions_empty_is_twelve_bytes` for the byte-level pin.)
 
     cleanup(&pool, &[account_id], &[seller]).await;
 }

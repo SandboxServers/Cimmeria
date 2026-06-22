@@ -22,12 +22,37 @@ use super::send::send_bm_auctions;
 use super::types::{auction_status, AuctionRow, BMSearchOptions};
 use crate::base::ConnectedClientState;
 
+/// Fetch all globally active auction rows ordered by `sequence_id`.
+///
+/// This is the DB query seam used by `handle_search` and exposed to tests so
+/// integration tests can assert on the exact rows (count, `item_def_id`,
+/// `sequence_id`, absence of non-active rows) without decoding an encrypted
+/// Mercury packet.
+///
+/// Tests call this function directly on the same pool they seeded, letting
+/// them assert the real `WHERE status = ACTIVE` result set rather than a
+/// seller-scoped COUNT precondition.
+pub(crate) async fn fetch_active_auctions(pool: &PgPool) -> Result<Vec<AuctionRow>, sqlx::Error> {
+    sqlx::query_as::<_, AuctionRow>(
+        "SELECT sequence_id, seller_id, item_id, item_def_id, stack_size, \
+                durability, charges, starting_price, buyout_price, current_bid, \
+                current_bidder, auction_length, created_at, expires_at, status \
+         FROM sgw_auction \
+         WHERE status = $1 \
+         ORDER BY sequence_id",
+    )
+    .bind(auction_status::ACTIVE)
+    .fetch_all(pool)
+    .await
+}
+
 /// Handle a `BMSearch` forwarded from the cell.
 ///
-/// Queries `sgw_auction` for all `status = ACTIVE` rows, resolves each
-/// seller's display name (online players resolved from the session map;
-/// offline sellers get an empty name as a cosmetic placeholder), then sends
-/// `onBMAuctions` back to the requesting entity.
+/// Queries `sgw_auction` for all `status = ACTIVE` rows via
+/// [`fetch_active_auctions`], resolves each seller's display name (online
+/// players resolved from the session map; offline sellers get an empty name as
+/// a cosmetic placeholder), then sends `onBMAuctions` back to the requesting
+/// entity.
 ///
 /// The `options` fields are available for future filter predicates (Phase 2).
 /// For now only `sort_id` is used — it is echoed back as the `view` argument
@@ -52,18 +77,7 @@ pub async fn handle_search(
         return;
     };
 
-    let rows: Vec<AuctionRow> = match sqlx::query_as::<_, AuctionRow>(
-        "SELECT sequence_id, seller_id, item_id, item_def_id, stack_size, \
-                durability, charges, starting_price, buyout_price, current_bid, \
-                current_bidder, auction_length, created_at, expires_at, status \
-         FROM sgw_auction \
-         WHERE status = $1 \
-         ORDER BY sequence_id",
-    )
-    .bind(auction_status::ACTIVE)
-    .fetch_all(pool.as_ref())
-    .await
-    {
+    let rows = match fetch_active_auctions(pool).await {
         Ok(r) => r,
         Err(e) => {
             tracing::error!(entity_id, player_id, "search: query failed: {e}");
