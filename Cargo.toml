@@ -116,7 +116,7 @@ sha2 = "0.11"
 # Legacy login hash recomputation: the original client sent an uppercase-hex
 # SHA-1 of the password. Used to verify a plaintext login against a not-yet-
 # migrated (legacy) account before re-hashing it with argon2id.
-sha1 = "0.10"
+sha1 = "0.11"
 # Password storage. argon2id with explicit OWASP parameters; `std` pulls the
 # OsRng-backed salt generator used per hash.
 argon2 = { version = "0.5", features = ["std"] }
