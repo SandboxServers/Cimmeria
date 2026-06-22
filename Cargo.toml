@@ -79,7 +79,7 @@ serde_json = "1"
 bytes = "1"
 
 # XML parsing
-quick-xml = "0.39"
+quick-xml = "0.40"
 
 # Cryptography (client requires AES-256-CBC + HMAC-MD5)
 aes = "0.9"
