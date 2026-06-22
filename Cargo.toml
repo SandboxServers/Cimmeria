@@ -133,7 +133,7 @@ base64 = "0.22"
 futures-util = "0.3"
 
 # Archive reading (CookedCharCreation.pak is a ZIP)
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "3", default-features = false, features = ["deflate"] }
 
 # Streaming compression — used by the launcher chunk uploader and by
 # the admin-api ingest endpoint that unwraps those chunks.
