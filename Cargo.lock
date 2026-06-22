@@ -829,7 +829,7 @@ name = "cimmeria-common"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "quick-xml",
+ "quick-xml 0.40.1",
  "serde",
  "thiserror 2.0.18",
  "tracing",
@@ -840,7 +840,7 @@ name = "cimmeria-content-editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "quick-xml",
+ "quick-xml 0.40.1",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -872,7 +872,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "cimmeria-common",
- "quick-xml",
+ "quick-xml 0.40.1",
  "serde",
  "thiserror 2.0.18",
 ]
@@ -1037,7 +1037,7 @@ dependencies = [
  "cimmeria-mercury",
  "cimmeria-observability",
  "proptest",
- "quick-xml",
+ "quick-xml 0.40.1",
  "rand 0.10.1",
  "rand_chacha 0.10.0",
  "rand_distr",
@@ -4743,7 +4743,7 @@ checksum = "092791278e026273c1b65bbdcfbba3a300f2994c896bd01ab01da613c29c46f1"
 dependencies = [
  "base64 0.22.1",
  "indexmap 2.14.0",
- "quick-xml",
+ "quick-xml 0.39.4",
  "serde",
  "time",
 ]
@@ -4994,6 +4994,15 @@ name = "quick-xml"
 version = "0.39.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdcc8dd4e2f670d309a5f0e83fe36dfdc05af317008fea29144da1a2ac858e5e"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.40.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2474bd2e5029e7ccb6abb2ba48cf2383a333851dedf495901544281590c7da7f"
 dependencies = [
  "memchr",
 ]
@@ -8071,7 +8080,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c324a910fd86ebdc364a3e61ec1f11737d3b1d6c273c0239ee8ff4bc0d24b4a"
 dependencies = [
  "proc-macro2",
- "quick-xml",
+ "quick-xml 0.39.4",
  "quote",
 ]
 
