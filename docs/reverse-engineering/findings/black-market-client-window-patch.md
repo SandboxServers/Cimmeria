@@ -292,6 +292,44 @@ Both deciding inputs point away from native reconstruction (A):
 
 **Decision: maintain our own per-view auction store and repoint the (small, known) read surface** — `getAuctionItemInfo` (`0x00aac260`), `getAuctionViewItems`, `getAuctionVisibleCount`, `getAuctionTotalCount` (or their shared accessor `FUN_00ae1ad0`/`FUN_00e58b50`) — to read it. The native callbacks for 92/94/93/95 then do a **manual wire parse → write our store**; the existing CEGUI UI reads it through the repointed bindings. No CME `AuctionItem` construction, no refcount dance. (90 `onBMOpen` + 91 `onBMError` stay simple Lua calls; they never touch the store.)
 
+## Fork-B build spec — read surface + sequence (RE'd 2026-06-21)
+
+The actionable spec for the client-92 build. The four read bindings (all `__cdecl(lua_State*)`, same shape: read arg → call accessor → push result):
+
+| Lua binding | Addr | Accessor | Pushes |
+|---|---|---|---|
+| `getAuctionItemInfo(auctionId)` | `0x00aac260` | `FUN_00ae1ad0` (searches all views via `FUN_00e58b50`) | detail table (~15 fields) |
+| `getAuctionViewItems(viewType)` | `0x00aac2e0` | `FUN_00ade2e0` | Lua array of `auctionId`s for the view |
+| `getAuctionTotalCount(viewType)` | `0x00aac360` | `FUN_00ada3d0` | INT |
+| `getAuctionVisibleCount(viewType)` | `0x00aac3f0` | `FUN_00ada3f0` | INT |
+
+**Engine store shape (reference — fork B does NOT write it):** store = `[[GEM+0x8c]+0x5c]`; `FUN_00e58810(store, viewType)` → view; `FUN_00e587c0(view)` → the view's auction list; each node's `[+4]` = `AuctionItem*`, `item+0x10` = `auctionId`. `AuctionItem` record: `+0x4` refcount, `+0x8` itemId (or `*(item+0xc)+0xc`), `+0xc` itemDef, `+0x10` auctionId, `+0x14` stackSize, `+0x18` durability, `+0x1c` charges, `+0x20` currentBid, `+0x24` buyout, `+0x28` nextBid, `+0x2c` timeLeft (byte); seller/bidder names via `FUN_00ae0df0`/`FUN_00ae0e50`.
+
+**Lua-table build helpers to reuse in the replacement bindings:** table-create `0x0093c1b0`, set-int `0x00577be0`, set-string `0x00577b60`, finalize `0x0093b8a0` (+ the push-number/push-value helpers each binding already calls).
+
+**Cut point:** replace the four *bindings* (Lua-facing), pushing values straight from our own store — never touch a CME `AuctionItem` (no refcount/sub-object dance).
+
+**Our store:** plain per-view arrays (3 views: SearchResults / MyAuctions / MyBids) + a watched list, of flat records `{auctionId, itemId, itemDefId, stackSize, durability, charges, currentBid, buyout, nextBid, timeLeft, sellerName}`.
+
+**Write side (5 native nodes via the PROVEN recipe above; manual wire parse via the stream read method `[msg.vtable+4](n)` — NOT the engine arg-decode, which throws on `sellerName`):**
+
+- **92** `onBMAuctions(ARRAY<AuctionItem>, INT32 viewType, INT32 count)` → `[u32 count]` then ×count `[7×INT32, UINT8 endTime, INT32 nextBid, narrow-STRING sellerName]`, then `viewType`, `count` → write `store[viewType]`.
+- **94** `onBMAuctionUpdate(AuctionItem)` → parse one (same item layout) → upsert.
+- **93** `onBMAuctionRemove(INT32 seqId)` → erase from our store.
+- **95** `onBMWatchedItemsUpdate(ARRAY<INT32>)` → our watched list.
+- **91** `onBMError(INT32 errorId)` → map errorId→string → Lua `BlackMarketMod.onBMError` (open: the errorId→string map; hardcode for testing).
+
+Callbacks fire on the **network thread** — write the store / set a flag only; defer any Lua to the `FEngineLoop::Tick` cave (as onBMOpen does).
+
+**Test plan (debugger, no server needed):**
+
+- **Phase A** — write one record directly into our store + trigger the Lua view refresh → the window renders a row. Proves the read-repoint + UI.
+- **Phase B** — craft a fake method-92 stream + invoke the parser → our store fills. Proves the wire parse.
+
+**Build sequence:** own-store cave + 92 parser + node splice → repoint the 4 read bindings → test 92 (Phase A/B) → replicate 91/93/94/95.
+
+**Server dependency (end-to-end only):** the boot-seed + `BMSearch` search-serve are committed on `feat/571-black-market-phase1` (seeds Pistol 55 / P90 21 / Health Slappack TC1 2893; serves `sgw_auction WHERE status=0` → `onBMAuctions` method 92). The *running* server is the old binary — rebuild via `setup.ps1` for the live "search → render" path. The client binding itself is built + tested with crafted data first (Phase A/B), independent of the server.
+
 ## Ghidra annotations applied
 
 `Client_NetIn_EntityMethodDispatch` (`0x00c6f8f0`) + plate comment; `Lua_doString_wide` (`0x00404030`) + plate comment; `g_SGWUIManager_ptr` label (`0x01ee2a58`); disassembly comments at the two hook sites; `register_NetIn_BMOpen` plate comment ("descriptor present, never bound").
