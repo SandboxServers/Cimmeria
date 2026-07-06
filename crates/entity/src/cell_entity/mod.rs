@@ -98,9 +98,12 @@ pub struct LootItem {
 pub struct BandolierItem {
     /// The `sgw_inventory.item_id` value — the per-row *instance* id of the
     /// physical item row backing this slot. It's a server-allocated surrogate
-    /// (sequence default, never reused), unique per slot via the
-    /// `sgw_inventory_unique_slot` index — unique by construction rather than
-    /// by a declared PK/UNIQUE constraint. This is the TOCTOU guard for
+    /// (sequence default, never reused) and the table's declared primary key
+    /// (`sgw_inventory_pkey PRIMARY KEY (item_id)`, `db/sgw/_primary_keys.sql`;
+    /// the child table carries its own PK because a parent PK doesn't span
+    /// `INHERITS` children). The `local_id_check` CHECK pins real rows to
+    /// `item_id >= 10000`, so the optimistic-grant `instance_id: 0` sentinel
+    /// can never collide with a live row. This is the TOCTOU guard for
     /// ammo persistence: it flows into `BandolierAmmoUpdate.expected_instance_id`
     /// and the WHERE clause of `update_bandolier_ammo`. Two physical items of
     /// the same weapon *design* share `item_id` (the design id below) but have
