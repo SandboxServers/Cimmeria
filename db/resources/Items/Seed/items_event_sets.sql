@@ -5538,11 +5538,17 @@ INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALU
 
 INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2767, 8946, 711, 6);
 
+-- Radio (item 5168) — EVENT_ItemUse (event 5) → quest-item use ability 597.
+-- Without this bridge the client offers no "Use" option on the Radio, so the
+-- OnItemUse::5168 chains (SGC_W1 3021/3025) never fire and mission 1561
+-- softlocks. Mirrors the shape of the other quest-item rows above.
+INSERT INTO items_event_sets (item_event_id, item_id, ability_id, event_id) VALUES (2768, 5168, 597, 5);
+
 --
 -- TOC entry 3321 (class 0 OID 0)
 -- Dependencies: 307
 -- Name: items_event_sets_2_item_event_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('items_event_sets_2_item_event_id_seq', 2767, true);
+SELECT pg_catalog.setval('items_event_sets_2_item_event_id_seq', 2768, true);
 
