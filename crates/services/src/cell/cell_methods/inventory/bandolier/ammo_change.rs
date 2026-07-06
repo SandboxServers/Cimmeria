@@ -29,7 +29,11 @@ use super::super::constants::{build_entity_property_args, GENERICPROPERTY_AMMO_T
 /// - Validates `ammo_type` is in the weapon's `allowed_ammo_types`
 ///   whitelist (`crates/entity/src/inventory.rs:81`) so a forged
 ///   request can't persist an arbitrary subtype the client UI can't
-///   render.
+///   render. Fail-closed: a weapon with no `item_defs` cache entry is
+///   rejected — every ammo-bearing weapon is in the cache
+///   (`load_item_defs` selects `WHERE clip_size > 0`), so a miss means
+///   either a forged request for a non-weapon or a broken cache load,
+///   never a legit swap.
 /// - Rejects ambiguous matches when the player has the same item_id in
 ///   multiple bandolier slots — the wire request doesn't carry a slot
 ///   id, so guessing would mis-attribute the swap.
@@ -56,15 +60,10 @@ pub(crate) async fn handle_request_ammo_change(
     let ammo_type = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
     tracing::debug!(entity_id, item_id, ammo_type, "requestAmmoChange");
 
-    // Loose validation — the legacy is literally `pass`. Reject
-    // anything non-positive: 0 is the "no choice" sentinel, and
+    // Reject anything non-positive: 0 is the "no choice" sentinel, and
     // the DB column has CHECK (cur_ammo_type >= 0), so a negative
     // value would mutate cell + client state then fail the DB
-    // write later, leaving them ahead of persistence. The proper
-    // whitelist lives on the item template's `ammo_types`
-    // (crates/entity/src/inventory.rs:81).
-    // TODO: validate against item.ammo_types whitelist
-    //       (see crates/entity/src/inventory.rs:81 — `Item.ammo_types`).
+    // write later, leaving them ahead of persistence.
     if ammo_type <= 0 {
         tracing::warn!(
             entity_id,
@@ -77,10 +76,11 @@ pub(crate) async fn handle_request_ammo_change(
 
     // Snapshot the weapon's allowed-ammo whitelist BEFORE taking
     // the mutable entity borrow — both read from `space_mgr` and
-    // can't coexist. `None` means the cache had no entry (custom
-    // item the loader skipped), in which case we accept any
-    // positive ammo_type to match the legacy `pass` semantics
-    // for unknown weapons.
+    // can't coexist. `None` is rejected in phase 1 after slot
+    // resolution (fail closed), not here: resolving the slot first
+    // routes forged design-ids to the "item not in bandolier" warn,
+    // so the cache-miss warn only fires for weapons the player
+    // actually holds — a real ops signal, not attacker noise.
     let weapon_def = space_mgr.item_defs.get(&item_id).cloned();
 
     // Phase 1: locate the slot, mutate, capture the BandolierAmmoUpdate
@@ -124,20 +124,35 @@ pub(crate) async fn handle_request_ammo_change(
         // subtypes whitelist (snapshotted into `weapon_def`
         // above). Without this an attacker could persist an
         // arbitrary ammo subtype that the client UI can't
-        // render. Falls through when the cache entry is
-        // missing — see comment at the snapshot site.
-        if let Some(def) = weapon_def.as_ref() {
-            let allowed =
-                ammo_type == def.default_ammo_type || def.allowed_ammo_types.contains(&ammo_type);
-            if !allowed {
-                tracing::warn!(
-                    entity_id, item_id, ammo_type,
-                    allowed = ?def.allowed_ammo_types,
-                    default_ammo = def.default_ammo_type,
-                    "requestAmmoChange: ammo_type not in weapon's allowed list, rejecting"
-                );
-                return;
-            }
+        // render. Fail closed on a cache miss: the player holds
+        // this weapon in a bandolier slot but `load_item_defs`
+        // (WHERE clip_size > 0) produced no entry, so either the
+        // item is not an ammo-bearing weapon (nothing to swap) or
+        // the def cache failed to load — worth an operator look
+        // either way.
+        let Some(def) = weapon_def.as_ref() else {
+            tracing::warn!(
+                entity_id,
+                item_id,
+                ammo_type,
+                reason = "weapon_def_cache_miss",
+                "requestAmmoChange: expected a WeaponDef cache entry for a \
+                 bandolier-held item but found none — rejecting; player's ammo \
+                 swap is dropped (investigate item-def cache load if the item \
+                 should be an ammo-bearing weapon)"
+            );
+            return;
+        };
+        let allowed =
+            ammo_type == def.default_ammo_type || def.allowed_ammo_types.contains(&ammo_type);
+        if !allowed {
+            tracing::warn!(
+                entity_id, item_id, ammo_type,
+                allowed = ?def.allowed_ammo_types,
+                default_ammo = def.default_ammo_type,
+                "requestAmmoChange: ammo_type not in weapon's allowed list, rejecting"
+            );
+            return;
         }
         // Mutate the slot and mark it dirty. The dirty marker stays set
         // until phase 2 confirms BandolierAmmoUpdate was accepted by the

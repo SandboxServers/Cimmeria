@@ -14,9 +14,22 @@ use super::make_test_space_mgr;
 /// `onEntityProperty(AmmoTypeId)` to the client.
 #[tokio::test]
 async fn request_ammo_change_updates_slot_and_sends_property() {
+    use crate::cell::spawner::WeaponDef;
+
     let mut mgr = make_test_space_mgr();
     mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
         .unwrap();
+    // The handler fails closed on a missing WeaponDef cache entry, so the
+    // happy path must seed one whose whitelist allows the requested type.
+    mgr.item_defs.insert(
+        42,
+        WeaponDef {
+            clip_size: 30,
+            default_ammo_type: 1,
+            allowed_ammo_types: vec![1, 3, 5],
+            holster_animation_duration: std::time::Duration::from_millis(600),
+        },
+    );
 
     if let Some(e) = mgr.get_entity_mut(1) {
         e.is_player = true;
@@ -163,9 +176,8 @@ async fn request_ammo_change_rejects_non_positive() {
 
 /// CodeRabbit #15: requestAmmoChange must reject ammo subtypes that aren't
 /// in the weapon's `allowed_ammo_types` whitelist (mirrors
-/// `resources.items.ammo_types`). Items with no cache entry fall through
-/// (matching legacy `pass` for unknown weapons) — already covered by
-/// the existing happy-path test.
+/// `resources.items.ammo_types`). Items with no cache entry are rejected
+/// outright — see `request_ammo_change_rejects_missing_weapon_def`.
 #[tokio::test]
 async fn request_ammo_change_rejects_unlisted_subtype() {
     use crate::cell::spawner::WeaponDef;
@@ -223,4 +235,63 @@ async fn request_ammo_change_rejects_unlisted_subtype() {
         "cur_ammo_type unchanged"
     );
     assert!(!entity.bandolier_ammo_dirty.contains(&0));
+}
+
+/// CAT-D fall-open guard: a bandolier item with **no WeaponDef cache
+/// entry** must be rejected, not waved through. The old behavior skipped
+/// the whitelist entirely when `item_defs` had no entry (legacy Python
+/// `pass` semantics), letting a forged request persist any positive
+/// `cur_ammo_type` — e.g. 0x7FFFFFFE — for any weapon the loader didn't
+/// cache. Reverting the fail-closed check makes this test fail: the slot
+/// would mutate and BandolierAmmoUpdate + onEntityProperty would fire.
+#[tokio::test]
+async fn request_ammo_change_rejects_missing_weapon_def() {
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    // Deliberately NO mgr.item_defs entry for item 42.
+
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                instance_id: 4242,
+                item_id: 42,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 20,
+                cur_ammo_type: 1,
+            },
+        );
+        // Active slot so a fall-open would also emit onEntityProperty —
+        // the assertion below proves neither message escapes.
+        e.active_bandolier_slot = 0;
+    }
+
+    let (tx, mut rx) = mpsc::channel(8);
+
+    // The repro from the finding: a huge but positive ammo_type.
+    let mut args = Vec::with_capacity(8);
+    args.extend_from_slice(&42i32.to_le_bytes());
+    args.extend_from_slice(&0x7FFF_FFFEi32.to_le_bytes());
+
+    let engine = cimmeria_content_engine::chain::ChainEngine::new();
+    let handled = dispatch(1, REQUEST_AMMO_CHANGE, &args, &tx, &mut mgr, &engine).await;
+
+    assert!(handled, "REQUEST_AMMO_CHANGE should be claimed");
+    assert!(
+        rx.try_recv().is_err(),
+        "no BandolierAmmoUpdate and no onEntityProperty for a weapon with no cached def"
+    );
+    let entity = mgr.get_entity(1).unwrap();
+    assert_eq!(
+        entity.bandolier_items[&0].cur_ammo_type, 1,
+        "cur_ammo_type must be unchanged when the weapon def is not cached"
+    );
+    assert!(
+        !entity.bandolier_ammo_dirty.contains(&0),
+        "no dirty flag — nothing may be queued for persistence"
+    );
 }
