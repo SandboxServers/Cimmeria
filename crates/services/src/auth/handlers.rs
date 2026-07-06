@@ -386,22 +386,49 @@ fn extract_sid(headers: &HeaderMap) -> Option<String> {
         .map(|s| s["SID=".len()..].to_string())
 }
 
-fn login_error(_code: u32, msg: &str) -> Response {
+/// XML attribute escape for the five characters that must never appear raw
+/// inside a double-quoted attribute value. Every string these builders
+/// interpolate is server-controlled today (config or RNG-derived), but a
+/// raw `format!` is one config-driven feature away from attribute breakout —
+/// a shard name containing `"` would let its author forge extra XML
+/// structure (additional `<Shard>` elements, a different `IP=` target) in
+/// every response that embeds it. Mirrors the wireclient-side helper in
+/// `crates/wireclient/src/auth.rs`.
+fn xml_attr_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+fn login_error(code: u32, msg: &str) -> Response {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/xml".to_string())],
+        login_error_xml(code, msg),
+    )
+        .into_response()
+}
+
+fn login_error_xml(_code: u32, msg: &str) -> String {
     // C++ always sends ErrorNum="1" regardless of the actual FailureCode.
     // The client uses ErrorStr for display and ignores ErrorNum.
-    let xml = format!(
+    format!(
         "{XML_DECL}\
          <ns2:SGWLoginResponse {ns}>\
          <SGWLoginError ns3:ErrorStr=\"{msg}\" ns3:ErrorNum=\"1\" />\
          </ns2:SGWLoginResponse>",
         ns = LOGIN_NS,
-    );
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/xml".to_string())],
-        xml,
+        msg = xml_attr_escape(msg),
     )
-        .into_response()
 }
 
 fn login_success_xml(account_id: u32, shards: &[super::ShardInfo]) -> String {
@@ -410,7 +437,7 @@ fn login_success_xml(account_id: u32, shards: &[super::ShardInfo]) -> String {
         .map(|s| {
             format!(
                 "<Shard ServerName=\"{}\" Fullness=\"LOW\" Busy=\"LOW\" />",
-                s.name
+                xml_attr_escape(&s.name)
             )
         })
         .collect();
@@ -427,21 +454,25 @@ fn login_success_xml(account_id: u32, shards: &[super::ShardInfo]) -> String {
     )
 }
 
-fn select_error(_code: u32, msg: &str) -> Response {
+fn select_error(code: u32, msg: &str) -> Response {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/xml".to_string())],
+        select_error_xml(code, msg),
+    )
+        .into_response()
+}
+
+fn select_error_xml(_code: u32, msg: &str) -> String {
     // C++ always sends ErrorNum="1" regardless of the actual FailureCode.
-    let xml = format!(
+    format!(
         "{XML_DECL}\
          <ns3:SGWServerLocationResponse {ns}>\
          <ServerSelectionError ns1:ErrorStr=\"{msg}\" ns1:ErrorNum=\"1\" />\
          </ns3:SGWServerLocationResponse>",
         ns = SELECT_NS,
-    );
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/xml".to_string())],
-        xml,
+        msg = xml_attr_escape(msg),
     )
-        .into_response()
 }
 
 fn server_location_xml(shard: &super::ShardInfo, session_key: &str, ticket: &str) -> String {
@@ -453,8 +484,10 @@ fn server_location_xml(shard: &super::ShardInfo, session_key: &str, ticket: &str
          </ServerLocation>\
          </ns3:SGWServerLocationResponse>",
         ns = SELECT_NS,
+        session_key = xml_attr_escape(session_key),
         port = shard.port,
-        ip = shard.host,
+        ip = xml_attr_escape(&shard.host),
+        ticket = xml_attr_escape(ticket),
     )
 }
 
@@ -579,6 +612,99 @@ mod tests {
         assert!(xml.contains(r#"SessionKey="AAAA""#));
         assert!(xml.contains(r#"Ticket="BBBB""#));
         assert!(xml.contains(r#"Port="32832""#));
+    }
+
+    /// Parse the doc and assert it is well-formed. Used by the escaping
+    /// guards below: an unescaped `"` in an attribute value produces a
+    /// stray attribute / broken element that quick-xml rejects, so
+    /// "parses cleanly" is the property that proves breakout is closed.
+    fn assert_well_formed(xml: &str) {
+        let mut reader = Reader::from_str(xml);
+        loop {
+            match reader.read_event() {
+                Ok(Event::Eof) => break,
+                Ok(_) => {}
+                Err(e) => {
+                    panic!("auth XML must stay well-formed, got parse error: {e}\nXML: {xml}")
+                }
+            }
+        }
+    }
+
+    /// #447: the XML builders must escape attribute metacharacters. The
+    /// injection payload from the finding — a shard name that closes the
+    /// `ServerName` attribute and opens a forged `<Shard>` element — must
+    /// come back with the `"`/`<`/`>` escaped, so no second element is
+    /// injected and the response stays well-formed. Reverting any
+    /// `xml_attr_escape` call makes the relevant sub-assertion fail.
+    #[test]
+    fn login_success_xml_escapes_shard_name_injection() {
+        let shards = vec![super::super::ShardInfo {
+            name: r#"S1" Busy="HIGH" /><Shard ServerName="evil"#.into(),
+            host: "127.0.0.1".into(),
+            port: 32832,
+            protected: false,
+        }];
+        let xml = login_success_xml(42, &shards);
+        // The raw breakout sequence must not survive verbatim.
+        assert!(
+            !xml.contains(r#"/><Shard ServerName="evil"#),
+            "shard name breakout must be escaped, got: {xml}"
+        );
+        // Exactly one <Shard element — no injected sibling.
+        assert_eq!(
+            xml.matches("<Shard ").count(),
+            1,
+            "escaping must prevent a second injected <Shard> element, got: {xml}"
+        );
+        assert!(xml.contains("&quot;"), "the `\"` must be escaped: {xml}");
+        assert_well_formed(&xml);
+    }
+
+    #[test]
+    fn server_location_xml_escapes_session_key_ticket_and_ip() {
+        let shard = super::super::ShardInfo {
+            name: "Shard".into(),
+            host: r#"1.2.3.4" BWMailBox="9"#.into(),
+            port: 32832,
+            protected: false,
+        };
+        let xml = server_location_xml(&shard, r#"KEY"/><Injected a="b"#, r#"TICK"/><More c="d"#);
+        assert!(
+            !xml.contains("<Injected"),
+            "session_key breakout must be escaped, got: {xml}"
+        );
+        assert!(
+            !xml.contains("<More"),
+            "ticket breakout must be escaped, got: {xml}"
+        );
+        assert!(
+            !xml.contains(r#"BWMailBox="9""#),
+            "IP breakout must not forge a second BWMailBox, got: {xml}"
+        );
+        assert_well_formed(&xml);
+    }
+
+    #[test]
+    fn login_error_xml_escapes_message() {
+        let xml = login_error_xml(1, r#"bad"/><Injected x="y"#);
+        assert!(
+            !xml.contains("<Injected"),
+            "error message breakout must be escaped, got: {xml}"
+        );
+        assert!(xml.contains("&quot;"), "the `\"` must be escaped: {xml}");
+        assert_well_formed(&xml);
+    }
+
+    #[test]
+    fn select_error_xml_escapes_message() {
+        let xml = select_error_xml(1, r#"bad"/><Injected x="y"#);
+        assert!(
+            !xml.contains("<Injected"),
+            "select-error message breakout must be escaped, got: {xml}"
+        );
+        assert!(xml.contains("&quot;"), "the `\"` must be escaped: {xml}");
+        assert_well_formed(&xml);
     }
 
     /// Pin the parser's narrow contract: when the SGWLoginRequest element
