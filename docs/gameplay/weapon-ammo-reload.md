@@ -141,6 +141,8 @@ Client (player clicks an ammo subtype icon)
   │
   │ requestAmmoChange(item_id, ammo_type) ──▶ Cell
   │                                              │ scan bandolier_items for matching item_id
+  │                                              │ validate ammo_type against the WeaponDef
+  │                                              │   whitelist (fail closed on cache miss)
   │                                              │ item.cur_ammo_type = ammo_type
   │                                              │ (mark + immediately drain dirty for this slot)
   │                                              │
@@ -150,9 +152,9 @@ Client (player clicks an ammo subtype icon)
   │ ◀── onEntityProperty(AmmoTypeId, ammo_type) ─│   refreshes the ammo-type indicator
 ```
 
-The persistence emit is **immediate**, not batched, because subtype is a deliberate user action and we want it durable before the next packet. The legacy validator was literally `pass`; we reject `ammo_type == 0` as obvious junk, with a TODO to whitelist against `Item.ammo_types` ([`crates/entity/src/inventory.rs:81`](../../crates/entity/src/inventory.rs#L81)).
+The persistence emit is **immediate**, not batched, because subtype is a deliberate user action and we want it durable before the next packet. The legacy validator was literally `pass`; the Rust handler rejects non-positive `ammo_type`, requires the design id to resolve to exactly one bandolier slot, and validates the subtype against the weapon's `allowed_ammo_types` whitelist from the `item_defs` cache. The whitelist check **fails closed**: a bandolier-held weapon with no cache entry is rejected with a `warn!` (every ammo-bearing weapon is cached — `load_item_defs` selects `WHERE clip_size > 0` — so a miss means a forged request for a non-weapon or a broken cache load).
 
-Def: [`entities/defs/interfaces/SGWInventoryManager.def:190-194`](../../entities/defs/interfaces/SGWInventoryManager.def#L190). Implementation: [`crates/services/src/cell/cell_methods/inventory.rs:250-329`](../../crates/services/src/cell/cell_methods/inventory.rs#L250).
+Def: [`entities/defs/interfaces/SGWInventoryManager.def:190-194`](../../entities/defs/interfaces/SGWInventoryManager.def#L190). Implementation: [`crates/services/src/cell/cell_methods/inventory/bandolier/ammo_change.rs`](../../crates/services/src/cell/cell_methods/inventory/bandolier/ammo_change.rs).
 
 ## Active slot swap
 

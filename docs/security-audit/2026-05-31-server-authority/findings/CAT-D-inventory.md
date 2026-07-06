@@ -327,6 +327,16 @@ No — static.
 
 ### CAT-D-06 — `requestAmmoChange` falls through to "any positive ammo_type" when the weapon's `item_defs` cache row is missing
 
+**Status**: ✅ RESOLVED (#448) — `handle_request_ammo_change`
+(`cell/cell_methods/inventory/bandolier/ammo_change.rs`) now fails closed
+on an `item_defs` cache miss: the request is rejected with a
+`reason = "weapon_def_cache_miss"` warn instead of skipping the
+whitelist. Every ammo-bearing weapon is in the cache (`load_item_defs`
+selects `WHERE clip_size > 0`), so a miss means either a forged request
+for a non-weapon or a broken cache load — never a legitimate swap.
+Regression guard: `request_ammo_change_rejects_missing_weapon_def`
+(fails when the fall-open is reinstated).
+
 **Severity**: Medium
 **Class**: Missing whitelist on edge case
 **Wire surface**: `Event_NetOut_RequestAmmoChange` (cell method 42)
