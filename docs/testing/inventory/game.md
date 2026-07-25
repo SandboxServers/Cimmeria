@@ -2,7 +2,7 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-05-04  
+> **Last updated**: 2026-07-25 *(links repaired; catalogue rows still the 2026-05-04 snapshot)*  
 > **Total tests**: 70  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
@@ -55,7 +55,7 @@ Game mechanics — combat, abilities, stats, effects, inventory, missions, socia
 | [visit_region_not_visited](../../../crates/game/src/missions/objectives.rs#L119) | unit | Missions / Objectives | 2026-03-03 | Asserts on `!obj.is_complete()` |  |
 | [xp_only_reward](../../../crates/game/src/missions/rewards.rs#L61) | unit | Missions / Rewards | 2026-03-03 | Asserts equality on `r.xp` |  |
 | [item_reward](../../../crates/game/src/missions/rewards.rs#L69) | unit | Missions / Rewards | 2026-03-03 | Asserts equality on `r.item_template_id` |  |
-| [aggro_range_check](../../../crates/game/src/mob.rs#L64) | unit | Mob | 2026-03-03 | Asserts on `mob.is_in_aggro_range(&mob_pos, &close)` |  |
+| `aggro_range_check` | unit | Mob | 2026-03-03 | Asserts on `mob.is_in_aggro_range(&mob_pos, &close)` | not found in the tree as of 2026-07-25 — location unknown |
 | [npc_roles](../../../crates/game/src/npc.rs#L64) | unit | Npc | 2026-03-03 | Asserts on `!npc.has_dialog()` |  |
 | [new_player_starts_at_level_1](../../../crates/game/src/player.rs#L112) | unit | Player | 2026-03-03 | Asserts equality on `p.level` |  |
 | [xp_for_next_level_uses_table](../../../crates/game/src/player.rs#L120) | unit | Player | 2026-03-09 | Asserts equality on `p.xp_for_next_level()` |  |

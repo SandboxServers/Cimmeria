@@ -13,22 +13,34 @@ Inventory drift up to ~5% is acceptable between sweeps — see [.github/copilot-
 
 ## How to regenerate
 
-> **The scratch directory does not exist in a fresh checkout.** `docs/testing/.scratch/`
-> is gitignored, so `extract_tests.py` and `generate_inventory.py` are **not
-> recoverable from the repo** — they live only on whichever machine last ran a
-> sweep. Regenerating the inventory today means re-authoring the extractor.
-> Treat the commands below as a description of what the sweep did, not a
-> recipe you can run.
+> **⚠ The regeneration procedure below cannot currently be run by anyone.**
+> Neither `extract_tests.py` nor `generate_inventory.py` exists anywhere in the
+> repository — a repo-wide search for both filenames returns nothing — and
+> `docs/testing/.scratch/` is gitignored twice over
+> ([`.gitignore:178`](../../../.gitignore) `docs/testing/.scratch/` and
+> [`.gitignore:209`](../../../.gitignore) `.scratch/*`), so the scripts were
+> never tracked. They survive only on whichever machine last ran a sweep, if
+> at all.
+>
+> The procedure is kept here because it accurately records **what the last
+> sweep did** and is the starting spec for re-authoring the tooling. It is not
+> a recipe you can execute today. **Regenerating the inventory currently means
+> writing a new extractor first.** When someone does, it should land in
+> version control (`tools/` rather than `docs/testing/.scratch/`) so the next
+> contributor inherits a working path and so conventions expressed in the
+> generator can be enforced through review.
 
-The pre-extraction script lives at `docs/testing/.scratch/extract_tests.py`. It walks `crates/`, `tools/`, `src-tauri/`, and `fuzz/` for `.rs` files, extracts every `#[test]` / `#[tokio::test]` / `#[rstest]` / `#[test_case(...)]` function, runs `git log -S 'fn <name>' -- <file>` per test for first-commit dates, and writes `inventory.json` + `summary.json` next to itself.
+The pre-extraction script lived at `docs/testing/.scratch/extract_tests.py`. It walked `crates/`, `tools/`, `src-tauri/`, and `fuzz/` for `.rs` files, extracted every `#[test]` / `#[tokio::test]` / `#[rstest]` / `#[test_case(...)]` function, ran `git log -S 'fn <name>' -- <file>` per test for first-commit dates, and wrote `inventory.json` + `summary.json` next to itself.
 
 ```bash
+# Historical — the script is not in the repo. See the warning above.
 python docs/testing/.scratch/extract_tests.py
 ```
 
-Then regenerate the markdown:
+Then the markdown was regenerated with:
 
 ```bash
+# Historical — the script is not in the repo. See the warning above.
 python docs/testing/.scratch/generate_inventory.py
 ```
 
@@ -44,4 +56,23 @@ Diff the output against `git status` to see which crate files actually moved —
 
 ## Scratch directory
 
-`docs/testing/.scratch/` is gitignored (see the repo `.gitignore`). It holds the extractor script and its JSON output — the inventory's regeneration source. Don't delete it; future PRs will re-run the extractor here.
+`docs/testing/.scratch/` **does not exist in the repository**, and is gitignored
+at two levels — [`.gitignore:178`](../../../.gitignore) (`docs/testing/.scratch/`)
+and [`.gitignore:209`](../../../.gitignore) (`.scratch/*`).
+
+It was intended to hold the extractor script and its JSON output as the
+inventory's regeneration source. Because it was never tracked, that source is
+not recoverable from a checkout: verified 2026-07-25 that the directory is
+absent and that neither `extract_tests.py` nor `generate_inventory.py` appears
+anywhere in the tree.
+
+Practical consequences, so nobody plans around a capability that isn't there:
+
+- **The inventory has no working regeneration path.** See the warning under
+  [How to regenerate](#how-to-regenerate).
+- **Conventions enforced only by the generator cannot be enforced at all**,
+  because a gitignored script never appears in a diff and so can never be
+  reviewed. Any convention that matters belongs in this file *and* in a tracked
+  generator.
+- Re-authoring the extractor into `tools/` is the standing fix. It is tracked
+  as a follow-up, not done here.

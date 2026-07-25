@@ -2,7 +2,7 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-05-04  
+> **Last updated**: 2026-07-25 *(links repaired; catalogue rows still the 2026-05-04 snapshot)*  
 > **Total tests**: 31  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
@@ -13,16 +13,16 @@ Shared types, config loading, error handling, math primitives. No deps on other 
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
-| [default_config_has_expected_ports](../../../crates/common/src/config.rs#L132) | unit | Config | 2026-03-03 | Asserts equality on `config.auth_port` |  |
-| [default_config_developer_mode_off](../../../crates/common/src/config.rs#L142) | unit | Config | 2026-03-03 | Asserts on `!config.developer_mode` |  |
-| [load_config_returns_default_for_now](../../../crates/common/src/config.rs#L148) | unit | Config | 2026-03-03 | Asserts equality on `config.auth_port` |  |
-| [config_error_display](../../../crates/common/src/error.rs#L81) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
-| [network_error_display](../../../crates/common/src/error.rs#L87) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
-| [protocol_error_display](../../../crates/common/src/error.rs#L93) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
-| [database_error_display](../../../crates/common/src/error.rs#L99) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
-| [entity_error_display](../../../crates/common/src/error.rs#L105) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
-| [auth_error_display](../../../crates/common/src/error.rs#L111) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
-| [io_error_from_std](../../../crates/common/src/error.rs#L120) | unit | Error | 2026-03-03 | Asserts on `format!("{}", err).contains("file not found")` |  |
+| [default_config_has_expected_ports](../../../crates/common/src/config.rs#L203) | unit | Config | 2026-03-03 | Asserts equality on `config.auth_port` |  |
+| [default_config_developer_mode_off](../../../crates/common/src/config.rs#L213) | unit | Config | 2026-03-03 | Asserts on `!config.developer_mode` |  |
+| [load_config_returns_default_for_now](../../../crates/common/src/config.rs#L257) | unit | Config | 2026-03-03 | Asserts equality on `config.auth_port` |  |
+| [config_error_display](../../../crates/common/src/error.rs#L108) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
+| [network_error_display](../../../crates/common/src/error.rs#L114) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
+| [protocol_error_display](../../../crates/common/src/error.rs#L120) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
+| [database_error_display](../../../crates/common/src/error.rs#L126) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
+| [entity_error_display](../../../crates/common/src/error.rs#L132) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
+| [auth_error_display](../../../crates/common/src/error.rs#L138) | unit | Error | 2026-03-03 | Asserts equality on `format!("{}", err)` |  |
+| [io_error_from_std](../../../crates/common/src/error.rs#L147) | unit | Error | 2026-03-03 | Asserts on `format!("{}", err).contains("file not found")` |  |
 | [vector3_zero](../../../crates/common/src/math.rs#L139) | unit | Math | 2026-03-03 | Asserts equality on `v.x` |  |
 | [vector3_new](../../../crates/common/src/math.rs#L147) | unit | Math | 2026-03-03 | Asserts equality on `v.x` |  |
 | [vector3_add](../../../crates/common/src/math.rs#L155) | unit | Math | 2026-03-03 | Asserts equality on `c` |  |
