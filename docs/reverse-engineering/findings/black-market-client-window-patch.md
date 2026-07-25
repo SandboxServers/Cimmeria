@@ -3,6 +3,7 @@
 **Confidence**: HIGH (owner-confirmed working in-world, 2026-06-21)
 **Date**: 2026-06-21
 **Sources**: `SGW.exe` — Ghidra static analysis + x64dbg live tracing against the running, server-connected client. Companion to [`black-market-restoration.md`](black-market-restoration.md) (server side) and [`black-market-wire-formats.md`](black-market-wire-formats.md) (wire).
+**Design record**: [docs/architecture/black-market.md](../../architecture/black-market.md) — the ADR; its *client-side problem* section summarises this finding and records why the server design does not bend around it.
 
 ## Summary
 

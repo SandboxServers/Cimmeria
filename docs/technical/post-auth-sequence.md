@@ -3,6 +3,8 @@
 > [!WARNING]
 > **Historical document.** Early-project reconstruction of the post-auth message sequence. The current canonical references are [`../connection-flow.md`](../connection-flow.md) (developer summary) and [`../protocol/world-entry-phases.md`](../protocol/world-entry-phases.md) (per-phase wire-level reference). Keep this page for the original sequence reconstruction; do not extend.
 
+> **Last updated**: 2026-07-25 (accuracy audit — `enableEntities` payload confirmed at 8 bytes; retired-C++ paths relocated)
+
 Complete ordered sequence of messages the BaseApp must send after a successful `baseAppLogin`, with wire formats. Derived from analysis of BigWorld 1.9.1/2.0.1 source code cross-referenced against Cimmeria's current implementation and SGW client reverse engineering.
 
 ## Key Type Definitions
@@ -300,7 +302,7 @@ Client                                          BaseApp Server
 | `spaceViewportInfo` | Does not exist | 13-byte message (ID 0x08), must precede spaceData |
 | `entityInvisible` | Does not exist | 5-byte message (ID 0x0B), sent before leaveAoI |
 | `forcedPosition` | 36 bytes (no velocity) | 49 bytes (adds velocity + flags) |
-| `enableEntities` payload | `uint8` (1 byte) | Possibly `uint64` (8 bytes) |
+| `enableEntities` payload | `uint8` (1 byte) | **`uint64` (8 bytes)** — confirmed, not "possibly" |
 | Auth reply | `uint32 sessionKey` | Ticket echo (variable length) |
 | `createCellPlayer` properties | Variable-length property stream | Fixed 32 bytes, no trailing properties |
 
@@ -310,5 +312,8 @@ Client                                          BaseApp Server
 - BigWorld 2.0.1: `src/lib/connection/server_connection.cpp` (refactored)
 - BigWorld 1.9.1: `bigworld/src/server/baseapp/proxy.hpp` (server-side proxy)
 - BigWorld 1.9.1/2.0.1: `client_interface.hpp`, `baseapp_ext_interface.hpp`
-- Cimmeria: `src/baseapp/mercury/sgw/connect_handler.cpp`, `client_handler.cpp`, `messages.cpp`
-- SGW binary strings: `docs/bigworld-version-analysis.md` (ServerConnection debug strings)
+- Cimmeria (the C++ server this page was written against, now retired):
+  [`deprecated/cpp/src/baseapp/mercury/sgw/`](../../deprecated/cpp/src/baseapp/mercury/sgw/) —
+  `connect_handler.cpp`, `client_handler.cpp`, `messages.cpp`. The **active** equivalent is
+  Rust under [`crates/services/src/base/`](../../crates/services/src/base/).
+- SGW binary strings: [`bigworld-version-analysis.md`](bigworld-version-analysis.md) (ServerConnection debug strings)

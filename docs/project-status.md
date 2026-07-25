@@ -51,7 +51,7 @@ The gap between "code exists" (70.2%) and "confirmed working" (35.9%) is the sto
 | Authentication & login | CW | 12 (6 CW, 4 IM, 2 KM) | Full login flow tested. TLS listener + cert hot-reload added (#566/#577). SHA1 → bcrypt and continuous validation pending |
 | Mercury protocol | CW | 15 (10 CW, 3 IM, 2 KM) | v1 AES-256-CBC + HMAC-MD5 is the client-compatible default. **v2 shipped** (per-packet IV, HKDF-split keys, truncated HMAC-SHA256, downgrade defense, key rotation) but is opt-in and **untested against a live client**. Cumulative ACKs now implemented; piggyback ACKs still missing. The "pcap replay" row moved to KM — see Wireclient |
 | Game data pipeline | CW | 7 (6 CW, 1 KM) | 22 resource categories, 112,626 DB rows, PAK overrides for missions and items. Hot reload pending |
-| Database persistence | CW | 8 (7 CW, 1 KM) | sqlx with compile-time query checks, durable Base→Cell outbox, 259 live-DB regression guards. No migration framework yet |
+| Database persistence | CW | 8 (7 CW, 1 KM) | sqlx with compile-time query checks, durable Base→Cell outbox, 247 live-DB regression guards (224 on `main`; the balance is on the unmerged black-market branch). No migration framework yet |
 
 ### Core Gameplay — Real Code, Mostly Working
 

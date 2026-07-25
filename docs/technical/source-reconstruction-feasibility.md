@@ -3,6 +3,8 @@
 > [!WARNING]
 > **Historical document.** Early-project analysis of what could be recovered from the binary. The question is largely settled — the per-system findings under [`../reverse-engineering/findings/`](../reverse-engineering/findings/) and the campaign tracker at [`../reverse-engineering/STATUS.md`](../reverse-engineering/STATUS.md) are the current canonical state of source reconstruction. Keep this page for the original feasibility framing; do not extend.
 
+> **Last updated**: 2026-07-25 (address/count-accuracy audit — `Event_*` category table corrected)
+
 Comprehensive analysis of what's recoverable from sgw.exe for full client source reconstruction.
 
 ## Binary Scale
@@ -12,9 +14,16 @@ Comprehensive analysis of what's recoverable from sgw.exe for full client source
 | **Total functions (Ghidra)** | ~169,420 |
 | **Total RTTI entries** | 9,567 |
 | **Unique non-template classes** | 4,943 |
-| **Unique event types** | 954 |
+| **Unique event types** | 750 (distinct bare `Event_*` strings) |
 | **Source files referenced** | 608 unique .cpp files |
 | **Total assertion sites** | ~5,534 |
+
+> **Note (2026-07-25).** The `~169,420` function count is a snapshot of the Ghidra
+> project as it stood when this analysis was written. The same program now reports
+> **173,225** functions after further auto-analysis passes. The percentages further
+> down this page are still computed against the original 169,420 denominator and
+> have been left alone — they are historical estimates, and re-basing them would
+> imply a precision the estimates never had.
 
 ## Evidence Sources for Function Identification
 
@@ -141,23 +150,37 @@ BigWorld was open-sourced after the company went bankrupt. Multiple versions ava
 
 **159 unique SGW-prefixed class names** identified, covering: audio, UI management, mesh/material compositing, animation controllers (30 `USGWAnim_*` classes), region/cover/spawn systems, networking, and login.
 
-### Event Signal System (954 unique Event types)
+### Event Signal System (750 unique Event types)
 
 | Category | Count |
 |---|---|
 | `Event_SlashCmd_*` | 256 |
-| `Event_NetOut_*` | 254 |
+| `Event_NetOut_*` | 253 |
 | `Event_NetIn_*` | 167 |
-| `Event_UI_*` | 149 |
-| `Event_Editor_*` | 36 |
 | `Event_Action_*` | 33 |
-| `Event_Entity_*` | 9 |
+| `Event_Editor_*` | 29 |
 | `Event_Option_*` | 8 |
-| `Event_Player_*` | 6 |
-| `Event_World_*` | 4 |
-| Other (15 categories) | 32 |
+| `Event_UI_*` | 2 |
+| `Event_Property_*` | 2 |
+| **Total** | **750** |
 
-Each event type produces ~3 template instantiations (MemberCallback, SignalRouter, etc.), explaining how 954 events generate 3,037 RTTI entries.
+> **Corrected 2026-07-25.** The previous table claimed 954 across eleven categories
+> (including `Event_UI_* = 149`, `Event_Editor_* = 36`, `Event_Entity_* = 9`,
+> `Event_Player_* = 6`, `Event_World_* = 4`, and "Other (15 categories) = 32").
+> Re-counted in the live Ghidra session: the binary holds exactly **750** distinct
+> strings whose value *begins with* `Event_`, and the eight categories above are
+> exhaustive — they sum to 750 with no remainder.
+>
+> The old figures were not invented; they came from a different population — event
+> names harvested as *substrings* of C++ RTTI type-descriptors
+> (`.?AU?$TypedEmitInfo@UEvent_World_StargateEvent@@@EventSignal@CME@@` and
+> friends). That population is genuinely larger and does contain families like
+> `Event_World_*`, `Event_Entity_*` and `Event_Player_*` that never appear as a
+> bare literal — see the verified `Event_World_DialStargateAddress` type-descriptor
+> at `0x01db5b68` cited in [game-systems.md](game-systems.md). Treat 750 as the
+> literal-string count and the RTTI-derived tally as a superset; do not mix them.
+
+Each event type produces ~3 template instantiations (MemberCallback, SignalRouter, etc.), which is how a few hundred literal event names expand into the ~3,037 EventSignal RTTI entries counted below.
 
 ### Unreal Engine 3 Breakdown (2,594 entries)
 
@@ -227,7 +250,7 @@ Verified: `CME::CountedBaseTempl` → `CookedElementBase` → `Mission`, confirm
 | Category | Headers Needed | Complexity |
 |---|---|---|
 | SGW game classes (159 unique) | ~40-60 headers | HIGH — game-specific logic |
-| SGW Event signals (954 types) | ~20-30 headers | LOW — mostly trivial structs |
+| SGW Event signals (750 types) | ~20-30 headers | LOW — mostly trivial structs |
 | CookedData types (31 real) | ~5-10 headers | MEDIUM — serialization |
 | NetworkEvent subclasses (~100) | ~10-15 headers | HIGH — protocol definitions |
 | CME framework (12 real + patterns) | ~5-8 headers | MEDIUM — can be stubbed |

@@ -1,6 +1,6 @@
 # Engine Documentation
 
-> **Last updated**: 2026-06-20
+> **Last updated**: 2026-07-25
 
 BigWorld Technology internals, Cheyenne Mountain Entertainment (CME) framework, and engine subsystems. 12 documents.
 
@@ -23,7 +23,7 @@ BigWorld Technology internals, Cheyenne Mountain Entertainment (CME) framework, 
 
 ## Key References
 
-- **BigWorld reference source**: `external/engines/BigWorld-Engine-2.0.1/` (1.9.1 also available)
+- **BigWorld reference source**: `external/engines/BigWorld-Engine-2.0.1/` — **not vendored and not fetched by `setup.ps1`**. Nothing in the repo creates `external/engines/`; a fresh checkout will not have it. Docs citing paths under it are quoting an externally-obtained copy. Both [1.9.1](https://github.com/v2v3v4/BigWorld-Engine-1.9.1) and [2.0.1](https://github.com/v2v3v4/BigWorld-Engine-2.0.1) are on GitHub
 - **Cimmeria engine code** (active): the Rust workspace under `crates/` — see `crates/mercury/` (Mercury transport) and `crates/services/` (base/cell services)
 - **Legacy C++ engine code** (historical, not extended): `deprecated/cpp/src/` (UnifiedKernel — `common/`, `mercury/`, `entity/`)
 - **Entity definitions**: `entities/defs/`, `entities/entities.xml`
@@ -32,11 +32,19 @@ BigWorld Technology internals, Cheyenne Mountain Entertainment (CME) framework, 
 
 ## Entity Statistics
 
+Counted from `entities/defs/` by direct children of the `<Properties>`, `<ClientMethods>`, `<BaseMethods>`, and `<CellMethods>` blocks.
+
 | Category | Count |
 |----------|-------|
 | Entity types | 18 |
 | Interfaces | 18 |
-| Total properties (all entities) | ~300+ |
-| Total methods (all entities) | ~500+ |
-| SGWPlayer properties (with interfaces) | 68 |
-| SGWPlayer methods (with interfaces) | 175+ |
+| Properties declared in the 18 entity defs | 270 |
+| Properties declared in the 18 interface defs | 166 |
+| Methods declared in the 18 entity defs | 479 |
+| Methods declared in the 18 interface defs | 337 |
+| SGWPlayer properties — declared in `SGWPlayer.def` alone | 68 |
+| SGWPlayer methods — declared in `SGWPlayer.def` alone | 175 (59 client / 20 base / 96 cell) |
+| SGWPlayer properties — flattened over parents + 11 interfaces | 221 |
+| SGWPlayer methods — flattened over parents + 11 interfaces | 514 (149 client / 79 base / 286 cell) |
+
+The own-file and flattened figures differ by roughly 3x, so always say which one you mean. Earlier revisions of this table labelled the 68/175 own-file counts as "with interfaces", which they are not.

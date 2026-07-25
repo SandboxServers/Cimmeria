@@ -3,6 +3,12 @@
 > [!WARNING]
 > **Historical document.** Early-project content-data census. The current canonical references are [`../game-data.md`](../game-data.md) (content overview) and the [`../content/`](../content/) directory (per-system content inventories and the data-driven content engine reference). Keep this page for the original first-pass survey; do not extend.
 
+> **Last updated**: 2026-07-25 (path-accuracy audit — `python/`, `data/scripts/`, `tools/ServerEd/` and `db/resources.sql` relocated; interface count re-checked)
+>
+> **Scope warning.** The "already implemented and functional" pipeline described below is the
+> **retired Python/C++ stack**, now under [`deprecated/`](../../deprecated/). It is not what
+> the Rust server in `crates/` does today.
+
 Comprehensive analysis of all game content data available for the Cimmeria server emulator: PAK files, entity definitions, Python scripts, database schema, and client assets.
 
 ## Summary
@@ -70,7 +76,12 @@ Python's `zipfile.ZipFile()` reads them natively. No custom tooling needed.
 
 ## 3. Database: The Authoritative Data Source
 
-**Location**: `db/resources.sql`
+**Location**: `db/resources.sql` — **relocated.** The single monolithic dump no longer
+exists at that path; the same content now lives split by category under
+[`db/resources/`](../../db/resources/) (`Abilities/`, `Combat/`, `Content/`, …), alongside
+`db/database.sql` and `db/sgw/`. Per [CLAUDE.md](../../CLAUDE.md) those three are the
+active schemas. Every later reference to `resources.sql` on this page means the
+pre-split dump.
 **Size**: 126,378 lines
 **Total rows**: 112,626 across 65 tables
 
@@ -140,7 +151,7 @@ Abilities, Items, Effects, Missions, Dialogs, InteractionSets, Interactions, Blu
 | `SGWDuelMarker` | 0.8 KB | Duel area marker |
 | Others | Various | PlayerGroupAuthority, PlayerRespawner, Entity, Escrow, ChannelManager |
 
-### Interfaces (20 total, in `entities/defs/interfaces/`)
+### Interfaces (20 at time of writing; **18 today**, in `entities/defs/interfaces/`)
 
 | Interface | Size | Purpose |
 |-----------|------|---------|
@@ -172,7 +183,7 @@ Abilities, Items, Effects, Missions, Dialogs, InteractionSets, Interactions, Blu
 | `cell_spaces.xml` | 0.8 KB | Cell spatial partitioning config |
 | `editor/Nodes.xml` | 136 KB | Visual script editor node definitions |
 
-## 6. Python Game Logic (`python/`)
+## 6. Python Game Logic (`python/` — now [`deprecated/python/`](../../deprecated/python/))
 
 164 files across 4 major directories implementing the game systems.
 
@@ -197,9 +208,9 @@ Abilities, Items, Effects, Missions, Dialogs, InteractionSets, Interactions, Blu
 
 #### Effect/Script System -- PARTIALLY IMPLEMENTED
 
-- XML node-graph visual scripting (`.script` files in `data/scripts/`)
-- Auto-generated Python from script graphs (compiled output in `python/cell/missions/` etc.)
-- Compiler: `tools/ServerEd/scriptcompiler.cpp` (part of the Qt ServerEd tool)
+- XML node-graph visual scripting (`.script` files in `data/scripts/`, now `deprecated/data-scripts/scripts/`)
+- Auto-generated Python from script graphs (compiled output in `python/cell/missions/` etc., now `deprecated/python/cell/missions/`)
+- Compiler: `tools/ServerEd/scriptcompiler.cpp`, now [`deprecated/cpp-tools/ServerEd/scriptcompiler.cpp`](../../deprecated/cpp-tools/ServerEd/scriptcompiler.cpp) (part of the Qt ServerEd tool)
 - 4 effect scripts + Debug.script (60KB)
 - `TestEffect.py` (22.6KB) as comprehensive Python handler
 

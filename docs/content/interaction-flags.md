@@ -118,7 +118,7 @@ These are mostly used for environmental items (containers, corpses, machines, lo
 | 60 | `1152921504606846976` | `INT_Machine_Electronics` | Electronics crafting machine |
 | 61 | `2305843009213693952` | `INT_Attackable` | Attackable mob (set by [`SGWMob.py`](../../deprecated/python/cell/SGWMob.py)) |
 | 62 | `4611686018427387904` | `INT_NormalLoot` | Lootable corpse — auto-set on death by [`SGWMob.py:129`](../../deprecated/python/cell/SGWMob.py#L129) |
-| 63 | `9223372036854775808` | `INT_MissionLoot` | **Bit 63 — sign bit of `i64`. Cannot be expressed; do not use until [`interaction_type_flags`](../../crates/entity/src/cell_entity.rs) is widened to `u64`.** |
+| 63 | `9223372036854775808` | `INT_MissionLoot` | **Bit 63 — sign bit of `i64`. Cannot be expressed; do not use until [`interaction_type_flags`](../../crates/entity/src/cell_entity/mod.rs) is widened to `u64`.** |
 
 The `Attackable_In_*Cover` bits are set/cleared by the combat system, not by content chains. Don't write them in seed SQL.
 

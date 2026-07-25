@@ -231,6 +231,7 @@ How the Cimmeria emulator itself is structured. 30 documents.
 | [mercury-loopback-harness.md](architecture/mercury-loopback-harness.md) | ADR for the Tier-2 Mercury loopback session harness: channel state, retransmit, fragmentation, keepalive, ack, RTO test seam | Complete |
 | [network-chaos-testing.md](architecture/network-chaos-testing.md) | ADR for the network-chaos apparatus: lossy-socket wrappers, pcap-replay infra, chaos scenarios over the L2 trait | Complete |
 | [wireclient.md](architecture/wireclient.md) | ADR for `cimmeria-wireclient`: headless wire-level test client, `session_trace` JSONL schema, pcap exporter | Complete |
+| [black-market.md](architecture/black-market.md) | ADR for the Black Market / auction house (#571, PR #586 — **unmerged**): cell methods 61–66 in / client methods 90–95 out, the four-state auction lifecycle, DELETE-based item escrow + SQL-guarded cash escrow, the 30 s expiry sweep, the reserved system seller for boot-seed listings, and the shelved client-method binding that forces a runtime patch (#587). Open: guessed `next_min_bid`, unbounded search (CAT-I-05), undecodable `sellerName` | Implemented, unmerged |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
 

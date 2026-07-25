@@ -3,6 +3,8 @@
 > [!WARNING]
 > **Historical document.** Raw early-project catalog of network messages extracted from sgw.exe RTTI and strings. The current canonical references are [`../network-messages.md`](../network-messages.md) (categorised) and [`../protocol/message-catalog.md`](../protocol/message-catalog.md) (full 420-message catalog with handler addresses). Keep this page for the unfiltered RTTI dump; do not extend.
 
+> **Last updated**: 2026-07-25 (count-accuracy audit — `Event_NetOut` header 254 → 253, matching both the binary and the 253 names actually listed below)
+
 Complete catalog of all client-server network messages extracted from sgw.exe RTTI and string data. These are the CME::EventSignal events that correspond to Mercury protocol messages.
 
 ## Event_NetIn (Server → Client): 167 Messages
@@ -266,7 +268,7 @@ Messages the server sends to the client. Extracted from `CME::EventSignal::Typed
 
 ---
 
-## Event_NetOut (Client → Server): 254 Messages
+## Event_NetOut (Client → Server): 253 Messages
 
 Messages the client sends to the server.
 

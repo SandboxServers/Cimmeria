@@ -4,6 +4,8 @@
 > **This document covers the retired C++ server build.** The active server is the Rust workspace in [`crates/`](../../crates/), built with Cargo. For current build instructions see [`../building.md`](../building.md), [`bootstrap/README.md`](../../bootstrap/README.md), and [`crates/README.md`](../../crates/README.md).
 >
 > The content below is kept for historical reference only. It describes the Boost 1.55 / OpenSSL 1.0.1e / SOCI 3.2.1 / `W-NG.sln` MSVC toolchain used by the original C++ implementation under [`deprecated/cpp/`](../../deprecated/cpp/). Those binaries do not interoperate with the Rust server and are not built by `setup.ps1`.
+>
+> **Last updated**: 2026-07-25 (link audit — removed dead `bootstrap/patches/README.md` reference)
 
 ---
 
@@ -17,7 +19,7 @@ pwsh setup-dependencies.ps1
 
 Then open `W-NG.sln` in Visual Studio and build `Debug|x64`.
 
-See [../bootstrap/README.md](../bootstrap/README.md) for full details on the
+See [bootstrap/README.md](../../bootstrap/README.md) for full details on the
 bootstrap process.
 
 ## Manual Build Steps
@@ -142,5 +144,10 @@ copy bootstrap\patches\openssl_e_os.h           external\openssl_src\e_os.h
 copy bootstrap\patches\openssl_e_padlock.c      external\openssl_src\engines\e_padlock.c
 ```
 
-See [../bootstrap/patches/README.md](../bootstrap/patches/README.md) for details
-on what each patch fixes.
+> **Dead link removed 2026-07-25.** This paragraph used to link
+> `../bootstrap/patches/README.md`, which was broken twice over: the relative path
+> resolved inside `docs/`, and `bootstrap/patches/` **no longer exists** — `bootstrap/`
+> now contains only `CimmeriaBootstrap/` and `README.md`. The patch set went away with
+> the C++ toolchain it supported. See [bootstrap/README.md](../../bootstrap/README.md)
+> for the current bootstrap surface; the per-patch rationale is not preserved anywhere
+> in-tree and would have to be recovered from history.

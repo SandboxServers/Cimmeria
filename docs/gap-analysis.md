@@ -11,7 +11,9 @@ last_updated: 2026-07-25
 > **Purpose**: Map every gameplay system's Rust implementation against what's needed for a complete server
 > **Status**: Source of truth for project completion tracking
 > **Measured against**: `main`. Work living only on an unmerged feature branch is called out explicitly in the affected section and is **not** counted as implemented.
-> **Workspace scale**: **2,988 tests across 471 files**, **259 live-DB regression guards**, **3 PL/pgSQL end-to-end smokes**, with a **first-class content engine** the original Python codebase did not have.
+> **Workspace scale**: **3,012 workspace tests (2,767 gated in CI)** across **473 files**, **247 live-DB regression guards**, **3 PL/pgSQL end-to-end smokes**, with a **first-class content engine** the original Python codebase did not have. CI excludes `cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`, and `cimmeria-client-telemetry`, which is the whole of the 3,012 → 2,767 difference.
+>
+> Those counts are of the working tree, which carries the unmerged black-market branch. On `main` alone the live-DB guard count is **224** (`require_db_or_skip!` invocations, all in `cimmeria-services`). The feature *statuses* below are scoped to `main` regardless; only these scale figures include the branch.
 >
 > **Arithmetic note**: the 2026-05-27 edition's `TOTALS` row and headline percentages did not match its own per-system table. The rows summed to 428 / CW 151 / NT 18 / IM 91 / KM 164 / NU 4, while the headline claimed 437 / CW 139 / NT 18 / IM 91 / KM 184 / NU 5. This edition recomputes the totals directly from the rows; anyone quoting the old 437 / 31.8% figures was quoting a number the table never supported.
 
@@ -317,7 +319,7 @@ last_updated: 2026-07-25
 
 - **Confidence**: HIGH for framework, MEDIUM for content coverage
 - **Documentation**: [gameplay/mission-system.md](gameplay/mission-system.md), [reverse-engineering/findings/mission-wire-formats.md](reverse-engineering/findings/mission-wire-formats.md), [content/mission-chains.md](content/mission-chains.md), [architecture/mission-pak-overrides.md](architecture/mission-pak-overrides.md)
-- **Rust code**: [`crates/services/src/cell/missions.rs`](../crates/services/src/cell/missions.rs) + per-system mission code under `cell/content/` (3,885 lines total mission-related), [`crates/game/src/missions/`](../crates/game/src/missions/) (364), [`crates/entity/src/missions.rs`](../crates/entity/src/missions.rs) (543), [`crates/services/src/base/mission_overrides.rs`](../crates/services/src/base/mission_overrides.rs)
+- **Rust code**: [`crates/services/src/cell/missions.rs`](../crates/services/src/cell/missions/mod.rs) + per-system mission code under `cell/content/` (3,885 lines total mission-related), [`crates/game/src/missions/`](../crates/game/src/missions/) (364), [`crates/entity/src/missions.rs`](../crates/entity/src/missions.rs) (543), [`crates/services/src/base/mission_overrides.rs`](../crates/services/src/base/mission_overrides.rs)
 - **Recent PRs**: #214 (marsh quest loop), #250 (equip-from-inventory PAK + per-key invalidation), Castle Cellblock end-to-end content
 - **Path forward**: Mission sharing for groups; mission-gated loot filtering (Lootable TODO).
 
@@ -608,7 +610,7 @@ last_updated: 2026-07-25
 
 - **Confidence**: HIGH (verified against `main` 2026-07-25)
 - **Documentation**: [gameplay/black-market.md](gameplay/black-market.md), [reverse-engineering/findings/black-market-wire-formats.md](reverse-engineering/findings/black-market-wire-formats.md)
-- **Rust code on `main`**: [`crates/services/src/cell/cell_methods/black_market.rs`](../crates/services/src/cell/cell_methods/black_market.rs) (80) + [`crates/services/src/cell/client_methods/black_market.rs`](../crates/services/src/cell/client_methods/black_market.rs) (14) — **94 lines of handler stubs, unchanged**
+- **Rust code on `main`**: [`crates/services/src/cell/cell_methods/black_market.rs`](../crates/services/src/cell/cell_methods/black_market/mod.rs) (80) + [`crates/services/src/cell/client_methods/black_market.rs`](../crates/services/src/cell/client_methods/black_market.rs) (14) — **94 lines of handler stubs, unchanged**
 
 > **Work in flight on an unmerged branch.** `feat/571-black-market-phase1` carries a substantial Phase 1 implementation: the `sgw_auction` schema, wire deserialization, a create/bid/cancel state machine, an expiry sweep, boot-seeded active auctions listed under a reserved system seller, and the search-serve path — laid out as `base/black_market/{create,bid,cancel,search,sweep,seed,send,validate,wire,types,helpers}.rs` plus `world_entry/cell_dispatch/black_market_dispatch.rs` and a content-executor arm. **None of it is on `main`**, so every row below stays `KM` and the totals do not count it. Re-verify this section the day that branch merges.
 
@@ -749,7 +751,7 @@ These didn't exist in the deprecated Python codebase and so weren't in the audit
 
 - **Confidence**: HIGH
 - **Documentation**: [architecture/mercury-bundle.md](architecture/mercury-bundle.md), [architecture/transport-trait.md](architecture/transport-trait.md)
-- **Rust code**: [`crates/mercury/src/channel_bundle.rs`](../crates/mercury/src/channel_bundle.rs), [`crates/mercury/src/bundle.rs`](../crates/mercury/src/bundle.rs)
+- **Rust code**: [`crates/mercury/src/channel_bundle.rs`](../crates/mercury/src/channel_bundle/mod.rs), [`crates/mercury/src/bundle.rs`](../crates/mercury/src/bundle.rs)
 - **Recent PRs**: #361 (ChannelBundle + AoI burst), #363 (bundle onClientReady), #365 (bundle progression + teleport)
 
 | Feature | Status | Blocks | Code | Evidence / Notes |

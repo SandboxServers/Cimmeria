@@ -16,7 +16,7 @@ Missions (quests) are the primary PvE progression mechanism. Each mission contai
 
 In the **legacy SGW server**, dynamic Python scripts (`deprecated/python/cell/MissionManager.py`, plus per-mission `.py` files in `deprecated/python/cell/missions/`) implemented mission lifecycle logic. That layer is reference-only in Cimmeria — see [docs/architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md) for the design rationale on replacing it.
 
-In the **Cimmeria emulator**, mission lifecycle runs through the data-driven content engine. Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs](../../crates/entity/src/missions.rs)); accept/advance/complete are mutated by chain actions executed in [crates/services/src/cell/content/executor.rs](../../crates/services/src/cell/content/executor.rs). The lifecycle table — which triggers fire at which stage, which conditions gate progression, which actions persist — is in [docs/content/content-engine.md](../content/content-engine.md) §9. Mission definitions are loaded from `db/resources/Missions/`; chain rows that drive mission progression live in `resources.content_*` tables.
+In the **Cimmeria emulator**, mission lifecycle runs through the data-driven content engine. Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs](../../crates/entity/src/missions.rs)); accept/advance/complete are mutated by chain actions executed in [crates/services/src/cell/content/executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs). The lifecycle table — which triggers fire at which stage, which conditions gate progression, which actions persist — is in [docs/content/content-engine.md](../content/content-engine.md) §9. Mission definitions are loaded from `db/resources/Missions/`; chain rows that drive mission progression live in `resources.content_*` tables.
 
 ## Implementation Status
 
@@ -111,7 +111,7 @@ MissionManager.complete(missionId)
 
 ## Offer Guard (server-authoritative re-accept gate)
 
-`accept_mission` ([crates/services/src/cell/missions.rs](../../crates/services/src/cell/missions.rs))
+`accept_mission` ([crates/services/src/cell/missions/mod.rs](../../crates/services/src/cell/missions/mod.rs))
 ports Python `MissionManager.canOffer()` and refuses the accept when:
 
 - the mission is already **ACTIVE** (a re-accept would reset progress to

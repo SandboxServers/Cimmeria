@@ -3,13 +3,15 @@
 > [!WARNING]
 > **Historical document.** Early-project assessment of whether the server emulator was feasible. The question is settled — the server exists and is playable. For current state see [`../project-status.md`](../project-status.md), [`../gap-analysis.md`](../gap-analysis.md), and [`../../README.md`](../../README.md). Keep this page for the original reasoning; do not extend.
 
+> **Last updated**: 2026-07-25 (count-accuracy audit — `Event_NetOut_*` 254 → 253, message total 421 → 420)
+
 Analysis of what's available in sgw.exe for building a Stargate Worlds server emulator.
 
 ## What We Have (High Confidence)
 
 ### Complete Message Catalog
 - **167 Server→Client messages** (Event_NetIn) — every message the server can send
-- **254 Client→Server messages** (Event_NetOut) — every message the client can send
+- **253 Client→Server messages** (Event_NetOut) — every message the client can send
 - **256 slash commands** — all player-invokable commands
 - This is a **complete interface contract** — the server must implement handlers for all NetOut messages and generate appropriate NetIn responses
 
@@ -45,7 +47,7 @@ Analysis of what's available in sgw.exe for building a Stargate Worlds server em
 ## What's Missing (Gaps for Server Implementation)
 
 ### Message Wire Formats
-- We know the **names** of all 421 messages but NOT their **binary wire formats**
+- We know the **names** of all 420 messages but NOT their **binary wire formats**
 - Each message's serialization (field types, field order, sizes) must be determined
 - Approach: Use AtreaRL's PCAP captures + Ghidra decompilation of `SGWNetworkManager` serialization methods
 
@@ -99,7 +101,7 @@ Analysis of what's available in sgw.exe for building a Stargate Worlds server em
 7. **Unreal Engine 3** — Well-understood engine with extensive community knowledge
 
 ### Why It's Challenging
-1. **Wire format RE** — 421 messages need individual format analysis (biggest task)
+1. **Wire format RE** — 420 messages need individual format analysis (biggest task)
 2. **No server code** — All game logic must be reimplemented from scratch
 3. **No content data** — Abilities, items, missions need to be extracted or recreated
 4. **Mercury protocol** — Proprietary protocol needs full reverse engineering

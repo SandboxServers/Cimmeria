@@ -2,14 +2,14 @@
 title: "Client Visual System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Client Visual System
 
-> **Last updated**: 2026-03-08
+> **Last updated**: 2026-07-25
 > **RE Status**: Verified via Ghidra decompilation of `sgw.exe`
-> **Sources**: Ghidra MCP (`GameBeing_setAppearance`, `GameEntity__unknown_00e69150`), `python/cell/SGWPlayer.py`, `python/cell/Inventory.py`
+> **Sources**: Ghidra (`GameBeing_setAppearance` @ `0x00e00bc0`, `GameEntity__unknown_00e69150` @ `0x00e69150`), `deprecated/python/cell/SGWPlayer.py`, `deprecated/python/cell/Inventory.py`
 
 ---
 
@@ -47,18 +47,18 @@ The visual update trigger checks the entity's readiness state and branches:
 
 #### Path 1: Entity NOT Ready
 - **Condition**: A virtual method on the entity returns false (entity not fully initialized)
-- **Action**: Logs `"ENTITY NOT READY"` via `SGWAppearanceLog` (0x00cfefe0)
+- **Action**: Logs via the `SGWAppearanceLog` sink (function at `0x00cfefe0`, unnamed in Ghidra; the class RTTI string `.?AVSGWAppearanceLog@@` is at `0x01e21894`). The literal is `' - ENTITY NOT READY'` at `0x019de4a0` — note the leading `' - `, which matters when grepping client logs
 - **Result**: **BeingAppearance is SILENTLY DROPPED — no queue, no retry, no error**
 - This is the most critical path for understanding the green model bug
 
 #### Path 2: Entity Ready, NOT in Transaction
 - **Condition**: Entity is ready and not in a visual transaction
-- **Action**: Logs `"SCHEDULING JOB"`, calls `FUN_00e998e0` to queue a model loading job
+- **Action**: Logs `' - SCHEDULING JOB'` (`0x019de384`), calls `FUN_00e998e0` to queue a model loading job
 - **Result**: Model meshes are asynchronously loaded and composited — the normal success path
 
 #### Path 3: Entity Ready, IN Transaction
 - **Condition**: Entity is ready but currently in a visual transaction
-- **Action**: Logs `"HOLD FOR TRANSACTION"`
+- **Action**: Logs `' - HOLD FOR TRANSACTION'` (`0x019de40c`)
 - **Result**: Appearance update is deferred or dropped
 
 ### `setBodySetName` Internals
@@ -89,7 +89,14 @@ In the C++ reference server, there is a natural delay between steps 5-6 and the 
 - The CellApp then calls `mapLoaded()` after the entity is fully constructed
 - This inter-service round-trip provides enough time for the client to process CREATE_CELL_PLAYER
 
-In the Rust server, VIEWPORT + CELL + POSITION and the fragmented `mapLoaded` bundle are built and sent in the same function call with no delay. If the client hasn't finished processing CREATE_CELL_PLAYER by the time BeingAppearance arrives in the mapLoaded bundle, **Path 1 fires and the appearance is silently dropped**.
+In the Rust server, VIEWPORT + CELL + POSITION body bytes are prepended to the `mapLoaded` body and fragmented as one bundle (`crates/services/src/mercury/world_data/map_loaded.rs:34-36`), matching the C++ CellApp behaviour where these share a channel bundle. Historically that meant BeingAppearance could arrive before the client had finished processing CREATE_CELL_PLAYER, firing Path 1 and dropping the appearance silently.
+
+Two mitigations are now in place, so do not treat the above as a live bug:
+
+1. **Appearance pre-warm.** `build_create_player` appends `BeingAppearance` + `onEntityTint` immediately after CREATE_BASE_PLAYER and *before* `onClientMapLoad` (`crates/services/src/mercury/world_data/phases.rs:59-91`). The client's async asset load then runs in parallel with the terrain load, rather than starting only when the `mapLoaded` bundle lands.
+2. **The enter-world step waits on the client.** The server sends CREATE_BASE_PLAYER + pre-warm + `onClientMapLoad`, then waits for the client's `mapLoaded` (cell method index 25, msg_id `0x99`) before sending viewport + cell player + forced position (`phases.rs:27-35`). `build_enter_world_body` re-emits `BeingAppearance` + `onEntityTint` ahead of `createCellPlayer` (`phases.rs:132-195`).
+
+A related delivery gap does remain open for *non-player* entities — see the AoI create/appearance investigation tracked in issue #582 — but it is downstream of this player-entry path.
 
 ## onEntityTint
 
@@ -102,7 +109,7 @@ In the Rust server, VIEWPORT + CELL + POSITION and the fragmented `mapLoaded` bu
 - `primaryColorId` and `secondaryColorId`: Armor/clothing dye indices (default 0 in C++)
 - `skinTint`: ARGB color value from the `SKIN_TINTS` lookup table (16 entries, indexed by `SkinTintColorID` 0-15)
 
-The skin tint values are defined in `python/common/Constants.py:4-9`:
+The skin tint values are defined in `deprecated/python/common/Constants.py:4-9` (mirrored in Rust as `SKIN_TINTS`, used by both `phases.rs` and `map_loaded.rs`):
 
 ```
 SKIN_TINTS[0]  = 0x2F1308FF    SKIN_TINTS[8]  = 0xB45B32FF
@@ -122,14 +129,14 @@ SKIN_TINTS[7]  = 0x4F1A09FF    SKIN_TINTS[15] = 0x8D3F24FF
 Character appearance is composed of two types of visual components:
 
 1. **Body Components** — base body meshes (torso, legs, head, boots)
-   - Source: `char_creation_visgroups` table (rows where `item_id IS NULL`)
-   - Stored in: `sgw_characters.components` (PostgreSQL `varchar(200)[]` array)
-   - Examples: `BS_HM_Torso_00`, `BS_HM_Legs_00`, `BS_HM_Head_01`, `BS_HM_Boots_00`
+   - Source: `char_creation_choices` rows where `item_id IS NULL` (joined to `char_creation_visgroups` for the slot)
+   - Stored in: `sgw_player.components` (PostgreSQL `varchar(200)[]` array)
+   - Examples: `BS_HumanMale.BS_HM_Torso_00`, `BS_HumanMale.BS_HM_Legs_00`
 
 2. **Item Visual Components** — equipment meshes that overlay body parts
    - Source: `resources.items.visual_component` column
    - Stored in: `sgw_inventory` table (linked to items via `type_id`)
-   - Examples: `AR_Global.Prisoner_Torso`, `AR_Global.Prisoner_Legs`, `AR_HM_BB1_BH100`
+   - Examples: `AR_Global.Prisoner_Torso`, `AR_Global.Prisoner_Legs`, `AR_H_Ballistic00.AR_HM_BB1_BH100`
 
 ### Assembly Flow (C++/Python Reference)
 
@@ -152,17 +159,18 @@ Both approaches produce the same final component list for BeingAppearance.
 
 ### Example: Praxis Soldier Male (CharDefId 1)
 
+Component strings are stored fully qualified (`Package.Name`); the bare leaf name is not a valid component. Body vs item is decided by `char_creation_choices.item_id IS NULL`.
+
 | Type | Component Name | Source |
 |------|---------------|--------|
-| Body | `BS_HM_Torso_00` | char_creation_visgroups |
-| Body | `BS_HM_Legs_00` | char_creation_visgroups |
-| Body | `BS_HM_Head_XX` | char_creation_visgroups (player choice) |
-| Body | `BS_HM_Boots_00` | char_creation_visgroups |
-| Item | `AR_Global.Prisoner_Torso` | items.sql (item 3440) |
-| Item | `AR_Global.Prisoner_Legs` | items.sql (item 3437) |
-| Item | `AR_HM_BB1_BH100` | items.sql (item 3438) |
+| Body | `BS_HumanMale.BS_HM_Torso_00` | char_creation_choices (item_id NULL) |
+| Body | `BS_HumanMale.BS_HM_Legs_00` | char_creation_choices (item_id NULL) |
+| Body | `BS_HumanMale.BS_HM_Head_XX` | char_creation_choices, `Head` slot is `VIS_Optional` (player choice) |
+| Item | `AR_Global.Prisoner_Torso` | char_creation_choices → item 3440 |
+| Item | `AR_Global.Prisoner_Legs` | char_creation_choices → item 3437 |
+| Item | `AR_H_Ballistic00.AR_HM_BB1_BH100` | char_creation_choices → item 3438 |
 
-Bodyset: `BS_HumanMale.BS_HumanMale`
+Bodyset: `BS_HumanMale.BS_HumanMale` (from `char_creation.body_set` for `char_def_id = 1`)
 
 ## Green Placeholder Diagnosis
 

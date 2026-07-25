@@ -3,15 +3,18 @@
 > [!NOTE]
 > The canonical BigWorld + CME architecture reference will land as a bible chapter under [`docs/drafts/spec/`](../drafts/spec/) (chapter not yet authored). Once that chapter exists, this doc will summarise it and link forward. For overlap with the wire protocol, the canonical reference is the in-progress [`docs/drafts/spec/mercury-wire-format.md`](../drafts/spec/mercury-wire-format.md). This doc and [`../how-sgw-works.md`](../how-sgw-works.md) currently overlap significantly; consolidation is tracked under [#264](https://github.com/SandboxServers/Cimmeria/issues/264).
 
-> **Last updated**: 2026-03-08
+> **Last updated**: 2026-07-25
 > **RE Status**: Well understood from BigWorld reference source + Cimmeria implementation
-> **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/`, BigWorld-Engine-1.9.1 (client match), `src/`, `docs/how-sgw-works.md`
+> **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/` (external reference — **not** vendored in this repo and not fetched by `setup.ps1`; obtain separately), BigWorld-Engine-1.9.1 (client match), `crates/`, `docs/how-sgw-works.md`
+
+> [!IMPORTANT]
+> This document mixes two subjects: **how BigWorld/SGW was originally designed** (historical, sourced from the BW reference tree and SGW.exe) and **what Cimmeria implements today** (sourced from `crates/`). Rows and paths that name `crates/` describe Cimmeria; everything else describes the original design and may not correspond to any running code. The legacy C++ server tree that earlier revisions of this doc pointed at (`src/baseapp/`, `src/cellapp/`, `src/mercury/`, `config/*.config`) now lives under `deprecated/` and is not extended.
 
 ---
 
 ## Overview
 
-BigWorld Technology is an Australian MMO middleware platform that provides the networking, entity management, and server architecture for Stargate Worlds. SGW uses BigWorld ≥1.8.1 (confirmed via deprecation string `"The use of BW_RES_PATH environment variable is deprecated post 1.8.1"` in SGW.exe). Client-side Mercury networking matches BigWorld 1.9.1 source 1:1 (77+ debug strings verified). Server-side reference from BW 2.0.1 is also used. CME made extensive modifications to the application layer but left the Mercury networking core unmodified.
+BigWorld Technology is an Australian MMO middleware platform that provides the networking, entity management, and server architecture for Stargate Worlds. SGW uses BigWorld ≥1.8.1 (confirmed via deprecation string `"The use of the BW_RES_PATH environment variable is deprecated post 1.8.1"` at `0x017fbe60` in SGW.exe). Client-side Mercury networking matches BigWorld 1.9.1 source 1:1 (77+ debug strings verified). Server-side reference from BW 2.0.1 is also used. CME made extensive modifications to the application layer but left the Mercury networking core unmodified.
 
 This document describes the BigWorld architectural concepts as they apply to SGW and Cimmeria.
 
@@ -62,10 +65,10 @@ Each entity type defines which components it has via the `.def` file and which P
 |-----------|-------------|--------------|
 | **LoginApp** | Handles initial Mercury-based login | Replaced by AuthenticationServer (SOAP) |
 | **BaseAppMgr** | Assigns players to BaseApps | Simplified; single BaseApp |
-| **BaseApp** | Manages base entities, client proxies | Implemented in `src/baseapp/` |
-| **CellApp** | Spatial simulation, movement, combat | Implemented in `src/cellapp/` |
+| **BaseApp** | Manages base entities, client proxies | Implemented in `crates/services/src/base/` |
+| **CellApp** | Spatial simulation, movement, combat | Implemented in `crates/services/src/cell/` |
 | **CellAppMgr** | Manages cell space distribution | Not implemented; single CellApp |
-| **DBMgr** | Database operations (MySQL in BW) | Replaced by direct PostgreSQL via SOCI |
+| **DBMgr** | Database operations (MySQL in BW) | Replaced by direct PostgreSQL via `sqlx` |
 | **Reviver** | Watchdog for crashed processes | Not implemented |
 | **MessageLogger** | Central log aggregation | Replaced by file-based logging |
 
@@ -76,7 +79,7 @@ SGW was designed for a single-server deployment. Cimmeria reflects this:
 - **Single BaseApp**: No BaseAppMgr needed; one process handles all players
 - **Single CellApp**: No CellAppMgr needed; one process runs all spaces
 - **SOAP Auth**: CME replaced BigWorld's LoginApp with HTTP/SOAP authentication
-- **PostgreSQL**: CME replaced BigWorld's MySQL/XML DBMgr with PostgreSQL + SOCI
+- **PostgreSQL**: CME replaced BigWorld's MySQL/XML DBMgr with PostgreSQL. Cimmeria reaches it through `sqlx` (`Cargo.toml:74`); the SOCI 3.2.1 binding described in older revisions belonged to the retired C++ server under `deprecated/cpp/`
 - **No Reviver**: Development environment; process restarts are manual
 
 ## Mercury Networking Layer
@@ -92,6 +95,8 @@ Key characteristics:
 
 ### Communication Paths
 
+Original CME topology (separate processes):
+
 ```
 Client <-- Mercury/UDP (encrypted) --> BaseApp
                                         |
@@ -102,6 +107,8 @@ Client <-- Mercury/UDP (encrypted) --> BaseApp
 
 AuthServer <-- Mercury/TCP --> BaseApp
 ```
+
+In Cimmeria only the client link is on the wire. Auth, base, and cell all run inside the single `cimmeria-server` process (`crates/server/`). The BaseApp↔CellApp hop is a pair of in-process `tokio::mpsc` channels carrying `BaseToCellMsg`/`CellToBaseMsg` (`crates/services/src/cell/service/mod.rs:83-90`), not Mercury/TCP, so it has no wire format to match.
 
 ### Mercury::Nub Threading Model (from SGW.exe RE)
 
@@ -155,13 +162,14 @@ All entity types are defined in `entities/entities.xml` and parsed at startup. E
 - A `.def` file in `entities/defs/` defining properties and methods
 - Optional parent type (inheritance)
 - Optional interface implementations
-- Python scripts in `python/base/` and `python/cell/`
+- Python scripts, originally in `python/base/` and `python/cell/` (now `deprecated/python/`; Cimmeria implements this logic in Rust under `crates/services/src/base/` and `crates/services/src/cell/`)
 
 ### Entity Type Hierarchy
 
+Derived from the `<Parent>` element of each file in `entities/defs/`:
+
 ```
-Account (standalone -- no cell component)
-SGWEntity (base entity type)
+SGWEntity (base entity type, ServerOnly)
 +-- SGWSpawnableEntity
 |   +-- SGWBeing (has SGWBeing interface)
 |   |   +-- SGWMob (NPCs and monsters)
@@ -169,20 +177,25 @@ SGWEntity (base entity type)
 |   |   +-- SGWPlayer (11 interfaces)
 |   |       +-- SGWGmPlayer
 |   +-- SGWDuelMarker
-+-- SGWBlackMarket
 +-- SGWCoverSet
 +-- SGWEscrow
++-- SGWPlayerGroupAuthority
++-- SGWPlayerRespawner
 +-- SGWSpaceCreator
 +-- SGWSpawnRegion
 +-- SGWSpawnSet
-+-- SGWPlayerRespawner
-+-- SGWChannelManager
-+-- SGWPlayerGroupAuthority
+
+Roots with no <Parent> of their own:
+Account            (standalone -- no cell component)
+SGWBlackMarket     (ServerOnly)
+SGWChannelManager  (ServerOnly)
 ```
+
+Three defs are roots rather than `SGWEntity` descendants. `SGWBlackMarket` and `SGWChannelManager` declare no `<Parent>` at all. `Account.def` does contain a `<Parent>GamePawn</Parent>`, but it sits inside `<UnrealProperties>` — that names the UE3 Actor class the client instantiates, not a BigWorld entity parent, and there is no `GamePawn.def` anywhere in `entities/`.
 
 ### Entity IDs
 
-From `src/mercury/base_cell_messages.hpp`:
+From `deprecated/cpp/src/mercury/base_cell_messages.hpp:27-29`:
 
 | Range | Owner | Description |
 |-------|-------|-------------|
@@ -224,6 +237,11 @@ The AoI system determines which entities are visible to each player:
 1. The world is divided into a grid of chunks (`grid_chunk_size = 50` meters)
 2. Each player can see entities within `grid_vision_distance = 3` chunks
 3. Hysteresis (`grid_hysteresis = 1` chunk) prevents flicker at boundaries
+
+   These three values come from the original CME server config, preserved at
+   `deprecated/cpp-config/config/BaseService.config:54,57,60`. Cimmeria's port of
+   the grid lives in `crates/entity/src/world_grid.rs`.
+
 4. When an entity enters a player's AoI, a `createEntity` message is sent
 5. When it leaves, a `deleteEntity` or cache-hide message is sent
 
@@ -231,10 +249,14 @@ See [Space Management](space-management.md) for implementation details.
 
 ## Python Scripting
 
-Game logic is written in Python 3.4 embedded via Boost.Python:
+> Historical. This describes the original CME server. The Python tree survives at
+> `deprecated/python/` (164 files) as an RE reference; Cimmeria reimplements this
+> logic in Rust and does not embed a Python interpreter.
+
+Game logic was written in Python 3.4 embedded via Boost.Python:
 
 ```
-python/
+deprecated/python/
   base/         -- Base entity scripts (persistent logic)
     Account.py
     SGWPlayer.py
@@ -250,18 +272,18 @@ Each entity type has corresponding Python classes that implement the methods dec
 
 ## Configuration System
 
-BigWorld uses XML configuration files. Cimmeria follows this pattern:
+BigWorld uses XML configuration files. The retired C++ server followed that pattern; the XML service configs now live under `deprecated/cpp-config/config/` and are read only as a record of the original tuning values (the AoI grid constants above are the main live consumers). The `entities/` XML is still live and is loaded by the Rust server.
 
-| File | Purpose |
-|------|---------|
-| `config/AuthenticationService.config` | Auth server settings |
-| `config/BaseService.config` | BaseApp settings |
-| `config/CellService.config` | CellApp settings |
-| `entities/entities.xml` | Entity type registry |
-| `entities/cell_spaces.xml` | Initial space list |
-| `entities/spaces.xml` | Space world definitions |
+| File | Status | Purpose |
+|------|--------|---------|
+| `deprecated/cpp-config/config/AuthenticationService.config` | historical | Auth server settings |
+| `deprecated/cpp-config/config/BaseService.config` | historical | BaseApp settings (source of `grid_*` constants) |
+| `deprecated/cpp-config/config/CellService.config` | historical | CellApp settings |
+| `entities/entities.xml` | live | Entity type registry |
+| `entities/cell_spaces.xml` | live | Initial space list |
+| `entities/spaces.xml` | live | Space world definitions |
 
-Each config file supports a `.local` override for environment-specific settings.
+The XML configs supported a `.local` override for environment-specific settings. Cimmeria's runtime configuration is environment-variable driven instead — see the env-var table at the top of [crates/server/src/main.rs](../../crates/server/src/main.rs).
 
 ## Related Documents
 
@@ -346,10 +368,10 @@ Each property is serialized by its `DataType::addToStream()` method (type-specif
 
 | Aspect | BigWorld (DBMgr) | Cimmeria |
 |--------|-----------------|----------|
-| Database | MySQL via `dbmgr_mysql` module | PostgreSQL via SOCI 3.2.1 |
+| Database | MySQL via `dbmgr_mysql` module | PostgreSQL via `sqlx` 0.8 |
 | Process | Separate `DBMgr` process | Direct DB calls from BaseApp |
 | Communication | Mercury messages between BaseApp and DBMgr | In-process function calls |
-| Entity storage | One table per entity type (auto-generated schema) | PostgreSQL tables (`sgw.sql`) |
+| Entity storage | One table per entity type (auto-generated schema) | PostgreSQL tables (`db/database.sql`, `db/sgw/`, `db/resources/`) |
 | Property format | Binary stream (`BinaryOStream`) decomposed into SQL columns | Binary stream or SQL columns via SOCI |
 | Write trigger | `Database::writeEntity()` Mercury message | BaseApp persistence tick |
 
@@ -460,7 +482,7 @@ SGW was developed against BigWorld **~1.9.x** (estimated between 1.9.1 and 2.0.1
 | SGW uses AES-256 encryption | BW standard uses Blowfish; CME replaced this |
 | SGW uses SOAP authentication | BW standard uses LoginApp; CME replaced this |
 | SGW uses PostgreSQL | BW standard uses MySQL; CME replaced this |
-| `BaseCellProtocolVersion = 391` in Cimmeria | Protocol version must match between BW library and game |
+| `PROTOCOL_VERSION = 391` in Cimmeria (`crates/mercury/src/lib.rs:141`) | Protocol version must match between BW library and game |
 | Entity .def format matches BW 2.0.1 schema | .def parsing is compatible with the 2.0.1 reference |
 | No `CellAppMgr` in SGW | Single-server design; may predate BW 2.0 multi-cell improvements |
 

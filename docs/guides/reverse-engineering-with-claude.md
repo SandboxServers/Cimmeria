@@ -87,7 +87,14 @@ The writer turns this into a publication-quality doc following the Diátaxis spl
 
 The single highest-value failure mode in LLM-driven RE is a *confident stub*: the agent writes a tidy six-line reconstruction of a function whose binary body is eighty instructions and nine calls. It reads well, it cites a real address, and it is wrong.
 
-The repo ships a deterministic gate for exactly this. The [`/re-verify`](../../.claude/commands/re-verify.md) slash command runs a reverser/checker loop where Claude produces the reconstruction and [`tools/re_parity.py`](../../tools/re_parity.py) — pure Python, no network, no LLM, no API tokens — judges it:
+> **Availability: not on `main` yet.** As of 2026-07-25 both files this
+> section describes — `.claude/commands/re-verify.md` and
+> `tools/re_parity.py` — exist only on a feature branch and are not present
+> in a fresh `main` checkout. If `/re-verify` isn't offered and
+> `python tools/re_parity.py` says "No such file or directory", that's why.
+> Delete this note once they land.
+
+There is a deterministic gate for exactly this. The [`/re-verify`](../../.claude/commands/re-verify.md) slash command runs a reverser/checker loop where Claude produces the reconstruction and [`tools/re_parity.py`](../../tools/re_parity.py) — pure Python, no network, no LLM, no API tokens — judges it:
 
 ```text
 /re-verify <function address|name> [path/to/reconstruction] [--live]

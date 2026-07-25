@@ -214,6 +214,29 @@ Two tables under [`db/sgw/BlackMarket/`](../../db/sgw/BlackMarket/). **Neither e
 4. **Watch notifications** — `BMStartWatchingItem` / `BMStopWatchingItem` are still stubs; the push flow when a watched item is listed is unimplemented
 5. **Immediate buyout settlement** — a bid at or above a non-zero `buyout_price` is currently accepted as an ordinary high bid and left for the expiry sweep to settle. The original game settled it on the spot (`bid.rs:24-28`)
 
+## Economy sink design (unbuilt)
+
+Folded in from the superseded server-systems survey. Nothing here is
+implemented on either `main` or the branch — the auction currently takes no cut
+at all.
+
+The Black Market is the natural place for Cimmeria's first real currency sink.
+Currency enters the game freely (mission rewards, cash loot, vendor sell-back)
+and leaves almost nowhere, so the sink side needs somewhere to start, and an
+auction house is where the standard MMO answer lives: a **non-refundable
+listing fee** charged at create time (roughly 1–2% of the starting price) plus a
+**transaction cut** taken from the seller's proceeds on a successful sale
+(roughly 5%). Both are well-understood, easy to tune from a single config value,
+and each has an obvious hook in the flow that already exists — the fee at
+`BMCreateAuction`, the cut in the settlement transaction.
+
+**Do not tune the percentages before the currency flow is instrumented.**
+Without per-source logging of currency gains and losses there is no way to know
+whether a 5% cut is a rounding error or a wealth tax. The instrumentation
+proposal is
+[server-infrastructure-proposals.md §5](../architecture/server-infrastructure-proposals.md#5-economy-instrumentation-before-economy-balance);
+build that first, then set these numbers against real data.
+
 ## Related Docs
 
 - [inventory-system.md](inventory-system.md) - Items listed and purchased

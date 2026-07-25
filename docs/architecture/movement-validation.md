@@ -152,3 +152,29 @@ smooths; the server gates sit far below it. See
   dispatched (CAT-B-10) — the same validator applies when they're wired.
 - Per-world `top_speed` sourcing + `runSpeed = 6.0` drift reconciliation.
 - Promote the speed layer from warn-only once calibration data exists.
+
+## Adjacent validation gaps (not movement)
+
+Folded in from the superseded server-systems survey (see
+[server-systems.md](server-systems.md)). These are the anti-cheat gaps that
+movement validation does **not** close, kept here because this is the doc you
+will be reading when you ask "what else is unvalidated?"
+
+**Damage sanity cap — still open.** Ability damage is computed server-side from
+stats and ability definitions, so the *value* is never client-supplied. What is
+missing is a ceiling: nothing detects a stat-modifier bug or a bad content row
+that produces implausible damage. A max-damage assertion would catch
+misconfiguration, not cheating — which is the point. Tracked as "Damage sanity
+check" in [gap-analysis.md](../gap-analysis.md) §"Anti-Cheat Validation".
+
+**Ability range — closed; line-of-sight — open.** `useAbility` rejects targets
+beyond the ability's `max_range` (default 30.0) using server-side entity
+positions, not client-reported ones
+([`crates/services/src/cell/abilities/use_ability/handle.rs`](../../crates/services/src/cell/abilities/use_ability/handle.rs)).
+Line of sight is *not* checked on that path, so an ability can still be cast
+through a wall. Closing it needs the navmesh raycast that NPC AI also wants.
+
+**Interaction distance.** Enforced for interactions. The original design note —
+always validate against the server's own spatial state, never against a
+client-supplied position — is the rule the four movement layers already follow
+and the one any new validation should inherit.

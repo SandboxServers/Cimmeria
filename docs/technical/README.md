@@ -2,7 +2,7 @@
 title: docs/technical/ — early-project research archive
 type: reference
 audience: contributors browsing historical context
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 companion_docs:
   - ../readme.md
   - ../reverse-engineering/README.md
@@ -33,8 +33,8 @@ Per the file naming:
 | Game data analysis | [`game-data-analysis.md`](game-data-analysis.md) | [`../game-data.md`](../game-data.md), [`../content/`](../content/) |
 | sgw.exe binary overview | [`sgw-binary-overview.md`](sgw-binary-overview.md) | [`../reverse-engineering/STATUS.md`](../reverse-engineering/STATUS.md), [`../reverse-engineering/address-map.md`](../reverse-engineering/address-map.md) |
 | Slash commands | [`slash-commands.md`](slash-commands.md) | [`../commands.md`](../commands.md) |
-| Launcher binary analysis | [`launcher-exe.md`](launcher-exe.md) | [`../reverse-engineering/binaries/launcher-exe.md`](../reverse-engineering/binaries/launcher-exe.md) (canonical) |
-| AtreaLoader analysis | [`atrealoader-exe.md`](atrealoader-exe.md), [`atrealoader-config.md`](atrealoader-config.md), [`atrearl-loader.md`](atrearl-loader.md) | RE-only; kept here as reference notes |
+| Launcher binary analysis | *(moved out — no historical copy remains here)* | [`../reverse-engineering/binaries/launcher-exe.md`](../reverse-engineering/binaries/launcher-exe.md) (canonical) |
+| AtreaLoader analysis | [`atrealoader-exe.md`](atrealoader-exe.md), [`atrealoader-config.md`](atrealoader-config.md), [`atrearl-loader.md`](atrearl-loader.md) | **Not superseded** — these three remain the reference for the injector, patch table and runtime DLL. Orientation entry point for the toolchain as a whole (and the only coverage of the in-game UnrealEd editor) is [`../reverse-engineering/findings/atrea-editor.md`](../reverse-engineering/findings/atrea-editor.md). |
 
 ## Why this directory exists
 

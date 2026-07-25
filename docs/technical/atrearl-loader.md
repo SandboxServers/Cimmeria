@@ -1,6 +1,23 @@
 # AtreaRL.dll — The Runtime Patcher
 
-> **Last updated**: 2026-05-25
+> [!NOTE]
+> **Scope banner — companion to `atrea-editor.md`, not superseded by it.**
+> The top-level entry point for the whole Atrea toolchain — including the in-game
+> UnrealEd editor that this DLL's patches unlock inside `SGW.exe` — is
+> [`docs/reverse-engineering/findings/atrea-editor.md`](../reverse-engineering/findings/atrea-editor.md).
+> Read that first for orientation, then return here for the DLL's runtime behaviour.
+>
+> `atrea-editor.md` describes this page as one of an "apocryphal trio" that it supersedes.
+> **That framing did not survive the 2026-07-25 audit.** This page was *revised* in the
+> same 2026-05-25 campaign — `atrea-editor.md`'s own §"Apocryphal docs to retire" table
+> records the corrections applied here (symbol-hook count `10` → `13`, the sniffer-init
+> function swap, the removal of the false "login redirect" claim) and its §Cross-references
+> cites this page as a live "AtreaRL.dll runtime hooks" reference. It is the only place
+> documenting the Winsock IAT hooks, the synthetic-L2 pcap writer, and the
+> `<ServerLocation SessionKey="` AES-key scrape. Treat the two as complementary halves.
+
+> **Last updated**: 2026-07-25 (accuracy audit — scope banner added; no address changes)
+> **Previously revised**: 2026-05-25
 > **Audience**: reverse engineers and emulator developers working on the SGW client patch surface
 > **Doc type**: reference (DLL responsibilities, runtime gating, verified anchors)
 > **Status**: revised — internal hook-function addresses from the previous revision were unverified and have been marked speculative or removed pending a fresh Ghidra pass on `AtreaRL.dll`
