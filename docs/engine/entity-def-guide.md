@@ -647,7 +647,7 @@ For example, `SGWMob.def` declares cell methods like `onGroupMateEnteredCombat` 
 Python scripts define a class named after the entity type. The class inherits from `Atrea.CellEntity` (for cell scripts) or `Atrea.BaseEntity` (for base scripts), plus any mixin classes for interfaces.
 
 ```python
-# python/cell/SGWEntity.py
+# deprecated/python/cell/SGWEntity.py
 import Atrea
 from common.Event import EventParticipant
 
@@ -659,7 +659,7 @@ class SGWEntity(Atrea.CellEntity, EventParticipant):
 
 ### Interface Method Implementation
 
-Methods declared in interfaces are implemented in the entity class that uses the interface, or in a dedicated mixin module. For example, `SGWAbilityManager.def` declares `invokeAbility`, but the implementation lives in `python/cell/AbilityManager.py` as a class that `SGWBeing` (and by extension `SGWPlayer` and `SGWMob`) inherits from.
+Methods declared in interfaces are implemented in the entity class that uses the interface, or in a dedicated mixin module. For example, `SGWAbilityManager.def` declares `invokeAbility`, but the implementation lives in `deprecated/python/cell/AbilityManager.py` as a class that `SGWBeing` (and by extension `SGWPlayer` and `SGWMob`) inherits from.
 
 ### Property Access
 
@@ -689,7 +689,7 @@ Methods declared in the .def file must have corresponding Python method definiti
 #       <Arg>UINT8</Arg>    <!-- damage type -->
 #   </onAttacked>
 
-# python/cell/SGWMob.py (or a combat mixin):
+# deprecated/python/cell/SGWMob.py (or a combat mixin):
 def onAttacked(self, attackerMailbox, healthChange, focusChange, damageType):
     # self is implicit (not counted in .def args)
     # Arguments map positionally to the <Arg> declarations
@@ -780,8 +780,8 @@ This is a ClientMethod -- the server calls it to notify the client. When the ser
 
 The `setCrouched` method declared in `SGWCombatant.def` is implemented in the entity's Python cell script. Since SGWCombatant is an interface used by SGWBeing (which is used by SGWPlayer and SGWMob), the implementation might be in:
 
-1. `python/cell/SGWPlayer.py` -- if it is player-specific
-2. `python/cell/SGWMob.py` -- if it is mob-specific
+1. `deprecated/python/cell/SGWPlayer.py` -- if it is player-specific
+2. `deprecated/python/cell/SGWMob.py` -- if it is mob-specific
 3. A combat mixin class -- if shared between players and mobs
 
 The Python implementation would look like:

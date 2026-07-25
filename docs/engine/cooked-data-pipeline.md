@@ -1,3 +1,10 @@
+---
+title: "Cooked Data Pipeline"
+type: reference
+audience: engineers
+last_updated: 2026-07-25
+---
+
 # Cooked Data Pipeline
 
 > **Last updated**: 2026-07-25
