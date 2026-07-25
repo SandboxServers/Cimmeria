@@ -2,7 +2,7 @@
 title: How to extend the content engine (quickstart)
 type: how-to
 audience: engineers (first content-engine extension)
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 companion_docs:
   - ../content/content-engine.md
   - ../content/extending-the-engine.md
@@ -32,7 +32,7 @@ The engine extends along three axes. Pick the one that matches your need:
 
 | You want to… | Add a… | Where the work goes |
 |---|---|---|
-| React to a new gameplay event (player did X for the first time, NPC arrived, timer fired) | **Trigger** | `crates/content-engine/src/triggers.rs` + a populator that fires the event |
+| React to a new gameplay event (player did X for the first time, NPC arrived, timer fired) | **Trigger** | `crates/content-engine/src/triggers/` + a populator that fires the event |
 | Gate an existing chain on new state (player has buff X, faction standing, mission repeats) | **Condition** | `crates/content-engine/src/conditions.rs` + a context-key populator |
 | Cause a new effect when a chain fires (set a flag, grant currency, trigger UI, open a vendor) | **Action** | `crates/content-engine/src/actions.rs` + an executor arm |
 
@@ -44,10 +44,10 @@ The engine extends along three axes. Pick the one that matches your need:
 
 Every extension touches the same four file families:
 
-1. **Variant declaration** — the enum that names the new shape ([`crates/content-engine/src/actions.rs`](../../crates/content-engine/src/actions.rs), `triggers.rs`, `conditions.rs`).
-2. **Loader arm** — parses a DB row into the variant ([`crates/content-engine/src/loader.rs`](../../crates/content-engine/src/loader.rs)).
-3. **Executor / evaluator arm** — does the work (actions) or returns a bool (conditions) or fires the event (triggers). For actions, this is in [`crates/services/src/cell/content/executor.rs`](../../crates/services/src/cell/content/executor.rs).
-4. **Tests** — unit tests next to the executor + a chain-replay test in [`chain_replay_tests.rs`](../../crates/services/src/cell/content/chain_replay_tests.rs).
+1. **Variant declaration** — the enum that names the new shape ([`crates/content-engine/src/actions.rs`](../../crates/content-engine/src/actions.rs), [`triggers/`](../../crates/content-engine/src/triggers/), [`conditions.rs`](../../crates/content-engine/src/conditions.rs)).
+2. **Loader arm** — parses a DB row into the variant. One file per axis under [`crates/content-engine/src/loader/`](../../crates/content-engine/src/loader/): `action.rs`, `condition.rs`, `trigger.rs`.
+3. **Executor / evaluator arm** — does the work (actions) or returns a bool (conditions) or fires the event (triggers). For actions, this is the per-domain module under [`crates/services/src/cell/content/executor/`](../../crates/services/src/cell/content/executor/) (`inventory.rs`, `mission.rs`, `dialog.rs`, `stats.rs`, …) with the dispatch arm in its `mod.rs`.
+4. **Tests** — unit tests next to the executor + a chain-replay test under [`chain_replay_tests/`](../../crates/services/src/cell/content/chain_replay_tests/) (one file per chain, e.g. `mission_638.rs`).
 5. **Seed SQL or migration** — [`db/resources/Content/Seed/`](../../db/resources/Content/Seed/) for new seed content, or [`db/scripts/`](../../db/scripts/) for a runtime migration on existing databases. See [`write-a-database-migration.md`](write-a-database-migration.md).
 
 ---
@@ -60,14 +60,14 @@ Once you have the four-file pattern, here's the data flow at runtime:
 DB row (chain_actions, chain_conditions, chain_triggers)
     │
     ▼
-loader.rs::convert_action(row) → Option<Action>
+loader/action.rs::convert_action(row) → Option<Action>
     │ (boundary validation here — i32 range, enum parsing, etc.)
     ▼
 Action variant stored on a Chain
     │
     ▼ (trigger fires for this chain)
     ▼
-executor.rs match arm for that variant → does the work
+executor/ match arm for that variant → does the work
     │ (looks up entities, mutates state, sends Mercury messages)
     ▼
 Side effects in-game

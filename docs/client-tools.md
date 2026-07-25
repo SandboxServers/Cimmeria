@@ -2,7 +2,7 @@
 title: "Client Tools"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Client Tools
@@ -121,7 +121,7 @@ The logging hooks capture output from:
 The typical workflow for connecting to the Cimmeria server:
 
 1. Run `AteraLoader.exe --fix-aslr` once (first time only)
-2. Make sure Login.lua is patched to point to your server (the `setup.ps1` script can do this)
+2. Make sure Login.lua is patched to point to your server. `setup.ps1` does **not** do this as part of its pipeline — run the `Update-CimmeriaClient` bootstrap function separately, or edit Login.lua by hand to point at `http://localhost:8081/SGWLogin/UserAuth`. See [`bootstrap/README.md`](../bootstrap/README.md).
 3. Run `AteraLoader.exe` (or use a batch file for debug logging)
 4. The game launches and connects to the emulator server instead of the dead CME servers
 

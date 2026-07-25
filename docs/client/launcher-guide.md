@@ -2,7 +2,7 @@
 title: "Launcher Guide"
 type: how-to
 audience: players, operators
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Launcher Guide
@@ -52,9 +52,11 @@ Azure Blob SAS for log uploads) see
 ```text
 1. Run sgw-launcher.exe (single ~5 MB file).
 2. Window appears with three editable fields:
-     - Install dir    (default: C:\Program Files\Stargate Worlds)
+     - Install dir    (default: %LOCALAPPDATA%\Stargate Worlds)
      - Server host    (default: play.cimmeria.gg) — gets patched into SGW.exe
-     - Manifest URL   (default: <azure-blob>/sgw/manifest.json)
+     - Manifest URL   (default: the GitHub Release `content-current` tag,
+                      https://github.com/SandboxServers/Cimmeria/releases/
+                      download/content-current/manifest.json)
 3. Launcher auto-fetches manifest.json on startup.
 4. It compares the manifest against <install_dir>/launcher-installed.json:
      a. If seed hash differs → seed not installed → "Install / Update" enabled
@@ -64,20 +66,21 @@ Azure Blob SAS for log uploads) see
      - Download seed.zip (resumable via HTTP Range) → verify sha256 → extract
      - For each missing patch in declared order: download → verify → extract (overlay)
      - Byte-patch SGW.exe .rdata: replace "www.stargateworlds.com" with server host
-6. Click "Launch SGW" (or "Launch Atera Debug" / "Fix ASLR" if those files
-   are present in the install directory).
+6. Click "Launch SGW.exe" (or "Launch Atera Debug" / "Launch + Telemetry" /
+   "Fix ASLR" if those files are present in the install directory).
 7. After playing, click "Upload Debug Logs" to zip+upload logs in one shot.
 ```
 
 ### State files
 
-Three JSON files persist across runs:
+Four JSON files persist across runs:
 
 | File | Lives | Contents |
 |------|-------|----------|
-| `<exe>/launcher-config.json` | next to `launcher.exe` | `install_path`, `server_host`, `manifest_url` |
-| `<install>/launcher-installed.json` | in the game dir | `seed_sha256`, `applied_patches: ["001-base", "002-mercury", …]` |
+| `<exe>/launcher-config.json` | next to `launcher.exe` | `schema_version`, `install_path`, `server_host`, `manifest_url`, and a `telemetry` object (`enabled`, `auth_url`) |
+| `<install>/launcher-installed.json` | in the game dir | `seed_sha256`, `applied_patches: ["001-base", "002-mercury", …]`, `patched_host` |
 | `<exe>/uploaded.json` | next to `launcher.exe` | `[{sha256, blob_name, uploaded_at}, …]` — log-upload dedupe ledger |
+| `<exe>/telemetry-state.json` | next to `launcher.exe` | per-session telemetry runtime state, kept separate from the config so config rewrites don't churn it |
 
 Putting the installed-state file **inside the game directory** is
 deliberate: reinstall the launcher and your install is still recognized;
@@ -106,10 +109,19 @@ Pseudocode of [`crates/launcher/src/install.rs`](../../crates/launcher/src/insta
      - Append patch.id to state.applied_patches.
      - Persist state after every patch (survives mid-update crash).
 
-4. If SGW.exe still contains the bytes "www.stargateworlds.com":
-     - Overwrite with server_host, zero-padded to the original 22-byte slot.
-     - Idempotent — no-op when the binary has already been patched.
+4. If patch_rdata::host_differs(data, server_host, state.patched_host):
+     - Locate the 22-byte host slot. If the exe was patched before, search
+       for the *previously written* host (recorded in state.patched_host)
+       as a padded 22-byte run; otherwise search for the original CME
+       literal "www.stargateworlds.com".
+     - Overwrite with server_host, zero-padded to the 22-byte slot.
+     - Record state.patched_host = server_host and persist.
 ```
+
+Note this is **not** a one-shot "patch only if the CME literal is present"
+check. Editing `server_host` in the config and re-running Install / Update
+re-patches an already-patched executable, because the launcher tracks which
+host it wrote last and searches for that slot.
 
 Hitting **Cancel** flips a `CancellationToken` that the download stream
 checks on every chunk. A cancelled install leaves the `.tmp-*.zip` file
@@ -118,13 +130,14 @@ on disk, so re-clicking Install / Update picks up where it stopped via
 
 ### The launch buttons
 
-Three buttons, each shown only when the relevant files exist in the
-install directory:
+Four buttons, each enabled only when the relevant files exist in the
+install directory (see [`crates/launcher/src/app/view.rs`](../../crates/launcher/src/app/view.rs)::`show_launch_panel`):
 
-| Button | Shown when | What it runs |
+| Button | Enabled when | What it runs |
 |--------|------------|--------------|
 | **Launch SGW.exe** | `SGW.exe` exists | `CreateProcess(<install>/SGW.exe)` with `cwd = <install>` |
 | **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = install dir) |
+| **Launch + Telemetry** | Atera available **and** `telemetry.enabled` **and** launcher identity loaded | Same as Atera Debug, plus the dev-session telemetry pipeline — see [telemetry.md](../operations/telemetry.md) |
 | **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
 
 The Atera files are **not** shipped by the launcher or any of its
@@ -297,10 +310,13 @@ supported.
 
 **Compatibility model:**
 
-The launcher checks `schema == SUPPORTED_SCHEMA` and bails on mismatch.
-There is no multi-schema support today. Bumping the schema is therefore
-a hard cutover that requires every player to be on a launcher build
-that understands the new schema.
+The launcher bails on any schema that isn't `1` — the check is a literal
+`if self.schema != 1` in `Manifest::validate`
+([`crates/launcher/src/manifest.rs:176`](../../crates/launcher/src/manifest.rs)),
+not a named constant. There is no multi-schema support today. Bumping the
+schema is therefore a hard cutover that requires every player to be on a
+launcher build that understands the new schema, and the bump means editing
+that literal.
 
 The recommended bump procedure:
 
@@ -363,10 +379,12 @@ $tag = "content-$(Get-Date -Format yyyy-MM-dd)-001"
 $blob = "https://github.com/SandboxServers/Cimmeria/releases/download/$tag/002-mercury-config.zip"
 # (edit manifest.json by hand or via jq)
 
-# 4. Sign the manifest with the offline private key.
-.\tools\sign-manifest.ps1 -KeyHex (Get-Content -Raw .\secrets\manifest-signing.key) `
-                         -Manifest manifest.json
-# Produces manifest.json.sig
+# 4. Sign the manifest with the offline private key, producing
+#    manifest.json.sig — an Ed25519 signature over the exact manifest
+#    bytes, hex-encoded.
+#    !! NO SIGNING TOOL IS CHECKED IN. tools/sign-manifest.ps1 does not
+#    exist in this repo. Signing is currently a manual step you must
+#    perform with your own Ed25519 tooling. See the note below.
 
 # 5. Create the immutable release first (asset must exist before the
 #    manifest references it).
@@ -382,6 +400,17 @@ gh release upload content-current --clobber `
 (step 5) **before** updating `content-current` (step 6). A launcher
 that fetches `manifest.json` between the two would see an entry
 referencing a blob that doesn't exist yet and fail with a 404.
+
+> **Gap: no signing tool is checked in.** Step 4 above and the setup
+> runbook both reference `tools/sign-manifest.ps1`, which does not exist
+> in this repo — nor does any other manifest-signing script. The
+> *verification* side is real and shipped
+> ([`crates/launcher/src/manifest.rs`](../../crates/launcher/src/manifest.rs)::`verify_manifest_signature`,
+> Ed25519 over the raw manifest body against the compile-time-embedded
+> `MANIFEST_SIGNING_PUBKEY`), but producing `manifest.json.sig` is
+> currently a bring-your-own-tooling step. Anyone running a content
+> publication today needs to sign with an external Ed25519 signer that
+> emits a 64-byte signature hex-encoded.
 
 Full operator setup (signing keypair generation, GitHub secrets,
 log-upload SAS) lives in
@@ -437,11 +466,13 @@ The launcher couldn't fetch or parse `manifest.json`.
 - **`error sending request` / DNS failures**: check your internet
   connection. Verify the **Manifest URL** field in the launcher matches
   what your server operator published.
-- **HTTP 404**: the manifest URL is wrong, or the storage container
-  isn't publicly readable. Operators: check that the `sgw` container
-  was created with `--public-access blob` per the storage runbook.
-- **HTTP 403**: the container exists but isn't public. Operators: same
-  fix as 404.
+- **HTTP 404**: the manifest URL is wrong, or the release asset it
+  points at was never uploaded. Operators: confirm `manifest.json` is
+  attached to the `content-current` release tag, and that the tag
+  itself exists.
+- **HTTP 403**: the release or repository isn't publicly readable.
+  Operators: content is served from GitHub Releases, so a private
+  repository will 403 anonymous fetches.
 - **JSON parse error**: the manifest is malformed. Operators: validate
   the file with `jq . manifest.json` before uploading.
 - **"Unsupported manifest schema N"**: this launcher binary is older

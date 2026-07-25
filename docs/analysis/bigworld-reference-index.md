@@ -1,8 +1,18 @@
 # BigWorld Reference Source Index
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-07-25
 > **RE Status**: Index of available reference source for reverse engineering
 > **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/lib/`
+
+> **Path note (2026-07-25).** Two different `src/` trees appear below and
+> they are not the same thing. Paths like `src/lib/network/packet.hpp` are
+> relative to the BigWorld source at
+> `external/engines/BigWorld-Engine-2.0.1/` (not in git — see below).
+> Paths like `src/baseapp/…`, `src/cellapp/…`, `src/mercury/…`, and
+> `src/entity/…` are the **retired Cimmeria C++ server**, which now lives
+> under [`deprecated/cpp/src/`](../../deprecated/cpp/src/). Prefix those
+> with `deprecated/cpp/` to locate the file. The C++ implementation is no
+> longer developed; active work is the Rust workspace in `crates/`.
 
 ---
 

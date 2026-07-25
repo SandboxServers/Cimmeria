@@ -146,7 +146,7 @@ If Q1 lands "yes", `crates/observability/` would be the natural home (parallel t
 - Touched: 12 files across `crates/launcher/` + new `crates/client-telemetry/`.
 - Files in scope:
   - [`crates/client-telemetry/src/lib.rs`](../../crates/client-telemetry/src/lib.rs) — `#[cfg(windows)] mod boot` only. Phase 1 has no telemetry-emission surface — see [`docs/architecture/client-telemetry.md`](../architecture/client-telemetry.md) for the multi-phase plan. **Correctly out of scope for this audit.**
-  - [`crates/admin-api/src/routes/telemetry.rs`](../../crates/admin-api/src/routes/telemetry.rs) — adjusted to accept the new `cimmeria-client` `service.name`. Already instrumented via the existing `telemetry::*` span tree from prior PRs.
+  - [`crates/admin-api/src/routes/telemetry.rs`](../../crates/admin-api/src/routes/telemetry/mod.rs) — adjusted to accept the new `cimmeria-client` `service.name`. Already instrumented via the existing `telemetry::*` span tree from prior PRs.
   - [`crates/launcher/src/telemetry/events.rs`](../../crates/launcher/src/telemetry/events.rs) — launcher-side `Event` enum; launcher already has its own `tracing` subscriber.
 - **Verdict: nothing to add this round.** Phase 1 is "DLL loads + bootstrap thread runs". Phase 2 (CME hooks, FFI callbacks, log tees) is where instrumentation discipline starts to matter — call it out then.
 - **Priority:** OUT OF SCOPE for this audit.
@@ -162,7 +162,7 @@ If Q1 lands "yes", `crates/observability/` would be the natural home (parallel t
 
 - Branch SHA: `95e441fa`
 - Files in scope:
-  - [`crates/entity/src/movement_validation.rs`](../../crates/entity/src/movement_validation.rs) — pure validator, correctly stateless and unlogged (every reject the caller logs).
+  - [`crates/entity/src/movement_validation.rs`](../../crates/entity/src/movement_validation/mod.rs) — pure validator, correctly stateless and unlogged (every reject the caller logs).
   - [`crates/services/src/cell/space_manager/entities.rs:199-244`](../../crates/services/src/cell/space_manager/entities.rs#L199) — `apply_client_position_update`, unlogged but the caller in `base_messages/mod.rs` emits the full negative log on reject.
   - [`crates/services/src/cell/service/base_messages/mod.rs:208-247`](../../crates/services/src/cell/service/base_messages/mod.rs#L208) — **gold-standard negative log** on `ClientMoveOutcome::Rejected`. `warn!` with `target: "movement.validation"`, every field from the convention populated (`entity_id`, `space_id`, `client_x/y/z`, `last_valid_x/y/z`, `bounds_min_x/.../max_z`, `reason = "bounds"`).
 - **Spans missing**: none — this is a hot-loop validator, an info-span per call would cost more than it's worth.
@@ -191,7 +191,7 @@ If Q1 lands "yes", `crates/observability/` would be the natural home (parallel t
 - Branch SHA: `99e1c905`
 - Touched: 9 production files.
 - Files in scope:
-  - [`crates/services/src/cell/service/npc_ai.rs`](../../crates/services/src/cell/service/npc_ai.rs) — 7 new state handlers (`patrol`, `wander`, `investigate`, `follow`, `despawn`, `submit`, `error`). The dispatcher at line 79 wraps every handler in a `tracing::debug_span!("npc_ai.decision", npc_id, ai_state, space_id)`. Inside, each handler emits **state-transition `debug!` events with `event` discriminator fields** (`event = "patrol_arrived"`, `"patrol_waypoint_set"`, `"investigate_arrived"`, `"investigate_routed"`, `"follow_routed"`, etc.). `npc_ai_despawn` emits info; `npc_ai_submit` emits info on cleanup; `npc_ai_error` emits debug-once on entry.
+  - [`crates/services/src/cell/service/npc_ai.rs`](../../crates/services/src/cell/service/npc_ai/mod.rs) — 7 new state handlers (`patrol`, `wander`, `investigate`, `follow`, `despawn`, `submit`, `error`). The dispatcher at line 79 wraps every handler in a `tracing::debug_span!("npc_ai.decision", npc_id, ai_state, space_id)`. Inside, each handler emits **state-transition `debug!` events with `event` discriminator fields** (`event = "patrol_arrived"`, `"patrol_waypoint_set"`, `"investigate_arrived"`, `"investigate_routed"`, `"follow_routed"`, etc.). `npc_ai_despawn` emits info; `npc_ai_submit` emits info on cleanup; `npc_ai_error` emits debug-once on entry.
   - [`crates/services/src/cell/combat/threat.rs:60-86`](../../crates/services/src/cell/combat/threat.rs#L60) — `generate_threat` was updated to preempt patrol/wander/investigating/follow into Fighting. Emits `tracing::info!(npc_id, attacker, ?prev, "NPC aggro: preempt -> Fighting")`. Good.
   - [`crates/services/src/cell/content/executor/world/mod.rs:89-198`](../../crates/services/src/cell/content/executor/world/mod.rs#L89) — three new content actions (`SetNpcPoi`, `SetFollowTarget`, `SetNpcAiState`). Each emits `info!` on success and `debug!` on tag-not-found.
   - [`crates/services/src/cell/space_manager/spawn.rs`](../../crates/services/src/cell/space_manager/spawn.rs) — small diff (26 LOC), already covered by parent span.
@@ -225,7 +225,7 @@ If Q1 lands "yes", `crates/observability/` would be the natural home (parallel t
 - Branch SHA: `40cd2278`
 - Files in scope:
   - [`crates/services/src/cell/interactions/trainer.rs`](../../crates/services/src/cell/interactions/trainer.rs) — `try_open_trainer` is **the gold-standard new handler**. Already has structured logs for trainer_empty_offering (warn, target="abilities"), trainer_offered_unbound (warn, target="abilities"), trainer_open success (info), trainer_open_send_failed (error). Nothing to add.
-  - [`crates/services/src/cell/interactions/dispatch.rs`](../../crates/services/src/cell/interactions/dispatch.rs), [`crates/services/src/cell/interactions/mod.rs`](../../crates/services/src/cell/interactions/mod.rs) — routing scaffolding, no logic worth instrumenting separately.
+  - [`crates/services/src/cell/interactions/dispatch.rs`](../../crates/services/src/cell/interactions/dispatch/mod.rs), [`crates/services/src/cell/interactions/mod.rs`](../../crates/services/src/cell/interactions/mod.rs) — routing scaffolding, no logic worth instrumenting separately.
 - **Spans missing**: `try_open_trainer` could benefit from `#[instrument]` for the structured-field auto-population, but the function-level info log already carries every field a span would. P3 / nice-to-have.
 - **Metrics opportunities**:
   - `trainer_opens_total{outcome=opened|no_template|no_archetype|empty_offering}` — counter. Useful for content health ("which trainers are still landing on the empty-offering path"). P2.
@@ -236,7 +236,7 @@ If Q1 lands "yes", `crates/observability/` would be the natural home (parallel t
 
 - Branch SHA: `a41dcdf1`
 - Files in scope:
-  - [`crates/services/src/base/dispatch.rs`](../../crates/services/src/base/dispatch.rs) — chat dispatch. **Already heavily instrumented**: the `chatSetDNDMessage` WSTRING-decode failure path at line 137-148 emits `warn!` with `reason = "read_wstring_failed"` (textbook negative-logging-convention). Bound `chatSetAFKMessage` is intentionally `debug!`-only.
+  - [`crates/services/src/base/dispatch.rs`](../../crates/services/src/base/dispatch/mod.rs) — chat dispatch. **Already heavily instrumented**: the `chatSetDNDMessage` WSTRING-decode failure path at line 137-148 emits `warn!` with `reason = "read_wstring_failed"` (textbook negative-logging-convention). Bound `chatSetAFKMessage` is intentionally `debug!`-only.
   - [`crates/services/src/base/world_entry/play_character.rs`](../../crates/services/src/base/world_entry/play_character.rs) — adds `dnd_message = None` reset on character switch. Existing `world_entry.play_character` span covers this; no callout needed.
 - **Verdict: nothing to add.**
 - **Priority:** none.
@@ -257,7 +257,7 @@ If Q1 lands "yes", `crates/observability/` would be the natural home (parallel t
 - Branch SHA: `3e4c6f84`
 - Touched: 15 production files.
 - Files in scope:
-  - [`crates/services/src/cell/service/ticks/npc_respawn.rs`](../../crates/services/src/cell/service/ticks/npc_respawn.rs) — new respawn tick. Has `#[instrument(name = "spawner.npc_respawn_tick", level = "debug", skip_all, fields(ready_count))]` and records `ready_count` per pass.
+  - [`crates/services/src/cell/service/ticks/npc_respawn.rs`](../../crates/services/src/cell/service/ticks/npc_respawn/mod.rs) — new respawn tick. Has `#[instrument(name = "spawner.npc_respawn_tick", level = "debug", skip_all, fields(ready_count))]` and records `ready_count` per pass.
   - [`crates/services/src/cell/abilities/messaging.rs:178-247`](../../crates/services/src/cell/abilities/messaging.rs#L178) — `broadcast_movement_type` helper. `warn!` on player-misuse path; otherwise correctly silent (dedup via `last_movement_type`).
   - [`crates/services/src/cell/abilities/damage_apply/mod.rs`](../../crates/services/src/cell/abilities/damage_apply/mod.rs) — refactored to route NPC kill through `combat::mark_npc_dead`. Parent span exists.
   - [`crates/services/src/cell/combat/state.rs`](../../crates/services/src/cell/combat/state.rs) (new), [`crates/services/src/cell/combat/mod.rs`](../../crates/services/src/cell/combat/mod.rs) — `mark_npc_dead` helper. Worth a quick check that the helper logs the kill itself (parent damage_apply emits the death broadcast; the helper might be silent — verify in implementation PR).
@@ -379,3 +379,36 @@ The cover-tick uses the in-body `record(...)` pattern. The dispatcher-hoist patt
 **Q5. Do we want `service.namespace=cimmeria` and `deployment.environment=colo` resource attributes on every span?**
 
 The OTEL_RESOURCE_ATTRIBUTES env var supports both per [`main.rs:29`](../../crates/server/src/main.rs#L29). Currently no defaults are set. The audit recommends `deployment.environment` be set in the compose file (PR0 candidate) so SigNoz dashboards can split dev/colo on every aggregate.
+
+---
+
+## Addendum — 2026-07-25 (documentation accuracy sweep)
+
+The findings above are a point-in-time record of the code as of
+2026-06-01 and are **not** revised here. Two notes for readers arriving
+later:
+
+**1. File paths in this audit have drifted.** Several modules cited as
+single `.rs` files have since been split into directories. The findings
+still apply; only the paths moved:
+
+| Cited in this audit | Now |
+|---|---|
+| `crates/entity/src/movement_validation.rs` | `crates/entity/src/movement_validation/` |
+| `crates/entity/src/navigation.rs` | `crates/entity/src/navigation/` |
+| `crates/services/src/cell/service/npc_ai.rs` | `crates/services/src/cell/service/npc_ai/` |
+| `crates/services/src/cell/combat/threat.rs` | `crates/services/src/cell/combat/threat/` |
+| `crates/services/src/cell/service/ticks/npc_respawn.rs` | `crates/services/src/cell/service/ticks/npc_respawn/` |
+| `crates/services/src/cell/interactions/dispatch.rs` | `crates/services/src/cell/interactions/` |
+| `crates/admin-api/src/routes/telemetry.rs` | `crates/admin-api/src/routes/telemetry/` |
+
+Line-anchored links (`#L79`, `#L89`, `#L60`) in the body should be
+treated as stale.
+
+**2. Open question Q5 has since been resolved.** The audit recommended
+setting `deployment.environment` in the compose file so SigNoz can split
+dev from colo. This has landed: `docker/compose.yml` now sets
+`OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=colo,service.namespace=cimmeria"`
+on the `cimmeria` service, and `crates/server/src/main.rs` additionally
+documents a `CIMMERIA_DEPLOY_ENV` variable (default `dev`) that sets the
+same resource attribute outside compose.

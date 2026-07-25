@@ -2,7 +2,7 @@
 title: "Colo / single-host auto-update deployment"
 type: how-to
 audience: operators
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Colo / single-host auto-update deployment
@@ -20,7 +20,7 @@ This is **not** a production hosting story. The image is a self-contained demo (
 
 ## What you don't get (yet)
 
-- **No persistence across updates.** Player characters, mission progress, inventory — all reset every time a new image rolls. This is deliberate while we're churning the schema. When the schema stabilises, switch the `cimmeria` service to use a named volume per [container.md → Volume / persistence](container.md#volume--persistence) and the DB will survive updates.
+- **No persistence, full stop.** Player characters, mission progress, inventory — all reset every time a new image rolls, *and* on any plain `docker restart`. The container entrypoint reseeds the database from the image on every start; a named volume does not change this. See [container.md → Volume / persistence](container.md#volume--persistence). This is deliberate while we're churning the schema.
 - **No staged rollouts / canaries.** Watchtower replaces the running container as soon as it sees a digest change. If a release breaks boot, the box is down until the next release lands or you intervene manually.
 - **No HA.** Single container, single host. If you need redundancy, run two boxes behind a load balancer; this guide doesn't cover that.
 
@@ -34,7 +34,7 @@ This is **not** a production hosting story. The image is a self-contained demo (
   sudo systemctl enable --now docker
   ```
 - A user in the `docker` group (or sudo every command).
-- Ports `13001/tcp`, `32832/udp`, `50000/udp`, `8081/tcp`, `8443/tcp` reachable from your players.
+- Ports `13001/tcp`, `32832/udp`, `50000/udp`, `8081/tcp`, `8443/tcp`, and `30000/tcp` (minigame SmartFoxServer) reachable from your players — these are the ports [`docker/compose.yml`](../../docker/compose.yml) publishes.
 
 ## One-time setup
 
@@ -54,24 +54,21 @@ Watchtower polls `ghcr.io/sandboxservers/cimmeria-server:latest-prerelease` ever
 
 1. Watchtower pulls the new image.
 2. Stops the running `cimmeria` container.
-3. Removes the old container **and its anonymous pgdata volume** (`WATCHTOWER_REMOVE_VOLUMES=true`).
-4. Starts a fresh container with the same config and the new image. Docker creates a new anonymous volume for `/var/lib/postgresql/data`, populated from the image's baked pgdata layer.
+3. Removes the old container (`WATCHTOWER_REMOVE_VOLUMES=true` is set, but see below — it is not what actually gives you the fresh DB).
+4. Starts a fresh container with the same config and the new image. The container's entrypoint reseeds pgdata from the image-baked copy before Postgres boots.
 5. Removes the old image (`WATCHTOWER_CLEANUP=true`) so disk doesn't accumulate.
 
 Total downtime per swap: ~30 seconds (mostly Postgres boot + s6 service init, same as a cold start).
 
-## Why no volume mount = fresh DB
+## Why every swap gets a fresh DB
 
-Docker's behaviour when no `-v` is given for a `VOLUME`-declared path:
+The reseed happens **in the entrypoint**, not through Docker volume mechanics. On every container start, [`docker/entrypoint.sh`](../../docker/entrypoint.sh) unconditionally copies the image-baked `/var/lib/postgresql/initial-data` over `/var/lib/postgresql/data`, then hands off to s6-overlay. That is what makes each deploy start clean.
 
-- Creates a new anonymous volume for each `docker run` / `docker compose up`.
-- Populates the volume from the image's content at that path on first start.
+This is worth understanding because the obvious explanation is wrong. You might expect that, with no `volumes:` entry for the Postgres path, Docker would simply hand each new container a new anonymous volume populated from the image. In practice watchtower **attaches the old container's anonymous volume to the new container before removing the old one**, so Docker refuses the volume removal and the new instance inherits the previous database. Earlier revisions of this setup relied on `WATCHTOWER_REMOVE_VOLUMES=true` alone and did not reliably get a fresh DB. The entrypoint-level reseed sidesteps the mechanic entirely; `WATCHTOWER_REMOVE_VOLUMES=true` is now belt-and-suspenders only.
 
-So when watchtower replaces the container, the new instance gets a **new** anonymous volume — Docker doesn't reuse the old one across container creations. The image's baked pgdata layer is the source of truth, and each new container boots from a faithful copy of it.
+Two consequences follow. First, the reseed is unconditional — anything written to pgdata at runtime is discarded on the next start, including a restart that isn't an update. Second, named SigNoz volumes are unaffected and persist across swaps, so your observability history survives.
 
-`WATCHTOWER_REMOVE_VOLUMES=true` ensures the orphaned old volumes are deleted alongside the old container, so they don't pile up on disk.
-
-If you ever **do** want persistence across updates, mount a named volume — see [container.md → Volume / persistence](container.md#volume--persistence). At that point the auto-update story becomes "auto-update with persistent DB" and you've signed up for whatever schema drift the next release brings.
+If you ever **do** want persistence across updates, note that mounting a named volume will not get you there — the entrypoint reseed runs regardless of how the path is mounted, so the volume's contents are overwritten on every start. See [container.md → Volume / persistence](container.md#volume--persistence). The available route today is an external Postgres pointed at by `DB_URL`; at that point the auto-update story becomes "auto-update with persistent DB" and you've signed up for whatever schema drift the next release brings.
 
 ## Operational commands
 
@@ -137,7 +134,7 @@ The overlay ships with `lifecycle` + `errors` defined. To enable additional chan
 3. Add a new awk-substitution arm to the render step in [.github/workflows/release-container.yml](../../.github/workflows/release-container.yml).
 4. Cut a new release. The new overlay artifact will include the channel.
 
-Channels without a `[discord.channels.X]` block are silently dropped from routing — see the `should_post` logic in [crates/discord/src/config.rs](../../crates/discord/src/config.rs).
+Channels without a `[discord.channels.X]` block are silently dropped from routing — see the `should_post` logic in [crates/discord/src/config/model.rs](../../crates/discord/src/config/model.rs) (line 86).
 
 ### Per-event toggle overrides
 

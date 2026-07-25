@@ -2,14 +2,15 @@
 title: "SGW Launcher"
 type: explanation
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # SGW Launcher
 
-A standalone Windows .exe that installs the SGW client from an Azure Blob
-container, applies declared patches in order, optionally launches the
-debug-Atera path, and uploads debug logs back to the same storage account.
+A standalone Windows .exe that installs the SGW client from GitHub
+Releases, applies declared patches in order, optionally launches the
+debug-Atera path (with or without the dev-session telemetry pipeline),
+and uploads debug logs to an Azure Blob SAS URL.
 
 Located in [`crates/launcher/`](../../crates/launcher/) as the
 `sgw-launcher` crate. Built with **eframe (egui)** for a small, native
@@ -28,13 +29,14 @@ window with no webview dependency.
 
 | Function | Notes |
 |----------|-------|
-| **Fetch manifest** | Pulls `manifest.json` from Azure Blob (anonymous GET). |
+| **Fetch manifest** | Pulls `manifest.json` + `manifest.json.sig` from GitHub Releases (anonymous GET), and verifies the Ed25519 signature. |
 | **Seed install** | Downloads the seed zip (the whole client) once, verifies sha256, extracts to the install dir. |
 | **Patch install** | Walks declared patches in order; downloads + extracts each missing patch (overlay over existing files). |
-| **Hostname patch** | Rewrites `www.stargateworlds.com` in `SGW.exe` `.rdata` to the configured emulator host. Idempotent. |
+| **Hostname patch** | Rewrites the 22-byte host slot in `SGW.exe` `.rdata` to the configured emulator host — the original `www.stargateworlds.com` literal on a fresh install, or the previously-written host on a re-patch. |
 | **Launch SGW** | `CreateProcess(SGW.exe)`. |
-| **Launch Atera Debug** | `cmd /C AtreaGameDebug.bat` (only shown if Atera files dropped into the install dir). |
-| **Fix ASLR** | `cmd /C AtreaFixASLR.bat` (only shown if the Atera fix-ASLR bat is present). |
+| **Launch Atera Debug** | `cmd /C AtreaGameDebug.bat` (enabled only if Atera files were dropped into the install dir). |
+| **Launch + Telemetry** | Same as Atera Debug, plus the dev-session telemetry pipeline — mints a token, injects `cimmeria-client-telemetry.dll` into SGW.exe, tails the client logs, and uploads chunks/bundles. See `src/telemetry/`, `src/inject.rs`, and [operations/telemetry.md](../operations/telemetry.md). |
+| **Fix ASLR** | `cmd /C AtreaFixASLR.bat` (enabled only if the Atera fix-ASLR bat is present). |
 | **Upload debug logs** | Zips `Binaries/sgwdebuglog*` + `Binaries/sessions/**` and PUTs once to the Azure log SAS URL. |
 
 ---
@@ -77,9 +79,12 @@ State files:
 - `<install_path>/launcher-installed.json` — applied-patch ledger (in the
   game directory, so it survives launcher reinstalls and travels with the
   game).
-- `<launcher.exe dir>/launcher-config.json` — install path, server host,
-  manifest URL.
+- `<launcher.exe dir>/launcher-config.json` — schema version, install path,
+  server host, manifest URL, and telemetry preferences.
 - `<launcher.exe dir>/uploaded.json` — log-upload dedupe ledger.
+- `<launcher.exe dir>/telemetry-state.json` — per-session telemetry runtime
+  state, kept out of the config file so config rewrites don't churn it
+  ([`config.rs`](../../crates/launcher/src/config.rs)::`telemetry_state_path`).
 
 ---
 
@@ -102,9 +107,13 @@ State files:
 
 - `schema` must be `1`. Bumping invalidates older launchers; serve a
   legacy manifest at the old URL during transitions.
-- `blob` is relative to the manifest URL's container path. The launcher
-  derives `<base>/<blob>` from `manifest_url` by stripping the final
-  `manifest.json` segment.
+- `blob` may be either an absolute `http(s)://` URL (passed through
+  unchanged) or a path relative to the manifest URL's container, in which
+  case the launcher derives `<base>/<blob>` by stripping everything after
+  the final `/` in `manifest_url`. The GitHub Releases hosting model uses
+  absolute URLs so the rolling `content-current` manifest can point at
+  immutable per-publication release tags. See
+  [`manifest.rs`](../../crates/launcher/src/manifest.rs)::`blob_url`.
 - `after` is a forward-declaration check: every referenced patch id must
   have appeared earlier in the array. Order in `patches[]` **is** the
   application order.
@@ -122,8 +131,14 @@ launcher byte-searches for that literal and overwrites it with the
 configured `server_host`, zero-padded to 22 bytes. No PE checksum
 recalculation needed for `.rdata` edits.
 
-The replacement hostname must be ≤ 22 bytes. Idempotent: if the literal
-is absent the patch is a no-op (assumes the binary is already patched).
+The replacement hostname must be ≤ 22 bytes. The patch is **not** a
+simple "skip if the CME literal is absent" no-op: the launcher records
+the host it last wrote in `launcher-installed.json`'s `patched_host`, and
+`host_differs` re-patches when the configured `server_host` no longer
+matches. On a re-patch it searches for the *previous* host as a padded
+22-byte run rather than the original literal, so changing `server_host`
+and re-running Install / Update correctly rewrites an already-patched
+executable.
 
 See [`crates/launcher/src/patch_rdata.rs`](../../crates/launcher/src/patch_rdata.rs).
 
@@ -138,10 +153,11 @@ has no such constraints.
 
 ## Launch Surface
 
-| Button | Shown when | Action |
+| Button | Enabled when | Action |
 |---|---|---|
 | **Launch SGW.exe** | `SGW.exe` exists | `CreateProcess(<install>/SGW.exe)` with `cwd = <install>` |
 | **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = install dir) |
+| **Launch + Telemetry** | Atera available, `telemetry.enabled`, and identity loaded | Atera debug launch plus the telemetry pipeline |
 | **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
 
 The Atera batch files are **not** shipped by the launcher. Players who
@@ -217,13 +233,17 @@ Three GitHub Actions workflows mirror the server's pattern:
 
 | Workflow | File | Trigger |
 |---|---|---|
-| **launcher** | [`.github/workflows/launcher-build.yml`](../../.github/workflows/launcher-build.yml) | Path-filtered fmt/clippy/build/test on PRs touching `crates/launcher/**` or `.github/workflows/launcher-*.yml`. |
+| **launcher** | [`.github/workflows/launcher-build.yml`](../../.github/workflows/launcher-build.yml) | Path-filtered fmt/clippy/build/test/coverage (five jobs; the `coverage` job runs `cargo llvm-cov`) on PRs touching `crates/launcher/**` or `.github/workflows/launcher-*.yml`. |
 | **launcher-release** | [`.github/workflows/launcher-release.yml`](../../.github/workflows/launcher-release.yml) | `workflow_dispatch`. Builds release exe with `LAUNCHER_LOG_SAS_URL` injected from secrets, creates a GitHub Release tagged `launcher-<date>-<sha7>`. |
 | **launcher-release-on-comment** | [`.github/workflows/launcher-release-on-comment.yml`](../../.github/workflows/launcher-release-on-comment.yml) | Mirror of `release-on-comment.yml` but matches `/release-launcher` on a merged PR. Validates commenter has write access, dispatches `launcher-release.yml`. |
 
-Required repo secret: `LAUNCHER_LOG_SAS_URL`. PR / build jobs deliberately
-omit it; only `launcher-release` reads it. Without the secret the
-release exe still builds — log upload is just permanently disabled.
+Two repo secrets feed the release build: `LAUNCHER_LOG_SAS_URL` (log
+upload) and `LAUNCHER_MANIFEST_PUBKEY_HEX` (the embedded Ed25519 manifest
+verification key). PR / build jobs deliberately omit both; only
+`launcher-release` reads them. Without `LAUNCHER_LOG_SAS_URL` the release
+exe still builds and log upload is permanently disabled; without
+`LAUNCHER_MANIFEST_PUBKEY_HEX`, manifest verification fails closed with
+`ManifestError::SigningKeyUnavailable`.
 
 The launcher is **excluded** from the main `ci` workflow ([`test.yml`](../../.github/workflows/test.yml))
 via the `WORKSPACE_EXCLUDES` env (`--exclude sgw-launcher`) so eframe's
@@ -237,22 +257,42 @@ Linux system deps don't slow the rest of the workspace pipeline.
 crates/launcher/
 ├── Cargo.toml
 ├── build.rs                    # winres icon embed
+├── binaries/                   # bundled 7za executables
+├── gen/schemas/                # windows-schema.json
 ├── icons/
 │   └── icon.ico
 └── src/
     ├── main.rs                 # eframe entry, tokio runtime
-    ├── app.rs                  # eframe::App — panels + state machine
+    ├── app/
+    │   ├── mod.rs              # eframe::App — state machine
+    │   └── view.rs             # panel rendering
     ├── config.rs               # LauncherConfig (next to .exe)
-    ├── manifest.rs             # Manifest schema + fetch + validate
+    ├── manifest.rs             # Manifest schema + fetch + Ed25519 verify
     ├── install.rs              # seed + patches + .rdata patch orchestration
     ├── patch_rdata.rs          # SGW.exe hostname byte-patch
     ├── launch.rs               # SGW.exe + Atera bat detection & spawn
+    ├── client_paths.rs         # install-dir path resolution
+    ├── identity.rs             # stable per-install identity
+    ├── inject.rs               # cimmeria-client-telemetry.dll injection
     ├── logs.rs                 # log collection + zip + Azure PUT
     ├── state.rs                # InstalledState + UploadedLedger
-    └── worker.rs               # tokio worker, Command/Event channels
+    ├── telemetry/
+    │   ├── mod.rs
+    │   ├── auth.rs             # dev-session token mint / refresh
+    │   ├── session.rs          # session lifecycle
+    │   ├── runner.rs           # pipeline driver
+    │   ├── tail.rs             # client log tailing
+    │   ├── events.rs           # parsed event shapes
+    │   ├── queue.rs            # buffering
+    │   ├── chunk.rs            # upload-chunk
+    │   ├── bundle.rs           # end-of-session upload-bundle
+    │   └── process_watch.rs    # game-exit detection
+    └── worker/
+        ├── mod.rs              # tokio worker
+        └── messages.rs         # Command/Event channel types
 ```
 
-10 files in a flat `src/`. Each has its own theme; per
-[CLAUDE.md's file organization rules](../../CLAUDE.md), no sibling
-cluster crosses the 4-files-on-same-theme threshold that would promote
-to a directory.
+11 top-level files plus three module directories. `app/`, `worker/`, and
+`telemetry/` were each promoted from a flat file once they crossed the
+4-siblings-on-one-theme threshold in
+[CLAUDE.md's file organization rules](../../CLAUDE.md).

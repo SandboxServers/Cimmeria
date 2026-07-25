@@ -1,7 +1,7 @@
 ---
 type: how-to
 audience: New Cimmeria contributors setting up the reverse-engineering toolchain (Ghidra MCP + x64dbg MCP + Claude Code)
-last_updated: 2026-05-24
+last_updated: 2026-07-25
 prerequisites: [Windows 10/11, PowerShell 7+, ~10 GB free disk]
 companion_docs:
   - reverse-engineering-with-claude.md
@@ -143,7 +143,7 @@ Copy-Item .mcp.json.example .mcp.json
 
 Open `.mcp.json` and replace every `<CIMMERIA_ROOT>` with the absolute path to your Cimmeria checkout (e.g. `C:\\Users\\you\\source\\projects\\Cimmeria` — Windows paths inside JSON need double backslashes).
 
-For the `cimmeria-rag` block: replace `REPLACE_WITH_FUNCTIONS_KEY` with the Azure Functions key for the project's RAG MCP. The key isn't checked into git — ask in the project chat (or, if you're a contributor without access, just delete the entire `cimmeria-rag` block; the Ghidra and x64dbg MCPs work standalone). When the bootstrap generates `.mcp.json` for you it leaves the placeholder in place unless you pass `-CimmeriaRagKey <value>`.
+For the `cimmeria-rag` block: replace `REPLACE_WITH_FUNCTIONS_KEY` with the Azure Functions key for the project's RAG MCP. The key isn't checked into git — ask in the project chat (or, if you're a contributor without access, just delete the entire `cimmeria-rag` block; the Ghidra and x64dbg MCPs work standalone). When the bootstrap generates `.mcp.json` for you it leaves the placeholder in place unless you pass `-CimmeriaRagKey <value>` — note that's a parameter of the `Install-CimmeriaReToolchain` bootstrap function, not of `setup.ps1`, so to use it you invoke the function directly rather than going through `setup.ps1 -WithReToolchain`.
 
 Verify the Ghidra `GHIDRA_MCP_URL` port matches the port Ghidra's plugin actually bound to (see the port-note in [install-ghidra-mcp.md](../reverse-engineering/toolchain/install-ghidra-mcp.md#3-install-the-ghidramcp-plugin)).
 
@@ -185,6 +185,7 @@ With all three MCPs wired, Claude Code can:
 - Run static analysis through Ghidra: decompile, follow xrefs, rename functions, extract strings, dump structs — see [`docs/reverse-engineering/`](../reverse-engineering/) for the methodology and [`docs/guides/reading-decompiled-code.md`](reading-decompiled-code.md) for interpreting output.
 - Run dynamic analysis through x64dbg: set log breakpoints, read memory, attach to the live SGW process — see [`docs/guides/sgw-live-debugging.md`](sgw-live-debugging.md) for the techniques and gotchas.
 - Search the Cimmeria knowledge graph: code, docs, entity defs, findings — through the cloud-hosted `cimmeria-rag` server.
+- Structurally verify a reconstruction against the binary with the [`/re-verify`](../../.claude/commands/re-verify.md) slash command, which pairs Ghidra MCP ground truth with the LLM-free parity engine at [`tools/re_parity.py`](../../tools/re_parity.py). No extra setup beyond the MCPs above and a Python 3 on PATH — the engine is pure Python with no network calls. Details in the workflow doc.
 
 The workflow that puts them together — when to invoke which agent, how to hand off findings, what NOT to delegate — is documented in [`docs/guides/reverse-engineering-with-claude.md`](reverse-engineering-with-claude.md). Read it before your first dig.
 

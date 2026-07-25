@@ -2,7 +2,7 @@
 title: "SGW Client UI Layout Inventory"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # SGW Client UI Layout Inventory
@@ -67,7 +67,7 @@ Legend:
 
 ---
 
-## Common/ (9 files — shared utilities)
+## Common/ (10 files — shared utilities)
 
 | File | Status | Module | Description |
 |------|--------|--------|-------------|
@@ -297,6 +297,21 @@ Legend:
 | Core | 123 | 71 | 2 | 33 | 8 |
 | **Total** | **150** | **85** | **2** | **35** | **19** |
 
+> **This table does not reconcile and has not been re-derived against the
+> client.** Three inconsistencies, noted 2026-07-25:
+>
+> - The Core row's breakdown sums to 114, not the 123 stated
+>   (71 + 2 + 33 + 8).
+> - The Total row's breakdown sums to 141, not the 150 stated
+>   (85 + 2 + 35 + 19).
+> - The Common row says 9, but the Common/ section above enumerates 10
+>   distinct `.layout` files.
+>
+> The Total column is at least self-consistent with its own rows
+> (9 + 9 + 9 + 123 = 150). Treat every figure here as approximate until
+> someone recounts against a client install; the per-file tables in the
+> body are the more trustworthy record.
+
 ### Disabled Modules (2)
 - **Trainer** — Ability trainer NPC. Has `Trainer_NEW.layout` redesign too. Functionality may have moved to DisciplineTrainer.
 - **WeaponBar** — Weapon bar. Has TWO redesign attempts (`_new`, `_NEW2`). Bandolier system may have replaced it.
@@ -304,7 +319,7 @@ Legend:
 ### Unused Layouts (19)
 - 7 CEGUI stock demos
 - 4 Startup `_new.layout` redesigns (ServerSelect, CharSelect, CharCreate) + `SGWUI_CharacterSelect.layout` prototype
-- 8 Core `_NEW` redesigns: WeaponBar (x2), Bandolier, ChatWindow, Dialog, Blurb, Trainer
+- 8 Core `_NEW` redesigns: WeaponBar (x2), Bandolier, ChatWindow, Dialog, Blurb, Trainer — note this list names only 7; the eighth is unrecorded
 
 ### Flash Minigames (11 .upk packages)
 Activate, Alignment, Analyze, Bypass, Converse, ConverseBasicHumanoid, CrystalGame, DHD, GoauldCrystals, Hack, Livewire

@@ -2,10 +2,26 @@
 title: "Cimmeria Admin Panel"
 type: explanation
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Cimmeria Admin Panel
+
+> **⚠ Status: unimplemented proposal, written against the retired C++ server.**
+> Verified 2026-07-25. Nothing described below has been built —
+> `tools/admin/` does not exist, and neither does any Flask backend. The
+> design also assumes the C++ stack (Boost 1.55, embedded Python 3.4, the
+> `py_client` TCP console on ports 8989/8990), all of which now lives under
+> [`deprecated/`](../../deprecated/) and is not part of active development.
+> The Rust server does not implement the Python console at all.
+>
+> **The admin surface that actually exists** is the Axum `cimmeria-admin-api`
+> crate on port 8443 plus the Tauri ServerEd desktop app — see
+> [admin-api.md](admin-api.md).
+>
+> This document is retained for its requirements analysis and UI design
+> thinking, which would still apply to a browser-based panel built on the
+> real admin API. Treat every file path, port, and env var below as historical.
 
 A standalone web dashboard for administering the Cimmeria server emulator during development. Provides account management, player inspection, live server interaction via the Python console bridge, and database operations through a polished browser-based interface.
 
@@ -125,7 +141,7 @@ CREATE TABLE account (
 
 ### Password Verification
 
-Matches the authentication server's logic in `src/authentication/logon_queue.cpp:27-50`:
+Matches the authentication server's logic in `deprecated/cpp/src/authentication/logon_queue.cpp:27-50`:
 
 ```python
 import hashlib
@@ -141,7 +157,7 @@ The auth server validates the password as a 40-character uppercase hex SHA-1 has
 
 ### Username Validation
 
-From `logon_queue.cpp:48-50`:
+From `logon_queue.cpp:47-49`:
 - Length: 3-20 characters
 - Allowed characters: `[a-zA-Z0-9_-]`
 
@@ -162,7 +178,7 @@ The `console_client.py` module implements the py_client binary protocol, enablin
 
 ### Wire Format
 
-From `src/mercury/unified_connection.hpp:675-683` and `unified_connection.cpp:102-136`:
+From `deprecated/cpp/src/mercury/unified_connection.hpp:675-683` and `unified_connection.cpp:102-136`:
 
 ```
 Message frame:
@@ -189,7 +205,7 @@ struct MessageHeader {
 
 ### Protocol Messages
 
-From `src/entity/py_client.hpp:6-14`:
+From `deprecated/cpp/src/entity/py_client.hpp:6-14`:
 
 | ID | Name | Direction | Payload |
 |----|------|-----------|---------|
@@ -202,7 +218,7 @@ From `src/entity/py_client.hpp:6-14`:
 
 ### Response Value Types
 
-From `src/entity/py_client.hpp:22-28`:
+From `deprecated/cpp/src/entity/py_client.hpp:22-28`:
 
 | Type ID | Name | Payload |
 |---------|------|---------|
@@ -214,7 +230,7 @@ From `src/entity/py_client.hpp:22-28`:
 
 ### Evaluate vs Execute
 
-From `src/entity/py_client.cpp`:
+From `deprecated/cpp/src/entity/py_client.cpp`:
 
 - **Evaluate** (`REQ_EVALUATE`, 0x03): Calls `bp::eval()` — evaluates a Python *expression* and returns the result. Supports bool, int, float, str, and NoneType return values. Unknown types return `PY_EXEC_NONE`.
 - **Execute** (`REQ_EXECUTE`, 0x05): Calls `bp::exec()` — executes a Python *statement*. Always returns `PY_EXEC_NONE` on success (statements don't produce values).
@@ -235,8 +251,8 @@ Open-close per request for simplicity. Each API call to `/api/console/eval` or `
 
 | Service | Config File | Config Key | Default Port |
 |---------|------------|------------|-------------|
-| BaseApp | `config/BaseService.config` | `<console_port>` | 8989 |
-| CellApp | `config/CellService.config` | `<console_port>` | 8990 |
+| BaseApp | `deprecated/cpp-config/config/BaseService.config` | `<console_port>` | 8989 |
+| CellApp | `deprecated/cpp-config/config/CellService.config` | `<console_port>` | 8990 |
 
 The console server only starts if `<py_console_password>` is set to a non-empty value.
 
@@ -422,7 +438,7 @@ All config values have defaults matching the emulator's existing config files an
 | CellApp console host | `CIMMERIA_CELL_HOST` | `127.0.0.1` | `CellService.config` |
 | CellApp console port | `CIMMERIA_CELL_CONSOLE_PORT` | `8990` | `CellService.config:33` |
 | Console password | `CIMMERIA_CONSOLE_PASSWORD` | (empty) | `py_console_password` |
-| Auth server port | `CIMMERIA_AUTH_PORT` | `8081` | `AuthenticationService.config:9` |
+| Auth server port | `CIMMERIA_AUTH_PORT` | `8081` | `AuthenticationService.config:12` |
 | BaseApp game port | `CIMMERIA_BASE_PORT` | `32832` | `BaseService.config:10` |
 | Flask secret key | `FLASK_SECRET_KEY` | (random) | — |
 | Flask port | `ADMIN_PORT` | `5000` | — |
@@ -546,7 +562,7 @@ Request body:
 ### Phase 3: Power Tools
 
 1. Raw SQL query tool with read-only default and explicit write toggle
-2. GM command palette: curated UI buttons for common commands (parsed from `python/cell/ConsoleCommands.py` — 66 commands with access levels)
+2. GM command palette: curated UI buttons for common commands (parsed from `deprecated/python/cell/ConsoleCommands.py` — 66 commands with access levels)
 3. Character editing: modify level, position, naquadah, experience, abilities
 4. Enhanced dashboard: live player list via console bridge
 
@@ -572,18 +588,18 @@ Request body:
 
 | File | Relevance |
 |------|-----------|
-| `src/entity/py_client.hpp` | Protocol message IDs and response type enums |
-| `src/entity/py_client.cpp` | Protocol handler: auth, eval, exec logic |
-| `src/mercury/unified_connection.hpp:503-683` | Wire format: MessageId, Writer, Reader, MessageHeader |
-| `src/mercury/unified_connection.cpp:102-136` | Frame serialization (beginMessage/endMessage) |
-| `src/authentication/logon_queue.cpp:27-50` | Password hash validation + username rules |
+| `deprecated/cpp/src/entity/py_client.hpp` | Protocol message IDs and response type enums |
+| `deprecated/cpp/src/entity/py_client.cpp` | Protocol handler: auth, eval, exec logic |
+| `deprecated/cpp/src/mercury/unified_connection.hpp:503-683` | Wire format: MessageId, Writer, Reader, MessageHeader |
+| `deprecated/cpp/src/mercury/unified_connection.cpp:102-136` | Frame serialization (beginMessage/endMessage) |
+| `deprecated/cpp/src/authentication/logon_queue.cpp:27-50` | Password hash validation + username rules |
 | `db/sgw/Accounts/Tables/account.sql` | Account table schema |
 | `db/sgw/Players/Tables/sgw_player.sql` | Character table schema |
 | `db/sgw/Inventory/Tables/sgw_inventory.sql` | Inventory schema (inherits sgw_inventory_base) |
 | `db/sgw/Missions/Tables/sgw_mission.sql` | Mission progress schema |
-| `python/cell/ConsoleCommands.py` | 66 GM commands with access levels |
-| `python/base/Chat.py` | Chat channel manager |
-| `python/base/Account.py` | Character creation/login flow |
-| `config/BaseService.config` | Default ports, DB connection, console password |
-| `config/CellService.config` | CellApp console port, DB connection |
-| `config/AuthenticationService.config` | Auth server ports |
+| `deprecated/python/cell/ConsoleCommands.py` | 66 GM commands with access levels |
+| `deprecated/python/base/Chat.py` | Chat channel manager |
+| `deprecated/python/base/Account.py` | Character creation/login flow |
+| `deprecated/cpp-config/config/BaseService.config` | Default ports, DB connection, console password |
+| `deprecated/cpp-config/config/CellService.config` | CellApp console port, DB connection |
+| `deprecated/cpp-config/config/AuthenticationService.config` | Auth server ports |

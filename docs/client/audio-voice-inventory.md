@@ -2,7 +2,7 @@
 title: "Complete Audio Inventory"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Complete Audio Inventory
@@ -613,17 +613,22 @@ Example: `d_tollana/coppleman/MsM/ApartmentHunting_1_Vcaptcopplemann`
 
 #### NPCs with SoundBankName Entries
 
+Exact counts from `db/resources/Events/Seed/sequences_nvp.sql`. Note that
+Copplemann's entries are split across two spellings of the path segment
+(`coppleman` 80, `copplemann` 50) and are summed here.
+
 | NPC | Zone Dialogs | Total Entries |
 |---|---|---|
-| Copplemann (Captain) | Tollana, Lucia, Agnos, Harset | ~120 |
-| Marsh | Tollana, Agnos, Harset | ~80 |
-| Lethander | Tollana, Lucia, Harset | ~60 |
-| Baal | Tollana, Harset | ~50 |
-| Anat | Agnos, Harset | ~40 |
-| Mohkatan | Tollana, Harset | ~30 |
-| Nerus | Agnos, Harset | ~25 |
-| Vala | Lucia | ~15 |
-| Castle quest/lore NPCs | Castle | 12 |
+| Copplemann (Captain) | Tollana 80, Harset 26, Agnos 18, Lucia 6 | 130 |
+| Vala | Lucia 100 | 100 |
+| Marsh | Harset 54, Tollana 22, Agnos 14 | 90 |
+| Lethander | Tollana 54, Lucia 10, Harset 2 | 66 |
+| Baal | Tollana 39, Harset 14 | 53 |
+| Mohkatan | Harset 16, Tollana 14 | 30 |
+| Nerus | Harset 26, Agnos 2 | 28 |
+| Anat | Harset 14, Agnos 10 | 24 |
+| Castle quest/lore NPCs | Castle 12 | 12 |
+| **Total** | | **533** |
 
 #### Zone Distribution
 

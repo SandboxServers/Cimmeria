@@ -2,7 +2,7 @@
 title: How to add a message handler
 type: how-to
 audience: engineers (first server-side feature)
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 companion_docs:
   - ../protocol/client-method-dispatch-table.md
   - ../protocol/message-catalog.md
@@ -26,7 +26,7 @@ There are three services and the message goes to exactly one of them:
 | Service | What it handles | Where the dispatcher lives |
 |---|---|---|
 | **Auth** | Pre-game: login, shard select. SOAP/HTTP. | [`crates/services/src/auth/handlers.rs`](../../crates/services/src/auth/handlers.rs) |
-| **Base** | Account-level state, chat, persistence, world entry. Most non-spatial messages. | [`crates/services/src/base/dispatch.rs`](../../crates/services/src/base/dispatch.rs) and the world-entry methods under [`crates/services/src/base/world_entry_methods/`](../../crates/services/src/base/world_entry_methods/) |
+| **Base** | Account-level state, chat, persistence, world entry. Most non-spatial messages. | [`crates/services/src/base/dispatch/`](../../crates/services/src/base/dispatch/) and the world-entry methods under [`crates/services/src/base/world_entry/methods/`](../../crates/services/src/base/world_entry/methods/) |
 | **Cell** | Spatial / runtime: movement, combat, abilities, AoI. | [`crates/services/src/cell/`](../../crates/services/src/cell/) (per-system dispatchers) |
 
 If you're not sure which it is, search [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md) for the method index — the table identifies the target service for every documented method.
@@ -48,7 +48,7 @@ The canonical *source* of the method index is the entity definition in [`entitie
 
 ## The dispatcher pattern
 
-Take the base-side dispatcher as the canonical shape. From [`crates/services/src/base/dispatch.rs`](../../crates/services/src/base/dispatch.rs):
+Take the base-side dispatcher as the canonical shape. From [`crates/services/src/base/dispatch/mod.rs`](../../crates/services/src/base/dispatch/mod.rs):
 
 ```rust
 pub(crate) mod sgw_player_base {
@@ -95,18 +95,23 @@ Three pieces:
 
 Mercury payloads are byte-exact: every field has a fixed wire format derived from the `.def`. The decode utilities live in [`crates/mercury/`](../../crates/mercury/) and the per-domain helpers in [`crates/services/src/mercury/`](../../crates/services/src/mercury/).
 
-Common decoders:
+The house idiom is a manual running offset over the `&[u8]` payload — fixed-width fields are read with `i32::from_le_bytes` on a slice, and length-prefixed UTF-16 strings go through `read_wstring`, which returns `(String, bytes_consumed)` so you can advance the offset yourself:
 
 ```rust
-use crate::mercury::{read_u8, read_u16, read_u32, read_i32, read_wstring};
+use crate::mercury::read_wstring;
 
-fn decode_your_method(payload: &[u8]) -> Result<YourArgs, DecodeError> {
-    let mut cursor = std::io::Cursor::new(payload);
-    let arg1 = read_i32(&mut cursor)?;
-    let arg2 = read_wstring(&mut cursor)?;  // length-prefixed UTF-16
-    Ok(YourArgs { arg1, arg2 })
-}
+// Args from the .def, in order:
+//   [WSTRING Name][INT32 Flags]
+let mut off = 0;
+
+let (name, consumed) = read_wstring(payload, off)?;
+off += consumed;
+
+let flags = i32::from_le_bytes(payload[off..off + 4].try_into()?);
+off += 4;
 ```
+
+[`crates/services/src/base/character_create.rs:47-80`](../../crates/services/src/base/character_create.rs) is the canonical worked example — note that it logs and returns a typed failure on every parse error rather than propagating, because a half-decoded payload means the channel is already out of sync.
 
 **The wire format must match the `.def`.** A wrong type, wrong endianness, or wrong length-prefix encoding silently desyncs the channel. There is no graceful "wrong format" — the client just stops responding.
 
@@ -141,23 +146,32 @@ The Server-Authority Enforcer agent (configured in `.claude/agents/server-author
 
 ## Send a reply
 
-Replies use the same Mercury transport. The encoders mirror the decoders:
+Replies go out as entity-method calls on the player's own entity. Don't hand-roll the framing or touch `Transport` directly — serialize the args, then hand a packet-builder closure to `send_to_witness_reliable`, which resolves the address, pulls the session key and encryption version, and allocates the sequence number and acks for you:
 
 ```rust
-use crate::mercury::{write_u8, write_i32, write_wstring};
+use crate::base::helpers::send_to_witness_reliable;
+use crate::mercury::{build_player_entity_method_packet, method_idx};
 
-fn build_reply(/* ... */) -> Vec<u8> {
-    let mut buf = Vec::new();
-    write_u8(&mut buf, MSG_ID);
-    write_i32(&mut buf, status);
-    write_wstring(&mut buf, &message);
-    buf
-}
+let args = wire::serialize_your_reply(/* ... */);
 
-transport.send_to(addr, &build_reply(/* ... */)).await?;
+send_to_witness_reliable(
+    transport,
+    connected,
+    entity_to_addr,
+    entity_id,
+    |key, version, seq, acks| {
+        build_player_entity_method_packet(
+            key, seq, acks, entity_id,
+            method_idx::YOUR_REPLY_METHOD,
+            &args,
+            version,
+        )
+    },
+)
+.await;
 ```
 
-For server-to-client method dispatch (calling a method on a remote entity), use the witness-fanout helper rather than hand-rolling the broadcast — search the codebase for `dispatch_entity_method` or check [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md) for the framing.
+[`crates/services/src/base/black_market/send.rs`](../../crates/services/src/base/black_market/send.rs) is a whole file of this pattern and is the best place to copy from. The method-index constants (`method_idx::*`) are declared in the inline `method_idx` module at [`crates/services/src/mercury/mod.rs:174`](../../crates/services/src/mercury/mod.rs). For the framing itself, see [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md).
 
 ---
 
@@ -169,7 +183,7 @@ Per [`TESTING.md`](../../TESTING.md), pick the right test type. The most common 
 |---|---|
 | New decode path | **Wire-format test** — byte-exact input → expected decoded struct. Lives alongside the handler. |
 | New DB mutation | **Live-DB regression guard** — fails when the fix is reverted. See [`docs/architecture/integration-test-infra.md`](../architecture/integration-test-infra.md) for the `require_db_or_skip!` pattern. |
-| New cross-service flow | **Smoke test** or **wireclient pcap-replay** — covers base → cell hop. |
+| New cross-service flow | **Smoke test** — covers the base → cell hop. (Wireclient pcap-replay is the intended future layer for this, but it has no socket loop yet — see [`../architecture/wireclient.md`](../architecture/wireclient.md).) |
 | Pure logic without DB or wire side effects | **Unit test** — colocated in the module. |
 
 Don't skip a layer because "the next one will catch it." That's the bug shape TESTING.md was written to prevent.
@@ -184,7 +198,7 @@ Per the CLAUDE.md doc-update map, every PR that touches a method index, dispatch
 - [`docs/protocol/message-catalog.md`](../protocol/message-catalog.md) — add the new entry.
 - The relevant section README under [`docs/protocol/`](../protocol/).
 - The canonical entity definitions in [`entities/defs/`](../../entities/defs/) if you added a new method.
-- `crates/services/src/mercury/method_idx.rs` — the constants module that pins method indices.
+- The `method_idx` module at `crates/services/src/mercury/mod.rs:174` — the constants module that pins method indices.
 
 The maintainer reviewing your PR will check.
 
@@ -194,8 +208,8 @@ The maintainer reviewing your PR will check.
 
 The cleanest recent worked example is the `CANCEL_LOG_OFF` handler (msg id `0xD7`):
 
-- Constant: `crates/services/src/base/dispatch.rs:29`
-- Dispatcher arm: nearby in the same file.
+- Constant: `crates/services/src/base/dispatch/mod.rs:61`
+- Dispatcher arm: `crates/services/src/base/dispatch/mod.rs:139`, same file.
 - Handler: same file, free function.
 - Decode: zero-arg method — just an ack.
 - Tests: unit test for the dispatch path; live-DB guard for the session-state cancellation.
@@ -208,7 +222,7 @@ Grep for `CANCEL_LOG_OFF` to read the full slice.
 
 - **Client connects then disconnects** — wire format almost certainly doesn't match. Compare with the `.def` field-by-field.
 - **Handler fires but no reply seen** — check the `transport.send_to` invocation and the AoI / witness list. The witness-fanout helper exists for a reason; bypassing it loses messages.
-- **Tests pass locally but client behaviour is wrong** — your test asserts what the *server* does; you may not have tested what the *client* actually receives. The `cimmeria-wireclient` replay tests are the way to close that gap.
+- **Tests pass locally but client behaviour is wrong** — your test asserts what the *server* does; you may not have tested what the *client* actually receives. Closing that gap today means a byte-exact wire-format test against a recorded capture; the `cimmeria-wireclient` replay layer that would automate it is designed but not yet built (Phase 1.5+).
 
 See [`troubleshooting.md`](../troubleshooting.md) for the broader catalog.
 
@@ -217,7 +231,7 @@ See [`troubleshooting.md`](../troubleshooting.md) for the broader catalog.
 ## See also
 
 - [`reading-decompiled-code.md`](reading-decompiled-code.md) — when you need to verify the wire format against the binary.
-- [`entity-def-guide.md`](entity-def-guide.md) — how to add a new method to a `.def` file.
+- [`../engine/entity-def-guide.md`](../engine/entity-def-guide.md) — how to add a new method to a `.def` file.
 - [`../../TESTING.md`](../../TESTING.md) — picker for which test type to use.
 - [`../architecture/service-architecture.md`](../architecture/service-architecture.md) — the three-process topology.
 - [`extend-the-content-engine.md`](extend-the-content-engine.md) — for content-driven event handling rather than a new wire-protocol method.

@@ -2,7 +2,7 @@
 title: How to write a database migration
 type: how-to
 audience: engineers (schema changes, seed data, content additions)
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 companion_docs:
   - ../../db/README.md
   - ../architecture/integration-test-infra.md
@@ -11,7 +11,7 @@ companion_docs:
 
 # How to write a database migration
 
-Cimmeria has 348 SQL files under [`db/`](../../db/) organised into per-system directories. Most of them are the canonical schema (loaded on fresh database init). A handful are migrations under [`db/scripts/`](../../db/scripts/) (run against existing databases without destroying data). This guide explains the difference and walks through writing each kind.
+Cimmeria has 372 SQL files under [`db/`](../../db/) organised into per-system directories. Most of them are the canonical schema (loaded on fresh database init). Twelve are migrations under [`db/scripts/`](../../db/scripts/) (run against existing databases without destroying data). This guide explains the difference and walks through writing each kind.
 
 If you're adding **seed content** rather than changing the schema (a new mission row, a new ability), skip to the "Adding seed content" section near the bottom.
 

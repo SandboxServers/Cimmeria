@@ -6,9 +6,13 @@ asking for trouble. This document covers the recommended hardening
 path: terminate auth at Cloudflare's edge, run an outbound-only
 tunnel from the colo box, never open an inbound firewall port.
 
-For why we picked Cloudflare Tunnel over Tailscale / WireGuard /
-Caddy+Authelia, see the comparison table inside the `cloudflared`
-service definition in [`docker/compose.yml`](../../docker/compose.yml).
+Cloudflare Tunnel was picked over Tailscale, WireGuard, and
+Caddy+Authelia because it needs no inbound firewall hole, no client
+software on the viewer's machine, and no certificate management — the
+`cloudflared` daemon dials outbound and Cloudflare Access handles
+authentication in front of a UI that has none of its own. The service
+definition is at [`docker/compose.yml:283-298`](../../docker/compose.yml)
+(profile-gated behind `--profile tunnel`).
 
 ## Architecture
 

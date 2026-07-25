@@ -1,8 +1,18 @@
 # Event_Net to .def Method Mapping
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-07-25
 > **RE Status**: Complete mapping with Ghidra addresses and handler cross-references
-> **Sources**: Ghidra string analysis (STATUS.md), Ghidra function search (register_NetOut/NetIn, SGWNetworkManager handlers), `entities/defs/*.def`, `entities/defs/interfaces/*.def`, `src/baseapp/mercury/sgw/messages.hpp`
+> **Sources**: Ghidra string analysis (STATUS.md), Ghidra function search (register_NetOut/NetIn, SGWNetworkManager handlers), `entities/defs/*.def`, `entities/defs/interfaces/*.def`, `deprecated/cpp/src/baseapp/mercury/sgw/messages.hpp`
+
+> **Scope note (2026-07-25).** This is the RE-derived `Event_Net_*` ⇄ `.def`
+> correlation. The 253 NetOut / 167 NetIn totals here match
+> [`../protocol/message-catalog.md`](../protocol/message-catalog.md), which
+> is the maintained catalogue with IDs, directions, and payload shapes and
+> is the doc CLAUDE.md's update map gates on. **Prefer the message catalog
+> for day-to-day protocol lookups**; use this document when you need the
+> Ghidra addresses and the client-side event-bus wiring behind a message.
+> C++ paths of the form `src/…` refer to the retired server now under
+> [`deprecated/cpp/src/`](../../deprecated/cpp/src/).
 
 ---
 

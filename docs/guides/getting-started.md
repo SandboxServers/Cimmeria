@@ -2,7 +2,7 @@
 title: Getting Started
 type: tutorial
 audience: new contributors, first-time setup
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 companion_docs:
   - ../building.md
   - ../troubleshooting.md
@@ -134,7 +134,7 @@ Cimmeria binds to **five ports** by default:
 | `13001` | TCP / Mercury | Auth ↔ BaseApp control channel |
 | `32832` | UDP / Mercury | Game client ↔ BaseApp (the main game traffic) |
 | `50000` | UDP / Mercury | Internal Base ↔ Cell traffic |
-| `8443` | TCP / HTTPS | Admin API (only if built with `-WithAdmin`) |
+| `8443` | TCP / HTTP | Admin REST API — always started in-process; `-WithAdmin` only builds the Tauri desktop client that talks to it |
 
 If you're running with `-UseDocker`, PostgreSQL also exposes port `5433`.
 
@@ -144,7 +144,7 @@ If you're running with `-UseDocker`, PostgreSQL also exposes port `5433`.
 
 You need the Stargate Worlds game client installed. The repo doesn't ship it — see [`game/sgw/README.md`](../../game/sgw/README.md) for installation. Once it's installed:
 
-1. Launch the client via **AtreaRL** (the original SGW launcher), not directly. AtreaRL handles the patching that lets the client point at your local server.
+1. Launch the client via **`AteraLoader.exe`**, not `SGW.exe` directly. AteraLoader starts the game and injects `AtreaRL.dll`, which applies the binary patches that point the client at your local server. See [`../client-tools.md`](../client-tools.md) for the full tool stack.
 2. At the login screen, enter `test` / `test` and submit.
 3. The client connects to `localhost` (default), authenticates against the auth server, picks the shard from `BaseApp`, and lands you at character select.
 
@@ -167,15 +167,18 @@ You've verified the server runs. Now verify your build can also run the tests CI
 # Fast iteration check (1.5s, <2 GB RAM):
 cargo check -p cimmeria-services
 
-# Full workspace check (skip the GUI apps so the linker doesn't OOM on WSL):
+# Full workspace check (skip the GUI apps so the linker doesn't OOM on WSL,
+# and the Windows-only client-telemetry cdylib):
 cargo check --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
-  --exclude cimmeria-scene-editor --exclude sgw-launcher
+  --exclude cimmeria-scene-editor --exclude sgw-launcher `
+  --exclude cimmeria-client-telemetry
 
 # Run the test suite (no live DB needed):
 cargo nextest run --profile=ci --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
-  --exclude cimmeria-scene-editor --exclude sgw-launcher
+  --exclude cimmeria-scene-editor --exclude sgw-launcher `
+  --exclude cimmeria-client-telemetry
 ```
 
 If you don't have nextest installed yet: `cargo install cargo-nextest --locked`.

@@ -2,7 +2,7 @@
 title: Bible Conventions
 chapter_id: spec.meta.conventions
 status: verified
-last_verified: 2026-05-13
+last_verified: 2026-07-25
 verified_by: documentation-writer
 audience: bible authors and reviewers
 type: reference
@@ -71,7 +71,7 @@ supersedes: []
 
 ### What "blanked" means and why it is forbidden
 
-`status:` with nothing after it is invalid. `confidence: {}` is invalid. If a value does not yet exist, the chapter is `draft` and the key carries a placeholder (`tbd`, `[]`, `low`). The schema must always parse; the symbol-resolution lint in Phase 2 will reject otherwise-empty frontmatter.
+`status:` with nothing after it is invalid. `confidence: {}` is invalid. If a value does not yet exist, the chapter is `draft` and the key carries a placeholder (`tbd`, `[]`, `low`). The schema must always parse; the symbol-resolution lint ([`tools/spec-lint`](../../tools/spec-lint/), warn-only today) flags otherwise-empty frontmatter.
 
 ---
 

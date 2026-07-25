@@ -2,7 +2,7 @@
 title: Bible Glossary
 chapter_id: spec.meta.glossary
 status: verified
-last_verified: 2026-05-13
+last_verified: 2026-07-25
 verified_by: documentation-writer
 audience: anyone reading a bible chapter
 type: reference
@@ -154,10 +154,14 @@ Chapter cross-references use `chapter_id`. `→ N/A (no chapter yet)` means the 
 
 ## Cross-glossary references
 
-Terms defined in the project-wide [`../glossary.md`](../glossary.md) that the bible cites:
+Terms the bible cites whose canonical definition lives outside `docs/spec/`:
 
-- **live-DB test** — A Cimmeria-specific test type, defined in the project glossary. The bible cites it in chapter prose but the canonical definition is project-wide. See `../glossary.md`.
-- **Diátaxis** — The documentation classification (tutorial / how-to / reference / explanation). The bible *is* reference; the bible's how-to-{read,write} docs are how-to. See `../glossary.md`.
-- **chain-replay test** — Test type for content engine. See `../glossary.md`.
+- **live-DB test** — A Cimmeria-specific test type. Canonical definition in [`../../TESTING.md`](../../TESTING.md) (test type 3).
+- **chain-replay test** — Test type for the content engine. Canonical definition in [`../../TESTING.md § Chain-replay tests`](../../TESTING.md) (test type 6).
+- **Diátaxis** — The documentation classification (tutorial / how-to / reference / explanation). The bible *is* reference; the bible's how-to-{read,write} docs are how-to. Referenced from [`../../CLAUDE.md`](../../CLAUDE.md)'s documentation map; see [diataxis.fr](https://diataxis.fr/) for the framework itself.
 
-When adding to either glossary, cross-link if the term has weight in both worlds. Avoid double-defining; one canonical definition, references everywhere else.
+> **Note (2026-07-25):** earlier revisions of this section pointed at a
+> project-wide `docs/glossary.md`. No such file exists — the pointers
+> above go to the actual canonical sources instead.
+
+Avoid double-defining; one canonical definition, references everywhere else.

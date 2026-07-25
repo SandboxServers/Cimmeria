@@ -1,5 +1,22 @@
 # UE3 Package Splicer
 
+> **⚠ The tools this document describes are not in the repository.**
+> As of 2026-07-25, none of the twelve `tools/ue3_*.py` scripts referenced
+> below exist under [`tools/`](../../tools/) — several survive only as
+> stale `.pyc` files in `tools/__pycache__/`, and four
+> (`ue3_cover_near.py`, `ue3_probe_layout.py`, `ue3_dump_export_entry.py`,
+> `ue3_dump_first_exports.py`) leave no trace at all. The only UE3-related
+> tools actually present are [`tools/ue3_extract_cover_nodes.py`](../../tools/ue3_extract_cover_nodes.py)
+> and [`tools/upk_parser.py`](../../tools/upk_parser.py), neither of which
+> is mentioned below.
+>
+> Treat this document as a **reference record of the UE3 binary format
+> findings and the splice algorithm** — that content is still accurate and
+> was expensive to recover. Do **not** treat it as a runnable how-to; every
+> command below will fail with "No such file or directory". Reconstructing
+> the toolchain from this description is the prerequisite for any further
+> splicing work.
+
 Tooling and findings for binary editing of Stargate Worlds UE3 packages — specifically, splicing actor + component clusters from one cooked `.um`/`.umap` into another. Built to recover cover nodes that exist in the shipped 8293 beta but are missing from the QA build the Cimmeria server targets.
 
 This document is **part reference** (UE3 format details discovered empirically) and **part how-to** (which tool does what, in what order). Diagnosing a failed splice depends on being able to read the dumps the client writes when it rejects a malformed package — that machinery is documented separately at [crash-dumps.md](crash-dumps.md).
@@ -56,9 +73,9 @@ For a typical cooked QA package (`Castle_CellBlock-fffefffd.umap`):
 
 ### Compression
 
-QA `.umap` files are LZO-compressed (`compression_flags = 2`); shipped 8293 beta `.um` files mostly are too. Decompression is implemented in [`../../tools/ue3_lzo.py`](../../tools/ue3_lzo.py) using `lzokay`. The decompressed in-memory buffer has bytes laid out at their original uncompressed offsets — so all summary offsets (`name_offset`, `import_offset`, `export_offset`, `total_header_size`) are valid as direct indices into the decompressed buffer.
+QA `.umap` files are LZO-compressed (`compression_flags = 2`); shipped 8293 beta `.um` files mostly are too. Decompression is implemented in `tools/ue3_lzo.py` using `lzokay`. The decompressed in-memory buffer has bytes laid out at their original uncompressed offsets — so all summary offsets (`name_offset`, `import_offset`, `export_offset`, `total_header_size`) are valid as direct indices into the decompressed buffer.
 
-The splicer **recompresses on output** via `compress_package` in [`../../tools/ue3_lzo.py`](../../tools/ue3_lzo.py) — 1 MB top-level chunks, 128 KB LZO1X sub-blocks, matching the stock SGW cooker output. The Castle_CellBlock test case compresses to **2.49 MB on disk vs. 2.79 MB for the original QA tile** — round-trip-validated (decompress matches the in-memory uncompressed body byte-for-byte).
+The splicer **recompresses on output** via `compress_package` in `tools/ue3_lzo.py` — 1 MB top-level chunks, 128 KB LZO1X sub-blocks, matching the stock SGW cooker output. The Castle_CellBlock test case compresses to **2.49 MB on disk vs. 2.79 MB for the original QA tile** — round-trip-validated (decompress matches the in-memory uncompressed body byte-for-byte).
 
 ### Export table — variable-length trailers
 
@@ -71,7 +88,7 @@ Each export-table entry has a **40-byte fixed preamble** (`class_idx`, `super_id
 | Average across all entries | 93 bytes | ~53 bytes |
 | Max observed | — | needs `max_trailer >= 2000` for ComponentMap-heavy actors |
 
-A sequential walker cannot assume a fixed stride; it has to detect each entry's end by probing forward for the next valid preamble. See [`../../tools/ue3_export_table.py`](../../tools/ue3_export_table.py) for the adaptive walker.
+A sequential walker cannot assume a fixed stride; it has to detect each entry's end by probing forward for the next valid preamble. See `tools/ue3_export_table.py` for the adaptive walker.
 
 ### Trailer layout (cover-node entries, 40 bytes)
 
@@ -166,32 +183,32 @@ All tools live under `tools/` and follow the same conventions: stdlib + `lzokay`
 
 | Tool | Purpose |
 |---|---|
-| [`ue3_lzo.py`](../../tools/ue3_lzo.py) | LZO-decompress a UE3 package into a byte buffer. Used as a fallback path inside the other tools. |
-| [`ue3_dump_cover.py`](../../tools/ue3_dump_cover.py) | Walk a package's export table by class-index byte-pattern matching, extract `SGWSpecCoverNode` / `CoverLink` / etc. actors, decode `Location` and `Rotation` property values, emit CSV. |
-| [`ue3_cover_near.py`](../../tools/ue3_cover_near.py) | Diff cover-node sets between src and dst, filter to those within a radius of a given world position. Accepts HUD coords via `--hud` (with the axis swizzle baked in). |
-| [`ue3_export_table.py`](../../tools/ue3_export_table.py) | Adaptive sequential walker for the export table. Probes forward from each known-valid entry for the next valid preamble. Handles SGW's variable trailers. Default `max_trailer = 2000` (cover ComponentMap-heavy actors). |
-| [`ue3_dump_cluster.py`](../../tools/ue3_dump_cluster.py) | Given a package and an actor name, BFS by `Outer` index to collect the actor's full export cluster (actor + sub-components). |
-| [`ue3_catalog_refs.py`](../../tools/ue3_catalog_refs.py) | For each export in a cluster, parse the property stream and record every FName index reference, every ObjectProperty value reference, plus prefix size. Outputs a remap manifest. Includes a robust property-stream anchor finder that scans byte-by-byte for the start. |
-| [`ue3_verify_dst.py`](../../tools/ue3_verify_dst.py) | Take a cluster manifest + a dst package, check (a) which name strings are missing from dst's name table, (b) which imports need to be added (matched by full outer chain), (c) which cross-cluster export refs can be resolved (e.g. `PersistentLevel`). Verdict: `READY` / `BLOCKED`. |
+| `ue3_lzo.py` | LZO-decompress a UE3 package into a byte buffer. Used as a fallback path inside the other tools. |
+| `ue3_dump_cover.py` | Walk a package's export table by class-index byte-pattern matching, extract `SGWSpecCoverNode` / `CoverLink` / etc. actors, decode `Location` and `Rotation` property values, emit CSV. |
+| `ue3_cover_near.py` | Diff cover-node sets between src and dst, filter to those within a radius of a given world position. Accepts HUD coords via `--hud` (with the axis swizzle baked in). |
+| `ue3_export_table.py` | Adaptive sequential walker for the export table. Probes forward from each known-valid entry for the next valid preamble. Handles SGW's variable trailers. Default `max_trailer = 2000` (cover ComponentMap-heavy actors). |
+| `ue3_dump_cluster.py` | Given a package and an actor name, BFS by `Outer` index to collect the actor's full export cluster (actor + sub-components). |
+| `ue3_catalog_refs.py` | For each export in a cluster, parse the property stream and record every FName index reference, every ObjectProperty value reference, plus prefix size. Outputs a remap manifest. Includes a robust property-stream anchor finder that scans byte-by-byte for the start. |
+| `ue3_verify_dst.py` | Take a cluster manifest + a dst package, check (a) which name strings are missing from dst's name table, (b) which imports need to be added (matched by full outer chain), (c) which cross-cluster export refs can be resolved (e.g. `PersistentLevel`). Verdict: `READY` / `BLOCKED`. |
 
 ### Diagnostic helpers (kept for re-use, not part of the splicer path)
 
 | Tool | Purpose |
 |---|---|
-| [`ue3_probe_layout.py`](../../tools/ue3_probe_layout.py) | Report a package's section ordering and probe per-entry trailer sizes for the export table. Used to discover SGW's average 93-byte entry size. |
-| [`ue3_dump_export_entry.py`](../../tools/ue3_dump_export_entry.py) | Dump raw bytes of cover-node export-table entries to inspect the trailer structure. Used to find the 40-byte cover-node trailer layout. |
-| [`ue3_dump_first_exports.py`](../../tools/ue3_dump_first_exports.py) | Hex-dump the first N bytes of the export block at varying strides. Used during the alignment-and-stride debugging. |
-| [`ue3_dump_names.py`](../../tools/ue3_dump_names.py) | Dump a package's name table. Companion to `ue3_dump_cover.py` when you need to confirm a name index by sight. |
+| `ue3_probe_layout.py` | Report a package's section ordering and probe per-entry trailer sizes for the export table. Used to discover SGW's average 93-byte entry size. |
+| `ue3_dump_export_entry.py` | Dump raw bytes of cover-node export-table entries to inspect the trailer structure. Used to find the 40-byte cover-node trailer layout. |
+| `ue3_dump_first_exports.py` | Hex-dump the first N bytes of the export block at varying strides. Used during the alignment-and-stride debugging. |
+| `ue3_dump_names.py` | Dump a package's name table. Companion to `ue3_dump_cover.py` when you need to confirm a name index by sight. |
 
 ### Splicer
 
 | Tool | Purpose |
 |---|---|
-| [`ue3_splicer.py`](../../tools/ue3_splicer.py) | The splice engine. Reads src + dst, computes all remaps, patches FName / import / export references in the cluster's serial bytes, extends dst's name/export tables, patches `PersistentLevel.Actors`, lays out the output package and LZO-recompresses it to match the stock cooker format. |
+| `ue3_splicer.py` | The splice engine. Reads src + dst, computes all remaps, patches FName / import / export references in the cluster's serial bytes, extends dst's name/export tables, patches `PersistentLevel.Actors`, lays out the output package and LZO-recompresses it to match the stock cooker format. |
 
 ## How to splice an actor cluster
 
-Single-cover-node splice flow, implemented in [`../../tools/ue3_splicer.py`](../../tools/ue3_splicer.py):
+Single-cover-node splice flow, implemented in `tools/ue3_splicer.py`:
 
 1. **Parse both packages** (LZO-decompress transparently). Walk export tables with the adaptive walker.
 2. **Identify the source cluster** — BFS by `Outer` from the named actor. For `SGWSpecCoverNode_105` the cluster is exactly 2 exports (1 actor + 1 component, ~1296 bytes total serial data).
