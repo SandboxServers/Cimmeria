@@ -190,6 +190,7 @@ How the underlying BigWorld engine and CME game framework operate inside sgw.exe
 | [character-visual-components.md](engine/character-visual-components.md) | Character visual components: how avatar appearance (model, skin, equipment) is composited on the client | Complete |
 | [client-visual-system.md](engine/client-visual-system.md) | Client visual system: rendering, scene graph, and how entities are drawn in the BigWorld/UE3 client | Complete |
 | [cooked-data-pak-format.md](engine/cooked-data-pak-format.md) | Cooked-data PAK file format: on-disk layout, entry table, compression, and how the client reads resource packs | Complete |
+| [ue3-package-format.md](engine/ue3-package-format.md) | SGW UE3 package binary format (ver 486 licensee fork): section ordering and the `total_header_size` trap, LZO chunking, variable-length export trailers, actor/component serial prefixes, ULevel `Actors` layout, ver-486 property tag stream, HUD↔world coordinate swizzle | Complete |
 
 See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-analysis.md), [technical/sgw-binary-overview.md](technical/sgw-binary-overview.md)
 
@@ -197,19 +198,20 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 30 documents.
+How the Cimmeria emulator itself is structured. 32 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
 | [service-architecture.md](architecture/service-architecture.md) | Auth, Base, Cell service topology, inter-service protocol, developer mode, console commands | Complete |
-| [python-console.md](architecture/python-console.md) | Python console deep-dive: wire format, reference client, Atrea API, GM command table, security | Complete |
-| [server-systems.md](architecture/server-systems.md) | Server-only infrastructure: session management, rate limiting, anti-cheat, economy, world state, scheduling, admin tools, metrics | Complete |
-| [scaling-analysis.md](architecture/scaling-analysis.md) | Scaling strategy: current single-instance reality, BigWorld vs Cimmeria comparison, 5-tier scaling roadmap, capacity estimates | Complete |
-| [tech-stack-replacement.md](architecture/tech-stack-replacement.md) | Tech stack replacement analysis: 5 options (incremental upgrade through full C# rewrite), codebase audit, protocol feasibility, phased recommendation | Complete |
+| [server-infrastructure-proposals.md](architecture/server-infrastructure-proposals.md) | The five unbuilt server-only systems, with a concrete design for each: session resume across a network blip, per-player rate limiting, world-state persistence, a global event scheduler, and economy instrumentation. Sequenced by test-session pain, not cost | Proposed |
+| [server-systems.md](architecture/server-systems.md) | **Superseded pointer page.** Routing table showing where each of the original eight server-system sections went, plus the four stale claims most likely to be re-quoted from it | Superseded |
+| [python-console.md](architecture/python-console.md) | **Historical.** The deprecated server's Python REPL: its security model (still a useful checklist for the admin API) and the 116-command operator-capability inventory. Wire format and reference client removed — recoverable from `deprecated/cpp/` | Historical |
+| [scaling-analysis.md](architecture/scaling-analysis.md) | Scaling strategy: BigWorld vs Cimmeria comparison, 5-tier scaling ladder, Tier-0 recommendation. **Conclusions current; all measured figures are C++-era and unverified against Rust** | Complete (figures stale) |
+| [tech-stack-replacement.md](architecture/tech-stack-replacement.md) | **2026-03 decision record.** The audit that chose a rewrite: 5 options, codebase inventory, protocol-reimplementation feasibility. Recommended C#/.NET; the project built Rust. The content-authoring-bottleneck finding still drives the content engine | Historical |
 | [data-driven-content-engine.md](architecture/data-driven-content-engine.md) | Data-driven content engine: replace per-script Python with DB-driven trigger/condition/action chains, full schema, worked examples, runtime implementation, migration path | Complete |
 | [mission-pak-overrides.md](architecture/mission-pak-overrides.md) | How Cimmeria injects new mission steps without reshipping `CookedDataMissions.pak`: `MissionOverride` patcher, `InvalidKeys` handshake, content-derived metadata bump, XML-index gotcha, operator runbook | Complete |
 | [tauri-rewrite.md](architecture/tauri-rewrite.md) | Tauri desktop app rewrite analysis: replacing Qt ServerEd with a modern Rust+TypeScript stack | Complete |
-| [migration-roadmap.md](architecture/migration-roadmap.md) | Dependency migration roadmap (PostgreSQL ✅, MSVC ✅, OpenSSL pending) and per-migration agent definitions | Complete |
+| [migration-roadmap.md](architecture/migration-roadmap.md) | **Historical.** C++-only dependency upgrade plan (MSVC ✅, PostgreSQL ✅ 17.9; the rest unexecuted and unneeded by Rust). Its "CRITICAL OpenSSL" row is **not** a Cimmeria finding — see [project-status.md](project-status.md) for the real roadmap | Historical |
 | [state-flag-conventions.md](architecture/state-flag-conventions.md) | Reference for state-flag write conventions: refcounted vs raw, who can clear, auth flow | Complete |
 | [abilities-and-effects-system.md](architecture/abilities-and-effects-system.md) | ADR for the abilities + effects design decisions shipped in PR #420: EffectScript trait shape, stacking semantics, channel cancellation triggers, absorption pool drain ordering, TCM dispatch routing, AF_CHANNEL_ALLOWS_MOVEMENT default | Complete |
 | [state-field-bits.md](architecture/state-field-bits.md) | Verified `bStateField` bit layout (bits 0-7 only), client dispatch table, BSF_Holster retirement notice with Ghidra anchors, relog persistence of `BSF_AutoCycling` | Complete |
@@ -239,7 +241,7 @@ See also: [building.md](building.md), [connection-flow.md](connection-flow.md), 
 
 ### `client/` -- Game Client Analysis
 
-Analysis of game client binaries, launcher tools, and client asset inventories. 8 documents.
+Analysis of game client binaries, launcher tools, and client asset inventories. 7 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -250,7 +252,6 @@ Analysis of game client binaries, launcher tools, and client asset inventories. 
 | [facefx-lip-sync.md](client/facefx-lip-sync.md) | FaceFX lip sync system: .fxa animation files, phoneme mapping, engine integration | Complete |
 | [ui-layout-inventory.md](client/ui-layout-inventory.md) | UI layout inventory: all Scaleform .swf files, Lua bindings, screen types, HUD elements | Complete |
 | [crash-dumps.md](client/crash-dumps.md) | SGW crash-dump pipeline: minidump capture, symbolication, what the dumps reveal about client state | Complete |
-| [ue3-package-splicer.md](client/ue3-package-splicer.md) | UE3 package splicer: editing Unreal Engine 3 `.upk`/package files for client asset overrides | Complete |
 
 See also: [client-tools.md](client-tools.md), [launcher-exe.md](reverse-engineering/binaries/launcher-exe.md), [technical/atrealoader-exe.md](technical/atrealoader-exe.md)
 

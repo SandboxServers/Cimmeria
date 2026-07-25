@@ -4,9 +4,7 @@
 > **Phase**: 4 — Secondary Systems RE
 > **Confidence**: HIGH (derived from `.def` files + `alias.xml` + universal RPC dispatcher architecture)
 > **Sources**: `SGWBlackMarketManager.def`, `alias.xml`
-> **Design record**: [docs/architecture/black-market.md](../../architecture/black-market.md) — the ADR for the
->   server implementation of these messages, including the narrow-`STRING` `sellerName` blocker that stops the
->   client engine decoding the `AuctionItem` array at all.
+> **Design record**: [docs/architecture/black-market.md](../../architecture/black-market.md) — the ADR for the server implementation of these messages, including the narrow-`STRING` `sellerName` blocker that stops the client engine decoding the `AuctionItem` array at all.
 
 ---
 

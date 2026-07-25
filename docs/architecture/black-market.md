@@ -99,7 +99,7 @@ piece of authorisation the cell does; everything else is base-side.
 "settling" state — every transition out of `ACTIVE` happens inside one
 transaction that also moves the item and the cash.
 
-```
+```text
                      createAuction
                           │  (escrow item out of inventory)
                           ▼
@@ -443,6 +443,7 @@ engine decoder work.
 
 ## See also
 
+- [gameplay/black-market.md](../gameplay/black-market.md) — the system reference: what the auction house *does*, entity definitions, per-message wire tables, and current implementation status. This ADR is the complement — *why* the server is shaped the way it is.
 - [black-market-restoration.md](../reverse-engineering/findings/black-market-restoration.md) — server-side RE, entity model, completeness assessment
 - [black-market-wire-formats.md](../reverse-engineering/findings/black-market-wire-formats.md) — per-message wire tables
 - [black-market-client-window-patch.md](../reverse-engineering/findings/black-market-client-window-patch.md) — the client binding gap, both patch recipes, and the fork-B build spec for methods 91–95
