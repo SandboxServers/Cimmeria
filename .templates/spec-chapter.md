@@ -144,7 +144,7 @@ supersedes: []
 <!--
   What Cimmeria MUST do, given sections 1–3.
 
-  NO LINE NUMBERS. Cite symbols: crates/services/src/cell/combat/threat.rs::ThreatList::add.
+  NO LINE NUMBERS. Cite symbols: crates/services/src/cell/combat/threat/aggro.rs::generate_threat.
   See docs/spec/conventions.md § "the no-line-numbers rule for sections 4 and 5".
 
   This is the load-bearing reasoning section. A reader should be able to
@@ -154,7 +154,7 @@ supersedes: []
   Call out divergences from section 3 explicitly:
 
     The deprecated server stored cooldowns in a per-ability dict on the
-    player entity (deprecated/python/AbilityManager.py:847). Cimmeria
+    player entity (deprecated/python/cell/AbilityManager.py:847). Cimmeria
     stores them in a flat BTreeMap<AbilityId, CooldownState> on the
     cell-side combat state because Rust ownership rules push us toward
     one cooldowns owner per cell-tick. Wire behavior is unchanged.

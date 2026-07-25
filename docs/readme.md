@@ -38,9 +38,9 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 272 |
-| Rust tests (`#[test]` / `#[tokio::test]`) | 2,012 across 305 files |
-| Live-DB regression guards | 155 |
+| Documentation files | 282 (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | 3,012 across 473 files (2,767 gated in CI) |
+| Live-DB regression guards | 247 |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 
@@ -119,7 +119,7 @@ See also: [gap-analysis.md](gap-analysis.md), [game-data.md](game-data.md)
 
 ### `protocol/` -- Wire Formats and Messaging
 
-Network protocol internals: packet structures, Mercury reliable messaging, entity property synchronization, and specific message flows.
+Network protocol internals: packet structures, Mercury reliable messaging, entity property synchronization, and specific message flows. Section index: [protocol/README.md](protocol/README.md).
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -174,7 +174,7 @@ See also: [game-systems.md](game-systems.md), [technical/game-systems.md](techni
 
 ### `engine/` -- BigWorld and CME Internals
 
-How the underlying BigWorld engine and CME game framework operate inside sgw.exe.
+How the underlying BigWorld engine and CME game framework operate inside sgw.exe. Section index: [engine/README.md](engine/README.md).
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -251,7 +251,7 @@ Analysis of game client binaries, launcher tools, and client asset inventories. 
 | [crash-dumps.md](client/crash-dumps.md) | SGW crash-dump pipeline: minidump capture, symbolication, what the dumps reveal about client state | Complete |
 | [ue3-package-splicer.md](client/ue3-package-splicer.md) | UE3 package splicer: editing Unreal Engine 3 `.upk`/package files for client asset overrides | Complete |
 
-See also: [client-tools.md](client-tools.md), [technical/launcher-exe.md](technical/launcher-exe.md), [technical/atrealoader-exe.md](technical/atrealoader-exe.md)
+See also: [client-tools.md](client-tools.md), [launcher-exe.md](reverse-engineering/binaries/launcher-exe.md), [technical/atrealoader-exe.md](technical/atrealoader-exe.md)
 
 ---
 
@@ -274,6 +274,34 @@ Working notes and cross-reference indexes from ongoing RE sessions.
 |----------|-------------|--------|
 | [event-net-mapping.md](analysis/event-net-mapping.md) | 420 Event_NetIn/NetOut mapped to .def methods, Ghidra addresses, handler chains (~98% coverage) | Complete |
 | [bigworld-reference-index.md](analysis/bigworld-reference-index.md) | Cross-reference: BigWorld 2.0.1 source symbols to sgw.exe addresses | Complete |
+
+---
+
+### `audits/` -- Conformance Audits
+
+Point-in-time conformance records. Each audit pins the spec version and the
+`binary_sha256` it was run against; findings are not rewritten afterwards.
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [mercury-rust-conformance-2026-05-15.md](audits/mercury-rust-conformance-2026-05-15.md) | Rust Mercury implementation vs. the [mercury-wire-format](drafts/spec/mercury-wire-format.md) bible chapter | Under review |
+| [entity-property-sync-section2-audit-2026-05-16.md](audits/entity-property-sync-section2-audit-2026-05-16.md) | Section 2 of the [entity-property-sync](drafts/spec/entity-property-sync.md) chapter audited against the binary | Complete |
+| [telemetry-audit-2026-06-01.md](audits/telemetry-audit-2026-06-01.md) | Telemetry + logging sweep of code landed 2026-05-31 → 2026-06-01. Companions: [architecture/observability.md](architecture/observability.md), [architecture/negative-logging-convention.md](architecture/negative-logging-convention.md) | Complete |
+
+---
+
+### `security-audit/` -- Server-Authority and Anti-Cheat Audits
+
+Time-stamped security-audit records, one directory per audit. Findings are a
+point-in-time snapshot and are **not** updated post-audit — remediation is
+tracked through the linked GitHub issues. Index: [security-audit/README.md](security-audit/README.md).
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [2026-05-31-server-authority/UMBRELLA.md](security-audit/2026-05-31-server-authority/UMBRELLA.md) | **HUB** -- Tracking record for the exhaustive server-authority / anti-cheat / anti-replay sweep across every player-facing wire surface | Complete |
+| [2026-05-31-server-authority/BRIEF.md](security-audit/2026-05-31-server-authority/BRIEF.md) | Shared agent brief: evidence rules every per-category auditor worked under | Complete |
+| [2026-05-31-server-authority/surface.md](security-audit/2026-05-31-server-authority/surface.md) | The client → server outbound message surface (~250 `Event_NetOut_*` classes) extracted from SGW.exe | Complete |
+| [2026-05-31-server-authority/findings/](security-audit/2026-05-31-server-authority/findings/) | Per-category findings, CAT-A through CAT-O: auth, movement, combat/abilities, inventory, vendor, crafting, mail, trade, black market, mission/dialog, minigame, chat/contact, org/squad/duel, GM commands, world/space/gate | Complete |
 
 ---
 
@@ -433,7 +461,7 @@ Early-project RE analysis from before the reorganised `docs/` tree and the Rust 
 | [server-feasibility.md](technical/server-feasibility.md) | Server emulation feasibility assessment |
 | [source-reconstruction-feasibility.md](technical/source-reconstruction-feasibility.md) | Source code reconstruction feasibility |
 | [building.md](technical/building.md) | Build process technical details |
-| [launcher-exe.md](technical/launcher-exe.md) | Launcher binary analysis |
+| [launcher-exe.md](reverse-engineering/binaries/launcher-exe.md) | Launcher binary analysis (canonical copy lives under `reverse-engineering/binaries/`) |
 | [atrealoader-exe.md](technical/atrealoader-exe.md) | AtreaLoader binary analysis |
 | [atrealoader-config.md](technical/atrealoader-config.md) | AtreaLoader configuration format |
 | [atrearl-loader.md](technical/atrearl-loader.md) | AtreaRL.dll — the runtime patcher injected into SGW.exe (hooks, sniffer, two-gate activation) |

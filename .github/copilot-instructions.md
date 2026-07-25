@@ -21,7 +21,7 @@ Recurring bugs — flag in review:
 - **File caps**: 500 lines soft, 700 hard. Split on natural seams (handler groups, lifecycle phases, message families) — not arbitrarily on line count. Flat names for 2–3 siblings; promote to a directory only at 4+. Use `foo/mod.rs` style. Avoid `helpers.rs`/`utils.rs`/`misc.rs` — name by behaviour.
 - **No defensive code for impossible scenarios.** Trust internal code and framework guarantees; validate only at system boundaries (user input, external APIs, DB roundtrips).
 - **No scope creep.** Don't add features, refactors, abstractions, feature flags, or backwards-compat shims beyond the task. Delete unused code outright — no commented-out blocks, no `// removed` markers.
-- **Build memory**: iterate with `cargo check -p <crate>`. A full link uses ~47 GB; never run multiple `cargo`/`rustc` processes concurrently. Workspace builds must `--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor` to avoid the Tauri linker.
+- **Build memory**: iterate with `cargo check -p <crate>`. A full link uses ~47 GB; never run multiple `cargo`/`rustc` processes concurrently. Workspace builds must `--exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry` — the same five exclusions CI uses ([.github/workflows/test.yml](workflows/test.yml)) — to avoid the Tauri/egui linker and the Windows-only cdylib.
 
 ## Comments
 
@@ -29,7 +29,7 @@ Default to **none**. Add a comment only when the **why** is non-obvious: a hidde
 
 ## Wire format & protocol
 
-When adding a client method call, confirm the index against `docs/protocol/client-method-dispatch-table.md` and byte layout against `entities/defs/*.def`. Notable trap: `onPlayerTeleport` (method 116) is a streaming-load hint, not an authoritative move — use `BASEMSG_FORCED_POSITION` (`build_forced_position` in `mercury/aoi.rs`) for actual avatar snaps.
+When adding a client method call, confirm the index against `docs/protocol/client-method-dispatch-table.md` and byte layout against `entities/defs/*.def`. Notable trap: `onPlayerTeleport` (method 116) is a streaming-load hint, not an authoritative move — use `BASEMSG_FORCED_POSITION` (`build_forced_position` in `mercury/aoi/update.rs`) for actual avatar snaps.
 
 **Handlers must take `&Arc<dyn Transport>`, never `&Arc<UdpSocket>`, outside the recv loop.** Outbound sends go through `cimmeria_mercury::transport::Transport`; only `connect_loop::run_connect_loop` accepts the wider `Arc<dyn BidirectionalTransport>` (production wraps `UdpTransport`; chaos tests wrap `LossyTransport`). A new handler that reaches for `UdpSocket` directly is a review block — it defeats the byte-exact fan-out test seam. See [docs/architecture/transport-trait.md](../docs/architecture/transport-trait.md).
 
@@ -48,7 +48,7 @@ A PR that changes runtime behaviour must add or update a test. **Read [TESTING.m
 - Live-DB tests use `require_db_or_skip!` and run serialised — `cargo nextest run --profile=ci-live-db` (the profile in `.config/nextest.toml` pins `threads-required = "num-test-threads"`), or `cargo test ... -- --test-threads=1` if you're not on nextest.
 - Test names match the assertion. If the assertion changes, rename.
 - No PR or issue numbers in source comments — provenance lives in the PR body.
-- Update [docs/testing/inventory/<crate>.md](../docs/testing/inventory/) **only when a single PR adds or removes ≥5% of the workspace test count** (~100 tests against the current 2,012 baseline). Smaller drifts get folded in by periodic sweep updates — don't block review on per-PR inventory churn for a handful of tests in a 2,012-test repo.
+- Update [docs/testing/inventory/<crate>.md](../docs/testing/inventory/) **only when a single PR adds or removes ≥5% of the workspace test count** (~150 tests against the current 3,012 baseline). Smaller drifts get folded in by periodic sweep updates — don't block review on per-PR inventory churn for a handful of tests in a 3,012-test repo.
 
 If a single feature touches several layers (handler logic + serializer + SQL + cross-handler invariant), expect to add several test types — see TESTING.md "When one feature needs more than one test".
 

@@ -29,7 +29,7 @@ See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
 
 ## Tests & CI
 
-The Rust workspace currently carries **~2,690 `#[test]` / `#[tokio::test]` cases** across **~400 files**, of which **155 are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and `cargo nextest run -p cimmeria-services --lib` against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace currently carries **3,012 `#[test]` / `#[tokio::test]` cases** across **473 files**, of which **2,767 are gated on every PR** (CI excludes the two Tauri editors, the egui launcher, the Tauri app, and the Windows-only client-telemetry cdylib). **247 are live-DB regression guards** (gated by `require_db_or_skip!`, all in `cimmeria-services`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and `cargo nextest run -p cimmeria-services --lib` against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency / chain-replay), when each is appropriate, common gotchas, and the patterns reviewers expect to see, read **[TESTING.md](TESTING.md)**.
 
@@ -198,7 +198,7 @@ Cimmeria/
 │   ├── database.sql        Database and role setup
 │   ├── sgw/                Game schema (accounts, characters, items)
 │   └── resources/          Resource data (abilities, effects, archetypes — 18 game systems)
-├── docs/                   ~270 documents
+├── docs/                   ~280 documents
 ├── tools/                  Editor tools, RE utilities, and live-DB smoke SQL scripts (vendor_store_smoke.sql, inventory_move_smoke.sql, progression_smoke.sql)
 └── deprecated/             Retired C++/Python/MSVC sources kept for reference
 ```
