@@ -13,6 +13,8 @@ last_updated: 2026-07-25
 > checkout — see note below**); not implemented in Cimmeria
 > **Sources**: BW `lib/cstdmf/watcher.hpp`, BW `lib/cstdmf/watcher.cpp`, BW `lib/server/watcher_protocol.hpp`, BW `lib/server/watcher_protocol.cpp`, BW `lib/network/watcher_nub.hpp`, BW `lib/network/watcher_nub.cpp`, BW `lib/network/watcher_connection.hpp`, BW `lib/network/watcher_connection.cpp`, BW `lib/server/watcher_forwarding.hpp`, BW `lib/server/watcher_forwarding_collector.hpp`, BW `lib/server/watcher_forwarding_types.hpp`, BW `lib/pyscript/pywatcher.hpp`, BW `lib/pyscript/pywatcher.cpp`, BW `lib/network/basictypes.hpp`, BW `lib/cstdmf/config.hpp`
 
+---
+
 > [!IMPORTANT]
 > **The BigWorld 2.0.1 reference tree is not in this repository.** Every `BW <path>` citation
 > below refers to `external/engines/BigWorld-Engine-2.0.1/`, which is not in git and is not
@@ -22,8 +24,6 @@ last_updated: 2026-07-25
 > this document as **unverifiable in this checkout** — they are a record of what was read
 > when the document was written, not something a reader can re-check today. Claims about
 > SGW.exe and about Cimmeria *are* verifiable and have been re-checked; those are marked.
-
----
 
 ## Overview
 

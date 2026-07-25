@@ -14,6 +14,8 @@ last_updated: 2026-07-25
 > `crates/services/src/base/cooked_data.rs`, `crates/services/src/base/resources.rs`,
 > `deprecated/cpp/src/baseapp/mercury/sgw/resource.cpp`, `deprecated/python/`
 
+---
+
 > [!WARNING]
 > **Two pipelines are described in this document; only one of them runs.**
 >
@@ -25,8 +27,6 @@ last_updated: 2026-07-25
 > The *delivery* pipeline (`versionInfoRequest` / `onVersionInfo` / `elementDataRequest` /
 > `BASEMSG_RESOURCE_FRAGMENT`) **is** live and is implemented in Rust at
 > `crates/services/src/base/cooked_data.rs`.
-
----
 
 ## Overview
 
@@ -407,8 +407,8 @@ Each `BASEMSG_RESOURCE_FRAGMENT` message (original C++:
 | Reliability | Reliable Mercury bundle | Reliable Mercury bundle |
 
 Cimmeria raised the chunk size because Mercury's `MAX_BODY_LENGTH` is 1411 bytes and the
-first fragment spends only 16 of those on headers (`BASEMSG` 1 + `WORD_LEN` 2 + `data_id` 2
-+ `chunk_id` 1 + `frag_flags` 1 + `msg_type` 1 + `category_id` 4 + `element_id` 4). The
+first fragment spends only 16 of those on headers: `BASEMSG` 1, `WORD_LEN` 2, `data_id` 2,
+`chunk_id` 1, `frag_flags` 1, `msg_type` 1, `category_id` 4, `element_id` 4. The
 historical 1000-byte value wasted roughly 28% of every packet. 1390 leaves a 5-byte safety
 margin under the tighter first-fragment cap of 1395. This is a pure throughput change —
 the fragment *format* is unchanged, so client compatibility is preserved. A guard test in

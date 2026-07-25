@@ -150,7 +150,7 @@ In the C++ server with Python scripting:
 
 The Rust server pre-merges body and item components in a single query:
 
-1. Load `bodyset` and `components` (body components) from `sgw_characters`
+1. Load `bodyset` and `components` (body components) from `sgw_player`
 2. Query equipped items' `visual_component` from `resources.items` (equipment bags 3-14)
 3. `components.extend(item_visuals)` — merge into one list
 4. Pass to `build_map_loaded()` → `append_entity_method(BeingAppearance, ...)`

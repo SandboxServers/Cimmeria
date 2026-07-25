@@ -2,7 +2,7 @@
 
 > **Last updated**: 2026-07-25
 
-BigWorld Technology internals, Cheyenne Mountain Entertainment (CME) framework, and engine subsystems. 12 documents.
+BigWorld Technology internals, Cheyenne Mountain Entertainment (CME) framework, and engine subsystems. 13 documents.
 
 ## Documents
 

@@ -13,6 +13,8 @@ last_updated: 2026-07-25
 > sections describe the **deprecated C++ server**, not Cimmeria's Rust
 > **Sources**: BW `lib/server/backup_hash.hpp`, BW `lib/server/backup_hash.cpp`, BW `lib/server/backup_hash_chain.hpp`, BW `lib/server/backup_hash_chain.cpp`, BW `lib/server/auto_backup_and_archive.hpp`, BW `lib/server/auto_backup_and_archive.cpp`, BW `lib/server/reviver_subject.hpp`, BW `lib/server/reviver_subject.cpp`, BW `lib/server/reviver_common.hpp`, BW `server/baseapp/backup_sender.hpp`, `deprecated/cpp/src/cellapp/base_client.cpp`, `deprecated/cpp/src/baseapp/entity/base_entity.hpp`, `deprecated/cpp/src/baseapp/mercury/cell_handler.cpp`, `deprecated/cpp/src/mercury/base_cell_messages.hpp`, `deprecated/cpp/src/cellapp/entity/cell_entity.hpp`
 
+---
+
 > [!IMPORTANT]
 > **Two caveats before reading.**
 >
@@ -27,8 +29,6 @@ last_updated: 2026-07-25
 >    2026-07-25). They are reference material — the running server is Rust under `crates/`,
 >    and it does **not** implement the backup/restore flow described in the
 >    "Cimmeria's Existing Backup" section. That section has been retitled accordingly.
-
----
 
 ## Overview
 

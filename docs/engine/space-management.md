@@ -22,6 +22,8 @@ last_updated: 2026-07-25
 > BW `cellapp/buffered_ghost_message_queue.hpp`, BW `cellapp/cellapp_config.hpp`,
 > BW `lib/server/balance_config.hpp`
 
+---
+
 > [!IMPORTANT]
 > **Three different codebases are described in this document. Know which you are reading.**
 >
@@ -35,8 +37,6 @@ last_updated: 2026-07-25
 >
 > Sections 1 and 2 were previously presented as if they described Cimmeria. Where they do
 > not, that is now flagged inline.
-
----
 
 ## Overview
 

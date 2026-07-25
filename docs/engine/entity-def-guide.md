@@ -267,7 +267,7 @@ Properties define the data an entity holds. Each property has a name (the XML ta
 
 ```xml
 <playerName>
-    <Type>          WSTRING			</Type>
+    <Type>          WSTRING         </Type>
     <Flags>         CELL_PUBLIC     </Flags>
     <Identifier>    true            </Identifier>
     <Persistent>    true            </Persistent>
