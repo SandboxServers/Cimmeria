@@ -2,11 +2,11 @@
 
 What `SGW.exe` does when it crashes, where the diagnostic artifacts land, how to trigger a crash deliberately for pipeline validation, and how to turn the resulting minidump into a Ghidra address you can decompile.
 
-The crash machinery is **in-process** — no separate `CrashReport.exe` ships with the client. Everything from exception filter to dump-write to (attempted) upload happens inside `SGW.exe` itself, using the shipped `dbghelp.dll`. This doc is general-purpose: any SGW client crash flows through the same pipeline, whether it's a vanilla render-thread fault or the kind of structurally-invalid package that the [UE3 package splicer](ue3-package-splicer.md) might produce.
+The crash machinery is **in-process** — no separate `CrashReport.exe` ships with the client. Everything from exception filter to dump-write to (attempted) upload happens inside `SGW.exe` itself, using the shipped `dbghelp.dll`. This doc is general-purpose: any SGW client crash flows through the same pipeline, whether it's a vanilla render-thread fault or a structurally-invalid asset package that the UE3 loader rejects.
 
 ## See also
 
-- [ue3-package-splicer.md](ue3-package-splicer.md) — the splicer is a primary consumer of this pipeline; spliced maps that fail to load surface as minidumps here.
+- [engine/ue3-package-format.md](../engine/ue3-package-format.md) — the SGW UE3 package binary layout. If you are writing packages the client has to load, a failed load lands here as a minidump, and the faulting RVA usually names the loader function that rejected the structure.
 - [client-tools.md](../client-tools.md) — broader client-side tooling context.
 - [reverse-engineering/](../reverse-engineering/) — Ghidra-side catalog the RVAs from this pipeline feed into.
 

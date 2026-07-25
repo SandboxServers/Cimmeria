@@ -21,27 +21,37 @@ Catalogue of every test in the workspace. The playbook for *how to write* tests 
 
 ### By crate
 
-*Snapshot as of 2026-06-12. The `Tests` column is what the catalogue files
-contain, not what the crate has today — see the drift warning above. Live
-per-crate counts as of 2026-07-25 are in the second table.*
+*Snapshot as of 2026-06-12 except where noted. The `Tests` column is what the
+catalogue files contain, not what the crate has today — see the drift warning
+above. Live per-crate counts as of 2026-07-25 are in the second table.*
 
 | Crate | Tests | File |
 |---|---:|---|
 | `services` | 773 | [services.md](services.md) |
+| `launcher` (`sgw-launcher`) | 176 | [launcher.md](launcher.md) — recatalogued 2026-07-25 |
 | `entity` | 160 | [entity.md](entity.md) |
 | `mercury` | 123 | [mercury.md](mercury.md) |
 | `content-engine` | 85 | [content-engine.md](content-engine.md) |
 | `game` | 70 | [game.md](game.md) |
 | `common` | 31 | [common.md](common.md) |
 | `commands` | 29 | [commands.md](commands.md) |
-| `launcher` | 22 | [launcher.md](launcher.md) |
+| `wireclient` | 30 | [wireclient.md](wireclient.md) — catalogued 2026-07-25 |
 | `tools/SGWLauncher` | 22 | [tools-sgwlauncher.md](tools-sgwlauncher.md) |
 | `tools/ContentEditor` | 12 | [tools-contenteditor.md](tools-contenteditor.md) |
 | `upk-objects` | 11 | [upk-objects.md](upk-objects.md) |
 | `tauri-app` | 6 | [tauri-app.md](tauri-app.md) |
 | `defs` | 5 | [defs.md](defs.md) |
 | `server` | 2 | [server.md](server.md) |
-| **Total** | **1351** | |
+| **Total** | **1535** | |
+
+> **Double-count fixed, 2026-07-25.** `launcher.md` used to carry 22 rows that
+> were a verbatim duplicate of `tools-sgwlauncher.md` — all 22 describe tests in
+> `tools/SGWLauncher/src-tauri/`, filed under `crates/launcher/src/…` paths that
+> never contained them. The old total of 1,351 counted those 22 twice. The two
+> launchers are genuinely separate crates (`crates/launcher` is the **egui**
+> launcher, `sgw-launcher`; `tools/SGWLauncher` is the **Tauri** one), and
+> `crates/launcher`'s real 176-test suite was catalogued nowhere. It is now in
+> [launcher.md](launcher.md).
 
 ### Live counts (2026-07-25)
 
@@ -53,7 +63,7 @@ over every workspace member. Crates marked ✗ have no catalogue file yet.
 | `services` | 1,761 | 289 | ✓ |
 | `mercury` | 260 | 45 | ✓ |
 | `entity` | 246 | 23 | ✓ |
-| `launcher` (`sgw-launcher`) | 176 | 22 | ✓ |
+| `launcher` (`sgw-launcher`) | 176 | 22 | ✓ [launcher.md](launcher.md) |
 | `content-engine` | 143 | 14 | ✓ |
 | `discord` | 76 | 15 | ✗ |
 | `game` | 69 | 20 | ✓ |
@@ -75,6 +85,20 @@ Of these, **2,767** are gated on every PR — CI excludes `cimmeria-app`,
 `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`, and
 `cimmeria-client-telemetry`. 247 of the gated tests are live-DB guards
 (`require_db_or_skip!`), all in `cimmeria-services`.
+
+The 245-test gap between 3,012 and 2,767 breaks down as:
+
+| Excluded crate | Tests | Note |
+|---|---:|---|
+| `sgw-launcher` (`crates/launcher`) | 176 | **72% of the gap on its own.** Includes ed25519 manifest-signature verification, a path-traversal guard, hostname-injection validation, and two explicit revert-detecting regression guards — see [launcher.md](launcher.md#ci-exclusion). |
+| `cimmeria-client-telemetry` | 51 | Windows-only cdylib; excluded so Linux dev hosts need no extra toolchain. |
+| `cimmeria-app` (`src-tauri`) | 6 | GUI app. |
+| `cimmeria-content-editor`, `cimmeria-scene-editor` | 0 catalogued | GUI apps; excluded for the same linker/OOM reasons as the others. |
+| **Total** | **233** | Remainder is counting drift between the grep and nextest's collection. |
+
+The exclusions exist for build-environment reasons (GUI toolkits, a Windows-only
+cdylib, linker memory), not because the tests are low-value. Run the excluded
+crates locally when you touch them.
 
 ### By kind
 

@@ -2,7 +2,7 @@
 title: "Entity Type Catalog"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Entity Type Catalog
@@ -15,29 +15,33 @@ Comprehensive reference for all 18 entity types and 18 interfaces in the Stargat
 
 | Entity | Parent | Interfaces | Properties | Cell Methods | Base Methods | Client Methods | Server Implementation |
 |--------|--------|------------|------------|--------------|-------------|----------------|----------------------|
-| Account | *(none)* | ClientCache | 2 | 0 | 7 | 4 | Cell+Base |
-| SGWEntity | *(none)* | DistributionGroupMember, EventParticipant | 5 | 11 | 2 | 0 | Cell+Base |
-| SGWSpawnableEntity | SGWEntity | *(none)* | 10 | 12 | 0 | 13 | Cell+Base |
+| Account | *(none)* | ClientCache | 2 | 0 | 8 | 4 | Cell+Base |
+| SGWEntity | *(none)* | DistributionGroupMember, EventParticipant | 5 | 12 | 2 | 0 | Cell+Base |
+| SGWSpawnableEntity | SGWEntity | *(none)* | 12 | 11 | 0 | 12 | Cell+Base |
 | SGWBeing | SGWSpawnableEntity | SGWBeing, SGWAbilityManager, SGWCombatant | 0 | 0 | 0 | 1 | Cell+Base |
 | SGWPlayer | SGWBeing | Communicator, OrganizationMember, MinigamePlayer, GateTravel, SGWInventoryManager, SGWMailManager, Missionary, SGWPoller, ContactListManager, SGWBlackMarketManager, ClientCache | 68 | 96 | 20 | 59 | Cell+Base |
-| SGWGmPlayer | SGWPlayer | *(none)* | 2 | 93 | 11 | 6 | Cell+Base |
-| SGWMob | SGWBeing | Lootable | 68 | 40 | 0 | 2 | Cell+Base |
-| SGWPet | SGWMob | *(none)* | 14 | 9 | 0 | 3 | Cell+Base |
+| SGWGmPlayer | SGWPlayer | *(none)* | 2 | 118 | 8 | 6 | Cell+Base |
+| SGWMob | SGWBeing | Lootable | 95 | 38 | 0 | 2 | Cell+Base |
+| SGWPet | SGWMob | *(none)* | 12 | 8 | 0 | 3 | Cell+Base |
 | SGWDuelMarker | SGWSpawnableEntity | *(none)* | 2 | 1 | 0 | 0 | Cell+Base |
-| SGWBlackMarket | *(none)* | *(none)* | 1 | 0 | 7 | 0 | Cell+Base |
+| SGWBlackMarket | *(none)* | *(none)* | 1 | 0 | 6 | 0 | Cell+Base |
 | SGWPlayerGroupAuthority | SGWEntity | GroupAuthority | 0 | 0 | 0 | 0 | Cell+Base |
-| SGWSpaceCreator | SGWEntity | *(none)* | 10 | 3 | 24 | 0 | Cell+Base |
-| SGWSpawnRegion | SGWEntity | *(none)* | 27 | 0 | 21 | 0 | Cell+Base |
-| SGWSpawnSet | SGWEntity | GroupAuthority | 24 | 0 | 6 | 0 | Cell+Base |
+| SGWSpaceCreator | SGWEntity | *(none)* | 9 | 3 | 20 | 0 | Cell+Base |
+| SGWSpawnRegion | SGWEntity | *(none)* | 27 | 0 | 15 | 0 | Cell+Base |
+| SGWSpawnSet | SGWEntity | GroupAuthority | 23 | 0 | 6 | 0 | Cell+Base |
 | SGWPlayerRespawner | SGWEntity | *(none)* | 4 | 1 | 0 | 0 | Cell+Base |
 | SGWCoverSet | SGWEntity | *(none)* | 6 | 2 | 0 | 0 | Cell+Base |
-| SGWEscrow | SGWEntity | *(none)* | 2 | 3 | 0 | 0 | Cell+Base |
-| SGWChannelManager | *(none)* | *(none)* | 0 | 0 | 14 | 0 | Base only |
+| SGWEscrow | SGWEntity | *(none)* | 2 | 2 | 0 | 0 | Cell+Base |
+| SGWChannelManager | *(none)* | *(none)* | 0 | 0 | 15 | 0 | Base only |
 
 **Notes:**
-- Property, method, and interface counts are for the entity's **own** `.def` file only (not inherited).
-- All entities except SGWChannelManager have both `python/cell/` and `python/base/` implementations.
-- SGWChannelManager has a base implementation only (`python/base/SGWChannelManager.py`), with `python/cell/SGWChannelManager.py` also present but functionally server-only (no cell methods defined).
+- Property, method, and interface counts are for the entity's **own** `.def` file only (not inherited). Counted as direct children of the `<Properties>` / `<CellMethods>` / `<BaseMethods>` / `<ClientMethods>` blocks. For comparison, SGWPlayer flattened over its parents and 11 interfaces is 221 properties and 514 methods.
+- Every entity def has exactly one block of each kind, so these are unambiguous counts.
+- The Python implementations referenced below now live under `deprecated/python/` — Cimmeria reimplements this logic in Rust under `crates/services/src/base/` and `crates/services/src/cell/`.
+- SGWChannelManager has a base implementation only (`deprecated/python/base/SGWChannelManager.py`), with `deprecated/python/cell/SGWChannelManager.py` also present but functionally server-only (no cell methods defined).
+
+> [!WARNING]
+> The 2026-07-25 audit re-derived this summary table from `entities/defs/` and found 12 of the 18 rows had at least one wrong count — including SGWMob's property count, which had been copied from SGWPlayer (68) instead of its actual 95. The table above is corrected. **The per-entity detail tables in the sections below have not been re-verified against the `.def` files** and may still carry the same class of error; treat them as unaudited until that sweep is done.
 
 ---
 

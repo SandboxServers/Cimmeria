@@ -2,15 +2,31 @@
 title: "Distributed Checkpointing & Crash Recovery"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Distributed Checkpointing & Crash Recovery
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-07-25
 > **Phase**: 5 -- BigWorld Engine Subsystems
-> **RE Status**: Documented from BigWorld 2.0.1 reference source; partially implemented in Cimmeria
-> **Sources**: BW `lib/server/backup_hash.hpp`, BW `lib/server/backup_hash.cpp`, BW `lib/server/backup_hash_chain.hpp`, BW `lib/server/backup_hash_chain.cpp`, BW `lib/server/auto_backup_and_archive.hpp`, BW `lib/server/auto_backup_and_archive.cpp`, BW `lib/server/reviver_subject.hpp`, BW `lib/server/reviver_subject.cpp`, BW `lib/server/reviver_common.hpp`, BW `server/baseapp/backup_sender.hpp`, Cimmeria `src/cellapp/base_client.cpp`, Cimmeria `src/baseapp/entity/base_entity.hpp`, Cimmeria `src/baseapp/mercury/cell_handler.cpp`, Cimmeria `src/mercury/base_cell_messages.hpp`, Cimmeria `src/cellapp/entity/cell_entity.hpp`
+> **RE Status**: BigWorld sections unverifiable in this checkout; the "existing backup"
+> sections describe the **deprecated C++ server**, not Cimmeria's Rust
+> **Sources**: BW `lib/server/backup_hash.hpp`, BW `lib/server/backup_hash.cpp`, BW `lib/server/backup_hash_chain.hpp`, BW `lib/server/backup_hash_chain.cpp`, BW `lib/server/auto_backup_and_archive.hpp`, BW `lib/server/auto_backup_and_archive.cpp`, BW `lib/server/reviver_subject.hpp`, BW `lib/server/reviver_subject.cpp`, BW `lib/server/reviver_common.hpp`, BW `server/baseapp/backup_sender.hpp`, `deprecated/cpp/src/cellapp/base_client.cpp`, `deprecated/cpp/src/baseapp/entity/base_entity.hpp`, `deprecated/cpp/src/baseapp/mercury/cell_handler.cpp`, `deprecated/cpp/src/mercury/base_cell_messages.hpp`, `deprecated/cpp/src/cellapp/entity/cell_entity.hpp`
+
+> [!IMPORTANT]
+> **Two caveats before reading.**
+>
+> 1. **The BigWorld 2.0.1 reference tree is not in this repository.** Every `BW <path>`
+>    citation points at `external/engines/BigWorld-Engine-2.0.1/`, which is not in git and is
+>    not fetched by `setup.ps1` or `bootstrap/`. The `BackupHash`, `BackupHashChain`,
+>    `AutoBackupAndArchive`, `BackupSender` and `ReviverSubject` class listings, the prime
+>    table, the hash function and the ping protocol below **cannot be re-verified here**.
+>    They are a record of a prior reading.
+> 2. **"Cimmeria" in the original text meant the C++ server.** The five `src/...` paths in
+>    the source list above are now under `deprecated/cpp/` (all five confirmed present,
+>    2026-07-25). They are reference material — the running server is Rust under `crates/`,
+>    and it does **not** implement the backup/restore flow described in the
+>    "Cimmeria's Existing Backup" section. That section has been retitled accordingly.
 
 ---
 
@@ -24,7 +40,16 @@ The system has three main components:
 2. **BackupSender** -- per-BaseApp coordinator that incrementally backs up entities each tick
 3. **ReviverSubject** -- health-check ping system with priority-based election
 
-Cimmeria implements basic entity backup for **space transitions** (teleporting between zones) but does NOT implement the full distributed crash recovery system. Entities are backed up when moving between spaces and restored on the other side, but there is no periodic backup to other BaseApps, no hash-based backup routing, and no reviver process.
+The **deprecated CME C++ server** implemented basic entity backup for **space transitions**
+(teleporting between zones) but not the full distributed crash recovery system. Entities were
+backed up when moving between spaces and restored on the other side, with no periodic backup
+to other BaseApps, no hash-based backup routing, and no reviver process.
+
+**Cimmeria's Rust server implements none of this**, and structurally cannot need most of it:
+base and cell are modules in a single process (`crates/server/`) communicating over
+`tokio::mpsc`, so there is no second BaseApp to back up to and no inter-process boundary for
+an entity to be serialized across during a space change. Entity durability in Cimmeria is
+plain database persistence via `sqlx`.
 
 ---
 

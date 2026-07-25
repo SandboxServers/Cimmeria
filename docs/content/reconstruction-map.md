@@ -578,17 +578,23 @@ triggers. These are entirely new game design work.
 
 **Effort: MEDIUM-HIGH total** | **Confidence: MEDIUM**
 
-Eight systems documented in `docs/architecture/server-systems.md`. Most have partial
-foundations. See that document for full details.
+Eight cross-cutting server-only systems. The survey that used to hold their
+current state (`docs/architecture/server-systems.md`) was
+[superseded on 2026-07-25](../architecture/server-systems.md) — live status now
+lives in [gap-analysis.md](../gap-analysis.md) §"Server Infrastructure
+(Cross-Cutting)", and the unbuilt designs live in
+[server-infrastructure-proposals.md](../architecture/server-infrastructure-proposals.md).
+The table below is corrected against that split.
 
 | System | Current State | Priority |
 |--------|---------------|----------|
-| GM Tools Backend | 50+ commands work; console disabled (empty password) | HIGH |
-| Session Management | Basic timeout exists; no reconnection grace | HIGH |
-| Rate Limiting | Per-ability cooldowns only | MEDIUM |
-| Anti-Cheat | Position bounds only; no speed validation | MEDIUM |
-| World State Persistence | Player pos persists; no world object state | MEDIUM |
-| Economy / Scheduler / Metrics | Minimal | LOW |
+| GM Tools Backend | Native `/gm*` + `.`-console both ship, gated on `access_level`. Missing: action audit log, ban/mute, broadcast | HIGH |
+| Session Management | 60 s inactivity timeout + duplicate-login check; no reconnection grace, no session token | HIGH |
+| Rate Limiting | Per-ability cooldowns only; no player-facing limiter of any kind | MEDIUM |
+| Anti-Cheat | **Four-layer movement validation shipped** (bounds → navmesh → speed → teleport) plus ability-range checks. Missing: damage cap, line-of-sight | MEDIUM |
+| World State Persistence | Player state persists; no world-object state, no table | MEDIUM |
+| Metrics | **OTLP + SigNoz shipped.** Missing: `perfStats` ingestion, gameplay counters, alerting | LOW |
+| Economy / Scheduler | Minimal — no currency-flow logging, no scheduler | LOW |
 
 > **Obsolete recommendation (corrected 2026-07-25).** This section previously said
 > to set `<py_console_password>` in `config/BaseService.config` to unlock the GM

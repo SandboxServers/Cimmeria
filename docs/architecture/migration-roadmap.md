@@ -1,216 +1,90 @@
 ---
-title: "Dependency Migration Roadmap"
+title: "C++ Dependency Migration Roadmap (historical)"
 type: explanation
 audience: engineers
 last_updated: 2026-07-25
 ---
 
-# Dependency Migration Roadmap
+# C++ Dependency Migration Roadmap (historical)
 
-> Extracted from CLAUDE.md to keep the operator file concise. Reference this when planning or executing dependency upgrades.
-
-> [!WARNING]
-> **Scope: the deprecated C++ server only.** Every migration in this roadmap is a
-> **C++ dependency** of the tree now under [`deprecated/cpp/`](../../deprecated/cpp/)
-> (Boost, MSVC toolset, SOCI, Qt, embedded CPython, Recast/Detour, the
-> `.sln`/`.vcxproj` build). The active Rust server under [`crates/`](../../crates/)
-> shares **none** of them — it manages dependencies through Cargo.
+> [!IMPORTANT]
+> **Historical record. Every migration below is a dependency of the deprecated
+> C++ server, not of anything Cimmeria ships.**
 >
-> **The OpenSSL row is the one most often misread.** "Pending — CRITICAL (active
-> CVEs)" describes OpenSSL 0.9.8i statically linked into the *deprecated* C++
-> server and into the 2009 game client. **It is not an open vulnerability in
-> anything Cimmeria ships today**: the Rust auth server terminates TLS with
-> `tokio-rustls` and links no OpenSSL. Do not cite this row as a live security
-> finding. For the crypto work that actually shipped, see
-> [encryption-modernization.md](encryption-modernization.md).
+> The active Rust server under [`crates/`](../../crates/) shares **none** of
+> these dependencies — it manages everything through Cargo. The tree these
+> migrations target now sits under [`deprecated/cpp/`](../../deprecated/cpp/)
+> and is not maintained, so most rows below will never be executed.
 >
-> Because the deprecated tree is not being maintained, most rows here are
-> unlikely ever to be executed. Treat this as an archived plan rather than an
-> active backlog.
+> **Looking for the actual roadmap?** See
+> [project-status.md](../project-status.md) for where the project is and where
+> it is going, and [gap-analysis.md](../gap-analysis.md) for per-system
+> completeness. This page is not that.
 
-## Current Status
+## Do not cite the OpenSSL row as a live finding
 
-| Migration | Path | Status |
+This is the single most misread line in the repo, so it gets its own heading.
+
+The roadmap below marks **OpenSSL 0.9.8i → 3.5.x** as "Pending — CRITICAL
+(active CVEs)". That describes OpenSSL **statically linked into the deprecated
+C++ server and into the 2009 game client**. It is **not an open vulnerability
+in anything Cimmeria runs**:
+
+- The Rust auth server terminates TLS with `tokio-rustls` and links no OpenSSL.
+- No crate in the workspace depends on OpenSSL.
+
+Quoting this row in a security review, an issue, or an audit as though it were
+a finding against Cimmeria is wrong. For the crypto work that actually shipped
+and the work that is actually proposed, see
+[encryption-modernization.md](encryption-modernization.md).
+
+## What this was
+
+From the project's C++ era, this page tracked the dependency-upgrade plan for
+the original server: which third-party libraries were how far behind, in what
+order they should be upgraded, and what each upgrade would involve. It was
+extracted from CLAUDE.md to keep that file short.
+
+Two of its migrations completed before the Rust rewrite made the rest moot:
+
+| Migration | Path | Outcome |
 |---|---|---|
-| MSVC Toolchain | v120 → v145 (VS2026) | **COMPLETE** |
-| PostgreSQL | 9.2.3 → 17.9 | **COMPLETE** |
-| OpenSSL | 0.9.8i → 3.5.x | Pending — **CRITICAL** (active CVEs) |
-| Boost | 1.55.0 → 1.90.0 | Pending — HIGH |
-| Python | 3.4.1 → 3.12+ | Pending — MEDIUM |
-| Build System | .sln/.vcxproj → CMake+vcpkg | Pending — MEDIUM |
-| Qt | 5.x → 6.10 | Pending — LOW (ServerEd only) |
-| Recast/Detour | 2013 era → 1.6.0 | Pending — LOW |
+| MSVC Toolchain | v120 (VS2012) → v145 (VS2026) | **Complete** — all 6 C++ projects build under v145 |
+| PostgreSQL | 9.2.3 → 17.9 | **Complete** — still the live database; compatibility fixes applied (dropped `default_with_oids`, `EXECUTE PROCEDURE` → `EXECUTE FUNCTION`), pgdata version-mismatch detection added to bootstrap |
 
-## Recommended Migration Order
+The PostgreSQL upgrade is the one piece of this roadmap with ongoing relevance:
+Cimmeria still runs PostgreSQL 17.9 (EOL November 2029), and the bootstrap
+tooling that came out of that migration is still what sets up a local database.
 
-```
-Phase 1 (Foundation):
-  1. MSVC Toolchain (v120 -> v145)       -- COMPLETE (VS2026)
-  2. OpenSSL (0.9.8 -> 3.x)             -- critical security fix
+## The rest, unexecuted
 
-Phase 2 (Core Libraries):
-  3. Boost (1.55 -> 1.85+)              -- major dependency
-  4. PostgreSQL + SOCI (9.2 -> 17)      -- COMPLETE (17.9)
+Recorded for completeness. Each of these was a real plan against
+`deprecated/cpp/`; none is scheduled, and the Rust server needs none of them.
 
-Phase 3 (Runtime & Scripting):
-  5. Python (3.4 -> 3.12+)              -- scripting layer
-  6. TinyXML2 (~1.x -> 11.x)            -- minor, low-risk
-  7. ICU (51 -> 78)                      -- often bundled with Qt
+| Migration | Path | Original priority | Why it no longer matters |
+|---|---|---|---|
+| OpenSSL | 0.9.8i → 3.5.x | CRITICAL | Rust uses `tokio-rustls`; no OpenSSL anywhere in the workspace |
+| Boost | 1.55.0 → 1.90.0 | HIGH | Boost.Asio / .Python / .Thread / .Filesystem all replaced by `tokio` + std |
+| Python (embedded) | 3.4.1 → 3.12+ | MEDIUM | No embedded interpreter — see [python-console.md](python-console.md) |
+| Build system | `.sln`/`.vcxproj` → CMake + vcpkg | MEDIUM | Cargo |
+| SOCI | 3.2.1 → 4.1.2 | MEDIUM | Replaced by `sqlx` |
+| TinyXML2 | ~1.x → 11.x | LOW | Rust XML parsing in [`crates/defs/`](../../crates/defs/) |
+| Qt | 5.x → 6.10 | LOW (ServerEd only) | ServerEd replaced by Tauri tools — see [tauri-rewrite.md](tauri-rewrite.md) |
+| Recast/Detour | ~2013 → 1.6.0 | LOW | Navmesh handled in [`crates/navmesh-extractor/`](../../crates/navmesh-extractor/) |
 
-Phase 4 (Tooling & Build):
-  8. Qt (5.x -> 6.x)                    -- ServerEd only
-  9. Recast/Detour (2013 -> 1.6)        -- low risk
-  10. Build System (VS -> CMake+vcpkg)   -- modernization
-```
+The original page also carried eight "migration agent" definitions — per-library
+expertise briefs describing the breaking changes each upgrade would hit. They
+were written for a rewrite path the project did not take. If a C++ migration is
+ever revived, `git log` on this file recovers them.
 
----
+## Related documents
 
-## Migration Agent Definitions
-
-These agents have deep expertise in specific migration paths. Invoke via the Agent tool.
-
----
-
-### 9. MSVC Toolchain Migration Agent
-
-**Migration path:** VS2012 (v120) → VS2026 (v145) — **COMPLETE**
-
-**Status:** All 6 projects build successfully under v145.
-
-**Expertise:**
-- v120 → v145 toolset changes and compatibility breaks
-- C++11 → C++17/C++20/C++23 incremental adoption strategy
-- Compiler warning/error resolution across MSVC versions
-- STL implementation changes (iterator debugging, allocator model, `std::auto_ptr` removal)
-- Windows SDK version upgrades and API changes
-- `.vcxproj` PlatformToolset migration and project file updates
-- `/permissive-` conformance mode preparation
-- Deprecation of legacy CRT functions (`_CRT_SECURE_NO_WARNINGS` patterns)
-
-**Priority:** ~~HIGH~~ COMPLETE
-
----
-
-### 10. Boost Migration Agent
-
-**Migration path:** Boost 1.55.0 → 1.90.0
-
-**Expertise:**
-- 35 minor releases of breaking changes and deprecations
-- Boost.Asio evolution: standalone Asio option, executor model changes, completion token patterns
-- Boost.Python API changes across versions
-- Boost.Thread → `std::thread` migration opportunities
-- Boost.Filesystem v3 → `std::filesystem` migration path
-- Boost.Signals2 stability and any API drift
-- Removed/reorganized libraries across the 1.55–1.90 range
-- Header-only vs compiled library changes
-
-**Priority:** HIGH — Core dependency touching every C++ component.
-
----
-
-### 11. Python Embedding Migration Agent
-
-**Migration path:** Python 3.4.1 → 3.12+ (or 3.14 if stable)
-
-**Expertise:**
-- CPython embedding API changes (3.4 → 3.12): `Py_Initialize`, module system, GIL changes
-- Boost.Python compatibility with newer Python versions
-- Python 3.4 removed features: `imp` module, old-style string formatting edge cases
-- New features to adopt: f-strings (3.6+), dataclasses (3.7+), walrus operator (3.8+), match/case (3.10+)
-- `asyncio` evolution (if server needs async Python)
-- Type hint introduction strategy for existing 164-file scripting codebase
-- Python DLL/library linking changes across versions
-- Virtual environment and dependency isolation modernization
-
-**Priority:** MEDIUM — Python 3.4 is EOL but scripting layer is somewhat isolated.
-
----
-
-### 12. PostgreSQL Migration Agent
-
-**Migration path:** PostgreSQL 9.2.3 → 17.9 — **COMPLETE**
-
-**Status:** Upgraded to 17.9 (EOL Nov 2029). Compatibility fixes applied (removed `default_with_oids`, `EXECUTE PROCEDURE` → `EXECUTE FUNCTION`). pgdata version mismatch auto-detection added to bootstrap.
-
-**Expertise:**
-- Features now available: JSONB, parallel queries, partitioning, logical replication, generated columns, incremental sort, query pipelining
-- `pg_dump`/`pg_restore` cross-version migration procedures
-- SOCI 3.2.1 → 4.1.2 migration (ORM layer upgrade is a separate task)
-- Connection string and authentication method changes (`md5` → `scram-sha-256`)
-
-**Priority:** ~~MEDIUM~~ COMPLETE — Running PG 17.9.
-
----
-
-### 13. OpenSSL Migration Agent
-
-**Migration path:** OpenSSL 0.9.8i → 3.5.x
-
-**Expertise:**
-- CRITICAL: 0.9.8 has multiple known CVEs including Heartbleed-era vulnerabilities
-- Complete API overhaul: `EVP_*` interface migration, provider model (3.0+)
-- Removed functions: `SSLv2_*`, `SSLv3_*`, many low-level crypto functions
-- `OPENSSL_init_ssl()` replacing `SSL_library_init()`
-- Certificate and key loading API changes
-- TLS 1.2/1.3 support enablement
-- Library naming changes: `libeay32.dll`/`ssleay32.dll` → `libcrypto.dll`/`libssl.dll`
-- Build system changes (Configure → CMake option)
-- FIPS module availability (3.0+)
-
-**Priority:** CRITICAL — Active security vulnerabilities.
-
----
-
-### 14. Qt Migration Agent
-
-**Migration path:** Qt 5.x (early) → Qt 6.10
-
-**Expertise:**
-- Qt 5 → Qt 6 porting guide application
-- Build system migration: qmake → CMake (Qt 6 standard)
-- Removed/moved modules and classes
-- `QString`/`QByteArray` behavior changes
-- Signal/slot syntax modernization
-- Qt5Sql → Qt6Sql driver changes
-- ICU 51 → ICU 78 bundled with Qt upgrade
-- High-DPI and accessibility improvements
-- QML/Quick changes (if ServerEd expands)
-
-**Priority:** LOW — Only affects ServerEd tool, not the game servers.
-
----
-
-### 15. Build System Modernization Agent
-
-**Migration path:** .sln/.vcxproj → CMake + vcpkg/Conan
-
-**Expertise:**
-- CMake project generation from existing VS solutions
-- vcpkg manifest mode for dependency management (replaces `external/` vendoring)
-- Conan as alternative package manager
-- Cross-platform build support (Linux server targets)
-- CI/CD pipeline design (GitHub Actions, Azure DevOps)
-- Precompiled header migration to CMake `target_precompile_headers`
-- CTest integration for automated testing
-- CPack for distribution packaging
-- Docker containerization for server deployment
-
-**Priority:** MEDIUM — Enables easier dependency management and CI/CD, but functional without it.
-
----
-
-### 16. Recast/Detour Migration Agent
-
-**Migration path:** ~2013 era NavMesh v7 → Recast 1.6.0
-
-**Expertise:**
-- Recast/Detour API evolution over the past decade
-- NavMesh data format version changes (v7 → current)
-- Tile-based navmesh improvements
-- Dynamic obstacle support additions
-- Thread safety improvements
-- CMake build integration (modern Recast uses CMake)
-- NavMesh regeneration strategy for existing game data
-
-**Priority:** LOW — Still industry-standard, API is relatively stable.
+- [project-status.md](../project-status.md) — the actual forward-looking
+  roadmap.
+- [gap-analysis.md](../gap-analysis.md) — per-system feature completeness.
+- [tech-stack-replacement.md](tech-stack-replacement.md) — the decision
+  document that chose the rewrite over this roadmap.
+- [encryption-modernization.md](encryption-modernization.md) — the real crypto
+  work, shipped and proposed.
+- [`deprecated/cpp/src/README.md`](../../deprecated/cpp/src/README.md) — the
+  deprecated tree's own overview.

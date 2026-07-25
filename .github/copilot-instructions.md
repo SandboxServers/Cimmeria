@@ -60,4 +60,4 @@ Run the markdown lint as the doc-side equivalent of `cargo clippy`: `tools/lint-
 
 ## Where to find more
 
-Full conventions: `CLAUDE.md`. Testing: `TESTING.md`. Architecture: `docs/architecture/`. Content engine: `docs/architecture/data-driven-content-engine.md`. Migration roadmap: `docs/architecture/migration-roadmap.md`. Live-DB infra: `docs/architecture/integration-test-infra.md`.
+Full conventions: `CLAUDE.md`. Testing: `TESTING.md`. Architecture: `docs/architecture/`. Content engine: `docs/architecture/data-driven-content-engine.md`. Roadmap + status: `docs/project-status.md`, `docs/gap-analysis.md` (**not** `docs/architecture/migration-roadmap.md` — that is a historical C++-only dependency plan; its "CRITICAL OpenSSL" row is not a Cimmeria finding). Live-DB infra: `docs/architecture/integration-test-infra.md`.

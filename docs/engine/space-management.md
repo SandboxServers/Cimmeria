@@ -2,14 +2,39 @@
 title: "Space Management"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Space Management
 
-> **Last updated**: 2026-03-01
-> **RE Status**: Well documented from Cimmeria source code + BigWorld 2.0.1 reference
-> **Sources**: `src/cellapp/space.hpp`, `src/entity/world_grid.hpp`, `entities/cell_spaces.xml`, `entities/spaces.xml`, `config/BaseService.config`, `config/CellService.config`, BW `cellapp/space.hpp`, BW `cellapp/space_node.hpp`, BW `cellapp/space_branch.hpp`, BW `cellapp/cell.hpp`, BW `cellapp/cell_info.hpp`, BW `cellapp/cells.hpp`, BW `cellapp/entity.hpp`, BW `cellapp/entity_cache.hpp`, BW `cellapp/buffered_ghost_message.hpp`, BW `cellapp/buffered_ghost_messages.hpp`, BW `cellapp/buffered_ghost_messages_for_entity.hpp`, BW `cellapp/buffered_ghost_message_queue.hpp`, BW `cellapp/cellapp_config.hpp`, BW `lib/server/balance_config.hpp`
+> **Last updated**: 2026-07-25
+> **RE Status**: Space/extent data verified against `entities/`; C++ sections describe the
+> deprecated server; BigWorld sections unverifiable in this checkout
+> **Sources**: `entities/cell_spaces.xml`, `entities/spaces.xml`, `data/spaces/`,
+> `crates/entity/src/world_grid.rs`, `crates/entity/src/space.rs`,
+> `deprecated/cpp/src/cellapp/space.hpp`, `deprecated/cpp/src/entity/world_grid.hpp`,
+> `deprecated/cpp-config/config/BaseService.config`,
+> `deprecated/cpp/src/mercury/base_cell_messages.hpp`, BW `cellapp/space.hpp`,
+> BW `cellapp/space_node.hpp`, BW `cellapp/space_branch.hpp`, BW `cellapp/cell.hpp`,
+> BW `cellapp/cell_info.hpp`, BW `cellapp/cells.hpp`, BW `cellapp/entity.hpp`,
+> BW `cellapp/entity_cache.hpp`, BW `cellapp/buffered_ghost_message.hpp`,
+> BW `cellapp/buffered_ghost_messages.hpp`, BW `cellapp/buffered_ghost_messages_for_entity.hpp`,
+> BW `cellapp/buffered_ghost_message_queue.hpp`, BW `cellapp/cellapp_config.hpp`,
+> BW `lib/server/balance_config.hpp`
+
+> [!IMPORTANT]
+> **Three different codebases are described in this document. Know which you are reading.**
+>
+> 1. **BigWorld 2.0.1** — every `BW <path>` citation. The reference tree
+>    (`external/engines/BigWorld-Engine-2.0.1/`) is **not in this repository**, is not in
+>    git, and is not fetched by `setup.ps1` or `bootstrap/`. These sections are historical
+>    and cannot be re-verified here. They are clearly headed "BigWorld Reference:".
+> 2. **The deprecated CME C++ server** — `space.hpp`, `world_grid.hpp`, `base_client.cpp`
+>    etc., now under `deprecated/cpp/`. Still present and readable, but **not what runs**.
+> 3. **Cimmeria (Rust)** — `crates/`. This is what actually runs.
+>
+> Sections 1 and 2 were previously presented as if they described Cimmeria. Where they do
+> not, that is now flagged inline.
 
 ---
 
@@ -19,11 +44,12 @@ Spaces are the fundamental world containers in BigWorld. Each space represents a
 
 ## Space Definitions
 
-### cell_spaces.xml
+### spaces.xml — the full registry
 
-Defines which spaces the CellApp creates at startup:
-
-From `entities/spaces.xml` (24 total — 16 shared + 8 instanced):
+`entities/spaces.xml` declares all 24 spaces with their extents and instancing flag.
+`entities/cell_spaces.xml` is a separate, shorter file listing only the 16 non-instanced
+spaces the cell creates at startup (see below). The table here is from **`spaces.xml`**;
+all 24 rows verified against the file 2026-07-25.
 
 | Space | Instanced | Extents (X) | Extents (Y) | Size |
 |-------|-----------|-------------|-------------|------|
@@ -54,20 +80,41 @@ From `entities/spaces.xml` (24 total — 16 shared + 8 instanced):
 
 Total: 16 persistent (non-instanced) spaces loaded at startup. 8 additional instanced spaces created on demand (24 total defined in `spaces.xml`).
 
-### spaces.xml
+### spaces.xml element format
 
-Defines world metadata for each space (extents, instancing rules):
+Each space is a **single self-closing element with flat attributes** — not nested child
+elements. Verbatim from `entities/spaces.xml`:
 
 ```xml
-<Space WorldName="Agnos">
-    <Instanced>false</Instanced>
-    <Extents minX="-500" minY="-500" maxX="500" maxY="500" />
-</Space>
+<Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" />
 ```
+
+Note the attribute names are `MinX`/`MaxX`/`MinY`/`MaxY` (capitalised, on the `<Space>`
+element itself) and `Instanced` is an attribute string, not a child element. An earlier
+revision of this document showed a nested `<Instanced>` element and an `<Extents
+minX=... />` child with placeholder ±500 bounds; no such form exists in the file, and a
+parser written against it will not load any space.
+
+### cell_spaces.xml
+
+`entities/cell_spaces.xml` lists the 16 non-instanced spaces created at startup. It carries
+**names only** — no extents, no instancing flag; those come from `spaces.xml`:
+
+```xml
+<Space WorldName="SandBox" />
+<Space WorldName="Castle" />
+```
+
+The file's own comment notes that different cells may load different sets and that two cells
+should never create the same world — a multi-CellApp provision that Cimmeria's single-process
+architecture does not exercise.
 
 ### WorldData Structure
 
-From `src/cellapp/space.hpp`:
+> [!WARNING]
+> Deprecated C++ server (`deprecated/cpp/src/cellapp/space.hpp`). Cimmeria's Rust `Space` has
+> a different shape — see [Cimmeria's actual Space and grid](#cimmerias-actual-space-and-grid)
+> below.
 
 ```cpp
 struct WorldData {
@@ -80,9 +127,16 @@ struct WorldData {
 };
 ```
 
-## Space Class
+## Space Class (deprecated C++ server)
 
-The `Space` class (`src/cellapp/space.hpp`) manages a single game world:
+> [!WARNING]
+> This section documents `deprecated/cpp/src/cellapp/space.hpp` — the original CME C++
+> server. Cimmeria's Rust `Space` (`crates/entity/src/space.rs`) does **not** have
+> `dbEntities_`, `players_`, `navMesh_`, `creatorId_`, `promoteToPlayer()`,
+> `demoteToEntity()`, `findEntitiesByDbid()` or `findPath()`. See
+> [Cimmeria's actual Space and grid](#cimmerias-actual-space-and-grid).
+
+The `Space` class (`deprecated/cpp/src/cellapp/space.hpp`) manages a single game world:
 
 ### State
 
@@ -151,13 +205,22 @@ TimerMgr::TimerId addEntityTimer(double completeTime, PyObject * callback);
 void cancelEntityTimer(TimerMgr::TimerId timerId);
 ```
 
-## World Grid System
+## World Grid System (deprecated C++ server)
 
-The WorldGrid (`src/entity/world_grid.hpp`) is a template-based spatial partitioning system that provides efficient AoI calculations.
+> [!WARNING]
+> **This entire section describes the deprecated C++ `WorldGrid`, not Cimmeria's.** The
+> hysteresis mechanism, `visionExceptions_`, the witness sets, `WorldGridMember<T>` and the
+> large-movement reset all belong to `deprecated/cpp/src/entity/world_grid.hpp`. None of
+> them exist in `crates/`. Verified 2026-07-25: grepping `crates/` for `hysteresis`,
+> `vision_distance` or `grid_vision` returns no AoI matches (the only `hysteresis` hits are
+> `FLANK_HYSTERESIS_DOT` in the NPC cover-scoring code, unrelated). See
+> [Cimmeria's actual Space and grid](#cimmerias-actual-space-and-grid) for what runs.
+
+The WorldGrid (`deprecated/cpp/src/entity/world_grid.hpp`) is a template-based spatial partitioning system that provides efficient AoI calculations.
 
 ### Grid Parameters
 
-From `config/BaseService.config`:
+From `deprecated/cpp-config/config/BaseService.config` (lines 54, 57, 60):
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -167,8 +230,12 @@ From `config/BaseService.config`:
 
 ### Grid Structure
 
+The worked example below uses **illustrative** ±500 extents for arithmetic clarity. No real
+space has those bounds — see the verified extents table above (they range from 200×200 for
+`Tollana_Curia` to 5400×6600 for `Lucia`).
+
 ```
-World extents: minX=-500, minY=-500, maxX=500, maxY=500
+World extents (ILLUSTRATIVE ONLY): minX=-500, minY=-500, maxX=500, maxY=500
 Chunk size: 50m x 50m
 Grid dimensions: 20 x 20 = 400 chunks
 Vision distance: 3 chunks = 150m
@@ -243,7 +310,61 @@ protected:
 };
 ```
 
+## Cimmeria's actual Space and grid
+
+Verified against `crates/entity/src/space.rs` and `crates/entity/src/world_grid.rs`,
+2026-07-25.
+
+`Space` is deliberately minimal — an entity set plus a grid:
+
+| Member / method | Notes |
+|---|---|
+| `grid: WorldGrid` | Owned spatial index |
+| `new(space_id, name, grid_cell_size)` | Cell size is injected, not read from a global |
+| `add_entity(entity_id, position)` | |
+| `remove_entity(entity_id, position)` | |
+| `get_entities_in_range(pos, radius)` | Delegates to `WorldGrid::query_radius` |
+| `entity_count()` / `contains_entity(id)` | |
+
+`WorldGrid` is a **radius-query bucket grid**, not a witness-notification system:
+
+| Method | Notes |
+|---|---|
+| `new(cell_size)` | Corresponds to the old `grid_chunk_size` |
+| `insert` / `remove` / `update_position` | |
+| `query_radius(pos, radius)` | Returns candidate `EntityId`s |
+| `cell_key(pos)` | `(i32, i32)` bucket coordinate |
+
+**The architectural difference that matters:** the C++ grid *pushed* visibility changes
+(`onEntityVisible` / `onEntityInvisible`) to witnesses stored inside the grid, with
+hysteresis to damp boundary flapping. Cimmeria's grid is *pulled* — it answers "who is near
+this point?" and nothing more. Witness bookkeeping, enter/leave decisions and AoI fan-out
+live one layer up in `crates/services/src/mercury/aoi/` and `crates/services/src/cell/`, and
+AoI radius is a **per-entity** field (`aoi_radius`, defaulting to 100.0 in
+`crates/entity/src/cell_entity/construction.rs:30`) rather than a global chunk count.
+
+Consequences worth knowing before changing anything here:
+
+- **There is no hysteresis.** An entity oscillating across an AoI boundary will generate
+  repeated enter/leave traffic. The C++ server damped this with `grid_hysteresis = 1`
+  chunk. If boundary flapping is ever observed in practice, this is the gap — but it should
+  be fixed at the witness layer, not by porting `visionExceptions_`.
+- **The default AoI radius is 100.0**, not the 150 m the old `grid_vision_distance = 3`
+  × 50 m produced. Anything that reasons about the old 150/200 m enter/leave pair is stale.
+- **The grid does not know about witnesses**, so a witness-list leak cannot be diagnosed by
+  inspecting grid state.
+
+---
+
 ## Base-Cell Space Communication
+
+> [!NOTE]
+> The `CELL_BASE_*` message IDs below are from
+> `deprecated/cpp/src/mercury/base_cell_messages.hpp` and are **accurate** (re-verified
+> 2026-07-25). They describe the C++ server's Cell↔Base wire protocol. Cimmeria runs auth,
+> base and cell in a **single process** (`crates/server/`) and passes these interactions over
+> `tokio::mpsc` channels (`BaseToCellMsg` / `CellToBaseMsg`) — there is no Mercury or TCP hop
+> between base and cell. The message *semantics* carry over; the transport does not.
 
 The CellApp informs the BaseApp about space changes:
 
@@ -865,21 +986,28 @@ public:
 
 ## Cimmeria vs BigWorld: Space Architecture Comparison
 
-| Feature | Cimmeria | BigWorld 2.0.1 |
-|---------|----------|----------------|
-| **Space partitioning** | Single cell per space (no partitioning) | BSP tree (`SpaceNode` / `SpaceBranch` / `CellInfo`) |
-| **CellApp scaling** | One CellApp owns all spaces | Multiple CellApps, each owning one or more cells |
-| **AoI system** | `WorldGrid` -- chunk-based grid with vision distance | `RangeList` + `EntityCache` with LOD priorities |
-| **AoI hysteresis** | Grid-level: `grid_hysteresis` (1 chunk = 50m) | Entity-level: per-entity AoI radius + hysteresis area |
-| **Entity replication** | None -- all entities local | Ghost entities on adjacent CellApps within `ghostDistance` |
-| **Cross-boundary interaction** | N/A (no boundaries) | Ghosts enable interaction; messages forwarded to real |
-| **Entity offloading** | N/A | `offload()`/`onload()` with `convertRealToGhost`/`convertGhostToReal` |
-| **Message ordering** | N/A | `BufferedGhostMessages` subsequence system |
-| **Load balancing** | N/A | `BalanceConfig` -- dynamic BSP split adjustment by CellAppMgr |
-| **AoI detail levels** | Binary (visible/invisible) | 4 LOD levels (`MAX_LOD_LEVELS = 4`) with priority-based updates |
-| **Entity ID aliasing** | Full 32-bit ID always | 8-bit `IDAlias` for frequent updates (bandwidth optimization) |
-| **Backup** | Not implemented | Periodic entity backup (`backupPeriod`) for fault tolerance |
-| **Space transitions** | Full leave/join cycle via BaseApp | Same, plus offload for within-space cell transitions |
+Three columns, because the deprecated C++ server and Cimmeria's Rust differ on several rows
+that earlier revisions of this table merged into one "Cimmeria" column.
+
+| Feature | Cimmeria (Rust, current) | Deprecated CME C++ | BigWorld 2.0.1 |
+|---------|----------|---|----------------|
+| **Space partitioning** | Single cell per space (no partitioning) | Same | BSP tree (`SpaceNode` / `SpaceBranch` / `CellInfo`) |
+| **CellApp scaling** | Cell is a module in one process, not an app | One CellApp process owns all spaces | Multiple CellApps, each owning one or more cells |
+| **Base↔Cell transport** | `tokio::mpsc` channels in-process | Mercury/TCP between processes | Mercury between processes |
+| **Spatial index** | `WorldGrid` — bucket grid, pull-based `query_radius` | `WorldGrid` — chunk grid, push-based witness notify | `RangeList` + `EntityCache` with LOD priorities |
+| **AoI radius** | Per-entity `aoi_radius`, default 100.0 | Global `grid_vision_distance` = 3 chunks (150 m) | Per-entity, `defaultAoIRadius` |
+| **AoI hysteresis** | **None** | Grid-level `grid_hysteresis` (1 chunk = 50 m) | Entity-level AoI radius + hysteresis area |
+| **Witness bookkeeping** | Service layer (`services/src/mercury/aoi/`, `services/src/cell/`) | Inside the grid (`WorldGridMember<T>`) | `Witness` on `RealEntity` |
+| **Entity replication** | None — all entities local | None | Ghost entities on adjacent CellApps within `ghostDistance` |
+| **Cross-boundary interaction** | N/A (no boundaries) | N/A | Ghosts enable interaction; messages forwarded to real |
+| **Entity offloading** | N/A | N/A | `offload()`/`onload()` with `convertRealToGhost`/`convertGhostToReal` |
+| **Message ordering** | N/A | N/A | `BufferedGhostMessages` subsequence system |
+| **Load balancing** | N/A | N/A | `BalanceConfig` — dynamic BSP split adjustment by CellAppMgr |
+| **AoI detail levels** | Binary (visible/invisible) | Binary | 4 LOD levels (`MAX_LOD_LEVELS = 4`) with priority-based updates |
+| **Entity ID aliasing** | Full 32-bit ID always | Full 32-bit ID always | 8-bit `IDAlias` for frequent updates |
+| **Entity backup** | No cross-process backup (single process) | Space-transition backup via `CELL_BASE_BACKUP_ENTITY` (0x0A) — see [Distributed Checkpointing](distributed-checkpointing.md) | Periodic entity backup (`backupPeriod`) for fault tolerance |
+| **Navmesh ownership** | Separate (`crates/entity/src/navigation/`) | Owned by `Space` (`navMesh_`) | Owned by `RealEntity` (`navLoc_`, `navigator_`) |
+| **Space transitions** | Full leave/join cycle | Full leave/join cycle via BaseApp | Same, plus offload for within-space cell transitions |
 
 **When multi-CellApp support might be needed:**
 
@@ -905,8 +1033,14 @@ The BSP tree and ghost system are architecturally independent additions -- Cimme
 
 Each `Space` object owns an optional `NavigationMesh*` pointer (`navMesh_`). When a space is created, the constructor attempts to load a `.nav` file from `data/spaces/`:
 
+> [!WARNING]
+> The `Space` constructor shown here is the deprecated C++ server's. Cimmeria's
+> `crates/entity/src/space.rs` does **not** own a navmesh — navigation lives separately under
+> `crates/entity/src/navigation/` and `crates/entity/src/detour_ffi.rs`. The `.nav` file
+> format and the NavBuilder tooling below are still accurate; the ownership model is not.
+
 ```cpp
-// From src/cellapp/space.cpp
+// From deprecated/cpp/src/cellapp/space.cpp
 Space::Space(uint32_t spaceId, std::string const & worldName, uint32_t creatorId)
 {
     navMesh_ = new NavigationMesh();
@@ -922,7 +1056,7 @@ Space::Space(uint32_t spaceId, std::string const & worldName, uint32_t creatorId
 
 ### NavMesh File Format (.nav)
 
-The `.nav` file is a custom binary format produced by the `NavBuilder` tool (`src/nav_builder/builder.cpp`). It stores a serialized Recast `rcPolyMesh` + `rcPolyMeshDetail` with agent parameters:
+The `.nav` file is a custom binary format produced by the `NavBuilder` tool (`deprecated/cpp/src/nav_builder/builder.cpp`). It stores a serialized Recast `rcPolyMesh` + `rcPolyMeshDetail` with agent parameters:
 
 ```
 .nav binary layout:
@@ -960,7 +1094,7 @@ The `.nav` file is a custom binary format produced by the `NavBuilder` tool (`sr
 
 ### NavBuilder Tool
 
-The `NavBuilder` (`src/nav_builder/builder.cpp`) is an offline tool:
+The `NavBuilder` (`deprecated/cpp/src/nav_builder/builder.cpp`) is an offline tool:
 
 ```
 Usage: NavBuilder <type> <space path> <destination obj> <format>
@@ -1025,7 +1159,7 @@ On the client side, `ServerConnection::spaceData()` dispatches to `ServerMessage
 
 ### Cimmeria Space Data Messages
 
-Cimmeria uses a simplified system with two related messages from `src/baseapp/mercury/sgw/messages.hpp`:
+Cimmeria uses a simplified system with two related messages from `deprecated/cpp/src/baseapp/mercury/sgw/messages.hpp` (IDs re-verified 2026-07-25):
 
 | Message ID | Name | Description |
 |------------|------|-------------|
@@ -1296,7 +1430,7 @@ BigWorld uses macro-based message registration (`BEGIN_MERCURY_INTERFACE`) where
 
 ### Cimmeria Protocol (No Ghost System)
 
-Cimmeria does not implement ghosts (single CellApp architecture). Instead, Cimmeria's `BaseCellMessageId` enum (`src/mercury/base_cell_messages.hpp`) uses explicit numeric IDs for all Cell-Base communication:
+Cimmeria does not implement ghosts (single CellApp architecture). Instead, Cimmeria's `BaseCellMessageId` enum (`deprecated/cpp/src/mercury/base_cell_messages.hpp`) uses explicit numeric IDs for all Cell-Base communication:
 
 | Cimmeria ID | Name | BW Equivalent |
 |-------------|------|---------------|

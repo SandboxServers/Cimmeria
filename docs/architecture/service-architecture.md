@@ -358,7 +358,7 @@ Enables developer mode:
 
 ## Python Console
 
-> See [python-console.md](python-console.md) for the complete reference, including byte-level wire format diagrams, a working reference client, the full GM command table, and security notes.
+> See [python-console.md](python-console.md) for the historical record — the security model and the full 116-command operator inventory. That page was reduced on 2026-07-25: the `py_client` byte-level wire format and reference client were dropped, and remain recoverable from [`deprecated/cpp/src/entity/py_client.cpp`](../../deprecated/cpp/src/entity/py_client.cpp).
 
 Both BaseApp and CellApp provide two console interfaces: a **local stdin console** and a **remote TCP console** (the `py_client` protocol). Neither has pre-registered commands -- both are raw Python REPLs with full access to the `Atrea` module and all imported game modules.
 

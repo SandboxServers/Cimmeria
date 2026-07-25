@@ -2,15 +2,26 @@
 title: "BigWorld Watcher System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # BigWorld Watcher System
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-07-25
 > **Phase**: 5 -- BigWorld Engine Subsystems
-> **RE Status**: Documented from BigWorld 2.0.1 reference source; not implemented in Cimmeria
+> **RE Status**: Documented from BigWorld 2.0.1 reference source (**tree not present in this
+> checkout — see note below**); not implemented in Cimmeria
 > **Sources**: BW `lib/cstdmf/watcher.hpp`, BW `lib/cstdmf/watcher.cpp`, BW `lib/server/watcher_protocol.hpp`, BW `lib/server/watcher_protocol.cpp`, BW `lib/network/watcher_nub.hpp`, BW `lib/network/watcher_nub.cpp`, BW `lib/network/watcher_connection.hpp`, BW `lib/network/watcher_connection.cpp`, BW `lib/server/watcher_forwarding.hpp`, BW `lib/server/watcher_forwarding_collector.hpp`, BW `lib/server/watcher_forwarding_types.hpp`, BW `lib/pyscript/pywatcher.hpp`, BW `lib/pyscript/pywatcher.cpp`, BW `lib/network/basictypes.hpp`, BW `lib/cstdmf/config.hpp`
+
+> [!IMPORTANT]
+> **The BigWorld 2.0.1 reference tree is not in this repository.** Every `BW <path>` citation
+> below refers to `external/engines/BigWorld-Engine-2.0.1/`, which is not in git and is not
+> fetched by `setup.ps1` or anything under `bootstrap/`. The only BigWorld artifact present
+> is an unextracted `external/_downloads/BigWorld-Engine-1.9.1.zip` (a *different* version),
+> placed manually. Treat the class definitions, enum values, message IDs and code excerpts in
+> this document as **unverifiable in this checkout** — they are a record of what was read
+> when the document was written, not something a reader can re-check today. Claims about
+> SGW.exe and about Cimmeria *are* verifiable and have been re-checked; those are marked.
 
 ---
 
@@ -18,9 +29,54 @@ last_updated: 2026-05-27
 
 The Watcher system is BigWorld's built-in runtime monitoring and debugging infrastructure. It provides a hierarchical tree of observable (and sometimes writable) values accessible remotely over the network. Conceptually it functions like a live `/proc` filesystem for game server processes -- any C++ variable, class member, or function return value can be registered into a path-addressable tree and queried or modified at runtime by external tools.
 
-The system is entirely server-side. The SGW.exe client binary contains no watcher code (the only symbol resembling "watcher" is `APotentialClimbWatcher`, which is an Unreal Engine 3 gameplay class unrelated to the BigWorld watcher system). The watcher infrastructure is conditionally compiled via the `ENABLE_WATCHERS` preprocessor flag, allowing it to be stripped from production or console builds.
+The watcher infrastructure is conditionally compiled via the `ENABLE_WATCHERS` preprocessor flag, allowing it to be stripped from production or console builds.
 
-Cimmeria does **not** implement the Watcher system.
+### Watcher code IS linked into SGW.exe
+
+> [!WARNING]
+> A previous revision of this document stated: *"The system is entirely server-side. The
+> SGW.exe client binary contains no watcher code (the only symbol resembling 'watcher' is
+> `APotentialClimbWatcher`...)."* **That is incorrect and has been removed.** Ghidra string
+> analysis of SGW.exe (image base `0x00400000`) on 2026-07-25 found BigWorld watcher
+> diagnostics compiled into the client:
+
+| Address | String | Origin |
+|---|---|---|
+| `0x019221c0` | `DirectoryWatcher::addChild: tried to add unnamed child (no trailing slashes please)\n` | BW `watcher.cpp` |
+| `0x01922218` | `DirectoryWatcher::addChild: tried to replace existing watcher %s\n` | BW `watcher.cpp` |
+| `0x01b17410` | `watcherStringToValue: Cannot convert '%s' to an Address.\n` | BW watcher value conversion |
+| `0x017fcb7c` | `DataSection::setWatcherValues: Failed to set %s to %s\n` | BW `DataSection` watcher bridge |
+| `0x01b194e8` | `WATCHER_NUB` | component-type name table |
+
+`APotentialClimbWatcher` (`0x01892ede`) is indeed an unrelated Unreal Engine 3 class, but it
+is not the *only* watcher-like symbol — the four BigWorld strings above are unambiguous
+`watcher.cpp` diagnostics. Their presence proves `ENABLE_WATCHERS` was **1** for this client
+build.
+
+`WATCHER_NUB` is referenced from `FUN_01587110` at `0x015871d0` and `0x015871df`. That
+function is a lazily-initialised component-name lookup returning one of three static strings
+— `SERVER_COMPONENT`, `WATCHER_NUB`, `UNKNOWN` — selected by a `char` parameter. It is the
+process-type name table, not a nub implementation.
+
+**What remains unresolved:** whether the client ever constructs a `WatcherNub` and binds its
+UDP/TCP sockets at runtime, or whether the watcher tree is merely linked and never used. The
+`DirectoryWatcher::addChild` and `setWatcherValues` strings show no Ghidra data xrefs, which
+is weak evidence either way — Ghidra frequently fails to build xrefs for strings it did not
+auto-define. Settling this needs a live client capture: attach x64dbg and set a
+**non-freezing** breakpoint (log + fast-resume; a freezing breakpoint will cause the server
+to drop the session) on the referencing code, or watch for a listening socket on the client
+process at startup.
+
+**Why this matters.** Header-inline classes and unused-but-linked code leave no strings, so
+absence of strings is never proof of absence. But the converse *is* sound: presence of these
+strings is proof the translation units were compiled in. Any claim of the form "SGW does not
+use feature X" should be phrased as "SGW configures X off" or "unresolved" unless the
+mechanism of exclusion has been identified.
+
+Cimmeria does **not** implement the Watcher system — verified 2026-07-25, no watcher protocol
+code exists under `crates/`. (Files named `watcher.rs` in `crates/discord/src/config/` and
+`crates/services/src/auth/cert_watcher.rs` are filesystem-change watchers, unrelated to the
+BigWorld system.)
 
 ---
 
@@ -745,26 +801,49 @@ This zero-overhead approach means no watcher code is compiled into the binary at
 
 ## Cimmeria Implementation Status
 
-**Not implemented.** Cimmeria does not use the BigWorld watcher system. The SGW.exe client binary contains no watcher client code. The watcher system is entirely server-side infrastructure.
+**Not implemented, and no longer needed.** Cimmeria does not use the BigWorld watcher
+system. Note that the watcher *client* code is linked into SGW.exe (see the Overview) —
+what Cimmeria lacks is a watcher server tree, nub, and protocol implementation.
 
-### Recommended Monitoring Approach
+### Monitoring in Cimmeria today
 
-Rather than implementing the full BigWorld watcher protocol, Cimmeria can achieve similar runtime monitoring via its existing Python console (port 8989):
+> [!WARNING]
+> A previous revision recommended monitoring "via its existing Python console (port 8989)"
+> with Boost.Python bindings exposing C++ values. That described the **original CME C++
+> server**, not Cimmeria. There is no port 8989 console in `crates/` (verified 2026-07-25,
+> zero matches), no Boost.Python, and no C++ values to bind — the server is a single Rust
+> process.
 
-1. **Variable inspection**: Expose C++ values through Boost.Python bindings, queryable via the Python console.
-2. **Statistics**: Implement periodic stat collection in Python scripts, accessible via console commands.
-3. **Runtime configuration**: Use the Python console to modify server parameters at runtime.
-4. **GM tools**: Add Python console commands for common administrative operations.
+Cimmeria already has monitoring coverage that subsumes what the watcher tree provided, built
+on standard tooling rather than a bespoke protocol:
 
-### Highest-Value BigWorld Watcher Features
+| Need | Cimmeria surface |
+|---|---|
+| Variable / state inspection | `crates/admin-api` — REST routes and WebSocket streams; see [docs/tools/admin-api.md](../tools/admin-api.md) |
+| Live operator UI | Admin panel (Tauri app); see [docs/tools/admin-panel.md](../tools/admin-panel.md) |
+| Metrics, traces, spans | `crates/observability` — OTLP exporter into SigNoz; see [docs/architecture/observability.md](../architecture/observability.md) |
+| Instrumentation conventions | [docs/architecture/instrumentation-discipline.md](../architecture/instrumentation-discipline.md) |
+| Client-side runtime data | `crates/client-telemetry` + [docs/architecture/dev-session-telemetry.md](../architecture/dev-session-telemetry.md) |
+| GM / admin operations | Native client `/` console (GM command path) |
 
-If a watcher-like system were ever desired, the most valuable features to replicate would be:
-- **DataWatcher pattern**: Simple registration of C++ variables for inspection (entity counts, tick rates, bandwidth metrics).
-- **MemberWatcher pattern**: Exposing object properties via getter/setter methods.
-- **Directory tree browsing**: Hierarchical organization for discoverability.
-- **Read-write capability**: Tuning server parameters without restart.
+The mapping from watcher concepts is close to one-to-one: `DataWatcher`-style variable
+inspection is an admin-API route or an OTLP gauge; the directory tree's discoverability role
+is served by the SigNoz metric namespace; read-write parameter tuning is an admin-API
+mutation. The one genuinely absent capability is **arbitrary runtime write access to any
+registered value**, which the watcher tree gave for free and which Cimmeria deliberately does
+not expose — each mutable parameter is an explicit, auditable endpoint.
 
-The full watcher protocol (UDP/TCP transport, binary encoding, multi-process forwarding) is unnecessary for Cimmeria's single-machine development environment.
+### If a watcher-like system were ever wanted
+
+The full BigWorld watcher protocol (UDP/TCP dual transport, v1 string + v2 binary encodings,
+multi-process forwarding with `ForwardingCollector` fan-out) is unnecessary here. It exists
+to aggregate state across dozens of CellApp and BaseApp processes on a cluster; Cimmeria runs
+auth, base and cell in **one** process, so there is nothing to forward to. Implementing it
+would be re-solving a problem the architecture no longer has.
+
+Should something watcher-shaped be needed, the parts worth borrowing are conceptual, not
+protocol-level: hierarchical path-addressable naming for discoverability, and the read-only /
+read-write mode distinction on each node.
 
 ---
 

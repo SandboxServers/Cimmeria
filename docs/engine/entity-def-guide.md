@@ -2,10 +2,19 @@
 title: "Entity Definition (.def) File Guide"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Entity Definition (.def) File Guide
+
+> [!NOTE]
+> **Verification basis (2026-07-25).** Every claim in this document about *what SGW's
+> `.def` files actually contain* has been checked against the 18 entity defs in
+> `entities/defs/` and the 18 interface defs in `entities/defs/interfaces/`. Claims about
+> *what the BigWorld engine supports in general* are historical and cannot be verified in
+> this checkout — the BigWorld 2.0.1 reference tree (`external/engines/BigWorld-Engine-2.0.1/`)
+> is not in git and no script in `setup.ps1` or `bootstrap/` fetches it. Where SGW uses only
+> a subset of an engine feature, that is now called out inline.
 
 Entity definition files are XML documents that define the complete client-server contract for each entity type in the BigWorld engine. They specify what properties an entity has, what methods can be called on it, and which parts of the entity are visible to which components of the distributed system (cell, base, client). For the Cimmeria project, these files are the authoritative source of truth for the entity system -- they dictate what the server must implement and what the client expects to receive.
 
@@ -38,6 +47,10 @@ If the server sends a property update with the wrong type or calls a client meth
 | `entities/entities.xml` | Entity type registry -- lists all entity types known to the engine |
 | `entities/defs/alias.xml` | Custom type aliases (FIXED_DICT, ARRAY, and simple type aliases) |
 | `entities/defs/enumerations.xml` | Game-specific enumeration types |
+| `entities/custom_alias.xml` | Cimmeria-added type aliases (kept separate from the shipped `alias.xml`) |
+| `entities/custom_enumerations.xml` | Cimmeria-added enumerations |
+| `entities/spaces.xml` | Space registry — 24 spaces with extents and instancing flags |
+| `entities/cell_spaces.xml` | The 16 non-instanced spaces the cell creates at startup |
 
 ---
 
@@ -69,7 +82,7 @@ Every .def file has a `<root>` element containing some combination of the follow
             <Persistent>true</Persistent>
             <DatabaseLength>64</DatabaseLength>
             <Identifier>true</Identifier>
-            <DetailLevel>FAR</DetailLevel>
+            <DetailLevel>FAR</DetailLevel>   <!-- engine feature; NEVER used in SGW's defs -->
         </propertyName>
     </Properties>
 
@@ -93,9 +106,30 @@ Every .def file has a `<root>` element containing some combination of the follow
     </ClientMethods>
 
     <LoDLevels>                             <!-- Level-of-Detail definitions -->
-    </LoDLevels>
+    </LoDLevels>                            <!-- all 22 LoDLevels blocks in SGW are EMPTY -->
 </root>
 ```
+
+**Which of these SGW actually uses.** Counted across all 36 def files (18 entity + 18 interface):
+
+| Element | Occurrences in `entities/defs/` |
+|---|---|
+| `<Flags>` | 436 (every property) — but only three distinct values, see below |
+| `<Type>` | 436 (every property) |
+| `<Exposed/>` | 262 |
+| `<ArgName>` | 1,098 |
+| `<Volatile>` | 7 files (`SGWEntity.def` plus 6 interfaces, most of them empty) |
+| `<ServerOnly />` | 10 entity defs |
+| `<LoDLevels>` | 22 blocks, **all empty** |
+| `<Persistent>` | **2** (`SGWPlayer.playerName`, `SGWSpaceCreator.areaKey`) |
+| `<DatabaseLength>` | **2** (same two properties) |
+| `<Identifier>` | **2** (same two properties) |
+| `<DetailLevel>` | **0** — never used |
+
+The takeaway: SGW leans on `<Flags>`, `<Type>`, `<Exposed/>` and almost nothing else.
+Persistence is **not** driven by `<Persistent>` in this game — only two properties carry
+it. Character state is persisted by explicit server-side database code, not by the
+BigWorld auto-persistence path.
 
 ---
 
@@ -141,11 +175,46 @@ SGWEntity (root entity)
         +-- SGWDuelMarker
 ```
 
-Standalone entities (no parent, or parent is implicit root):
-- `Account` -- manages login and character selection
-- `SGWBlackMarket`, `SGWCoverSet`, `SGWEscrow` -- world objects
-- `SGWSpaceCreator`, `SGWSpawnRegion`, `SGWSpawnSet` -- world management
-- `SGWPlayerRespawner`, `SGWChannelManager`, `SGWPlayerGroupAuthority` -- server-only systems
+Six further entities descend directly from `SGWEntity` rather than from
+`SGWSpawnableEntity`, and are easy to miss because they sit outside the combat branch:
+
+```
+SGWEntity
+  +-- SGWCoverSet
+  +-- SGWEscrow
+  +-- SGWPlayerGroupAuthority   <Implements> GroupAuthority
+  +-- SGWPlayerRespawner
+  +-- SGWSpaceCreator
+  +-- SGWSpawnRegion
+  +-- SGWSpawnSet               <Implements> GroupAuthority
+```
+
+**Entities with genuinely no `<Parent>` — there are only three:**
+
+| Entity | Note |
+|---|---|
+| `SGWEntity` | The root of the hierarchy. |
+| `SGWBlackMarket` | Auction-house singleton. `<ServerOnly />`. |
+| `SGWChannelManager` | Chat-channel singleton. `<ServerOnly />`. |
+
+`Account` is a common trap. It *looks* parentless in the sense that it has no BigWorld
+parent, but it does contain a `<Parent>` tag:
+
+```xml
+<UnrealProperties>
+    <Parent>GamePawn</Parent>
+</UnrealProperties>
+```
+
+That `GamePawn` is the **Unreal Engine 3 Actor class** used for the player controller, not
+a BigWorld entity parent. A naive grep for `<Parent>` across `entities/defs/` will report
+`Account.def -> GamePawn` and mislead you. Scope the search to tags outside
+`<UnrealProperties>`.
+
+`Account` also implements the `ClientCache` interface — the same interface `SGWPlayer`
+uses — because the cooked-data cache negotiation happens before character selection, while
+the player is still an Account entity. The def file's own comment flags this as a
+technical rather than logical grouping.
 
 ---
 
@@ -198,42 +267,90 @@ Properties define the data an entity holds. Each property has a name (the XML ta
 
 ```xml
 <playerName>
-    <Type>          WSTRING         </Type>
+    <Type>          WSTRING			</Type>
     <Flags>         CELL_PUBLIC     </Flags>
     <Identifier>    true            </Identifier>
     <Persistent>    true            </Persistent>
     <DatabaseLength>    64          </DatabaseLength>
-    <Default>       An Individual   </Default>
 </playerName>
 ```
+
+(Verbatim from `entities/defs/SGWPlayer.def:25-31`. Note there is no `<Default>` — the two
+`<Identifier>`/`<Persistent>`/`<DatabaseLength>` properties in the whole game are this one
+and `SGWSpaceCreator.areaKey`.)
 
 ### Property Flags
 
 Flags control which components of the distributed system can see the property and how changes are propagated. This is the most important aspect of property definitions for server implementation.
 
-| Flag | Cell Sees? | Base Sees? | Own Client? | Other Clients? | Description |
-|------|-----------|-----------|-------------|---------------|-------------|
-| `CELL_PRIVATE` | Yes | No | No | No | Only the CellApp can read/write. No network sync. |
-| `CELL_PUBLIC` | Yes | No | No | No | CellApp can read/write. Other CellApps in range can read. |
-| `OWN_CLIENT` | Yes | No | Yes | No | Synced to the owning player's client only. |
-| `OTHER_CLIENTS` | Yes | No | No | Yes | Synced to other players' clients but NOT the owner. |
-| `ALL_CLIENTS` | Yes | No | Yes | Yes | Synced to all clients in range (owner and others). |
-| `BASE` | No | Yes | No | No | Only the BaseApp can read/write. Not on the cell. |
-| `BASE_AND_CLIENT` | No | Yes | Yes | No | BaseApp and owning client. Not on the cell at all. |
-| `CELL_PUBLIC_AND_OWN` | Yes | No | Yes | No | Like CELL_PUBLIC but also synced to owner's client. |
+> [!IMPORTANT]
+> **SGW uses exactly three of these flags.** Across all 436 properties in the 36 def files,
+> the only values that ever appear are:
+>
+> | Flag | Count | Share |
+> |---|--:|--:|
+> | `CELL_PRIVATE` | 310 | 71% |
+> | `BASE` | 64 | 15% |
+> | `CELL_PUBLIC` | 62 | 14% |
+>
+> `OWN_CLIENT`, `OTHER_CLIENTS`, `ALL_CLIENTS`, `BASE_AND_CLIENT` and
+> `CELL_PUBLIC_AND_OWN` appear **zero times** anywhere in `entities/defs/` or the
+> `entities/*.xml` files. Verified by exhaustive grep, 2026-07-25.
+>
+> **This is the single most protocol-relevant fact in this document.** SGW does not use
+> BigWorld's automatic client property replication at all. *Every* piece of state the
+> client sees arrives through an explicit `<ClientMethods>` RPC that server code chooses to
+> call — `onStatUpdate`, `onStateFieldUpdate`, `onEffectResults`, and so on. There is no
+> "set the property and the engine syncs it" path in this game. If you are implementing a
+> feature and looking for the property flag that will push a value to the client, it does
+> not exist; find or add the ClientMethod instead.
+
+The table below documents the full BigWorld flag set for reference. The three rows SGW
+actually uses are marked; the rest are engine capability that this game left on the table.
+
+| Flag | Used in SGW? | Cell Sees? | Base Sees? | Own Client? | Other Clients? | Description |
+|------|:---:|-----------|-----------|-------------|---------------|-------------|
+| `CELL_PRIVATE` | **yes (310)** | Yes | No | No | No | Only the CellApp can read/write. No network sync. |
+| `CELL_PUBLIC` | **yes (62)** | Yes | No | No | No | CellApp can read/write. Other CellApps in range can read. |
+| `BASE` | **yes (64)** | No | Yes | No | No | Only the BaseApp can read/write. Not on the cell. |
+| `OWN_CLIENT` | no | Yes | No | Yes | No | Synced to the owning player's client only. |
+| `OTHER_CLIENTS` | no | Yes | No | No | Yes | Synced to other players' clients but NOT the owner. |
+| `ALL_CLIENTS` | no | Yes | No | Yes | Yes | Synced to all clients in range (owner and others). |
+| `BASE_AND_CLIENT` | no | No | Yes | Yes | No | BaseApp and owning client. Not on the cell at all. |
+| `CELL_PUBLIC_AND_OWN` | no | Yes | No | Yes | No | Like CELL_PUBLIC but also synced to owner's client. |
 
 **Key implications for server implementation:**
 
-- `CELL_PRIVATE` properties are internal state. They never cross the network to clients. Examples: AI timers, internal cooldown tracking, debug flags.
-- `CELL_PUBLIC` properties are shared between CellApps (for Area of Interest) but not sent to clients directly. They may be sent via explicit ClientMethods instead. Examples: faction, alignment, level.
-- `ALL_CLIENTS` properties are automatically synced to every client that has the entity in its Area of Interest. The server must send updates whenever these change. Examples: position, appearance, visible equipment.
-- `OWN_CLIENT` properties are sensitive data only the owning player should see. Examples: inventory contents, mission progress, experience points.
-- `BASE` properties exist only on the BaseApp and are never on the cell. Examples: account reference mailbox, spawn set ID.
-- Properties with `<Persistent>true</Persistent>` are saved to the database and restored when the entity is loaded.
+- `CELL_PRIVATE` properties are internal state. They never cross the network. Examples: AI timers, internal cooldown tracking, threat lists. At 71% of all properties, this is the default in SGW.
+- `CELL_PUBLIC` properties are, in stock BigWorld, shared between CellApps for Area of Interest. Cimmeria runs a single cell, so in practice these behave identically to `CELL_PRIVATE` — the distinction only matters if multi-CellApp support is ever added. Examples: `Alignment`, `playerName`.
+- `BASE` properties exist only on the BaseApp and are never on the cell. Examples: `Account.characterList`, account reference mailboxes.
+- Properties with `<Persistent>true</Persistent>` would be saved to the database by the engine — but only two properties in SGW carry the tag, so this is not how the game persists state. See the element-usage table above.
 
 ### Property Types
 
 BigWorld defines a set of primitive and composite types for properties and method arguments.
+
+**Types actually used by SGW's 436 properties**, counted 2026-07-25:
+
+| Type | Count | | Type | Count |
+|---|--:|---|---|--:|
+| `INT32` | 107 | | `MAILBOX` | 10 |
+| `PYTHON` | 91 | | `VECTOR3` | 7 |
+| `INT8` | 51 | | `StatList` | 6 |
+| `FLOAT` | 36 | | `STRING` | 6 |
+| `CONTROLLER_ID` | 29 | | `INT16` | 1 |
+| `UINT8` | 22 | | `DBID` | 1 |
+| `WSTRING` | 15 | | `CharacterInfoList` | 1 |
+| `UINT32` | 13 | | `LootItemDefinitionList` | 1 |
+| | | | `EscrowRecordList` | 1 |
+
+Notably **absent from property declarations**: `INT64`, `UINT16`, `UINT64`, `FLOAT32`,
+`FLOAT64`, `UNICODE_STRING`, `TUPLE`, and inline `ARRAY`/`FIXED_DICT`. SGW always spells
+32-bit float as `FLOAT` (never `FLOAT32`) and always reaches an array or dictionary through
+a named alias from `alias.xml` rather than declaring one inline. This matters when writing
+a `.def` parser: the property-type vocabulary you must handle is the 17 names above, not
+the full BigWorld type set. (Method `<Arg>` types draw from a wider pool of aliases — see
+the alias section below.)
 
 **Primitive types:**
 
@@ -287,8 +404,8 @@ See `entities/defs/alias.xml` for the complete list of custom type aliases and t
 | `<Default>value</Default>` | Default value when entity is created. For PYTHON types, this can be `{}`, `[]`, `None`, `set()`, etc. |
 | `<Persistent>true</Persistent>` | Property is saved to and loaded from the database. |
 | `<DatabaseLength>64</DatabaseLength>` | Maximum length for string properties in the database. |
-| `<Identifier>true</Identifier>` | Property serves as a unique identifier (like playerName). Used for lookups. |
-| `<DetailLevel>FAR</DetailLevel>` | Level-of-Detail tier. Properties at lower detail levels are not sent to distant clients. |
+| `<Identifier>true</Identifier>` | Property serves as a unique identifier (like playerName). Used for lookups. Used **twice** in SGW. |
+| `<DetailLevel>FAR</DetailLevel>` | Level-of-Detail tier. Properties at lower detail levels are not sent to distant clients. **Never used in SGW** (0 occurrences) — consistent with all 22 `<LoDLevels>` blocks being empty. The LOD code is still linked into the client binary; SGW simply configures it off. |
 
 ---
 
@@ -510,13 +627,20 @@ Each entity type has corresponding Python scripts that implement the methods dec
 
 ### Directory Mapping
 
-| Component | Python Directory | Script Naming |
-|-----------|-----------------|---------------|
-| Cell methods | `python/cell/` | `EntityName.py` |
-| Base methods | `python/base/` | `EntityName.py` |
-| Common utilities | `python/common/` | Various |
+> [!WARNING]
+> The Python scripting layer described in this section is the **original CME server's**, not
+> Cimmeria's. It now lives under `deprecated/python/` and is reference material only —
+> active development is Rust under `crates/`. The mapping is documented because the `.def`
+> files were authored against it and the argument-ordering conventions carry over, but do
+> not expect these scripts to run.
 
-For example, `SGWMob.def` declares cell methods like `onGroupMateEnteredCombat` and `addToThreatList`. The implementations live in `python/cell/SGWMob.py`.
+| Component | Python Directory (deprecated) | Script Naming |
+|-----------|-----------------|---------------|
+| Cell methods | `deprecated/python/cell/` | `EntityName.py` |
+| Base methods | `deprecated/python/base/` | `EntityName.py` |
+| Common utilities | `deprecated/python/common/` | Various |
+
+For example, `SGWMob.def` declares cell methods like `onGroupMateEnteredCombat` and `addToThreatList`. The original implementations live in `deprecated/python/cell/SGWMob.py`; the Rust equivalents are under `crates/services/src/cell/`.
 
 ### Class Structure
 
@@ -710,6 +834,13 @@ In SGWEntity.def:
 
 This means position and orientation are volatile -- the engine sends updates at a rate determined by distance (Level of Detail) rather than only when explicitly changed.
 
+**Seven files carry a `<Volatile>` block**, not one. Besides `SGWEntity.def` (the full
+position/yaw/pitch/roll set above), the interfaces `Communicator`, `ContactListManager`,
+`DistributionGroupMember`, `Lootable` and `OrganizationMember` each declare an *empty*
+`<Volatile></Volatile>`, and `interfaces/SGWBeing.def` declares `<yaw/>` alone. The empty
+blocks are inert boilerplate. The `SGWBeing` yaw-only block is the one worth knowing about
+if you are reconciling orientation handling between entity types.
+
 ---
 
 ## The <ServerOnly /> Tag
@@ -718,7 +849,18 @@ This means position and orientation are volatile -- the engine sends updates at 
 <ServerOnly />
 ```
 
-When present at the top level, this tag indicates the entity has no client-side representation. The client never receives create/update messages for this entity type. Examples include `SGWEntity` (the root entity, always subclassed), `SGWPlayerGroupAuthority`, and `SGWSpaceCreator`.
+When present at the top level, this tag indicates the entity has no client-side representation. The client never receives create/update messages for this entity type.
+
+**Exactly 10 of the 18 entity defs are `<ServerOnly />`:**
+
+`SGWEntity` (the root, always subclassed), `SGWBlackMarket`, `SGWChannelManager`,
+`SGWCoverSet`, `SGWEscrow`, `SGWPlayerGroupAuthority`, `SGWPlayerRespawner`,
+`SGWSpaceCreator`, `SGWSpawnRegion`, `SGWSpawnSet`.
+
+The eight that are **not** server-only — and therefore the only types the client can ever
+be asked to instantiate — are `Account`, `SGWSpawnableEntity`, `SGWBeing`, `SGWPlayer`,
+`SGWGmPlayer`, `SGWMob`, `SGWPet`, and `SGWDuelMarker`. That is a useful bound when
+debugging entity-creation messages: a create for anything outside this set is a server bug.
 
 ---
 

@@ -1,26 +1,42 @@
+---
+title: "Tech Stack Replacement Analysis (2026-03 decision record, C++/Python era)"
+type: explanation
+audience: architects
+last_updated: 2026-07-25
+---
+
 # Tech Stack Replacement Analysis
 
-> **Last updated**: 2026-07-25 (accuracy banner only; body not rewritten)
-> **Sources**: Full codebase audit of `src/`, `python/`, `entities/`, `config/`, `db/`, `data/` — as those trees stood on 2026-03-02
+## *(2026-03 decision record — surveys the C++/Python server, superseded by the Rust rewrite)*
 
-> [!WARNING]
-> **HISTORICAL — this is the decision document that chose the Rust rewrite, and
-> the rewrite has since happened.**
+*Sources: full codebase audit of `src/`, `python/`, `entities/`, `config/`, `db/`, `data/` — **as those trees stood on 2026-03-02**. Body not rewritten since.*
+
+> [!IMPORTANT]
+> **This is the decision document that chose the rewrite. The rewrite has since
+> happened — and it went to Rust, not to the C#/.NET option recommended below.**
 >
-> The "Current Tech Stack" table below inventories the **deprecated C++/Python
-> server** (now under [`deprecated/cpp/`](../../deprecated/cpp/) and
+> Everything in the "Current Tech Stack" table and the codebase-audit sections
+> inventories the **deprecated C++/Python server** (now under
+> [`deprecated/cpp/`](../../deprecated/cpp/) and
 > [`deprecated/python/`](../../deprecated/python/)). Boost 1.55, Python 3.4.1,
-> OpenSSL 0.9.8i, SOCI 3.2.1 and Qt 5 are dependencies of *that* tree — none of
-> them are dependencies of the Rust server under [`crates/`](../../crates/). In
-> particular, the **OpenSSL "CRITICAL / active CVEs" row does not describe any
-> shipping Cimmeria code path**; the Rust auth server terminates TLS with
-> `tokio-rustls` and has no OpenSSL dependency.
+> OpenSSL 0.9.8i, SOCI 3.2.1 and Qt 5 are dependencies of *that* tree. None are
+> dependencies of the Rust server under [`crates/`](../../crates/).
 >
-> Read this for the *why* behind the rewrite. For what is running today see
-> [`../../crates/README.md`](../../crates/README.md) and
-> [service-architecture.md](service-architecture.md). The sibling
-> [migration-roadmap.md](migration-roadmap.md) is the companion dependency plan
-> and carries the same caveat.
+> In particular the **OpenSSL "CRITICAL / active CVEs" row describes no shipping
+> Cimmeria code path** — the Rust auth server terminates TLS with `tokio-rustls`
+> and links no OpenSSL. See
+> [migration-roadmap.md](migration-roadmap.md#do-not-cite-the-openssl-row-as-a-live-finding).
+>
+> **What still holds:** the problem statement. The finding that content-authoring
+> velocity — not server performance — was the real bottleneck drove the
+> data-driven content engine that actually shipped
+> ([data-driven-content-engine.md](data-driven-content-engine.md)), and the
+> protocol-reimplementation risk analysis proved accurate. **What did not:**
+> Option D was recommended and Option C (Rust) was built. Read the options
+> comparison as a record of the reasoning, not as a live recommendation.
+>
+> For what is running today see [`../../crates/README.md`](../../crates/README.md)
+> and [service-architecture.md](service-architecture.md).
 
 ---
 

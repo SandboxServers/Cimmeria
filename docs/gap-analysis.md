@@ -859,7 +859,7 @@ These didn't exist in the deprecated Python codebase and so weren't in the audit
 
 ### Session Management --- IM
 
-- **Documentation**: [architecture/server-systems.md](architecture/server-systems.md)
+- **Documentation**: [architecture/server-infrastructure-proposals.md](architecture/server-infrastructure-proposals.md) §1 (session-resume design). [architecture/server-systems.md](architecture/server-systems.md) is the superseded survey this section replaced.
 - **Rust code**: `crates/services/src/base/connect_loop/` handles per-client lifecycle
 
 | Feature | Status | Blocks | Code | Evidence / Notes |

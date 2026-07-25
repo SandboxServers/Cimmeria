@@ -7,7 +7,13 @@
 > **CI-gated**: no  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
-SGW launcher Rust support tooling (non-CI).
+The **Tauri** launcher at `tools/SGWLauncher/src-tauri/` — workspace-excluded,
+non-CI. Patch client, login redirect, install pipeline.
+
+> **Not the same crate as [launcher.md](launcher.md)**, which catalogues
+> `crates/launcher` — the **egui** launcher, package `sgw-launcher`, 176 tests.
+> The two are independent. Until 2026-07-25 `launcher.md` was a verbatim
+> duplicate of this file; that is fixed.
 
 ## All tests (22)
 

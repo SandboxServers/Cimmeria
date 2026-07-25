@@ -233,5 +233,5 @@ Quality-of-life items (organizations, mail polish, black market merge, dueling, 
 - [Loot System](gameplay/loot-system.md) — loot generation algorithm
 - [Progression](gameplay/progression-system.md) — XP, leveling, training points
 - [Character Creation](gameplay/character-creation.md) — character creation flow
-- [Server Systems](architecture/server-systems.md) — server-only infrastructure
+- [Server Infrastructure Proposals](architecture/server-infrastructure-proposals.md) — the five unbuilt server-only systems (session resume, rate limiting, world-state persistence, scheduler, economy instrumentation)
 - [../README.md](../README.md) — high-level project status
