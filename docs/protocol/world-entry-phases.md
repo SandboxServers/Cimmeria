@@ -9,7 +9,7 @@ last_updated: 2026-05-27
 
 > **Last updated**: 2026-03-08
 > **RE Status**: Verified via Ghidra, pcap captures, C++ source, and Python scripts
-> **Sources**: `src/baseapp/mercury/sgw/client_handler.cpp`, `python/cell/SGWPlayer.py`, `crates/services/src/base/world_entry.rs`, `crates/services/src/mercury/world_data.rs`
+> **Sources**: `deprecated/cpp/src/baseapp/mercury/sgw/client_handler.cpp`, `deprecated/python/cell/SGWPlayer.py`, `crates/services/src/base/world_entry/`, `crates/services/src/mercury/world_data/`
 
 ---
 

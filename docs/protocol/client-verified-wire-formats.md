@@ -2,7 +2,7 @@
 title: "Client-Verified Wire Format Reference"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Client-Verified Wire Format Reference
@@ -99,18 +99,45 @@ The Rust server currently sends swapped order for world entry (correct). When ad
 
 If `CREATE_CELL_PLAYER` (0x06) arrives before `CREATE_BASE_PLAYER` (0x05), the client buffers it and replays it after the base player is created. This means order is preferred but not strictly required. The client checks `this->playerEntityID_ != 0` and buffers if false.
 
-### 4. Entity Class IDs (entities.xml order)
+### 4. Entity Class IDs (client index — `entities.xml` order, `ServerOnly` skipped)
+
+The wire `classId` is the client-side **clientIndex**, not the raw document
+index of `entities/entities.xml`. The client assigns it while parsing
+`entities.xml`, skipping every entity whose `.def` carries `<ServerOnly/>`:
+
+- `EntityDescription_parse @ ghidra://SGW.exe@0x015940dc` — reads `<ClientName>`
+  into `clientName_`; defaults `clientName_ = name_` when the tag is absent
+  (`this+0x50 == 0` branch); then, when `<ServerOnly/>` **is** present, sets the
+  flag at `this+0x5a = 0` and overwrites `clientName_` with the empty string.
+- `EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520` — walks the
+  `entities.xml` entries in document order. It always writes the raw index to
+  `desc+0x1c` and increments its counter unconditionally, but assigns
+  `clientIndex_` (`desc+0x1e`) from a **separate** counter that only advances
+  when `name_ == clientName_`. `ServerOnly` entities have `clientName_ == ""`,
+  so they never take a `clientIndex_`.
+
+Of the 18 entries in `entities/entities.xml`, 10 are `<ServerOnly/>`, leaving
+8 client types:
 
 | classId | Entity Type | Usage |
 |---------|------------|-------|
-| 0x00 | SGWEntity | Base game entity |
-| 0x01 | SGWSpawnableEntity | Visual entity |
+| 0x00 | SGWSpawnableEntity | Visual entity |
+| 0x01 | SGWBeing | Combat-capable entity |
 | 0x02 | SGWPlayer | Player character |
-| 0x03 | SGWBeing | Combat-capable entity |
+| 0x03 | SGWGmPlayer | Player character with the GM cell-method surface |
 | 0x04 | SGWMob | NPC |
 | 0x05 | SGWPet | Player pet |
 | 0x06 | SGWDuelMarker | Duel zone marker |
 | 0x07 | Account | Login/character management |
+
+`SGWBlackMarket` sits between `SGWDuelMarker` and `Account` in `entities.xml`
+but is `<ServerOnly/>`, which is why `Account` is `0x07` and not `0x08`.
+`SGWEntity` is also `<ServerOnly/>` and has no classId at all.
+
+These match the Rust constants in
+[crates/services/src/mercury/mod.rs](../../crates/services/src/mercury/mod.rs):
+`SGWPLAYER_CLASS_ID = 0x02`, `SGWGMPLAYER_CLASS_ID = 0x03`,
+`ACCOUNT_CLASS_ID = 0x07`.
 
 ### 5. Packed String Encoding
 
@@ -138,6 +165,25 @@ RESOURCE_FRAGMENT (0x36) uses a linked-list reassembly model:
 - First fragment includes: messageType(u8) + categoryId(u32) + elementId(u32) + data
 - Subsequent fragments: data only
 - 21 resource categories documented (kismet, abilities, missions, items, dialog, etc.)
+
+> [!CAUTION]
+> **The client and the legacy server disagree on the category numbering.**
+> `SGW.exe` contains exactly 21 `COOKED_*` category-name strings
+> (`COOKED_KISMET_EVENT_SEQUENCE`, `COOKED_ABILITY`, … `COOKED_BEHAVIOR_EVENT`)
+> and **no** `COOKED_PET_COMMAND`. The original server's map at
+> [deprecated/python/common/defs/Def.py](../../deprecated/python/common/defs/Def.py)
+> has 22 entries because it reserves `21: "pet_command"` — annotated in that
+> file with the comment *"Pet commands are not implemented in the client"* —
+> and puts `behavior_event` at 22. If the client's enum is the contiguous
+> 1-based sequence its string table implies, `behavior_event` is **21**
+> client-side and a server that sends 22 addresses a category the client does
+> not have. Tracked as issue #267.
+>
+> Only the string set is confirmed here; the numeric enum values have not been
+> read out of the binary. Note also that `CookedBehaviorEvents.pak` is absent
+> from both the QA and Server data sets
+> ([cooked-data-pak-format.md](../engine/cooked-data-pak-format.md)), so this
+> category carries no payload in practice today.
 
 ---
 

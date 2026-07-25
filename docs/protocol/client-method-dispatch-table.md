@@ -2,12 +2,17 @@
 title: "SGWPlayer Client Method Dispatch Table (Server → Client)"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # SGWPlayer Client Method Dispatch Table (Server → Client)
 
-> **Last updated**: 2026-03-22
+> **Last updated**: 2026-07-25
+> **Verified**: 2026-07-25 — all 157 index/name pairs re-derived from
+> `entities/defs/` by replaying the BigWorld flattening rule, and diffed
+> against both this table and the constants in
+> `crates/services/src/cell/client_methods/`. Zero mismatches in either
+> direction.
 > **Total methods**: 157 (indices 0–156)
 > **Encoding**: Methods 0–60 use direct wire encoding (`msg_id = 0x80 + index`);
 > methods 61+ use extended encoding (`msg_id = 0xBD`, sub-byte = `index - 61`).

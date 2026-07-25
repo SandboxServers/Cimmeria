@@ -2,7 +2,7 @@
 title: "Mercury Wire Format"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Mercury Wire Format
@@ -12,7 +12,7 @@ last_updated: 2026-05-27
 
 > **Last updated**: 2026-03-01
 > **RE Status**: Partially documented from BigWorld 2.0.1 source + Cimmeria implementation
-> **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/lib/network/`, `src/mercury/`
+> **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/lib/network/`, `deprecated/cpp/src/mercury/`
 
 ---
 
@@ -20,7 +20,7 @@ last_updated: 2026-05-27
 
 Mercury is BigWorld's custom reliable UDP protocol. All game traffic between the client and the BaseApp (after the SOAP login phase) uses Mercury. It provides ordered reliable delivery, fragmentation, acknowledgements, and channel-based multiplexing over standard UDP datagrams.
 
-SGW (Stargate Worlds) uses BigWorld ~1.9.x Mercury. The Cimmeria server reimplements the protocol in `src/mercury/` using Boost.Asio rather than raw sockets.
+SGW (Stargate Worlds) uses BigWorld ~1.9.x Mercury. The Cimmeria server reimplements the protocol in `deprecated/cpp/src/mercury/` using Boost.Asio rather than raw sockets.
 
 ## Packet Structure
 
@@ -59,7 +59,7 @@ The header begins with a flags field that determines what other header/footer fi
 
 The Cimmeria implementation uses **native (little-endian) byte ordering** for all multi-byte packet fields, in contrast to BigWorld which uses **network byte order (big-endian)** with `BW_HTONS`/`BW_HTONL` macros.
 
-Evidence from Cimmeria source (`src/mercury/packet.cpp`):
+Evidence from Cimmeria source (`deprecated/cpp/src/mercury/packet.cpp`):
 
 **Sending (finalize)**:
 ```
@@ -170,49 +170,102 @@ Messages are packed sequentially into the packet body. Each message consists of 
 | Field | Size | Description |
 |-------|------|-------------|
 | Message ID | 1 byte | Identifies the message type (0x00-0xFE) |
-| Length | 0, 2, or 4 bytes | Depends on message format (see below) |
+| Length | 0, or 1-4 bytes | Depends on the message's `InterfaceElement` (see below) |
 
 Message ID `0xFF` is reserved for reply messages (request-response pattern).
 
 ### Message Length Types
 
-Defined in `InterfaceElement` / `Message::Format`:
+Two different things are easy to conflate here — the **client's generic
+`InterfaceElement` mechanism**, and the **subset of it that SGW's message table
+actually uses**.
 
-| Type | Value | Description |
+**What the client supports.** `Mercury::InterfaceElement::expandLength @
+ghidra://SGW.exe@0x0158b770` reads a `lengthStyle` byte at `this+1`:
+
+| `lengthStyle` | Meaning |
+|---|---|
+| `0` | Fixed length — the size is the constant at `this+4`; no length field on the wire |
+| `1` | Variable length — read `lengthParam` (`this+4`) bytes as the length |
+| other | Rejected: `"Unhandled variable message length: %d"` |
+
+For `lengthStyle == 1` the decompiled switch reads **1, 2, 3, or 4** bytes
+(`byte` / `ushort` / `uint3` / `uint32`, all little-endian) immediately after
+the message ID. The 3-byte case is real, not a decompiler artifact — it is a
+distinct `case 3` reading a `uint3`.
+
+**What SGW actually uses.** The SGW message table only ever declares three of
+those, which is what `Message::Format` in
+[deprecated/cpp/src/mercury/message.hpp](../../deprecated/cpp/src/mercury/message.hpp)
+enumerates:
+
+| Type | `lengthParam` | Description |
 |------|-------|-------------|
 | `CONSTANT_LENGTH` | 0 | No length field; size is fixed and known from the message table |
 | `WORD_LENGTH` | 2 | 2-byte (uint16) length prefix |
 | `DWORD_LENGTH` | 4 | 4-byte (uint32) length prefix |
 
+So an implementation that only handles 0/2/4 is sufficient for SGW traffic, but
+it is not the full contract the client will accept.
+
 ### Entity Messages
 
-Entity messages use a special format with an entity ID prefix. They represent RPC calls to entity methods:
+Entity messages represent RPC calls to entity methods. In Cimmeria they are
+distinguished by the `isEntityMessage` flag in the `Message::Format` table.
+There are two sub-types, and they differ both in message-ID base **and** in
+whether an entity ID is on the wire:
 
-```
+- **Cell entity messages** — call methods on the cell entity (spatial
+  simulation). Carry a 4-byte entity ID:
+
+```text
 +------------+-----------+------------------+
 | Message ID | Entity ID | Method Arguments |
 | (1 byte)   | (4 bytes) |   (variable)     |
 +------------+-----------+------------------+
 ```
 
-In Cimmeria, entity messages are distinguished by the `isEntityMessage` flag in the `Message::Format` table. There are two sub-types:
+- **Base entity messages** — call methods on the base entity (server-side
+  persistent). These use BigWorld "proxy" encoding and carry **no** entity ID;
+  the recipient is implied by the connection:
 
-- **Base entity messages**: Call methods on the base entity (server-side persistent)
-- **Cell entity messages**: Call methods on the cell entity (spatial simulation)
+```text
++------------+------------------+
+| Message ID | Method Arguments |
+| (1 byte)   |   (variable)     |
++------------+------------------+
+```
 
-The method ID within the entity message determines which Python method is invoked.
+### Entity Message ID Encoding
 
-### Entity Message ID Encoding (Cimmeria)
+**Cell entity messages** (client → server, message IDs 0x80-0xBD):
 
-From `src/mercury/bundle.cpp`, entity messages use a compact encoding scheme:
+- Method indices 0-60: `messageId = 0x80 + index`, followed by `entityId` (uint32)
+- Method indices 61+: `messageId = 0xBD` (extended), followed by `entityId`
+  (uint32) then `index - 61` (uint8)
 
-**Base entity messages** (message IDs 0x80-0xBD):
-- Method IDs 0x00-0x3C: `messageId = methodId + 0x80`, followed by `entityId` (uint32)
-- Method IDs 0x3D-0x13C: `messageId = 0xBD` (extended), followed by `entityId` (uint32) then `methodId - 0x3D` (uint8)
+Decoder: [crates/services/src/base/connect_loop/cell_arms.rs](../../crates/services/src/base/connect_loop/cell_arms.rs)
+— the `0xBD` arm reconstructs `sub_index + 61`, the direct arm computes
+`id - 0x80`, and both strip the 4-byte entity ID first.
 
-**Cell entity messages** (message IDs 0xC0-0xFD):
-- Method IDs 0x00-0x3C: `messageId = methodId + 0xC0`, followed by `entityId` (uint32)
-- Method IDs 0x3D-0x13C: `messageId = 0xFD` (extended), followed by `entityId` (uint32) then `methodId - 0x3D` (uint8)
+**Base entity messages** (client → server, message IDs 0xC0+):
+
+- `messageId = 0xC0 + index`, with no entity ID prefix
+
+Decoder: the `sgw_player_base` constants in
+[crates/services/src/base/dispatch/mod.rs](../../crates/services/src/base/dispatch/mod.rs)
+(`CHAT_JOIN = 0xC0` at index 0 … `PERF_STATS = 0xDD` at index 29). Full table:
+[sgwplayer-base-method-dispatch-table.md](sgwplayer-base-method-dispatch-table.md).
+
+> [!IMPORTANT]
+> The `61` split above is **not** a protocol-wide constant. It is the entity
+> type's `idbase`, computed per type from its exposed-method count as
+> `idBase = 0x3E - (nExposedCount + 0xC0) / 0xFF`
+> (`EntityDescription_AssignClientMethodIds @ ghidra://SGW.exe@0x01590df0`).
+> SGWPlayer has 157 flattened client methods and 109 exposed cell methods, both
+> of which land on `idbase = 61`. An entity type with a different method count
+> gets a different split. See
+> `idbase_from_exposed_method_count` in the `cimmeria-mercury` crate.
 
 All entity messages use `WORD_LENGTH` (uint16 length prefix) regardless of the message table.
 
@@ -352,7 +405,7 @@ In Cimmeria, bundles are either reliable or unreliable. Each channel maintains s
 
 Cimmeria uses **individual (selective) ACKs**. Each ACK explicitly names the sequence ID of the packet being acknowledged. There is no cumulative ACK mechanism.
 
-**Evidence from `src/mercury/channel.cpp`**:
+**Evidence from `deprecated/cpp/src/mercury/channel.cpp`**:
 
 **Sending ACKs**: When a reliable packet is received, the receiver adds its sequence ID to the unreliable bundle's ACK list:
 ```cpp
@@ -393,7 +446,7 @@ Cimmeria does not implement `FLAG_HAS_CUMULATIVE_ACK` (the flag does not exist i
 
 ## BundleUnpacker Reassembly Algorithm
 
-The `BundleUnpacker` class in `src/mercury/bundle.hpp` / `bundle.cpp` handles reassembling fragmented bundles and extracting individual messages from the packet chain.
+The `BundleUnpacker` class in `deprecated/cpp/src/mercury/bundle.hpp` / `bundle.cpp` handles reassembling fragmented bundles and extracting individual messages from the packet chain.
 
 ### Construction and Fragment Collection
 
@@ -477,7 +530,7 @@ Cimmeria uses `BaseChannel` for client connections. There are no indexed channel
 
 ### Channel State
 
-From `src/mercury/channel.hpp`:
+From `deprecated/cpp/src/mercury/channel.hpp`:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -578,11 +631,11 @@ After the initial login handshake, all Mercury traffic is encrypted:
 
 The encryption is applied as a `MessageFilter` that wraps each packet before sending and unwraps on receipt. This reduces the effective payload by 32 bytes (16 for HMAC + up to 16 for AES padding).
 
-See `src/mercury/encryption_filter.hpp` for implementation details.
+See `deprecated/cpp/src/mercury/encryption_filter.hpp` for implementation details.
 
 ## Base-Cell Protocol
 
-The BaseApp and CellApp communicate using a dedicated Mercury-like protocol over TCP (not the same as the client protocol). See `src/mercury/base_cell_messages.hpp`.
+The BaseApp and CellApp communicate using a dedicated Mercury-like protocol over TCP (not the same as the client protocol). See `deprecated/cpp/src/mercury/base_cell_messages.hpp`.
 
 Key differences from client protocol:
 - Uses handshake with magic values (`0xD293BF1E` for BaseApp, `0x70CDB965` for CellApp)
