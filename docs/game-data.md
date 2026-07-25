@@ -163,4 +163,4 @@ To change game content:
 2. **Restart the server** — The Python resource classes will reload from the database
 3. **Clients get updated data** — The cooked XML is regenerated and served on next connection
 
-For mission and effect scripts, the proper workflow is to edit the `.script` XML node graphs in `data/scripts/` using the Atrea Script Editor (in ServerEd) and recompile. The auto-generated Python in `python/cell/` will be updated. Direct edits to the `.py` files also work but will be overwritten if the `.script` source is recompiled. The Python files are static — the server does not recompile them on startup.
+For mission and effect scripts, the proper workflow is to edit the `.script` XML node graphs in `data/scripts/` using the Atrea Script Editor (in ServerEd) and recompile. The auto-generated Python in `deprecated/python/cell/` will be updated. Direct edits to the `.py` files also work but will be overwritten if the `.script` source is recompiled. The Python files are static — the server does not recompile them on startup.

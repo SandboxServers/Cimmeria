@@ -327,6 +327,11 @@ No — static.
 
 ### CAT-D-06 — `requestAmmoChange` falls through to "any positive ammo_type" when the weapon's `item_defs` cache row is missing
 
+> **Fixed but UNMERGED (2026-07-25).** Tracked as issue #448; the
+> fail-closed fix is commit `2b26e208` on branch
+> `fix/448-ammo-change-fail-closed` (PR #602), which is **not** an ancestor
+> of `origin/main`. Still live on `main` until that merges.
+
 **Severity**: Medium
 **Class**: Missing whitelist on edge case
 **Wire surface**: `Event_NetOut_RequestAmmoChange` (cell method 42)

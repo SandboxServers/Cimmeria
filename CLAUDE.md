@@ -62,7 +62,17 @@ pkill -f "cargo|rustc"
 
 ## Pre-PR checklist
 
-CI (`.github/workflows/test.yml`) gates five checks on every PR — run all five locally before pushing or the pipeline will fail and you'll round-trip. The test runner in CI is [`cargo-nextest`](https://nexte.st/); install it once with `cargo install cargo-nextest --locked` (or `taiki-e/install-action@nextest` if you already use that pattern).
+Run everything in the block below before pushing, or the pipeline will fail and you'll round-trip. Not all of it blocks a merge — here's what each command is actually worth:
+
+| Check | Workflow | Blocking? | Runs when |
+|---|---|---|---|
+| `fmt`, `clippy`, `build`, `test`, `test-live-db` | [test.yml](.github/workflows/test.yml) | **Yes** — five gating jobs | Every PR |
+| `figure-sources-in-sync` | [figure-sources.yml](.github/workflows/figure-sources.yml) | **Yes** | Only when `docs/drafts/spec/figures/**` changes |
+| `figure-style-lint` | [figure-style.yml](.github/workflows/figure-style.yml) | **Yes** | Only when figures or `docs/drafts/spec/**.md` change |
+| `markdownlint` | [markdownlint.yml](.github/workflows/markdownlint.yml) | No — warn-only annotations | Any `**/*.md` change |
+| `spec-lint` | [spec-lint.yml](.github/workflows/spec-lint.yml) | No — warn-only annotations | `docs/spec/**`, `crates/**`, manifest changes |
+
+A sixth job in `test.yml`, `coverage`, uploads to Codecov and does not gate. The test runner in CI is [`cargo-nextest`](https://nexte.st/); install it once with `cargo install cargo-nextest --locked` (or `taiki-e/install-action@nextest` if you already use that pattern).
 
 ```bash
 cargo fmt --all -- --check

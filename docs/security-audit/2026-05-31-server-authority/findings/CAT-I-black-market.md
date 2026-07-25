@@ -1,5 +1,48 @@
 # CAT-I — Black Market / Auction House (server-authority audit)
 
+> **Status re-verification (2026-07-25)** — this category has moved from
+> "latent, post-implementation" to real code, but that code is **not yet on
+> `origin/main`**. The Black Market Phases 1–3 live on
+> `feat/571-black-market-phase1` (`crates/services/src/base/black_market/`,
+> a directory that does not exist on `main`). Treat every "addressed" below
+> as **fixed-but-unmerged** — it becomes live only when that branch merges,
+> and the guards should be re-checked at merge time.
+>
+> - **CAT-I-01 (whole interface stubbed): superseded.** `BMSearch`,
+>   `BMCreateAuction`, `BMPlaceBid`, and `BMCancelAuction` now have real
+>   handlers with a shared validation module
+>   (`black_market/validate.rs`). `BMStartWatchingItem` /
+>   `BMStopWatchingItem` are still `UNIMPLEMENTED` stubs.
+> - **CAT-I-02 (create): PARTIALLY addressed.** Ownership is enforced by
+>   escrow — `validate_create` fails closed unless the escrow `DELETE`
+>   matched a row the seller owned (`validate.rs:18-31`) — and prices are
+>   floored at zero. Duration is bounded because it is an *enum*, not a
+>   raw span: `auction_length_seconds` maps any out-of-range byte to 96 h
+>   (`wire.rs:48-57`). **Still open**: no listing-fee deduction and no
+>   per-player listing cap.
+> - **CAT-I-03 (bid): addressed.** `validate_bid` checks
+>   auction-active → not-self-bid → meets-`required_min_bid` →
+>   sufficient-funds (`validate.rs:38-58`), and the whole bid runs in one
+>   transaction with a row lock, refunding the prior bidder before holding
+>   the new bid (`bid.rs:68-232`). Caveat: `next_min_bid` is a **guessed**
+>   5 %-increment formula pending x64dbg capture (`wire.rs:59-67`), so the
+>   floor may not match the client's.
+> - **CAT-I-04 (cancel): addressed.** `validate_cancel` requires the caller
+>   to be the seller and the auction to be active (`validate.rs:73`); item
+>   return and bidder refund both run inside the same transaction
+>   (`cancel.rs:39-187`).
+> - **CAT-I-05 (search): STILL OPEN.** The search query has **no `LIMIT`**
+>   and no result-size cap — `fetch_all` returns every matching row
+>   (`search.rs:37-45`).
+> - **CAT-I-06 (expiry sweep): addressed.** `black_market/sweep.rs`
+>   implements the expiry pass with the COD-to-seller / item-return mail
+>   cascade via `send_mail_to_player`.
+>
+> Note the cross-cutting dependency: CAT-I-03's "replayable" qualifier
+> traces to **CAT-A-03**, which is still open. Replaying a captured bid at
+> the same amount now fails the `BID_TOO_LOW` floor, so the specific dupe
+> is closed, but the transport-level replay gap is not.
+
 ## Trust posture summary
 
 The SGW Black Market / Auction House surface is **fully unimplemented**

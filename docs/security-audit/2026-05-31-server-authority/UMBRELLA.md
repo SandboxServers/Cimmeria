@@ -6,6 +6,34 @@ Worktree branch: `worktree-server-authority-audit`
 > Tracking record for an exhaustive server-authority / anti-cheat / anti-replay
 > audit of every player-facing wire surface in the Cimmeria SGW server emulator.
 
+---
+
+> **Status re-verification — 2026-07-25.** The findings files remain the
+> 2026-05-31 point-in-time snapshot; per-finding status banners have been
+> added where code has moved. Summary of the P0 bundle:
+>
+> | P0 item | Status |
+> |---|---|
+> | CAT-N-03 — `access_level` in cell dispatch | **Resolved and merged** (#475) — with two known gate gaps, below |
+> | CAT-A-01 — SOAP over TLS (#476) | **Partial** — TLS listener exists but is opt-in; plain HTTP still served |
+> | CAT-A-02 — per-packet IV (#477) | **Partial** — Mercury v2 has it, but v1 is still the default and v2 is untested against a live client |
+> | CAT-A-03 — inbound dedup (#477) | **Open, unchanged** |
+> | CAT-B-05 — position replay sequence (#477) | **Open, unchanged** |
+> | CAT-B-01 + CAT-B-09 — movement validation | **Resolved and merged** (#478/#522) — speed layer is warn-only by design |
+> | CAT-J-01 — dialog-state authority | **Not re-verified in this pass** |
+>
+> Two gaps in the #475 GM gate that the "resolved" status above does **not**
+> cover: `requires_gm` allow-lists in-range indices `2 | 3 | 6 | 92`, which
+> misses `RESET_MY_ABILITIES` (CM 72, CAT-N-02) and the four MinigamePlayer
+> `debug*` methods (CM 20–23, CAT-K-02). Both are stubs today, so both are
+> latent — but the systemic protection #475 provides stops at index 109 plus
+> those four named indices.
+>
+> Work verified as landed on a branch but **not on `origin/main`**: the
+> Black Market implementation (CAT-I, `feat/571-black-market-phase1`), the
+> auth XML escaping fix (#447, PR #604), and the `requestAmmoChange`
+> fail-closed fix (#448, PR #602).
+
 ## Scope + methodology
 
 All findings are evidence-backed against authoritative sources only:
@@ -128,10 +156,10 @@ Pattern: a response message carries NO correlation id (no challenger id, no invi
 
 These are systemic. Every other audit finding rides on top of them.
 
-1. **CAT-N-03** — Plumb `access_level` from base session state into cell-method dispatch context. (Critical, systemic, blocks every GM-gating fix in CAT-N.)
-2. **CAT-A-01** — Move SOAP auth to TLS. (Critical, exposes credentials + session keys.)
-3. **CAT-A-02 + CAT-A-03 + CAT-B-05** (crypto-and-replay bundle) — Per-packet IV derived from sequence number, wire `Channel::receive_packet` dedup into the inbound encrypted path, anti-replay sequence on position updates. (Without these, every per-handler fix is replay-bypassable.)
-4. **CAT-B-01 + CAT-B-09** — Server-side speed / navmesh / Z-axis validation on the `AVATAR_UPDATE_EXPLICIT` write path. The `is_position_valid` helper already exists; wire it.
+1. ~~**CAT-N-03** — Plumb `access_level` from base session state into cell-method dispatch context.~~ **Done (#475)**, modulo the CM 72 / CM 20–23 allow-list gaps noted at the top of this file. (Critical, systemic, blocked every GM-gating fix in CAT-N.)
+2. **CAT-A-01** — Move SOAP auth to TLS. **Partially done (#476)**: the listener exists but is opt-in and plain HTTP is still served. (Critical, exposes credentials + session keys.)
+3. **CAT-A-02 + CAT-A-03 + CAT-B-05** (crypto-and-replay bundle) — Per-packet IV derived from sequence number, wire `Channel::receive_packet` dedup into the inbound encrypted path, anti-replay sequence on position updates. **Only the IV half is done, and only under Mercury v2, which is not the default.** The dedup and position-sequence halves are untouched. (Without these, every per-handler fix is replay-bypassable.)
+4. ~~**CAT-B-01 + CAT-B-09** — Server-side speed / navmesh / Z-axis validation on the `AVATAR_UPDATE_EXPLICIT` write path.~~ **Done (#478)** — bounds, navmesh, and teleport layers hard-reject and snap back via `BASEMSG_FORCED_POSITION`. Note the **speed layer is warn-only** pending tolerance calibration, so the speed-hack half of the original finding is still live.
 5. **CAT-J-01** — Track open-dialog state server-side; reject `DIALOG_BUTTON_CHOICE` unless caller has that dialog open with that button. (Without this, every content chain can be triggered by a single forged packet.)
 
 ### P1 — Critical individual exploits (currently demonstrable)
