@@ -2,15 +2,28 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-06-12 (catalogue snapshot — see note below)  
-> **Total tests catalogued**: 1,351 *(snapshot; current workspace count is **2,012** — inventory regeneration is pending the next sweep)*  
+> **Last updated**: 2026-07-25 (header figures re-counted; catalogue tables are still the 2026-06-12 snapshot)  
+> **Total tests catalogued**: 1,351 *(stale snapshot; current workspace count is **3,012 tests across 473 files** — inventory regeneration is pending the next sweep)*  
 > **Companion docs**: [TESTING.md](../../../TESTING.md) (the playbook for *how to write* tests), [maintenance.md](maintenance.md), [review-report.md](review-report.md) (audit findings — owned by the testing-validation-engineer agent)
+
+> **Catalogue drift warning.** The per-crate tables below cover 1,351 tests
+> against a workspace that now has 3,012 — they are missing more than half
+> the suite, and several crates added since the snapshot have no file at all
+> (`admin-api`, `discord`, `navmesh-extractor`, `observability`,
+> `client-telemetry`). `wireclient` was catalogued separately on 2026-07-25 —
+> see [wireclient.md](wireclient.md). Treat this directory as a partial index
+> until the next regeneration sweep; use it to look tests up, not to reason
+> about coverage totals.
 
 Catalogue of every test in the workspace. The playbook for *how to write* tests is [TESTING.md](../../../TESTING.md); this directory is the reference complement — what tests already exist, where they live, and what each one asserts.
 
 ## Totals
 
 ### By crate
+
+*Snapshot as of 2026-06-12. The `Tests` column is what the catalogue files
+contain, not what the crate has today — see the drift warning above. Live
+per-crate counts as of 2026-07-25 are in the second table.*
 
 | Crate | Tests | File |
 |---|---:|---|
@@ -30,7 +43,44 @@ Catalogue of every test in the workspace. The playbook for *how to write* tests 
 | `server` | 2 | [server.md](server.md) |
 | **Total** | **1351** | |
 
+### Live counts (2026-07-25)
+
+Counted with `grep -rnE "^[[:space:]]*#\[(tokio::)?test(\(.*\))?\]" --include=*.rs`
+over every workspace member. Crates marked ✗ have no catalogue file yet.
+
+| Crate | Tests | Files | Catalogued? |
+|---|---:|---:|---|
+| `services` | 1,761 | 289 | ✓ |
+| `mercury` | 260 | 45 | ✓ |
+| `entity` | 246 | 23 | ✓ |
+| `launcher` (`sgw-launcher`) | 176 | 22 | ✓ |
+| `content-engine` | 143 | 14 | ✓ |
+| `discord` | 76 | 15 | ✗ |
+| `game` | 69 | 20 | ✓ |
+| `navmesh-extractor` | 54 | 10 | ✗ |
+| `client-telemetry` | 51 | 11 | ✗ |
+| `common` | 35 | 4 | ✓ |
+| `commands` | 29 | 3 | ✓ |
+| `wireclient` | 30 | 5 | ✓ [wireclient.md](wireclient.md) |
+| `admin-api` | 22 | 2 | ✗ |
+| `upk-objects` | 21 | 3 | ✓ |
+| `tools/ContentEditor` | 12 | 1 | ✓ |
+| `server` | 9 | 2 | ✓ |
+| `observability` | 7 | 1 | ✗ |
+| `src-tauri` (`cimmeria-app`) | 6 | 2 | ✓ |
+| `defs` | 5 | 1 | ✓ |
+| **Total** | **3,012** | **473** | |
+
+Of these, **2,767** are gated on every PR — CI excludes `cimmeria-app`,
+`cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`, and
+`cimmeria-client-telemetry`. 247 of the gated tests are live-DB guards
+(`require_db_or_skip!`), all in `cimmeria-services`.
+
 ### By kind
+
+*Snapshot as of 2026-06-12, covering the 1,351 catalogued tests only. The
+live-DB figure in particular is stale — the workspace now has 247
+`require_db_or_skip!` guards.*
 
 | Kind | Tests |
 |---|---:|
@@ -53,7 +103,7 @@ Catalogue of every test in the workspace. The playbook for *how to write* tests 
 Each per-crate file groups tests in a single GFM table (or one table per subsystem in `services.md`). Columns:
 
 - **Test** — markdown link to `fn_name` at `file:line` in source.
-- **Kind** — one of `unit` / `wire-format` / `live-DB` / `smoke` / `concurrency` / `chain-replay` / `legacy-reference` / `proptest` / `rstest` / `integration`. The first seven are the taxonomy from [TESTING.md](../../../TESTING.md); `proptest` / `rstest` / `integration` are modern additions present in the codebase.
+- **Kind** — one of `unit` / `wire-format` / `live-DB` / `smoke` / `concurrency` / `chain-replay` / `legacy-reference` / `proptest` / `rstest` / `integration`. The first seven were the taxonomy from [TESTING.md](../../../TESTING.md) at snapshot time; that taxonomy has since grown to 12 types (adding `fan-out byte`, `Mercury session`, `network chaos`, `wire-level replay`, `negative-log`), which the catalogue rows do not yet distinguish. `proptest` / `rstest` / `integration` are extractor-level labels, not TESTING.md types.
 - **System / Feature** — derived from module path (e.g. `services::cell::combat::threat` -> `Combat / Threat`).
 - **Added** — first-commit date (best-effort, via `git log -S 'fn <name>' -- <file>`).
 - **What it tests** — one-sentence summary, prefer the test's `///` doc comment when present, otherwise inferred from the function name and the first assert in the body.
