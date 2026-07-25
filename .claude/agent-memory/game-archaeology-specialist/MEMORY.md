@@ -48,6 +48,21 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [UTerrain::Serialize binary layout](ue3-terrain-serialize.md) — **[PROMOTE → issue #46 appendix DONE; unblocks Phase 1.3]** — ATerrain__vfunc_12 @ 0x007517C0, full trailer layout, None-scan gotcha, 92% confidence.
 
+## x64dbg session discipline
+
+- [x64dbg session liveness check protocol](feedback-x64dbg-session-liveness-check.md) — **[KEEP — process-health check BEFORE any cave writes; 2026-06-22 crash postmortem]** — get_debugger_status + get_latest_event must both be clean before proceeding. Second-chance AV = dead process, no recovery.
+
+## Black Market createAuction send-side (2026-06-22)
+
+- [createAuction send wiring — NOP patch confirmed](bm-create-auction-send-wiring.md) — **[PROMOTE → docs/reverse-engineering/findings/black-market-client-window-patch.md §createAuction-send]** — Entity-guard JZ at 0x00e599a8 NOP'd (6 bytes), send BP hit confirmed, wire layout vs server decode verified. Full Lua binding map + reversibility bytes.
+- [createAuction FUN_00A372F0 dispatch diagnosis](bm-create-auction-dispatch-diagnosis.md) — CME dispatch FULLY RECOVERED + STATIC PASS 2026-06-22 COMPLETE. Path 3 (vtable swap) DEAD on 3 grounds: hash key=TypeDesc not EventSignal vtable; type-equality guard rejects non-matching subscribers; method index from subscriber EventHandler->+0x04 not emitted TypeDesc. **THE FIX**: bucket pre-init (12 bytes: `8B 47 24 8B 4F 30 89 41 08 89 41 0C`) before `FUN_00A37790`. Bucket slot for TypeDesc `0x01E660B0` = **SLOT 2** (static for all realistic table sizes). fake_eh struct provides `method_index=0x3E` and channel_ptr=`[0x01EF2264]` at init. **FIXED CAVE: `0x01674420`** (208 bytes CC in .text, survives restarts, no ASLR). Complete byte layout in memory file.
+- [createAuction registration key mismatch — SUPERSEDED](bm-create-auction-registration-key-bug.md) — FUN_00D46F70 hardcodes SellItems vtable (archaeological finding). Manual-callback_obj approach overridden by team-lead; approved path is FUN_00D6CE00 + SSO structs.
+- [createAuction FINAL execution plan](bm-create-auction-next-session-plan.md) — **USE THIS on next relaunch.** Byte-exact cave (107 bytes at 0x01674420), SSO layouts verified. BLOCKER: FUN_00C6EA70 throws on first-registration (empty slot); awaiting team-lead decision on substitute (FUN_00A37790 direct). Dispatch thunk + NOP + rendezvous check all confirmed ready.
+
+## Black Market fork-B session (2026-06-21)
+
+- [BM fork-B crash notes + correct registration pattern](bm-fork-b-session-crash-notes.md) — Client crashed from flag3 handler calling 0x00403EC0 without first pushing _G. Correct sequence: 0x00403BB0(L,NULL) then 0x00403EC0. All cave addresses, JMP patches, and Lua shadow problem documented. All work survives client restart ONLY if caves were in fixed-VA exe space — they were not (heap allocs), so next session needs full rebuild.
+
 ## SGWHomeless full recovery (2026-05-25)
 
 - [SGWHomeless full recovery](sgwhomeless-full-recovery.md) — **[PROMOTE → docs/reverse-engineering/findings/atrea-editor.md §SGWHomeless]** — Complete v5 RE: 30 CME subscriptions confirmed, all handler VAs, singleton at `0x01ef23fc` (CORRECTS prior `cme-anomalies-resolved.md`), GLevel ToD/Wind/Weather layout, Ghidra renames applied.

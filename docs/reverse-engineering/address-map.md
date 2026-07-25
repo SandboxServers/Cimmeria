@@ -354,7 +354,7 @@ Recovered in session 4b-world-entry (2026-05-13). Full findings in
 | `DAT_01ee2b6c` | world-loaded guard flag | set after Event_World_Loaded fires; prevents double-emit |
 | `DAT_01ee2684` | global `WorldInfo*` | read by Event_World_Loaded trigger thunk |
 | `DAT_01eb082c` | editor/replay mode flag | if set, PostLoad handler skips transform copy |
-| `0x017bae02` | ENABLE_ENTITIES descriptor init site | `MOV DWORD PTR [struct], 1` — confirms 1-byte payload |
+| `0x017bae02` | ENABLE_ENTITIES descriptor init site | Payload is **8 bytes**, not 1. The initializer pushes `6A 08` (`PUSH 8`) as `CONSTANT_LENGTH`; the adjacent `C7 00 01 00 00 00` (`MOV DWORD PTR [EAX], 1`) writes the trailing `true` flag, not the payload width. Matches `deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp:83` — `{Message::CONSTANT_LENGTH, 8, "ENABLE_ENTITIES", true}` over a documented `uint64 Dummy` |
 | `0x019c2828` | `"onClientReady"` | CME signal name string |
 | `0x019cf548` | enableEntities debug log | `"ServerConnection::enableEntities: Enabling entities %d\n"` |
 | `0x019d09f8` | `"resetEntities"` | message name string; ref @ 0x017bb210 in msg table |

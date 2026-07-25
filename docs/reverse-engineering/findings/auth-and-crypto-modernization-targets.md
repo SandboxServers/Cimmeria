@@ -187,7 +187,7 @@ No IV, no version byte, no length, no sequence number inside the encrypted unit 
 Mercury's outer layer frames all of that.
 
 > This is a **byte-exact match** with our Rust server at
-> [`crates/mercury/src/encryption.rs`](../../crates/mercury/src/encryption.rs).
+> [`crates/mercury/src/encryption/`](../../../crates/mercury/src/encryption/mod.rs).
 > The Rust side is in fact *more* secure: it verifies the tag in constant time
 > via the `subtle` crate, where the client uses a `memcmp`-style compare.
 
