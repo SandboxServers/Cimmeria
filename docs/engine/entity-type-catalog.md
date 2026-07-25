@@ -959,6 +959,8 @@ No methods defined. State is managed externally.
 | Entity registry | `entities/entities.xml` |
 | Entity definitions | `entities/defs/*.def` (18 files) |
 | Interface definitions | `entities/defs/interfaces/*.def` (18 files) |
-| Cell implementations | `python/cell/*.py` |
-| Base implementations | `python/base/*.py` |
+| Cell implementations (historical) | `deprecated/python/cell/*.py` (35 files) |
+| Base implementations (historical) | `deprecated/python/base/*.py` (20 files) |
+| Cell implementations (active) | `crates/services/src/cell/` |
+| Base implementations (active) | `crates/services/src/base/` |
 | Custom type aliases | `entities/defs/custom_alias.xml` |
