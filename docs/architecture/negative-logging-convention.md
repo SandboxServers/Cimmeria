@@ -1,5 +1,6 @@
 # Negative-Logging Convention
 
+> **Last updated**: 2026-07-25
 > **Status**: Convention adopted in issue #304 PR1 (2026-05-24). Applies to
 > every new patch that touches an expectation seam.
 
@@ -40,7 +41,7 @@ and `expected` as paired structured fields so a single ops query
 ### Pattern C — Witness / lookup misses logged at `trace!`
 
 The `send_to_witness` family in
-[`crates/services/src/base/helpers.rs`](../../crates/services/src/base/helpers.rs)
+[`crates/services/src/base/helpers/mod.rs`](../../crates/services/src/base/helpers/mod.rs)
 historically logged AoI packet drops at `trace!`, making them
 invisible without `RUST_LOG=trace`. **Fix**: upgrade to `warn!` for the
 entity-to-addr miss (player-visible bug) and `debug!` for the
@@ -128,7 +129,7 @@ both trip the test.
 The convention landed alongside PR1, which swept ~25 silent-drop seams
 across `cell`, `base`, and `content/`. Subsequent PRs in the series:
 
-- **PR1.5** — `world_entry_appearance.rs:378` `rows_affected==0` guard
+- **PR1.5** — `world_entry_appearance/mod.rs:378` `rows_affected==0` guard
   on the relocated `first_login` UPDATE (landed with PR1).
 - **PR2** — mission rewards dispatch implementation (T1-12 `todo!()`).
 - **PR3** — Tier 2 state-desync logging, split by subsystem.

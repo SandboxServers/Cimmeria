@@ -1,11 +1,36 @@
 ---
 title: "Python Console Reference"
-type: reference
-audience: engineers, operators
-last_updated: 2026-05-27
+type: explanation
+audience: engineers
+last_updated: 2026-07-25
 ---
 
 # Python Console Reference
+
+> [!WARNING]
+> **HISTORICAL — documents the deprecated Python/C++ server, which no longer runs.**
+>
+> The Rust server has **no embedded Python interpreter and no Python console**.
+> There is no `console_port`, no `py_console_password`, and no `pyo3`/`rustpython`
+> dependency anywhere under `crates/` — the console described below cannot be
+> enabled on the current server at all. The `config/BaseService.config` and
+> `config/CellService.config` files this doc configures no longer exist; `config/`
+> holds only `discord.toml.example`.
+>
+> Every `python/…` path below now resolves under
+> [`deprecated/python/`](../../deprecated/python/) (the repo-root `python/`
+> directory retains only stale `__pycache__` `.pyc` artifacts).
+>
+> **For the current equivalents:**
+> - **In-game GM commands** run through the client's *native* `/` console, not
+>   through anything here. See [gm-cell-method-gating.md](gm-cell-method-gating.md)
+>   and [dev-console-channel.md](dev-console-channel.md).
+> - **Remote administration** is the `cimmeria-admin-api` REST/WebSocket surface
+>   ([`crates/admin-api/`](../../crates/admin-api/)), documented in
+>   [../tools/admin-api.md](../tools/admin-api.md).
+>
+> Read this document for the *historical* command inventory and for what the
+> original operators could do — not as an operator runbook.
 
 Complete reference for the Python console system available in BaseApp and CellApp. Both services expose two interfaces: a **local stdin console** and a **remote TCP console** -- each providing a raw Python REPL with full access to the `Atrea` module and all imported game modules.
 

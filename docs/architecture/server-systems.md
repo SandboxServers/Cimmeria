@@ -1,7 +1,44 @@
 # Server-Only Infrastructure Systems
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-07-25 (accuracy banner only; body not rewritten)
 > **Scope**: Server-side infrastructure with no client-facing wire format
+
+> [!WARNING]
+> **STALE — surveys the deprecated Python/C++ tree, not the Rust server.**
+>
+> Every "Current State" section below cites `python/…`, `config/BaseService.config`,
+> and `db/sgw.sql`. Active development moved to Rust under `crates/` (see
+> [CLAUDE.md](../../CLAUDE.md)), and `config/BaseService.config` no longer exists
+> in the repo. Read the per-system "Overview" and "Recommended Approach" prose as
+> still-useful design framing; do **not** trust the "Current State", "Gaps", or
+> "Priority" verdicts — several have been closed in Rust since 2026-03-01:
+>
+> - **§3 Anti-Cheat** — "No movement speed validation / no teleport detection" is
+>   **no longer true**. A four-layer validator (bounds → navmesh → speed → teleport)
+>   gates every inbound client position at
+>   `SpaceManager::apply_client_position_update`
+>   (`crates/services/src/cell/space_manager/entities.rs:223`), backed by
+>   `MovementValidator` (`crates/entity/src/movement_validation/mod.rs:153-170`).
+>   See [movement-validation.md](movement-validation.md).
+> - **§7 Admin/GM** — the recommendation to "enable the Python console" is
+>   obsolete. GM commands run through the client's native `/` console, and a
+>   REST/WebSocket admin surface ships as the `cimmeria-admin-api` crate
+>   (`crates/admin-api/src/routes/`), including login-audit endpoints backed by the
+>   `login_audit` table (`db/database.sql:384`). A GM *action* log is still absent.
+> - **§8 Metrics** — "no server performance metrics / no anomaly alerting" is
+>   **no longer true**. OTLP export and Mercury packet instrumentation ship in the
+>   `cimmeria-observability` crate with a SigNoz backend; see
+>   [observability.md](observability.md) and
+>   [instrumentation-discipline.md](instrumentation-discipline.md).
+> - **§4 Economy** — "the black market is entirely stubbed" is being overtaken:
+>   a Rust Black Market (schema, wire deserialization, create/bid/cancel state
+>   machine, expiry sweep) is implemented on the `feat/571-black-market-phase1`
+>   branch. It is **not merged to `main`**, so the "stubbed" verdict is still
+>   accurate for `main` today, but the listing-fee/transaction-cut design note
+>   should be checked against that branch before it is acted on.
+>
+> This document is a candidate for supersession by per-system Rust docs rather
+> than incremental patching.
 
 ---
 

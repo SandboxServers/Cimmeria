@@ -1,8 +1,11 @@
 # Encryption modernization — auth TLS, password hashing, Mercury v2
 
-**Status:** Proposed
+**Status:** Accepted — server halves of Phases 0–3 implemented; every client-side
+patch is still pending, and **no phase has been exercised against a live 2009
+client**.
 **Confidence:** RE targets High (binary-validated); client-patch engineering Medium (per-hook runtime confirmation pending)
 **Issue:** [#434](https://github.com/SandboxServers/Cimmeria/issues/434) (encryption modernization, as rewritten)
+**Last updated:** 2026-07-25
 
 This ADR records the design that consumes the binary-validated targets in
 [../reverse-engineering/findings/auth-and-crypto-modernization-targets.md](../reverse-engineering/findings/auth-and-crypto-modernization-targets.md).
@@ -58,11 +61,18 @@ hook techniques in `crates/client-telemetry/src/hooks/`: `inline_hooks.rs`
 inline → `curl_easy_setopt @ 0x013A96E0` (Phase 1) and `LoginReplyHandler ctor @
 0x00DDED60` (Phase 2); vtable → `Mercury::Channel::send @ 0x01576F90` (Phase 3).
 
-So Phase 0 is re-scoped to **extracting #504's hook primitives into a reusable
-API** (a behaviour-preserving refactor exposing `place_trampoline` /
-`replace_iat_slot` / `swap_vtable_slot`) that the client patch crates call — not
-a new from-scratch crate. This resolves the original "new crate vs. extend
-client-telemetry" open decision in favour of **extending client-telemetry**.
+So Phase 0 was re-scoped to **extracting #504's hook primitives into a reusable
+API** — a behaviour-preserving refactor — rather than a new from-scratch crate.
+This resolved the original "new crate vs. extend client-telemetry" open decision
+in favour of **extending client-telemetry**.
+
+**Status (2026-07-25): that extraction has landed.** The reusable API lives in
+[`crates/client-telemetry/src/hooks/primitives/mod.rs`](../../crates/client-telemetry/src/hooks/primitives/mod.rs)
+and exposes `install_inline_hook` (the trampoline detour — this is the function
+earlier drafts of this ADR called `place_trampoline`), `replace_iat_slot`, and
+`swap_vtable_slot`, all returning `Result<_, HookError>`, with unit tests in the
+sibling `tests.rs`. Phase 0 is therefore **complete**; the remaining client work
+is the per-hook wiring in Phases 1–3, not the hooking layer itself.
 
 ### Phase 1 — auth TLS
 
@@ -251,7 +261,7 @@ gap.
 - **RE targets: HIGH.** Every address, call chain, CURLOPT code, struct offset,
   and crypto-scheme detail is binary-validated against `SGW.exe` (image base
   `0x00400000`, ASLR disabled). The v1 Mercury scheme is a byte-exact match with
-  `crates/mercury/src/encryption.rs`.
+  `crates/mercury/src/encryption/mod.rs`.
 - **Client-patch engineering: MEDIUM.** Each hook (curl URL rewrite, password
   swap, `Channel::send` vtable replacement) is *located* with high confidence but
   not yet *built and runtime-confirmed*. Confidence promotes to HIGH per hook as
@@ -265,6 +275,8 @@ gap.
   — the binary-validated targets and exact addresses this design consumes.
 - [../reverse-engineering/findings/mercury-protocol-internals.md](../reverse-engineering/findings/mercury-protocol-internals.md)
   — `Mercury::Channel::send` context (the Phase 3 hook point).
-- [`crates/mercury/src/encryption.rs`](../../crates/mercury/src/encryption.rs)
-  — the current (v1-equivalent) server encryption implementation.
+- [`crates/mercury/src/encryption/mod.rs`](../../crates/mercury/src/encryption/mod.rs)
+  — the server encryption implementation: the `EncryptionVersion::{V1, V2}` enum
+  and both wire schemes. Rotation lives beside it in
+  [`rotation.rs`](../../crates/mercury/src/encryption/rotation.rs).
 - Issue **#434**.

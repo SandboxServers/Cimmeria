@@ -1,6 +1,6 @@
 # Abilities + Effects System
 
-> **Last updated**: 2026-05-26
+> **Last updated**: 2026-07-25
 > **Audience**: Engineers touching combat / abilities / effects on the cell
 > **Type**: ADR + reference
 > **Owner**: Combat systems
@@ -11,7 +11,7 @@
 
 PR #420 ([#47](https://github.com/SandboxServers/Cimmeria/issues/47), [#61](https://github.com/SandboxServers/Cimmeria/issues/61), [#331](https://github.com/SandboxServers/Cimmeria/issues/331), [#419](https://github.com/SandboxServers/Cimmeria/issues/419)) lit up the abilities system end-to-end: per-weapon resolution, hotbar population, trainer NPCs, effect-script dispatch, pulsing DoT/HoT, cone AoE, absorption shields, stun/suppression debuffs, channelled effects with movement-interrupt. Most of the engine code was new — but the cross-cutting design decisions deserve their own record so future contributors can extend the system without re-litigating them.
 
-This doc captures **what** was decided and **why**, with pointers to the code that implements each piece. It is **not** a tutorial — for module-level walkthroughs read the inline docstrings on `cell::effects::mod.rs`, `cell::effects::pulsing.rs`, and `cell::abilities::cone_aoe.rs`.
+This doc captures **what** was decided and **why**, with pointers to the code that implements each piece. It is **not** a tutorial — for module-level walkthroughs read the inline docstrings on `cell::effects::mod.rs`, `cell::effects::pulsing`, and `cell::abilities::cone_aoe`.
 
 ## Decisions
 
@@ -41,7 +41,7 @@ Alternative considered: storage-on-source with target_ids in the instance. Rejec
 
 **Reversibility:** Switching to source-side storage would require a single-pass migration of the `active_effects` field; both queries stay O(N) just over different sets. Not a permanent commitment.
 
-**Code:** [`crates/entity/src/cell_entity/mod.rs`](../../crates/entity/src/cell_entity/mod.rs) (`ActiveEffectInstance` struct + `active_effects` field), [`crates/services/src/cell/effects/pulsing.rs`](../../crates/services/src/cell/effects/pulsing.rs).
+**Code:** [`crates/entity/src/cell_entity/mod.rs`](../../crates/entity/src/cell_entity/mod.rs) (`ActiveEffectInstance` struct + `active_effects` field), [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
 
 ### 3. Refcount lifecycle via existing `state_flag_counts`
 
@@ -67,7 +67,7 @@ The PR initially added a separate `movement_lock_reasons: HashSet<(u32, i32)>` f
 
 **Reversibility:** Trapdoor — content authored to assume same-source stacking would break if the rule changes. None of our seed currently assumes this either way, so we're free to revise. Document the rule clearly so content authors don't drift.
 
-**Code:** `register_active_effect` in [`crates/services/src/cell/effects/pulsing.rs`](../../crates/services/src/cell/effects/pulsing.rs).
+**Code:** `register_active_effect` in [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
 
 ### 5. Pulsing model: initial pulse + N-1 follow-ups
 
@@ -82,7 +82,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Reversible — could move the initial pulse into the tick loop by setting `next_pulse_at = now` and skipping the synchronous fire. Would defer first damage by up to 100ms (one tick), which is noticeable in playtest.
 
-**Code:** [`crates/services/src/cell/abilities/damage_apply/mod.rs`](../../crates/services/src/cell/abilities/damage_apply/mod.rs) (initial pulse), [`crates/services/src/cell/effects/pulsing.rs`](../../crates/services/src/cell/effects/pulsing.rs) (registration + tick).
+**Code:** [`crates/services/src/cell/abilities/damage_apply/mod.rs`](../../crates/services/src/cell/abilities/damage_apply/mod.rs) (initial pulse), [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs) (registration + tick).
 
 ### 6. Channel cancellation triggers
 
@@ -102,7 +102,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Per-trigger thresholds (0.5m, 60 pulses) are tunable. Adding new cancel triggers is additive. Removing existing ones risks breaking content authored to rely on them.
 
-**Code:** [`crates/services/src/cell/effects/pulsing.rs`](../../crates/services/src/cell/effects/pulsing.rs) (`cancel_channels_from_attacker`, `cancel_channels_for_invoker_ability`, `channel_interrupt_on_movement_tick`).
+**Code:** [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs) (`cancel_channels_from_attacker`, `cancel_channels_for_invoker_ability`, `channel_interrupt_on_movement_tick`).
 
 ### 7. AF_CHANNEL_ALLOWS_MOVEMENT default = 0 (cancel-on-move)
 
@@ -112,7 +112,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Per-ability flag, so changing one ability's behaviour is one DB row update. No engine commitment locked in.
 
-**Code:** [`crates/entity/src/abilities.rs`](../../crates/entity/src/abilities.rs) (flag constant + docstring).
+**Code:** [`crates/entity/src/abilities/mod.rs`](../../crates/entity/src/abilities/mod.rs) (flag constant + docstring).
 
 ### 8. TCM dispatch routing: Single (always), Radius (ground-target), Cone (cone fan-out)
 
@@ -130,7 +130,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Adding new TCM values is additive — add a fourth route. Re-routing existing TCMs is risky (changes content behaviour).
 
-**Code:** [`crates/services/src/cell/abilities/cone_aoe.rs`](../../crates/services/src/cell/abilities/cone_aoe.rs), [`crates/services/src/cell/abilities/dispatch.rs`](../../crates/services/src/cell/abilities/dispatch.rs).
+**Code:** [`crates/services/src/cell/abilities/cone_aoe/mod.rs`](../../crates/services/src/cell/abilities/cone_aoe/mod.rs), [`crates/services/src/cell/abilities/dispatch.rs`](../../crates/services/src/cell/abilities/dispatch.rs).
 
 ### 9. Absorption pool drain: elemental-specific first, generic catch-all second
 
@@ -146,7 +146,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Drain order is per-damage-type table inside `drain_absorption_pools`; trivially swapped. Changing the HEALTH-only rule means understanding the FOCUS-drain content semantics first.
 
-**Code:** [`crates/services/src/cell/combat/damage.rs`](../../crates/services/src/cell/combat/damage.rs) — `drain_absorption_pools` + `calculate_damage`.
+**Code:** [`crates/services/src/cell/combat/damage/pipeline.rs`](../../crates/services/src/cell/combat/damage/pipeline.rs) — `drain_absorption_pools` + `calculate_damage`.
 
 ### 10. Script-name dispatch over flag-bit dispatch for effect categories
 
@@ -172,7 +172,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Single constant, no schema commitment.
 
-**Code:** [`crates/services/src/cell/effects/pulsing.rs`](../../crates/services/src/cell/effects/pulsing.rs).
+**Code:** [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
 
 ### 12. Channel safety cap = 60 pulses
 
@@ -182,7 +182,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Single constant.
 
-**Code:** [`crates/services/src/cell/effects/pulsing.rs`](../../crates/services/src/cell/effects/pulsing.rs).
+**Code:** [`crates/services/src/cell/effects/pulsing/mod.rs`](../../crates/services/src/cell/effects/pulsing/mod.rs).
 
 ### 13. CellEntity.last_aoe_deaths: per-attacker scratchpad for AoE kill credit
 
@@ -204,7 +204,7 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Reversibility:** Per-ability flag could add Y-bound checking later. Backward-compatible (default behaviour stays the same).
 
-**Code:** [`crates/services/src/cell/abilities/cone_aoe.rs`](../../crates/services/src/cell/abilities/cone_aoe.rs) (`collect_cone_targets`).
+**Code:** [`crates/services/src/cell/abilities/cone_aoe/mod.rs`](../../crates/services/src/cell/abilities/cone_aoe/mod.rs) (`collect_cone_targets`).
 
 ### 15. Pulse tick cadence = 100ms (piggyback on AoI tick)
 

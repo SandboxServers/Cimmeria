@@ -2,7 +2,7 @@
 title: "GM gating for cell methods — access_level plumbing"
 type: explanation
 audience: engineers
-last_updated: 2026-06-10
+last_updated: 2026-07-25
 ---
 
 # GM gating for cell methods — `access_level` plumbing
@@ -40,7 +40,7 @@ Plumbing path:
 ```text
 account.accesslevel (DB)
   → auth handler → ConnectedClientState.access_level (base)
-  → world_entry_appearance.rs builds InitPlayerState { access_level, … }
+  → world_entry_appearance/ builds InitPlayerState { access_level, … }
   → handle_init_player_state → CellEntity::access_level
 ```
 

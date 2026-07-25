@@ -1,7 +1,26 @@
 # Tech Stack Replacement Analysis
 
-> **Last updated**: 2026-03-02
-> **Sources**: Full codebase audit of `src/`, `python/`, `entities/`, `config/`, `db/`, `data/`
+> **Last updated**: 2026-07-25 (accuracy banner only; body not rewritten)
+> **Sources**: Full codebase audit of `src/`, `python/`, `entities/`, `config/`, `db/`, `data/` — as those trees stood on 2026-03-02
+
+> [!WARNING]
+> **HISTORICAL — this is the decision document that chose the Rust rewrite, and
+> the rewrite has since happened.**
+>
+> The "Current Tech Stack" table below inventories the **deprecated C++/Python
+> server** (now under [`deprecated/cpp/`](../../deprecated/cpp/) and
+> [`deprecated/python/`](../../deprecated/python/)). Boost 1.55, Python 3.4.1,
+> OpenSSL 0.9.8i, SOCI 3.2.1 and Qt 5 are dependencies of *that* tree — none of
+> them are dependencies of the Rust server under [`crates/`](../../crates/). In
+> particular, the **OpenSSL "CRITICAL / active CVEs" row does not describe any
+> shipping Cimmeria code path**; the Rust auth server terminates TLS with
+> `tokio-rustls` and has no OpenSSL dependency.
+>
+> Read this for the *why* behind the rewrite. For what is running today see
+> [`../../crates/README.md`](../../crates/README.md) and
+> [service-architecture.md](service-architecture.md). The sibling
+> [migration-roadmap.md](migration-roadmap.md) is the companion dependency plan
+> and carries the same caveat.
 
 ---
 

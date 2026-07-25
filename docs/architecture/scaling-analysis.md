@@ -1,7 +1,20 @@
 # Scaling Analysis
 
-> **Last updated**: 2026-03-02
-> **Sources**: `src/baseapp/cell_manager.hpp/cpp`, `src/cellapp/`, `entities/spaces.xml`, `entities/cell_spaces.xml`, `config/CellService.config`, `config/BaseService.config`, `docs/engine/bigworld-architecture.md`
+> **Last updated**: 2026-07-25 (accuracy banner only; body not rewritten)
+> **Sources**: `src/baseapp/cell_manager.hpp/cpp`, `src/cellapp/`, `entities/spaces.xml`, `entities/cell_spaces.xml`, `config/CellService.config`, `config/BaseService.config`, `docs/engine/bigworld-architecture.md` — as those trees stood on 2026-03-02
+
+> [!NOTE]
+> **Measured against the deprecated C++ server.** The `src/…` and
+> `config/*.config` sources cited above now live under
+> [`deprecated/cpp/`](../../deprecated/cpp/) and are gone from `config/`
+> respectively; the active server is Rust under [`crates/`](../../crates/).
+>
+> The **BigWorld background and the single-instance-per-role conclusion still
+> hold** — the Rust server is likewise one process per role, and the topology in
+> [service-architecture.md](service-architecture.md) matches. What should **not**
+> be trusted without re-measurement is any specific throughput, entity-count, or
+> per-tick cost figure below: those were taken against the C++ implementation and
+> no equivalent benchmark has been run against the Rust one.
 
 ---
 

@@ -1,6 +1,6 @@
 # Integration Test Infrastructure
 
-> **Last updated**: 2026-05-03
+> **Last updated**: 2026-07-25
 > **Audience**: Engineers writing tests against PostgreSQL or any other
 > live external dependency
 > **Type**: Architecture decision + how-to
@@ -83,7 +83,7 @@ inside a transaction it rolls back at the end (works for tests that
 don't need to span their own commit boundary), or pick a sentinel
 from the module's reserved `0x7000_xxxx` slot and delete its own
 rows on cleanup. The reserved-slot scheme is documented per-module
-(see `crates/services/src/base/character.rs:276-281` and
+(see `crates/services/src/base/character/mod.rs:276-281` and
 `crates/services/src/base/world_entry/methods/missions.rs:146-148`
 for the canonical doc-comment shape) and is also summarised in the
 "Sentinel id discipline" section of [TESTING.md](../../TESTING.md).
@@ -144,7 +144,7 @@ on each other:
   or test cleanup. Required when the test path itself commits internally
   (e.g., outbox enqueue + drain in two separate connections).
 
-The outbox pilot tests (`crates/services/src/base/outbox/tests.rs`)
+The outbox pilot tests (`crates/services/src/base/outbox/tests/`)
 demonstrate both patterns — `enqueue_in_tx` runs inside a rolled-back
 tx, while the round-trip test commits real rows and cleans them up by
 sentinel `entity_id`.

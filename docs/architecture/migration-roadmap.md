@@ -2,12 +2,31 @@
 title: "Dependency Migration Roadmap"
 type: explanation
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Dependency Migration Roadmap
 
 > Extracted from CLAUDE.md to keep the operator file concise. Reference this when planning or executing dependency upgrades.
+
+> [!WARNING]
+> **Scope: the deprecated C++ server only.** Every migration in this roadmap is a
+> **C++ dependency** of the tree now under [`deprecated/cpp/`](../../deprecated/cpp/)
+> (Boost, MSVC toolset, SOCI, Qt, embedded CPython, Recast/Detour, the
+> `.sln`/`.vcxproj` build). The active Rust server under [`crates/`](../../crates/)
+> shares **none** of them — it manages dependencies through Cargo.
+>
+> **The OpenSSL row is the one most often misread.** "Pending — CRITICAL (active
+> CVEs)" describes OpenSSL 0.9.8i statically linked into the *deprecated* C++
+> server and into the 2009 game client. **It is not an open vulnerability in
+> anything Cimmeria ships today**: the Rust auth server terminates TLS with
+> `tokio-rustls` and links no OpenSSL. Do not cite this row as a live security
+> finding. For the crypto work that actually shipped, see
+> [encryption-modernization.md](encryption-modernization.md).
+>
+> Because the deprecated tree is not being maintained, most rows here are
+> unlikely ever to be executed. Treat this as an archived plan rather than an
+> active backlog.
 
 ## Current Status
 

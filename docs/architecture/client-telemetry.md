@@ -2,7 +2,7 @@
 
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
-> **Last updated**: 2026-06-05
+> **Last updated**: 2026-07-25
 > **Status**: Phases 2-5 substantially landed. **23 hooks total** across 4 techniques: 2 CME subscribers (`onClientMapLoad`, `onClientReady`), 11 inline JMP hooks (Mercury dispatch + 4 engine + 6 Phase-3/5 additions: state-flag dispatcher, anim notify A+B, cooked-data load, console command, Bink tick), 7 IAT-swap hooks (3 Lua + 4 OS), 3 vtable-swap hooks (CEGUI logger + AActor::Tick + USequence::UpdateOp). All addresses + signatures sourced from the upfront Ghidra manifest. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter.
 
 How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
@@ -135,7 +135,7 @@ The event variant on both sides is `ClientNative`:
 Wire shape pinned by paired tests:
 
 - Launcher side: [`crates/launcher/src/telemetry/events.rs`] `client_native_serializes_with_expected_shape`
-- Server side: [`crates/admin-api/src/routes/telemetry.rs`] `client_native_event_matches_launcher_shape`
+- Server side: [`crates/admin-api/src/routes/telemetry/`] `client_native_event_matches_launcher_shape`
 
 If either side renames a field, the symmetric test fails loudly.
 
