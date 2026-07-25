@@ -2,14 +2,19 @@
 title: "Mission Chains: Complete Inventory"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Mission Chains: Complete Inventory
 
-> **Last updated**: 2026-05-09
+> **Last updated**: 2026-07-25
 > **Scope**: All 1,040 missions in the Stargate Worlds server emulator
-> **Sources**: `db/resources.sql` (1,040 mission INSERTs), `python/cell/missions/` (20 script files), `python/cell/spaces/` (11 space scripts), `python/cell/MissionManager.py`
+> **Sources**: [db/resources/Missions/Seed/missions.sql](../../db/resources/Missions/Seed/missions.sql) (1,040 mission INSERTs), `deprecated/python/cell/missions/` (20 script files), `deprecated/python/cell/spaces/` (11 space scripts), `deprecated/python/cell/MissionManager.py`
+>
+> **Note**: the Python paths below are the *legacy* reference implementation, kept
+> under `deprecated/python/`. The live runtime is the Rust content engine — see
+> [content-engine.md](content-engine.md) and the chain seeds in
+> [db/resources/Content/Seed/](../../db/resources/Content/Seed/).
 
 ---
 
@@ -899,6 +904,19 @@ if status == Constants.MISSION_Not_Active:
 | Item ID | Bag | Qty | Notes |
 |---------|-----|-----|-------|
 | 5168 | 2 | 1 | Radio (used twice, then consumed) |
+
+> **Known blocker — the Radio has no `items_event_sets` binding.**
+> Steps 4 and 7 above are the only way to advance past step 4621 and to
+> complete mission 1561, and both hang off `item_use::5168` (seed chains 3021
+> and 3025 in [db/resources/Content/Seed/sgc_w1_chains.sql](../../db/resources/Content/Seed/sgc_w1_chains.sql)).
+> [db/resources/Items/Seed/items_event_sets.sql](../../db/resources/Items/Seed/items_event_sets.sql)
+> currently contains **no row for `item_id = 5168`**, so the client never offers
+> the Use action and the chain never fires — mission 1561 soft-locks at step
+> 4621. Tracked as issues #334 / #605. **PR #605 adds the missing seed row but
+> is not merged as of 2026-07-25**, so the blocker is still live on `main`.
+> Note the server side does not gate this: `UseInventoryItem` never consults
+> `items_event_sets` ([use_instance.rs](../../crates/services/src/base/world_entry/methods/inventory/core/use_instance.rs)),
+> so the fix is purely a seed-data one.
 
 **Entity tags**: `SGC_W1_JaffaBomb`, `SGCW1_AirmanBody`, `SGC_W1_NaqBomb`, `SGC_W1_ElevatorButton2`
 

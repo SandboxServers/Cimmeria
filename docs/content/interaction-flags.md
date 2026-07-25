@@ -2,7 +2,7 @@
 title: "Interaction Flags Reference"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Interaction Flags Reference
@@ -15,7 +15,9 @@ Every clickable thing in the game world — NPCs, switches, corpses, vendors, ri
 
 If a content chain forgets to set the right bit, the entity is invisible to right-click even though every other piece of wiring (chain trigger, conditions, server-side handler) is correct. That was the cause of the [HackTheRings_Switch bug](../../db/resources/Content/Seed/castle_cellblock_chains.sql) and is the reason this doc exists.
 
-**Authoritative source**: [`entities/defs/enumerations.xml`](../../entities/defs/enumerations.xml) — the original BigWorld enum. Mirror in [`python/Atrea/enums.py`](../../python/Atrea/enums.py). Stored on the Rust side as raw `i64` in [`crates/entity/src/cell_entity.rs`](../../crates/entity/src/cell_entity.rs) field `interaction_type_flags` (no symbolic constants — chain SQL writes literal integers).
+**Authoritative source**: [`entities/defs/enumerations.xml`](../../entities/defs/enumerations.xml) — the original BigWorld enum. Mirror in [`deprecated/python/Atrea/enums.py`](../../deprecated/python/Atrea/enums.py). Stored on the Rust side as raw `i64` in [`crates/entity/src/cell_entity/mod.rs`](../../crates/entity/src/cell_entity/mod.rs) field `interaction_type_flags`.
+
+**Symbolic names are now preferred in chain SQL.** [`crates/entity/src/interaction_flags.rs`](../../crates/entity/src/interaction_flags.rs) defines the named constants and a `mask_for_name` lookup, and the content loader accepts either form for a `set_interaction_type` action's `mask` param — an integer literal (`'mask': 256`) or a symbolic name (`'mask': 'INT_MinigameLivewire'`), resolved at [loader/action.rs:86-103](../../crates/content-engine/src/loader/action.rs#L86-L103). Prefer the symbolic form; an unrecognized name logs a `warn!` and defaults the mask to 0. Both the misspelled `INT_*Avaliable` and the corrected `INT_*Available` spellings are accepted.
 
 ## How to use this in chain SQL
 
@@ -35,7 +37,7 @@ Operations:
 | `~`  | Clear bit (`flags &= ~mask`) | Click is consumed; revoke clickability |
 | `=`  | Replace (`flags = mask`) | Rare; prefer `\|`/`~` so flags compose |
 
-**Lifecycle pattern.** Mirror every set with a clear. The canonical worked example is the cellblock door button (mission 638): chain 1014/1015 set `mask=256` when the player asks the prisoner to open the door, chain 1017 clears `mask=256` after Livewire is won. Same shape for [`329_CellDoorButton` in `Prisoner_329.py:41,77,84`](../../python/cell/missions/Castle_CellBlock/Prisoner_329.py).
+**Lifecycle pattern.** Mirror every set with a clear. The canonical worked example is the cellblock door button (mission 638): chain 1014/1015 set `mask=256` when the player asks the prisoner to open the door, chain 1017 clears `mask=256` after Livewire is won. Same shape for [`329_CellDoorButton` in `Prisoner_329.py:41,77,84`](../../deprecated/python/cell/missions/Castle_CellBlock/Prisoner_329.py).
 
 ## When to use which bit
 
@@ -99,7 +101,7 @@ These draw the floating quest icon over an NPC's head. Always paired: set the ne
 
 ### 4. Quest world objects, loot, machines, attack — bits 30+
 
-These are mostly used for environmental items (containers, corpses, machines, loot drops). Bits 53-63 are at the high end of the UINT64 — be careful in JSON, JavaScript can't represent them precisely; the chain executor in [`crates/services/src/cell/content/executor.rs`](../../crates/services/src/cell/content/executor.rs) reads them as `i64` so only bits 0-62 are usable.
+These are mostly used for environmental items (containers, corpses, machines, loot drops). Bits 53-63 are at the high end of the UINT64 — be careful in JSON, JavaScript can't represent them precisely; the chain executor in [`crates/services/src/cell/content/executor/world/`](../../crates/services/src/cell/content/executor/world/) reads them as `i64` so only bits 0-62 are usable.
 
 | Bit | Mask | Constant | Use for |
 |-----|------|----------|---------|
@@ -114,8 +116,8 @@ These are mostly used for environmental items (containers, corpses, machines, lo
 | 58 | `288230376151711744` | `INT_Machine_Power` | Power crafting machine |
 | 59 | `576460752303423488` | `INT_Machine_Materials` | Materials crafting machine |
 | 60 | `1152921504606846976` | `INT_Machine_Electronics` | Electronics crafting machine |
-| 61 | `2305843009213693952` | `INT_Attackable` | Attackable mob (set by [`SGWMob.py`](../../python/cell/SGWMob.py)) |
-| 62 | `4611686018427387904` | `INT_NormalLoot` | Lootable corpse — auto-set on death by [`SGWMob.py:129`](../../python/cell/SGWMob.py#L129) |
+| 61 | `2305843009213693952` | `INT_Attackable` | Attackable mob (set by [`SGWMob.py`](../../deprecated/python/cell/SGWMob.py)) |
+| 62 | `4611686018427387904` | `INT_NormalLoot` | Lootable corpse — auto-set on death by [`SGWMob.py:129`](../../deprecated/python/cell/SGWMob.py#L129) |
 | 63 | `9223372036854775808` | `INT_MissionLoot` | **Bit 63 — sign bit of `i64`. Cannot be expressed; do not use until [`interaction_type_flags`](../../crates/entity/src/cell_entity.rs) is widened to `u64`.** |
 
 The `Attackable_In_*Cover` bits are set/cleared by the combat system, not by content chains. Don't write them in seed SQL.
@@ -184,8 +186,8 @@ After loading new chain SQL, the easiest sanity check is:
 ## Gotchas
 
 - **Tag mismatch**: bit-set fails silently when the spawn's `tag` differs from `target_key` by even one character. The classic cellblock had `Preparation_ColMarshr` (extra `r`); the seed SQL fixes it to `Preparation_ColMarsh`.
-- **AoI window**: a chain that fires `set_interaction_type` before the entity is in the player's AoI defers the update until the entity enters AoI. See [`crates/services/src/cell/content/executor.rs`](../../crates/services/src/cell/content/executor.rs) — search for `deferring InteractionType to AoI create`.
-- **Per-player vs broadcast**: dialog-driven interaction sets are per-player ([dialog_set_map flow in executor](../../crates/services/src/cell/content/executor.rs)); `set_interaction_type` is global on the entity. If two players are on different mission steps and need different cursors on the same NPC, you need a per-player override (see `add_dialog_set` action), not raw flag bits.
+- **AoI window**: a chain that fires `set_interaction_type` before the entity is in the player's AoI defers the update until the entity enters AoI. See [`crates/services/src/cell/content/executor/`](../../crates/services/src/cell/content/executor/) — search for `deferring InteractionType to AoI create`.
+- **Per-player vs broadcast**: dialog-driven interaction sets are per-player ([dialog_set_map flow in executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs)); `set_interaction_type` is global on the entity. If two players are on different mission steps and need different cursors on the same NPC, you need a per-player override (see `add_dialog_set` action), not raw flag bits.
 - **Bit 63**: `INT_MissionLoot` is the sign bit of `i64` and cannot be set as a positive integer in PostgreSQL `bigint`. Live with it until the field is widened.
 
 ## Related

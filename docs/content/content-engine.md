@@ -2,12 +2,12 @@
 title: "Content engine — reference"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Content engine — reference
 
-> **Last updated**: 2026-05-07
+> **Last updated**: 2026-07-25
 > **Audience**: Engineers working on the Rust server who need to understand, debug, or extend the data-driven content engine.
 > **Prerequisites**: Familiar with the Cimmeria crate layout ([crates/README.md](../../crates/README.md)) and the cell/base service split ([architecture/service-architecture.md](../architecture/service-architecture.md)).
 > **Diátaxis type**: Reference + explanation. For the design rationale ("why does this exist at all?") see [architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md). For "how do I add a new variant?" see [extending-the-engine.md](extending-the-engine.md).
@@ -50,7 +50,7 @@ The boundary exists so the engine stays declarative. Chain authors write SQL row
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-Implementation status (2026-05-07): **shipped and driving Castle_CellBlock and SGC_W1 end-to-end.** The Health Slappack consumable and the Mess Hall kill-counter mission are the latest content shapes wired up; both rely on counter state and `ChangeStat` added in the last week.
+Implementation status (2026-07-25): **shipped and driving Castle_CellBlock and SGC_W1 end-to-end.** Since the original write-up the surface has grown to cover NPC AI direction (`SetNpcPoi` / `SetFollowTarget` / `SetNpcAiState`), cover-proximity triggers, cross-world teleport, and the Black Market window open. Note that a handful of authorable actions still have no executor arm — read §3's catalog before authoring a chain.
 
 ---
 
@@ -62,11 +62,11 @@ Implementation status (2026-05-07): **shipped and driving Castle_CellBlock and S
 |---|---|
 | [lib.rs](../../crates/content-engine/src/lib.rs) | Module rollup, re-exports |
 | [chain.rs](../../crates/content-engine/src/chain.rs) | `Chain`, `ChainEngine`, `ResolvedActions`, `resolve_event` |
-| [triggers.rs](../../crates/content-engine/src/triggers.rs) | `Trigger`, `TriggerType`, `TriggerEvent`, `Trigger::matches` |
+| [triggers/](../../crates/content-engine/src/triggers/) | `Trigger`, `TriggerType`, `TriggerEvent` ([mod.rs](../../crates/content-engine/src/triggers/mod.rs)); `Trigger::matches` ([matching.rs](../../crates/content-engine/src/triggers/matching.rs)) |
 | [conditions.rs](../../crates/content-engine/src/conditions.rs) | `Condition`, `Condition::evaluate` |
-| [actions.rs](../../crates/content-engine/src/actions.rs) | `Action`, `ActionResult`, `PropertyOp` |
+| [actions.rs](../../crates/content-engine/src/actions.rs) | `Action`, `ActionResult`, `PropertyOp`, `NpcAiStateAction` |
 | [context.rs](../../crates/content-engine/src/context.rs) | `ExecutionContext` (param key/value bag) |
-| [loader.rs](../../crates/content-engine/src/loader.rs) | DB-row → typed enum conversion |
+| [loader/](../../crates/content-engine/src/loader/) | DB-row → typed enum conversion — split into [trigger.rs](../../crates/content-engine/src/loader/trigger.rs) / [condition.rs](../../crates/content-engine/src/loader/condition.rs) / [action.rs](../../crates/content-engine/src/loader/action.rs), assembled by [mod.rs](../../crates/content-engine/src/loader/mod.rs) |
 
 This crate does not depend on `cimmeria-services`, `cimmeria-base`, or `tokio` runtime types. Its full dep set is `cimmeria-common`, `cimmeria-entity`, `serde`, `serde_json`, `thiserror`, `tracing` ([Cargo.toml:9-15](../../crates/content-engine/Cargo.toml#L9-L15)).
 
@@ -76,10 +76,10 @@ This crate does not depend on `cimmeria-services`, `cimmeria-base`, or `tokio` r
 |---|---|
 | [mod.rs](../../crates/services/src/cell/content/mod.rs) | Public re-exports for the rest of the cell service |
 | [engine_loader.rs](../../crates/services/src/cell/content/engine_loader.rs) | `build_engine` — runs the four boot SQL queries |
-| [event_dispatch.rs](../../crates/services/src/cell/content/event_dispatch.rs) | `fire_<event>` factory functions, one per `TriggerType` |
-| [executor.rs](../../crates/services/src/cell/content/executor.rs) | `execute_actions` — the giant `match action { ... }` |
+| [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/) | `fire_<event>` factory functions, grouped by family: `cover.rs`, `dialog.rs`, `interaction.rs`, `inventory.rs`, `lifecycle.rs`, `mission.rs`, `region.rs` |
+| [executor/](../../crates/services/src/cell/content/executor/) | `execute_actions` — the `match action { ... }` in [mod.rs](../../crates/services/src/cell/content/executor/mod.rs), forwarding to per-family handlers (`mission.rs`, `inventory.rs`, `dialog.rs`, `stats.rs`, `world/`, `counter.rs`, `transport.rs`, `black_market.rs`) |
 | [mission_context.rs](../../crates/services/src/cell/content/mission_context.rs) | Populators: write mission/counter/stat state into `ExecutionContext` |
-| [chain_replay_tests.rs](../../crates/services/src/cell/content/chain_replay_tests.rs) | Live-DB regression guards that pin chain behavior |
+| [chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/) | Live-DB regression guards that pin chain behavior, one module per mission/feature (`mission_622.rs`, `mission_638.rs`, …, `black_market.rs`, `cover_demo.rs`) |
 
 The bridge owns every effect (channel sends, `space_manager` mutations, log lines). The engine never produces a side effect — it only resolves which actions the bridge should run.
 
@@ -89,7 +89,7 @@ The bridge owns every effect (channel sends, `space_manager` mutations, log line
 
 ### Triggers — *what fires the chain*
 
-Defined at [triggers.rs:20-98](../../crates/content-engine/src/triggers.rs#L20-L98). Filterable by an optional second key (entity type, item id, region key, etc.) per variant.
+Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod.rs#L28-L146). Filterable by an optional second key (entity type, item id, region key, etc.) per variant. The DB `event_type` string each variant is authored as lives in [loader/trigger.rs](../../crates/content-engine/src/loader/trigger.rs) — only variants with a match arm there are reachable from seed data.
 
 | Variant | Fires when |
 |---|---|
@@ -110,13 +110,20 @@ Defined at [triggers.rs:20-98](../../crates/content-engine/src/triggers.rs#L20-L
 | `OnInteractTag { entity_tag }` | Right-click on tagged NPC/object |
 | `OnInteractTemplate { template_name }` | Right-click on entity from named template |
 | `OnItemUse { item_id }` | Player double-clicked inventory item |
+| `OnItemEquipped { item_id? }` | Player moved a stack into the bandolier (`container_id = 3`) from any other container. `item_id` is the design / `type_id`, not the inventory instance id; `NULL` `event_key` is a wildcard that fires for any equip |
 | `OnTeleportIn { region_id }` | Player arrived via ring transporter |
 | `OnEffectInit / PulseBegin / PulseEnd / Removed` | Effect lifecycle hooks (unit variants) |
 | `OnMissionCompleted { mission_id }` | Mission marked complete |
 | `OnDialogSetOpen { dialog_set_name }` | Dialog set opened |
 | `OnMissionAccepted { mission_id }` | Mission just accepted or advanced (fired from the executor's combined `Action::AcceptMission \| Action::AdvanceMission` branch after the cell-side state commit; used by chains that highlight quest objects on mission start — e.g. chain 1097 for Aftermath) |
+| `OnPlayerEnteredCover { cover_set_id? }` | Player entered proximity of a cover set (`resources.cover_sets`). One event per set; a player can be in several at once. Wildcard (`NULL`) fires for any set |
+| `OnPlayerLeftCover { cover_set_id? }` | Player left a cover set's proximity — the symmetric partner of `OnPlayerEnteredCover` |
+| `OnPlayerInCoverDuration { cover_set_id?, seconds }` | Player has been continuously in a cover set for ≥ `seconds`. Debounced: leaving and re-entering resets the timer. Seed `event_key` convention is `"<seconds>"` or `"<seconds>:<set_id>"` ([loader/trigger.rs:87-100](../../crates/content-engine/src/loader/trigger.rs#L87-L100)) |
+| `OnNpcFlanked { npc_template? }` | An NPC occupying a cover slot was flanked — its top-threat target moved outside the cover's defensive arc (orientation ± π/2) |
 
-Within a single chain's bucket, `Trigger::matches` ([triggers.rs:178](../../crates/content-engine/src/triggers.rs#L178)) decides whether the event matches the chain's specific trigger variant + filter. Bucketing is by **`TriggerType` discriminant** — see §6.
+Within a single chain's bucket, `Trigger::matches` ([triggers/matching.rs:43](../../crates/content-engine/src/triggers/matching.rs#L43)) decides whether the event matches the chain's specific trigger variant + filter. Bucketing is by **`TriggerType` discriminant** — see §6.
+
+**Not reachable from seed data.** `OnEntityCreated`, `OnEntityDestroyed`, `OnAbilityUsed`, `OnInteraction`, `OnMissionStep`, `OnItemAcquired`, and `OnTimer` have no match arm in [loader/trigger.rs](../../crates/content-engine/src/loader/trigger.rs), so no `content_triggers` row can bind them — a chain authored with those `event_type` strings is dropped with a `warn!`. `OnCustomEvent` has no arm either but is generated internally, as the synthetic `__direct_invoke_<id>` trigger for chains with zero trigger rows (§6). `OnEntityDeath` is reachable only through the `entity_dead_tag` (tag-filtered) form; there is no `event_type` that binds the `entity_type` form.
 
 ### Conditions — *gates that AND together*
 
@@ -138,20 +145,74 @@ Defined at [conditions.rs:12-95](../../crates/content-engine/src/conditions.rs#L
 | `StatBelowMax { stat_id }` | `stat_<id>_cur < stat_<id>_max`. **Fail-closed** on missing params ([conditions.rs:255-268](../../crates/content-engine/src/conditions.rs#L255-L268)) |
 | `CustomExpression { expression }` | bool-key lookup, escape hatch |
 
+**Only six are authorable.** [loader/condition.rs](../../crates/content-engine/src/loader/condition.rs) has match arms for exactly `mission_status`, `step_status`, `archetype`, `objective_status`, `counter`, and `stat_below_max`. The other seven variants (`PropertyEquals`, `PropertyInRange`, `HasItem`, `HasAbility`, `InRegion`, `FactionCheck`, `CustomExpression`) cannot be named by a `content_conditions` row at all — a seed row using them is dropped with a `warn!`. `HasItem` and `FactionCheck` are doubly dead: even reached from Rust, no populator writes the `item_<id>_count` / `faction_<name>` keys they read (§9).
+
 ### Actions — *side effects*
 
-Defined at [actions.rs:20-237](../../crates/content-engine/src/actions.rs#L20-L237). The full surface is large — listed in three groups by lineage. **`Action::execute` is a stub** ([actions.rs:264-277](../../crates/content-engine/src/actions.rs#L264-L277)); only `TriggerChain` self-executes. Everything else is dispatched by [executor.rs](../../crates/services/src/cell/content/executor.rs).
+Defined at [actions.rs:20-323](../../crates/content-engine/src/actions.rs#L20-L323). **`Action::execute` is a stub** ([actions.rs:363-376](../../crates/content-engine/src/actions.rs#L363-L376)); only `TriggerChain` self-executes. Everything else is dispatched by [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs).
 
-**Generic actions** (designed up front):
-`GrantXP`, `GrantItem`, `RemoveItem`, `ApplyEffect`, `RemoveEffect`, `Teleport`, `SpawnEntity`, `DespawnEntity`, `StartDialog`, `AdvanceMission`, `CompleteMission`, `PlayAnimation`, `PlaySound`, `SendMessage`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `TriggerChain`, `ExecuteCustom`.
+An action has to clear **two** hurdles to do anything. It needs a match arm in [loader/action.rs](../../crates/content-engine/src/loader/action.rs) (otherwise no `content_actions` row can name it) *and* a match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) (otherwise it resolves and then falls through to a `debug!` no-op at [mod.rs:411-413](../../crates/services/src/cell/content/executor/mod.rs#L411-L413)). The table below is the authoritative catalog; the "Seed rows" column counts `content_actions` rows across [db/resources/Content/Seed/](../../db/resources/Content/Seed/) as of 2026-07-25.
 
-**DB-driven actions** (added as content shipped):
-`AcceptMission`, `DisplayDialog`, `AddDialogSet`, `RemoveDialogSet`, `PlaySequence`, `AdvanceStep`, `SetInteractionType`, `StartMinigame`, `SetAggression`, `DestroyTaggedEntity`, `TriggerTransporter`, `SystemMessage`, `QrCombatDamage`, `ChangeStat`, `AbandonMission`, `FailObjective`, `CompleteObjective`, `IncrementCounter`, `ResetCounter`, `SetVisible`, `MoveEntity`.
+#### Authorable and executed
 
-**Space-script actions** (auto-converted from level scripts):
-`MoveWaypoint`, `SetActiveSlot`, `LaunchAbility`, `AddDialog`, `GenerateThreat`.
+| Seed verb | `Action` variant | Seed rows |
+|---|---|---|
+| `accept_mission` | `AcceptMission` | 49 |
+| `complete_mission` | `CompleteMission` | 17 |
+| `abandon_mission` | `AbandonMission` | 1 |
+| `advance_step` | `AdvanceStep` | 23 |
+| `complete_objective` | `CompleteObjective` | 2 |
+| `display_dialog` | `DisplayDialog` | 33 |
+| `add_dialog` | `AddDialog` | 10 |
+| `add_dialog_set` | `AddDialogSet` | 6 |
+| `remove_dialog_set` | `RemoveDialogSet` | 2 |
+| `add_item` | `GrantItem` | 14 |
+| `remove_item` | `RemoveItem` | 2 |
+| `change_stat` | `ChangeStat` | 3 |
+| `increment_counter` | `IncrementCounter` | 9 |
+| `reset_counter` | `ResetCounter` | 3 |
+| `play_sequence` | `PlaySequence` | 15 |
+| `set_interaction_type` | `SetInteractionType` | 70 |
+| `set_visible` | `SetVisible` | 1 |
+| `destroy_entity` | `DestroyTaggedEntity` | 1 |
+| `generate_threat` | `GenerateThreat` | 3 |
+| `set_aggression` | `SetAggression` | 1 |
+| `set_npc_poi` | `SetNpcPoi` | 0 |
+| `set_follow_target` | `SetFollowTarget` | 0 |
+| `set_npc_ai_state` | `SetNpcAiState` | 0 |
+| `move_waypoint` | `MoveWaypoint` | 0 |
+| `set_active_slot` | `SetActiveSlot` | 0 |
+| `start_minigame` | `StartMinigame` | 4 |
+| `trigger_transporter` | `TriggerTransporter` | 2 |
+| `cross_world_teleport` | `CrossWorldTeleport` | 1 |
 
-> Several variants are **defined but not executed** today: `ApplyEffect`, `RemoveEffect`, `StartTimer`, `CancelTimer`, `RollLootTable`, `SpawnEntity`, `GrantXP`. The loader accepts them and the engine resolves them, but `executor.rs` has no match arm — they fall through to a `debug!` no-op. See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
+> An `open_black_market` / `OpenBlackMarket` action exists on the unmerged
+> `feat/571-black-market-phase1` branch (PR #586) and is **not** on `main`. It is
+> documented in [../architecture/black-market.md](../architecture/black-market.md);
+> do not author against it until that branch lands.
+
+#### Authorable but NOT executed — seeded rows that silently no-op
+
+These have a loader arm, so the seed accepts them and the engine resolves them, but **[executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) has no match arm** — every one falls through to the `debug!` catch-all and does nothing. This is a live correctness gap, not a roadmap item: 13 seeded rows are currently dead.
+
+| Seed verb | `Action` variant | Seed rows | Consequence |
+|---|---|---|---|
+| `move_entity` | `MoveEntity` | 5 | Scripted NPC/player repositioning never happens |
+| `launch_ability` | `LaunchAbility` | 3 | Scripted ability fires never happen |
+| `qr_combat_damage` | `QrCombatDamage` | 2 | Scripted damage is never applied |
+| `apply_effect` | `ApplyEffect` | 1 | No chain can apply a buff/debuff |
+| `remove_effect` | `RemoveEffect` | 1 | No chain can strip an effect |
+| `fail_objective` | `FailObjective` | 1 | Objective-fail branches never fire |
+
+`system_message` (`SystemMessage`, **11 seeded rows**) is a third state: it has an executor arm, but the arm only emits an `info!` log. The client wire format is still unknown — see §10.
+
+#### Not authorable — defined in the enum, no loader arm
+
+No `content_actions` row can name these; they are reachable only from Rust (or not at all). `GrantXP`, `SpawnEntity`, `DespawnEntity`, `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`. None has an executor arm either, so wiring any of them is a two-sided job. **`GrantXP` is the one that matters most: no chain can award XP today**, which compounds with the seed having `reward_xp = 0` on all 1,040 mission rows (§9).
+
+Four variants have an executor arm but no seed verb, reached only as internal aliases or from Rust: `AdvanceMission` (aliased onto the `AcceptMission` arm), `StartDialog` (aliased onto `DisplayDialog`), `Teleport` (same-space teleport; only `cross_world_teleport` is authorable), and `TriggerChain` (resolved by the engine, re-dispatched by the caller). `SendMessage` has an arm that only logs.
+
+See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
 
 ---
 
@@ -160,7 +221,7 @@ Defined at [actions.rs:20-237](../../crates/content-engine/src/actions.rs#L20-L2
 End-to-end trace, using `OnItemUse(2893)` (Health Slappack) as the worked example.
 
 1. **Gameplay observes the event.** Player double-clicks the Slappack. `crate::cell::content::fire_item_use(...)` is called from [base_messages/mod.rs](../../crates/services/src/cell/service/base_messages/mod.rs).
-2. **The bridge builds an `ExecutionContext`.** [event_dispatch.rs:393-415](../../crates/services/src/cell/content/event_dispatch.rs#L393-L415):
+2. **The bridge builds an `ExecutionContext`.** [event_dispatch/inventory.rs:28](../../crates/services/src/cell/content/event_dispatch/inventory.rs#L28):
    - sets `item_id`, `instance_id`
    - calls `populate_mission_context` — writes every `mission_<id>_status`, `mission_<id>_step_<step>_status`, and `counter_<name>` from the source `CellEntity`
    - calls `populate_stats_context` — writes `stat_<id>_cur` / `stat_<id>_max` for every stat on the entity
@@ -172,9 +233,9 @@ End-to-end trace, using `OnItemUse(2893)` (Health Slappack) as the worked exampl
      - `chain.conditions.iter().all(|c| c.evaluate(ctx))` — all-AND
      - on full match, pushes `(chain.id, action.clone())` for each of the chain's actions onto `ResolvedActions.actions`
    - `params` is cloned forward only when ≥1 chain matched ([chain.rs:277-279](../../crates/content-engine/src/chain.rs#L277-L279) — defer-clone optimization landed in commit `a51a10d`)
-5. **Bridge executes.** `executor::execute_actions(resolved, …)` ([executor.rs:27](../../crates/services/src/cell/content/executor.rs#L27)). For chain 4001, the action sequence is `ChangeStat { stat_id: 7, amount: Some(500) }` then `RemoveItem { item_id: 2893, count: 1 }`.
-   - `ChangeStat` ([executor.rs:474-575](../../crates/services/src/cell/content/executor.rs#L474-L575)) mutates `entity.stats.get_mut(7).change(500)`, drains dirty stats, sends `CellToBaseMsg::EntityMethodCall { method_index: ON_STAT_UPDATE, args: payload }`.
-   - `RemoveItem` ([executor.rs:404-473](../../crates/services/src/cell/content/executor.rs#L404-L473)) reads the forwarded `instance_id` param; routes to `RemoveInventoryItem` (by-instance) when present, falls back to `RemoveInventoryItemByType` otherwise. The instance plumbing is what fixes the bandolier-stack-mismatch bug from PR #214.
+5. **Bridge executes.** `executor::execute_actions(resolved, …)` ([executor/mod.rs:59](../../crates/services/src/cell/content/executor/mod.rs#L59)). For chain 4001, the action sequence is `ChangeStat { stat_id: 7, amount: Some(500) }` then `RemoveItem { item_id: 2893, count: 1 }`.
+   - `ChangeStat` ([executor/stats.rs:14](../../crates/services/src/cell/content/executor/stats.rs#L14)) mutates `entity.stats.get_mut(7).change(500)`, drains dirty stats, sends `CellToBaseMsg::EntityMethodCall { method_index: ON_STAT_UPDATE, args: payload }`.
+   - `RemoveItem` ([executor/inventory.rs:149](../../crates/services/src/cell/content/executor/inventory.rs#L149)) reads the forwarded `instance_id` param; routes to `RemoveInventoryItem` (by-instance) when present, falls back to `RemoveInventoryItemByType` otherwise. The instance plumbing is what fixes the bandolier-stack-mismatch bug from PR #214.
 6. **BaseApp persists and forwards.** Drains `CellToBaseMsg`s, runs the corresponding `UPSERT`s and Mercury writes.
 
 The contract between engine and bridge is `ResolvedActions` ([chain.rs:235-238](../../crates/content-engine/src/chain.rs#L235-L238)):
@@ -224,8 +285,8 @@ The `params jsonb` column is the catch-all for new action fields. Every new fiel
 2. Otherwise call `load_chains_from_db(pool)`.
 3. **Four sequential SELECT queries** fire, one per table, each `ORDER BY chain_id [, sort_order]`. They are **not joined in SQL** — assembly happens in Rust.
 4. All rows materialize eagerly into `Vec<DbChainRow>` etc. No streaming, no lazy hydration.
-5. `build_chains_from_rows` ([loader.rs:73-190](../../crates/content-engine/src/loader.rs#L73-L190)) groups triggers/conditions/actions by `chain_id`, sorts each group by `sort_order`, converts each row to a typed enum, and **expands multi-trigger chains** by emitting one in-memory `Chain` per trigger row ([loader.rs:147-166](../../crates/content-engine/src/loader.rs#L147-L166)).
-6. A chain with **zero trigger rows** receives a synthetic `OnCustomEvent("__direct_invoke_<id>")` so it stays callable via `on_victory_chains` arrays and `Action::TriggerChain` ([loader.rs:147-149](../../crates/content-engine/src/loader.rs#L147-L149)).
+5. `build_chains_from_rows` ([loader/mod.rs:92](../../crates/content-engine/src/loader/mod.rs#L92)) groups triggers/conditions/actions by `chain_id`, sorts each group by `sort_order`, converts each row to a typed enum, and **expands multi-trigger chains** by emitting one in-memory `Chain` per trigger row.
+6. A chain with **zero trigger rows** receives a synthetic `OnCustomEvent("__direct_invoke_<id>")` so it stays callable via `on_victory_chains` arrays and `Action::TriggerChain` ([loader/mod.rs:166](../../crates/content-engine/src/loader/mod.rs#L166)).
 7. Each `Chain` is registered into `ChainEngine` via `register_chain`, which inserts into `chains_by_trigger: HashMap<TriggerType, Vec<Chain>>` ([chain.rs:58](../../crates/content-engine/src/chain.rs#L58)) and **sorts the bucket descending by priority** ([chain.rs:86](../../crates/content-engine/src/chain.rs#L86)).
 
 **Indexing** is by `TriggerType` discriminant. Within a bucket, evaluation is linear (filter + condition AND). At current seed sizes (low thousands of chains, dozens per trigger type) this is a non-issue. See §11 for scale concerns.
@@ -244,7 +305,8 @@ When a chain action mutates **player** state, persistence is **not** the engine'
 
 | Action | Persistence path |
 |---|---|
-| `AcceptMission`, `CompleteMission`, `AdvanceStep`, `CompleteObjective`, `FailObjective`, `AbandonMission` | Routes through `crate::cell::missions::*` → emits `CellToBaseMsg::MissionUpdate` → BaseApp `UPSERT sgw_mission` at [missions.rs:103-127](../../crates/services/src/base/world_entry/methods/missions.rs#L103-L127) |
+| `AcceptMission`, `CompleteMission`, `AdvanceStep`, `CompleteObjective`, `AbandonMission` | Routes through `crate::cell::missions::*` → emits `CellToBaseMsg::MissionUpdate` → BaseApp `UPSERT sgw_mission` at [missions.rs:103-127](../../crates/services/src/base/world_entry/methods/missions.rs#L103-L127) |
+| `FailObjective` | **Nothing — no executor arm.** The `fail_objective` seed verb loads but the action no-ops. See §3 |
 | `GrantItem`, `RemoveItem` | `CellToBaseMsg::GrantItem` / `RemoveInventoryItem` / `RemoveInventoryItemByType` → BaseApp inventory write |
 | `ChangeStat` | Mutates `CellEntity.stats`; persistence rides existing player save |
 | `IncrementCounter`, `ResetCounter` | **Not persisted.** In-memory `CellEntity.counters` only |
@@ -269,7 +331,7 @@ pub counters: HashMap<String, i32>,
 
 ### Lifecycle
 
-- **Mutation.** `Action::IncrementCounter` and `Action::ResetCounter` mutate `entity.counters` directly at [executor.rs:727-767](../../crates/services/src/cell/content/executor.rs#L727-L767). Increment uses `saturating_add`. Reset *removes* the entry (line 761) — not zeros it.
+- **Mutation.** `Action::IncrementCounter` and `Action::ResetCounter` mutate `entity.counters` directly at [executor/counter.rs:19](../../crates/services/src/cell/content/executor/counter.rs#L19) and [:46](../../crates/services/src/cell/content/executor/counter.rs#L46). Increment uses `saturating_add` ([counter.rs:29](../../crates/services/src/cell/content/executor/counter.rs#L29)). Reset *removes* the entry ([counter.rs:54](../../crates/services/src/cell/content/executor/counter.rs#L54)) — not zeros it.
 - **Read into ctx.** `populate_counters_context` ([mission_context.rs:37-41](../../crates/services/src/cell/content/mission_context.rs#L37-L41)) writes `counter_<name>` into `ExecutionContext.params` for every entry. Called from `populate_mission_context`, so every mission-aware dispatcher gets counters automatically.
 - **Read in chains.** `Condition::Counter` reads `counter_<name>` ([conditions.rs:246-254](../../crates/content-engine/src/conditions.rs#L246-L254)). Missing key → 0. The zero-elision invariant is: **genuinely-zero counters MUST populate explicitly** so `Counter == 0` distinguishes them from "never-incremented." Pinned by `populate_counters_context_writes_counter_keys` at [mission_context.rs:228-251](../../crates/services/src/cell/content/mission_context.rs#L228-L251).
 
@@ -277,7 +339,7 @@ pub counters: HashMap<String, i32>,
 
 `a51a10d` fixed a bug where increment chains (1085, 1086, 1092, 1093) and completion chains (1087, 1094) lived at the same priority on the same `OnEntityDeath` trigger. Equal-priority ordering inside a `chains_by_trigger` bucket is undefined — so a completion chain's `ResetCounter` could fire before the increment chain on the same kill, leaving the next mission with a stale non-zero counter.
 
-The fix bumped increment chains to priority 1; completion chains stay at 0; the bucket sort is descending. **Conditions evaluate before any sibling action in the same trigger pass executes** — so a "kill N" completion chain whose condition reads `counter` sees the **pre-increment** value. Hence the documented `counter >= target - 1` pattern at [executor.rs:735-743](../../crates/services/src/cell/content/executor.rs#L735-L743): the chain fires on the kill that brings the counter to N, not after.
+The fix bumped increment chains to priority 1; completion chains stay at 0; the bucket sort is descending. **Conditions evaluate before any sibling action in the same trigger pass executes** — so a "kill N" completion chain whose condition reads `counter` sees the **pre-increment** value. Hence the documented `counter >= target - 1` pattern at [executor/counter.rs:9-18](../../crates/services/src/cell/content/executor/counter.rs#L9-L18): the chain fires on the kill that brings the counter to N, not after.
 
 ### Limitations
 
@@ -301,10 +363,10 @@ Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs:43-58](
 | **Relog-restore (state)** | — | — | — | `sgw_mission` → `MissionManager` at world-entry; engine plays no part |
 | **Relog-restore (world)** | `OnPlayerLoaded` | `StepStatus eq active` for the active step | `SetInteractionType` (re-paint quest-glow / Ring icons) | none (in-memory only — interaction flags don't persist on the entity) |
 
-Worked example chains in [chain_replay_tests.rs](../../crates/services/src/cell/content/chain_replay_tests.rs):
+Worked example chains in [chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/):
 
 - **Mission 622 "Arm Yourself"** — chains 1001 (region-accept), 1003 (dialog-complete + reward).
-- **Mission 638 "Prisoner 329"** — chains 1011/1012 (archetype-routed dialog) — pinned by `assert_region_enter_resolves_dialog_set` ([chain_replay_tests.rs:356-509](../../crates/services/src/cell/content/chain_replay_tests.rs#L356-L509)).
+- **Mission 638 "Prisoner 329"** — chains 1011/1012 (archetype-routed dialog) — pinned by `assert_region_enter_resolves_dialog_set` ([chain_replay_tests/mission_638.rs](../../crates/services/src/cell/content/chain_replay_tests/mission_638.rs)).
 - **Mission 681 "Mess Hall"** — chains 1085/1086 (increment counter on each guard), 1087 (complete on threshold).
 - **Health Slappack consumable** — chain 4001 (`OnItemUse(2893)` + `StatBelowMax 7` → `ChangeStat amount=500` + `RemoveItem 2893`).
 
@@ -329,25 +391,35 @@ Worked example chains in [chain_replay_tests.rs](../../crates/services/src/cell/
 
 ## 10. Failure modes and observability
 
-| Failure | Surfaces as | Site |
-|---|---|---|
-| Unknown DB `event_type`/`condition_type`/`action_type` | `warn!` at [loader.rs:114-127](../../crates/content-engine/src/loader.rs#L114-L127); row dropped silently from the chain (chain still loads, just missing that piece) |
-| All trigger rows fail to convert | `warn!` + chain skipped ([loader.rs:168-174](../../crates/content-engine/src/loader.rs#L168-L174)) |
-| `change_stat.amount` out of i32 range | `warn!` + entire action dropped ([loader.rs:467-474](../../crates/content-engine/src/loader.rs#L467-L474)) |
+| Failure | Surfaces as (and where) |
+|---|---|
+| Unknown DB `event_type`/`condition_type`/`action_type` | `warn!` at [loader/mod.rs:131](../../crates/content-engine/src/loader/mod.rs#L131) and [:142](../../crates/content-engine/src/loader/mod.rs#L142); row dropped silently from the chain (chain still loads, just missing that piece) |
+| All trigger rows fail to convert | `warn!` + chain skipped ([loader/mod.rs:186](../../crates/content-engine/src/loader/mod.rs#L186)) |
+| `change_stat.amount` out of i32 range | `warn!` + entire action dropped ([loader/action.rs:285-299](../../crates/content-engine/src/loader/action.rs#L285-L299)) |
 | Missing condition param (e.g. `mission_*_status` not populated) | Silent fall-through to evaluator default (`unwrap_or("not_active")`); chain may match or miss unexpectedly |
 | Missing populator for `StatBelowMax` | **Fail-closed**: returns `false` ([conditions.rs:260-267](../../crates/content-engine/src/conditions.rs#L260-L267)). Deliberate. |
 | Trigger filter mismatch | `trace!` at [chain.rs:144-150](../../crates/content-engine/src/chain.rs#L144-L150) — only visible at trace level |
 | Condition fails | `trace!` at [chain.rs:163-169](../../crates/content-engine/src/chain.rs#L163-L169) |
 | Action `Error` result | `warn!` at [chain.rs:201-209](../../crates/content-engine/src/chain.rs#L201-L209) |
-| `RemoveItem` channel send fails | `error!` at [executor.rs:466-471](../../crates/services/src/cell/content/executor.rs#L466-L471) — explicitly loud because mission progress depends on the consume |
-| `ChangeStat` source entity missing | `warn!` at [executor.rs:550-556](../../crates/services/src/cell/content/executor.rs#L550-L556) |
+| `RemoveItem` channel send fails | `error!` at [executor/inventory.rs:226](../../crates/services/src/cell/content/executor/inventory.rs#L226) — explicitly loud because mission progress depends on the consume |
+| `ChangeStat` source entity missing | `warn!` at [executor/stats.rs:37](../../crates/services/src/cell/content/executor/stats.rs#L37) |
 | Empty engine on startup | `warn!` ("No DB pool available") or `error!` ("Failed to load") at [engine_loader.rs:33-41](../../crates/services/src/cell/content/engine_loader.rs#L33-L41) — server runs without content |
 
-The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` site in [event_dispatch.rs](../../crates/services/src/cell/content/event_dispatch.rs) are the production observability story. Every action execution emits an `info!` with `chain_id`, the action params, and entity. Tracing-grep for `Content:` to scope to executor activity.
+The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` site in [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/) are the production observability story. Every action execution emits an `info!` with `chain_id`, the action params, and entity. Tracing-grep for `Content:` to scope to executor activity.
 
 ### Defined-but-unhandled actions
 
-`ApplyEffect`, `RemoveEffect`, `StartTimer`, `CancelTimer`, `RollLootTable`, `SpawnEntity`, `GrantXP` — the loader accepts them ([loader.rs:488-493](../../crates/content-engine/src/loader.rs#L488-L493) for the effect pair) and the engine resolves them, but `executor.rs` has no match arm. They fall through to a `debug!("Unhandled action: ...")` and silently no-op. The biggest functional impact: **no chain can grant XP, apply a buff, or schedule a timer today.** See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
+Seventeen `Action` variants have **no match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs)** and fall through to the `debug!` catch-all at [mod.rs:411-413](../../crates/services/src/cell/content/executor/mod.rs#L411-L413):
+
+`GrantXP`, `ApplyEffect`, `RemoveEffect`, `SpawnEntity`, `DespawnEntity`, `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`, `QrCombatDamage`, `FailObjective`, `MoveEntity`, `LaunchAbility`.
+
+Six of those **are authorable from seed data and are used today** — `move_entity` (5 rows), `launch_ability` (3), `qr_combat_damage` (2), `apply_effect` (1), `remove_effect` (1), `fail_objective` (1). Those 13 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
+
+Two more arms exist but are log-only: `SystemMessage` (11 seeded rows — wire format unknown, see below) and `SendMessage` (no seed verb).
+
+Biggest functional impacts: **no chain can grant XP, apply a buff, schedule a timer, deal scripted damage, fire a scripted ability, or move an entity today.** See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
+
+**`SystemMessage` wire format is still unresolved** (issue #268). The arm at [executor/mod.rs:275-287](../../crates/services/src/cell/content/executor/mod.rs#L275-L287) carries the reasoning: an earlier implementation routed the message id through `onPlayerCommunication` (method 28), which produced garbled `"[] says"` chat spam and client freezes, so it was reduced to an `info!`. Finding the correct client method for localized string-id display (possibly `onErrorCode` or a UI-specific method) still needs RE.
 
 ---
 
@@ -369,9 +441,9 @@ The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` si
 
 ## 12. Test infrastructure
 
-### `chain_replay_tests.rs` — live-DB regression guards
+### `chain_replay_tests/` — live-DB regression guards
 
-[chain_replay_tests.rs](../../crates/services/src/cell/content/chain_replay_tests.rs) loads a specific chain ID from the live seeded DB through the same `build_chains_from_rows` pipeline as production, registers it in a fresh `ChainEngine`, and fires synthetic `TriggerEvent`s with hand-seeded `ExecutionContext`s. Skips cleanly when `DATABASE_URL` is unset via `require_db_or_skip!`.
+[chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/) loads a specific chain ID from the live seeded DB through the same `build_chains_from_rows` pipeline as production, registers it in a fresh `ChainEngine`, and fires synthetic `TriggerEvent`s with hand-seeded `ExecutionContext`s. Skips cleanly when `DATABASE_URL` is unset via `require_db_or_skip!`.
 
 What it pins:
 - mission-status gate semantics (chain 3026 — eq/active/completed leaves; lines 31-163)
@@ -394,7 +466,7 @@ What it misses: cross-file inconsistency (different worlds may legitimately use 
 
 ### Loader unit tests
 
-[loader.rs:660-1050](../../crates/content-engine/src/loader.rs#L660-L1050) — pure-Rust unit tests for every converter (every trigger / condition / action variant including `change_stat`, `move_waypoint`, `set_active_slot`, multi-trigger expansion, parse_step_status three-state coverage). No DB required.
+[loader/tests/](../../crates/content-engine/src/loader/tests/) — pure-Rust unit tests for every converter, split into `trigger_conversion.rs`, `condition_conversion.rs`, `action_conversion.rs`, and `chain_loading.rs` (every trigger / condition / action variant including `change_stat`, `move_waypoint`, `set_active_slot`, multi-trigger expansion, parse_step_status three-state coverage). No DB required.
 
 ### Coverage gaps
 

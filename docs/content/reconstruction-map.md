@@ -2,7 +2,7 @@
 title: "Reconstruction Map"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Reconstruction Map
@@ -12,7 +12,7 @@ never built and requires new assets or code.
 
 > **Last updated**: 2026-03-01
 > **Scope**: All gameplay content and server systems in the Cimmeria emulator
-> **Sources**: `db/resources.sql`, `db/sgw.sql`, `python/`, `entities/`, `data/`, `config/`
+> **Sources**: `db/resources/`, `db/sgw/`, `deprecated/python/`, `entities/`, `data/`, `config/`
 > **Related documents**:
 > - [Content Inventory](content-inventory.md) -- raw counts and distributions
 > - [Zone Audit](zone-audit.md) -- per-zone completeness scorecards
@@ -332,8 +332,17 @@ Damage pipeline (base -> resist -> QR -> AF -> absorb) is implemented. 4 effect 
 use `qrCombatDamage()`. Effect NVP values: HealthDamage 8-25, FocusDamage 80-250.
 
 **What is missing:** Base attribute -> QR modifier formulas, armor mitigation, resistance
-per damage type, level-based ability scaling, AoE/cone targeting (only single-target
-works), channeled abilities, diminishing returns, cover system modifiers.
+per damage type, level-based ability scaling, diminishing returns, cover system modifiers.
+
+**Since landed** (this section previously listed these as missing): cone/AoE targeting is
+implemented at [crates/services/src/cell/abilities/cone_aoe/](../../crates/services/src/cell/abilities/cone_aoe/)
+(geometry, fan-out, flag categories, tests), and channeled abilities are driven by the
+`is_channeled` / `pulse_count` columns through
+[cell/effects/pulsing/](../../crates/services/src/cell/effects/pulsing/). Nine effect
+scripts are registered in
+[cell/effects/registry.rs](../../crates/services/src/cell/effects/registry.rs) —
+`HealHealth`, `HealFocus`, `MeleeDamage`, `MeleePhysicalDamage`, `AbsorbShield`, `Stun`,
+`Suppression`, `RangedPhysicalDamage`, `RangedEnergyDamage`.
 
 **Approach:** Start with linear scaling (stat * coefficient) and iterate. Use existing NVP
 values as baselines. Test with Soldier/Commando. RE docs cover wire format but not

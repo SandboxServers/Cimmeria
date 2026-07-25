@@ -2,12 +2,21 @@
 title: "Game Content Data Audit"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Game Content Data Audit
 
-> **Last updated**: 2026-05-27
+> **Last updated**: 2026-07-25
+>
+> **Path note (2026-07-25).** Several documents in this directory were written
+> when the legacy Python server lived at `python/` and the content dump was a
+> single `db/resources.sql`. Both moved: the legacy Python reference
+> implementation is now under **`deprecated/python/`**, and the content data is a
+> per-system tree under **`db/resources/<System>/{Tables,Seed}/`**. Inline
+> `python/…` paths in the documents below should be read with the
+> `deprecated/` prefix. The live runtime is the Rust content engine — see
+> [content-engine.md](content-engine.md).
 
 A content-level audit of all game data populating the Stargate Worlds server emulator. While the [gap analysis](../gap-analysis.md) catalogued 369 features across 38 systems, this audit maps what *content* actually exists: which zones are playable, where mission chains terminate, how NPCs connect to dialogs connect to missions, and where the original developers ran out of time.
 
@@ -15,7 +24,7 @@ A content-level audit of all game data populating the Stargate Worlds server emu
 
 1. **The game was in mid-development** — massive content authoring (6K items, 5K dialogs, 3K effects, 1K missions) but minimal systems wiring
 2. **Only 2 of 24 zones are playable** — Castle_CellBlock (Praxis tutorial) and SGC_W1 (SGU tutorial)
-3. **Only 1.5% of missions have scripts** — 16 of 1,041 missions are functional
+3. **Only 1.5% of missions have scripts** — 16 of 1,040 missions are functional
 4. **Only 2 of 8 archetypes are implemented** — Soldier and Commando have ability trees; 6 others are placeholders
 5. **90% of items are orphaned** — not referenced by any loot table, vendor, reward, or crafting system
 6. **Zero missions have XP or currency rewards** — all reward_xp and reward_naq fields are 0
@@ -59,7 +68,7 @@ Plus 67 DB-only worlds (not in spaces.xml) including 27 planned game zones, 25 M
 
 | Content Type | Total | Connected | Orphaned | % Connected |
 |---|---|---|---|---|
-| Missions | 1,041 | 16 (scripted) | 1,025 | 1.5% |
+| Missions | 1,040 | 16 (scripted) | 1,024 | 1.5% |
 | Items | 6,060 | 595 | 5,465 | 9.8% |
 | Abilities | 1,887 | ~172 | ~1,715 | 9.1% |
 | Effects | 3,217 | 4 (scripted) | 3,213 | 0.12% |

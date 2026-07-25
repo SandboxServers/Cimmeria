@@ -2,14 +2,14 @@
 title: "Archetype Content Availability Map"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Archetype Content Availability Map
 
 Per-archetype analysis of what content exists, what is placeholder, and what is missing
 entirely in the Cimmeria server emulator. Based on cross-referencing the resource database
-(`db/resources.sql`), Python game logic (`python/`), and entity definitions.
+(`db/resources/`), legacy Python game logic (`deprecated/python/`), and entity definitions.
 
 ---
 

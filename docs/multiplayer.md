@@ -2,7 +2,7 @@
 title: "Multiplayer / LAN Setup"
 type: how-to
 audience: operators, players
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Multiplayer / LAN Setup
@@ -54,5 +54,16 @@ Full multiplayer session verified with a remote client:
 | Port  | Protocol | Service              | Notes                              |
 |-------|----------|----------------------|------------------------------------|
 | 8081  | TCP/HTTP | Auth (SOAP login)    | Phases 1 & 2                       |
+| 13443 | TCP/HTTPS| Auth (SOAP over TLS) | Optional — see below               |
 | 32832 | UDP      | BaseApp (Mercury)    | Phases 3-5, gameplay               |
 | 8443  | TCP/HTTP | Admin API            | Dashboard / REST / WebSocket (opt) |
+
+Defaults come from `ServerConfig` ([crates/common/src/config.rs](../crates/common/src/config.rs) L127-143).
+
+## Optional: TLS on the auth listener
+
+The auth service can serve the same SOAP router over HTTPS on `auth_tls_port` (default **13443**) alongside the plaintext listener. It only starts when **both** `auth_tls_cert_path` and `auth_tls_key_path` are set; otherwise the server stays HTTP-only, which is the default.
+
+A background watcher polls the cert and key mtimes every `auth_tls_reload_interval_secs` and hot-swaps the live `rustls::ServerConfig` when they change. The swap happens only after a *successful* rebuild, so a half-written cert file mid-renewal leaves the previous config serving and is retried on the next tick.
+
+The stock game client does not use this listener — it is for tooling and proxies in front of the auth endpoint.
