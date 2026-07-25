@@ -5,7 +5,7 @@
 > **Reference source**: `Reference/UE3-2004/Development/Src/` (Editor/, UnrealEd/, Launch/)
 > **Companion docs**: [editor-source-mapping.md](../editor-source-mapping.md) (function-by-function VA→source map), [atrea-editor-bridge.md](../../architecture/atrea-editor-bridge.md) (MCP bridge spec)
 
-This document is the top-level entry point for the in-game UnrealEd editor that ships inside SGW.exe. It supersedes the apocryphal trio (`docs/technical/atrealoader-exe.md`, `docs/technical/atrealoader-config.md`, `docs/technical/atrearl-loader.md`), which describe only the *DLL injector + sniffer* and miss the editor proper.
+This document is the top-level entry point for the in-game UnrealEd editor that ships inside SGW.exe. It is the **editor** counterpart to three companion docs (`docs/technical/atrealoader-exe.md`, `docs/technical/atrealoader-config.md`, `docs/technical/atrearl-loader.md`), which cover the *DLL injector + sniffer*. Those three do not describe the editor — that is their intended scope, not a defect — and they are **not** superseded by this document: each was revised in the same 2026-05-25 campaign (see the table below), each forward-links here, and each solely owns material found nowhere else (the injection shellcode and `InjectionData` struct, `--fix-aslr`, the non-editor patch groups, the 13-symbol hook table, the Winsock IAT hooks, and the pcap writer).
 
 ## TL;DR
 
@@ -356,9 +356,9 @@ The handler thunks at `0x005B6xxx`–`0x005B7xxx` are `__thiscall` thunks; the S
 - **Load:** `MAP LOAD FILE="…"` → `UnEdSrv__HandleMapLoad` @ `0x00EF9780` → flush current world → `LoadPackage` → `CreateWorld` → set `GWorld` → fire `Event_Editor_PostLoadMap` CME event.
 - **File manager:** `FFileManagerWindows` vtable at `0x017F9214` — 20 slots; `vfunc_10` @ `0x004C1E50` is `FindUniqueFilename` (Atrea hook target — generates `<base>0000`, `<base>0001`, … until unused name found).
 
-## Apocryphal docs to retire
+## Companion docs — revised, not retired
 
-The following predate this finding and have been audited against the binary:
+The following predate this finding and have been audited against the binary. All three were **revised** rather than retired; the Action column records exactly what changed in each. They remain the canonical source for the injector/sniffer surface, which this document does not cover.
 
 | Doc | Verdict | Action |
 |---|---|---|
@@ -366,7 +366,7 @@ The following predate this finding and have been audited against the binary:
 | [docs/technical/atrealoader-config.md](../../technical/atrealoader-config.md) | REVISED 2026-05-25 | Patch count corrected (`19` → `18`); `AtreaEditor.bat` `-SHOWLOG` flag removed; `ConsoleStdHandle` analysis redone with correct `STD_OUTPUT_HANDLE = -11` arithmetic; XML-vs-binary-config caveat added; `--fix-aslr` prerequisite warning added; Ghidra-anchored Wave 2 patch table integrated. |
 | [docs/technical/atrearl-loader.md](../../technical/atrearl-loader.md) | REVISED 2026-05-25 | Symbol-hook count corrected (`10` → `13`); sniffer init replaced (`FUN_1002CE00` → `FUN_10026F30`/`FUN_10021FB0` per mercury-wire-format §S9); "Login redirect" claim removed (lives in `Login.lua`); XML-vs-binary-config distinction added; speculative source filenames removed; all internal addresses flagged speculative pending Ghidra re-verification. |
 
-All three miss the editor entirely. The editor archaeology lives here and in [editor-source-mapping.md](../editor-source-mapping.md).
+All three are scoped to the injector and sniffer and do not cover the editor; that is by design, and atrealoader-exe.md:8 disclaims editor scope explicitly. The editor archaeology lives here and in [editor-source-mapping.md](../editor-source-mapping.md).
 
 ## Open follow-ups
 
