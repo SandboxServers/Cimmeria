@@ -588,13 +588,19 @@ Default timeout is 200ms. The initial priority is `0xff` (worst possible), ensur
 
 ---
 
-## Cimmeria's Existing Backup
+## The Deprecated C++ Server's Backup
 
-Cimmeria implements a subset of BigWorld's backup system, focused specifically on preserving entity state during **space transitions** (when an entity teleports from one space/zone to another).
+> [!WARNING]
+> **This section documents `deprecated/cpp/`, not Cimmeria's Rust server.** It was previously
+> titled "Cimmeria's Existing Backup" and read as a description of current behaviour. None of
+> the code below runs. It is retained because it records how the original server handled
+> space transitions, which is useful context if that behaviour ever needs reconstructing.
+
+The C++ server implemented a subset of BigWorld's backup system, focused specifically on preserving entity state during **space transitions** (when an entity teleports from one space/zone to another).
 
 ### Message Protocol
 
-From `base_cell_messages.hpp`:
+From `deprecated/cpp/src/mercury/base_cell_messages.hpp` (message ID re-verified 2026-07-25):
 
 ```cpp
 /*
@@ -612,7 +618,7 @@ CELL_BASE_BACKUP_ENTITY = 0x0A,
 
 ### CellApp Side: Sending Backup
 
-The `sendEntityBackup()` method in `base_client.cpp` serializes the entity's cell state and sends it to the BaseApp:
+The `sendEntityBackup()` method in `deprecated/cpp/src/cellapp/base_client.cpp` serializes the entity's cell state and sends it to the BaseApp:
 
 ```cpp
 void BaseAppClient::sendEntityBackup(CellEntity * entity)
@@ -679,7 +685,7 @@ The backup is sent immediately before the space switch request, ensuring the Bas
 
 ### BaseApp Side: Receiving Backup
 
-The `CellAppConnection::onEntityBackup()` handler in `cell_handler.cpp` unpacks the backup into the entity:
+The `CellAppConnection::onEntityBackup()` handler in `deprecated/cpp/src/baseapp/mercury/cell_handler.cpp` unpacks the backup into the entity:
 
 ```cpp
 void CellAppConnection::onEntityBackup(Reader & msg)
@@ -699,7 +705,7 @@ void CellAppConnection::onEntityBackup(Reader & msg)
 
 ### BaseEntity Backup Storage
 
-From `base_entity.hpp`, the entity stores two byte arrays -- one for C++ cell state and one for Python state:
+From `deprecated/cpp/src/baseapp/entity/base_entity.hpp`, the entity stores two byte arrays -- one for C++ cell state and one for Python state:
 
 ```cpp
 class BaseEntity : public Entity
@@ -745,7 +751,7 @@ The backup is later sent to the target CellApp via `packBackup()` when the entit
 
 ## Gap Analysis
 
-### What Cimmeria Has
+### What the deprecated C++ server had
 
 | Feature | Status | Details |
 |---|---|---|
@@ -755,7 +761,19 @@ The backup is later sent to the target CellApp via `packBackup()` when the entit
 | Backup restore flow | Implemented | `onRestoreEntityRequest()` / `packBackup()` / `RESTORE_ENTITY_ACK` |
 | Backup storage on BaseEntity | Implemented | `backup_` / `pythonBackup_` byte arrays |
 
-### What Cimmeria Is Missing
+### What Cimmeria's Rust server has
+
+None of the above. The entire backup/restore mechanism existed to move entity state across
+the **process boundary** between CellApp and BaseApp. Cimmeria has no such boundary: base
+and cell are modules in one binary exchanging `BaseToCellMsg` / `CellToBaseMsg` over
+`tokio::mpsc`, so an entity changing space is an in-memory operation with no serialization
+step to checkpoint. The problem the C++ backup solved does not arise.
+
+Durability is handled by ordinary `sqlx` writes to PostgreSQL. If the process dies, recovery
+is "restart and reload from the database" — the same model as the C++ server's fallback,
+minus the cross-process snapshot.
+
+### What both are missing (BigWorld features)
 
 | Feature | Status | Impact |
 |---|---|---|
@@ -771,21 +789,32 @@ The backup is later sent to the target CellApp via `packBackup()` when the entit
 
 ### Summary
 
-Cimmeria's backup system is **functionally sufficient for its current single-BaseApp architecture**. The backup/restore mechanism correctly handles the primary use case: preserving entity state when entities move between spaces. The entity's C++ state (position, rotation, velocity, movement metadata) and Python state (via `Entity.backup()`) are serialized, transmitted, and restored correctly.
+The distributed components (`BackupHash`, `BackupHashChain`, `BackupSender`,
+`ReviverSubject`) exist to solve problems that appear only in a multi-process cluster:
+routing an entity's backup to a peer BaseApp, following that routing through cascading
+process deaths, amortising snapshot cost across ticks, and detecting a dead process. Cimmeria
+runs one process. None of those problems exist, and implementing the machinery would add
+failure modes rather than remove them.
 
-The missing distributed components (`BackupHash`, `BackupSender`, `ReviverSubject`) are only needed in a multi-BaseApp deployment where crash recovery is critical. Since Cimmeria currently runs a single BaseApp, there is no second BaseApp to back up to. If a multi-BaseApp deployment becomes a goal, these components would need to be implemented.
+The one BigWorld idea that survives the architecture change is `AutoBackupAndArchive`'s
+`NEXT_ONLY` policy — the notion that game logic can request "persist me now" after a
+significant state change, rather than waiting for a periodic sweep. That is a useful pattern
+independent of clustering, and Cimmeria expresses it directly as an explicit database write
+at the point of the state change.
 
 ### Implementation Priority Recommendations
 
 | Priority | Component | Rationale |
 |---|---|---|
-| **Low** | `BackupHash` / `BackupSender` | Only needed for multi-BaseApp. Single BaseApp has no backup target. |
-| **Low** | `BackupHashChain` | Only relevant after BackupHash is implemented. |
-| **Low** | `ReviverSubject` | Only useful in multi-process deployments with automated recovery. |
-| **Medium** | `AutoBackupAndArchive` | Would enable periodic database saves, useful even for single-BaseApp. |
-| **None** | Existing backup/restore | Already working correctly for space transitions. |
+| **None** | `BackupHash` / `BackupSender` / `BackupHashChain` | Solve multi-BaseApp routing. Cimmeria is one process; there is no peer to route to and no topology to diff. |
+| **None** | `ReviverSubject` | Detects peer-process death. No peers. Process supervision is `crates/supervisor` plus the container runtime. |
+| **None** | C++ space-transition backup | Existed to cross the CellApp↔BaseApp process boundary, which Cimmeria does not have. |
+| **Consider** | `AutoBackupAndArchive` semantics (not the class) | The "persist on significant change" idea is sound. Express it as explicit `sqlx` writes, not a policy enum on an entity. |
 
-The most practical near-term addition would be `AutoBackupAndArchive` to enable periodic database persistence of entity state, even in a single-BaseApp configuration. The full distributed backup system can be deferred until multi-BaseApp support is a concrete goal.
+If multi-process deployment ever becomes a concrete goal, revisit this document — but note
+that the BigWorld source it describes is not available in this checkout, so any
+implementation would be working from this document's prose rather than from the original
+code.
 
 ---
 
