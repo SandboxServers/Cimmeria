@@ -189,12 +189,16 @@ pub mod method_idx {
     pub const ON_BEING_NAME_UPDATE: u16 = 17;
     pub const ON_STATE_FIELD_UPDATE: u16 = 19;
 
-    // SGWCombatant interface (20–26)
+    // SGWCombatant interface (20–25)
     pub const ON_STAT_UPDATE: u16 = 20;
     pub const ON_STAT_BASE_UPDATE: u16 = 21;
     pub const ON_ARCHETYPE_UPDATE: u16 = 23;
     pub const ON_ALIGNMENT_UPDATE: u16 = 24;
     pub const ON_FACTION_UPDATE: u16 = 25;
+
+    // SGWBeing own (26) — not part of the SGWCombatant interface above.
+    // SGWBeing's Implements interfaces flatten first (12–25), then its own
+    // methods begin at 26.
     pub const BEING_APPEARANCE: u16 = 26;
 
     // Communicator interface (27–33)
@@ -218,9 +222,12 @@ pub mod method_idx {
     pub const ON_MAIL_READ: u16 = 78;
     pub const SEND_MAIL_RESULT: u16 = 79;
 
-    // SGWVendorStore interface (80–81)
-    pub const ON_STORE_OPEN: u16 = 80;
-    pub const ON_STORE_UPDATE: u16 = 81;
+    // Missionary interface (80–84) — see
+    // `crate::cell::client_methods::missionary`. 80/81 previously carried
+    // `ON_STORE_OPEN`/`ON_STORE_UPDATE` under a "SGWVendorStore interface"
+    // heading; no such interface exists in `entities/defs/interfaces/`, and
+    // the vendor methods are SGWPlayer's own at 109/110. Anything emitted on
+    // 80/81 lands in the client's mission handlers.
 
     // SGWContactListManager interface (85–89)
     pub const ON_CONTACT_LIST_UPDATE: u16 = 85;
