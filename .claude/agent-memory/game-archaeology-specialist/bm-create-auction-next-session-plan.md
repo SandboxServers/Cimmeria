@@ -1,11 +1,25 @@
 ---
 name: bm-create-auction-next-session-plan
-description: FINAL approved execution plan for createAuction send-path — byte-exact cave layout, sequence, abort gates, rendezvous check; execute on next relaunch
+description: SUPERSEDED 2026-07-25 — do not execute as-is. Wrong bucket slot (claimed static, is hash-derived) AND wrong registration call (FUN_00D6CE00 hardcodes SellItems' C++ template, mis-keys the CME subscription). See bm-create-auction-registration-key-bug.md for the corrected plan.
 metadata:
   type: project
 ---
 
 # BM createAuction — Final Execution Plan (team-lead approved 2026-06-22)
+
+## STATUS: SUPERSEDED 2026-07-25 — DO NOT EXECUTE THIS PLAN AS WRITTEN
+
+A 2026-07-25 read-only Ghidra research pass (triggered by a contradiction between this file and `bm-create-auction-dispatch-diagnosis.md`) re-decompiled the relevant functions from scratch and found this plan is wrong on two independent, binary-confirmed counts:
+
+1. **Step 5's "BMCreateAuction bucket = SLOT 2 (static)" is wrong.** The bucket index is hash-derived at runtime from `[CME_singleton+0x3C]` (mask) and `[CME_singleton+0x40]` (threshold), confirmed by direct decompile of `FUN_00A36F40`. The correct pre-mask hash constant for key `0x01E660B0` is `0x6DF41E32` (independently re-derived), not a fixed slot.
+2. **Step 4's registration call, `FUN_00D6CE00(...)`, is architecturally wrong regardless of the strings passed to it.** Fresh decompiles of `FUN_00D5A230` and `FUN_00D46F70` (both in `FUN_00D6CE00`'s call chain) show they hardcode a `SGWNetworkManager::EventHandler<Event_NetOut_SellItems>` / `CME::EventSignal::MemberCallback<..., Event_NetOut_SellItems>` C++ template instantiation — confirmed via Ghidra's own recovered RTTI/template symbol names. Calling `FUN_00D6CE00` for BMCreateAuction inserts the CME-dispatch subscriber under SellItems' TypeDescriptor bucket, not BMCreateAuction's — the emit-time lookup (keyed on BMCreateAuction's own TypeDescriptor via `FUN_00A372F0`) will never find it. This is a silent correctness bug, not merely a crash risk.
+3. The "BLOCKER" recorded below about `FUN_00C6EA70` throwing on first (empty-slot) registration is also backwards — disassembly-confirmed: it throws on DUPLICATE registration and returns cleanly on a fresh insert. This is moot anyway since `FUN_00C6EA70` doesn't touch the CME dispatch table at all (it registers into an unrelated per-entity-desc RPC map).
+
+**Use `bm-create-auction-registration-key-bug.md` instead** — its manual-callback_obj + direct `FUN_00A37790` approach (with a synthetic vtable[2] returning BMCreateAuction's own TypeDescriptor `0x01E660B0`) is the architecturally correct path, now re-confirmed. The corrected rendezvous-check arithmetic is also in that file.
+
+---
+
+## ORIGINAL PLAN BELOW (kept for archaeological record — do not follow as-is)
 
 ## Status
 Client: DEAD (crash #9 — msvcr80!terminate from raw C-string vs SSO mismatch). PID 173976 unrecoverable.

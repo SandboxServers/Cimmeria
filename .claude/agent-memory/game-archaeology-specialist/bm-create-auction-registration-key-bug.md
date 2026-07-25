@@ -1,21 +1,26 @@
 ---
 name: bm-create-auction-registration-key-bug
-description: FUN_00D46F70 hardcodes SellItems vtable — raised as mismatch concern; team-lead SUPERSEDED with FUN_00D6CE00 + SSO structs as the approved registration path
+description: FUN_00D46F70 hardcodes SellItems vtable — CONFIRMED CORRECT 2026-07-25 via fresh Ghidra decompile; this is the approved registration path (manual callback_obj + direct FUN_00A37790), NOT FUN_00D6CE00
 metadata:
   type: project
 ---
 
-# BM createAuction — Registration Key Mismatch Analysis (2026-06-22)
+# BM createAuction — Registration Key Mismatch Analysis (2026-06-22, RE-CONFIRMED 2026-07-25)
 
-## STATUS: SUPERSEDED by team-lead authorization
+## STATUS: UN-SUPERSEDED — this file's diagnosis is CORRECT, confirmed by independent Ghidra re-verification
 
-The manual-callback_obj approach proposed here was OVERRIDDEN by the team-lead. The APPROVED registration path is:
+A prior team-lead override adopted `FUN_00D6CE00` + SSO structs as the "approved" registration path (see the superseded note that used to be here, and `bm-create-auction-dispatch-diagnosis.md`'s "FINAL LOCKED PLAN"/"FINAL ARCHITECTURE" sections). **That override was based on a misunderstanding and is wrong.** A 2026-07-25 read-only Ghidra research pass (triggered by a genuine contradiction between this file and `bm-create-auction-next-session-plan.md`) re-decompiled the entire chain from scratch and confirmed:
 
-**`FUN_00D6CE00(ECX=[0x01EF2264], &SSO_SGWPlayer, 2, &SSO_BMCreateAuction)`**
+- `FUN_00D5A230` (called by `FUN_00D6CE00`) hardcodes `*this = SGWNetworkManager::EventHandler<class_Event_NetOut_SellItems>::vftable` directly in its own body, unconditionally, regardless of what entity/method strings are passed to `FUN_00D6CE00`.
+- `FUN_00D46F70` (reached via `FUN_00D4EBC0`) hardcodes `*this = CME::EventSignal::MemberCallback<NoSubject, EventHandler<Event_NetOut_SellItems>, ..., Event_NetOut_SellItems>::vftable` — confirmed via Ghidra's own recovered RTTI/template symbol names, not inferred from offsets.
+- `FUN_00A37790` derives its CME-table hash key by calling `callback_obj->vtable[2]()` — for the SellItems-templated object this returns SellItems' TypeDescriptor, never BMCreateAuction's (`0x01E660B0`).
+- `FUN_00A372F0` (the emit-time dispatcher) hashes on the literal `type_info*` the caller passes in (BMCreateAuction's, from the thunk) — a different address, different bucket.
 
-Called from a main-thread tick one-shot (NOT from Lua). SSO structs baked into fixed cave. After return, rendezvous check verifies subscriber is present at BMCreateAuction bucket before trigger. See approved spec details in `bm-create-auction-dispatch-diagnosis.md`.
+**Conclusion: `FUN_00D6CE00` is fundamentally a SellItems-specific thin wrapper (one of many near-identical `FUN_00D5Axxx`/`FUN_00D6Cxxx` template instantiations SGWNetworkManager's mega-registrar uses, one per NetOut method). There is no dedicated wrapper for BMCreateAuction/BMSearch in the shipped binary — none was ever registered by the native init.** Calling `FUN_00D6CE00("SGWPlayer", 2, "BMCreateAuction")` resolves the correct entity_desc/method_node (so the *unrelated* per-entity RPC map that `FUN_00C6EA70` populates gets the right wire index) but inserts the CME-dispatch subscriber under SellItems' bucket — a silent, non-crashing correctness bug, not just a crash risk. `FUN_00D6CE00` (and everything downstream of it — `FUN_00D5A230`, `FUN_00D4EBC0`, `FUN_00D46F70`, `FUN_00C6EA70`) must NOT be used for the CME-table subscription. The manual-callback_obj approach below is the only viable path given the binary's actual structure.
 
-The FUN_00D46F70 finding below is still archaeologically correct — but the team-lead has accepted FUN_00D6CE00 as the correct single-call wrapper that handles all of this internally with the right RTTI.
+**Also corrected 2026-07-25**: the rendezvous-check "SLOT 2 (static)" claim in this file (below) is WRONG — the bucket index is hash-derived at runtime. See `bm-create-auction-dispatch-diagnosis.md`'s "EMULATOR-DERIVED FINAL VALUES" section (hash constant `0x6DF41E32`, confirmed independently by direct decompile of `FUN_00A36F40` + Python re-derivation) and `[[bm-fork-b-session-crash-notes]]`-adjacent notes for the full arithmetic. Use `bucket_slot = 0x6DF41E32 & [CME_singleton+0x3C]`, wrap-adjusted if `[CME_singleton+0x40] <= slot`, HEAD at `[CME_singleton+0x30] + slot*4`.
+
+The `FUN_00D46F70` finding below remains archaeologically correct as originally written.
 
 ---
 
@@ -121,14 +126,18 @@ Total bytes used: 0x78 + 27 = 0x93 = 147 bytes. Fits in 208 comfortably.
 
 ## Rendezvous check (required before trigger)
 
+**CORRECTED 2026-07-25 — the slot below is NOT static; recompute at runtime:**
+
 After Phase 2 one-shot fires:
 - Read `CME_singleton = [0x01EE2678]`
-- Read `bucket_base = [CME_singleton + 0x30]`
-- Bucket slot for BMCreateAuction = SLOT 2 (static: `0x01E660B0 XOR 0xDEADBEEF = 0xDF4BDE5F` → hash → slot 2)
-- Read `bucket_head = [bucket_base + 8]`
-- ABORT if `bucket_head == 0` or `bucket_head == 0xFFFFFFFF`
+- Compute `pre_mask = 0x6DF41E32` (confirmed Park-Miller hash of `0x01E660B0 XOR 0xDEADBEEF`, independently re-derived 2026-07-25 — see `bm-create-auction-dispatch-diagnosis.md`)
+- `mask = [CME_singleton + 0x3C]`; `slot = pre_mask & mask`
+- `threshold = [CME_singleton + 0x40]`; if `threshold <= slot`: `slot += (-1 - (mask >> 1))`
+- `bucket_base = [CME_singleton + 0x30]`
+- `bucket_head = [bucket_base + slot*4]`
+- ABORT if `bucket_head == 0` or `bucket_head == 0xFFFFFFFF` or `bucket_head == [CME_singleton+0x24]` (still the sentinel = registration wrote nothing)
 
-**Why:** Confirms `FUN_00A37790` inserted under `0x01E660B0` key (the key our dispatch thunk uses). This is the "one link not yet proven" the team-lead flagged.
+**Why:** Confirms `FUN_00A37790` inserted under the `0x01E660B0` (BMCreateAuction) key — this requires the manual-callback_obj path with a synthetic vtable[2] returning `0x01E660B0`, NOT `FUN_00D6CE00` (which would insert under SellItems' key instead, landing in a different bucket entirely).
 
 ## Session state (2026-06-22 end)
 

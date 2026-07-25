@@ -1,11 +1,33 @@
 ---
 name: bm-create-auction-dispatch-diagnosis
-description: createAuction FUN_00A372F0 architecture — vtable-hash CME dispatch table, why thunk-to-A372F0 crashes, reconstruction verdict (2026-06-22)
+description: createAuction FUN_00A372F0 architecture — vtable-hash CME dispatch table; RE-VERIFIED 2026-07-25. Hash constant/stride/hash-derived-slot in this file's own final section are correct; the "FUN_00D6CE00 direct" plan in the middle sections is WRONG (mis-keys under SellItems) — use bm-create-auction-registration-key-bug.md's manual-callback_obj plan instead
 metadata:
   type: project
 ---
 
 # BM createAuction — FUN_00A372F0 Dispatch Architecture & Crash Diagnosis (2026-06-22)
+
+## CORRECTION 2026-07-25 (read-only Ghidra re-verification, triggered by a contradiction with bm-create-auction-next-session-plan.md)
+
+This file's own final section ("EMULATOR-DERIVED FINAL VALUES", "BUCKET PRE-INIT — FINAL V2", "DO NOT USE (wrong values, archived)" near the end) is CORRECT and re-confirmed independently: hash constant `0x6DF41E32` (re-derived in Python matching `FUN_00A36F40`'s exact ldiv/imul arithmetic), bucket stride ×4, bucket index is hash-derived at runtime (not static). Keep using those values.
+
+**However, specific sections that call `FUN_00D6CE00` (or its equally-broken `FUN_00D5A230` tail-call variant) are WRONG and must not be executed — each is marked inline with a RETRACTED banner: "REVISED CAVE PLAN: call FUN_00D6CE00 directly" (~line 594), "RECOMMENDED APPROACH: Bypass both throwing functions, call FUN_00C6EA70 directly" (~line 641, still routes through `FUN_00D5A230`), and the "Finalized recon-first plan" Phase 2 tail inside "FINAL ARCHITECTURE — vtable redirect IS required" (~line 822).** Fresh decompiles of `FUN_00D5A230` and `FUN_00D46F70` (in `FUN_00D6CE00`'s call chain) show both hardcode a C++ template instantiated specifically for `Event_NetOut_SellItems` (confirmed via Ghidra's recovered RTTI/template symbol names, e.g. `CME::EventSignal::MemberCallback<..., Event_NetOut_SellItems>::vftable`). Calling `FUN_00D6CE00` for BMCreateAuction will resolve the correct entity_desc/method_node but insert the CME-table subscriber under SellItems' TypeDescriptor bucket, not BMCreateAuction's (`0x01E660B0`) — the emit-time dispatch (`FUN_00A372F0`, hashing on the literal TypeDescriptor the thunk passes) will never find it. This is a silent mis-registration, not just a crash risk.
+
+**Correction to my own first-pass note**: "FINAL ARCHITECTURE — vtable redirect IS required" (~line 822) and "FINAL LOCKED PLAN — OPTION B SYNTHESIZE (team-lead locked)" (~line 994) are NOT both wrong — re-reading the latter in full confirms it never calls `FUN_00D6CE00`; it builds a manual `callback_obj`/`fake_vtable` and calls `FUN_00A37790` directly, which is the architecturally correct approach. Only "FINAL ARCHITECTURE"'s own Phase-2 execution tail (not its vtable-redirect diagnosis) needed retracting. See the inline banner at each heading for the precise scope of what's kept vs. struck.
+
+Also corrected: the "BLOCKER" claim (elsewhere in this file and in bm-create-auction-next-session-plan.md) that `FUN_00C6EA70` throws on a first/empty-slot registration is backwards — disassembly-confirmed (not just decompiler pseudocode, ruling out a condition-flip artifact): it throws on DUPLICATE registration (`"...because a handler was already registered for it."`) and returns cleanly on a fresh insert. This is moot regardless, since `FUN_00C6EA70` registers into an unrelated per-entity-desc RPC map (keyed by ushort at entity_desc+0x1e), not the CME dispatch table — it has no call to `FUN_00A37790` anywhere in its body.
+
+**The correct plan going forward is the manual-callback_obj approach in `bm-create-auction-registration-key-bug.md`** (synthetic vtable with slot[2] returning BMCreateAuction's own TypeDescriptor, calling `FUN_00A37790` directly — bypassing `FUN_00D6CE00`/`FUN_00D5A230`/`FUN_00D4EBC0`/`FUN_00D46F70`/`FUN_00C6EA70` entirely for the CME subscription), combined with this file's confirmed hash constant/stride/rendezvous-check math.
+
+**UNCONFIRMED (explicitly, not carried forward as fact)**:
+1. Whether the CME hash buckets genuinely need manual pre-seeding (raw `0xFFFFFFFF` sentinels) or whether `FUN_00A38ED0`'s built-in grow/rehash path already keeps them valid. The archived crash symptom's fault address (0xFFFFFFFF) doesn't cleanly match the actual dereference shape in `FUN_00A38ED0`'s decompile — a `MOV EAX,[EDI+0x4]` fault with `EDI=0xFFFFFFFF` would fault near address `0x3`, not `0xFFFFFFFF`. The prior "must pre-init buckets" conclusion doesn't follow from its own cited evidence. Needs a live read of `[CME_singleton+0x30]`/`[+0x3C]`/`[+0x40]` next session before assuming pre-init is required.
+2. Whether `FUN_00C6EA70`'s per-entity RPC map registration is a separate, independently-required prerequisite for the wire-send path (`FUN_00C6FC40`) to actually transmit, regardless of the CME-subscription fix above. Not traced this pass — this is a real gap in the corrected plan, not a settled detail.
+
+**Not re-verified this pass**: `bm-create-auction-send-wiring.md`'s claims (entity-guard NOP at `0x00E599A8`; native `FUN_00E5C420`/`FUN_00E5C320` deferred-queue bug) were not touched by this research pass and retain their prior confidence level — they neither gained nor lost evidence here.
+
+**Toolchain note**: x64dbg was upgraded during this investigation (plugin v0.8.0-ghost_fungus, client 0.9.0) and the prior live client process was terminated as part of that upgrade — any future live session starts from a fresh launch, not a resumed one. The upgrade adds programmatic log capture, which should materially improve the non-freezing-breakpoint workflow (see `feedback-x64dbg-session-liveness-check.md`) — worth using next session instead of the ad-hoc BP-hit-counting from these archived sessions.
+
+---
 
 ## Session objective
 Diff BMSearch vs createAuction at FUN_00A372F0 to find why createAuction doesn't transmit.
@@ -579,6 +601,8 @@ Mitigation: set one_shot_flag AFTER successful return, not before, so a failed i
 
 ### REVISED CAVE PLAN: call FUN_00D6CE00 directly (single call, all resolution internal)
 
+> **RETRACTED 2026-07-25.** `FUN_00D6CE00`'s internals (`FUN_00D5A230`, then `FUN_00D46F70`) hardcode a C++ template instantiated for `Event_NetOut_SellItems` — confirmed via Ghidra's own recovered RTTI/template symbol names. This registers the CME subscriber under SellItems' TypeDescriptor, not BMCreateAuction's, no matter what strings you pass in. Do not use this plan, or the identical "throw-safe" variant further down that also calls `FUN_00D6CE00` with corrected SSO structs. The surviving, confirmed-correct plan is the manual `callback_obj` + direct `FUN_00A37790` approach in the "FINAL LOCKED PLAN — OPTION B SYNTHESIZE" section below (kept and re-confirmed) and in `bm-create-auction-registration-key-bug.md`.
+
 Old plan: fake_eh + manual entity_desc/method_node resolution + A37790 + A372F0 (7 ops, ~200 bytes)
 New plan: one call to `FUN_00D6CE00(mercury_channel, "SGWPlayer", 2, "BMCreateAuction")` (~30 bytes + 2 strings)
 
@@ -625,6 +649,8 @@ Additionally: the cave had a string/thunk overlap bug (thunk at +0x1E overlapped
 "BMCreateAuction\0" which needs 16 bytes from +0x10 to +0x1F; thunk must start at +0x20 = 0x01674440).
 
 ### RECOMMENDED APPROACH: Bypass both throwing functions, call FUN_00C6EA70 directly
+
+> **RETRACTED 2026-07-25.** This still routes through `FUN_00D5A230` (see the "Registration calls" list below, which explicitly calls it) — the function confirmed to hardcode `EventHandler<Event_NetOut_SellItems>`'s vtable regardless of arguments. Bypassing `FUN_00D6CE00`'s outer wrapper doesn't help; the hardcoding is inside `FUN_00D5A230` itself. Also, `FUN_00C6EA70` is not part of the CME dispatch registration at all — it populates a separate per-entity-desc RPC map, confirmed by decompile (no call to `FUN_00A37790` anywhere in its body). Use the manual `callback_obj` + direct `FUN_00A37790` plan instead (see "FINAL LOCKED PLAN — OPTION B SYNTHESIZE" below and `bm-create-auction-registration-key-bug.md`).
 
 FUN_00D6CE00 decompile:
 ```c
@@ -807,6 +833,8 @@ RET
 
 ## FINAL ARCHITECTURE — vtable redirect IS required (2026-06-22, static-pass-3)
 
+> **PARTIALLY RETRACTED 2026-07-25.** The diagnosis in this section (native `FUN_00E5C420` vtable[2] is a shelved deferred-queue path that never calls `FUN_00A372F0`; a vtable redirect to a thunk is required) remains CORRECT and is independently consistent with `bm-create-auction-send-wiring.md`. But this section's own "Finalized recon-first plan" (Phase 2 below) calls `FUN_00D6CE00` — that part is RETRACTED for the same reason as above (SellItems hardcoding). Use the manual `callback_obj` registration from "FINAL LOCKED PLAN — OPTION B SYNTHESIZE" further down for Phase 2 instead; keep this section's vtable-redirect thunk design (dispatch tail-calling `FUN_00A372F0`) — that part is unaffected by the registration-path bug.
+
 ### FUN_00E5C420 (native BMCreateAuction vtable[2]) — SHELVED, never dispatches
 
 FUN_00E5C420 → FUN_00E5C320:
@@ -978,6 +1006,8 @@ C1 E0 02           SHL EAX, 2               ; slot * 4 (byte offset)
 - "SLOT 2 (static)" claim → WRONG (slot varies with runtime mask; no static slot)
 
 ## FINAL LOCKED PLAN — OPTION B SYNTHESIZE (team-lead locked, 2026-06-22)
+
+> **CONFIRMED CORRECT 2026-07-25.** This is the surviving plan — it never calls `FUN_00D6CE00`; it builds `fake_vtable`/`callback_obj`/`fake_eh` manually in the cave (slot[2] returns BMCreateAuction's own TypeDescriptor `0x01E660B0`) and calls `FUN_00A37790` directly (Phase 6 below). This is the same architecture as `bm-create-auction-registration-key-bug.md`'s manual-callback_obj approach, now independently re-confirmed. Use this plan (combined with the hash-constant/stride math confirmed in "EMULATOR-DERIVED FINAL VALUES" further below) for the next session, not the earlier `FUN_00D6CE00`-based sections above (all marked RETRACTED).
 
 ### Two questions resolved by team-lead static analysis
 
