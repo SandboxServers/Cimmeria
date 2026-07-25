@@ -19,4 +19,6 @@ New-Item -ItemType Junction -Path "<worktree>/external" -Target "C:/Users/Steve/
 
 Then `cd` into the worktree for all bash/cargo commands. The worktree has independent HEAD + index + working tree, immune to checkouts in the main checkout.
 
+**Symptom of a forgotten `external/` junction:** the build dies in `cc-rs` while building `cimmeria-entity`, with nothing in the error mentioning `external/` — `fatal error C1083: Cannot open include file: 'DetourNavMesh.h'`, repeated once per Detour source file. If you see Detour/Recast compile errors in a fresh worktree, you're missing the junction, not the toolchain.
+
 Cleanup when the PR merges: `git worktree remove <path>`. The worktree pattern is already used heavily in this repo (see `git worktree list` — 30+ active worktrees for parallel feature branches).
