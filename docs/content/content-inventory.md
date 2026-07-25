@@ -1030,13 +1030,16 @@ All counts in this document were derived from:
 
 1. **Database queries** against the schema defined under `db/resources/*/Tables/` — this is the
    primary source for all content counts
-2. **Python script inventory** from `python/` — cross-referenced with DB entries for
+2. **Python script inventory** from `deprecated/python/` — the legacy reference
+   implementation, not the running Rust server; cross-referenced with DB entries for
    scripted content percentages
 3. **Entity definitions** from `entities/` (XML) — used for entity template and space
    configuration counts
 4. **Client data references** from `data/cache/*.pak` — used for mesh and visual asset
    counts (lower confidence)
-5. **Configuration files** from `config/` — used for server-side space and world counts
+5. **Configuration files** from the legacy service configs now at
+   `deprecated/cpp-config/config/` — used for server-side space and world counts. The
+   repo-root `config/` directory contains only `discord.toml.example`.
 
 Where a count is given as exact (e.g., "1,040 missions"), it comes from a direct
 database query. Where a count is approximate (e.g., "~50 real game worlds"), it involves

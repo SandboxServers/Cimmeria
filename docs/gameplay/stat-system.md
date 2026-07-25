@@ -14,7 +14,7 @@ last_updated: 2026-05-27
 
 The stat system provides 60+ named statistics per combatant entity, organized into a 6-tier dictionary structure. Each stat has six values: base min/current/max and dynamic min/current/max. The dynamic values represent the "effective" stat after buffs/debuffs, while base values represent the entity's innate capability.
 
-Stats are implemented via the `Stat` class in `python/cell/SGWBeing.py`.
+Stats are implemented via the `Stat` class in `deprecated/python/cell/SGWBeing.py`.
 
 ## Implementation Status
 
@@ -35,7 +35,7 @@ Stats are implemented via the `Stat` class in `python/cell/SGWBeing.py`.
 | Stat caps per level | NOT IMPL | Only template min/max bounds |
 | Item stat bonuses | PARTIAL | `inventoryAdjustments` property exists |
 
-## Stat Class (python/cell/SGWBeing.py)
+## Stat Class (deprecated/python/cell/SGWBeing.py)
 
 ```python
 class Stat:

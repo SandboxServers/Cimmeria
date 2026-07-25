@@ -9,7 +9,7 @@ last_updated: 2026-05-27
 
 ## Overview
 
-Character creation is handled by `python/base/Account.py` and is one of the more complete systems in the emulator. It validates input, creates database records, assigns starting equipment and abilities, and manages the full flow from the character list screen through entering the world.
+Character creation is handled by `deprecated/python/base/Account.py` and is one of the more complete systems in the emulator. It validates input, creates database records, assigns starting equipment and abilities, and manages the full flow from the character list screen through entering the world.
 
 The `Account` entity acts as the persistent session anchor between login and world entry. All character management operations are routed through it.
 

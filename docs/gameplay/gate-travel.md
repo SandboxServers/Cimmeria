@@ -2,19 +2,19 @@
 title: "Gate Travel System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Gate Travel System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~20% implemented
+> **Last updated**: 2026-07-25
+> **Status**: Zone transition and ring transport both work. Every gate *animation* is missing.
 
 ## Overview
 
 Gate travel enables zone transitions via stargates and ring transporters. Stargates provide long-distance travel between worlds, while ring transporters provide local teleportation within or between nearby areas. Both systems involve multi-step sequences with animations, player visibility toggling, and movement locking.
 
-The `GateTravel` class in `python/cell/GateTravel.py` is currently an empty stub. Ring transporters are fully implemented in `python/cell/RingTransporter.py` with an 8-state finite state machine.
+Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../../crates/services/src/base/world_entry/gate_travel/): on `CellToBaseMsg::GateTravel` the base sends RESET_ENTITIES to tear down the client's view of the old space, persists the destination world and position, and seeds `pending_world_entry` so the client's next ENABLE_ENTITIES drives a fresh create-player + enter-world cycle. Ring transport lives in [`cell/ring_transport/`](../../crates/services/src/cell/ring_transport/) with an 8-state finite state machine.
 
 ## Implementation Status
 
@@ -22,15 +22,20 @@ The `GateTravel` class in `python/cell/GateTravel.py` is currently an empty stub
 |---------|--------|-------|
 | DHD UI display | DONE | `setupStargateInfo` sends gate lists to client |
 | Stargate address tracking | DONE | `knownStargateAddresses` property, give/remove |
-| Ring transporter interaction | DONE | `RingTransporter.interact()` sends destination list |
+| Stargate zone transition | DONE | `base/world_entry/gate_travel/` — RESET_ENTITIES, persist destination, replay world entry |
+| Gate-travel contact event | DONE | Fires `ECONTACT_LIST_EVENT_GateTravel` to the traveller's contacts with the destination `world_id` |
+| Ring transporter interaction | DONE | Sends the destination list |
 | Ring transport FSM | DONE | 8-state machine: IDLE through COOLDOWN |
 | Ring player teleportation | DONE | Position-based teleport with visibility toggle |
 | Ring Kismet sequences | DONE | `Region_Teleport_Out` / `Region_Teleport_In` |
 | Ring movement locking | DONE | `BSF_MovementLock` set/unset during transport |
 | Ring cross-world transport | PARTIAL | Same-world works; cross-world path exists but untested |
-| Stargate zone transition | NOT IMPL | `processGateTravel` defined but GateTravel class is empty |
-| Stargate animation | NOT IMPL | `stargateRotationOverride` defined |
-| Squad leader gate travel | NOT IMPL | `processSquadLeaderGateTravel` defined |
+| Ring multi-player sync | FIXME | Only the first player in the region gets the Matinee — the sequence drives a shared world prop |
+| Stargate open/close animation | NOT IMPL | `Stargate_MakeGate` (6100) and `Stargate_DestroyGate` (6103) are never emitted |
+| Stargate crossing animation | NOT IMPL | `Stargate_CrossGate` (6113) never emitted |
+| DHD chevron lock animations | NOT IMPL | Events 6106–6112 exist in the DB for every gate; never triggered |
+| Stargate witness visibility | NOT IMPL | Even once gate sequences are emitted, they must fan to witnesses, not just the traveller |
+| Squad leader gate travel | NOT IMPL | `processSquadLeaderGateTravel` defined; blocked on the group system |
 | Gate address discovery | PARTIAL | `giveStargateAddressStr` / `removeStargateAddressStr` defined |
 
 ## Entity Definition (GateTravel.def)
@@ -114,7 +119,7 @@ STATE_IDLE
 
 ## Data References
 
-- **Stargate addresses**: 29 defined in `db/resources.sql` (`ref_stargate`)
+- **Stargate addresses**: 28 in `db/resources/Worlds/Seed/stargates.sql`
 - **Ring transporter regions**: `RingTransporterRegion` definitions
 - **Kismet events**: `Region_Teleport_Out`, `Region_Teleport_In`
 

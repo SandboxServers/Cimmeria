@@ -102,7 +102,7 @@ The audit cross-references the following sources:
   list of zones the server can load.
 - **cell_spaces.xml** — Cell-level spatial partitioning for persistent zones only.
   Instanced spaces do not appear here.
-- **Python space scripts** — Per-zone `.py` files in `python/` that define entity spawns,
+- **Python space scripts** — Per-zone `.py` files in `deprecated/python/` that define entity spawns,
   mission triggers, ring transporters, region events, and NPC tags.
 - **Space .script files** — Compiled or authored script-graph files with node counts,
   separate from Python scripts. Co-located with space data.

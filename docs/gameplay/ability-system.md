@@ -2,19 +2,19 @@
 title: "Ability System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Ability System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~60% implemented
+> **Last updated**: 2026-07-25
+> **Status**: Implemented — direct-target, cone, AoE, ground-target, and channeled abilities all work. Remaining gaps: chain targeting, the combo/response system, and pre-launch ability conditions.
 
 ## Overview
 
 Abilities are the primary interaction mechanism in combat. Each ability has a target type, warmup time, cooldown, range, and a list of effects that are applied to targets when the ability resolves. Abilities are organized by monikers (shared cooldown groups).
 
-The `AbilityManager` class (in `python/cell/AbilityManager.py`) manages the full lifecycle: validation, warmup, resolution, effect dispatch, and cooldown tracking.
+The `AbilityManager` class (in `deprecated/python/cell/AbilityManager.py`) manages the full lifecycle: validation, warmup, resolution, effect dispatch, and cooldown tracking.
 
 ## Implementation Status
 
@@ -30,11 +30,12 @@ The `AbilityManager` class (in `python/cell/AbilityManager.py`) manages the full
 | Weapon range check | DONE | `UseWeaponRange` flag uses equipped weapon range |
 | Position/facing check | DONE | Front/flank/rear mask validation |
 | Weapon moniker requirement | DONE | `requiresWeapons()`, `itemMonikers` |
-| Kismet sequences | DONE | Begin, End, Interrupt sequences dispatched |
-| AoE / cone targeting | NOT IMPL | `TargetCollectionMethod` beyond `TCM_Single` |
-| Channeled abilities | NOT IMPL | `channeledAbilityData`, `pulseChanneledEffectOnTarget` |
+| AoE / cone targeting | DONE | `cell/abilities/cone_aoe/` — geometry, flag categories, and witness fan-out |
+| Ground-target abilities | DONE | `useAbilityOnGroundTarget` in `cell/abilities/dispatch.rs`. Note it charges cooldown and ammo even when no enemy is in radius or the nearest target is beyond `max_range` |
+| Channeled abilities | DONE | Channel pulsing and cancellation in `cell/effects/pulsing/`, with the `AF_CHANNEL_ALLOWS_MOVEMENT` movement gate |
+| Kismet sequences (begin, end) | DONE | `Ability_Begin` (1000) and `Ability_End` (1001) emitted from `use_ability/handle.rs` |
+| Kismet sequences (interrupt, failed) | NOT IMPL | `Ability_Interrupt` (1002) and `Ability_Failed` (1003) are never emitted, despite interruption itself working |
 | Chain targeting | NOT IMPL | |
-| Ground-target abilities | NOT IMPL | `useAbilityOnGroundTarget` |
 | Combo / response system | NOT IMPL | `Response` flag modifies cooldown only |
 | Ability conditions | NOT IMPL | Pre-launch condition checks from ability data |
 
@@ -133,7 +134,7 @@ The warmup deadline gates **magazine refill timing**: a 100 ms `reload_completio
 
 ## Data References
 
-- **Ability definitions**: 1,887 in `db/resources.sql`
+- **Ability definitions**: 1,886 in `db/resources/Abilities/Seed/abilities.sql`
 - **Schema**: `Ability.xsd`
 - **Enumerations**: `ETargetingMode`, `EAbilityFlag`, `ETargetCollectionMethod`, `EConditionFeedback`
 - **Ability flags**: `UseWeaponRange`, `SpeedGrenade`, `SpeedDeploy`, `SpeedAttack`, `Response`, `Deactivate_AutoCycle`

@@ -2,30 +2,32 @@
 title: "Group System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Group System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~10% implemented
+> **Last updated**: 2026-07-25
+> **Status**: Not implemented. Entity definitions only — no Rust code creates, joins, or dispatches to a group.
 
 ## Overview
 
 The group system manages persistent and temporary player groupings through a `GroupAuthority` entity. This entity acts as a central coordinator for group creation, membership, and cross-entity method dispatch. Organizations (guilds, squads, teams) are built on top of this group infrastructure.
 
-The `GroupAuthority` interface is defined in `entities/defs/interfaces/GroupAuthority.def`. The entity type `SGWPlayerGroupAuthority` extends `SGWEntity` and implements this interface. No Python implementation exists beyond the entity definition.
+The `GroupAuthority` interface is defined in `entities/defs/interfaces/GroupAuthority.def`. The entity type `SGWPlayerGroupAuthority` extends `SGWEntity` and implements this interface.
 
 ## Implementation Status
 
+Everything below is definition-only. There is no `SGWPlayerGroupAuthority` instance in the Rust server, no group registry, and no handler for any of the four base methods. The blocked [organization system](organization-system.md) sits on top of this, so both are gated on the same missing infrastructure.
+
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Group authority entity | DEFINED | `SGWPlayerGroupAuthority` entity type exists |
-| Group join | STUB | `joinGroup` base method defined |
-| Group leave | STUB | `leaveGroup`, `leaveGroupByName` defined |
-| Method dispatch | STUB | `callMethodOnGroup` for cross-group RPC |
-| Group ID allocation | DEFINED | `lastTempID` counter property |
-| Organization integration | STUB | Organization types use groups as backing store |
+| Group authority entity | DEFINED | `SGWPlayerGroupAuthority` entity type exists in the defs; never instantiated |
+| Group join | NOT IMPL | `joinGroup` base method defined; no handler |
+| Group leave | NOT IMPL | `leaveGroup`, `leaveGroupByName` defined; no handler |
+| Method dispatch | NOT IMPL | `callMethodOnGroup` defined; no handler |
+| Group ID allocation | DEFINED | `lastTempID` counter property; nothing increments it |
+| Organization integration | NOT IMPL | Organization types would use groups as backing store |
 
 ## Entity Definition (GroupAuthority.def)
 

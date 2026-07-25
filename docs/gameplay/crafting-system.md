@@ -2,38 +2,42 @@
 title: "Crafting System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Crafting System
 
-> **Last updated**: 2026-06-20
-> **Status**: ~28% — state/persistence/skills/GM-grants done; the six activity handlers are stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
+> **Last updated**: 2026-07-25
+> **Status**: Phase 1 only — state model, persistence, and GM grants work. All six player-facing crafting activities are stubs (tracked in #567). Findings: [`reverse-engineering/findings/crafting-restoration.md`](../reverse-engineering/findings/crafting-restoration.md).
 
 ## Overview
 
 The crafting system enables players to create items through blueprints, research items for expertise, reverse engineer items into components, and alloy materials into higher tiers. Crafting is gated by disciplines (learned skill trees), racial paradigms (faction-specific tech trees), and Applied Science points (discipline training currency).
 
-The `Crafter` class in `python/cell/Crafter.py` implements all crafting logic with timer-based induction for each operation. Crafting definitions come from `db/resources.sql`.
+The Rust implementation lives in [`crates/services/src/base/crafting/`](../../crates/services/src/base/crafting/) (persistence + GM grants) and [`cell/cell_methods/player/crafting.rs`](../../crates/services/src/cell/cell_methods/player/crafting.rs) (cell methods 95–100, currently route-and-log only). The state model is `cimmeria_entity::crafting::CraftingState`.
+
+The sections below that describe `Crafter` behaviour document the **original server's design**, which Phase 2 is expected to reproduce. They are not descriptions of current runtime behaviour.
 
 ## Implementation Status
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Discipline learning | DONE | `learnDiscipline()`, prerequisite checks |
-| Discipline forgetting | DONE | `forgetDiscipline()` |
-| Applied Science points | DONE | Spend to learn disciplines |
-| Racial paradigm tracking | DONE | `racialParadigms` dict with level updates |
-| Blueprint knowledge | DONE | `blueprints` list, `giveBlueprints()` |
-| Crafting (blueprint) | DONE | Component validation, consumption, timer, product creation |
-| Research | DONE | Random expertise gain with kicker bonus |
-| Reverse engineering | DONE | Bias-based component recovery |
-| Alloying | DONE | Tier-based material combination with elementary components |
-| Expertise gain | DONE | Per-craft/alloy expertise +1, capped at 100 |
-| Timer-based induction | DONE | 3.0s duration for all operations |
-| Crafting respec | NOT IMPL | `RespecCraft` event defined in client |
-| Client crafting UI sync | NOT IMPL | `onUpdateDiscipline`, `onUpdateCraftingOptions` stubs |
-| Busy state lock | PARTIAL | Checks `entity.busy` but `beginBusy`/`endBusy` calls commented out |
+| Crafting state model | DONE | `CraftingState` — discipline ids, per-discipline expertise, blueprint ids, applied-science points, racial-paradigm levels |
+| Persistence | DONE | Split across `sgw_player` (four scalar/array columns) and `sgw_player_discipline_expertise` (normalised per-discipline expertise rows, `CHECK (expertise BETWEEN 0 AND 100)`) |
+| Expertise cap | DONE | Enforced twice — `EXPERTISE_CAP = 100` in the handler and a DB `CHECK` constraint |
+| GM expertise grant | DONE | `handle_grant_expertise` mutates, persists, and pushes `onUpdateDiscipline` (client method 136, payload `[disciplineSeqId i32][expertise i32]`) |
+| GM applied-science grant | DONE | `handle_grant_applied_science` |
+| Client discipline sync | DONE | `onUpdateDiscipline` serializer wired; fired on GM grant |
+| Spend applied-science points | STUB | Cell method decodes the discipline id and logs `UNIMPLEMENTED`; paradigm gate, prerequisite check, and DB update are Phase 2 |
+| Crafting (blueprint) | STUB | `craft` logs `UNIMPLEMENTED` |
+| Research | STUB | `research` logs `UNIMPLEMENTED` |
+| Reverse engineering | STUB | `reverseEngineer` logs `UNIMPLEMENTED` |
+| Alloying | STUB | `alloying` logs `UNIMPLEMENTED` |
+| Crafting respec | STUB | `respecCrafting` logs `UNIMPLEMENTED` |
+| World-entry state load | NOT IMPL | `load_crafting_state` exists and is live-DB tested, but nothing on the login path calls it yet |
+| Timer-based induction | NOT IMPL | The original 3.0s per-operation induction has no Rust equivalent |
+| Busy state lock | NOT IMPL | No `beginBusy`/`endBusy` equivalent |
+| `onUpdateCraftingOptions` | NOT IMPL | Never sent |
 
 ## Crafting Operations
 
@@ -120,7 +124,7 @@ Crafter.alloy(blueprintId, currentTierItemId, lowerTierItems)
 
 ## Data References
 
-- **Recipes/Blueprints**: 499 in `db/resources.sql`
+- **Recipes/Blueprints**: 498 in `db/resources/Entities/Seed/blueprints.sql`
 - **Disciplines**: Defined in resources
 - **Racial paradigms**: Faction-based, initialized at level 1
 - **Constants**: `ALLOYING_ELEMENTARY_COUNTS` (quality-based count table)

@@ -219,7 +219,7 @@ character will be combat-inert with no way to gain abilities.
 - SGU faction only, male only, unique body set (BS_Asgard)
 - **Only** placeholder with a unique item event set (1455 vs 804 for all others),
   suggesting intended distinct equip/unequip animations for the Asgard body type
-- Source: `python/common/Constants.py` line 109
+- Source: `deprecated/python/common/Constants.py` line 109
 
 **Shol'va / Jaffa** are the same race split by faction. Shol'va = rebel Jaffa
 allied with Earth (SGU). Jaffa = Goa'uld-loyal (Praxis). Both use BS_Jaffa body sets.
@@ -322,7 +322,7 @@ differences.
 The only archetype-keyed data structure outside the database:
 
 ```python
-# python/common/Constants.py, line 103
+# deprecated/python/common/Constants.py, line 103
 ARCHETYPE_ITEM_EVENT_SETS = {
     ARCHETYPE_Any:          804,
     ARCHETYPE_Soldier:      804,

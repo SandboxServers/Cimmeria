@@ -209,16 +209,16 @@ The Castle Cellblock is the most complete zone. 13 mission scripts drive a linea
 tutorial chain from "wake up in a cell" to "escape the facility."
 
 **Source scripts:**
-- `python/cell/spaces/Castle_CellBlock.py` (511 lines -- space controller)
-- `python/cell/missions/Castle_CellBlock/ArmYourself.py`
-- `python/cell/missions/Castle_CellBlock/Prisoner_329.py`
-- `python/cell/missions/Castle_CellBlock/FindAmbernol.py`
-- `python/cell/missions/Castle_CellBlock/HackTheRings.py`
-- `python/cell/missions/Castle_CellBlock/Preparation.py`
-- `python/cell/missions/Castle_CellBlock/EscapeTheCellblock.py`
-- `python/cell/missions/Castle_CellBlock/MessHall.py`
-- `python/cell/missions/Castle_CellBlock/Hallway01Controller.py` through `Hallway05Controller.py`
-- `python/cell/missions/Castle_CellBlock/Aftermath.py`
+- `deprecated/python/cell/spaces/Castle_CellBlock.py` (511 lines -- space controller)
+- `deprecated/python/cell/missions/Castle_CellBlock/ArmYourself.py`
+- `deprecated/python/cell/missions/Castle_CellBlock/Prisoner_329.py`
+- `deprecated/python/cell/missions/Castle_CellBlock/FindAmbernol.py`
+- `deprecated/python/cell/missions/Castle_CellBlock/HackTheRings.py`
+- `deprecated/python/cell/missions/Castle_CellBlock/Preparation.py`
+- `deprecated/python/cell/missions/Castle_CellBlock/EscapeTheCellblock.py`
+- `deprecated/python/cell/missions/Castle_CellBlock/MessHall.py`
+- `deprecated/python/cell/missions/Castle_CellBlock/Hallway01Controller.py` through `Hallway05Controller.py`
+- `deprecated/python/cell/missions/Castle_CellBlock/Aftermath.py`
 
 | Mission | Name (inferred) | NPCs (interact tags) | Dialogs | Items (grant) | Items (remove) | Regions | Minigame | Sequences |
 |---:|---|---|---|---|---|---|---|---|
@@ -275,8 +275,8 @@ SGC Wing 1 is the SGU faction starting zone (counterpart to Castle_CellBlock for
 Praxis). It has a space script and one mission script covering three chained missions.
 
 **Source scripts:**
-- `python/cell/spaces/SGC_W1.py` (480 lines -- space controller)
-- `python/cell/missions/SGC_W1/SecurityOffice.py` (234 lines -- missions 1561+1562)
+- `deprecated/python/cell/spaces/SGC_W1.py` (480 lines -- space controller)
+- `deprecated/python/cell/missions/SGC_W1/SecurityOffice.py` (234 lines -- missions 1561+1562)
 
 | Mission | NPCs (interact tags) | Dialogs | Items | Sequences | Other |
 |---:|---|---|---|---|---|
@@ -313,7 +313,7 @@ Praxis). It has a space script and one mission script covering three chained mis
 One mission script exists for the Harset zone, covering mission 742 ("Giving the
 Walls Ears").
 
-**Source script:** `python/cell/missions/Harset/GivingTheWallsEars.py` (262 lines)
+**Source script:** `deprecated/python/cell/missions/Harset/GivingTheWallsEars.py` (262 lines)
 
 | Mission | NPCs (interact tags/templates) | Dialogs | Items (grant) | Items (remove) | Dialog Sets Added/Removed |
 |---:|---|---|---|---|---|

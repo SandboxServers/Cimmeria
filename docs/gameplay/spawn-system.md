@@ -2,25 +2,36 @@
 title: "Spawn System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Spawn System
 
-## Status: Known/Missing (KM)
+## Status: Implemented (IM)
 
-The spawn system is fully defined in entity `.def` files and partially defined in the
-PostgreSQL schema, but has **zero lines of implementation** in Python. Both
-`SGWSpawnRegion` and `SGWSpawnSet` are empty stubs that call `super().__init__()` and
-nothing else. Twenty base methods are declared across the two entities; none are
-implemented. The design intent is reconstructed here from property names, method
-signatures, DB schema, and standard MMO conventions.
+Spawning is confirmed working in-game — NPCs and world objects appear in Castle
+Cellblock and are interactable. The Rust implementation lives in
+[`crates/services/src/cell/spawner/`](../../crates/services/src/cell/spawner/), split by
+what is being spawned or loaded: `npcs.rs`, `regions.rs`, `respawners.rs`,
+`stargates.rs`, `dialogs.rs`, `loot.rs`, `missions.rs`, and `abilities.rs` (which also
+builds the `(event_set_id, event_id) → sequence_id` lookup). Respawn is handled by a
+1 Hz `npc_respawn_tick` that reads `respawn_secs` (COALESCE of the spawn list and the
+entity template, minimum 3s) and promotes Dead NPCs back to Idle, restoring HP, focus,
+state flags, interaction type, and facing.
+
+**The architecture below is not what was built.** The original design used two
+server-only BigWorld entities (`SGWSpawnRegion`, `SGWSpawnSet`) communicating by
+base-to-base mailbox RPC; both were empty stubs in the Python server, and the Rust
+implementation spawns directly from the cell rather than reconstructing that entity
+pair. The sections that follow document the original design intent — reconstructed
+from property names, method signatures, and DB schema — and are retained because the
+DB schema they describe is still the data source.
 
 ---
 
-## Overview
+## Original Design (not implemented as such)
 
-The spawn system uses two server-only entities that cooperate through BigWorld base
+The spawn system was to use two server-only entities that cooperate through BigWorld base
 mailboxes. Neither entity has a cell presence, client methods, or visible world state.
 All communication between them is base-to-base RPC.
 
@@ -118,8 +129,8 @@ be added.
 ## SGWSpawnRegion
 
 **Source files:**
-- `python/base/SGWSpawnRegion.py` (stub)
-- `python/cell/SGWSpawnRegion.py` (stub)
+- `deprecated/python/base/SGWSpawnRegion.py` (stub)
+- `deprecated/python/cell/SGWSpawnRegion.py` (stub)
 - `entities/defs/SGWSpawnRegion.def`
 
 ### Properties
@@ -181,8 +192,8 @@ All 14 methods are declared but unimplemented.
 ## SGWSpawnSet
 
 **Source files:**
-- `python/base/SGWSpawnSet.py` (stub)
-- `python/cell/SGWSpawnSet.py` (stub)
+- `deprecated/python/base/SGWSpawnSet.py` (stub)
+- `deprecated/python/cell/SGWSpawnSet.py` (stub)
 - `entities/defs/SGWSpawnSet.def`
 
 ### Properties
@@ -367,7 +378,7 @@ Examples:
 - Template 15 (Cellblock Guard) → `ability_set_id = 1` → `[579]` NID guard pistol.
 - Templates without an `ability_set_id` (most props, statics) → fall back to `NPC_DEFAULT_ABILITY = 592` and rely on `class_id` filtering to keep the AI tick from firing on non-mobs.
 
-At fight-tick time, [`crates/services/src/cell/service/npc_ai.rs`](../../crates/services/src/cell/service/npc_ai.rs) `choose_npc_ability` walks the NPC's known abilities (sorted for determinism) and returns the first one that is off cooldown. If every ability is cooling, the NPC holds fire and the next 2 s tick retries. Mirrors `python/cell/SGWMob.py:chooseAbility`. NPCs have infinite ammo, so `required_ammo` is not a gate at the selector — that check is player-only at the dispatch site.
+At fight-tick time, [`crates/services/src/cell/service/npc_ai.rs`](../../crates/services/src/cell/service/npc_ai.rs) `choose_npc_ability` walks the NPC's known abilities (sorted for determinism) and returns the first one that is off cooldown. If every ability is cooling, the NPC holds fire and the next 2 s tick retries. Mirrors `deprecated/python/cell/SGWMob.py:chooseAbility`. NPCs have infinite ammo, so `required_ammo` is not a gate at the selector — that check is player-only at the dispatch site.
 
 Per-ability cooldown state lives on `CellEntity::abilities.ability_cooldowns` (the `AbilityManager` keyed by `ability_id` → `CooldownEntry { expires_at }`). The leash tick (`npc_ai_leash`) calls `clear_all_cooldowns()` when the NPC returns to spawn, so a leashed-and-re-aggrod NPC starts a fresh cooldown window.
 

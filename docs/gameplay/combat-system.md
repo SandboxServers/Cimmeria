@@ -222,8 +222,8 @@ the cast (primary + secondaries).
 
 ## Data References
 
-- **Abilities**: 1,887 defined in `db/resources.sql`
-- **Effects**: 3,217 defined in `db/resources.sql`
+- **Abilities**: 1,886 in `db/resources/Abilities/Seed/abilities.sql`
+- **Effects**: 3,216 in `db/resources/Effects/Seed/effects.sql`
 - **Damage types** (`EDamageType`): Untyped, Energy, Hazmat, Physical, Psionic
 - **Stat enumerations**: See [stat-system.md](stat-system.md)
 

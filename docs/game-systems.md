@@ -9,7 +9,7 @@ last_updated: 2026-07-25
 
 Every major game system identified in Stargate Worlds, what it does, and how far along it is in the emulator.
 
-> **Where the implementation lives.** Active development is Rust, under `crates/`. The `python/` scripts referenced in older revisions of this page are the *original* server, retained under `deprecated/python/` as evidence of intent only — they are not running code and line counts from them are not a measure of progress. Each system below reports the Rust status.
+> **Where the implementation lives.** Active development is Rust, under `crates/`. Any `deprecated/python/…` path cited below is the *original* 2009-era server, kept as evidence of design intent only — it is not running code, and line counts from it are not a measure of progress. There is no longer a `python/` tree at the repo root. Each system below reports the Rust status.
 
 ## Combat
 
@@ -123,7 +123,7 @@ In-game mail with:
 - Return to sender
 - Archive
 
-**Data:** `sgw_gate_mail` table. **Server:** Read side works — headers, body (with read-time stamping), delete, and archive, all ownership-checked by `character_id`. Server-generated mail also works and is in production use by the Black Market settlement path. **Not implemented:** player-composed sending, return-to-sender, attachment claim, and COD payment. The header query also ignores the `bArchive` flag, so archived mail still shows in the inbox listing. See [mail-system.md](gameplay/mail-system.md).
+**Data:** `sgw_gate_mail` table. **Server:** Read side works — headers, body (with read-time stamping), delete, and archive, all ownership-checked by `character_id`. **Not implemented:** player-composed sending, return-to-sender, attachment claim, and COD payment. The header query also ignores the `bArchive` flag, so archived mail still shows in the inbox listing. The one server-side mail *sender* (`send_mail_to_player`, driven by the Black Market expiry sweep) is on the unmerged `feat/571-black-market-phase1` branch, so on `main` nothing writes to `sgw_gate_mail` at all. See [mail-system.md](gameplay/mail-system.md).
 
 ## Chat & Communication
 

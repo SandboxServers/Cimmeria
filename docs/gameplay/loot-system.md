@@ -16,8 +16,8 @@ The loot system governs how enemies drop items and currency (naquadah) when kill
 | Layer | Component | Role |
 |-------|-----------|------|
 | Database | `resources.loot_tables`, `resources.loot` | Static loot definitions |
-| Def objects | `python/common/defs/LootTable.py` | Python objects loaded from DB at startup |
-| Interaction handler | `python/cell/interactions/Lootable.py` | Per-entity loot instance, runtime state |
+| Def objects | `deprecated/python/common/defs/LootTable.py` | Python objects loaded from DB at startup |
+| Interaction handler | `deprecated/python/cell/interactions/Lootable.py` | Per-entity loot instance, runtime state |
 
 ---
 
@@ -212,8 +212,8 @@ This means enemies die and become lootable, but `randomizeLoot()` iterates over 
 
 | System | File | Relationship |
 |--------|------|--------------|
-| Inventory | `python/cell/Inventory.py` | Receives looted items via `pickedUpItem()` and `addCash()` |
-| NPC AI | `python/cell/SGWMob.py` | Triggers `generateLoot()` on death, sets loot interaction flag |
+| Inventory | `deprecated/python/cell/Inventory.py` | Receives looted items via `pickedUpItem()` and `addCash()` |
+| NPC AI | `deprecated/python/cell/SGWMob.py` | Triggers `generateLoot()` on death, sets loot interaction flag |
 | Tapping | `entities/defs/SGWMob.def` | Defines kill credit and loot rights fields (not yet implemented) |
 | Groups | Group system | Loot mode affects eligible player assignment (not yet implemented) |
 | Missions | Mission system | Mission-gated loot requires objective filtering (not yet implemented) |

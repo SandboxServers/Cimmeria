@@ -54,7 +54,7 @@ Per-slot ammo lives in **two mirrored places** on the cell entity, both written 
 
 `BandolierItem` is the source of truth. `Stat[AMMO_SLOT_1+slot]` exists because the **client's UI subscribes to `Events.StatUpdated`** — it would not see a change to `BandolierItem` directly. Both are kept in sync through the single mutator [`set_slot_ammo()`](../../crates/entity/src/cell_entity.rs#L390); never write `current_ammo` directly. See [`CellEntity::active_ammo()`](../../crates/entity/src/cell_entity.rs#L366), [`active_clip_size()`](../../crates/entity/src/cell_entity.rs#L373), [`active_ammo_type()`](../../crates/entity/src/cell_entity.rs#L380), and [`refill_active_slot()`](../../crates/entity/src/cell_entity.rs#L404).
 
-Stat IDs `AMMO_SLOT_1..5` (49–53) are **bandolier-slot-relative**, not weapon-relative. The active slot's stat ID is computed as `AMMO_SLOT_1 + active_bandolier_slot`. This matches legacy [`SGWPlayer.py:1023`](../../python/cell/SGWPlayer.py#L1023) (`getAmmoStat() = ammoSlot1 + activeSlotId`).
+Stat IDs `AMMO_SLOT_1..5` (49–53) are **bandolier-slot-relative**, not weapon-relative. The active slot's stat ID is computed as `AMMO_SLOT_1 + active_bandolier_slot`. This matches legacy [`SGWPlayer.py:1023`](../../deprecated/python/cell/SGWPlayer.py#L1023) (`getAmmoStat() = ammoSlot1 + activeSlotId`).
 
 ## Wire flow — fire
 
@@ -132,7 +132,7 @@ Client                       Cell                                       Base / D
 
 The fire-path **only** reads `active_ammo()`; it does not promote pending refills itself. The 100 ms `reload_completion_tick` is the sole refill path (Stage C cleanup — see [`crates/services/src/cell/service.rs:602-681`](../../crates/services/src/cell/service.rs#L602)).
 
-Matches legacy [`Reload.py`](../../python/cell/effects/Reload.py): the effect resolves at warmup completion and runs `setCurrent(max)` on the ammo stat. Legacy ammo consumption was at warmup completion ([`AbilityManager.py:669-670`](../../python/cell/AbilityManager.py#L669)); the Rust port consumes at fire-gate time instead, since there is no warmup state machine for typical fires.
+Matches legacy [`Reload.py`](../../deprecated/python/cell/effects/Reload.py): the effect resolves at warmup completion and runs `setCurrent(max)` on the ammo stat. Legacy ammo consumption was at warmup completion ([`AbilityManager.py:669-670`](../../deprecated/python/cell/AbilityManager.py#L669)); the Rust port consumes at fire-gate time instead, since there is no warmup state machine for typical fires.
 
 ## `requestAmmoChange` flow
 
@@ -173,7 +173,7 @@ Client → Cell:  requestActiveSlotChange(bag_id=3, slot_id)
                                         │   value = new slot's cur_ammo_type, or 0 if empty
 ```
 
-`onEntityProperty` is sent **even when the new slot is empty** (value=0), mirroring legacy [`SGWPlayer.py:522`](../../python/cell/SGWPlayer.py#L522) (`activeItem.ammoType if activeItem else 0`). The bandolier UI's `BandolierMod.refreshAll()` re-reads all 5 slot ammo stats independently on its own subscription path ([`Bandolier.lua:205`](../../game/sgw/Working/SGWGame/Content/UI/Core/Bandolier/Bandolier.lua#L205)), so we don't have to push per-slot stat updates here.
+`onEntityProperty` is sent **even when the new slot is empty** (value=0), mirroring legacy [`SGWPlayer.py:522`](../../deprecated/python/cell/SGWPlayer.py#L522) (`activeItem.ammoType if activeItem else 0`). The bandolier UI's `BandolierMod.refreshAll()` re-reads all 5 slot ammo stats independently on its own subscription path ([`Bandolier.lua:205`](../../game/sgw/Working/SGWGame/Content/UI/Core/Bandolier/Bandolier.lua#L205)), so we don't have to push per-slot stat updates here.
 
 The previous-slot flush catches the **mid-magazine swap** case: a player fires a few rounds, then swaps weapons before reloading the empty one. Without this, those fires would only persist on the next reload (which may never happen if the player swaps back to the original slot after the next world transition).
 
@@ -213,7 +213,7 @@ Because the UI is stat-driven, **anything that changes `Stat[AMMO_SLOT_1+slot]` 
 
 The warmup window (e.g. 2 s for `ABILITY_RELOAD_WEAPON = 596`) ticks down on the client as a cosmetic animation. The server's `reload_completion_tick` runs every 100 ms and refills the magazine when the deadline is reached — typically mid-animation. Because `onStatUpdate` flushes the new ammo value immediately on refill, the meter visually fills before the animation completes. The next fire is gated by the cooldown timer (warmup + cooldown), not by the bar fill.
 
-This matches legacy [`Reload.py`](../../python/cell/effects/Reload.py) behavior: the effect script resolved at warmup completion via `setCurrent(max)` and `sendDirtyStats()`. The Rust port lifts the refill logic out of the effect script and into the cell tick — equivalent semantics, simpler ownership.
+This matches legacy [`Reload.py`](../../deprecated/python/cell/effects/Reload.py) behavior: the effect script resolved at warmup completion via `setCurrent(max)` and `sendDirtyStats()`. The Rust port lifts the refill logic out of the effect script and into the cell tick — equivalent semantics, simpler ownership.
 
 ## NPC ammo
 
@@ -223,7 +223,7 @@ NPCs (`SGWMob`) use the **same `bandolier_items` / `AmmoSlot{N}` model conceptua
 if required_ammo > 0 && entity.is_player && current_ammo < required_ammo { … abort … }
 ```
 
-This means mobs do not currently consume rounds, do not need to reload, and do not have their `bandolier_ammo_dirty` populated by combat. The legacy [`SGWMob.py`](../../python/cell/SGWMob.py) implemented full mob ammo (`getAmmoStat`/`getClipSize`/`triggerReload`) but in practice mobs were rarely ammo-limited. We deferred the port; if/when mob reload is needed, three changes are required together — partial work will silently break:
+This means mobs do not currently consume rounds, do not need to reload, and do not have their `bandolier_ammo_dirty` populated by combat. The legacy [`SGWMob.py`](../../deprecated/python/cell/SGWMob.py) implemented full mob ammo (`getAmmoStat`/`getClipSize`/`triggerReload`) but in practice mobs were rarely ammo-limited. We deferred the port; if/when mob reload is needed, three changes are required together — partial work will silently break:
 
 1. Remove the `is_player` short-circuit in [`abilities.rs`](../../crates/services/src/cell/abilities.rs) so the ammo gate runs for NPCs.
 2. Add an AI-driven `requestReload` equivalent that calls `set_slot_ammo` + `reload_complete_at` on the mob entity.
@@ -274,10 +274,10 @@ Client                       Cell                              Base / DB
 
 | File | Purpose |
 |------|---------|
-| [`python/cell/effects/Reload.py`](../../python/cell/effects/Reload.py) | Reload effect script — `setCurrent(max)` + `sendDirtyStats()` on warmup completion |
-| [`python/cell/SGWPlayer.py:1023-1081`](../../python/cell/SGWPlayer.py#L1023) | `getAmmoStat()`, `getClipSize()`, `getAmmoCount()`, `consumeAmmo()` |
-| [`python/cell/AbilityManager.py:669-670`](../../python/cell/AbilityManager.py#L669) | Legacy ammo consumption point (warmup completion, not fire-gate) |
-| [`python/cell/AbilityManager.py:548-552`](../../python/cell/AbilityManager.py#L548) | Legacy `requiredAmmo` check + `CONDITION_FEEDBACK_AmmoCountLessThan` |
+| [`deprecated/python/cell/effects/Reload.py`](../../deprecated/python/cell/effects/Reload.py) | Reload effect script — `setCurrent(max)` + `sendDirtyStats()` on warmup completion |
+| [`deprecated/python/cell/SGWPlayer.py:1023-1081`](../../deprecated/python/cell/SGWPlayer.py#L1023) | `getAmmoStat()`, `getClipSize()`, `getAmmoCount()`, `consumeAmmo()` |
+| [`deprecated/python/cell/AbilityManager.py:669-670`](../../deprecated/python/cell/AbilityManager.py#L669) | Legacy ammo consumption point (warmup completion, not fire-gate) |
+| [`deprecated/python/cell/AbilityManager.py:548-552`](../../deprecated/python/cell/AbilityManager.py#L548) | Legacy `requiredAmmo` check + `CONDITION_FEEDBACK_AmmoCountLessThan` |
 | [`game/sgw/Working/SGWGame/Content/UI/Core/Bandolier/Bandolier.lua`](../../game/sgw/Working/SGWGame/Content/UI/Core/Bandolier/Bandolier.lua) | Client UI: meter, count text, `onStatUpdated` subscription |
 | [`entities/defs/SGWPlayer.def:794-797`](../../entities/defs/SGWPlayer.def#L794) | `requestReload` cell method def (UINT8 EReloadType) |
 | [`entities/defs/interfaces/SGWInventoryManager.def:190-194`](../../entities/defs/interfaces/SGWInventoryManager.def#L190) | `requestAmmoChange` cell method def (INT32 ItemId, INT32 AmmoType) |

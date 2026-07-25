@@ -2,38 +2,40 @@
 title: "Inventory System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Inventory System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~80% implemented
+> **Last updated**: 2026-07-25
+> **Status**: Implemented, including the full vendor stack. Remaining gaps are stat recalculation on equip and the organization vault.
 
 ## Overview
 
 The inventory system manages item storage, equipping, movement, and currency for player entities. Items are organized into numbered bags (containers) with fixed slot counts. Each bag may represent general storage, equipment slots, crafting storage, or mission items. Equipped items contribute visual components to the player model and trigger equip/unequip callbacks.
 
-The `Inventory` class in `python/cell/Inventory.py` handles all inventory logic. Item definitions come from `db/resources.sql` and are resolved via `DefMgr.get('item', designId)`.
+Inventory splits across the two services: cell-side operations live in [`cell/cell_methods/inventory/`](../../crates/services/src/cell/cell_methods/inventory/) (item ops plus the bandolier/active-slot machinery), and everything that touches the database — including the entire vendor stack — lives in [`base/world_entry/methods/inventory/`](../../crates/services/src/base/world_entry/methods/inventory/) and [`base/world_entry/methods/vendor/`](../../crates/services/src/base/world_entry/methods/vendor/). Item definitions come from `db/resources/Items/`.
 
 ## Implementation Status
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Bag/slot storage | DONE | Multiple bags, configurable sizes via `BAG_SIZES` |
-| Item add/remove/move | DONE | Stack merging, slot swapping, quantity splitting (partial) |
-| Item equipping | DONE | Active slot system with visual component updates |
+| Bag/slot storage | DONE | Multiple bags, configurable sizes |
+| Item add/remove/move | DONE | Stack merging, slot swapping, quantity splitting |
+| Item equipping | DONE | Active slot system with visual component updates and `Item_Equip` / `Item_Unequip` animations |
 | Cash (naquadah) | DONE | Add/remove/sync to client |
-| Database persistence | DONE | Load/save per character, `sgw_inventory` table |
+| Database persistence | DONE | Load/save per character, `sgw_inventory` / `sgw_inventory_base` tables |
 | Client sync (flush) | DONE | Batched updates: bags, items, removals, cash |
-| Item use | DONE | Delegates to item class and fires `item.use` event |
-| Backup/restore | DONE | Full inventory snapshot for transactions |
-| Stack splitting to occupied slot | NOT IMPL | `NotImplementedError` raised |
-| Store buy/sell | PARTIAL | Store open/close events exist, buyback bag defined |
-| Item repair | NOT IMPL | `repairItemRequest` defined but no handler |
-| Item recharge | NOT IMPL | No recharge logic |
+| Item use | DONE | Fires the item's ability binding and the `ItemUsed` chain trigger |
+| Store open/close | DONE | `base/world_entry/methods/vendor/store.rs` |
+| Store buy/sell | DONE | `vendor/purchase/`, `vendor/sell/` |
+| Buyback | DONE | `vendor/buyback/` |
+| Item repair (vendor) | DONE | `vendor/repair.rs` plus the paid-repair variant |
+| Item recharge (vendor) | DONE | `vendor/recharge.rs` plus the paid-recharge variant |
+| Vendor bag allowlist | DONE | `VENDOR_FILTER_BAGS` confines vendor operations to the main bag, bandolier, the eleven equipment slots, and the quick bar — the bank, mail attachments, and loot bags are unreachable |
+| Item repair (direct) | NOT IMPL | `repairItemRequest` (the client-initiated cell method) decodes its args and logs `UNIMPLEMENTED`; repair only works through the vendor path |
 | Stat recalculation on equip | NOT IMPL | `inventoryAdjustments` property exists |
-| Organization vault | NOT IMPL | `onClearOrgVaultInventory`, `onOrgMoveItemResult` defined |
+| Organization vault | NOT IMPL | `onClearOrgVaultInventory`, `onOrgMoveItemResult` defined; blocked on the organization system |
 
 ## Entity Definition (SGWInventoryManager.def)
 
@@ -95,7 +97,7 @@ The `Inventory` class in `python/cell/Inventory.py` handles all inventory logic.
 
 ## Bandolier and ammo
 
-`INV_Bandolier` (container id `3`) holds 4 weapon slots indexed `0..3` and is the only container that tracks an active slot. Slot count matches legacy `python/common/Constants.py:145` (`BAG_SIZES[INV_Bandolier] = 4`); there is no fist-weapon reservation, so all four slots are real weapon slots.
+`INV_Bandolier` (container id `3`) holds 4 weapon slots indexed `0..3` and is the only container that tracks an active slot. Slot count matches legacy `deprecated/python/common/Constants.py:145` (`BAG_SIZES[INV_Bandolier] = 4`); there is no fist-weapon reservation, so all four slots are real weapon slots.
 
 The wire format is **1-indexed** (slots `1..4`). Server-side everything is **0-indexed**; the cell decoder subtracts 1 on inbound `requestActiveSlotChange` / `moveItem` and the grant/sync paths add 1 on outbound `onActiveSlotUpdate`. Mismatch on the inbound side was the original cause of the "switching slots doesn't work" bug — see `crates/services/src/cell/cell_methods/inventory/bandolier.rs` and `item_ops.rs`.
 
@@ -123,7 +125,7 @@ The `Inventory.flushUpdates()` method sends updates to the client in this order:
 
 ## Data References
 
-- **Item definitions**: 6,060 in `db/resources.sql`
+- **Item definitions**: 6,059 in `db/resources/Items/Seed/items.sql`
 - **Schema**: `Item.xsd`
 - **Persistence**: `sgw_inventory` table (character_id, type_id, bag_id, slot_id, quantity)
 - **Bag sizes**: `common.Constants.BAG_SIZES`

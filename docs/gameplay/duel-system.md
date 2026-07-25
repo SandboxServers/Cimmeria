@@ -2,29 +2,37 @@
 title: "Duel System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Duel System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~0% implemented
+> **Last updated**: 2026-07-25
+> **Status**: Not implemented. Two inbound cell methods are dispatched but only log and drop.
 
 ## Overview
 
 The duel system enables structured PvP combat between two players within designated duel areas. Duel areas are defined by `SGWDuelMarker` entities placed in the world, which use a proximity detector to track participating entities. Duels end when one participant is defeated.
 
-The `SGWDuelMarker` entity is defined in `entities/defs/SGWDuelMarker.def` (parent: `SGWSpawnableEntity`). The Python script `python/cell/SGWDuelMarker.py` is an empty stub.
+The `SGWDuelMarker` entity is defined in `entities/defs/SGWDuelMarker.def` (parent: `SGWSpawnableEntity`).
 
 ## Implementation Status
 
+The Rust server reserves and dispatches two duel cell methods in `crates/services/src/cell/cell_methods/player/social.rs`, but both handlers log `UNIMPLEMENTED` and return without acting:
+
+| Method | Index | Handler |
+|--------|-------|---------|
+| `sendDuelResponse` | 102 | `social.rs:92` — logs and drops |
+| `duelForfeit` | 103 | `social.rs:100` — logs and drops |
+
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Duel marker entity | DEFINED | `SGWDuelMarker` with detector and entity tracking |
-| Defeat detection | STUB | `onEntityDefeated` cell method defined |
-| Duel challenge protocol | NOT IMPL | Challenge/response events referenced in client |
-| Duel forfeit | NOT IMPL | Forfeit event referenced in client |
-| Duel area enforcement | NOT IMPL | `duelDetectorID` property exists |
+| Duel marker entity | DEFINED | `SGWDuelMarker` with detector and entity tracking; no Rust spawner support |
+| Duel response | STUB | `sendDuelResponse` (CM 102) dispatched, logs `UNIMPLEMENTED` |
+| Duel forfeit | STUB | `duelForfeit` (CM 103) dispatched, logs `UNIMPLEMENTED` |
+| Defeat detection | NOT IMPL | `onEntityDefeated` cell method defined on the marker, no handler |
+| Duel challenge issue | NOT IMPL | No inbound challenge method is dispatched |
+| Duel area enforcement | NOT IMPL | `duelDetectorID` property exists; no proximity controller |
 | Win/loss tracking | NOT IMPL | No outcome recording |
 
 ## Entity Definition (SGWDuelMarker.def)

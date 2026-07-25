@@ -14,9 +14,9 @@ last_updated: 2026-05-27
 
 Missions (quests) are the primary PvE progression mechanism. Each mission contains a linear sequence of steps, and each step contains one or more objectives. Objectives can be hidden or optional. Missions support acceptance, advancement, completion, failure, abandonment, repeating, and sharing.
 
-In the **legacy SGW server**, dynamic Python scripts (`python/cell/MissionManager.py`, plus per-mission `.py` files in `python/cell/missions/`) implemented mission lifecycle logic. That layer is reference-only in Cimmeria — see [docs/architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md) for the design rationale on replacing it.
+In the **legacy SGW server**, dynamic Python scripts (`deprecated/python/cell/MissionManager.py`, plus per-mission `.py` files in `deprecated/python/cell/missions/`) implemented mission lifecycle logic. That layer is reference-only in Cimmeria — see [docs/architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md) for the design rationale on replacing it.
 
-In the **Cimmeria emulator**, mission lifecycle runs through the data-driven content engine. Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs](../../crates/entity/src/missions.rs)); accept/advance/complete are mutated by chain actions executed in [crates/services/src/cell/content/executor.rs](../../crates/services/src/cell/content/executor.rs). The lifecycle table — which triggers fire at which stage, which conditions gate progression, which actions persist — is in [docs/content/content-engine.md](../content/content-engine.md) §9. Mission definitions are loaded from `db/resources.sql`; chain rows that drive mission progression live in `resources.content_*` tables.
+In the **Cimmeria emulator**, mission lifecycle runs through the data-driven content engine. Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs](../../crates/entity/src/missions.rs)); accept/advance/complete are mutated by chain actions executed in [crates/services/src/cell/content/executor.rs](../../crates/services/src/cell/content/executor.rs). The lifecycle table — which triggers fire at which stage, which conditions gate progression, which actions persist — is in [docs/content/content-engine.md](../content/content-engine.md) §9. Mission definitions are loaded from `db/resources/Missions/`; chain rows that drive mission progression live in `resources.content_*` tables.
 
 ## Implementation Status
 
@@ -144,9 +144,9 @@ a mission without a def entry fails closed (treated as non-repeatable).
 
 ## Data References
 
-- **Mission definitions**: 1,041 in `db/resources.sql`
+- **Mission definitions**: 1,040 in `db/resources/Missions/Seed/missions.sql`
 - **Schema**: `Mission.xsd`
-- **Mission scripts**: `python/cell/missions/` directory
+- **Mission scripts**: `deprecated/python/cell/missions/` directory
 - **Persistence**: `sgw_mission` table (player_id, mission_id, status, current_step_id, completed/active/failed objective arrays, repeats)
 
 ## RE Priorities

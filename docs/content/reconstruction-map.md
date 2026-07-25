@@ -10,10 +10,15 @@ last_updated: 2026-07-25
 What can be rebuilt from existing data, what has gaps requiring guesswork, and what was
 never built and requires new assets or code.
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-07-25
 > **Scope**: All gameplay content and server systems in the Cimmeria emulator
-> **Sources**: `db/resources/`, `db/sgw/`, `deprecated/python/`, `entities/`, `data/`, `config/`
+> **Sources**: `db/resources/`, `db/sgw/`, `deprecated/python/` (legacy reference
+> implementation, not the running server), `entities/`, `data/`, and the legacy
+> service configs now at `deprecated/cpp-config/config/`. Note the repo-root
+> `config/` directory contains only `discord.toml.example`.
+>
 > **Related documents**:
+>
 > - [Content Inventory](content-inventory.md) -- raw counts and distributions
 > - [Zone Audit](zone-audit.md) -- per-zone completeness scorecards
 > - [Archetype Content Map](archetype-content-map.md) -- per-archetype analysis
@@ -528,10 +533,12 @@ implementation from the wire format documentation inward.
 |--------|--------|-------|---------|-------|
 | **PvP / Dueling** | Very High | 6 methods, all `pass` | duel-wire-formats.md | SGWDuelMarker entity empty. Faction system (SGU/Praxis) provides foundation |
 | **Organizations** | High | 15+ methods, all `pass` | organization-wire-formats.md | SGWPlayerGroupAuthority empty shell. Needs DB schema |
-| **Black Market** | High | 6 methods, all `pass` | black-market-wire-formats.md | Auction listing, bidding, buyout, fees. Needs DB schema |
+| **Black Market** | High | 6 methods, all `pass` | black-market-wire-formats.md | Auction listing, bidding, buyout, fees. **Phase-1 Rust implementation exists but is UNMERGED** (`feat/571-black-market-phase1`); not on `main` |
 | **Mail** | Medium-High | sendMailMessage = `pass` | mail-wire-formats.md | Some read-only methods partial. Needs DB table |
 | **Contact Lists** | Medium | 6 methods, all `pass` | contact-list-wire-formats.md | Friend/ignore list, online status |
 | **Groups** | Medium | All methods empty | group-wire-formats.md | SGWPlayerGroupAuthority empty shell |
+
+> **The "Stubs" column describes the legacy Python stack, not the Rust server (checked 2026-07-25).** Several of these have since been implemented in Rust on `main`: **Mail** ([base/world_entry/methods/mail/](../../crates/services/src/base/world_entry/methods/mail/), [cell/mail.rs](../../crates/services/src/cell/mail.rs)), **Organizations** ([cell/cell_methods/organization.rs](../../crates/services/src/cell/cell_methods/organization.rs), [game/src/social/guilds.rs](../../crates/game/src/social/guilds.rs)), **Contact Lists** ([cell/client_methods/contact_list.rs](../../crates/services/src/cell/client_methods/contact_list.rs)), and **Groups** ([game/src/social/groups.rs](../../crates/game/src/social/groups.rs)). **Black Market** is implemented but unmerged (see the row above). **PvP / Dueling** remains unimplemented. Read the effort estimates as historical.
 
 ---
 
@@ -539,7 +546,7 @@ implementation from the wire format documentation inward.
 
 **Effort: MEDIUM per type** | **Confidence: LOW**
 
-9 minigame types exist in `python/base/minigame/`. 3 have logic (Livewire, Hack,
+9 minigame types exist in `deprecated/python/base/minigame/`. 3 have logic (Livewire, Hack,
 GoauldCrystals). 6 are placeholders (Activate, Analyze, Bypass, Converse, Alignment,
 Placeholder). Needs server-side validation, implementation of 6 placeholder types,
 and scoring/rewards.
@@ -583,8 +590,20 @@ foundations. See that document for full details.
 | World State Persistence | Player pos persists; no world object state | MEDIUM |
 | Economy / Scheduler / Metrics | Minimal | LOW |
 
-**Immediate action:** Set `<py_console_password>` in `config/BaseService.config` to
-enable 50+ GM commands. Zero code changes required.
+> **Obsolete recommendation (corrected 2026-07-25).** This section previously said
+> to set `<py_console_password>` in `config/BaseService.config` to unlock the GM
+> commands. That file is **not** part of the running server: it belongs to the
+> legacy C++/Python stack and now lives at
+> [`deprecated/cpp-config/config/BaseService.config`](../../deprecated/cpp-config/config/BaseService.config).
+> The repo-root `config/` directory holds only `discord.toml.example`.
+>
+> On the Rust server there is no console password. GM commands reach the server
+> two ways, both gated server-side on the player's `access_level` rather than a
+> shared secret: the client's native `/`-commands (see
+> [commands.md](../commands.md)) and the `.`-prefixed dev console
+> ([dispatch.rs:19](../../crates/services/src/cell/console/dispatch.rs#L19),
+> [dev-console-channel ADR](../architecture/dev-console-channel.md)). Nothing
+> needs to be set to enable them.
 
 ---
 

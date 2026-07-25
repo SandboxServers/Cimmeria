@@ -10,13 +10,19 @@ last_updated: 2026-07-25
 > **Last updated**: 2026-07-25
 >
 > **Path note (2026-07-25).** Several documents in this directory were written
-> when the legacy Python server lived at `python/` and the content dump was a
-> single `db/resources.sql`. Both moved: the legacy Python reference
-> implementation is now under **`deprecated/python/`**, and the content data is a
-> per-system tree under **`db/resources/<System>/{Tables,Seed}/`**. Inline
-> `python/…` paths in the documents below should be read with the
-> `deprecated/` prefix. The live runtime is the Rust content engine — see
-> [content-engine.md](content-engine.md).
+> when the legacy Python server lived at the repo root and the content dump was a
+> single `db/resources.sql`. Both moved, and the citations below were rewritten
+> to match: the Python tree is now **`deprecated/python/`**, the legacy service
+> configs are **`deprecated/cpp-config/config/`**, and the content data is a
+> per-system tree under **`db/resources/<System>/{Tables,Seed}/`**. Every cited
+> `.py` path was checked to resolve at its new location.
+>
+> **`deprecated/python/` is a reference implementation, not the running server.**
+> No Python executes in production. Where these documents describe behavior in
+> terms of Python scripts, they are describing what the *original* SGW server
+> did — useful as evidence of intent, but not a statement about what Cimmeria
+> does today. The live runtime is the Rust content engine, and the authoritative
+> account of what actually executes is [content-engine.md](content-engine.md).
 
 A content-level audit of all game data populating the Stargate Worlds server emulator. While the [gap analysis](../gap-analysis.md) catalogued 369 features across 38 systems, this audit maps what *content* actually exists: which zones are playable, where mission chains terminate, how NPCs connect to dialogs connect to missions, and where the original developers ran out of time.
 

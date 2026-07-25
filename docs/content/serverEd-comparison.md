@@ -21,13 +21,13 @@ The short version: **ServerEd's *engine* surface is mostly already covered by Ci
 
 A Qt-based visual node-graph editor ([ServerEd.pro:7](../../tools/ServerEd/ServerEd.pro#L7)) that compiled designer-authored node graphs into Python source files for the legacy Atrea/SGW server's `cell.Script` framework.
 
-- **Targets** three script types: `Mission`, `Level`/space, `Effect`. Outputs to `python/cell/missions/`, `python/cell/spaces/`, `python/cell/effects/` ([mainwindow.cpp:188-197](../../tools/ServerEd/mainwindow.cpp#L188-L197)).
+- **Targets** three script types: `Mission`, `Level`/space, `Effect`. Outputs to `deprecated/python/cell/missions/`, `deprecated/python/cell/spaces/`, `deprecated/python/cell/effects/` ([mainwindow.cpp:188-197](../../tools/ServerEd/mainwindow.cpp#L188-L197)).
 - **Codegen pipeline:** dead-code elimination, Tarjan SCC cycle detection ([scriptcompiler.cpp:1182-1228](../../tools/ServerEd/scriptcompiler.cpp#L1182-L1228)), multi-pass optimizer up to 10 iterations ([scriptcompiler.cpp:1024-1114](../../tools/ServerEd/scriptcompiler.cpp#L1024-L1114)).
 - **Output format:** hand-readable Python subclassing `Script` or `EffectScript` ([scriptcompiler.cpp:800-811](../../tools/ServerEd/scriptcompiler.cpp#L800-L811)). No bytecode. No SQL. No DB rows.
 - **Live reload:** custom binary protocol over TCP, six message ops, `ReloadScriptRequest` pushed compiled scripts to a running server ([serverconnector.h:7-103](../../tools/ServerEd/serverconnector.h#L7-L103)).
 - **Audience:** mixed. Property-browser UI and DB lookup widget targeted designers; Python escape hatches (custom `<Method>` blocks, `#if CONNECTED(Port)` preprocessor at [scriptcompiler.cpp:1513-1565](../../tools/ServerEd/scriptcompiler.cpp#L1513-L1565)) suggest heavy engineering involvement.
 
-In Cimmeria's emulator the `python/cell/` tree is reference-only — no Python runs in production. Anything ServerEd produced has been or will be re-expressed as either Rust gameplay code or content-engine chain rows.
+In Cimmeria's emulator the `deprecated/python/cell/` tree is reference-only — no Python runs in production. Anything ServerEd produced has been or will be re-expressed as either Rust gameplay code or content-engine chain rows.
 
 ---
 

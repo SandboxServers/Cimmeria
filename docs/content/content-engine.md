@@ -50,7 +50,13 @@ The boundary exists so the engine stays declarative. Chain authors write SQL row
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-Implementation status (2026-07-25): **shipped and driving Castle_CellBlock and SGC_W1 end-to-end.** Since the original write-up the surface has grown to cover NPC AI direction (`SetNpcPoi` / `SetFollowTarget` / `SetNpcAiState`), cover-proximity triggers, cross-world teleport, and the Black Market window open. Note that a handful of authorable actions still have no executor arm — read §3's catalog before authoring a chain.
+Implementation status (2026-07-25): **shipped and driving Castle_CellBlock and SGC_W1 end-to-end.** Since the original write-up the surface has grown to cover NPC AI direction (`SetNpcPoi` / `SetFollowTarget` / `SetNpcAiState`), cover-proximity triggers, and cross-world teleport. Note that a handful of authorable actions still have no executor arm — read §3's catalog before authoring a chain.
+
+> **Unmerged work described here.** This document was revised on the
+> `feat/571-black-market-phase1` branch. The `OpenBlackMarket` action, the
+> `open_black_market` seed verb, the `executor/black_market.rs` handler, and the
+> `chain_replay_tests/black_market.rs` guard are **part of that unmerged branch,
+> not `main`**. Everything else described here is on `main`.
 
 ---
 
@@ -470,7 +476,9 @@ What it misses: cross-file inconsistency (different worlds may legitimately use 
 
 ### Coverage gaps
 
-There is **no test that exercises FK-broken rows** (chain referencing missing dialog id, action referencing missing item id), no test for **duplicate trigger rows** producing double-fire, no test for **`enabled = false`** filtering at the loader (the loader currently doesn't filter — `enabled` is honored only if the resolver checks it).
+There is **no test that exercises FK-broken rows** (chain referencing missing dialog id, action referencing missing item id), and **no test for duplicate trigger rows** producing double-fire.
+
+`enabled = false` *is* covered, and the mechanism is worth stating precisely because it looks like a gap: the boot `SELECT` deliberately does **not** filter on `enabled`, so disabled chains are loaded and registered. They are then skipped in memory at resolve time — [chain.rs:256](../../crates/content-engine/src/chain.rs#L256) for the production `resolve_event` path and [chain.rs:138](../../crates/content-engine/src/chain.rs#L138) for `fire_event`. Pinned by `disabled_chain_is_skipped` ([chain.rs:371](../../crates/content-engine/src/chain.rs#L371)). Load-everything-then-filter is the design, not an oversight.
 
 ---
 
