@@ -354,6 +354,35 @@ pub(super) async fn execute_actions(
             } => {
                 world::set_visible(entity_tag, visible, entity_id, chain_id, tx, space_mgr).await;
             }
+            Action::GrantXP { amount } => {
+                if amount == 0 {
+                    tracing::warn!(
+                        entity_id,
+                        chain_id,
+                        "GrantXP: action resolved with amount 0 -- seed row is missing \
+                         its `amount` param; no XP awarded"
+                    );
+                    continue;
+                }
+                tracing::info!(entity_id, xp = amount, chain_id, "Content: granting XP");
+                // Same round-trip mob-kill XP and GM `gmGiveXp` use — base
+                // owns the XP/level write and the client notifications.
+                // `notify_gm: false`: a chain grant is gameplay, not a GM
+                // action, so it must not emit a GM feedback line.
+                if let Err(e) = tx
+                    .send(CellToBaseMsg::GrantXP {
+                        entity_id,
+                        xp_amount: amount,
+                        notify_gm: false,
+                    })
+                    .await
+                {
+                    tracing::error!(
+                        entity_id, xp = amount, chain_id, error = %e,
+                        "GrantXP: cell→base send failed -- player silently loses the chain's XP reward"
+                    );
+                }
+            }
             Action::MoveEntity {
                 entity_tag,
                 destination,

@@ -47,14 +47,14 @@ These variants exist in the `Action` / `Condition` enum and are accepted by the 
 | Unlocks | Timed objectives ("defuse in 30s"). Wave-spawn delays. Daily-reset scaffolding (paired with §3.2). Escort-fail-on-pause patterns. Timed buff cleanup if §1.1 doesn't already drive it. |
 | Why | Several SGW missions in the bomb-defusal/escape-sequence pattern need this. There's no good Rust-side substitute that an authored chain could call into without reinventing the dispatcher. |
 
-### 1.3 `Action::GrantXP`
+### 1.3 `Action::GrantXP` — **shipped (issue #611)**
 
 | | |
 |---|---|
-| Status today | Variant defined ([actions.rs:23](../../crates/content-engine/src/actions.rs#L23)). No loader arm. No executor arm. **No mission in the seed data uses XP rewards** — every `reward_xp` field is 0. |
-| Effort | Small (S) — once the XP/leveling system lands. |
-| Unlocks | Mission XP rewards. Currently every chain that completes a mission fires `CompleteMission` followed by `GrantItem` rewards — `GrantXP` is not authored anywhere. |
-| Why | Already on the roadmap via [.claude/plans/2026-03-08-xp-leveling-design.md](../../.claude/plans/2026-03-08-xp-leveling-design.md). The chain-side wiring should land alongside the leveling system. |
+| Status today | Both arms wired: `grant_xp` in [loader/action.rs](../../crates/content-engine/src/loader/action.rs) reads `params.amount`; the executor sends `CellToBaseMsg::GrantXP { notify_gm: false }`, the same round-trip mob-kill XP and GM `gmGiveXp` use. |
+| Remaining | **No content uses it — 0 seed rows**, and **no mission in the seed data uses XP rewards** (every `reward_xp` field is 0). Authoring the rewards is the open half. |
+| Unlocks | Mission XP rewards. Every chain that completes a mission today fires `CompleteMission` followed by `GrantItem` rewards and nothing else. |
+| Why | Roadmapped via [.claude/plans/2026-03-08-xp-leveling-design.md](../../.claude/plans/2026-03-08-xp-leveling-design.md); the chain-side plumbing landed ahead of the reward authoring so content can start using it. |
 
 ### 1.4 Seeded-but-inert actions — `launch_ability`, `qr_combat_damage`, `fail_objective`
 
