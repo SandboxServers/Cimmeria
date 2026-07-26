@@ -11,7 +11,16 @@ byteorder = "1"
 serde = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
-bincode = "2"
+# `serde` for the serde-backed codec (bincode 2 gates it behind a feature);
+# `std` for io/alloc. `derive` (a default feature) is deliberately off — the
+# index types derive serde's traits, not bincode's own.
+bincode = { version = "2", default-features = false, features = [
+    "std",
+    "serde",
+] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [[bin]]
 name = "build-package-index"
