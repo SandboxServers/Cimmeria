@@ -33,8 +33,8 @@ Counted with `grep -rnE "^[[:space:]]*#\[(tokio::)?test(\(.*\))?\]" crates/launc
 exclude list (alongside `cimmeria-app`, `cimmeria-content-editor`,
 `cimmeria-scene-editor`, `cimmeria-client-telemetry`).
 
-This crate is **176 of the 245-test gap** between the workspace's 3,012 tests
-and the 2,767 gated on every PR — by far the largest single contributor.
+This crate is **176 of the 245-test gap** between the workspace's 2,936 tests
+and the 2,691 gated on every PR — by far the largest single contributor.
 
 That matters more here than the raw number suggests, because several of these
 are explicit regression guards whose entire value is failing when someone

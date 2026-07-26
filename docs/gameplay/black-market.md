@@ -33,7 +33,7 @@ There is no `sgw_auction` table, no base-side handler, and no `onBM*` reply is e
 
 ## Implementation Status (branch `feat/571-black-market-phase1` only)
 
-The Rust implementation is split across two layers. Client RPCs land on the cell methods (indices 61–66) in [`crates/services/src/cell/cell_methods/black_market/mod.rs`](../../crates/services/src/cell/cell_methods/black_market/mod.rs), which decode the payload and forward to the base via `CellToBaseMsg::BM*` variants. The base side ([`crates/services/src/base/black_market/`](../../crates/services/src/base/black_market/)) owns all database, escrow, cash, and mail work and sends the `onBM*` replies (client indices 90–95) back to the requesting player.
+The Rust implementation is split across two layers. Client RPCs land on the cell methods (indices 61–66) in `crates/services/src/cell/cell_methods/black_market/mod.rs`, which decode the payload and forward to the base via `CellToBaseMsg::BM*` variants. The base side (`crates/services/src/base/black_market/`) owns all database, escrow, cash, and mail work and sends the `onBM*` replies (client indices 90–95) back to the requesting player.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -153,7 +153,7 @@ STRING sellerName
 
 ## Blocked Unknowns
 
-Three values are still guesses, each isolated to a single named constant or function in [`base/black_market/wire.rs`](../../crates/services/src/base/black_market/wire.rs) so the real captured value is a one-line swap:
+Three values are still guesses, each isolated to a single named constant or function in `base/black_market/wire.rs` so the real captured value is a one-line swap:
 
 | Unknown | Current placeholder | How to settle it |
 |---------|--------------------|------------------|

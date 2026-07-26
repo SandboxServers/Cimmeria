@@ -48,7 +48,7 @@ A PR that changes runtime behaviour must add or update a test. **Read [TESTING.m
 - Live-DB tests use `require_db_or_skip!` and run serialised — `cargo nextest run --profile=ci-live-db` (the profile in `.config/nextest.toml` pins `threads-required = "num-test-threads"`), or `cargo test ... -- --test-threads=1` if you're not on nextest.
 - Test names match the assertion. If the assertion changes, rename.
 - No PR or issue numbers in source comments — provenance lives in the PR body.
-- Update [docs/testing/inventory/<crate>.md](../docs/testing/inventory/) **only when a single PR adds or removes ≥5% of the workspace test count** (~150 tests against the current 3,012 baseline). Smaller drifts get folded in by periodic sweep updates — don't block review on per-PR inventory churn for a handful of tests in a 3,012-test repo.
+- Update [docs/testing/inventory/<crate>.md](../docs/testing/inventory/) **only when a single PR adds or removes ≥5% of the workspace test count** (~147 tests against the current 2,936 baseline). Smaller drifts get folded in by periodic sweep updates — don't block review on per-PR inventory churn for a handful of tests in a 2,936-test repo.
 
 If a single feature touches several layers (handler logic + serializer + SQL + cross-handler invariant), expect to add several test types — see TESTING.md "When one feature needs more than one test".
 

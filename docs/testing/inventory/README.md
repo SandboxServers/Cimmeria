@@ -3,11 +3,11 @@
 > **Type**: reference  
 > **Audience**: engineers  
 > **Last updated**: 2026-07-25 (header figures re-counted; catalogue tables are still the 2026-06-12 snapshot)  
-> **Total tests catalogued**: 1,351 *(stale snapshot; current workspace count is **3,012 tests across 473 files** — inventory regeneration is pending the next sweep)*  
+> **Total tests catalogued**: 1,351 *(stale snapshot; current workspace count is **2,936 tests across 461 files** — inventory regeneration is pending the next sweep)*  
 > **Companion docs**: [TESTING.md](../../../TESTING.md) (the playbook for *how to write* tests), [maintenance.md](maintenance.md), [review-report.md](review-report.md) (audit findings — owned by the testing-validation-engineer agent)
 
 > **Catalogue drift warning.** The per-crate tables below cover 1,351 tests
-> against a workspace that now has 3,012 — they are missing more than half
+> against a workspace that now has 2,936 — they are missing more than half
 > the suite, and several crates added since the snapshot have no file at all
 > (`admin-api`, `discord`, `navmesh-extractor`, `observability`,
 > `client-telemetry`). `wireclient` was catalogued separately on 2026-07-25 —
@@ -79,14 +79,14 @@ over every workspace member. Crates marked ✗ have no catalogue file yet.
 | `observability` | 7 | 1 | ✗ |
 | `src-tauri` (`cimmeria-app`) | 6 | 2 | ✓ |
 | `defs` | 5 | 1 | ✓ |
-| **Total** | **3,012** | **473** | |
+| **Total** | **2,936** | **461** | |
 
-Of these, **2,767** are gated on every PR — CI excludes `cimmeria-app`,
+Of these, **2,691** are gated on every PR — CI excludes `cimmeria-app`,
 `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`, and
 `cimmeria-client-telemetry`. 247 of the gated tests are live-DB guards
 (`require_db_or_skip!`), all in `cimmeria-services`.
 
-The 245-test gap between 3,012 and 2,767 breaks down as:
+The 245-test gap between 2,936 and 2,691 breaks down as:
 
 | Excluded crate | Tests | Note |
 |---|---:|---|

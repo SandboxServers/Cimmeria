@@ -60,9 +60,9 @@ decided cell-side.
 | 66 | `BMStopWatchingItem` | `INT32 itemDefId` | logged `UNIMPLEMENTED`, no state |
 
 Decoders live in
-[`cell/cell_methods/black_market/mod.rs`](../../crates/services/src/cell/cell_methods/black_market/mod.rs);
+`cell/cell_methods/black_market/mod.rs`;
 the base-side routing arms in
-[`base/world_entry/cell_dispatch/black_market_dispatch.rs`](../../crates/services/src/base/world_entry/cell_dispatch/black_market_dispatch.rs).
+`base/world_entry/cell_dispatch/black_market_dispatch.rs`.
 
 | Client method | Name | Args | Sent by |
 |---|---|---|---|
@@ -74,9 +74,9 @@ the base-side routing arms in
 | 95 | `onBMWatchedItemsUpdate` | `ARRAY<INT32>` | never (watch list unimplemented) |
 
 Serializers are in
-[`base/black_market/wire.rs`](../../crates/services/src/base/black_market/wire.rs);
+`base/black_market/wire.rs`;
 the send wrappers in
-[`base/black_market/send.rs`](../../crates/services/src/base/black_market/send.rs).
+`base/black_market/send.rs`.
 Indices are pinned in `crates/services/src/mercury/mod.rs` (`method_idx`)
 and `crates/services/src/cell/client_methods/black_market.rs`.
 
@@ -114,7 +114,7 @@ transaction that also moves the item and the cash.
 ```
 
 Accept/reject decisions are factored out into pure predicates in
-[`validate.rs`](../../crates/services/src/base/black_market/validate.rs)
+`validate.rs`
 so every rejection branch is unit-testable without a database. Bid
 precedence is fixed: auction-gone → is-seller → bid-too-low →
 insufficient-funds.
@@ -151,7 +151,7 @@ legitimate self-raise.
 
 Helpers are shared and executor-generic (`sqlx::PgExecutor`) so the same
 functions compose inside a transaction or against a bare pool —
-[`helpers.rs`](../../crates/services/src/base/black_market/helpers.rs).
+`helpers.rs`.
 
 ### 5. Row locks, not optimistic retry
 
@@ -164,7 +164,7 @@ fails and it returns `Ok(None)`.
 
 ### 6. Expiry sweep: a 30-second background task, one transaction per auction
 
-[`sweep.rs`](../../crates/services/src/base/black_market/sweep.rs) mirrors
+`sweep.rs` mirrors
 the outbox-drainer pattern — `tokio::spawn`, a startup pass to settle
 anything already due from before the process started, then an interval
 ticker at `SWEEP_INTERVAL = 30s`.
@@ -219,7 +219,7 @@ Castle_CellBlock) is reached through the ordinary content engine: chain
 5030 sets the `INT_Auction` interaction bit on `player_loaded` so the
 prompt survives relog, and chain 5031 fires `open_black_market` on
 `interact_tag`. The action handler
-([`cell/content/executor/black_market.rs`](../../crates/services/src/cell/content/executor/black_market.rs))
+(`cell/content/executor/black_market.rs`)
 resolves the auctioneer entity id with the same precedence
 `dialog::display` uses — chain `params["target_entity_id"]`, then the
 player's `last_interaction_target` pin — and **aborts with a warn** if
@@ -282,7 +282,7 @@ buyout-clearing bid as a normal high bid and lets the sweep settle it at
 expiry. The blocker is that settlement needs the COD/mail payout path
 that the sweep owns — the right fix is to factor that into a shared
 helper both call. Recorded as a `TODO` in
-[`bid.rs`](../../crates/services/src/base/black_market/bid.rs).
+`bid.rs`.
 
 **Applying the `BMSearchOptions` filters as SQL predicates now.** All 11
 fields are parsed and forwarded, but only `sort_id` is used (echoed back
@@ -312,7 +312,7 @@ each one is blocked on evidence we do not have.
 
 ### `next_min_bid` is a guess
 
-[`wire.rs:59-67`](../../crates/services/src/base/black_market/wire.rs)
+`wire.rs:59-67`
 computes the bid floor as a **5 % increment with a floor of +1**
 (`current + max(current / 20, 1)`). The real `nextMinBidPrice` formula is
 unknown — this is an admitted placeholder pending **x64dbg D.6**
@@ -334,7 +334,7 @@ ordinals in `wire::error_code` (pending **D.1**) and the
 
 ### Auction search has no `LIMIT` — CAT-I-05, still open
 
-[`search.rs:37-45`](../../crates/services/src/base/black_market/search.rs)
+`search.rs:37-45`
 runs `SELECT … FROM sgw_auction WHERE status = $1 ORDER BY sequence_id`
 with `fetch_all` — **every matching row**, no cap, no pagination, no
 per-request bound. `handle_search` then resolves a seller name per row
@@ -417,7 +417,7 @@ engine decoder work.
   generic over the executor and are the right building blocks for other
   systems that move items and cash atomically (trade, guild bank).
 - **Test coverage** is in
-  [`base/black_market/tests/`](../../crates/services/src/base/black_market/tests/)
+  `base/black_market/tests/`
   (live-DB: create/bid/cancel, search, sweep) plus in-module unit tests
   for the pure validators, the wire serializers (byte-exact layout
   guards), the `BMSearchOptions` deserializer (11-field round-trip and a

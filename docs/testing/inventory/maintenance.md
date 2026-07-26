@@ -7,9 +7,9 @@
 
 ## When to update
 
-A PR that adds or removes **≥5% of the workspace test count** (~150 tests against the current 3,012 baseline) updates the matching per-crate file under `docs/testing/inventory/` and the totals in [README.md](README.md) in the same PR. Smaller drifts get folded in by periodic sweep updates — a batched sweep every few weeks is cheaper than reviewing inventory churn on every PR. Renamed a test? Pick it up in the next sweep unless the PR is already in the ≥5% bucket.
+A PR that adds or removes **≥5% of the workspace test count** (~147 tests against the current 2,936 baseline) updates the matching per-crate file under `docs/testing/inventory/` and the totals in [README.md](README.md) in the same PR. Smaller drifts get folded in by periodic sweep updates — a batched sweep every few weeks is cheaper than reviewing inventory churn on every PR. Renamed a test? Pick it up in the next sweep unless the PR is already in the ≥5% bucket.
 
-Sweeps are scripted: run [`tools/extract_tests.py --write`](#how-to-regenerate). The catalogue has nonetheless drifted well past the ≥5% threshold — 1,351 rows against 3,012 tests as of 2026-07-25 — because for a long stretch the generator was not in the repo at all. That is fixed; the backfill sweep is still outstanding.
+Sweeps are scripted: run [`tools/extract_tests.py --write`](#how-to-regenerate). The catalogue has nonetheless drifted well past the ≥5% threshold — 1,351 rows against 2,936 tests as of 2026-07-25 — because for a long stretch the generator was not in the repo at all. That is fixed; the backfill sweep is still outstanding.
 
 Inventory drift up to ~5% is acceptable between sweeps — see [.github/copilot-instructions.md](../../../.github/copilot-instructions.md) and [CLAUDE.md](../../../CLAUDE.md) for the doc-update map. A CI drift-check is now *possible* (`--check` and `--verify-links` both exit non-zero on drift) but is **not yet wired into a workflow**; for now, reviewers eyeball the diff against the threshold.
 
@@ -56,7 +56,7 @@ The tool reports two numbers, and they legitimately differ:
 - **live-DB tests** (245) — test functions whose own body invokes `require_db_or_skip!()`.
 - **live-DB call sites** (247) — every invocation, including the two in the shared `assert_region_enter_*` helpers in `cell/content/chain_replay_tests/mission_638.rs`. The four tests calling those helpers are live-DB *transitively*, which a per-body scan cannot see; the tool lists the orphan sites explicitly so the gap is never a mystery.
 
-Earlier counts of "247 live-DB guards" were counting call sites.
+Earlier counts of "224 live-DB guards" were counting call sites.
 
 ## Conventions
 

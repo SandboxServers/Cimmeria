@@ -6,7 +6,7 @@
 > **Companion docs**: [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) (live-DB infra rationale and local setup), [CLAUDE.md](CLAUDE.md) (pre-PR checklist), [.github/copilot-instructions.md](.github/copilot-instructions.md) (review checklist).
 > **See also**: [docs/testing/inventory/README.md](docs/testing/inventory/README.md) — catalogue of every test in the workspace (the "what tests exist" reference; this file is the "how to write a test" playbook).
 
-The Rust workspace currently has **3,012 `#[test]` / `#[tokio::test]` cases across 473 files**. CI's exclude list drops the GUI crates (`cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`) and the Windows-only `cimmeria-client-telemetry` cdylib, leaving **2,767 tests actually gated on every PR**. Of those, 247 are live-DB regression guards (`require_db_or_skip!`, all in `cimmeria-services`) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~150 tests at the current 3,012 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a live `postgres:17.9` service container. A sixth `coverage` job runs `cargo llvm-cov` over both passes but is `continue-on-error: true` and does not gate merges. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace currently has **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**. CI's exclude list drops the GUI crates (`cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`) and the Windows-only `cimmeria-client-telemetry` cdylib, leaving **2,691 tests actually gated on every PR**. Of those, 224 are live-DB regression guards (`require_db_or_skip!`, all in `cimmeria-services`) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~147 tests at the current 2,936 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a live `postgres:17.9` service container. A sixth `coverage` job runs `cargo llvm-cov` over both passes but is `continue-on-error: true` and does not gate merges. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 This guide is the playbook for writing tests that survive review and catch real regressions. **Read it before opening a PR that adds tests.**
 
@@ -29,7 +29,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 
 **Where**: `#[cfg(test)] mod tests` in the same file as the code under test, or in a sibling `tests.rs` / `tests/` submodule when the host file approaches the 700-line cap.
 
-**For**: Pure functions, normalizers, parsers, state machines, anything you can exercise without a network socket or a database. The large majority of the workspace's tests are this kind — everything not accounted for by the 247 live-DB guards, the 3 smokes, and the wire/fan-out/harness categories below.
+**For**: Pure functions, normalizers, parsers, state machines, anything you can exercise without a network socket or a database. The large majority of the workspace's tests are this kind — everything not accounted for by the 224 live-DB guards, the 3 smokes, and the wire/fan-out/harness categories below.
 
 **Patterns to follow:**
 - One assertion focus per test. Multi-assertion tests are fine when they pin one invariant from several angles, but if the test name doesn't predict the assertion, split it.
@@ -374,7 +374,7 @@ cargo nextest run --profile=ci --workspace \
 cargo test --doc -p cimmeria-commands
 ```
 
-The exclude list must match `WORKSPACE_EXCLUDES` in [.github/workflows/test.yml](.github/workflows/test.yml) — it selects 2,767 of the workspace's 3,012 tests, of which the 247 live-DB guards self-skip without `DATABASE_URL`.
+The exclude list must match `WORKSPACE_EXCLUDES` in [.github/workflows/test.yml](.github/workflows/test.yml) — it selects 2,691 of the workspace's 2,936 tests, of which the 224 live-DB guards self-skip without `DATABASE_URL`.
 
 `cargo test --workspace ...` still works for quick sanity checks if you don't have nextest installed, but CI uses nextest and that's what the JUnit upload to Codecov Test Analytics expects.
 

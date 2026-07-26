@@ -11,7 +11,7 @@ last_updated: 2026-07-25
 > **Purpose**: Map every gameplay system's Rust implementation against what's needed for a complete server
 > **Status**: Source of truth for project completion tracking
 > **Measured against**: `main`. Work living only on an unmerged feature branch is called out explicitly in the affected section and is **not** counted as implemented.
-> **Workspace scale**: **3,012 workspace tests (2,767 gated in CI)** across **473 files**, **247 live-DB regression guards**, **3 PL/pgSQL end-to-end smokes**, with a **first-class content engine** the original Python codebase did not have. CI excludes `cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`, and `cimmeria-client-telemetry`, which is the whole of the 3,012 → 2,767 difference.
+> **Workspace scale**: **2,936 workspace tests (2,691 gated in CI)** across **461 files**, **224 live-DB regression guards**, **3 PL/pgSQL end-to-end smokes**, with a **first-class content engine** the original Python codebase did not have. CI excludes `cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `sgw-launcher`, and `cimmeria-client-telemetry`, which is the whole of the 2,936 → 2,691 difference.
 >
 > Those counts are of the working tree, which carries the unmerged black-market branch. On `main` alone the live-DB guard count is **224** (`require_db_or_skip!` invocations, all in `cimmeria-services`). The feature *statuses* below are scoped to `main` regardless; only these scale figures include the branch.
 >
@@ -610,7 +610,7 @@ last_updated: 2026-07-25
 
 - **Confidence**: HIGH (verified against `main` 2026-07-25)
 - **Documentation**: [gameplay/black-market.md](gameplay/black-market.md), [reverse-engineering/findings/black-market-wire-formats.md](reverse-engineering/findings/black-market-wire-formats.md)
-- **Rust code on `main`**: [`crates/services/src/cell/cell_methods/black_market.rs`](../crates/services/src/cell/cell_methods/black_market/mod.rs) (80) + [`crates/services/src/cell/client_methods/black_market.rs`](../crates/services/src/cell/client_methods/black_market.rs) (14) — **94 lines of handler stubs, unchanged**
+- **Rust code on `main`**: `crates/services/src/cell/cell_methods/black_market.rs` (80) + [`crates/services/src/cell/client_methods/black_market.rs`](../crates/services/src/cell/client_methods/black_market.rs) (14) — **94 lines of handler stubs, unchanged**
 
 > **Work in flight on an unmerged branch.** `feat/571-black-market-phase1` carries a substantial Phase 1 implementation: the `sgw_auction` schema, wire deserialization, a create/bid/cancel state machine, an expiry sweep, boot-seeded active auctions listed under a reserved system seller, and the search-serve path — laid out as `base/black_market/{create,bid,cancel,search,sweep,seed,send,validate,wire,types,helpers}.rs` plus `world_entry/cell_dispatch/black_market_dispatch.rs` and a content-executor arm. **None of it is on `main`**, so every row below stays `KM` and the totals do not count it. Re-verify this section the day that branch merges.
 
