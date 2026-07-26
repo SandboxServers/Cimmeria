@@ -9,6 +9,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
+use sqlx::AssertSqlSafe;
 
 use cimmeria_services::orchestrator::Orchestrator;
 
@@ -109,7 +110,12 @@ async fn list_login_events(
          ORDER BY event_time DESC LIMIT ${limit_param}"
     );
 
-    let mut query = sqlx::query_as::<_, AuditRow>(&sql);
+    // `AssertSqlSafe` is required by sqlx 0.9 for non-`&'static str` SQL.
+    // Audit: the only interpolated values above are the `$N` placeholder
+    // indices (derived from `bind_idx`, a local counter) and the fixed table
+    // name. Every caller-supplied value — `before`, `account_name`, `outcome`,
+    // `fetch_limit` — is passed via `.bind()` below, never concatenated.
+    let mut query = sqlx::query_as::<_, AuditRow>(AssertSqlSafe(sql));
 
     // Bind parameters in the same order as the placeholders.
     if let Some(ref before) = params.before {

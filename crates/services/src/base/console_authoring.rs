@@ -25,7 +25,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
-use sqlx::PgPool;
+use sqlx::{AssertSqlSafe, PgPool};
 
 use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::ConnectedClientState;
@@ -68,7 +68,13 @@ pub(crate) async fn handle_execute_authoring_sql(
         return;
     };
 
-    match sqlx::query(sql).execute(pool.as_ref()).await {
+    // `AssertSqlSafe` is required by sqlx 0.9: `query()` now only accepts
+    // `&'static str` unless the caller asserts the string was audited for
+    // injection. The audit is the "Trust model" note in this module's header —
+    // `sql` is server-generated on the GM-gated `.`-channel, numerics come from
+    // cell-parsed `i32`/`f32`, and strings are escaped through
+    // `crate::cell::console::seed::sql_str`. No raw client text is concatenated.
+    match sqlx::query(AssertSqlSafe(sql)).execute(pool.as_ref()).await {
         Ok(res) => {
             let rows = res.rows_affected();
             if rows == 0 {

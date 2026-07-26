@@ -1,5 +1,9 @@
 # Database & Persistence Agent Memory
 
+## Topic files
+
+- [live-db-verification.md](live-db-verification.md) — `require_db_or_skip!` tests count as PASS (not skip) with no DATABASE_URL, so a green no-DB run proves nothing; local live-DB recipe + how to prove a test hit the DB.
+
 ## Phase −0.5 triage status (2026-05-13)
 
 - [schema-patterns.md](schema-patterns.md) — **[RE-VERIFY]** — schema file paths look current but the python-reference paths need verification and the column inventory may have drifted since the original 2026-03-04 snapshot. No bible chapter target yet (persistence chapters are not Phase 0.5/1 priority).
