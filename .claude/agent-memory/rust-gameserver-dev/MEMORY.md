@@ -2,7 +2,7 @@
 
 ## Phase −0.5 triage status (2026-05-13)
 
-- [build-environment.md](build-environment.md) — **[PROMOTE → user-local feedback]** — Windows linker workaround for the repo's hardcoded WSL rust-lld path. Not bible-relevant; this is operational guidance specific to this contributor's host setup. Keep in memory as user-feedback; will not promote to `docs/spec/`.
+- [build-environment.md](build-environment.md) — **[DISCARD from bible triage]** — the linker-workaround claim was stale and has been rewritten (no override needed as of 2026-07-26). Host-setup operational guidance only; never bible-relevant.
 
 ### Inline-content section status
 
@@ -18,7 +18,7 @@
 
 ## Build Environment
 
-- See [build-environment.md](build-environment.md) — repo `.cargo/config.toml` hardcodes another user's rust-lld path; need `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS` override.
+- See [build-environment.md](build-environment.md) — **no linker override needed** (the old hardcoded-rust-lld-path note was stale; re-verified 2026-07-26). Worktrees still need an `external/` junction.
 
 ## Working Environment
 
@@ -48,3 +48,4 @@
 - [cargo-test-vs-nextest-flakiness.md](cargo-test-vs-nextest-flakiness.md) — full-suite `cargo test -p cimmeria-services` has PRE-EXISTING order-dependent failures (LogCapture thread bleed); validate with `cargo nextest`, don't assume you broke it.
 - [db-test-revert-verification.md](db-test-revert-verification.md) — split async DB-touching function into pure sync helper + DB shell; unit-test the helper so local revert-verification works when live-DB is the canonical guard.
 - [bincode-persisted-cache-format.md](bincode-persisted-cache-format.md) — bincode 2 needs `config::legacy()` for 1.x-written files; wrong config decodes SILENTLY, so assert bytes-consumed == len and use an old-version byte fixture (round-trip alone can't catch it).
+- [redundant-mechanism-test-trap.md](redundant-mechanism-test-trap.md) — revert-verify by disabling ONE mechanism at a time; two redundant mechanisms (e.g. Drop + Job Object) make a guard pass even with one fully deleted.

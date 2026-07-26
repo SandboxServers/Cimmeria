@@ -1,0 +1,27 @@
+[package]
+name = "cimmeria-server-harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Spawn/readiness/reap harness for the cimmeria-server process, for integration tests"
+
+[dependencies]
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+# Job Objects (orphan prevention), plus OpenProcess/GetExitCodeProcess for the
+# liveness probe the reap tests assert on. Windows is the project's target
+# platform, so this is the layer that actually matters here.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    # CreateJobObjectW takes a SECURITY_ATTRIBUTES pointer, so it is gated
+    # behind Win32_Security even though we pass null.
+    "Win32_Security",
+] }
+
+# PR_SET_PDEATHSIG (Linux) and kill(pid, 0) liveness probing.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

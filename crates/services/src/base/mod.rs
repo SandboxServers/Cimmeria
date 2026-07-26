@@ -17,6 +17,7 @@ use crate::mercury::{PlayerLoadData, WorldEntryInfo};
 
 // ── Submodules ───────────────────────────────────────────────────────────────
 
+pub(crate) mod autoplay;
 pub(crate) mod character;
 pub(crate) mod character_create;
 pub(crate) mod chardef;

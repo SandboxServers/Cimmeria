@@ -18,9 +18,12 @@
 //! | `BASE_PORT` | `32832` | BaseApp UDP port |
 //! | `CELL_PORT` | `50000` | CellApp port |
 //! | `ADMIN_PORT` | `8443` | Admin REST API port |
+//! | `MINIGAME_PORT` | `30000` | Minigame SmartFoxServer TCP listener port. Must be overridden when running two servers on one host, or the second bind collides. |
 //! | `DB_URL` | `host=localhost port=5433 user=w-testing password=w-testing dbname=sgw` | PostgreSQL connection string |
 //! | `PROTOCOL_DIGEST` | `58AFA196...` | 32-char hex digest sent in auth response |
-//! | `DEVELOPER_MODE` | `true` | Enable relaxed auth / multi-login |
+//! | `DEVELOPER_MODE` | `false` | Enable relaxed auth / multi-login. Also autoplay's second gate — see `CIMMERIA_AUTOPLAY_PLAYER_ID`. |
+//! | `CIMMERIA_AUTOPLAY_PLAYER_ID` | unset | Character id to auto-select at world entry, skipping the client's `playCharacter` input. **Requires `DEVELOPER_MODE=true` as an independent second gate.** Never skips authentication: the id is validated against the authenticated account's own character list and refused if not owned. Unset ⇒ autoplay disabled. See [docs/architecture/session-bootstrap.md](../../../docs/architecture/session-bootstrap.md). |
+//! | `CIMMERIA_AUTOPLAY_WORLD` | unset | Optional world guard for autoplay (e.g. `Castle_CellBlock`). Autoplay refuses to engage unless the character's persisted `world_location` matches. A guard, not a teleport — it will not relocate a character. |
 //! | `MERCURY_ENCRYPTION_VERSION` | `1` | Mercury wire-encryption version applied to every session. `1` = legacy (only version unpatched clients understand), `2` = modernized. Server-wide; no per-client negotiation yet. Unknown values fall back to `1`. |
 //! | `RUST_LOG` | `info` | Log filter (e.g. `debug`, `cimmeria_services=trace`) |
 //! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the launcher dev-session token mint at `/api/auth/dev-session` and the launcher upload endpoints at `/api/telemetry/upload-{chunk,bundle}`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset ⇒ endpoint returns 500. |
@@ -363,6 +366,16 @@ fn config_from_env() -> ServerConfig {
             cfg.admin_port = p;
         }
     }
+    // Without this, two servers on one host both bind 30000 and the second
+    // minigame listener fails — the one port in the set that wasn't
+    // overridable, which made concurrent instances impossible.
+    if let Ok(v) = std::env::var("MINIGAME_PORT") {
+        if let Ok(p) = v.parse() {
+            cfg.minigame_port = p;
+        } else {
+            tracing::warn!(value = %v, "MINIGAME_PORT is not a number; keeping default");
+        }
+    }
     if let Ok(v) = std::env::var("DB_URL") {
         cfg.db_connection_string = v;
     }
@@ -371,6 +384,26 @@ fn config_from_env() -> ServerConfig {
     }
     if let Ok(v) = std::env::var("DEVELOPER_MODE") {
         cfg.developer_mode = matches!(v.to_lowercase().as_str(), "1" | "true" | "yes");
+    }
+    // Autoplay (developer/CI session bootstrap). An unparseable value is a
+    // WARN + stays disabled rather than a silent default — a typo'd id must
+    // not quietly select "no autoplay" when the operator expected autoplay,
+    // nor quietly select some other character.
+    if let Ok(v) = std::env::var("CIMMERIA_AUTOPLAY_PLAYER_ID") {
+        match v.parse::<i32>() {
+            Ok(id) => cfg.autoplay_player_id = Some(id),
+            Err(_) => {
+                tracing::warn!(
+                    value = %v,
+                    "CIMMERIA_AUTOPLAY_PLAYER_ID is not a valid i32; autoplay stays disabled"
+                );
+            }
+        }
+    }
+    if let Ok(v) = std::env::var("CIMMERIA_AUTOPLAY_WORLD") {
+        if !v.is_empty() {
+            cfg.autoplay_expected_world = Some(v);
+        }
     }
     if let Ok(v) = std::env::var("MERCURY_ENCRYPTION_VERSION") {
         if let Ok(parsed) = v.parse::<u8>() {

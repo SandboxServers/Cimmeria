@@ -1,19 +1,42 @@
 ---
 name: Build environment quirks
-description: Cimmeria repo's .cargo/config.toml hardcodes another user's rust-lld path; need an env override to build.
-type: project
+description: Windows-native cargo builds need NO linker override; the old hardcoded rust-lld path note is obsolete. Worktrees still need an external/ junction.
+metadata:
+  type: feedback
 ---
 
-The repo `.cargo/config.toml` hardcodes a `rust-lld` linker path under another user's home directory. To build on this host, prepend:
+**No linker override is needed on this host.** `cargo check` / `cargo test` /
+`cargo clippy` / `cargo nextest` all work with a bare invocation from the repo
+root or a worktree.
+
+**Why this entry exists:** an earlier version of this memory claimed the
+repo's `.cargo/config.toml` hardcoded another user's `rust-lld` path, and that
+every cargo command had to be wrapped in
+`CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS='-C linker=...'`. **That is no
+longer true and following it wastes time.** The tracked config now reads:
+
+```toml
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
+rustflags = ["-C", "linker-flavor=lld-link"]
+```
+
+Bare `rust-lld` resolves via the rustup toolchain's own bin directory, so it
+is portable across rustup-managed Windows installs. Re-verified 2026-07-26 by
+running `cargo check -p cimmeria-services` and a full `cargo nextest run` with
+no env wrapper at all.
+
+**How to apply:** just run cargo directly. If a link *does* fail with a
+missing-linker error, read `.cargo/config.toml` before reaching for an env
+override — and correct this note with what you find.
+
+**Worktree gotcha (still current):** a fresh worktree has no `external/`
+(gitignored, populated by `setup.ps1`). Junction-link it from the main
+checkout before building, or the build dies with a `DetourNavMesh.h` error
+that never mentions `external/`:
 
 ```
-CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS='-C linker=C:\Users\Steve\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib\rustlib\x86_64-pc-windows-msvc\bin\rust-lld.exe'
+cmd /c mklink /J "<worktree>\external" "C:\Users\Steve\source\projects\Cimmeria\external"
 ```
 
-to every `cargo check`/`cargo test`/`cargo build` invocation.
-
-The original memory note had the path under `C:\Users\steven.cady\...` — that is the value in the tracked `.cargo/config.toml`, NOT the right path on this host. Confirmed 2026-05-27: rust-lld actually lives at the `C:\Users\Steve\...` path above.
-
-**Why:** this avoids editing tracked config (which would conflict for the original author).
-
-**How to apply:** wrap every cargo command. Tests that don't need a linker (`cargo check`) sometimes work without it but `cargo test` always needs it.
+See [[concurrent-claude-sessions]].
