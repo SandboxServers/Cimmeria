@@ -354,6 +354,24 @@ pub(super) async fn execute_actions(
             } => {
                 world::set_visible(entity_tag, visible, entity_id, chain_id, tx, space_mgr).await;
             }
+            Action::MoveEntity {
+                entity_tag,
+                destination,
+                world,
+                use_player,
+            } => {
+                world::move_entity(
+                    entity_tag,
+                    destination,
+                    world,
+                    use_player,
+                    entity_id,
+                    chain_id,
+                    tx,
+                    space_mgr,
+                )
+                .await;
+            }
             Action::MoveWaypoint {
                 entity_tag,
                 destination,

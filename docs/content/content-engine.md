@@ -157,7 +157,7 @@ Defined at [conditions.rs:12-95](../../crates/content-engine/src/conditions.rs#L
 
 Defined at [actions.rs:20-323](../../crates/content-engine/src/actions.rs#L20-L323). **`Action::execute` is a stub** ([actions.rs:363-376](../../crates/content-engine/src/actions.rs#L363-L376)); only `TriggerChain` self-executes. Everything else is dispatched by [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs).
 
-An action has to clear **two** hurdles to do anything. It needs a match arm in [loader/action.rs](../../crates/content-engine/src/loader/action.rs) (otherwise no `content_actions` row can name it) *and* a match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) (otherwise it resolves and then falls through to a `debug!` no-op at [mod.rs:411-413](../../crates/services/src/cell/content/executor/mod.rs#L411-L413)). The table below is the authoritative catalog; the "Seed rows" column counts `content_actions` rows across [db/resources/Content/Seed/](../../db/resources/Content/Seed/) as of 2026-07-25.
+An action has to clear **two** hurdles to do anything. It needs a match arm in [loader/action.rs](../../crates/content-engine/src/loader/action.rs) (otherwise no `content_actions` row can name it) *and* a match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) (otherwise it resolves and then falls through to a `debug!` no-op at [mod.rs:424-426](../../crates/services/src/cell/content/executor/mod.rs#L424-L426)). The table below is the authoritative catalog; the "Seed rows" column counts `content_actions` rows across [db/resources/Content/Seed/](../../db/resources/Content/Seed/) as of 2026-07-25.
 
 #### Authorable and executed
 
@@ -187,6 +187,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `set_follow_target` | `SetFollowTarget` | 0 |
 | `set_npc_ai_state` | `SetNpcAiState` | 0 |
 | `move_waypoint` | `MoveWaypoint` | 0 |
+| `move_entity` | `MoveEntity` | 5 |
 | `set_active_slot` | `SetActiveSlot` | 0 |
 | `start_minigame` | `StartMinigame` | 4 |
 | `trigger_transporter` | `TriggerTransporter` | 2 |
@@ -199,11 +200,10 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 
 #### Authorable but NOT executed — seeded rows that silently no-op
 
-These have a loader arm, so the seed accepts them and the engine resolves them, but **[executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) has no match arm** — every one falls through to the `debug!` catch-all and does nothing. This is a live correctness gap, not a roadmap item: 13 seeded rows are currently dead.
+These have a loader arm, so the seed accepts them and the engine resolves them, but **[executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) has no match arm** — every one falls through to the `debug!` catch-all and does nothing. This is a live correctness gap, not a roadmap item: 8 seeded rows are currently dead.
 
 | Seed verb | `Action` variant | Seed rows | Consequence |
 |---|---|---|---|
-| `move_entity` | `MoveEntity` | 5 | Scripted NPC/player repositioning never happens |
 | `launch_ability` | `LaunchAbility` | 3 | Scripted ability fires never happen |
 | `qr_combat_damage` | `QrCombatDamage` | 2 | Scripted damage is never applied |
 | `apply_effect` | `ApplyEffect` | 1 | No chain can apply a buff/debuff |
@@ -415,15 +415,15 @@ The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` si
 
 ### Defined-but-unhandled actions
 
-Seventeen `Action` variants have **no match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs)** and fall through to the `debug!` catch-all at [mod.rs:411-413](../../crates/services/src/cell/content/executor/mod.rs#L411-L413):
+Sixteen `Action` variants have **no match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs)** and fall through to the `debug!` catch-all at [mod.rs:424-426](../../crates/services/src/cell/content/executor/mod.rs#L424-L426):
 
-`GrantXP`, `ApplyEffect`, `RemoveEffect`, `SpawnEntity`, `DespawnEntity`, `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`, `QrCombatDamage`, `FailObjective`, `MoveEntity`, `LaunchAbility`.
+`GrantXP`, `ApplyEffect`, `RemoveEffect`, `SpawnEntity`, `DespawnEntity`, `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`, `QrCombatDamage`, `FailObjective`, `LaunchAbility`.
 
-Six of those **are authorable from seed data and are used today** — `move_entity` (5 rows), `launch_ability` (3), `qr_combat_damage` (2), `apply_effect` (1), `remove_effect` (1), `fail_objective` (1). Those 13 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
+Five of those **are authorable from seed data and are used today** — `launch_ability` (3 rows), `qr_combat_damage` (2), `apply_effect` (1), `remove_effect` (1), `fail_objective` (1). Those 8 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
 
 Two more arms exist but are log-only: `SystemMessage` (11 seeded rows — wire format unknown, see below) and `SendMessage` (no seed verb).
 
-Biggest functional impacts: **no chain can grant XP, apply a buff, schedule a timer, deal scripted damage, fire a scripted ability, or move an entity today.** See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
+Biggest functional impacts: **no chain can grant XP, apply a buff, schedule a timer, deal scripted damage, or fire a scripted ability today.** (Entity moves came off this list in issue #613.) See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
 
 **`SystemMessage` wire format is still unresolved** (issue #268). The arm at [executor/mod.rs:275-287](../../crates/services/src/cell/content/executor/mod.rs#L275-L287) carries the reasoning: an earlier implementation routed the message id through `onPlayerCommunication` (method 28), which produced garbled `"[] says"` chat spam and client freezes, so it was reduced to an `info!`. Finding the correct client method for localized string-id display (possibly `onErrorCode` or a UI-specific method) still needs RE.
 
@@ -459,6 +459,8 @@ What it pins:
 
 What it catches: SQL seed drift, condition removals, archetype/op flips, action-list shape changes.
 What it misses: anything that depends on executor side effects (does `RemoveItem` actually remove? does `MissionUpdate` actually persist?). Those need executor unit tests + live-DB integration tests separately.
+
+One module is the exception, and is scoped by **action verb** rather than by mission: [sgc_w1_move_entity.rs](../../crates/services/src/cell/content/chain_replay_tests/sgc_w1_move_entity.rs). It pushes the resolved actions on through `executor::execute_actions` and asserts on the emitted `CellToBaseMsg`, because a resolve-only test cannot distinguish a wired executor arm from the `other =>` catch-all — exactly the gap that let `move_entity`’s five seeded rows no-op undetected.
 
 ### `interact_tag_linter.rs` — boot-free seed-file lint
 

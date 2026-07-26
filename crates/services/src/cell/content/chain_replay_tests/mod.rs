@@ -15,7 +15,12 @@
 //!
 //! Files are organised by mission family — each sibling module pins the
 //! chains for one mission's branches and edges so a regression surfaces
-//! near the seed it touches.
+//! near the seed it touches. [`sgc_w1_move_entity`] is organised by
+//! *action verb* instead, because the risk it guards is the executor arm
+//! rather than any one mission's wiring. It also runs the resolved
+//! actions through `executor::execute_actions` and asserts on the
+//! resulting `CellToBaseMsg` traffic — a resolve-only test cannot tell a
+//! wired executor arm from the `other =>` catch-all.
 
 mod cover_demo;
 mod mission_1562;
@@ -25,3 +30,4 @@ mod mission_639;
 mod mission_641;
 mod mission_687;
 mod mission_688;
+mod sgc_w1_move_entity;
