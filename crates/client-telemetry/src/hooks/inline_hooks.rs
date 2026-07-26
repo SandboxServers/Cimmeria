@@ -127,12 +127,46 @@ const ADDR_CONSOLE_COMMAND: usize = 0x00539850;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 const ADDR_BINK_TICK: usize = 0x0050bbc0;
 
+// ─── Client-side dispatch oracle ────────────────────────────────
+
+/// The "method not found" callee on the silent-drop path of
+/// `Client_NetIn_EntityMethodDispatch` (`0x00c6f8f0`).
+///
+/// The dispatcher searches the entity description's red-black
+/// method-handler map (`desc+0xe0`) keyed by
+/// `(componentKey, methodIndex)`. On a hit it fires the CME event.
+/// On a miss it calls this function at `0x00c6fa95` and returns —
+/// **the inbound entity method is discarded with no log, no error,
+/// and no wire response.** That silence is the failure mode this
+/// hook exists to make visible.
+///
+/// Hooked here rather than at the dispatcher entry for three
+/// reasons: the method index is computed *inside* the dispatcher
+/// (`FUN_01590bb0`) so an entry hook cannot report it; this is a
+/// function entry, so the ordinary inline-hook path works instead
+/// of a mid-function splice; and it has **exactly one xref** — the
+/// drop site itself — so every call is a genuine drop with zero
+/// false positives.
+///
+/// Signature: `__thiscall(void* handler_map, uint method_index)`.
+///
+/// **Thread:** runs on a Mercury *network* thread, not the main
+/// game thread — same as `ADDR_HANDLE_MESSAGE`. The producer's
+/// `try_emit` is the lock-free bounded path, so this is safe, but
+/// nothing here may touch game state.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const ADDR_ENTITY_METHOD_NOT_FOUND: usize = 0x01590f30;
+
 /// Trampoline pointer for `Mercury::Nub::handleMessage`. Set by
 /// MinHook at hook install time. Reading `.get()` gives us the
 /// address of the original function prologue + JMP back to
 /// address+N, callable as if it were the original.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 static HANDLE_MESSAGE_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
+
+/// Trampoline pointer for the entity-method drop path.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static ENTITY_METHOD_NOT_FOUND_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
 
 /// Trampoline pointer for `FEngineLoop::Tick`.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
@@ -250,11 +284,12 @@ unsafe fn install_inner(producer: Producer) {
     install_cooked_data_load(&producer);
     install_console_command(&producer);
     install_bink_tick(&producer);
+    install_entity_method_not_found(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(11))],
+        [("hook_count", serde_json::json!(12))],
     );
 }
 
@@ -266,6 +301,17 @@ unsafe fn install_handle_message(producer: &Producer) {
         ADDR_HANDLE_MESSAGE,
         handle_message_detour as *mut c_void,
         &HANDLE_MESSAGE_TRAMPOLINE,
+    );
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe fn install_entity_method_not_found(producer: &Producer) {
+    install_one(
+        producer,
+        "entity_method_not_found",
+        ADDR_ENTITY_METHOD_NOT_FOUND,
+        entity_method_not_found_detour as *mut c_void,
+        &ENTITY_METHOD_NOT_FOUND_TRAMPOLINE,
     );
 }
 
@@ -671,6 +717,52 @@ unsafe extern "C" fn static_load_object_detour(
 /// player typically). No sampling — emit 1/1.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
+/// Detour for the entity-method **silent drop** path.
+///
+/// Emits one `client.dispatch.method_dropped` event carrying the
+/// `method_index` the client could not route. This is the
+/// client-side half of the round-trip oracle: the server can prove
+/// it *sent* a method, but only this proves the real client failed
+/// to *understand* it.
+///
+/// Emitted at `warn` and **unsampled**. A drop is a correctness
+/// failure, not telemetry chatter — on a healthy session this
+/// should be silent, so any volume here is itself the finding. If
+/// a future client build turns out to drop routinely, add a
+/// sampler rather than lowering the level.
+///
+/// Known-expected drops today: BlackMarket `onBM*` (method 90-95)
+/// are parsed and flagged Exposed but were never bound into the
+/// handler map, so they always land here until the runtime patch
+/// in `black-market-client-window-patch.md` is applied.
+///
+/// **Hot-path discipline:** network thread. No allocation beyond
+/// the event builder, no game-state reads, no locks. `try_emit`
+/// drops on a full queue rather than blocking the network thread.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+unsafe extern "thiscall" fn entity_method_not_found_detour(
+    handler_map: *mut c_void,
+    method_index: u32,
+) -> i32 {
+    let _ = std::panic::catch_unwind(|| {
+        if let Some(p) = crate::boot::producer() {
+            p.try_emit(
+                crate::events::ClientNativeEvent::builder("client.dispatch.method_dropped", "warn")
+                    .field("method_index", serde_json::json!(method_index)),
+            );
+        }
+    });
+
+    if let Some(t) = ENTITY_METHOD_NOT_FOUND_TRAMPOLINE.get() {
+        let original: unsafe extern "thiscall" fn(*mut c_void, u32) -> i32 =
+            unsafe { std::mem::transmute(*t) };
+        original(handler_map, method_index)
+    } else {
+        0
+    }
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 unsafe extern "thiscall" fn state_field_update_detour(this: *mut c_void, event_data: *mut c_void) {
     let _ = std::panic::catch_unwind(|| {
         if let Some(p) = crate::boot::producer() {
@@ -879,6 +971,11 @@ mod tests {
             assert_eq!(ADDR_COOKED_DATA_LOAD, 0x00420074);
             assert_eq!(ADDR_CONSOLE_COMMAND, 0x00539850);
             assert_eq!(ADDR_BINK_TICK, 0x0050bbc0);
+            // Sole callee of the silent-drop path in
+            // Client_NetIn_EntityMethodDispatch (0x00c6f8f0), called
+            // from 0x00c6fa95. Exactly one xref — if that ever stops
+            // being true, this hook reports false drops.
+            assert_eq!(ADDR_ENTITY_METHOD_NOT_FOUND, 0x01590f30);
         }
     }
 
