@@ -1,19 +1,15 @@
 ---
 name: Build environment quirks
-description: Cimmeria repo's .cargo/config.toml hardcodes another user's rust-lld path; need an env override to build.
+description: The old rust-lld linker override is OBSOLETE — .cargo/config.toml was fixed upstream; plain cargo commands work on this host.
 type: project
 ---
 
-The repo `.cargo/config.toml` hardcodes a `rust-lld` linker path under another user's home directory. To build on this host, prepend:
+**The linker override is no longer needed.** Verified 2026-07-26 on `main` @ 70ec45ef: `.cargo/config.toml`'s `[target.x86_64-pc-windows-msvc]` block now uses the portable bare name `linker = "rust-lld"` plus `linker-flavor=lld-link`, which rustc resolves through the toolchain's own bin directory. There is no hardcoded user-profile path anymore.
 
-```
-CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS='-C linker=C:\Users\Steve\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib\rustlib\x86_64-pc-windows-msvc\bin\rust-lld.exe'
-```
+Plain `cargo check`, `cargo clippy --all-targets`, and `cargo nextest run -p cimmeria-services` all succeed with no env prefix.
 
-to every `cargo check`/`cargo test`/`cargo build` invocation.
+**Historical (do not re-apply):** an earlier config hardcoded a `rust-lld` path under another user's home, and every cargo invocation needed a `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS='-C linker=...'` prefix. If you see that advice repeated anywhere, it is stale.
 
-The original memory note had the path under `C:\Users\steven.cady\...` — that is the value in the tracked `.cargo/config.toml`, NOT the right path on this host. Confirmed 2026-05-27: rust-lld actually lives at the `C:\Users\Steve\...` path above.
+**How to apply:** just run cargo normally. If a link failure ever reappears, re-read `.cargo/config.toml` before reaching for an override — that file is the authority, not this note.
 
-**Why:** this avoids editing tracked config (which would conflict for the original author).
-
-**How to apply:** wrap every cargo command. Tests that don't need a linker (`cargo check`) sometimes work without it but `cargo test` always needs it.
+See [[local-postgres-port]] for the matching test-DB gotcha.

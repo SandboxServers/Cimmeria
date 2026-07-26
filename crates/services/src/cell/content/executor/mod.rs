@@ -440,6 +440,60 @@ pub(super) async fn execute_actions(
                     );
                 }
             }
+            Action::LaunchAbility {
+                ability_id,
+                entity_tag,
+            } => {
+                // `entity_tag: None` means "the entity that fired the
+                // chain" — for a `player_loaded` trigger that is the
+                // player themselves, which is exactly the self-target the
+                // combat pipeline's friendly-fire gate would reject.
+                let target_id = match entity_tag.as_deref() {
+                    None => Some(entity_id),
+                    Some(tag) => space_mgr.find_entity_by_tag(entity_id, tag),
+                };
+                match target_id {
+                    Some(target_id) => {
+                        super::effect_apply::apply_ability_effects(
+                            ability_id, target_id, entity_id, chain_id, tx, space_mgr,
+                        )
+                        .await;
+                    }
+                    None => {
+                        // Tagged NPC isn't spawned (or is in another
+                        // space). Same shape as the other tag-resolving
+                        // world actions: skip, don't fall back to self —
+                        // a debuff meant for an NPC must never land on
+                        // the player.
+                        tracing::warn!(
+                            entity_id,
+                            ability_id,
+                            entity_tag = ?entity_tag,
+                            chain_id,
+                            "LaunchAbility: no entity matched the tag -- ability not launched"
+                        );
+                    }
+                }
+            }
+            Action::ApplyEffect {
+                effect_id,
+                duration_secs: _,
+            } => {
+                // `duration_secs` is hardcoded `None` by the action
+                // loader and the effect's own `pulse_count` /
+                // `pulse_duration` already carry the duration, so there
+                // is nothing to honour here yet.
+                //
+                // This arm is correct but currently unreachable: the only
+                // seeded `apply_effect` row is on an `effect`-scoped
+                // chain, and no `effect_*` trigger is dispatched anywhere
+                // in the cell service. It fires as soon as that
+                // dispatch lands.
+                super::effect_apply::apply_effect(
+                    effect_id, entity_id, entity_id, chain_id, tx, space_mgr,
+                )
+                .await;
+            }
             Action::TriggerChain {
                 chain_id: target_chain_id,
             } => {

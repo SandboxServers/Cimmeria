@@ -193,21 +193,44 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `start_minigame` | `StartMinigame` | 4 |
 | `trigger_transporter` | `TriggerTransporter` | 2 |
 | `cross_world_teleport` | `CrossWorldTeleport` | 1 |
+| `launch_ability` | `LaunchAbility` | 3 |
+| `apply_effect` | `ApplyEffect` | 1 |
 
 > An `open_black_market` / `OpenBlackMarket` action exists on the unmerged
 > `feat/571-black-market-phase1` branch (PR #586) and is **not** on `main`. It is
 > documented in [../architecture/black-market.md](../architecture/black-market.md);
 > do not author against it until that branch lands.
 
+`launch_ability` and `apply_effect` do **not** route through the combat
+pipeline. They call a separate server-authoritative entry point,
+[`cell/content/effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs),
+which goes straight to the effect layer. `handle_use_ability` is the *client*
+entry point and rejects a scripted debuff three ways — the caster has not
+trained the ability, a self-target trips the friendly-fire gate, and the path
+resolves unconditionally as damage. The helper deliberately bypasses all
+three, so it is private to `cell::content` and takes no client-supplied id;
+see [../architecture/abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md)
+for the full rationale and the constraints that must not be widened.
+
+Two caveats for authors:
+
+- **`apply_effect` cannot fire today.** Its only seeded row is on an
+  `effect`-scoped chain, and no `effect_*` trigger is dispatched anywhere in
+  the cell service. The arm is correct and will work as soon as that
+  dispatch lands.
+- **A single-shot, script-less effect is a legitimate no-op.** An effect with
+  `pulse_count = 1` and `script_name = NULL` registers no active instance and
+  runs nothing — that is the effect definition's own doing, not a failure of
+  the action. Effect 1634, the sole effect on the Castle Cellblock wake-up
+  ability 1372, is exactly this shape.
+
 #### Authorable but NOT executed — seeded rows that silently no-op
 
-These have a loader arm, so the seed accepts them and the engine resolves them, but **[executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) has no match arm** — every one falls through to the `debug!` catch-all and does nothing. This is a live correctness gap, not a roadmap item: 8 seeded rows are currently dead.
+These have a loader arm, so the seed accepts them and the engine resolves them, but **[executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) has no match arm** — every one falls through to the `debug!` catch-all and does nothing. This is a live correctness gap, not a roadmap item: 4 seeded rows are currently dead.
 
 | Seed verb | `Action` variant | Seed rows | Consequence |
 |---|---|---|---|
-| `launch_ability` | `LaunchAbility` | 3 | Scripted ability fires never happen |
 | `qr_combat_damage` | `QrCombatDamage` | 2 | Scripted damage is never applied |
-| `apply_effect` | `ApplyEffect` | 1 | No chain can apply a buff/debuff |
 | `remove_effect` | `RemoveEffect` | 1 | No chain can strip an effect |
 | `fail_objective` | `FailObjective` | 1 | Objective-fail branches never fire |
 
@@ -416,15 +439,17 @@ The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` si
 
 ### Defined-but-unhandled actions
 
-Fifteen `Action` variants have **no match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs)** and fall through to the `debug!` catch-all at [mod.rs:453-455](../../crates/services/src/cell/content/executor/mod.rs#L453-L455):
+Thirteen `Action` variants have **no match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs)** and fall through to the `debug!` catch-all at [mod.rs:453-455](../../crates/services/src/cell/content/executor/mod.rs#L453-L455):
 
-`ApplyEffect`, `RemoveEffect`, `SpawnEntity`, `DespawnEntity`, `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`, `QrCombatDamage`, `FailObjective`, `LaunchAbility`.
+`RemoveEffect`, `SpawnEntity`, `DespawnEntity`, `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`, `QrCombatDamage`, `FailObjective`.
 
-Five of those **are authorable from seed data and are used today** — `launch_ability` (3 rows), `qr_combat_damage` (2), `apply_effect` (1), `remove_effect` (1), `fail_objective` (1). Those 8 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
+Three of those **are authorable from seed data and are used today** — `qr_combat_damage` (2 rows), `remove_effect` (1), `fail_objective` (1). Those 4 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
+
+`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play — both chains carrying it (5000 and 5001) also have mutually-exclusive `mission_status` conditions, and its effect is single-shot and script-less. See §3.
 
 Two more arms exist but are log-only: `SystemMessage` (11 seeded rows — wire format unknown, see below) and `SendMessage` (no seed verb).
 
-Biggest functional impacts: **no chain can apply a buff, schedule a timer, deal scripted damage, or fire a scripted ability today.** (XP grants and entity moves came off this list in issues #611 and #613.) See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
+Biggest functional impacts: **no chain can strip an effect, schedule a timer, or deal scripted damage today.** See [proposed-extensions.md](proposed-extensions.md) for the wiring plan.
 
 **`SystemMessage` wire format is still unresolved** (issue #268). The arm at [executor/mod.rs:275-287](../../crates/services/src/cell/content/executor/mod.rs#L275-L287) carries the reasoning: an earlier implementation routed the message id through `onPlayerCommunication` (method 28), which produced garbled `"[] says"` chat spam and client freezes, so it was reduced to an `info!`. Finding the correct client method for localized string-id display (possibly `onErrorCode` or a UI-specific method) still needs RE.
 

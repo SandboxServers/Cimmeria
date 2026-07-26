@@ -4,6 +4,8 @@
 //! Split into per-theme submodules when the original `tests.rs` crossed
 //! the 700-line hard cap from `CLAUDE.md`:
 //!
+//! - [`effects`]          — `Action::LaunchAbility` / `Action::ApplyEffect`
+//!   (server-initiated effect application, target resolution).
 //! - [`stats`]            — `Action::ChangeStat` (heal / clamp / damage /
 //!   set-to-max / ammo-stat skip).
 //! - [`inventory_counter`] — `Action::RemoveItem`, increment / reset counter.
@@ -24,6 +26,7 @@ pub(super) use cimmeria_content_engine::actions::Action;
 pub(super) use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};
 pub(super) use tokio::sync::mpsc;
 
+mod effects;
 mod inventory_counter;
 mod mission;
 mod negative_logging;

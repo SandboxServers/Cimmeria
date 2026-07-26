@@ -18,7 +18,7 @@
 
 ## Build Environment
 
-- See [build-environment.md](build-environment.md) — repo `.cargo/config.toml` hardcodes another user's rust-lld path; need `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS` override.
+- See [build-environment.md](build-environment.md) — the rust-lld linker override is **obsolete** (config fixed upstream 2026-07-26); plain cargo commands work, don't re-apply it.
 
 ## Working Environment
 
@@ -50,3 +50,4 @@
 - [bincode-persisted-cache-format.md](bincode-persisted-cache-format.md) — bincode 2 needs `config::legacy()` for 1.x-written files; wrong config decodes SILENTLY, so assert bytes-consumed == len and use an old-version byte fixture (round-trip alone can't catch it).
 - [live-db-scratch-cluster.md](live-db-scratch-cluster.md) — `db.bat init` does NOT create the db/role or load the schema; recipe for an isolated scratchpad Postgres on :5544 so live-DB guards can actually be revert-verified.
 - [chain-replay-executor-guards.md](chain-replay-executor-guards.md) — chain-replay must run `execute_actions` (not just `resolve_event`) when the change is an executor arm; sentinel-chain pattern for verbs with zero seed rows; `0x7000_5000` reserved.
+- [local-postgres-port.md](local-postgres-port.md) — dev Postgres is on **5544**, not the documented 5433; on the wrong port `require_db_or_skip!` self-skips and still reports PASS, so green means nothing until you check the skip count.

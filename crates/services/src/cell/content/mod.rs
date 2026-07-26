@@ -5,6 +5,10 @@
 //! ([`event_dispatch`]), and executes resolved actions against the game state
 //! ([`executor`]).
 
+// NOT `pub` — `effect_apply` bypasses the combat pipeline's caster/target
+// gates, and module privacy is what keeps it unreachable from any
+// client-dispatched path. See the module doc before widening this.
+mod effect_apply;
 mod engine_loader;
 mod event_dispatch;
 mod executor;
