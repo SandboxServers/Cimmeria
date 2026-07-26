@@ -2,7 +2,7 @@
 title: "Cimmeria Admin API"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Cimmeria Admin API
@@ -71,7 +71,7 @@ Returns current server configuration.
     "base_host": "0.0.0.0",
     "base_port": 32832,
     "cell_host": "0.0.0.0",
-    "cell_port": 32833,
+    "cell_port": 50000,
     "admin_port": 8443,
     "developer_mode": true
   }
@@ -112,28 +112,21 @@ Returns server uptime and per-service health.
 
 #### `GET /api/players`
 
-Lists all currently online players. Returns live data from BaseService's connected client map, filtered to players who have completed world entry.
+**Not implemented — the roster is always empty.** The handler
+(`crates/admin-api/src/routes/players.rs:62-89`) unconditionally returns
+`available: false` with `reason: "Live player roster is not implemented yet."`
+and an empty `players` array. The `summary` and `services` blocks *are*
+real — they reflect actual service-running state and a live DB health check.
 
-**Response:**
+**Response (what it actually returns):**
 ```json
 {
   "status": "ok",
-  "available": true,
-  "reason": null,
-  "players": [
-    {
-      "id": 2,
-      "name": "TestChar",
-      "archetype": "Soldier",
-      "level": 5,
-      "zone": "Agnos",
-      "ping": null,
-      "status": "in_world",
-      "session": "127.0.0.1:54321"
-    }
-  ],
+  "available": false,
+  "reason": "Live player roster is not implemented yet.",
+  "players": [],
   "summary": {
-    "online_count": 1,
+    "online_count": 0,
     "ready": true
   },
   "services": {
@@ -144,6 +137,13 @@ Lists all currently online players. Returns live data from BaseService's connect
   }
 }
 ```
+
+The plumbing to make this live already exists on the services side and is
+simply not wired up: `OnlinePlayer` (`crates/services/src/base/mod.rs:73`),
+`archetype_name()` (`crates/services/src/base/mod.rs:84`), and
+`online_players()` (`crates/services/src/base/service.rs:90`). Nothing in
+`admin-api` calls `online_players()` today. When it is wired, the per-player
+fields are expected to be:
 
 | Field | Source |
 |-------|--------|
@@ -257,7 +257,7 @@ High-level content counts for the dashboard.
 **Frontend:** `fetchContentSummary()` → `ContentSummaryResponse`
 **Page:** Dashboard.tsx — mission count stat and activity feed via `buildDashboardStats()` and `buildDashboardActivity()`
 
-#### `GET /api/content/editor-pickers`
+#### `GET /api/content/pickers`
 
 Loads all dropdown options for the chain flow editor. Queries multiple `resources.*` tables.
 
@@ -276,8 +276,7 @@ Loads all dropdown options for the chain flow editor. Queries multiple `resource
 }
 ```
 
-**Frontend:** `fetchContentEditorPickers()` → `ContentEditorPickersResponse`
-**Page:** ChainFlowWorkbench.react.tsx — populates dropdown menus for trigger/condition/action node forms
+**Frontend:** none — no fetcher wraps this route today. Intended to populate dropdown menus for trigger/condition/action node forms in a chain editor UI that has not been built. See [Chain Flow Editor](#chain-flow-editor--no-frontend-consumer-exists).
 
 #### `GET /api/content/items`
 
@@ -323,13 +322,13 @@ Current session info. **Not implemented.**
 
 ## WebSocket Endpoints
 
-All WebSocket endpoints accept upgrade at the listed path. None are implemented yet — handlers are stubs.
+All WebSocket endpoints accept upgrade at the listed path. Two of the three are fully implemented.
 
-| Path | Purpose |
-|------|---------|
-| `/ws/entities` | Real-time entity property updates |
-| `/ws/logs` | Server log output stream |
-| `/ws/events` | Game event notifications |
+| Path | Purpose | Status |
+|------|---------|--------|
+| `/ws/logs` | Server log output stream | **Live** — replays the ring buffer on connect, then forwards the live `broadcast` channel (`crates/admin-api/src/ws/log_stream.rs:22-70`) |
+| `/ws/events` | Game event notifications | **Live** — replays the login-audit buffer, then streams live events (`crates/admin-api/src/ws/event_stream.rs:19-60`) |
+| `/ws/entities` | Real-time entity property updates | Stub — accepts the upgrade and does nothing (`crates/admin-api/src/ws/entity_stream.rs:26-31`) |
 
 **Frontend:** `connectWs(path, onMessage)` in `ws.ts` — creates WebSocket connection, parses JSON messages, returns cleanup function.
 
@@ -387,10 +386,21 @@ fetchAdminConfig()  ──▶ buildConfigSections()  ──▶ grouped setting d
 fetchAdminStatus()  ──▶ uptime + service health
 ```
 
-### Chain Flow Editor (`ChainFlowWorkbench.react.tsx`)
+### Chain Flow Editor — **no frontend consumer exists**
+
+The backend half of the chain editor is real: the four Tauri IPC commands
+below are registered in `src-tauri/src/main.rs:25-32`, the draft handlers
+live in `src-tauri/src/drafts.rs`, and `GET /api/content/pickers` is a live
+HTTP route. But **nothing in `frontend/src` or `tools/ContentEditor/ui/src`
+calls any of them.** There is no `ChainFlowWorkbench` file anywhere in the
+repo, and no `fetchContentEditorPickers` symbol — the exported fetchers in
+`frontend/src/lib/admin-api.ts` are `fetchAdminConfig`, `fetchAdminStatus`,
+`fetchPlayers`, `fetchSpaces`, `fetchContentSummary`, and the audit fetcher.
+
+The intended wiring, once a UI is built:
 
 ```
-fetchContentEditorPickers()  ──▶ dropdown options for node forms
+GET /api/content/pickers                  ──▶ dropdown options for node forms
 tauriInvoke('load_chain_editor_content')  ──▶ restore saved chains
 tauriInvoke('save_chain_editor_content')  ──▶ persist to DB
 tauriInvoke('load_chain_editor_draft')    ──▶ restore WIP state
@@ -420,6 +430,15 @@ When the database pool is `None` or a query fails, `available` is `false` and `r
 
 The middleware (`crates/admin-api/src/middleware.rs`) is configured permissively for development: any origin, any method, any headers. This allows the Tauri webview (`tauri://localhost`) and browser dev server (`http://localhost:5173`) to reach the API.
 
+> **There is no authentication on any `/api` route.** `middleware.rs`
+> contains only the CORS layer; the JWT auth middleware is a TODO comment
+> block (`crates/admin-api/src/middleware.rs:19-28`) with no implementation.
+> Combined with `allow_origin(Any)`, this means anything that can reach port
+> 8443 can call `POST /api/config/start`, `POST /api/config/stop`, and the
+> `/api/telemetry/upload-*` endpoints. Do not expose the admin port beyond
+> localhost or a trusted network. The `/api/auth/*` login endpoints are
+> themselves stubs and grant nothing.
+
 ---
 
 ## Implementation Status
@@ -429,7 +448,7 @@ The middleware (`crates/admin-api/src/middleware.rs`) is configured permissively
 | `GET /api/config` | Live | Reads from `ServerConfig` |
 | `POST /api/config` | Stub | |
 | `GET /api/config/status` | Live | Uptime + service health check |
-| `GET /api/players` | Live | Real-time from connected clients |
+| `GET /api/players` | Stub | Always returns `available: false` and an empty roster; `summary`/`services` blocks are real |
 | `GET /api/players/{id}` | Stub | |
 | `POST /api/players/{id}/kick` | Stub | |
 | `GET /api/spaces` | Live | From `resources.worlds` table |
@@ -437,7 +456,7 @@ The middleware (`crates/admin-api/src/middleware.rs`) is configured permissively
 | `POST /api/spaces` | Stub | |
 | `GET /api/content` | Stub | Hardcoded category list |
 | `GET /api/content/summary` | Live | Aggregate DB queries |
-| `GET /api/content/editor-pickers` | Live | Multi-table picker data |
+| `GET /api/content/pickers` | Live | Multi-table picker data |
 | `GET /api/content/items` | Stub | |
 | `GET /api/content/items/{id}` | Stub | |
 | `GET /api/entities` | Stub | |
@@ -447,10 +466,35 @@ The middleware (`crates/admin-api/src/middleware.rs`) is configured permissively
 | `POST /api/auth/logout` | Stub | |
 | `GET /api/auth/me` | Stub | |
 | `GET /ws/entities` | Stub | |
-| `GET /ws/logs` | Stub | |
-| `GET /ws/events` | Stub | |
+| `GET /ws/logs` | Live | Ring-buffer replay + live broadcast |
+| `GET /ws/events` | Live | Login-audit replay + live stream |
 
-**7 live endpoints**, 16 stubs, 3 WebSocket stubs.
+### Routes not covered above
+
+The following are registered and reachable but are not documented in the
+endpoint reference above. Listed here so the table is not mistaken for the
+complete surface:
+
+| Route | Evidence |
+|---|---|
+| `POST /api/config/start` | `routes/config.rs:62` — live, calls `orchestrator.start_all()` |
+| `POST /api/config/stop` | `routes/config.rs:63` — live |
+| `POST /api/content/reload` | `routes/content.rs:56` |
+| `GET`/`DELETE /api/editor/content/{id}` | `routes/editor.rs:136` |
+| `GET`/`DELETE /api/editor/content/{scope_id}/{mission_id}` | `routes/editor.rs:137-140` |
+| `POST /api/editor/content` | `routes/editor.rs:141` |
+| `GET /api/editor/draft/{scope_id}` | `routes/editor.rs:142` |
+| `GET /api/editor/draft/{scope_id}/{mission_id}` | `routes/editor.rs:143-146` |
+| `POST /api/editor/draft` | `routes/editor.rs:147` |
+| `GET /api/audit/logins` | `routes/audit.rs:52` — live |
+| `POST /api/auth/dev-session` | `routes/dev_session.rs:155` |
+| `POST /api/auth/dev-session/refresh` | `routes/dev_session.rs:156` |
+| `POST /api/telemetry/upload-chunk` | `routes/telemetry/mod.rs:91-94` |
+| `POST /api/telemetry/upload-bundle` | `routes/telemetry/mod.rs:95-98` |
+| `GET /swagger-ui`, `GET /api-docs/openapi.json` | `crates/admin-api/src/lib.rs:117` |
+
+Note that `/api/editor/*` is an **HTTP** chain-editor persistence surface —
+the Tauri IPC commands below are a second, parallel path to the same job.
 
 ---
 
@@ -470,7 +514,12 @@ The middleware (`crates/admin-api/src/middleware.rs`) is configured permissively
 | `crates/admin-api/src/ws/*.rs` | WebSocket stream stubs |
 | `crates/admin-api/src/middleware.rs` | CORS configuration |
 | `crates/services/src/orchestrator.rs` | Shared state provider |
-| `crates/services/src/base/mod.rs` | `OnlinePlayer` struct + `online_players()` |
+| `crates/services/src/base/mod.rs` | `OnlinePlayer` struct (line 73) + `archetype_name()` (line 84) |
+| `crates/services/src/base/service.rs` | `online_players()` (line 90) — not yet called by admin-api |
+| `crates/admin-api/src/routes/editor.rs` | HTTP chain-editor content + draft persistence |
+| `crates/admin-api/src/routes/audit.rs` | `GET /api/audit/logins` |
+| `crates/admin-api/src/routes/dev_session.rs` | Launcher dev-session token mint + refresh |
+| `crates/admin-api/src/routes/telemetry/` | Launcher telemetry chunk + bundle ingest |
 | `frontend/src/lib/admin-api.ts` | TypeScript API client + dashboard builders |
 | `frontend/src/lib/view-models.ts` | UI utility functions |
 | `frontend/src/lib/ws.ts` | WebSocket connection helper |

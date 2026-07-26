@@ -1,6 +1,7 @@
 # Server observability — design and tool choice
 
 **Status:** Accepted (2026-05-25)
+**Last updated:** 2026-07-25
 **Confidence:** High
 
 ## Context
@@ -137,7 +138,7 @@ backend") is the load-bearing decision here. OTLP is:
    - Mercury wire seams (UDP `Channel::{send,receive}_packet`, TCP
      `UnifiedCodec::{encode,decode}`).
    - Launcher uploads — replayed through tracing by
-     `crates/admin-api/src/routes/telemetry.rs` after HMAC
+     `crates/admin-api/src/routes/telemetry/` after HMAC
      verification of the dev-session token.
 2. The OpenTelemetry layer
    ([`crates/server/src/otel.rs`](../../crates/server/src/otel.rs))
@@ -362,11 +363,40 @@ The integration plan from this side:
   decision per
   [signoz-deployment.md](../operations/signoz-deployment.md#retention).
 
+## Known gaps
+
+Folded in from the superseded server-systems survey (see
+[server-systems.md](server-systems.md)), which is where the metrics half of that
+document lived. The OTLP/SigNoz work above closed most of it; these are what is
+left.
+
+**Client-reported performance data is still dropped.** Every connected client
+pushes `SGWPlayer.perfStats` — 12 floats covering FPS min/avg/max, bytes and
+packets in/out, lag min/avg/max, resends, and appearance-job count. The handler
+at
+[`crates/services/src/base/dispatch/diagnostics.rs`](../../crates/services/src/base/dispatch/diagnostics.rs)
+validates the 48-byte payload length and then discards the contents; its own
+comment marks the intended next step ("parse the 12 floats here and emit a
+`perf_stats` metric"). This is the cheapest remaining win in the whole
+observability surface — the data already arrives, on every client, for free, and
+per-client lag and resend counts are exactly what you want when someone reports
+that the server "feels bad".
+
+**Gameplay metrics are uncounted.** Kills, deaths, items looted, missions
+completed, and abilities used produce log lines but no counters, so there is no
+way to ask "how much combat happened last night?" without grepping. Follow the
+label-cardinality rules in
+[instrumentation-discipline.md](instrumentation-discipline.md) before adding
+any — per-player labels are the trap.
+
+**No anomaly alerting.** Nothing watches for tick-rate degradation or an
+unexpected entity-count spike. SigNoz supports alert rules; none are defined.
+
 ## References
 
 - Deployment runbook: [signoz-deployment.md](../operations/signoz-deployment.md)
 - Remote access runbook: [signoz-remote-access.md](../operations/signoz-remote-access.md)
 - Instrumentation helpers: [`crates/mercury/src/instrumentation.rs`](../../crates/mercury/src/instrumentation.rs)
 - OTLP exporter: [`crates/server/src/otel.rs`](../../crates/server/src/otel.rs)
-- Launcher ingest endpoint: [`crates/admin-api/src/routes/telemetry.rs`](../../crates/admin-api/src/routes/telemetry.rs)
+- Launcher ingest endpoint: [`crates/admin-api/src/routes/telemetry/`](../../crates/admin-api/src/routes/telemetry/)
 - Launcher telemetry pipeline (dev-session flow + secret rotation): [dev-session-telemetry.md](dev-session-telemetry.md), [docs/operations/telemetry.md](../operations/telemetry.md)

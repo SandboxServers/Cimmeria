@@ -26,7 +26,7 @@ When an entity's health reaches zero:
 
 ## Respawn Flow
 
-When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/combat.rs::handle_respawn`](../../crates/services/src/cell/cell_methods/player/combat.rs)) the path forks on whether the resolved respawn point is in the same world as where the player died:
+When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/combat/mod.rs::handle_respawn`](../../crates/services/src/cell/cell_methods/player/combat/mod.rs)) the path forks on whether the resolved respawn point is in the same world as where the player died:
 
 - **Same-world respawn (the common case)**: keep everything alive — cell entity, instance, AoI entities on the client, kismet state. Send a small in-place burst that re-creates only the local pawn actor on the client. **The instance — NPCs, kismet sequences (door states, completed encounters), regions — survives.** Dying in a room with an opened stasis door means coming back to that same opened door, not a freshly-spawned copy of the room.
 - **Cross-world respawn**: fall through to the gate-travel pipeline. The player is leaving the space anyway (different world entirely), so destroying+recreating the cell entity and tearing down the client view is correct.

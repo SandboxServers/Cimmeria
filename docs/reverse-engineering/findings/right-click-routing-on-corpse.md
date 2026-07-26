@@ -8,7 +8,7 @@
 
 The bug was **server-side, not client-side**. None of the static-analysis hypotheses below (`+0x30/+0x31` gate bytes, `actor+0x1b4` entity ID, `onDuelEntitiesRemove` interactable-set hack) actually mattered.
 
-**What was happening**: the Cimmeria server's `interact` cell-method handler at [crates/services/src/cell/cell_methods/player/interaction.rs](../../../crates/services/src/cell/cell_methods/player/interaction.rs) checked whether the target was a hostile NPC (`!is_player && faction == 10`) and **redirected to `useAbility` instead of running `handle_interact`**. The check didn't consider whether the NPC was dead. So:
+**What was happening**: the Cimmeria server's `interact` cell-method handler at [crates/services/src/cell/cell_methods/player/interaction.rs](../../../crates/services/src/cell/cell_methods/player/interaction/mod.rs) checked whether the target was a hostile NPC (`!is_player && faction == 10`) and **redirected to `useAbility` instead of running `handle_interact`**. The check didn't consider whether the NPC was dead. So:
 
 - Alive hostile guard → reroute to `useAbility` ✓ correct
 - **Dead hostile guard → reroute to `useAbility`** ✗ — the lootable corpse's `interact` request was silently turned into combat, and the loot pipeline was never reached.
@@ -96,8 +96,8 @@ No writers found that set either byte to 0 except `std::map`/`std::set` tree-bal
 ## Implications for the Rust server
 
 The gate requires the client to have received **both**:
-1. A method-call `onEntityMove` (method index 2) — currently we **don't send** this. We send the optimized [`build_avatar_update`](crates/services/src/mercury/aoi.rs#L205) packet (BASEMSG `0x10` `UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR`) which uses the position-stream protocol and may go through a different client path.
-2. A method-call `onVisible(1)` — we do send this in the AoI cascade at [mercury/aoi.rs:143](crates/services/src/mercury/aoi.rs#L143), so `+0x31` should be set on AoI entry.
+1. A method-call `onEntityMove` (method index 2) — currently we **don't send** this. We send the optimized [`build_avatar_update`](../../../crates/services/src/mercury/aoi/update.rs#L22) packet (BASEMSG `0x10` `UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR`) which uses the position-stream protocol and may go through a different client path.
+2. A method-call `onVisible(1)` — we do send this in the AoI cascade at [mercury/aoi/create.rs:234](../../../crates/services/src/mercury/aoi/create.rs#L234), so `+0x31` should be set on AoI entry.
 
 Why Frost works but the dead guard doesn't (open question):
 

@@ -3,7 +3,18 @@
 > [!WARNING]
 > **Historical document.** Early-project survey of the sgw.exe binary. The current canonical references are [`../reverse-engineering/STATUS.md`](../reverse-engineering/STATUS.md) (campaign tracker) and [`../reverse-engineering/address-map.md`](../reverse-engineering/address-map.md) (key address table). Keep this page for the original binary profile; do not extend.
 
-Reverse engineering analysis of `sgw.exe` — the Stargate Worlds UnrealEd build.
+> **Last updated**: 2026-07-25 (address-accuracy audit — `BigWorldEntity.cpp` address corrected; binary characterisation and `SGWEditor` row corrected)
+
+Reverse engineering analysis of `sgw.exe` — the Stargate Worlds **game client**, which
+also carries a dormant, byte-patch-activated UnrealEd inside the same image.
+
+> **Corrected 2026-07-25.** This line previously read "the Stargate Worlds UnrealEd
+> build", which reads as though the file were an editor-only binary. It is not: the
+> shipped image is the retail game client, and `GIsEditor` (`0x01EAD7AC`) is **`0`** in
+> the static `.data` initialiser. Editor mode only exists after AtreaRL byte-patches the
+> `MOV` at `0x00418AFC` inside `FUN_004185e0` to flip that flag — see
+> [atrealoader-config.md](atrealoader-config.md) §"Editor-group patches" and
+> [atrea-editor.md](../reverse-engineering/findings/atrea-editor.md).
 
 ## Binary Profile
 
@@ -14,7 +25,7 @@ Reverse engineering analysis of `sgw.exe` — the Stargate Worlds UnrealEd build
 | **Base Address** | 0x00400000 |
 | **Engine** | Unreal Engine 3 (modified by CME) |
 | **Build Path** | `c:\build\qa\sgw\working\development\src\` |
-| **Executables** | SGWGame (client), SGWEditor (editor) |
+| **Executables** | SGWGame (client). *`SGWEditor` was listed here originally but returns **zero** string matches in the binary — the editor is the same `SGW.exe` in a patched mode, not a separate executable.* |
 | **Config Files** | SGWLocal.ini, SGWLogConfig.xml |
 | **Website** | http://www.stargateworlds.com/ |
 | **Beta URL** | http://beta.stargateworlds.com/ |
@@ -131,7 +142,7 @@ The following source files are referenced via assertion macros and debug strings
 | SGWTaskManager.cpp | 0x0181b8b8 | Task/job management |
 | CombatQueue.cpp | 0x019eac40+ | Combat ability queue |
 | BaseAppearanceJob.cpp | 0x019eb8f0 | Character appearance loading |
-| BigWorldEntity.cpp | 0x018cacb8+ | Entity integration |
+| BigWorldEntity.cpp | 0x018cad14+ | Entity integration |
 | ZipStorage.cpp | 0x017fe5d8+ | Cooked data packages |
 
 ### BigWorld (Server SDK, compiled into client)

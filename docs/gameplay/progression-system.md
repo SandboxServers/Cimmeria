@@ -15,7 +15,7 @@ Covers XP gain, leveling, stat growth, training points, and applied science poin
 
 ### Constants
 
-Defined in `python/common/Constants.py`:
+Defined in `deprecated/python/common/Constants.py`:
 
 ```python
 MAX_LEVEL = 20

@@ -14,7 +14,7 @@ last_updated: 2026-05-27
 
 ## TL;DR verdict
 
-The original game does **not** use `resources.items_event_sets` for Item\_Equip / Item\_Unequip / Item\_Reload / Item\_Use animations. That table maps combat-event-ids (EVENT\_ItemUse=5, EVENT\_ItemMelee=6, EVENT\_ItemRanged=7) to **per-item combat ability overrides**, not animation sequences. The `getItemSequence` lookup in `python/cell/SGWBeing.py` is archetype-keyed (constant lookup against `ARCHETYPE_ITEM_EVENT_SETS`), and every human archetype maps to the same event set 804. There is no per-weapon equip/unequip/reload sequence data anywhere in the seed. The Cimmeria archetype-keyed shape today IS the original game's shape. The P90→Pistol artifact must be solved differently.
+The original game does **not** use `resources.items_event_sets` for Item\_Equip / Item\_Unequip / Item\_Reload / Item\_Use animations. That table maps combat-event-ids (EVENT\_ItemUse=5, EVENT\_ItemMelee=6, EVENT\_ItemRanged=7) to **per-item combat ability overrides**, not animation sequences. The `getItemSequence` lookup in `deprecated/python/cell/SGWBeing.py` is archetype-keyed (constant lookup against `ARCHETYPE_ITEM_EVENT_SETS`), and every human archetype maps to the same event set 804. There is no per-weapon equip/unequip/reload sequence data anywhere in the seed. The Cimmeria archetype-keyed shape today IS the original game's shape. The P90→Pistol artifact must be solved differently.
 
 ---
 
@@ -127,7 +127,7 @@ This is a Direction=NetIn (server → client) single-integer event. The client's
 
 ### No change to the lookup path is warranted
 
-The Cimmeria `archetype_item_event_set` function and `fire_item_sequence` in `crates/services/src/cell/cell_methods/player/world.rs:181` faithfully mirror the original Python. The original game sends the same `seqId` (1872 for `Item_Equip`, 1873 for `Item_Unequip`) regardless of weapon. The P90→Pistol artifact is not a server data problem — it is a kismet sequence design issue in the shipped client assets: sequence 1872 was authored assuming a back-holster start pose, which looks correct for P90→anything but creates a visible from-back-reach on Pistol→anything.
+The Cimmeria `archetype_item_event_set` function and `fire_item_sequence` in `crates/services/src/cell/cell_methods/player/world/item_sequence.rs:17` faithfully mirror the original Python. The original game sends the same `seqId` (1872 for `Item_Equip`, 1873 for `Item_Unequip`) regardless of weapon. The P90→Pistol artifact is not a server data problem — it is a kismet sequence design issue in the shipped client assets: sequence 1872 was authored assuming a back-holster start pose, which looks correct for P90→anything but creates a visible from-back-reach on Pistol→anything.
 
 ### Where to look for the actual fix
 

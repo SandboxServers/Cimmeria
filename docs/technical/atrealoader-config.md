@@ -1,6 +1,23 @@
 # AtreaLoader.config.xml — Binary Patch Definitions
 
-> **Last updated**: 2026-05-25
+> [!NOTE]
+> **Scope banner — companion to `atrea-editor.md`, not superseded by it.**
+> The top-level entry point for the whole Atrea toolchain — including the in-game
+> UnrealEd editor that these patches unlock inside `SGW.exe` — is
+> [`docs/reverse-engineering/findings/atrea-editor.md`](../reverse-engineering/findings/atrea-editor.md).
+> Read that first for orientation, then return here for the patch/symbol/NVP table.
+>
+> `atrea-editor.md` describes this page as one of an "apocryphal trio" that it supersedes.
+> **That framing did not survive the 2026-07-25 audit.** This page was *revised* in the
+> same 2026-05-25 campaign — `atrea-editor.md`'s own §"Apocryphal docs to retire" table
+> records the corrections applied here (patch count `19` → `18`, the `-SHOWLOG` removal,
+> the `STD_OUTPUT_HANDLE = -11` arithmetic) and its §Cross-references cites this page as a
+> live "Ghidra-anchored Editor-group patches" reference. It is the only place transcribing
+> the non-editor patch groups (Debug, AppearanceLogging, UCC, Mercury), the 13-symbol hook
+> table, and the NVP settings. Treat the two as complementary halves.
+
+> **Last updated**: 2026-07-25 (accuracy audit — scope banner added; symbol-table RVA/VA mixing documented)
+> **Previously revised**: 2026-05-25
 > **Audience**: reverse engineers + emulator developers touching the SGW.exe patch surface
 > **Doc type**: reference (transcription of the patch/symbol/NVP tables with binary-level annotations)
 > **Status**: revised against the Wave 2 byte-verified Editor-group table in [atrea-editor.md](../reverse-engineering/findings/atrea-editor.md)
@@ -155,13 +172,39 @@ AtreaRL.dll hooks these functions/addresses in `SGW.exe`:
 
 `Patch=true` means AtreaRL replaces the function with its own implementation. `Patch=false` means AtreaRL hooks (wraps) the function, calling the original after logging.
 
+> **The "Address" column above mixes RVAs and absolute VAs — verified 2026-07-25.**
+> The XML transcribes whatever each `<Symbol>` entry declares, and those entries are not
+> uniform. The five with leading zeros are **image-relative**; add `0x00400000` to resolve:
+>
+> | Declared | Resolves to | What is actually there |
+> |---|---|---|
+> | `0x00086000` | `0x00486000` | `FUN_00486000(char*, char*, undefined4)` — function entry; the `(Expr, File, Line)` signature matches `appFailAssertFunc` |
+> | `0x000C43A0` | `0x004C43A0` | `FUN_004c43a0(this, LPCWSTR, …)` — function entry, consistent with `FFileManager::MoveFile` |
+> | `0x000E9870` | `0x004E9870` | `FUN_004e9870(this, int*)` — function entry |
+> | `0x000A42F0` | `0x004A42F0` | `UTestIpDrv__vfunc_12` — a `Serialize` vtable slot, consistent with `UObject::Serialize` |
+> | `0x000250D0` | `0x004250D0` | interior of `FUN_004250b0` (not an entry) — a mid-function hook point |
+>
+> The remaining entries (`0x00866860`/`70`/`80`, `0x00635210`, `0x0041C2E0`, `0x00812D30`,
+> `0x00304750`, `0x01ACADE0`) are already absolute VAs. Reading the whole column as VAs —
+> the natural assumption — puts five of them below `.text`'s `0x00401000` floor or in the
+> wrong function entirely.
+
 ### Notable addresses for RE
 
-- `0x00866860`–`0x00866880` — BigWorld entity event logging functions; these are the CME-added wrappers around BigWorld's event system.
-- `0x00635210` — SGW's main ANSI debug logger.
-- `0x0041C2E0` — Mercury protocol debug output function.
-- `0x00086000` — UE3 assertion handler (`appFailAssertFunc` equivalent).
-- `0x01ACADE0` — `FName::GNames`, the global UE3 name hash table.
+- `0x00866860`–`0x00866880` — three interior hook points inside a **single** function,
+  `FUN_00866850` (body `0x00866850`–`0x00866894`, 69 bytes). They are the start / parameter-emit /
+  end phases of one BigWorld entity-event log call, not three separate functions.
+  *(Corrected 2026-07-25 — previously described as "functions", plural.)*
+- `0x00635210` — SGW's main ANSI debug logger. Confirmed a function entry (`FUN_00635210`).
+- `0x0041C2E0` — **not a function entry.** It is an interior address inside
+  `FFeedbackContextWindows__vfunc_1` (body `0x0041C0C0`–`0x0041C43F`), UE3's
+  `FFeedbackContext::Serialize` log sink. Hooking here intercepts log output as it is
+  written; there is no distinct "Mercury debug output function" at this address.
+  *(Corrected 2026-07-25.)*
+- `0x00486000` (declared as RVA `0x00086000`) — UE3 assertion handler (`appFailAssertFunc`
+  equivalent). *(Corrected 2026-07-25 — `0x00086000` read as a VA falls below the `.text`
+  floor at `0x00401000` and resolves to nothing.)*
+- `0x01ACADE0` — `FName::GNames`, the global UE3 name hash table. Data, not a function.
 
 ## NVP settings
 

@@ -2,18 +2,18 @@
 title: "Content Inventory — Stargate Worlds Emulator"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Content Inventory — Stargate Worlds Emulator
 
-> **Last updated**: 2026-03-01
-> **Purpose**: Statistical audit of all game content data across the database (`resources.sql`), Python scripts, entity definitions, and client assets
+> **Last updated**: 2026-07-25
+> **Purpose**: Statistical audit of all game content data across the database (`db/resources/`), the legacy Python scripts (`deprecated/python/`), entity definitions, and client assets
 > **Scope**: Counts, distributions, cross-references, and completeness for every content type in the emulator
 
 This document inventories every category of authored game content in the Cimmeria server
 emulator. The numbers come from direct queries against the resource database schema
-(`db/resources.sql`), cross-referenced with Python scripts (`python/`), entity definitions
+(`db/resources/`), cross-referenced with the legacy Python scripts (`deprecated/python/`), entity definitions
 (`entities/`), and client data files (`data/`). Each section states its confidence level
 explicitly.
 
@@ -1028,15 +1028,18 @@ represents an inference about development process rather than a directly measura
 
 All counts in this document were derived from:
 
-1. **Database queries** against the schema defined in `db/resources.sql` — this is the
+1. **Database queries** against the schema defined under `db/resources/*/Tables/` — this is the
    primary source for all content counts
-2. **Python script inventory** from `python/` — cross-referenced with DB entries for
+2. **Python script inventory** from `deprecated/python/` — the legacy reference
+   implementation, not the running Rust server; cross-referenced with DB entries for
    scripted content percentages
 3. **Entity definitions** from `entities/` (XML) — used for entity template and space
    configuration counts
 4. **Client data references** from `data/cache/*.pak` — used for mesh and visual asset
    counts (lower confidence)
-5. **Configuration files** from `config/` — used for server-side space and world counts
+5. **Configuration files** from the legacy service configs now at
+   `deprecated/cpp-config/config/` — used for server-side space and world counts. The
+   repo-root `config/` directory contains only `discord.toml.example`.
 
 Where a count is given as exact (e.g., "1,040 missions"), it comes from a direct
 database query. Where a count is approximate (e.g., "~50 real game worlds"), it involves

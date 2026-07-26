@@ -2,13 +2,13 @@
 title: "Contact List System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Contact List System
 
-> **Last updated**: 2026-03-01
-> **Status**: 0% implemented
+> **Last updated**: 2026-07-25
+> **Status**: Implemented and confirmed working in-game
 
 ## Overview
 
@@ -18,22 +18,38 @@ The `ContactListManager` interface is defined in `entities/defs/interfaces/Conta
 
 Two internal base methods (`sendEventToPlayers` and `sendLoginStatusMessages`) handle server-side event broadcasting -- these are never called by the client.
 
+The Rust implementation splits across the two services. The six inbound cell methods (indices 55–60) live in [`crates/services/src/cell/cell_methods/contact_list/mod.rs`](../../crates/services/src/cell/cell_methods/contact_list/mod.rs) — they parse the wire payload, resolve `player_id`, and forward to the base via `CellToBaseMsg`. The base side ([`crates/services/src/base/contact_list/`](../../crates/services/src/base/contact_list/)) owns all DB mutations, the client echo responses, and the presence fanout.
+
 ## Implementation Status
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| List creation | STUB | `contactListCreate` defined, Python stub only (`pass`) |
-| List deletion | STUB | `contactListDelete` defined, Python stub only |
-| List renaming | STUB | `contactListRename` defined, Python stub only |
-| List flags update | STUB | `contactListFlagsUpdate` defined, Python stub only |
-| Add members | STUB | `contactListAddMembers` defined, Python stub only |
-| Remove members | STUB | `contactListRemoveMembers` defined, Python stub only |
-| List sync to client | DEFINED | `onContactListUpdate` client method |
-| Delete sync to client | DEFINED | `onContactListDelete` client method |
-| Member sync to client | DEFINED | `onContactListAddMembers`, `onContactListRemoveMembers` |
-| Contact events | DEFINED | `onContactListEvent` client method |
-| Login status broadcast | DEFINED | `sendLoginStatusMessages` base method |
-| Event broadcast | DEFINED | `sendEventToPlayers` base method |
+| List creation | DONE | `contactListCreate` (CM 55) → `handlers::header_ops::handle_create` |
+| List deletion | DONE | `contactListDelete` (CM 56) → `handle_delete` |
+| List renaming | DONE | `contactListRename` (CM 57) → `handle_rename` |
+| List flags update | DONE | `contactListFlagsUpdate` (CM 58) → `handle_flags_update` |
+| Add members | DONE | `contactListAddMembers` (CM 59) → `handlers::member_ops::handle_add_members` |
+| Remove members | DONE | `contactListRemoveMembers` (CM 60) → `handle_remove_members` |
+| List sync to client | DONE | `onContactListUpdate` (CM 85), built by `wire::build_on_contact_list_update` |
+| Delete sync to client | DONE | `onContactListDelete` (CM 86) |
+| Member sync to client | DONE | `onContactListAddMembers` (CM 87), `onContactListRemoveMembers` (CM 88) |
+| Contact events | DONE | `onContactListEvent` (CM 89) — all four event types fire (see below) |
+| Login status broadcast | DONE | `handlers::presence_fanout::fanout_login_status`, called from `dispatch/session.rs` on disconnect and `world_entry_appearance/client_ready.rs` on login |
+| Event broadcast | DONE | `handlers::presence_fanout::fanout_contact_event` |
+| Persistence | DONE | `sgw_contact_list` (headers) + `sgw_contact_list_member` (members by name) |
+| Login push | DONE | `push_contact_lists_on_login` sends all lists + members after the world-entry burst bundle |
+| System lists | DONE | `ensure_system_lists` guarantees every character has Friends / Ignore on first login |
+
+### Event Wiring
+
+All four `EContactListEvent` bits are fired by real game-state changes:
+
+| Event | Fired from |
+|-------|-----------|
+| `LoggedInStatus` (1) | `base/dispatch/session.rs` (logout), `base/world_entry_appearance/client_ready.rs` (login) |
+| `GainLevel` (2) | `base/world_entry/methods/progression/mod.rs` |
+| `Death` (4) | `cell/abilities/death.rs` |
+| `GateTravel` (8) | `base/world_entry/gate_travel/mod.rs` |
 
 ## Entity Definition (ContactListManager.def)
 
@@ -91,33 +107,35 @@ The `aDataValue` field (INT32) provides context-specific additional data for eac
 ## Architecture
 
 ```
-Client                              CellApp (SGWPlayer)                    BaseApp
-  |                                      |                                    |
-  |-- contactListCreate(name, flags) --> |                                    |
-  |                                      |-- stores in contactLists dict      |
-  |                                      |                                    |
-  |  <-- onContactListUpdate(id, ...) --|                                    |
-  |                                      |                                    |
-  |-- contactListAddMembers(id, [...])-->|                                    |
-  |                                      |-- updates contactLists             |
-  |  <-- onContactListAddMembers(...) --|                                    |
-  |                                      |                                    |
-  |                                      |                     (on player login)
-  |                                      |                                    |
-  |                                      |            sendLoginStatusMessages |
-  |  <-- onContactListEvent(name, 1, 1) ----------------------------------- |
+Client                          CellService                        BaseService
+  |                                  |                                   |
+  |-- contactListCreate(name,flags)->|                                   |
+  |                                  |-- CellToBaseMsg ----------------->|
+  |                                  |                    INSERT sgw_contact_list
+  |  <----------------------------------- onContactListUpdate(id, ...) --|
+  |                                  |                                   |
+  |-- contactListAddMembers(id,[..])>|                                   |
+  |                                  |-- CellToBaseMsg ----------------->|
+  |                                  |             INSERT sgw_contact_list_member
+  |  <------------------------------- onContactListAddMembers(id, [..]) -|
+  |                                  |                                   |
+  |                                  |                    (on player login/logout)
+  |                                  |                        fanout_login_status
+  |  <------------------------------------ onContactListEvent(name, 1, 1) |
 ```
 
 ## List Flags
 
-The `aFlags` parameter (UINT32) on `contactListCreate` and `contactListFlagsUpdate` is a bitmask controlling list behavior. The exact flag values are not defined in the `.def` files or enumerations -- they are likely defined in client-side code or a data table. Probable flags include:
+The `aFlags` parameter (UINT32) on `contactListCreate` and `contactListFlagsUpdate` is **not** a notification bitmask mirroring `EContactListEvent`, as an earlier revision of this doc speculated. It carries the list's `EMoniker` text moniker -- the id the client uses to look up the list's display label.
 
-- **Notify on login/logout** -- trigger `onContactListEvent` when listed players come online/offline
-- **Notify on level** -- trigger event on level-up
-- **Notify on death** -- trigger event on death
-- **Notify on gate travel** -- trigger event on stargate passage
+The two system lists every character gets on first login use fixed monikers:
 
-These likely correspond 1:1 with the `EContactListEvent` bitmask values.
+| List | `flags` value |
+|------|--------------|
+| Friends | 300 |
+| Ignore | 301 |
+
+See `ensure_system_lists` in [`base/contact_list/persistence/mod.rs`](../../crates/services/src/base/contact_list/persistence/mod.rs). Player-created lists carry whatever moniker the client sends. The server stores and echoes the value without interpreting it; contact-event delivery is driven by list *membership*, not by flags.
 
 ## Relationship to Chat System
 
@@ -128,47 +146,28 @@ The chat system (`Communicator.def`) has its own friend and ignore mechanisms:
 
 These are **separate from the contact list system**. The chat friend/ignore list is stored in `Communicator` properties (`ignoredList`), while contact lists are stored in the `ContactListManager` property (`contactLists`). The chat friends system provides nickname support and is integrated with the chat channel manager; the contact list system provides event notifications and custom list categorization.
 
-## Python Implementation
+## Persistence
 
-All six cell methods are defined as stubs in `python/cell/SGWPlayer.py` (lines 2285-2306):
+The original design stored contact lists in the `contactLists` CELL_PRIVATE PYTHON property. The Rust server persists them relationally instead, so lists survive restarts without any explicit save step:
 
-```python
-def contactListCreate(self, aName, aFlags):
-    pass
+| Table | Columns | Purpose |
+|-------|---------|---------|
+| `sgw_contact_list` | `list_id`, `player_id`, `name`, `flags` | List headers. `list_id` is server-assigned from `sgw_contact_list_list_id_seq`. Unique on `(player_id, name)`. |
+| `sgw_contact_list_member` | `list_id`, `player_name` | Members, stored by name string rather than character id. |
 
-def contactListDelete(self, aListId):
-    pass
-
-def contactListRename(self, aListId, aName):
-    pass
-
-def contactListFlagsUpdate(self, aListId, aFlags):
-    pass
-
-def contactListAddMembers(self, aListId, aPlayerNames):
-    pass
-
-def contactListRemoveMembers(self, aListId, aPlayerNames):
-    pass
-```
-
-No base method implementations exist for `sendEventToPlayers` or `sendLoginStatusMessages`.
+`ADD`/`REMOVE` requests are capped at `MAX_MEMBERS_PER_REQUEST` (100) names, enforced on both the cell-side parser and the base-side handler.
 
 ## Data References
 
 - **Interface**: `ContactListManager` (implemented by `SGWPlayer`)
-- **Enumerations**: `EContactListEvent` (login, level, death, gate travel)
-- **Python enum name map**: `EContactListEvent = {}` in `python/Atrea/enumNames.py` (empty -- not populated)
+- **Enumerations**: `EContactListEvent` (login, level, death, gate travel); `EMoniker` (list display labels — 300 Friends, 301 Ignore)
 - **Related entity**: `SGWPlayer.def` -- implements `ContactListManager` alongside 9 other interfaces
+- **Client RE**: [contact-list-restoration.md](../reverse-engineering/findings/contact-list-restoration.md) and [contact-list-wire-formats.md](../reverse-engineering/findings/contact-list-wire-formats.md) — the SGW contact-list UI is CEGUI + Lua (`Social.lua`), not compiled UnrealScript
 
-## RE Priorities
+## Remaining Work
 
-1. **List flags** -- Determine the exact flag bitmask values and their correspondence to event types
-2. **contactLists data structure** -- Format of the PYTHON dictionary stored in the `contactLists` property
-3. **List ID allocation** -- How list IDs are assigned (auto-increment, hash, etc.)
-4. **Login status flow** -- How `sendLoginStatusMessages` is triggered on player login/logout
-5. **Event routing** -- How game events (level-up, death, gate travel) are detected and routed to `sendEventToPlayers`
-6. **Persistence** -- Whether contact lists survive server restarts (CELL_PRIVATE flag suggests they may need explicit DB persistence)
+1. **GateTravel `dataValue` id-space** -- the server sends the destination `world_id` from `resources.worlds`, which the client passes to `getWorldInfo(value).Name`. The exact id-space has not been confirmed by send-and-observe in playtest.
+2. **Ignore-list enforcement** -- membership in the `Ignore` system list is stored and synced, but nothing yet consults it to suppress tells or chat.
 
 ## Related Docs
 

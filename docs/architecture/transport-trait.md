@@ -1,6 +1,6 @@
 # ADR: `Transport` trait for the Mercury send side
 
-> **Last updated**: 2026-05-23
+> **Last updated**: 2026-07-25
 > **Audience**: Engineers touching any BaseApp handler that emits wire bytes,
 > or anyone writing a byte-exact fan-out test
 > **Type**: Architecture decision record
@@ -88,10 +88,12 @@ next to `check_timeouts` / `keepalive_due` / `is_timed_out`.
    cell→base message handler.
 
 5. **Resolve #57 by deletion, not implementation.** The `Nub::send_to`/
-   `recv_from` `todo!()` stubs were removed and replaced with a doc-comment
-   redirect: outbound I/O is `UdpTransport`'s job; the inbound decode path is
-   the recv loop's; the Nub owns only pure Mercury logic (tick, channels,
-   fragments).
+   `recv_from` `todo!()` stubs were removed, and — as noted above — the `Nub`
+   struct itself went with them. No `Nub` type exists in `cimmeria-mercury`
+   today. Outbound I/O is `UdpTransport`'s job; the inbound decode path is the
+   recv loop's; the pure Mercury logic the Nub would have owned (tick, channels,
+   fragments) lives on `Channel` in
+   [`crates/mercury/src/channel/`](../../crates/mercury/src/channel/).
 
 ### Why split send and recv asymmetrically
 

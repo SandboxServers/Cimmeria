@@ -2,11 +2,11 @@
 
 What `SGW.exe` does when it crashes, where the diagnostic artifacts land, how to trigger a crash deliberately for pipeline validation, and how to turn the resulting minidump into a Ghidra address you can decompile.
 
-The crash machinery is **in-process** — no separate `CrashReport.exe` ships with the client. Everything from exception filter to dump-write to (attempted) upload happens inside `SGW.exe` itself, using the shipped `dbghelp.dll`. This doc is general-purpose: any SGW client crash flows through the same pipeline, whether it's a vanilla render-thread fault or the kind of structurally-invalid package that the [UE3 package splicer](ue3-package-splicer.md) might produce.
+The crash machinery is **in-process** — no separate `CrashReport.exe` ships with the client. Everything from exception filter to dump-write to (attempted) upload happens inside `SGW.exe` itself, using the shipped `dbghelp.dll`. This doc is general-purpose: any SGW client crash flows through the same pipeline, whether it's a vanilla render-thread fault or a structurally-invalid asset package that the UE3 loader rejects.
 
 ## See also
 
-- [ue3-package-splicer.md](ue3-package-splicer.md) — the splicer is a primary consumer of this pipeline; spliced maps that fail to load surface as minidumps here.
+- [engine/ue3-package-format.md](../engine/ue3-package-format.md) — the SGW UE3 package binary layout. If you are writing packages the client has to load, a failed load lands here as a minidump, and the faulting RVA usually names the loader function that rejected the structure.
 - [client-tools.md](../client-tools.md) — broader client-side tooling context.
 - [reverse-engineering/](../reverse-engineering/) — Ghidra-side catalog the RVAs from this pipeline feed into.
 
@@ -41,7 +41,14 @@ All of these write a real `.dmp` under `CrashDumps/`. Use one as the **known-goo
 
 ## How to read a crash dump
 
-The reader is [`tools/sgw_read_crash.py`](../../tools/sgw_read_crash.py) — parses a Windows minidump (requires `pip install minidump`), locates `SGW.exe`'s base address, and prints the exception record + crashed thread's instruction pointer as an `SGW.exe` RVA ready to plug into Ghidra. `--latest <dir>` picks the newest `SGW_*` subdir under the crash root.
+> **⚠ `tools/sgw_read_crash.py` is not in the repository.** As of
+> 2026-07-25 no such file exists under [`tools/`](../../tools/), and unlike
+> the UE3 splicer scripts it left no `.pyc` remnant either. The commands
+> in this section will fail. The description below is retained as a spec
+> for rebuilding the reader; until then, read dumps with WinDbg or a
+> direct `minidump` script.
+
+The reader is `tools/sgw_read_crash.py` — parses a Windows minidump (requires `pip install minidump`), locates `SGW.exe`'s base address, and prints the exception record + crashed thread's instruction pointer as an `SGW.exe` RVA ready to plug into Ghidra. `--latest <dir>` picks the newest `SGW_*` subdir under the crash root.
 
 ```text
 python tools/sgw_read_crash.py --latest \
@@ -66,6 +73,6 @@ mcp__ghidra__decompile_function       -> pseudocode for the faulting function
 
 | Task | State |
 |---|---|
-| Crash-dump reader tool | Done — `tools/sgw_read_crash.py` landed |
+| Crash-dump reader tool | **Missing** — `tools/sgw_read_crash.py` is not in the repo (see the warning above). Previously recorded as "landed"; the file is absent as of 2026-07-25. |
 | Deliberate-crash console commands documented | Done — four commands verified, see table above |
 | First real-crash walkthrough | Pending — awaiting a crash worth analyzing end-to-end |

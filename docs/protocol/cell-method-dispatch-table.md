@@ -2,7 +2,7 @@
 title: "SGWPlayer / SGWGmPlayer Exposed CellMethod Dispatch Table"
 type: reference
 audience: engineers
-last_updated: 2026-06-15
+last_updated: 2026-07-25
 ---
 
 # SGWPlayer Exposed CellMethod Dispatch Table
@@ -39,7 +39,7 @@ SGWBeing's interfaces come first (from SGWBeing.def), then SGWPlayer's (from SGW
 
 ## Interface CellMethods (Indices 0-66)
 
-### SGWBeing (interface) -- 2 exposed / 14 total
+### SGWBeing (interface) -- 2 exposed / 16 total
 
 Source: `entities/defs/interfaces/SGWBeing.def`
 
@@ -59,6 +59,8 @@ Source: `entities/defs/interfaces/SGWBeing.def`
 | - | reduceDisguiseRating | no | |
 | - | stopMovement | no | |
 | - | restoreMovement | no | |
+| - | addVisionExceptions | no | |
+| - | removeVisionExceptions | no | |
 
 ### SGWAbilityManager (interface) -- 3 exposed
 
@@ -145,21 +147,21 @@ Source: `entities/defs/interfaces/MinigamePlayer.def`
 
 | Index | Method | Exposed | Args |
 |-------|--------|---------|------|
-| 20 | debugStartMinigame | YES | INT32 gameId |
-| 21 | debugSpectateMinigame | YES | INT32 gameId |
-| 22 | debugJoinMinigame | YES | INT32 gameId |
-| 23 | debugMinigameInstance | YES | INT32 instanceId |
-| 24 | startMinigame | YES | INT32 hostEntityId, INT32 gameDefId |
-| 25 | endCurrentMinigame | YES | INT32 gameId, INT32 winnerId, INT32 loserId |
-| 26 | requestSpectateList | YES | INT32 gameId |
-| 27 | spectateMinigame | YES | INT32 gameId |
-| 28 | registerToMinigameHelp | YES | INT32 gameDefId, INT32 helpLevel |
-| 29 | updateRegisterToMinigameHelp | YES | INT32 gameDefId, INT32 helpLevel |
-| 30 | minigameStartCancel | YES | INT32 gameId |
-| 31 | minigameCallAccept | YES | INT32 gameId |
-| 32 | minigameCallDecline | YES | INT32 gameId |
-| 33 | minigameCallAbort | YES | INT32 gameId |
-| 34 | minigameContactRequest | YES | INT32 targetEntityId, INT32 gameDefId |
+| 20 | debugStartMinigame | YES | *(none)* |
+| 21 | debugSpectateMinigame | YES | *(none)* |
+| 22 | debugJoinMinigame | YES | *(none)* |
+| 23 | debugMinigameInstance | YES | INT32 InstanceId, INT32 Seed, INT32 TechComp |
+| 24 | startMinigame | YES | *(none)* |
+| 25 | endCurrentMinigame | YES | *(none)* |
+| 26 | requestSpectateList | YES | *(none)* |
+| 27 | spectateMinigame | YES | INT32 playerId |
+| 28 | registerToMinigameHelp | YES | WSTRING note, UINT8 inRangeOnly |
+| 29 | updateRegisterToMinigameHelp | YES | WSTRING note, UINT8 inRangeOnly, UINT8 wantsRequests |
+| 30 | minigameStartCancel | YES | *(none)* |
+| 31 | minigameCallAccept | YES | INT32 CallingPlayerId |
+| 32 | minigameCallDecline | YES | INT32 CallingPlayerId |
+| 33 | minigameCallAbort | YES | *(none)* |
+| 34 | minigameContactRequest | YES | INT32 ContactId |
 
 ### GateTravel (interface) -- 1 exposed
 
@@ -246,11 +248,11 @@ Source: `entities/defs/interfaces/SGWBlackMarketManager.def`
 | Index | Method | Exposed | Args |
 |-------|--------|---------|------|
 | 61 | BMSearch | YES | BMSearchOptions searchOptions |
-| 62 | BMCreateAuction | YES | INT32 itemId, INT32 initialBid, INT32 buyoutPrice, INT32 durationDays |
-| 63 | BMPlaceBid | YES | INT32 auctionId, INT32 bidAmount |
-| 64 | BMCancelAuction | YES | INT32 auctionId |
-| 65 | BMStartWatchingItem | YES | INT32 auctionId |
-| 66 | BMStopWatchingItem | YES | INT32 auctionId |
+| 62 | BMCreateAuction | YES | INT32 itemInstanceId, INT32 buyoutPrice, UINT8 auctionLength, INT32 startingPrice |
+| 63 | BMPlaceBid | YES | INT32 sequenceId, INT32 bidAmount |
+| 64 | BMCancelAuction | YES | INT32 sequenceId |
+| 65 | BMStartWatchingItem | YES | INT32 itemDefId |
+| 66 | BMStopWatchingItem | YES | INT32 itemDefId |
 
 ### ClientCache (interface) -- 0 exposed CellMethods
 
@@ -265,7 +267,7 @@ ClientMethods (onVersionInfo, onCookedDataError).
 
 Source: `entities/defs/SGWPlayer.def` lines 564-1109
 
-42 exposed methods out of ~80 total.
+42 exposed methods out of 96 total.
 
 | Index | Method | Exposed | Args | .def line |
 |-------|--------|---------|------|-----------|
@@ -396,7 +398,7 @@ Source: `entities/defs/SGWPlayer.def` lines 564-1109
 | 0 | setTargetID | 0x80 | Target selection |
 | 1 | setMovementType | 0x81 | Walk/run/crouch |
 | 5 | setCrouched | 0x85 | Crouch toggle |
-| 35 | onDialGate | 0xBD+0 | Stargate travel (extended) |
+| 35 | onDialGate | 0xA3 | Stargate travel (direct -- 35 < idbase 61) |
 | 52 | abandonMission | 0xB4 | Mission abandon |
 | 68 | useAbility | 0xBD+7 | Combat ability use (extended) |
 | 70 | respawn | 0xBD+9 | Death respawn (extended) |
@@ -478,6 +480,17 @@ beyond the 3 verified handlers above.
 - **NEW** — no primitive; build from scratch (high effort).
 
 **Tally (of 117):** 38 DONE · 0 REUSE · 35 ADAPT · 44 NEW.
+
+> [!NOTE]
+> All 38 DONE methods are dispatched from the single `match` in
+> [crates/services/src/cell/cell_methods/gm/mod.rs](../../crates/services/src/cell/cell_methods/gm/mod.rs)
+> (lines 190-260). A grep for `GM_*` constants finds only **35** of them --
+> the other three are declared without the prefix because the `.def` method
+> names themselves have no `gm` prefix: `LIST_ABILITIES = 123`
+> (`listAbilities`, `SGWGmPlayer.def:135`), `DESPAWN_MOB = 213`
+> (`despawnMob`, `:605`), and `TEST_LOS = 216` (`testLOS`, `:619`).
+> The 38-vs-35 difference is a **naming artifact, not a dispatch gap** -- there
+> is no second dispatch site.
 
 > **#518 expansion.** All 18 REUSE rows are now **DONE**. The 16 observable-effect
 > commands plus the single-recipient feedback channel (`gm/feedback.rs` —

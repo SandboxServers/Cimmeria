@@ -1,6 +1,6 @@
 # ADR: `wireclient` — headless wire-level test client for end-to-end validation
 
-> **Last updated**: 2026-05-24
+> **Last updated**: 2026-07-25
 > **Audience**: Engineers writing end-to-end tests for the SGW server emulator
 > **Type**: Architecture decision record
 > **Owner**: Network / test-infra
@@ -8,10 +8,24 @@
 
 ## Status
 
-**Phase 1 accepted, Phases 2–7 pending.** This document describes the
+**Phase 1 accepted, Phases 1.5–7 pending.** This document describes the
 shipped foundation (auth, handshake, trace format) and pre-commits the
 architecture for the gameplay layer so contributors can pick up specific
 follow-up phases without re-litigating the design.
+
+**Read the phase table before treating any section here as shipped.**
+Sections 2–6 are *design intent for unwritten phases*, written in the
+present tense. As of 2026-07-25 the crate contains **no UDP socket** —
+no `UdpSocket`, `send_to`, or `recv_from` anywhere in `crates/wireclient/`.
+`Client::connect()` does not exist; `Client::from_handshake` is documented
+in-source as a test-only constructor
+([`src/client.rs:64-67`](../../crates/wireclient/src/client.rs)), and
+`build_login_packet` stops at producing bytes because "Phase 1.5 wires the
+socket loop" ([`src/client.rs:56-59`](../../crates/wireclient/src/client.rs)).
+There is no replay engine: `Trace::c2s()` / `Trace::s2c()` are iterator
+filters with no consumer. What ships today is 30 tests — SOAP auth Phase
+1+2 against an in-process `AuthService`, byte-exact handshake
+builders/parsers, and JSONL trace load + diff classification.
 
 ## TL;DR
 
@@ -35,7 +49,9 @@ Validation is **hybrid**:
 
 The reference baseline is **any** decrypted `.pcap` + AES `keys.txt`
 captured from a live SGW session. The Castle Cellblock corpus is the
-flagship; new captures drop into the corpus without code changes.
+intended flagship; new captures drop into the corpus without code changes.
+Note that only a 5-event head fixture is checked in today — see
+[Test corpora](#test-corpora).
 
 ## Context
 
@@ -57,7 +73,9 @@ A pure server-side test cannot:
 - Diff the observable behavior of a full Castle Cellblock playthrough
   against a known-good baseline.
 
-wireclient does all three.
+wireclient is designed to do all three. None of the three works yet — see
+Status above and the phase table; Phase 1 delivered the auth, handshake,
+and trace-format foundation they will be built on.
 
 ## Decision
 
@@ -75,10 +93,14 @@ crates/wireclient/
 │   ├── auth.rs           # SOAP Phase 1+2 driver (mirrors login_smoke)
 │   ├── handshake.rs      # baseAppLogin builder + connect_reply/time_sync parser
 │   ├── session_trace.rs  # JSONL trace loader + ComparisonPolicy trait
-│   └── client.rs         # Top-level Client; today: auth + handshake;
+│   └── client.rs         # Top-level Client; today: login_only + byte
+│                         #   builders only (no socket);
 │                         #   Phase 2+: entity mirror, dialog state, step driver
 └── tests/
-    └── auth_smoke.rs     # In-process AuthService + Phase 1/2 round trip
+    ├── auth_smoke.rs     # In-process AuthService + Phase 1/2 round trip
+    ├── trace_load.rs     # Loads the checked-in head fixture
+    └── fixtures/
+        └── castle_cellblock_head.jsonl   # 1 header + 5 events
 ```
 
 ### 2. Trace format — generic across captures
@@ -115,7 +137,18 @@ The default policy is byte-exact for static msg_ids (`0x00`–`0x7F`),
 length-and-msg_id for entity-method msg_ids (`0x80`–`0xFE`). Tests
 needing stricter / looser comparison swap in a custom impl.
 
-### 4. Replay model — semantic, not byte-replay
+`0xFF` (`BASEMSG_REPLY_MESSAGE`) is deliberately excluded from the drift
+band and compared byte-exactly alongside `0x00`–`0x7F`.
+
+**Consequence worth stating plainly:** because `DefaultPolicy` compares
+`0x80`–`0xFE` bodies by **length only**
+([`src/session_trace.rs:292-328`](../../crates/wireclient/src/session_trace.rs))
+— equal length yields `Diff::Drift`, unequal yields `Diff::Regression` —
+a trace diff under the default policy **cannot validate gameplay content**.
+It catches a body that changed size, not a body that changed meaning. The
+semantic decoder that would close this gap is Phase 3.
+
+### 4. Replay model — semantic, not byte-replay (Phases 1.5–3 — not implemented)
 
 Pure byte-replay would fail almost every assertion because the server
 emits *different bytes* than the recorded server: entity IDs are
@@ -138,9 +171,11 @@ Phase 1 ships the byte layer (handshake + trace format). Phase 3 adds
 the behavior layer on top. Both flavors of diff produce structured
 output the test harness can fail-fast on.
 
-### 5. Combat policy at step 9
+### 5. Combat policy at step 9 (Phase 5 — not implemented)
 
-The PrisonerRetrievalUnit fight must use the **real combat path**. wireclient:
+The PrisonerRetrievalUnit fight must use the **real combat path**. None of
+the mirrors or guards below exist in the crate yet; this is the Phase 5
+specification — the target behaviour, not shipped behaviour. wireclient:
 
 - Maintains a local mirror of equipped weapon, ammo, active bandolier slot.
 - Refuses to send `useAbility` for an ability the equipped weapon doesn't grant.
@@ -150,11 +185,11 @@ The PrisonerRetrievalUnit fight must use the **real combat path**. wireclient:
   LOS always true"; v2: real navmesh).
 - Refuses to fire while cooldown is active.
 
-Server-side parity work tracked separately: `use_ability.rs` currently
-has range + cooldown + ammo + dead-state checks but no LOS check for
-player→NPC casts. Bringing player→NPC up to parity is part of Phase 5.
+Server-side parity work tracked separately: `crates/services/src/cell/abilities/use_ability/`
+currently has range + cooldown + ammo + dead-state checks but no LOS check
+for player→NPC casts. Bringing player→NPC up to parity is part of Phase 5.
 
-### 6. Minigame policy
+### 6. Minigame policy (Phase 6 — not implemented)
 
 Castle Cellblock hits Livewire three times. The full SmartFoxServer 1.x
 XML protocol is out of scope; instead a `#[cfg(test)]` force-victory hook
@@ -162,22 +197,38 @@ on `MinigameServer` synthesises the same `OnVictory` chain dispatch the
 real protocol would. This is the **only sanctioned shortcut** in the
 wireclient design.
 
-### 7. Test profile
+### 7. Test profile (Phase 7 — not implemented)
 
-A new nextest profile `wireclient-e2e` (`.config/nextest.toml`) serialises
-the suite (`threads-required = "num-test-threads"`) because each test
-owns a spawned server process; parallel runs would corrupt shared state.
+`.config/nextest.toml` today defines exactly two profiles, `ci` and
+`ci-live-db`. **There is no `wireclient-e2e` profile.** All 30 wireclient
+tests run under the default `ci` profile, which is correct for them: they
+don't spawn the BaseApp, only the in-process `AuthService`, which
+`login_smoke` already proves safe to spawn many of in parallel.
 
-The auth-smoke and trace-load tests live in the default `ci` profile
-because they don't spawn the BaseApp — only the in-process
-`AuthService`, which `login_smoke` already proves safe to spawn many in
-parallel.
+When Phase 1.5+ lands tests that each own a spawned server process, Phase 7
+adds a `wireclient-e2e` profile serialising the suite
+(`threads-required = "num-test-threads"`), because parallel runs would
+corrupt shared state.
 
 ## Test corpora
 
+### Checked into the repo
+
+| Path | Events | Coverage |
+|---|---:|---|
+| [`crates/wireclient/tests/fixtures/castle_cellblock_head.jsonl`](../../crates/wireclient/tests/fixtures/castle_cellblock_head.jsonl) | 5 (+1 header line) | Head of a Castle Cellblock capture — enough to pin the JSONL loader in `tests/trace_load.rs`. |
+
+### Planned, not in the repo
+
 | Slug | Source | Events | Coverage |
-|---|---|---|---|
+|---|---|---:|---|
 | `castle-cellblock-full-run` | `2026-05-24_17-18.pcap` | 125,770 | World entry → mission 622 → … → mission 688 → next-world transport |
+
+The full-run corpus is **not committed** — the pcap and the derived JSONL
+live outside the repo, so any test depending on it must be produced locally
+by the recipe below (or skip-not-fail when the fixture is absent, the same
+discipline the pcap-replay chaos tests use). Don't write a test that assumes
+it is present.
 
 New corpora are added by:
 
@@ -192,7 +243,7 @@ New corpora are added by:
 
 | Phase | Work | Status |
 |---|---|---|
-| 1 | Scaffold + SOAP auth + handshake driver + JSONL trace | **Done** (this PR) |
+| 1 | Scaffold + SOAP auth + handshake driver + JSONL trace | **Done** — 30 tests: `src/auth.rs` (6), `src/handshake.rs` (10), `src/session_trace.rs` (10), `tests/auth_smoke.rs` (3), `tests/trace_load.rs` (1) |
 | 1.5 | UDP send/recv loop + first encrypted round-trip against spawned BaseApp | Pending |
 | 2 | `mapLoaded()` + initial entity hydration assertion | Pending |
 | 3 | Entity mirror + behavior-trace module + semantic diff | Pending |
@@ -231,16 +282,16 @@ New corpora are added by:
 ## Cross-references
 
 - Tier 1: `test_transport` — byte-exact fan-out fake.
-  [`crates/mercury/src/test_transport/`](../../crates/mercury/src/test_transport/)
+  [`crates/mercury/src/test_transport.rs`](../../crates/mercury/src/test_transport.rs)
 - Tier 2: loopback Mercury harness.
   [`crates/mercury/src/test_harness/`](../../crates/mercury/src/test_harness/)
   + [ADR](mercury-loopback-harness.md)
 - Server-side SOAP auth flow that wireclient drives:
   [`crates/services/src/auth/`](../../crates/services/src/auth/)
 - Server-side Mercury phase-3 handshake:
-  [`crates/services/src/base/login.rs`](../../crates/services/src/base/login.rs)
+  [`crates/services/src/base/login/`](../../crates/services/src/base/login/)
 - Server-side ability path that Phase 5 strengthens:
-  [`crates/services/src/cell/abilities/use_ability.rs`](../../crates/services/src/cell/abilities/use_ability.rs)
+  [`crates/services/src/cell/abilities/use_ability/`](../../crates/services/src/cell/abilities/use_ability/)
 - Pcap → JSONL exporter:
   [`tools/pcap_to_session.py`](../../tools/pcap_to_session.py)
 - Underlying Mercury dissector this builds on:

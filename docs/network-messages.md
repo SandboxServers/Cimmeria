@@ -2,7 +2,7 @@
 title: "Network Messages"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Network Messages
@@ -13,9 +13,13 @@ Every action in Stargate Worlds — swinging a weapon, opening a store, dialing 
 
 The client and server talk using the **Mercury protocol** (a custom UDP system). Each message has a name like `Event_NetOut_UseAbility` (client to server) or `Event_NetIn_onEffectResults` (server to client).
 
-- **NetOut** = Client sends to Server (167 message types)
-- **NetIn** = Server sends to Client (254 message types)
+- **NetOut** = Client sends to Server (254 message types)
+- **NetIn** = Server sends to Client (167 message types)
 - **Total: 421 unique message types**
+
+Counts come from the RTTI/string extraction in
+[technical/network-messages.md](technical/network-messages.md) — 167 unique
+`Event_NetIn_*` names and 254 unique `Event_NetOut_*` names.
 
 ## Messages by Game System
 

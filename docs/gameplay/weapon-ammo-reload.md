@@ -52,9 +52,9 @@ Per-slot ammo lives in **two mirrored places** on the cell entity, both written 
    └─────────────────────────────────────────────┘
 ```
 
-`BandolierItem` is the source of truth. `Stat[AMMO_SLOT_1+slot]` exists because the **client's UI subscribes to `Events.StatUpdated`** — it would not see a change to `BandolierItem` directly. Both are kept in sync through the single mutator [`set_slot_ammo()`](../../crates/entity/src/cell_entity.rs#L390); never write `current_ammo` directly. See [`CellEntity::active_ammo()`](../../crates/entity/src/cell_entity.rs#L366), [`active_clip_size()`](../../crates/entity/src/cell_entity.rs#L373), [`active_ammo_type()`](../../crates/entity/src/cell_entity.rs#L380), and [`refill_active_slot()`](../../crates/entity/src/cell_entity.rs#L404).
+`BandolierItem` is the source of truth. `Stat[AMMO_SLOT_1+slot]` exists because the **client's UI subscribes to `Events.StatUpdated`** — it would not see a change to `BandolierItem` directly. Both are kept in sync through the single mutator [`set_slot_ammo()`](../../crates/entity/src/cell_entity/bandolier.rs#L36); never write `current_ammo` directly. See [`CellEntity::active_ammo()`](../../crates/entity/src/cell_entity/bandolier.rs#L12), [`active_clip_size()`](../../crates/entity/src/cell_entity/bandolier.rs#L19), [`active_ammo_type()`](../../crates/entity/src/cell_entity/bandolier.rs#L26), and [`refill_active_slot()`](../../crates/entity/src/cell_entity/bandolier.rs#L50).
 
-Stat IDs `AMMO_SLOT_1..5` (49–53) are **bandolier-slot-relative**, not weapon-relative. The active slot's stat ID is computed as `AMMO_SLOT_1 + active_bandolier_slot`. This matches legacy [`SGWPlayer.py:1023`](../../python/cell/SGWPlayer.py#L1023) (`getAmmoStat() = ammoSlot1 + activeSlotId`).
+Stat IDs `AMMO_SLOT_1..5` (49–53) are **bandolier-slot-relative**, not weapon-relative. The active slot's stat ID is computed as `AMMO_SLOT_1 + active_bandolier_slot`. This matches legacy [`SGWPlayer.py:1023`](../../deprecated/python/cell/SGWPlayer.py#L1023) (`getAmmoStat() = ammoSlot1 + activeSlotId`).
 
 ## Wire flow — fire
 
@@ -88,7 +88,7 @@ Client                                         Cell                        Base
 
 The fire-gate skips the ammo check entirely for non-players (`entity.is_player == false`), so NPC mobs do not consume rounds — see [NPC ammo](#npc-ammo).
 
-Implementation: [`crates/services/src/cell/abilities.rs:259-281`](../../crates/services/src/cell/abilities.rs#L259) for the gate and consume; the `onStatUpdate` is dispatched from the post-resolve drain at [`abilities.rs:511-515`](../../crates/services/src/cell/abilities.rs#L511).
+Implementation: [`crates/services/src/cell/abilities/mod.rs:259-281`](../../crates/services/src/cell/abilities/mod.rs#L259) for the gate and consume; the `onStatUpdate` is dispatched from the post-resolve drain at [`abilities.rs:511-515`](../../crates/services/src/cell/abilities/mod.rs#L511).
 
 ## Wire flow — reload
 
@@ -130,9 +130,9 @@ Client                       Cell                                       Base / D
   │                           │        current_ammo, cur_ammo_type}│   WHERE … type_id = …
 ```
 
-The fire-path **only** reads `active_ammo()`; it does not promote pending refills itself. The 100 ms `reload_completion_tick` is the sole refill path (Stage C cleanup — see [`crates/services/src/cell/service.rs:602-681`](../../crates/services/src/cell/service.rs#L602)).
+The fire-path **only** reads `active_ammo()`; it does not promote pending refills itself. The 100 ms `reload_completion_tick` is the sole refill path (Stage C cleanup — see [`crates/services/src/cell/service/mod.rs:602-681`](../../crates/services/src/cell/service/mod.rs#L602)).
 
-Matches legacy [`Reload.py`](../../python/cell/effects/Reload.py): the effect resolves at warmup completion and runs `setCurrent(max)` on the ammo stat. Legacy ammo consumption was at warmup completion ([`AbilityManager.py:669-670`](../../python/cell/AbilityManager.py#L669)); the Rust port consumes at fire-gate time instead, since there is no warmup state machine for typical fires.
+Matches legacy [`Reload.py`](../../deprecated/python/cell/effects/Reload.py): the effect resolves at warmup completion and runs `setCurrent(max)` on the ammo stat. Legacy ammo consumption was at warmup completion ([`AbilityManager.py:669-670`](../../deprecated/python/cell/AbilityManager.py#L669)); the Rust port consumes at fire-gate time instead, since there is no warmup state machine for typical fires.
 
 ## `requestAmmoChange` flow
 
@@ -173,7 +173,7 @@ Client → Cell:  requestActiveSlotChange(bag_id=3, slot_id)
                                         │   value = new slot's cur_ammo_type, or 0 if empty
 ```
 
-`onEntityProperty` is sent **even when the new slot is empty** (value=0), mirroring legacy [`SGWPlayer.py:522`](../../python/cell/SGWPlayer.py#L522) (`activeItem.ammoType if activeItem else 0`). The bandolier UI's `BandolierMod.refreshAll()` re-reads all 5 slot ammo stats independently on its own subscription path ([`Bandolier.lua:205`](../../game/sgw/Working/SGWGame/Content/UI/Core/Bandolier/Bandolier.lua#L205)), so we don't have to push per-slot stat updates here.
+`onEntityProperty` is sent **even when the new slot is empty** (value=0), mirroring legacy [`SGWPlayer.py:522`](../../deprecated/python/cell/SGWPlayer.py#L522) (`activeItem.ammoType if activeItem else 0`). The bandolier UI's `BandolierMod.refreshAll()` re-reads all 5 slot ammo stats independently on its own subscription path ([`Bandolier.lua:205`](../../game/sgw/Working/SGWGame/Content/UI/Core/Bandolier/Bandolier.lua#L205)), so we don't have to push per-slot stat updates here.
 
 The previous-slot flush catches the **mid-magazine swap** case: a player fires a few rounds, then swaps weapons before reloading the empty one. Without this, those fires would only persist on the next reload (which may never happen if the player swaps back to the original slot after the next world transition).
 
@@ -185,18 +185,18 @@ The `bandolier_ammo_dirty: HashSet<i32>` set is the persistence buffer. Every fi
 
 | Drain point                              | What flushes                          | Code path |
 |------------------------------------------|---------------------------------------|-----------|
-| Reload completion tick (100 ms cadence)  | The active slot only                  | [`service.rs:610`](../../crates/services/src/cell/service.rs#L610) |
+| Reload completion tick (100 ms cadence)  | The active slot only                  | [`service.rs:610`](../../crates/services/src/cell/service/mod.rs#L610) |
 | `requestActiveSlotChange`                | The previous slot, if dirty           | [`inventory.rs:184-205`](../../crates/services/src/cell/cell_methods/inventory.rs#L184) |
 | `requestAmmoChange`                      | The mutated slot, immediately         | [`inventory.rs:284-308`](../../crates/services/src/cell/cell_methods/inventory.rs#L284) |
-| Disconnect (`DisconnectEntity`)          | All dirty slots                       | [`service.rs:403-417`](../../crates/services/src/cell/service.rs#L403) |
-| Logout fallback (`DestroyEntity`)        | All dirty slots (idempotent)          | [`service.rs:383-396`](../../crates/services/src/cell/service.rs#L383) |
+| Disconnect (`DisconnectEntity`)          | All dirty slots                       | [`service.rs:403-417`](../../crates/services/src/cell/service/mod.rs#L403) |
+| Logout fallback (`DestroyEntity`)        | All dirty slots (idempotent)          | [`service.rs:383-396`](../../crates/services/src/cell/service/mod.rs#L383) |
 | World transition (`handle_dial_gate`)    | All dirty slots                       | [`gate_travel.rs:75-90`](../../crates/services/src/cell/gate_travel.rs#L75) |
 
 The flush hook lives on the `DisconnectEntity` cell handler — graceful logoff (`SGWPlayer.logOff`), Mercury `DISCONNECT (0x0C)`, and the tick-sync 60-second inactivity timeout ([`tick_sync.rs:32-56`](../../crates/services/src/base/tick_sync.rs#L32)) all route through `destroy_client_entities` ([`helpers.rs:67-111`](../../crates/services/src/base/helpers.rs#L67)) which sends `BaseToCellMsg::DisconnectEntity`. So a player who closes the game without logging out still has their ammo persisted, just with up to a 60-second delay after their last received packet. The `DestroyEntity` flush is a no-op fallback for any path that bypasses `DisconnectEntity`.
 
 **Trade-off**: a server crash mid-magazine — or any crash before the disconnect-detection window elapses — loses up to one magazine of ammo per active slot. We accepted this over write-per-fire because (a) ammo is cheap and easily refilled in-game, (b) write-per-fire would dominate the DB write rate during sustained combat, and (c) mid-magazine state is already non-deterministic from the player's view.
 
-Helper: [`flush_dirty_bandolier_ammo()`](../../crates/services/src/cell/cell_methods/inventory.rs#L34) drains the set into one `BandolierAmmoUpdate` per slot.
+Helper: [`flush_dirty_bandolier_ammo()`](../../crates/services/src/cell/cell_methods/inventory/bandolier/active_slot.rs#L19) drains the set into one `BandolierAmmoUpdate` per slot.
 
 ## Client UI
 
@@ -213,7 +213,7 @@ Because the UI is stat-driven, **anything that changes `Stat[AMMO_SLOT_1+slot]` 
 
 The warmup window (e.g. 2 s for `ABILITY_RELOAD_WEAPON = 596`) ticks down on the client as a cosmetic animation. The server's `reload_completion_tick` runs every 100 ms and refills the magazine when the deadline is reached — typically mid-animation. Because `onStatUpdate` flushes the new ammo value immediately on refill, the meter visually fills before the animation completes. The next fire is gated by the cooldown timer (warmup + cooldown), not by the bar fill.
 
-This matches legacy [`Reload.py`](../../python/cell/effects/Reload.py) behavior: the effect script resolved at warmup completion via `setCurrent(max)` and `sendDirtyStats()`. The Rust port lifts the refill logic out of the effect script and into the cell tick — equivalent semantics, simpler ownership.
+This matches legacy [`Reload.py`](../../deprecated/python/cell/effects/Reload.py) behavior: the effect script resolved at warmup completion via `setCurrent(max)` and `sendDirtyStats()`. The Rust port lifts the refill logic out of the effect script and into the cell tick — equivalent semantics, simpler ownership.
 
 ## NPC ammo
 
@@ -223,11 +223,11 @@ NPCs (`SGWMob`) use the **same `bandolier_items` / `AmmoSlot{N}` model conceptua
 if required_ammo > 0 && entity.is_player && current_ammo < required_ammo { … abort … }
 ```
 
-This means mobs do not currently consume rounds, do not need to reload, and do not have their `bandolier_ammo_dirty` populated by combat. The legacy [`SGWMob.py`](../../python/cell/SGWMob.py) implemented full mob ammo (`getAmmoStat`/`getClipSize`/`triggerReload`) but in practice mobs were rarely ammo-limited. We deferred the port; if/when mob reload is needed, three changes are required together — partial work will silently break:
+This means mobs do not currently consume rounds, do not need to reload, and do not have their `bandolier_ammo_dirty` populated by combat. The legacy [`SGWMob.py`](../../deprecated/python/cell/SGWMob.py) implemented full mob ammo (`getAmmoStat`/`getClipSize`/`triggerReload`) but in practice mobs were rarely ammo-limited. We deferred the port; if/when mob reload is needed, three changes are required together — partial work will silently break:
 
-1. Remove the `is_player` short-circuit in [`abilities.rs`](../../crates/services/src/cell/abilities.rs) so the ammo gate runs for NPCs.
+1. Remove the `is_player` short-circuit in [`abilities.rs`](../../crates/services/src/cell/abilities/mod.rs) so the ammo gate runs for NPCs.
 2. Add an AI-driven `requestReload` equivalent that calls `set_slot_ammo` + `reload_complete_at` on the mob entity.
-3. **Widen `reload_completion_tick` beyond players.** It currently iterates [`space_mgr.all_player_entity_ids()`](../../crates/services/src/cell/service.rs) only — an NPC that sets `reload_complete_at` will never be promoted by the existing tick, leaving the magazine empty forever. Either change the tick to scan all entities with `reload_complete_at = Some(_)`, add a `space_mgr.all_reloadable_entity_ids()` helper, or extend the iteration to include NPCs in fighting state.
+3. **Widen `reload_completion_tick` beyond players.** It currently iterates [`space_mgr.all_player_entity_ids()`](../../crates/services/src/cell/service/mod.rs) only — an NPC that sets `reload_complete_at` will never be promoted by the existing tick, leaving the magazine empty forever. Either change the tick to scan all entities with `reload_complete_at = Some(_)`, add a `space_mgr.all_reloadable_entity_ids()` helper, or extend the iteration to include NPCs in fighting state.
 
 Cross-reference: [npc-ai.md § Ammo Management](npc-ai.md#ammo-management).
 
@@ -274,10 +274,10 @@ Client                       Cell                              Base / DB
 
 | File | Purpose |
 |------|---------|
-| [`python/cell/effects/Reload.py`](../../python/cell/effects/Reload.py) | Reload effect script — `setCurrent(max)` + `sendDirtyStats()` on warmup completion |
-| [`python/cell/SGWPlayer.py:1023-1081`](../../python/cell/SGWPlayer.py#L1023) | `getAmmoStat()`, `getClipSize()`, `getAmmoCount()`, `consumeAmmo()` |
-| [`python/cell/AbilityManager.py:669-670`](../../python/cell/AbilityManager.py#L669) | Legacy ammo consumption point (warmup completion, not fire-gate) |
-| [`python/cell/AbilityManager.py:548-552`](../../python/cell/AbilityManager.py#L548) | Legacy `requiredAmmo` check + `CONDITION_FEEDBACK_AmmoCountLessThan` |
+| [`deprecated/python/cell/effects/Reload.py`](../../deprecated/python/cell/effects/Reload.py) | Reload effect script — `setCurrent(max)` + `sendDirtyStats()` on warmup completion |
+| [`deprecated/python/cell/SGWPlayer.py:1023-1081`](../../deprecated/python/cell/SGWPlayer.py#L1023) | `getAmmoStat()`, `getClipSize()`, `getAmmoCount()`, `consumeAmmo()` |
+| [`deprecated/python/cell/AbilityManager.py:669-670`](../../deprecated/python/cell/AbilityManager.py#L669) | Legacy ammo consumption point (warmup completion, not fire-gate) |
+| [`deprecated/python/cell/AbilityManager.py:548-552`](../../deprecated/python/cell/AbilityManager.py#L548) | Legacy `requiredAmmo` check + `CONDITION_FEEDBACK_AmmoCountLessThan` |
 | [`game/sgw/Working/SGWGame/Content/UI/Core/Bandolier/Bandolier.lua`](../../game/sgw/Working/SGWGame/Content/UI/Core/Bandolier/Bandolier.lua) | Client UI: meter, count text, `onStatUpdated` subscription |
 | [`entities/defs/SGWPlayer.def:794-797`](../../entities/defs/SGWPlayer.def#L794) | `requestReload` cell method def (UINT8 EReloadType) |
 | [`entities/defs/interfaces/SGWInventoryManager.def:190-194`](../../entities/defs/interfaces/SGWInventoryManager.def#L190) | `requestAmmoChange` cell method def (INT32 ItemId, INT32 AmmoType) |
@@ -287,12 +287,12 @@ Client                       Cell                              Base / DB
 
 | File | Purpose |
 |------|---------|
-| [`crates/entity/src/cell_entity.rs`](../../crates/entity/src/cell_entity.rs) | `BandolierItem`, `active_ammo()`/`active_clip_size()`/`active_ammo_type()`/`set_slot_ammo()`/`refill_active_slot()`, `reload_complete_at`, `bandolier_ammo_dirty` |
-| [`crates/services/src/cell/abilities.rs`](../../crates/services/src/cell/abilities.rs) | `handle_use_ability` — fire-gate, consume, `onStatUpdate` drain |
-| [`crates/services/src/cell/cell_methods/player/world.rs`](../../crates/services/src/cell/cell_methods/player/world.rs) | `REQUEST_RELOAD` dispatch, `handle_reload` (warmup deadline + cooldown) |
-| [`crates/services/src/cell/service.rs`](../../crates/services/src/cell/service.rs) | `reload_completion_tick` (sole refill path), `InitPlayerState` bandolier seeding |
+| [`crates/entity/src/cell_entity.rs`](../../crates/entity/src/cell_entity/mod.rs) | `BandolierItem`, `active_ammo()`/`active_clip_size()`/`active_ammo_type()`/`set_slot_ammo()`/`refill_active_slot()`, `reload_complete_at`, `bandolier_ammo_dirty` |
+| [`crates/services/src/cell/abilities/mod.rs`](../../crates/services/src/cell/abilities/mod.rs) | `handle_use_ability` — fire-gate, consume, `onStatUpdate` drain |
+| [`crates/services/src/cell/cell_methods/player/world.rs`](../../crates/services/src/cell/cell_methods/player/world/mod.rs) | `REQUEST_RELOAD` dispatch, `handle_reload` (warmup deadline + cooldown) |
+| [`crates/services/src/cell/service/mod.rs`](../../crates/services/src/cell/service/mod.rs) | `reload_completion_tick` (sole refill path), `InitPlayerState` bandolier seeding |
 | [`crates/services/src/cell/cell_methods/inventory.rs`](../../crates/services/src/cell/cell_methods/inventory.rs) | `REQUEST_ACTIVE_SLOT_CHANGE`, `REQUEST_AMMO_CHANGE`, `flush_dirty_bandolier_ammo` |
-| [`crates/services/src/cell/messages.rs`](../../crates/services/src/cell/messages.rs) | `CellToBaseMsg::BandolierAmmoUpdate`, `ActiveSlotUpdate`, `InitPlayerState` |
+| [`crates/services/src/cell/messages/mod.rs`](../../crates/services/src/cell/messages/mod.rs) | `CellToBaseMsg::BandolierAmmoUpdate`, `ActiveSlotUpdate`, `InitPlayerState` |
 
 ## Related docs
 

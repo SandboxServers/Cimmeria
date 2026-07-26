@@ -2,36 +2,60 @@
 title: "Minigame System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Minigame System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~0% implemented
+> **Last updated**: 2026-07-25
+> **Status**: Content-triggered minigames work end-to-end — SmartFoxServer host, ticket handshake, Livewire, six auto-win placeholders, and victory-chain callback. The player-facing `MinigamePlayer` cell methods (helpers, spectating, manual start) are all stubs.
 
 ## Overview
 
 The minigame system provides puzzle-based mini-activities integrated into the game world. Minigames are triggered by interacting with objects or NPCs, have difficulty levels and tech competency requirements, and produce result callbacks. The system supports a "helper" call protocol where players can request assistance from registered helpers, spectating other players' minigames, and NPC-triggered minigame contacts.
 
-The `MinigamePlayer` interface in `entities/defs/interfaces/MinigamePlayer.def` is the largest interface by method count (25 properties, 78+ methods). The `Minigame` class in `python/cell/Minigame.py` provides a basic play/result framework (58 lines).
+The `MinigamePlayer` interface in `entities/defs/interfaces/MinigamePlayer.def` is the largest interface by method count (25 properties, 78+ methods).
+
+The original SGW minigames were Flash SWFs that connected to a **SmartFoxServer 1.x** TCP endpoint, separate from the Mercury game channel. [`crates/services/src/minigame/`](../../crates/services/src/minigame/) reimplements that server in-process: `protocol.rs` speaks the SmartFox XML packet format, `session.rs` owns the ticket registry, `server.rs` is the TCP listener, and `games/` holds the per-game logic behind a `MinigameInstance` trait.
+
+## How a minigame actually launches
+
+The working path is content-driven, not client-driven:
+
+```
+Content chain fires Action::StartMinigame { minigame_type, on_victory_chains }
+  |-> Cell: CellToBaseMsg::StartMinigame
+  |-> Base: SessionRegistry::register(...) -> ticket (seed, difficulty, tech
+  |         competency, victory chains all captured server-side)
+  |-> Base: onStartMinigame(URL) to the player
+  |         URL shape: http://unused/{host}/{port}/{gameName}/{entityId}/{ticket}
+  |-> Flash SWF connects to the SmartFox TCP port, presents the ticket
+  |-> Game plays; result reported back
+  |-> Base: MinigameResult -> notifies client, forwards to the cell
+  |-> Cell: runs the chain from on_victory_chains
+```
 
 ## Implementation Status
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Minigame class | DONE | Name, difficulty, gameId, seed, play/result |
-| Minigame dialog prompt | STUB | `onStartMinigameDialog` sends game info to client |
-| Start/end minigame | STUB | `startMinigame`, `endCurrentMinigame` defined |
-| Result handling | STUB | `handleMinigameResults` with ticket validation |
-| Helper registration | STUB | `registerToMinigameHelp` with note/range |
-| Helper call protocol | STUB | Request -> PhaseTwo -> Accept/Decline flow |
-| Spectating | STUB | `requestSpectateList`, `spectateMinigame` |
-| NPC contacts | STUB | `showMinigameContact`, `minigameContactRequest` |
-| Mob/item attempt tracking | STUB | `minigameMobAttemptTracker`, `minigameItemAttemptTracker` |
-| Item integration | STUB | `addItemToMinigame`, `consumeItemByMinigame` |
-| Cheat detection | STUB | `updateMinigameItemCheats` with class activations |
-| Actual minigame logic | NOT IMPL | Only the framework exists |
+| SmartFoxServer 1.x host | DONE | `minigame/server.rs` + `protocol.rs` |
+| Session / ticket registry | DONE | `minigame/session.rs`; ticket carries seed, difficulty, and the victory chains |
+| Content-triggered start | DONE | `Action::StartMinigame` → `CellToBaseMsg::StartMinigame` → `onStartMinigame(URL)` |
+| Victory-chain callback | DONE | `MinigameResult` forwards to the cell, which runs `on_victory_chains` |
+| Livewire | DONE | Fully ported in `minigame/games/livewire/` |
+| Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid | PLACEHOLDER | `games/placeholder.rs` — the only accepted client message is `victory`, which is an instant win. Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
+| Alignment, GoauldCrystals | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name silently falls back to the auto-win placeholder |
+| `startMinigame` / `endCurrentMinigame` | STUB | Cell methods 24 / 25 log `UNIMPLEMENTED` |
+| Debug start / spectate / join / instance | STUB | Cell methods 20–23 log `UNIMPLEMENTED` |
+| Spectating | STUB | `requestSpectateList` (26), `spectateMinigame` (27) log `UNIMPLEMENTED` |
+| Helper registration | STUB | `registerToMinigameHelp` (28), `updateRegisterToMinigameHelp` (29) log `UNIMPLEMENTED` |
+| Helper call protocol | STUB | `minigameCallAccept` (31), `Decline` (32), `Abort` (33) log `UNIMPLEMENTED` |
+| NPC contacts | STUB | `minigameContactRequest` (34) logs `UNIMPLEMENTED` |
+| Tech competency | PARTIAL | The ticket carries a tech-competency field, but it is hardcoded to `1` — the value is not yet read from the player entity |
+| Mob/item attempt tracking | NOT IMPL | `minigameMobAttemptTracker`, `minigameItemAttemptTracker` unused |
+| Item integration | NOT IMPL | `addItemToMinigame`, `consumeItemByMinigame` unused |
+| Cheat detection | NOT IMPL | `updateMinigameItemCheats` unused |
 
 ## Entity Definition (MinigamePlayer.def)
 
@@ -96,28 +120,19 @@ The `MinigamePlayer` interface in `entities/defs/interfaces/MinigamePlayer.def` 
 | `minigameStartCancel` | (none) | Cancel start |
 | `minigameContactRequest` | ContactId | Request NPC contact minigame |
 
-## Minigame Class (python/cell/Minigame.py)
+## Session Ticket
 
-```python
-class Minigame:
-    name            # Display name
-    difficulty      # 1-5
-    gameId          # Config.MINIGAME_NAMES key
-    gameName        # Resolved name string
-    techCompetency  # Required tech level
-    archetypes      # Bitmask of allowed archetypes
-    callback        # Result handler function
-    player          # Active player (weakref)
-    seed            # Random seed (0..0x7fffffff)
-```
+A ticket is minted by `SessionRegistry::register` when the content chain starts a minigame, and is the only thing the Flash client presents to the SmartFox endpoint. Everything gameplay-relevant is captured server-side at mint time, so the client cannot influence difficulty, seed, or reward:
 
-### Methods
-
-| Method | Purpose |
-|--------|---------|
-| `play(player)` | Start minigame via `player.requestStartMinigame()` |
-| `onMinigameResult(resultId)` | Invoke callback with result code |
-| `setSeed(seed)` | Set random seed |
+| Field | Source |
+|-------|--------|
+| `entity_id`, `player_id` | The triggering player |
+| `game_name` | `Action::StartMinigame { minigame_type }` |
+| `difficulty` | The content chain |
+| `tech_competency` | **Hardcoded to `1`** — reading it from the player entity is still a TODO |
+| `seed` | `rand::random::<u32>()` |
+| `abilities`, `intelligence`, `player_level` | Hardcoded to `0`, `0`, `1` |
+| `on_victory_chains` | The chains to run when the game is won |
 
 ## Helper Call Protocol
 
@@ -142,17 +157,18 @@ Either player:
 
 ## Data References
 
-- **Minigame names**: `Config.MINIGAME_NAMES` dictionary
-- **Result codes**: `MINIGAME_RESULT_*` constants in `Constants.py`
+- **Game-name dispatch**: `minigame/games/mod.rs::create` — the authoritative list of which names resolve to real logic versus the placeholder
+- **Result codes**: `MINIGAME_RESULT_*` constants
 - **Archetypes**: Bitmask of `EArchetype` values
 
-## RE Priorities
+## Remaining Work
 
-1. **Minigame types** - Identify all game types and their URLs
-2. **Result handling** - What happens after `handleMinigameResults` (rewards, mission progress)
-3. **Tech competency** - How TC level gates minigame difficulty
-4. **Helper tipping** - Cash flow for tip payments
-5. **NPC contacts** - Contact acquisition and expiry mechanics
+1. **Port Alignment and GoauldCrystals** — the factory has commented-out arms; today an unknown or unported name silently resolves to the auto-win placeholder, which is indistinguishable from a real win to the rest of the server
+2. **Tech competency** — read it from the player entity instead of the hardcoded `1`; the same applies to `abilities`, `intelligence`, and `player_level`
+3. **Player-initiated start** — `startMinigame` (24) and the debug starts (20–23) are stubs, so a player can only enter a minigame that a content chain launched for them
+4. **Helper call protocol** — the whole request → PhaseTwo → accept/decline flow, including tip cash movement
+5. **Spectating** — `requestSpectateList` / `spectateMinigame`
+6. **NPC contacts** — contact acquisition and expiry mechanics
 
 ## Related Docs
 

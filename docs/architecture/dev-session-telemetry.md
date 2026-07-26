@@ -1,5 +1,7 @@
 # Dev-Session Telemetry — Architecture
 
+> **Last updated**: 2026-07-25
+
 How the launcher streams a developer's session (Atera client log,
 BigWorld `sgwdebuglog*`, end-of-session bundle) to the cimmeria-server
 ingest endpoint, which replays it through `tracing` so it lands in
@@ -54,7 +56,7 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 | `crates/launcher/src/telemetry/runner.rs` | Per-session loop: tail → enqueue → flush → on-exit bundle. |
 | `crates/launcher/src/telemetry/mod.rs` | `Telemetry` orchestrator (`start_session` / `enqueue` / `flush` / `refresh_if_due` / `upload_bundle`). |
 | `crates/admin-api/src/routes/dev_session.rs` | Server-side `/api/auth/dev-session` + `/refresh` endpoints (mint + verify). |
-| `crates/admin-api/src/routes/telemetry.rs` | Server-side `/api/telemetry/upload-{chunk,bundle}` ingest. Validates the HMAC token, decompresses gzip(NDJSON) or unzips bundle, replays each event through `tracing::*` so the OTLP layer ships it to SigNoz. |
+| `crates/admin-api/src/routes/telemetry/` | Server-side `/api/telemetry/upload-{chunk,bundle}` ingest. Validates the HMAC token, decompresses gzip(NDJSON) or unzips bundle, replays each event through `tracing::*` so the OTLP layer ships it to SigNoz. |
 
 ## Session lifecycle
 

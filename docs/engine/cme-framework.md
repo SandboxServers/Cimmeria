@@ -2,14 +2,14 @@
 title: "CME Framework Layer"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # CME Framework Layer
 
-> **Last updated**: 2026-03-08
+> **Last updated**: 2026-07-25
 > **RE Status**: Partially documented from Ghidra analysis + codebase references
-> **Sources**: Ghidra string analysis (STATUS.md), `docs/how-sgw-works.md`, `data/scripts/`, UE3/BigWorld reference source
+> **Sources**: Ghidra string analysis (STATUS.md), `docs/how-sgw-works.md`, `deprecated/data-scripts/scripts/`, UE3/BigWorld reference source
 
 ---
 
@@ -42,9 +42,9 @@ The EventSignal system is CME's central event bus. It connects all subsystems us
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Total unique event types | 975+ | Unique `Event_*` strings in binary (script 04 final count) |
-| `Event_NetOut_*` | 479 | Client-to-server messages |
-| `Event_NetIn_*` | 496 | Server-to-client messages |
+| Total unique event types | 750 | Unique `Event_*` strings in binary |
+| `Event_NetOut_*` | 253 | Client-to-server messages |
+| `Event_NetIn_*` | 167 | Server-to-client messages |
 | `Event_SlashCmd_*` | 256 | Slash command dispatch events |
 | `Event_Action_*` | 33 | Player input/movement actions |
 | `Event_Editor_*` | 29 | Editor and PIE mode events |
@@ -52,7 +52,7 @@ The EventSignal system is CME's central event bus. It connects all subsystems us
 | `Event_UI_*` | 2 | UI system dispatch |
 | `Event_Property_*` | 2 | Property change notifications |
 
-Note: Event counts updated from Ghidra annotation script 04 results (see STATUS.md). The earlier estimate of 253 NetOut / 167 NetIn was from initial string analysis; script 04 discovered additional events via data table scanning.
+The eight categories above are exhaustive: the eight per-prefix counts sum to exactly 750, which equals the count of distinct strings beginning with `Event_` in `SGW.exe`. Counts are de-duplicated distinct string values — the same event name appears at multiple addresses (e.g. 1,946 total `Event_NetOut_*` string occurrences resolve to 253 distinct names), so raw occurrence counts run several times higher and must not be quoted as type counts.
 
 ### Event_NetOut / Event_NetIn
 
@@ -177,7 +177,7 @@ The `TypeList` template parameter encodes all supported types via a recursive ty
 
 ### Serialization Format
 
-PropertyNode does **not** have its own wire serialization format. The PropertyNode tree is a client-side UI binding layer. The server populates entity properties via standard BigWorld `DataType::addToStream` serialization (confirmed at `0x00c6fc40`). The client-side PropertyNode tree observes these properties and reflects them into the UI.
+PropertyNode does **not** have its own wire serialization format. The PropertyNode tree is a client-side UI binding layer. The server populates entity properties via standard BigWorld `DataType::addToStream` serialization (confirmed at `0x00c6fc40` — the dispatcher there calls `ServerConnection_startProxyMessage` and streams the argument list; note Ghidra auto-labels it `CEGUI__unknown_00c6fc40` from a *low-confidence* xref-propagation pass, so the `CEGUI` prefix is noise, not a real namespace). The client-side PropertyNode tree observes these properties and reflects them into the UI.
 
 Reference counting uses `CME::CountedBaseTempl` with `scalable_free` (TBB allocator) for deallocation. The vtable slot 0 (decompiled at `0x0042e380`, `0x00433c50`, `0x00a4e8f0`, etc.) is the destructor, which chains through PropertyBase and CountedBaseTempl vtables.
 
@@ -194,7 +194,7 @@ CME replaced BigWorld's LoginApp with a SOAP/HTTP authentication system. The `So
 - Session token management
 - Shard list serialization
 
-The server-side equivalent is the `AuthenticationServer` (`src/authentication/`), which serves SOAP endpoints for `/SGWLogin/UserAuth` and `/SGWLogin/ServerSelection`.
+Cimmeria's equivalent is the auth service in `crates/services/src/auth/`, which serves the same SOAP endpoints — `POST /SGWLogin/UserAuth` and `POST /SGWLogin/ServerSelection` (`crates/services/src/auth/handlers.rs:29,216`). (The original C++ `AuthenticationServer` under `src/authentication/` no longer exists in this repo.)
 
 ## SpaceViewport System
 
@@ -275,12 +275,16 @@ CME built a visual scripting tool called the "Atrea Script Editor" for creating 
 ### Pipeline
 
 ```
-.script files (data/scripts/)    -- Visual node graphs (XML source)
+.script files                    -- Visual node graphs (XML source)
+  deprecated/data-scripts/scripts/
         |
-        | compiled by scriptcompiler.cpp
+        | compiled by deprecated/cpp-tools/ServerEd/scriptcompiler.cpp
         v
-.py files (python/cell/)         -- Auto-generated Python
+.py files                        -- Auto-generated Python
+  deprecated/python/cell/
 ```
+
+In the original CME tree these lived at `data/scripts/` and `python/cell/`; both were moved under `deprecated/` when the Rust rewrite landed, and the compiler source sits in `deprecated/cpp-tools/ServerEd/` (`tools/ServerEd/` in this repo holds only Qt build artifacts).
 
 ### Script File Format
 
@@ -307,9 +311,9 @@ Port Flags: `0` = output/data, `1` = input (constant), `2` = input (connected)
 
 | Type | Directory | Count | Purpose |
 |------|-----------|-------|---------|
-| Mission | `data/scripts/missions/` | 16 | Mission logic and quest flow |
-| Level | `data/scripts/spaces/` | 10 | Space/zone initialization and events |
-| Effect | `data/scripts/effects/` | 4 | Combat effect behavior |
+| Mission | `deprecated/data-scripts/scripts/missions/` | 16 | Mission logic and quest flow |
+| Level | `deprecated/data-scripts/scripts/spaces/` | 10 | Space/zone initialization and events |
+| Effect | `deprecated/data-scripts/scripts/effects/` | 4 | Combat effect behavior |
 
 Total: 30 scripts, 615 nodes, 906 connections.
 
@@ -596,8 +600,8 @@ From Ghidra analysis, the following CME-specific string prefixes have been ident
 | `CME::` | 28 | CME namespace framework classes |
 | `Atrea` | ~20+ | Atrea-branded components |
 | `SGW` | ~100+ | Game-specific classes |
-| `Event_NetOut_` | 479 | Client-to-server event signals |
-| `Event_NetIn_` | 496 | Server-to-client event signals |
+| `Event_NetOut_` | 253 | Client-to-server event signals |
+| `Event_NetIn_` | 167 | Server-to-client event signals |
 | `Event_SlashCmd_` | 256 | Slash command event signals |
 | `Event_Action_` | 33 | Input action event signals |
 | `Event_Editor_` | 29 | Editor/PIE event signals |
@@ -621,4 +625,5 @@ From Ghidra analysis, the following CME-specific string prefixes have been ident
 - [x] Identify all SpaceViewport parameters from Ghidra -> 13-byte message: `{uint32 entityID, uint32 entityID2, uint32 spaceID, uint8 viewportID}`. Handler at `0x00dda6c0` supports create/update/close operations. See SpaceViewport section above.
 - [ ] Document the minigame server protocol (TCP-based)
 - [x] Map the ~534 non-network EventSignal types -> Actual count is 330 unique non-network types (750 total, not 954). Largest category: `Event_SlashCmd_` (256), then `Event_Action_` (33), `Event_Editor_` (29). See EventSignal Framework section above.
+- [x] ~~Reconcile the 975/479/496 event counts against the 750 total~~ -> The 479/496 figures were wrong. Distinct-string counts in `SGW.exe` are 253 `Event_NetOut_` + 167 `Event_NetIn_`, and all eight categories sum to exactly the 750 distinct `Event_*` strings.
 - [x] ~~Determine if CME modified BigWorld's entity serialization~~ -> NO. Universal RPC dispatcher at `0x00c6fc40` uses standard BW `DataType::addToStream`. See `findings/combat-wire-formats.md`

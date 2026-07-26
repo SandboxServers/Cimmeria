@@ -12,7 +12,7 @@ last_updated: 2026-05-27
 
 > **Last updated**: 2026-03-01
 > **RE Status**: Partially documented from BigWorld 2.0.1 entitydef source + Cimmeria .def files
-> **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/lib/entitydef/`, `entities/defs/`, `src/mercury/base_cell_messages.hpp`
+> **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/lib/entitydef/`, `entities/defs/`, `deprecated/cpp/src/mercury/base_cell_messages.hpp`
 
 ---
 
@@ -270,7 +270,7 @@ The count of event-stamped properties per entity type is stored in `EntityDescri
 
 ## Incremental Update Flag Behavior in the Cache Stamp System
 
-> **Source**: `src/baseapp/entity/cached_entity.hpp`, `src/baseapp/entity/cached_entity.cpp`, `src/mercury/base_cell_messages.hpp`
+> **Source**: `deprecated/cpp/src/baseapp/entity/cached_entity.hpp`, `deprecated/cpp/src/baseapp/entity/cached_entity.cpp`, `deprecated/cpp/src/mercury/base_cell_messages.hpp`
 
 The cache stamp system is Cimmeria's extension to BigWorld for efficient entity data distribution. It tracks versioned property sets per entity, allowing the BaseApp to send only the changes a client has not yet seen.
 

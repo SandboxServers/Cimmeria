@@ -8,6 +8,7 @@
 >   `crates/services/src/cell/{cell_methods,client_methods}/black_market.rs`; `db/sgw/` (no auction tables);
 >   `docs/reverse-engineering/findings/black-market-wire-formats.md`
 > **Tracking issue**: replaces #67
+> **Design record**: [docs/architecture/black-market.md](../../architecture/black-market.md) — the ADR for the server implementation these findings drove (cell/base split, escrow semantics, expiry sweep, reserved system seller, and the known-open items).
 
 ## Completeness assessment
 

@@ -2,12 +2,12 @@
 title: "Entity LOD (Level of Detail) System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Entity LOD (Level of Detail) System
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-07-25
 > **Phase**: 5 -- BigWorld Engine Subsystems
 > **RE Status**: Documented from BigWorld 2.0.1 reference source; NOT used by Stargate Worlds
 > **Sources**: BW `lib/entitydef/data_lod_level.hpp`, BW `lib/entitydef/data_lod_level.cpp`, BW `lib/entitydef/volatile_info.hpp`, BW `lib/entitydef/volatile_info.cpp`, BW `lib/entitydef/volatile_info.ipp`, BW `lib/entitydef/property_change.hpp`, BW `lib/entitydef/property_change.cpp`, BW `lib/entitydef/property_event_stamps.hpp`, BW `lib/entitydef/property_event_stamps.ipp`, BW `lib/entitydef/data_description.hpp`, BW `lib/network/basictypes.hpp`, SGW `entities/defs/*.def`
@@ -18,7 +18,7 @@ last_updated: 2026-05-27
 
 BigWorld's entity property LOD system is a bandwidth optimization feature that reduces the amount of property data sent to clients observing distant entities. Properties are assigned to LOD levels, and as an entity moves farther from an observer, higher-detail-level properties are dropped from updates. This allows MMOs with large player counts to scale efficiently -- nearby entities send full property data while distant ones send only essential information.
 
-**Stargate Worlds does not use this system.** All `<LoDLevels>` tags in SGW `.def` files are empty, confirmed across every entity definition. The client binary contains no `DataLoDLevel`, `VolatileInfo`, or `EventStamp` functions -- only UE3/CME rendering LOD for draw distance. Property change encoding (`MAX_SIMPLE_PROPERTY_CHANGE_ID = 60`) IS used by Cimmeria for entity property synchronization, documented separately in the entity-property-sync findings.
+**Stargate Worlds does not use this system.** All 22 `<LoDLevels>` blocks in `entities/defs/` — 14 entity defs and 8 interface defs — are empty. The BigWorld LOD *code* is nonetheless linked into the client: `SGW.exe` carries `DataLoDLevels` error strings at `0x01b1aac4` and `0x01b1aaf8`. It is configured off, not compiled out.
 
 ---
 
@@ -195,7 +195,7 @@ The detail level is initialised to `DataLoDLevel::NO_LEVEL` (-1) in the construc
         <Type> STRING </Type>
         <Flags> OTHER_CLIENTS </Flags>
         <DetailLevel> MEDIUM </DetailLevel>  <!-- Only sent within 150m -->
-    </health>
+    </guildName>
 </Properties>
 ```
 
@@ -560,7 +560,11 @@ Slice changes always use message ID `PROPERTY_CHANGE_ID_SLICE` (62). The start a
 
 With no levels defined, `DataLoDLevels::size_` remains at 1 (the default catch-all level). All properties have `detailLevel_` set to `DataLoDLevel::OUTER_LEVEL` (-2), meaning they are always sent at full detail regardless of observer distance.
 
-2. **Client binary has no LOD entity functions.** The SGW client executable (`SGW.exe`) contains no references to `DataLoDLevel`, `VolatileInfo`, or `EventStamp` functions. The client only implements UE3/CME rendering LOD for mesh and texture detail based on camera distance.
+2. **The client links the LOD code but never exercises it.** `SGW.exe` does contain BigWorld's `DataLoDLevels` implementation — its two `ERROR_MSG` format strings survive at `0x01b1aac4` (`"DataLoDLevels::addLevels: Only allowed %d levels.\n"`) and `0x01b1aaf8` (`"DataLoDLevels:findLevel: Did not find '%s'\n"`), the latter matching the `findLevel` source quoted above verbatim, single colon and all. With every `<LoDLevels>` block empty, `addLevels` parses nothing and `findLevel` is never reached with a label to resolve.
+
+   No `VolatileInfo` or `PropertyEventStamps` strings appear in the binary, but that is *not* evidence of absence: both classes are header-inline and emit no log messages, so they would leave no string footprint even when fully linked. Their presence or absence in `SGW.exe` is unresolved.
+
+   Separately, the only `LODLevel`-named symbols Ghidra reports (42 strings, all `UParticleSystem*`/`UParticleLODLevel`) are UE3 particle-system rendering LOD — a different subsystem entirely, not entity property LOD.
 
 3. **Draw distance slider is UE3 rendering.** The client's draw distance slider controls the Unreal Engine 3 rendering pipeline, not BigWorld's entity property LOD system. This is a CME/UE3 feature that determines when 3D models are culled from rendering, not when property data stops being sent from the server.
 
@@ -573,7 +577,9 @@ With no levels defined, `DataLoDLevels::size_` remains at 1 (the default catch-a
 
 ### What IS Used
 
-The `PropertyChange` encoding system (Section "PropertyChange Encoding" above) IS used by Cimmeria for all entity property synchronization. The `MAX_SIMPLE_PROPERTY_CHANGE_ID = 60` constant and the 1-byte / 2-byte encoding tiers are active in the Cimmeria protocol. See the entity-property-sync findings for protocol-level details.
+The `PropertyChange` *encoding scheme* — the 0–60 single-byte fast path versus extended encoding above it — is part of the live wire contract and is described in [Entity Property Synchronization](../protocol/entity-property-sync.md).
+
+Be careful not to over-read this. There is no `PropertyChange`, `SinglePropertyChange`, or `MAX_SIMPLE_PROPERTY_CHANGE_ID` type in `crates/` — Cimmeria does not port BigWorld's class hierarchy. What it does implement is the sibling mechanism for *method* IDs: `crates/mercury/src/channel_bundle/idbase.rs` computes a per-entity `idBase` from the exposed-method count (`idBase = 0x3E - (nExposedCount + 0xC0) / 0xFF`, from `EntityDescription_AssignClientMethodIds` at `0x01590df0`), below which method indices use single-byte direct encoding and above which they use the `0xBD` two-byte extended form. Same 60-ish boundary, same one-byte/two-byte split, different table — do not treat the two as interchangeable.
 
 ---
 

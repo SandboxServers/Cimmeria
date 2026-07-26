@@ -2,7 +2,7 @@
 title: "Container distribution"
 type: how-to
 audience: operators
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Container distribution
@@ -44,9 +44,10 @@ docker run -d --name cimmeria \
   -p 8443:8443 \
   -p 30000:30000 \
   -e BASE_EXTERNAL=<your-LAN-or-WAN-ip> \
-  -v cimmeria-data:/var/lib/postgresql/data \
   ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
 ```
+
+No volume mount for the database — the container reseeds pgdata from the image on every start, so mounting a volume there preserves nothing. See [Volume / persistence](#volume--persistence).
 
 | Port | Protocol | Purpose |
 |---|---|---|
@@ -61,7 +62,7 @@ docker run -d --name cimmeria \
 
 ## Environment
 
-Every variable that [`crates/server/src/main.rs`](../../crates/server/src/main.rs) reads is overridable at `docker run` time. The container ships with these defaults:
+Every variable that [`crates/server/src/main.rs`](../../crates/server/src/main.rs) reads is overridable at `docker run` time. The image bakes defaults for the subset below (see the `ENV` block at [`docker/Dockerfile:254-268`](../../docker/Dockerfile)); the full catalogue, including anything not listed here, is the env-var table in `main.rs`'s module header.
 
 | Variable | Default | Notes |
 |---|---|---|
@@ -73,37 +74,48 @@ Every variable that [`crates/server/src/main.rs`](../../crates/server/src/main.r
 | `BASE_PORT` | `32832` | |
 | `CELL_PORT` | `50000` | |
 | `ADMIN_PORT` | `8443` | |
-| `DB_URL` | `host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw` | Libpq-style — see note below |
-| `PROTOCOL_DIGEST` | (compiled-in) | 32-char hex digest sent in the auth response — only override if you're testing protocol changes |
+| `DB_URL` | `host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw` | Libpq-style — see note below. Note this differs from the non-container default (`port=5433`). |
 | `DEVELOPER_MODE` | `true` | Relaxed auth + multi-login |
 | `RUST_LOG` | `info` | tracing-subscriber filter |
-| `COSMOS_LOG_ENDPOINT` | (unset) | Optional. Set together with `COSMOS_LOG_KEY` to mirror tracing logs to Azure Cosmos DB. Leave both unset to disable. |
-| `COSMOS_LOG_KEY` | (unset) | Optional. Paired with `COSMOS_LOG_ENDPOINT`. |
+
+Not baked into the image, but read by the server and worth setting on a real deployment:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `PROTOCOL_DIGEST` | (compiled-in) | 32-char hex digest sent in the auth response — only override if you're testing protocol changes |
+| `MERCURY_ENCRYPTION_VERSION` | `1` | Server-wide Mercury wire-encryption version. `1` = legacy (the only version unpatched clients understand); `2` = modernized. No per-client negotiation. |
+| `AUTH_TLS_RELOAD_INTERVAL_SECS` | `30` | Poll interval for hot-reloading the auth TLS cert/key on change (e.g. a Let's Encrypt renewal). `0` disables. Only active when the TLS listener is configured. |
+| `CIMMERIA_DEPLOY_ENV` | `dev` | Sets `deployment.environment` on every span/log/metric. Set to `colo` on a colo box so its data doesn't mix with dev-laptop noise. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | (unset) | OTLP collector endpoint. Unset ⇒ exporter disabled. [`docker/compose.yml`](../../docker/compose.yml) sets this to the bundled SigNoz collector. See [signoz-deployment.md](signoz-deployment.md). |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` or `http/protobuf`. |
+| `OTEL_SERVICE_NAME` | `cimmeria-server` | `service.name` in SigNoz's service map. |
+| `OTEL_RESOURCE_ATTRIBUTES` | (unset) | Comma-separated `k=v` resource attributes. |
+| `OTEL_TRACES_SAMPLER` | `always_on` | `always_on`, `always_off`, or `traceidratio` with `OTEL_TRACES_SAMPLER_ARG`. |
+| `CIMMERIA_TELEMETRY_HMAC_SECRET` | (unset) | Secret for the launcher dev-session token mint. Unset ⇒ the endpoint returns 500. See [telemetry.md](telemetry.md). |
+| `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload URL handed back to the launcher. **Must** be overridden when the launcher and server are on different hosts. |
+| `CIMMERIA_TELEMETRY_KILL_SWITCH` | (unset) | Set to the literal `1` to pause telemetry ingest. |
 
 > `DB_URL` must be in libpq key-value form, not URL DSN form. `crates/services/src/orchestrator_postgres.rs::ensure_postgresql_running` parses `host=` / `port=` tokens to decide whether to auto-start the bundled Postgres. A URL like `postgres://...` would silently fall back to `localhost:5433` and emit warnings, even though sqlx itself accepts either form.
 
 ## Volume / persistence
 
-The DB lives at `/var/lib/postgresql/data` (declared as a `VOLUME`). Two patterns:
+> **The database in this image is ephemeral. There is currently no way to persist it across container starts.**
 
-**Named volume — recommended.** Docker auto-copies the baked pgdata into the volume on first run; subsequent runs use the persistent volume. DB survives container recreation.
+The DB lives at `/var/lib/postgresql/data` (declared as a `VOLUME`), but the image's [entrypoint](../../docker/entrypoint.sh) **unconditionally reseeds** that path from the baked fallback at `/var/lib/postgresql/initial-data` on *every* container start, before Postgres boots. It clears the directory and copies the pristine layer over it — there is no "only if empty" guard.
 
-```bash
--v cimmeria-data:/var/lib/postgresql/data
-```
+That applies regardless of how the path is mounted: anonymous volume, named volume, or bind mount. A named volume will survive as a Docker object, but its contents are overwritten on each start, so it buys you nothing. A plain `docker restart cimmeria` — no image swap involved — also wipes the database.
 
-**Bind mount.** Docker does NOT copy image contents into bind mounts, so the container would start against an empty pgdata. The image's [entrypoint](../../docker/entrypoint.sh) self-heals this by copying from `/var/lib/postgresql/initial-data` (a baked fallback) into the bind-mounted directory the first time it's empty.
+This is deliberate. The design intent is "ephemeral DB, fresh every deploy" while the schema is still churning, and the reseed lives in the entrypoint because the alternative (relying on `WATCHTOWER_REMOVE_VOLUMES=true` to drop the anonymous volume) does not actually work — watchtower attaches the old volume to the new container before removing the old one, so Docker refuses the deletion and the stale database survives. Observed on the colo on 2026-05-26. The entrypoint's header comment documents the full mechanic.
 
-```bash
--v "$(pwd)/pgdata:/var/lib/postgresql/data"
-```
+If you need a database that outlives a restart, run Postgres outside this image and point `DB_URL` at it — see [colo-deploy.md → When to graduate off this setup](colo-deploy.md#when-to-graduate-off-this-setup).
 
 ### Reset to a fresh server
 
+Any restart already gives you a fresh server. To also discard the container and image:
+
 ```bash
 docker rm -f cimmeria
-docker volume rm cimmeria-data
-docker run ...   # same flags as before — image's pgdata seeds the new volume
+docker run ...   # same flags as before — the entrypoint reseeds pgdata on start
 ```
 
 ## What's inside
@@ -163,13 +175,12 @@ docker run -d --name cimmeria \
   -p 13001:13001 -p 32832:32832/udp -p 50000:50000/udp \
   -p 8081:8081 -p 8443:8443 -p 30000:30000 \
   -e BASE_EXTERNAL=<your-LAN-or-WAN-ip> \
-  -v cimmeria-data:/var/lib/postgresql/data \
   ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
 ```
 
 | Flag | Why |
 |---|---|
-| `--read-only` | Root filesystem is immutable. Stops a compromised process from persisting changes to the image content. The pgdata volume is the only writable location, by design. |
+| `--read-only` | Root filesystem is immutable. Stops a compromised process from persisting changes to the image content. The `VOLUME`-declared pgdata and log paths are the only writable locations, by design. |
 | `--tmpfs /run /tmp /var/run` | s6-overlay and Postgres both write status / sockets / lock files to these paths. Tmpfs satisfies them without dropping `--read-only`. |
 | `--cap-drop=ALL` + selective `--cap-add` | Default Docker capabilities are over-broad. The added five are what s6-overlay's `s6-setuidgid` privilege drops and Postgres's directory-perm enforcement actually need. Anything else is excess. |
 | `--security-opt=no-new-privileges` | Hard kernel-level block on `setuid` / `setcap` escalation paths. Belt to the cap-drop suspenders. |

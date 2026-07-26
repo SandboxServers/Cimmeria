@@ -1,5 +1,56 @@
 # CAT-A — Auth / Session / Character lifecycle
 
+> **Status re-verification (2026-07-25)** — findings below are the
+> 2026-05-31 snapshot. Re-checked against `origin/main`; deltas only:
+>
+> - **CAT-A-01 (plaintext SOAP, → #476): PARTIAL.** A TLS listener landed
+>   (`crates/services/src/auth/tls.rs`, cert hot-reload in
+>   `cert_watcher.rs`), but it is **opt-in** — it only starts when both
+>   `auth_tls_cert_path` and `auth_tls_key_path` are set
+>   (`crates/services/src/auth/service.rs:210`), and the plain-HTTP
+>   listener keeps running alongside it. What TLS *does* now gate is
+>   plaintext passwords: `CredentialGateError::PlaintextRequiresTls`
+>   rejects a plaintext credential arriving over plain HTTP
+>   (`crates/services/src/auth/handlers.rs:109`). What it does **not**
+>   change is the default deployment — SHA-1-hash credentials, the
+>   `SessionKey`, and the `Ticket` still traverse plain HTTP unless an
+>   operator supplies a cert. Password *storage* separately moved to
+>   argon2id with opportunistic on-login migration
+>   (`crates/services/src/auth/credentials.rs:156-202`).
+> - **CAT-A-02 (zero IV, → #477): PARTIAL.** Mercury **v2** adds a
+>   per-packet random IV, HKDF-SHA256 key separation, and a truncated
+>   HMAC-SHA256 over `IV ‖ ciphertext`
+>   (`crates/mercury/src/encryption/mod.rs:32-49`), plus session-key
+>   rotation and a v1-downgrade refusal. But **v1 is still the default and
+>   the only version an unpatched client accepts**
+>   (`crates/mercury/src/encryption/mod.rs:131-133`), so a stock
+>   deployment is unchanged. v2 has **not been validated against a live
+>   client**. Note also that neither v1 nor v2 carries a sequence number
+>   inside the crypto frame, so v2 does not address CAT-A-03.
+> - **CAT-A-03 / CAT-A-09 (no inbound dedup, → #477): STILL OPEN,
+>   unchanged.** `handle_encrypted_datagram` still runs decrypt → parse →
+>   dispatch and only calls `channel.process_acks`; `Channel::receive_packet`
+>   still has no production caller
+>   (`crates/services/src/base/connect_loop/encrypted/mod.rs:63-137`).
+> - **CAT-A-04 (TICKET_TTL not enforced at consume): STILL OPEN,
+>   unchanged.** `handle_login` does a bare `map.remove(ticket)` with no
+>   `created.elapsed()` check (`crates/services/src/base/login/mod.rs:45-58`);
+>   the 10 s reaper (`auth/service.rs:190`) remains the only gate.
+> - **CAT-A-05 (no source-IP binding, → #442): STILL OPEN, unchanged.**
+>   Neither `SessionRecord` nor `PendingLogin` carries an IP field
+>   (`crates/services/src/auth/mod.rs:107-139`); `client_ip` is captured
+>   for audit/Discord only.
+> - **CAT-A-07 (variable-time compare): PARTIAL.** The argon2id path uses
+>   the crate's constant-time verifier, but the legacy SHA-1 path still
+>   compares with `!=` (`crates/services/src/auth/credentials.rs:195`).
+> - **CAT-A-14 (authenticate 0x01 discarded, → #294): STILL OPEN,
+>   unchanged** (`crates/services/src/base/connect_loop/encrypted/mod.rs:150-161`).
+>
+> Everything else in this file re-verified as **still open**. See also the
+> credential-logging note under CAT-A-01's remediation (→ #440): full
+> ticket values are still logged, including one at **INFO**
+> (`crates/services/src/base/connect_loop/mod.rs:186`).
+
 **Overall trust posture**: The auth-handshake path applies several correct
 server-authority disciplines: the inbound baseAppLogin's `account_id` field is
 parsed-and-discarded (the trusted account_id comes from the ticket map);

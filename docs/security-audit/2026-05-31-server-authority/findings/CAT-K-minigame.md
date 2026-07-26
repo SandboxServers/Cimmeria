@@ -1,5 +1,40 @@
 # CAT-K — Minigame
 
+> **Status re-verification (2026-07-25)** — every CAT-K finding re-checked
+> as **still open**. Deltas are all in the *worse* direction:
+>
+> - **CAT-K-02 (`debug*` methods on regular SGWPlayer): STILL OPEN — and
+>   explicitly NOT covered by the #475 GM gate.** `requires_gm` gates
+>   `matches!(index, 2 | 3 | 6 | 92)` plus the SGWGmPlayer tail (≥ 109)
+>   (`crates/services/src/cell/dispatch/gm_gate.rs:81`). The four
+>   MinigamePlayer debug methods sit at CM **20–23**
+>   (`crates/services/src/cell/cell_methods/minigame.rs:7-10`), i.e. inside
+>   the inherited SGWPlayer range and outside the allow-list. They are
+>   still stubs, so this is latent — but do not assume #475 closed it.
+> - **CAT-K-03 (session has no TTL): STILL OPEN, and now provably so.**
+>   `MinigameSession` *has* a `created_at: Instant` field
+>   (`crates/services/src/minigame/session.rs:27`), but it is written at
+>   `register` (`session.rs:86`) and **never read anywhere** — the only
+>   other reference in the tree is a test fixture. `authenticate`
+>   (`session.rs:100-121`) checks ticket equality and game name, nothing
+>   else. The field reads as an abandoned TTL attempt.
+> - **CAT-K-07 (ticket has no IP / connection binding): STILL OPEN.**
+>   `authenticate` also does not *consume* the session on success, so one
+>   ticket authenticates an unbounded number of concurrent connections
+>   until `remove()` is called. The comparison `session.ticket != password`
+>   (`session.rs:107`) is a variable-time `String` compare.
+> - **Minigame SFS DoS (→ #532): STILL OPEN.** The accept loop
+>   (`crates/services/src/minigame/server.rs:89-101`) spawns a task per
+>   connection with **no connection cap, no per-IP limit, and no accept
+>   rate limit**, and `handle_connection` (`server.rs:104-128`) applies
+>   **no read timeout** to the version or login phase — a peer that
+>   connects and never sends holds a task plus a `MAX_MESSAGE_LEN` buffer
+>   indefinitely.
+>
+> The good architectural property the posture below credits — the SFS
+> server being the only producer of `CellToBaseMsg::MinigameResult` — is
+> unchanged and still holds.
+
 ## Trust posture
 
 The minigame system has a deliberately **good** architecture for server authority — content

@@ -2,12 +2,12 @@
 title: "Proposed content engine extensions"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Proposed content engine extensions
 
-> **Last updated**: 2026-05-07
+> **Last updated**: 2026-07-25
 > **Audience**: Tech lead deciding what mission/content features to invest in next. Engineers picking up a chunk of the engine work.
 > **Diátaxis type**: Explanation. Roadmap with rationale, not a how-to or reference.
 
@@ -25,13 +25,15 @@ The recent direction is informative: each addition has shipped with seed data, e
 
 ## Tier 1 — wire what's already defined
 
-These variants exist in the `Action` / `Condition` enum and are accepted by the loader, but `executor.rs` has no match arm — they fall through to `debug!("Unhandled")` no-ops. Wiring them is mostly executor work, not engine work.
+These variants exist in the `Action` / `Condition` enum and are accepted by the loader, but [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) has no match arm — they fall through to `debug!("Unhandled")` no-ops. Wiring them is mostly executor work, not engine work.
+
+**Four of these are not roadmap items but live bugs**: `move_entity` (5 seeded rows), `launch_ability` (3), `qr_combat_damage` (2), and `fail_objective` (1) are already authored into the shipped seed and silently do nothing every time they resolve. See §1.4.
 
 ### 1.1 `Action::ApplyEffect` / `Action::RemoveEffect`
 
 | | |
 |---|---|
-| Status today | Loaded at [loader.rs:488-493](../../crates/content-engine/src/loader.rs#L488-L493). No executor arm. |
+| Status today | Loaded at [loader/action.rs:309-318](../../crates/content-engine/src/loader/action.rs#L309-L318). No executor arm. One `apply_effect` and one `remove_effect` row already exist in the seed and no-op today. |
 | Effort | Small (S) — bridge into `crate::cell::effects` (verify path) and emit `CellToBaseMsg::ApplyEffect` / `RemoveEffect`. |
 | Unlocks | Timed buff/debuff consumables (regen pots, food buffs, focus drinks). HoT/DoT effect chains. The full effect-system surface that `OnEffectInit`/`PulseBegin/End`/`Removed` triggers were built for. |
 | Why | The action is already in the loader, the trigger family is already in the engine, and effect application is a per-domain Rust path. The executor arm is the only missing piece. Three of the next likely consumable categories (regen / shield / temp-stat-boost) all need this. |
@@ -40,7 +42,7 @@ These variants exist in the `Action` / `Condition` enum and are accepted by the 
 
 | | |
 |---|---|
-| Status today | Action variants and trigger variant defined. No executor arm. No `fire_timer_*` site in [event_dispatch.rs](../../crates/services/src/cell/content/event_dispatch.rs). |
+| Status today | Action variants and trigger variant defined. No loader arm either — `start_timer` / `cancel_timer` / an `OnTimer` `event_type` cannot be named from seed. No executor arm. No `fire_timer_*` site in [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/). |
 | Effort | Medium (M) — needs a per-cell tick loop or per-entity `tokio::time::sleep` task, plus persistence story (timers across logout?). |
 | Unlocks | Timed objectives ("defuse in 30s"). Wave-spawn delays. Daily-reset scaffolding (paired with §3.2). Escort-fail-on-pause patterns. Timed buff cleanup if §1.1 doesn't already drive it. |
 | Why | Several SGW missions in the bomb-defusal/escape-sequence pattern need this. There's no good Rust-side substitute that an authored chain could call into without reinventing the dispatcher. |
@@ -53,6 +55,15 @@ These variants exist in the `Action` / `Condition` enum and are accepted by the 
 | Effort | Small (S) — once the XP/leveling system lands. |
 | Unlocks | Mission XP rewards. Currently every chain that completes a mission fires `CompleteMission` followed by `GrantItem` rewards — `GrantXP` is not authored anywhere. |
 | Why | Already on the roadmap via [.claude/plans/2026-03-08-xp-leveling-design.md](../../.claude/plans/2026-03-08-xp-leveling-design.md). The chain-side wiring should land alongside the leveling system. |
+
+### 1.4 Seeded-but-inert actions — `move_entity`, `launch_ability`, `qr_combat_damage`, `fail_objective`
+
+| | |
+|---|---|
+| Status today | All four have loader arms ([loader/action.rs](../../crates/content-engine/src/loader/action.rs)) and are **used by shipped seed data** — 5 / 3 / 2 / 1 rows respectively. None has an executor arm, so all 11 rows resolve, emit a `debug!`, and do nothing. |
+| Effort | Small (S) each. `MoveEntity` can reuse the `MoveWaypoint` handler's position-write path; `LaunchAbility` calls into `crate::cell::abilities`; `QrCombatDamage` calls the existing damage-apply path; `FailObjective` mirrors the `CompleteObjective` handler in [executor/mission.rs](../../crates/services/src/cell/content/executor/mission.rs). |
+| Unlocks | Nothing new — it makes already-authored content work. Scripted NPC repositioning, scripted ability fires, scripted damage, and objective-fail branches are all currently silent no-ops in Castle_CellBlock and SGC_W1. |
+| Why | This is the highest-value Tier 1 entry because the content authoring is already done and merged. Unlike §1.1–§1.3 it needs no new seed data, no new design, and no dependency on an unshipped system. Each one should ship with a chain-replay guard asserting the action reaches its handler. |
 
 ---
 
@@ -126,7 +137,7 @@ These variants exist in the `Action` / `Condition` enum and are accepted by the 
 
 | | |
 |---|---|
-| Need | `Action::MoveWaypoint` does an instant position write today ([executor.rs:903-912](../../crates/services/src/cell/content/executor.rs#L903-L912) calls `update_entity_position` — no path interpolation). There's no `OnNpcArrived` trigger. So "escort the prisoner to the rings" can only fire on the player's region cross, not on the NPC's actual arrival. |
+| Need | `Action::MoveWaypoint` does an instant position write today ([executor/world/mod.rs:330](../../crates/services/src/cell/content/executor/world/mod.rs#L330) — no path interpolation; the `speed` field is parsed by the loader and then ignored by the executor). There's no `OnNpcArrived` trigger. So "escort the prisoner to the rings" can only fire on the player's region cross, not on the NPC's actual arrival. |
 | Engine surface | First, real path interpolation (Rust gameplay code, not engine). Then `Trigger::OnNpcArrived { entity_tag, region_key }` fired from the path-completion callback. |
 | Effort | Large (L) — path interpolation is the real work. The engine surface is small once that lands. |
 | Unlocks | Escort missions where the NPC actually escorts (movement events not fake-tied to player position). "Wait for NPC to finish speaking" beats. |
@@ -145,7 +156,7 @@ These sound tempting but belong elsewhere. Documenting them here so the conversa
 | **Ability cooldowns / GCDs** | Sub-second precision; queryable from input handler before any chain fires. Belongs in `Stat`-backed cooldown timers in the entity, not `Action::StartTimer`. |
 | **Pathfinding** | Deterministic Rust running every tick. The engine's `MoveWaypoint` does instant teleport on purpose; if escort movement matters, build the pather Rust-side and surface a single `Trigger::OnNpcArrived`. |
 | **Loot-roll RNG** | `Action::RollLootTable` is in the enum but unhandled, and that's fine. Loot tables need server-authoritative randomness with anti-dupe checks; expose only the *result* of a roll back into chains, not the rolling itself. |
-| **Inventory layout / equip rules** | `Action::SetActiveSlot` is a thin client poke ([executor.rs:913-932](../../crates/services/src/cell/content/executor.rs#L913-L932)). Resist `Action::SwapInventorySlot`, `Action::EnforceLoadoutRules` — those have invariants that need Rust enforcement. |
+| **Inventory layout / equip rules** | `Action::SetActiveSlot` is a thin client poke ([executor/mod.rs:366-397](../../crates/services/src/cell/content/executor/mod.rs#L366-L397)). Resist `Action::SwapInventorySlot`, `Action::EnforceLoadoutRules` — those have invariants that need Rust enforcement. |
 | **Reward-selection UI ("pick 1 of 3")** | This is a UI flow with a server callback, not a content-engine primitive. The flow is: player picks reward → client sends choice → server reads it and emits the granted item. Adding a chain trigger for "reward chosen" is reasonable; modeling the picker as engine state is not. |
 
 The litmus test: **if it needs to run at frame rate, hold invariants under concurrent mutation, or do math the engine can't validate, it stays in Rust.** The engine is glue between gameplay-code-defined events and gameplay-code-defined effects. It should be thin, declarative, and slow-path.
@@ -161,7 +172,7 @@ From the persistence audit. Each is small, each pays off as content scales.
 | Index `content_triggers (event_type, event_key)` | Editor and `load_single_chain_for_test` queries scan it; trivial to add |
 | `UNIQUE (chain_id, event_type, event_key)` on `content_triggers` | Prevents accidental duplicate rows from producing double-fire after a flubbed migration |
 | Index each `content_*` table on `chain_id` | Editor queries filter by it; PG doesn't auto-index FK columns |
-| Filter `enabled = false` chains in the loader (`WHERE enabled = true` in [engine_loader.rs:50-53](../../crates/services/src/cell/content/engine_loader.rs#L50-L53)) | Currently `enabled` is loaded into the `Chain` but the resolver may not honor it — disabled chains can still fire |
+| Filter `enabled = false` chains in the loader (`WHERE enabled = true` in [engine_loader.rs:51](../../crates/services/src/cell/content/engine_loader.rs#L51)) | Nicety, **not** a correctness fix. The boot `SELECT` has no `WHERE` clause, so disabled chains are loaded and registered — but `enabled` is honored in memory at resolve time ([chain.rs:256](../../crates/content-engine/src/chain.rs#L256), and [chain.rs:138](../../crates/content-engine/src/chain.rs#L138) for `fire_event`), so they never match or execute. Filtering in SQL would just stop carrying dead chains in the bucket |
 | Add `created_at`/`updated_at` to `content_chains` | Migration drift between environments is currently invisible |
 | `content_action_params` JSON Schema registry keyed on `action_type` | Lets the editor validate authoring; lets CI fail on a typo'd `"ammount"` before it ships |
 | CHECK constraints on `_type` discriminators (against a curated list) | Surface silent-drop case at INSERT time, not at boot |
@@ -172,7 +183,7 @@ From the persistence audit. Each is small, each pays off as content scales.
 
 - **Tier 1** comes from auditing every `Action` variant against the executor's match arms — variants without arms are dead weight that ship with every release.
 - **Tier 2** comes from the recent commits on `main` (PRs #214, #220, #237) and a per-condition / per-action audit of populators that don't write the keys the conditions read.
-- **Tier 3** comes from the mission-shape audit against the seed data — "are there missions in `db/resources.sql` that this engine can't drive?"
+- **Tier 3** comes from the mission-shape audit against the seed data — "are there missions in [db/resources/Missions/Seed/missions.sql](../../db/resources/Missions/Seed/missions.sql) that this engine can't drive?"
 - **What NOT to add** is the union of every "but couldn't we just…" question that has a clear architectural answer.
 
 The discipline is: only suggest extensions that are justified by either content already in the database or capabilities already partially in the codebase. No vaporware. No "what would be nice in a hypothetical future."

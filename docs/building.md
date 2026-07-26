@@ -2,7 +2,7 @@
 title: Building the Cimmeria Server
 type: how-to
 audience: engineers, new contributors
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 companion_docs:
   - ../README.md
   - ../bootstrap/README.md
@@ -83,7 +83,7 @@ The server listens on:
 | `13001` | TCP / Mercury | Auth ↔ BaseApp control channel |
 | `32832` | UDP / Mercury | Game client ↔ BaseApp |
 | `50000` | UDP / Mercury | Internal Cell traffic |
-| `8443` | TCP / HTTPS | Admin API (if `-WithAdmin` built) |
+| `8443` | TCP / HTTP | Admin REST API — always started in-process; `-WithAdmin` only builds the Tauri desktop client |
 
 Default test account is `test` / `test`.
 
@@ -99,7 +99,7 @@ Get-Content -Wait -Tail 50 .\logs\cimmeria-server.log
 
 When the client connects successfully you'll see a `client_handshake_ok` line in the log and the player will reach character select.
 
-For end-to-end client smoke tests without the GUI, see the headless `cimmeria-wireclient` in [`crates/wireclient/`](../crates/wireclient/) — it replays captured pcaps against a live server. Documentation: [`architecture/wireclient.md`](architecture/wireclient.md).
+The headless `cimmeria-wireclient` in [`crates/wireclient/`](../crates/wireclient/) is the eventual home for end-to-end client smoke tests without the GUI, but **it cannot talk to a running server yet**. As of Phase 1 the crate contains no UDP socket at all — what ships is SOAP auth (Phase 1+2 against an in-process `AuthService`), byte-exact Mercury handshake builders/parsers, and JSONL session-trace load + diff. `Client::build_login_packet` deliberately stops at producing bytes; the socket loop is Phase 1.5. Documentation: [`architecture/wireclient.md`](architecture/wireclient.md).
 
 ## Running the test suite
 
@@ -108,12 +108,15 @@ The five gating checks CI runs are documented in [`CLAUDE.md`](../CLAUDE.md) und
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher --all-targets -- -D warnings
+  --exclude cimmeria-scene-editor --exclude sgw-launcher \
+  --exclude cimmeria-client-telemetry --all-targets -- -D warnings
 cargo build --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher --all-targets
+  --exclude cimmeria-scene-editor --exclude sgw-launcher \
+  --exclude cimmeria-client-telemetry --all-targets
 cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher
+  --exclude cimmeria-scene-editor --exclude sgw-launcher \
+  --exclude cimmeria-client-telemetry
 
 # Live-DB tests (need a running Postgres on :5433):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \

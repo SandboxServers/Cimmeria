@@ -1,6 +1,6 @@
 # Mercury Bundle abstraction
 
-> **Last updated**: 2026-05-25
+> **Last updated**: 2026-07-25
 > **Audience**: Engineers touching Mercury send paths, AoI fanout, world-entry
 > bursts, or anything that calls `send_to_witness_reliable`
 > **Type**: Architecture decision + reference for callers
@@ -10,7 +10,7 @@
 
 ## TL;DR
 
-`ChannelBundle` ([crates/mercury/src/channel_bundle.rs](../../crates/mercury/src/channel_bundle.rs))
+`ChannelBundle` ([crates/mercury/src/channel_bundle/mod.rs](../../crates/mercury/src/channel_bundle/mod.rs))
 is an **accumulator** that lets a caller compose N application-level messages
 into one fragmented Mercury bundle so the client processes them as a single
 frame. The wire savings come from collapsing the per-packet IP+UDP header
@@ -33,7 +33,7 @@ decision sits with the caller, not with a per-channel auto-accumulator.
 - **Layer A**: `ChannelBundle` lives in `crates/mercury` with 11 wire-format
   tests. ✅
 - **Layer A.5**: `send_bundle_to_witness_reliable` bridge in
-  [base/helpers.rs](../../crates/services/src/base/helpers.rs) ties the
+  [base/helpers/mod.rs](../../crates/services/src/base/helpers/mod.rs) ties the
   bundle to the session UDP socket + Channel TX-window registration. ✅
 - **Layer B (conservative slice for #356)**: the AoI EnteredAoI burst in
   [base/world_entry/cell_dispatch/aoi.rs](../../crates/services/src/base/world_entry/cell_dispatch/aoi.rs)
@@ -209,10 +209,10 @@ reservation, then `finalize()` runs without further mutation — so the
 estimate reflects the exact post-drain state at reservation time and
 no TOCTOU window opens between estimate and finalize. The contract is
 guarded by a `debug_assert!` (the post-finalize check in
-[base/helpers.rs](../../crates/services/src/base/helpers.rs)) and by
+[base/helpers/mod.rs](../../crates/services/src/base/helpers/mod.rs)) and by
 the boundary-case test
 `estimated_packet_count_matches_finalize_at_fragment_boundary_with_acks`
-in [crates/mercury/src/channel_bundle.rs](../../crates/mercury/src/channel_bundle.rs).
+in [crates/mercury/src/channel_bundle/mod.rs](../../crates/mercury/src/channel_bundle/mod.rs).
 
 `estimated_packet_count()` itself depends only on `body.len()`
 (fragmented) or the empty-body-with-acks special case (which always
@@ -274,7 +274,7 @@ property/method updates. Regression-guarded by
 2 + DEFAULT_CHAT_CHANNELS.len() + 1` and `estimated_packet_count() == 1`)
 and `appearance_resend_bundle_collapses_to_single_packet` (pins
 `num_messages == 2` and `estimated_packet_count() == 1`) — both in
-[base/world_entry_appearance.rs](../../crates/services/src/base/world_entry_appearance.rs).
+[base/world_entry_appearance/mod.rs](../../crates/services/src/base/world_entry_appearance/mod.rs).
 Plus the entity-method byte-equivalence guard at
 [mercury/aoi/tests.rs](../../crates/services/src/mercury/aoi/tests.rs)
 (`channel_bundle_append_entity_method_matches_build_entity_method_packet_body` —

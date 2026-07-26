@@ -42,9 +42,11 @@ Single secret, **64 random bytes**, named
 repo (or org-level) secret on `SandboxServers/Cimmeria`. The deploy
 workflow injects it as env on the running cimmeria-server process.
 The server reads `std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET")` at
-mint and upload-verify time
-(`crates/admin-api/src/routes/dev_session.rs::load_secret` and
-`crates/admin-api/src/routes/telemetry.rs::load_secret_for_ingest`).
+mint and upload-verify time through a single loader,
+`crates/admin-api/src/routes/dev_session.rs::load_secret` (line 266).
+The ingest side deliberately calls that same function rather than
+loading the secret itself — see
+`crates/admin-api/src/routes/telemetry/handlers.rs:268-271`.
 
 The `SandboxServers/Cimmeria-MCP` repo previously held a mirror copy
 of this secret for token verification on its end of the upload flow.

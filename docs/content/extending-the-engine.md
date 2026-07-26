@@ -2,12 +2,12 @@
 title: "Extending the content engine"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Extending the content engine
 
-> **Last updated**: 2026-05-07
+> **Last updated**: 2026-07-25
 > **Audience**: Engineers adding a new trigger, condition, or action variant.
 > **Prerequisites**: Read [content-engine.md](content-engine.md) first — this how-to assumes you already know what `Trigger`, `Condition`, `Action`, `ExecutionContext`, and the bridge are.
 > **Diátaxis type**: How-to guide.
@@ -35,10 +35,12 @@ Use this section as the canonical walkthrough. The `Action::ChangeStat` addition
 ### Files to touch
 
 1. **Variant declaration** — [crates/content-engine/src/actions.rs](../../crates/content-engine/src/actions.rs).
-2. **Loader arm** — [crates/content-engine/src/loader.rs](../../crates/content-engine/src/loader.rs) `convert_action`.
-3. **Executor arm** — [crates/services/src/cell/content/executor.rs](../../crates/services/src/cell/content/executor.rs).
-4. **Seed SQL** — [db/resources/Content/Seed/](../../db/resources/Content/Seed/) (or [db/scripts/](../../db/scripts/) for a migration script).
-5. **Tests** — unit tests in `executor.rs` + a chain-replay test in [chain_replay_tests.rs](../../crates/services/src/cell/content/chain_replay_tests.rs).
+2. **Loader arm** — [crates/content-engine/src/loader/action.rs](../../crates/content-engine/src/loader/action.rs) `convert_action`.
+3. **Executor arm** — the `match action` block in [crates/services/src/cell/content/executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs), forwarding to the right per-family module (`mission.rs`, `inventory.rs`, `dialog.rs`, `stats.rs`, `world/`, `counter.rs`, `transport.rs`, `black_market.rs`) — keep the arm itself thin.
+4. **Seed SQL** — [db/resources/Content/Seed/](../../db/resources/Content/Seed/). Edit the seed directly; never hand-write a `db/scripts/*.sql` migration.
+5. **Tests** — unit tests in [executor/tests/](../../crates/services/src/cell/content/executor/tests/) + a chain-replay test in [chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/).
+
+> **Both arms or nothing.** A loader arm without an executor arm produces an action that parses cleanly, resolves cleanly, and then silently does nothing — the failure mode that currently affects six shipped seed verbs (see [content-engine.md §3](content-engine.md)). If you add the loader arm in one PR, add the executor arm in the same PR.
 
 ### Step-by-step
 
@@ -56,7 +58,7 @@ Use this section as the canonical walkthrough. The `Action::ChangeStat` addition
 
    Use `Option<T>` for fields that future seeds might omit. Use `Vec<T>` for list-shaped params (see `StartMinigame.on_victory_chains`).
 
-2. **Add the loader arm.** In `convert_action` ([loader.rs:305-613](../../crates/content-engine/src/loader.rs#L305-L613)):
+2. **Add the loader arm.** In `convert_action` ([loader/action.rs:11-441](../../crates/content-engine/src/loader/action.rs#L11-L441)):
 
    ```rust
    "change_stat" => {
@@ -78,7 +80,7 @@ Use this section as the canonical walkthrough. The `Action::ChangeStat` addition
 
    Boundary validation (range checks, enum parsing) goes here. Do not propagate raw DB values into the variant.
 
-3. **Add the executor arm.** In the `match action` block in `executor.rs`:
+3. **Add the executor arm.** In the `match action` block in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs):
 
    ```rust
    Action::ChangeStat { stat_id, amount, .. } => {
@@ -140,9 +142,9 @@ Use this section as the canonical walkthrough. The `Action::ChangeStat` addition
 
 5. **Test it.** Three layers:
 
-   - **Unit tests in `executor.rs`** — five tests for `ChangeStat`: advance, clamp at max, clamp at min (negative damage), `set_to_max`, `use_ammo_stat=true` early-return ([executor.rs:1069-1310](../../crates/services/src/cell/content/executor.rs#L1069-L1310)).
-   - **Loader unit tests in `loader.rs`** — round-trip a representative SQL row through `convert_action` and assert the variant shape ([loader.rs:660-1050](../../crates/content-engine/src/loader.rs#L660-L1050)).
-   - **Chain-replay test in `chain_replay_tests.rs`** — load the seeded chain through `load_single_chain_for_test`, fire the trigger event, assert the `ResolvedActions` shape. Pin **behavior, not chain_id** — a future renumber should not break the guard.
+   - **Unit tests in [executor/tests/](../../crates/services/src/cell/content/executor/tests/)** — for `ChangeStat` these live in [tests/stats.rs](../../crates/services/src/cell/content/executor/tests/stats.rs): advance, clamp at max, clamp at min (negative damage), `set_to_max`, `use_ammo_stat=true` early-return.
+   - **Loader unit tests in [loader/tests/action_conversion.rs](../../crates/content-engine/src/loader/tests/action_conversion.rs)** — round-trip a representative SQL row through `convert_action` and assert the variant shape.
+   - **Chain-replay test in [chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/)** — load the seeded chain through `load_single_chain_for_test`, fire the trigger event, assert the `ResolvedActions` shape. Pin **behavior, not chain_id** — a future renumber should not break the guard.
 
    ```rust
    #[tokio::test]
@@ -157,9 +159,9 @@ Use this section as the canonical walkthrough. The `Action::ChangeStat` addition
 ### Action checklist
 
 - [ ] Variant declared in `actions.rs` with rustdoc covering what it does and any ordering invariants
-- [ ] Loader arm in `loader.rs` with boundary validation
-- [ ] Executor arm in `executor.rs`
-- [ ] At least one seed row in `db/resources/Content/Seed/` or `db/scripts/`
+- [ ] Loader arm in `loader/action.rs` with boundary validation
+- [ ] Executor arm in `executor/mod.rs` (in the **same PR** as the loader arm)
+- [ ] At least one seed row in `db/resources/Content/Seed/`
 - [ ] Unit tests for the executor branch
 - [ ] Unit test for the loader converter
 - [ ] Chain-replay test pinning behavior shape
@@ -174,7 +176,7 @@ The pattern is similar to actions, with one extra step: the condition reads from
 ### Files to touch
 
 1. **Variant declaration** — [crates/content-engine/src/conditions.rs](../../crates/content-engine/src/conditions.rs).
-2. **Loader arm** — [loader.rs](../../crates/content-engine/src/loader.rs) `convert_condition`.
+2. **Loader arm** — [loader/condition.rs](../../crates/content-engine/src/loader/condition.rs) `convert_condition`.
 3. **Populator** — [crates/services/src/cell/content/mission_context.rs](../../crates/services/src/cell/content/mission_context.rs), if the condition reads context keys nothing else writes.
 4. **Tests.**
 
@@ -244,7 +246,7 @@ The pattern is similar to actions, with one extra step: the condition reads from
 
 - [ ] Variant declared with `evaluate` impl
 - [ ] Fail-mode chosen explicitly (open vs closed) and documented in the rustdoc
-- [ ] Loader arm in `loader.rs`
+- [ ] Loader arm in `loader/` (`condition.rs` / `trigger.rs` as appropriate)
 - [ ] Populator added (if reading a new context key)
 - [ ] Populator called from every `fire_*` site that uses this condition
 - [ ] Unit tests for evaluator, loader, populator
@@ -258,17 +260,17 @@ Triggers are the most invasive extension shape because they need a new event-dis
 
 ### Files to touch
 
-1. **Variant declaration** — [crates/content-engine/src/triggers.rs](../../crates/content-engine/src/triggers.rs).
-2. **Discriminant + matcher** — same file, extend `TriggerType` and `Trigger::trigger_type` and `Trigger::matches`.
-3. **Loader arm** — `convert_trigger` in `loader.rs`.
-4. **Dispatcher** — write a `fire_<event>` function in [event_dispatch.rs](../../crates/services/src/cell/content/event_dispatch.rs).
+1. **Variant declaration** — [crates/content-engine/src/triggers/mod.rs](../../crates/content-engine/src/triggers/mod.rs).
+2. **Discriminant + matcher** — `TriggerType` lives beside the enum in `triggers/mod.rs`; `Trigger::trigger_type` and `Trigger::matches` live in [triggers/matching.rs](../../crates/content-engine/src/triggers/matching.rs).
+3. **Loader arm** — `convert_trigger` in [loader/trigger.rs](../../crates/content-engine/src/loader/trigger.rs).
+4. **Dispatcher** — write a `fire_<event>` function in the right family module under [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/) (`cover.rs`, `dialog.rs`, `interaction.rs`, `inventory.rs`, `lifecycle.rs`, `mission.rs`, `region.rs`).
 5. **Public re-export** — add to [mod.rs](../../crates/services/src/cell/content/mod.rs).
 6. **Wire** — call the new `fire_<event>` from the gameplay code that observes the event.
 7. **Tests.**
 
 ### Step-by-step
 
-1. **Declare the variant.** In `triggers.rs`:
+1. **Declare the variant.** In `triggers/mod.rs`:
 
    ```rust
    pub enum Trigger {
@@ -279,7 +281,7 @@ Triggers are the most invasive extension shape because they need a new event-dis
 
 2. **Extend `TriggerType`** with the matching discriminant (`NpcArrived`).
 
-3. **Extend `Trigger::trigger_type`** ([triggers.rs:148](../../crates/content-engine/src/triggers.rs#L148)) and **`Trigger::matches`** ([triggers.rs:178](../../crates/content-engine/src/triggers.rs#L178)). The matcher should filter on whatever secondary keys the variant carries (entity_tag, region_key, etc.).
+3. **Extend `Trigger::trigger_type`** and **`Trigger::matches`** (both in [triggers/matching.rs](../../crates/content-engine/src/triggers/matching.rs); `matches` starts at [line 43](../../crates/content-engine/src/triggers/matching.rs#L43)). The matcher should filter on whatever secondary keys the variant carries (entity_tag, region_key, etc.).
 
 4. **Add the loader arm:**
 
@@ -290,7 +292,7 @@ Triggers are the most invasive extension shape because they need a new event-dis
    }),
    ```
 
-5. **Write the dispatcher.** In `event_dispatch.rs`:
+5. **Write the dispatcher.** In the matching `event_dispatch/` module:
 
    ```rust
    pub async fn fire_npc_arrived(
@@ -343,7 +345,7 @@ Triggers are the most invasive extension shape because they need a new event-dis
 
 - [ ] `Trigger` variant + `TriggerType` discriminant declared
 - [ ] `trigger_type()` and `matches()` extended
-- [ ] Loader arm in `loader.rs`
+- [ ] Loader arm in `loader/` (`condition.rs` / `trigger.rs` as appropriate)
 - [ ] `fire_<event>` written, with all needed populators called
 - [ ] Re-exported from `mod.rs`
 - [ ] Wired from the gameplay-code site that observes the event
@@ -360,7 +362,7 @@ Triggers are the most invasive extension shape because they need a new event-dis
 | Used the same key for "zero" and "missing" | `Counter == 0` matches both never-incremented and explicitly-zeroed | Populate explicitly when the value is genuinely zero (see `populate_counters_context` invariant) |
 | Two chains at the same priority on the same trigger with order-dependent actions | Intermittent failures depending on iteration order | Bump one chain's priority (see PR #237 / `a51a10d` increment-vs-completion fix) |
 | Loader silently dropped the row | Chain partially loaded; `warn!` at boot but no production observability | Read `loader.rs` warn lines at startup; add CHECK constraint on the discriminator if the type is part of a stable contract |
-| Action defined but no executor arm | Chain fires, action falls through to `debug!("Unhandled")` no-op | Audit the `executor.rs` match arms before assuming a variant works (current dead variants: `ApplyEffect`, `RemoveEffect`, `StartTimer`, `CancelTimer`, `RollLootTable`, `SpawnEntity`, `GrantXP` — see [proposed-extensions.md](proposed-extensions.md)) |
+| Action defined but no executor arm | Chain fires, action falls through to `debug!("Unhandled")` no-op | Audit the [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) match arms before assuming a variant works. Seventeen variants are dead today, six of them **already used by shipped seed data** (`move_entity`, `launch_ability`, `qr_combat_damage`, `apply_effect`, `remove_effect`, `fail_objective`) — the full catalog is in [content-engine.md §3](content-engine.md) |
 | `interact_tag` chain author forgot the `INT_*` flag | Right-click does nothing in-game (entity rendered as scenery) | The linter at [interact_tag_linter.rs](../../crates/content-engine/tests/interact_tag_linter.rs) should catch this; if you legitimately need to skip it, add to the allowlist with a reason comment |
 | Chain references a missing dialog/item/mission ID | Loads fine; fails at action execute time with a `warn!` | Run the validation CLI (proposed in [proposed-extensions.md](proposed-extensions.md)); for now, manually grep the seeds |
 

@@ -1,5 +1,33 @@
 # CAT-N — GM / Debug / Cheat commands — Findings
 
+> **Status re-verification (2026-07-25)** — deltas against `origin/main`:
+>
+> - **CAT-N-03 (no `access_level` in cell dispatch): RESOLVED (#475).**
+>   `crates/services/src/cell/dispatch/gm_gate.rs` is the single choke
+>   point. `enforce_gm_gate` reads `CellEntity::access_level` (set once at
+>   `InitPlayerState` from `account.accesslevel`, never from a
+>   client-supplied byte), rejects callers below `AccessLevel::GameMaster`,
+>   emits a `warn!` audit line, and sends an `onErrorCode` response. A
+>   missing entity **fails closed**. This unblocks the rest of CAT-N.
+> - **CAT-N-01 (`WORLD_INSTANCE_RESET`, CM 92): RESOLVED (#475).** Index 92
+>   is named explicitly in `requires_gm`
+>   (`crates/services/src/cell/dispatch/gm_gate.rs:81`). The same fix
+>   covers **CAT-O-04**.
+> - **CAT-N-02 (`RESET_MY_ABILITIES`, CM 72): STILL OPEN.** The gate covers
+>   `matches!(index, 2 | 3 | 6 | 92)` plus the whole SGWGmPlayer tail
+>   (index ≥ 109). CM 72 is in neither set
+>   (`crates/services/src/cell/cell_methods/player/dispatch.rs:85` pins
+>   `RESET_MY_ABILITIES == 72`), so it is **not** gated. The handler is
+>   still a stub, so this is latent rather than live — but the finding's
+>   original shape ("free respec when implemented") is unchanged, and the
+>   implementer will not be protected by #475. Adding `72` to `requires_gm`
+>   is a one-line fix.
+> - **The rest of CAT-N: STILL OPEN but now structurally protected.** The
+>   `gm*` surface at index ≥ 109 is GM-gated by construction, including
+>   indices with no handler yet, so the "future implementer ships it
+>   unauthenticated" systemic risk is closed for that range. Per-command
+>   *bounds* checks (the second half of most CAT-N findings) are not.
+
 **Overall trust posture.** CAT-N covers the largest single attack surface in the
 SGW protocol — ~125 distinct `Event_NetOut_*` messages produced by the
 `Event_SlashCmd_*` → `Event_NetOut_*` debug-command pipeline in

@@ -2,21 +2,23 @@
 title: "Pet System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Pet System
 
-> **Last updated**: 2026-06-20
+> **Last updated**: 2026-07-25
 > **Status**: ~10% — engine support, content, and client are complete; the server-side summon/command/despawn lifecycle is unimplemented (tracked in #570). Findings: [`reverse-engineering/findings/pet-restoration.md`](../reverse-engineering/findings/pet-restoration.md).
 
 ## Overview
 
 The pet system allows players to summon and control companion NPCs that fight alongside them. Pets extend the `SGWMob` entity with owner tracking, ability management (including toggling abilities on/off), stance control, leveling, and despawn timers. Pets respond to owner events (death, leash, respawn) and can resolve abilities on spawn.
 
-The `SGWPet` entity is defined in `entities/defs/SGWPet.def` (parent: `SGWMob`). The Python script `python/cell/SGWPet.py` contains only stub initialization for ability and stance lists.
+The `SGWPet` entity is defined in `entities/defs/SGWPet.def` (parent: `SGWMob`). The Python script `deprecated/python/cell/SGWPet.py` contains only stub initialization for ability and stance lists.
 
 ## Implementation Status
+
+Nothing in `crates/` implements the pet lifecycle — there is no pet module, and the `SGWPet` cell/client methods below have no Rust handlers. The table records what the *entity definitions* provide versus what any server has ever done with them.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -97,8 +99,9 @@ The `toggledAbilities` array tracks abilities that the player has turned OFF. Wh
 ## Data References
 
 - **Parent entity**: `SGWMob` (inherits all mob combat systems)
-- **Enumerations**: Pet stance enum (needs decompilation)
-- **Database**: Pet persistence table (needs schema creation)
+- **Enumerations**: `EPetStance` — `PET_STANCE_Passive` / `_Defensive` / `_Aggressive`, shipped in `db/resources/AI/Types/EPetStance.sql`
+- **Entity flags**: `ENTITYFLAG_Pet`, `ENTITYFLAG_DetectionPet`, `ENTITYFLAG_PetUseOwnFaction`, `ENTITYFLAG_PetWaitToDespawn`, `ENTITYFLAG_NoPetLeveling`, `ENTITYFLAG_NoPetTargeting` in `db/resources/Entities/Types/EEntityFlags.sql`
+- **Database**: no pet persistence table exists yet — `saveToDB` has no schema behind it
 
 ## RE Priorities
 

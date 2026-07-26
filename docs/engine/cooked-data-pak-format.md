@@ -2,7 +2,7 @@
 title: "Cooked Data PAK File Format"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Cooked Data PAK File Format
@@ -35,6 +35,56 @@ If the client's cached version differs, it requests individual entries via
 what the client was built to display. Using Server Build PAKs causes missing items (question
 marks), broken mission UI, and dialog failures because the MetaData versions trigger cache
 updates that overwrite the client's working data with the server's slightly different content.
+
+---
+
+## What Is Actually Committed to `data/cache/`
+
+> This section records the state of the repository, as distinct from the three source
+> builds compared throughout the rest of this document. Measured 2026-07-25 by reading the
+> ZIP central directories directly.
+
+**The committed set is a merge, not any single source build.** The recommendation above
+was acted on: QA is the base, and the three categories where the Server Build had genuinely
+extra content were re-packed rather than replaced.
+
+`data/cache/` holds **21 PAK files**, **55,025 entries** (excluding `MetaData`), ~22.4 MB on
+disk. Provenance is identifiable from the ZIP entry timestamps:
+
+| ZIP entry date | Files | Provenance |
+|---|--:|---|
+| 2008-12-11 | 17 | **QA Build** — the original cook, untouched |
+| 2026-03-16 | 3 | **QA + Server merge**, re-packed by Cimmeria |
+| 2026-02-24 | 1 | **Discord Build stub** (`CookedBehaviorEvents.pak`) |
+
+The three merged archives keep the **QA `MetaData` value** while carrying the **Server Build
+entry count** — which is exactly what a merge looks like, and confirms the extras were added
+to the QA base rather than the Server file being dropped in whole:
+
+| PAK | MetaData | Source of MetaData | Entries | Source of count | On-disk size |
+|---|--:|---|--:|---|--:|
+| `CookedDataKismetSeqEvent.pak` | 7455 | QA (Server = 7478) | 1,973 | Server (QA = 1,772) | 751,271 |
+| `CookedDataKismetSetEvent.pak` | 7454 | QA (Server = 7470) | 675 | Server (QA = 660) | 294,442 |
+| `CookedInteractionSet.pak` | 6615 | QA (Server = 6617) | 4,663 | Server (QA = 4,661) | 1,627,870 |
+
+Each is larger than both the QA and Server originals, as a superset should be.
+
+`CookedBehaviorEvents.pak` is present only because the Discord Build supplied the sole known
+copy; it is a 120-byte stub with `MetaData = 1` and zero entries. Serving it is harmless
+(requests simply miss) but it provides no data.
+
+Every other archive matches its QA row in the tables below on size, entry count and
+MetaData. Spot-check any of them with:
+
+```bash
+python -c "import zipfile,struct;z=zipfile.ZipFile('data/cache/CookedDataItems.pak');print(len(z.namelist())-1, struct.unpack('<I',z.read('MetaData'))[0])"
+# -> 6059 7538   (QA entry count, QA MetaData)
+```
+
+> [!NOTE]
+> The QA rows in this document give the build's provenance date as 2009-06-30. The ZIP
+> entry timestamps inside those archives read 2008-12-11. These are not in conflict — the
+> former is when the build was cut, the latter is when the data was cooked.
 
 ---
 
@@ -744,3 +794,10 @@ content. If so, merge the extra entries into the QA PAK files rather than replac
 
 The **Discord Build** is a strict subset of the Server Build with no unique game data
 (only one custom error string). It should not be used as a primary data source.
+
+> [!NOTE]
+> **This recommendation has already been applied.** `data/cache/` contains the QA base with
+> the Kismet and InteractionSet extras merged in, plus the Discord `CookedBehaviorEvents`
+> stub. See [What Is Actually Committed to `data/cache/`](#what-is-actually-committed-to-datacache)
+> near the top of this document for the verified inventory. Do not re-run the merge or
+> replace the archives without reading that section first.

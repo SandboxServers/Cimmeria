@@ -3,6 +3,8 @@
 > [!WARNING]
 > **Historical document.** Early-project survey of the Mercury layer. The current canonical reference is the in-progress bible chapter at [`../drafts/spec/mercury-wire-format.md`](../drafts/spec/mercury-wire-format.md), with [`../protocol/mercury-wire-format.md`](../protocol/mercury-wire-format.md) as the legacy summary. Keep this page for the original framing; do not extend.
 
+> **Last updated**: 2026-07-25 (address-accuracy audit — Mercury message-type RTTI table corrected)
+
 CME's proprietary networking layer, built on top of BigWorld Technology's transport. Mercury handles all client-server communication in Stargate Worlds.
 
 ## Class Hierarchy (from RTTI)
@@ -29,12 +31,18 @@ All RTTI addresses are in the sgw.exe `.rdata` section.
 | `Mercury::ClientExceptionMessage` | 0x01e91e5c | Exception/error message |
 | `Mercury::ClientNetMessage` | 0x01e91e8c | Network-layer message |
 | `Mercury::ClientOutgoingMessage` | 0x01e91eb4 | Outbound message |
-| `Mercury::ClientIncomingMessage` | 0x01e91f0c | Inbound message |
-| `Mercury::ClientChannelRegMessage` | 0x01e91f3c | Channel registration |
-| `Mercury::ClientInactivityDetectMessage` | 0x01e91f70 | Keepalive/timeout detection |
-| `Mercury::ClientResetMessage` | 0x01e91f9c | Connection reset |
-| `Mercury::ClientChannelRequestStatsMessage` | 0x01e91fd4 | Channel statistics request |
-| `Mercury::ClientChannelStatMessage` | — | Channel statistics response |
+| `Mercury::ClientIncomingMessage` | 0x01e91ee0 | Inbound message |
+| `Mercury::ClientChannelRegMessage` | 0x01e91f0c | Channel registration |
+| `Mercury::ClientInactivityDetectMessage` | 0x01e91f3c | Keepalive/timeout detection |
+| `Mercury::ClientResetMessage` | 0x01e91f70 | Connection reset |
+| `Mercury::ClientChannelRequestStatsMessage` | 0x01e91f9c | Channel statistics request |
+| `Mercury::ClientChannelStatMessage` | 0x01e91fd4 | Channel statistics response |
+
+> **Corrected 2026-07-25.** The six rows above were previously shifted down by one
+> slot (`ClientIncomingMessage` was listed at `0x01e91f0c`, which is actually
+> `ClientChannelRegMessage`, and `ClientChannelStatMessage` was left blank).
+> Every address re-read from `.rdata` type-descriptor strings in the live Ghidra
+> session; the other three tables on this page verified clean.
 
 ### Handler Types
 | Class | RTTI Address | Purpose |

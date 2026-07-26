@@ -2,7 +2,7 @@
 title: "Game Data"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Game Data
@@ -15,9 +15,12 @@ The project contains a complete database dump with **112,626 rows of game data a
 
 ## Where the Data Lives
 
-### Database (`db/resources.sql`)
+### Database (`db/resources/`)
 
-This is the **authoritative source** for all game content. It's a full PostgreSQL dump containing:
+This is the **authoritative source** for all game content — a per-system tree of
+PostgreSQL DDL and seed scripts (18 game-system directories plus the shared
+`_schema.sql` / `_indexes.sql` / `_foreign_keys.sql` files), loaded alongside
+`db/database.sql` and `db/sgw/`. It contains:
 
 | Content Type | Count | Examples |
 |-------------|-------|---------|
@@ -42,7 +45,7 @@ The PAK files are generated from the database by the server's Python scripts —
 
 ### Entity Definitions (`entities/`)
 
-XML files that define the **structure** of game objects — what properties a player has, what an NPC can do, what interfaces they support. There are 17 entity types and 20 interfaces.
+XML files that define the **structure** of game objects — what properties a player has, what an NPC can do, what interfaces they support. There are 18 entity types (`entities/defs/*.def`) and 18 interfaces (`entities/defs/interfaces/*.def`).
 
 Key entities:
 - **SGWPlayer** — The main player entity (58KB of property definitions)
@@ -50,28 +53,31 @@ Key entities:
 - **SGWSpawnSet** — Spawn point management
 - **Account** — Account-level data
 
-### Python Scripts (`python/`)
+### Python Scripts (`deprecated/python/`)
 
-164 Python files containing the **game logic** — how combat works, how missions progress, how crafting resolves. This is where the "rules of the game" live, separate from the data.
+164 Python files containing the **game logic** — how combat works, how missions progress, how crafting resolves. This is where the "rules of the game" live, separate from the data. These are the legacy reference implementation; active development is the Rust port under `crates/`.
 
-### Visual Script Files (`data/scripts/`)
+### Visual Script Files (`deprecated/data-scripts/scripts/`)
 
 XML-based node graphs for effects and missions, created with the **Atrea Script Editor** (part of the ServerEd Qt tool). These are the **source files** for mission and effect scripts.
 
 The compilation pipeline works like this:
 
 ```
-.script files (data/scripts/)          <-- SOURCE: visual node graphs (XML)
+.script files                                  <-- SOURCE: visual node graphs (XML)
+  (deprecated/data-scripts/scripts/)
     |
-    |  compiled by scriptcompiler.cpp (tools/ServerEd/)
+    |  compiled by scriptcompiler.cpp
+    |  (deprecated/cpp-tools/ServerEd/)
     v
-.py files (python/cell/missions/ etc.) <-- OUTPUT: auto-generated Python
+.py files                                      <-- OUTPUT: auto-generated Python
+  (deprecated/python/cell/missions/ etc.)
 ```
 
 Key details:
 - The `.script` XML files are the authoritative source — they represent visual node graphs from the Atrea Script Editor
-- The `.py` files in `python/cell/missions/` etc. are **auto-generated output**, not hand-written code
-- The compiler is implemented in `tools/ServerEd/scriptcompiler.cpp` (part of the Qt ServerEd tool)
+- The `.py` files in `deprecated/python/cell/missions/` etc. are **auto-generated output**, not hand-written code
+- The compiler is implemented in `deprecated/cpp-tools/ServerEd/scriptcompiler.cpp` (part of the Qt ServerEd tool; the built `tools/ServerEd/` tree keeps only the compiled artifacts)
 - Python files are **not** regenerated on server start — they are static compiled output checked into the repo
 - To modify a mission script, you should ideally edit the `.script` source and recompile, though direct `.py` edits work too
 
@@ -107,7 +113,7 @@ This pipeline is **confirmed working in our server**. When a client connects, th
 |--------|------|------|---------------|
 | Combat formulas | In Python code | QR system fully coded | Tested in-game |
 | Spawning | 153 NPC templates | Spawn management coded | Tested in-game |
-| Missions | 1,041 defined | 17 mission scripts | Tested (Castle Cellblock) |
+| Missions | 1,040 defined | 16 mission scripts | Tested (Castle Cellblock) |
 | Dialogs | 5,406 trees | Full interaction system | Tested in-game |
 | Items | 6,060 defined | Inventory system coded | Tested in-game |
 | Abilities | 1,887 defined | Full pipeline coded | Not yet tested |
@@ -118,7 +124,7 @@ This pipeline is **confirmed working in our server**. When a client connects, th
 | Effects | 3,217 defined | Script system + Python | Not yet tested |
 | World/Zones | 91 worlds | 11 space scripts | 1 zone tested |
 | Character creation | 23 definitions | Data loading only | Barely functional |
-| Minigames | Defined | 3 of 9 complete | Not yet tested |
+| Minigames | Defined | 1 of 8 complete (Livewire) | Not yet tested |
 
 ## What's Missing or Incomplete
 
@@ -133,15 +139,17 @@ This pipeline is **confirmed working in our server**. When a client connects, th
 
 ### Logic Not Yet Implemented
 
-- **AI behavior** — NPCs can fight (threat-based target selection) but can't patrol, wander, leash, flee, or investigate. They just stand in place until aggro'd.
-- **Organizations/Guilds** — 23KB of entity property definitions exist, but no server-side code to actually run the guild system.
-- **Mail system** — Database table exists but no handlers.
-- **Auction house** — Entity definitions only.
-- **7 of 10 minigames** — Have placeholder stubs.
+- **Mission reward dispatch** — no chain can award XP. `Action::GrantXP` exists in the content engine's action enum but has no loader arm *and* no executor arm, and all 1,040 mission rows in [db/resources/Missions/Seed/missions.sql](../db/resources/Missions/Seed/missions.sql) carry `reward_naq = 0, reward_xp = 0`. Both halves need doing before missions can pay out. See [content/content-engine.md §3](content/content-engine.md).
+- **Chain-driven effects, damage, and movement** — the `apply_effect`, `remove_effect`, `qr_combat_damage`, `move_entity`, `launch_ability`, and `fail_objective` content actions load from seed but have no executor arm, so the 13 seeded rows using them silently no-op.
+- **7 of 8 minigames** — only Livewire is implemented ([crates/services/src/minigame/games/](../crates/services/src/minigame/games/)); Hack, Activate, Analyze, Bypass, and the two Converse variants route to a shared placeholder, and Alignment / GoauldCrystals are commented out entirely.
 
-### Binary Data Needing Parsing
+### Recently Implemented (previously listed as missing)
 
-- **Cover nodes** — 1,332 cover positions across maps, stored in binary format (not XML). Needs a parser to extract the position data.
+- **AI behavior** — the `AiState` machine now covers Spawning, Idle, Investigating, Fighting, Leashing, Dead, Despawning, Follow, Patrol, Wander, Submit, and Error ([crates/entity/src/cell_entity/mod.rs:163-176](../crates/entity/src/cell_entity/mod.rs#L163-L176)). Content chains can drive Investigating, Follow, and the terminal states via the `set_npc_poi` / `set_follow_target` / `set_npc_ai_state` actions.
+- **Organizations/Guilds** — server-side handlers exist at [crates/services/src/cell/cell_methods/organization.rs](../crates/services/src/cell/cell_methods/organization.rs) and [client_methods/organization.rs](../crates/services/src/cell/client_methods/organization.rs), with shared logic in [crates/game/src/social/guilds.rs](../crates/game/src/social/guilds.rs).
+- **Mail system** — handlers exist at [crates/services/src/base/world_entry/methods/mail/](../crates/services/src/base/world_entry/methods/mail/), [cell/cell_methods/mail.rs](../crates/services/src/cell/cell_methods/mail.rs), and [cell/client_methods/mail.rs](../crates/services/src/cell/client_methods/mail.rs).
+- **Auction house / Black Market** — **not yet on `main`.** Implemented under `crates/services/src/base/black_market/` (create, bid, cancel, search, expiry sweep, plus tests) and reachable in-world through the content engine's `open_black_market` action, but this is phase-1 work on the unmerged `feat/571-black-market-phase1` branch. Treat as in-flight, not shipped.
+- **Cover nodes** — the binary format has been parsed. [db/resources/AI/Seed/cover_nodes.sql](../db/resources/AI/Seed/cover_nodes.sql) and [cover_sets.sql](../db/resources/AI/Seed/cover_sets.sql) carry the extracted positions, and the content engine exposes `player_entered_cover` / `player_left_cover` / `player_in_cover_duration` / `npc_flanked` triggers on top of them.
 
 ## What We Don't Need
 
@@ -151,8 +159,8 @@ The client installation has ~5GB of `.umap` and `.upk` files (maps, textures, mo
 
 To change game content:
 
-1. **Edit the database** — Modify rows in `resources.sql` or update the running PostgreSQL database directly
+1. **Edit the seed** — Change the relevant `Seed/*.sql` file under [db/resources/](../db/resources/). The seed files are the single source of truth; never hand-write a `db/scripts/*.sql` migration
 2. **Restart the server** — The Python resource classes will reload from the database
 3. **Clients get updated data** — The cooked XML is regenerated and served on next connection
 
-For mission and effect scripts, the proper workflow is to edit the `.script` XML node graphs in `data/scripts/` using the Atrea Script Editor (in ServerEd) and recompile. The auto-generated Python in `python/cell/` will be updated. Direct edits to the `.py` files also work but will be overwritten if the `.script` source is recompiled. The Python files are static — the server does not recompile them on startup.
+For mission and effect scripts, the proper workflow is to edit the `.script` XML node graphs in `data/scripts/` using the Atrea Script Editor (in ServerEd) and recompile. The auto-generated Python in `deprecated/python/cell/` will be updated. Direct edits to the `.py` files also work but will be overwritten if the `.script` source is recompiled. The Python files are static — the server does not recompile them on startup.

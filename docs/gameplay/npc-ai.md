@@ -2,21 +2,21 @@
 title: "NPC AI System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # NPC AI System
 
-> **Last updated**: 2026-05-31
+> **Last updated**: 2026-07-25
 > **Status**: All 12 Atrea AI states are now wired in the Rust runtime. Behavior states (Patrol, Wander, Investigating, Follow) are driven by `npc_ai_tick`; terminal states (Despawning, Submit, Error) are reachable via the `SetNpcAiState` content action. Implementation status detail is in the [summary table](#implementation-status-summary) at the bottom; the historical "Python design" sections below are kept for reference but no longer reflect the runtime.
 
 ## Overview
 
-NPC mob behavior is driven by a state machine implemented in the Rust cell service (`crates/services/src/cell/service/npc_ai.rs`). The runtime mirrors the Python `SGWMob` design — every 2 seconds the `npc_ai_tick` snapshot-and-dispatch loop routes each NPC into a per-state handler. Threat events preempt behavior states into `Fighting` with per-state scratch preserved.
+NPC mob behavior is driven by a state machine implemented in the Rust cell service (`crates/services/src/cell/service/npc_ai/`). The runtime mirrors the Python `SGWMob` design — every 2 seconds the `npc_ai_tick` snapshot-and-dispatch loop routes each NPC into a per-state handler. Threat events preempt behavior states into `Fighting` with per-state scratch preserved.
 
 The Detour-backed navmesh (via `space_mgr.find_path`) handles pathfinding for all movement states. Movement is interpolated at 100 ms cadence by `npc_movement_tick`.
 
-**Key files (Rust runtime):** `crates/entity/src/cell_entity/mod.rs` (the 12-state `AiState` enum + per-state scratch fields), `crates/services/src/cell/service/npc_ai.rs` (state-machine dispatch + per-state handlers), `crates/services/src/cell/combat/threat.rs` (`generate_threat` preemption), `crates/services/src/cell/service/ticks/npc_respawn.rs` (Dead → Idle promotion). The Python design files referenced in legacy sections (`python/cell/SGWMob.py`, `python/Atrea/enums.py`) are kept for evidence-of-intent only.
+**Key files (Rust runtime):** `crates/entity/src/cell_entity/mod.rs` (the 12-state `AiState` enum + per-state scratch fields), `crates/services/src/cell/service/npc_ai/` (state-machine dispatch in `dispatch.rs` plus one module per behavior state — `fight.rs`, `patrol.rs`, `wander.rs`, `follow.rs`, `investigate.rs`, `leash.rs`, `lifecycle.rs`, `ability_select.rs`), `crates/services/src/cell/combat/threat/` (`generate_threat` preemption, `LEASH_DISTANCE` in `aggro.rs`), `crates/services/src/cell/service/ticks/npc_respawn/` (Dead → Idle promotion), `crates/services/src/cell/cover/` (cover selection and reservation). The Python design files referenced in legacy sections (`deprecated/python/cell/SGWMob.py`, `deprecated/python/Atrea/enums.py`) are kept for evidence-of-intent only.
 
 ---
 
@@ -24,7 +24,7 @@ The Detour-backed navmesh (via `space_mgr.find_path`) handles pathfinding for al
 
 ### State Definitions
 
-Defined in `python/Atrea/enums.py` lines 228-239.
+Defined in `deprecated/python/Atrea/enums.py` lines 228-239.
 
 | State | Value | Implemented | Notes |
 |-------|-------|-------------|-------|
@@ -211,23 +211,23 @@ There is no priority weighting — the first usable ability in iteration order i
 
 ## Ammo Management
 
-Mobs use the same `bandolier_items` / `Stat[AMMO_SLOT_1+slot]` model as players in principle. In practice the **Rust port skips the ammo gate for non-players**: the fire-gate in [`crates/services/src/cell/abilities.rs:259-263`](../../crates/services/src/cell/abilities.rs#L259) short-circuits with `entity.is_player && current_ammo < required_ammo`, so NPCs currently fire without consuming rounds and never need to reload. `triggerReload()` is not yet ported.
+Mobs use the same `bandolier_items` / `Stat[AMMO_SLOT_1+slot]` model as players in principle. In practice the **Rust port skips the ammo gate for non-players**: the fire-gate in [`crates/services/src/cell/abilities/mod.rs:259-263`](../../crates/services/src/cell/abilities/mod.rs#L259) short-circuits with `entity.is_player && current_ammo < required_ammo`, so NPCs currently fire without consuming rounds and never need to reload. `triggerReload()` is not yet ported.
 
 Legacy accessors and their Rust equivalents:
 
 | Legacy (`SGWMob.py` / `SGWPlayer.py`) | Rust equivalent |
 |----------------------------------------|-----------------|
 | `getAmmoStat()` — stat ID for current slot | `crate::stats::AMMO_SLOT_1 + entity.active_bandolier_slot` |
-| `getClipSize()` — max ammo from equipped weapon | [`CellEntity::active_clip_size()`](../../crates/entity/src/cell_entity.rs#L373) |
-| `getAmmoCount()` — current ammo | [`CellEntity::active_ammo()`](../../crates/entity/src/cell_entity.rs#L366) |
-| `consumeAmmo(amount)` | [`CellEntity::set_slot_ammo(slot, current - amount)`](../../crates/entity/src/cell_entity.rs#L390) |
-| `triggerReload()` | Not ported for NPCs (player path: [`handle_reload`](../../crates/services/src/cell/cell_methods/player/world.rs#L121)) |
+| `getClipSize()` — max ammo from equipped weapon | [`CellEntity::active_clip_size()`](../../crates/entity/src/cell_entity/bandolier.rs#L19) |
+| `getAmmoCount()` — current ammo | [`CellEntity::active_ammo()`](../../crates/entity/src/cell_entity/bandolier.rs#L12) |
+| `consumeAmmo(amount)` | [`CellEntity::set_slot_ammo(slot, current - amount)`](../../crates/entity/src/cell_entity/bandolier.rs#L36) |
+| `triggerReload()` | Not ported for NPCs (player path: [`handle_reload`](../../crates/services/src/cell/cell_methods/player/world/reload.rs#L71)) |
 
 Legacy behavior: on spawn (`doAiSpawnAction`), the mob called `getClipSize()` on its equipped weapon and set its ammo stat to that value, representing a full reload at spawn. When `selectHostileAbility` found all abilities blocked by ammo, it called `triggerReload()`. The reload completed after a delay and refilled the clip, allowing the combat loop to resume.
 
 If/when NPC reload is needed, the same machinery applies — but **all three** of the following are required together; partial work will silently leave NPCs stuck mid-reload:
 
-1. Drop the `is_player` short-circuit in the fire-gate ([`abilities.rs`](../../crates/services/src/cell/abilities.rs)).
+1. Drop the `is_player` short-circuit in the fire-gate ([`abilities.rs`](../../crates/services/src/cell/abilities/mod.rs)).
 2. Set `reload_complete_at` from an AI-driven path (an NPC equivalent of `requestReload`).
 3. **Widen `reload_completion_tick`** ([`service.rs:610`](../../crates/services/src/cell/service.rs#L610)) — it currently iterates `space_mgr.all_player_entity_ids()` only, so an NPC's deadline would never be promoted. Add an `all_reloadable_entity_ids()` accessor or extend the existing one to include fighting NPCs.
 
@@ -408,7 +408,8 @@ Cell methods `addBehaviorSet(name)` and `removeBehaviorSet(name)` are declared f
 | Submit state | DONE | `npc_ai_submit` clears combat state (threat_list, BSF_IN_COMBAT, movement-type cache) and holds. Reached via the `SetNpcAiState` content action. |
 | Error state | DONE | `npc_ai_error` is a quiescent diagnostic state — handler is a no-op per tick. Reached via the `SetNpcAiState` content action or the `enterErrorAIState` slash command. |
 | Despawning state | DONE | `npc_ai_despawn` removes the entity from the space on entry; AoI fires the leave events to witnesses. Reached via the `SetNpcAiState` content action. |
-| Cover system | NOT IMPL | Tracked by [#209](https://github.com/SandboxServers/Cimmeria/issues/209) — needs spatial index + reservation lifecycle on top of the state machine. |
+| Cover system | DONE | `crates/services/src/cell/cover/` — DB loader (1,380 cover sets / 9,346 nodes seeded from the union of `covernodes_nikols.pak` + `covernodes_sdeiter.pak`), uniform-grid spatial index, slot reservation with auto-release-prior semantics, and node scoring. Wired into the Fighting state: when `use_cover` is set and the NPC is not stationary, `maintain_cover_for_npc` substitutes the chosen cover slot for the threat's position so the NPC paths to cover instead of charging. Cover is released on both the combat-end and leash transitions. See [#209](https://github.com/SandboxServers/Cimmeria/issues/209). |
+| NPC movement speed | PARTIAL | `move_speed` is a hardcoded `0.6` units per 100 ms tick (6 units/sec) set at construction (`crates/entity/src/cell_entity/construction.rs:84`) and never varied by AI state. `npc_movement_tick` reads it verbatim. So although the `EMobMovementType` byte broadcast to witnesses does change per state (Patrol vs CombatAdvance vs Leash), every NPC actually traverses at the same speed — the client plays a different gait animation over identical server-side motion. The seed data has distinct per-world speeds (`resources.worlds.walk_speed` ≈ 2.069, `run_speed` = 8.125) that nothing reads for NPCs. |
 | Mob group coordination | NOT IMPL | mobGroup property, mobJoinGroup() declared; deferred. |
 | Behavior event sets | NOT IMPL | addBehaviorSet/removeBehaviorSet declared; deferred. |
 | Tapping (kill credit) | DONE | Content-engine kill chains supersede the Python tap design. |

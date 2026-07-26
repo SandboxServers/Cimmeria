@@ -1,8 +1,37 @@
 # Network Message Catalog
 
 > **Status**: Phase 2 update — wire formats documented for combat & inventory
-> **Total messages**: 975 (479 NetOut + 496 NetIn)
+> **Total messages**: 420 (253 NetOut + 167 NetIn)
 > **Source**: Ghidra string search of sgw.exe + entity .def file correlation
+> **Last updated**: 2026-07-25
+
+> [!WARNING]
+> **The per-message "Implemented" column and the Summary-by-System counts are
+> known-stale and are being reworked.** A 2026-07-25 audit against
+> `crates/services/src/cell/cell_methods/`, `crates/services/src/cell/dispatch/`
+> and `crates/services/src/base/dispatch/mod.rs` found three defect classes:
+>
+> - **Understated.** Whole subsystems marked "NO"/"Not implemented" do have
+>   dispatch arms today — all of Crafting, Mail, Black Market, Trading, Pets,
+>   and most Minigame rows. Check `cell_methods/` before trusting a "NO".
+>   Caveat on Black Market: the six cell-method arms (indices 61-66) are on
+>   `main`, but the base-side service that fulfils them
+>   (`crates/services/src/base/black_market/`) is **not merged** — it lands
+>   with PR #586. "Dispatched" and "served" are different claims here.
+> - **Overstated.** The nine `Chat*` rows (`ChatList`, `ChatIgnore`,
+>   `ChatFriend`, `ChatMute`, `ChatKick`, `ChatOp`, `ChatBan`, `ChatPassword`)
+>   and `SendGMShout` are marked implemented but have no handler.
+> - **Wrong interface attribution.** Several rows credit a method to an
+>   interface when the `.def` places it on `SGWPlayer` itself — e.g.
+>   `useAbility`, `useAbilityOnGroundTarget`, `setAutoCycle`, `lootItem`,
+>   `chosenRewards`, `createOrganization`, and the five vendor methods
+>   (`purchaseItems`/`sellItems`/`buybackItems`/`repairItems`/`rechargeItems`).
+>
+> The **index/name/args** data in
+> [cell-method-dispatch-table.md](cell-method-dispatch-table.md) and
+> [client-method-dispatch-table.md](client-method-dispatch-table.md) was
+> re-derived from `entities/defs/` in the same audit and verified clean; prefer
+> those two documents over this one for anything index-related.
 
 This is the **RE-focused** message catalog. For the readable categorized list, see [../network-messages.md](../network-messages.md) and [../technical/network-messages.md](../technical/network-messages.md).
 

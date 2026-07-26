@@ -1,12 +1,12 @@
 ---
 type: how-to
 audience: Cimmeria contributors using Claude Code (or any LLM agent) to drive reverse-engineering work
-last_updated: 2026-05-24
+last_updated: 2026-07-25
 prerequisites: [re-toolchain-setup.md completed and MCPs reachable]
 companion_docs:
   - re-toolchain-setup.md
   - sgw-live-debugging.md
-  - evidence-standards.md
+  - ../reverse-engineering/evidence-standards.md
   - ../reverse-engineering/PLAN.md
 ---
 
@@ -83,6 +83,40 @@ update" table in CLAUDE.md.
 
 The writer turns this into a publication-quality doc following the Diátaxis split (reference / how-to / tutorial / explanation) and the existing `docs/` voice. It will *not* invent claims — it asks for more evidence if a packet has gaps, which is why structured handoffs save round-trips.
 
+## The `/re-verify` gate — mechanical structure-checking
+
+The single highest-value failure mode in LLM-driven RE is a *confident stub*: the agent writes a tidy six-line reconstruction of a function whose binary body is eighty instructions and nine calls. It reads well, it cites a real address, and it is wrong.
+
+> **Availability: not on `main` yet.** As of 2026-07-25 both files this
+> section describes — `.claude/commands/re-verify.md` and
+> `tools/re_parity.py` — exist only on a feature branch and are not present
+> in a fresh `main` checkout. If `/re-verify` isn't offered and
+> `python tools/re_parity.py` says "No such file or directory", that's why.
+> Delete this note once they land.
+
+There is a deterministic gate for exactly this. The [`/re-verify`](../../.claude/commands/re-verify.md) slash command runs a reverser/checker loop where Claude produces the reconstruction and [`tools/re_parity.py`](../../tools/re_parity.py) — pure Python, no network, no LLM, no API tokens — judges it:
+
+```text
+/re-verify <function address|name> [path/to/reconstruction] [--live]
+```
+
+The loop is: pull ground truth from Ghidra MCP (decompile, disassembly listing, authoritative callee count from the call graph), write or read the reconstruction, then run the parity engine as the objective gate:
+
+```bash
+python tools/re_parity.py \
+  --decompile <slug>.dc.c --source <slug>.recon.rs \
+  --asm <slug>.asm --callee-count <N> --json
+```
+
+The engine reports 11 structural heuristics classified RED (blocking) / YELLOW (inspect) / INFO — `trivial_stub`, `large_asm_tiny_source`, `stub_markers`, and so on — plus a conservative objective verdict of PASS / FAIL / UNKNOWN over call-count and control-flow gaps. Exit code `1` means blocking (any RED, or an objective FAIL). The command caps the revise-and-recheck loop at 4 rounds; `--live` adds an optional post-PASS confirmation via a **non-freezing** x64dbg breakpoint (a freezing BP on the live client makes the server drop the connection).
+
+Two things to hold onto:
+
+- **UNKNOWN is not a pass.** It means the gate lacked reference data — go get more ground truth rather than shipping on it.
+- **PASS is not proof.** It means "structurally consistent with the binary," not "semantically correct." The parity engine is advisory; YELLOW signals are for a human. Never edit `re_parity.py` to make one function go green — if a signal misfires on a legitimate idiom, use the documented per-invocation flags (`--wrapper-prefix`, `--call-tol`, `--cf-tol`).
+
+All RE intermediates belong in the session scratchpad, never in the repo.
+
 ## What NOT to delegate
 
 This is the most important section. The MCP toolchain is powerful enough to convincingly fabricate things — addresses that look right but point to padding, decompiled pseudocode that pattern-matches the question instead of the binary, byte layouts that "should" be the answer. Some failure modes:
@@ -116,11 +150,11 @@ When they diverge, document both and ask the user which to implement. Common cas
 
 ### Don't trust LLM-produced docs as primary evidence
 
-A document produced by an LLM agent is at the same confidence level as the evidence it cites — no higher. If the cite is `ghidra://SGW.exe@0x00c6fc40 and the decompiled function shows X`, the doc is HIGH. If the cite is "the agent inferred from naming patterns", the doc is LOW, no matter how confidently it's written. Use [`evidence-standards.md`](evidence-standards.md) verbatim — agent-produced ≠ verified.
+A document produced by an LLM agent is at the same confidence level as the evidence it cites — no higher. If the cite is `ghidra://SGW.exe@0x00c6fc40 and the decompiled function shows X`, the doc is HIGH. If the cite is "the agent inferred from naming patterns", the doc is LOW, no matter how confidently it's written. Use [`evidence-standards.md`](../reverse-engineering/evidence-standards.md) verbatim — agent-produced ≠ verified.
 
 ## Confidence-tier interaction with LLM agents
 
-The three tiers from [`evidence-standards.md`](evidence-standards.md) apply unchanged:
+The three tiers from [`evidence-standards.md`](../reverse-engineering/evidence-standards.md) apply unchanged:
 
 - **HIGH** still requires two independent corroborating sources. An agent that says "I verified this in Ghidra and it matches the .def file" is one source (the agent's claim) — you need to verify *both* citations yourself before promoting to HIGH.
 - **MEDIUM** is the default for single-source agent output. Most archaeology-specialist findings start MEDIUM and graduate to HIGH after a second agent or a human spot-checks them.
@@ -164,6 +198,8 @@ Bad shape: "use the specialist to research and implement and document and verify
 
 ## Cross-references
 
+- [.claude/commands/re-verify.md](../../.claude/commands/re-verify.md) — the `/re-verify` reverser/checker loop
+- [tools/re_parity.py](../../tools/re_parity.py) — the LLM-free structural parity engine (`--selftest` runs its own fixtures)
 - [.claude/agents/game-archaeology-specialist.md](../../.claude/agents/game-archaeology-specialist.md) — the persona
 - [.claude/agents/documentation-writer.md](../../.claude/agents/documentation-writer.md) — the publication partner
 - [docs/guides/re-toolchain-setup.md](re-toolchain-setup.md) — get the MCPs working in the first place

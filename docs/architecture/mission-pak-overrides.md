@@ -2,7 +2,7 @@
 
 > **Type**: explanation
 > **Audience**: engineers
-> **Last updated**: 2026-05-09
+> **Last updated**: 2026-07-25
 > **Companion docs**: [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md), [docs/protocol/message-catalog.md](../protocol/message-catalog.md), [docs/content/mission-chains.md](../content/mission-chains.md), [docs/content/equip-from-inventory-pattern.md](../content/equip-from-inventory-pattern.md), [TESTING.md](../../TESTING.md)
 
 This document explains how Cimmeria adds **new mission steps** that the client renders in its quest log without reshipping `CookedDataMissions.pak` to every player. If you only need the operator runbook ("I want to add an Equip-the-X step to mission N"), skip to [Adding a new override](#adding-a-new-override).
@@ -63,8 +63,8 @@ The fix is **self-healing**: a client left in a previously-broken state (entries
 | Concern | File | Symbol |
 |---|---|---|
 | Per-mission XML patch + insertion-point spec | `crates/services/src/base/mission_overrides.rs` | `MissionOverride`, `MISSION_OVERRIDES`, `apply_override` |
-| Apply patches at PAK load + bump metadata | `crates/services/src/base/resources.rs:162-236` | `ResourceCache::apply_mission_overrides` |
-| Track which element IDs were patched | `crates/services/src/base/resources.rs:74-81` | `ResourceCache.overridden_elements` |
+| Apply patches at PAK load + bump metadata | `crates/services/src/base/resources/mod.rs:162-236` | `ResourceCache::apply_mission_overrides` |
+| Track which element IDs were patched | `crates/services/src/base/resources/mod.rs:74-81` | `ResourceCache.overridden_elements` |
 | Three-way `onVersionInfo` reply | `crates/services/src/base/cooked_data.rs:21-123` | `handle_version_info_request` |
 | Push patched XML after the reply | `crates/services/src/base/cooked_data.rs:133-199` | `push_overridden_elements` |
 | Wire encoder for `onVersionInfo` with `InvalidKeys` | `crates/services/src/mercury/protocol/resources.rs:80-113` | `build_version_info` |
@@ -116,7 +116,7 @@ The same gotcha applies to mission 622, which now injects **two** steps for its 
 
 The category's `MetaData` value is what the client compares against to decide whether to refresh anything at all. We need a fresh value when the override content changes — otherwise the client never refetches — but we also need it to be **stable across server starts**, because otherwise every reconnect re-invalidates the same entries even when nothing changed (and incidentally racks up unnecessary `resourceFragment` traffic on every connection).
 
-The bump is content-derived (`crates/services/src/base/resources.rs:204-223`):
+The bump is content-derived (`crates/services/src/base/resources/mod.rs:204-223`):
 
 ```rust
 let mut hasher = std::collections::hash_map::DefaultHasher::new();

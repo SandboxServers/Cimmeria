@@ -2,19 +2,19 @@
 title: "Effect System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Effect System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~60% implemented
+> **Last updated**: 2026-07-25
+> **Status**: Implemented — application, removal, pulsing, stacking, absorption shields, and channel cancellation all work. Two gaps: diminishing returns, and **no effect visuals at all** (no `onSequence` is emitted anywhere in the effect system).
 
 ## Overview
 
 Effects are the atomic unit of gameplay change. Every ability resolves into one or more effects, each of which modifies entity stats, applies status conditions, or triggers scripts. Effects can be instantaneous, duration-based, or pulsing (repeating at intervals). Each effect instance tracks its own stat changes and can revert them on removal.
 
-The `EffectInstance` class in `python/cell/AbilityManager.py` handles all effect lifecycle logic.
+The `EffectInstance` class in `deprecated/python/cell/AbilityManager.py` handles all effect lifecycle logic.
 
 ## Implementation Status
 
@@ -31,14 +31,14 @@ The `EffectInstance` class in `python/cell/AbilityManager.py` handles all effect
 | Temporary vs permanent changes | DONE | Temporary reverted on removal |
 | QR combat damage | DONE | `qrCombatDamage()` using shared or per-effect QR |
 | Effect scripts | DONE | Dynamic script loading via `cell.effects.<name>` |
-| Kismet sequences (init, pulse, remove) | DONE | Per-event sequence dispatch |
+| Kismet sequences (init, pulse, remove, per-QR hit) | NOT IMPL | Nothing under `crates/services/src/cell/effects/` emits `onSequence`. Events 2000–2008 are never sent, so effects have no visual at all — see [cinematic-system.md](cinematic-system.md) |
 | Client result reporting | DONE | `onEffectResults` with stat delta list |
 | Clear on death/damage/rez/bandolier | DONE | `EF_ClearOnDeath`, `EF_ClearOnDamage`, etc. |
+| Effect stacking rules | DONE | Refcounted via `state_flag_counts`; shipped in PR #420 |
+| Absorption shields | DONE | Absorption pool with defined drain ordering; shipped in PR #420 |
+| Channeled effect pulses | DONE | `cell/effects/pulsing/`, including channel cancellation and the `AF_CHANNEL_ALLOWS_MOVEMENT` gate |
 | Diminishing returns | NOT IMPL | `diminishingReturns` property exists |
-| Effect stacking rules | NOT IMPL | Same effect is simply replaced |
-| Absorption shields | NOT IMPL | Absorb stats exist but no shield mechanic |
 | Confirmation dialog | NOT IMPL | `confirmationResponse` is a stub |
-| Channeled effect pulses | NOT IMPL | `pulseChanneledEffectOnTarget` defined |
 
 ## Effect Instance Lifecycle
 
@@ -136,18 +136,18 @@ BigWorldTimeComplete: FLOAT  -- Game time when effect expires
 
 ## Data References
 
-- **Effect definitions**: 3,217 in `db/resources.sql`
+- **Effect definitions**: 3,216 in `db/resources/Effects/Seed/effects.sql`
 - **Schema**: `Effect.xsd`
-- **Effect scripts**: `python/cell/effects/` directory (dynamically loaded)
+- **Effect scripts**: `crates/services/src/cell/effects/scripts.rs`, with a matching `match` arm in `registry.rs`
 - **Stat result codes** (`EStatResultCode`): `SRC_None`, `SRC_Absorb`, `SRC_Mortal`, `SRC_Immune`
+- **Cross-cutting ADR**: [abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md)
 
-## RE Priorities
+## Remaining Work
 
-1. **Diminishing returns** - Understand dict format in `diminishingReturns` property and application algorithm
-2. **Effect stacking rules** - How multiple applications of same effect interact (client enforcement?)
-3. **Channeled effect pulses** - `pulseChanneledEffectOnTarget` protocol and timing
-4. **Confirmation dialog** - `EF_PromptConfirmationDialog` flow and `confirmationResponse` handling
-5. **Absorption shields** - Relationship between `absorb*` stats and active shield mechanics
+1. **Effect visuals** — the largest gap. No `onSequence` is emitted for init, removal, pulse begin/end, or any of the per-QR `Effect_Hit_*` events, so the "Result Codes to Kismet Events" table above describes a mapping nothing currently walks
+2. **Diminishing returns** — understand the dict format in `diminishingReturns` and the application algorithm
+3. **Confirmation dialog** — `EF_PromptConfirmationDialog` flow and `confirmationResponse` handling
+4. **Unimplemented effect flags** — see the NO rows in [Effect Flags](#effect-flags); several are blocked on a stealth system that does not exist
 
 ## Related Docs
 

@@ -1,7 +1,35 @@
+---
+title: "Scaling Analysis (conclusions current; figures measured against the C++ server)"
+type: explanation
+audience: architects
+last_updated: 2026-07-25
+---
+
 # Scaling Analysis
 
-> **Last updated**: 2026-03-02
-> **Sources**: `src/baseapp/cell_manager.hpp/cpp`, `src/cellapp/`, `entities/spaces.xml`, `entities/cell_spaces.xml`, `config/CellService.config`, `config/BaseService.config`, `docs/engine/bigworld-architecture.md`
+## *(conclusions current — all measured figures are C++-era and unverified against Rust)*
+
+*Sources: `src/baseapp/cell_manager.hpp/cpp`, `src/cellapp/`, `entities/spaces.xml`, `entities/cell_spaces.xml`, `config/CellService.config`, `config/BaseService.config`, `docs/engine/bigworld-architecture.md` — **as those trees stood on 2026-03-02**. Body not rewritten since.*
+
+> [!NOTE]
+> **Read the conclusions; re-measure the numbers.**
+>
+> **Still current — use this document for these.** The BigWorld background, the
+> single-instance-per-role finding, the five-tier scaling ladder, and the
+> recommendation (start at Tier 0, design for Tier 1, never build Tier 4) all
+> hold unchanged. The Rust server is likewise one process per role, SGW's
+> loading-screen zone boundaries still eliminate the hard distributed-systems
+> problems, and the topology in
+> [service-architecture.md](service-architecture.md) matches.
+>
+> **Stale — do not cite these.** Every throughput, entity-count, and per-tick
+> cost figure below was measured against the **deprecated C++ implementation**
+> (`src/…` now under [`deprecated/cpp/`](../../deprecated/cpp/); the
+> `config/*.config` files are gone). No equivalent benchmark has been run
+> against the Rust server. That includes the ~135 ms-per-tick-at-500-players
+> computation budget, the per-operation microsecond costs, and the ~3,400-line
+> inter-service-protocol figure. The *shape* of those arguments survives; the
+> digits do not.
 
 ---
 
@@ -314,7 +342,7 @@ This analysis directly informs the server modernization discussion:
 ## Related Documents
 
 - [Service Architecture](service-architecture.md) — Current Auth, Base, Cell service topology
-- [Server-Only Infrastructure](server-systems.md) — Session management, rate limiting, admin tools
+- [Server Infrastructure Proposals](server-infrastructure-proposals.md) — Session resume, rate limiting, world-state persistence, scheduler, economy instrumentation (the superseded [server-systems.md](server-systems.md) survey routes here)
 - [BigWorld Architecture](../engine/bigworld-architecture.md) — How production BigWorld handles distributed cells
 - [Space Management](../engine/space-management.md) — WorldGrid AoI, spaces, ghost entities
 - [Gap Analysis](../gap-analysis.md) — System-level feature completeness

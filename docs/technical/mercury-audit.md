@@ -3,6 +3,13 @@
 > [!WARNING]
 > **Historical document.** Audit of the C++ Cimmeria Mercury implementation against the BigWorld reference. The active Mercury implementation is now Rust under [`../../crates/mercury/`](../../crates/mercury/); for the current wire format see the in-progress bible chapter at [`../drafts/spec/mercury-wire-format.md`](../drafts/spec/mercury-wire-format.md). Keep this page for the original audit comparisons; do not extend.
 
+> **Last updated**: 2026-07-25 (path-accuracy audit — audited C++ files relocated under `deprecated/cpp/`)
+>
+> **Scope warning.** Every "Cimmeria" column, assessment, and "Should Fix" item on this
+> page describes the **retired C++ server**, not the current Rust implementation. Do not
+> action the recommendations below against `crates/mercury/` without re-auditing first —
+> some were already fixed, some never applied to the Rust port.
+
 Comparison of Cimmeria's Mercury protocol implementation against the BigWorld 1.9.1/2.0.1 open-source reference. The audit identifies differences that are likely intentional CME modifications for SGW, versus potential bugs.
 
 ## Summary
@@ -242,17 +249,22 @@ Piggybacking is a server-side optimization. The client likely doesn't send piggy
 
 ## Reference Files
 
-### Cimmeria
+### Cimmeria (the C++ implementation this audit examined)
 
-| File | Purpose |
+These are the files as they were laid out when the audit ran. The C++ tree has since
+been retired into `deprecated/cpp/`; the paths below are updated to where the audited
+files actually live today. The **active** Mercury implementation is Rust under
+[`../../crates/mercury/`](../../crates/mercury/) and none of these files drive it.
+
+| File (current location) | Purpose |
 |------|---------|
-| `src/mercury/packet.hpp` | Packet flags, header, constants |
-| `src/mercury/packet.cpp` | Packet serialization/deserialization |
-| `src/mercury/bundle.cpp` | Bundle framing, message packing |
-| `src/mercury/channel.cpp` | Channel management, ACKs, reliability |
-| `src/mercury/nub.cpp` | Network endpoint, packet dispatch |
-| `src/mercury/encryption_filter.cpp` | AES-256-CBC + HMAC-MD5 |
-| `src/mercury/stream.hpp` | Stream operators (native byte order) |
+| `deprecated/cpp/src/mercury/packet.hpp` | Packet flags, header, constants |
+| `deprecated/cpp/src/mercury/packet.cpp` | Packet serialization/deserialization |
+| `deprecated/cpp/src/mercury/bundle.cpp` | Bundle framing, message packing |
+| `deprecated/cpp/src/mercury/channel.cpp` | Channel management, ACKs, reliability |
+| `deprecated/cpp/src/mercury/nub.cpp` | Network endpoint, packet dispatch |
+| `deprecated/cpp/src/mercury/encryption_filter.cpp` | AES-256-CBC + HMAC-MD5 |
+| `deprecated/cpp/src/mercury/memory_stream.hpp` | Stream operators (native byte order) |
 
 ### BigWorld 1.9.1
 

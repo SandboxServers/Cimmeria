@@ -48,9 +48,28 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [UTerrain::Serialize binary layout](ue3-terrain-serialize.md) — **[PROMOTE → issue #46 appendix DONE; unblocks Phase 1.3]** — ATerrain__vfunc_12 @ 0x007517C0, full trailer layout, None-scan gotcha, 92% confidence.
 
+## x64dbg session discipline
+
+- [x64dbg session liveness check protocol](feedback-x64dbg-session-liveness-check.md) — **[KEEP — process-health check BEFORE any cave writes; 2026-06-22 crash postmortem]** — get_debugger_status + get_latest_event must both be clean before proceeding. Second-chance AV = dead process, no recovery. **2026-07-25: x64dbg upgraded (plugin v0.8.0-ghost_fungus, client 0.9.0), old client process terminated — next session is a fresh launch, adds programmatic log capture for BP hits.**
+
+## Black Market createAuction send-side (2026-06-22)
+
+- [createAuction send wiring — NOP patch confirmed](bm-create-auction-send-wiring.md) — **[PROMOTE → docs/reverse-engineering/findings/black-market-client-window-patch.md §createAuction-send]** — Entity-guard JZ at 0x00e599a8 NOP'd (6 bytes), send BP hit confirmed, wire layout vs server decode verified. Full Lua binding map + reversibility bytes.
+- [createAuction FUN_00A372F0 dispatch diagnosis](bm-create-auction-dispatch-diagnosis.md) — **RE-VERIFIED 2026-07-25**: hash constant `0x6DF41E32` / stride ×4 / hash-derived (not static) bucket slot all CONFIRMED by fresh decompile + independent Python re-derivation. Sections calling `FUN_00D6CE00` are RETRACTED inline (marked at each heading); the file's own "FINAL LOCKED PLAN — OPTION B SYNTHESIZE" section is CONFIRMED CORRECT (manual callback_obj + direct `FUN_00A37790`, never calls D6CE00) — don't conflate the two.
+- [createAuction registration key mismatch — UN-SUPERSEDED 2026-07-25](bm-create-auction-registration-key-bug.md) — **THIS IS THE CORRECT PLAN.** FUN_00D46F70 hardcodes SellItems' C++ template (confirmed via Ghidra RTTI symbol names, not just offsets) — CME subscription must use a manual callback_obj + direct `FUN_00A37790`, never `FUN_00D6CE00` (which mis-keys under SellItems regardless of args passed). "SLOT 2 static" rendezvous claim in this file corrected to hash-derived math.
+- [createAuction FINAL execution plan — SUPERSEDED 2026-07-25](bm-create-auction-next-session-plan.md) — **DO NOT EXECUTE.** Both its bucket slot (claimed static 2, is hash-derived) and its registration call (`FUN_00D6CE00`, hardcodes SellItems' template) are wrong. The "FUN_00C6EA70 throws on first-registration" BLOCKER is also backwards (disasm-confirmed: throws on duplicate, not first insert) — moot anyway since C6EA70 doesn't touch the CME table. Use `bm-create-auction-registration-key-bug.md` instead.
+
+## Black Market fork-B session (2026-06-21)
+
+- [BM fork-B crash notes + correct registration pattern](bm-fork-b-session-crash-notes.md) — Client crashed from flag3 handler calling 0x00403EC0 without first pushing _G. Correct sequence: 0x00403BB0(L,NULL) then 0x00403EC0. All cave addresses, JMP patches, and Lua shadow problem documented. All work survives client restart ONLY if caves were in fixed-VA exe space — they were not (heap allocs), so next session needs full rebuild.
+
 ## SGWHomeless full recovery (2026-05-25)
 
 - [SGWHomeless full recovery](sgwhomeless-full-recovery.md) — **[PROMOTE → docs/reverse-engineering/findings/atrea-editor.md §SGWHomeless]** — Complete v5 RE: 30 CME subscriptions confirmed, all handler VAs, singleton at `0x01ef23fc` (CORRECTS prior `cme-anomalies-resolved.md`), GLevel ToD/Wind/Weather layout, Ghidra renames applied.
+
+## Recurring RE-table failure modes
+
+- [RTTI table shifts + RVA/VA traps](rtti-table-shift-and-rva-va-traps.md) — one-row shifts in contiguous RTTI tables (blank trailing cell is the tell); Atrea config mixes RVAs with VAs in one column.
 
 ## Phase −0.5 maintenance notes (2026-05-13)
 

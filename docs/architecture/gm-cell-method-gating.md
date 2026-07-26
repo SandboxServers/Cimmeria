@@ -2,7 +2,7 @@
 title: "GM gating for cell methods — access_level plumbing"
 type: explanation
 audience: engineers
-last_updated: 2026-06-10
+last_updated: 2026-07-25
 ---
 
 # GM gating for cell methods — `access_level` plumbing
@@ -40,7 +40,7 @@ Plumbing path:
 ```text
 account.accesslevel (DB)
   → auth handler → ConnectedClientState.access_level (base)
-  → world_entry_appearance.rs builds InitPlayerState { access_level, … }
+  → world_entry_appearance/ builds InitPlayerState { access_level, … }
   → handle_init_player_state → CellEntity::access_level
 ```
 
@@ -112,6 +112,42 @@ change mid-connection), so a per-call parameter would thread the same
 constant through every dispatch signature for no added correctness. The
 entity-stored value is equally authoritative — it comes from the same
 `ConnectedClientState.access_level`, set once at world entry.
+
+## Moderation surface still missing
+
+Folded in from the superseded server-systems survey (see
+[server-systems.md](server-systems.md)), whose "admin and GM tools" section is
+the one place its design thinking outlived its current-state claims. The gate
+above answers *who may run a GM command*. These are the things a GM still
+cannot do at all.
+
+**No GM action audit log.** Every accepted `.`-console command is logged at
+`info` for the audit trail
+([`crates/services/src/cell/console/dispatch.rs`](../../crates/services/src/cell/console/dispatch.rs)),
+and login events land in the `login_audit` table, but there is no durable,
+queryable record of GM *actions* — who granted what item to whom, and when.
+The design is small: wrap the dispatch seam and write command name, actor,
+target, and arguments to a table for any caller above access level 0. Log lines
+are not an audit trail; they rotate.
+
+**No ban or mute.** There is no account-level ban and no chat mute — no schema
+columns, no commands, no enforcement point. Adding them means an `is_banned`
+check on the login path and an `is_muted` check in chat routing, plus the two
+commands. This is the gap that matters first if the server ever opens beyond a
+trusted group.
+
+**No server-wide announcement.** Nothing broadcasts a system message to all
+connected clients — useful for maintenance warnings long before it is useful for
+moderation.
+
+**No rollback.** There is no way to reverse a GM action or an exploited
+transaction. This one is genuinely hard and depends on the currency-flow
+instrumentation in
+[server-infrastructure-proposals.md §5](server-infrastructure-proposals.md#5-economy-instrumentation-before-economy-balance)
+existing first — you cannot reverse what you never recorded.
+
+Current status for each of these is tracked in
+[gap-analysis.md](../gap-analysis.md) §"Server Infrastructure (Cross-Cutting)".
 
 ## Related
 

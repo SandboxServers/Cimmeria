@@ -30,7 +30,9 @@ high-signal events in the operator's primary triage view:
 Routing is target-based via `otel::is_network_noise_target` (see
 [`crates/server/src/otel.rs`](../../crates/server/src/otel.rs)) composed
 with a severity carve-out in
-[`crates/server/src/main.rs`'s `init_logging`](../../crates/server/src/main.rs).
+[`crates/server/src/logging.rs`'s `init_logging`](../../crates/server/src/logging.rs)
+(the function is at `logging.rs:128`; the carve-out filters are at
+`logging.rs:348-349` and `logging.rs:358-362`).
 The two streams share one OTLP endpoint + collector but two
 `SdkLoggerProvider`s (one per resource).
 
@@ -38,10 +40,17 @@ Schemas:
 
 - `cimmeria-server` events follow the standard tracing field set
   (`entity_id`, `player_id`, `account_id`, `target`, etc.)
-- `cimmeria-network` `mercury.packet` events: `dir`, `transport`,
-  `seq`, `flags`, `msg_id`, `len`, `peer`. Recorded via the
+- `cimmeria-network` `mercury.packet` events come in two shapes, and no
+  single event carries every field. Both are emitted by the
   instrumentation helpers in
-  [`crates/mercury/src/instrumentation.rs`](../../crates/mercury/src/instrumentation.rs).
+  [`crates/mercury/src/instrumentation.rs`](../../crates/mercury/src/instrumentation.rs):
+  - **UDP** (`mercury_packet`, `instrumentation.rs:99-108`) —
+    `dir`, `transport="udp"`, `seq`, `flags`, `len`, `peer`. No `msg_id`.
+  - **TCP** (`unified_frame`, `instrumentation.rs:119-126`) —
+    `dir`, `transport="tcp"`, `msg_id`, `len`. No `seq`, `flags`, or `peer`.
+
+  Filter on `transport` before assuming a field is present; a query that
+  groups by `msg_id` silently drops every UDP packet.
 
 A previous iteration of the server also wrote logs to an Azure Cosmos
 DB sink alongside the OTLP exporter. That sink was removed when SigNoz
@@ -265,7 +274,7 @@ remain the source of truth for retroactive deep-dives.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | SigNoz UI loads but "no data" | OTLP collector unreachable from `cimmeria-server` | Verify both containers are in the same compose project (default network). `docker compose -f compose.yml ps` should show all 9 services. |
-| `otel-smoke` succeeds but server data missing | Subscriber filter dropped events | Check `init_logging` in [`crates/server/src/main.rs`](../../crates/server/src/main.rs) — OTel layer's EnvFilter |
+| `otel-smoke` succeeds but server data missing | Subscriber filter dropped events | Check `init_logging` in [`crates/server/src/logging.rs`](../../crates/server/src/logging.rs) — OTel layer's EnvFilter |
 | ClickHouse OOM | Default `max_memory_usage` too low for ingestion burst | Edit the `clickhouse-users` `configs:` block in `compose.yml` (raise `max_memory_usage` in the `default` profile), restart the `clickhouse` container |
 | Tunnel up, browser shows 502 | Frontend not yet ready (~90s cold start) | Wait, then `docker compose -f compose.yml logs frontend` |
 | Server logs say "[otel] Exporter init failed" | Collector address misconfigured | Verify `OTEL_EXPORTER_OTLP_ENDPOINT` and that `:4317` is reachable |

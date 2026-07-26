@@ -2,14 +2,17 @@
 title: "Cinematic System (Kismet/Matinee Sequences)"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Cinematic System (Kismet/Matinee Sequences)
 
-> **Last updated**: 2026-03-02
-> **Status**: ~60% implemented
-> **Sources**: `python/cell/SGWSpawnableEntity.py`, `python/cell/AbilityManager.py`, `python/cell/RingTransporter.py`, `python/cell/SGWPlayer.py`, `python/cell/commands/Net.py`, `python/common/defs/Sequence.py`, `python/common/defs/EventSet.py`, `python/common/defs/RingTransporterRegion.py`, `entities/defs/SGWSpawnableEntity.def`, `db/resources.sql`
+> **Last updated**: 2026-07-25
+> **Status**: Partially implemented. Firing today: ability begin/end, entity death, item equip/unequip/reload/use, ring transport, content-chain `play_sequence`, and the debug console commands. Not firing: all effect-lifecycle sequences, ability interrupt/failed, stargate dialing and crossing, DHD chevrons, designer slots, spawn/despawn, the visibility-safety nudge, and every NVP parameter override.
+> **Implementation**: `crates/services/src/cell/abilities/` (ability + death), `cell/cell_methods/player/world/item_sequence.rs` (item handling), `cell/ring_transport/`, `cell/console/net.rs` (debug commands), `cell/spawner/abilities.rs` (`event_set_id → sequence_id` load)
+> **Data / defs**: `entities/defs/SGWSpawnableEntity.def`, `db/resources/Events/`
+>
+> The behavioural descriptions below that name `.py` files are historical — they document the original server's intent, which the Rust implementation mirrors. Where the two diverge, the Rust code is authoritative and the divergence is called out inline.
 
 ## Overview
 
@@ -21,25 +24,27 @@ This is accomplished through a single RPC: `onSequence`. The server fires it; th
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Sequence resource loading from DB | DONE | `Sequence.loadAll()`, `EventSet.loadAll()` |
-| Cooked data export (PAK files) | DONE | `CookedDataKismetSeqEvent`, `CookedDataKismetSetEvent` |
-| Entity event set assignment | DONE | `setEventSet()`, `onKismetEventSetUpdate` RPC |
-| `playSequence()` base method | DONE | `SGWSpawnableEntity.playSequence()` — all entity types |
-| Ability begin/end/interrupt sequences | DONE | `AbilityInstance` lifecycle triggers |
-| Effect hit/pulse/init/remove sequences | DONE | `EffectInstance.doAction()`, `playPulseSequence()` |
-| Stargate dialing sequences | DONE | `SGWPlayer.gateDialTimerExpired()`, `stargatePassed()` |
-| Ring transport sequences | DONE | `RingTransporter.__beginTransport()`, `__allPlayersLoaded()` |
-| Atrea script `Act_Sequence` node | DONE | Visual scripting compiles to `playSequence()` calls |
-| Debug console commands | DONE | `net_seq`, `net_seqto`, `net_seqfrom` |
-| Visibility safety sequence | DONE | `SEQUENCE_VisibilitySafety = 512` workaround |
-| NVP parameter overrides | DONE | `sequences_nvp` table, mostly sound banks |
+| Sequence resource loading from DB | DONE | `spawner::load_event_set_sequences` builds `(event_set_id, event_id) → sequence_id` |
+| Cooked data export (PAK files) | DONE | Resource categories 1 (`CookedDataKismetSeqEvent.pak`) and 6 (`CookedDataKismetSetEvent.pak`) in `base/resources/mod.rs` |
+| Entity event set assignment | DONE | `onKismetEventSetUpdate` (client method 9) sent on AoI create — `mercury/aoi/create.rs:178` |
+| Central `playSequence()` helper | NOT IMPL | No shared helper; each of the seven emit sites builds the 26-byte `onSequence` arg block inline |
+| Ability begin/end sequences | DONE | `Ability_Begin` (1000) and `Ability_End` (1001) in `abilities/use_ability/handle.rs` |
+| Ability interrupt/failed sequences | NOT IMPL | `Ability_Interrupt` (1002) / `Ability_Failed` (1003) are never emitted |
+| Effect hit/pulse/init/remove sequences | NOT IMPL | Nothing under `cell/effects/` emits `onSequence`; events 2000–2008 are never sent |
+| Entity death sequence | DONE | `Entity_Death` (5001) in `abilities/damage_apply/mod.rs:335` |
+| Stargate dialing sequences | NOT IMPL | `Stargate_MakeGate` (6100) / `Stargate_CrossGate` (6113) are never emitted |
+| Ring transport sequences | DONE | `Region_Teleport_Out` / `_In` via `ring_transport/wire_helpers.rs` |
+| Content-chain `play_sequence` action | DONE | `content/executor/mod.rs:109` — the Rust replacement for the Atrea `Act_Sequence` node |
+| Debug console commands | DONE | `.net_seq`, `.net_seqto`, `.net_seqfrom` in `cell/console/net.rs` |
+| Visibility safety sequence | NOT IMPL | `SEQUENCE_VisibilitySafety` is not played on show; the sequence id was not found in the audited seed data (`ring_transport/wire_helpers.rs:115`) |
+| NVP parameter overrides | NOT IMPL | No Rust code reads `resources.sequences_nvp`, and every `onSequence` emit site hardcodes `NameValuePairs count = 0` — see [NVP Overrides](#nvp-overrides-not-implemented) |
 | Multi-player ring matinee | FIXME | Only first player gets the animation (see Known Issues) |
 | DHD chevron lock animations | NOT IMPL | DHD events 6106-6112 exist in DB but aren't triggered during dialing |
 | Stargate witness sequences | NOT IMPL | Gate sequences sent only to dialing player, not witnesses |
-| Item equip/unequip sequences | NOT IMPL | `items_event_sets` has 2,767 entries but no code triggers them |
-| Entity spawn/death/despawn sequences | PARTIAL | Death exists via Mob event set, spawn/despawn not triggered |
+| Item equip / unequip / reload / use sequences | DONE | `fire_item_sequence` (`cell/cell_methods/player/world/item_sequence.rs`), archetype-keyed via `archetype_item_event_set` |
+| Entity spawn/death/despawn sequences | PARTIAL | Death exists via Mob event set (`Entity_Death` 5001); spawn/despawn not triggered |
 | Designer slot sequences (6000-6004) | NOT IMPL | 5 designer event types for custom triggers, unused |
-| Channeled ability sequences | NOT IMPL | No channeled ability support yet |
+| Channeled ability sequences | NOT IMPL | Channeled abilities themselves work (PR #420), but no `Ability_Channel*` (1004/1006/1007) sequence is ever emitted |
 
 ## Architecture
 
@@ -55,13 +60,15 @@ The cinematic system follows a three-tier architecture:
                                │ DB query at startup
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ SERVER (Python)                                                  │
-│  Sequence / EventSet resource classes                            │
-│  SGWSpawnableEntity.playSequence() ──→ onSequence RPC            │
-│  AbilityManager: ability begin/end, effect pulse/hit             │
-│  SGWPlayer: stargate dialing, gate crossing                      │
-│  RingTransporter: teleport out/in                                │
-│  Atrea scripts: Act_Sequence nodes ──→ playSequence() calls      │
+│ SERVER (Rust — CellService)                                      │
+│  spawner::load_event_set_sequences: (event_set,event) → seq_id   │
+│  abilities/use_ability: Ability_Begin / Ability_End              │
+│  abilities/damage_apply: Entity_Death                            │
+│  player/world/item_sequence: Item_Equip/Unequip/Reload/Use       │
+│  ring_transport: Region_Teleport_Out / _In                       │
+│  content/executor: play_sequence chain action                    │
+│  console/net: .net_seq debug commands                            │
+│         all emit ──→ onSequence (client method 1)                │
 └──────────────────────────────┬──────────────────────────────────┘
                                │ Mercury UDP / onSequence RPC
                                ▼
@@ -76,12 +83,11 @@ The cinematic system follows a three-tier architecture:
 
 ### Data Flow
 
-1. At server startup, `Sequence.loadAll()` queries `resources.sequences` and `resources.sequences_nvp`, creating `Sequence` objects keyed by `sequence_id`.
-2. `EventSet.loadAll()` queries `resources.event_sets` and `resources.event_sets_sequences`, grouping sequences into event sets keyed by `event_id`.
-3. Both are serialized to cooked XML and packed into `.pak` files for client download (`CookedDataKismetSeqEvent` and `CookedDataKismetSetEvent`).
-4. Each spawnable entity has a `kismetEventSetId` property (CELL_PUBLIC) that tells the client which event set to use for that entity.
-5. When the server calls `playSequence()`, it sends `onSequence` to the entity's client and all witnesses (other players in AoI).
-6. The client receives the `KismetEventSetSeqID`, looks up the `KismetScriptName` from cooked data, and fires the corresponding Kismet/Matinee node in the loaded `.umap` level.
+1. At server startup, `load_event_set_sequences` (`cell/spawner/abilities.rs`) joins `resources.event_sets_sequences` with `resources.sequences` to build a `(event_set_id, event_id) → sequence_id` lookup. This is the map every emit site consults. **`resources.sequences_nvp` is not loaded** — see [NVP Overrides](#nvp-overrides-not-implemented).
+2. The same resource tables are serialized to cooked XML and packed into `.pak` files for client download (`CookedDataKismetSeqEvent` and `CookedDataKismetSetEvent`).
+3. Each spawnable entity has a `kismetEventSetId` property (CELL_PUBLIC) that tells the client which event set to use for that entity.
+4. When a gameplay event fires, the server resolves `(event_set_id, event_id)` to a `sequence_id` and sends `onSequence` to the entity's client and its witnesses (other players in AoI). The client expects the **sequence id, not the event set id**.
+5. The client receives the `KismetEventSetSeqID`, looks up the `KismetScriptName` from cooked data, and fires the corresponding Kismet/Matinee node in the loaded `.umap` level.
 
 ---
 
@@ -193,7 +199,7 @@ Note: Value 1005 is skipped (no `Ability_ChannelInterrupt`).
 The `EffectInstance.resultEffects` dictionary maps QR result codes to the appropriate Effect_Hit_* sequence:
 
 ```python
-# python/cell/AbilityManager.py:254-262
+# deprecated/python/cell/AbilityManager.py:254-262
 resultEffects = {
     RC_None:           Effect_Pulse_End,
     RC_Hit:            Effect_Hit_Normal,
@@ -208,12 +214,14 @@ resultEffects = {
 
 | Value | Name | Trigger |
 |-------|------|---------|
-| 4000 | `Item_Equip` | Item equipped (NOT IMPLEMENTED — data exists in `items_event_sets`) |
-| 4001 | `Item_Unequip` | Item unequipped (NOT IMPLEMENTED) |
-| 4002 | `Item_Reload` | Weapon reloaded (NOT IMPLEMENTED) |
-| 4003 | `Item_Use` | Item used (NOT IMPLEMENTED) |
+| 4000 | `Item_Equip` | Item equipped — `bandolier/active_slot.rs`, `service/base_messages/bandolier.rs` |
+| 4001 | `Item_Unequip` | Item unequipped — `service/ticks/holster.rs` |
+| 4002 | `Item_Reload` | Weapon reloaded — `cell_methods/player/world/reload.rs:255` |
+| 4003 | `Item_Use` | Item used |
 
-The `items_event_sets` table (2,767 rows) maps item → ability → event set for item-specific animations but no server code reads this table.
+All four route through `fire_item_sequence` in [`cell/cell_methods/player/world/item_sequence.rs`](../../crates/services/src/cell/cell_methods/player/world/item_sequence.rs). The lookup is **archetype-keyed, not item-keyed**: `archetype_item_event_set(archetype_id)` maps every human archetype to event set 804 (`"Item handling generic event set"`, kismet `KIS-abilities_human.KIS-handling`) and Asgard (archetype 5) to 1455. The per-event sequence is then resolved from `(event_set_id, event_id)`. A missing archetype, event set, or sequence is a silent no-op with a debug log, mirroring the original `if eventSet else None` fallthrough.
+
+The separate `items_event_sets` table (2,767 rows) maps item → event → ability and **is** read — by `cell/abilities/resolve.rs`, for per-weapon ability resolution (`EVENT_ITEM_USE_ABILITY` 5, `EVENT_ITEM_MELEE` 6, `EVENT_ITEM_RANGED` 7). It is not the source of the `Item_*` animation lookup above.
 
 ### Entity Events (5000-5105)
 
@@ -312,7 +320,34 @@ CREATE TABLE sequences_nvp (
 );
 ```
 
-Name-value pairs injected into Kismet sequences at runtime. Almost all entries are `SoundBankName` values mapping to dialog voiceover audio files, e.g. `d_tollana/coppleman/MsM/ApartmentHunting_1_Vcaptcopplemann`.
+Name-value pairs intended to be injected into Kismet sequences at runtime, covering 1,174 distinct sequences. The most common single parameter is `SoundBankName`, mapping to dialog voiceover audio files (e.g. `d_tollana/coppleman/MsM/ApartmentHunting_1_Vcaptcopplemann`) — but it is only 533 of the 2,042 rows (26%). The other 1,509 rows are particle, animation, and weapon-VFX parameters:
+
+| Parameter | Rows | What it drives |
+|-----------|------|----------------|
+| `SoundBankName` | 533 | Dialog voiceover audio bank |
+| `pfx1` / `pfx1Socket` | 289 / 263 | Primary particle effect + its attach socket |
+| `sfx1` | 261 | Primary sound effect |
+| `useAnims` | 41 | Whether the sequence drives animation |
+| `randMelee` / `meleeKeyName` | 40 / 40 | Melee attack variant selection |
+| `beamWeapon` / `hitSocket` | 37 / 35 | Beam-weapon VFX and impact socket |
+| `sAnimOneShot` / `cAnimOneShot` | 33 / 33 | Source / caster one-shot animation |
+| `pfx2`, `pfxEnd`, `tracer`, `muzzleFlash2`, … | remainder | Secondary particles, tracers, muzzle flashes |
+
+### NVP Overrides (Not Implemented)
+
+Nothing in `crates/` reads `resources.sequences_nvp`. Every `onSequence` emit site writes a literal `NameValuePairs` array count of zero:
+
+| Emit site | Line |
+|-----------|------|
+| `cell/abilities/use_ability/handle.rs` (Ability_Begin) | 540 |
+| `cell/abilities/use_ability/handle.rs` (Ability_End) | 569 |
+| `cell/abilities/damage_apply/mod.rs` (Entity_Death) | 351 |
+| `cell/cell_methods/player/world/item_sequence.rs` (Item_*) | 46 |
+| `cell/ring_transport/wire_helpers.rs` | 42 |
+| `cell/content/executor/mod.rs` (`play_sequence` action) | 122 |
+| `cell/console/net.rs` (`.net_seq` debug command) | 104 |
+
+The practical consequence is that sequences relying on an NVP for their content — dialog voiceover lines above all — fire the Kismet node with no parameters, so the visual plays but the sound bank is never selected. Wiring this up means loading `sequences_nvp` at startup alongside `sequences` / `event_sets_sequences` (see `cell/spawner/abilities.rs:load_event_set_sequences` for the existing pattern) and threading the pairs through each emit site.
 
 ### `event_sets` Table (675 rows)
 
@@ -360,7 +395,7 @@ Maps items to ability-specific event sets for item visual overrides (weapon-spec
 
 ## Python Implementation
 
-### Sequence Resource (`python/common/defs/Sequence.py`)
+### Sequence Resource (`deprecated/python/common/defs/Sequence.py`)
 
 ```python
 class Sequence(Resource):
@@ -382,7 +417,7 @@ class Sequence(Resource):
 
 Loaded as resource category `1`, cooked to `CookedDataKismetSeqEvent` PAK files.
 
-### EventSet Resource (`python/common/defs/EventSet.py`)
+### EventSet Resource (`deprecated/python/common/defs/EventSet.py`)
 
 ```python
 class EventSet(Resource):
@@ -403,7 +438,7 @@ class EventSet(Resource):
 
 Loaded as resource category `6`, cooked to `CookedDataKismetSetEvent` PAK files. Depends on `sequence` being loaded first.
 
-### SGWSpawnableEntity.playSequence() (`python/cell/SGWSpawnableEntity.py:231-251`)
+### SGWSpawnableEntity.playSequence() (`deprecated/python/cell/SGWSpawnableEntity.py:231-251`)
 
 The primary entry point for all sequence playback:
 
@@ -421,7 +456,7 @@ def playSequence(self, seqId, targetId=None, primaryTarget=1, time=None, nvps=No
 
 Sends `onSequence` to both the entity's own client and all witnesses (other players within AoI distance).
 
-### Entity Event Set Methods (`python/cell/SGWSpawnableEntity.py:209-375`)
+### Entity Event Set Methods (`deprecated/python/cell/SGWSpawnableEntity.py:209-375`)
 
 ```python
 def setEventSet(self, eventSetId):       # Updates entity's event set + notifies client/witnesses
@@ -429,7 +464,7 @@ def getEventSet(self) -> EventSet:       # Returns current EventSet resource obj
 def getSequence(self, eventId) -> Sequence:  # Shortcut: entity.getSequence(Ability_Begin)
 ```
 
-### Visibility Safety Workaround (`python/cell/SGWSpawnableEntity.py:158-167`)
+### Visibility Safety Workaround (`deprecated/python/cell/SGWSpawnableEntity.py:158-167`) — NOT PORTED
 
 ```python
 def setVisible(self, visible):
@@ -444,7 +479,7 @@ Sequence ID 512 (`SEQUENCE_VisibilitySafety`) is played when restoring entity vi
 
 ## Sequence Triggers
 
-### Ability Lifecycle (`python/cell/AbilityManager.py`)
+### Ability Lifecycle (`deprecated/python/cell/AbilityManager.py`)
 
 Abilities trigger sequences at three points:
 
@@ -468,7 +503,9 @@ Abilities trigger sequences at three points:
 
 The `AbilityManager.playSequence()` method (line 879) uses `KISMET_VIEW_Witness` for all combat sequences.
 
-### Effect Lifecycle (`python/cell/AbilityManager.py`)
+### Effect Lifecycle (`deprecated/python/cell/AbilityManager.py`) — NOT PORTED
+
+> The behaviour below describes the original server. The Rust effect system (`cell/effects/`) implements effect application, pulsing, stacking, and removal, but emits **no** `onSequence` at any of these points. Effect visuals are therefore absent in-game.
 
 Effects trigger sequences at four points via `doAction()` (line 445):
 
@@ -486,7 +523,9 @@ if sequence:
     self.manager.playSequence(sequence.seqId, self.invokerId, 0)
 ```
 
-### Stargate Sequences (`python/cell/SGWPlayer.py`)
+### Stargate Sequences (`deprecated/python/cell/SGWPlayer.py`) — NOT PORTED
+
+> The Rust gate-travel path (`base/world_entry/gate_travel/`, `cell/gate_travel.rs`) performs the zone transition but emits no `onSequence`. Neither the gate-open nor the crossing animation plays, for the traveller or for witnesses.
 
 Two points in the gate travel flow:
 
@@ -508,7 +547,7 @@ Two points in the gate travel flow:
 
 Note: Both send only to `self.client`, not witnesses. Other players don't see the stargate animation — this is a known gap.
 
-### Ring Transport Sequences (`python/cell/RingTransporter.py`)
+### Ring Transport Sequences (`deprecated/python/cell/RingTransporter.py`)
 
 Full state machine with 8 states and timed transitions:
 
@@ -663,15 +702,15 @@ Event set **1025** ("Mob event set") contains 16 sequences and is the default an
 
 ## Debug Console Commands
 
-Three debug commands for testing sequences in-game (`python/cell/commands/Net.py`):
+Three debug commands for testing sequences in-game, implemented in [`cell/console/net.rs`](../../crates/services/src/cell/console/net.rs):
 
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `net_seq` | `<sequenceId> [viewType]` | Play sequence on targeted entity (source = target = entity) |
-| `net_seqto` | `<sequenceId> [viewType]` | Play from player to targeted entity |
-| `net_seqfrom` | `<sequenceId> [viewType]` | Play from targeted entity to player |
+| `.net_seq` | `<sequenceId> [viewType]` | Play sequence on targeted entity (source = target = entity) |
+| `.net_seqto` | `<sequenceId> [viewType]` | Play from player to targeted entity |
+| `.net_seqfrom` | `<sequenceId> [viewType]` | Play from targeted entity to player |
 
-Default `viewType` is `KISMET_VIEW_EventInvoker` (3) for all three commands.
+All three fan the resulting `onSequence` to the broadcaster's own client plus its witnesses. Like every other emit site, they send an empty `NameValuePairs` array and `ImpactTime = 0`.
 
 ---
 
@@ -679,8 +718,8 @@ Default `viewType` is `KISMET_VIEW_EventInvoker` (3) for all three commands.
 
 | Constant | Value | Location | Purpose |
 |----------|-------|----------|---------|
-| `MAX_KISMET_VIEW_DISTANCE` | 300.0 | `python/common/Config.py:12` | Maximum distance for sequence visibility |
-| `SEQUENCE_VisibilitySafety` | 512 | `python/common/Constants.py:37` | Special sequence ID for visibility bug workaround |
+| `MAX_KISMET_VIEW_DISTANCE` | 300.0 | `deprecated/python/common/Config.py:12` | Maximum distance for sequence visibility |
+| `SEQUENCE_VisibilitySafety` | 512 | `deprecated/python/common/Constants.py:37` | Special sequence ID for visibility bug workaround |
 
 ---
 
@@ -692,9 +731,11 @@ Default `viewType` is `KISMET_VIEW_EventInvoker` (3) for all three commands.
 
 3. **No DHD chevron animations**: The 7 chevron lock events (`DHD1`-`DHD7`, values 6106-6112) have sequences defined in the DB for every stargate but are never triggered. The dialing flow goes directly from `beginDialing()` → 4-second timer → `Stargate_MakeGate`, skipping the per-chevron animation.
 
-4. **Item event sets unused**: 2,767 `items_event_sets` entries mapping items to weapon-specific ability animations exist in the DB but no server code reads this table or triggers item-specific sequences.
+4. **Item handling animations are archetype-generic**: `fire_item_sequence` resolves the `Item_*` sequence from the player's *archetype* event set (804 for humans, 1455 for Asgard), so every weapon plays the same generic handling animation. The 2,767 `items_event_sets` rows are read only for per-weapon *ability* resolution (`abilities/resolve.rs`), not for per-item animation.
 
 5. **No gate destroy sequence on cancel**: When canceling a dial, the code fires a `stargate::destroy` event but doesn't play the `Stargate_DestroyGate` sequence.
+
+6. **No effect visuals at all**: nothing under `cell/effects/` emits `onSequence`, so no effect init, removal, pulse, or per-QR-result hit visual is ever sent. Combat resolves and damage numbers appear, but the accompanying particle/impact sequences do not play.
 
 ---
 
@@ -702,15 +743,20 @@ Default `viewType` is `KISMET_VIEW_EventInvoker` (3) for all three commands.
 
 | Feature | Difficulty | Notes |
 |---------|------------|-------|
-| DHD chevron lock animations | LOW | Fire `DHD1`-`DHD7` sequences during dial with ~0.5s delays |
-| Stargate witness visibility | LOW | Change `self.client.onSequence` to `self.playSequence()` in gate code |
-| Gate destroy sequence | LOW | Add `playSequence(Stargate_DestroyGate)` in `cancelDialing()` |
-| Item equip/unequip VFX | MEDIUM | Read `items_event_sets`, trigger Item_Equip/Unequip on equipment change |
+| Effect lifecycle sequences | MEDIUM | Nothing in `cell/effects/` emits `onSequence`; needs init/remove/pulse hooks plus the QR-result → `Effect_Hit_*` mapping |
+| NVP parameter overrides | MEDIUM | Load `resources.sequences_nvp` alongside the existing event-set load and thread the pairs through all seven emit sites |
+| Stargate dial + crossing sequences | LOW | Emit `Stargate_MakeGate` (6100) and `Stargate_CrossGate` (6113) from the gate-travel path |
+| Stargate witness visibility | LOW | Fan the gate sequences to witnesses, not just the traveller |
+| DHD chevron lock animations | LOW | Fire `DHD1`-`DHD7` during dial with ~0.5s delays |
+| Gate destroy sequence | LOW | Play `Stargate_DestroyGate` on dial cancel |
+| Ability interrupt/failed sequences | LOW | Emit events 1002 / 1003 from the existing ability lifecycle |
+| Per-weapon item VFX | MEDIUM | Item animations are archetype-generic today; per-weapon would need an item-keyed event-set lookup |
 | Multi-player ring animations | MEDIUM | Need to instance the Matinee sequence or sync to a single play |
 | Entity spawn/despawn sequences | LOW | Fire Entity_Spawn/Entity_Despawn from entity lifecycle |
 | Entity stance change sequences | LOW | Fire Entity_*_Enter/Exit when combat stance changes |
 | Mission milestone sequences | LOW | Fire Entity_Mission_* from mission advancement code |
-| Channeled ability sequences | MEDIUM | Requires channeled ability system first |
+| Channeled ability sequences | LOW | Channeling itself works; just needs events 1004/1006/1007 emitted at the existing channel begin/fail/end points |
+| Visibility safety nudge | LOW | Blocked on locating the `SEQUENCE_VisibilitySafety` id in seed data |
 | Designer slot triggers | VARIES | Zone-specific — wire up per content requirement |
 
 ---

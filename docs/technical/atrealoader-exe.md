@@ -1,6 +1,24 @@
 # AtreaLoader.exe — DLL Injector
 
-> **Last updated**: 2026-05-25
+> [!NOTE]
+> **Scope banner — companion to `atrea-editor.md`, not superseded by it.**
+> The top-level entry point for the whole Atrea toolchain — including the in-game
+> UnrealEd editor that these patches unlock inside `SGW.exe` — is
+> [`docs/reverse-engineering/findings/atrea-editor.md`](../reverse-engineering/findings/atrea-editor.md).
+> Read that first for orientation, then return here for the injector.
+>
+> `atrea-editor.md` describes this page as one of an "apocryphal trio" that it supersedes.
+> **That framing did not survive the 2026-07-25 audit.** This page was *revised* in the
+> same 2026-05-25 campaign — `atrea-editor.md`'s own §"Apocryphal docs to retire" table
+> records the corrections applied here (filename spelling, the single-byte `--fix-aslr`
+> rewrite) and its §Cross-references cites this page as a live "launcher-only scope"
+> reference. It already forward-links to `atrea-editor.md` (see the bullets below), and it
+> is the only place documenting the injection shellcode at `FUN_004019d0`, the 0x418-byte
+> `InjectionData` struct, and the `--fix-aslr` mechanism. Nothing here is duplicated
+> there. Treat the two as complementary halves, not predecessor and successor.
+
+> **Last updated**: 2026-07-25 (accuracy audit — scope banner added; no address changes)
+> **Previously revised**: 2026-05-25
 > **Audience**: Engineers reverse-engineering the SGW client toolchain or building tooling that interoperates with the AtreaLoader launch path.
 > **Type**: Reference (Diataxis)
 > **Status**: Verified for the injector pipeline; the binary `.config` runtime-format claim is documented but unconfirmed by direct decompile here — see notes inline.

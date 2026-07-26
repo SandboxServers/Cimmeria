@@ -2,7 +2,7 @@
 title: How to Write a Bible Chapter
 chapter_id: spec.meta.how-to-write
 status: verified
-last_verified: 2026-05-13
+last_verified: 2026-07-25
 verified_by: documentation-writer
 audience: bible authors
 type: how-to
@@ -167,7 +167,7 @@ To promote, the chapter must pass all of:
 
 - All five sections are present, or explicitly marked `N/A — <reason>`.
 - No section's confidence is `low`. (Upgrade evidence, mark `N/A` with reason, or stay `draft`.)
-- All `evidence_refs.rust` entries resolve to existing symbols (Phase 2 CI lint enforces; until then, you check manually with `cargo doc --no-deps`).
+- All `evidence_refs.rust` entries resolve to existing symbols. [`tools/spec-lint`](../../tools/spec-lint/) checks this for you and runs in CI via [`.github/workflows/spec-lint.yml`](../../.github/workflows/spec-lint.yml), emitting inline PR annotations. It is **warn-only** — it always exits 0 — so a failure to resolve will not block your merge, but a reviewer will see it. Run it locally with `cargo run -p cimmeria-spec-lint` (the crate is `cimmeria-spec-lint`; the binary it produces is `spec-lint`).
 - A human (not an agent) reviewed the chapter and put their handle in `verified_by`.
 - The chapter is cross-linked from `docs/spec/README.md`'s master index.
 - The chapter is cross-linked from any related-chapter's `related_chapters:` frontmatter.

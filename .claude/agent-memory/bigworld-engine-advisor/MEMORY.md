@@ -4,6 +4,11 @@
 
 All five topic files have been triaged per #264 step 4. Bucket tags below each link.
 
+## Verified ground truth (2026-07-25 docs/engine audit)
+
+- [entity-def-and-pak-ground-truth.md](entity-def-and-pak-ground-truth.md) — **SGW uses only 3 property flags, zero client-replication flags**; data/cache is a merged build; watcher code IS in SGW.exe; Rust AoI has no hysteresis.
+- [bw-reference-tree-absent.md](bw-reference-tree-absent.md) — `external/engines/BigWorld-Engine-2.0.1/` is NOT in this checkout and nothing fetches it; all `BW lib/...` citations are unfalsifiable here.
+
 ## Topic files
 
 - [protocol-comparison.md](protocol-comparison.md) — **[PROMOTE → spec.protocol.mercury-wire-format]** — stock-vs-SGW wire divergences; mostly V5-confirmed, two items flagged for verification before promotion (rotation order, instanceID-vs-spaceID wording).

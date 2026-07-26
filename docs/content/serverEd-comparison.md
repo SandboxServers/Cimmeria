@@ -2,12 +2,12 @@
 title: "ServerEd vs. the content engine — gap analysis"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # ServerEd vs. the content engine — gap analysis
 
-> **Last updated**: 2026-05-07
+> **Last updated**: 2026-07-25
 > **Audience**: Tech lead deciding whether to invest in tooling or extend the engine. Engineers triaging which legacy capabilities to resurrect.
 > **Diátaxis type**: Explanation. Captures a decision and the tradeoffs behind it.
 
@@ -21,13 +21,13 @@ The short version: **ServerEd's *engine* surface is mostly already covered by Ci
 
 A Qt-based visual node-graph editor ([ServerEd.pro:7](../../tools/ServerEd/ServerEd.pro#L7)) that compiled designer-authored node graphs into Python source files for the legacy Atrea/SGW server's `cell.Script` framework.
 
-- **Targets** three script types: `Mission`, `Level`/space, `Effect`. Outputs to `python/cell/missions/`, `python/cell/spaces/`, `python/cell/effects/` ([mainwindow.cpp:188-197](../../tools/ServerEd/mainwindow.cpp#L188-L197)).
+- **Targets** three script types: `Mission`, `Level`/space, `Effect`. Outputs to `deprecated/python/cell/missions/`, `deprecated/python/cell/spaces/`, `deprecated/python/cell/effects/` ([mainwindow.cpp:188-197](../../tools/ServerEd/mainwindow.cpp#L188-L197)).
 - **Codegen pipeline:** dead-code elimination, Tarjan SCC cycle detection ([scriptcompiler.cpp:1182-1228](../../tools/ServerEd/scriptcompiler.cpp#L1182-L1228)), multi-pass optimizer up to 10 iterations ([scriptcompiler.cpp:1024-1114](../../tools/ServerEd/scriptcompiler.cpp#L1024-L1114)).
 - **Output format:** hand-readable Python subclassing `Script` or `EffectScript` ([scriptcompiler.cpp:800-811](../../tools/ServerEd/scriptcompiler.cpp#L800-L811)). No bytecode. No SQL. No DB rows.
 - **Live reload:** custom binary protocol over TCP, six message ops, `ReloadScriptRequest` pushed compiled scripts to a running server ([serverconnector.h:7-103](../../tools/ServerEd/serverconnector.h#L7-L103)).
 - **Audience:** mixed. Property-browser UI and DB lookup widget targeted designers; Python escape hatches (custom `<Method>` blocks, `#if CONNECTED(Port)` preprocessor at [scriptcompiler.cpp:1513-1565](../../tools/ServerEd/scriptcompiler.cpp#L1513-L1565)) suggest heavy engineering involvement.
 
-In Cimmeria's emulator the `python/cell/` tree is reference-only — no Python runs in production. Anything ServerEd produced has been or will be re-expressed as either Rust gameplay code or content-engine chain rows.
+In Cimmeria's emulator the `deprecated/python/cell/` tree is reference-only — no Python runs in production. Anything ServerEd produced has been or will be re-expressed as either Rust gameplay code or content-engine chain rows.
 
 ---
 
@@ -46,14 +46,14 @@ Node bodies use templated Python with `VAR.R{}`, `VAR.W{}`, `PROPERTY{}`, `TRIGG
 
 ## 3. Side-by-side coverage
 
-The Cimmeria engine today has 24 Trigger variants ([triggers.rs:20-98](../../crates/content-engine/src/triggers.rs#L20-L98)), ~12 Condition variants ([conditions.rs:12-95](../../crates/content-engine/src/conditions.rs#L12-L95)), and ~50 Action variants ([actions.rs:20-237](../../crates/content-engine/src/actions.rs#L20-L237)).
+The Cimmeria engine today has 30 Trigger variants ([triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod.rs#L28-L146)), 13 Condition variants ([conditions.rs:12-95](../../crates/content-engine/src/conditions.rs#L12-L95)), and 52 Action variants ([actions.rs:20-323](../../crates/content-engine/src/actions.rs#L20-L323)). Fewer are actually reachable: only 22 trigger types, 6 condition types, and 36 action types have a loader arm, and of those 36 action types only 30 have an executor arm — see the catalogs in [content-engine.md §3](content-engine.md).
 
 Mapping by ServerEd category — abridged. The table groups by intent rather than node-by-node.
 
 ### Variables (12 nodes)
 **Cimmeria equivalent:** none. Chains are flat `[trigger] → [conditions] → [actions]` lists with no inter-action dataflow. Variables only make sense in a *graph* model; ServerEd's `Var_*` and `Act_Get*` read-back nodes only existed to thread a value from one node's output into another's input. Cimmeria addresses this differently: action targets are addressed by tag/id directly, and shared state (mission status, counter, archetype) lives in `ExecutionContext` and is read by conditions, not by actions. **Architectural gap, not a feature gap** — see §5.
 
-### Events (18 nodes) → Triggers (24)
+### Events (18 nodes) → Triggers (30)
 | ServerEd | Cimmeria | Notes |
 |---|---|---|
 | `Event_Effect`, `Event_MissionUpdate`, `Event_MissionStepUpdate`, `Event_MissionObjectiveUpdate` | `OnEffectInit`, `OnMissionStep`, `OnMissionCompleted` | Mostly covered |
@@ -72,10 +72,10 @@ Mapping by ServerEd category — abridged. The table groups by intent rather tha
 | `Event_Teleport` | `OnTeleportIn` | Covered |
 | `Event_TeleportOut` | **MISSING** | |
 
-### Conditions (7) → Conditions (~12)
+### Conditions (7) → Conditions (13)
 ServerEd's typed comparators (`Cmp_Bool/Int/Float/Str/Entity/Vec3`) are subsumed by `PropertyEquals` + `PropertyInRange` + the type-specific variants (`MissionStatus`, `StepStatus`, `ObjectiveStatus`, `Archetype`, `Counter`, `StatBelowMax`). Generic typed `<`/`>`/`!=` between two arbitrary variables is **not expressible** because Cimmeria has no graph variables. `Counter_Int` is fully equivalent to `Condition::Counter` + `IncrementCounter`/`ResetCounter` actions.
 
-### Actions (66) → Actions (~50)
+### Actions (66) → Actions (52)
 Most direct action equivalents exist. The notable gaps:
 
 - **All read-back actions** (`Act_GetEntity`, `Act_GetLocation`, `Act_GetProperty`, `Act_GetStat`, `Act_GetDistance`, `Act_GetFacing`, `Act_GetCombatState`, `Act_GetAmmoStat`, `Act_GetActiveSlot`, `Act_GetMission*`) — same architectural gap as variables. They retrieved values into graph variables.

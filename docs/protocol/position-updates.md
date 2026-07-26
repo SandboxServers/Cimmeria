@@ -12,7 +12,7 @@ last_updated: 2026-05-27
 
 > **Last updated**: 2026-03-01
 > **RE Status**: Substantially documented from BigWorld source + Cimmeria movement code + Ghidra RE of sgw.exe
-> **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/lib/connection/common_client_interface.hpp`, `src/cellapp/entity/movement.hpp`, `src/mercury/base_cell_messages.hpp`, Ghidra analysis of `sgw.exe` client binary
+> **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/lib/connection/common_client_interface.hpp`, `deprecated/cpp/src/cellapp/entity/movement.hpp`, `deprecated/cpp/src/mercury/base_cell_messages.hpp`, Ghidra analysis of `sgw.exe` client binary
 
 ---
 
@@ -126,7 +126,7 @@ This overrides any client-side prediction and forces the entity to the specified
 
 ## Movement Controllers
 
-Cimmeria implements three movement controller types (from `src/cellapp/entity/movement.hpp`):
+Cimmeria implements three movement controller types (from `deprecated/cpp/src/cellapp/entity/movement.hpp`):
 
 ### PlayerController
 
@@ -185,7 +185,7 @@ SGW's `SGWPlayer.def` comments out the `<Volatile/>` element, suggesting players
 
 ## Configuration
 
-From `config/BaseService.config`:
+From `deprecated/cpp-config/config/BaseService.config`:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|

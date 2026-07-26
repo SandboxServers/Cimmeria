@@ -2,14 +2,14 @@
 title: "Mercury Message Dispatch Table"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Mercury Message Dispatch Table
 
 > **Last updated**: 2026-03-05
 > **RE Status**: COMPLETE — verified against both C++ server source and Ghidra client binary analysis
-> **Sources**: `src/baseapp/mercury/sgw/messages.hpp`, `src/baseapp/mercury/sgw/messages.cpp`, Ghidra analysis of sgw.exe ClientInterface
+> **Sources**: `deprecated/cpp/src/baseapp/mercury/sgw/messages.hpp`, `deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp`, Ghidra analysis of sgw.exe ClientInterface
 
 ---
 
@@ -34,7 +34,7 @@ The Mercury protocol uses a single-byte message ID (0x00-0xFF) to identify each 
 | WORD_LENGTH | 2 | `u16 LE` prefix | Variable-size; u16 byte count before payload |
 | DWORD_LENGTH | 4 | `u32 LE` prefix | Variable-size; u32 byte count before payload |
 
-### Dispatch Logic (from `src/mercury/bundle.cpp`)
+### Dispatch Logic (from `deprecated/cpp/src/mercury/bundle.cpp`)
 
 ```cpp
 if (messageId >= 0x80)
@@ -84,7 +84,10 @@ Table size: `0x39` (57 entries, indices 0x00-0x38). Defined in `ServerMessageLis
 - **Position**: FullPos (absolute), OnChunk (relative), OnGround (height-mapped), NoPos (direction only)
 - **Direction**: YawPitchRoll (3 bytes), YawPitch (2 bytes), Yaw (1 byte), NoDir (0 bytes)
 
-All are CONSTANT_LENGTH and are entity messages (dispatched to entity). Only 0x10 is used by the SGW server.
+All are CONSTANT_LENGTH and are **not** entity messages -- every one of the 32 rows in
+`deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp:274-309` carries
+`isEntityMessage = false`, so they are handled by the nub directly rather than
+being dispatched to an entity. Only 0x10 is used by the SGW server.
 
 | Msg ID | Name | Const Len | Description |
 |--------|------|-----------|-------------|
@@ -232,7 +235,7 @@ elem->handler->handleMessage(source, stream, msg, elem->userData);
 
 ### Server Code (Cimmeria C++)
 
-The server uses `Message::Table` and `Message::Format` structs from `src/mercury/message.hpp`:
+The server uses `Message::Table` and `Message::Format` structs from `deprecated/cpp/src/mercury/message.hpp`:
 
 ```cpp
 struct Format {
@@ -331,7 +334,12 @@ Example: playCharacter (0xC4 = base method index 4 | 0xC0)
 
 - [Mercury Wire Format](mercury-wire-format.md) — packet-level protocol details
 - [Login Handshake](login-handshake.md) — connection establishment sequence
-- [Message Catalog](message-catalog.md) — full entity method event catalog (975 messages)
+- [Message Catalog](message-catalog.md) — full entity method event catalog (420 messages)
 - [Position Updates](position-updates.md) — avatar update wire format details
-- C++ source: `src/baseapp/mercury/sgw/messages.hpp` and `messages.cpp`
-- Rust source: `crates/mercury/src/messages.rs`
+- C++ source: `deprecated/cpp/src/baseapp/mercury/sgw/messages.hpp` and `messages.cpp`
+- Rust source: the message-ID constants in `crates/services/src/mercury/mod.rs`
+  and `crates/services/src/mercury/aoi/mod.rs`; the inbound length table in
+  `crates/services/src/base/connect_loop/encrypted/mod.rs`.
+  (`crates/mercury/src/messages.rs` is **not** the registry for these IDs — its
+  `MsgId` enum is self-declared placeholder values and matches nothing in this
+  table.)

@@ -2,7 +2,7 @@
 title: Cimmeria Bible
 chapter_id: spec.meta.index
 status: verified
-last_verified: 2026-05-13
+last_verified: 2026-07-25
 verified_by: documentation-writer
 audience: anyone using docs/spec/ as a reference
 type: reference
@@ -45,6 +45,8 @@ Phase 0 (scaffolding — what you are reading) is in place. Phase 0.5 (six infra
 | 2+ — triage remaining ~65 prior docs | TBD | Ongoing. |
 
 A chapter that does not yet exist is listed below with `coming soon: <evidence-source>` so you know where the evidence lives in the meantime.
+
+**Tooling.** [`tools/spec-lint`](../../tools/spec-lint/) (crate `cimmeria-spec-lint`) checks every chapter under `docs/spec/` for unresolvable `evidence_refs.rust` entries, unresolvable `crates/...::Type::method` prose citations in sections 4–5, and violations of the no-line-numbers rule. It runs in CI via [`.github/workflows/spec-lint.yml`](../../.github/workflows/spec-lint.yml) and is **warn-only** — inline PR annotations, never a merge block. Run it locally with `cargo run -p cimmeria-spec-lint`.
 
 ---
 

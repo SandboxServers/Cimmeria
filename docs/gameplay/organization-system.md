@@ -2,40 +2,43 @@
 title: "Organization System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Organization System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~5% implemented
+> **Last updated**: 2026-07-25
+> **Status**: Not implemented. Twelve inbound cell methods are decoded and dispatched, but every one logs `UNIMPLEMENTED` and drops. No persistence, no roster, no fanout.
 
 ## Overview
 
 Organizations are persistent player groups: Commands (guilds), Squads (parties), and Teams (strike teams). Each organization has a roster, rank hierarchy with permissions, shared cash, experience, MOTD, and member/officer notes. The system supports inviting, kicking, rank changes, loot modes, minimap pings, PvP strike team status, and organization vault storage.
 
-The `OrganizationMember` interface in `entities/defs/interfaces/OrganizationMember.def` is the largest gameplay interface by property + method count. No Python implementation exists beyond stubs.
+The `OrganizationMember` interface in `entities/defs/interfaces/OrganizationMember.def` is the largest gameplay interface by property + method count.
 
 ## Implementation Status
+
+The Rust server wires the argument decoding for cell methods 8–19 in [`crates/services/src/cell/cell_methods/organization.rs`](../../crates/services/src/cell/cell_methods/organization.rs) — each arm parses its payload and emits a structured `UNIMPLEMENTED` log so the fields are visible in traces. Nothing beyond that exists: no base-side handler, no `sgw_organization*` table, and none of the eighteen `onOrganization*` client methods (indices 34–51) is ever sent.
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Organization types | DEFINED | Command, Squad, Team in entity defs |
-| Invite / accept / decline | STUB | Full cell/base method chain defined |
-| Kick | STUB | Base method defined |
-| Leave | STUB | Cell method defined |
-| Rank change | STUB | Cell/base methods defined |
-| Roster info | STUB | `onOrganizationRosterInfo` client method |
-| MOTD | STUB | Set/update methods defined |
-| Member/officer notes | STUB | Set/update methods defined |
-| Cash management | STUB | `organizationTransferCash`, `onOrganizationCashUpdate` |
-| Experience tracking | STUB | `onOrganizationExperienceUpdate` defined |
-| Rank permissions | STUB | `organizationSetRankPermissions` defined |
-| Custom rank names | STUB | `organizationSetRankName` defined |
-| Loot mode | STUB | `squadSetLootMode` defined |
-| Minimap ping | STUB | `BroadcastMinimapPing`, `receivedMinimapPing` |
-| Strike team (PvP) | STUB | `onStrikeTeamUpdate`, `strikeTeamResponse` |
-| PvP leave confirmation | STUB | `onPvPOrganizationLeaveRequest` |
+| Invite response | STUB | `organizationInviteResponse` (CM 8) decodes, logs, drops |
+| Leave | STUB | `organizationLeave` (CM 9) decodes, logs, drops |
+| Minimap ping | STUB | `BroadcastMinimapPing` (CM 10) decodes, logs, drops |
+| Strike team (PvP) | STUB | `strikeTeamResponse` (CM 11) decodes, logs, drops |
+| PvP leave confirmation | STUB | `pvpOrganizationLeaveResponse` (CM 12) decodes, logs, drops |
+| MOTD | STUB | `organizationMOTD` (CM 13) decodes, logs, drops |
+| Member note | STUB | `organizationNote` (CM 14) decodes, logs, drops |
+| Officer note | STUB | `organizationOfficerNote` (CM 15) decodes, logs, drops |
+| Rank permissions | STUB | `organizationSetRankPermissions` (CM 16) decodes, logs, drops |
+| Custom rank names | STUB | `organizationSetRankName` (CM 17) decodes, logs, drops |
+| Loot mode | STUB | `squadSetLootMode` (CM 18) decodes, logs, drops |
+| Cash management | STUB | `organizationTransferCash` (CM 19) decodes, logs, drops |
+| Invite issue / kick / rank change | NOT IMPL | No inbound method dispatched; these are base-method chains in the defs |
+| Roster info | NOT IMPL | `onOrganizationRosterInfo` (CM 38) never sent |
+| Experience tracking | NOT IMPL | `onOrganizationExperienceUpdate` (CM 44) never sent |
+| Persistence | NOT IMPL | No organization tables in `db/sgw/` |
 | Organization vault | NOT IMPL | Only `onClearOrgVaultInventory` reference |
 
 ## Entity Definition (OrganizationMember.def)

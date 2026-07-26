@@ -3,6 +3,8 @@
 > [!WARNING]
 > **Historical document.** Early-project survey of game systems from binary RE. The current canonical references are [`../game-systems.md`](../game-systems.md) (project-wide survey) and the per-system docs under [`../gameplay/`](../gameplay/). Keep this page for the historical first-pass framing; do not extend.
 
+> **Last updated**: 2026-07-25 (address-accuracy audit — `BigWorldEntity.cpp` corrected to `0x018cad14`; all other cited addresses re-verified clean)
+
 Overview of all major game systems identified in sgw.exe, organized by the network message patterns and string references that reveal them.
 
 > **Note:** Many of these systems have been confirmed working in live gameplay testing. The combat system, mission system, inventory, spawning, dialog/interactions, entity aggression/threat, and client-hinted regions have all been verified end-to-end in the Castle Cellblock zone.
@@ -262,7 +264,7 @@ Instanced space content queue:
 ### BigWorld Integration
 - `ABigWorldEntity` (RTTI at 0x01dc873c) — UE3 actor wrapping BigWorld entity
 - `UBigWorldInfo` (RTTI at 0x01dcd6c4) — BigWorld configuration info
-- Source: `BigWorldEntity.cpp` at 0x018cacb8
+- Source: `BigWorldEntity.cpp` at 0x018cad14
 - Config: `game-ini:Engine.BigWorldInfo.DefaultBigWorld` at 0x018f1230
 
 ### Entity Lifecycle

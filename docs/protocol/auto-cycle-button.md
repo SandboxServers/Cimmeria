@@ -10,7 +10,7 @@ last_updated: 2026-05-27
 **Status**: Confirmed  
 **Confidence**: HIGH (binary + live-debugger verification + Python canonical source + entity def confirmed)  
 **Ghidra anchors**: `ghidra://SGW.exe@0x00aa29c0`, `ghidra://SGW.exe@0x00ad7820`, `ghidra://SGW.exe@0x00e02700`, `ghidra://SGW.exe@0x00e061b0`, `ghidra://SGW.exe@0x00cbbc40`, `ghidra://SGW.exe@0x00e01c90`, `ghidra://SGW.exe@0x00e05fb0`  
-**Related files**: `crates/services/src/cell/cell_methods/player/world/mod.rs`, `crates/services/src/cell/combat/auto_cycle.rs`, `crates/services/src/cell/service/ticks/auto_cycle.rs`, `crates/entity/src/abilities.rs`, `deprecated/python/cell/SGWPlayer.py`, `deprecated/python/cell/AbilityManager.py`, `entities/defs/SGWPlayer.def`
+**Related files**: `crates/services/src/cell/cell_methods/player/world/mod.rs`, `crates/services/src/cell/combat/auto_cycle.rs`, `crates/services/src/cell/service/ticks/auto_cycle.rs`, `crates/entity/src/abilities/manager.rs`, `deprecated/python/cell/SGWPlayer.py`, `deprecated/python/cell/AbilityManager.py`, `entities/defs/SGWPlayer.def`
 
 ---
 
@@ -155,7 +155,7 @@ When `setAutoCycle(enabled=1)` arrives as a standalone button press (not from `i
 
 ### Ability flag gates
 
-Two ability flags interact with auto-cycle (from `deprecated/python/Atrea/enums.py` and `crates/entity/src/abilities.rs`):
+Two ability flags interact with auto-cycle (from `deprecated/python/Atrea/enums.py` and `crates/entity/src/abilities/manager.rs`):
 
 | Flag | Value | Meaning |
 |------|-------|---------|
@@ -192,7 +192,7 @@ The loop is fully wired. The code lives in nine locations:
 
 | File | What it owns |
 |---|---|
-| `crates/entity/src/abilities.rs` | `AbilityManager` fields: `auto_cycle` (flag), `auto_cycle_ability_id` (loop's committed ability), `last_fired_ability_id` (player's most recent fire — persists across loop on/off cycles, used by the immediate-fire path). |
+| `crates/entity/src/abilities/manager.rs` | `AbilityManager` fields: `auto_cycle` (flag), `auto_cycle_ability_id` (loop's committed ability), `last_fired_ability_id` (player's most recent fire — persists across loop on/off cycles, used by the immediate-fire path). |
 | `crates/entity/src/cell_entity/mod.rs` | `current_target_id` field — the player's live cursor selection, written by `setTargetID` (cell method 0). The auto-cycle tick + death sweep read this as the LIVE target instead of stashing one at arm-time. |
 | `crates/services/src/cell/combat/state.rs` | `BSF_AUTO_CYCLING` constant (mask `0x002`, bit 1). |
 | `crates/services/src/cell/combat/auto_cycle.rs` | Lifecycle primitives: `arm_auto_cycle`, `clear_auto_cycle`, `clear_auto_cycle_for_target`. Manipulate `BSF_AUTO_CYCLING` with **raw `\|=` / `&= !mask` ops** (NOT the ref-counted `set_state_flag` / `unset_state_flag` helpers — see "Bit management" below). All three return `Some(new_state_field)` only when the bit actually transitioned. |

@@ -1,12 +1,22 @@
 # Cimmeria Service Architecture
 
-> **Last updated**: 2026-05-27
+> **Last updated**: 2026-07-25
 > **Type**: Reference
 > **Audience**: Engineers
 > **Sources**: `crates/services/src/auth/`, `crates/services/src/base/`, `crates/services/src/cell/`, `crates/mercury/`, `config/`
 > **Companion docs**: [`../../crates/README.md`](../../crates/README.md), [`../connection-flow.md`](../connection-flow.md), [`../protocol/mercury-wire-format.md`](../protocol/mercury-wire-format.md)
 >
 > **Note** — The three-process Auth / Base / Cell topology described here is current. **The per-service "Source Files" tables below cite the deprecated C++ implementation paths** (`src/authentication/`, `src/baseapp/`, `src/cellapp/`) and are kept for historical mapping — those files live under [`deprecated/cpp/`](../../deprecated/cpp/). For the active Rust source layout see [`../../crates/README.md`](../../crates/README.md) and the per-domain modules under [`crates/services/src/auth/`](../../crates/services/src/auth/), [`crates/services/src/base/`](../../crates/services/src/base/), and [`crates/services/src/cell/`](../../crates/services/src/cell/).
+>
+> The same caveat applies to **§"Common Infrastructure"** (the SOCI 3.2.1 database
+> layer and the `py_console_password`-gated Python REPL on 8989/8990) and to the
+> **§"Startup Sequence"** steps that load `config/*.config` files and initialize a
+> Python interpreter. None of that describes the Rust server: persistence is
+> `sqlx`/PostgreSQL, configuration is [`ServerConfig`](../../crates/common/src/config.rs)
+> plus environment variables (the table at the top of
+> [`crates/server/src/main.rs`](../../crates/server/src/main.rs) is authoritative),
+> and there is no embedded Python runtime. See
+> [python-console.md](python-console.md) for the console's own status.
 
 ---
 
@@ -67,6 +77,16 @@ Handles player login and shard selection via SOAP/HTTP. Does not participate in 
 | `db_connection_string` | (see config) | PostgreSQL connection |
 | `protocol_digest` | MD5 hash | Entity definition checksum |
 | `log_level` | DEBUG1 | Logging verbosity |
+
+In the Rust server these are `ServerConfig` fields, not `.config` XML: `logon_port`
+(8081) and `auth_port` (13001), both in
+[`crates/common/src/config.rs`](../../crates/common/src/config.rs). There is also a
+**fourth listener not shown in the topology diagram above**: an optional HTTPS
+listener on `auth_tls_port` (default **13443**), serving the same axum `Router` as
+the plain-HTTP one. It starts only when both `auth_tls_cert_path` and
+`auth_tls_key_path` are set; otherwise the auth server is HTTP-only. A background
+watcher hot-reloads the certificate on file change — see
+[encryption-modernization.md](encryption-modernization.md) §"Phase 1 — auth TLS".
 
 ### Endpoints
 
@@ -228,7 +248,10 @@ PostgreSQL accessed via SOCI 3.2.1 (`src/common/database.hpp`):
 
 - Connection string configurable per service
 - Used for account data, character data, game resources
-- Schema in `db/sgw.sql` (accounts/characters) and `db/resources.sql` (game data)
+- Schema in `db/database.sql` (the top-level loader), which `\ir`-includes the
+  per-domain files under `db/sgw/` (accounts/characters) and `db/resources/`
+  (game data). The old monolithic `db/sgw.sql` / `db/resources.sql` pair is
+  retired — see [`db/README.md`](../../db/README.md).
 
 ### Python Console
 
@@ -335,7 +358,7 @@ Enables developer mode:
 
 ## Python Console
 
-> See [python-console.md](python-console.md) for the complete reference, including byte-level wire format diagrams, a working reference client, the full GM command table, and security notes.
+> See [python-console.md](python-console.md) for the historical record — the security model and the full 116-command operator inventory. That page was reduced on 2026-07-25: the `py_client` byte-level wire format and reference client were dropped, and remain recoverable from [`deprecated/cpp/src/entity/py_client.cpp`](../../deprecated/cpp/src/entity/py_client.cpp).
 
 Both BaseApp and CellApp provide two console interfaces: a **local stdin console** and a **remote TCP console** (the `py_client` protocol). Neither has pre-registered commands -- both are raw Python REPLs with full access to the `Atrea` module and all imported game modules.
 

@@ -2,7 +2,7 @@
 title: "Reconstruction Map"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Reconstruction Map
@@ -10,10 +10,15 @@ last_updated: 2026-05-27
 What can be rebuilt from existing data, what has gaps requiring guesswork, and what was
 never built and requires new assets or code.
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-07-25
 > **Scope**: All gameplay content and server systems in the Cimmeria emulator
-> **Sources**: `db/resources.sql`, `db/sgw.sql`, `python/`, `entities/`, `data/`, `config/`
+> **Sources**: `db/resources/`, `db/sgw/`, `deprecated/python/` (legacy reference
+> implementation, not the running server), `entities/`, `data/`, and the legacy
+> service configs now at `deprecated/cpp-config/config/`. Note the repo-root
+> `config/` directory contains only `discord.toml.example`.
+>
 > **Related documents**:
+>
 > - [Content Inventory](content-inventory.md) -- raw counts and distributions
 > - [Zone Audit](zone-audit.md) -- per-zone completeness scorecards
 > - [Archetype Content Map](archetype-content-map.md) -- per-archetype analysis
@@ -332,8 +337,17 @@ Damage pipeline (base -> resist -> QR -> AF -> absorb) is implemented. 4 effect 
 use `qrCombatDamage()`. Effect NVP values: HealthDamage 8-25, FocusDamage 80-250.
 
 **What is missing:** Base attribute -> QR modifier formulas, armor mitigation, resistance
-per damage type, level-based ability scaling, AoE/cone targeting (only single-target
-works), channeled abilities, diminishing returns, cover system modifiers.
+per damage type, level-based ability scaling, diminishing returns, cover system modifiers.
+
+**Since landed** (this section previously listed these as missing): cone/AoE targeting is
+implemented at [crates/services/src/cell/abilities/cone_aoe/](../../crates/services/src/cell/abilities/cone_aoe/)
+(geometry, fan-out, flag categories, tests), and channeled abilities are driven by the
+`is_channeled` / `pulse_count` columns through
+[cell/effects/pulsing/](../../crates/services/src/cell/effects/pulsing/). Nine effect
+scripts are registered in
+[cell/effects/registry.rs](../../crates/services/src/cell/effects/registry.rs) —
+`HealHealth`, `HealFocus`, `MeleeDamage`, `MeleePhysicalDamage`, `AbsorbShield`, `Stun`,
+`Suppression`, `RangedPhysicalDamage`, `RangedEnergyDamage`.
 
 **Approach:** Start with linear scaling (stat * coefficient) and iterate. Use existing NVP
 values as baselines. Test with Soldier/Commando. RE docs cover wire format but not
@@ -519,10 +533,12 @@ implementation from the wire format documentation inward.
 |--------|--------|-------|---------|-------|
 | **PvP / Dueling** | Very High | 6 methods, all `pass` | duel-wire-formats.md | SGWDuelMarker entity empty. Faction system (SGU/Praxis) provides foundation |
 | **Organizations** | High | 15+ methods, all `pass` | organization-wire-formats.md | SGWPlayerGroupAuthority empty shell. Needs DB schema |
-| **Black Market** | High | 6 methods, all `pass` | black-market-wire-formats.md | Auction listing, bidding, buyout, fees. Needs DB schema |
+| **Black Market** | High | 6 methods, all `pass` | black-market-wire-formats.md | Auction listing, bidding, buyout, fees. **Phase-1 Rust implementation exists but is UNMERGED** (`feat/571-black-market-phase1`); not on `main` |
 | **Mail** | Medium-High | sendMailMessage = `pass` | mail-wire-formats.md | Some read-only methods partial. Needs DB table |
 | **Contact Lists** | Medium | 6 methods, all `pass` | contact-list-wire-formats.md | Friend/ignore list, online status |
 | **Groups** | Medium | All methods empty | group-wire-formats.md | SGWPlayerGroupAuthority empty shell |
+
+> **The "Stubs" column describes the legacy Python stack, not the Rust server (checked 2026-07-25).** Several of these have since been implemented in Rust on `main`: **Mail** ([base/world_entry/methods/mail/](../../crates/services/src/base/world_entry/methods/mail/), [cell/mail.rs](../../crates/services/src/cell/mail.rs)), **Organizations** ([cell/cell_methods/organization.rs](../../crates/services/src/cell/cell_methods/organization.rs), [game/src/social/guilds.rs](../../crates/game/src/social/guilds.rs)), **Contact Lists** ([cell/client_methods/contact_list.rs](../../crates/services/src/cell/client_methods/contact_list.rs)), and **Groups** ([game/src/social/groups.rs](../../crates/game/src/social/groups.rs)). **Black Market** is implemented but unmerged (see the row above). **PvP / Dueling** remains unimplemented. Read the effort estimates as historical.
 
 ---
 
@@ -530,7 +546,7 @@ implementation from the wire format documentation inward.
 
 **Effort: MEDIUM per type** | **Confidence: LOW**
 
-9 minigame types exist in `python/base/minigame/`. 3 have logic (Livewire, Hack,
+9 minigame types exist in `deprecated/python/base/minigame/`. 3 have logic (Livewire, Hack,
 GoauldCrystals). 6 are placeholders (Activate, Analyze, Bypass, Converse, Alignment,
 Placeholder). Needs server-side validation, implementation of 6 placeholder types,
 and scoring/rewards.
@@ -562,20 +578,38 @@ triggers. These are entirely new game design work.
 
 **Effort: MEDIUM-HIGH total** | **Confidence: MEDIUM**
 
-Eight systems documented in `docs/architecture/server-systems.md`. Most have partial
-foundations. See that document for full details.
+Eight cross-cutting server-only systems. The survey that used to hold their
+current state (`docs/architecture/server-systems.md`) was
+[superseded on 2026-07-25](../architecture/server-systems.md) — live status now
+lives in [gap-analysis.md](../gap-analysis.md) §"Server Infrastructure
+(Cross-Cutting)", and the unbuilt designs live in
+[server-infrastructure-proposals.md](../architecture/server-infrastructure-proposals.md).
+The table below is corrected against that split.
 
 | System | Current State | Priority |
 |--------|---------------|----------|
-| GM Tools Backend | 50+ commands work; console disabled (empty password) | HIGH |
-| Session Management | Basic timeout exists; no reconnection grace | HIGH |
-| Rate Limiting | Per-ability cooldowns only | MEDIUM |
-| Anti-Cheat | Position bounds only; no speed validation | MEDIUM |
-| World State Persistence | Player pos persists; no world object state | MEDIUM |
-| Economy / Scheduler / Metrics | Minimal | LOW |
+| GM Tools Backend | Native `/gm*` + `.`-console both ship, gated on `access_level`. Missing: action audit log, ban/mute, broadcast | HIGH |
+| Session Management | 60 s inactivity timeout + duplicate-login check; no reconnection grace, no session token | HIGH |
+| Rate Limiting | Per-ability cooldowns only; no player-facing limiter of any kind | MEDIUM |
+| Anti-Cheat | **Four-layer movement validation shipped** (bounds → navmesh → speed → teleport) plus ability-range checks. Missing: damage cap, line-of-sight | MEDIUM |
+| World State Persistence | Player state persists; no world-object state, no table | MEDIUM |
+| Metrics | **OTLP + SigNoz shipped.** Missing: `perfStats` ingestion, gameplay counters, alerting | LOW |
+| Economy / Scheduler | Minimal — no currency-flow logging, no scheduler | LOW |
 
-**Immediate action:** Set `<py_console_password>` in `config/BaseService.config` to
-enable 50+ GM commands. Zero code changes required.
+> **Obsolete recommendation (corrected 2026-07-25).** This section previously said
+> to set `<py_console_password>` in `config/BaseService.config` to unlock the GM
+> commands. That file is **not** part of the running server: it belongs to the
+> legacy C++/Python stack and now lives at
+> [`deprecated/cpp-config/config/BaseService.config`](../../deprecated/cpp-config/config/BaseService.config).
+> The repo-root `config/` directory holds only `discord.toml.example`.
+>
+> On the Rust server there is no console password. GM commands reach the server
+> two ways, both gated server-side on the player's `access_level` rather than a
+> shared secret: the client's native `/`-commands (see
+> [commands.md](../commands.md)) and the `.`-prefixed dev console
+> ([dispatch.rs:19](../../crates/services/src/cell/console/dispatch.rs#L19),
+> [dev-console-channel ADR](../architecture/dev-console-channel.md)). Nothing
+> needs to be set to enable them.
 
 ---
 

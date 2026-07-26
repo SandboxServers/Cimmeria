@@ -6,8 +6,12 @@ For testing conventions across these crates — test types, when to use which, c
 
 ## Crate Overview
 
-The 23 workspace crates and their **actual** inter-crate dependencies, generated
-from each crate's `Cargo.toml` (an arrow **A → B** means *A depends on B*):
+The 23 workspace members and their **actual** inter-crate dependencies, generated
+from each crate's `Cargo.toml` (an arrow **A → B** means *A depends on B*). The 23
+comes from the `members` list in the root [Cargo.toml](../Cargo.toml): the 19
+crates under `crates/`, plus `src-tauri` and the three tool crates
+(`tools/ContentEditor`, `tools/SceneEditor`, `tools/spec-lint`). The `fuzz/`
+target is a deliberate workspace `exclude` — it needs nightly Rust.
 
 ```mermaid
 %%{init: {"flowchart": {"htmlLabels": false}, "theme": "neutral"}}%%
@@ -98,8 +102,9 @@ are workspace members that live outside `crates/`.
 | `client-telemetry` | `cimmeria-client-telemetry` | **Windows-only cdylib** (`i686-pc-windows-msvc`) injected into `SGW.exe` for client-side observability. Subscribes to CME EventSignals, installs function hooks, and tees client logs to cimmeria-server's `/api/telemetry/upload-chunk`. Built and tested by its own [client-telemetry-build CI workflow](../.github/workflows/client-telemetry-build.yml). See [docs/reverse-engineering/findings/client-instrumentation-hookpoints.md](../docs/reverse-engineering/findings/client-instrumentation-hookpoints.md) for the hook anchor table. |
 | `upk` | `cimmeria-upk` | UPK (Unreal Package) file parser |
 | `upk-objects` | `cimmeria-upk-objects` | UPK object type definitions |
-| `navmesh-extractor` | `cimmeria-navmesh-extractor` | Extracts UE3 `.umap` chunk geometry to `.obj` for the C++ NavBuilder Recast pipeline. Owns the XRC `.nav` round-trip parser/emitter — the canonical Rust-side ground truth for the wire format `crates/entity/src/navigation.rs` consumes at runtime. See [README](navmesh-extractor/README.md). |
+| `navmesh-extractor` | `cimmeria-navmesh-extractor` | Extracts UE3 `.umap` chunk geometry to `.obj` for the C++ NavBuilder Recast pipeline. Owns the XRC `.nav` round-trip parser/emitter — the canonical Rust-side ground truth for the wire format `crates/entity/src/navigation/` consumes at runtime. See [README](navmesh-extractor/README.md). |
 | `wireclient` | `cimmeria-wireclient` | **Tier 3 headless test client.** Drives the SOAP auth, Mercury phase-3 handshake, and replays captured `.pcap` + AES-key sessions for end-to-end behavioral validation. Pairs with `tools/pcap_to_session.py` (JSONL exporter built atop `tools/pcap_dissect.py`). See [docs/architecture/wireclient.md](../docs/architecture/wireclient.md). |
+| `discord` | `cimmeria-discord` | Discord notification sink. Owns the `EventKind` catalogue and per-event `EventToggles`, hot-reloadable TOML config (`config::ConfigWatcher` over [config/discord.toml.example](../config/discord.toml.example)), channel routing (`router::channel_for`), embed formatting + budget trimming (`embed::format_event`), and a rate-limited async sender (`sender::` — HTTP, mock, and token-bucket). Also exposes `DiscordLayer`, a `tracing` layer that lifts warn/error records into notifications. Typed `emit_*` helpers are the intended call surface. See [docs/architecture/discord-notifications.md](../docs/architecture/discord-notifications.md). |
 | `observability` | `cimmeria-observability` | Metrics facade — `counter!`/`histogram!`/`gauge_add!` macros wrapping the OpenTelemetry SDK's metrics API. Lazily registers instruments on first emission, no-ops when telemetry is disabled. Initialised from `cimmeria-server`'s `otel::init` alongside traces + logs. See [docs/architecture/instrumentation-discipline.md](../docs/architecture/instrumentation-discipline.md). |
 
 ## Building
@@ -127,7 +132,7 @@ See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
 
 ## Testing
 
-The workspace currently carries **~2,690 `#[test]` / `#[tokio::test]` cases across ~400 files**, of which 155 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+The workspace currently carries **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**, of which **2,691 are gated in CI** (the five excluded crates below contribute the rest). 224 are live-DB regression guards — all in `cimmeria-services` — and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
 
 ```bash
 # Unit + non-DB integration:

@@ -9,7 +9,7 @@ last_updated: 2026-05-27
 
 > **Last updated**: 2026-03-01
 > **RE Status**: Fully documented -- working end-to-end
-> **Sources**: `src/authentication/`, `src/baseapp/mercury/sgw/`, `config/AuthenticationService.config`, `docs/connection-flow.md`
+> **Sources**: `deprecated/cpp/src/authentication/`, `deprecated/cpp/src/baseapp/mercury/sgw/`, `deprecated/cpp-config/config/AuthenticationService.config`, `docs/connection-flow.md`
 
 ---
 
@@ -187,7 +187,7 @@ The session cookie from Phase 1 is sent via the HTTP `Cookie` header. If the coo
 
 ### Auth-BaseApp Internal Protocol
 
-From `src/mercury/unified_protocol.hpp`:
+From `deprecated/cpp/src/mercury/unified_protocol.hpp`:
 
 | Opcode | Value | Direction | Description |
 |--------|-------|-----------|-------------|
@@ -413,7 +413,7 @@ Defined in `SGWPlayer.def` under `<CellMethods>` with `<Exposed/>`:
 
 ### Protocol Details
 
-The server can trigger a challenge at any time via the Python console command `clientChallenge(player, target, challenge, type, object, id1, id2)` defined in `python/cell/commands/Net.py`. The client receives the challenge as an entity RPC via the CME event system (`Event_NetIn_onClientChallenge`), computes a SHA-1 hash of the specified file/object, and responds with `onClientChallengeResponse` via the event `Event_NetOut_onClientChallengeResponse`.
+The server can trigger a challenge at any time via the Python console command `clientChallenge(player, target, challenge, type, object, id1, id2)` defined in `deprecated/python/cell/commands/Net.py`. The client receives the challenge as an entity RPC via the CME event system (`Event_NetIn_onClientChallenge`), computes a SHA-1 hash of the specified file/object, and responds with `onClientChallengeResponse` via the event `Event_NetOut_onClientChallengeResponse`.
 
 The Cimmeria server's `SGWPlayer.py` handler currently logs the response parameters for debugging but does not enforce any validation. The original server would record challenge results to a `client_challenge` database table (per the client binary's SQL strings: `insert into client_challenge (challenge_type, challenge_string, challenge_id_1, challenge_id_2, challenge_result ...)`).
 
@@ -489,7 +489,7 @@ If the Auth Server sends `FES_REQUEST_LOGON` to the BaseApp and no `FES_LOGON_AC
 
 ## Connection Parameters
 
-From `config/BaseService.config`:
+From `deprecated/cpp-config/config/BaseService.config`:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -499,7 +499,7 @@ From `config/BaseService.config`:
 | `nub_tickrate` | 25 ms | Channel flush interval |
 | `grid_vision_distance` | 3 chunks | AoI visibility range |
 
-From `config/AuthenticationService.config`:
+From `deprecated/cpp-config/config/AuthenticationService.config`:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -554,8 +554,8 @@ Client                     Auth Server              BaseApp
 
 ## TODO
 
-- [x] ~~Document the exact SOAP XML schema for login request/response~~ → Full XML schemas documented for all four SOAP messages: `SGWLoginRequest`, `SGWLoginResponse`, `SGWSelectServerRequest`, `SGWServerLocationResponse`. Includes all attributes, namespace URIs, and error formats. Source: `src/authentication/logon_connection.cpp`
-- [x] ~~Document the exact baseAppLogin message binary format~~ → Binary field layout documented with offset table for both client message (25-byte payload: uint32 accountId + uint8 ticketLength + char[20] ticket) and server reply (25-byte payload: uint32 requestId + uint8 ticketLength + char[20] ticket echo). Corrects inaccurate comment in `messages.cpp`. Source: `src/baseapp/mercury/sgw/connect_handler.cpp`
-- [x] ~~Verify the client challenge/response protocol (onClientChallenge / onClientChallengeResponse events)~~ → Confirmed: this is a post-login anti-cheat integrity check, not part of the login handshake. Server sends `onClientChallenge` entity RPC with challenge type (SHA1_CS or SHA1_UnrealScript), client responds with `onClientChallengeResponse` including computed hash. Sources: `entities/defs/SGWPlayer.def`, `python/cell/SGWPlayer.py`, `python/cell/commands/Net.py`, client binary strings + Ghidra event registrations
-- [x] ~~Document error recovery (what happens on Phase 3 failure)~~ → Documented six failure scenarios: invalid/expired ticket (silent drop), entity creation failure (LOGGED_OFF + condemn), inactivity timeout (5min default), server-initiated disconnect, condemned channel lifecycle, BaseApp-Auth reconnection (30s retry), and Auth Server request timeout (5s). Sources: `src/baseapp/mercury/sgw/connect_handler.cpp`, `src/baseapp/mercury/sgw/client_handler.cpp`, `src/mercury/channel.cpp`, `src/mercury/condemned_channels.cpp`, `src/authentication/shard_client.cpp`, `src/authentication/frontend_connection.cpp`
+- [x] ~~Document the exact SOAP XML schema for login request/response~~ → Full XML schemas documented for all four SOAP messages: `SGWLoginRequest`, `SGWLoginResponse`, `SGWSelectServerRequest`, `SGWServerLocationResponse`. Includes all attributes, namespace URIs, and error formats. Source: `deprecated/cpp/src/authentication/logon_connection.cpp`
+- [x] ~~Document the exact baseAppLogin message binary format~~ → Binary field layout documented with offset table for both client message (25-byte payload: uint32 accountId + uint8 ticketLength + char[20] ticket) and server reply (25-byte payload: uint32 requestId + uint8 ticketLength + char[20] ticket echo). Corrects inaccurate comment in `messages.cpp`. Source: `deprecated/cpp/src/baseapp/mercury/sgw/connect_handler.cpp`
+- [x] ~~Verify the client challenge/response protocol (onClientChallenge / onClientChallengeResponse events)~~ → Confirmed: this is a post-login anti-cheat integrity check, not part of the login handshake. Server sends `onClientChallenge` entity RPC with challenge type (SHA1_CS or SHA1_UnrealScript), client responds with `onClientChallengeResponse` including computed hash. Sources: `entities/defs/SGWPlayer.def`, `deprecated/python/cell/SGWPlayer.py`, `deprecated/python/cell/commands/Net.py`, client binary strings + Ghidra event registrations
+- [x] ~~Document error recovery (what happens on Phase 3 failure)~~ → Documented six failure scenarios: invalid/expired ticket (silent drop), entity creation failure (LOGGED_OFF + condemn), inactivity timeout (5min default), server-initiated disconnect, condemned channel lifecycle, BaseApp-Auth reconnection (30s retry), and Auth Server request timeout (5s). Sources: `deprecated/cpp/src/baseapp/mercury/sgw/connect_handler.cpp`, `deprecated/cpp/src/baseapp/mercury/sgw/client_handler.cpp`, `deprecated/cpp/src/mercury/channel.cpp`, `deprecated/cpp/src/mercury/condemned_channels.cpp`, `deprecated/cpp/src/authentication/shard_client.cpp`, `deprecated/cpp/src/authentication/frontend_connection.cpp`
 - [x] ~~Document the version info exchange~~ → ClientCache `versionInfoRequest`/`onVersionInfo` fully documented in `findings/entity-types-wire-formats.md`

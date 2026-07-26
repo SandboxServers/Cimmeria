@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "permissions": {
     "allow": [
       "mcp__ghidra__get_current_address",
@@ -36,18 +39,15 @@
       "mcp__cimmeria-rag__cross_reference",
       "mcp__cimmeria-rag__get_file_content",
       "mcp__cimmeria-rag__lookup_enum",
-      "mcp__ghidra__*"
+      "mcp__ghidra__*",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   },
-  "mcpServers": {
-    "ghidra": {
-      "type": "stdio",
-      "command": "C:\\Users\\Steve\\source\\projects\\ghidra-mcp\\.venv\\Scripts\\python.exe",
-      "args": [
-        "C:\\Users\\Steve\\source\\projects\\ghidra-mcp\\bridge_mcp_ghidra.py",
-        "--ghidra-server",
-        "http://127.0.0.1:8098/"
-      ]
-    }
-  }
+  "enabledMcpjsonServers": [
+    "cimmeria-rag",
+    "ghidra",
+    "x64dbg",
+    "signoz"
+  ]
 }

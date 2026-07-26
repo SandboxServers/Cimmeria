@@ -38,9 +38,9 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 272 |
-| Rust tests (`#[test]` / `#[tokio::test]`) | 2,012 across 305 files |
-| Live-DB regression guards | 155 |
+| Documentation files | 285 (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | 2,936 across 461 files (2,691 gated in CI) |
+| Live-DB regression guards | 224 |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 
@@ -119,7 +119,7 @@ See also: [gap-analysis.md](gap-analysis.md), [game-data.md](game-data.md)
 
 ### `protocol/` -- Wire Formats and Messaging
 
-Network protocol internals: packet structures, Mercury reliable messaging, entity property synchronization, and specific message flows.
+Network protocol internals: packet structures, Mercury reliable messaging, entity property synchronization, and specific message flows. Section index: [protocol/README.md](protocol/README.md).
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -174,7 +174,7 @@ See also: [game-systems.md](game-systems.md), [technical/game-systems.md](techni
 
 ### `engine/` -- BigWorld and CME Internals
 
-How the underlying BigWorld engine and CME game framework operate inside sgw.exe.
+How the underlying BigWorld engine and CME game framework operate inside sgw.exe. Section index: [engine/README.md](engine/README.md).
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -190,6 +190,7 @@ How the underlying BigWorld engine and CME game framework operate inside sgw.exe
 | [character-visual-components.md](engine/character-visual-components.md) | Character visual components: how avatar appearance (model, skin, equipment) is composited on the client | Complete |
 | [client-visual-system.md](engine/client-visual-system.md) | Client visual system: rendering, scene graph, and how entities are drawn in the BigWorld/UE3 client | Complete |
 | [cooked-data-pak-format.md](engine/cooked-data-pak-format.md) | Cooked-data PAK file format: on-disk layout, entry table, compression, and how the client reads resource packs | Complete |
+| [ue3-package-format.md](engine/ue3-package-format.md) | SGW UE3 package binary format (ver 486 licensee fork): section ordering and the `total_header_size` trap, LZO chunking, variable-length export trailers, actor/component serial prefixes, ULevel `Actors` layout, ver-486 property tag stream, HUD↔world coordinate swizzle | Complete |
 
 See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-analysis.md), [technical/sgw-binary-overview.md](technical/sgw-binary-overview.md)
 
@@ -197,19 +198,20 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 30 documents.
+How the Cimmeria emulator itself is structured. 32 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
 | [service-architecture.md](architecture/service-architecture.md) | Auth, Base, Cell service topology, inter-service protocol, developer mode, console commands | Complete |
-| [python-console.md](architecture/python-console.md) | Python console deep-dive: wire format, reference client, Atrea API, GM command table, security | Complete |
-| [server-systems.md](architecture/server-systems.md) | Server-only infrastructure: session management, rate limiting, anti-cheat, economy, world state, scheduling, admin tools, metrics | Complete |
-| [scaling-analysis.md](architecture/scaling-analysis.md) | Scaling strategy: current single-instance reality, BigWorld vs Cimmeria comparison, 5-tier scaling roadmap, capacity estimates | Complete |
-| [tech-stack-replacement.md](architecture/tech-stack-replacement.md) | Tech stack replacement analysis: 5 options (incremental upgrade through full C# rewrite), codebase audit, protocol feasibility, phased recommendation | Complete |
+| [server-infrastructure-proposals.md](architecture/server-infrastructure-proposals.md) | The five unbuilt server-only systems, with a concrete design for each: session resume across a network blip, per-player rate limiting, world-state persistence, a global event scheduler, and economy instrumentation. Sequenced by test-session pain, not cost | Proposed |
+| [server-systems.md](architecture/server-systems.md) | **Superseded pointer page.** Routing table showing where each of the original eight server-system sections went, plus the four stale claims most likely to be re-quoted from it | Superseded |
+| [python-console.md](architecture/python-console.md) | **Historical.** The deprecated server's Python REPL: its security model (still a useful checklist for the admin API) and the 116-command operator-capability inventory. Wire format and reference client removed — recoverable from `deprecated/cpp/` | Historical |
+| [scaling-analysis.md](architecture/scaling-analysis.md) | Scaling strategy: BigWorld vs Cimmeria comparison, 5-tier scaling ladder, Tier-0 recommendation. **Conclusions current; all measured figures are C++-era and unverified against Rust** | Complete (figures stale) |
+| [tech-stack-replacement.md](architecture/tech-stack-replacement.md) | **2026-03 decision record.** The audit that chose a rewrite: 5 options, codebase inventory, protocol-reimplementation feasibility. Recommended C#/.NET; the project built Rust. The content-authoring-bottleneck finding still drives the content engine | Historical |
 | [data-driven-content-engine.md](architecture/data-driven-content-engine.md) | Data-driven content engine: replace per-script Python with DB-driven trigger/condition/action chains, full schema, worked examples, runtime implementation, migration path | Complete |
 | [mission-pak-overrides.md](architecture/mission-pak-overrides.md) | How Cimmeria injects new mission steps without reshipping `CookedDataMissions.pak`: `MissionOverride` patcher, `InvalidKeys` handshake, content-derived metadata bump, XML-index gotcha, operator runbook | Complete |
 | [tauri-rewrite.md](architecture/tauri-rewrite.md) | Tauri desktop app rewrite analysis: replacing Qt ServerEd with a modern Rust+TypeScript stack | Complete |
-| [migration-roadmap.md](architecture/migration-roadmap.md) | Dependency migration roadmap (PostgreSQL ✅, MSVC ✅, OpenSSL pending) and per-migration agent definitions | Complete |
+| [migration-roadmap.md](architecture/migration-roadmap.md) | **Historical.** C++-only dependency upgrade plan (MSVC ✅, PostgreSQL ✅ 17.9; the rest unexecuted and unneeded by Rust). Its "CRITICAL OpenSSL" row is **not** a Cimmeria finding — see [project-status.md](project-status.md) for the real roadmap | Historical |
 | [state-flag-conventions.md](architecture/state-flag-conventions.md) | Reference for state-flag write conventions: refcounted vs raw, who can clear, auth flow | Complete |
 | [abilities-and-effects-system.md](architecture/abilities-and-effects-system.md) | ADR for the abilities + effects design decisions shipped in PR #420: EffectScript trait shape, stacking semantics, channel cancellation triggers, absorption pool drain ordering, TCM dispatch routing, AF_CHANNEL_ALLOWS_MOVEMENT default | Complete |
 | [state-field-bits.md](architecture/state-field-bits.md) | Verified `bStateField` bit layout (bits 0-7 only), client dispatch table, BSF_Holster retirement notice with Ghidra anchors, relog persistence of `BSF_AutoCycling` | Complete |
@@ -231,6 +233,7 @@ How the Cimmeria emulator itself is structured. 30 documents.
 | [mercury-loopback-harness.md](architecture/mercury-loopback-harness.md) | ADR for the Tier-2 Mercury loopback session harness: channel state, retransmit, fragmentation, keepalive, ack, RTO test seam | Complete |
 | [network-chaos-testing.md](architecture/network-chaos-testing.md) | ADR for the network-chaos apparatus: lossy-socket wrappers, pcap-replay infra, chaos scenarios over the L2 trait | Complete |
 | [wireclient.md](architecture/wireclient.md) | ADR for `cimmeria-wireclient`: headless wire-level test client, `session_trace` JSONL schema, pcap exporter | Complete |
+| [black-market.md](architecture/black-market.md) | ADR for the Black Market / auction house (#571, PR #586 — **unmerged**): cell methods 61–66 in / client methods 90–95 out, the four-state auction lifecycle, DELETE-based item escrow + SQL-guarded cash escrow, the 30 s expiry sweep, the reserved system seller for boot-seed listings, and the shelved client-method binding that forces a runtime patch (#587). Open: guessed `next_min_bid`, unbounded search (CAT-I-05), undecodable `sellerName` | Implemented, unmerged |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
 
@@ -238,7 +241,7 @@ See also: [building.md](building.md), [connection-flow.md](connection-flow.md), 
 
 ### `client/` -- Game Client Analysis
 
-Analysis of game client binaries, launcher tools, and client asset inventories. 8 documents.
+Analysis of game client binaries, launcher tools, and client asset inventories. 7 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -249,9 +252,8 @@ Analysis of game client binaries, launcher tools, and client asset inventories. 
 | [facefx-lip-sync.md](client/facefx-lip-sync.md) | FaceFX lip sync system: .fxa animation files, phoneme mapping, engine integration | Complete |
 | [ui-layout-inventory.md](client/ui-layout-inventory.md) | UI layout inventory: all Scaleform .swf files, Lua bindings, screen types, HUD elements | Complete |
 | [crash-dumps.md](client/crash-dumps.md) | SGW crash-dump pipeline: minidump capture, symbolication, what the dumps reveal about client state | Complete |
-| [ue3-package-splicer.md](client/ue3-package-splicer.md) | UE3 package splicer: editing Unreal Engine 3 `.upk`/package files for client asset overrides | Complete |
 
-See also: [client-tools.md](client-tools.md), [technical/launcher-exe.md](technical/launcher-exe.md), [technical/atrealoader-exe.md](technical/atrealoader-exe.md)
+See also: [client-tools.md](client-tools.md), [launcher-exe.md](reverse-engineering/binaries/launcher-exe.md), [technical/atrealoader-exe.md](technical/atrealoader-exe.md)
 
 ---
 
@@ -274,6 +276,34 @@ Working notes and cross-reference indexes from ongoing RE sessions.
 |----------|-------------|--------|
 | [event-net-mapping.md](analysis/event-net-mapping.md) | 420 Event_NetIn/NetOut mapped to .def methods, Ghidra addresses, handler chains (~98% coverage) | Complete |
 | [bigworld-reference-index.md](analysis/bigworld-reference-index.md) | Cross-reference: BigWorld 2.0.1 source symbols to sgw.exe addresses | Complete |
+
+---
+
+### `audits/` -- Conformance Audits
+
+Point-in-time conformance records. Each audit pins the spec version and the
+`binary_sha256` it was run against; findings are not rewritten afterwards.
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [mercury-rust-conformance-2026-05-15.md](audits/mercury-rust-conformance-2026-05-15.md) | Rust Mercury implementation vs. the [mercury-wire-format](drafts/spec/mercury-wire-format.md) bible chapter | Under review |
+| [entity-property-sync-section2-audit-2026-05-16.md](audits/entity-property-sync-section2-audit-2026-05-16.md) | Section 2 of the [entity-property-sync](drafts/spec/entity-property-sync.md) chapter audited against the binary | Complete |
+| [telemetry-audit-2026-06-01.md](audits/telemetry-audit-2026-06-01.md) | Telemetry + logging sweep of code landed 2026-05-31 → 2026-06-01. Companions: [architecture/observability.md](architecture/observability.md), [architecture/negative-logging-convention.md](architecture/negative-logging-convention.md) | Complete |
+
+---
+
+### `security-audit/` -- Server-Authority and Anti-Cheat Audits
+
+Time-stamped security-audit records, one directory per audit. Findings are a
+point-in-time snapshot and are **not** updated post-audit — remediation is
+tracked through the linked GitHub issues. Index: [security-audit/README.md](security-audit/README.md).
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [2026-05-31-server-authority/UMBRELLA.md](security-audit/2026-05-31-server-authority/UMBRELLA.md) | **HUB** -- Tracking record for the exhaustive server-authority / anti-cheat / anti-replay sweep across every player-facing wire surface | Complete |
+| [2026-05-31-server-authority/BRIEF.md](security-audit/2026-05-31-server-authority/BRIEF.md) | Shared agent brief: evidence rules every per-category auditor worked under | Complete |
+| [2026-05-31-server-authority/surface.md](security-audit/2026-05-31-server-authority/surface.md) | The client → server outbound message surface (~250 `Event_NetOut_*` classes) extracted from SGW.exe | Complete |
+| [2026-05-31-server-authority/findings/](security-audit/2026-05-31-server-authority/findings/) | Per-category findings, CAT-A through CAT-O: auth, movement, combat/abilities, inventory, vendor, crafting, mail, trade, black market, mission/dialog, minigame, chat/contact, org/squad/duel, GM commands, world/space/gate | Complete |
 
 ---
 
@@ -433,7 +463,7 @@ Early-project RE analysis from before the reorganised `docs/` tree and the Rust 
 | [server-feasibility.md](technical/server-feasibility.md) | Server emulation feasibility assessment |
 | [source-reconstruction-feasibility.md](technical/source-reconstruction-feasibility.md) | Source code reconstruction feasibility |
 | [building.md](technical/building.md) | Build process technical details |
-| [launcher-exe.md](technical/launcher-exe.md) | Launcher binary analysis |
+| [launcher-exe.md](reverse-engineering/binaries/launcher-exe.md) | Launcher binary analysis (canonical copy lives under `reverse-engineering/binaries/`) |
 | [atrealoader-exe.md](technical/atrealoader-exe.md) | AtreaLoader binary analysis |
 | [atrealoader-config.md](technical/atrealoader-config.md) | AtreaLoader configuration format |
 | [atrearl-loader.md](technical/atrearl-loader.md) | AtreaRL.dll — the runtime patcher injected into SGW.exe (hooks, sniffer, two-gate activation) |

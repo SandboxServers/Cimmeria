@@ -2,7 +2,7 @@
 title: Troubleshooting
 type: how-to
 audience: new contributors, operators
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 companion_docs:
   - building.md
   - guides/getting-started.md
@@ -254,8 +254,15 @@ Copy-Item .\target\debug\cimmeria-server.exe .
 cargo clippy --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `
   --exclude cimmeria-scene-editor --exclude sgw-launcher `
+  --exclude cimmeria-client-telemetry `
   --all-targets -- -D warnings
 ```
+
+All five excludes matter — the four GUI crates (two Tauri editors plus the
+egui launcher) and the Windows-only client-telemetry cdylib. Dropping
+`cimmeria-client-telemetry` is the easy one to miss: it makes a Linux/WSL host
+need xkbcommon/xcb dev packages and can OOM the linker. The authoritative list
+is [`.github/workflows/test.yml`](../.github/workflows/test.yml).
 
 Fix the warning at the root cause. Don't sprinkle `#[allow(clippy::...)]` per call site — project thresholds for `too_many_arguments` (14) and `type_complexity` (500) are in [`clippy.toml`](../clippy.toml).
 
@@ -317,9 +324,26 @@ The `tracing` filter syntax is in the [`tracing-subscriber` docs](https://docs.r
 
 **Symptom.** You can't connect to the Python console on port 8989 / 8990.
 
-**Root cause.** Either it's disabled (no password configured, which is the safe default), or you're hitting it without the protocol framing the `py_client` expects.
+**Root cause.** There is no Python console. The Rust server has no embedded
+Python interpreter and no console port — nothing under `crates/` listens on
+8989 or 8990, and there is no setting that turns one on. The console belonged
+to the deprecated Python/C++ server, which no longer runs.
 
-**Fix.** See [`docs/architecture/python-console.md`](architecture/python-console.md) for the wire format and a working reference client. If you don't need the console for what you're doing, leave it disabled — it grants full server access.
+**Fix.** Use the current equivalents instead:
+
+- **In-game GM commands** run through the client's *native* `/` console. See
+  [`docs/architecture/gm-cell-method-gating.md`](architecture/gm-cell-method-gating.md).
+- **Remote administration** is the `cimmeria-admin-api` REST/WebSocket surface
+  on the admin port (default 8443), documented in
+  [`docs/tools/admin-api.md`](tools/admin-api.md).
+
+[`docs/architecture/python-console.md`](architecture/python-console.md) is
+retained as a historical reference for the deprecated server only.
+
+> [!WARNING]
+> The admin API currently ships with **no authentication** and binds
+> `0.0.0.0` — do not expose port 8443 beyond localhost or a trusted LAN.
+> Tracked as issue #439.
 
 ---
 

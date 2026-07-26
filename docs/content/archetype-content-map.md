@@ -2,14 +2,14 @@
 title: "Archetype Content Availability Map"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Archetype Content Availability Map
 
 Per-archetype analysis of what content exists, what is placeholder, and what is missing
 entirely in the Cimmeria server emulator. Based on cross-referencing the resource database
-(`db/resources.sql`), Python game logic (`python/`), and entity definitions.
+(`db/resources/`), legacy Python game logic (`deprecated/python/`), and entity definitions.
 
 ---
 
@@ -219,7 +219,7 @@ character will be combat-inert with no way to gain abilities.
 - SGU faction only, male only, unique body set (BS_Asgard)
 - **Only** placeholder with a unique item event set (1455 vs 804 for all others),
   suggesting intended distinct equip/unequip animations for the Asgard body type
-- Source: `python/common/Constants.py` line 109
+- Source: `deprecated/python/common/Constants.py` line 109
 
 **Shol'va / Jaffa** are the same race split by faction. Shol'va = rebel Jaffa
 allied with Earth (SGU). Jaffa = Goa'uld-loyal (Praxis). Both use BS_Jaffa body sets.
@@ -322,7 +322,7 @@ differences.
 The only archetype-keyed data structure outside the database:
 
 ```python
-# python/common/Constants.py, line 103
+# deprecated/python/common/Constants.py, line 103
 ARCHETYPE_ITEM_EVENT_SETS = {
     ARCHETYPE_Any:          804,
     ARCHETYPE_Soldier:      804,

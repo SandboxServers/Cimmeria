@@ -2,7 +2,7 @@
 title: "Launcher Distribution Setup"
 type: how-to
 audience: operators
-last_updated: 2026-05-27
+last_updated: 2026-07-25
 ---
 
 # Launcher Distribution Setup
@@ -86,9 +86,10 @@ This split gives both properties at once:
 $priv = Get-Content -Raw .\secrets\manifest-signing.key  # 64 hex chars
 $tag  = "content-$(Get-Date -Format yyyy-MM-dd)-001"
 
-# Sign manifest.json — see "Generating the signing key" below for the
-# helper script that produces manifest.json.sig from manifest.json.
-.\tools\sign-manifest.ps1 -KeyHex $priv -Manifest manifest.json
+# Sign manifest.json, producing manifest.json.sig.
+# !! No signing script is checked into this repo — tools\sign-manifest.ps1
+#    does not exist. Use an external Ed25519 signer; see "Signing a
+#    manifest" below for the exact operation and output format.
 
 # 2. Create the immutable per-publication release containing seed +
 #    patches. Mark as a pre-release so it doesn't show on the front
@@ -141,12 +142,16 @@ One-time, on a trusted offline machine:
 openssl rand -hex 32 > manifest-signing.key
 chmod 600 manifest-signing.key
 
-# Derive the public key (run via the launcher's test helper or any
-# Ed25519 library; the launcher repo ships an example):
-cargo run -p sgw-launcher --example pubkey-from-priv \
-  --release -- $(cat manifest-signing.key)
+# Derive the public key with any Ed25519 library, e.g.:
+python -c "import sys;from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey;from cryptography.hazmat.primitives import serialization as s;k=Ed25519PrivateKey.from_private_bytes(bytes.fromhex(open('manifest-signing.key').read().strip()));print(k.public_key().public_bytes(s.Encoding.Raw,s.PublicFormat.Raw).hex())"
 # Prints 64 hex chars — that's the public key.
 ```
+
+> **No in-repo helper exists for this.** Earlier revisions of this runbook
+> pointed at `cargo run -p sgw-launcher --example pubkey-from-priv`; there
+> is no `crates/launcher/examples/` directory and no `[[example]]` in
+> [`crates/launcher/Cargo.toml`](../../crates/launcher/Cargo.toml), so that
+> command fails. Use an external Ed25519 tool until a helper lands.
 
 Store the **private key** (`manifest-signing.key`) in a password
 manager, hardware token, or offline encrypted backup. **Never** commit
@@ -166,8 +171,15 @@ which the build picks up via `option_env!` in
 
 ### Signing a manifest
 
-The publish flow above invokes `tools\sign-manifest.ps1` (or your
-preferred equivalent). The signing operation is:
+> **`tools\sign-manifest.ps1` does not exist.** No manifest-signing script
+> is checked into this repo. Signing is currently a bring-your-own-tooling
+> step — you need an external Ed25519 signer. The *verification* side is
+> shipped and enforced
+> ([`crates/launcher/src/manifest.rs`](../../crates/launcher/src/manifest.rs)::`verify_manifest_signature`),
+> so an unsigned or wrongly-signed manifest is rejected outright with no
+> fallback.
+
+The signing operation is:
 
 ```text
 sig_bytes = ed25519_sign(private_key, manifest.json contents)

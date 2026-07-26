@@ -2,7 +2,7 @@
 title: "Known Issues"
 type: reference
 audience: engineers, operators
-last_updated: 2026-06-16
+last_updated: 2026-07-25
 ---
 
 # Known Issues
@@ -54,10 +54,22 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 
 **Status**: Fixed. `handle_login()` now scans for existing sessions with the same `account_id`. If found, sends LOGGED_OFF (0x37) to the old client and evicts the old session before registering the new one.
 
-### KI-8: No ticket expiration
+### KI-8: Ticket expiration is reaper-only — up to ~10s of over-life
 
-**Severity**: Medium (security)
-**Description**: SOAP login tickets never expire. C++ expires them after 30 seconds. A captured ticket can be replayed indefinitely.
+**Severity**: Low (security)
+**Status**: Partially fixed — the "never expire" claim is stale.
+**Description**: `TICKET_TTL` is 30 s and `SESSION_TTL` is 300 s
+(`crates/services/src/auth/mod.rs:41-45`), matching the C++ 30 s ticket
+lifetime. A reaper task sweeps both maps every `REAPER_INTERVAL`
+(`crates/services/src/auth/service.rs:184-190`), and the Phase-2
+`ServerSelection` handler additionally checks `SESSION_TTL` inline
+(`crates/services/src/auth/handlers.rs:247`).
+
+**What remains**: the Phase-3 consume path does **not** check the TTL. `handle_login`
+does a bare `map.remove(ticket)` (`crates/services/src/base/login/mod.rs:45-58`),
+so a ticket stays usable until the reaper happens to run — up to roughly one
+reaper interval past its nominal 30 s expiry. Tracked as CAT-A-04 in
+[`security-audit/2026-05-31-server-authority/findings/CAT-A-auth.md`](security-audit/2026-05-31-server-authority/findings/CAT-A-auth.md).
 
 ### ~~KI-9: requestCharacterVisuals does not query inventory~~ — RESOLVED
 
@@ -126,10 +138,38 @@ this per-character column.)
 ### KI-19: Stub-only systems (matching Python reference)
 
 **Severity**: Low (gameplay)
-**Status**: Dispatch wired, handlers stubbed
-**Description**: The following systems have CellMethod dispatch wired but handlers are stubs (matching the Python reference implementation which also had stubs):
-- **Contact list** (friend/ignore): 6 CellMethods stubbed
-- **Organizations** (guilds): 12 CellMethods stubbed
-- **Minigames**: 15 CellMethods stubbed
-- **Black market**: 6 CellMethods stubbed
-- **Mail send/COD/return**: 5 CellMethods stubbed (read operations work)
+**Status**: Partially superseded — several of these shipped. Counts below
+verified against the tree on 2026-07-25.
+
+Systems with CellMethod dispatch wired but handlers still stubbed (each logs
+`UNIMPLEMENTED:` and returns):
+
+- **Organizations** (guilds): still stubbed at the cell surface —
+  `onOrganizationCreation`, `organizationLeave`, `organizationMOTD`,
+  `organizationNote`, `organizationOfficerNote`, `organizationSetRankName`,
+  `organizationSetRankPermissions`, `organizationTransferCash`,
+  `organizationInviteResponse`. Schema, the 9-rank/26-permission model, squad
+  state, and Team/Command persistence landed on a feature branch (#568) but
+  are **not on `main`**.
+- **Minigames**: mixed. The SmartFoxServer TCP server, ticket registry, and
+  the Livewire game are implemented (`crates/services/src/minigame/`), but
+  most MinigamePlayer CellMethods are still stubs — `startMinigame`,
+  `endCurrentMinigame`, `spectateMinigame`, `requestSpectateList`, the four
+  `debug*` methods, the `minigameCall*` trio, and the help-registration pair.
+- **Mail send/COD/return**: 5 CellMethods still stubbed — `sendMailMessage`,
+  `payCODForMailMessage`, `returnMailMessage`, `takeCashFromMailMessage`,
+  `takeItemFromMailMessage`. Read operations work. Note the server can now
+  *originate* mail internally (the Black Market expiry sweep delivers via
+  `send_mail_to_player`); it is the client-initiated surface that is stubbed.
+
+No longer stubbed:
+
+- **Contact list** (friend/ignore): implemented and merged —
+  `crates/services/src/base/contact_list/`, with login presence push, CM
+  55–60, and GainLevel / Death / GateTravel presence events. Server-side chat
+  and AoI ignore enforcement landed separately.
+- **Black market**: 4 of 6 CellMethods implemented (`BMSearch`,
+  `BMCreateAuction`, `BMPlaceBid`, `BMCancelAuction`) with an expiry sweep and
+  COD-to-seller mail cascade — but on the `feat/571-black-market-phase1`
+  branch, **not on `main`**. `BMStartWatchingItem` / `BMStopWatchingItem`
+  remain stubs.
