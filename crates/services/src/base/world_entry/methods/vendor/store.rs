@@ -14,7 +14,8 @@ use super::data::{
 use super::serializers::{
     serialize_empty_store_open, serialize_store_open, serialize_store_update, StoreItemCostUpdate,
 };
-use crate::mercury::{build_player_entity_method_packet, method_idx};
+use crate::cell::client_methods::player::{ON_STORE_OPEN, ON_STORE_UPDATE};
+use crate::mercury::build_player_entity_method_packet;
 
 #[derive(sqlx::FromRow)]
 pub struct VendorTemplateLists {
@@ -148,6 +149,10 @@ pub async fn handle_open_vendor_store(
 }
 
 /// Send vendor store open to client.
+///
+/// `onStoreOpen` is SGWPlayer flat index 109 (`SGWPlayer.def`), which is
+/// above `IDBASE_SGW_PLAYER` (61) and therefore rides the extended
+/// encoding: `[0xBD][word_len: u16][entity_id: u32][109 - 61 = 48][args]`.
 pub async fn send_store_open_to_client(
     entity_id: u32,
     vendor_entity_id: i32,
@@ -167,7 +172,7 @@ pub async fn send_store_open_to_client(
                 seq,
                 acks,
                 entity_id,
-                method_idx::ON_STORE_OPEN,
+                ON_STORE_OPEN,
                 &args,
                 version,
             )
@@ -178,6 +183,9 @@ pub async fn send_store_open_to_client(
 }
 
 /// Send vendor store price updates to client.
+///
+/// `onStoreUpdate` is SGWPlayer flat index 110 — extended encoding, sub-slot
+/// byte `110 - 61 = 49`.
 pub async fn send_store_update_to_client(
     entity_id: u32,
     updates: &[StoreItemCostUpdate],
@@ -201,11 +209,183 @@ pub async fn send_store_update_to_client(
                 seq,
                 acks,
                 entity_id,
-                method_idx::ON_STORE_UPDATE,
+                ON_STORE_UPDATE,
                 &args,
                 version,
             )
         },
     )
     .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{test_default_connected_client_state, TestTransport};
+    use cimmeria_mercury::encryption::MercuryEncryption;
+
+    /// `test_default_connected_client_state` builds its cipher from this key,
+    /// so the test can decrypt what the handler put on the wire.
+    const SESSION_KEY: [u8; 32] = [0u8; 32];
+
+    /// Extended-encoding marker byte emitted for any method index at or above
+    /// `IDBASE_SGW_PLAYER`.
+    const EXTENDED_MARKER: u8 = 0xBD;
+
+    fn make_client(
+        entity_id: u32,
+        addr: SocketAddr,
+    ) -> (
+        Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+        Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    ) {
+        let connected = Arc::new(Mutex::new(HashMap::from([(
+            addr,
+            test_default_connected_client_state(),
+        )])));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+        (connected, entity_to_addr)
+    }
+
+    /// Decrypt one recorded packet and return its Mercury body (flags byte
+    /// stripped from the front, 4-byte seq footer stripped from the back —
+    /// `pending_acks` is empty in the test client state, so `FLAG_HAS_ACKS`
+    /// is clear and the seq is the only footer).
+    fn decrypt_body(packet: &[u8]) -> Vec<u8> {
+        let enc = MercuryEncryption::from_session_key(SESSION_KEY);
+        let pt = enc.decrypt(packet).expect("decrypt vendor packet");
+        pt[1..pt.len() - 4].to_vec()
+    }
+
+    /// Wire-format regression guard: the vendor store-open payload must be
+    /// addressed to SGWPlayer flat method **109** (`onStoreOpen`).
+    ///
+    /// Bug shape: the emit path used a `method_idx` constant that claimed a
+    /// nonexistent "SGWVendorStore interface" at 80/81. Index 80 is
+    /// `onMissionUpdate` (Missionary interface), so the entire store payload
+    /// was delivered to the client's mission handler — a silent
+    /// wrong-recipient dispatch that no length or DB assertion can see.
+    ///
+    /// The sub-slot byte is asserted as a **literal** `0x30`, not computed
+    /// from the constant, so this fails if the emit path is pointed back at
+    /// 80 (whose sub-slot byte is `80 - 61 = 19 = 0x13`). Computing it from
+    /// `ON_STORE_OPEN` would make the assertion tautological.
+    #[tokio::test]
+    async fn store_open_is_emitted_on_method_109_not_a_mission_index() {
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+
+        let entity_id = 0x0000_1234u32;
+        let vendor_entity_id = 777i32;
+        let addr: SocketAddr = "127.0.0.1:41090".parse().unwrap();
+        let (connected, entity_to_addr) = make_client(entity_id, addr);
+
+        // A short, recognisable arg blob: the byte layout of the store
+        // payload is pinned by the serializer's own tests; this test is
+        // about which method index carries it.
+        let args = vec![0xAAu8, 0xBB, 0xCC, 0xDD];
+
+        send_store_open_to_client(
+            entity_id,
+            vendor_entity_id,
+            args.clone(),
+            &dyn_transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
+
+        let sent = transport.drain();
+        assert_eq!(sent.len(), 1, "store open is one packet to the owner");
+        assert_eq!(sent[0].0, addr, "store open goes to the vendor user's addr");
+
+        let body = decrypt_body(&sent[0].1);
+
+        // Extended encoding: [0xBD][word_len: u16 LE][entity_id: u32 LE][sub_index: u8][args]
+        let expected_len = u16::try_from(4 + 1 + args.len()).unwrap();
+        let mut expected = vec![EXTENDED_MARKER];
+        expected.extend_from_slice(&expected_len.to_le_bytes());
+        expected.extend_from_slice(&entity_id.to_le_bytes());
+        expected.push(0x30); // 109 - IDBASE_SGW_PLAYER(61) = 48 = 0x30
+        expected.extend_from_slice(&args);
+
+        assert_eq!(
+            body, expected,
+            "onStoreOpen must ride method 109 (sub-slot byte 0x30). A sub-slot \
+             byte of 0x13 means the emit path regressed to index 80, which is \
+             onMissionUpdate — the client would route the store payload into \
+             its mission handler"
+        );
+    }
+
+    /// Same guard for the price-update emit: `onStoreUpdate` is flat method
+    /// **110**, sub-slot byte `110 - 61 = 49 = 0x31`. The regression value to
+    /// trip on is `0x14` (index 81 = `onStepUpdate`).
+    #[tokio::test]
+    async fn store_update_is_emitted_on_method_110_not_a_mission_index() {
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+
+        let entity_id = 0x0000_5678u32;
+        let addr: SocketAddr = "127.0.0.1:41091".parse().unwrap();
+        let (connected, entity_to_addr) = make_client(entity_id, addr);
+
+        let updates = vec![StoreItemCostUpdate {
+            item_id: 4242,
+            sell_price: 10,
+            repair_price: 20,
+            recharge_price: 30,
+        }];
+
+        send_store_update_to_client(
+            entity_id,
+            &updates,
+            &dyn_transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
+
+        let sent = transport.drain();
+        assert_eq!(sent.len(), 1, "store update is one packet to the owner");
+        assert_eq!(sent[0].0, addr);
+
+        let body = decrypt_body(&sent[0].1);
+        let args = serialize_store_update(&updates);
+
+        let expected_len = u16::try_from(4 + 1 + args.len()).unwrap();
+        let mut expected = vec![EXTENDED_MARKER];
+        expected.extend_from_slice(&expected_len.to_le_bytes());
+        expected.extend_from_slice(&entity_id.to_le_bytes());
+        expected.push(0x31); // 110 - IDBASE_SGW_PLAYER(61) = 49 = 0x31
+        expected.extend_from_slice(&args);
+
+        assert_eq!(
+            body, expected,
+            "onStoreUpdate must ride method 110 (sub-slot byte 0x31). A \
+             sub-slot byte of 0x14 means the emit path regressed to index 81, \
+             which is onStepUpdate"
+        );
+    }
+
+    /// An empty update list must not put anything on the wire — the early
+    /// return exists so the client isn't handed a zero-length array to
+    /// re-render the store from.
+    #[tokio::test]
+    async fn store_update_with_no_rows_sends_nothing() {
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+
+        let entity_id = 0x0000_9ABCu32;
+        let addr: SocketAddr = "127.0.0.1:41092".parse().unwrap();
+        let (connected, entity_to_addr) = make_client(entity_id, addr);
+
+        send_store_update_to_client(entity_id, &[], &dyn_transport, &connected, &entity_to_addr)
+            .await;
+
+        assert!(
+            transport.is_empty(),
+            "empty update list must short-circuit before the send"
+        );
+    }
 }
