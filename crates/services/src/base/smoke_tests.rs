@@ -20,8 +20,17 @@
 //!   error to the harness, the test panics, and the pool issues
 //!   `ROLLBACK` on connection release. Net effect: seed data
 //!   unchanged regardless of pass or fail.
+//!
+//! Each script is wrapped in [`sqlx::AssertSqlSafe`] because sqlx 0.9
+//! restricts `raw_sql()` to `&'static str` unless the caller asserts
+//! the string was audited. The audit is trivial here: every script is
+//! a compile-time `include_str!` constant from `tools/`, and the only
+//! transformation applied is [`strip_psql_metacommands`], which
+//! removes lines rather than adding any. No runtime or user-supplied
+//! text enters these statements.
 
 use crate::test_support::require_db_or_skip;
+use sqlx::AssertSqlSafe;
 
 /// Strip the psql-only `\set ON_ERROR_STOP on` directive at the top
 /// of the smoke scripts. Everything else in each file is real SQL
@@ -60,7 +69,7 @@ const VENDOR_STORE_SMOKE_SQL: &str = include_str!("../../../../tools/vendor_stor
 async fn vendor_store_smoke_passes_against_seed_data() {
     let pool = require_db_or_skip!();
     let sql = strip_psql_metacommands(VENDOR_STORE_SMOKE_SQL);
-    sqlx::raw_sql(&sql)
+    sqlx::raw_sql(AssertSqlSafe(sql))
         .execute(&pool)
         .await
         .expect("vendor_store_smoke.sql must run without raising an exception");
@@ -90,7 +99,7 @@ const INVENTORY_MOVE_SMOKE_SQL: &str = include_str!("../../../../tools/inventory
 async fn inventory_move_smoke_passes_against_seed_data() {
     let pool = require_db_or_skip!();
     let sql = strip_psql_metacommands(INVENTORY_MOVE_SMOKE_SQL);
-    sqlx::raw_sql(&sql)
+    sqlx::raw_sql(AssertSqlSafe(sql))
         .execute(&pool)
         .await
         .expect("inventory_move_smoke.sql must run without raising an exception");
@@ -116,7 +125,7 @@ const PROGRESSION_SMOKE_SQL: &str = include_str!("../../../../tools/progression_
 async fn progression_smoke_passes_against_seed_data() {
     let pool = require_db_or_skip!();
     let sql = strip_psql_metacommands(PROGRESSION_SMOKE_SQL);
-    sqlx::raw_sql(&sql)
+    sqlx::raw_sql(AssertSqlSafe(sql))
         .execute(&pool)
         .await
         .expect("progression_smoke.sql must run without raising an exception");

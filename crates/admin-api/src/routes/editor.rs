@@ -10,7 +10,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::Row;
+use sqlx::{AssertSqlSafe, Row};
 use utoipa::ToSchema;
 
 use cimmeria_services::orchestrator::Orchestrator;
@@ -379,8 +379,15 @@ pub async fn save_content(
                 "content_triggers",
                 "content_chains",
             ] {
+                // `AssertSqlSafe`: sqlx 0.9 requires the assertion for
+                // non-`&'static str` SQL. `table` comes from the fixed array
+                // literal above, not from the request; `chain_id` is bound.
                 let q = format!("DELETE FROM {table} WHERE chain_id = $1");
-                if let Err(e) = sqlx::query(&q).bind(existing_id).execute(&mut *tx).await {
+                if let Err(e) = sqlx::query(AssertSqlSafe(q))
+                    .bind(existing_id)
+                    .execute(&mut *tx)
+                    .await
+                {
                     return Json(
                         serde_json::json!({ "error": format!("Delete from {table} failed: {e}") }),
                     );
@@ -514,8 +521,10 @@ pub async fn delete_content(
         "content_triggers",
         "content_chains",
     ] {
+        // `AssertSqlSafe`: `table` comes from the fixed array literal above,
+        // not from the request path; `id` is bound.
         let q = format!("DELETE FROM {table} WHERE chain_id = $1");
-        if let Err(e) = sqlx::query(&q).bind(id).execute(&pool).await {
+        if let Err(e) = sqlx::query(AssertSqlSafe(q)).bind(id).execute(&pool).await {
             return Json(
                 serde_json::json!({ "error": format!("Delete from {table} failed: {e}") }),
             );

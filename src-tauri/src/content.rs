@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::state::AppState;
 use serde_json::{json, Map, Value};
-use sqlx::{PgPool, Postgres, Row, Transaction};
+use sqlx::{AssertSqlSafe, PgPool, Postgres, Row, Transaction};
 
 const CREATE_CONTENT_CHAINS_TABLE: &str = r#"
 CREATE TABLE IF NOT EXISTS content_chains (
@@ -355,7 +355,11 @@ async fn load_child_nodes(
     };
     let query =
         format!("SELECT editor_data FROM {table_name} WHERE chain_id = $1 ORDER BY {order_clause}");
-    let rows = sqlx::query(&query)
+    // `AssertSqlSafe` is required by sqlx 0.9 for non-`&'static str` SQL.
+    // Audit: `table_name` is a string literal at every call site (the four
+    // `content_*` child tables) and `order_clause` is chosen from two literals;
+    // neither is caller- or request-derived. `chain_id` is bound.
+    let rows = sqlx::query(AssertSqlSafe(query))
         .bind(chain_id)
         .fetch_all(pool)
         .await
