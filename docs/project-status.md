@@ -2,236 +2,183 @@
 title: "Project Status"
 type: reference
 audience: anyone tracking the project
-last_updated: 2026-07-25
+last_updated: 2026-08-02
 ---
 
 # Project Status
 
 Where the Cimmeria server emulator stands today and what's ahead.
 
-> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks **443 individual features across 45 systems** (37 gameplay + 8 infrastructure) against the active Rust codebase on `main`.
+> **Status reset — 2026-08-02.** Every status in this document has been cleared pending a ground-up **human re-verification campaign** using the live game client. Previous editions assigned statuses from code audits and partial client smokes; this edition records nothing as working until a human has verified it at the client per the [Project Status Validation Plan](project-status-validation-plan.md).
 >
-> **Re-verified 2026-07-25** against the code, after 168 commits landed since the previous (2026-05-27) edition. Two classes of correction came out of that pass: features that had shipped but were still listed as missing (contact lists, trading, NPC movement states, the cover system, the GM command surface, movement validation, the minigame server), and features listed as working that were not (the whole wireclient replay story). The previous edition's headline numbers also did not match its own per-system table — it printed 437 / CW 139 / KM 184 / NU 5 against rows that summed to 428 / CW 151 / KM 164 / NU 4. The figures below are recomputed from the rows.
+> The previous (2026-07-25) edition, with its code-audit-derived statuses, is preserved in git history. The per-feature [Gap Analysis](gap-analysis.md) still carries the 2026-07-25 code-audit statuses as a *reference for what the code claims to do* — it is **not** re-verified either, and its statuses will be updated as validation sessions complete.
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` is real but unmerged, and is counted as missing until it lands.
 
 ## Status Taxonomy
 
+All rows currently carry **UV**. The other statuses are the verdicts a validation session can assign.
+
 | Status | Symbol | Meaning |
 |--------|--------|---------|
-| **Confirmed Working** | CW | Tested end-to-end with the game client (Castle Cellblock smoke + Lomiada captures) and verified correct |
-| **Needs Test** | NT | Code exists, looks reasonable, but hasn't been verified with a live client |
-| **Implemented** | IM | Code written but may be incomplete or have known issues |
-| **Known / Missing** | KM | We know this needs to exist but no code exists in `crates/` |
-| **Needed / Unknown** | NU | Server-only system we infer must exist but have no direct evidence for |
+| **Unverified** | UV | Status cleared 2026-08-02; awaiting a human validation session per the [validation plan](project-status-validation-plan.md) |
+| **Confirmed Working** | CW | A human tested it end-to-end with the game client during the current campaign and verified correct behavior, with evidence recorded |
+| **Needs Test** | NT | Code exists and a validation procedure is defined, but the session hasn't run yet |
+| **Implemented** | IM | Validation session ran; feature partially works or has recorded defects |
+| **Known / Missing** | KM | Validation session confirmed the feature is absent (or code exists but is inert from the client's perspective) |
+| **Needed / Unknown** | NU | Server-only system we infer must exist but cannot observe from the client; verified by other means noted in the plan |
 
 ## Overall Completion
 
 | Status | Features | Percentage |
 |--------|----------|-----------|
-| Confirmed Working (CW) | 159 | 35.9% |
-| Needs Test (NT) | 18 | 4.1% |
-| Implemented (IM) | 134 | 30.2% |
-| Known/Missing (KM) | 128 | 28.9% |
-| Needed/Unknown (NU) | 4 | 0.9% |
+| Unverified (UV) | 443 | 100% |
+| Confirmed Working (CW) | 0 | 0% |
+| Needs Test (NT) | 0 | 0% |
+| Implemented (IM) | 0 | 0% |
+| Known/Missing (KM) | 0 | 0% |
+| Needed/Unknown (NU) | 0 | 0% |
 | **Total** | **443** | |
 
-**Code exists (CW + NT + IM)**: 311 features (70.2%)  
-**Missing (KM + NU)**: 132 features (29.8%)  
-**Tested end-to-end (CW)**: 159 features (35.9%)
+**Verified with the client this campaign**: 0 of 443 features (0%).
 
-The gap between "code exists" (70.2%) and "confirmed working" (35.9%) is the story of this quarter: a lot shipped between June and July with unit, live-DB, and wire coverage, but without a live-client run. Trading, ring transport, movement validation, the cover system, and the minigame server are all in that bucket.
+The feature inventory (443 features across 45 systems — 37 gameplay + 8 infrastructure) is unchanged from the [Gap Analysis](gap-analysis.md); only the verdicts have been cleared. As validation sessions complete, this table and the per-system tables below get repopulated with evidence-backed statuses.
 
 ## System Status
 
-### Infrastructure — Solid
+The **Plan** column links each system to its validation procedure in the [Project Status Validation Plan](project-status-validation-plan.md). Notes describe the code footprint on `main` (factual, from the 2026-07-25 audit) — not a claim that any of it works.
 
-| System | Status | Features | Notes |
-|--------|--------|----------|-------|
-| Authentication & login | CW | 12 (6 CW, 4 IM, 2 KM) | Full login flow tested. TLS listener + cert hot-reload added (#566/#577). SHA1 → bcrypt and continuous validation pending |
-| Mercury protocol | CW | 15 (10 CW, 3 IM, 2 KM) | v1 AES-256-CBC + HMAC-MD5 is the client-compatible default. **v2 shipped** (per-packet IV, HKDF-split keys, truncated HMAC-SHA256, downgrade defense, key rotation) but is opt-in and **untested against a live client**. Cumulative ACKs now implemented; piggyback ACKs still missing. The "pcap replay" row moved to KM — see Wireclient |
-| Game data pipeline | CW | 7 (6 CW, 1 KM) | 22 resource categories, 112,626 DB rows, PAK overrides for missions and items. Hot reload pending |
-| Database persistence | CW | 8 (7 CW, 1 KM) | sqlx with compile-time query checks, durable Base→Cell outbox, 224 live-DB regression guards (224 on `main`; the balance is on the unmerged black-market branch). No migration framework yet |
+### Infrastructure
 
-### Core Gameplay — Real Code, Mostly Working
+| System | Status | Features | Plan | Code footprint (unverified) |
+|--------|--------|----------|------|-----------------------------|
+| Authentication & login | UV | 12 | [P0.1](project-status-validation-plan.md#p01--authentication--login) | `crates/services/src/auth/` — SOAP login, shard key exchange, TLS listener + cert hot-reload (#566/#577), login audit |
+| Mercury protocol | UV | 15 | [P0.2](project-status-validation-plan.md#p02--mercury-protocol) | v1 AES-256-CBC + HMAC-MD5 default; v2 opt-in (never exercised against a client); cumulative ACKs; no piggyback ACKs |
+| Game data pipeline | UV | 7 | [P0.3](project-status-validation-plan.md#p03--game-data-pipeline) | 22 resource categories, 112,626 DB rows, PAK overrides for missions and items |
+| Database persistence | UV | 8 | [P0.4](project-status-validation-plan.md#p04--database-persistence) | sqlx with compile-time checks, durable Base→Cell outbox, 224 live-DB regression guards |
 
-| System | Status | Features | Notes |
-|--------|--------|----------|-------|
-| Character creation | NT | 11 (8 NT, 1 IM, 2 KM) | 1,640 lines incl. delete + visuals live-DB tests. SGWGmPlayer now ported (#473/#518). Full client smoke would move to CW |
-| World entry & spaces | CW | 9 (7 CW, 2 IM) | 22,682 lines across 64 files. Castle Cellblock end-to-end. 23 other zones unchecked |
-| Movement & navigation | IM | 9 (1 CW, 8 IM) | **Detour is wired.** Pathfinding, LOS raycast, and navmesh containment all live; four-layer server-side movement validation shipped (#437/#478) |
-| Entity lifecycle (AoI) | IM | 9 (6 CW, 2 IM, 1 KM) | **Downgraded from CW.** Grid-based AoI and witness lifecycle work, but there is a known-open entity-introduction drop (invisible corpse until relog); #582 added instrumentation, awaiting repro |
-| Combat & abilities | IM | 23 (5 CW, 16 IM, 2 KM) | 5,918 lines + 142 tests. PR #420 closed ability+effect gaps. LOS primitive now exists and is enforced NPC-side, not yet on player `useAbility` |
-| Effects & buffs | IM | 13 (4 CW, 7 IM, 2 KM) | Framework CW. Long tail of 3,217 effect rows needs script coverage |
-| Stats | IM | 8 (5 CW, 2 KM, 1 NU) | Stat list + dirty sync + per-level scaling shipped. Equipment bonuses + derived formulas pending |
-| Inventory & items | IM | 13 (9 CW, 2 NT, 2 KM) | 5,272-line dispatcher with stacking (#405), bandolier discipline, Slappack PAK override |
-| Missions | IM | 12 (8 CW, 2 IM, 2 KM) | Content-engine driven. Castle Cellblock end-to-end. Sharing + mission-gated loot pending |
-| Loot | IM | 9 (2 CW, 2 NT, 1 IM, 4 KM) | Take-all + bag drop verified; looter distance re-validated per item (#446). Tables mostly empty; there is **no** per-player eligibility list in Rust at all |
-| Vendors | NT | 8 (2 CW, 5 NT, 1 IM) | 7,267 lines across buyback / purchase / sell / paid_repair / paid_recharge submodules. PL/pgSQL smoke verifies the loop |
+### Core Gameplay
 
-### NPC Systems — Partial
+| System | Status | Features | Plan | Code footprint (unverified) |
+|--------|--------|----------|------|-----------------------------|
+| Character creation | UV | 11 | [P1.1](project-status-validation-plan.md#p11--character-creation) | 1,640 lines incl. delete + visuals; SGWGmPlayer class flip (#473/#518) |
+| World entry & spaces | UV | 9 | [P1.2](project-status-validation-plan.md#p12--world-entry--spaces) | 22,682 lines across 64 files |
+| Movement & navigation | UV | 9 | [P1.3](project-status-validation-plan.md#p13--movement--navigation) | Detour wired: pathfinding, LOS raycast, navmesh containment; four-layer movement validation (#437/#478) |
+| Entity lifecycle (AoI) | UV | 9 | [P2.1](project-status-validation-plan.md#p21--entity-lifecycle-aoi) | Grid-based AoI + witness lifecycle; known-open entity-introduction drop, #582 instrumentation awaiting repro |
+| Combat & abilities | UV | 23 | [P1.4](project-status-validation-plan.md#p14--combat--abilities) | 5,918 lines + 142 tests; PR #420 ability+effect work; LOS enforced NPC-side only |
+| Effects & buffs | UV | 13 | [P1.5](project-status-validation-plan.md#p15--effects--buffs) | Effect framework + common scripts; 3,217 effect rows in DB |
+| Stats | UV | 8 | [P1.6](project-status-validation-plan.md#p16--stats) | Stat list + dirty sync + per-level scaling; equipment bonuses pending |
+| Inventory & items | UV | 13 | [P1.7](project-status-validation-plan.md#p17--inventory--items) | 5,272-line dispatcher with stacking (#405), bandolier discipline, Slappack PAK override |
+| Missions | UV | 12 | [P1.8](project-status-validation-plan.md#p18--missions) | Content-engine driven; sharing + mission-gated loot absent |
+| Loot | UV | 9 | [P1.9](project-status-validation-plan.md#p19--loot) | Take-all + bag drop + per-item distance re-validation (#446); tables mostly empty; no per-player eligibility list |
+| Vendors | UV | 8 | [P1.10](project-status-validation-plan.md#p110--vendors) | 7,267 lines across buyback / purchase / sell / paid_repair / paid_recharge |
 
-| System | Status | Features | Notes |
-|--------|--------|----------|-------|
-| NPC AI & behavior | IM | 22 (6 CW, 11 IM, 5 KM) | **Patrol / wander / investigate / follow / leash / despawn all shipped** (#428) — 1,818 lines split per state. **Cover system implemented** (#429) — 4,095 lines with node loading, scoring, per-node reservation, and flanking. Remaining gaps: hearing radius, mob groups, kill-credit tapping |
-| Spawn system | IM | 23 (7 CW, 11 IM, 4 KM, 1 NU) | 2,448 lines. Castle Cellblock lifecycle CW. Time-of-day, detection radius, and linked sets still pending |
+### NPC Systems
+
+| System | Status | Features | Plan | Code footprint (unverified) |
+|--------|--------|----------|------|-----------------------------|
+| NPC AI & behavior | UV | 22 | [P1.12](project-status-validation-plan.md#p112--npc-ai--behavior) | Patrol / wander / investigate / follow / leash / despawn (#428); cover system (#429, 4,095 lines); no hearing radius, mob groups, kill-credit tapping |
+| Spawn system | UV | 23 | [P1.13](project-status-validation-plan.md#p113--spawn-system) | 2,448 lines; time-of-day, detection radius, linked sets absent |
 
 ### Secondary Systems
 
-| System | Status | Features | Notes |
-|--------|--------|----------|-------|
-| XP & leveling | IM | 11 (9 CW, 2 KM) | Kill-XP pipeline + level scaling + training points CW. Mission XP needs chain authoring; ASP grant on level-up pending |
-| Crafting | KM | 9 (2 IM, 7 KM) | **Phase 1 only** (#427): `CraftingState` + transactional persistence + expertise grants. Every player-facing verb (craft / research / reverse-engineer / alloy / ASP-spend / respec) still logs `UNIMPLEMENTED` |
-| Stargate travel | IM | 10 (2 CW, 5 IM, 3 KM) | Gate passage CW. Multi-player sync + return-trip state + cooldown pending |
-| Chat | NT | 10 (1 NT, 2 IM, 7 KM) | Say/emote/yell broadcast. All 8 canonical channels are registered and auto-joined, but nothing routes traffic on the non-spatial ones; DND flag wired, tells and moderation unported |
-| Trading | IM | 8 (all IM) | **Ported 2026-06** (#438, closes #54): full propose → lock → confirm → atomic item+cash swap, with disconnect unwind and live-DB commit guards. Needs a two-client smoke to reach CW |
-| Ring transport | IM | 7 (all IM) | **Newly tracked.** 2,791 lines — cross-region and cross-world transporter rings with a multi-second Kismet-driven FSM |
-| Contact lists | CW | 10 (all CW) | **Shipped 2026-06-20**, owner-confirmed working (#572/#574/#578/#579/#581/#583). 2,851 lines: schema, list CRUD, member add/remove, and presence fanout for LoggedInStatus / GainLevel / Death / GateTravel. `eventId` is a bitfield (LoggedInStatus = 1) |
+| System | Status | Features | Plan | Code footprint (unverified) |
+|--------|--------|----------|------|-----------------------------|
+| XP & leveling | UV | 11 | [P1.11](project-status-validation-plan.md#p111--xp--leveling) | Kill-XP pipeline + level scaling + training points; `mission.reward_xp` is 0 in all seed rows |
+| Crafting | UV | 9 | [P1.14](project-status-validation-plan.md#p114--crafting) | Phase 1 state layer only (#427); every player-facing verb logs `UNIMPLEMENTED` |
+| Stargate travel | UV | 10 | [P1.15](project-status-validation-plan.md#p115--stargate-travel) | Gate passage code; multi-player sync + return-trip state + cooldown absent |
+| Chat | UV | 10 | [P1.16](project-status-validation-plan.md#p116--chat) | Say/emote/yell broadcast; 8 channels registered/auto-joined but non-spatial ones route nothing; tells unported |
+| Trading | UV | 8 | [P2.2](project-status-validation-plan.md#p22--trading) | Ported 2026-06 (#438): propose → lock → confirm → atomic swap with disconnect unwind |
+| Ring transport | UV | 7 | [P1.17](project-status-validation-plan.md#p117--ring-transport) | 2,791 lines — cross-region and cross-world rings, Kismet-driven FSM |
+| Contact lists | UV | 10 | [P1.18](project-status-validation-plan.md#p118--contact-lists) / [P2.4](project-status-validation-plan.md#p24--contact-presence-fanout) | 2,851 lines: schema, list CRUD, presence fanout (#572–#583) |
 
-### Stub-Only / Largely Missing
+### Expected-Missing Systems
 
-| System | Status | Features | Notes |
-|--------|--------|----------|-------|
-| Organizations / guilds | KM | 15 (all KM) | 200 lines of stubs in cell_methods/organization.rs. DB schema needed |
-| Mail | IM | 13 (8 IM, 4 KM, 1 NU) | 939 lines in base/world_entry/methods/mail/ plus the cell-side handlers. CoD + return-to-sender + new-mail fanout still pending — no match for any of the three in `crates/` |
-| Black market | KM | 10 (9 KM, 1 NU) | Still 94 lines of stubs **on `main`**. A full Phase 1 (sgw_auction schema, create/bid/cancel FSM, expiry sweep, search) exists on the unmerged `feat/571-black-market-phase1` branch and is not counted here |
-| Dueling | KM | 6 (all KM) | Not ported. 5-state machine + 7 defeat conditions to implement |
-| Pets | KM | 7 (all KM) | Not ported. Entity extends spawner mob + Follow AI state |
-| Minigames | IM | 9 (6 IM, 3 KM) | **SmartFox server is in-process, not external** — 2,262 lines incl. the SFS codec and a 250 ms tick loop. Livewire fully implemented; six games run on an accept-anything placeholder; Alignment + GoauldCrystals are open TODOs |
-| Groups / parties | KM | 7 (all KM) | Not ported. `game/src/social/groups.rs` is a 97-line struct with zero call sites |
+The 2026-07-25 audit found these stub-only or absent. The campaign confirms that from the client rather than assuming it.
+
+| System | Status | Features | Plan | Code footprint (unverified) |
+|--------|--------|----------|------|-----------------------------|
+| Organizations / guilds | UV | 15 | [P3.1](project-status-validation-plan.md#p31--organizations--guilds) | 200 lines of stubs; no DB schema |
+| Mail | UV | 13 | [P1.19](project-status-validation-plan.md#p119--mail) / [P2.8](project-status-validation-plan.md#p28--mail-between-players) | 939 lines base-side + cell handlers; CoD, return-to-sender, new-mail fanout absent |
+| Black market | UV | 10 | [P3.2](project-status-validation-plan.md#p32--black-market) | 94 lines of stubs on `main`; full Phase 1 unmerged on `feat/571-black-market-phase1` |
+| Dueling | UV | 6 | [P2.6](project-status-validation-plan.md#p26--dueling) | Not ported |
+| Pets | UV | 7 | [P3.3](project-status-validation-plan.md#p33--pets) | Not ported |
+| Minigames | UV | 9 | [P1.20](project-status-validation-plan.md#p120--minigames) | In-process SmartFox server (2,262 lines); Livewire implemented; six games accept-anything; Alignment + GoauldCrystals TODO |
+| Groups / parties | UV | 7 | [P2.7](project-status-validation-plan.md#p27--groups--parties) | 97-line struct, zero call sites |
 
 ### Systems New Since the Original Audit
 
-These didn't exist in the Python codebase and so weren't tracked. They're substantial in Rust today.
-
-| System | Status | Features | Notes |
-|--------|--------|----------|-------|
-| Content engine | CW | 10 (6 CW, 4 KM) | 7,906 lines in cell/content/ + 3,561 in content-engine/. 99 tests. Drives missions/dialogs/triggers/conditions/actions |
-| Mercury bundle | CW | 5 (5 CW) | ChannelBundle accumulator, AoI-burst bundling, backpressure handling |
-| Observability pipeline | CW | 8 (8 CW) | OTLP exporter, SigNoz overlay, Mercury packet logging, dev-session telemetry, negative-logging convention |
-| Wireclient + chaos | IM | 7 (3 CW, 3 IM, 1 KM) | **Corrected — the previous "7 CW / Tier 3 replay" claim was wrong.** `crates/wireclient` has no UDP socket, no `connect()`, and no replay engine; the socket loop is deferred to an unbuilt "Phase 1.5". What works: the SOAP auth leg, phase-3 handshake byte builders/parsers, and a JSONL trace loader with a diff policy (~30 tests). The 3 CW rows are the Mercury-side LossyTransport, loopback harness, and chaos scenarios, which are real |
-| Discord notifications | CW | 6 (6 CW) | Event routing, channel toggles, embed formatting, panic-hook capture |
-| Tauri admin app + tools | IM | 9 (1 CW, 7 IM, 1 KM) | Admin API, content editor, scene editor, sgw-launcher. Three.js space viewer pending |
+| System | Status | Features | Plan | Code footprint (unverified) |
+|--------|--------|----------|------|-----------------------------|
+| Content engine | UV | 10 | [P1.21](project-status-validation-plan.md#p121--content-engine) | 7,906 lines in cell/content/ + 3,561 in content-engine/; 99 tests |
+| Mercury bundle | UV | 5 | [P5.1](project-status-validation-plan.md#p51--mercury-bundle) | ChannelBundle accumulator, AoI-burst bundling, backpressure |
+| Observability pipeline | UV | 8 | [P0.6](project-status-validation-plan.md#p06--observability-metrics-and-discord) | OTLP exporter, SigNoz overlay, packet logging, dev-session telemetry |
+| Wireclient + chaos | UV | 7 | [P5.2](project-status-validation-plan.md#p52--wireclient--chaos-harness) | SOAP auth leg + handshake byte builders + JSONL trace loader; no UDP socket loop; Mercury-side LossyTransport + loopback harness + chaos scenarios |
+| Discord notifications | UV | 6 | [P0.6](project-status-validation-plan.md#p06--observability-metrics-and-discord) | Event routing, channel toggles, embeds, panic-hook capture |
+| Tauri admin app + tools | UV | 9 | [P5.3](project-status-validation-plan.md#p53--tauri-admin-app--tools) | Admin API, content editor, scene editor, sgw-launcher |
 
 ### Server Infrastructure (Cross-Cutting)
 
-| System | Status | Features | Notes |
-|--------|--------|----------|-------|
-| Session management | IM | 6 (1 CW, 2 IM, 3 KM) | Inactivity timeout works. No reconnection grace or continuous validation |
-| Rate limiting | KM | 5 (1 CW, 4 KM) | Ability cooldowns enforced. Chat / action / trade / login throttling pending |
-| Anti-cheat | IM | 7 (1 CW, 5 IM, 1 KM) | **Four-layer movement validation shipped** (#437/#478): bounds/NaN/Z-clip, speed (warn-only pending calibration), teleport (hard reject + snap-back), navmesh containment. Ability range enforced server-side. Remaining gap: no max-damage cap |
-| Economy | IM | 7 (5 CW, 2 KM) | Vendor/loot/mission cash all flowing. AH listing fees + cash-flow tracking pending |
-| World state | IM | 6 (2 CW, 1 IM, 3 KM) | Outbox CW. Gate/door state + world-state table pending |
-| Scheduler | IM | 4 (1 IM, 3 KM) | Per-chain timers via content engine. No global cron |
-| Admin / GM | IM | 13 (4 CW, 5 IM, 4 KM) | **Teleport and item-grant shipped** via the client's native `/` console — the SGWGmPlayer class flip (#473, merged in #518 on 2026-06-17) makes a GM enter the world as entity class `0x03`. 5,104 lines of GM handlers plus a 4,370-line dev/authoring `.`-console (#523). Access-level gate enforced server-side. Owner-confirmed working 2026-06-20. **Ban/mute is still genuinely missing** |
-| Metrics / telemetry | CW | 7 (4 CW, 3 IM) | Full OTLP pipeline. Per-player and dashboard polish ongoing |
+| System | Status | Features | Plan | Code footprint (unverified) |
+|--------|--------|----------|------|-----------------------------|
+| Session management | UV | 6 | [P0.5](project-status-validation-plan.md#p05--session-management) | Inactivity timeout; no reconnection grace or continuous validation |
+| Rate limiting | UV | 5 | [P2.9](project-status-validation-plan.md#p29--anti-cheat--rate-limiting) | Ability cooldowns only; chat / action / trade / login throttling absent |
+| Anti-cheat | UV | 7 | [P2.9](project-status-validation-plan.md#p29--anti-cheat--rate-limiting) | Four-layer movement validation (#437/#478); server-side ability range; no max-damage cap |
+| Economy | UV | 7 | [P1.22](project-status-validation-plan.md#p122--economy) | Vendor/loot/mission cash paths; AH listing fees + cash-flow tracking absent |
+| World state | UV | 6 | [P5.4](project-status-validation-plan.md#p54--world-state--scheduler) | Outbox; gate/door state + world-state table absent |
+| Scheduler | UV | 4 | [P5.4](project-status-validation-plan.md#p54--world-state--scheduler) | Per-chain timers via content engine; no global cron |
+| Admin / GM | UV | 13 | [P1.23](project-status-validation-plan.md#p123--admin--gm-commands) | 5,104 lines of GM handlers + 4,370-line dev `.`-console (#523); server-side access-level gate; ban/mute absent |
+| Metrics / telemetry | UV | 7 | [P0.6](project-status-validation-plan.md#p06--observability-metrics-and-discord) | Full OTLP pipeline |
 
 ## Content Coverage
 
-| Content Type | Total in DB | Tested/Verified | Notes |
-|--------------|-------------|-----------------|-------|
-| Zones | 91 world definitions | 1 (Castle Cellblock) routinely; some others manually | Multi-zone smoke is on the critical path |
-| Missions | 1,041 | ~5 in Castle Cellblock | Content engine drives mission chains generically |
-| Abilities | 1,887 | many | Three-bucket selection landed (#368), PR #420 closed ability gaps |
-| Items | 6,060 | ~30 routinely | Slappack stacking + bandolier discipline verified |
-| Effects | 3,217 | framework + most-common scripts | Long tail still needs content authoring |
-| NPCs | 153 templates | ~12 routinely | Castle Cellblock NPCs + Castle drone encounter |
-| Dialog trees | 5,406 | ~10 | Castle Cellblock dialogs verified |
-| Stargates | 29 | Castle ↔ neighbor smoke | Multi-player sync pending |
-| Crafting blueprints | 499 | 0 | Blueprint ids persist per player, but no crafting verb consumes them yet |
-| Loot tables | defined | mostly empty | Algorithm verified; content sparse |
+Content-coverage claims are cleared along with system statuses. The DB-side totals are facts; the "verified" column restarts at zero.
 
-## Known Issues
+| Content Type | Total in DB | Verified this campaign | Plan |
+|--------------|-------------|------------------------|------|
+| Zones | 91 world definitions | 0 | [P4](project-status-validation-plan.md#phase-4--multi-zone-sweep) |
+| Missions | 1,041 | 0 | [P1.8](project-status-validation-plan.md#p18--missions) |
+| Abilities | 1,887 | 0 | [P1.4](project-status-validation-plan.md#p14--combat--abilities) |
+| Items | 6,060 | 0 | [P1.7](project-status-validation-plan.md#p17--inventory--items) |
+| Effects | 3,217 | 0 | [P1.5](project-status-validation-plan.md#p15--effects--buffs) |
+| NPCs | 153 templates | 0 | [P1.12](project-status-validation-plan.md#p112--npc-ai--behavior) |
+| Dialog trees | 5,406 | 0 | [P1.21](project-status-validation-plan.md#p121--content-engine) |
+| Stargates | 29 | 0 | [P1.15](project-status-validation-plan.md#p115--stargate-travel) |
+| Crafting blueprints | 499 | 0 | [P1.14](project-status-validation-plan.md#p114--crafting) |
+| Loot tables | defined (mostly empty) | 0 | [P1.9](project-status-validation-plan.md#p19--loot) |
 
-### AoI entity-introduction drop (open)
+## Observations Carried Forward
 
-A witness can miss an entity introduction entirely — the reproducible case is a Castle Cellblock GuardBody corpse that stays invisible until the player relogs. The 2026-06-20 colo repro **disproved** the address-gate hypothesis (the expected warnings never fired), which puts the fault downstream in create + appearance delivery. PR #582 added `aoi.create_emit` / `aoi.create_send_failed` seams to localise it on the next repro. This is why Entity Lifecycle (AoI) is no longer CW.
+These findings from the 2026-07-25 edition are kept as **candidate repro cases and watch items** for the campaign — they are inputs to test sessions, not current status claims. Each has a re-check step in the validation plan.
 
-### Combat formula calibration
+- **AoI entity-introduction drop** — a witness can miss an entity introduction entirely (reproducible case: a Castle Cellblock GuardBody corpse invisible until relog). #582 added `aoi.create_emit` / `aoi.create_send_failed` seams. Re-check in [P2.1](project-status-validation-plan.md#p21--entity-lifecycle-aoi).
+- **Combat formula calibration** — no diminishing returns on stats; armor/resistance approximate; AoE falloff unverified; LOS enforced on the NPC firing path but not on player `useAbility`. Re-check in [P1.4](project-status-validation-plan.md#p14--combat--abilities).
+- **Mercury gaps** — no piggyback ACKs; no reconnection grace; v2 encryption never exercised against a live client. Re-check in [P0.2](project-status-validation-plan.md#p02--mercury-protocol) / [P0.5](project-status-validation-plan.md#p05--session-management).
+- **Effect content gap** — the long tail of 3,217 effect rows lacks script coverage. Sampled in [P1.5](project-status-validation-plan.md#p15--effects--buffs).
+- **Crafting half-ported** — Phase 1 state layer only; every player-facing verb logs `UNIMPLEMENTED`. Confirmed from the client in [P1.14](project-status-validation-plan.md#p114--crafting).
+- **Seeded cinematic data never reaches the client** — `sequences_nvp` seeds 2,042 rows but all six `onSequence` emit sites hardcode a NameValuePairs count of 0. Watch item in [P1.21](project-status-validation-plan.md#p121--content-engine).
+- **Mission XP** — `mission.reward_xp` is 0 in all seed rows. Re-check in [P1.11](project-status-validation-plan.md#p111--xp--leveling).
+- **Single-zone coverage** — only Castle Cellblock was ever routinely smoked; 23 other populated spaces unchecked. Addressed by [Phase 4](project-status-validation-plan.md#phase-4--multi-zone-sweep).
 
-Combat works at a basic level but several formulas are still calibration items:
+## Critical Path
 
-- No diminishing returns on stats (NU)
-- Armor / resistance calibration vs. original is approximate
-- AoE damage falloff curves need verification (PR #420 landed AoE framework)
-- Line-of-sight is enforced on the NPC firing path but **not** on player `useAbility` (which checks range only)
+The pre-reset critical path and roadmap are suspended until the campaign produces evidence-backed statuses. The current critical path **is the campaign itself**:
 
-### Mercury protocol gaps
+1. **Phase 0** — infrastructure smoke (login through world entry, observability capture working)
+2. **Phase 1** — single-client core-loop verification in Castle Cellblock
+3. **Phase 2** — two-client verification (AoI, trading, chat, presence, anti-cheat)
+4. **Phase 3** — expected-missing confirmation sweep
+5. **Phase 4** — multi-zone sweep across the other populated spaces
+6. **Phase 5** — server-side / harness systems not observable from the client
 
-The transport layer works; the remaining BigWorld gaps are narrower than they were:
-
-- Cumulative ACKs are now implemented (they drain the TX window and the unsent queue in one pass)
-- No piggyback ACKs
-- Reconnection grace period missing (instant disconnect = lost session)
-- Mercury v2 encryption ships but no client speaks it — it is back-compatible and opt-in, and **has never been exercised against a live client**
-
-### Effect content gap
-
-The framework is CW (PR #420). The long tail of the 3,217 effect rows still needs script coverage — the most common scripts are wired; the niche ones are not. `cell/effects/scripts.rs` has grown to 1,648 lines.
-
-### Crafting half-ported
-
-Phase 1 (#427) landed the state layer: disciplines, blueprints, applied-science points, and racial paradigm levels persist transactionally, and expertise can be granted. Every player-facing crafting verb still logs `UNIMPLEMENTED`. Trading, previously listed alongside crafting here, was ported in #438.
-
-### Seeded cinematic data never reaches the client
-
-`sequences_nvp` seeds 2,042 NameValuePair rows (sound-bank names and similar), but no Rust code reads the table — all six `onSequence` emit sites hardcode a NameValuePairs count of 0. Cinematics fire, but without their authored parameters.
-
-### Single-zone coverage
-
-Only Castle Cellblock is routinely smoked end-to-end. The other 23 spaces have content but no continuous verification.
-
-### Large June/July landings await client verification
-
-Trading, ring transport, the cover system, movement validation, and the in-process minigame server all shipped with unit, live-DB, and wire-format coverage but no live-client run. They account for most of the 134 IM features.
-
-## Critical Path for Playability
-
-Re-ranked 2026-07-25. NPC navigation states and the trading port are **done** and have left this list.
-
-1. **Effect-script content coverage** — framework CW (#420); the 3,217 effect rows need script authoring for the long tail
-2. **AoI entity-introduction drop** — needs a repro against the #582 instrumentation, not more code
-3. **Mission XP** — `mission.reward_xp` is 0 in all seed rows; chain-side authoring + a `GrantXP` executor arm
-4. **Crafting Phase 2** — the crafting verbs on top of the Phase 1 state layer
-5. **Multi-zone end-to-end** — 23 spaces unchecked
-6. **Client verification of the June/July landings** — trading, ring transport, cover, movement validation, minigames
-
-Quality-of-life items (organizations, mail polish, black market merge, dueling, pets, remaining minigame ports, groups) follow the above and can be picked up independently. Contact lists and GM tooling have shipped.
-
-## Roadmap
-
-### Near-term — close critical-path gaps
-
-- Effect-script coverage for the most-played encounters
-- Reproduce and fix the AoI entity-introduction drop against the #582 seams
-- Mission XP chain-authoring + a `GrantXP` executor arm
-- Multi-zone routine smoke
-- Client smokes for the June/July landings (trading, ring transport, cover, movement validation)
-
-### Medium-term — restore retired subsystems
-
-- Crafting Phase 2 (the verbs, on top of the shipped state layer)
-- Org / guild lifecycle + schema
-- Mail polish (CoD, return-to-sender, new-mail fanout)
-- Merge `feat/571-black-market-phase1`
-
-### Long-term — finish-out
-
-- Dueling + pets + groups + the remaining minigame ports (in any order)
-- Server infrastructure: rate limiting, damage sanity checking, promoting speed validation from warn-only to enforcing, reconnection grace
-- Ban/mute on top of the shipped GM command surface
-- Mercury v2 verification against a patched client
-- Three.js space viewer (Phase 2 of the admin UI)
+Once the tables above are repopulated, the roadmap gets re-derived from what the campaign actually found. The 2026-07-25 roadmap is in git history for comparison.
 
 ## Related Documents
 
-- [Gap Analysis](gap-analysis.md) — per-feature status tracking (source of truth)
+- [Project Status Validation Plan](project-status-validation-plan.md) — **the campaign playbook**: environment setup, per-system client test procedures, verdict rules, evidence requirements
+- [Gap Analysis](gap-analysis.md) — per-feature inventory (source of truth for the 443-feature list; statuses there are the last code audit, pending the same re-verification)
 - [Gameplay Dashboard](gameplay/README.md) — per-system gameplay breakdowns
 - [Content Engine](content/content-engine.md) — the data-driven runtime
-- [NPC AI](gameplay/npc-ai.md) — AI state machine and threat system
-- [Spawn System](gameplay/spawn-system.md) — spawn region/set architecture
-- [Loot System](gameplay/loot-system.md) — loot generation algorithm
-- [Progression](gameplay/progression-system.md) — XP, leveling, training points
-- [Character Creation](gameplay/character-creation.md) — character creation flow
-- [Server Infrastructure Proposals](architecture/server-infrastructure-proposals.md) — the five unbuilt server-only systems (session resume, rate limiting, world-state persistence, scheduler, economy instrumentation)
+- [Known Issues](known-issues.md) — catalogue of known bugs
+- [Multiplayer / LAN Setup](multiplayer.md) — two-client environment for Phase 2
 - [../README.md](../README.md) — high-level project status

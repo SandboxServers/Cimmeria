@@ -66,7 +66,8 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Slash Commands](commands.md) | Player-friendly guide to all 266 in-game `/commands` (the real typed names captured live), with what each does, whether it works on our server yet, access level, parameters, and examples |
 | [Connection Flow](connection-flow.md) | End-to-end login and world entry sequence |
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
-| [Project Status](project-status.md) | What works, what is left, and the roadmap |
+| [Project Status](project-status.md) | What works, what is left, and the roadmap. **Statuses cleared 2026-08-02** pending the human client re-verification campaign |
+| [Project Status Validation Plan](project-status-validation-plan.md) | Playbook for the re-verification campaign: environment setup, phased per-system client test procedures, verdict rules, evidence requirements |
 | [Gap Analysis](gap-analysis.md) | Comprehensive system-by-system gap analysis with per-feature status tracking |
 | [Known Issues](known-issues.md) | Catalogue of known bugs (client/shared and server-side) with severity, status, and root cause |
 | [Multiplayer / LAN Setup](multiplayer.md) | `BASE_EXTERNAL` env var, LAN configuration, multi-machine play |
