@@ -102,13 +102,15 @@ This guide is the playbook for writing tests that survive review and catch real 
 
 ### 6. Chain-replay tests
 
-**Where**: `crates/services/src/cell/content/chain_replay_tests/` (47 tests).
+**Where**: `crates/services/src/cell/content/chain_replay_tests/` (51 tests).
 
 **For**: Content chains in `db/resources/Content/Seed/space_*_chains.sql` — guarding against converter bugs (auto-generated `accept_mission` where `complete_mission` was meant), shadow conditions, missing `interact_tag`/`set_interaction_type` pairings.
 
 **Patterns to follow:**
 - Phrase the `expect` so the failure points at the right component: "chain X must exist *and* successfully load" (covers both the seed and the loader). PR #173 review insisted on this.
 - When the loader rejects a chain for an unknown trigger/action, the replay test must distinguish "row missing" from "row present but skipped" — those have different fixes.
+- **If the thing you changed is an executor arm, resolving is not enough.** A resolve-only replay passes identically whether the executor has a match arm or drops the action in its `other =>` catch-all — that is precisely how `move_entity`’s five seeded rows no-opped in production while the suite stayed green. Push the `ResolvedActions` through `executor::execute_actions` and assert on the emitted `CellToBaseMsg`. See `chain_replay_tests/sgc_w1_move_entity.rs`.
+- **A verb with zero seed rows still gets a replay test.** Insert a sentinel chain (`0x7000_xxxx` chain id, per the live-DB rules above), load it through `load_single_chain_for_test`, then delete by exact id *before* asserting so a failing run cannot leave a live chain registered in the shared DB. See `chain_replay_tests/grant_xp.rs`.
 
 ### 7. C++ legacy + Python script tests
 
