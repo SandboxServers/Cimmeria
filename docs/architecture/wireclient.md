@@ -254,11 +254,18 @@ New corpora are added by:
 
 ## Risks & open questions
 
-1. **Server-process lifecycle in tests.** Phase 1.5 must define how a
-   test spawns + reaps `cimmeria-server`. Today the auth smoke runs the
-   service in-process; the full server may need the same treatment or a
-   `Command::spawn` fallback. Crash safety + port collisions defined
-   *before* the harness lands, not after.
+1. **Server-process lifecycle in tests.** — **RESOLVED.** Settled by
+   `crates/server-harness/` (`cimmeria-server-harness`); see
+   [session-bootstrap.md](session-bootstrap.md) for the full contract.
+   Readiness is an observed condition — `GET /api/config/status` reporting
+   `auth`/`base`/`cell` healthy — never a sleep. Port collisions are handled
+   by reserving all six ports from the OS and passing them by environment
+   (`MINIGAME_PORT` was added for this; it was previously not overridable and
+   alone made concurrent instances impossible). Crash safety is layered:
+   `Drop` kill+reap covers panic unwind, console/process-group delivery gives
+   the server a *graceful* Ctrl-C shutdown, and a Windows Job Object /
+   Linux `PR_SET_PDEATHSIG` layer covers a hard-killed parent. Phase 1.5 can
+   consume it as a dev-dependency.
 2. **Dissector handshake quirk.** The Python dissector splits the
    unencrypted `baseAppLogin` and the encrypted `BASEMSG_REPLY_MESSAGE`
    bodies into spurious sub-messages because the message walker treats

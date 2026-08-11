@@ -117,6 +117,37 @@ pub struct ServerConfig {
     /// default v1 server-wide version, this setting has no effect until v2 is
     /// selected.
     pub mercury_key_rotation_secs: u64,
+
+    /// Opt-in automated-test bootstrap: the character id to auto-select once
+    /// the character list has been delivered, instead of waiting for the
+    /// client's `playCharacter` (`0xC4`) message.
+    ///
+    /// `None` (the default) disables autoplay entirely. Setting it is **not
+    /// sufficient on its own** — autoplay additionally requires
+    /// [`developer_mode`](ServerConfig::developer_mode). Two independent
+    /// opt-ins are required so a production config that never sets
+    /// `DEVELOPER_MODE` cannot enable this by accident even if the id leaks
+    /// into the process environment.
+    ///
+    /// Autoplay skips *client input*, never a server-side gate. The session
+    /// must already be authenticated (autoplay runs off the same
+    /// `ConnectedClientState` the login flow creates), and the id is
+    /// validated against the authenticated account's own character list
+    /// before it is used — a configured id belonging to another account is
+    /// refused, not honoured.
+    pub autoplay_player_id: Option<i32>,
+
+    /// Optional world guard for autoplay. When set, autoplay refuses to
+    /// engage unless the selected character's persisted `world_location`
+    /// matches this string (compared ASCII-case-insensitively), e.g.
+    /// `Castle_CellBlock`.
+    ///
+    /// This is a **guard, not a teleport.** It will not move a character into
+    /// the named world; it only refuses to auto-enter the wrong one. Spawn
+    /// position still comes from the character's persisted location exactly
+    /// as it does for a human-driven `playCharacter`, so autoplay cannot
+    /// diverge from the normal world-entry path. `None` disables the check.
+    pub autoplay_expected_world: Option<String>,
 }
 
 impl Default for ServerConfig {
@@ -153,6 +184,11 @@ impl Default for ServerConfig {
             // One hour. Only takes effect on v2 sessions; v1 sessions never
             // rotate regardless of this value.
             mercury_key_rotation_secs: 3600,
+            // Autoplay is a developer/CI bootstrap aid and must stay off in
+            // every shipped configuration. `None` here is one of the two
+            // gates; `developer_mode: false` above is the other.
+            autoplay_player_id: None,
+            autoplay_expected_world: None,
         }
     }
 }
@@ -251,6 +287,23 @@ mod tests {
         // up without a server restart out of the box.
         let config = ServerConfig::default();
         assert_eq!(config.auth_tls_reload_interval_secs, 30);
+    }
+
+    #[test]
+    fn default_config_autoplay_is_disabled_on_both_gates() {
+        // Autoplay must be impossible to reach from a default config. Both
+        // gates are pinned here: the character id is unset AND developer_mode
+        // is off. A change to either default alone should not silently arm
+        // the auto-world-entry path, so this guard asserts both rather than
+        // just the id.
+        let config = ServerConfig::default();
+        assert_eq!(config.autoplay_player_id, None);
+        assert_eq!(config.autoplay_expected_world, None);
+        assert!(
+            !config.developer_mode,
+            "developer_mode is autoplay's second gate; defaulting it on would \
+             reduce autoplay to a single-variable opt-in"
+        );
     }
 
     #[test]

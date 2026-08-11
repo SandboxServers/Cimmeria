@@ -70,6 +70,12 @@ impl BaseService {
             .parse()
             .unwrap_or_else(|_| SocketAddr::from(([0, 0, 0, 0], config.base_port)));
 
+        // Snapshot autoplay settings into the process-global the world-entry
+        // path reads. Done here because this is where config crosses into the
+        // base service; `init` is set-once, so repeated construction in tests
+        // can't fight over the value.
+        super::autoplay::init(super::autoplay::AutoplaySettings::from_config(config));
+
         Self {
             listener_addr,
             is_running: false,

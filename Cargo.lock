@@ -1021,6 +1021,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-server-harness"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde_json",
+ "tracing",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "cimmeria-services"
 version = "0.1.0"
 dependencies = [

@@ -46,8 +46,8 @@ pub(crate) async fn handle_enable_entities(
     account_id: u32,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     db_pool: &Option<Arc<PgPool>>,
-    _entity_manager: &Arc<Mutex<EntityManager>>,
-    _cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     _entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Peek at pending world entry without consuming it: we only commit (take)
@@ -188,6 +188,50 @@ pub(crate) async fn handle_enable_entities(
 
     tracing::info!(%addr, "Phase 4 complete -- char list sent");
 
+    // ── Autoplay: synthesise the character-select input ──────────────────
+    // Normally the client now shows the select screen and eventually sends
+    // `playCharacter` (0xC4). When autoplay is armed we call the very same
+    // handler that 0xC4 dispatches to, with the same arguments, so world
+    // entry proceeds down one code path regardless of who chose the
+    // character.
+    //
+    // `characters` is the list for THIS authenticated account, which is what
+    // makes the ownership check inside `decide` an authorization gate rather
+    // than a formality. Placed after the char-list send (not instead of it)
+    // so the wire sequence a client would observe is unchanged.
+    match crate::base::autoplay::decide(crate::base::autoplay::settings(), &characters) {
+        crate::base::autoplay::AutoplayDecision::Disabled => {}
+        crate::base::autoplay::AutoplayDecision::Refused { reason } => {
+            tracing::warn!(
+                %addr,
+                account_id,
+                reason,
+                "Autoplay armed but refused for this session; falling back to \
+                 client-driven character select"
+            );
+        }
+        crate::base::autoplay::AutoplayDecision::Engage { player_id } => {
+            tracing::info!(
+                %addr,
+                account_id,
+                player_id,
+                "Autoplay: auto-selecting character (no client playCharacter needed)"
+            );
+            super::handle_play_character(
+                transport,
+                addr,
+                key,
+                account_id,
+                player_id,
+                connected,
+                db_pool,
+                entity_manager,
+                cell_tx,
+            )
+            .await?;
+        }
+    }
+
     Ok(())
 }
 
@@ -270,6 +314,97 @@ mod tests {
         assert_eq!(entity_manager.lock().unwrap().entity_count(), 0);
         assert!(entity_to_addr.lock().unwrap().is_empty());
         assert!(transport.is_empty(), "early return must not send UDP");
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Autoplay inertness guard.
+    //
+    // Autoplay hooks the char-list branch: when armed it calls
+    // `handle_play_character` itself instead of waiting for the client's
+    // 0xC4. When NOT armed — every shipped configuration — the handler
+    // must behave exactly as it did before autoplay existed.
+    //
+    // This is a fan-out byte test because the failure mode is an extra
+    // packet on the wire: an autoplay hook that ignored its gate would
+    // emit RESET_ENTITIES immediately after the char list, tearing down
+    // the entity tree of a client still sitting on the select screen.
+    // Asserting the packet count catches that; asserting only DB state
+    // would not.
+    // ──────────────────────────────────────────────────────────────────
+
+    /// With autoplay unconfigured (the default, and the only state a
+    /// shipped config can be in), the char-list branch must emit exactly
+    /// one packet — the char list — and must not begin world entry.
+    ///
+    /// The two assertions catch different regressions: the packet count
+    /// catches an unguarded `handle_play_character` call, and the
+    /// `world_entry_sent` latch catches one whose send failed silently but
+    /// still mutated session state.
+    #[tokio::test]
+    async fn char_list_branch_is_inert_when_autoplay_is_disabled() {
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+        let addr: SocketAddr = "127.0.0.1:55701".parse().unwrap();
+
+        // Fresh session at character select: char list not yet sent, no
+        // pending world entry (so we take the char-list branch, not the
+        // create-player branch).
+        let mut client = crate::test_support::test_default_connected_client_state();
+        client.char_list_sent = false;
+        client.pending_player_entity_id = None;
+        client.pending_world_entry = None;
+        client.world_entry_sent = false;
+
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new({
+                let mut m = HashMap::new();
+                m.insert(addr, client);
+                m
+            }));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+
+        // Autoplay is never armed here: `autoplay::init` is only called by
+        // BaseService::new, and no test config sets an autoplay id, so
+        // `settings()` yields the disabled default.
+        assert!(
+            !crate::base::autoplay::settings().is_armed(),
+            "precondition: autoplay must be disarmed for this guard to mean anything"
+        );
+
+        handle_enable_entities(
+            &dyn_transport,
+            addr,
+            [0u8; 32],
+            1,
+            &connected,
+            &None,
+            &entity_manager,
+            &None,
+            &entity_to_addr,
+        )
+        .await
+        .expect("char-list branch returns Ok");
+
+        assert_eq!(
+            transport.len(),
+            1,
+            "exactly one packet (the char list) must go out with autoplay \
+             disabled; a second packet means world entry was started without \
+             the client asking for it"
+        );
+
+        let clients = connected.lock().unwrap();
+        let c = clients.get(&addr).unwrap();
+        assert!(c.char_list_sent, "the char list itself must still be sent");
+        assert!(
+            !c.world_entry_sent,
+            "world entry must NOT have been started — autoplay is disabled"
+        );
+        assert!(
+            c.pending_world_entry.is_none(),
+            "no world-entry state may be staged while autoplay is disabled"
+        );
     }
 
     // ──────────────────────────────────────────────────────────────────

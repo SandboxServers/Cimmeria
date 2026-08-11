@@ -145,6 +145,7 @@ flowchart TD
     %% standalone crates with no intra-workspace dependencies
     subgraph standalone["Standalone (no intra-workspace deps)"]
         supervisor
+        serverHarness["server-harness"]
         clientTelemetry["client-telemetry"]
         launcher["launcher (sgw-launcher)"]
         contentEditor["content-editor (tool)"]
@@ -183,6 +184,7 @@ Cimmeria/
 │   ├── admin-api/          REST administration API
 │   ├── supervisor/         Process supervision and service lifecycle
 │   ├── server/             Binary entry point (cargo run -p cimmeria-server)
+│   ├── server-harness/     Spawn/readiness/reap harness for integration tests
 │   ├── discord/            Discord notification dispatch
 │   ├── observability/      Metrics facade over the OpenTelemetry SDK
 │   ├── wireclient/         Headless test client (Tier 3)
@@ -214,6 +216,7 @@ Cimmeria/
 | `cimmeria-discord` | Discord notification dispatch (server + colo events) |
 | `cimmeria-observability` | Metrics facade over the OpenTelemetry SDK (OTLP) |
 | `cimmeria-wireclient` | Headless Tier 3 test client (SOAP + Mercury + pcap replay) |
+| `cimmeria-server-harness` | Spawn/readiness/reap harness for the server process in integration tests |
 | `tokio` | Async runtime and networking |
 | `axum` | HTTP/REST for auth and admin API |
 | `sqlx` | PostgreSQL async driver |

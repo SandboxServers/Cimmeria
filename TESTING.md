@@ -254,6 +254,36 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 
 ---
 
+## Spawning a real server in a test
+
+Tests that need a live server process — a bound Mercury UDP socket, a real
+auth endpoint, the actual world-entry path — use
+[`cimmeria-server-harness`](crates/server-harness/) as a dev-dependency rather
+than hand-rolling `Command::spawn`. It settles the three things that make
+hand-rolled server spawning flaky, and the [session-bootstrap
+ADR](docs/architecture/session-bootstrap.md) documents the contract.
+
+- **Never gate on a sleep.** `ServerHarness::start` polls
+  `GET /api/config/status` until `auth`/`base`/`cell` report healthy, and
+  fails fast if the server exits during startup. A `thread::sleep(5)` before
+  connecting is not an acceptable substitute — it is both slower and flakier.
+- **Never hard-code ports.** The harness reserves all six from the OS and
+  passes them by environment, so concurrent runs don't collide. A test that
+  hard-codes 32832 breaks the moment two run at once.
+- **Let the guard reap.** `ServerHarness` kills and reaps on `Drop`, including
+  during panic unwind, so a failing test cannot leak a server. Don't add
+  manual cleanup at the end of the test body — it won't run on the failure
+  path, which is exactly when it matters.
+- **Skip, don't fail, when the binary is missing.** `HarnessError::ServerBinaryNotFound`
+  means the developer hasn't run `cargo build -p cimmeria-server`. Treat it as
+  a skip, the same discipline the pcap-replay fixtures use.
+
+Prefer a lower tier when it suffices: a fan-out byte test (type 8) or Mercury
+session test (type 9) is faster and more precise than spawning a process. Use
+the harness only when the thing under test genuinely needs a whole server.
+
+---
+
 ## Choosing a test type
 
 | If you are testing… | Use… |
