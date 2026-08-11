@@ -83,3 +83,24 @@ ALTER TABLE ONLY sgw_contact_list
 ALTER TABLE ONLY sgw_contact_list_member
     ADD CONSTRAINT sgw_contact_list_member_pkey PRIMARY KEY (list_id, player_name);
 
+--
+-- Name: sgw_organizations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_organizations
+    ADD CONSTRAINT sgw_organizations_pkey PRIMARY KEY (org_id);
+
+--
+-- Name: sgw_organization_ranks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_organization_ranks
+    ADD CONSTRAINT sgw_organization_ranks_pkey PRIMARY KEY (org_id, rank_value);
+
+--
+-- Name: sgw_organization_members_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY sgw_organization_members
+    ADD CONSTRAINT sgw_organization_members_pkey PRIMARY KEY (org_id, player_id);
+

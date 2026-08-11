@@ -27,3 +27,11 @@ CREATE INDEX "sgw_inventory_Index01" ON sgw_inventory USING btree (character_id)
 
 CREATE INDEX sgw_contact_list_member_player_name_idx ON sgw_contact_list_member USING btree (player_name);
 
+--
+-- Index: sgw_organization_members_player_id_idx
+-- Supports "which orgs does this player belong to?" queries on login
+-- and character-deletion cascades that walk from player_id.
+--
+
+CREATE INDEX sgw_organization_members_player_id_idx ON sgw_organization_members USING btree (player_id);
+

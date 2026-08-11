@@ -238,6 +238,10 @@ pub struct SpaceManager {
     /// `patrol_path` immediately; the durable copy is the recorded
     /// `point_set_points` seed SQL. Path id == `point_sets.set_id`.
     pub patrol_authoring: HashMap<i32, Vec<cimmeria_common::Vector3>>,
+    /// Ephemeral squad state for this space.  `OrgType::Squad` is not
+    /// persisted; the entire `SquadManager` is discarded with the space.
+    /// See `crate::cell::social::squad_manager`.
+    pub squads: super::social::squad_manager::SquadManager,
 }
 
 impl SpaceManager {
@@ -279,6 +283,7 @@ impl SpaceManager {
             authoring_changes: HashMap::new(),
             autosave_spawns: HashSet::new(),
             patrol_authoring: HashMap::new(),
+            squads: super::social::squad_manager::SquadManager::new(),
         }
     }
 }

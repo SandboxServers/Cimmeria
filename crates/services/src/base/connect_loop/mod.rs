@@ -19,6 +19,7 @@ use cimmeria_mercury::encryption::{EncryptionVersion, MercuryEncryption};
 use cimmeria_mercury::packet::{FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE};
 use cimmeria_mercury::transport::{BidirectionalTransport, Transport};
 
+use crate::base::organization::authority::OrgAuthority;
 use crate::cell::messages::BaseToCellMsg;
 
 use super::helpers::to_hex;
@@ -52,6 +53,7 @@ pub(crate) async fn run_connect_loop(
     entity_manager: Arc<Mutex<EntityManager>>,
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
     enc_version: EncryptionVersion,
+    org_authority: Option<Arc<tokio::sync::Mutex<OrgAuthority>>>,
 ) {
     let mut buf = [0u8; 4096];
 
@@ -76,6 +78,7 @@ pub(crate) async fn run_connect_loop(
                     &cell_tx,
                     &entity_to_addr,
                     enc_version,
+                    &org_authority,
                 )
                 .await
                 {
@@ -128,6 +131,7 @@ async fn handle_datagram(
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     enc_version: EncryptionVersion,
+    org_authority: &Option<Arc<tokio::sync::Mutex<OrgAuthority>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if raw.is_empty() {
         return Ok(());
@@ -170,6 +174,7 @@ async fn handle_datagram(
             entity_manager,
             cell_tx,
             entity_to_addr,
+            org_authority,
         )
         .await;
     }

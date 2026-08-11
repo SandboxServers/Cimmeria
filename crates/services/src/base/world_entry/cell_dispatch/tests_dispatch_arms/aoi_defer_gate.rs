@@ -49,6 +49,7 @@ async fn entered_aoi_pre_client_ready_buffers_and_skips_wire() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -106,6 +107,7 @@ async fn entered_aoi_post_client_ready_emits_two_packets_to_witness_addr() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -152,6 +154,7 @@ async fn left_aoi_pre_client_ready_buffers_and_skips_wire() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -197,6 +200,7 @@ async fn entity_moved_pre_client_ready_drops_silently_without_buffering() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -241,6 +245,7 @@ async fn entity_method_call_pre_client_ready_buffers_and_skips_wire() {
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 
@@ -294,6 +299,7 @@ async fn entity_method_call_batch_pre_ready_unrolls_into_individual_buffer_entri
         &None,
         "127.0.0.1",
         7777,
+        &None,
     )
     .await;
 

@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
+use crate::base::organization::authority::OrgAuthority;
 use crate::cell::messages::BaseToCellMsg;
 
 use super::super::helpers::send_bundle_to_witness_reliable;
@@ -42,6 +43,7 @@ pub(crate) async fn handle_on_client_ready(
     transport: &Arc<dyn Transport>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<sqlx::PgPool>>,
+    org_authority: &Option<Arc<tokio::sync::Mutex<OrgAuthority>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Cross-world transition fallback: the SGW client sends `mapLoaded`
     // (cell method 0x99) on initial logins and same-instance respawns,
@@ -383,6 +385,20 @@ pub(crate) async fn handle_on_client_ready(
     )
     .await;
 
+    // Mark the player online in OrgAuthority so broadcast_to_org fanout
+    // targets include this player from this point forward.
+    // Runs after contact-list push so the entity is fully live.
+    // player_id comes from `pending.player_id` (set during playCharacter).
+    if let Some(ref auth_arc) = org_authority {
+        let mut auth = auth_arc.lock().await;
+        auth.on_player_login(pending.player_id, entity_id);
+        tracing::debug!(
+            entity_id,
+            player_id = pending.player_id,
+            "OrgAuthority: player marked online"
+        );
+    }
+
     // Fan out online status (CM 89, eventId=LoggedInStatus, data=1) to all
     // online players who have this character in any of their contact lists.
     // Runs after the list-push so the player is fully set up before watchers
@@ -538,6 +554,7 @@ mod tests {
             &transport,
             &entity_to_addr,
             &None,
+            &None, // org_authority
         )
         .await;
 
@@ -635,6 +652,7 @@ mod tests {
             &transport,
             &entity_to_addr,
             &db_pool,
+            &None, // org_authority
         )
         .await;
 

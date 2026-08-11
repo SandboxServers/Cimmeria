@@ -57,6 +57,7 @@ async fn logoff_warns_when_cell_to_base_channel_closed_for_both_sends() {
         &cell_tx,
         &entity_to_addr,
         &None, // db_pool — None suppresses contact-list fanout in tests
+        &None, // org_authority — None in tests
     )
     .await
     .expect("logOff dispatch should not propagate Err for closed cell_tx");
@@ -133,6 +134,7 @@ async fn unhandled_base_method_warns_with_msg_id_and_base_index() {
         &cell_tx,
         &entity_to_addr,
         &None, // db_pool
+        &None, // org_authority
     )
     .await
     .expect("unhandled method must not propagate Err — just log");
@@ -192,6 +194,7 @@ async fn perf_stats_logs_at_debug_not_warn() {
         &cell_tx,
         &entity_to_addr,
         &None, // db_pool
+        &None, // org_authority
     )
     .await
     .expect("perfStats dispatch must not propagate Err");
@@ -250,6 +253,7 @@ async fn element_data_request_logs_at_debug_not_warn() {
         &cell_tx,
         &entity_to_addr,
         &None, // db_pool
+        &None, // org_authority
     )
     .await
     .expect("elementDataRequest dispatch must not propagate Err");

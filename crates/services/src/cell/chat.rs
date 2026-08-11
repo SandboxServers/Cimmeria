@@ -109,6 +109,9 @@ pub async fn handle_chat_message(
             )
             .await;
         }
+        CHAN_SQUAD => {
+            broadcast_to_squad(entity_id, speaker_name, speaker_flags, text, tx, space_mgr).await;
+        }
         _ => {
             tracing::debug!(
                 entity_id,
@@ -179,6 +182,52 @@ async fn broadcast_to_witnesses(
             args,
         })
         .await;
+}
+
+/// Broadcast a chat message to all squad members of the sender.
+///
+/// Sends `onPlayerCommunication` to every squad member entity_id (including
+/// the sender, so they see their own message echoed with squad formatting).
+/// If the sender is not in a squad the message is silently dropped.
+async fn broadcast_to_squad(
+    sender_id: u32,
+    speaker_name: &str,
+    speaker_flags: u8,
+    text: &str,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let org_id = match space_mgr.squads.squad_of(sender_id) {
+        Some(id) => id,
+        None => {
+            tracing::debug!(sender_id, "Squad chat: sender not in a squad");
+            return;
+        }
+    };
+
+    let member_ids: Vec<u32> = match space_mgr.squads.get_squad(org_id) {
+        Some(s) => s.member_entity_ids(),
+        None => return,
+    };
+
+    let args = serialize_on_player_communication(speaker_name, speaker_flags, CHAN_SQUAD, text);
+
+    tracing::debug!(
+        sender_id,
+        org_id,
+        member_count = member_ids.len(),
+        "Routing squad chat"
+    );
+
+    for member_id in member_ids {
+        let _ = tx
+            .send(CellToBaseMsg::EntityMethodCall {
+                entity_id: member_id,
+                method_index: ON_PLAYER_COMMUNICATION,
+                args: args.clone(),
+            })
+            .await;
+    }
 }
 
 /// Serialize `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)` args.
@@ -443,5 +492,104 @@ mod tests {
         // Tell channel should not be handled by CellService
         handle_chat_message(1, "Bob", 0, CHAN_TELL, "Hi", &tx, &mut mgr, &engine).await;
         assert!(rx.try_recv().is_err());
+    }
+
+    /// CHAN_SQUAD chat is delivered only to squad members, not AoI witnesses.
+    #[tokio::test]
+    async fn squad_chat_reaches_only_squad_members() {
+        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+
+        // Entity 1 = Alice (squad member), entity 2 = Bob (squad member),
+        // entity 3 = Carol (bystander, NOT in squad).
+        for eid in [1u32, 2, 3] {
+            mgr.create_entity(eid, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+                .unwrap();
+            mgr.connect_entity(eid);
+        }
+
+        // Form a squad: Alice invites Bob.
+        let rid = mgr
+            .squads
+            .record_invite(1, "Alice".into(), 2, 0, "Squad".into());
+        mgr.squads
+            .accept_invite(rid, 2, 200, "Bob".into(), 100)
+            .unwrap();
+
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+
+        // Alice sends squad chat.
+        handle_chat_message(
+            1,
+            "Alice",
+            0,
+            CHAN_SQUAD,
+            "Squad only!",
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        let mut recipients: Vec<u32> = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index,
+                ..
+            } = msg
+            {
+                assert_eq!(method_index, ON_PLAYER_COMMUNICATION, "correct method");
+                recipients.push(entity_id);
+            }
+        }
+
+        // Both squad members (1 and 2) get the message; Carol (3) does not.
+        assert!(
+            recipients.contains(&1),
+            "Alice must receive her own squad chat"
+        );
+        assert!(recipients.contains(&2), "Bob must receive squad chat");
+        assert!(
+            !recipients.contains(&3),
+            "Carol must NOT receive squad chat"
+        );
+    }
+
+    /// CHAN_SQUAD chat from a non-member is silently dropped.
+    #[tokio::test]
+    async fn squad_chat_from_non_member_is_dropped() {
+        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+
+        // Entity 1 is not in any squad.
+        handle_chat_message(
+            1,
+            "Loner",
+            0,
+            CHAN_SQUAD,
+            "nobody here",
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+        assert!(
+            rx.try_recv().is_err(),
+            "no messages sent when not in a squad"
+        );
     }
 }

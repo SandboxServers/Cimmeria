@@ -453,6 +453,7 @@ mod tests {
             &minigame_registry,
             "127.0.0.1",
             0,
+            &None,
         )
         .await;
 

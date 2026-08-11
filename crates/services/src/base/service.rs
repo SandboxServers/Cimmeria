@@ -13,6 +13,7 @@ use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::transport::{Transport, UdpTransport};
 
+use super::organization::authority::OrgAuthority;
 use crate::auth::PendingLogin;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::minigame::SessionRegistry;
@@ -178,12 +179,37 @@ impl BaseService {
         let mg_host_for_cell = self.minigame_external_host.clone();
         let mg_port_for_cell = self.minigame_external_port;
 
+        // Build the OrgAuthority. If there's no DB pool we start empty and skip
+        // persistence; org ops will be no-ops but won't crash.
+        let org_authority_for_cell: Option<Arc<tokio::sync::Mutex<OrgAuthority>>> =
+            if let Some(ref pool) = self.db_pool {
+                match OrgAuthority::load_all(pool).await {
+                    Ok(authority) => {
+                        tracing::info!("OrgAuthority loaded from DB");
+                        Some(Arc::new(tokio::sync::Mutex::new(authority)))
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "OrgAuthority load failed (DB error): {e}. Orgs will be empty."
+                        );
+                        Some(Arc::new(tokio::sync::Mutex::new(OrgAuthority::empty())))
+                    }
+                }
+            } else {
+                tracing::debug!("No DB pool — OrgAuthority disabled");
+                None
+            };
+
         tracing::trace!("Spawning base service UDP receive loop");
         let cell_tx_for_loop = cell_tx.clone();
         let connected_for_loop = Arc::clone(&connected);
         let entity_manager_for_loop = Arc::clone(&entity_manager);
         let entity_to_addr_for_loop = Arc::clone(&entity_to_addr);
         let enc_version = self.enc_version;
+        // Clone the Arc so both the connect loop (login/logout tracking)
+        // and the cell-message handler (persistent org mutations) share the
+        // same OrgAuthority instance.
+        let org_authority_for_loop = org_authority_for_cell.clone();
         tokio::spawn(async move {
             tracing::trace!("Base service UDP receive loop started");
             run_connect_loop(
@@ -196,6 +222,7 @@ impl BaseService {
                 entity_manager_for_loop,
                 entity_to_addr_for_loop,
                 enc_version,
+                org_authority_for_loop,
             )
             .await;
             tracing::trace!("Base service UDP receive loop exited");
@@ -215,6 +242,7 @@ impl BaseService {
                         &mg_registry_for_cell,
                         &mg_host_for_cell,
                         mg_port_for_cell,
+                        &org_authority_for_cell,
                     )
                     .await;
                 }

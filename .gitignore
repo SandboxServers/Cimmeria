@@ -211,4 +211,4 @@ ghidra/*
 # Node.js — repo-root markdown lint tooling (see package.json). Per-Tauri-app
 # node_modules entries are listed earlier in this file under their own scopes.
 /node_modules/
-/package-lock.json
+/package-lock.jsoncrates/services/logs/
