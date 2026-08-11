@@ -116,6 +116,18 @@ pub enum BaseToCellMsg {
         character_name: Option<String>,
     },
 
+    /// Replace the cell-side ignore-name set for a player entity.
+    ///
+    /// Sent on world entry (seeded from the player's 'Ignore' contact list,
+    /// flags=301) and on every `chatIgnore` add/remove, plus contact-list
+    /// add/remove targeting the Ignore list. The cell stores it on
+    /// `CellEntity::ignore_names`; the AoI filter (`compute_player_aoi`)
+    /// reads it to exclude ignored player pairs symmetrically.
+    UpdateIgnoreList {
+        entity_id: u32,
+        ignore_names: std::collections::HashSet<String>,
+    },
+
     /// Update one bandolier slot after a runtime item grant.
     ///
     /// BaseApp persists inventory changes and sends the client inventory update,

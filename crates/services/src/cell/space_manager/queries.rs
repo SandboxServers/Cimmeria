@@ -45,6 +45,25 @@ impl SpaceManager {
         space.entities.get(&entity_id)
     }
 
+    /// Replace a player's cell-side ignore-name set (the source the AoI ignore
+    /// filter reads). Returns `false` if the entity isn't present yet — the
+    /// `UpdateIgnoreList` base→cell handler logs that case and relies on a later
+    /// re-push. Factored out of the handler so the apply (and the absent path)
+    /// are unit-testable without driving the full message dispatch.
+    pub fn set_entity_ignore_names(
+        &mut self,
+        entity_id: u32,
+        ignore_names: std::collections::HashSet<String>,
+    ) -> bool {
+        match self.get_entity_mut(entity_id) {
+            Some(e) => {
+                e.ignore_names = ignore_names;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Get the world name for an entity's current space.
     pub fn get_entity_world_name(&self, entity_id: u32) -> Option<String> {
         let &space_id = self.entity_space.get(&entity_id)?;

@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::mpsc;
 
+use crate::cell::chat::CHAN_TELL;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::read_wstring;
 
@@ -57,6 +58,42 @@ pub(super) async fn handle_send_player_communication(
     };
 
     let speaker = player_name.as_deref().unwrap_or("Unknown");
+
+    // Tell channel (9): per-recipient ignore guard, base-side.
+    //
+    // Tells are direct player-to-player and are NOT spatial, so they don't
+    // pass through the cell AoI filter that gates say/emote/yell. The ignore
+    // check therefore lives here, before any routing. Symmetric: drop if the
+    // sender ignores the target OR the target ignores the sender.
+    //
+    // NOTE: tell *delivery* to a recipient is not implemented yet (the cell
+    // drops channel 9), so today this guard is a no-op in the happy path. It
+    // is wired in now so that when tell delivery lands, the ignore contract is
+    // already enforced at the correct seam rather than being retro-fitted.
+    if channel == CHAN_TELL && !target.is_empty() {
+        let (sender_ignores_target, target_ignores_sender) = {
+            let clients = connected.lock().unwrap();
+            let sti = clients
+                .get(&addr)
+                .is_some_and(|c| c.ignore_set.contains(&target));
+            let tis = clients
+                .values()
+                .find(|c| c.player_name.as_deref() == Some(target.as_str()))
+                .is_some_and(|c| c.ignore_set.contains(speaker));
+            (sti, tis)
+        };
+        if sender_ignores_target || target_ignores_sender {
+            tracing::debug!(
+                %addr,
+                speaker,
+                target = %target,
+                sender_ignores_target,
+                target_ignores_sender,
+                "tell dropped by ignore filter"
+            );
+            return;
+        }
+    }
 
     tracing::info!(
         %addr,

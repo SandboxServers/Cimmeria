@@ -36,6 +36,7 @@ impl CellEntity {
             interaction_type: None,
             npc_name: None,
             character_name: None,
+            ignore_names: HashSet::new(),
             missions: MissionManager::new(),
             player_id: None,
             archetype_id: None,

@@ -47,6 +47,7 @@ fn make_state() -> ConnectedClientState {
         account_name: Some("testacct".into()),
         access_level: 0,
         dnd_message: None,
+        ignore_set: std::collections::HashSet::new(),
         char_list_sent: true,
         world_entry_sent: true, // post-playCharacter
         pending_player_entity_id: Some(42),

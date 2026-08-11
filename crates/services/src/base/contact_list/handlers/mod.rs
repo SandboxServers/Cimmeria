@@ -16,7 +16,9 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use crate::base::contact_list::persistence::{ensure_system_lists, load_contact_lists};
+use crate::base::contact_list::persistence::{
+    ensure_system_lists, load_contact_lists, ContactList, IGNORE_LIST_FLAGS,
+};
 use crate::base::contact_list::wire::{
     build_on_contact_list_add_members, build_on_contact_list_event, build_on_contact_list_update,
     DATA_ONLINE, EVENT_LOGGED_IN_STATUS,
@@ -126,6 +128,25 @@ pub(crate) async fn push_contact_lists_on_login(
             },
         )
         .await;
+    }
+
+    // Seed the in-memory ignore_set from the 'Ignore' list (flags=301) so the
+    // base-side tell filter and the cell-side AoI seed have it immediately.
+    // The caller (`handle_on_client_ready`) reads ignore_set right after this
+    // to push `BaseToCellMsg::UpdateIgnoreList` to the cell.
+    {
+        let ignore_names = ignore_names_from_lists(&lists);
+        let addr = entity_to_addr
+            .lock()
+            .ok()
+            .and_then(|m| m.get(&entity_id).copied());
+        if let Some(addr) = addr {
+            if let Ok(mut clients) = connected.lock() {
+                if let Some(c) = clients.get_mut(&addr) {
+                    c.ignore_set = ignore_names;
+                }
+            }
+        }
     }
 
     tracing::debug!(
@@ -250,9 +271,41 @@ fn dedup_online(candidate_names: &[String], online_names: &HashSet<String>) -> V
     out
 }
 
+/// Flatten the member names of the player's 'Ignore' list(s) into a set. Pure
+/// helper, unit-tested; seeds the in-memory `ignore_set` at login.
+fn ignore_names_from_lists(lists: &[ContactList]) -> HashSet<String> {
+    lists
+        .iter()
+        .filter(|l| l.flags == IGNORE_LIST_FLAGS)
+        .flat_map(|l| l.members.iter().cloned())
+        .collect()
+}
+
 #[cfg(test)]
 mod presence_login_tests {
     use super::*;
+
+    #[test]
+    fn ignore_names_from_lists_picks_only_flag_301() {
+        let lists = vec![
+            ContactList {
+                list_id: 1,
+                name: "Friends".into(),
+                flags: 300,
+                members: vec!["Pal".into()],
+            },
+            ContactList {
+                list_id: 2,
+                name: "Ignore".into(),
+                flags: IGNORE_LIST_FLAGS,
+                members: vec!["BadGuy".into(), "Jerk".into()],
+            },
+        ];
+        let got = ignore_names_from_lists(&lists);
+        assert_eq!(got.len(), 2);
+        assert!(got.contains("BadGuy") && got.contains("Jerk"));
+        assert!(!got.contains("Pal"), "Friends (300) must be excluded");
+    }
 
     fn names(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()

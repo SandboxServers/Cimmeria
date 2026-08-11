@@ -143,6 +143,11 @@ async fn broadcast_to_witnesses(
     // Collect witness IDs (clone to avoid borrow conflicts)
     let witnesses: Vec<u32> = entity.witnesses.iter().map(|eid| eid.0 as u32).collect();
 
+    // Snapshot the sender's name + ignore set for the per-witness ignore check
+    // below (the `entity` borrow ends when we re-borrow per witness).
+    let sender_char_name = entity.character_name.clone();
+    let sender_ignore_names = entity.ignore_names.clone();
+
     if witnesses.is_empty() {
         tracing::trace!(sender_id, "Chat: no witnesses to broadcast to");
         return;
@@ -161,6 +166,24 @@ async fn broadcast_to_witnesses(
 
     // Send to each witness
     for witness_id in witnesses {
+        // Belt-and-suspenders ignore check. The AoI tick already excludes
+        // ignored player pairs from the witness set, but it runs periodically
+        // — a new ignore issued between ticks could leave a stale witness in
+        // the set for one cadence. This re-checks the symmetric pair at send
+        // time so an ignored player never receives the message even in that
+        // window. NPC witnesses are never filtered.
+        if let Some(w_entity) = space_mgr.get_entity(witness_id) {
+            if w_entity.is_player {
+                let w_name = w_entity.character_name.as_deref().unwrap_or("");
+                let sender_ignores_w = !w_name.is_empty() && sender_ignore_names.contains(w_name);
+                let w_ignores_sender = sender_char_name
+                    .as_deref()
+                    .is_some_and(|sn| w_entity.ignore_names.contains(sn));
+                if sender_ignores_w || w_ignores_sender {
+                    continue;
+                }
+            }
+        }
         let _ = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id: witness_id,
@@ -424,6 +447,87 @@ mod tests {
         assert!(
             witness_got_chat,
             "non-GM .-text must broadcast as normal chat"
+        );
+    }
+
+    /// Set up two players with `1` witnessing `2`, with the given names.
+    /// Returns a manager ready for `handle_chat_message`.
+    fn two_player_chat_space() -> super::super::space_manager::SpaceManager {
+        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
+        mgr.create_entity(2, "Agnos", [15.0, 0.0, 15.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+        mgr.connect_entity(2);
+        mgr.get_entity_mut(1).unwrap().character_name = Some("Alice".to_string());
+        mgr.get_entity_mut(2).unwrap().character_name = Some("Bob".to_string());
+        // Alice (1) witnesses Bob (2).
+        mgr.get_entity_mut(1)
+            .unwrap()
+            .witnesses
+            .insert(cimmeria_common::EntityId(2));
+        mgr
+    }
+
+    /// Whether entity `2` received any EntityMethodCall after a chat from `1`.
+    async fn witness_got_chat(mgr: &mut super::super::space_manager::SpaceManager) -> bool {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+        let engine = ChainEngine::new();
+        handle_chat_message(1, "Alice", 0, CHAN_SAY, "Hello", &tx, mgr, &engine).await;
+        let mut got = false;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall { entity_id, .. } = msg {
+                if entity_id == 2 {
+                    got = true;
+                }
+            }
+        }
+        got
+    }
+
+    /// Belt-and-suspenders: a witness the sender ignores is skipped in
+    /// broadcast even if it's still in the witness set (stale between AoI ticks).
+    #[tokio::test]
+    async fn ignored_witness_skipped_in_broadcast() {
+        let mut mgr = two_player_chat_space();
+        mgr.get_entity_mut(1)
+            .unwrap()
+            .ignore_names
+            .insert("Bob".to_string());
+        assert!(
+            !witness_got_chat(&mut mgr).await,
+            "witness the sender ignores must not receive the broadcast"
+        );
+    }
+
+    /// Symmetry: a witness who ignores the sender is also skipped.
+    #[tokio::test]
+    async fn ignore_symmetry_in_broadcast() {
+        let mut mgr = two_player_chat_space();
+        // Bob ignores Alice; Alice's set is empty.
+        mgr.get_entity_mut(2)
+            .unwrap()
+            .ignore_names
+            .insert("Alice".to_string());
+        assert!(
+            !witness_got_chat(&mut mgr).await,
+            "witness who ignores the sender must not receive the broadcast"
+        );
+    }
+
+    /// Control: a non-ignored witness still receives the broadcast (guards
+    /// against the filter over-matching).
+    #[tokio::test]
+    async fn non_ignored_witness_receives_broadcast() {
+        let mut mgr = two_player_chat_space();
+        assert!(
+            witness_got_chat(&mut mgr).await,
+            "non-ignored witness must receive the broadcast"
         );
     }
 

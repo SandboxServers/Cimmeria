@@ -144,6 +144,12 @@ pub(crate) struct ConnectedClientState {
     /// and the Python reference (`python/base/Chat.py::getSpeakerFlags`)
     /// only checks `accessLevel > 0` and `dndMessage is not None`.
     pub dnd_message: Option<String>,
+    /// In-memory cache of character names this player ignores.
+    /// Loaded from the 'Ignore' contact list (flags=301) on login;
+    /// updated in real time by the `chatIgnore` handler and by
+    /// contact-list add/remove targeting the Ignore list.
+    /// Used to filter tells and to seed the cell-side ignore list.
+    pub ignore_set: std::collections::HashSet<String>,
     pub char_list_sent: bool,
     pub world_entry_sent: bool,
     pub pending_player_entity_id: Option<u32>,

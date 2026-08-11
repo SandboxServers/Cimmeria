@@ -671,6 +671,13 @@ pub struct CellEntity {
     /// resets the counter via `Action::ResetCounter`.
     pub counters: HashMap<String, i32>,
 
+    /// Names this player is ignoring (symmetric: if A ignores B, B's AoI also
+    /// excludes A, checked during B's own `compute_player_aoi` pass). Empty for
+    /// NPCs and until `BaseToCellMsg::UpdateIgnoreList` arrives from base.
+    /// Server-side only, never persisted on the cell — the base's 'Ignore'
+    /// contact list is the single source of truth.
+    pub ignore_names: HashSet<String>,
+
     /// Per-session client option state populated by `updateSystemOptions`
     /// (player method index 93). Defaults to `SystemOptions::default()` on
     /// entity construction, then overwritten by either of two paths:

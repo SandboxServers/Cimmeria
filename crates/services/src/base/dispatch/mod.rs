@@ -14,6 +14,7 @@ use super::ConnectedClientState;
 
 mod chat;
 mod diagnostics;
+pub(crate) mod ignore;
 mod session;
 
 /// `ESpeakerFlags` bitfield constants from `entities/defs/enumerations.xml`.
@@ -43,6 +44,10 @@ pub(crate) mod sgw_player_base {
     pub const SEND_PLAYER_COMMUNICATION: u8 = 0xC2;
     pub const CHAT_SET_AFK: u8 = 0xC3;
     pub const CHAT_SET_DND: u8 = 0xC4;
+    /// SGWPlayer.chatIgnore(WSTRING playerName, UINT8 flag) — flag 1=add to
+    /// the Ignore contact list, 0=remove. The `.def` carries the UINT8 flag
+    /// even though the dispatch table lists only the WSTRING.
+    pub const CHAT_IGNORE: u8 = 0xC5;
     /// SGWPlayer.elementDataRequest(UINT16 categoryId, UINT32 key) — cache
     /// miss request for a server resource. Same wire shape as the
     /// pre-world-entry 0xC1 cache flow (handled in `cooked_data.rs`),
@@ -120,6 +125,19 @@ pub(crate) async fn dispatch_sgw_player_base_method(
 
         sgw_player_base::CHAT_SET_DND => {
             chat::handle_chat_set_dnd(payload, addr, connected);
+        }
+
+        sgw_player_base::CHAT_IGNORE => {
+            ignore::handle_chat_ignore(
+                payload,
+                addr,
+                transport,
+                connected,
+                cell_tx,
+                entity_to_addr,
+                db_pool,
+            )
+            .await;
         }
 
         sgw_player_base::LOG_OFF => {
