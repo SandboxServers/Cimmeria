@@ -86,6 +86,36 @@ mod live_db {
         }
     }
 
+    /// Radio (item 5168) must have an `items_event_sets` binding for
+    /// `EVENT_ItemUse` (event_id 5) → quest-item-use ability 597. The
+    /// SGW client treats `items_event_sets` as the authoritative
+    /// "can this item be used?" gate, so without this row the Radio
+    /// shows no "Use" option and the `OnItemUse::5168` chains (SGC_W1
+    /// 3021/3025) never fire — mission 1561 softlocks. This exercises
+    /// the real loader against the seed, so dropping the INSERT from
+    /// `db/resources/Items/Seed/items_event_sets.sql` makes it fail.
+    #[tokio::test]
+    async fn load_item_event_set_abilities_binds_radio_use() {
+        // event_id 5 = EVENT_ItemUse (resources `EItemEvents`); shared by
+        // every quest-item-use row in the seed (vial 19, GDO 1893, ...).
+        const RADIO_ITEM_ID: i32 = 5168;
+        const EVENT_ITEM_USE: i32 = 5;
+        const QUEST_ITEM_USE_ABILITY: i32 = 597;
+
+        let pool = require_db_or_skip!();
+        let map = load_item_event_set_abilities(&pool)
+            .await
+            .expect("load_item_event_set_abilities must succeed against seeded DB");
+
+        assert_eq!(
+            map.get(&(RADIO_ITEM_ID, EVENT_ITEM_USE)),
+            Some(&QUEST_ITEM_USE_ABILITY),
+            "Radio (item 5168) must bind EVENT_ItemUse (5) to ability 597 so the \
+             client offers a Use option and OnItemUse::5168 fires (mission 1561). \
+             Missing row → the items_event_sets seed INSERT was dropped.",
+        );
+    }
+
     /// The slappack (type 2893, `clip_size = 0` in the seed) MUST NOT be
     /// in the WeaponDef cache. Companion to the `clip_size > 0` filter
     /// assertion above — that test catches "any zero-clip leak"; this
