@@ -49,6 +49,26 @@ pub struct CellEntity {
     /// Whether the entity is currently on the ground (affects movement mode).
     pub is_on_ground: bool,
 
+    /// When `true`, `SpaceManager::apply_client_position_update_at` skips
+    /// the 4-layer movement validator (bounds / navmesh / speed / teleport)
+    /// for this entity and accepts the client-reported position outright.
+    ///
+    /// Backs the native `onPhysics(UINT8 bTurnOn)` GM cell method (index
+    /// 221 on `SGWGmPlayer`), which both `/gmsetfly` and `/gmsetghost`
+    /// route through identically. The client toggles its own pawn physics
+    /// locally and instantly regardless of any server round-trip — this
+    /// flag exists purely so the validator stops flagging the GM's now-
+    /// unrestricted movement (off-navmesh, out-of-bounds, over-speed) as a
+    /// violation. See `crate::cell::cell_methods::gm::physics` for the
+    /// wire-polarity mapping and `docs/architecture/movement-validation.md`
+    /// for the bypass design.
+    ///
+    /// In-memory only — never persisted. The client doesn't save fly/ghost
+    /// mode across sessions either, so a fresh `CellEntity` on reconnect
+    /// correctly starts `false` with no explicit reset needed. Default
+    /// `false`.
+    pub movement_unrestricted: bool,
+
     /// Cell-local property values (CELL_PUBLIC, CELL_PRIVATE, etc.).
     pub properties: HashMap<String, PropertyValue>,
 

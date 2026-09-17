@@ -257,7 +257,7 @@ impl SpaceManager {
         // navmesh (most non-Castle zones today). The fallback is wider
         // than any legitimate world by an order of magnitude — see
         // `SpaceBounds::FALLBACK`.
-        let (bounds, last_valid) = {
+        let (bounds, last_valid, movement_unrestricted) = {
             let space = match self.spaces.get(&space_id) {
                 Some(s) => s,
                 None => return ClientMoveOutcome::EntityMissing,
@@ -266,11 +266,12 @@ impl SpaceManager {
                 Some(nav) => SpaceBounds::new(nav.bmin, nav.bmax),
                 None => SpaceBounds::FALLBACK,
             };
-            let last_valid = match space.entities.get(&entity_id) {
-                Some(e) => [e.position.x, e.position.y, e.position.z],
+            let entity = match space.entities.get(&entity_id) {
+                Some(e) => e,
                 None => return ClientMoveOutcome::EntityMissing,
             };
-            (bounds, last_valid)
+            let last_valid = [entity.position.x, entity.position.y, entity.position.z];
+            (bounds, last_valid, entity.movement_unrestricted)
         };
 
         let proposed = Vector3::new(position[0], position[1], position[2]);
@@ -282,7 +283,23 @@ impl SpaceManager {
         // slipping one large jump past the teleport gate at an
         // artificially low implied speed. Every processed packet advances
         // the clock by exactly one tick regardless of which layer rejects.
+        // Kept running even on the GM bypass path below so the clock stays
+        // fresh for when physics is re-enabled (a stale clock would either
+        // produce a bogus dt or, worse, get skipped entirely and leave the
+        // next real check comparing against a multi-minute-old sample).
         let prev_sample = self.movement_validator.touch_clock(entity_id, now);
+
+        // GM movement-validator bypass (`onPhysics` / `/gmsetfly` /
+        // `/gmsetghost` — see `cell_methods::gm::physics`). The client is
+        // already authoritative for its own position while flying/
+        // ghosting; skip straight past the four rejection layers below but
+        // still advance the entity's tracked position (spatial grid, AoI
+        // source-of-truth) so witnesses see the GM move and so validation
+        // resumes cleanly (no stale `last_valid`) once physics is restored.
+        if movement_unrestricted {
+            self.update_entity_position(entity_id, position, direction, velocity);
+            return ClientMoveOutcome::Accepted { position };
+        }
 
         // Layer 1 — bounds (also the Z-axis floor-clip / NaN / infinity gate).
         if let Err(reason) = self.movement_validator.check_bounds(proposed, &bounds) {
