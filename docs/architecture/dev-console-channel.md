@@ -121,7 +121,7 @@ default (`COALESCE(s.patrol_path_id, t.patrol_path_id)`). Per-waypoint edits
 
 | Family | Status |
 |---|---|
-| Search (`searchitem`/`mission`/`template`, `players`) | **Done** — search runs base-side (`CellToBaseMsg::ConsoleSearch`, parameterized `ILIKE`); `players` is cell-local. |
+| Search (`searchitem`/`mission`/`template`, `players`) | **Done** — search runs base-side (`CellToBaseMsg::ConsoleSearch`, parameterized `ILIKE ... ESCAPE '\'` with `%`/`_`/`\` in the query escaped to match literally, plus explicit truncation feedback at the 25-result cap); `players` is cell-local. |
 | Stat dumps (`primarystats` … `stealthstats`) | **Done** — read `CellEntity::stats`. |
 | Entity authoring (`tag`, `name`, …) | **In-memory** — mutate `CellEntity`; appearance edits re-broadcast for players, surface on next AoI entry for NPCs. Pair with `.savespawn` to persist. |
 | Net/AI debug (`net_seq`, `net_speak`, `threaten`, …) | **Done** — serialize the existing client method (`onSequence`/`onTimerUpdate`/`onMapInfo`/`onClientChallenge`) or poke the threat/follow/dialog systems. `debug_controller` is a no-op (no Rust debug controller). |

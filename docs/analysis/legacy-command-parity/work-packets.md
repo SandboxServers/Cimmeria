@@ -35,49 +35,49 @@ For every runtime leaf, add/update a regression that fails without the fix. Mode
 
 ### P01
 
-**Status:** Ready. **Commands:** `.help`, `.searchitem`, `.searchmission`, `.searchtemplate`; catalogue/target regression foundation. **Depends:** implementation-session authorization. **Advisor:** server-authority-enforcer.
+**Status:** Integrated (2026-09-17, `legacy-command-parity`, merge of `p01-quick-wins-console` @ 540c4f72). Reviewed by testing-validation-engineer (regression-guards independently reproduced, fmt/clippy clean). UATPending — bundled into the M1 milestone pause once P02-P07 land. Worknote/handoff: [worknotes/p01.md](worknotes/p01.md), [handoffs/p01.md](handoffs/p01.md). Known gap carried forward: `.help`'s per-argument detail view (`registry.rs::arg_specs`) is only populated for `help`/`searchitem`/`searchmission`/`searchtemplate`; other commands' `ArgSpec` rows are added by the packet that restores that command. **Commands:** `.help`, `.searchitem`, `.searchmission`, `.searchtemplate`; catalogue/target regression foundation. **Depends:** implementation-session authorization. **Advisor:** server-authority-enforcer.
 **Entries:** [query](../../../crates/services/src/cell/console/query.rs), [chat gate](../../../crates/services/src/cell/chat.rs), [console tests](../../../crates/services/src/cell/console/tests.rs), [search sink](../../../crates/services/src/base/console_authoring.rs).
 **Scope:** restore argument-level help; pin baseline names/arity/target contracts and protect Rust-only names. Verify search adapters and real result routing; restore literal substring matching while retaining the 25-result bound with explicit truncation feedback. Do not register unimplemented commands merely to satisfy the catalogue test; stage expected implemented subsets as packets integrate, preserving the full backlog denominator. Split search into a bounded child if DB checks expand the foundation packet.
 **Acceptance:** exact sorted/filter/help argument output; live-DB one/two-token case-insensitive literal search, including `%`, `_`, backslash, exactly 25 and more than 25 matches, and empty/error responses; GM denial, target validation and caller attribution. **Exclude:** generic commands-crate registry, broad parser redesign, fake parity stubs.
 
 ### P02
 
-**Commands:** `.info`, `.facing`, `.combatinfo`. **Depends:** P01. **Advisor:** combat-systems-advisor.
+**Status:** Ready (P01 integrated 2026-09-17). **Commands:** `.info`, `.facing`, `.combatinfo`. **Depends:** P01. **Advisor:** combat-systems-advisor.
 **Entries:** [native queries](../../../crates/services/src/cell/cell_methods/gm/query.rs), [console query](../../../crates/services/src/cell/console/query.rs), [entity model](../../../crates/entity/src/cell_entity/mod.rs).
 **Scope:** read-only detailed entity/geometry/combat feedback; selection overrides explicit info ID. Reuse actual flags/geometry and legacy template, weapon, ability-set and ability-type diagnostics; label unavailable fields rather than inventing them.
 **Acceptance:** selected versus explicit ID precedence, unknown ID, radians/degrees/class/distance fixtures, missing template/weapon/ability-set cases, exact ability-type counts and caller-only output. **Exclude:** mutation, damage or AI instrumentation; split if geometry/model work ceases to be read-only.
 
 ### P03
 
-**Commands:** `.stats`, `.primarystats`, `.speedstats`, `.armorstats`, `.qrstats`, `.absorbstats`, `.stealthstats`. **Depends:** P01. **Advisor:** combat-systems-advisor.
+**Status:** Ready (P01 integrated 2026-09-17). **Commands:** `.stats`, `.primarystats`, `.speedstats`, `.armorstats`, `.qrstats`, `.absorbstats`, `.stealthstats`. **Depends:** P01. **Advisor:** combat-systems-advisor.
 **Entries:** [console stats](../../../crates/services/src/cell/console/stats.rs), [console tests](../../../crates/services/src/cell/console/tests.rs).
 **Scope:** one shared stat-readout contract; add basic four-stat group and verify the six existing exact sets. This is one table-driven behavior, not seven subsystem rewrites.
 **Acceptance:** exact names/current/max values for every group, missing-stat behavior, selected-target and caller feedback isolation. **Exclude:** stat setters, balance changes, fabricated default values.
 
 ### P04
 
-**Commands:** `.listabilities`, `.players`. **Depends:** P01. **Advisor:** server-authority-enforcer.
+**Status:** Ready (P01 integrated 2026-09-17). **Commands:** `.listabilities`, `.players`. **Depends:** P01. **Advisor:** server-authority-enforcer.
 **Entries:** [query](../../../crates/services/src/cell/console/query.rs), [ability manager](../../../crates/entity/src/abilities/manager.rs), [ability definitions](../../../crates/services/src/cell/spawner/abilities.rs).
 **Scope:** read-only roster feedback: selected abilities with names/fallback; service-local online names/worlds including transitions. Split if online indexing needs new lifecycle state.
 **Acceptance:** unknown ability fallback, deterministic output, two loaded spaces plus transitioning player, no mutation and caller-only results. **Exclude:** cluster/offline roster, ability grants.
 
 ### P05
 
-**Commands:** `.givecash`, `.givexp`. **Depends:** P01. **Advisor:** database-persistence.
+**Status:** Ready (P01 integrated 2026-09-17). **Commands:** `.givecash`, `.givexp`. **Depends:** P01. **Advisor:** database-persistence.
 **Entries:** [native give](../../../crates/services/src/cell/cell_methods/gm/give.rs), [progression sink](../../../crates/services/src/base/world_entry/methods/progression/mod.rs).
 **Scope:** selected-player typed grants through existing sinks, carrying separate caller feedback identity. Keep current amount bounds; resolve signed input before unsigned conversion.
 **Acceptance:** exact cash/XP/level/TP totals after DB reload, distinct caller unaffected, target-only UI, overflow/invalid/no-DB failure truthfulness. **Exclude:** level-setting, training, global economy refactor.
 
 ### P06
 
-**Commands:** `.giveitem`. **Depends:** P01. **Advisor:** items-systems-advisor, database-persistence.
+**Status:** Ready (P01 integrated 2026-09-17). **Commands:** `.giveitem`. **Depends:** P01. **Advisor:** items-systems-advisor, database-persistence.
 **Entries:** [grant-item sink](../../../crates/services/src/base/world_entry/methods/inventory/grant/grant_item.rs), [inventory executor](../../../crates/services/src/cell/content/executor/inventory.rs).
 **Scope:** adapt selected-player design-ID/quantity grant using correct container routing and existing transaction/outbox synchronization.
 **Acceptance:** merge/new-stack quantities and ownership exactly match after reload; inventory-full, invalid design and DB failure do not report success; target UI/caller feedback split. **Exclude:** name-based lookup, inventory redesign.
 
 ### P07
 
-**Commands:** `.removeitem`. **Depends:** P01. **Advisor:** items-systems-advisor, database-persistence. **Decision:** D07.
+**Status:** Ready (P01 integrated 2026-09-17). **Commands:** `.removeitem`. **Depends:** P01. **Advisor:** items-systems-advisor, database-persistence. **Decision:** D07.
 **Entries:** [remove-by-type](../../../crates/services/src/base/world_entry/methods/inventory/core/remove_by_type.rs), [inventory dispatch](../../../crates/services/src/base/world_entry/cell_dispatch/inventory_dispatch.rs), [legacy inventory](../../../deprecated/python/cell/Inventory.py).
 **Scope:** atomic exact-quantity removal across matching design stacks, retaining inventory lock/outbox rules. Keep native instance-ID removal separate.
 **Acceptance:** multiple stacks with exact remainder; insufficient aggregate, locked/ineligible stock and injected mid-operation failure leave every row unchanged; two-player isolation and exact updates. **Exclude:** treating partial removal as success, changing UseInventoryItem consumption.
