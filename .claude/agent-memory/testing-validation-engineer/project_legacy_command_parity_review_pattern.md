@@ -30,8 +30,10 @@ time than at final-integration time.
    the cited message — see [feedback_revert_to_verify_regression_guards](feedback_revert_to_verify_regression_guards.md)
    and [workflow_revert_audit](workflow_revert_audit.md) for the general procedure.
 2. Run `cargo fmt --all -- --check` and `cargo clippy -p cimmeria-services --lib --tests -- -D warnings`
-   against the worktree yourself, even though the worker's handoff says these are
-   "Not run" by protocol.
+   against the worktree yourself regardless of what the handoff says — workers are not
+   required to run these (only the coordinator's full-workspace pass is mandatory), but
+   they're also not barred from it, so a handoff may report them as "Not run" or as
+   passing. Either way it's a claim, not a substitute for you running it yourself.
 3. Cross-check the packet's `work-packets.md` **Acceptance** line against the actual test
    file — acceptance lines often list multiple response classes (e.g. "empty/error
    responses") where the worker's tests cover only one (e.g. empty, not error/no-DB). This
