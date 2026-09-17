@@ -96,7 +96,7 @@ impl<'a> Cursor<'a> {
         let slice = self.buf.get(self.pos..end)?;
         self.pos = end;
         let utf16: Vec<u16> = slice
-            .chunks_exact(2)
+            .chunks(2)
             .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
             .collect();
         Some(String::from_utf16_lossy(&utf16))

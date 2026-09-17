@@ -121,8 +121,9 @@ default (`COALESCE(s.patrol_path_id, t.patrol_path_id)`). Per-waypoint edits
 
 | Family | Status |
 |---|---|
-| Search (`searchitem`/`mission`/`template`, `players`) | **Done** — search runs base-side (`CellToBaseMsg::ConsoleSearch`, parameterized `ILIKE`); `players` is cell-local. |
+| Search (`searchitem`/`mission`/`template`, `players`) | **Done** — search runs base-side (`CellToBaseMsg::ConsoleSearch`, parameterized `ILIKE ... ESCAPE '\'` with `%`/`_`/`\` in the query escaped to match literally, plus explicit truncation feedback at the 25-result cap); `players` is cell-local. |
 | Stat dumps (`primarystats` … `stealthstats`) | **Done** — read `CellEntity::stats`. |
+| Entity inspection (`info`, `facing`, `combatinfo`) | **Done** (`info`/`facing`) / **Partial** (`combatinfo`) — `info`/`facing` are read-only queries against `CellEntity` fields and legacy `SGWSpawnableEntity` geometry; `combatinfo` checks template/ability-set presence but omits legacy's weapon-presence and ability-type-bucket checks (no per-template weapon or per-ability-type concept exists yet — see the P02 handoff). |
 | Entity authoring (`tag`, `name`, …) | **In-memory** — mutate `CellEntity`; appearance edits re-broadcast for players, surface on next AoI entry for NPCs. Pair with `.savespawn` to persist. |
 | Net/AI debug (`net_seq`, `net_speak`, `threaten`, …) | **Done** — serialize the existing client method (`onSequence`/`onTimerUpdate`/`onMapInfo`/`onClientChallenge`) or poke the threat/follow/dialog systems. `debug_controller` is a no-op (no Rust debug controller). |
 | Crafting (`learndiscipline`, `forgetdiscipline`) | **Done** via `GrantExpertise`. `allcraft` is a pointer (no consolidated blueprint-grant path cell-side). |
