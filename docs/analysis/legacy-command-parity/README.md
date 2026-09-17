@@ -13,7 +13,7 @@ This handoff adds documentation only. It does not authorize commits, branches, w
 
 ## Coordinator Launch Prompt
 
-You are the Claude Code coordinator for Cimmeria's legacy command restoration. Work in `C:\Users\Steve\source\projects\Cimmeria`. Preserve current working changes and the Rust-only seed/patrol commands. Implement the approved contracts below through small, reviewed packets, not one monolithic port. Do not broaden into all native slash commands, offline-player administration, cluster routing, or an engine rewrite.
+You are the Claude Code coordinator for Cimmeria's legacy command restoration. Work in this repository's root checkout. Preserve current working changes and the Rust-only seed/patrol commands. Implement the approved contracts below through small, reviewed packets, not one monolithic port. Do not broaden into all native slash commands, offline-player administration, cluster routing, or an engine rewrite.
 
 1. First run `git rev-parse HEAD` and `git status --short --branch`. Record the revision, branch, tracked changes and unrelated untracked paths in the packet ledger. Compare the revision with this baseline; inspect only relevant changed paths before dispatching affected packets. Do not automatically repeat the entire audit.
 2. Read [AGENTS.md](../../../AGENTS.md), [CLAUDE.md](../../../CLAUDE.md), [.github/copilot-instructions.md](../../../.github/copilot-instructions.md) and the applicable path instructions. Before writing tests, read [TESTING.md](../../../TESTING.md). The existing CLAUDE documentation-map rows for game systems, architecture, public command behavior and developer guides cover this work; no review-policy change is proposed here.
