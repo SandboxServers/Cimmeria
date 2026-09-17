@@ -66,8 +66,9 @@ pub(super) async fn handle_goto_xyz(
     tracing::info!(entity_id, ?position, space_id, "gmGotoXYZ: teleporting GM");
 
     // Keep the spatial grid consistent first (writes cell_entity.position),
-    // then send the authoritative snap.
-    space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
+    // then send the authoritative snap. Position-only: `gmGotoXYZ` names a
+    // destination, not a facing, so the GM keeps looking where they were.
+    space_mgr.update_position_preserving_facing(entity_id, position, [0.0; 3]);
     space_mgr.note_authorized_teleport(entity_id); // reseed validator clock
     if !forward_to_base(
         tx,
@@ -306,7 +307,9 @@ pub(super) async fn handle_goto(
         ?dest,
         "gmGoto: teleporting GM to target"
     );
-    space_mgr.update_entity_position(entity_id, dest, [0, 0, 0], [0.0; 3]);
+    // Position-only: `gmGoto` puts the caller *at* the target, it does not
+    // point them at it.
+    space_mgr.update_position_preserving_facing(entity_id, dest, [0.0; 3]);
     space_mgr.note_authorized_teleport(entity_id); // reseed validator clock
     if !forward_to_base(
         tx,
@@ -397,7 +400,9 @@ pub(super) async fn handle_summon(
         is_player,
         "gmSummon: moving target to caller"
     );
-    space_mgr.update_entity_position(target_eid, caller_pos, [0, 0, 0], [0.0; 3]);
+    // Position-only: the summoned entity arrives at the caller still facing
+    // whichever way it was.
+    space_mgr.update_position_preserving_facing(target_eid, caller_pos, [0.0; 3]);
     space_mgr.note_authorized_teleport(target_eid); // reseed validator clock
     if is_player
         && !forward_to_base(

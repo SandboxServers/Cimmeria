@@ -7,8 +7,9 @@
 //!
 //! # The two move mechanisms
 //!
-//! **Same space** — the P26 `.gotoxyz` snap: `update_entity_position` (spatial
-//! grid + `cell_entity.position`), then `note_authorized_teleport` (reseeds
+//! **Same space** — the P26 `.gotoxyz` snap:
+//! `update_position_preserving_facing` (spatial grid +
+//! `cell_entity.position`), then `note_authorized_teleport` (reseeds
 //! the movement-validator clock so the snap doesn't trip speed-hack
 //! detection — called unconditionally for players and NPCs, matching
 //! `gmSummon`'s precedent; `move_clock` is only ever consulted against
@@ -107,7 +108,7 @@ pub(super) async fn goto_xyz(
 /// Returns `true` when the move is complete *and* reportable. `false` means
 /// either the entity was gone (a GM-facing line was already sent) or the base
 /// channel closed before the player's forced-position push — the cell-side
-/// grid write is authoritative the instant `update_entity_position` runs, but
+/// grid write is authoritative the instant the position write runs, but
 /// the caller must not claim a snap that never reached the client.
 ///
 /// `cmd` only prefixes the not-found line so each command keeps its own
@@ -127,15 +128,6 @@ async fn snap_in_current_space(
     let space_id = e.space_id.0 as u32;
     let prev_pos = [e.position.x, e.position.y, e.position.z];
     let is_player = e.is_player;
-    // Captured *before* the grid write: `update_entity_position` overwrites
-    // `direction` unconditionally from its `[i8; 3]` parameter, so the
-    // `[0, 0, 0]` below would otherwise silently zero the entity's facing on
-    // every travel command that reaches this shared mechanism (`.gotoxyz`,
-    // `.goto`, `.summon`, `.gotolocation`'s same-space leg) — the same bug
-    // P18's `.location` found and fixed for its own call site. Restored
-    // immediately after (see `console/placement.rs::location` for the
-    // identical pattern).
-    let facing = e.direction;
     // Subject identity, read off the borrow we already hold. `.summon` /
     // `.goto <player>` move somebody *else*, so the moved player is recorded
     // separately from the GM who issued the command.
@@ -161,11 +153,9 @@ async fn snap_in_current_space(
     // Keep the spatial grid consistent first (writes cell_entity.position and
     // the AoI-relevant grid index — witnesses pick this up on the next AoI
     // tick regardless of player/NPC), then send the authoritative snap for a
-    // player target only.
-    space_mgr.update_entity_position(entity, position, [0, 0, 0], [0.0; 3]);
-    if let Some(e) = space_mgr.get_entity_mut(entity) {
-        e.direction = facing;
-    }
+    // player target only. Position-only: a travel command changes where the
+    // subject is, never which way it is looking.
+    space_mgr.update_position_preserving_facing(entity, position, [0.0; 3]);
     space_mgr.note_authorized_teleport(entity);
 
     if is_player {
@@ -354,12 +344,25 @@ async fn move_subject(
         send_gm_feedback(caller_id, &format!("{cmd}: entity not found"), tx).await;
         return;
     };
+    // Same space: no teardown, no loading screen, and NPC subjects keep
+    // working (D15 restricts only the cross-space legs). Checked before the
+    // facing/identity lookups below because `snap_in_current_space` resolves
+    // all three off its own borrow — doing them here first would be three
+    // wasted lookups on the common case.
+    if dest_space_id == Some(origin_space_id) {
+        if snap_in_current_space(cmd, caller_id, subject, position, tx, space_mgr).await {
+            send_gm_feedback(caller_id, success, tx).await;
+        }
+        return;
+    }
+
     // Carried into the cross-space destination below so a transfer doesn't
     // zero the subject's facing at arrival — `TransferDestination::in_world`/
     // `in_instance` default `rotation` to `[0.0; 3]`, and that value flows
     // through `GateTravel` into the destination entity's `direction`
-    // unconditionally. Same root cause as the same-space fix above and
-    // P18's `.location`.
+    // unconditionally. (The same-space leg has no such parameter to fill: it
+    // goes through `update_position_preserving_facing`, which never writes
+    // `direction` at all.)
     let facing = space_mgr
         .get_entity(subject)
         .map(|e| [e.direction.x, e.direction.y, e.direction.z])
@@ -370,15 +373,6 @@ async fn move_subject(
     // UNKNOWN for the very command that caused it.
     let caller = space_mgr.player_identity(caller_id);
     let subject_id = space_mgr.player_identity(subject);
-
-    // Same space: no teardown, no loading screen, and NPC subjects keep
-    // working (D15 restricts only the cross-space legs).
-    if dest_space_id == Some(origin_space_id) {
-        if snap_in_current_space(cmd, caller_id, subject, position, tx, space_mgr).await {
-            send_gm_feedback(caller_id, success, tx).await;
-        }
-        return;
-    }
 
     // `.gotospace` holds a space id it has already confirmed is loaded, so it
     // takes the by-id entry point and never touches the world-name table —

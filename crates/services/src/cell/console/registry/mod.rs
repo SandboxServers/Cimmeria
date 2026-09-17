@@ -53,6 +53,10 @@ impl Target {
 /// One registered console command. The static [`COMMANDS`] table is the single
 /// source of truth for validation (`min`/`max`/`target`) and `.help` text;
 /// execution is routed by name in [`super::exec`].
+///
+/// `Copy` so [`commands`]'s compile-time concatenation of the per-family
+/// tables can move rows into the flattened array in a `const fn`.
+#[derive(Clone, Copy)]
 pub(crate) struct Spec {
     /// Command name as typed after the `.` (e.g. `"savespawn"`).
     pub name: &'static str,

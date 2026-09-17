@@ -200,11 +200,20 @@ pub(super) async fn goto_location(
         send_gm_feedback(caller_id, "gotolocation: entity not found", tx).await;
         return;
     };
-    // Case-insensitive, matching `SpaceManager::canonical_world_name`: a GM
-    // typing `castle_cellblock` while standing in `Castle_CellBlock` must get
-    // the in-place snap, not a full loading screen into a different instance.
-    let dest_space_id = match space_mgr.world_name_for_space(origin_space_id) {
-        Some(w) if w.eq_ignore_ascii_case(world_name) => Some(origin_space_id),
+    // "Is the typed world the one the subject is already in?" answered through
+    // `SpaceManager::canonical_world_name` — the same helper the transfer path
+    // below canonicalises with — rather than a second, parallel comparison
+    // here. A GM typing `castle_cellblock` while standing in
+    // `Castle_CellBlock` must get the in-place snap, not a full loading screen
+    // into a different instance, and there is one source of truth for what
+    // counts as the same world. `canonical_world_name` returns the
+    // `spaces.xml` spelling, which is exactly what `world_name_for_space`
+    // reports, so the comparison is a plain `==` on canonical names; an
+    // undeclared world canonicalises to `None` and never matches.
+    let dest_space_id = match space_mgr.canonical_world_name(world_name) {
+        Some(canonical) if Some(canonical) == space_mgr.world_name_for_space(origin_space_id) => {
+            Some(origin_space_id)
+        }
         _ => None,
     };
 

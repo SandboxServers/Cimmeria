@@ -27,7 +27,10 @@ Added since (verified 2026-09-17):
 `cell/space_transfer` has **two** entry points, and picking the wrong one silently breaks `.gotospace`: `transfer_player_to_space` resolves a (possibly typed) world name through `canonical_world_name`, while `transfer_player_to_loaded_space` takes a pre-verified space id and never consults the world table. `.gotospace`'s whole promise is reaching a live instance whose world the table may not declare, so routing it through the name-based one re-imposes exactly the `UnknownWorld` dead-end it exists to avoid — and only the same-space fast path would still appear to work. The by-id path re-checks that the instance is still loaded, because arrival (`handle_create_entity`) degrades a stale `destination_space_id` to `find_or_create_space`, which for an undeclared world fails *after* teardown (un-spaced player).
 | Off-navmesh recovery | `crates/services/src/cell/space_manager/client_move.rs::reject_outcome` | Validator relocating a stranded entity — see [[snap-back-termination]] |
 
-**These are all unchecked `update_entity_position` writes**, with one exception. None of the GM/content/ring/respawn paths validates that the destination is somewhere the client can legally stand, which is what made the rubber-band loop in [[snap-back-termination]] reachable. Any new path added to this table inherits that hazard.
+**These are all unchecked position writes** — `update_entity_position` or (for
+the GM travel / console placement / recovery paths since 2026-09-17) its
+facing-preserving sibling, see [[facing-preservation-primitive]] — with one
+exception. None of the GM/content/ring/respawn paths validates that the destination is somewhere the client can legally stand, which is what made the rubber-band loop in [[snap-back-termination]] reachable. Any new path added to this table inherits that hazard.
 
 The exception is the last row: `reject_outcome`'s recovery **is** validated. `resolve_recovery_position` runs every candidate — Detour reprojection, nearest world respawner, AABB clamp — through `position_within_bounds` and `NavMesh::is_point_valid` before returning it, and answers `None` (→ `CorrectionSuppressed`) when nothing passes. It has to: the recovery write calls `note_authorized_teleport`, which clears the correction budget, so an unsound recovery target restarts the loop with nothing left to spend.
 

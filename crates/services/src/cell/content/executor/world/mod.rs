@@ -326,7 +326,8 @@ pub(super) async fn set_visible(
 }
 
 /// `Action::MoveWaypoint` — snap the tagged entity to a new position.
-/// No yaw/orientation change; chains call `update_entity_position` directly.
+/// No yaw/orientation change; chains call `update_position_preserving_facing`
+/// directly.
 pub(super) fn move_waypoint(
     entity_tag: String,
     destination: [f32; 3],
@@ -336,7 +337,7 @@ pub(super) fn move_waypoint(
 ) {
     if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
         tracing::debug!(entity_id, %entity_tag, target_id, ?destination, chain_id, "Content: move waypoint");
-        space_mgr.update_entity_position(target_id, destination, [0, 0, 0], [0.0; 3]);
+        space_mgr.update_position_preserving_facing(target_id, destination, [0.0; 3]);
         // Authorized server move: reseed the movement-validator clock for
         // the moved entity (harmless for NPC targets — they never pass
         // through the client-position validator).

@@ -137,10 +137,11 @@ async fn parse_triple(
 ///
 /// The set path reuses the same snap abstraction the native
 /// `gmGotoXYZ`/`gmSummon` handlers and `.gotoxyz` use:
-/// `update_entity_position` (writes `cell_entity.position` **and** the AoI
-/// spatial grid) then `note_authorized_teleport` (reseeds the movement
-/// validator's clock so the jump isn't scored as a speed-hack), then
-/// `TeleportPlayer` for a player target only.
+/// `update_position_preserving_facing` (writes `cell_entity.position` **and**
+/// the AoI spatial grid, leaving `direction` alone) then
+/// `note_authorized_teleport` (reseeds the movement validator's clock so the
+/// jump isn't scored as a speed-hack), then `TeleportPlayer` for a player
+/// target only.
 async fn location(
     caller_id: u32,
     target: u32,
@@ -168,14 +169,6 @@ async fn location(
         let space_id = e.space_id.0 as u32;
         let prev_pos = [e.position.x, e.position.y, e.position.z];
         let is_player = e.is_player;
-        // Captured *before* the grid write: `update_entity_position`
-        // unconditionally overwrites `direction` from its `[i8; 3]`
-        // parameter, so the `[0, 0, 0]` below would otherwise silently zero
-        // the entity's facing. Legacy `location` assigns `target.position`
-        // and nothing else, so the orientation is restored immediately
-        // after — the same write-back the NPC movement tick already does for
-        // the same reason (`cell::service::ticks::npc_movement`).
-        let facing = e.direction;
 
         tracing::info!(
             caller_id,
@@ -186,10 +179,9 @@ async fn location(
             "GM .location: setting entity position"
         );
 
-        space_mgr.update_entity_position(target, position, [0, 0, 0], [0.0; 3]);
-        if let Some(e) = space_mgr.get_entity_mut(target) {
-            e.direction = facing;
-        }
+        // Position-only write: legacy `location` assigns `target.position` and
+        // nothing else, so the facing must survive the move.
+        space_mgr.update_position_preserving_facing(target, position, [0.0; 3]);
         space_mgr.note_authorized_teleport(target);
 
         if is_player {

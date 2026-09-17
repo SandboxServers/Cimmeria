@@ -23,10 +23,17 @@ distance) reads from the cell entity's `position`, so a single tampered
 A single validation seam,
 `SpaceManager::apply_client_position_update`, gates **every** inbound
 client position. It is the only path the `EntityMove` handler calls;
-server-authoritative writers (ring transport, respawn, gate arrival,
-content-engine teleport, GM travel, NPC movement) keep using the
-unchecked `update_entity_position` directly — they are the source of
-truth for those entities.
+server-authoritative writers are the source of truth for those entities
+and never go through the validator, but they split on whether the move
+should reorient the entity. Respawn (player and NPC) and NPC movement
+have a real facing to set — a spawn-defined heading or the direction of
+travel — and call the unchecked `update_entity_position` directly, which
+writes `direction` verbatim from its `[i8; 3]` parameter. Ring transport,
+content-engine teleport (including `MoveWaypoint`), and GM travel are
+pure relocations with no orientation change, so they call
+`SpaceManager::update_position_preserving_facing` — a position-only
+writer that never touches `direction` at all, making facing survive by
+construction instead of by each caller capturing and restoring it.
 
 The validator (`cimmeria_entity::movement_validation::MovementValidator`)
 runs four layers. The table is in **execution order** as wired in

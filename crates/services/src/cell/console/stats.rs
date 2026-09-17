@@ -209,6 +209,11 @@ pub(super) async fn set_speed(
         return;
     };
     let is_player = entity.is_player;
+    // Read off the borrow already in hand. `player_identity(target)` would be
+    // a third lookup of the entity this function has resolved twice already,
+    // and it resolves to the same value: the target's existence is proven one
+    // line above, so there is no missing-entity arm for it to differ on.
+    let target_id = entity.identity();
     for (label, stat_id) in SPEED_STATS {
         let Some(stat) = entity.stats.get(*stat_id) else {
             send_gm_feedback(
@@ -262,7 +267,6 @@ pub(super) async fn set_speed(
     // same `account_id = N` filter as every other console command; the
     // affected entity keeps its own `target` / `target_player_id` pair.
     let caller = space_mgr.player_identity(caller_id);
-    let target_id = space_mgr.player_identity(target);
     tracing::info!(
         caller_id,
         account_id = caller.account_id,

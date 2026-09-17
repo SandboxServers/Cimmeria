@@ -42,3 +42,8 @@ mod tests;
 pub use constants::*;
 pub use names::cell_method_name;
 pub use router::dispatch_cell_method;
+
+// The canonical raw-column → typed `AccessLevel` conversion. Re-exported
+// because it is the one mapping every privilege check in the cell must share
+// — the movement validator's GM off-navmesh allowance included.
+pub(crate) use gm_gate::access_level_from_u32;

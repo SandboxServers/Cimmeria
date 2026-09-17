@@ -3,3 +3,4 @@
 - [pr1-bounds-seam.md](pr1-bounds-seam.md) — Where PR1 landed in the cell seam; the pattern PR2/3/4 should follow
 - [position-validation-finite-gate.md](position-validation-finite-gate.md) — Use `is_finite()`, not `is_nan()`, and test it against an unbounded AABB so the regression actually fires on revert
 - [snap-back-termination.md](snap-back-termination.md) — Block on sight: a snap-back to an invalid target loops forever. Plus GM navmesh allowance + the case-sensitive world-name trap
+- [facing-preservation-primitive.md](facing-preservation-primitive.md) — Block on sight: `update_entity_position(..., [0,0,0], ...)` zeroes facing; teleports use `update_position_preserving_facing`
