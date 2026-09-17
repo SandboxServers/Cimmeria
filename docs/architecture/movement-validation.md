@@ -39,7 +39,7 @@ rows because they have different actions.
 | Order | Layer | Action | Catches |
 |-------|-------|--------|---------|
 | 1 | **Bounds** (`check_bounds`) | reject | NaN / ±∞ / absurd coords, **Z-axis floor-clip** (full X/Y/**Z** AABB test) |
-| 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded |
+| 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded. Horizontal (X/Z) containment is tight (`agent_radius`-based); vertical (Y) containment is loose (`JUMP_HEIGHT_TOLERANCE`, matching `DEST_EXTENTS`'s Y extent) so a legitimate jump apex over an otherwise-walkable footprint is not rejected — see "Jump-height fix" below. |
 | 3 | **Speed** (`check_kinematics`) | **warn-only** | sustained over-tolerance velocity (`implied_speed > top_speed × 1.5`) |
 | 4 | **Teleport** (`check_kinematics`) | reject | single update both `> 50 u` **and** `> top_speed × 10` (or, on the first packet with no time baseline, `> 50 u` from the authoritative spawn) |
 
@@ -214,6 +214,33 @@ smooths; the server gates sit far below it. See
     `castle_cellblock.nav` fixture, self-skips on fixture-less CI)
   - plus speed-warn-accepts, authorized-teleport-follow-up,
     sustained-spam, and `entity_move_space_mismatch_warns_but_still_applies`.
+
+## Jump-height fix
+
+`NavMesh::is_point_valid` (`crates/entity/src/navigation/mod.rs`) originally
+measured the raw 3D distance from a proposed position to the nearest walkable
+polygon against `agent_radius * 2.0` (≈1.2 units on the `castle_cellblock`
+fixture). Because the client is authoritative for jump physics and the server
+never simulates it, a jump apex only slightly taller than that combined gate
+already read as off-navmesh — so *every* client position packet sent while
+airborne was rejected as `MovementReject::OffNavmesh`, snapping the player
+back to `last_valid` via `TeleportPlayer` on each one. Visibly: standing-still
+jumps always snapped the avatar's facing to north (`build_teleport_bundle`
+zeroes direction on every snap), and jumping while moving produced a
+backward/sideways rubber-band as the player kept getting snapped to a
+several-packets-stale position.
+
+The fix decouples horizontal from vertical containment: X/Z uses the same
+tight `agent_radius`-based gate as before, but Y is checked separately
+against `JUMP_HEIGHT_TOLERANCE` (3.0 units — reusing `DEST_EXTENTS`'s Y
+extent, which this module already documented as "loose ... entity might be
+jumping" for the destination-lookup search box). A jump that stays over its
+own walkable footprint is now accepted regardless of height; a point that's
+actually off-mesh horizontally, or absurdly far above any surface, is still
+rejected. Regression guards: `jump_above_navmesh_same_xz_is_still_valid` /
+`far_above_navmesh_same_xz_is_still_invalid` in `crates/entity/src/navigation/tests.rs`,
+and `jump_in_place_is_accepted_not_rejected` in
+`crates/services/src/cell/space_manager/tests/movement_validation/mod.rs`.
 
 ## Follow-ups (not in #478)
 

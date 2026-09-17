@@ -44,6 +44,10 @@ const DEST_EXTENTS: [f32; 3] = [3.0, 3.0, 3.0];
 /// Generous extents for height queries — large Y extent since caller
 /// passes y=0 and the mesh could be at any elevation.
 const HEIGHT_EXTENTS: [f32; 3] = [2.0, 500.0, 2.0];
+/// Vertical containment tolerance for [`NavMesh::is_point_valid`]. Reuses
+/// `DEST_EXTENTS`'s Y extent — jumping is exactly the "entity might be
+/// jumping" case that constant already exists for.
+const JUMP_HEIGHT_TOLERANCE: f32 = DEST_EXTENTS[1];
 
 /// A loaded navigation mesh backed by the Detour C++ library.
 ///
@@ -338,12 +342,32 @@ impl NavMesh {
     }
 
     /// Returns `true` if the given position lies on a walkable navmesh polygon.
+    ///
+    /// Horizontal (X/Z) containment uses a tight `agent_radius`-based gate.
+    /// Vertical (Y) containment is deliberately looser — a legitimately
+    /// jumping avatar sits well above the walkable surface beneath it for
+    /// the length of the jump arc, and this is client-authoritative
+    /// physics the server never simulates. A single combined 3D distance
+    /// check (the prior implementation) couldn't tell "jumping in place"
+    /// from "off the mesh": a jump apex only slightly taller than
+    /// `agent_radius * 2` already read as off-navmesh and triggered a
+    /// snap-back on every jump. `JUMP_HEIGHT_TOLERANCE` reuses
+    /// `DEST_EXTENTS`'s Y extent — the value this module already
+    /// documents as "loose ... entity might be jumping" for the
+    /// destination-lookup search box — so the vertical gate matches the
+    /// radius within which `find_nearest_poly` can even locate the
+    /// underlying polygon.
     pub fn is_point_valid(&self, pos: &Vector3) -> bool {
-        if let Some((_, closest)) = self.find_nearest_poly(pos) {
-            pos.distance_to(&closest) < self.agent_radius * 2.0
-        } else {
-            false
+        let Some((_, closest)) = self.find_nearest_poly(pos) else {
+            return false;
+        };
+        let dx = pos.x - closest.x;
+        let dz = pos.z - closest.z;
+        let horizontal_gate = self.agent_radius * 2.0;
+        if dx * dx + dz * dz >= horizontal_gate * horizontal_gate {
+            return false;
         }
+        (pos.y - closest.y).abs() <= JUMP_HEIGHT_TOLERANCE
     }
 
     /// Find the closest valid navmesh position to the given point.

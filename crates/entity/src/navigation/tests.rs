@@ -24,6 +24,61 @@ fn load_castle_cellblock_nav() {
     );
 }
 
+/// Regression guard for the jump-height bug: a client-authoritative
+/// jump lifts the avatar above the walkable surface without moving it
+/// horizontally. Pre-fix, `is_point_valid` measured the raw 3D distance
+/// to the nearest polygon against `agent_radius * 2.0` (1.2 units for
+/// this fixture) — so a jump apex taller than ~1.2 units already read
+/// as off-navmesh, which is what made every jump in place trigger a
+/// `MovementReject::Teleport`-style snap-back. `JUMP_HEIGHT_TOLERANCE`
+/// (3.0) must accept a same-XZ point 2 units above the ground.
+///
+/// Reverting `is_point_valid` to the combined-3D-distance check makes
+/// this fail (2.0 > 1.2).
+#[test]
+fn jump_above_navmesh_same_xz_is_still_valid() {
+    let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
+    if !path.exists() {
+        return;
+    }
+    let mesh = NavMesh::load(path).expect("Failed to load castle_cellblock.nav");
+    assert!(
+        mesh.agent_radius * 2.0 < 2.0,
+        "test fixture assumption: the old combined-distance gate (agent_radius \
+         * 2.0 = {}) must be tighter than the 2.0u jump apex tested below, or \
+         this test doesn't actually exercise the bug",
+        mesh.agent_radius * 2.0
+    );
+
+    let ground = Vector3::new(-289.465, 68.542, -154.276);
+    let mid_jump = Vector3::new(ground.x, ground.y + 2.0, ground.z);
+    assert!(
+        mesh.is_point_valid(&mid_jump),
+        "a same-XZ point 2 units above a known-walkable position must still \
+         read as on-navmesh — this is what a mid-air jump looks like"
+    );
+}
+
+/// Symmetric guard: a point absurdly far above the navmesh (well past any
+/// legitimate jump apex) must still be rejected — the loosened vertical
+/// tolerance is generous, not unbounded.
+#[test]
+fn far_above_navmesh_same_xz_is_still_invalid() {
+    let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
+    if !path.exists() {
+        return;
+    }
+    let mesh = NavMesh::load(path).expect("Failed to load castle_cellblock.nav");
+
+    let ground = Vector3::new(-289.465, 68.542, -154.276);
+    let way_up = Vector3::new(ground.x, ground.y + 50.0, ground.z);
+    assert!(
+        !mesh.is_point_valid(&way_up),
+        "a point 50 units above ground must not read as on-navmesh — the \
+         jump-height tolerance must stay bounded"
+    );
+}
+
 #[test]
 fn load_and_pathfind_castle_cellblock() {
     let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
