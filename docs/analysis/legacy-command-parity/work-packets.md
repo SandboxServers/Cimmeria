@@ -49,10 +49,10 @@ For every runtime leaf, add/update a regression that fails without the fix. Mode
 
 ### P03
 
-**Status:** Ready (P01 integrated 2026-09-17). **Commands:** `.stats`, `.primarystats`, `.speedstats`, `.armorstats`, `.qrstats`, `.absorbstats`, `.stealthstats`. **Depends:** P01. **Advisor:** combat-systems-advisor.
-**Entries:** [console stats](../../../crates/services/src/cell/console/stats.rs), [console tests](../../../crates/services/src/cell/console/tests.rs).
+**Status:** Integrated (2026-09-17, `legacy-command-parity`, merge of `p03-stats` @ 931aeedd). The six pre-existing groups already matched legacy field-for-field on inspection against `Entity.py:309-431` — no field changes needed, just regression coverage that didn't exist before. `.stats` added new (health/focus/healthRegen/focusRegen, from `entityStats`, `Entity.py:294-306`). UATPending — bundled into M1 once P04-P07 land. Worknote/handoff: [worknotes/p03.md](worknotes/p03.md), [handoffs/p03.md](handoffs/p03.md). **Note:** "missing-stat behavior" is tested at the formatting-function level (`stats.rs::format_stat_line`), not via a full `CellEntity` fixture — `StatList::new()` unconditionally populates every stat id these seven groups use and exposes no removal API, so no real fixture can produce an absent-stat entity today; a small `StatList::remove` was proposed but not added (outside a `crates/services`-scoped packet's owned paths). **Commands:** `.stats`, `.primarystats`, `.speedstats`, `.armorstats`, `.qrstats`, `.absorbstats`, `.stealthstats`. **Depends:** P01. **Advisor:** combat-systems-advisor.
+**Entries:** [console stats](../../../crates/services/src/cell/console/stats.rs), [console tests](../../../crates/services/src/cell/console/tests/mod.rs).
 **Scope:** one shared stat-readout contract; add basic four-stat group and verify the six existing exact sets. This is one table-driven behavior, not seven subsystem rewrites.
-**Acceptance:** exact names/current/max values for every group, missing-stat behavior, selected-target and caller feedback isolation. **Exclude:** stat setters, balance changes, fabricated default values.
+**Acceptance:** exact names/current/max values for every group, missing-stat behavior (see integration note above), selected-target and caller feedback isolation. **Exclude:** stat setters, balance changes, fabricated default values.
 
 ### P04
 
