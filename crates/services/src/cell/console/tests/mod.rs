@@ -16,6 +16,8 @@ use crate::cell::space_manager::SpaceManager;
 mod p02;
 #[cfg(test)]
 mod p03;
+#[cfg(test)]
+mod p04;
 
 /// Build a SpaceManager with a GM player (entity 1, access_level 2) targeting an
 /// NPC (entity 100001) in a small test world.

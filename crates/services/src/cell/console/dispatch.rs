@@ -180,6 +180,15 @@ pub(crate) async fn exec(
         "searchmission" => query::search_mission(caller_id, args, tx, space_mgr).await,
         "searchtemplate" => query::search_template(caller_id, args, tx, space_mgr).await,
         "players" => query::players(caller_id, tx, space_mgr).await,
+        "listabilities" => {
+            query::list_abilities(
+                caller_id,
+                target_id.expect("Target::Player guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
         // I. entity / combat inspection
         "info" => query::info(caller_id, args, target_id, tx, space_mgr).await,
         "facing" => {
