@@ -131,6 +131,11 @@ pub(super) struct Traffic {
     /// `(entity_id, world, destination_space_id, position)` — the cross-space
     /// transfer.
     pub gate_travels: Vec<(u32, String, Option<u32>, [f32; 3])>,
+    /// `rotation` from the same `GateTravel` sends, kept parallel to
+    /// `gate_travels` rather than folded into its tuple so the existing
+    /// exact-tuple assertions at every call site don't all need updating for
+    /// a field only the facing-preservation regression test cares about.
+    pub gate_travel_rotations: Vec<[f32; 3]>,
     pub feedback: Vec<String>,
 }
 
@@ -145,6 +150,19 @@ impl Traffic {
             self.gate_travels
         );
         &self.gate_travels[0]
+    }
+
+    /// `rotation` from the single enqueued `GateTravel`, panicking unless
+    /// exactly one transfer was enqueued (same precondition as
+    /// [`Self::only_gate_travel`]).
+    pub fn only_gate_travel_rotation(&self) -> [f32; 3] {
+        assert_eq!(
+            self.gate_travel_rotations.len(),
+            1,
+            "expected exactly one GateTravel, got {:?}",
+            self.gate_travel_rotations
+        );
+        self.gate_travel_rotations[0]
     }
 
     pub fn has_line(&self, text: &str) -> bool {
@@ -172,14 +190,18 @@ fn drain(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Traffic {
                 entity_id,
                 target_world_name,
                 position,
+                rotation,
                 destination_space_id,
                 ..
-            } => t.gate_travels.push((
-                *entity_id,
-                target_world_name.clone(),
-                *destination_space_id,
-                *position,
-            )),
+            } => {
+                t.gate_travels.push((
+                    *entity_id,
+                    target_world_name.clone(),
+                    *destination_space_id,
+                    *position,
+                ));
+                t.gate_travel_rotations.push(*rotation);
+            }
             _ => {
                 if let Some(text) = decode_feedback(&msg) {
                     t.feedback.push(text);

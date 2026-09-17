@@ -3,6 +3,8 @@
 //!
 //! Legacy `deprecated/python/cell/commands/Player.py:344-365`.
 
+use cimmeria_common::Vector3;
+
 use super::*;
 
 /// Legacy `Player.py:359-362`: an unknown world reports `"Unable to find
@@ -94,6 +96,34 @@ async fn legacy_p46_gotolocation_cross_world_uses_the_default_instance() {
         mgr.get_entity_space_id(gm),
         None,
         "a cross-world move tears the subject out of its origin space"
+    );
+}
+
+/// Regression guard (found by CodeRabbit review): `TransferDestination::
+/// in_world`/`in_instance` default `rotation` to `[0.0; 3]`, and that value
+/// flows through `GateTravel` into the destination entity's `direction`
+/// unconditionally — so a cross-world `.gotolocation` must carry the
+/// subject's *actual* current facing, not the zero default, or the subject
+/// arrives facing an arbitrary direction. A distinctive non-zero pitch/roll
+/// (not just yaw) so a regression that only preserves `.y` still fails.
+#[tokio::test]
+async fn legacy_p46_gotolocation_cross_world_preserves_subject_facing() {
+    let (mut mgr, gm, _npc) = setup_worlds();
+    mgr.get_entity_mut(gm).unwrap().direction = Vector3::new(0.3, 2.1, -0.5);
+
+    let t = run(
+        "gotolocation",
+        gm,
+        &[CASTLE, "70", "1", "80"],
+        None,
+        &mut mgr,
+    )
+    .await;
+
+    assert_eq!(
+        t.only_gate_travel_rotation(),
+        [0.3, 2.1, -0.5],
+        "the GateTravel destination must carry the subject's actual facing, not the zero default"
     );
 }
 

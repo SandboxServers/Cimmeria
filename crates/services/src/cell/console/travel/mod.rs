@@ -126,6 +126,15 @@ async fn snap_in_current_space(
     let space_id = e.space_id.0 as u32;
     let prev_pos = [e.position.x, e.position.y, e.position.z];
     let is_player = e.is_player;
+    // Captured *before* the grid write: `update_entity_position` overwrites
+    // `direction` unconditionally from its `[i8; 3]` parameter, so the
+    // `[0, 0, 0]` below would otherwise silently zero the entity's facing on
+    // every travel command that reaches this shared mechanism (`.gotoxyz`,
+    // `.goto`, `.summon`, `.gotolocation`'s same-space leg) — the same bug
+    // P18's `.location` found and fixed for its own call site. Restored
+    // immediately after (see `console/placement.rs::location` for the
+    // identical pattern).
+    let facing = e.direction;
 
     tracing::info!(
         caller_id,
@@ -142,6 +151,9 @@ async fn snap_in_current_space(
     // tick regardless of player/NPC), then send the authoritative snap for a
     // player target only.
     space_mgr.update_entity_position(entity, position, [0, 0, 0], [0.0; 3]);
+    if let Some(e) = space_mgr.get_entity_mut(entity) {
+        e.direction = facing;
+    }
     space_mgr.note_authorized_teleport(entity);
 
     if is_player {
@@ -210,6 +222,16 @@ async fn move_subject(
         send_gm_feedback(caller_id, &format!("{cmd}: entity not found"), tx).await;
         return;
     };
+    // Carried into the cross-space destination below so a transfer doesn't
+    // zero the subject's facing at arrival — `TransferDestination::in_world`/
+    // `in_instance` default `rotation` to `[0.0; 3]`, and that value flows
+    // through `GateTravel` into the destination entity's `direction`
+    // unconditionally. Same root cause as the same-space fix above and
+    // P18's `.location`.
+    let facing = space_mgr
+        .get_entity(subject)
+        .map(|e| [e.direction.x, e.direction.y, e.direction.z])
+        .unwrap_or([0.0; 3]);
 
     // Same space: no teardown, no loading screen, and NPC subjects keep
     // working (D15 restricts only the cross-space legs).
@@ -220,10 +242,11 @@ async fn move_subject(
         return;
     }
 
-    let dest = match dest_space_id {
+    let mut dest = match dest_space_id {
         Some(space_id) => TransferDestination::in_instance(world_name, space_id, position),
         None => TransferDestination::in_world(world_name, position),
     };
+    dest.rotation = facing;
 
     // Exhaustive by design: `SameSpace` performs no position move at all, so
     // an `is_ok()` adapter would silently report a teleport that never

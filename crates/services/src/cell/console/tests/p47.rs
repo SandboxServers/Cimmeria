@@ -78,7 +78,49 @@ fn drain_stat_updates(rx: &mut mpsc::Receiver<CellToBaseMsg>, entity_id: u32) ->
     out
 }
 
-/// Drain only the GM-facing feedback lines.
+/// Drain the channel exactly once, retaining both GM feedback lines and
+/// `onStatUpdate` payloads addressed to `entity_id`. `drain_feedback` and
+/// `drain_stat_updates` each fully drain the receiver on their own — calling
+/// both against the same `rx` in one test silently checks an empty receiver
+/// the second time (CodeRabbit review of PR #642 caught this: the two
+/// rejection tests below asserted `drain_stat_updates(...).is_empty()`
+/// *after* `drain_feedback` had already consumed everything, so the
+/// assertion could never fail). Use this whenever a test needs to check both.
+fn drain_all(
+    rx: &mut mpsc::Receiver<CellToBaseMsg>,
+    entity_id: u32,
+) -> (Vec<String>, Vec<Vec<u8>>) {
+    let mut lines = Vec::new();
+    let mut stat_updates = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let Some(t) = decode_feedback(&msg) {
+            lines.push(t);
+            continue;
+        }
+        let (eid, idx, args) = match msg {
+            CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index,
+                args,
+            } => (entity_id, method_index, args),
+            CellToBaseMsg::WitnessEntityMethod {
+                entity_id,
+                method_index,
+                args,
+                ..
+            } => (entity_id, method_index, args),
+            _ => continue,
+        };
+        if eid == entity_id && idx == crate::mercury::method_idx::ON_STAT_UPDATE {
+            stat_updates.push(args);
+        }
+    }
+    (lines, stat_updates)
+}
+
+/// Drain only the GM-facing feedback lines. Only safe to use in a test that
+/// does not also need to inspect `onStatUpdate` traffic on the same `rx` —
+/// see [`drain_all`] for that case.
 fn drain_feedback(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<String> {
     let mut lines = Vec::new();
     while let Ok(msg) = rx.try_recv() {
@@ -218,7 +260,7 @@ async fn legacy_p47_speed_rejects_non_integer_without_mutation() {
         before,
         "a malformed value must leave both speed stats untouched"
     );
-    let lines = drain_feedback(&mut rx);
+    let (lines, stat_updates) = drain_all(&mut rx, npc);
     assert!(
         lines.iter().any(|l| l.contains("must be an integer")),
         "malformed .speed must explain the integer requirement: {lines:?}"
@@ -228,7 +270,7 @@ async fn legacy_p47_speed_rejects_non_integer_without_mutation() {
         "a rejected .speed must not claim success: {lines:?}"
     );
     assert!(
-        drain_stat_updates(&mut rx, npc).is_empty(),
+        stat_updates.is_empty(),
         "a rejected .speed must publish no onStatUpdate"
     );
 }
@@ -254,7 +296,7 @@ async fn legacy_p47_speed_rejects_out_of_range_without_mutation() {
             before,
             ".speed {arg} is out of range and must mutate neither speed stat"
         );
-        let lines = drain_feedback(&mut rx);
+        let (lines, stat_updates) = drain_all(&mut rx, npc);
         assert!(
             lines
                 .iter()
@@ -262,7 +304,7 @@ async fn legacy_p47_speed_rejects_out_of_range_without_mutation() {
             ".speed {arg} must report the permitted range: {lines:?}"
         );
         assert!(
-            drain_stat_updates(&mut rx, npc).is_empty(),
+            stat_updates.is_empty(),
             ".speed {arg} must publish no onStatUpdate"
         );
     }
