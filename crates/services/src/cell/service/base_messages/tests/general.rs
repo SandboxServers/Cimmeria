@@ -137,6 +137,7 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
         BaseToCellMsg::InitPlayerState {
             entity_id: 1,
             player_id: 100,
+            account_id: 6,
             world_name: "Castle_CellBlock".into(),
             archetype_id: 1,
             saved_missions: vec![],
@@ -160,5 +161,27 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
         Some("Daniel"),
         "InitPlayerState must cache the player name on the cell entity so \
          cell-side seams can attribute events to a name rather than an id",
+    );
+    // Same dispatcher line also re-asserts the stable log identity. This
+    // entity was created without a create-time stamp (see the bare
+    // `mgr.create_entity` above), so InitPlayerState is the only thing that
+    // can supply it — which is exactly the belt-and-braces case the
+    // re-assert exists for.
+    assert_eq!(
+        mgr.get_entity(1).unwrap().account_id,
+        Some(6),
+        "InitPlayerState must (re-)stamp account_id on the cell entity; without \
+         it, an entity created by a path that skipped the create-time stamp \
+         would emit un-attributable logs for the whole session",
+    );
+    // The other half of the pair comes from `handle_init_player_state` rather
+    // than the dispatcher, so the two are set by different functions. Pin the
+    // end state, not either writer: identity is only useful as a pair, and a
+    // session that ends up with `account_id` but no `player_id` names the
+    // account without saying which character on it was playing.
+    assert_eq!(
+        mgr.get_entity(1).unwrap().player_id,
+        Some(100),
+        "InitPlayerState must leave BOTH identity fields stamped",
     );
 }

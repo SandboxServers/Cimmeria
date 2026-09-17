@@ -5,7 +5,7 @@
 //! `.summon`) resolve their target player through.
 
 use cimmeria_common::EntityId;
-use cimmeria_entity::cell_entity::CellEntity;
+use cimmeria_entity::cell_entity::{CellEntity, PlayerIdentity};
 
 use super::{RegionData, SpaceManager};
 
@@ -43,6 +43,28 @@ pub enum PlayerNameLookup {
 }
 
 impl SpaceManager {
+    /// The stable `(account_id, player_id)` log correlator for an entity.
+    ///
+    /// This is the cell-side entry point for the identity-propagation
+    /// convention (`docs/architecture/instrumentation-discipline.md` §Rule 5):
+    /// every cell log that describes something a *player* did resolves the
+    /// pair through here and passes both halves into `tracing` as `Option`s.
+    ///
+    /// Returns [`PlayerIdentity::UNKNOWN`] for an NPC and for an entity id
+    /// that doesn't resolve — in both cases the caller emits no identity
+    /// fields at all, which is the correct outcome: an unresolvable id has
+    /// no identity to report, and inventing a `0` sentinel would be
+    /// indistinguishable from a real account in a log query.
+    ///
+    /// Cheap enough for warn/debug-level call sites (one `HashMap` hop via
+    /// `entity_space` plus one into the space's entity map), but it is still
+    /// a lookup — don't call it unconditionally on a per-tick hot path;
+    /// resolve it inside the branch that actually logs.
+    pub fn player_identity(&self, entity_id: u32) -> PlayerIdentity {
+        self.get_entity(entity_id)
+            .map_or(PlayerIdentity::UNKNOWN, CellEntity::identity)
+    }
+
     /// Return all active spaces as (space_id, world_name) pairs.
     pub fn all_spaces(&self) -> Vec<(u32, String)> {
         self.spaces
@@ -66,14 +88,30 @@ impl SpaceManager {
         self.world_spaces.get(world_name).copied()
     }
 
-    /// Is `world_name` a world this CellApp knows about at all?
+    /// Resolve a caller-supplied world name to its canonical `spaces.xml`
+    /// spelling, ignoring case. Returns `None` when no world matches.
     ///
-    /// Backed by `spaces.xml` (the static world table), so this answers
-    /// "does this world exist" independently of whether any instance of it
-    /// is currently loaded. Cross-world transfer validates against this
-    /// BEFORE tearing an entity out of its origin space.
-    pub fn world_is_known(&self, world_name: &str) -> bool {
-        self.worlds.contains_key(world_name)
+    /// Every keyed lookup in this module (`worlds`, `world_spaces`,
+    /// `SpaceInstance::world_name`) is exact and case-sensitive, because
+    /// the names come from `spaces.xml` and are compared against each
+    /// other. A *typed* world name does not have that guarantee: a GM
+    /// entering `.gotolocation harset 10 0 10` gets `"Unable to find
+    /// world: harset"` even though `Harset` is right there in the table,
+    /// with no hint that only the capital H was wrong. Command paths
+    /// canonicalise through here first and use the returned spelling for
+    /// everything downstream, so the exact-match invariant the rest of the
+    /// module relies on is preserved.
+    ///
+    /// The scan is linear over the world table (~two dozen entries, once
+    /// per travel command) — not worth a second index.
+    pub fn canonical_world_name(&self, world_name: &str) -> Option<&str> {
+        if let Some((name, _)) = self.worlds.get_key_value(world_name) {
+            return Some(name.as_str());
+        }
+        self.worlds
+            .keys()
+            .find(|k| k.eq_ignore_ascii_case(world_name))
+            .map(String::as_str)
     }
 
     /// World name of a currently-loaded space instance, or `None` if no such

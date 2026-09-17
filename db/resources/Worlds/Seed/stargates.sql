@@ -26,7 +26,7 @@ INSERT INTO stargates (address1, address2, address3, address4, address5, address
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (28, 26, 5, 36, 11, 29, 1, 23, 'SGC', 0, 'SGC.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 86, 172.78999300000001, -8.4700000000000006, 0, 6.0140000000000002, NULL);
 
-INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (28, 26, 5, 36, 11, 29, 1, 24, 'Egypt', 0, '', 0, 66, 0, 0, 0, 0, NULL);
+INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (28, 26, 5, 36, 11, 32, 1, 24, 'Egypt', 0, '', 0, 66, 0, 0, 0, 0, NULL);
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (28, 34, 30, 25, 32, 8, 19, 26, 'Pertho', 0, '', 0, 83, 0, 0, 0, 0, NULL);
 
@@ -42,11 +42,11 @@ INSERT INTO stargates (address1, address2, address3, address4, address5, address
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (28, 26, 5, 36, 11, 30, 1, 27, 'SGC W1', 0, 'SGC_W1.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 58, 172.78999300000001, -8.4700000000000006, 0, 6.0140000000000002, 10004);
 
-INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (3, 8, 16, 24, 23, 28, 2, 20, 'Ihpet Crater (SGU)', 0, 'Ihpet_Crater_Light.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 73, 251.25, 10.606, 0, -989.78100600000005, 10005);
+INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (3, 8, 16, 24, 23, 31, 2, 20, 'Ihpet Crater (SGU)', 0, 'Ihpet_Crater_Light.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 73, 251.25, 10.606, 0, -989.78100600000005, 10005);
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (3, 8, 16, 24, 23, 28, 2, 8, 'Ihpet Crater (Praxis)', 0, 'Ihpet_Crater_Dark.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 72, 251.25, 10.606, 0, -989.78100600000005, 10006);
 
-INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (4, 13, 5, 6, 7, 33, 10, 22, 'Men''fa (SGU)', 0, 'Menfa_Light.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 78, -37.821998999999998, -191.91400100000001, 0, 395.983002, 10007);
+INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (4, 13, 5, 6, 7, 34, 10, 22, 'Men''fa (SGU)', 0, 'Menfa_Light.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 78, -37.821998999999998, -191.91400100000001, 0, 395.983002, 10007);
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (4, 13, 5, 6, 7, 33, 10, 7, 'Men''fa (Praxis)', 0, 'Menfa_Dark.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 77, -37.821998999999998, -191.91400100000001, 0, 395.983002, 10008);
 

@@ -10,6 +10,7 @@ mod bandolier_update;
 mod create_entity_instance;
 mod general;
 mod gm_spawn_ready;
+mod identity_propagation;
 mod item_events;
 mod minigame;
 mod movement;

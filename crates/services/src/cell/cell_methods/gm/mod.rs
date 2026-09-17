@@ -182,7 +182,7 @@ pub const TEST_LOS: u16 = 216;
 /// `onPhysics(UINT8 bTurnOn)` — def line 645. Offset 112. Backs
 /// `/gmsetfly` and `/gmsetghost` (both route through this one method
 /// identically). Toggles `CellEntity::movement_unrestricted`, which the
-/// movement validator (`space_manager::entities::apply_client_position_update_at`)
+/// movement validator (`space_manager::client_move::apply_client_position_update_at`)
 /// checks to bypass bounds/navmesh/speed/teleport rejection for this
 /// entity. **Wire polarity is inverted**: `bTurnOn=0` (physics off) ->
 /// unrestricted=true; `bTurnOn=1` (physics on) -> unrestricted=false. See

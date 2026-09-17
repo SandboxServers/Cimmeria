@@ -9,7 +9,7 @@
 //! with zero dependency on a server round-trip: this `onPhysics` wire send
 //! is a best-effort **notification**, not a gate on the client's own
 //! movement. What it *does* gate is the server's movement validator — see
-//! `crate::cell::space_manager::entities::apply_client_position_update_at`,
+//! `crate::cell::space_manager::client_move::apply_client_position_update_at`,
 //! which would otherwise reject the GM's now-unrestricted movement as a
 //! speed-hack / off-navmesh / out-of-bounds violation.
 //!

@@ -1,4 +1,4 @@
-use cimmeria_entity::stats::{StatList, MOVEMENT_SPEED_MOD};
+use cimmeria_entity::stats::StatList;
 
 use super::super::super::space_manager::SpaceManager;
 
@@ -17,23 +17,13 @@ const NPC_STEP_LOG_SAMPLE: u32 = 10;
 /// Scale an NPC's template `move_speed` (world units per 100ms tick) by its
 /// `movementSpeedMod` stat.
 ///
-/// `entities/defs/alias.xml` documents `movementSpeedMod` as "multiplies
-/// movement speed by curr/100" — 100 is unmodified, 200 double, 0 frozen. The
-/// client applies that same multiplier to its own local prediction when it
-/// receives the stat in an `onStatUpdate`, so this is the server-side half of
-/// one contract, not a new server-only knob. Without it the stat had **no**
-/// server-side effect at all and a GM's `.speed` (see
-/// [`crate::cell::console::stats::set_speed`]) would desync the client's
-/// prediction from the authoritative path stepping.
-///
-/// A missing stat falls back to 100 (unmodified) rather than 0, so an entity
-/// constructed without the full `StatList::new()` block still paths. A
-/// negative `cur` is floored at 0 — `Stat::set_current` already clamps into
-/// `[min, max]` (0..=500 by default), but a directly-poked field must stall
-/// the NPC rather than drive it backwards along its own path.
+/// Without the scale the stat had **no** server-side effect at all and a GM's
+/// `.speed` (see [`crate::cell::console::stats::set_speed`]) would desync the
+/// client's prediction from the authoritative path stepping. See
+/// [`StatList::movement_speed_scale`] for the stat's contract and its
+/// fallbacks.
 fn effective_move_speed(base: f32, stats: &StatList) -> f32 {
-    let pct = stats.get(MOVEMENT_SPEED_MOD).map_or(100, |s| s.cur).max(0);
-    base * (pct as f32 / 100.0)
+    base * stats.movement_speed_scale()
 }
 
 /// NPC movement along nav paths — runs every AoI tick (100ms) for smooth pathing.
@@ -204,6 +194,7 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
 mod tests {
     use super::*;
     use crate::cell::space_manager::SpaceManager;
+    use cimmeria_entity::stats::MOVEMENT_SPEED_MOD;
 
     #[test]
     fn npc_movement_tick_advances_along_nav_path() {

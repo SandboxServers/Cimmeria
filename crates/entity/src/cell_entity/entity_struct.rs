@@ -127,6 +127,20 @@ pub struct CellEntity {
     /// Database player_id (for persistence operations). Only set for player entities.
     pub player_id: Option<i32>,
 
+    /// Owning `account.account_id`, threaded in from the base session
+    /// (`ConnectedClientState::account_id`) via `BaseToCellMsg::CreateEntity`
+    /// and re-asserted by `InitPlayerState`. Paired with [`Self::player_id`]
+    /// it forms the stable log correlator an operator filters a whole
+    /// session by — `entity_id` alone cannot, because it is a recycled
+    /// per-space slot integer that a later connection can be handed after
+    /// this one releases it.
+    ///
+    /// `None` for NPCs, which have no account. Logging call sites pass this
+    /// `Option` straight into `tracing` so the field is *omitted* rather
+    /// than rendered as `"None"` — see
+    /// `docs/architecture/instrumentation-discipline.md` §Rule 5.
+    pub account_id: Option<u32>,
+
     /// Archetype ID for content engine conditions. Set from character data on connect.
     pub archetype_id: Option<i32>,
 

@@ -58,7 +58,8 @@ use super::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::space_transfer::{
-    transfer_player_to_space, TransferDestination, TransferOutcome, TransferRejected,
+    transfer_player_to_loaded_space, transfer_player_to_space, TransferDestination,
+    TransferOutcome, TransferRejected,
 };
 
 mod named_destination;
@@ -135,10 +136,21 @@ async fn snap_in_current_space(
     // immediately after (see `console/placement.rs::location` for the
     // identical pattern).
     let facing = e.direction;
+    // Subject identity, read off the borrow we already hold. `.summon` /
+    // `.goto <player>` move somebody *else*, so the moved player is recorded
+    // separately from the GM who issued the command.
+    let subject = e.identity();
 
+    // `account_id`/`player_id` name the CALLER on every console log, so one
+    // SigNoz filter (`account_id = N`) returns everything that account did —
+    // the subject is carried under its own prefixed keys.
+    let caller = space_mgr.player_identity(caller_id);
     tracing::info!(
         caller_id,
+        account_id = caller.account_id,
+        player_id = caller.player_id,
         entity,
+        subject_player_id = subject.player_id,
         ?position,
         space_id,
         is_player,
@@ -168,7 +180,10 @@ async fn snap_in_current_space(
         {
             tracing::warn!(
                 caller_id,
+                account_id = caller.account_id,
+                player_id = caller.player_id,
                 entity,
+                subject_player_id = subject.player_id,
                 command = cmd,
                 error = %err,
                 "console travel: base channel closed, snap not sent"
@@ -180,7 +195,88 @@ async fn snap_in_current_space(
     true
 }
 
-/// Route `.goto` / `.summon` / `.gotolocation` (P46) to their handlers.
+/// `.gotospace <spaceId> <x> <y> <z>` — teleport the selected target (or the
+/// caller) to explicit coordinates in one exact **loaded space instance**,
+/// named by id.
+///
+/// **Deliberate deviation — legacy has no equivalent.** Every other travel
+/// command resolves its destination through the world-name table, which means
+/// a GM can only reach a world `spaces.xml` declares, spelled the way
+/// `spaces.xml` spells it, and on an instanced world only the instance D15's
+/// default rule happens to pick. This is the escape hatch: the space id is
+/// the runtime identity of a loaded instance, so the world name is derived
+/// *from* it rather than looked up, and any live instance is reachable —
+/// including a second copy of an instanced world with nobody in it to
+/// `.goto`.
+///
+/// Authority is the same server-side `access_level` gate every `.`-command
+/// runs behind (see [`crate::cell::console`]); nothing here is asserted by
+/// the client. Coordinates are **not** navmesh-checked — placing a GM off the
+/// walkable mesh is the point — but they are finite-checked by `parse_f32`
+/// and the destination instance must actually be loaded.
+pub(super) async fn goto_space(
+    caller_id: u32,
+    target: Option<u32>,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let Some(raw) = super::parse_i32(caller_id, args, 0, "spaceId", tx).await else {
+        return;
+    };
+    // `u32::try_from` only catches the negative half. Zero is neither a
+    // negative nor a space id — `allocate_space_id` starts at
+    // `(cell_id << 16) | 0` with `cell_id >= 1` — so without this arm a
+    // `.gotospace 0` reports "not loaded" as if the GM had named a plausible
+    // instance that happened to be gone.
+    let space_id = match u32::try_from(raw) {
+        Ok(id) if id != 0 => id,
+        _ => {
+            send_gm_feedback(caller_id, "gotospace: spaceId must be positive", tx).await;
+            return;
+        }
+    };
+    let Some(x) = super::parse_f32(caller_id, args, 1, "x", tx).await else {
+        return;
+    };
+    let Some(y) = super::parse_f32(caller_id, args, 2, "y", tx).await else {
+        return;
+    };
+    let Some(z) = super::parse_f32(caller_id, args, 3, "z", tx).await else {
+        return;
+    };
+
+    // The world name is derived from the instance, never typed — so this
+    // command cannot dead-end on an unknown-world rejection.
+    let Some(world_name) = space_mgr.world_name_for_space(space_id).map(str::to_owned) else {
+        send_gm_feedback(
+            caller_id,
+            &format!("gotospace: space {space_id} is not loaded"),
+            tx,
+        )
+        .await;
+        return;
+    };
+
+    let subject = target.unwrap_or(caller_id);
+    move_subject(
+        "gotospace",
+        caller_id,
+        subject,
+        TravelDestination::Loaded {
+            world_name: &world_name,
+            space_id,
+        },
+        [x, y, z],
+        &format!("Moving entity {subject} to space {space_id} ({x}, {y}, {z})"),
+        tx,
+        space_mgr,
+    )
+    .await;
+}
+
+/// Route `.goto` / `.summon` / `.gotolocation` (P46) and `.gotospace` to
+/// their handlers.
 pub(super) async fn dispatch(
     name: &str,
     caller_id: u32,
@@ -195,29 +291,65 @@ pub(super) async fn dispatch(
         "gotolocation" => {
             named_destination::goto_location(caller_id, target, args, tx, space_mgr).await
         }
+        "gotospace" => goto_space(caller_id, target, args, tx, space_mgr).await,
         _ => {}
     }
 }
 
-/// Move `subject` to `position` in `world_name`, choosing the cheap in-place
-/// snap when the destination resolves to the subject's own space and the full
+/// How a travel command names its destination — which decides whether the
+/// world-name table is consulted at all.
+#[derive(Clone, Copy)]
+pub(super) enum TravelDestination<'a> {
+    /// A world name that came off a chat line, plus the exact instance the
+    /// command resolved for itself (`.goto`/`.summon` via P44) or `None` for
+    /// D15's default-instance rule (`.gotolocation`). Canonicalised against
+    /// `spaces.xml`; a world the table doesn't declare is refused.
+    Named {
+        world_name: &'a str,
+        space_id: Option<u32>,
+    },
+    /// One instance the command has already confirmed is loaded, named by id
+    /// (`.gotospace`). `world_name` was read *off* that instance, so the
+    /// table is skipped entirely — otherwise the escape hatch would still
+    /// dead-end on `UnknownWorld` for a live instance whose world the table
+    /// doesn't declare, which is exactly what it exists to reach.
+    Loaded { world_name: &'a str, space_id: u32 },
+}
+
+impl<'a> TravelDestination<'a> {
+    /// World the destination is in, for the GM-facing log line. Derived for
+    /// [`Self::Loaded`], typed-then-canonicalised for [`Self::Named`].
+    fn world_name(&self) -> &'a str {
+        match *self {
+            Self::Named { world_name, .. } | Self::Loaded { world_name, .. } => world_name,
+        }
+    }
+
+    /// The exact destination instance, when one is known.
+    fn space_id(&self) -> Option<u32> {
+        match *self {
+            Self::Named { space_id, .. } => space_id,
+            Self::Loaded { space_id, .. } => Some(space_id),
+        }
+    }
+}
+
+/// Move `subject` to `position` at `dest`, choosing the cheap in-place snap
+/// when the destination resolves to the subject's own space and the full
 /// cross-space transfer otherwise. `success` is the GM-facing line sent only
 /// when the move actually happened.
-///
-/// `dest_space_id` is the **exact** instance when the caller knows it
-/// (`.goto`/`.summon` via P44, `.gotolocation` into the subject's own world);
-/// `None` hands instance selection to P45's D15 default.
 async fn move_subject(
     cmd: &str,
     caller_id: u32,
     subject: u32,
-    world_name: &str,
-    dest_space_id: Option<u32>,
+    dest: TravelDestination<'_>,
     position: [f32; 3],
     success: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    let world_name = dest.world_name();
+    let dest_space_id = dest.space_id();
     let Some(origin_space_id) = space_mgr.get_entity_space_id(subject) else {
         send_gm_feedback(caller_id, &format!("{cmd}: entity not found"), tx).await;
         return;
@@ -232,6 +364,12 @@ async fn move_subject(
         .get_entity(subject)
         .map(|e| [e.direction.x, e.direction.y, e.direction.z])
         .unwrap_or([0.0; 3]);
+    // Both identities are snapshotted BEFORE the transfer: a cross-space
+    // transfer tears the subject's entity down and rebuilds it in the
+    // destination, so resolving afterwards can race the teardown and report
+    // UNKNOWN for the very command that caused it.
+    let caller = space_mgr.player_identity(caller_id);
+    let subject_id = space_mgr.player_identity(subject);
 
     // Same space: no teardown, no loading screen, and NPC subjects keep
     // working (D15 restricts only the cross-space legs).
@@ -242,20 +380,40 @@ async fn move_subject(
         return;
     }
 
-    let mut dest = match dest_space_id {
-        Some(space_id) => TransferDestination::in_instance(world_name, space_id, position),
-        None => TransferDestination::in_world(world_name, position),
+    // `.gotospace` holds a space id it has already confirmed is loaded, so it
+    // takes the by-id entry point and never touches the world-name table —
+    // the whole promise of the command is that a live instance is reachable
+    // whether or not `spaces.xml` declares its world. Every *named*
+    // destination still goes through the canonicalising lookup.
+    let outcome = match dest {
+        TravelDestination::Loaded { space_id, .. } => {
+            transfer_player_to_loaded_space(subject, space_id, position, facing, tx, space_mgr)
+                .await
+        }
+        TravelDestination::Named {
+            world_name,
+            space_id,
+        } => {
+            let mut dest = match space_id {
+                Some(space_id) => TransferDestination::in_instance(world_name, space_id, position),
+                None => TransferDestination::in_world(world_name, position),
+            };
+            dest.rotation = facing;
+            transfer_player_to_space(subject, &dest, tx, space_mgr).await
+        }
     };
-    dest.rotation = facing;
 
     // Exhaustive by design: `SameSpace` performs no position move at all, so
     // an `is_ok()` adapter would silently report a teleport that never
     // happened (P45 handoff).
-    match transfer_player_to_space(subject, &dest, tx, space_mgr).await {
+    match outcome {
         Ok(TransferOutcome::Transferred { space_id }) => {
             tracing::info!(
                 caller_id,
+                account_id = caller.account_id,
+                player_id = caller.player_id,
                 subject,
+                subject_player_id = subject_id.player_id,
                 origin_space_id,
                 destination_space_id = ?space_id,
                 world = world_name,

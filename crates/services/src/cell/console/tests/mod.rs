@@ -13,6 +13,8 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 #[cfg(test)]
+mod gm_audit_identity;
+#[cfg(test)]
 mod p02;
 #[cfg(test)]
 mod p03;

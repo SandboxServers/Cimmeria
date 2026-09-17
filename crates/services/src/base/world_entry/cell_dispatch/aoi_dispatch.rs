@@ -16,6 +16,7 @@ use cimmeria_mercury::transport::Transport;
 use crate::cell::messages::{CellToBaseMsg, NpcAoIData};
 
 use super::super::super::deferred_aoi;
+use super::super::super::session_identity;
 use super::super::super::ConnectedClientState;
 use super::{aoi, DispatchCtx};
 
@@ -33,7 +34,13 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             entity_id,
             space_id,
             position,
-        } => entity_created(entity_id, space_id, position),
+        } => entity_created(
+            entity_id,
+            space_id,
+            position,
+            ctx.connected,
+            ctx.entity_to_addr,
+        ),
         CellToBaseMsg::EnteredAoI {
             witness_id,
             entity_id,
@@ -159,9 +166,20 @@ pub(super) fn space_data(world_name: String, space_id: u32) {
 
 /// `CellToBaseMsg::EntityCreated` — debug-trace only; the AoI tick drives the
 /// actual client-visible CREATE_ENTITY.
-pub(super) fn entity_created(entity_id: u32, space_id: u32, position: [f32; 3]) {
+pub(super) fn entity_created(
+    entity_id: u32,
+    space_id: u32,
+    position: [f32; 3],
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    // NPCs resolve to UNKNOWN here and emit neither field, which is what
+    // distinguishes a player's world-entry create from the spawner's.
+    let id = session_identity::identity_for_entity(connected, entity_to_addr, entity_id);
     tracing::debug!(
         entity_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
         space_id,
         ?position,
         "CellService: entity created"
@@ -216,9 +234,17 @@ pub(super) async fn entered_aoi(
         // on relog (which resets the witness set). This is the suspected
         // mechanism behind "static NPC missing until relog" — surface it
         // loudly. See docs/architecture/negative-logging-convention.md.
+        // Identity via the `connected`-scan fallback specifically: the
+        // `entity_to_addr` miss is what got us here, so the normal two-step
+        // cannot resolve. Knowing WHICH account is now missing an entity is
+        // the difference between "some player can't see something" and a
+        // reproducible report.
+        let witness = session_identity::identity_for_entity(connected, entity_to_addr, witness_id);
         tracing::warn!(
             target: "aoi.entered_no_witness_addr",
             witness_id,
+            account_id = witness.account_id,
+            player_id = witness.player_id,
             entity_id,
             class_id,
             reason = "witness_addr_unmapped",

@@ -27,13 +27,47 @@ use std::time::{Duration, Instant};
 use cimmeria_common::Vector3;
 use cimmeria_entity::movement_validation::MovementReject;
 use cimmeria_entity::navigation::NavMesh;
+use cimmeria_entity::stats::MOVEMENT_SPEED_MOD;
+use tracing::Level;
 
 use super::super::ClientMoveOutcome;
 use super::make_manager;
+use crate::test_support::LogCapture;
 
 /// Spawn position used by every test in this module. Sits well inside
 /// the Agnos space's `MinX/MaxX/MinY/MaxY` (-2400..2200, -3200..2800).
 const SPAWN_POS: [f32; 3] = [10.0, 0.0, 20.0];
+
+/// Find a point inside the navmesh AABB that reads as **off** the walkable
+/// mesh, for the tests that need one.
+///
+/// The nav AABB hugs the walkable polys, so corners snap to mesh
+/// (`DEST_EXTENTS` is a 3 u box). Scan the interior XZ grid at `y` for a
+/// point inside a wall / cell gap that reads off-mesh but stays within the
+/// bounds AABB. The cellblock is a prison interior — such points exist.
+/// Deterministic over the fixed fixture. `None` means the whole scanned
+/// interior was walkable; callers skip rather than assert, so a future
+/// re-bake cannot false-fail them.
+fn find_off_mesh_point(
+    mgr: &super::super::SpaceManager,
+    entity_id: u32,
+    bmin: [f32; 3],
+    bmax: [f32; 3],
+    y: f32,
+) -> Option<[f32; 3]> {
+    let (mut x, step) = (bmin[0] + 2.0, 2.0_f32);
+    while x < bmax[0] - 2.0 {
+        let mut z = bmin[2] + 2.0;
+        while z < bmax[2] - 2.0 {
+            if !mgr.is_position_valid(entity_id, &Vector3::new(x, y, z)) {
+                return Some([x, y, z]);
+            }
+            z += step;
+        }
+        x += step;
+    }
+    None
+}
 
 #[test]
 fn legitimate_movement_within_bounds_accepts_and_writes() {
@@ -472,6 +506,106 @@ fn bounds_reject_spam_cannot_inflate_dt_to_slip_a_teleport() {
     );
 }
 
+/// The speed layer must measure a player against *their own* top speed, not
+/// the class constant.
+///
+/// `movementSpeedMod` is a two-sided contract: the client scales its own
+/// local prediction by `cur/100` the moment it receives the stat in an
+/// `onStatUpdate`, and the NPC path-stepping tick already scales by it
+/// server-side. The client-position gate was the one place still comparing
+/// against the flat `DEFAULT_TOP_SPEED`, so a player the server itself sped
+/// up — a GM `.speed 500`, and any future haste effect writing the same stat
+/// — warned on every packet of movement the server had authorised. Warn-only
+/// today, but the layer's own doc comment says snap-back is the plan, at
+/// which point this becomes a hard reject on legitimate movement.
+///
+/// Shape: one hop, fast enough to warn at the baseline and slow enough not
+/// to at 5×. The control case pins that the hop really is warn-worthy
+/// unscaled, so reverting the fix trips the boosted assertion rather than
+/// silently passing a test that never warned either way.
+#[test]
+fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
+    // 1 u in 50 ms = 20 u/s. Baseline warn threshold is
+    // 8.125 × 1.5 = 12.19 u/s; at `movementSpeedMod = 500` it is 60.94 u/s.
+    let hop = [SPAWN_POS[0] + 1.0, 0.0, SPAWN_POS[2]];
+
+    {
+        let capture = LogCapture::install();
+        let mut mgr = make_manager();
+        mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+            .unwrap();
+        let t0 = Instant::now();
+        seed_clock(&mut mgr, 100, t0);
+        mgr.apply_client_position_update_at(
+            t0 + Duration::from_millis(50),
+            100,
+            hop,
+            [0, 0, 0],
+            [0.0; 3],
+        );
+        assert!(
+            capture
+                .find_event(Level::WARN, "movement.speed_warning", "speed")
+                .is_some(),
+            "control: at the default speed mod this hop must warn — otherwise the \
+             boosted case below proves nothing"
+        );
+    }
+
+    let capture = LogCapture::install();
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(100)
+        .unwrap()
+        .stats
+        .get_mut(MOVEMENT_SPEED_MOD)
+        .unwrap()
+        .set_current(500);
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(50),
+        100,
+        hop,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(outcome, ClientMoveOutcome::Accepted { position } if position == hop),
+        "the hop is sub-teleport either way and must be accepted, got {outcome:?}"
+    );
+    assert!(
+        capture
+            .find_event(Level::WARN, "movement.speed_warning", "speed")
+            .is_none(),
+        "a player the server itself sped up must not warn at a speed their own \
+         movementSpeedMod permits — comparing against the flat class constant \
+         warns on every packet of authorised movement"
+    );
+
+    // …but the gate still exists: past their *personal* threshold it fires.
+    // 5 u in 50 ms = 100 u/s, over the boosted 60.94 u/s tolerance.
+    let sprint = [SPAWN_POS[0] + 5.0, 0.0, SPAWN_POS[2]];
+    mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(100),
+        100,
+        sprint,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    let warn = capture
+        .find_event(Level::WARN, "movement.speed_warning", "speed")
+        .expect("past the boosted tolerance the speed layer must still warn");
+    assert!(
+        warn.has_field("top_speed", "40.625"),
+        "the warn must report the scaled baseline it actually compared against, \
+         not the class constant — the SigNoz tolerance-calibration pipeline reads \
+         this field; got {warn:#?}"
+    );
+}
+
 // ── Layer 4: navmesh containment ─────────────────────────────────────────
 
 /// **Canonical off-navmesh regression guard.** A captured
@@ -505,27 +639,7 @@ fn off_navmesh_position_is_rejected_and_not_observed() {
         "guard spawn must read as on-navmesh — fixture/precondition sanity"
     );
 
-    // The nav AABB hugs the walkable polys, so corners snap to mesh
-    // (DEST_EXTENTS is a 3 u box). Scan the interior XZ grid at floor
-    // height for a point inside a wall / cell gap that reads off-mesh but
-    // stays within the bounds AABB. The cellblock is a prison interior —
-    // such points exist. Deterministic over the fixed fixture.
-    let mut off_mesh: Option<[f32; 3]> = None;
-    let y = on_mesh[1];
-    let (mut x, step) = (bmin[0] + 2.0, 2.0_f32);
-    'scan: while x < bmax[0] - 2.0 {
-        let mut z = bmin[2] + 2.0;
-        while z < bmax[2] - 2.0 {
-            let cand = [x, y, z];
-            if !mgr.is_position_valid(100, &Vector3::new(cand[0], cand[1], cand[2])) {
-                off_mesh = Some(cand);
-                break 'scan;
-            }
-            z += step;
-        }
-        x += step;
-    }
-    let off_mesh = match off_mesh {
+    let off_mesh = match find_off_mesh_point(&mgr, 100, bmin, bmax, on_mesh[1]) {
         Some(p) => p,
         // Whole interior walkable (not expected for a cellblock) — skip
         // rather than assert, so a future re-bake can't false-fail.
@@ -637,4 +751,6 @@ fn jump_in_place_is_accepted_not_rejected() {
     );
 }
 
+mod gm_navmesh;
 mod onphysics;
+mod recovery;

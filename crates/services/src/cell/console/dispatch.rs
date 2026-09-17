@@ -95,8 +95,16 @@ pub(crate) async fn handle_console_command(
         .get_entity(caller_id)
         .map(|e| e.access_level)
         .unwrap_or(0);
+    // Stable identity for the audit trail. `access_level` used to be the only
+    // way to guess WHICH GM ran a command — matching level values between a
+    // login line and this one, then correlating by wall clock. That breaks the
+    // moment two GMs are online, and `entity_id` can't stand in for identity
+    // because it's a recycled per-space slot. Log the account directly.
+    let id = space_mgr.player_identity(caller_id);
     tracing::info!(
         entity_id = caller_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
         access_level,
         command = name,
         argc = args.len(),
@@ -266,7 +274,7 @@ pub(crate) async fn exec(
         }
         // Travel
         "gotoxyz" => travel::goto_xyz(caller_id, target_id, args, tx, space_mgr).await,
-        "goto" | "summon" | "gotolocation" => {
+        "goto" | "summon" | "gotolocation" | "gotospace" => {
             travel::dispatch(name, caller_id, target_id, args, tx, space_mgr).await
         }
         // J. placement (position / orientation)

@@ -16,7 +16,7 @@
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
-use super::{move_subject, SpaceManager};
+use super::{move_subject, SpaceManager, TravelDestination};
 use crate::cell::console::parse_f32;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::PlayerNameLookup;
@@ -72,8 +72,11 @@ pub(super) async fn goto(
                 .map(str::to_owned),
         )
     else {
+        let caller = space_mgr.player_identity(caller_id);
         tracing::warn!(
             caller_id,
+            account_id = caller.account_id,
+            player_id = caller.player_id,
             dest_entity,
             dest_space_id,
             "goto: resolved player has no entity or no live space"
@@ -86,8 +89,10 @@ pub(super) async fn goto(
         "goto",
         caller_id,
         target.unwrap_or(caller_id),
-        &world_name,
-        Some(dest_space_id),
+        TravelDestination::Named {
+            world_name: &world_name,
+            space_id: Some(dest_space_id),
+        },
         position,
         &format!("Teleporting to player <{name}>"),
         tx,
@@ -142,8 +147,10 @@ pub(super) async fn summon(
         "summon",
         caller_id,
         victim,
-        &world_name,
-        Some(anchor_space_id),
+        TravelDestination::Named {
+            world_name: &world_name,
+            space_id: Some(anchor_space_id),
+        },
         position,
         &format!("Summoning player <{name}>"),
         tx,
@@ -157,7 +164,8 @@ pub(super) async fn summon(
 ///
 /// Legacy `gotoLocation` (`Player.py:344-365`) validated the world against
 /// `world_info` and reported `"Unable to find world: %s"`; here that check is
-/// P45's `world_is_known`, whose rejection carries the same wording.
+/// `SpaceManager::canonical_world_name`, whose rejection carries the same
+/// wording.
 ///
 /// Instance selection is D15's first/default loaded instance — **except**
 /// when the named world is the one the subject is already in, where their own
@@ -192,8 +200,11 @@ pub(super) async fn goto_location(
         send_gm_feedback(caller_id, "gotolocation: entity not found", tx).await;
         return;
     };
+    // Case-insensitive, matching `SpaceManager::canonical_world_name`: a GM
+    // typing `castle_cellblock` while standing in `Castle_CellBlock` must get
+    // the in-place snap, not a full loading screen into a different instance.
     let dest_space_id = match space_mgr.world_name_for_space(origin_space_id) {
-        Some(w) if w == world_name => Some(origin_space_id),
+        Some(w) if w.eq_ignore_ascii_case(world_name) => Some(origin_space_id),
         _ => None,
     };
 
@@ -205,8 +216,10 @@ pub(super) async fn goto_location(
         "gotolocation",
         caller_id,
         subject,
-        world_name,
-        dest_space_id,
+        TravelDestination::Named {
+            world_name,
+            space_id: dest_space_id,
+        },
         [x, y, z],
         // Legacy's `"Moving entity %s to %s (%f, %f, %f)"`. Deliberate
         // deviation: Rust's `{}` float formatting rather than C's `%f`, so
