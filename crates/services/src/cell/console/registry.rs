@@ -140,6 +140,28 @@ pub(crate) static COMMANDS: &[Spec] = &[
         "Search entity templates by name",
     ),
     spec("players", 0, 0, Target::None, "List players in your space"),
+    // ── I. entity / combat inspection (read-only) ──────────────────────────────
+    spec(
+        "info",
+        0,
+        1,
+        Target::None,
+        "Show detailed info about the target (selection wins over [entityId])",
+    ),
+    spec(
+        "facing",
+        0,
+        0,
+        Target::Spawnable,
+        "Show facing angle/class and distance to the target",
+    ),
+    spec(
+        "combatinfo",
+        0,
+        0,
+        Target::Mob,
+        "Diagnose combat-readiness issues on the targeted NPC",
+    ),
     // ── F. granular stat readouts ──────────────────────────────────────────────
     spec(
         "primarystats",
