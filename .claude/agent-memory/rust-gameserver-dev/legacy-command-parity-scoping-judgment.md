@@ -189,6 +189,27 @@ See also [test-file-split-without-touching-mod-rs](test-file-split-without-touch
   That is a live latent bug in `.savespawn`'s heading persistence (P09's
   problem), not something to paper over at a new call site.
 
+- **`cell::space_transfer::transfer_player_to_space` validates `is_player`
+  (D15) BEFORE it resolves the destination**, so routing every move through it
+  refuses an NPC subject even when the destination turns out to be the NPC's
+  own space and no transfer is needed. Any command adapter over it should
+  pre-check `dest_space_id == Some(subject's current space)` and take the P26
+  same-space snap in that case — D15's players-only rule is scoped to
+  cross-space/cross-world legs, and `.gotoxyz` already moves NPCs, so the
+  unconditional call is a capability regression against both legacy and P26.
+  Still match `TransferOutcome::SameSpace` exhaustively and fall through to
+  the snap: the primitive owns the authoritative resolution. (P46.)
+
+- **Instance-targeting tests silently pass under a "re-resolve by world name"
+  regression when the target's instance is also the DEFAULT instance.**
+  `default_space_for_world` returns the lowest-numbered loaded instance, i.e.
+  the one created first, so a fixture that spawns the interesting instance
+  before its decoys proves nothing. Spawn decoy instances FIRST and assert
+  `default_space_for_world(world) != <the instance under test>` in the
+  fixture. P46 found this only because the mandated controlled-revert run was
+  actually executed — a reminder that the negative run audits the *tests*, not
+  just the code.
+
 - **When a command reuses an existing native handler's core mechanism
   (`update_entity_position` + `note_authorized_teleport`, gated
   `TeleportPlayer` for players only), grep the native handler's own test
