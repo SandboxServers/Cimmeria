@@ -9,6 +9,7 @@
 
 use tokio::sync::mpsc;
 
+use super::registry::arg_specs;
 use super::{send_gm_feedback, Spec, COMMANDS};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -16,13 +17,36 @@ use crate::cell::space_manager::SpaceManager;
 /// `.help [filter]` — list the console commands (optionally filtered by
 /// substring) **sorted by command name**, each with its one-line summary.
 /// Mirrors the legacy `help`, which also sorted by name.
+///
+/// When the filtered result set has `<= 3` commands, also prints each
+/// documented argument (see [`arg_specs`]) as `    name (type): desc` when
+/// required or `    [name] (type): desc` when optional — mirroring legacy
+/// `ConsoleCommands.py::help`'s detail view. Legacy determined
+/// required-vs-optional via `index <= cmd.argsMin`, an off-by-one that
+/// mis-marks a command's *last* optional argument as required (e.g. its own
+/// `command` arg, or `searchitem`'s `name2`); this restores the intended
+/// `index < min` semantics instead of reproducing the bug (D02).
 pub(super) async fn help(caller_id: u32, args: &[&str], tx: &mpsc::Sender<CellToBaseMsg>) {
     let matches = help_specs(args.first().copied());
     for spec in &matches {
         send_gm_feedback(caller_id, &format!(".{}: {}", spec.name, spec.help), tx).await;
+        if matches.len() <= 3 {
+            for (i, a) in arg_specs(spec.name).iter().enumerate() {
+                let line = if i < spec.min {
+                    format!("    {} ({}): {}", a.name, a.ty, a.desc)
+                } else {
+                    format!("    [{}] ({}): {}", a.name, a.ty, a.desc)
+                };
+                send_gm_feedback(caller_id, &line, tx).await;
+            }
+        }
     }
     if matches.is_empty() {
-        send_gm_feedback(caller_id, "help: no command matched.", tx).await;
+        // Verbatim legacy wording (`ConsoleCommands.py::help`'s
+        // `player.feedback('No command found with that name')`), not the
+        // "{name}: ..." prefix convention other feedback lines use — kept
+        // exact so it's a stable, testable string.
+        send_gm_feedback(caller_id, "No command found with that name", tx).await;
     }
 }
 
