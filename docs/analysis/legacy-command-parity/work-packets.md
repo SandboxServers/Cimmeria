@@ -163,7 +163,7 @@ For every runtime leaf, add/update a regression that fails without the fix. Mode
 
 ### P18
 
-**Commands:** `.location`, `.rotation`, `.lookat`. **Depends:** P26. **Advisor:** movement-teleport-advisor, aoi-witness-broadcast.
+**Status:** Ready (P26 integrated 2026-09-17). **Commands:** `.location`, `.rotation`, `.lookat`. **Depends:** P26. **Advisor:** movement-teleport-advisor, aoi-witness-broadcast.
 **Entries:** [console entity](../../../crates/services/src/cell/console/entity.rs), [native travel](../../../crates/services/src/cell/cell_methods/gm/travel.rs), [teleport](../../../crates/services/src/base/world_entry/teleport.rs).
 **Scope:** selected spawnable read/set placement; zero or complete XYZ tuple, look-at orientation publication. Reuse snap abstraction; if full Euler orientation cannot be represented, stop for explicit design rather than silently dropping axes.
 **Acceptance:** exact final XYZ/orientation, malformed partial tuple causes no mutation, spatial index/validator/witness/client agree for player and NPC. **Exclude:** world transfer, read-only replacements for legacy setters.
@@ -237,7 +237,7 @@ For every runtime leaf, add/update a regression that fails without the fix. Mode
 
 ### P26
 
-**Commands:** `.gotoxyz`. **Depends:** P01. **Advisor:** movement-teleport-advisor, aoi-witness-broadcast.
+**Status:** Integrated (2026-09-17, `legacy-command-parity`, merge of `p26-gotoxyz`). Split `console/registry.rs` (698/700, hard cap) into `registry/mod.rs` (types) + `registry/commands.rs` (the `COMMANDS` array) — the pattern for the next packet that needs registry headroom. `.gotoxyz` reuses the native `gmGotoXYZ`/`gmSummon` mechanism directly; `TeleportPlayer` has no GM-feedback field to conflate (unlike P05's `GrantCash`/`GrantXP`), so no shared-message-struct change was needed. NPC targets get the spatial-grid update without a client push (no client to push to); witnesses still see the move. UATPending — bundled into M1. Worknote/handoff: [worknotes/p26.md](worknotes/p26.md), [handoffs/p26.md](handoffs/p26.md). This packet unblocks [P44](work-packets.md#p44)/[P45](work-packets.md#p45)/[P46](work-packets.md#p46) (G05's children) and [P18](work-packets.md#p18). **Commands:** `.gotoxyz`. **Depends:** P01. **Advisor:** movement-teleport-advisor, aoi-witness-broadcast.
 **Entries:** [native travel](../../../crates/services/src/cell/cell_methods/gm/travel.rs), [teleport receiver](../../../crates/services/src/base/world_entry/teleport.rs), [AoI update](../../../crates/services/src/mercury/aoi/update.rs).
 **Scope:** typed selected-or-caller in-space snap with finite coordinates, movement validator/spatial updates, correct player persistence; NPC stays cell-side.
 **Acceptance:** exact final positions, forced-position bytes and observer updates; caller unchanged when moving selection; DB failure handled truthfully. **Exclude:** streaming hint alone, cross-space transfer, fake native input buffers.
@@ -251,14 +251,14 @@ For every runtime leaf, add/update a regression that fails without the fix. Mode
 
 ### P44
 
-**Status:** BlockedDependency (P26). **Commands:** supports `.goto`/`.summon` (no direct dot command of its own). **Depends:** P26. **Advisor:** movement-teleport-advisor.
+**Status:** Ready (P26 integrated 2026-09-17). **Commands:** supports `.goto`/`.summon` (no direct dot command of its own). **Depends:** P26. **Advisor:** movement-teleport-advisor.
 **Entries:** [space manager queries](../../../crates/services/src/cell/space_manager/queries.rs) (`all_player_entity_ids`, the same enumeration P04's `.players` fix reuses), [cell entity](../../../crates/entity/src/cell_entity/mod.rs) (`character_name`).
 **Scope:** exact-match online-player-name → entity_id lookup, service-wide (every loaded space, matching P04's `.players` CellApp-wide scope, not the caller's space only). Case sensitivity: match legacy's raw Python `in` dict-key check (case-sensitive) unless evidence says otherwise. Not-found and found-but-not-in-a-space ("in transition" — matches P04's documented gap) are the two failure shapes; both must be distinguishable in the returned result so P46's command adapters can produce legacy's exact two error messages.
 **Acceptance:** exact match succeeds, near-miss/case-mismatch fails (unless case-insensitivity is confirmed from further legacy evidence), a name with no matching online player fails distinctly from a name matching a player who's mid-transition, deterministic with two+ same-named... (character names are unique — assert the lookup doesn't silently pick one of several if that invariant is ever violated). **Exclude:** offline/cluster lookup, fuzzy/partial matching.
 
 ### P45
 
-**Status:** BlockedDependency (P26). **Commands:** supports `.goto`/`.summon`/`.gotolocation` (no direct dot command of its own). **Depends:** P26. **Advisor:** movement-teleport-advisor, database-persistence.
+**Status:** Ready (P26 integrated 2026-09-17). **Commands:** supports `.goto`/`.summon`/`.gotolocation` (no direct dot command of its own). **Depends:** P26. **Advisor:** movement-teleport-advisor, database-persistence.
 **Entries:** [gate-travel](../../../crates/services/src/base/world_entry/gate_travel/mod.rs) (`handle_gate_travel` — reuse this directly; it already takes `destination_ring_id: Option<i32>`, so a `None` call should work for non-ring GM teleport without new gate-specific state), [space registry](../../../crates/services/src/base/world_entry/space_registry.rs) (`resolve_space_id_fallback` — the existing "first/default loaded instance" mechanism D15 approved reusing).
 **Scope:** the shared cross-space/cross-world transfer primitive all three G05 commands call into: validate the destination (world exists, instance resolves) BEFORE tearing down the entity's current space/AoI state, then drive the same teardown → `pending_world_entry` → re-enter flow `handle_gate_travel` already uses for player-initiated stargate travel. Confirm disconnect-mid-transfer recovery is already covered by that existing flow rather than building new state for it — this is the highest-risk piece of G05, trace `handle_gate_travel`'s full call graph before assuming reuse is a thin wrapper.
 **Acceptance:** same-world distinct-instance test (destination instance ID is exact, not "a" loaded instance of the right world when multiple exist and a specific one is required — this only matters once P44 resolves a specific player's actual instance; `.gotolocation`'s own instance selection uses the D15 default), failure before teardown leaves the entity's origin state completely unchanged, disconnect at each stage of the flow is handled without leaving the entity un-spaced. **Exclude:** building new disconnect-recovery state if `handle_gate_travel` already provides it — reuse, don't duplicate.
