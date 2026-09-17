@@ -120,6 +120,27 @@ async fn legacy_p02_info_unknown_explicit_id_reports_not_found() {
 }
 
 #[tokio::test]
+async fn legacy_p02_info_malformed_explicit_id_reports_distinct_error() {
+    // A non-numeric `entityId` must be reported as a malformed argument
+    // (matching the console-wide `parse_i32`-style contract), not silently
+    // swallowed into the "no such entity" path `.info 999999` exercises
+    // above — the GM needs to know their argument was invalid, not that
+    // there happens to be no entity with that id.
+    let (mut mgr, gm, _npc) = setup();
+    if let Some(e) = mgr.get_entity_mut(gm) {
+        e.current_target_id = None;
+    }
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+    handle_console_command(gm, ".info nope", &tx, &mut mgr, &engine).await;
+    assert_eq!(
+        drain_feedback_lines(&mut rx),
+        vec!["entityId must be an integer".to_string()],
+        "malformed entityId must be distinguished from a missing entity"
+    );
+}
+
+#[tokio::test]
 async fn legacy_p02_info_present_fields_are_shown() {
     let (mut mgr, gm, npc) = setup();
     if let Some(e) = mgr.get_entity_mut(npc) {

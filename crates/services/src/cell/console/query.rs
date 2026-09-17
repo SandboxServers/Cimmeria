@@ -246,10 +246,25 @@ pub(super) async fn info(
     space_mgr: &mut SpaceManager,
 ) {
     let caller_space = space_mgr.get_entity(caller_id).map(|e| e.space_id.0);
-    let subject = target_id.or_else(|| {
-        args.first()
-            .and_then(|s| s.parse::<u32>().ok())
-            .filter(|&id| space_mgr.get_entity(id).map(|e| e.space_id.0) == caller_space)
+    let explicit_id = if target_id.is_none() {
+        match args.first() {
+            Some(s) => match s.parse::<u32>() {
+                Ok(id) => Some(id),
+                Err(_) => {
+                    // Distinct from "no such entity" — the argument itself
+                    // is malformed, not merely a miss, matching the
+                    // console-wide numeric-arg contract (`parse::parse_i32`).
+                    send_gm_feedback(caller_id, "entityId must be an integer", tx).await;
+                    return;
+                }
+            },
+            None => None,
+        }
+    } else {
+        None
+    };
+    let subject = target_id.or(explicit_id).filter(|&id| {
+        target_id.is_some() || space_mgr.get_entity(id).map(|e| e.space_id.0) == caller_space
     });
     let Some(e) = subject.and_then(|id| space_mgr.get_entity(id)) else {
         // Verbatim legacy wording (`entityInfo`'s `'Could not find entity'`).

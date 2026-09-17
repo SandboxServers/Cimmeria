@@ -46,4 +46,4 @@ command to Rust. Recurring judgment calls worth remembering:
   matching `std::f32::consts::*` item; it's the same real number, just
   expressed correctly.
 
-See also [[test-file-split-without-touching-mod-rs]].
+See also [test-file-split-without-touching-mod-rs](test-file-split-without-touching-mod-rs.md).
