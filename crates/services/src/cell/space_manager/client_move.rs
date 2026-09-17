@@ -35,6 +35,18 @@ use cimmeria_entity::movement_validation::{
 
 use super::SpaceManager;
 
+/// How far a resolved recovery point must actually be from where the entity
+/// already is, in world units, before relocating it counts as progress.
+///
+/// The navmesh branch of [`SpaceManager::resolve_recovery_position`] answers
+/// through Detour's nearest-poly search and detail-mesh height interpolation,
+/// so a point that is already on the mesh comes back *nearly* — but almost
+/// never exactly — where it started. An exact-inequality test therefore reads
+/// float noise as a successful relocation. Well below anything a player can
+/// perceive, and far below the agent-radius gap that makes a point read as
+/// off-mesh in the first place, so a genuine recovery always clears it.
+const RECOVERY_MIN_DISPLACEMENT: f32 = 0.05;
+
 /// Outcome of `SpaceManager::apply_client_position_update`.
 #[derive(Debug)]
 pub enum ClientMoveOutcome {
@@ -147,7 +159,7 @@ impl SpaceManager {
         // navmesh (most non-Castle zones today). The fallback is wider
         // than any legitimate world by an order of magnitude — see
         // `SpaceBounds::FALLBACK`.
-        let (bounds, last_valid, movement_unrestricted, is_gm) = {
+        let (bounds, last_valid, movement_unrestricted, is_gm, top_speed) = {
             let space = match self.spaces.get(&space_id) {
                 Some(s) => s,
                 None => return ClientMoveOutcome::EntityMissing,
@@ -166,6 +178,14 @@ impl SpaceManager {
                 last_valid,
                 entity.movement_unrestricted,
                 entity.access_level >= AccessLevel::GameMaster as u32,
+                // Scale the class baseline by this entity's own
+                // `movementSpeedMod`, the same stat the NPC path-stepping tick
+                // scales by. A GM `.speed 300` (or any future haste/snare
+                // effect) raises the client's own prediction, so measuring its
+                // packets against the unscaled constant would warn on movement
+                // the server itself authorised — and would hard-reject it once
+                // the speed layer is promoted past warn-only.
+                MovementValidator::DEFAULT_TOP_SPEED * entity.stats.movement_speed_scale(),
             )
         };
 
@@ -205,6 +225,7 @@ impl SpaceManager {
                 last_valid,
                 space_id,
                 bounds,
+                is_gm,
             );
         }
 
@@ -222,7 +243,7 @@ impl SpaceManager {
 
         // Layer 1 — bounds (also the Z-axis floor-clip / NaN / infinity gate).
         if let Err(reason) = self.movement_validator.check_bounds(proposed, &bounds) {
-            return self.reject_outcome(entity_id, reason, last_valid, space_id, bounds);
+            return self.reject_outcome(entity_id, reason, last_valid, space_id, bounds, is_gm);
         }
 
         // Layer 4 — navmesh containment. `is_position_valid` fails open
@@ -263,6 +284,7 @@ impl SpaceManager {
                     last_valid,
                     space_id,
                     bounds,
+                    is_gm,
                 );
             }
         }
@@ -275,10 +297,10 @@ impl SpaceManager {
             prev_sample,
             last_pos,
             proposed,
-            MovementValidator::DEFAULT_TOP_SPEED,
+            top_speed,
         );
         if let Some(reason) = kin.reject {
-            return self.reject_outcome(entity_id, reason, last_valid, space_id, bounds);
+            return self.reject_outcome(entity_id, reason, last_valid, space_id, bounds, is_gm);
         }
         if let Some(sample) = kin.speed_warn {
             // Warn-only: the move is accepted. Surface the full
@@ -335,11 +357,19 @@ impl SpaceManager {
     ///
     /// 1. The snap target is sound and the budget is intact →
     ///    [`ClientMoveOutcome::Rejected`], the ordinary correction.
-    /// 2. The snap target is unusable (or the budget is spent) and a safe
-    ///    point exists → relocate the entity there and report
-    ///    [`ClientMoveOutcome::Recovered`].
-    /// 3. Nothing safe to move to → [`ClientMoveOutcome::CorrectionSuppressed`],
-    ///    and the caller emits nothing at all.
+    /// 2. The snap target is unusable and a safe point exists → relocate the
+    ///    entity there and report [`ClientMoveOutcome::Recovered`].
+    /// 3. The budget is spent, or there is nothing safe to move to →
+    ///    [`ClientMoveOutcome::CorrectionSuppressed`], and the caller emits
+    ///    nothing at all.
+    ///
+    /// `is_gm` carries the same off-navmesh allowance the accept path grants
+    /// (see [`SpaceManager::apply_client_position_update_at`]) into the
+    /// soundness test. Without it a GM standing legitimately off-mesh who
+    /// then trips an *unrelated* hard reject — bounds or teleport, both still
+    /// enforced for GMs — would have their own position judged unusable and
+    /// be force-relocated onto the nearest walkable point, undoing the
+    /// allowance by the back door.
     fn reject_outcome(
         &mut self,
         entity_id: u32,
@@ -347,23 +377,48 @@ impl SpaceManager {
         last_valid: [f32; 3],
         space_id: u32,
         bounds: SpaceBounds,
+        is_gm: bool,
     ) -> ClientMoveOutcome {
         let last_pos = Vector3::new(last_valid[0], last_valid[1], last_valid[2]);
         let strikes = self.movement_validator.note_reject(entity_id);
         let target_is_sound = position_within_bounds(last_pos, &bounds)
-            && self.is_position_valid(entity_id, &last_pos);
+            && (is_gm || self.is_position_valid(entity_id, &last_pos));
 
-        if target_is_sound && strikes <= MovementValidator::MAX_SNAP_BACK_CORRECTIONS {
-            return ClientMoveOutcome::Rejected {
-                reason,
-                last_valid,
-                space_id,
-                bounds,
+        if target_is_sound {
+            // Nothing to recover *from*: the entity is already somewhere the
+            // validator accepts, so either correct the client back to it or —
+            // once the budget is spent — stop emitting corrections. Falling
+            // through to `resolve_recovery_position` here is what made the
+            // budget unenforceable on navmesh-backed worlds: reprojecting a
+            // sound point through Detour returns a near-identical (but rarely
+            // bit-identical) point, which read as a successful relocation,
+            // cleared the budget, and let the correction stream run forever.
+            return if strikes <= MovementValidator::MAX_SNAP_BACK_CORRECTIONS {
+                ClientMoveOutcome::Rejected {
+                    reason,
+                    last_valid,
+                    space_id,
+                    bounds,
+                }
+            } else {
+                ClientMoveOutcome::CorrectionSuppressed {
+                    reason,
+                    from: last_valid,
+                    space_id,
+                    strikes,
+                }
             };
         }
 
         match self.resolve_recovery_position(space_id, last_pos, &bounds) {
-            Some(safe) if safe != last_valid => {
+            // Same reason the sound-target branch above short-circuits:
+            // compare by displacement, not by float equality, so a
+            // reprojection that lands back where the entity already is counts
+            // as "no better place to put it" rather than as a relocation.
+            Some(safe)
+                if Vector3::new(safe[0], safe[1], safe[2]).distance_to(&last_pos)
+                    > RECOVERY_MIN_DISPLACEMENT =>
+            {
                 // `update_entity_position` overwrites `direction` from its
                 // `[i8; 3]` parameter, so the zero below would silently
                 // re-face the entity north on every recovery. Same
@@ -378,9 +433,9 @@ impl SpaceManager {
                 // The relocation is a server-authoritative teleport: reseed
                 // the clock so the client's first post-recovery packet is
                 // measured from now, and clear the budget because the entity
-                // once again has a position the validator accepts.
+                // once again has a position the validator accepts. Both are
+                // `note_authorized_teleport`'s job.
                 self.note_authorized_teleport(entity_id);
-                self.movement_validator.clear_rejects(entity_id);
                 ClientMoveOutcome::Recovered {
                     reason,
                     from: last_valid,

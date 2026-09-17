@@ -174,4 +174,14 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
          it, an entity created by a path that skipped the create-time stamp \
          would emit un-attributable logs for the whole session",
     );
+    // The other half of the pair comes from `handle_init_player_state` rather
+    // than the dispatcher, so the two are set by different functions. Pin the
+    // end state, not either writer: identity is only useful as a pair, and a
+    // session that ends up with `account_id` but no `player_id` names the
+    // account without saying which character on it was playing.
+    assert_eq!(
+        mgr.get_entity(1).unwrap().player_id,
+        Some(100),
+        "InitPlayerState must leave BOTH identity fields stamped",
+    );
 }

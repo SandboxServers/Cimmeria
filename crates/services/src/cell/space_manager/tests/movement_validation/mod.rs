@@ -27,9 +27,12 @@ use std::time::{Duration, Instant};
 use cimmeria_common::Vector3;
 use cimmeria_entity::movement_validation::MovementReject;
 use cimmeria_entity::navigation::NavMesh;
+use cimmeria_entity::stats::MOVEMENT_SPEED_MOD;
+use tracing::Level;
 
 use super::super::ClientMoveOutcome;
 use super::make_manager;
+use crate::test_support::LogCapture;
 
 /// Spawn position used by every test in this module. Sits well inside
 /// the Agnos space's `MinX/MaxX/MinY/MaxY` (-2400..2200, -3200..2800).
@@ -500,6 +503,106 @@ fn bounds_reject_spam_cannot_inflate_dt_to_slip_a_teleport() {
         ),
         "jump after bounds-reject spam must still be Teleport-rejected — the \
          clock must advance on rejects so dt can't be inflated; got {outcome:?}"
+    );
+}
+
+/// The speed layer must measure a player against *their own* top speed, not
+/// the class constant.
+///
+/// `movementSpeedMod` is a two-sided contract: the client scales its own
+/// local prediction by `cur/100` the moment it receives the stat in an
+/// `onStatUpdate`, and the NPC path-stepping tick already scales by it
+/// server-side. The client-position gate was the one place still comparing
+/// against the flat `DEFAULT_TOP_SPEED`, so a player the server itself sped
+/// up — a GM `.speed 500`, and any future haste effect writing the same stat
+/// — warned on every packet of movement the server had authorised. Warn-only
+/// today, but the layer's own doc comment says snap-back is the plan, at
+/// which point this becomes a hard reject on legitimate movement.
+///
+/// Shape: one hop, fast enough to warn at the baseline and slow enough not
+/// to at 5×. The control case pins that the hop really is warn-worthy
+/// unscaled, so reverting the fix trips the boosted assertion rather than
+/// silently passing a test that never warned either way.
+#[test]
+fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
+    // 1 u in 50 ms = 20 u/s. Baseline warn threshold is
+    // 8.125 × 1.5 = 12.19 u/s; at `movementSpeedMod = 500` it is 60.94 u/s.
+    let hop = [SPAWN_POS[0] + 1.0, 0.0, SPAWN_POS[2]];
+
+    {
+        let capture = LogCapture::install();
+        let mut mgr = make_manager();
+        mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+            .unwrap();
+        let t0 = Instant::now();
+        seed_clock(&mut mgr, 100, t0);
+        mgr.apply_client_position_update_at(
+            t0 + Duration::from_millis(50),
+            100,
+            hop,
+            [0, 0, 0],
+            [0.0; 3],
+        );
+        assert!(
+            capture
+                .find_event(Level::WARN, "movement.speed_warning", "speed")
+                .is_some(),
+            "control: at the default speed mod this hop must warn — otherwise the \
+             boosted case below proves nothing"
+        );
+    }
+
+    let capture = LogCapture::install();
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(100)
+        .unwrap()
+        .stats
+        .get_mut(MOVEMENT_SPEED_MOD)
+        .unwrap()
+        .set_current(500);
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(50),
+        100,
+        hop,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(outcome, ClientMoveOutcome::Accepted { position } if position == hop),
+        "the hop is sub-teleport either way and must be accepted, got {outcome:?}"
+    );
+    assert!(
+        capture
+            .find_event(Level::WARN, "movement.speed_warning", "speed")
+            .is_none(),
+        "a player the server itself sped up must not warn at a speed their own \
+         movementSpeedMod permits — comparing against the flat class constant \
+         warns on every packet of authorised movement"
+    );
+
+    // …but the gate still exists: past their *personal* threshold it fires.
+    // 5 u in 50 ms = 100 u/s, over the boosted 60.94 u/s tolerance.
+    let sprint = [SPAWN_POS[0] + 5.0, 0.0, SPAWN_POS[2]];
+    mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(100),
+        100,
+        sprint,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    let warn = capture
+        .find_event(Level::WARN, "movement.speed_warning", "speed")
+        .expect("past the boosted tolerance the speed layer must still warn");
+    assert!(
+        warn.has_field("top_speed", "40.625"),
+        "the warn must report the scaled baseline it actually compared against, \
+         not the class constant — the SigNoz tolerance-calibration pipeline reads \
+         this field; got {warn:#?}"
     );
 }
 

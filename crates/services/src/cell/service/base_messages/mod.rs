@@ -154,13 +154,15 @@ pub(super) async fn handle_base_message(
             // already exists (created by the prior `ConnectEntity`).
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.character_name = character_name;
-                // Re-assert the stable log-correlation identity. `CreateEntity`
-                // already stamped it; this is the belt-and-braces path for any
-                // create route that didn't, so a session can never reach
-                // in-world play with un-attributable logs. Same reason
-                // `character_name` is set here rather than threaded through
-                // `handle_init_player_state` — that signature is already at
-                // the argument-count lint ceiling.
+                // Re-assert the account half of the stable log-correlation
+                // identity. `CreateEntity` already stamped it; this is the
+                // belt-and-braces path for any create route that didn't, so a
+                // session can never reach in-world play with un-attributable
+                // logs. Only the account half needs re-asserting here:
+                // `handle_init_player_state` below already stamps
+                // `player_id` unconditionally, and `account_id` is the one
+                // field not threaded into its signature — which, like
+                // `character_name`, is at the argument-count lint ceiling.
                 entity.account_id = Some(account_id);
             } else {
                 // The entity should already exist (ConnectEntity precedes

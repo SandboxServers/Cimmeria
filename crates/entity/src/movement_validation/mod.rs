@@ -333,17 +333,27 @@ impl MovementValidator {
         }
     }
 
-    /// Reseed an entity's speed/teleport clock after a server-
-    /// authoritative position write (ring transport, respawn, gate
-    /// travel arrival, content-engine teleport, GM travel). The next
-    /// client packet's `dt` is then measured from the teleport instant,
-    /// which suppresses a spurious speed warn when an authoritative move
-    /// interrupts the client's update stream. It does **not** suppress
-    /// hard rejects — a stale in-flight packet pointing at the old
-    /// location *should* be snapped to the new one. See
+    /// Reseed an entity's speed/teleport clock **and** clear its snap-back
+    /// correction budget after a server-authoritative position write (ring
+    /// transport, respawn, gate travel arrival, content-engine teleport, GM
+    /// travel). The next client packet's `dt` is then measured from the
+    /// teleport instant, which suppresses a spurious speed warn when an
+    /// authoritative move interrupts the client's update stream. It does
+    /// **not** suppress hard rejects — a stale in-flight packet pointing at
+    /// the old location *should* be snapped to the new one. See
     /// `.claude/agent-memory/movement-teleport-advisor/authorized-teleport-paths.md`.
+    ///
+    /// The budget reset is folded in here rather than left to each caller
+    /// because a fresh authoritative placement is exactly the event that
+    /// makes accrued strikes meaningless: the entity now stands somewhere
+    /// the server chose. A player who racked up strikes against a bad
+    /// boundary and then respawned or was GM-teleported would otherwise
+    /// carry them to the new, valid position, where one ordinary reject
+    /// could trip [`Self::MAX_SNAP_BACK_CORRECTIONS`] straight into
+    /// recovery/suppression.
     pub fn note_authorized_teleport(&mut self, entity_id: u32, now: Instant) {
         self.touch_clock(entity_id, now);
+        self.clear_rejects(entity_id);
     }
 
     /// Release an entity's per-entity validator state. Call on entity

@@ -160,7 +160,8 @@ pub(super) async fn summon(
 ///
 /// Legacy `gotoLocation` (`Player.py:344-365`) validated the world against
 /// `world_info` and reported `"Unable to find world: %s"`; here that check is
-/// P45's `world_is_known`, whose rejection carries the same wording.
+/// `SpaceManager::canonical_world_name`, whose rejection carries the same
+/// wording.
 ///
 /// Instance selection is D15's first/default loaded instance — **except**
 /// when the named world is the one the subject is already in, where their own

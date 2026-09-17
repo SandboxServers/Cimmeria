@@ -88,16 +88,6 @@ impl SpaceManager {
         self.world_spaces.get(world_name).copied()
     }
 
-    /// Is `world_name` a world this CellApp knows about at all?
-    ///
-    /// Backed by `spaces.xml` (the static world table), so this answers
-    /// "does this world exist" independently of whether any instance of it
-    /// is currently loaded. Cross-world transfer validates against this
-    /// BEFORE tearing an entity out of its origin space.
-    pub fn world_is_known(&self, world_name: &str) -> bool {
-        self.worlds.contains_key(world_name)
-    }
-
     /// Resolve a caller-supplied world name to its canonical `spaces.xml`
     /// spelling, ignoring case. Returns `None` when no world matches.
     ///
