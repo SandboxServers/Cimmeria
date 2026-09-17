@@ -51,7 +51,9 @@ pub struct CellEntity {
 
     /// When `true`, `SpaceManager::apply_client_position_update_at` skips
     /// the 4-layer movement validator (bounds / navmesh / speed / teleport)
-    /// for this entity and accepts the client-reported position outright.
+    /// for this entity and accepts the client-reported position outright —
+    /// but only *after* the unconditional finite-coordinate (NaN/Infinity)
+    /// gate, which always runs regardless of this flag.
     ///
     /// Backs the native `onPhysics(UINT8 bTurnOn)` GM cell method (index
     /// 221 on `SGWGmPlayer`), which both `/gmsetfly` and `/gmsetghost`

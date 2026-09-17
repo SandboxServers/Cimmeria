@@ -47,7 +47,13 @@ fn drain_teleport(
                 space_id,
                 position,
                 prev_pos,
-            } => teleport = Some((*entity_id, *space_id, *position, *prev_pos)),
+            } => {
+                let payload = (*entity_id, *space_id, *position, *prev_pos);
+                assert!(
+                    teleport.replace(payload).is_none(),
+                    "received more than one TeleportPlayer message"
+                );
+            }
             _ => {
                 if let Some(text) = decode_feedback(&msg) {
                     feedback.push(text);
