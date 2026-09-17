@@ -583,6 +583,16 @@ fn on_navmesh_small_move_is_accepted() {
     );
 }
 
+/// The real client jump apex — see `REAL_JUMP_APEX` in
+/// `crates/entity/src/navigation/tests.rs` for the full derivation
+/// (`jumpSpeed² / (2 * |gravity|)` from the values `build_world_params_args`
+/// hands the client). Using the real apex here, not an arbitrary smaller
+/// test value, is what actually pins the reported bug end-to-end: a jump
+/// only up to a couple of units would not have exercised the multi-floor
+/// disambiguation `is_point_valid` needs on the real `castle_cellblock`
+/// fixture (see that function's doc comment).
+const REAL_JUMP_APEX: f32 = 8.0 * 8.0 / (2.0 * 9.8);
+
 /// End-to-end regression guard for the jump-height bug (reported as
 /// "jumping snaps my facing to north / rubber-bands me backward"): a
 /// client position update whose only change is an elevated Y (a jump
@@ -609,10 +619,9 @@ fn jump_in_place_is_accepted_not_rejected() {
         .unwrap();
     mgr.spaces.get_mut(&space_id).unwrap().navmesh = Some(navmesh);
 
-    // Same XZ as the (validated-on-mesh) spawn, lifted 1.5 units — a
-    // plausible jump apex, and comfortably past the old agent_radius-based
-    // gate but within the new jump-height tolerance.
-    let mid_jump = [on_mesh[0], on_mesh[1] + 1.5, on_mesh[2]];
+    // Same XZ as the (validated-on-mesh) spawn, lifted to the real client
+    // jump apex.
+    let mid_jump = [on_mesh[0], on_mesh[1] + REAL_JUMP_APEX, on_mesh[2]];
     let outcome =
         mgr.apply_client_position_update_at(Instant::now(), 100, mid_jump, [0, 0, 0], [0.0; 3]);
     assert!(

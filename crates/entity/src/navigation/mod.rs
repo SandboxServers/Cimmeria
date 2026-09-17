@@ -44,10 +44,42 @@ const DEST_EXTENTS: [f32; 3] = [3.0, 3.0, 3.0];
 /// Generous extents for height queries — large Y extent since caller
 /// passes y=0 and the mesh could be at any elevation.
 const HEIGHT_EXTENTS: [f32; 3] = [2.0, 500.0, 2.0];
-/// Vertical containment tolerance for [`NavMesh::is_point_valid`]. Reuses
-/// `DEST_EXTENTS`'s Y extent — jumping is exactly the "entity might be
-/// jumping" case that constant already exists for.
-const JUMP_HEIGHT_TOLERANCE: f32 = DEST_EXTENTS[1];
+/// Upward vertical containment tolerance for [`NavMesh::is_point_valid`] —
+/// how far *above* the walkable surface a proposed position may sit and
+/// still be accepted as "mid-jump" rather than off-mesh.
+///
+/// Sized from the client's own jump physics, not guessed: the server hands
+/// the client `gravity = -9.8` and `jumpSpeed = 8.0` in
+/// `build_world_params_args` (`crates/services/src/mercury/world_data/mod.rs`),
+/// giving a ballistic apex of `jumpSpeed² / (2 * |gravity|) ≈ 3.27` world
+/// units above takeoff. `4.0` adds ~0.7 units of margin for uneven ground,
+/// slope, and query jitter — comfortably above the real apex instead of
+/// (as an earlier version of this fix used) reusing `DEST_EXTENTS`'s `3.0`,
+/// which sat *below* the apex and would still have rejected a full jump.
+const JUMP_HEIGHT_TOLERANCE: f32 = 4.0;
+
+/// Downward vertical containment tolerance for [`NavMesh::is_point_valid`].
+/// Deliberately much tighter than [`JUMP_HEIGHT_TOLERANCE`] — jumping is a
+/// legitimate reason to be *above* the surface, but there is no legitimate
+/// reason to be *below* it. Reuses the horizontal `agent_radius * 2.0` gate
+/// so under-terrain clipping stays exactly as strict as it was before the
+/// jump-height fix (an earlier version of this fix used one symmetric
+/// `.abs()` tolerance for both directions, which would have widened the
+/// floor-clip allowance from `agent_radius * 2.0` to `4.0`).
+const BELOW_SURFACE_TOLERANCE_FACTOR: f32 = 2.0;
+
+/// Search extents used by [`NavMesh::is_point_valid`]'s below-biased retry
+/// (see that method's doc comment for why a second search exists at all).
+/// The vertical half-extent must comfortably exceed
+/// [`JUMP_HEIGHT_TOLERANCE`] so the retry's search box — centered *below*
+/// the query point — still reaches back up to it. Kept separate from
+/// `DEST_EXTENTS` so this fix doesn't change search behavior for
+/// path/raycast callers.
+const JUMP_SEARCH_EXTENTS: [f32; 3] = [
+    DEST_EXTENTS[0],
+    JUMP_HEIGHT_TOLERANCE + 1.0,
+    DEST_EXTENTS[2],
+];
 
 /// A loaded navigation mesh backed by the Detour C++ library.
 ///
@@ -317,6 +349,18 @@ impl NavMesh {
     /// Find the nearest polygon to a point.
     /// Returns (polygon_ref_as_usize, closest_point_on_poly) or None.
     pub fn find_nearest_poly(&self, pos: &Vector3) -> Option<(usize, Vector3)> {
+        self.find_nearest_poly_with_extents(pos, &DEST_EXTENTS)
+    }
+
+    /// Shared FFI core of [`Self::find_nearest_poly`], parameterized on the
+    /// search extents so callers that need a taller (or shorter) search box
+    /// — e.g. [`Self::is_point_valid`]'s jump-aware lookup — don't have to
+    /// go through `DEST_EXTENTS` and affect path/raycast callers too.
+    fn find_nearest_poly_with_extents(
+        &self,
+        pos: &Vector3,
+        extents: &[f32; 3],
+    ) -> Option<(usize, Vector3)> {
         let center = [pos.x, pos.y, pos.z];
         let mut nearest_ref: u32 = 0;
         let mut nearest_pt = [0.0f32; 3];
@@ -325,7 +369,7 @@ impl NavMesh {
             detour_ffi::detour_find_nearest_poly(
                 self.query,
                 center.as_ptr(),
-                DEST_EXTENTS.as_ptr(),
+                extents.as_ptr(),
                 &mut nearest_ref,
                 nearest_pt.as_mut_ptr(),
             )
@@ -343,31 +387,79 @@ impl NavMesh {
 
     /// Returns `true` if the given position lies on a walkable navmesh polygon.
     ///
-    /// Horizontal (X/Z) containment uses a tight `agent_radius`-based gate.
-    /// Vertical (Y) containment is deliberately looser — a legitimately
-    /// jumping avatar sits well above the walkable surface beneath it for
-    /// the length of the jump arc, and this is client-authoritative
-    /// physics the server never simulates. A single combined 3D distance
-    /// check (the prior implementation) couldn't tell "jumping in place"
-    /// from "off the mesh": a jump apex only slightly taller than
-    /// `agent_radius * 2` already read as off-navmesh and triggered a
-    /// snap-back on every jump. `JUMP_HEIGHT_TOLERANCE` reuses
-    /// `DEST_EXTENTS`'s Y extent — the value this module already
-    /// documents as "loose ... entity might be jumping" for the
-    /// destination-lookup search box — so the vertical gate matches the
-    /// radius within which `find_nearest_poly` can even locate the
-    /// underlying polygon.
+    /// Horizontal (X/Z) containment uses a tight `agent_radius`-based gate,
+    /// unchanged from before this fix. Vertical (Y) containment is
+    /// deliberately asymmetric:
+    ///
+    /// - **Upward** tolerance is [`JUMP_HEIGHT_TOLERANCE`] (4.0 units,
+    ///   comfortably above the ~3.27-unit apex the client's own jump
+    ///   physics produces — see that constant's doc comment for the
+    ///   derivation). A legitimately jumping avatar sits well above the
+    ///   walkable surface beneath it for the length of the jump arc, and
+    ///   this is client-authoritative physics the server never simulates.
+    ///   The prior implementation used a single combined 3D distance check
+    ///   against `agent_radius * 2` (~1.2 units on the `castle_cellblock`
+    ///   fixture) for *both* directions, so any jump apex taller than that
+    ///   already read as off-navmesh and triggered a snap-back on every
+    ///   jump.
+    /// - **Downward** tolerance stays at the original tight
+    ///   `agent_radius * 2` gate ([`BELOW_SURFACE_TOLERANCE_FACTOR`]) —
+    ///   there's no legitimate reason to be *below* the walkable surface,
+    ///   so under-terrain clipping must stay exactly as strict as it was
+    ///   pre-fix. A single symmetric tolerance here would have widened the
+    ///   floor-clip allowance to match the (much larger) jump tolerance.
+    ///
+    /// ## Why this is a two-phase search, not one wider one
+    ///
+    /// Detour's `dtFindNearestPoly` returns whichever polygon is nearest to
+    /// the query point in raw 3D Euclidean distance — not "the polygon
+    /// directly below." Simply widening the search box's vertical extent to
+    /// cover a full jump apex (an earlier version of this fix did exactly
+    /// that) works for open ground but breaks on multi-level geometry: on
+    /// the real `castle_cellblock` fixture, a mezzanine walkway sits ~4
+    /// units above (and a few units over from) the guard-spawn floor. At a
+    /// jump apex near that walkway's height, it is *closer in a straight
+    /// line* to the airborne query point than the true floor is straight
+    /// down, so a single widened search returns the walkway's polygon —
+    /// which then fails the horizontal gate and produces exactly the
+    /// false-reject this fix exists to remove.
+    ///
+    /// Phase 1 repeats the original, unmodified `DEST_EXTENTS`-anchored
+    /// search (so ground-level movement and modest jumps are completely
+    /// unaffected by this fix — same polygon, same result, as before).
+    /// Phase 2 only runs when phase 1 fails, and re-centers the search
+    /// `JUMP_HEIGHT_TOLERANCE` units *below* the query point — i.e. where
+    /// the ground would be if the caller is at the very top of a jump —
+    /// so a true floor straight down outweighs a walkway merely diagonally
+    /// nearby, without needing any caller context (last-known height,
+    /// grounded state, etc.) that isn't already in `pos` itself.
     pub fn is_point_valid(&self, pos: &Vector3) -> bool {
-        let Some((_, closest)) = self.find_nearest_poly(pos) else {
-            return false;
-        };
+        if let Some((_, closest)) = self.find_nearest_poly_with_extents(pos, &DEST_EXTENTS) {
+            if self.within_containment_tolerance(pos, &closest) {
+                return true;
+            }
+        }
+
+        let biased_center = Vector3::new(pos.x, pos.y - JUMP_HEIGHT_TOLERANCE, pos.z);
+        match self.find_nearest_poly_with_extents(&biased_center, &JUMP_SEARCH_EXTENTS) {
+            Some((_, closest)) => self.within_containment_tolerance(pos, &closest),
+            None => false,
+        }
+    }
+
+    /// Shared horizontal/vertical gate for [`Self::is_point_valid`]'s two
+    /// search phases — always evaluated against the *original* query
+    /// point, regardless of which phase's search located `closest`.
+    fn within_containment_tolerance(&self, pos: &Vector3, closest: &Vector3) -> bool {
         let dx = pos.x - closest.x;
         let dz = pos.z - closest.z;
         let horizontal_gate = self.agent_radius * 2.0;
         if dx * dx + dz * dz >= horizontal_gate * horizontal_gate {
             return false;
         }
-        (pos.y - closest.y).abs() <= JUMP_HEIGHT_TOLERANCE
+        let dy = pos.y - closest.y;
+        let below_surface_gate = self.agent_radius * BELOW_SURFACE_TOLERANCE_FACTOR;
+        dy >= -below_surface_gate && dy <= JUMP_HEIGHT_TOLERANCE
     }
 
     /// Find the closest valid navmesh position to the given point.
