@@ -18,7 +18,8 @@
 
 ## Build Environment
 
-- See [build-environment.md](build-environment.md) — repo `.cargo/config.toml` hardcodes another user's rust-lld path; need `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS` override.
+- [build-environment.md](build-environment.md) — linker override NO LONGER needed (config fixed upstream; setting it now actively breaks `lld-link`); worktrees need `external/` junctioned in.
+- [stale-branch-clippy-toolchain-drift.md](stale-branch-clippy-toolchain-drift.md) — CI clippy floats to current stable (no toolchain pin), so idle branches fail on brand-new lints unrelated to their diff; update-branch before investigating.
 
 ## Working Environment
 
