@@ -28,6 +28,75 @@ async fn unknown_world_is_rejected_before_any_teardown() {
     assert_origin_untouched(&before, &mgr, 1, &mut rx);
 }
 
+/// **Live-bug regression guard.** A GM typed `.gotolocation harset 10 0 10`
+/// and got `"Unable to find world: harset"` — but `Harset` is right there in
+/// `spaces.xml`. The world table is keyed on the exact `spaces.xml` spelling
+/// and `dest.world_name` had come straight off a chat line, so the only thing
+/// wrong was the capital H.
+///
+/// Reverting the `canonical_world_name` call to the old `world_is_known`
+/// exact-match makes this return `UnknownWorld` and the guard fires.
+#[tokio::test]
+async fn world_name_is_matched_case_insensitively() {
+    let mut mgr = make_manager();
+    spawn_player(&mut mgr, 1, AGNOS, [10.0, 0.0, 20.0]);
+    let castle = mgr.space_id_for_world(CASTLE).unwrap();
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let outcome = transfer_player_to_space(
+        1,
+        &TransferDestination::in_world(CASTLE.to_lowercase(), [1.0, 2.0, 3.0]),
+        &tx,
+        &mut mgr,
+    )
+    .await
+    .expect("a case variant of a known world must resolve, not dead-end");
+
+    assert_eq!(
+        outcome,
+        TransferOutcome::Transferred {
+            space_id: Some(castle)
+        }
+    );
+    // The base side's `find_or_create_space` is an exact-match lookup, so the
+    // canonical spelling — not what the GM typed — has to be what goes on the
+    // wire. A lowercase name leaking through here would fail base-side
+    // *after* teardown, which is the un-spaced-player state the whole
+    // validate-before-teardown ordering exists to prevent.
+    match expect_gate_travel(&mut rx) {
+        CellToBaseMsg::GateTravel {
+            target_world_name, ..
+        } => assert_eq!(
+            target_world_name, CASTLE,
+            "the canonical spaces.xml spelling must reach the base, not the typed one"
+        ),
+        other => panic!("expected GateTravel, got {other:?}"),
+    }
+}
+
+/// Canonicalisation must not paper over a genuinely unknown world: the
+/// rejection still fires, and it quotes back what the caller actually typed
+/// so the GM sees their own input in the error.
+#[tokio::test]
+async fn case_insensitive_matching_still_rejects_a_world_that_does_not_exist() {
+    let mut mgr = make_manager();
+    spawn_player(&mut mgr, 1, AGNOS, [10.0, 0.0, 20.0]);
+    let before = snapshot_origin(&mgr, 1);
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let err = transfer_player_to_space(
+        1,
+        &TransferDestination::in_world("chulak", [1.0, 2.0, 3.0]),
+        &tx,
+        &mut mgr,
+    )
+    .await
+    .expect_err("an unknown world must still be refused");
+
+    assert_eq!(err, TransferRejected::UnknownWorld("chulak".to_string()));
+    assert_origin_untouched(&before, &mgr, 1, &mut rx);
+}
+
 /// A world that exists in `spaces.xml` but is non-instanced and has no
 /// startup space can never be entered. If the transfer let it through, the
 /// base's `CreateEntity` would fail *after* teardown and strand the player in

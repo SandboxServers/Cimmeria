@@ -76,6 +76,32 @@ impl SpaceManager {
         self.worlds.contains_key(world_name)
     }
 
+    /// Resolve a caller-supplied world name to its canonical `spaces.xml`
+    /// spelling, ignoring case. Returns `None` when no world matches.
+    ///
+    /// Every keyed lookup in this module (`worlds`, `world_spaces`,
+    /// `SpaceInstance::world_name`) is exact and case-sensitive, because
+    /// the names come from `spaces.xml` and are compared against each
+    /// other. A *typed* world name does not have that guarantee: a GM
+    /// entering `.gotolocation harset 10 0 10` gets `"Unable to find
+    /// world: harset"` even though `Harset` is right there in the table,
+    /// with no hint that only the capital H was wrong. Command paths
+    /// canonicalise through here first and use the returned spelling for
+    /// everything downstream, so the exact-match invariant the rest of the
+    /// module relies on is preserved.
+    ///
+    /// The scan is linear over the world table (~two dozen entries, once
+    /// per travel command) — not worth a second index.
+    pub fn canonical_world_name(&self, world_name: &str) -> Option<&str> {
+        if let Some((name, _)) = self.worlds.get_key_value(world_name) {
+            return Some(name.as_str());
+        }
+        self.worlds
+            .keys()
+            .find(|k| k.eq_ignore_ascii_case(world_name))
+            .map(String::as_str)
+    }
+
     /// World name of a currently-loaded space instance, or `None` if no such
     /// instance is loaded.
     pub fn world_name_for_space(&self, space_id: u32) -> Option<&str> {

@@ -192,8 +192,11 @@ pub(super) async fn goto_location(
         send_gm_feedback(caller_id, "gotolocation: entity not found", tx).await;
         return;
     };
+    // Case-insensitive, matching `SpaceManager::canonical_world_name`: a GM
+    // typing `castle_cellblock` while standing in `Castle_CellBlock` must get
+    // the in-place snap, not a full loading screen into a different instance.
     let dest_space_id = match space_mgr.world_name_for_space(origin_space_id) {
-        Some(w) if w == world_name => Some(origin_space_id),
+        Some(w) if w.eq_ignore_ascii_case(world_name) => Some(origin_space_id),
         _ => None,
     };
 

@@ -167,7 +167,7 @@ async fn default_instance_selection_follows_the_oldest_live_instance() {
 
     let dest = TransferDestination::in_world(INSTANCED, [1.0, 2.0, 3.0]);
     assert_eq!(
-        resolve_destination_space(&dest, &mgr),
+        resolve_destination_space(&dest.world_name, dest.space_id, &mgr),
         Ok(Some(space_a)),
         "with A, B and C live the default must be A"
     );
@@ -180,7 +180,7 @@ async fn default_instance_selection_follows_the_oldest_live_instance() {
         "fixture must actually reap instance A"
     );
     assert_eq!(
-        resolve_destination_space(&dest, &mgr),
+        resolve_destination_space(&dest.world_name, dest.space_id, &mgr),
         Ok(Some(space_b)),
         "once A is gone the default must move to B — not stay on a reaped id, \
          and not jump to an arbitrary live instance"
@@ -216,7 +216,7 @@ async fn default_instance_for_a_non_instanced_world_is_its_startup_space() {
     assert!(agnos < castle, "fixture assumes Agnos allocated first");
 
     assert_eq!(
-        resolve_destination_space(&TransferDestination::in_world(CASTLE, [0.0; 3]), &mgr),
+        resolve_destination_space(CASTLE, None, &mgr),
         Ok(Some(castle)),
         "a non-instanced world must resolve to its own startup space"
     );

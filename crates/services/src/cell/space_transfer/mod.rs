@@ -228,15 +228,24 @@ pub async fn transfer_player_to_space(
         return Err(TransferRejected::NotAPlayer);
     }
 
-    if !space_mgr.world_is_known(&dest.world_name) {
+    // Canonicalise before any name comparison. The world table is keyed on
+    // the exact `spaces.xml` spelling, but `dest.world_name` may be typed by
+    // a GM — `.gotolocation harset ...` must reach `Harset`, not dead-end on
+    // "Unable to find world". Everything downstream (instance resolution,
+    // the `GateTravel` message, the base-side `find_or_create_space`) uses
+    // the canonical spelling so the exact-match invariant holds.
+    let Some(world_name) = space_mgr
+        .canonical_world_name(&dest.world_name)
+        .map(str::to_owned)
+    else {
         tracing::warn!(
             entity_id, world = %dest.world_name,
             "space_transfer: unknown destination world"
         );
         return Err(TransferRejected::UnknownWorld(dest.world_name.clone()));
-    }
+    };
 
-    let destination_space_id = resolve_destination_space(dest, space_mgr)?;
+    let destination_space_id = resolve_destination_space(&world_name, dest.space_id, space_mgr)?;
 
     // Already there: report it and let the caller take the cheap path.
     if destination_space_id == Some(origin_space_id) {
@@ -267,7 +276,7 @@ pub async fn transfer_player_to_space(
     if tx
         .send(CellToBaseMsg::GateTravel {
             entity_id,
-            target_world_name: dest.world_name.clone(),
+            target_world_name: world_name.clone(),
             position: dest.position,
             rotation: dest.rotation,
             // GM travel is never a ring transport; that field belongs to
@@ -279,7 +288,7 @@ pub async fn transfer_player_to_space(
         .is_err()
     {
         tracing::warn!(
-            entity_id, world = %dest.world_name,
+            entity_id, world = %world_name,
             "space_transfer: base channel closed — entity left in place"
         );
         return Err(TransferRejected::EnqueueFailed);
@@ -305,7 +314,7 @@ pub async fn transfer_player_to_space(
         entity_id,
         origin_space_id,
         ?destination_space_id,
-        world = %dest.world_name,
+        world = %world_name,
         "space_transfer: GateTravel enqueued, entity torn out of origin space"
     );
 
@@ -314,36 +323,40 @@ pub async fn transfer_player_to_space(
     })
 }
 
-/// Resolve `dest` to an exact loaded instance, or `None` meaning "the create
-/// path should allocate a fresh instance of this world".
+/// Resolve a destination to an exact loaded instance, or `None` meaning "the
+/// create path should allocate a fresh instance of this world".
+///
+/// `world_name` must already be the canonical `spaces.xml` spelling (see
+/// [`SpaceManager::canonical_world_name`]) — every comparison below is exact.
 ///
 /// Split out as a pure function so the resolution rules can be unit-tested
 /// without driving a whole transfer.
 pub(crate) fn resolve_destination_space(
-    dest: &TransferDestination,
+    world_name: &str,
+    requested_space_id: Option<u32>,
     space_mgr: &SpaceManager,
 ) -> Result<Option<u32>, TransferRejected> {
-    match dest.space_id {
+    match requested_space_id {
         // Exact instance requested (P44 resolved a specific player's space).
         Some(sid) => match space_mgr.world_name_for_space(sid) {
-            Some(w) if w == dest.world_name => Ok(Some(sid)),
+            Some(w) if w == world_name => Ok(Some(sid)),
             Some(other) => Err(TransferRejected::InstanceWorldMismatch {
                 space_id: sid,
-                requested_world: dest.world_name.clone(),
+                requested_world: world_name.to_string(),
                 actual_world: other.to_string(),
             }),
             None => Err(TransferRejected::InstanceNotLoaded(sid)),
         },
         // D15 default: first/default loaded instance of the world.
-        None => match space_mgr.default_space_for_world(&dest.world_name) {
+        None => match space_mgr.default_space_for_world(world_name) {
             Some(sid) => Ok(Some(sid)),
             // No instance loaded. For an instanced world that's normal —
             // the create path allocates one. For a non-instanced world it
             // means the world is missing from `cell_spaces.xml`, and
             // `find_or_create_space` would fail base-side *after* teardown,
             // so refuse now.
-            None if space_mgr.is_world_instanced(&dest.world_name) => Ok(None),
-            None => Err(TransferRejected::WorldNotLoadable(dest.world_name.clone())),
+            None if space_mgr.is_world_instanced(world_name) => Ok(None),
+            None => Err(TransferRejected::WorldNotLoadable(world_name.to_string())),
         },
     }
 }

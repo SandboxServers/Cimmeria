@@ -35,6 +35,37 @@ use super::make_manager;
 /// the Agnos space's `MinX/MaxX/MinY/MaxY` (-2400..2200, -3200..2800).
 const SPAWN_POS: [f32; 3] = [10.0, 0.0, 20.0];
 
+/// Find a point inside the navmesh AABB that reads as **off** the walkable
+/// mesh, for the tests that need one.
+///
+/// The nav AABB hugs the walkable polys, so corners snap to mesh
+/// (`DEST_EXTENTS` is a 3 u box). Scan the interior XZ grid at `y` for a
+/// point inside a wall / cell gap that reads off-mesh but stays within the
+/// bounds AABB. The cellblock is a prison interior — such points exist.
+/// Deterministic over the fixed fixture. `None` means the whole scanned
+/// interior was walkable; callers skip rather than assert, so a future
+/// re-bake cannot false-fail them.
+fn find_off_mesh_point(
+    mgr: &super::super::SpaceManager,
+    entity_id: u32,
+    bmin: [f32; 3],
+    bmax: [f32; 3],
+    y: f32,
+) -> Option<[f32; 3]> {
+    let (mut x, step) = (bmin[0] + 2.0, 2.0_f32);
+    while x < bmax[0] - 2.0 {
+        let mut z = bmin[2] + 2.0;
+        while z < bmax[2] - 2.0 {
+            if !mgr.is_position_valid(entity_id, &Vector3::new(x, y, z)) {
+                return Some([x, y, z]);
+            }
+            z += step;
+        }
+        x += step;
+    }
+    None
+}
+
 #[test]
 fn legitimate_movement_within_bounds_accepts_and_writes() {
     let mut mgr = make_manager();
@@ -505,27 +536,7 @@ fn off_navmesh_position_is_rejected_and_not_observed() {
         "guard spawn must read as on-navmesh — fixture/precondition sanity"
     );
 
-    // The nav AABB hugs the walkable polys, so corners snap to mesh
-    // (DEST_EXTENTS is a 3 u box). Scan the interior XZ grid at floor
-    // height for a point inside a wall / cell gap that reads off-mesh but
-    // stays within the bounds AABB. The cellblock is a prison interior —
-    // such points exist. Deterministic over the fixed fixture.
-    let mut off_mesh: Option<[f32; 3]> = None;
-    let y = on_mesh[1];
-    let (mut x, step) = (bmin[0] + 2.0, 2.0_f32);
-    'scan: while x < bmax[0] - 2.0 {
-        let mut z = bmin[2] + 2.0;
-        while z < bmax[2] - 2.0 {
-            let cand = [x, y, z];
-            if !mgr.is_position_valid(100, &Vector3::new(cand[0], cand[1], cand[2])) {
-                off_mesh = Some(cand);
-                break 'scan;
-            }
-            z += step;
-        }
-        x += step;
-    }
-    let off_mesh = match off_mesh {
+    let off_mesh = match find_off_mesh_point(&mgr, 100, bmin, bmax, on_mesh[1]) {
         Some(p) => p,
         // Whole interior walkable (not expected for a cellblock) — skip
         // rather than assert, so a future re-bake can't false-fail.
@@ -638,3 +649,4 @@ fn jump_in_place_is_accepted_not_rejected() {
 }
 
 mod onphysics;
+mod recovery;

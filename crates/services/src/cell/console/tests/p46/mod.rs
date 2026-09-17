@@ -33,6 +33,7 @@ use crate::cell::console::exec;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+mod freeform;
 mod goto;
 mod gotolocation;
 mod summon;

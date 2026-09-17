@@ -164,25 +164,101 @@ pub(super) async fn handle_entity_move(
             // `handle_teleport_player` which emits
             // `BASEMSG_FORCED_POSITION` to the owner; the
             // existing teleport bundle is the right primitive.
-            if let Err(e) = tx
-                .send(CellToBaseMsg::TeleportPlayer {
-                    entity_id,
-                    space_id,
-                    position: last_valid,
-                    prev_pos: last_valid,
-                })
-                .await
-            {
-                tracing::warn!(
-                    entity_id,
-                    space_id,
-                    error = %e,
-                    reason = "snap_back_send_failed",
-                    "movement.bounds_violation: snap-back \
-                     TeleportPlayer send to base failed — \
-                     client will continue desynced"
-                );
-            }
+            send_snap_back(entity_id, space_id, last_valid, tx).await;
         }
+        ClientMoveOutcome::Recovered {
+            reason,
+            from,
+            recovered_to,
+            space_id,
+        } => {
+            // The rubber-band loop this branch exists to break: the
+            // entity's own authoritative position was not somewhere the
+            // validator would accept, so snapping the client back to it
+            // guaranteed the next packet would be rejected too. The
+            // relocation has already been written cell-side; all that is
+            // left is to tell the owning client where it now is.
+            let reason_label = movement_reject_label(reason);
+            tracing::warn!(
+                target: "movement.validation",
+                entity_id,
+                space_id,
+                from_x = from[0],
+                from_y = from[1],
+                from_z = from[2],
+                recovered_x = recovered_to[0],
+                recovered_y = recovered_to[1],
+                recovered_z = recovered_to[2],
+                reason = reason_label,
+                "movement.validation_recovered: the entity's own position was not a \
+                 usable snap-back target — relocated to the nearest safe point \
+                 instead of re-issuing the correction"
+            );
+            cimmeria_observability::counter!(
+                "movement_validation_recoveries_total",
+                "reason" => reason_label,
+            );
+            send_snap_back(entity_id, space_id, recovered_to, tx).await;
+        }
+        ClientMoveOutcome::CorrectionSuppressed {
+            reason,
+            from,
+            space_id,
+            strikes,
+        } => {
+            // Deliberately emits no `FORCED_POSITION`. Re-sending one is
+            // exactly what produced the loop, and there is nowhere better
+            // to send the client to. The cell entity is untouched and
+            // authoritative for AoI, so witnesses still see the truth; the
+            // offending client stays desynced until it sends a position
+            // the validator accepts, which clears the budget.
+            tracing::error!(
+                target: "movement.validation",
+                entity_id,
+                space_id,
+                from_x = from[0],
+                from_y = from[1],
+                from_z = from[2],
+                strikes,
+                reason = movement_reject_label(reason),
+                "movement.correction_suppressed: correction budget exhausted with no \
+                 safe position to recover to — no further FORCED_POSITION will be \
+                 sent for this entity until it reports an acceptable position"
+            );
+            cimmeria_observability::counter!(
+                "movement_validation_corrections_suppressed_total",
+                "reason" => movement_reject_label(reason),
+            );
+        }
+    }
+}
+
+/// Push one `BASEMSG_FORCED_POSITION` at the owning client.
+///
+/// `position == prev_pos` so the client's interpolator sees a zero-distance
+/// move and hard-sets rather than sliding into place.
+async fn send_snap_back(
+    entity_id: u32,
+    space_id: u32,
+    position: [f32; 3],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
+    if let Err(e) = tx
+        .send(CellToBaseMsg::TeleportPlayer {
+            entity_id,
+            space_id,
+            position,
+            prev_pos: position,
+        })
+        .await
+    {
+        tracing::warn!(
+            entity_id,
+            space_id,
+            error = %e,
+            reason = "snap_back_send_failed",
+            "movement.snap_back_send_failed: snap-back TeleportPlayer send to \
+             base failed — client will continue desynced"
+        );
     }
 }

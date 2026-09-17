@@ -266,7 +266,7 @@ pub(crate) async fn exec(
         }
         // Travel
         "gotoxyz" => travel::goto_xyz(caller_id, target_id, args, tx, space_mgr).await,
-        "goto" | "summon" | "gotolocation" => {
+        "goto" | "summon" | "gotolocation" | "gotospace" => {
             travel::dispatch(name, caller_id, target_id, args, tx, space_mgr).await
         }
         // J. placement (position / orientation)

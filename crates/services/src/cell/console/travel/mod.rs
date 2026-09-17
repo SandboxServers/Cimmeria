@@ -180,7 +180,78 @@ async fn snap_in_current_space(
     true
 }
 
-/// Route `.goto` / `.summon` / `.gotolocation` (P46) to their handlers.
+/// `.gotospace <spaceId> <x> <y> <z>` — teleport the selected target (or the
+/// caller) to explicit coordinates in one exact **loaded space instance**,
+/// named by id.
+///
+/// **Deliberate deviation — legacy has no equivalent.** Every other travel
+/// command resolves its destination through the world-name table, which means
+/// a GM can only reach a world `spaces.xml` declares, spelled the way
+/// `spaces.xml` spells it, and on an instanced world only the instance D15's
+/// default rule happens to pick. This is the escape hatch: the space id is
+/// the runtime identity of a loaded instance, so the world name is derived
+/// *from* it rather than looked up, and any live instance is reachable —
+/// including a second copy of an instanced world with nobody in it to
+/// `.goto`.
+///
+/// Authority is the same server-side `access_level` gate every `.`-command
+/// runs behind (see [`crate::cell::console`]); nothing here is asserted by
+/// the client. Coordinates are **not** navmesh-checked — placing a GM off the
+/// walkable mesh is the point — but they are finite-checked by `parse_f32`
+/// and the destination instance must actually be loaded.
+pub(super) async fn goto_space(
+    caller_id: u32,
+    target: Option<u32>,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let Some(raw) = super::parse_i32(caller_id, args, 0, "spaceId", tx).await else {
+        return;
+    };
+    let Ok(space_id) = u32::try_from(raw) else {
+        send_gm_feedback(caller_id, "gotospace: spaceId must be positive", tx).await;
+        return;
+    };
+    let Some(x) = super::parse_f32(caller_id, args, 1, "x", tx).await else {
+        return;
+    };
+    let Some(y) = super::parse_f32(caller_id, args, 2, "y", tx).await else {
+        return;
+    };
+    let Some(z) = super::parse_f32(caller_id, args, 3, "z", tx).await else {
+        return;
+    };
+
+    // The world name is derived from the instance, never typed — so this
+    // command cannot dead-end on an unknown-world rejection.
+    let Some(world_name) = space_mgr.world_name_for_space(space_id).map(str::to_owned) else {
+        send_gm_feedback(
+            caller_id,
+            &format!("gotospace: space {space_id} is not loaded"),
+            tx,
+        )
+        .await;
+        return;
+    };
+
+    let subject = target.unwrap_or(caller_id);
+    move_subject(
+        "gotospace",
+        caller_id,
+        subject,
+        &world_name,
+        Some(space_id),
+        [x, y, z],
+        &format!("Moving entity {subject} to space {space_id} ({x}, {y}, {z})"),
+        tx,
+        space_mgr,
+    )
+    .await;
+}
+
+/// Route `.goto` / `.summon` / `.gotolocation` (P46) and `.gotospace` to
+/// their handlers.
 pub(super) async fn dispatch(
     name: &str,
     caller_id: u32,
@@ -195,6 +266,7 @@ pub(super) async fn dispatch(
         "gotolocation" => {
             named_destination::goto_location(caller_id, target, args, tx, space_mgr).await
         }
+        "gotospace" => goto_space(caller_id, target, args, tx, space_mgr).await,
         _ => {}
     }
 }

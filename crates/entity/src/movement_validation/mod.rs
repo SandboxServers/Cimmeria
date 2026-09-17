@@ -55,6 +55,16 @@
 //!    so the offending client immediately snaps its own avatar back to
 //!    the last-valid position.
 //!
+//! **A correction is only terminal if its target is itself acceptable.**
+//! When the entity's own authoritative position is off-navmesh or outside
+//! the space AABB — which a server-authoritative write can produce — the
+//! client snaps to it, re-reports it, and is rejected again, at the client
+//! update rate, forever. The caller therefore checks the snap target and
+//! falls back to relocating the entity (see
+//! `SpaceManager::reject_outcome`), and
+//! [`MovementValidator::MAX_SNAP_BACK_CORRECTIONS`] caps how many times in
+//! a row one entity can be corrected at all.
+//!
 //! Disconnect is reserved for repeated violations beyond a per-session
 //! threshold — out of scope for this layer.
 //!
@@ -138,6 +148,11 @@ pub struct MovementValidator {
     /// first update for an entity seeds the clock and skips the
     /// speed/teleport check (no baseline to measure against).
     move_clock: HashMap<u32, Instant>,
+    /// Hard rejects for each entity since its last accepted position.
+    /// Backs the snap-back correction budget — see
+    /// [`MovementValidator::MAX_SNAP_BACK_CORRECTIONS`]. Absent means
+    /// zero. Released by [`MovementValidator::forget`].
+    consecutive_rejects: HashMap<u32, u32>,
 }
 
 impl MovementValidator {
@@ -169,11 +184,41 @@ impl MovementValidator {
     /// implied speed) is **not** a teleport, but a far-and-fast jump is.
     pub const TELEPORT_SPEED_FACTOR: f32 = 10.0;
 
+    /// How many times in a row the server will re-issue the same
+    /// snap-back correction to one entity before giving up on it.
+    ///
+    /// The correction loop only terminates if the client eventually
+    /// accepts the snap. When it cannot — the snap target is itself an
+    /// invalid position, or the client is tampered and keeps re-sending
+    /// — every inbound packet produces another `BASEMSG_FORCED_POSITION`
+    /// and the avatar rubber-bands at the client's update rate until the
+    /// player disconnects. At the ~10 Hz client update rate this budget
+    /// caps that at roughly half a second. Any accepted position resets
+    /// it, so a legitimately lagged client is never penalised across
+    /// separate incidents.
+    pub const MAX_SNAP_BACK_CORRECTIONS: u32 = 5;
+
     /// Construct a fresh validator with no per-entity state.
     pub fn new() -> Self {
         Self {
             move_clock: HashMap::new(),
+            consecutive_rejects: HashMap::new(),
         }
+    }
+
+    /// Record a hard reject for `entity_id` and return the new
+    /// consecutive-reject count (1 for the first reject after an
+    /// accepted position).
+    pub fn note_reject(&mut self, entity_id: u32) -> u32 {
+        let n = self.consecutive_rejects.entry(entity_id).or_insert(0);
+        *n = n.saturating_add(1);
+        *n
+    }
+
+    /// Reset `entity_id`'s correction budget. Called on every accepted
+    /// position and after a successful recovery relocation.
+    pub fn clear_rejects(&mut self, entity_id: u32) {
+        self.consecutive_rejects.remove(&entity_id);
     }
 
     /// Bounds layer. Returns `Ok(())` on accept,
@@ -306,6 +351,7 @@ impl MovementValidator {
     /// stale sample across `entity_id` reuse.
     pub fn forget(&mut self, entity_id: u32) {
         self.move_clock.remove(&entity_id);
+        self.consecutive_rejects.remove(&entity_id);
     }
 }
 
@@ -503,6 +549,40 @@ mod tests {
             out.speed_warn.is_none(),
             "reseeded clock must make the post-teleport packet look slow"
         );
+    }
+
+    // ── Snap-back correction budget ─────────────────────────────────────
+
+    #[test]
+    fn note_reject_counts_consecutive_rejects_and_clear_resets() {
+        let mut v = MovementValidator::new();
+        assert_eq!(v.note_reject(1), 1);
+        assert_eq!(v.note_reject(1), 2);
+        assert_eq!(v.note_reject(2), 1, "budgets are per-entity");
+        v.clear_rejects(1);
+        assert_eq!(
+            v.note_reject(1),
+            1,
+            "an accepted position must reset the budget, not merely pause it"
+        );
+        assert_eq!(
+            v.note_reject(2),
+            2,
+            "clearing one entity must not clear another"
+        );
+    }
+
+    /// `forget` has to release the reject budget as well as the clock —
+    /// otherwise a recycled `entity_id` inherits a spent budget and its
+    /// very first bad packet is treated as the sixth in a row.
+    #[test]
+    fn forget_clears_the_reject_budget_too() {
+        let mut v = MovementValidator::new();
+        for _ in 0..MovementValidator::MAX_SNAP_BACK_CORRECTIONS {
+            v.note_reject(7);
+        }
+        v.forget(7);
+        assert_eq!(v.note_reject(7), 1);
     }
 
     #[test]
