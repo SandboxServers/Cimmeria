@@ -189,12 +189,23 @@ pub async fn transfer_player_to_space(
         return Err(TransferRejected::NonFinitePosition);
     }
 
-    let (origin_space_id, is_player, player_id) = match space_mgr.get_entity(entity_id) {
-        Some(e) => (e.space_id.0 as u32, e.is_player, e.player_id),
+    // `entity_space` is the index `create_entity`/`destroy_entity` maintain and
+    // the one `get_entity` itself resolves through, so it — not the entity's
+    // own cached `space_id` field — is what the SameSpace comparison below has
+    // to be made against.
+    let (is_player, player_id) = match space_mgr.get_entity(entity_id) {
+        Some(e) => (e.is_player, e.player_id),
         None => {
             tracing::warn!(entity_id, "space_transfer: subject entity not found");
             return Err(TransferRejected::EntityNotFound);
         }
+    };
+    let Some(origin_space_id) = space_mgr.get_entity_space_id(entity_id) else {
+        tracing::warn!(
+            entity_id,
+            "space_transfer: subject entity is not in any space"
+        );
+        return Err(TransferRejected::EntityNotFound);
     };
 
     // D15: players only. An NPC has no client to run the world-entry

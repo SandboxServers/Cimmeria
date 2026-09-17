@@ -18,7 +18,7 @@
 
 ## Build Environment
 
-- See [build-environment.md](build-environment.md) — repo `.cargo/config.toml` hardcodes another user's rust-lld path; need `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS` override.
+- [build-environment.md](build-environment.md) — rust-lld override is OBSOLETE (fixed upstream); a fresh worktree needs `external/` junction-linked; cargo's stderr is block-buffered through the Bash tool so a hung *test* looks like a hung build (diagnose via `UserModeTime`).
 
 ## Working Environment
 
@@ -39,6 +39,10 @@
 ## GM feedback (cell ↔ base)
 
 - [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — definitive (post-commit) GM feedback for base-round-trip commands: cell-side `cell_methods::gm::feedback::send_gm_feedback` (EntityMethodCall→onPlayerCommunication m28 CHAN_FEEDBACK=8) vs base-side `base::gm_feedback::send_gm_feedback_to_client` (send_to_witness_reliable). `GrantItem`/`RemoveInventoryItem` still gate on `notify_gm: bool`; `GrantCash`/`GrantXP` were changed (P05) to `gm_feedback_to: Option<u32>` so a selected-target grant's feedback goes to the caller, not the target — apply the same pattern to GrantItem/RemoveInventoryItem/GrantExpertise/GrantAppliedSciencePoints when a dot command needs it (P06 `.giveitem` will).
+
+## Cross-world / cross-space transfer
+
+- [cross-world-transfer-flow.md](cross-world-transfer-flow.md) — `handle_gate_travel` is the BACK half (teardown lives cell-side in each caller); `find_or_create_space` can never join an existing instance; `resolve_space_id_fallback` + `register_space` are both fake "default instance" mechanisms; `CreateEntity.reply_tx` has no failure channel; disconnect-vs-create FIFO race leaves ghost entities.
 
 ## AoI / witness fanout
 
