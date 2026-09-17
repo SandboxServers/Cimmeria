@@ -1,11 +1,17 @@
 //! Cross-space / cross-world player transfer primitive (packet P45).
 //!
 //! This is the shared mechanism behind the GM travel commands `.goto`,
-//! `.summon` and `.gotolocation` (packet P46). It does exactly one thing:
-//! move a *player* entity out of its current space and into a named world —
-//! optionally a specific already-loaded instance of that world — by driving
-//! the same teardown → `pending_world_entry` → re-enter flow that
-//! player-initiated stargate travel already uses.
+//! `.summon`, `.gotolocation` and `.gotospace` (packet P46). It does exactly
+//! one thing: move a *player* entity out of its current space and into
+//! another, by driving the same teardown → `pending_world_entry` → re-enter
+//! flow that player-initiated stargate travel already uses.
+//!
+//! Two entry points, differing only in how the destination is named:
+//! [`transfer_player_to_space`] takes a world name (optionally plus an exact
+//! instance) and resolves it through the `spaces.xml` table, and
+//! [`transfer_player_to_loaded_space`] takes a verified space id and skips
+//! that table entirely. Everything after resolution — validation, ordering,
+//! teardown — is the same code.
 //!
 //! # Why this can't just call `handle_gate_travel` blindly
 //!
@@ -59,7 +65,15 @@ mod tests;
 /// Where a transfer is going.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransferDestination {
-    /// Destination world name, as it appears in `spaces.xml`.
+    /// Destination world name. Case variants of a declared world are
+    /// accepted: [`transfer_player_to_space`] runs this through
+    /// [`SpaceManager::canonical_world_name`] and every comparison
+    /// downstream — instance resolution, the `GateTravel` message, the
+    /// base-side `find_or_create_space` — uses the canonical `spaces.xml`
+    /// spelling. A world the table does not declare at all is
+    /// [`TransferRejected::UnknownWorld`]; reaching a live instance whose
+    /// world is absent from the table is what
+    /// [`transfer_player_to_loaded_space`] is for.
     pub world_name: String,
     /// Exact loaded instance to join. `None` selects the D15 default —
     /// the first/default loaded instance of `world_name`, or a freshly
@@ -165,8 +179,99 @@ pub enum TransferOutcome {
 
 /// Move `entity_id` to `dest`, validating fully before any teardown.
 ///
+/// The destination world is resolved **through the world-name table**: see
+/// [`TransferDestination::world_name`]. Use
+/// [`transfer_player_to_loaded_space`] when the caller already holds a
+/// verified space id and the table has nothing to add.
+///
 /// See the module docs for the ordering contract. On `Err`, the entity's
 /// origin space, position and AoI are untouched.
+#[tracing::instrument(
+    name = "space_transfer.execute",
+    level = "info",
+    skip_all,
+    fields(entity_id, world = %dest.world_name, requested_space_id = ?dest.space_id)
+)]
+pub async fn transfer_player_to_space(
+    entity_id: u32,
+    dest: &TransferDestination,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> Result<TransferOutcome, TransferRejected> {
+    execute_transfer(
+        entity_id,
+        Destination::Named {
+            world_name: &dest.world_name,
+            space_id: dest.space_id,
+        },
+        dest.position,
+        dest.rotation,
+        tx,
+        space_mgr,
+    )
+    .await
+}
+
+/// Move `entity_id` into one **already-loaded space instance**, named by id.
+///
+/// This is the `.gotospace` shape, and the difference from
+/// [`transfer_player_to_space`] is destination *resolution* only — the
+/// validate → enqueue → teardown ordering is identical. The world name is
+/// read off the instance instead of being looked up, so `spaces.xml` is never
+/// consulted and **any live instance is reachable whether or not the world
+/// table declares its world**. That is the entire point of the command: every
+/// other travel leg can only reach a world the table knows, spelled the way
+/// the table spells it.
+///
+/// The id is re-checked here rather than trusted from the caller. Callers do
+/// hold the exclusive `&mut SpaceManager` borrow across their own check and
+/// this one, so it cannot have gone stale in between — but the by-id path has
+/// no by-world-name fallback waiting for it on arrival. `handle_create_entity`
+/// degrades an unusable `destination_space_id` to `find_or_create_space`,
+/// which for a world the table does not declare fails *after* teardown and
+/// strands the player in no space at all. Refusing a vanished instance here
+/// keeps that arm unreachable.
+#[tracing::instrument(
+    name = "space_transfer.execute_by_id",
+    level = "info",
+    skip_all,
+    fields(entity_id, requested_space_id = space_id)
+)]
+pub async fn transfer_player_to_loaded_space(
+    entity_id: u32,
+    space_id: u32,
+    position: [f32; 3],
+    rotation: [f32; 3],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> Result<TransferOutcome, TransferRejected> {
+    execute_transfer(
+        entity_id,
+        Destination::LoadedSpace(space_id),
+        position,
+        rotation,
+        tx,
+        space_mgr,
+    )
+    .await
+}
+
+/// How a transfer's destination was named, which decides how much of the
+/// world-name table the resolution below has to consult.
+enum Destination<'a> {
+    /// A world name that may have been typed, plus optionally the exact
+    /// instance the caller resolved for itself. Canonicalised against
+    /// `spaces.xml`; an undeclared world is refused.
+    Named {
+        world_name: &'a str,
+        space_id: Option<u32>,
+    },
+    /// One instance the caller has already confirmed is loaded. The world
+    /// name is derived *from* that instance, so the table is skipped.
+    LoadedSpace(u32),
+}
+
+/// Shared core of both entry points.
 ///
 /// # Load-bearing invariant
 ///
@@ -180,23 +285,20 @@ pub enum TransferOutcome {
 /// A refactor that takes `&SpaceManager` and re-acquires the mutable borrow
 /// later, or that splits the phases across a `select!` / spawned task, silently
 /// reopens that window — and no existing test would fail. Keep the borrow.
-#[tracing::instrument(
-    name = "space_transfer.execute",
-    level = "info",
-    skip_all,
-    fields(entity_id, world = %dest.world_name, requested_space_id = ?dest.space_id)
-)]
-pub async fn transfer_player_to_space(
+async fn execute_transfer(
     entity_id: u32,
-    dest: &TransferDestination,
+    dest: Destination<'_>,
+    position: [f32; 3],
+    rotation: [f32; 3],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> Result<TransferOutcome, TransferRejected> {
     // ── Phase 1: validate. No mutation past this point until phase 2. ──
-    if !dest.position.iter().all(|c| c.is_finite()) || !dest.rotation.iter().all(|c| c.is_finite())
-    {
+    if !position.iter().all(|c| c.is_finite()) || !rotation.iter().all(|c| c.is_finite()) {
         tracing::warn!(
-            entity_id, position = ?dest.position, rotation = ?dest.rotation,
+            entity_id,
+            ?position,
+            ?rotation,
             "space_transfer: non-finite destination rejected"
         );
         return Err(TransferRejected::NonFinitePosition);
@@ -228,24 +330,58 @@ pub async fn transfer_player_to_space(
         return Err(TransferRejected::NotAPlayer);
     }
 
-    // Canonicalise before any name comparison. The world table is keyed on
-    // the exact `spaces.xml` spelling, but `dest.world_name` may be typed by
-    // a GM — `.gotolocation harset ...` must reach `Harset`, not dead-end on
-    // "Unable to find world". Everything downstream (instance resolution,
-    // the `GateTravel` message, the base-side `find_or_create_space`) uses
-    // the canonical spelling so the exact-match invariant holds.
-    let Some(world_name) = space_mgr
-        .canonical_world_name(&dest.world_name)
-        .map(str::to_owned)
-    else {
-        tracing::warn!(
-            entity_id, world = %dest.world_name,
-            "space_transfer: unknown destination world"
-        );
-        return Err(TransferRejected::UnknownWorld(dest.world_name.clone()));
-    };
+    // Resolved once `is_player` is settled, so the warns below can name the
+    // account rather than the recycled entity slot — and *before* the phase-4
+    // teardown, after which `player_identity` can only answer UNKNOWN.
+    let id = space_mgr.player_identity(entity_id);
 
-    let destination_space_id = resolve_destination_space(&world_name, dest.space_id, space_mgr)?;
+    let (world_name, destination_space_id) = match dest {
+        Destination::Named {
+            world_name,
+            space_id,
+        } => {
+            // Canonicalise before any name comparison. The world table is
+            // keyed on the exact `spaces.xml` spelling, but this name may be
+            // typed by a GM — `.gotolocation harset ...` must reach `Harset`,
+            // not dead-end on "Unable to find world". Everything downstream
+            // (instance resolution, the `GateTravel` message, the base-side
+            // `find_or_create_space`) uses the canonical spelling so the
+            // exact-match invariant holds.
+            let Some(canonical) = space_mgr
+                .canonical_world_name(world_name)
+                .map(str::to_owned)
+            else {
+                tracing::warn!(
+                    entity_id,
+                    account_id = id.account_id,
+                    player_id = id.player_id,
+                    world = %world_name,
+                    "space_transfer: unknown destination world"
+                );
+                return Err(TransferRejected::UnknownWorld(world_name.to_string()));
+            };
+            let sid = resolve_destination_space(&canonical, space_id, space_mgr)?;
+            (canonical, sid)
+        }
+        // The world name is derived from the instance, so there is nothing
+        // for the table to validate — and consulting it anyway would re-reject
+        // a destination the caller already proved reachable, which is the one
+        // thing this path exists to avoid.
+        Destination::LoadedSpace(space_id) => {
+            let Some(world_name) = space_mgr.world_name_for_space(space_id).map(str::to_owned)
+            else {
+                tracing::warn!(
+                    entity_id,
+                    account_id = id.account_id,
+                    player_id = id.player_id,
+                    requested_space_id = space_id,
+                    "space_transfer: destination instance is no longer loaded"
+                );
+                return Err(TransferRejected::InstanceNotLoaded(space_id));
+            };
+            (world_name, Some(space_id))
+        }
+    };
 
     // Already there: report it and let the caller take the cheap path.
     if destination_space_id == Some(origin_space_id) {
@@ -277,8 +413,8 @@ pub async fn transfer_player_to_space(
         .send(CellToBaseMsg::GateTravel {
             entity_id,
             target_world_name: world_name.clone(),
-            position: dest.position,
-            rotation: dest.rotation,
+            position,
+            rotation,
             // GM travel is never a ring transport; that field belongs to
             // `Effect::TeleportCrossWorld`.
             destination_ring_id: None,
@@ -288,7 +424,10 @@ pub async fn transfer_player_to_space(
         .is_err()
     {
         tracing::warn!(
-            entity_id, world = %world_name,
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            world = %world_name,
             "space_transfer: base channel closed — entity left in place"
         );
         return Err(TransferRejected::EnqueueFailed);
@@ -312,6 +451,8 @@ pub async fn transfer_player_to_space(
 
     tracing::info!(
         entity_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
         origin_space_id,
         ?destination_space_id,
         world = %world_name,

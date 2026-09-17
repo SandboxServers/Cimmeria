@@ -16,7 +16,7 @@
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
-use super::{move_subject, SpaceManager};
+use super::{move_subject, SpaceManager, TravelDestination};
 use crate::cell::console::parse_f32;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::PlayerNameLookup;
@@ -89,8 +89,10 @@ pub(super) async fn goto(
         "goto",
         caller_id,
         target.unwrap_or(caller_id),
-        &world_name,
-        Some(dest_space_id),
+        TravelDestination::Named {
+            world_name: &world_name,
+            space_id: Some(dest_space_id),
+        },
         position,
         &format!("Teleporting to player <{name}>"),
         tx,
@@ -145,8 +147,10 @@ pub(super) async fn summon(
         "summon",
         caller_id,
         victim,
-        &world_name,
-        Some(anchor_space_id),
+        TravelDestination::Named {
+            world_name: &world_name,
+            space_id: Some(anchor_space_id),
+        },
         position,
         &format!("Summoning player <{name}>"),
         tx,
@@ -212,8 +216,10 @@ pub(super) async fn goto_location(
         "gotolocation",
         caller_id,
         subject,
-        world_name,
-        dest_space_id,
+        TravelDestination::Named {
+            world_name,
+            space_id: dest_space_id,
+        },
         [x, y, z],
         // Legacy's `"Moving entity %s to %s (%f, %f, %f)"`. Deliberate
         // deviation: Rust's `{}` float formatting rather than C's `%f`, so

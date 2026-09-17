@@ -323,3 +323,43 @@ async fn destination_equal_to_current_space_reports_same_space_without_teardown(
     assert_eq!(outcome, TransferOutcome::SameSpace { space_id: origin });
     assert_origin_untouched(&before, &mgr, 1, &mut rx);
 }
+
+/// `space_transfer: unknown destination world` is the line the SigNoz
+/// investigation behind this whole branch was built around. It must name the
+/// account, not just the recycled entity slot — see
+/// `docs/architecture/instrumentation-discipline.md` §Rule 5.
+///
+/// Identity is resolved once `is_player` has settled and *before* the phase-4
+/// teardown, so it is available to every warn below it too. Dropping the
+/// fields (or moving the lookup after `destroy_entity`) trips this.
+#[tokio::test]
+async fn unknown_world_warning_names_the_account() {
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = make_manager();
+    spawn_player(&mut mgr, 1, AGNOS, [10.0, 0.0, 20.0]);
+    mgr.get_entity_mut(1).unwrap().account_id = Some(6);
+    mgr.get_entity_mut(1).unwrap().player_id = Some(12);
+    let (tx, _rx) = mpsc::channel(8);
+
+    transfer_player_to_space(
+        1,
+        &TransferDestination::in_world("NotAWorld", [1.0, 2.0, 3.0]),
+        &tx,
+        &mut mgr,
+    )
+    .await
+    .expect_err("an unknown world must be refused");
+
+    let event = capture
+        .find_message(
+            tracing::Level::WARN,
+            "space_transfer: unknown destination world",
+        )
+        .expect("the unknown-world warn must still fire");
+    assert!(
+        event.has_field("account_id", "6") && event.has_field("player_id", "12"),
+        "the unknown-world warn must be attributable to an account — entity_id \
+         alone is a recycled per-space slot, which is what made the original \
+         SigNoz investigation guesswork; got {event:#?}"
+    );
+}

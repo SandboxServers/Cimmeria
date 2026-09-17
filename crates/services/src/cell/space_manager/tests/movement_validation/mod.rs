@@ -751,5 +751,6 @@ fn jump_in_place_is_accepted_not_rejected() {
     );
 }
 
+mod gm_navmesh;
 mod onphysics;
 mod recovery;

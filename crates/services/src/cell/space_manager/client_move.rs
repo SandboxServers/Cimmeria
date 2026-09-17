@@ -68,10 +68,18 @@ pub enum ClientMoveOutcome {
         bounds: SpaceBounds,
     },
     /// Position failed validation **and** the entity's own authoritative
-    /// position was unusable as a snap target (or the correction budget
-    /// ran out). The entity has already been relocated to `recovered_to`,
-    /// a terminal safe point; the caller snaps the client there instead of
-    /// re-issuing the correction that was looping.
+    /// position was unusable as a snap target. The entity has already been
+    /// relocated to `recovered_to`, a terminal safe point; the caller snaps
+    /// the client there instead of re-issuing the correction that was
+    /// looping.
+    ///
+    /// Unusable is the *only* trigger. An entity standing somewhere the
+    /// validator would itself accept is never relocated, however many
+    /// strikes it has accrued — an exhausted budget on a sound position is
+    /// [`Self::CorrectionSuppressed`]. Relocating there instead would be a
+    /// server-initiated move of a player who never left a legal point, and
+    /// (because recovery clears the budget) would make the budget
+    /// unenforceable on any navmesh-backed world.
     Recovered {
         reason: MovementReject,
         /// The unusable position the entity was stuck at.
@@ -262,9 +270,15 @@ impl SpaceManager {
             // hard-reject, so a GM still cannot write a NaN or an absurd
             // coordinate into the spatial grid.
             if is_gm {
+                // Who the GM is, not just which slot they occupy: this line is
+                // the audit trail for a privileged player standing somewhere an
+                // ordinary player is snapped back from.
+                let id = self.player_identity(entity_id);
                 tracing::warn!(
                     target: "movement.validation",
                     entity_id,
+                    account_id = id.account_id,
+                    player_id = id.player_id,
                     space_id,
                     client_x = position[0],
                     client_y = position[1],
@@ -463,10 +477,17 @@ impl SpaceManager {
     /// 2. The world's nearest authored respawn point. Already the
     ///    server's answer to "where is it safe to put this player", so
     ///    reusing it needs no new content.
-    /// 3. The space AABB, clamped. Only reachable for a space with no
-    ///    navmesh and no respawner, where the bounds layer is the only
-    ///    thing that can have rejected — so a clamped point is by
-    ///    construction one the bounds layer accepts.
+    /// 3. The space AABB, clamped — the last resort when neither of the
+    ///    above answers.
+    ///
+    /// **Every candidate is tested against the same layers that reject a
+    /// client position before it is returned.** That is what makes the
+    /// recovery terminal: the outcome is written through and clears the
+    /// correction budget, so handing back a point the validator would itself
+    /// reject just restarts the rubber-band loop one position over, with
+    /// nothing left to spend. `None` — and the resulting
+    /// [`ClientMoveOutcome::CorrectionSuppressed`] — is the correct answer
+    /// when nothing passes.
     fn resolve_recovery_position(
         &self,
         space_id: u32,
@@ -483,17 +504,28 @@ impl SpaceManager {
         }
 
         let world = space.world_name.as_str();
+        // `load_respawners` copies the DB columns in with no validation, so an
+        // authored-bad respawn point is exactly as unusable a snap target as
+        // the position being recovered *from* — and relocating there would
+        // still `note_authorized_teleport`, clearing the correction budget and
+        // leaving the next reject with nothing left to spend. Same soundness
+        // test the navmesh branch above applies, so the fallback can only ever
+        // be a step towards a position the validator accepts.
         let nearest_respawner = self
             .respawners
             .iter()
             .filter(|r| r.world_name == world)
-            .min_by(|a, b| {
-                let da = Vector3::new(a.pos[0], a.pos[1], a.pos[2]).distance_to(&from);
-                let db = Vector3::new(b.pos[0], b.pos[1], b.pos[2]).distance_to(&from);
-                da.total_cmp(&db)
-            });
-        if let Some(r) = nearest_respawner {
-            return Some(r.pos);
+            .map(|r| Vector3::new(r.pos[0], r.pos[1], r.pos[2]))
+            .filter(|p| {
+                position_within_bounds(*p, bounds)
+                    && space
+                        .navmesh
+                        .as_ref()
+                        .is_none_or(|nav| nav.is_point_valid(p))
+            })
+            .min_by(|a, b| a.distance_to(&from).total_cmp(&b.distance_to(&from)));
+        if let Some(p) = nearest_respawner {
+            return Some([p.x, p.y, p.z]);
         }
 
         let clamped = [
@@ -501,7 +533,21 @@ impl SpaceManager {
             from.y.clamp(bounds.min[1], bounds.max[1]),
             from.z.clamp(bounds.min[2], bounds.max[2]),
         ];
-        (clamped != [from.x, from.y, from.z]).then_some(clamped)
+        if clamped == [from.x, from.y, from.z] {
+            return None;
+        }
+        // A clamp answers the bounds layer by construction and says nothing
+        // about walkability. On a navmesh-less space that is the whole test;
+        // on a navmesh-backed one it is reachable whenever the reprojection
+        // above failed (a point too far outside the mesh for Detour's
+        // nearest-poly search), and pulling the entity to the AABB face lands
+        // it inside whatever geometry happens to be there.
+        let clamped_pos = Vector3::new(clamped[0], clamped[1], clamped[2]);
+        space
+            .navmesh
+            .as_ref()
+            .is_none_or(|nav| nav.is_point_valid(&clamped_pos))
+            .then_some(clamped)
     }
 
     /// Reseed an entity's movement-validator clock after a server-

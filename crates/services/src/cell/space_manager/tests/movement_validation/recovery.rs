@@ -1,11 +1,16 @@
-//! Termination of the snap-back correction loop, and the GM off-navmesh
-//! allowance.
+//! Termination of the snap-back correction loop, and the soundness of the
+//! positions it terminates *at*.
 //!
 //! The rest of the movement-validation suite proves that a bad client
 //! position is *rejected*. This module proves the reject actually ends:
 //! a correction is only useful if the position it corrects **to** is one
 //! the validator would itself accept, and the server is the only party
 //! that can notice when it isn't.
+//!
+//! The GM off-navmesh allowance — the one case where the validator
+//! deliberately accepts a position it would snap an ordinary player back
+//! from — is `super::gm_navmesh`, which reuses this module's navmesh
+//! fixture.
 //!
 //! # The bug shape
 //!
@@ -28,6 +33,7 @@ use cimmeria_entity::navigation::NavMesh;
 
 use super::super::super::{ClientMoveOutcome, SpaceManager};
 use super::{make_manager, SPAWN_POS};
+use crate::cell::spawner::RespawnerDef;
 
 /// Outside `SpaceBounds::FALLBACK`'s X floor (-10 000), which is the AABB
 /// Agnos uses (no navmesh in the test harness). Standing here makes the
@@ -36,7 +42,7 @@ const UNREACHABLE_POS: [f32; 3] = [-50_000.0, 0.0, 20.0];
 
 /// Known walkable point on the `castle_cellblock` fixture, shared with the
 /// parent module's navmesh tests and the entity-crate nav tests.
-const ON_MESH: [f32; 3] = [-289.465, 68.542, -154.276];
+pub(super) const ON_MESH: [f32; 3] = [-289.465, 68.542, -154.276];
 
 /// Stand entity 100 on the walkable mesh of the real `castle_cellblock.nav`
 /// fixture. `None` when the fixture file is absent (fixture-less CI), per the
@@ -50,7 +56,7 @@ const ON_MESH: [f32; 3] = [-289.465, 68.542, -154.276];
 /// Also hands back the mesh's `(bmin, bmax)` — which *is* the space AABB once
 /// a navmesh is loaded, so callers need it both to place an out-of-bounds
 /// point and to bound an off-mesh scan.
-fn navmesh_manager() -> Option<(SpaceManager, u32, [f32; 3], [f32; 3])> {
+pub(super) fn navmesh_manager() -> Option<(SpaceManager, u32, [f32; 3], [f32; 3])> {
     let nav_path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
     if !nav_path.exists() {
         return None;
@@ -65,7 +71,8 @@ fn navmesh_manager() -> Option<(SpaceManager, u32, [f32; 3], [f32; 3])> {
     Some((mgr, space_id, bmin, bmax))
 }
 
-/// An unwalkable point *near* [`ON_MESH`], for the GM-allowance tests.
+/// An unwalkable point *near* [`ON_MESH`], for the GM-allowance tests in
+/// `super::gm_navmesh` and the navmesh-backed recovery tests below.
 ///
 /// Scans a ±30 u window rather than the whole AABB: the layer under test is
 /// navmesh containment, and a point hundreds of units away would be caught by
@@ -74,7 +81,11 @@ fn navmesh_manager() -> Option<(SpaceManager, u32, [f32; 3], [f32; 3])> {
 /// `TELEPORT_JUMP_UNITS`, and clamping it into the nav AABB keeps the bounds
 /// layer out of it too. `None` means the whole window was walkable; callers
 /// skip rather than assert, so a future re-bake cannot false-fail them.
-fn nearby_off_mesh_point(mgr: &SpaceManager, bmin: [f32; 3], bmax: [f32; 3]) -> Option<[f32; 3]> {
+pub(super) fn nearby_off_mesh_point(
+    mgr: &SpaceManager,
+    bmin: [f32; 3],
+    bmax: [f32; 3],
+) -> Option<[f32; 3]> {
     const R: f32 = 30.0;
     let lo = [
         (ON_MESH[0] - R).max(bmin[0]),
@@ -446,104 +457,147 @@ fn an_accepted_position_resets_the_correction_budget() {
     );
 }
 
-// ── GM off-navmesh allowance ─────────────────────────────────────────────
+// ── Recovery-candidate soundness ─────────────────────────────────────────
 
-/// A GM is allowed off the walkable mesh: inspecting a broken spawn or an
-/// unreachable region means standing where a player cannot. The allowance
-/// keys on `CellEntity::access_level`, which comes from
-/// `account.accesslevel` at login and is never a client-supplied byte.
-///
-/// Pairs with `off_navmesh_position_is_rejected_and_not_observed` in the
-/// parent module, which proves the same position **is** rejected for an
-/// ordinary player — reverting the gate makes these two disagree.
-#[test]
-fn gm_off_navmesh_position_is_accepted_not_snapped() {
-    let Some((mut mgr, space_id, bmin, bmax)) = navmesh_manager() else {
-        return; // fixture-less CI — skip
-    };
-    // GameMaster — the same level `cell::dispatch::gm_gate` requires.
-    mgr.get_entity_mut(100).unwrap().access_level = 2;
-
-    let Some(off_mesh) = nearby_off_mesh_point(&mgr, bmin, bmax) else {
-        return; // no unwalkable point nearby — nothing to assert against
-    };
-    assert!(
-        !mgr.is_position_valid(100, &Vector3::new(off_mesh[0], off_mesh[1], off_mesh[2])),
-        "scanned point must read as off-navmesh — precondition for the allowance"
-    );
-
-    let outcome =
-        mgr.apply_client_position_update_at(Instant::now(), 100, off_mesh, [0, 0, 0], [0.0; 3]);
-    assert!(
-        matches!(outcome, ClientMoveOutcome::Accepted { position } if position == off_mesh),
-        "an off-navmesh position from a GM caller must be accepted, got {outcome:?}"
-    );
-    let entity = &mgr.spaces[&space_id].entities[&100];
-    assert_eq!(
-        entity.position,
-        Vector3::new(off_mesh[0], off_mesh[1], off_mesh[2]),
-        "the GM's position must be written through so witnesses follow them off-mesh"
-    );
+/// One authored respawn point, as `load_respawners` would hand it over.
+fn respawner(id: i32, world: &str, pos: [f32; 3]) -> RespawnerDef {
+    RespawnerDef {
+        respawner_id: id,
+        world_name: world.to_string(),
+        name: format!("fixture_{id}"),
+        pos,
+    }
 }
 
-/// The allowance has to survive the *reject* path too, not just the accept
-/// path — otherwise it lasts only until the GM trips something unrelated.
+/// `load_respawners` copies the DB position columns in with no validation, so
+/// "the world's nearest authored respawner" is not automatically a position
+/// the validator would accept. Relocating a stranded entity onto a bad one is
+/// the same bug the navmesh branch was fixed for: the move is written through
+/// and `note_authorized_teleport` clears the correction budget, so the very
+/// next packet is rejected with nothing left to spend and the client is
+/// `CorrectionSuppressed` at a position it cannot legally occupy.
 ///
-/// Bounds and teleport stay enforced for GMs, by design. When one of them
-/// fires while the GM is standing legitimately off-mesh, `reject_outcome`
-/// asks whether the GM's own position is a sound snap target. Ask that
-/// question without the GM allowance and the answer is "no" — so the GM is
-/// routed into recovery and force-relocated onto the nearest walkable point,
-/// undoing by the back door exactly what the accept path just granted. A GM
-/// inspecting an unreachable region would be yanked back to the floor by any
-/// stray out-of-bounds packet.
-///
-/// The correct outcome is the ordinary `Rejected`: a harmless no-op snap back
-/// to where the GM already legitimately is.
+/// Reverting the `position_within_bounds` filter on the respawner branch makes
+/// this recover onto the nearer, out-of-bounds respawner.
 #[test]
-fn gm_off_navmesh_is_not_relocated_by_an_unrelated_reject() {
-    let Some((mut mgr, space_id, bmin, bmax)) = navmesh_manager() else {
-        return; // fixture-less CI — skip
-    };
-    mgr.get_entity_mut(100).unwrap().access_level = 2;
-    let Some(off_mesh) = nearby_off_mesh_point(&mgr, bmin, bmax) else {
-        return; // no unwalkable point nearby — nothing to assert against
-    };
+fn an_out_of_bounds_respawner_is_skipped_in_favour_of_a_valid_one() {
+    const BAD: [f32; 3] = [-60_000.0, 0.0, 20.0];
+    const GOOD: [f32; 3] = [100.0, 0.0, 20.0];
 
-    let t0 = Instant::now();
-    let moved = mgr.apply_client_position_update_at(t0, 100, off_mesh, [0, 0, 0], [0.0; 3]);
-    assert!(
-        matches!(moved, ClientMoveOutcome::Accepted { .. }),
-        "precondition: the GM must first get off-mesh through the allowance, got {moved:?}"
-    );
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    // Nearest to the stranded entity by ~40 000 units, and itself outside the
+    // fallback AABB — the authored-bad-coordinates shape.
+    mgr.respawners.push(respawner(1, "Agnos", BAD));
+    mgr.respawners.push(respawner(2, "Agnos", GOOD));
+    mgr.update_entity_position(100, UNREACHABLE_POS, [0, 0, 0], [0.0; 3]);
 
-    // Now trip a hard reject that has nothing to do with the navmesh: a
-    // position outside the space AABB, still enforced for GMs.
-    let oob = [bmin[0] - 5_000.0, ON_MESH[1], ON_MESH[2]];
     let outcome = mgr.apply_client_position_update_at(
-        t0 + Duration::from_millis(100),
+        Instant::now(),
         100,
-        oob,
+        UNREACHABLE_POS,
         [0, 0, 0],
         [0.0; 3],
     );
-    assert!(
-        matches!(
-            outcome,
-            ClientMoveOutcome::Rejected {
-                reason: MovementReject::OutOfBounds,
-                last_valid,
-                ..
-            } if last_valid == off_mesh
+
+    match outcome {
+        ClientMoveOutcome::Recovered { recovered_to, .. } => assert_eq!(
+            recovered_to, GOOD,
+            "recovery must skip the nearer out-of-bounds respawner — relocating \
+             there writes an illegal position through AND clears the correction \
+             budget, so the next reject has nothing left to spend"
         ),
-        "a GM who trips an unrelated reject while off-mesh must get the plain \
-         correction back to where they already are — being `Recovered` onto the \
-         mesh instead defeats the off-navmesh allowance; got {outcome:?}"
+        other => panic!("expected Recovered onto the valid respawner, got {other:?}"),
+    }
+
+    // And the loop really is broken: the client's next packet, from where it
+    // was just put, is ordinary traffic again.
+    let settled =
+        mgr.apply_client_position_update_at(Instant::now(), 100, GOOD, [0, 0, 0], [0.0; 3]);
+    assert!(
+        matches!(settled, ClientMoveOutcome::Accepted { .. }),
+        "the post-recovery packet must be accepted, got {settled:?}"
+    );
+}
+
+/// The navmesh half of the same rule: on a world that has a mesh, an authored
+/// respawner sitting off the walkable polygons is exactly as unusable as the
+/// position being recovered from, however close it is.
+#[test]
+fn an_off_navmesh_respawner_is_skipped_in_favour_of_a_walkable_one() {
+    let Some((mut mgr, _space_id, _bmin, bmax)) = navmesh_manager() else {
+        return; // fixture-less CI — skip
+    };
+    let Some(off_mesh) = nearby_off_mesh_point(&mgr, _bmin, bmax) else {
+        return; // no unwalkable point nearby — nothing to assert against
+    };
+
+    // Stranded directly above the unwalkable point and above the mesh's own
+    // ceiling: out of bounds (so the entity's position is not a usable snap
+    // target) and far enough up that Detour's 3-unit nearest-poly search finds
+    // nothing to reproject to, which is what routes this to the respawners.
+    let from = [off_mesh[0], bmax[1] + 1_000.0, off_mesh[2]];
+    mgr.update_entity_position(100, from, [0, 0, 0], [0.0; 3]);
+
+    // The bad one is strictly nearer by construction: it sits directly below
+    // `from`, so any other candidate is at least as far away in Y plus some
+    // horizontal offset.
+    mgr.respawners
+        .push(respawner(1, "Castle_CellBlock", off_mesh));
+    mgr.respawners
+        .push(respawner(2, "Castle_CellBlock", ON_MESH));
+
+    let outcome =
+        mgr.apply_client_position_update_at(Instant::now(), 100, from, [0, 0, 0], [0.0; 3]);
+
+    match outcome {
+        ClientMoveOutcome::Recovered { recovered_to, .. } => assert_eq!(
+            recovered_to, ON_MESH,
+            "recovery must skip the nearer off-navmesh respawner — putting a \
+             player inside geometry is the state this whole path exists to \
+             get them out of"
+        ),
+        other => panic!("expected Recovered onto the walkable respawner, got {other:?}"),
+    }
+}
+
+/// The AABB clamp is the last resort, and it answers the *bounds* layer by
+/// construction — it says nothing about walkability. On a navmesh-backed
+/// space it is reachable whenever the reprojection failed, and clamping to the
+/// AABB face then drops the entity inside whatever geometry is there.
+///
+/// With nothing sound to offer, the correct answer is to emit no correction at
+/// all. Reverting the clamp's navmesh check makes this `Recovered` onto an
+/// unwalkable point — a relocation that the very next packet would reject.
+#[test]
+fn recovery_suppresses_rather_than_clamping_onto_unwalkable_geometry() {
+    let Some((mut mgr, space_id, bmin, bmax)) = navmesh_manager() else {
+        return; // fixture-less CI — skip
+    };
+    let Some(off_mesh) = nearby_off_mesh_point(&mgr, bmin, bmax) else {
+        return;
+    };
+    // No respawners at all, so the clamp is the only branch left.
+    assert!(
+        mgr.respawners.is_empty(),
+        "fixture must not seed respawners"
+    );
+
+    let from = [off_mesh[0], bmax[1] + 1_000.0, off_mesh[2]];
+    mgr.update_entity_position(100, from, [0, 0, 0], [0.0; 3]);
+
+    let outcome =
+        mgr.apply_client_position_update_at(Instant::now(), 100, from, [0, 0, 0], [0.0; 3]);
+    assert!(
+        matches!(outcome, ClientMoveOutcome::CorrectionSuppressed { .. }),
+        "with no sound candidate the recovery must decline rather than clamp \
+         the entity into geometry, got {outcome:?}"
     );
     let entity = &mgr.spaces[&space_id].entities[&100];
     assert_eq!(
         entity.position,
-        Vector3::new(off_mesh[0], off_mesh[1], off_mesh[2]),
-        "the reject must leave the GM exactly where they were standing"
+        Vector3::new(from[0], from[1], from[2]),
+        "a declined recovery must not move the entity"
     );
 }

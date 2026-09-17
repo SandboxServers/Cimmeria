@@ -27,9 +27,17 @@
 //! | `unwrap_or(0)` instead of passing the `Option` through | [`npc_movement_reject_emits_no_identity_fields`] |
 //! | drop identity from the disconnect teardown log | [`disconnect_carries_identity_resolved_before_teardown`] |
 //! | resolve identity *after* teardown instead of before | [`disconnect_carries_identity_resolved_before_teardown`] |
+//! | drop identity from the `Recovered` warn | [`movement_recovery_carries_account_and_player_id`] |
+//! | drop identity from the `CorrectionSuppressed` error | [`correction_suppressed_carries_account_and_player_id`] |
+//! | stop threading identity into `send_snap_back` | [`snap_back_send_failure_carries_account_and_player_id`] |
+//!
+//! Each outcome branch resolves identity for itself, so a guard on one says
+//! nothing about the others — hence one test per branch rather than one for
+//! the handler.
 
 use super::*;
 use crate::test_support::LogCapture;
+use cimmeria_entity::movement_validation::MovementValidator;
 use tracing::Level;
 
 const WORLD: &str = "Castle_CellBlock";
@@ -276,5 +284,95 @@ async fn connect_carries_identity() {
         event.has_field("account_id", "6") && event.has_field("player_id", "12"),
         "connect must name the account so a session's in-world span is \
          bounded by two attributable log lines; got {event:#?}"
+    );
+}
+
+/// A far-outside-the-AABB position for the *entity*, so its own authoritative
+/// position stops being a usable snap-back target and the reject resolves to
+/// `Recovered` instead of `Rejected`.
+const STRANDED: [f32; 3] = [-50_000.0, 5.0, 20.0];
+
+/// The recovery warn is the line that says "the server moved a player it did
+/// not intend to move". It must name who.
+///
+/// `Recovered` is a distinct branch from the ordinary reject, so it does not
+/// inherit that branch's identity lookup — dropping the fields here is
+/// invisible to [`movement_reject_carries_account_and_player_id`].
+#[tokio::test]
+async fn movement_recovery_carries_account_and_player_id() {
+    let capture = LogCapture::install();
+    let mut mgr = manager();
+    let (tx, _rx) = mpsc::channel(16);
+
+    create_via_base_message(&mut mgr, 7777, Some(ACCOUNT_ID), Some(PLAYER_ID), &tx).await;
+    // Server-authoritative write that strands the entity outside the AABB —
+    // the `.gotoxyz` / stale-persisted-position shape.
+    mgr.update_entity_position(7777, STRANDED, [0, 0, 0], [0.0; 3]);
+    send_out_of_bounds_move(&mut mgr, 7777, &tx).await;
+
+    let event = capture
+        .find_event(Level::WARN, "movement.validation_recovered", "bounds")
+        .expect("the recovery warn must fire when the snap target is unusable");
+    assert!(
+        event.has_field("account_id", "6") && event.has_field("player_id", "12"),
+        "a server-initiated relocation must be attributable to the account \
+         whose avatar was moved; got {event:#?}"
+    );
+}
+
+/// The suppression log is the *last* thing emitted for a client that is stuck,
+/// and it is an `error` precisely because an operator is meant to act on it.
+/// Acting on it starts with knowing whose session it is.
+#[tokio::test]
+async fn correction_suppressed_carries_account_and_player_id() {
+    let capture = LogCapture::install();
+    let mut mgr = manager();
+    let (tx, _rx) = mpsc::channel(64);
+
+    create_via_base_message(&mut mgr, 7777, Some(ACCOUNT_ID), Some(PLAYER_ID), &tx).await;
+    // The entity's own position stays sound (spawn), so every reject is an
+    // ordinary correction until the budget runs out and suppression kicks in.
+    for _ in 0..=MovementValidator::MAX_SNAP_BACK_CORRECTIONS {
+        send_out_of_bounds_move(&mut mgr, 7777, &tx).await;
+    }
+
+    let event = capture
+        .find_event(Level::ERROR, "movement.correction_suppressed", "bounds")
+        .expect("the suppression error must fire once the budget is spent");
+    assert!(
+        event.has_field("account_id", "6") && event.has_field("player_id", "12"),
+        "the stuck-client error must name the session an operator has to go \
+         look at; got {event:#?}"
+    );
+}
+
+/// The snap-back delivery failure is what a player experiencing a stuck or
+/// looping correction actually surfaces as, so it is the single most
+/// operationally important line in this handler — and the identity has to be
+/// *threaded into* `send_snap_back`, because the entity may already be gone
+/// by the time the send fails.
+#[tokio::test]
+async fn snap_back_send_failure_carries_account_and_player_id() {
+    let capture = LogCapture::install();
+    let mut mgr = manager();
+    let (tx, rx) = mpsc::channel(16);
+    create_via_base_message(&mut mgr, 7777, Some(ACCOUNT_ID), Some(PLAYER_ID), &tx).await;
+    // Base side is gone: the correction cannot be delivered.
+    drop(rx);
+
+    send_out_of_bounds_move(&mut mgr, 7777, &tx).await;
+
+    let event = capture
+        .find_event(
+            Level::WARN,
+            "movement.snap_back_send_failed",
+            "snap_back_send_failed",
+        )
+        .expect("the undelivered-correction warn must fire on a closed channel");
+    assert!(
+        event.has_field("account_id", "6") && event.has_field("player_id", "12"),
+        "the player left desynced must be identifiable from this line alone — \
+         it is the one an operator reaches for when a player reports being \
+         stuck; got {event:#?}"
     );
 }

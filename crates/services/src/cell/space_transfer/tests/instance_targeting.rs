@@ -302,3 +302,97 @@ async fn departing_an_instance_does_not_reap_the_destination_instance() {
         "the subject's now-empty instance is reaped, as normal"
     );
 }
+
+// ── By-id destinations (`transfer_player_to_loaded_space`) ───────────────
+
+/// The by-id entry point's reason to exist: a loaded instance is reachable
+/// **whether or not the world table declares its world**. The world name is
+/// read off the instance, so there is nothing left for `canonical_world_name`
+/// to add — and routing through it anyway re-rejects a destination the caller
+/// already proved reachable.
+///
+/// Reverting `.gotospace` to [`transfer_player_to_space`] makes this
+/// `UnknownWorld("Ghost_Instance")`.
+#[tokio::test]
+async fn by_id_transfer_reaches_an_instance_whose_world_is_not_in_the_table() {
+    const GHOST: &str = "Ghost_Instance";
+    let mut mgr = make_manager();
+    spawn_player(&mut mgr, 1, AGNOS, [10.0, 0.0, 20.0]);
+    // Built directly: both production creation paths gate on the world table,
+    // which is exactly the coupling this path is meant not to inherit.
+    let ghost = mgr.allocate_space_id();
+    mgr.create_space_instance(ghost, GHOST);
+    assert!(
+        mgr.canonical_world_name(GHOST).is_none(),
+        "fixture precondition: the destination world must be absent from the table"
+    );
+
+    let (tx, mut rx) = mpsc::channel(8);
+    let outcome =
+        transfer_player_to_loaded_space(1, ghost, [4.0, 5.0, 6.0], [0.0; 3], &tx, &mut mgr)
+            .await
+            .expect("a loaded instance must be reachable by id");
+
+    assert_eq!(
+        outcome,
+        TransferOutcome::Transferred {
+            space_id: Some(ghost)
+        }
+    );
+    match expect_gate_travel(&mut rx) {
+        CellToBaseMsg::GateTravel {
+            target_world_name,
+            destination_space_id,
+            position,
+            ..
+        } => {
+            assert_eq!(
+                target_world_name, GHOST,
+                "the world name must be the one derived from the instance"
+            );
+            assert_eq!(destination_space_id, Some(ghost));
+            assert_eq!(position, [4.0, 5.0, 6.0]);
+        }
+        other => panic!("expected GateTravel, got {other:?}"),
+    }
+}
+
+/// Skipping the world table must not skip the *instance* check. Arrival has
+/// no by-world-name fallback for this path — `handle_create_entity` would
+/// degrade a stale id to `find_or_create_space`, which for an undeclared
+/// world fails *after* teardown and leaves the player in no space at all.
+#[tokio::test]
+async fn by_id_transfer_refuses_an_instance_that_is_not_loaded() {
+    let mut mgr = make_manager();
+    spawn_player(&mut mgr, 1, AGNOS, [10.0, 0.0, 20.0]);
+    let before = snapshot_origin(&mgr, 1);
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let err = transfer_player_to_loaded_space(1, 999_999, [1.0, 2.0, 3.0], [0.0; 3], &tx, &mut mgr)
+        .await
+        .expect_err("an unloaded instance must be refused");
+
+    assert_eq!(err, TransferRejected::InstanceNotLoaded(999_999));
+    assert_origin_untouched(&before, &mgr, 1, &mut rx);
+}
+
+/// Every pre-destination guard the named path applies still applies here —
+/// D15's players-only rule is about the *subject*, not the destination, so
+/// naming the destination by id cannot buy an NPC a transfer.
+#[tokio::test]
+async fn by_id_transfer_still_refuses_an_npc_subject() {
+    let mut mgr = make_manager();
+    mgr.create_entity(500, AGNOS, [5.0, 0.0, 5.0], [0.0; 3])
+        .unwrap();
+    let castle = mgr.space_id_for_world(CASTLE).unwrap();
+    let before = snapshot_origin(&mgr, 500);
+    let (tx, mut rx) = mpsc::channel(8);
+
+    let err =
+        transfer_player_to_loaded_space(500, castle, [1.0, 2.0, 3.0], [0.0; 3], &tx, &mut mgr)
+            .await
+            .expect_err("an NPC subject must be refused (D15)");
+
+    assert_eq!(err, TransferRejected::NotAPlayer);
+    assert_origin_untouched(&before, &mgr, 500, &mut rx);
+}

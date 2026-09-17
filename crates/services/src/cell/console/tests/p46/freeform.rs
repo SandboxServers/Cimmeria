@@ -187,6 +187,84 @@ async fn gotospace_refuses_a_negative_space_id() {
     assert_eq!(position_of(&mgr, gm), before);
 }
 
+/// Zero is neither negative nor a space id — `allocate_space_id` builds every
+/// id as `(cell_id << 16) | local` with `cell_id >= 1`, so `0` can never name
+/// a loaded instance.
+///
+/// `u32::try_from` only filters the negative half, so before the explicit
+/// check `.gotospace 0` fell through to the loaded-instance lookup and came
+/// back "space 0 is not loaded" — telling the GM their id was plausible but
+/// stale when in fact no id of that shape can ever exist. Reverting to the
+/// bare `try_from` makes this find "not loaded" instead of "positive".
+#[tokio::test]
+async fn gotospace_refuses_a_zero_space_id() {
+    let (mut mgr, gm, _npc) = setup_worlds();
+    let before = position_of(&mgr, gm);
+
+    let t = run("gotospace", gm, &["0", "10", "0", "10"], None, &mut mgr).await;
+
+    assert_no_move(&t);
+    assert!(
+        t.mentions("positive"),
+        "zero must be refused for the same reason a negative id is, not \
+         reported as an instance that happens not to be loaded; got {:?}",
+        t.feedback
+    );
+    assert_eq!(position_of(&mgr, gm), before);
+}
+
+/// **The promise `.gotospace` exists to keep.** A cross-instance move to a
+/// live space must not be re-validated against the world-name table: the
+/// space id *is* the runtime identity of a loaded instance, and the world
+/// name is derived from it rather than typed.
+///
+/// Before the by-id transfer entry point, only the same-space fast path
+/// actually bypassed the table — the cross-space leg derived a world name
+/// from the instance and then handed it to `transfer_player_to_space`, which
+/// ran it straight back through `canonical_world_name`. A live instance whose
+/// world the table does not declare therefore dead-ended on `UnknownWorld`,
+/// which is precisely the destination the escape hatch is for. Reverting
+/// `move_subject` to the name-based transfer makes this report
+/// `"Unable to find world: Ghost_Instance"` and move nothing.
+#[tokio::test]
+async fn gotospace_reaches_a_live_instance_whose_world_is_not_in_the_table() {
+    let (mut mgr, gm, _npc) = setup_worlds();
+    // A loaded space whose world `spaces.xml` never declared. Built directly
+    // because both production creation paths gate on the world table — which
+    // is the point: the table and the live space set are separate sources of
+    // truth, and this command answers to the second one.
+    const GHOST: &str = "Ghost_Instance";
+    let ghost = mgr.allocate_space_id();
+    mgr.create_space_instance(ghost, GHOST);
+    assert!(
+        mgr.canonical_world_name(GHOST).is_none(),
+        "fixture precondition: the destination world must be absent from the table"
+    );
+
+    let t = run(
+        "gotospace",
+        gm,
+        &[&ghost.to_string(), "12", "0", "34"],
+        None,
+        &mut mgr,
+    )
+    .await;
+
+    assert!(
+        !t.mentions("Unable to find world"),
+        "a loaded instance must be reachable by id regardless of the world \
+         table; got {:?}",
+        t.feedback
+    );
+    assert_eq!(
+        t.only_gate_travel(),
+        &(gm, GHOST.to_string(), Some(ghost), [12.0, 0.0, 34.0]),
+        "the transfer must carry the id verbatim and the world name derived \
+         from it — got {:?}",
+        t.gate_travels
+    );
+}
+
 /// Non-finite coordinates take the shared `parse_f32` filter, before either
 /// move mechanism — same contract as `.gotolocation`.
 #[tokio::test]

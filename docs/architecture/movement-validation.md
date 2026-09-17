@@ -43,6 +43,17 @@ rows because they have different actions.
 | 3 | **Speed** (`check_kinematics`) | **warn-only** | sustained over-tolerance velocity (`implied_speed > top_speed × 1.5`) |
 | 4 | **Teleport** (`check_kinematics`) | reject | single update both `> 50 u` **and** `> top_speed × 10` (or, on the first packet with no time baseline, `> 50 u` from the authoritative spawn) |
 
+`top_speed` in rows 3 and 4 is **not** the flat `DEFAULT_TOP_SPEED`: it is
+that constant scaled by the entity's own `movementSpeedMod` stat
+(`CellEntity::stats.movement_speed_scale()`), the same stat the NPC
+path-stepping tick scales by and the same one the client scales its local
+prediction by (`cur / 100`) the moment it arrives in an `onStatUpdate`.
+A GM `.speed 300` — or any future haste/snare effect writing that stat —
+therefore raises the gate along with the movement the server itself
+authorised, instead of warning on every packet of it. The
+`movement.speed_warning` log's `top_speed` field reports the scaled value it
+actually compared against.
+
 Bounds AABB is sourced from the active space's navmesh `bmin`/`bmax`, or
 `SpaceBounds::FALLBACK` (20 km × 12 km × 20 km) for navmesh-less spaces.
 
@@ -233,14 +244,32 @@ resolves every hard reject into one of three outcomes:
 | Outcome | When | Caller action |
 |---|---|---|
 | `Rejected` | The snap target is in-bounds and on-navmesh, and the entity is within its correction budget. | Emit `FORCED_POSITION` to `last_valid` — the pre-existing behaviour. |
-| `Recovered` | The snap target is itself invalid, **or** the budget is spent. The entity has already been relocated to a terminal safe point. | Emit `FORCED_POSITION` to `recovered_to`. |
-| `CorrectionSuppressed` | The snap target is unusable and no safe point exists. | Emit **nothing**. Re-sending is what produced the loop. |
+| `Recovered` | The snap target is itself unusable **and** a sound safe point exists. The entity has already been relocated there. | Emit `FORCED_POSITION` to `recovered_to`. |
+| `CorrectionSuppressed` | Either the snap target is sound but the budget is spent, or it is unusable and no sound safe point exists. | Emit **nothing**. Re-sending is what produced the loop. |
+
+An exhausted budget on a **sound** position is `CorrectionSuppressed`, never
+`Recovered`. Relocating a player who never left a legal point would be a
+server-initiated move they did not ask for — and because recovery clears the
+budget, routing that case through `Recovered` made the budget unenforceable
+on every navmesh-backed world: reprojecting an already-walkable point returns
+a near-identical (but rarely bit-identical) point, which read as a successful
+relocation and let the correction stream run forever.
 
 The safe point is resolved in order of how little it disturbs the player:
 the nearest walkable navmesh point (`NavMesh::get_nearest_point` — the
 Z-clamp answer, so a player a metre inside the floor comes back out on the
 surface they were standing on), then the world's nearest authored
-respawner, then the space AABB clamped. Recovery writes through
+respawner, then the space AABB clamped.
+
+**Every candidate is tested against `position_within_bounds` and (where the
+space has a mesh) `NavMesh::is_point_valid` before it is returned** — the
+respawner and the clamp included. `load_respawners` copies its coordinates
+out of `resources.respawners` unvalidated, and a clamp answers the bounds
+layer by construction while saying nothing about walkability, so neither is
+automatically a position the validator would accept. Returning one that isn't
+writes an illegal position through *and* clears the correction budget, which
+restarts the loop one position over with nothing left to spend. When nothing
+passes, `None` → `CorrectionSuppressed` is the correct answer. Recovery writes through
 `update_entity_position` and calls `note_authorized_teleport`, so the
 spatial grid, the next AoI tick's witness broadcast, and the client all
 agree, and the post-recovery client packet is measured from the relocation
@@ -260,7 +289,7 @@ Defined on `MovementValidator` (see source for full rationale):
 
 | Constant | Value | Source / note |
 |----------|-------|---------------|
-| `DEFAULT_TOP_SPEED` | `8.125` u/s | `db/resources/Worlds/Seed/worlds.sql` `run_speed` (universal). Per-world sourcing + reconciling the `runSpeed = 6.0` drift in `mercury/world_data` is a follow-up; warn-only makes the single constant safe meanwhile. |
+| `DEFAULT_TOP_SPEED` | `8.125` u/s | `db/resources/Worlds/Seed/worlds.sql` `run_speed` (universal). **The per-entity baseline, not the gate itself**: the speed and teleport layers compare against `DEFAULT_TOP_SPEED × movement_speed_scale()`, so a hasted or GM-sped player is measured against their own top speed. Per-world sourcing + reconciling the `runSpeed = 6.0` drift in `mercury/world_data` is a follow-up; warn-only makes the single constant safe meanwhile. |
 | `SPEED_WARN_TOLERANCE` | `1.5×` | warn threshold (warn-only) |
 | `TELEPORT_JUMP_UNITS` | `50.0` u | teleport distance gate |
 | `TELEPORT_SPEED_FACTOR` | `10×` | teleport implied-speed gate |

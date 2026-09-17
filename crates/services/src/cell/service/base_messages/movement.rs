@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio::sync::mpsc;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::movement_validation::MovementReject;
 
 use crate::cell::messages::CellToBaseMsg;
@@ -173,7 +174,7 @@ pub(super) async fn handle_entity_move(
             // `handle_teleport_player` which emits
             // `BASEMSG_FORCED_POSITION` to the owner; the
             // existing teleport bundle is the right primitive.
-            send_snap_back(entity_id, space_id, last_valid, tx).await;
+            send_snap_back(entity_id, space_id, last_valid, id, tx).await;
         }
         ClientMoveOutcome::Recovered {
             reason,
@@ -188,9 +189,12 @@ pub(super) async fn handle_entity_move(
             // relocation has already been written cell-side; all that is
             // left is to tell the owning client where it now is.
             let reason_label = movement_reject_label(reason);
+            let id = space_mgr.player_identity(entity_id);
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
                 space_id,
                 from_x = from[0],
                 from_y = from[1],
@@ -207,7 +211,7 @@ pub(super) async fn handle_entity_move(
                 "movement_validation_recoveries_total",
                 "reason" => reason_label,
             );
-            send_snap_back(entity_id, space_id, recovered_to, tx).await;
+            send_snap_back(entity_id, space_id, recovered_to, id, tx).await;
         }
         ClientMoveOutcome::CorrectionSuppressed {
             reason,
@@ -221,9 +225,12 @@ pub(super) async fn handle_entity_move(
             // authoritative for AoI, so witnesses still see the truth; the
             // offending client stays desynced until it sends a position
             // the validator accepts, which clears the budget.
+            let id = space_mgr.player_identity(entity_id);
             tracing::error!(
                 target: "movement.validation",
                 entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
                 space_id,
                 from_x = from[0],
                 from_y = from[1],
@@ -246,10 +253,16 @@ pub(super) async fn handle_entity_move(
 ///
 /// `position == prev_pos` so the client's interpolator sees a zero-distance
 /// move and hard-sets rather than sliding into place.
+///
+/// `id` is passed in rather than re-resolved: the caller has already paid for
+/// the lookup in the branch that decided to correct, and this is the failure
+/// path a player reporting "I'm stuck rubber-banding" actually shows up as —
+/// it has to name the account.
 async fn send_snap_back(
     entity_id: u32,
     space_id: u32,
     position: [f32; 3],
+    id: PlayerIdentity,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
     if let Err(e) = tx
@@ -263,6 +276,8 @@ async fn send_snap_back(
     {
         tracing::warn!(
             entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
             space_id,
             error = %e,
             reason = "snap_back_send_failed",

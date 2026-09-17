@@ -11,7 +11,15 @@ metadata:
 
 The root enabler is structural: `update_entity_position` is *deliberately* unchecked so ring transport, respawn, content teleport, NPC movement and GM travel can place an entity anywhere. Nothing validated that the resulting position was one the client could legally occupy, and `last_valid` is read straight off the cell entity. Same state reaches an ordinary player via a stale persisted `sgw_player` row on reconnect or authored-but-unreachable content coordinates.
 
-**How to apply:** any new snap-back / forced-position correction path must answer "what if the target is also invalid?". The seam that now does this is `SpaceManager::reject_outcome` in `crates/services/src/cell/space_manager/client_move.rs` (split out of `entities.rs`), which resolves every hard reject into `Rejected` (target sound → ordinary correction), `Recovered` (target unusable or budget spent → relocate to nearest navmesh point / nearest world respawner / AABB clamp, write it through, `note_authorized_teleport`, snap the client *there*), or `CorrectionSuppressed` (nowhere safe → emit nothing). `MovementValidator::MAX_SNAP_BACK_CORRECTIONS = 5` is the unconditional backstop; any accepted position clears the count.
+**How to apply:** any new snap-back / forced-position correction path must answer "what if the target is also invalid?". The seam that now does this is `SpaceManager::reject_outcome` in `crates/services/src/cell/space_manager/client_move.rs` (split out of `entities.rs`), which resolves every hard reject into one of three outcomes:
+
+- `Rejected` — target sound, budget intact → ordinary correction.
+- `Recovered` — target **unusable** *and* a sound safe point exists → relocate there (nearest navmesh point / nearest world respawner / AABB clamp), write it through, `note_authorized_teleport`, snap the client *there*.
+- `CorrectionSuppressed` — target sound but budget spent, **or** target unusable with nowhere sound to go → emit nothing.
+
+An exhausted budget on a *sound* position is `CorrectionSuppressed`, never `Recovered`: recovery clears the budget, so routing that case through `Recovered` made the budget unenforceable on navmesh-backed worlds (Detour reprojects an already-walkable point to a near-identical one, which read as a relocation). `MovementValidator::MAX_SNAP_BACK_CORRECTIONS = 5` is the unconditional backstop; any accepted position clears the count.
+
+`resolve_recovery_position` validates **every** candidate — navmesh reprojection, respawner and AABB clamp alike — through `position_within_bounds` + `NavMesh::is_point_valid`. `load_respawners` copies DB coordinates in unvalidated and a clamp only answers the bounds layer, so an unchecked fallback restarts the loop one position over with the budget already cleared.
 
 Two other things learned in the same pass:
 
