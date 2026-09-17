@@ -1,6 +1,6 @@
 //! Tests for `SpaceManager`, grouped by topic: XML/space loading, basic
-//! entity lifecycle, AoI / witness diff, witness queries, NPC spawn, and
-//! instanced-space lifecycle / scoping.
+//! entity lifecycle, AoI / witness diff, witness queries, online-player
+//! name resolution, NPC spawn, and instanced-space lifecycle / scoping.
 
 use super::*;
 
@@ -9,6 +9,7 @@ mod entity_lifecycle;
 mod instances;
 mod movement_validation;
 mod npc_spawn;
+mod player_name_lookup;
 mod spaces;
 mod witnesses;
 
