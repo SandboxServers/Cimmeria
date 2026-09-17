@@ -181,13 +181,15 @@ See also [test-file-split-without-touching-mod-rs](test-file-split-without-touch
   the native `gmSpawnByCmd` sends `0.0` because its wire signature
   (`WSTRING DesignId, FLOAT XOffset, FLOAT ZOffset`) has no rotation argument.
 
-- **A player's `CellEntity.direction` is a direction VECTOR; an NPC spawned
-  from a `SpawnRecord` has `direction = (0, heading, 0)` (yaw in `.y`).** The
-  two are not interchangeable. `console/spawn/mod.rs`'s `heading_of(dir) =
-  dir.x.atan2(dir.z)` converts the player form to a yaw — correct for a player
-  caller, and it silently yields `0.0` for a record-spawned NPC (`atan2(0,0)`).
-  That is a live latent bug in `.savespawn`'s heading persistence (P09's
-  problem), not something to paper over at a new call site.
+- **CORRECTED (P18, 2026-09-17): `CellEntity.direction` is `[pitch, yaw,
+  roll]` in radians for players AND NPCs alike — it is NOT a direction
+  vector for players.** An earlier version of this bullet claimed the player
+  form was a Cartesian vector; that was wrong, and believing it is what
+  produced the whole `atan2`-vs-`direction.y` bug family (P48). Full
+  evidence chain, the affected call sites, and the
+  `update_entity_position`-zeroes-facing trap are in
+  [cell-entity-direction-semantics](cell-entity-direction-semantics.md) —
+  read that before touching any orientation code.
 
 - **When a command reuses an existing native handler's core mechanism
   (`update_entity_position` + `note_authorized_teleport`, gated
@@ -201,3 +203,33 @@ See also [test-file-split-without-touching-mod-rs](test-file-split-without-touch
   native test — P26 wrote two (NPC case + player case, since the native
   test only covers the NPC case), because the acceptance criterion is about
   *this* command's witness behavior, not the native one's.
+
+- **Read the shared helper's SIGNATURE before copying a sibling command's
+  call verbatim — the sibling may be carrying a latent bug.** P18's
+  `.location` looked like a straight copy of P26's `.gotoxyz` call shape
+  (`update_entity_position(id, pos, [0, 0, 0], [0.0; 3])`), but that third
+  parameter is `direction: [i8; 3]` and the helper writes it into
+  `cell_entity.direction` unconditionally — so every caller passing
+  `[0, 0, 0]` silently zeroes the moved entity's facing. Copying the call
+  would have shipped the same bug under a new command name. See
+  [cell-entity-direction-semantics](cell-entity-direction-semantics.md) for
+  the workaround pattern and the six affected callers.
+
+- **A "stop and escalate for design sign-off" instruction is worth 20
+  minutes of evidence-chasing first.** P18's brief said to stop if full
+  Euler orientation couldn't be represented. Chasing the component order
+  through three Rust sites and five legacy sites showed it maps 1:1 and no
+  escalation was needed. Grep the legacy tree for every read AND write of
+  the field (`\.rotation`, `rot\.`), not just the one the packet names — the
+  persistence site (`SGWPlayer.save`'s `heading = rot.y`) was the single
+  most decisive piece of evidence and was in neither the brief's read set
+  nor the command's own file.
+
+- **A legacy "optional trailing args" signature is usually a partial-tuple
+  bug, not a feature.** `def location(player, target, x=None, y=None,
+  z=None)` with a body gated on `if z is not None` means 1 or 2 args
+  silently no-op'd and then printed a readout as though the GM had asked for
+  one. D02 says correct it: accept only the complete shapes (here 0 or 3),
+  reject everything else with no mutation and *no readout* — and assert
+  `feedback.len() == 1` in the test, since a readout alongside the rejection
+  is exactly the legacy bug leaking back in.
