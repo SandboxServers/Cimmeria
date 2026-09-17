@@ -40,12 +40,14 @@
 //! - [`query`] — read-only search / inspection (`searchitem`, `players`, …).
 //! - [`stats`] — granular per-domain stat dumps (`primarystats`, …).
 //! - [`entity`] — live entity authoring (`tag`, `name`, `visible`, …).
+//! - [`give`] — selected-target player grants (`givecash`, `givexp`).
 //! - [`net`] — low-level net / AI debug (`net_seq`, `threaten`, …).
 //! - [`crafting`] — discipline / blueprint grants (`allcraft`, …).
 //! - [`mission`] — mission gaps (`missionfail`, `missionrewards`).
 //! - [`server`] — server / maintenance (`save`, `loglevel`, …).
 //! - [`spawn`] — spawn persistence (`savespawn`, `delspawn`, …).
 //! - [`patrol`] — FanMMORPG patrol authoring (`path_add`, `path_assign`, …).
+//! - [`travel`] — player-administration travel (`gotoxyz`).
 //!
 //! The framework itself splits into:
 //! - [`registry`] — the [`Spec`]/[`Target`] types + the static `COMMANDS` table.
@@ -59,6 +61,7 @@
 mod crafting;
 mod dispatch;
 mod entity;
+mod give;
 mod mission;
 mod net;
 mod parse;
@@ -69,6 +72,7 @@ mod seed;
 mod server;
 mod spawn;
 mod stats;
+mod travel;
 
 #[cfg(test)]
 mod tests;
