@@ -75,7 +75,7 @@ tracing-subscriber = { workspace = true }
 # dev-dependency (not a workspace dep) so it stays out of the production
 # dependency graph. Emits PEM, which the same `rustls-pemfile` path the
 # production loader uses then parses.
-rcgen = "0.13"
+rcgen = "0.14"
 
 # `ServiceExt::oneshot` for driving the HSTS middleware through a Router in a
 # unit test without standing up a socket.

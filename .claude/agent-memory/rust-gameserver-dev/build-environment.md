@@ -1,6 +1,6 @@
 ---
 name: Build environment quirks
-description: Worktrees need external/ junction-linked before cargo works; cargo's output is block-buffered through the Bash tool, so a hung test looks like a hung build.
+description: Worktrees need external/ junction-linked before cargo works; the old rust-lld linker override is obsolete; cargo's output is block-buffered through the Bash tool, so a hung test looks like a hung build.
 metadata:
   type: project
 ---
@@ -10,10 +10,19 @@ metadata:
 This note used to say `.cargo/config.toml` hardcoded another user's
 `rust-lld` path and that every cargo command needed a
 `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS` override. **Confirmed
-2026-09-17: that is fixed.** The tracked config now uses a bare
-`linker = "rust-lld"` with `linker-flavor=lld-link`, which rustc resolves
-from the rustup toolchain's bin directory. Plain `cargo test` links fine on
-this host with no env override.
+2026-09-17: that is fixed.** The tracked `.cargo/config.toml`
+`[target.x86_64-pc-windows-msvc]` block now uses a bare `linker = "rust-lld"`
+with `-C linker-flavor=lld-link`, which rustc resolves from the rustup
+toolchain's own `lib/rustlib/<target>/bin/` directory — portable across
+rustup installs. Plain `cargo clippy` / `cargo build` / `cargo test` link
+fine on this host with no env override.
+
+**Do not** prepend `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS=-C linker=...`
+any more. An earlier version of this note said to; that advice was for a
+superseded config revision that hardcoded `C:\Users\steven.cady\...`.
+Setting the env var also *overrides* the config's rustflags, silently
+dropping `linker-flavor=lld-link` — so the stale workaround is now actively
+worse than doing nothing.
 
 ## A fresh worktree cannot build until `external/` is linked
 
@@ -26,7 +35,10 @@ Fix once per worktree:
 cmd /c mklink /J "<worktree>\external" "<main-checkout>\external"
 ```
 
-Replace `<main-checkout>` with your own main checkout's absolute path (e.g. `git rev-parse --show-toplevel` run from the main checkout, not the worktree) — it is not portable across machines/users.
+Replace `<main-checkout>` with your own main checkout's absolute path (e.g.
+`git rev-parse --show-toplevel` run from the main checkout, not the
+worktree) — it is not portable across machines/users. See
+[[concurrent-claude-sessions]] for the wider worktree-isolation workflow.
 
 ## Cargo through the Bash tool looks hung when it isn't
 

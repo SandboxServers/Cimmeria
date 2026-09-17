@@ -200,7 +200,7 @@ mod tests {
         let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
             .expect("self-signed cert");
         std::fs::write(cert_path, certified.cert.pem()).expect("write cert");
-        std::fs::write(key_path, certified.key_pair.serialize_pem()).expect("write key");
+        std::fs::write(key_path, certified.signing_key.serialize_pem()).expect("write key");
     }
 
     /// Bump a file's mtime forward unconditionally so the change is detectable
