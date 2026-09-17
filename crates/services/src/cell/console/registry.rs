@@ -139,7 +139,20 @@ pub(crate) static COMMANDS: &[Spec] = &[
         Target::None,
         "Search entity templates by name",
     ),
-    spec("players", 0, 0, Target::None, "List players in your space"),
+    spec(
+        "players",
+        0,
+        0,
+        Target::None,
+        "List players online on this CellApp service",
+    ),
+    spec(
+        "listabilities",
+        0,
+        0,
+        Target::Player,
+        "List the target player's known abilities by name",
+    ),
     // ── I. entity / combat inspection (read-only) ──────────────────────────────
     spec(
         "info",

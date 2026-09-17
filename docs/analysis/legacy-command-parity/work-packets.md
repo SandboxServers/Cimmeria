@@ -56,10 +56,10 @@ For every runtime leaf, add/update a regression that fails without the fix. Mode
 
 ### P04
 
-**Status:** Ready (P01 integrated 2026-09-17). **Commands:** `.listabilities`, `.players`. **Depends:** P01. **Advisor:** server-authority-enforcer.
+**Status:** Integrated (2026-09-17, `legacy-command-parity`, merge of `p04-listabilities-players`). `.players` was filtering the already-CellApp-wide `all_player_entity_ids()` down to the caller's own space — bug fixed, not scope creep. `.listabilities` added new, resolving ability ids via the startup-loaded `space_mgr.ability_defs` cache. UATPending — bundled into M1 once P05-P07 land. Worknote/handoff: [worknotes/p04.md](worknotes/p04.md), [handoffs/p04.md](handoffs/p04.md). **Known gap, not a design gate:** legacy's `"In transition"` player state (connected but not yet bound to a space) has no equivalent cell-side today — `SpaceManager` has no broader "known players" registry beyond each space's own `players` set, and base-side connection state isn't visible from the cell service. Every player `all_player_entity_ids()` returns already has a space, so the fallback string is unreachable in practice. This is the "split if online indexing needs new lifecycle state" case this packet's own scope line anticipated — building real in-transition tracking needs new cross-service state, out of scope for a read-only query packet. **Commands:** `.listabilities`, `.players`. **Depends:** P01. **Advisor:** server-authority-enforcer.
 **Entries:** [query](../../../crates/services/src/cell/console/query.rs), [ability manager](../../../crates/entity/src/abilities/manager.rs), [ability definitions](../../../crates/services/src/cell/spawner/abilities.rs).
 **Scope:** read-only roster feedback: selected abilities with names/fallback; service-local online names/worlds including transitions. Split if online indexing needs new lifecycle state.
-**Acceptance:** unknown ability fallback, deterministic output, two loaded spaces plus transitioning player, no mutation and caller-only results. **Exclude:** cluster/offline roster, ability grants.
+**Acceptance:** unknown ability fallback, deterministic output, every loaded space's players (in-transition deferred — see gap note above), no mutation and caller-only results. **Exclude:** cluster/offline roster, ability grants.
 
 ### P05
 

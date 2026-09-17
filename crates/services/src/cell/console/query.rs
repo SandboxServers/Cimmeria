@@ -1,12 +1,13 @@
 //! Read-only console queries — `.help`, the `.search*` family, `.players`
-//! (category D), and the entity/combat inspection trio `.info`/`.facing`/
-//! `.combatinfo` (category I). Search runs base-side (the cell caches
-//! resource ids but not display names); the rest read cell state and reply
-//! via the feedback channel.
+//! and `.listabilities` (category D), and the entity/combat inspection trio
+//! `.info`/`.facing`/`.combatinfo` (category I). Search runs base-side (the
+//! cell caches resource ids but not display names); the rest read cell state
+//! and reply via the feedback channel.
 //!
 //! Legacy reference: `deprecated/python/cell/commands/Resource.py`
 //! (`searchItem`/`searchMission`/`searchTemplate`), `deprecated/python/cell/commands/Misc.py`
-//! (`players`), and `deprecated/python/cell/commands/Entity.py`
+//! (`players`), `deprecated/python/cell/commands/Player.py` (`listAbilities`),
+//! and `deprecated/python/cell/commands/Entity.py`
 //! (`entityInfo`/`facing`/`combatInfo`).
 
 use cimmeria_common::Vector3;
@@ -109,44 +110,82 @@ pub(super) async fn search_template(
     search(caller_id, 2, args, tx).await;
 }
 
-/// `.players` — list the players in the caller's space. Cell-scoped (the cell
-/// only knows its own spaces); mirrors the legacy `players` / `gmUsers`.
+/// `.players` — list every player online on this CellApp service, each with
+/// their world. Mirrors legacy `players`
+/// (`deprecated/python/cell/commands/Misc.py:174-183`): iterates every
+/// connected player (not just the caller's space) and prints
+/// `" - <name> (<world>)"` per player, using the legacy header verbatim.
+///
+/// `SpaceManager::all_player_entity_ids` already spans every loaded space on
+/// this service (it walks `self.spaces.values()`), so — unlike the previous
+/// implementation — this does **not** filter down to the caller's own space.
+/// Sorted by entity id for deterministic output; legacy iterated a Python
+/// dict (`PlayersByName`) in unspecified order.
+///
+/// Legacy's `"In transition"` fallback (a player connected but not yet bound
+/// to any space) has no equivalent here: cell-side `SpaceManager` has no
+/// broader "known players" registry beyond each space's `players` set, and
+/// base-side connection state (`ConnectedClientState`) isn't visible from the
+/// cell service. A player only appears in `all_player_entity_ids()` once
+/// they're placed in a space, so every id this function resolves already has
+/// a world — the `unwrap_or_else` fallback below is unreachable in practice,
+/// not a substitute for real in-transition tracking (see the P04 handoff).
 pub(super) async fn players(
     caller_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let Some(space_id) = space_mgr.get_entity_space_id(caller_id) else {
-        send_gm_feedback(caller_id, "players: you are not in a space.", tx).await;
-        return;
-    };
-    let mut ids: Vec<u32> = space_mgr
-        .all_player_entity_ids()
-        .into_iter()
-        .filter(|&pid| space_mgr.get_entity_space_id(pid) == Some(space_id))
-        .collect();
+    send_gm_feedback(caller_id, "Players online on this CellApp:", tx).await;
+    let mut ids = space_mgr.all_player_entity_ids();
     ids.sort_unstable();
-    if ids.is_empty() {
-        send_gm_feedback(caller_id, "players: none in your space.", tx).await;
-        return;
+    for pid in ids {
+        let Some(e) = space_mgr.get_entity(pid) else {
+            continue;
+        };
+        let name = e
+            .character_name
+            .clone()
+            .unwrap_or_else(|| format!("player {pid}"));
+        let world = space_mgr
+            .get_entity_world_name(pid)
+            .unwrap_or_else(|| "In transition".to_string());
+        send_gm_feedback(caller_id, &format!(" - {name} ({world})"), tx).await;
     }
-    let list = ids
-        .iter()
-        .map(|pid| {
-            let char_id = space_mgr.get_entity(*pid).and_then(|e| e.player_id);
-            match char_id {
-                Some(c) => format!("{pid} (char {c})"),
-                None => pid.to_string(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-    send_gm_feedback(
-        caller_id,
-        &format!("players ({} in space): {list}", ids.len()),
-        tx,
-    )
-    .await;
+}
+
+/// `.listabilities` — list the target player's known abilities by resolved
+/// name. Mirrors legacy `listAbilities`
+/// (`deprecated/python/cell/commands/Player.py:222-234`): one header line
+/// (`"Ability list of entity %d:"`), then `"    <name>"` per known ability id
+/// resolved via the ability catalog, or `"    <unknown ability %d>"` when the
+/// id has no matching definition — retained rather than silently dropped.
+///
+/// Sorted by ability id for deterministic output; legacy iterated
+/// `target.abilities.abilities`, a Python dict/set in unspecified order.
+///
+/// `target` is guaranteed valid and `Target::Player`-matching by the time
+/// this runs (`dispatch::resolve_target`) — no dead "not found"/wrong-type
+/// branches to guard an unreachable state.
+pub(super) async fn list_abilities(
+    caller_id: u32,
+    target: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let e = space_mgr
+        .get_entity(target)
+        .expect("dispatch::resolve_target guarantees a resolved Target::Player");
+    let mut ids = e.abilities.known_ability_ids();
+    ids.sort_unstable();
+
+    send_gm_feedback(caller_id, &format!("Ability list of entity {target}:"), tx).await;
+    for id in ids {
+        let line = match space_mgr.ability_defs.get(&id) {
+            Some(def) => format!("    {}", def.name),
+            None => format!("    <unknown ability {id}>"),
+        };
+        send_gm_feedback(caller_id, &line, tx).await;
+    }
 }
 
 // ---- .info / .facing / .combatinfo (category I) ---------------------------
