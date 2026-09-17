@@ -131,6 +131,7 @@ async fn gm_spawn_npc_routes_to_handler_and_warns_when_no_pool() {
             space_id: 5,
             world_name: "Castle".into(),
             position: [1.0, 2.0, 3.0],
+            heading: 0.0,
         },
         &transport,
         &connected,

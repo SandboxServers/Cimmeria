@@ -269,8 +269,9 @@ pub(crate) async fn exec(
         "save" | "reloadmap" | "reloadres" | "removerespawner" | "loglevel" | "logclient" => {
             server::dispatch(name, caller_id, args, target_id, tx, space_mgr).await
         }
-        // B. spawn authoring
-        "savespawn" | "delspawn" | "autosavespawn" | "respawnall" | "spawnrandom" => {
+        // B. spawn lifecycle + authoring
+        "spawn" | "despawn" | "savespawn" | "delspawn" | "autosavespawn" | "respawnall"
+        | "spawnrandom" => {
             spawn::dispatch(name, caller_id, args, target_id, tx, space_mgr, engine).await
         }
         // C. patrol authoring

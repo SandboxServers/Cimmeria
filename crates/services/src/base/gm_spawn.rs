@@ -43,6 +43,7 @@ pub async fn handle_gm_spawn_npc(
     space_id: u32,
     world_name: String,
     position: [f32; 3],
+    heading: f32,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     transport: &Arc<dyn Transport>,
@@ -62,7 +63,9 @@ pub async fn handle_gm_spawn_npc(
     };
 
     let record =
-        match load_spawn_record_for_template(pool, template_id, &world_name, position).await {
+        match load_spawn_record_for_template(pool, template_id, &world_name, position, heading)
+            .await
+        {
             Ok(Some(r)) => r,
             Ok(None) => {
                 tracing::warn!(
@@ -73,9 +76,14 @@ pub async fn handle_gm_spawn_npc(
                 // Definitive failure feedback: the GM asked for a template the
                 // DB doesn't have. The success path stays silent here — the
                 // cell confirms the actual spawn once `GmSpawnNpcReady` lands.
+                //
+                // Command-neutral wording: this same round-trip serves the native
+                // `gmSpawnByCmd` and the dot-console `.spawn` / `.spawnrandom`, so
+                // naming one of them here would misreport which command the GM
+                // actually typed.
                 send_gm_feedback_to_client(
                     entity_id,
-                    &format!("gmSpawnByCmd: template {template_id} not found"),
+                    &format!("spawn failed: template {template_id} not found"),
                     transport,
                     connected,
                     entity_to_addr,
@@ -91,7 +99,7 @@ pub async fn handle_gm_spawn_npc(
                 );
                 send_gm_feedback_to_client(
                     entity_id,
-                    &format!("gmSpawnByCmd: template {template_id} not found"),
+                    &format!("spawn failed: template {template_id} not found"),
                     transport,
                     connected,
                     entity_to_addr,
@@ -149,6 +157,7 @@ async fn load_spawn_record_for_template(
     template_id: i32,
     world_name: &str,
     position: [f32; 3],
+    heading: f32,
 ) -> Result<Option<SpawnRecord>, sqlx::Error> {
     use sqlx::Row;
 
@@ -198,14 +207,17 @@ async fn load_spawn_record_for_template(
 
     let record = SpawnRecord {
         // Spawn-instance fields sourced from the GM command, not a spawnlist
-        // row. spawn_id = -1 marks this as a non-DB (GM) spawn; tag = None and
-        // heading = 0 match the "drop it here facing forward" semantics.
+        // row. spawn_id = -1 marks this as a non-DB (GM) spawn; tag = None
+        // because a command spawn has no authoring tag yet. `heading` comes
+        // from the command (the dot-console sends the caller's own facing,
+        // matching legacy `Resource.spawnEntity`'s `player.rotation`; the
+        // native `gmSpawnByCmd` has no rotation argument and sends 0.0).
         spawn_id: -1,
         world_name: world_name.to_string(),
         x: position[0],
         y: position[1],
         z: position[2],
-        heading: 0.0,
+        heading,
         tag: None,
         // Template-derived fields. Use `try_get` + `?` throughout so a NULL in a
         // non-nullable column (the seed has half-wired content) surfaces as a
@@ -302,6 +314,10 @@ mod tests {
             5, // space_id
             "Castle".to_string(),
             [10.0, 20.0, 30.0],
+            // A distinctive non-zero yaw: the record used to hardcode
+            // `heading: 0.0`, so anything that drops the command's heading on
+            // the way into the `SpawnRecord` trips the assertion below.
+            1.25,
             &db_pool,
             &Some(cell_tx),
             &transport,
@@ -326,6 +342,16 @@ mod tests {
                     "position from command"
                 );
                 assert_eq!(record.world_name, "Castle", "world from command");
+                // The dot-console `.spawn` places an entity at the caller's
+                // *facing*, not an arbitrary one — the heading has to survive
+                // the cell→base→cell round-trip into the record that
+                // `spawn_npc_from_record_into` turns into
+                // `direction = (0, heading, 0)`.
+                assert_eq!(
+                    record.heading, 1.25,
+                    "heading from command (a hardcoded 0.0 here silently faces every \
+                     .spawn'd entity the same way)"
+                );
                 assert_eq!(record.spawn_id, -1, "GM spawns are non-DB (spawn_id -1)");
                 assert!(record.tag.is_none(), "GM spawn has no spawnlist tag");
             }
@@ -413,6 +439,7 @@ mod tests {
             5,
             "Castle".to_string(),
             [0.0; 3],
+            0.0,
             &db_pool,
             &Some(cell_tx),
             &transport,
@@ -446,6 +473,7 @@ mod tests {
             5,
             "Castle".to_string(),
             [0.0; 3],
+            0.0,
             &db_pool,
             &Some(cell_tx),
             &transport,
