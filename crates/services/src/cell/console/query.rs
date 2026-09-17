@@ -374,24 +374,28 @@ fn facing_class(caller_pos: Vector3, caller_dir: Vector3, target_pos: Vector3) -
 /// (`deprecated/python/cell/commands/Entity.py:137-153`). Target is
 /// required (`Target::Spawnable`) — no fallback to self, unlike the
 /// no-arg-inspection commands in `cell_methods::gm::query`.
+///
+/// `target` and both entities are guaranteed valid by the time this runs:
+/// `dispatch::resolve_target` already required a resolved, same-space,
+/// `Target::Spawnable`-matching entity before dispatching here (and
+/// `Target::Spawnable::matches` accepts every entity, so there is no
+/// wrong-type case either), and the caller is the same live entity that
+/// authored this command. No dead "not found" branches to guard an
+/// unreachable state.
 pub(super) async fn facing(
     caller_id: u32,
-    target_id: Option<u32>,
+    target: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let Some(target) = target_id else {
-        send_gm_feedback(caller_id, "facing: a target is required.", tx).await;
-        return;
-    };
-    let (Some(caller_pos), Some(caller_dir), Some(target_pos)) = (
-        space_mgr.get_entity(caller_id).map(|e| e.position),
-        space_mgr.get_entity(caller_id).map(|e| e.direction),
-        space_mgr.get_entity(target).map(|e| e.position),
-    ) else {
-        send_gm_feedback(caller_id, "facing: entity not found.", tx).await;
-        return;
-    };
+    let caller = space_mgr
+        .get_entity(caller_id)
+        .expect("caller entity exists for the duration of its own command");
+    let (caller_pos, caller_dir) = (caller.position, caller.direction);
+    let target_pos = space_mgr
+        .get_entity(target)
+        .expect("dispatch::resolve_target guarantees a resolved Target::Spawnable")
+        .position;
 
     let angle = facing_angle(caller_pos, caller_dir, target_pos);
     let class = facing_class(caller_pos, caller_dir, target_pos);
@@ -428,20 +432,19 @@ pub(super) async fn facing(
 ///   field at all; `AbilityManager` only tracks known ability *ids*. Building
 ///   an ability-type taxonomy is out of scope for a read-only query packet —
 ///   see `docs/analysis/legacy-command-parity/handoffs/p02.md`.
+///
+/// `target` is guaranteed valid and `Target::Mob`-matching by the time this
+/// runs (`dispatch::resolve_target`) — no dead "not found"/wrong-type
+/// branches to guard an unreachable state.
 pub(super) async fn combat_info(
     caller_id: u32,
-    target_id: Option<u32>,
+    target: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let Some(target) = target_id else {
-        send_gm_feedback(caller_id, "combatinfo: a target is required.", tx).await;
-        return;
-    };
-    let Some(e) = space_mgr.get_entity(target) else {
-        send_gm_feedback(caller_id, "combatinfo: target not found.", tx).await;
-        return;
-    };
+    let e = space_mgr
+        .get_entity(target)
+        .expect("dispatch::resolve_target guarantees a resolved Target::Mob");
 
     let mut lines = Vec::new();
     if e.template_id.is_none() {

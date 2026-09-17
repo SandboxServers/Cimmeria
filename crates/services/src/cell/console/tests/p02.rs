@@ -199,19 +199,38 @@ async fn legacy_p02_info_output_is_caller_only() {
 
 // ---- .facing ------------------------------------------------------------
 
+// No standalone "requires a target" test here: `.facing` is `Target::
+// Spawnable`, whose `matches()` accepts every entity, so the only rejection
+// `dispatch::resolve_target` can produce is the generic "no selection" case
+// — already covered by the framework-level
+// `cell::console::tests::typed_command_requires_target` (which exercises
+// the identical `resolve_target` code path via `.primarystats`). A
+// `.facing`-specific copy would test `resolve_target`, not this module.
+
 #[tokio::test]
-async fn legacy_p02_facing_requires_a_target() {
-    let (mut mgr, gm, _npc) = setup();
-    if let Some(e) = mgr.get_entity_mut(gm) {
-        e.current_target_id = None;
-    }
+async fn legacy_p02_facing_uses_callers_own_yaw_not_just_bearing() {
+    // Every other `.facing` fixture in this file faces the caller north
+    // (`dir: [0,0,1]`), which happens to make `caller_yaw == 0` — a bug that
+    // hardcoded `caller_yaw` to `0` (ignoring the caller's actual facing
+    // direction entirely) would still pass all of them. Face the caller
+    // EAST instead and place the target due east too: with the caller's
+    // yaw correctly applied, the target is dead ahead -> Front. If
+    // `caller_yaw` were ignored (treated as the north default, `0`), the
+    // same bearing would classify as Flank instead — a different bucket,
+    // so this fixture actually catches the regression.
+    let (mut mgr, gm, npc) = setup();
+    place(&mut mgr, gm, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
+    place(&mut mgr, npc, [20.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
     let engine = ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(16);
     handle_console_command(gm, ".facing", &tx, &mut mgr, &engine).await;
     let lines = drain_feedback_lines(&mut rx);
     assert!(
-        lines.iter().any(|l| l.contains("target is required")),
-        "{lines:?}"
+        lines
+            .iter()
+            .any(|l| l.starts_with("Facing:") && l.contains("(Front)")),
+        "caller facing east with the target due east must be Front, not \
+         Flank (which is what a caller_yaw-ignored bug would report): {lines:?}"
     );
 }
 

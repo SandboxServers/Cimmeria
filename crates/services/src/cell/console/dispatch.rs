@@ -182,8 +182,24 @@ pub(crate) async fn exec(
         "players" => query::players(caller_id, tx, space_mgr).await,
         // I. entity / combat inspection
         "info" => query::info(caller_id, args, target_id, tx, space_mgr).await,
-        "facing" => query::facing(caller_id, target_id, tx, space_mgr).await,
-        "combatinfo" => query::combat_info(caller_id, target_id, tx, space_mgr).await,
+        "facing" => {
+            query::facing(
+                caller_id,
+                target_id.expect("Target::Spawnable guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        "combatinfo" => {
+            query::combat_info(
+                caller_id,
+                target_id.expect("Target::Mob guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
         // F. stat dumps
         "primarystats" | "speedstats" | "armorstats" | "qrstats" | "absorbstats"
         | "stealthstats" => stats::show(name, caller_id, target_id, tx, space_mgr).await,
