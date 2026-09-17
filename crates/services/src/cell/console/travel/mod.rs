@@ -135,10 +135,21 @@ async fn snap_in_current_space(
     // immediately after (see `console/placement.rs::location` for the
     // identical pattern).
     let facing = e.direction;
+    // Subject identity, read off the borrow we already hold. `.summon` /
+    // `.goto <player>` move somebody *else*, so the moved player is recorded
+    // separately from the GM who issued the command.
+    let subject = e.identity();
 
+    // `account_id`/`player_id` name the CALLER on every console log, so one
+    // SigNoz filter (`account_id = N`) returns everything that account did —
+    // the subject is carried under its own prefixed keys.
+    let caller = space_mgr.player_identity(caller_id);
     tracing::info!(
         caller_id,
+        account_id = caller.account_id,
+        player_id = caller.player_id,
         entity,
+        subject_player_id = subject.player_id,
         ?position,
         space_id,
         is_player,
@@ -168,7 +179,10 @@ async fn snap_in_current_space(
         {
             tracing::warn!(
                 caller_id,
+                account_id = caller.account_id,
+                player_id = caller.player_id,
                 entity,
+                subject_player_id = subject.player_id,
                 command = cmd,
                 error = %err,
                 "console travel: base channel closed, snap not sent"
@@ -232,6 +246,12 @@ async fn move_subject(
         .get_entity(subject)
         .map(|e| [e.direction.x, e.direction.y, e.direction.z])
         .unwrap_or([0.0; 3]);
+    // Both identities are snapshotted BEFORE the transfer: a cross-space
+    // transfer tears the subject's entity down and rebuilds it in the
+    // destination, so resolving afterwards can race the teardown and report
+    // UNKNOWN for the very command that caused it.
+    let caller = space_mgr.player_identity(caller_id);
+    let subject_id = space_mgr.player_identity(subject);
 
     // Same space: no teardown, no loading screen, and NPC subjects keep
     // working (D15 restricts only the cross-space legs).
@@ -255,7 +275,10 @@ async fn move_subject(
         Ok(TransferOutcome::Transferred { space_id }) => {
             tracing::info!(
                 caller_id,
+                account_id = caller.account_id,
+                player_id = caller.player_id,
                 subject,
+                subject_player_id = subject_id.player_id,
                 origin_space_id,
                 destination_space_id = ?space_id,
                 world = world_name,

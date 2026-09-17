@@ -37,6 +37,7 @@ pub(crate) mod mission_overrides;
 pub(crate) mod outbox;
 pub(crate) mod resources;
 mod service;
+pub(crate) mod session_identity;
 pub(crate) mod tick_sync;
 pub(crate) mod world_entry;
 pub(crate) mod world_entry_appearance;

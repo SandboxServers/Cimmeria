@@ -59,9 +59,12 @@ pub(super) async fn handle_entity_move(
     // below drops as `EntityMissing`, not a space mismatch.
     if let Some(actual_space_id) = space_mgr.get_entity_space_id(entity_id) {
         if claimed_space_id != 0 && actual_space_id != claimed_space_id {
+            let id = space_mgr.player_identity(entity_id);
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
                 claimed_space_id,
                 actual_space_id,
                 reason = "space_mismatch",
@@ -129,9 +132,15 @@ pub(super) async fn handle_entity_move(
             // `bounds_max` let an operator confirm which AABB the
             // proposed position was tested against without grepping.
             let reason_label = movement_reject_label(reason);
+            // Stable identity correlator. Resolved inside the reject branch,
+            // not at fn entry: this handler runs ~10 Hz per active player and
+            // the accepted path must not pay for a lookup it never logs.
+            let id = space_mgr.player_identity(entity_id);
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
                 space_id,
                 client_x = position[0],
                 client_y = position[1],

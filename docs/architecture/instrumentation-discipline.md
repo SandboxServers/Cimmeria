@@ -1,7 +1,8 @@
 # Instrumentation Discipline
 
-> **Last updated**: 2026-07-25
-> **Status**: Convention adopted in issue #482 (2026-06-01). Companion to
+> **Last updated**: 2026-09-17
+> **Status**: Convention adopted in issue #482 (2026-06-01); Rule 5
+> (stable player identity on every log) added 2026-09-17. Companion to
 > [negative-logging-convention.md](negative-logging-convention.md) which
 > covers the *failure-side* discipline. This document covers the
 > *success-side* — span placement, event-level rules, metric labels.
@@ -20,7 +21,7 @@ the codebase to learn the convention.
 
 Source: issue #482 (`Telemetry & logging instrumentation pass`).
 
-## The four rules
+## The five rules
 
 ### Rule 1 — Every dispatch entrypoint gets an info-level span
 
@@ -157,6 +158,135 @@ A label sitting between the target and the hard ceiling (e.g. 50
 worlds when we ship more content) is a yellow flag, not a fail —
 revisit it during the next instrumentation review.
 
+### Rule 5 — Every log describing player activity carries `account_id` + `player_id`
+
+An `entity_id` is **not an identity**. It is a recycled per-space slot
+integer: when a player disconnects their id returns to the pool and a
+later connection can be handed the same number minutes later. A log
+filtered on `entity_id` answers "what happened in this slot", not
+"what did this player do".
+
+So any log event describing something a *player* did — a movement
+reject, a GM console command, a teleport, an AoI drop, a session
+lifecycle transition — must carry both:
+
+| Field | Source | Stability |
+|---|---|---|
+| `account_id` | `account.account_id` | Stable across reconnects **and** character switches |
+| `player_id` | `sgw_player.player_id` | Stable for the life of a character session |
+
+`entity_id` stays alongside them. This is additive — it is still the
+right correlator for per-space and AoI debugging, and for NPCs it is
+the *only* one.
+
+#### These go on the log EVENT, not only on a span
+
+This is the part that is easy to get wrong, because the local
+`RUST_LOG` output makes a span-only approach look like it works.
+
+The OTLP log pipeline is
+[`opentelemetry-appender-tracing`](../../crates/server/src/otel.rs)'s
+`OpenTelemetryTracingBridge`. It converts each `tracing` event into one
+OpenTelemetry log record carrying **that event's own fields**, plus
+`trace_id` / `span_id` for correlation. It does **not** walk the
+ancestor span chain and copy span fields onto the log record. A field
+that exists only on a parent span is therefore invisible to a SigNoz
+**Logs** query — which is the surface operators actually use to answer
+"show me everything account 6 did".
+
+Two further reasons a span-only approach cannot work here:
+
+1. **Spans do not cross the base↔cell boundary.** The two halves of the
+   server are separate tokio tasks joined by
+   `mpsc::Sender<BaseToCellMsg>` / `CellToBaseMsg`
+   ([`orchestrator.rs`](../../crates/services/src/orchestrator.rs)). A
+   span entered on the base side is not in scope when the cell task
+   later dequeues the message — so movement validation, console
+   dispatch, travel, and entity lifecycle could never inherit it.
+2. **The candidate parent spans are `level = "debug"`.**
+   `base.datagram`, `base.encrypted_datagram`, `base.player_method` and
+   `cell.dispatch` are all debug-level, so under the default info
+   filter they are not recorded at all and any field on them vanishes.
+
+Spans **may** also declare the fields (`world_entry.play_character`
+already does, and it is a useful correlator in the Traces view) — but
+a span declaration never substitutes for the event field.
+
+#### Pass `Option`s through; never `unwrap_or(0)`
+
+Both fields are typed `Option` and are handed to `tracing` **as
+`Option`s**:
+
+```rust
+let id = space_mgr.player_identity(entity_id);
+tracing::warn!(
+    target: "movement.validation",
+    entity_id,
+    account_id = id.account_id,   // Option<u32>
+    player_id = id.player_id,     // Option<i32>
+    reason = reason_label,
+    "movement.validation_reject: ..."
+);
+```
+
+`tracing`'s `impl<T: Value> Value for Option<T>` records **nothing**
+when the value is `None`. So a player's line carries `account_id=6`
+and an NPC's line carries no `account_id` key at all.
+
+Do not "helpfully" unwrap to a sentinel. `account_id = 0` is
+indistinguishable from a real account in a query and matches every NPC
+in the store; `"None"` pollutes the field's value set the same way.
+Absence is the correct encoding for "this entity has no account", and
+the guards in
+[`identity_propagation.rs`](../../crates/services/src/cell/service/base_messages/tests/identity_propagation.rs)
+assert the fields are **absent** for NPCs precisely so this shortcut
+trips CI.
+
+#### Where identity comes from
+
+Two resolvers, one per side of the server. Never re-derive it inline.
+
+| Side | Resolver | Backing state |
+|---|---|---|
+| Cell | `SpaceManager::player_identity(entity_id)` | `CellEntity::account_id` / `::player_id` |
+| Base | `base::session_identity::identity_for_entity(connected, entity_to_addr, entity_id)` | `ConnectedClientState::account_id` / `::active_player_id` |
+
+Both return `PlayerIdentity::UNKNOWN` (both halves `None`) for an NPC
+or an unresolvable id, so the caller emits nothing.
+
+The cell entity is identity-stamped **at birth**, from
+`BaseToCellMsg::CreateEntity`, not at `InitPlayerState`.
+`InitPlayerState` arrives only after `onClientReady`; stamping there
+would leave the multi-second world-entry window — and the fresh entity
+a gate-travel builds in the destination world — un-attributable.
+`InitPlayerState` still re-asserts the pair as a belt-and-braces path
+for any create route that skips the stamp.
+
+#### Naming when an actor acts on someone else
+
+GM commands move *other* players. `account_id` / `player_id` always
+name the **caller**, so a single `account_id = N` filter returns
+everything that account did. The subject gets its own prefixed key
+(`subject_player_id`, `target_player_id`) next to the existing
+`entity` / `target` field.
+
+#### Resolve late, and before teardown
+
+- **Late**: resolve inside the branch that actually logs, not at
+  function entry. `handle_entity_move` runs ~10 Hz per active player
+  and the accepted path must not pay for a lookup it never emits.
+- **Before teardown**: `destroy_entity` / `disconnect_entity` remove
+  the entity, so identity must be snapshotted at the top of the
+  function. A lookup at the log statement resolves to `UNKNOWN` — and
+  the session-closing line is the one an incident timeline needs most.
+
+#### Scope
+
+NPC-only logs do not get forced identity — they have no account, and
+`PlayerIdentity::UNKNOWN` already encodes that correctly. Auth and
+character-select logs already carried `account_id` before this rule and
+are unchanged.
+
 ### Worked example
 
 A `trade.execute` handler that already has the dispatcher span:
@@ -199,6 +329,19 @@ trade), the counter aggregates *across* trades by outcome.
   serialiser will format the whole struct via Debug, which can OOM the
   log pipeline for nested entity / inventory state. Use `skip_all` and
   whitelist explicit fields.
+- **Identity on the span only.** A field that lives on a parent span
+  is not on the exported log record — `opentelemetry-appender-tracing`
+  does not flatten ancestor span fields — so a SigNoz Logs filter
+  never sees it. Per Rule 5, put `account_id`/`player_id` on the
+  event.
+- **`account_id = id.account_id.unwrap_or(0)`.** A `0` sentinel is
+  indistinguishable from a real account in a query and matches every
+  NPC. Pass the `Option` through and let the field be omitted.
+- **Re-deriving identity inline** (hand-rolling the
+  `entity_to_addr` → `connected` two-step, or reading
+  `entity.player_id` without `account_id`). Use
+  `SpaceManager::player_identity` / `session_identity::identity_for_entity`
+  so every call site emits the same two field names.
 - **Metric label = `entity_id` / `player_id` / `peer`.** Per the
   cardinality rule above — these are span fields, never labels. A
   ClickHouse merge-tree storing a label per entity for every counter

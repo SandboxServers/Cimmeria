@@ -39,6 +39,7 @@ impl CellEntity {
             character_name: None,
             missions: MissionManager::new(),
             player_id: None,
+            account_id: None,
             archetype_id: None,
             access_level: 0,
             level: 1,

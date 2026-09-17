@@ -7,7 +7,7 @@
 use std::time::Instant;
 
 use cimmeria_common::{EntityId, SpaceId, Vector3};
-use cimmeria_entity::cell_entity::CellEntity;
+use cimmeria_entity::cell_entity::{CellEntity, PlayerIdentity};
 use cimmeria_entity::movement_validation::{MovementReject, MovementValidator, SpaceBounds};
 
 use super::super::messages::CellToBaseMsg;
@@ -129,6 +129,12 @@ impl SpaceManager {
         space.entities.insert(entity_id, cell_entity);
         self.entity_space.insert(entity_id, space_id);
 
+        // No identity fields here by design: the `CellEntity` was constructed
+        // one statement ago and is not stamped until the caller
+        // (`base_messages::lifecycle::handle_create_entity`) applies the
+        // identity from `BaseToCellMsg::CreateEntity`. That handler emits the
+        // identity-bearing "CreateEntity" line for this same event — this one
+        // is the spatial-grid insert, keyed by entity/space only.
         tracing::debug!(entity_id, space_id, ?position, "Cell entity created");
         Ok(space_id)
     }
@@ -138,6 +144,11 @@ impl SpaceManager {
     /// If the entity was in an instanced space and was the last player, the
     /// entire space instance is destroyed (all remaining NPCs removed).
     pub fn destroy_entity(&mut self, entity_id: u32) {
+        // Snapshot the identity while the entity still exists — it is removed
+        // from its space below, and this is the last chance to attribute the
+        // teardown to an account. `entity_id` alone is not enough here of all
+        // places: the id is released for reuse the moment this returns.
+        let id = self.player_identity(entity_id);
         // GM-only session buffers are keyed by entity_id; drop them so a
         // destroyed (and possibly later reused) id can't inherit stale pending
         // authoring SQL or the autosave-spawn flag.
@@ -170,7 +181,12 @@ impl SpaceManager {
         // Release the entity's movement-validator clock so it can't leak
         // or carry a stale speed sample across `entity_id` reuse.
         self.movement_validator.forget(entity_id);
-        tracing::debug!(entity_id, "Cell entity destroyed");
+        tracing::debug!(
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            "Cell entity destroyed"
+        );
     }
 
     /// Despawn a **non-player** entity: tell every player currently
@@ -298,11 +314,23 @@ impl SpaceManager {
         if let Some(&space_id) = self.entity_space.get(&entity_id) {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.insert(entity_id);
-                if let Some(entity) = space.entities.get_mut(&entity_id) {
-                    entity.is_player = true;
-                    entity.class_id = 0x02; // SGWPlayer
-                }
-                tracing::debug!(entity_id, space_id, "Entity connected (player)");
+                // Identity read from the entity we already have borrowed, so
+                // the log below needs no second lookup.
+                let id = match space.entities.get_mut(&entity_id) {
+                    Some(entity) => {
+                        entity.is_player = true;
+                        entity.class_id = 0x02; // SGWPlayer
+                        entity.identity()
+                    }
+                    None => PlayerIdentity::UNKNOWN,
+                };
+                tracing::debug!(
+                    entity_id,
+                    account_id = id.account_id,
+                    player_id = id.player_id,
+                    space_id,
+                    "Entity connected (player)"
+                );
             }
         }
     }
@@ -313,6 +341,9 @@ impl SpaceManager {
         entity_id: u32,
         tx: &tokio::sync::mpsc::Sender<CellToBaseMsg>,
     ) {
+        // Snapshot identity up front: `destroy_entity` below removes the
+        // entity, so the closing log can no longer resolve it.
+        let id = self.player_identity(entity_id);
         // Drop GM-only session buffers (keyed by entity_id) on disconnect so
         // pending authoring SQL / the autosave-spawn flag don't outlive the
         // session. Same rationale as `destroy_entity`.
@@ -350,7 +381,10 @@ impl SpaceManager {
                         .await
                     {
                         tracing::warn!(
-                            witness_id, entity_id, error = %e,
+                            witness_id, entity_id,
+                            account_id = id.account_id,
+                            player_id = id.player_id,
+                            error = %e,
                             "LeftAoI send to base failed during disconnect"
                         );
                     }
@@ -365,7 +399,12 @@ impl SpaceManager {
 
         // Then destroy the cell entity
         self.destroy_entity(entity_id);
-        tracing::debug!(entity_id, "Entity disconnected and destroyed");
+        tracing::debug!(
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            "Entity disconnected and destroyed"
+        );
     }
 
     /// Apply a client-authoritative position update through the
@@ -548,9 +587,12 @@ impl SpaceManager {
             // (distance, dt, implied_speed) triple so the SigNoz
             // tolerance-calibration pipeline can compute the legitimate
             // p99.9 before the speed layer is ever promoted to snap-back.
+            let id = self.player_identity(entity_id);
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
                 space_id,
                 client_x = position[0],
                 client_y = position[1],

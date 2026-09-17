@@ -45,6 +45,11 @@ async fn create(
             position: [1.0, 2.0, 3.0],
             rotation: [0.0; 3],
             destination_space_id,
+            // This packet exercises instance resolution, not identity
+            // stamping — the latter has its own guards in
+            // `tests::identity_propagation`.
+            account_id: None,
+            player_id: None,
             reply_tx,
         },
         tx,

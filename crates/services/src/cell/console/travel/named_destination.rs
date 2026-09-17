@@ -72,8 +72,11 @@ pub(super) async fn goto(
                 .map(str::to_owned),
         )
     else {
+        let caller = space_mgr.player_identity(caller_id);
         tracing::warn!(
             caller_id,
+            account_id = caller.account_id,
+            player_id = caller.player_id,
             dest_entity,
             dest_space_id,
             "goto: resolved player has no entity or no live space"
