@@ -583,4 +583,58 @@ fn on_navmesh_small_move_is_accepted() {
     );
 }
 
+/// The real client jump apex — see `REAL_JUMP_APEX` in
+/// `crates/entity/src/navigation/tests.rs` for the full derivation
+/// (`jumpSpeed² / (2 * |gravity|)` from the values `build_world_params_args`
+/// hands the client). Using the real apex here, not an arbitrary smaller
+/// test value, is what actually pins the reported bug end-to-end: a jump
+/// only up to a couple of units would not have exercised the multi-floor
+/// disambiguation `is_point_valid` needs on the real `castle_cellblock`
+/// fixture (see that function's doc comment).
+const REAL_JUMP_APEX: f32 = 8.0 * 8.0 / (2.0 * 9.8);
+
+/// End-to-end regression guard for the jump-height bug (reported as
+/// "jumping snaps my facing to north / rubber-bands me backward"): a
+/// client position update whose only change is an elevated Y (a jump
+/// apex) over an otherwise-walkable XZ footprint must be **Accepted**,
+/// not rejected as `OffNavmesh`. Pre-fix, `NavMesh::is_point_valid`
+/// measured the raw 3D distance to the nearest polygon, so any jump
+/// apex taller than `agent_radius * 2.0` (well under 2 units on this
+/// fixture) read as off-mesh — the validator then rejected *every*
+/// packet sent while airborne, snapping the player back to the
+/// last-valid (pre-jump) position and, via `build_teleport_bundle`'s
+/// zeroed direction, resetting their facing.
+#[test]
+fn jump_in_place_is_accepted_not_rejected() {
+    let nav_path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
+    if !nav_path.exists() {
+        return; // fixture-less CI — skip
+    }
+    let navmesh = NavMesh::load(nav_path).expect("load castle_cellblock.nav");
+
+    let mut mgr = make_manager();
+    let on_mesh = [-289.465, 68.542, -154.276];
+    let space_id = mgr
+        .create_entity(100, "Castle_CellBlock", on_mesh, [0.0; 3])
+        .unwrap();
+    mgr.spaces.get_mut(&space_id).unwrap().navmesh = Some(navmesh);
+
+    // Same XZ as the (validated-on-mesh) spawn, lifted to the real client
+    // jump apex.
+    let mid_jump = [on_mesh[0], on_mesh[1] + REAL_JUMP_APEX, on_mesh[2]];
+    let outcome =
+        mgr.apply_client_position_update_at(Instant::now(), 100, mid_jump, [0, 0, 0], [0.0; 3]);
+    assert!(
+        matches!(outcome, ClientMoveOutcome::Accepted { position } if position == mid_jump),
+        "a mid-jump position update over the same walkable footprint must be \
+         accepted, not off-navmesh-rejected — got {outcome:?}"
+    );
+    let entity = &mgr.spaces[&space_id].entities[&100];
+    assert_eq!(
+        entity.position,
+        Vector3::new(mid_jump[0], mid_jump[1], mid_jump[2]),
+        "accepted jump position must have been written to the cell entity"
+    );
+}
+
 mod onphysics;

@@ -39,7 +39,7 @@ rows because they have different actions.
 | Order | Layer | Action | Catches |
 |-------|-------|--------|---------|
 | 1 | **Bounds** (`check_bounds`) | reject | NaN / ±∞ / absurd coords, **Z-axis floor-clip** (full X/Y/**Z** AABB test) |
-| 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded |
+| 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded. Horizontal (X/Z) containment is tight (`agent_radius`-based) in both directions; vertical (Y) containment is asymmetric — up to `JUMP_HEIGHT_TOLERANCE` (4.0 units, physics-derived) *above* the surface so a legitimate jump apex isn't rejected, but only `agent_radius * 2.0` *below* it — see "Jump-height fix" below. |
 | 3 | **Speed** (`check_kinematics`) | **warn-only** | sustained over-tolerance velocity (`implied_speed > top_speed × 1.5`) |
 | 4 | **Teleport** (`check_kinematics`) | reject | single update both `> 50 u` **and** `> top_speed × 10` (or, on the first packet with no time baseline, `> 50 u` from the authoritative spawn) |
 
@@ -185,6 +185,75 @@ the same space with only one flagged prove the bypass doesn't leak to
 the other) and `crates/services/src/cell/cell_methods/gm/tests/physics.rs`
 (polarity, feedback text, truncated-arg rejection without mutation).
 
+## GM off-navmesh allowance (`access_level`)
+
+`movement_unrestricted` above is an explicit, GM-toggled state. Separately,
+the **navmesh containment layer alone** is warn-only for any caller whose
+`CellEntity::access_level` is `GameMaster` or higher, with no toggle at
+all: standing inside geometry, on a rooftop, or over a gap is how a GM
+inspects a broken spawn or an unreachable region, and a GM who typed
+`.gotoxyz` into an unwalkable spot should not be rubber-banded out of it.
+
+The remaining layers stay enforced for GMs. Bounds still hard-rejects, so
+a GM cannot write a NaN or an absurd coordinate into the spatial grid, and
+the teleport gate still hard-rejects — the GM travel commands already call
+`note_authorized_teleport`, so their own moves are unaffected.
+
+`access_level` is read from the `account.accesslevel` column at login and
+carried into the cell by `InitPlayerState`; it is never derived from a
+client-supplied byte. This is the same trust model as
+[`cell::dispatch::gm_gate`](../../crates/services/src/cell/dispatch/gm_gate.rs)
+and the `.`-console channel gate. The bypass emits a warn-level
+`movement.navmesh_gm_bypass` event and a
+`movement_validation_warns_total{reason="navmesh_gm_bypass"}` counter, so
+it is visible rather than silent.
+
+## Correction termination (snap-back recovery)
+
+A rejection tells the offending client to snap back to `last_valid` — the
+cell entity's current authoritative position. That only ends the exchange
+if `last_valid` is a position the validator would itself accept. When it
+is not, the client snaps to it, re-reports it, is rejected again, and
+rubber-bands at its own update rate until the player disconnects.
+
+The authoritative position can be unacceptable because **nothing validates
+the server-authoritative write path**: `update_entity_position` is
+deliberately unchecked so ring transport, respawn, content teleport, NPC
+movement and the GM travel commands can place an entity anywhere. Observed
+live: a GM ended up at `[0, 0, 0]` in Castle Cellblock (inside the space,
+off the walkable mesh) and took ~12-15 `FORCED_POSITION` corrections per
+second until they gave up. A stale persisted `sgw_player` row on
+reconnect, or authored-but-unreachable content coordinates, reach the same
+state for an ordinary player.
+
+`SpaceManager::reject_outcome`
+([client_move.rs](../../crates/services/src/cell/space_manager/client_move.rs))
+resolves every hard reject into one of three outcomes:
+
+| Outcome | When | Caller action |
+|---|---|---|
+| `Rejected` | The snap target is in-bounds and on-navmesh, and the entity is within its correction budget. | Emit `FORCED_POSITION` to `last_valid` — the pre-existing behaviour. |
+| `Recovered` | The snap target is itself invalid, **or** the budget is spent. The entity has already been relocated to a terminal safe point. | Emit `FORCED_POSITION` to `recovered_to`. |
+| `CorrectionSuppressed` | The snap target is unusable and no safe point exists. | Emit **nothing**. Re-sending is what produced the loop. |
+
+The safe point is resolved in order of how little it disturbs the player:
+the nearest walkable navmesh point (`NavMesh::get_nearest_point` — the
+Z-clamp answer, so a player a metre inside the floor comes back out on the
+surface they were standing on), then the world's nearest authored
+respawner, then the space AABB clamped. Recovery writes through
+`update_entity_position` and calls `note_authorized_teleport`, so the
+spatial grid, the next AoI tick's witness broadcast, and the client all
+agree, and the post-recovery client packet is measured from the relocation
+instant rather than a stale clock sample.
+
+`MAX_SNAP_BACK_CORRECTIONS` is the backstop that makes termination
+unconditional: whatever the geometry, one entity cannot be corrected more
+than that many times in a row. Any accepted position clears the count, so
+the budget is per-incident and a legitimately lagged client is never
+penalised across separate episodes. Suppression stops only the outbound
+correction — the rejected position is still never written, so witnesses
+continue to see the server's truth.
+
 ## Constants
 
 Defined on `MovementValidator` (see source for full rationale):
@@ -195,6 +264,7 @@ Defined on `MovementValidator` (see source for full rationale):
 | `SPEED_WARN_TOLERANCE` | `1.5×` | warn threshold (warn-only) |
 | `TELEPORT_JUMP_UNITS` | `50.0` u | teleport distance gate |
 | `TELEPORT_SPEED_FACTOR` | `10×` | teleport implied-speed gate |
+| `MAX_SNAP_BACK_CORRECTIONS` | `5` | consecutive corrections before the server stops re-issuing them (~0.5 s at the 10 Hz client update rate) |
 
 The client's own hard-snap ceiling (`USGWAvatarFilter::Input`,
 `_DAT_01e69c90 = 2500 u/s`) is the upper bound on what the client
@@ -214,6 +284,64 @@ smooths; the server gates sit far below it. See
     `castle_cellblock.nav` fixture, self-skips on fixture-less CI)
   - plus speed-warn-accepts, authorized-teleport-follow-up,
     sustained-spam, and `entity_move_space_mismatch_warns_but_still_applies`.
+
+## Jump-height fix
+
+`NavMesh::is_point_valid` (`crates/entity/src/navigation/mod.rs`) originally
+measured the raw 3D distance from a proposed position to the nearest walkable
+polygon against `agent_radius * 2.0` (≈1.2 units on the `castle_cellblock`
+fixture). Because the client is authoritative for jump physics and the server
+never simulates it, a jump apex only slightly taller than that combined gate
+already read as off-navmesh — so *every* client position packet sent while
+airborne was rejected as `MovementReject::OffNavmesh`, snapping the player
+back to `last_valid` via `TeleportPlayer` on each one. Visibly: standing-still
+jumps always snapped the avatar's facing to north (`build_teleport_bundle`
+zeroes direction on every snap), and jumping while moving produced a
+backward/sideways rubber-band as the player kept getting snapped to a
+several-packets-stale position.
+
+The fix decouples horizontal from vertical containment, and makes the
+vertical check asymmetric: X/Z uses the same tight `agent_radius`-based gate
+as before in both directions; Y allows up to `JUMP_HEIGHT_TOLERANCE` (4.0
+units) *above* the surface but only `agent_radius * 2.0` (unchanged from
+before this fix) *below* it. There is no legitimate reason to be below a
+walkable surface, so under-terrain clipping stays exactly as strict as
+pre-fix — a single symmetric tolerance for both directions would have
+widened the floor-clip allowance to match the much larger jump tolerance.
+
+`JUMP_HEIGHT_TOLERANCE` is sized from the client's own jump physics, not
+guessed: `build_world_params_args`
+(`crates/services/src/mercury/world_data/mod.rs`) hands the client
+`gravity = -9.8` and `jumpSpeed = 8.0`, giving a ballistic apex of
+`jumpSpeed² / (2 * |gravity|) ≈ 3.27` units above takeoff. `4.0` leaves
+~0.7 units of margin for uneven ground, slope, and query jitter.
+
+The nearest-polygon lookup is a **two-phase search**, not a single widened
+one. Detour's `dtFindNearestPoly` returns whichever polygon is nearest to
+the query point in raw 3D Euclidean distance, not "the polygon directly
+below" — so on multi-level geometry (the real `castle_cellblock` fixture has
+a mezzanine walkway a few units above and diagonally over from the
+guard-spawn floor), a jump apex near that walkway's height can be *closer in
+a straight line* to the airborne query point than the true floor is straight
+down, and a single widened search returns the walkway's polygon instead.
+Phase 1 repeats the original, unmodified search (so ground-level movement
+and modest jumps are unaffected by this fix at all); phase 2 only runs when
+phase 1 fails, and re-centers the search `JUMP_HEIGHT_TOLERANCE` units
+*below* the query point — i.e. where the ground would be at the top of a
+jump — so a true floor straight down outweighs a walkway merely diagonally
+nearby.
+
+A jump that stays over its own walkable footprint, within tolerance, is
+accepted; a point that's actually off-mesh horizontally, clipped below the
+surface, or too far above it, is still rejected. Regression guards (all in
+`crates/entity/src/navigation/tests.rs` unless noted):
+`jump_above_navmesh_same_xz_is_still_valid` (uses the real ~3.27-unit apex,
+not an arbitrary smaller value), `just_above_jump_tolerance_is_still_invalid`,
+`below_navmesh_small_clip_is_still_invalid` (the asymmetry guard),
+`far_below_navmesh_same_xz_is_still_invalid`, and
+`jump_in_place_is_accepted_not_rejected` in
+`crates/services/src/cell/space_manager/tests/movement_validation/mod.rs`
+(end-to-end, also at the real apex).
 
 ## Follow-ups (not in #478)
 
