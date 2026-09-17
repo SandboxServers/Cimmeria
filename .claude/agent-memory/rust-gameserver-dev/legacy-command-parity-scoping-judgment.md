@@ -233,3 +233,26 @@ See also [test-file-split-without-touching-mod-rs](test-file-split-without-touch
   reject everything else with no mutation and *no readout* — and assert
   `feedback.len() == 1` in the test, since a readout alongside the rejection
   is exactly the legacy bug leaking back in.
+
+- **When a packet's acceptance criterion says "prove it in the real tick", the
+  consumer it assumes exists may not.** P47's brief told the worker to "find
+  where `MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` are actually read and applied
+  during movement" — there was no such site at all (see
+  [stat-with-no-consumer-trap](stat-with-no-consumer-trap.md)). The right move
+  was to grep first, then raise it to the coordinator with the evidence *and a
+  concrete minimal fix + why it's safe* (no-op at the default value, no other
+  in-flight packet owns the file), and keep working while waiting — approval
+  came back in one round. A brief's "read-only reference to X" is a default
+  ownership assignment, not a hard constraint; it's negotiable when the same
+  brief's acceptance criterion is unsatisfiable without X. What is NOT
+  negotiable is doing it silently.
+
+- **A packet's worth of reverts: one per acceptance clause, not one per
+  packet.** P47 ran three (tick scaling removed → only the 3 tick tests fail;
+  bounds check removed → only the range test fails, showing the legacy
+  silent-clamp bug shape verbatim; publication removed → only the 2 wire tests
+  fail). The value is the *disjointness* — it proves each test is pinned to its
+  own guard rather than coincidentally green. Scripted backup-restore (`cp` to
+  `$TEMP`, patch via a python one-liner, `cp` back) avoids the
+  `git checkout --` traps in
+  [revert-verification-loses-uncommitted-fmt](revert-verification-loses-uncommitted-fmt.md).
