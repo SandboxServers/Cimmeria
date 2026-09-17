@@ -32,6 +32,7 @@
 - [reference_gm_command_wire_spec.md](reference_gm_command_wire_spec.md) — Authoritative wire shapes for ~125 SGW GM commands; SGWGmPlayer.def + Ghidra Event_NetOut_* anchors
 - [reference_world_space_gate_wire_spec.md](reference_world_space_gate_wire_spec.md) — CAT-O wire shapes + Ghidra anchors + server-side authority sources for gate/ring/region/movie/system-options
 - [reference_cell_method_entity_id_authority.md](reference_cell_method_entity_id_authority.md) — Cell-method entity_id is overwritten with session player_eid in cell_arms.rs
+- [exploit_movement_bypass_nan_poisoning.md](exploit_movement_bypass_nan_poisoning.md) — found and fixed in the onPhysics bypass (2026-09-17): a bypass branch that skips the finite-coordinate gate lets NaN in last_valid permanently disable teleport-detection for that entity; general pattern for reviewing any future movement-validator bypass
 
 ## Recurring exploit classes (rule-of-thumb anchors)
 

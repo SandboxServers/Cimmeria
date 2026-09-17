@@ -47,6 +47,7 @@
 //! - [`server`] — server / maintenance (`save`, `loglevel`, …).
 //! - [`spawn`] — spawn persistence (`savespawn`, `delspawn`, …).
 //! - [`patrol`] — FanMMORPG patrol authoring (`path_add`, `path_assign`, …).
+//! - [`travel`] — player-administration travel (`gotoxyz`).
 //!
 //! The framework itself splits into:
 //! - [`registry`] — the [`Spec`]/[`Target`] types + the static `COMMANDS` table.
@@ -71,6 +72,7 @@ mod seed;
 mod server;
 mod spawn;
 mod stats;
+mod travel;
 
 #[cfg(test)]
 mod tests;
