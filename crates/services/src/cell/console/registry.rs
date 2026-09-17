@@ -164,6 +164,13 @@ pub(crate) static COMMANDS: &[Spec] = &[
     ),
     // ── F. granular stat readouts ──────────────────────────────────────────────
     spec(
+        "stats",
+        0,
+        0,
+        Target::Being,
+        "Show basic health/focus stats of the target",
+    ),
+    spec(
         "primarystats",
         0,
         0,

@@ -46,4 +46,31 @@ command to Rust. Recurring judgment calls worth remembering:
   matching `std::f32::consts::*` item; it's the same real number, just
   expressed correctly.
 
+- **The `Option<u32>` "fall back to caller when no target"-dead-code pattern
+  recurs across every `Target::Being`/`Target::Mob`/`Target::Spawnable`
+  handler, not just the ones P02 happened to touch.** `dispatch::resolve_target`
+  (`crates/services/src/cell/console/dispatch.rs`) returns `Err` before `exec`
+  is ever called for any typed (non-`Target::None`) spec with no current
+  selection — it only ever returns `Ok(None)` for `Target::None` commands. So
+  any handler behind a typed spec that still takes `target_id: Option<u32>`
+  with a `.unwrap_or(caller_id)`/similar fallback has dead code; check for
+  this pattern proactively in every packet that touches an existing typed
+  handler, not just when a reviewer flags it. Fix: change the signature to
+  take the id directly (`target: u32`) and `.expect("Target::X guarantees a
+  resolved target")`-unwrap at the `dispatch.rs` call site — P02 set the
+  precedent in `query.rs`, P03 repeated it in `stats.rs`.
+
+- **`StatList` (`crates/entity/src/stats/stat_list.rs`) has no removal API,
+  and `CellEntity::new` unconditionally calls `StatList::new()`, which
+  populates every stat id currently used anywhere in the `.primarystats`
+  family.** This means any "missing stat" / "stat absent from the block"
+  acceptance criterion in this campaign cannot be satisfied by a real entity
+  fixture built from `crates/services` alone — there is no public way to
+  remove an entry once inserted. Don't spend time hunting for a fixture trick;
+  either test the absent-stat formatting logic as a unit test on the
+  extracted formatting function directly (P03's approach — see
+  `crates/services/src/cell/console/stats.rs`'s `format_stat_line`), or flag
+  a proposed small `StatList::remove` addition in the handoff without adding
+  it unasked (it's outside `crates/services`-scoped packets' owned paths).
+
 See also [test-file-split-without-touching-mod-rs](test-file-split-without-touching-mod-rs.md).
