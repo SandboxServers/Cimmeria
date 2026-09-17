@@ -201,8 +201,17 @@ pub(crate) async fn exec(
             .await
         }
         // F. stat dumps
-        "primarystats" | "speedstats" | "armorstats" | "qrstats" | "absorbstats"
-        | "stealthstats" => stats::show(name, caller_id, target_id, tx, space_mgr).await,
+        "stats" | "primarystats" | "speedstats" | "armorstats" | "qrstats" | "absorbstats"
+        | "stealthstats" => {
+            stats::show(
+                name,
+                caller_id,
+                target_id.expect("Target::Being guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
         // A. entity authoring
         "tag" | "name" | "alignment" | "nameid" | "staticmesh" | "bodyset" | "eventset"
         | "interactiontype" | "lookat" | "visible" | "setcombatant" | "unsetcombatant"
