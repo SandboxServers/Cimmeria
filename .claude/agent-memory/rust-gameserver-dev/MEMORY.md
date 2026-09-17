@@ -49,6 +49,10 @@
 
 - [witness-entity-method-dual-fn.md](witness-entity-method-dual-fn.md) — `WitnessEntityMethod` has TWO `witness_entity_method` fns (logging wrapper in aoi_dispatch.rs + emitter in aoi.rs); both need signature changes. idbase via `entity_is_player` (61 player / 62 NPC, matters for method idx ≥61).
 
+## Orientation / position
+
+- [cell-entity-direction-semantics.md](cell-entity-direction-semantics.md) — **read before any orientation code.** `direction` is `[pitch, yaw, roll]` RADIANS for players AND NPCs (the struct doc comment is wrong); `update_entity_position`'s `[i8; 3]` param zeroes facing for 6 callers; `FORCED_POSITION` carries no angles; inbound client direction is never unpacked (live bug); `EntityMoved` carries direction every tick so rotation needs no fan-out.
+
 ## Dependency bumps
 
 - [egui-eframe-split-version-bumps.md](egui-eframe-split-version-bumps.md) — dependabot bumps `egui` and `eframe` separately; the egui-only PR is a no-op for the launcher (two egui versions coexist in the lock) and defers all API breakage to the eframe PR. Launcher clippy only runs in the Windows job of `launcher-build.yml`.
@@ -63,4 +67,4 @@
 
 ## legacy-command-parity campaign
 
-- [legacy-command-parity-scoping-judgment.md](legacy-command-parity-scoping-judgment.md) — recurring judgment calls when porting a legacy dot command: verify a packet's "read-only reference" file list actually contains the real logic (P02's `.facing` geometry was in a file NOT in the initial read set); don't port a legacy enum/name table onto a Rust field whose numbering has already diverged (check the field's own doc comment first); confirm a named "stop condition" by reading the actual struct, don't just assume; prefer a genuinely scoped-down partial implementation over blocking the whole command.
+- [legacy-command-parity-scoping-judgment.md](legacy-command-parity-scoping-judgment.md) — recurring judgment calls when porting a legacy dot command: verify a packet's "read-only reference" file list actually contains the real logic (P02's `.facing` geometry was in a file NOT in the initial read set); don't port a legacy enum/name table onto a Rust field whose numbering has already diverged (check the field's own doc comment first); confirm a named "stop condition" by reading the actual struct, don't just assume; prefer a genuinely scoped-down partial implementation over blocking the whole command; read a shared helper's SIGNATURE before copying a sibling command's call verbatim (P18 — the sibling may carry a latent bug); a legacy `x=None, y=None, z=None` signature gated on one arg is a partial-tuple bug to correct, not a feature.
