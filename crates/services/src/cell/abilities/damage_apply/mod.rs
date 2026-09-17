@@ -391,7 +391,7 @@ pub(super) async fn apply_damage_to_target(
                         entity_id,
                         xp_amount: xp,
                         // Mob-kill XP is not GM-sourced — no GM feedback line.
-                        notify_gm: false,
+                        gm_feedback_to: None,
                     })
                     .await
                 {
