@@ -108,6 +108,39 @@ See also [test-file-split-without-touching-mod-rs](test-file-split-without-touch
   changes anywhere. The parent's own `mod registry;` declaration needs zero
   edits either (`x.rs` → `x/mod.rs` resolves identically).
 
+- **The campaign's mandatory "controlled negative run" has a silent trap:
+  restoring the real implementation with `Copy-Item <backup> <file>` also
+  restores the *backup's* mtime**, which is older than the artifact Cargo
+  just built from the stub. Cargo then decides the crate is unchanged and
+  re-runs the **stale stub test binary**, so the restored (correct) code
+  still shows the negative run's failures and it looks like the restore
+  failed. `git diff` and file hashes both say the file is fine, which makes
+  it maximally confusing. Fix: `(Get-Item $f).LastWriteTime = Get-Date`
+  after any backup-restore, before re-running tests. (For a *pure addition*
+  packet, the "revert" to run is a deliberately naive body — e.g.
+  case-insensitive / first-match-wins / failure-shapes-collapsed — not a
+  deletion; expect only the contract-specific tests to fail and say in the
+  handoff why the happy-path ones correctly still pass.)
+
+- **When a lookup/query returns "which one of several," return a variant,
+  never "the first one."** `SpaceManager.spaces` and `SpaceInstance.entities`
+  are both `HashMap`s, so first-match-wins is genuinely nondeterministic per
+  process, not merely arbitrary-looking. P44's `PlayerNameLookup::Ambiguous
+  { entity_ids }` (sorted ids + `tracing::error!`) is the shape to copy for
+  any "this invariant should hold, but prove we don't silently paper over it"
+  acceptance criterion.
+
+- **`CellEntity::character_name` is the player-only display name and is
+  written by exactly one site** — the `BaseToCellMsg::InitPlayerState` arm in
+  `cell/service/base_messages/mod.rs`. NPCs use the separate `npc_name`.
+  Message ordering is `CreateEntity` → `ConnectEntity` → `InitPlayerState`,
+  so a cell entity has **no name at all** between create and init — which is
+  why a player mid-gate-travel is invisible to any name-keyed cell lookup
+  (`create_entity` builds a fresh `CellEntity` with `character_name: None`).
+  Any "find player by name" feature inherits that window; legacy's
+  `PlayersByName` dict did not, because its key survived until
+  `disconnected()`.
+
 - **When a command reuses an existing native handler's core mechanism
   (`update_entity_position` + `note_authorized_teleport`, gated
   `TeleportPlayer` for players only), grep the native handler's own test
