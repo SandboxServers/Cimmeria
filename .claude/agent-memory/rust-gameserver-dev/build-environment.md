@@ -40,6 +40,14 @@ Replace `<main-checkout>` with your own main checkout's absolute path (e.g.
 worktree) — it is not portable across machines/users. See
 [[concurrent-claude-sessions]] for the wider worktree-isolation workflow.
 
+## A build can leave an unrelated `Cargo.lock` diff
+
+Running any cargo command may re-resolve a transitive patch version (seen
+2026-09-17: `thiserror 2.0.19` → `2.0.20`, two lines). It is nothing to do
+with your change. Check `git diff --stat Cargo.lock` before staging and
+`git checkout -- Cargo.lock` if the diff isn't yours — `git add <dir>` won't
+catch it, but `git add -A` or a careless `git commit -a` would.
+
 ## Cargo through the Bash tool looks hung when it isn't
 
 Cargo's progress goes to stderr, which the Bash tool captures block-buffered
