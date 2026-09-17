@@ -60,7 +60,7 @@ fn ephemeral_port() -> u16 {
 fn self_signed_pem() -> (String, String) {
     let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
         .expect("self-signed cert");
-    (certified.cert.pem(), certified.key_pair.serialize_pem())
+    (certified.cert.pem(), certified.signing_key.serialize_pem())
 }
 
 #[tokio::test]
