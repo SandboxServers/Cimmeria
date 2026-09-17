@@ -103,7 +103,7 @@ See also [test-file-split-without-touching-mod-rs](test-file-split-without-touch
   to every *descendant* module of its defining module, and the new
   submodule is a descendant. P26 split `console/registry.rs` (698/700 hard
   cap) into `registry/mod.rs` (the `Target`/`Spec` types + `spec()` builder)
-  + `registry/commands.rs` (just the `COMMANDS` array) this way — `commands.rs`
+  and `registry/commands.rs` (just the `COMMANDS` array) this way — `commands.rs`
   reaches `spec`/`Spec`/`Target` via a plain `use super::{...}`, no `pub`
   changes anywhere. The parent's own `mod registry;` declaration needs zero
   edits either (`x.rs` → `x/mod.rs` resolves identically).
