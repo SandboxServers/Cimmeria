@@ -24,14 +24,9 @@ mod service;
 pub mod space_manager;
 // Crate-internal: `transfer_player_to_space` is a destructive, unauthenticated
 // entry point (privilege is enforced by the console dispatch layer above it),
-// so it must not be reachable from outside this crate.
-//
-// `dead_code` is allowed because the primitive currently has no production
-// caller — the `.goto`/`.summon`/`.gotolocation` command adapters that consume
-// it are the next packet. Remove this attribute when they land; keeping the
-// module crate-private and silencing the lint is the right trade against
-// leaving it `pub` just to keep the compiler quiet.
-#[allow(dead_code)]
+// so it must not be reachable from outside this crate. Its production callers
+// are the `.goto`/`.summon`/`.gotolocation` console commands in
+// `cell::console::travel` (P46).
 pub(crate) mod space_transfer;
 pub mod spawner;
 
