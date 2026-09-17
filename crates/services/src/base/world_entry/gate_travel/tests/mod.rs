@@ -250,6 +250,11 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
 /// `gate_travel_persist_branch_is_a_no_op_when_active_player_id_missing`
 /// live-DB sibling test below pins the stronger property that the
 /// real DB rows are unchanged.
+///
+/// The abort also ends the session: by the time this handler runs the cell
+/// has already removed the entity from its origin space, so leaving the
+/// client connected would strand it bound to an entity that is in no space at
+/// all. See `transfer::aborted_transfer_ends_the_session_rather_than_stranding_an_unspaced_client`.
 #[tokio::test]
 async fn gate_travel_without_active_player_id_aborts_before_persist() {
     // Build a non-connectable PgPool. The test hits the
@@ -296,14 +301,16 @@ async fn gate_travel_without_active_player_id_aborts_before_persist() {
         result.is_ok(),
         "gate travel returns Ok on the fail-closed abort path"
     );
-    // pending_world_entry MUST NOT be set (we aborted before
-    // reaching the populate-state block).
-    let map = connected.lock().unwrap();
+    // The session is gone, so `pending_world_entry` cannot have been
+    // populated — a surviving session here would mean either that the
+    // populate-state block ran (the wrong-character corruption window is
+    // still open) or that the abort left a client stranded on an entity that
+    // is in no space.
     assert!(
-        map.get(&addr).unwrap().pending_world_entry.is_none(),
-        "fail-closed abort must NOT populate pending_world_entry — \
-         a populated entry here means the wrong-character corruption \
-         window is still open"
+        connected.lock().unwrap().get(&addr).is_none(),
+        "fail-closed abort must end the session: the cell already tore the \
+         entity out of its origin space, so a surviving session is a client \
+         bound to an entity that exists nowhere"
     );
 }
 

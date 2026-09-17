@@ -26,6 +26,61 @@ use super::space_registry::resolve_space_id_fallback;
 #[cfg(test)]
 mod tests;
 
+/// Last-resort teardown for a transfer that cannot be completed *after* the
+/// cell has already removed the entity from its origin space.
+///
+/// At that point the player's entity exists in no space: their position
+/// updates are dropped as `EntityMissing`, nobody can see them, and nothing
+/// on this side can put them back — the base is never told the origin space
+/// id, only the destination. Leaving the session alive would strand them
+/// permanently, so the session is ended and a reconnect rebuilds the player
+/// from the DB.
+///
+/// This is deliberately *not* `destroy_client_entities`: that helper needs the
+/// `EntityManager`, which the cell-dispatch chain does not carry. The
+/// consequence is that this path leaks the account/player entity ids instead
+/// of returning them to the free list. On an already-catastrophic branch a
+/// leaked id (which simply never gets recycled) is much cheaper than the
+/// alternative, and it cannot strand anybody.
+async fn abandon_unspaced_session(
+    addr: SocketAddr,
+    entity_id: u32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+) {
+    if let Ok(mut clients) = connected.lock() {
+        if let Some(c) = clients.get(&addr) {
+            // Stop the tick-sync loop before the session goes, same as every
+            // other teardown path.
+            c.cancelled.store(true, Ordering::Relaxed);
+        }
+        clients.remove(&addr);
+    }
+    // Only drop the reverse mapping if it still points at *this* session —
+    // the id may already have been recycled to somebody else.
+    {
+        let mut map = entity_to_addr.lock().unwrap();
+        if map.get(&entity_id) == Some(&addr) {
+            map.remove(&entity_id);
+        }
+    }
+    if let Some(tx) = cell_tx {
+        if let Err(e) = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await {
+            tracing::error!(
+                entity_id, %addr,
+                "GateTravel: DisconnectEntity send failed while abandoning an \
+                 un-spaced session ({e}) — cell may keep stale player state"
+            );
+        }
+    }
+    tracing::warn!(
+        entity_id, %addr,
+        "GateTravel: session ended after an unrecoverable transfer abort — \
+         the client must reconnect"
+    );
+}
+
 /// Handle a gate travel request from CellService.
 ///
 /// This re-uses the world entry flow (teardown -> create player -> enter world):
@@ -111,23 +166,37 @@ pub(crate) async fn handle_gate_travel(
     // reload the right character, so the whole transfer is refused here.
     //
     // This check used to sit *after* the `CreateEntity` round-trip below.
-    // That ordering meant an abort left the cell entity already moved into
-    // the destination space while the client never received RESET_ENTITIES
-    // and never got a `pending_world_entry` — a desynced player with no way
-    // back. Validate first; tear down second. (The cell half of the flow has
-    // already removed the entity from its origin space by the time we get
-    // here, so `CreateEntity` is the point of no return on this side.)
+    // That ordering is not "wrong and this is right" — it is a different
+    // failure shape: the old one aborted with the entity already in the
+    // DESTINATION space (present but desynced), this one aborts with the
+    // entity in NO space, because the cell half of the flow removed it from
+    // its origin before we were called. Neither is recoverable in place and
+    // neither corrupts the DB; checking first is still the right call because
+    // `CreateEntity` is the point of no return on this side and there is no
+    // reason to cross it when we already know the transfer must fail.
+    //
+    // Because an aborted transfer leaves a live client bound to an entity
+    // that is in no space at all — every position update it sends would be
+    // dropped as `EntityMissing`, invisible to everyone, forever — the abort
+    // ends the session so a reconnect rebuilds the player cleanly. That is
+    // the only recovery available at this seam: the base cannot re-create the
+    // entity because it was never told the origin space id.
     let active_player_id: i32 = {
-        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        match clients.get(&addr).and_then(|c| c.active_player_id) {
+        let maybe_pid = {
+            let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+            clients.get(&addr).and_then(|c| c.active_player_id)
+        };
+        match maybe_pid {
             Some(pid) => pid,
             None => {
                 tracing::error!(
                     %addr, account_id, world = %target_world_name,
                     "GateTravel: no active_player_id cached — refusing the transfer \
                      (would risk wrong-character corruption / loading the wrong character \
-                     on multi-character accounts)"
+                     on multi-character accounts); ending the session because the entity \
+                     is already out of its origin space"
                 );
+                abandon_unspaced_session(addr, entity_id, connected, entity_to_addr, cell_tx).await;
                 return Ok(());
             }
         }
@@ -171,9 +240,26 @@ pub(crate) async fn handle_gate_travel(
     // the cell may well have processed *before* our `CreateEntity`, leaving a
     // clientless ghost entity sitting in the destination space forever. Reap
     // it explicitly instead of leaking it.
+    //
+    // "Mapped to a different addr" is NOT the same as "unmapped", and only the
+    // latter is safe to reap. `EntityManager::allocate_id` recycles ids from a
+    // free list, and `destroy_client_entities` frees ours on the way out — so a
+    // second client can legitimately be handed this exact id and re-register it
+    // while we are still blocked on the oneshot. Reaping then would destroy a
+    // live player's entity, which is far worse than leaking a dead one. Bail
+    // loudly instead and let the new session keep its entity.
     if cell_tx.is_some() {
-        let addr_still_mapped =
-            entity_to_addr.lock().unwrap().get(&entity_id).copied() == Some(addr);
+        let mapped_addr = entity_to_addr.lock().unwrap().get(&entity_id).copied();
+        if mapped_addr.is_some() && mapped_addr != Some(addr) {
+            tracing::error!(
+                entity_id, %addr, ?mapped_addr, world = %target_world_name,
+                "GateTravel: entity id was recycled to another session mid-transfer — \
+                 abandoning the transfer WITHOUT reaping (destroying this entity now \
+                 would strand the live player who owns the id)"
+            );
+            return Ok(());
+        }
+        let addr_still_mapped = mapped_addr == Some(addr);
         let session_still_open = connected
             .lock()
             .map_err(|_| "connected lock poisoned")?

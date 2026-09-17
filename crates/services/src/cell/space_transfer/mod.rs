@@ -167,6 +167,19 @@ pub enum TransferOutcome {
 ///
 /// See the module docs for the ordering contract. On `Err`, the entity's
 /// origin space, position and AoI are untouched.
+///
+/// # Load-bearing invariant
+///
+/// This function holds `&mut SpaceManager` across **both** of its `.await`
+/// points, and that exclusive borrow is the only thing closing the
+/// validate → enqueue → destroy window. Nothing else can mutate the space
+/// tables in between, so the destination instance validated in phase 1 is
+/// still the one named on the message sent in phase 3, and the entity torn
+/// down in phase 4 is still the one inspected in phase 1.
+///
+/// A refactor that takes `&SpaceManager` and re-acquires the mutable borrow
+/// later, or that splits the phases across a `select!` / spawned task, silently
+/// reopens that window — and no existing test would fail. Keep the borrow.
 #[tracing::instrument(
     name = "space_transfer.execute",
     level = "info",
@@ -193,18 +206,15 @@ pub async fn transfer_player_to_space(
     // the one `get_entity` itself resolves through, so it — not the entity's
     // own cached `space_id` field — is what the SameSpace comparison below has
     // to be made against.
-    let (is_player, player_id) = match space_mgr.get_entity(entity_id) {
-        Some(e) => (e.is_player, e.player_id),
-        None => {
-            tracing::warn!(entity_id, "space_transfer: subject entity not found");
-            return Err(TransferRejected::EntityNotFound);
-        }
-    };
-    let Some(origin_space_id) = space_mgr.get_entity_space_id(entity_id) else {
-        tracing::warn!(
-            entity_id,
-            "space_transfer: subject entity is not in any space"
-        );
+    // Both reads come from the same borrow and `get_entity` resolves through
+    // that same index, so they cannot disagree — one rejection arm covers them.
+    let subject = space_mgr.get_entity_space_id(entity_id).zip(
+        space_mgr
+            .get_entity(entity_id)
+            .map(|e| (e.is_player, e.player_id)),
+    );
+    let Some((origin_space_id, (is_player, player_id))) = subject else {
+        tracing::warn!(entity_id, "space_transfer: subject entity not found");
         return Err(TransferRejected::EntityNotFound);
     };
 
@@ -276,6 +286,19 @@ pub async fn transfer_player_to_space(
     }
 
     // ── Phase 4: teardown. ──
+    // Cancel any open trade FIRST. `destroy_entity` does not clean trade
+    // state, which is why both lifecycle arms (`DestroyEntity` and
+    // `DisconnectEntity`) call this helper explicitly — and it has to run
+    // *before* the entity goes, because it early-returns as soon as
+    // `get_entity` misses. Without it, a `.summon` of a player mid-trade
+    // leaves their partner holding a `trade_partner_entity_id` pointing at a
+    // freed id, with no `onTradeResults(Cancelled)` — a stranded session that
+    // only a relog clears.
+    //
+    // It runs after the confirmed enqueue, so the "a rejection changes
+    // nothing" contract above still holds: by this point the transfer is
+    // committed.
+    super::cell_methods::player::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr).await;
     space_mgr.destroy_entity(entity_id);
 
     tracing::info!(

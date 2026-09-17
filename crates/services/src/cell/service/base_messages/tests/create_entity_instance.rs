@@ -182,6 +182,29 @@ async fn stale_destination_space_id_degrades_to_world_name_resolution() {
         Some(joined),
         "the entity must end up in the freshly allocated instance, not in no space"
     );
+    assert_eq!(
+        mgr.world_name_for_space(joined),
+        Some(INSTANCED),
+        "the fresh instance must belong to the world the message named"
+    );
+
+    // The degraded path allocates a genuinely NEW instanced space, so it must
+    // be announced exactly like any other fresh instance. This hinges on
+    // `is_instanced` being derived from `joined_instance.is_none()` rather
+    // than `destination_space_id.is_none()` — a one-token difference whose
+    // symptom is a live instance the BaseApp was never told about, and which
+    // nothing else in this suite would catch.
+    let mut space_data = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::SpaceData { space_id, .. } = msg {
+            space_data.push(space_id);
+        }
+    }
+    assert_eq!(
+        space_data,
+        vec![joined],
+        "the freshly allocated fallback instance must be announced to base exactly once"
+    );
 }
 
 /// A `destination_space_id` pointing at a live space of a *different* world

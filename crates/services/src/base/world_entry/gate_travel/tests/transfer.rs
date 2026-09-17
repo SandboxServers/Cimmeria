@@ -18,6 +18,7 @@
 
 use super::*;
 use crate::cell::messages::BaseToCellMsg;
+use crate::test_support::TestTransport;
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -27,6 +28,9 @@ const DEST_WORLD: &str = "Castle_CellBlock";
 
 struct Fixture {
     transport: Arc<dyn Transport>,
+    /// Typed handle onto the same transport, so "did RESET_ENTITIES go out?"
+    /// can be asserted directly rather than inferred from `pending_world_entry`.
+    sent: Arc<TestTransport>,
     addr: SocketAddr,
     connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -41,8 +45,10 @@ async fn fixture(port: u16) -> Fixture {
         m.insert(ENTITY_ID, addr);
         m
     }));
+    let sent = Arc::new(TestTransport::new());
     Fixture {
-        transport: make_socket().await,
+        transport: sent.clone(),
+        sent,
         addr,
         connected,
         entity_to_addr,
@@ -137,6 +143,12 @@ async fn destination_space_id_reaches_create_entity_and_pending_world_entry() {
     );
     assert_eq!(entry.world_name, DEST_WORLD);
     assert_eq!(entry.pos, [11.0, 22.0, 33.0]);
+    drop(map);
+    assert_eq!(
+        f.sent.send_count_to(f.addr),
+        1,
+        "the committed transfer must send exactly one packet (RESET_ENTITIES) to the traveller"
+    );
 }
 
 /// The space the *cell* actually resolved wins, not the one base asked for.
@@ -200,6 +212,13 @@ async fn pending_world_entry_uses_the_space_the_cell_replied_with() {
 /// it used to live) and the cell entity is moved into the destination world
 /// while the client never receives `RESET_ENTITIES` and never gets a
 /// `pending_world_entry` — a desynced player with no way back.
+///
+/// The abort is *not* a clean no-op, and this test must not pretend it is:
+/// by the time the handler runs, the cell has already torn the entity out of
+/// its origin space, and the base cannot put it back (it was never told the
+/// origin space id). So the abort ends the session — see
+/// [`aborted_transfer_ends_the_session_rather_than_stranding_an_unspaced_client`],
+/// which is the half of this contract that keeps the player recoverable.
 #[tokio::test]
 async fn missing_active_player_id_aborts_before_create_entity_is_sent() {
     let f = fixture(55732).await;
@@ -240,35 +259,117 @@ async fn missing_active_player_id_aborts_before_create_entity_is_sent() {
     )
     .expect("the fail-closed abort returns Ok");
 
-    match cell_rx.try_recv() {
-        Err(mpsc::error::TryRecvError::Empty) => {}
-        Ok(BaseToCellMsg::CreateEntity { .. }) => panic!(
-            "fail-closed abort must happen BEFORE the cell is told to create \
-             the destination entity"
-        ),
-        Ok(_) => panic!("the aborted transfer must not message the cell at all"),
-        Err(e) => panic!("unexpected channel state: {e:?}"),
+    // No CreateEntity. The only thing the cell should hear is the session
+    // teardown the abort performs (asserted in detail by the sibling test).
+    while let Ok(msg) = cell_rx.try_recv() {
+        match msg {
+            BaseToCellMsg::CreateEntity { .. } => panic!(
+                "fail-closed abort must happen BEFORE the cell is told to create \
+                 the destination entity"
+            ),
+            BaseToCellMsg::DisconnectEntity { .. } => {}
+            _ => panic!("the aborted transfer must only tear the session down"),
+        }
     }
     assert!(
-        f.connected
-            .lock()
-            .unwrap()
-            .get(&f.addr)
-            .unwrap()
-            .pending_world_entry
-            .is_none(),
-        "the aborted transfer must not populate pending_world_entry"
+        f.connected.lock().unwrap().get(&f.addr).is_none(),
+        "the aborted transfer must not leave a live session behind"
+    );
+    assert!(
+        f.sent.is_empty(),
+        "an aborted transfer must not send RESET_ENTITIES — tearing the client's \
+         entity system down and then never re-entering is the worst of both"
     );
 }
 
-/// Disconnect while the create round-trip is in flight. `entity_to_addr` is
-/// cleared by `destroy_client_entities` before it queues its own
-/// `DisconnectEntity`, so the cell may process that teardown *before* our
-/// `CreateEntity` — leaving a clientless entity parked in the destination
-/// space forever. It has to be reaped explicitly.
+/// The un-spaced recovery contract, and the packet's third acceptance
+/// criterion at its sharpest.
+///
+/// When the fail-closed guard fires, the cell has *already* removed the entity
+/// from its origin space and the base has no way to restore it. Simply
+/// returning would leave a connected client bound to an entity that is in no
+/// space at all: every position update it sends is dropped as `EntityMissing`,
+/// nobody can see it, and nothing ever fixes it. So the abort ends the
+/// session, which is the one recovery available here — the client reconnects
+/// and is rebuilt from the DB.
+///
+/// Regression shape: delete the `abandon_unspaced_session` call and this test
+/// fails with a live session still in `connected` — the "never leave the
+/// entity un-spaced" criterion silently violated on a path whose other test
+/// still passes.
 #[tokio::test]
-async fn disconnect_during_create_round_trip_reaps_the_destination_entity() {
-    let f = fixture(55733).await;
+async fn aborted_transfer_ends_the_session_rather_than_stranding_an_unspaced_client() {
+    let f = fixture(55735).await;
+    f.connected
+        .lock()
+        .unwrap()
+        .get_mut(&f.addr)
+        .unwrap()
+        .active_player_id = None;
+    let (cell_tx, mut cell_rx) = mpsc::channel::<BaseToCellMsg>(8);
+
+    timeout(
+        Duration::from_secs(5),
+        handle_gate_travel(
+            ENTITY_ID,
+            DEST_WORLD,
+            [0.0; 3],
+            [0.0; 3],
+            None,
+            Some(DEST_SPACE),
+            &f.transport,
+            &f.connected,
+            &f.entity_to_addr,
+            &Some(cell_tx.clone()),
+            &None,
+        ),
+    )
+    .await
+    .expect("the abort must return promptly")
+    .expect("the abort returns Ok");
+
+    assert!(
+        f.connected.lock().unwrap().get(&f.addr).is_none(),
+        "an unrecoverable abort must end the session — leaving it live strands a \
+         client whose entity is in no space, with no way back short of a relog \
+         they have no reason to attempt"
+    );
+    assert!(
+        f.entity_to_addr.lock().unwrap().get(&ENTITY_ID).is_none(),
+        "the reverse mapping must go with the session"
+    );
+
+    let mut told_cell = false;
+    while let Ok(msg) = cell_rx.try_recv() {
+        if let BaseToCellMsg::DisconnectEntity { entity_id } = msg {
+            assert_eq!(entity_id, ENTITY_ID);
+            told_cell = true;
+        }
+    }
+    assert!(
+        told_cell,
+        "the cell must be told to drop the player, or it keeps stale session state"
+    );
+}
+
+/// What the session bookkeeping looks like by the time the create round-trip
+/// resolves.
+enum MidTransfer {
+    /// `destroy_client_entities` ran in full: mapping and session both gone.
+    FullyDisconnected,
+    /// Only the reverse mapping was pulled (the order
+    /// `destroy_client_entities` actually does it in).
+    MappingDropped,
+    /// Only the session entry was pulled.
+    SessionDropped,
+    /// The id was recycled: it is mapped again, but to a *different* session.
+    RecycledToAnotherSession,
+}
+
+/// Drive a transfer, mutate the session bookkeeping while the create
+/// round-trip is in flight, and report whether the entity got reaped.
+async fn reap_outcome_when(port: u16, what: MidTransfer) -> bool {
+    let f = fixture(port).await;
     let (cell_tx, mut cell_rx) = mpsc::channel::<BaseToCellMsg>(8);
 
     let connected = Arc::clone(&f.connected);
@@ -291,7 +392,7 @@ async fn disconnect_during_create_round_trip_reaps_the_destination_entity() {
         .await
     });
 
-    // Take the create, then simulate the disconnect landing before we reply.
+    // Take the create, then apply the interleaving before replying.
     let msg = timeout(Duration::from_secs(2), cell_rx.recv())
         .await
         .expect("CreateEntity must not hang")
@@ -299,30 +400,89 @@ async fn disconnect_during_create_round_trip_reaps_the_destination_entity() {
     let BaseToCellMsg::CreateEntity { reply_tx, .. } = msg else {
         panic!("expected CreateEntity");
     };
-    f.entity_to_addr.lock().unwrap().remove(&ENTITY_ID);
-    f.connected.lock().unwrap().remove(&f.addr);
+    match what {
+        MidTransfer::FullyDisconnected => {
+            f.entity_to_addr.lock().unwrap().remove(&ENTITY_ID);
+            f.connected.lock().unwrap().remove(&f.addr);
+        }
+        MidTransfer::MappingDropped => {
+            f.entity_to_addr.lock().unwrap().remove(&ENTITY_ID);
+        }
+        MidTransfer::SessionDropped => {
+            f.connected.lock().unwrap().remove(&f.addr);
+        }
+        MidTransfer::RecycledToAnotherSession => {
+            let other: SocketAddr = "127.0.0.1:1".parse().unwrap();
+            f.entity_to_addr.lock().unwrap().insert(ENTITY_ID, other);
+            f.connected.lock().unwrap().remove(&f.addr);
+            f.connected.lock().unwrap().insert(other, make_state());
+        }
+    }
     let _ = reply_tx.send(DEST_SPACE);
 
     timeout(Duration::from_secs(2), handle)
         .await
         .expect("gate travel must not hang")
         .unwrap()
-        .expect("a mid-transfer disconnect is handled, not propagated");
+        .expect("a mid-transfer session change is handled, not propagated");
 
-    match timeout(Duration::from_secs(2), cell_rx.recv())
-        .await
-        .expect("DestroyEntity must not hang")
-    {
-        Some(BaseToCellMsg::DestroyEntity { entity_id }) => assert_eq!(
-            entity_id, ENTITY_ID,
-            "the ghost entity in the destination space must be reaped"
-        ),
-        _ => panic!(
-            "a mid-transfer disconnect must reap the destination entity with \
-             DestroyEntity — otherwise it sits in the destination space with \
-             no client forever"
-        ),
+    let mut reaped = false;
+    while let Ok(msg) = cell_rx.try_recv() {
+        if let BaseToCellMsg::DestroyEntity { entity_id } = msg {
+            assert_eq!(entity_id, ENTITY_ID);
+            reaped = true;
+        }
     }
+    reaped
+}
+
+/// Disconnect while the create round-trip is in flight. `entity_to_addr` is
+/// cleared by `destroy_client_entities` before it queues its own
+/// `DisconnectEntity`, so the cell may process that teardown *before* our
+/// `CreateEntity` — leaving a clientless entity parked in the destination
+/// space forever. It has to be reaped explicitly.
+///
+/// Each half of the condition is exercised on its own: checking only the
+/// "both gone" case cannot tell `||` from `&&`.
+#[tokio::test]
+async fn disconnect_during_create_round_trip_reaps_the_destination_entity() {
+    assert!(
+        reap_outcome_when(55733, MidTransfer::FullyDisconnected).await,
+        "a completed disconnect must reap the ghost entity"
+    );
+    assert!(
+        reap_outcome_when(55736, MidTransfer::MappingDropped).await,
+        "a dropped entity_to_addr mapping alone must reap — this is the state \
+         destroy_client_entities is in when it queues its DisconnectEntity"
+    );
+    assert!(
+        reap_outcome_when(55737, MidTransfer::SessionDropped).await,
+        "a dropped session alone must reap"
+    );
+}
+
+/// The reap's false-positive guard, and the one case where NOT reaping is the
+/// correct answer.
+///
+/// `EntityManager::allocate_id` recycles ids from a free list, and
+/// `destroy_client_entities` frees ours on the way out. So while we are
+/// blocked on the create oneshot, a second client can legitimately be handed
+/// this exact entity id and register it against their own address. Treating
+/// "mapped to a different addr" like "unmapped" would then send
+/// `DestroyEntity` for a **live player's** entity, leaving them connected, in
+/// no space, invisible, with every position update dropped — strictly worse
+/// than the leak the reap exists to prevent.
+///
+/// Regression shape: collapse the check back to
+/// `mapped != Some(addr) => reap` and this test fails with a `DestroyEntity`
+/// aimed at the new owner's entity.
+#[tokio::test]
+async fn recycled_entity_id_is_never_reaped_out_from_under_its_new_owner() {
+    assert!(
+        !reap_outcome_when(55738, MidTransfer::RecycledToAnotherSession).await,
+        "an entity id remapped to another live session must NOT be destroyed — \
+         that id now belongs to somebody who is still playing"
+    );
 }
 
 /// Disconnect *before* the base ever sees the transfer. The cell has already

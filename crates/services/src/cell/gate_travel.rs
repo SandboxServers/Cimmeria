@@ -116,6 +116,14 @@ pub async fn handle_dial_gate(
         return;
     }
 
+    // Cancel any open trade before the entity goes. `destroy_entity` doesn't
+    // clean trade state, and this helper early-returns once `get_entity`
+    // misses — so gating on it afterwards would be a silent no-op, leaving the
+    // traveller's partner with a dangling `trade_partner_entity_id` and no
+    // `onTradeResults(Cancelled)`. Both lifecycle arms call it for the same
+    // reason; stargate travel is just as much a departure.
+    super::cell_methods::player::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr).await;
+
     // Remove entity from current space (CellService side)
     space_mgr.destroy_entity(entity_id);
 }

@@ -60,7 +60,7 @@ async fn exact_instance_survives_to_the_wire_when_several_are_loaded() {
         "the resolved destination must be instance B exactly"
     );
 
-    match rx.try_recv().expect("GateTravel must be emitted") {
+    match expect_gate_travel(&mut rx) {
         CellToBaseMsg::GateTravel {
             target_world_name,
             destination_space_id,
@@ -143,27 +143,48 @@ async fn instance_belonging_to_another_world_is_rejected() {
 }
 
 /// D15's default for `.gotolocation`: no instance selector, so pick the
-/// first/default loaded instance. For an instanced world with several live
-/// instances that is the lowest space id — space ids are allocated
-/// monotonically, so "lowest" is "oldest", and it is deterministic. Picking
-/// "any" `HashMap` entry would make the destination vary run to run.
+/// first/default loaded instance — the lowest space id, which (ids being
+/// allocated monotonically) is the oldest live instance.
+///
+/// Three instances are stood up and then the *oldest* is emptied, so the
+/// expected answer moves from A to B. That separates the three
+/// implementations that all agree on a static fixture: `.min()` (correct),
+/// "whichever was created first" (a stale cache would still say A), and
+/// "any `HashMap` entry" (which has no reason to say B). Re-running a static
+/// lookup N times proves none of that — `HashMap` iteration order is fixed
+/// for a given map within a process, so an arbitrary-entry bug returns the
+/// same wrong answer every iteration.
 #[tokio::test]
-async fn default_instance_selection_is_the_oldest_loaded_and_is_deterministic() {
+async fn default_instance_selection_follows_the_oldest_live_instance() {
     let mut mgr = make_manager();
     let (space_a, space_b) = two_instances(&mut mgr);
-    assert!(space_a < space_b, "fixture assumes monotonic allocation");
+    let space_c = spawn_player(&mut mgr, 12, INSTANCED, [3.0, 0.0, 3.0]);
+    assert!(
+        space_a < space_b && space_b < space_c,
+        "fixture assumes monotonic allocation"
+    );
     spawn_player(&mut mgr, 1, AGNOS, [0.0; 3]);
 
     let dest = TransferDestination::in_world(INSTANCED, [1.0, 2.0, 3.0]);
-    // Resolution is pure, so hammering it is a cheap determinism check that
-    // doesn't depend on HashMap iteration luck in a single sample.
-    for _ in 0..32 {
-        assert_eq!(
-            resolve_destination_space(&dest, &mgr),
-            Ok(Some(space_a)),
-            "the default instance must be the oldest loaded one, every time"
-        );
-    }
+    assert_eq!(
+        resolve_destination_space(&dest, &mgr),
+        Ok(Some(space_a)),
+        "with A, B and C live the default must be A"
+    );
+
+    // Empty instance A (its only occupant leaves, so `destroy_entity` reaps
+    // the space). The default must follow to B.
+    mgr.destroy_entity(10);
+    assert!(
+        mgr.world_name_for_space(space_a).is_none(),
+        "fixture must actually reap instance A"
+    );
+    assert_eq!(
+        resolve_destination_space(&dest, &mgr),
+        Ok(Some(space_b)),
+        "once A is gone the default must move to B — not stay on a reaped id, \
+         and not jump to an arbitrary live instance"
+    );
 
     let (tx, mut rx) = mpsc::channel(8);
     let outcome = transfer_player_to_space(1, &dest, &tx, &mut mgr)
@@ -172,14 +193,14 @@ async fn default_instance_selection_is_the_oldest_loaded_and_is_deterministic() 
     assert_eq!(
         outcome,
         TransferOutcome::Transferred {
-            space_id: Some(space_a)
+            space_id: Some(space_b)
         }
     );
-    match rx.try_recv().expect("GateTravel must be emitted") {
+    match expect_gate_travel(&mut rx) {
         CellToBaseMsg::GateTravel {
             destination_space_id,
             ..
-        } => assert_eq!(destination_space_id, Some(space_a)),
+        } => assert_eq!(destination_space_id, Some(space_b)),
         other => panic!("expected GateTravel, got {other:?}"),
     }
 }
@@ -225,7 +246,7 @@ async fn instanced_world_with_no_live_instance_defers_allocation_to_the_create_p
     .expect("an empty instanced world is a valid destination");
 
     assert_eq!(outcome, TransferOutcome::Transferred { space_id: None });
-    match rx.try_recv().expect("GateTravel must be emitted") {
+    match expect_gate_travel(&mut rx) {
         CellToBaseMsg::GateTravel {
             target_world_name,
             destination_space_id,

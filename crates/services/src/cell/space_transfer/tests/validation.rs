@@ -209,7 +209,7 @@ async fn accepted_transfer_tears_the_entity_out_and_emits_gate_travel() {
         "an accepted transfer must remove the entity from its origin space"
     );
 
-    match rx.try_recv().expect("GateTravel must be emitted") {
+    match expect_gate_travel(&mut rx) {
         CellToBaseMsg::GateTravel {
             entity_id,
             target_world_name,
