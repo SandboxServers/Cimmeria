@@ -25,8 +25,15 @@ down the entity's space/AoI state" must be implemented cell-side. A
 base-side wrapper is structurally too late.
 
 **Correct ordering for a new cell-side caller:** validate → flush
-bandolier ammo → `tx.send(GateTravel)` *checked* → `destroy_entity`.
-`gmGotoLocation` is the precedent that got this right.
+bandolier ammo → `tx.send(GateTravel)` *checked* → for a **player** subject,
+`cell_methods::player::trade::cancel_trade_on_disconnect(entity_id, tx,
+space_mgr)` → `destroy_entity`. Skipping the trade-cleanup step strands the
+subject's trade partner with a dangling reference to a freed entity id —
+`destroy_entity` alone does not clean trade state (see
+`server-authority-enforcer/reference_cell_teardown_skips_session_state.md`).
+Keep the failed-send early-return's behavior unchanged (a rejected send means
+nothing happened, so there's nothing to clean up). `gmGotoLocation` is the
+precedent that got the ordering right.
 
 ## `find_or_create_space` cannot join an existing instance
 

@@ -23,8 +23,10 @@ only, so a new worktree fails in `cimmeria-entity`'s build script with
 Fix once per worktree:
 
 ```powershell
-cmd /c mklink /J "<worktree>\external" "C:\Users\Steve\source\projects\Cimmeria\external"
+cmd /c mklink /J "<worktree>\external" "<main-checkout>\external"
 ```
+
+Replace `<main-checkout>` with your own main checkout's absolute path (e.g. `git rev-parse --show-toplevel` run from the main checkout, not the worktree) — it is not portable across machines/users.
 
 ## Cargo through the Bash tool looks hung when it isn't
 

@@ -41,7 +41,7 @@ async fn cross_world_teleport_action_emits_gate_travel_with_no_ring_id() {
     // also flushes dirty bandolier ammo before sending GateTravel —
     // we don't assert on that here (the player has no dirty ammo) but
     // it's why we drain rather than just `try_recv`.
-    let mut gate_travel: Option<(u32, String, [f32; 3], [f32; 3], Option<i32>)> = None;
+    let mut gate_travel: Option<(u32, String, [f32; 3], [f32; 3], Option<i32>, Option<u32>)> = None;
     while let Ok(msg) = rx.try_recv() {
         if let CellToBaseMsg::GateTravel {
             entity_id,
@@ -49,7 +49,7 @@ async fn cross_world_teleport_action_emits_gate_travel_with_no_ring_id() {
             position,
             rotation,
             destination_ring_id,
-            destination_space_id: _,
+            destination_space_id,
         } = msg
         {
             gate_travel = Some((
@@ -58,11 +58,17 @@ async fn cross_world_teleport_action_emits_gate_travel_with_no_ring_id() {
                 position,
                 rotation,
                 destination_ring_id,
+                destination_space_id,
             ));
         }
     }
-    let (eid, world, pos, rot, ring_id) =
+    let (eid, world, pos, rot, ring_id, destination_space_id) =
         gate_travel.expect("CrossWorldTeleport action must produce a GateTravel send");
+    assert_eq!(
+        destination_space_id, None,
+        "Action::CrossWorldTeleport has no destination-instance input — must not \
+         silently route to a specific space"
+    );
     assert_eq!(
         eid, 1,
         "GateTravel.entity_id must be the player's entity_id"
