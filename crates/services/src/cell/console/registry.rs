@@ -474,6 +474,21 @@ pub(crate) static COMMANDS: &[Spec] = &[
         Target::Player,
         "Preview a mission's reward set (designId)",
     ),
+    // ── Player grants ───────────────────────────────────────────────────────────
+    spec(
+        "givecash",
+        1,
+        1,
+        Target::Player,
+        "Grant naquadah to the target (amount)",
+    ),
+    spec(
+        "givexp",
+        1,
+        1,
+        Target::Player,
+        "Grant experience to the target (amount)",
+    ),
     // ── G. server / maintenance ────────────────────────────────────────────────
     spec("save", 0, 0, Target::None, "Persist your player entity now"),
     spec(

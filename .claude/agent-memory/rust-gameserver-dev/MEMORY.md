@@ -37,7 +37,7 @@
 
 ## GM feedback (cell ↔ base)
 
-- [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — definitive (post-commit) GM feedback for base-round-trip commands: cell-side `cell_methods::gm::feedback::send_gm_feedback` (EntityMethodCall→onPlayerCommunication m28 CHAN_FEEDBACK=8) vs base-side `base::gm_feedback::send_gm_feedback_to_client` (send_to_witness_reliable). Shared Grant* msgs gate feedback behind `notify_gm` flag; ON_PLAYER_COMMUNICATION=28.
+- [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — definitive (post-commit) GM feedback for base-round-trip commands: cell-side `cell_methods::gm::feedback::send_gm_feedback` (EntityMethodCall→onPlayerCommunication m28 CHAN_FEEDBACK=8) vs base-side `base::gm_feedback::send_gm_feedback_to_client` (send_to_witness_reliable). `GrantItem`/`RemoveInventoryItem` still gate on `notify_gm: bool`; `GrantCash`/`GrantXP` were changed (P05) to `gm_feedback_to: Option<u32>` so a selected-target grant's feedback goes to the caller, not the target — apply the same pattern to GrantItem/RemoveInventoryItem/GrantExpertise/GrantAppliedSciencePoints when a dot command needs it (P06 `.giveitem` will).
 
 ## AoI / witness fanout
 
