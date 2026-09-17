@@ -1,92 +1,12 @@
-//! The `.`-console command registry: the [`Spec`] / [`Target`] types and the
-//! static [`COMMANDS`] table — the Rust analogue of the legacy
+//! The static [`COMMANDS`] table — the Rust analogue of the legacy
 //! `Command.add([...])` table plus the FanMMORPG `path_*` additions.
+//!
+//! Every name here is reachable from [`crate::cell::console::exec`];
+//! `tests::every_spec_is_dispatched` asserts no entry falls through to the
+//! "not implemented" arm.
 
-use cimmeria_entity::cell_entity::CellEntity;
+use super::{spec, Spec, Target};
 
-/// The kind of selected-target an entity-scoped command requires. Mirrors the
-/// `targetType` column of the legacy `Command` table
-/// (`deprecated/python/cell/ConsoleCommands.py`). The target is always the
-/// caller's currently-selected entity (`current_target_id`, set by
-/// `setTargetID` / `gmSetTarget`).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Target {
-    /// No target needed. The handler operates on the caller (or its own args).
-    /// A current target, if any, is still passed through for the few legacy
-    /// commands that opt to use it.
-    None,
-    /// Any player entity.
-    Player,
-    /// Any NPC entity (`SGWMob` in the legacy hierarchy).
-    Mob,
-    /// Any being (player or NPC — anything with a stat block). The legacy
-    /// `SGWBeing` target type.
-    Being,
-    /// Any spawnable entity. The legacy `SGWSpawnableEntity` target type — in
-    /// practice any entity in the world.
-    Spawnable,
-}
-
-impl Target {
-    /// Does `e` satisfy this target-type requirement?
-    pub(crate) fn matches(self, e: &CellEntity) -> bool {
-        match self {
-            Target::None | Target::Being | Target::Spawnable => true,
-            Target::Player => e.is_player,
-            Target::Mob => !e.is_player,
-        }
-    }
-
-    /// Human label for the "wrong target type" feedback line.
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Target::None => "none",
-            Target::Player => "a player",
-            Target::Mob => "an NPC",
-            Target::Being => "a being",
-            Target::Spawnable => "a spawnable entity",
-        }
-    }
-}
-
-/// One registered console command. The static [`COMMANDS`] table is the single
-/// source of truth for validation (`min`/`max`/`target`) and `.help` text;
-/// execution is routed by name in [`super::exec`].
-pub(crate) struct Spec {
-    /// Command name as typed after the `.` (e.g. `"savespawn"`).
-    pub name: &'static str,
-    /// Minimum positional arg count.
-    pub min: usize,
-    /// Maximum positional arg count (`usize::MAX` = unbounded).
-    pub max: usize,
-    /// Required selected-target type.
-    pub target: Target,
-    /// One-line summary shown by `.help`.
-    pub help: &'static str,
-}
-
-const fn spec(
-    name: &'static str,
-    min: usize,
-    max: usize,
-    target: Target,
-    help: &'static str,
-) -> Spec {
-    Spec {
-        name,
-        min,
-        max,
-        target,
-        help,
-    }
-}
-
-/// The console command registry — the Rust analogue of the legacy
-/// `Command.add([...])` table plus the FanMMORPG `path_*` additions.
-///
-/// Every name here is reachable from [`super::exec`];
-/// `tests::every_spec_is_dispatched` asserts no entry falls through to the
-/// "not implemented" arm.
 pub(crate) static COMMANDS: &[Spec] = &[
     // ── meta ────────────────────────────────────────────────────────────────
     spec(
@@ -139,8 +59,50 @@ pub(crate) static COMMANDS: &[Spec] = &[
         Target::None,
         "Search entity templates by name",
     ),
-    spec("players", 0, 0, Target::None, "List players in your space"),
+    spec(
+        "players",
+        0,
+        0,
+        Target::None,
+        "List players online on this CellApp service",
+    ),
+    spec(
+        "listabilities",
+        0,
+        0,
+        Target::Player,
+        "List the target player's known abilities by name",
+    ),
+    // ── I. entity / combat inspection (read-only) ──────────────────────────────
+    spec(
+        "info",
+        0,
+        1,
+        Target::None,
+        "Show detailed info about the target (selection wins over [entityId])",
+    ),
+    spec(
+        "facing",
+        0,
+        0,
+        Target::Spawnable,
+        "Show facing angle/class and distance to the target",
+    ),
+    spec(
+        "combatinfo",
+        0,
+        0,
+        Target::Mob,
+        "Diagnose combat-readiness issues on the targeted NPC",
+    ),
     // ── F. granular stat readouts ──────────────────────────────────────────────
+    spec(
+        "stats",
+        0,
+        0,
+        Target::Being,
+        "Show basic health/focus stats of the target",
+    ),
     spec(
         "primarystats",
         0,
@@ -431,6 +393,29 @@ pub(crate) static COMMANDS: &[Spec] = &[
         1,
         Target::Player,
         "Preview a mission's reward set (designId)",
+    ),
+    // ── Player grants ───────────────────────────────────────────────────────────
+    spec(
+        "givecash",
+        1,
+        1,
+        Target::Player,
+        "Grant naquadah to the target (amount)",
+    ),
+    spec(
+        "givexp",
+        1,
+        1,
+        Target::Player,
+        "Grant experience to the target (amount)",
+    ),
+    // ── Travel ──────────────────────────────────────────────────────────────────
+    spec(
+        "gotoxyz",
+        3,
+        3,
+        Target::None,
+        "Teleport the target (or yourself) to coordinates in this space (x y z)",
     ),
     // ── G. server / maintenance ────────────────────────────────────────────────
     spec("save", 0, 0, Target::None, "Persist your player entity now"),

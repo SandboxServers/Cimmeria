@@ -74,12 +74,12 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
         CellToBaseMsg::GrantXP {
             entity_id,
             xp_amount,
-            notify_gm,
+            gm_feedback_to,
         } => {
             grant_xp(
                 entity_id,
                 xp_amount,
-                notify_gm,
+                gm_feedback_to,
                 ctx.db_pool,
                 ctx.transport,
                 ctx.connected,
@@ -131,13 +131,13 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             entity_id,
             player_id,
             amount,
-            notify_gm,
+            gm_feedback_to,
         } => {
             grant_cash(
                 entity_id,
                 player_id,
                 amount,
-                notify_gm,
+                gm_feedback_to,
                 ctx.db_pool,
                 ctx.transport,
                 ctx.connected,
@@ -328,7 +328,7 @@ pub(super) async fn mission_update(
 pub(super) async fn grant_xp(
     entity_id: u32,
     xp_amount: u64,
-    notify_gm: bool,
+    gm_feedback_to: Option<u32>,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -337,7 +337,7 @@ pub(super) async fn grant_xp(
     handle_grant_xp(
         entity_id,
         xp_amount,
-        notify_gm,
+        gm_feedback_to,
         db_pool,
         transport,
         connected,
@@ -405,7 +405,7 @@ pub(super) async fn grant_cash(
     entity_id: u32,
     player_id: i32,
     amount: i32,
-    notify_gm: bool,
+    gm_feedback_to: Option<u32>,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -415,7 +415,7 @@ pub(super) async fn grant_cash(
         entity_id,
         player_id,
         amount,
-        notify_gm,
+        gm_feedback_to,
         db_pool,
         transport,
         connected,

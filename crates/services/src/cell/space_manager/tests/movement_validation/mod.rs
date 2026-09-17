@@ -582,3 +582,5 @@ fn on_navmesh_small_move_is_accepted() {
         "small on-navmesh move must be accepted, got {outcome:?}"
     );
 }
+
+mod onphysics;

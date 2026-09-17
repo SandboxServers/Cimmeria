@@ -1,4 +1,3 @@
-use super::super::*; // gm module: dispatch + GM_* constants
 use super::*; // shared helpers from tests/mod.rs
 use cimmeria_common::Vector3;
 use tokio::sync::mpsc;

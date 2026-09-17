@@ -10,8 +10,8 @@
 The SGW client is *client-authoritative* for its own avatar position: it
 streams raw `f32` world coordinates in `AVATAR_UPDATE_EXPLICIT` (0x03) at
 ~10 Hz and expects the server to mirror them into the cell entity. Before
-#478, the cell wrote those coordinates with **zero validation** — every
-per-tick update was a free teleport. Every position-derived system (AoI /
+issue #478, the cell wrote those coordinates with **zero validation** —
+every per-tick update was a free teleport. Every position-derived system (AoI /
 witness scope, region triggers, mission gates, threat radius, navmesh
 distance) reads from the cell entity's `position`, so a single tampered
 0x03 corrupted all of them downstream. See
@@ -113,6 +113,77 @@ therefore cannot corrupt the spatial grid, so the check is warn-only
 (`movement.space_mismatch`, `reason="space_mismatch"`): it exists to make
 gate-travel / instance-reset races observable, not to gate movement. A
 claimed id of `0` is the pre-confirmation sentinel and is skipped.
+
+## GM validator bypass (`onPhysics` / fly-ghost)
+
+> Shipped alongside the `onPhysics` GM cell method (index 221 on
+> `SGWGmPlayer`). See the "Test / loot / vision / cover (212–225)" table in
+> [cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md)
+> for the wire shape.
+
+`/gmsetfly` and `/gmsetghost` both route through the same client method,
+`onPhysics(UINT8 bTurnOn)` — the client can't distinguish which slash
+command triggered it and doesn't need to. The client also changes its own
+pawn physics mode (gravity, collision) **locally and instantly** the
+moment the GM types the command; the `onPhysics` wire send that follows is
+a best-effort notification, not a gate on the client's own movement. Left
+unhandled, a GM who is actually flying/ghosting client-side would still
+have every position update run through the four layers above and get
+rejected the instant they left the navmesh or exceeded ground speed —
+there was no way to legitimately fly/ghost as a GM without tripping
+validation.
+
+The fix is a single per-entity bool, `CellEntity::movement_unrestricted`
+(default `false`, in-memory only — never persisted, matching the client's
+own no-save-across-sessions behavior). `cell_methods::gm::physics::handle_physics`
+flips it on `onPhysics`, with **inverted wire polarity**: `bTurnOn=0`
+(physics off, client is flying/ghosting) sets `movement_unrestricted =
+true`; `bTurnOn=1` (physics restored) sets it back to `false`.
+
+`apply_client_position_update_at` checks the flag immediately after
+resolving `bounds`/`last_valid` — before Layer 1 — and, if set, skips all
+four rejection layers and calls `update_entity_position` directly,
+returning `Accepted`. Three details matter for correctness:
+
+- **The per-entity kinematics clock (`touch_clock`) still runs** on the
+  bypass path, so `dt` stays fresh for when physics is restored — an
+  unclocked bypass period would otherwise leave the next real check
+  comparing against a stale, multi-minute-old sample.
+- **`update_entity_position` still runs** on the bypass path (spatial
+  grid and AoI source-of-truth), so `last_valid` keeps tracking the GM's
+  actual position while flying. Skipping this would freeze `last_valid`
+  at the position where flight began; the first client packet after
+  physics is restored would then measure a huge apparent jump from that
+  stale point and get rejected as a teleport, rubber-banding the GM back
+  to wherever they started flying.
+- **The `is_finite()` gate runs unconditionally, even under the bypass**
+  — before the `movement_unrestricted` branch, not folded into the
+  Layer-1 bounds check it would otherwise share code with. Bounds,
+  navmesh, and kinematics are all skipped while unrestricted, but a
+  non-finite (`NaN`/`±Infinity`) coordinate is rejected regardless.
+  Without this, `update_entity_position` (which does no sanitization of
+  its own) would write `NaN` straight into `cell_entity.position` while
+  the GM is flying. That doesn't corrupt the spatial grid (float→int
+  cell indexing saturates), but it poisons the entity's *own*
+  `check_kinematics` state: `distance_to` against a `NaN` last-position
+  is `NaN`, and every `NaN` comparison (including
+  `distance > TELEPORT_JUMP_UNITS`) is `false` under IEEE754 — so the
+  hard teleport-reject would silently and permanently stop firing for
+  that entity the moment physics was restored, until the next
+  disconnect clears its `CellEntity`. No legitimate fly/ghost movement
+  needs a non-finite coordinate, so the reject is unconditional and
+  costs nothing.
+
+The bypass is scoped to the flagged entity only — every other entity's
+`movement_unrestricted` defaults `false` and is validated exactly as
+before. Regression guards (prefix `feat_onphysics_`) live in
+`crates/services/src/cell/space_manager/tests/movement_validation.rs`
+(bypass accepts out-of-bounds / off-navmesh / teleport-shaped moves; the
+default-false negative control still rejects; a NaN poisoning attempt is
+rejected and the teleport gate keeps working afterward; two entities in
+the same space with only one flagged prove the bypass doesn't leak to
+the other) and `crates/services/src/cell/cell_methods/gm/tests/physics.rs`
+(polarity, feedback text, truncated-arg rejection without mutation).
 
 ## Constants
 
