@@ -121,7 +121,8 @@ default (`COALESCE(s.patrol_path_id, t.patrol_path_id)`). Per-waypoint edits
 
 | Family | Status |
 |---|---|
-| Search (`searchitem`/`mission`/`template`, `players`) | **Done** — search runs base-side (`CellToBaseMsg::ConsoleSearch`, parameterized `ILIKE ... ESCAPE '\'` with `%`/`_`/`\` in the query escaped to match literally, plus explicit truncation feedback at the 25-result cap); `players` is cell-local. |
+| Search (`searchitem`/`mission`/`template`) | **Done** — search runs base-side (`CellToBaseMsg::ConsoleSearch`, parameterized `ILIKE ... ESCAPE '\'` with `%`/`_`/`\` in the query escaped to match literally, plus explicit truncation feedback at the 25-result cap). |
+| Roster (`players`, `listabilities`) | **Done** — `players` lists every online player across every loaded space on this CellApp (not cell-local); no "in transition" (connected-but-unplaced) tracking exists cell-side. `listabilities` resolves a player's known ability ids to names via the startup-loaded ability catalog. |
 | Stat dumps (`stats`, `primarystats` … `stealthstats`) | **Done** — read `CellEntity::stats`. |
 | Entity inspection (`info`, `facing`, `combatinfo`) | **Done** (`info`/`facing`) / **Partial** (`combatinfo`) — `info`/`facing` are read-only queries against `CellEntity` fields and legacy `SGWSpawnableEntity` geometry; `combatinfo` checks template/ability-set presence but omits legacy's weapon-presence and ability-type-bucket checks (no per-template weapon or per-ability-type concept exists yet — see the P02 handoff). |
 | Entity authoring (`tag`, `name`, …) | **In-memory** — mutate `CellEntity`; appearance edits re-broadcast for players, surface on next AoI entry for NPCs. Pair with `.savespawn` to persist. |
