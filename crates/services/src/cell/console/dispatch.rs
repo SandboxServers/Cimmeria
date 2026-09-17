@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
-use super::{crafting, entity, mission, net, patrol, query, seed, server, spawn, stats};
+use super::{crafting, entity, give, mission, net, patrol, query, seed, server, spawn, stats};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -240,6 +240,27 @@ pub(crate) async fn exec(
         // Mission gaps
         "missionfail" => mission::fail(caller_id, args, target_id, tx, space_mgr).await,
         "missionrewards" => mission::rewards(caller_id, args, target_id, tx, space_mgr).await,
+        // Player grants
+        "givecash" => {
+            give::give_cash(
+                caller_id,
+                target_id.expect("Target::Player guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        "givexp" => {
+            give::give_xp(
+                caller_id,
+                target_id.expect("Target::Player guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
         // G. server / maintenance
         "save" | "reloadmap" | "reloadres" | "removerespawner" | "loglevel" | "logclient" => {
             server::dispatch(name, caller_id, args, target_id, tx, space_mgr).await

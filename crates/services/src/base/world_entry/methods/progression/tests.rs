@@ -1,22 +1,78 @@
-//! Live-DB integration tests for `handle_grant_cash` plus pure burst-shape
-//! regression guards for `handle_grant_xp`'s post-grant bundle.
+//! Live-DB integration tests for `handle_grant_cash`/`handle_grant_xp` plus
+//! pure burst-shape regression guards for `handle_grant_xp`'s post-grant
+//! bundle.
 //!
 //! Live-DB tests skip cleanly when `DATABASE_URL` is unset; against the
 //! bundled local Postgres they pin the WHERE-by-player_id contract that
-//! prevents multi-character accounts from leaking grants between siblings.
+//! prevents multi-character accounts from leaking grants between siblings,
+//! plus (P05, filter `legacy_p05_`) the `gm_feedback_to` caller/target
+//! recipient split `.givecash`/`.givexp` depend on.
 
 use super::*;
 use crate::test_support::require_db_or_skip;
 use crate::test_support::TestTransport;
+use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::FRAGMENT_BODY_SIZE;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 /// Sentinel base for player_ids used by live-DB grant_cash tests. Stays
 /// well below i32::MAX (sgw_player.player_id is `integer`). Per-test
 /// offsets keep concurrent runs from colliding on the same rows.
 const TEST_PLAYER_BASE: i32 = 0x7000_0100;
+
+/// Build a fully-connected `ConnectedClientState` (real session key + channel,
+/// so `send_to_witness_reliable`/`send_gm_feedback_to_client` actually route
+/// a packet through the transport instead of no-op'ing on a missing
+/// `connected` entry). `active_player_id` seeds `handle_grant_xp`'s
+/// `state.active_player_id` read when this session is the XP recipient; pass
+/// `None` for a session that's only acting as the GM-feedback recipient.
+fn make_connected_state(active_player_id: Option<i32>) -> ConnectedClientState {
+    ConnectedClientState {
+        enc: MercuryEncryption::from_session_key([0u8; 32]),
+        key: [0u8; 32],
+        enc_version: cimmeria_mercury::encryption::EncryptionVersion::V1,
+        account_id: 0,
+        account_name: None,
+        access_level: 0,
+        dnd_message: None,
+        char_list_sent: false,
+        world_entry_sent: false,
+        pending_player_entity_id: None,
+        player_entity_id: None,
+        next_seq: Arc::new(AtomicU32::new(1)),
+        next_seq_unreliable: Arc::new(AtomicU32::new(0)),
+        pending_acks: Arc::new(Mutex::new(Vec::new())),
+        last_recv: Arc::new(Mutex::new(Instant::now())),
+        connected_at: Instant::now(),
+        account_entity_id: 1,
+        next_data_id: 0,
+        pending_world_entry: None,
+        pending_player_load_data: None,
+        pending_map_loaded: None,
+        pending_client_ready: None,
+        deferred_aoi_msgs: Vec::new(),
+        cached_appearance_args: None,
+        cached_tint_args: None,
+        weapon_holstered: true,
+        cancelled: Arc::new(AtomicBool::new(false)),
+        cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
+        player_name: None,
+        player_level: Some(1),
+        player_archetype: None,
+        world_name: None,
+        player_xp: Some(0),
+        player_training_points: Some(0),
+        active_player_id,
+        pending_destination_ring_id: None,
+        channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
+            "127.0.0.1:9999".parse().unwrap(),
+        )),
+    }
+}
 
 /// Cleanup by deleting the account row — sgw_player rows cascade off it
 /// via the `ON DELETE CASCADE` on `sgw_player_account_id_fkey`.
@@ -109,7 +165,7 @@ async fn credits_only_target_character_when_account_has_multiple() {
         entity_id,
         player_a,
         50,
-        false, // notify_gm: this is a persistence test, not a GM grant
+        None, // gm_feedback_to: this is a persistence test, not a GM grant
         &db_pool,
         &transport,
         &connected,
@@ -161,7 +217,7 @@ async fn does_not_credit_when_player_row_missing() {
         entity_id,
         nonexistent,
         50,
-        false, // notify_gm: persistence test, not a GM grant
+        None, // gm_feedback_to: persistence test, not a GM grant
         &db_pool,
         &transport,
         &connected,
@@ -192,16 +248,17 @@ async fn does_not_credit_when_player_row_missing() {
     cleanup(&pool, account_id).await;
 }
 
-/// GM-sourced grant: `handle_grant_cash` with `notify_gm: true` must run the
-/// definitive-feedback branch (the `send_gm_feedback_to_client` call on the
-/// post-UPDATE success path) without panicking, and the naquadah write must
-/// still commit. `connected` is empty so the actual feedback packet is skipped
-/// gracefully — but the success branch (and its feedback call) is exercised.
-/// Reverting the `if notify_gm { send_gm_feedback_to_client(...) }` block would
-/// leave this test green (it asserts DB state, not the wire), but a panic in
-/// that branch — or moving the feedback to a failure path — would surface here.
+/// GM-sourced grant: `handle_grant_cash` with `gm_feedback_to: Some(_)` must
+/// run the definitive-feedback branch (the `send_gm_feedback_to_client` call
+/// on the post-UPDATE success path) without panicking, and the naquadah write
+/// must still commit. `connected` is empty so the actual feedback packet is
+/// skipped gracefully — but the success branch (and its feedback call) is
+/// exercised. Reverting the `if let Some(gm_id) = gm_feedback_to {
+/// send_gm_feedback_to_client(...) }` block would leave this test green (it
+/// asserts DB state, not the wire), but a panic in that branch — or moving
+/// the feedback to a failure path — would surface here.
 #[tokio::test]
-async fn grant_cash_with_notify_gm_commits_and_does_not_panic() {
+async fn grant_cash_with_gm_feedback_commits_and_does_not_panic() {
     let pool = require_db_or_skip!();
     let account_id = TEST_PLAYER_BASE + 200;
     let player = TEST_PLAYER_BASE + 201;
@@ -216,7 +273,7 @@ async fn grant_cash_with_notify_gm_commits_and_does_not_panic() {
         entity_id,
         player,
         40,
-        true, // notify_gm: exercise the definitive-feedback success branch
+        Some(entity_id), // gm_feedback_to: exercise the definitive-feedback success branch
         &db_pool,
         &transport,
         &connected,
@@ -230,6 +287,146 @@ async fn grant_cash_with_notify_gm_commits_and_does_not_panic() {
         .await
         .unwrap();
     assert_eq!(naq, 50, "GM cash grant must commit (10 + 40 = 50)");
+
+    cleanup(&pool, account_id).await;
+}
+
+// ── P05: gm_feedback_to caller/target recipient split ──────────────────────
+//
+// `.givecash`/`.givexp` grant to a SELECTED target while the calling GM
+// receives the feedback line — the exact behavior gap this packet's
+// `notify_gm: bool` -> `gm_feedback_to: Option<u32>` rename exists to close.
+// Both tests below use two distinct fully-connected sessions (target and
+// caller, different addresses) so a regression that sends the feedback to
+// the target (or the wire push to the caller) shows up as a wrong
+// `send_count_to`.
+
+/// The core behavior this packet exists to fix: cash-grant GM feedback must
+/// reach the CALLER, not the grant's DB/UI recipient (`entity_id`). The
+/// target gets exactly the `onCashChanged` wire push; the caller gets
+/// exactly the feedback line; neither crosses over.
+#[tokio::test]
+async fn legacy_p05_grant_cash_feedback_goes_to_caller_not_target() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_PLAYER_BASE + 300;
+    let target_player = TEST_PLAYER_BASE + 301;
+    cleanup(&pool, account_id).await;
+    insert_test_account(&pool, account_id).await;
+    insert_test_player(&pool, account_id, target_player, 10).await;
+
+    let transport_typed = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = transport_typed.clone();
+    let target_entity: u32 = 9_999_301;
+    let caller_entity: u32 = 9_999_302;
+    let target_addr: SocketAddr = "127.0.0.1:55301".parse().unwrap();
+    let caller_addr: SocketAddr = "127.0.0.1:55302".parse().unwrap();
+
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([
+        (target_entity, target_addr),
+        (caller_entity, caller_addr),
+    ])));
+    let connected = Arc::new(Mutex::new(HashMap::from([
+        (target_addr, make_connected_state(None)),
+        (caller_addr, make_connected_state(None)),
+    ])));
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    handle_grant_cash(
+        target_entity,
+        target_player,
+        40,
+        Some(caller_entity), // gm_feedback_to: the GM caller, distinct from the target
+        &db_pool,
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    let naq: i32 = sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1")
+        .bind(target_player)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(naq, 50, "target must be credited (10 + 40 = 50)");
+
+    assert_eq!(
+        transport_typed.send_count_to(target_addr),
+        1,
+        "target must receive exactly the onCashChanged wire push"
+    );
+    assert_eq!(
+        transport_typed.send_count_to(caller_addr),
+        1,
+        "caller must receive exactly the GM-feedback line, not the target"
+    );
+    assert_eq!(transport_typed.len(), 2, "no traffic to any other address");
+
+    cleanup(&pool, account_id).await;
+}
+
+/// XP counterpart of `legacy_p05_grant_cash_feedback_goes_to_caller_not_target`.
+/// `xp_amount` is well under `LEVEL_XP[1]` (100) so no level-up fires — keeps
+/// the post-grant bundle a single packet and avoids the level-up Discord/
+/// contact-fanout side paths, which aren't this test's concern.
+#[tokio::test]
+async fn legacy_p05_grant_xp_feedback_goes_to_caller_not_target() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_PLAYER_BASE + 400;
+    let target_player = TEST_PLAYER_BASE + 401;
+    cleanup(&pool, account_id).await;
+    insert_test_account(&pool, account_id).await;
+    insert_test_player(&pool, account_id, target_player, 0).await;
+
+    let transport_typed = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = transport_typed.clone();
+    let target_entity: u32 = 9_999_401;
+    let caller_entity: u32 = 9_999_402;
+    let target_addr: SocketAddr = "127.0.0.1:55401".parse().unwrap();
+    let caller_addr: SocketAddr = "127.0.0.1:55402".parse().unwrap();
+
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([
+        (target_entity, target_addr),
+        (caller_entity, caller_addr),
+    ])));
+    let connected = Arc::new(Mutex::new(HashMap::from([
+        (target_addr, make_connected_state(Some(target_player))),
+        (caller_addr, make_connected_state(None)),
+    ])));
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    handle_grant_xp(
+        target_entity,
+        50,                  // well under LEVEL_XP[1] = 100 -- no level-up
+        Some(caller_entity), // gm_feedback_to: the GM caller, distinct from the target
+        &db_pool,
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    let (exp, level, tp): (i32, i32, i32) =
+        sqlx::query_as("SELECT exp, level, training_points FROM sgw_player WHERE player_id = $1")
+            .bind(target_player)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(exp, 50, "target must be credited 50 xp");
+    assert_eq!(level, 1, "no level-up expected below LEVEL_XP[1]");
+    assert_eq!(tp, 0, "no training points expected without a level-up");
+
+    assert_eq!(
+        transport_typed.send_count_to(target_addr),
+        1,
+        "target must receive exactly the XP-update bundle (single packet, zero-level grant)"
+    );
+    assert_eq!(
+        transport_typed.send_count_to(caller_addr),
+        1,
+        "caller must receive exactly the GM-feedback line, not the target"
+    );
+    assert_eq!(transport_typed.len(), 2, "no traffic to any other address");
 
     cleanup(&pool, account_id).await;
 }

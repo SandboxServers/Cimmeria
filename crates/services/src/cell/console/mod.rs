@@ -40,6 +40,7 @@
 //! - [`query`] — read-only search / inspection (`searchitem`, `players`, …).
 //! - [`stats`] — granular per-domain stat dumps (`primarystats`, …).
 //! - [`entity`] — live entity authoring (`tag`, `name`, `visible`, …).
+//! - [`give`] — selected-target player grants (`givecash`, `givexp`).
 //! - [`net`] — low-level net / AI debug (`net_seq`, `threaten`, …).
 //! - [`crafting`] — discipline / blueprint grants (`allcraft`, …).
 //! - [`mission`] — mission gaps (`missionfail`, `missionrewards`).
@@ -59,6 +60,7 @@
 mod crafting;
 mod dispatch;
 mod entity;
+mod give;
 mod mission;
 mod net;
 mod parse;

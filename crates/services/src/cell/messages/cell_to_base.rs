@@ -131,13 +131,16 @@ pub enum CellToBaseMsg {
     /// this to BaseApp, which updates the player's XP/level and sends client
     /// notifications.
     ///
-    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
-    /// `entity_id` after the write commits. Only the GM `gmGiveXp` path sets
-    /// this; non-GM senders (mob-kill XP) leave it false.
+    /// `gm_feedback_to`: when `Some(gm_entity_id)`, the base sends a
+    /// definitive GM-feedback line to that caller entity — which is NOT
+    /// necessarily `entity_id` (the XP recipient); `.givexp` grants to a
+    /// selected target while the caller receives the feedback — after the
+    /// write commits. Only the GM `gmGiveXp` / `.givexp` paths set this;
+    /// non-GM senders (mob-kill XP) leave it `None`.
     GrantXP {
         entity_id: u32,
         xp_amount: u64,
-        notify_gm: bool,
+        gm_feedback_to: Option<u32>,
     },
 
     /// Train a new ability for a player — debit one training point and
@@ -376,14 +379,17 @@ pub enum CellToBaseMsg {
 
     /// Grant cash (naquadah) to a player and persist to the database.
     ///
-    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
-    /// `entity_id` after the write commits. Only the GM `gmGiveCash` path sets
-    /// this; non-GM senders (loot pickup) leave it false.
+    /// `gm_feedback_to`: when `Some(gm_entity_id)`, the base sends a
+    /// definitive GM-feedback line to that caller entity — which is NOT
+    /// necessarily `entity_id` (the cash recipient); `.givecash` grants to a
+    /// selected target while the caller receives the feedback — after the
+    /// write commits. Only the GM `gmGiveCash` / `.givecash` paths set this;
+    /// non-GM senders (loot pickup) leave it `None`.
     GrantCash {
         entity_id: u32,
         player_id: i32,
         amount: i32,
-        notify_gm: bool,
+        gm_feedback_to: Option<u32>,
     },
 
     /// Grant crafting expertise in one discipline and persist to the database

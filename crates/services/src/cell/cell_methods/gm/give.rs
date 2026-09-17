@@ -59,14 +59,16 @@ pub(super) async fn handle_give_xp(
         return true;
     }
     tracing::info!(entity_id, amount, "gmGiveXp: granting XP to GM");
-    // `notify_gm: true` — the base sends the definitive feedback line after the
-    // XP write commits. No optimistic "requested" line here.
+    // `gm_feedback_to: Some(entity_id)` — the base sends the definitive
+    // feedback line to the calling GM (here, the same entity as the
+    // recipient) after the XP write commits. No optimistic "requested" line
+    // here.
     forward_to_base(
         tx,
         CellToBaseMsg::GrantXP {
             entity_id,
             xp_amount: amount as u64,
-            notify_gm: true,
+            gm_feedback_to: Some(entity_id),
         },
         "gmGiveXp",
     )
@@ -228,15 +230,17 @@ pub(super) async fn handle_give_cash(
         amount,
         "gmGiveCash: granting cash to GM"
     );
-    // `notify_gm: true` — the base sends the definitive feedback line after the
-    // naquadah UPDATE commits. No optimistic "requested" line here.
+    // `gm_feedback_to: Some(entity_id)` — the base sends the definitive
+    // feedback line to the calling GM (here, the same entity as the
+    // recipient) after the naquadah UPDATE commits. No optimistic
+    // "requested" line here.
     forward_to_base(
         tx,
         CellToBaseMsg::GrantCash {
             entity_id,
             player_id,
             amount,
-            notify_gm: true,
+            gm_feedback_to: Some(entity_id),
         },
         "gmGiveCash",
     )
