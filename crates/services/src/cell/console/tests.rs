@@ -187,6 +187,122 @@ async fn help_lists_commands() {
     assert!(count >= COMMANDS.len(), "help should list every command");
 }
 
+/// Regression guard: an unfiltered `.help` matches every registered command
+/// (far more than 3), so it must NOT print any per-argument detail line
+/// (the `    name (type): desc` / `    [name] (type): desc` rows only apply
+/// when `<= 3` commands match).
+#[tokio::test]
+async fn legacy_p01_help_unfiltered_omits_argument_detail() {
+    let (mut mgr, gm, _npc) = setup();
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(1024);
+    handle_console_command(gm, ".help", &tx, &mut mgr, &engine).await;
+    while let Ok(msg) = rx.try_recv() {
+        if let Some(text) = decode_feedback(&msg) {
+            assert!(
+                !text.starts_with("    "),
+                "unfiltered .help (>3 matches) must not show per-argument detail: {text}"
+            );
+        }
+    }
+}
+
+/// `.help search` matches exactly 3 commands (`searchitem`, `searchmission`,
+/// `searchtemplate`), so the `<= 3` detail view must fire: the required
+/// `name` arg renders unbracketed, the optional `name2` arg renders
+/// bracketed.
+#[tokio::test]
+async fn legacy_p01_help_shows_argument_detail_at_exactly_3_matches() {
+    let (mut mgr, gm, _npc) = setup();
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(512);
+    handle_console_command(gm, ".help search", &tx, &mut mgr, &engine).await;
+    let mut lines = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let Some(text) = decode_feedback(&msg) {
+            lines.push(text);
+        }
+    }
+    let summary_count = lines.iter().filter(|l| l.starts_with('.')).count();
+    assert_eq!(
+        summary_count, 3,
+        "filter 'search' should match exactly 3 commands: {lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l == "    name (str): Item name to search for"),
+        "required arg 'name' must render unbracketed: {lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l == "    [name2] (str): Item name to search for"),
+        "optional arg 'name2' must render bracketed: {lines:?}"
+    );
+}
+
+/// Regression guard for the legacy `index <= argsMin` off-by-one: `.help`'s
+/// own only argument (`command`, optional/default `None`) must render
+/// bracketed, not as a false "required" line — legacy's buggy comparison
+/// would have marked it required since `0 <= argsMin(0)`.
+#[tokio::test]
+async fn legacy_p01_help_own_optional_arg_is_bracketed_not_required() {
+    let (mut mgr, gm, _npc) = setup();
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+    handle_console_command(gm, ".help help", &tx, &mut mgr, &engine).await;
+    let mut saw_bracketed = false;
+    let mut saw_unbracketed = false;
+    while let Ok(msg) = rx.try_recv() {
+        if let Some(text) = decode_feedback(&msg) {
+            match text.as_str() {
+                "    [command] (str): Get help about this command" => saw_bracketed = true,
+                "    command (str): Get help about this command" => saw_unbracketed = true,
+                _ => {}
+            }
+        }
+    }
+    assert!(
+        saw_bracketed,
+        "help's own optional 'command' arg must render bracketed"
+    );
+    assert!(
+        !saw_unbracketed,
+        "help's own optional 'command' arg must NOT render as required (off-by-one bug)"
+    );
+}
+
+/// Zero-match `.help` must report the exact legacy wording
+/// (`ConsoleCommands.py::help`'s `'No command found with that name'`), not
+/// the prior Rust-only "help: no command matched." text.
+#[tokio::test]
+async fn legacy_p01_help_zero_match_reports_legacy_wording() {
+    let (mut mgr, gm, _npc) = setup();
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+    handle_console_command(
+        gm,
+        ".help definitely-not-a-registered-command",
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+    let mut saw = false;
+    while let Ok(msg) = rx.try_recv() {
+        if let Some(text) = decode_feedback(&msg) {
+            if text == "No command found with that name" {
+                saw = true;
+            }
+        }
+    }
+    assert!(
+        saw,
+        "zero-match .help must report the legacy wording exactly"
+    );
+}
+
 /// Regression guard: `parse_f32` must reject non-finite values — `NaN`/`inf`
 /// would Display as a bareword and produce invalid SQL in the authoring path.
 #[tokio::test]
