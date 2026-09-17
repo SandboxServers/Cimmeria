@@ -34,6 +34,7 @@ use cimmeria_entity::movement_validation::{
 };
 
 use super::SpaceManager;
+use crate::cell::dispatch::access_level_from_u32;
 
 /// How far a resolved recovery point must actually be from where the entity
 /// already is, in world units, before relocating it counts as progress.
@@ -185,7 +186,13 @@ impl SpaceManager {
                 bounds,
                 last_valid,
                 entity.movement_unrestricted,
-                entity.access_level >= AccessLevel::GameMaster as u32,
+                // Through the canonical clamped conversion, not a raw
+                // discriminant comparison: `access_level_from_u32` is the one
+                // mapping every other GM gate in the cell uses, and a `>=` on
+                // the raw column silently diverges from it the moment
+                // `AccessLevel`'s discriminants are reordered or a level is
+                // inserted.
+                access_level_from_u32(entity.access_level).can_execute(AccessLevel::GameMaster),
                 // Scale the class baseline by this entity's own
                 // `movementSpeedMod`, the same stat the NPC path-stepping tick
                 // scales by. A GM `.speed 300` (or any future haste/snare
@@ -433,17 +440,10 @@ impl SpaceManager {
                 if Vector3::new(safe[0], safe[1], safe[2]).distance_to(&last_pos)
                     > RECOVERY_MIN_DISPLACEMENT =>
             {
-                // `update_entity_position` overwrites `direction` from its
-                // `[i8; 3]` parameter, so the zero below would silently
-                // re-face the entity north on every recovery. Same
-                // workaround the GM travel commands use.
-                let facing = self.get_entity(entity_id).map(|e| e.direction);
-                self.update_entity_position(entity_id, safe, [0, 0, 0], [0.0; 3]);
-                if let Some(f) = facing {
-                    if let Some(e) = self.get_entity_mut(entity_id) {
-                        e.direction = f;
-                    }
-                }
+                // Position-only write: a recovery relocation moves the entity
+                // out of an unusable spot, it does not re-face it. (The
+                // `direction`-writing sibling would zero the facing here.)
+                self.update_position_preserving_facing(entity_id, safe, [0.0; 3]);
                 // The relocation is a server-authoritative teleport: reseed
                 // the clock so the client's first post-recovery packet is
                 // measured from now, and clear the budget because the entity

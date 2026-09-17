@@ -293,8 +293,8 @@ async fn same_world_teleport(
         .unwrap_or(position);
     // Server-side: keep the spatial grid + entity position consistent so AoI
     // ticks broadcast the new position to other witnesses (build_avatar_update).
-    // `update_entity_position` already writes `cell_entity.position`.
-    space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
+    // `update_position_preserving_facing` already writes `cell_entity.position`.
+    space_mgr.update_position_preserving_facing(entity_id, position, [0.0; 3]);
     // Authorized teleport: reseed the movement-validator clock so the
     // first post-ring client packet isn't measured against the pre-ring
     // sample (which would log a spurious speed warning).

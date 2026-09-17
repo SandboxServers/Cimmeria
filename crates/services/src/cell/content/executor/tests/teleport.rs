@@ -147,3 +147,55 @@ async fn cross_world_teleport_action_with_unknown_entity_dispatches_gate_travel(
          cell entity is absent — base may still hold the connection"
     );
 }
+
+/// `Action::Teleport` — same-space chain teleport — must not re-face the
+/// entity it moves. `transport::teleport` goes through
+/// `update_position_preserving_facing`, not the raw `update_entity_position`
+/// (which writes `direction` unconditionally from its `[i8; 3]` parameter
+/// and would zero it here).
+///
+/// Reverting to `update_entity_position(entity_id, position, [0, 0, 0],
+/// [0.0; 3])` zeroes the facing asserted below. The non-zero, non-uniform
+/// value is deliberate: a `[0, 0, 0]` or symmetric facing would still match
+/// after the bug was reintroduced.
+#[tokio::test]
+async fn same_space_teleport_action_preserves_facing() {
+    use cimmeria_common::Vector3;
+
+    let mut mgr = make_space_mgr();
+    mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    let space_id = mgr.get_entity(1).unwrap().space_id.0;
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(42);
+        e.direction = Vector3::new(0.0, 137.0, 0.0);
+    }
+    mgr.connect_entity(1);
+
+    let (tx, _rx) = mpsc::channel(16);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            1109,
+            Action::Teleport {
+                space_id,
+                position: [12.0, 34.0, 56.0],
+            },
+        )],
+    };
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let e = mgr.get_entity(1).unwrap();
+    assert_eq!(
+        [e.position.x, e.position.y, e.position.z],
+        [12.0, 34.0, 56.0],
+        "precondition: Action::Teleport must actually have moved the entity"
+    );
+    assert_eq!(
+        e.direction,
+        Vector3::new(0.0, 137.0, 0.0),
+        "Action::Teleport must not re-face the entity it moves"
+    );
+}

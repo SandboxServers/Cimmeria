@@ -414,6 +414,97 @@ async fn summoned_npc_is_broadcast_to_caller_witness() {
     );
 }
 
+/// Facing-preservation regression guard for the **native** `gm*` travel
+/// handlers.
+///
+/// `SpaceManager::update_entity_position` writes `direction` unconditionally
+/// from its `[i8; 3]` parameter, so every handler that passed `[0, 0, 0]` to
+/// move an entity also silently snapped that entity's facing to north. The
+/// dot-command travel path worked around that by hand-restoring the captured
+/// direction; these native handlers never did, so a GM using the client's own
+/// `gmGotoXYZ` / `gmGoto` / `gmSummon` was re-faced on every teleport. The
+/// fix is `update_position_preserving_facing`, which never writes `direction`
+/// at all.
+///
+/// Reverting any of the three handlers to `update_entity_position(…, [0, 0,
+/// 0], …)` zeroes the facing asserted below and this guard fires. The
+/// non-zero, non-uniform facing is deliberate: a `[0, 0, 0]` or symmetric
+/// value would still match after the bug was reintroduced.
+#[tokio::test]
+async fn native_gm_travel_preserves_facing() {
+    const FACING: Vector3 = Vector3 {
+        x: 0.0,
+        y: 137.0,
+        z: 0.0,
+    };
+
+    // ── gmGotoXYZ: the caller moves itself ──────────────────────────────
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.get_entity_mut(1).unwrap().direction = FACING;
+    let (tx, _rx) = mpsc::channel(8);
+    let mut args = Vec::new();
+    for c in [10.0f32, 20.0, 30.0] {
+        args.extend_from_slice(&c.to_le_bytes());
+    }
+    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr).await);
+    let e = mgr.get_entity(1).unwrap();
+    assert_eq!(
+        [e.position.x, e.position.y, e.position.z],
+        [10.0, 20.0, 30.0],
+        "precondition: gmGotoXYZ must actually have moved the caller"
+    );
+    assert_eq!(
+        e.direction, FACING,
+        "gmGotoXYZ must not re-face the GM it teleports"
+    );
+
+    // ── gmGoto: the caller moves itself to another entity ───────────────
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.get_entity_mut(1).unwrap().direction = FACING;
+    mgr.create_entity(2, "Castle", [50.0, 0.0, 60.0], [0.0; 3])
+        .unwrap();
+    let (tx, _rx) = mpsc::channel(8);
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "2");
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    let e = mgr.get_entity(1).unwrap();
+    assert_eq!(
+        [e.position.x, e.position.y, e.position.z],
+        [50.0, 0.0, 60.0],
+        "precondition: gmGoto must actually have moved the caller"
+    );
+    assert_eq!(
+        e.direction, FACING,
+        "gmGoto must not re-face the GM it teleports"
+    );
+
+    // ── gmSummon: somebody *else* is moved — their facing is the one at
+    // risk, and it is the one a witness renders.
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.get_entity_mut(1).unwrap().position = Vector3 {
+        x: 7.0,
+        y: 0.0,
+        z: 8.0,
+    };
+    mgr.spawn_npc(50, "Castle", [100.0, 0.0, 100.0], [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(50).unwrap().direction = FACING;
+    let (tx, _rx) = mpsc::channel(8);
+    let mut args = Vec::new();
+    write_wstring_arg(&mut args, "50");
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    let e = mgr.get_entity(50).unwrap();
+    assert_eq!(
+        [e.position.x, e.position.y, e.position.z],
+        [7.0, 0.0, 8.0],
+        "precondition: gmSummon must actually have moved the target"
+    );
+    assert_eq!(
+        e.direction, FACING,
+        "gmSummon must not re-face the entity it summons"
+    );
+}
+
 #[tokio::test]
 async fn goto_summon_reject_non_numeric() {
     let mut mgr = mgr_with_player(1, "Castle");

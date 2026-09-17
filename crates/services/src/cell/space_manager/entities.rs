@@ -372,11 +372,54 @@ impl SpaceManager {
     }
 
     /// Update an entity's position from a client movement packet.
+    ///
+    /// `direction` is written **unconditionally**. A caller that is moving an
+    /// entity without also re-facing it — every server-authoritative teleport
+    /// — wants [`Self::update_position_preserving_facing`] instead; passing
+    /// `[0, 0, 0]` here silently snaps the entity's facing to north.
     pub fn update_entity_position(
         &mut self,
         entity_id: u32,
         position: [f32; 3],
         direction: [i8; 3],
+        velocity: [f32; 3],
+    ) {
+        let facing = Vector3::new(
+            direction[0] as f32,
+            direction[1] as f32,
+            direction[2] as f32,
+        );
+        self.write_position(entity_id, position, Some(facing), velocity);
+    }
+
+    /// Move an entity without touching its facing — the position-only write
+    /// every server-authoritative teleport needs (GM travel, snap-back
+    /// recovery, console placement).
+    ///
+    /// [`Self::update_entity_position`] takes a `[i8; 3]` direction and writes
+    /// it unconditionally, so a teleport that has no new facing to supply had
+    /// to pass `[0, 0, 0]` and then hand-restore the captured `direction`
+    /// afterwards. That workaround was duplicated across every GM travel call
+    /// site and simply missing from the native `gm*` handlers, which zeroed
+    /// facing on every teleport. This preserves facing **by construction**:
+    /// `direction` is never written, so there is nothing to forget to restore.
+    pub fn update_position_preserving_facing(
+        &mut self,
+        entity_id: u32,
+        position: [f32; 3],
+        velocity: [f32; 3],
+    ) {
+        self.write_position(entity_id, position, None, velocity);
+    }
+
+    /// Shared tail of the two position writers: move the entity in
+    /// `space.entities` and keep the AoI spatial grid's index in sync.
+    /// `direction: None` leaves the entity's facing untouched.
+    fn write_position(
+        &mut self,
+        entity_id: u32,
+        position: [f32; 3],
+        direction: Option<Vector3>,
         velocity: [f32; 3],
     ) {
         let space_id = match self.entity_space.get(&entity_id) {
@@ -394,11 +437,9 @@ impl SpaceManager {
             let new_pos = Vector3::new(position[0], position[1], position[2]);
 
             cell_entity.position = new_pos;
-            cell_entity.direction = Vector3::new(
-                direction[0] as f32,
-                direction[1] as f32,
-                direction[2] as f32,
-            );
+            if let Some(facing) = direction {
+                cell_entity.direction = facing;
+            }
             cell_entity.velocity = velocity;
 
             // Update the spatial grid
