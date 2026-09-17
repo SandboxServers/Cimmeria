@@ -34,6 +34,69 @@ use crate::base::ConnectedClientState;
 /// flooding the feedback channel.
 const SEARCH_LIMIT: i64 = 25;
 
+/// Escape `%`, `_`, and `\` in a `.search*` query so they match themselves
+/// literally under `ILIKE ... ESCAPE '\'` instead of acting as a SQL
+/// wildcard/escape-introducer. Legacy `Resource.py::searchItem` (and its
+/// mission/template siblings) did a plain Python substring search — a GM
+/// typing e.g. `50%` or `file_name` expects those characters matched
+/// literally, not as "any sequence" / "any single character".
+fn escape_ilike_pattern(input: &str) -> String {
+    let mut escaped = String::with_capacity(input.len());
+    for c in input.chars() {
+        if matches!(c, '\\' | '%' | '_') {
+            escaped.push('\\');
+        }
+        escaped.push(c);
+    }
+    escaped
+}
+
+/// Run the read-only resource-name search for `kind` (`0` items, `1`
+/// missions, `2` entity_templates) against `query`, matching `query`
+/// case-insensitively and **literally** (via [`escape_ilike_pattern`]).
+///
+/// Fetches one row past [`SEARCH_LIMIT`] to distinguish "exactly the limit"
+/// from "more hits exist" without a second `COUNT(*)` round-trip; the extra
+/// row is trimmed before returning. Returns `(label, hits, truncated)` —
+/// `label` is `""` for an unrecognized `kind` (mirrors the prior silent
+/// `_ => return` in the caller).
+async fn run_console_search(
+    pool: &PgPool,
+    kind: u8,
+    query: &str,
+) -> Result<(&'static str, Vec<(i32, String)>, bool), sqlx::Error> {
+    let (label, sql) = match kind {
+        0 => (
+            "searchitem",
+            "SELECT item_id AS id, name FROM resources.items \
+             WHERE name ILIKE $1 ESCAPE '\\' ORDER BY item_id LIMIT $2",
+        ),
+        1 => (
+            "searchmission",
+            "SELECT mission_id AS id, mission_defn AS name FROM resources.missions \
+             WHERE mission_defn ILIKE $1 ESCAPE '\\' ORDER BY mission_id LIMIT $2",
+        ),
+        2 => (
+            "searchtemplate",
+            "SELECT template_id AS id, template_name AS name FROM resources.entity_templates \
+             WHERE template_name ILIKE $1 ESCAPE '\\' ORDER BY template_id LIMIT $2",
+        ),
+        _ => return Ok(("", Vec::new(), false)),
+    };
+
+    let pattern = format!("%{}%", escape_ilike_pattern(query));
+    let mut hits = sqlx::query_as::<_, (i32, String)>(sql)
+        .bind(&pattern)
+        .bind(SEARCH_LIMIT + 1)
+        .fetch_all(pool)
+        .await?;
+    let truncated = hits.len() as i64 > SEARCH_LIMIT;
+    if truncated {
+        hits.truncate(SEARCH_LIMIT as usize);
+    }
+    Ok((label, hits, truncated))
+}
+
 /// Execute one authoring statement and report the outcome to the GM.
 #[tracing::instrument(
     name = "console.authoring_sql",
@@ -128,9 +191,11 @@ pub(crate) async fn handle_execute_authoring_sql(
 
 /// Run a read-only resource-name search and report `id: name` matches to the GM.
 ///
-/// `kind` selects the table: `0` items, `1` missions, `2` entity_templates. The
-/// query string is bound as a parameterized `ILIKE` pattern — never
-/// concatenated — so this is injection-safe regardless of the channel gate.
+/// `kind` selects the table: `0` items, `1` missions, `2` entity_templates.
+/// The query string is bound as a parameterized, literally-escaped `ILIKE`
+/// pattern (see [`run_console_search`]) — never concatenated — so this is
+/// injection-safe regardless of the channel gate, and `%`/`_`/`\` in the
+/// GM's search text match themselves rather than acting as SQL wildcards.
 #[tracing::instrument(
     name = "console.search",
     level = "info",
@@ -146,22 +211,10 @@ pub(crate) async fn handle_console_search(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    let (label, sql) = match kind {
-        0 => (
-            "searchitem",
-            "SELECT item_id AS id, name FROM resources.items \
-             WHERE name ILIKE $1 ORDER BY item_id LIMIT $2",
-        ),
-        1 => (
-            "searchmission",
-            "SELECT mission_id AS id, mission_defn AS name FROM resources.missions \
-             WHERE mission_defn ILIKE $1 ORDER BY mission_id LIMIT $2",
-        ),
-        2 => (
-            "searchtemplate",
-            "SELECT template_id AS id, template_name AS name FROM resources.entity_templates \
-             WHERE template_name ILIKE $1 ORDER BY template_id LIMIT $2",
-        ),
+    let label = match kind {
+        0 => "searchitem",
+        1 => "searchmission",
+        2 => "searchtemplate",
         _ => return,
     };
 
@@ -177,15 +230,8 @@ pub(crate) async fn handle_console_search(
         return;
     };
 
-    let pattern = format!("%{query}%");
-    let rows = sqlx::query_as::<_, (i32, String)>(sql)
-        .bind(&pattern)
-        .bind(SEARCH_LIMIT)
-        .fetch_all(pool.as_ref())
-        .await;
-
-    match rows {
-        Ok(hits) if hits.is_empty() => {
+    match run_console_search(pool, kind, query).await {
+        Ok((_, hits, _)) if hits.is_empty() => {
             send_gm_feedback_to_client(
                 entity_id,
                 &format!("{label}: no matches for '{query}'"),
@@ -195,15 +241,17 @@ pub(crate) async fn handle_console_search(
             )
             .await;
         }
-        Ok(hits) => {
-            send_gm_feedback_to_client(
-                entity_id,
-                &format!("{label} '{query}': {} match(es)", hits.len()),
-                transport,
-                connected,
-                entity_to_addr,
-            )
-            .await;
+        Ok((_, hits, truncated)) => {
+            let summary = if truncated {
+                format!(
+                    "{label} '{query}': {} match(es) (results truncated, refine your search)",
+                    hits.len()
+                )
+            } else {
+                format!("{label} '{query}': {} match(es)", hits.len())
+            };
+            send_gm_feedback_to_client(entity_id, &summary, transport, connected, entity_to_addr)
+                .await;
             for (id, name) in hits {
                 send_gm_feedback_to_client(
                     entity_id,
@@ -228,3 +276,6 @@ pub(crate) async fn handle_console_search(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

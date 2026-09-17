@@ -1,4 +1,3 @@
-use super::super::*; // gm module: dispatch + GM_* constants
 use super::*; // shared helpers from tests/mod.rs
 use crate::cell::messages::CellToBaseMsg;
 use cimmeria_entity::inventory::INV_MAIN;
@@ -80,13 +79,14 @@ async fn gm_give_xp_emits_grant_and_rejects_nonpositive() {
         CellToBaseMsg::GrantXP {
             entity_id,
             xp_amount,
-            notify_gm,
+            gm_feedback_to,
         } => {
             assert_eq!(entity_id, 1);
             assert_eq!(xp_amount, 500);
-            assert!(
-                notify_gm,
-                "GM grant must set notify_gm for definitive feedback"
+            assert_eq!(
+                gm_feedback_to,
+                Some(1),
+                "GM grant must set gm_feedback_to to the caller for definitive feedback"
             );
         }
         other => panic!("expected GrantXP, got {other:?}"),
@@ -118,14 +118,15 @@ async fn gm_give_cash_emits_grant_and_rejects_nonpositive() {
             entity_id,
             player_id,
             amount,
-            notify_gm,
+            gm_feedback_to,
         } => {
             assert_eq!(entity_id, 1);
             assert_eq!(player_id, 100);
             assert_eq!(amount, 250);
-            assert!(
-                notify_gm,
-                "GM grant must set notify_gm for definitive feedback"
+            assert_eq!(
+                gm_feedback_to,
+                Some(1),
+                "GM grant must set gm_feedback_to to the caller for definitive feedback"
             );
         }
         other => panic!("expected GrantCash, got {other:?}"),
