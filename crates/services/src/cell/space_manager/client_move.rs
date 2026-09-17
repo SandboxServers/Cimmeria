@@ -285,9 +285,12 @@ impl SpaceManager {
             // (distance, dt, implied_speed) triple so the SigNoz
             // tolerance-calibration pipeline can compute the legitimate
             // p99.9 before the speed layer is ever promoted to snap-back.
+            let id = self.player_identity(entity_id);
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
                 space_id,
                 client_x = position[0],
                 client_y = position[1],

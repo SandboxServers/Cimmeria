@@ -84,6 +84,10 @@ pub async fn query_world_entry(
                         rotation: [0.0; 3],
                         // Login always resolves the destination by world name.
                         destination_space_id: None,
+                        // Identity-stamp the cell entity at birth so every
+                        // cell-side log for this session is attributable.
+                        account_id: Some(account_id),
+                        player_id: Some(player_id),
                         reply_tx,
                     })
                     .await
@@ -141,6 +145,10 @@ pub async fn query_world_entry(
                         rotation: [0.0; 3],
                         // Login always resolves the destination by world name.
                         destination_space_id: None,
+                        // Identity-stamp the cell entity at birth so every
+                        // cell-side log for this session is attributable.
+                        account_id: Some(account_id),
+                        player_id: Some(player_id),
                         reply_tx,
                     })
                     .await

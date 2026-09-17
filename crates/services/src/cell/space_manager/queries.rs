@@ -5,7 +5,7 @@
 //! `.summon`) resolve their target player through.
 
 use cimmeria_common::EntityId;
-use cimmeria_entity::cell_entity::CellEntity;
+use cimmeria_entity::cell_entity::{CellEntity, PlayerIdentity};
 
 use super::{RegionData, SpaceManager};
 
@@ -43,6 +43,28 @@ pub enum PlayerNameLookup {
 }
 
 impl SpaceManager {
+    /// The stable `(account_id, player_id)` log correlator for an entity.
+    ///
+    /// This is the cell-side entry point for the identity-propagation
+    /// convention (`docs/architecture/instrumentation-discipline.md` §Rule 5):
+    /// every cell log that describes something a *player* did resolves the
+    /// pair through here and passes both halves into `tracing` as `Option`s.
+    ///
+    /// Returns [`PlayerIdentity::UNKNOWN`] for an NPC and for an entity id
+    /// that doesn't resolve — in both cases the caller emits no identity
+    /// fields at all, which is the correct outcome: an unresolvable id has
+    /// no identity to report, and inventing a `0` sentinel would be
+    /// indistinguishable from a real account in a log query.
+    ///
+    /// Cheap enough for warn/debug-level call sites (one `HashMap` hop via
+    /// `entity_space` plus one into the space's entity map), but it is still
+    /// a lookup — don't call it unconditionally on a per-tick hot path;
+    /// resolve it inside the branch that actually logs.
+    pub fn player_identity(&self, entity_id: u32) -> PlayerIdentity {
+        self.get_entity(entity_id)
+            .map_or(PlayerIdentity::UNKNOWN, CellEntity::identity)
+    }
+
     /// Return all active spaces as (space_id, world_name) pairs.
     pub fn all_spaces(&self) -> Vec<(u32, String)> {
         self.spaces

@@ -213,6 +213,13 @@ pub(crate) async fn handle_gate_travel(
                 position,
                 rotation,
                 destination_space_id,
+                // Gate travel destroys the origin entity and builds a fresh
+                // one here, so without this stamp the destination entity would
+                // be anonymous until `InitPlayerState` re-arrives after the
+                // client finishes loading — the same gap `character_name`
+                // still has. Both halves are already validated above.
+                account_id: Some(account_id),
+                player_id: Some(active_player_id),
                 reply_tx,
             })
             .await
