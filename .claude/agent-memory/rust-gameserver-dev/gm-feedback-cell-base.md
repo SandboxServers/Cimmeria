@@ -1,6 +1,6 @@
 ---
 name: gm-feedback-cell-base
-description: How GM-command feedback lines reach the GM client across the cell/base split, and the notify_gm gating pattern for shared Grant* messages
+description: How GM-command feedback lines reach the GM client across the cell/base split, and the notify_gm / gm_feedback_to gating pattern for shared Grant* messages
 metadata:
   type: project
 ---
@@ -38,20 +38,48 @@ Pattern:
   id and whether the spawn took). `BaseToCellMsg::GmSpawnNpcReady` carries
   `requester_entity_id` so the cell knows whom to notify.
 
-## notify_gm gating for SHARED messages
+## notify_gm gating for SHARED messages — and the P05 gm_feedback_to split
 
 `GrantXP`, `GrantCash`, `GrantItem`, `RemoveInventoryItem` are sent by BOTH GM
-and non-GM flows (mob-kill XP, loot, content chains, player drops). Each carries
-a `notify_gm: bool`. Only the GM `gm/give.rs` handlers set `true`; the base
-handler fires `send_gm_feedback_to_client` only `if notify_gm`, on the true
-post-commit success path. Non-GM senders (find via
+and non-GM flows (mob-kill XP, loot, content chains, player drops). `GrantItem`
+and `RemoveInventoryItem` still carry a plain `notify_gm: bool`: only the GM
+`gm/give.rs` handlers set `true`; the base handler fires
+`send_gm_feedback_to_client` only `if notify_gm`, on the true post-commit
+success path, and it always targets the message's own `entity_id`.
+
+**`GrantXP`/`GrantCash` were changed (P05, legacy-command-parity) to
+`gm_feedback_to: Option<u32>`** instead of `notify_gm: bool`, because a GM can
+now grant to a *selected target* different from themself (`.givecash`/
+`.givexp` dot commands) — `entity_id` on these two messages is the grant's
+DB/UI recipient (the target), which is NOT necessarily who should get the GM
+feedback line (the caller). `Some(gm_entity_id)` tells the base handler to
+send the definitive line to that entity specifically (not `entity_id`);
+`None` means no GM feedback (mob-kill XP, loot pickup — unchanged semantics,
+just a renamed variant). Native `gm/give.rs` paths (`gmGiveXp`/`gmGiveCash`,
+caller grants to self) pass `Some(entity_id)` — same value as before, zero
+observable behavior change.
+
+**`GrantItem`/`RemoveInventoryItem`/`GrantExpertise`/
+`GrantAppliedSciencePoints` have the identical latent conflation** the moment
+a selected-target dot command is added for them (P06 `.giveitem` will hit the
+`GrantItem` case immediately) — apply the same `gm_feedback_to: Option<u32>`
+pattern rather than reinventing one. Non-GM senders (find via
 `rg 'CellToBaseMsg::(GrantXP|GrantCash|GrantItem|RemoveInventoryItem)\s*\{'`):
-- GrantXP: `cell/abilities/damage_apply/mod.rs`
-- GrantItem: `cell/interactions/loot.rs`, `cell/content/executor/inventory.rs`
-- GrantCash: `cell/interactions/loot.rs`
-- RemoveInventoryItem: `cell/content/executor/inventory.rs`, `cell/cell_methods/inventory/item_ops.rs`
+- GrantXP: `cell/abilities/damage_apply/mod.rs` (`gm_feedback_to: None`)
+- GrantItem: `cell/interactions/loot.rs`, `cell/content/executor/inventory.rs` (still `notify_gm: false`)
+- GrantCash: `cell/interactions/loot.rs` (`gm_feedback_to: None`)
+- RemoveInventoryItem: `cell/content/executor/inventory.rs`, `cell/cell_methods/inventory/item_ops.rs` (still `notify_gm: false`)
 
 All Grant* construction sites live in `cimmeria-services` (none in `crates/server`).
+
+When a live-DB test needs to prove the caller/target recipient split (not
+just that DB persistence is correct), a `notify_gm: bool`-shaped assertion
+isn't enough — build two distinct fully-connected `ConnectedClientState`
+sessions at two addresses (see `world_entry/methods/inventory/appearance.rs`'s
+test module for the full struct-literal fixture) and assert
+`TestTransport::send_count_to(addr)` per address, not just that a DB write
+happened. A test that only checks the DB row would pass even if the feedback
+line were silently misrouted to the wrong client.
 
 ## Gotchas
 
