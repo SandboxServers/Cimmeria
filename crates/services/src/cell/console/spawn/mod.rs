@@ -57,15 +57,19 @@ pub(super) async fn dispatch(
     }
 }
 
-/// Yaw (radians) from a facing direction vector.
-fn heading_of(dir: cimmeria_common::Vector3) -> f32 {
-    dir.x.atan2(dir.z)
-}
-
 /// The caller's space, world name, position and facing — everything a spawn
 /// request needs to place an entity "right where I'm standing, facing the way
 /// I'm facing" (legacy `space.createEntity(template, player.position,
 /// player.rotation)`).
+///
+/// Facing is `e.direction.y` — the wire packs `direction` as
+/// `[pitch, yaw, roll]` (`pack_angle(direction[1]) // yaw` in
+/// `mercury/aoi/{create,update}.rs`), and NPC movement writes the same
+/// convention directly (`npc.direction = Vector3::new(0.0, yaw, 0.0)` in
+/// `cell/service/ticks/npc_movement.rs`). `direction` is never a literal
+/// facing *vector* to `atan2` — a prior version of this function computed
+/// `dir.x.atan2(dir.z)`, which reads pitch/roll as if they were x/z vector
+/// components and produces an unrelated angle for every caller.
 ///
 /// Returns `None` after sending the GM the specific reason, so callers can
 /// simply `let Some(p) = caller_placement(..) else { return };`.
@@ -95,7 +99,7 @@ async fn caller_placement(
         space_id,
         world_name,
         [e.position.x, e.position.y, e.position.z],
-        heading_of(e.direction),
+        e.direction.y,
     ))
 }
 

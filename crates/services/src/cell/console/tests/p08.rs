@@ -129,14 +129,22 @@ fn record_from_request(
 
 /// Give the GM a distinctive position + facing so "the caller's exact
 /// placement" is falsifiable rather than coincidentally zero.
+///
+/// `direction` is `[pitch, yaw, roll]` (the wire packs
+/// `pack_angle(direction[1]) // yaw`; NPC movement writes the same
+/// convention directly as `Vector3::new(0.0, yaw, 0.0)`) — yaw lives in
+/// `.y`, never derived via `atan2` on the other two components. Pitch/roll
+/// are set to distinctive non-zero values here specifically so a
+/// regression that reads the wrong component (e.g. `atan2(x, z)`) fails
+/// instead of coincidentally matching.
 fn place_caller(mgr: &mut SpaceManager, gm: u32) -> ([f32; 3], f32) {
     let pos = [31.5, 4.25, 62.75];
-    let dir = Vector3::new(0.6, 0.0, -0.8);
+    let dir = Vector3::new(0.37, 1.9106, -0.21);
     if let Some(e) = mgr.get_entity_mut(gm) {
         e.position = Vector3::new(pos[0], pos[1], pos[2]);
         e.direction = dir;
     }
-    (pos, dir.x.atan2(dir.z))
+    (pos, dir.y)
 }
 
 // ── .spawn ────────────────────────────────────────────────────────────────

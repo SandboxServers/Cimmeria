@@ -14,10 +14,9 @@
 
 use tokio::sync::mpsc;
 
-use super::heading_of;
 use crate::cell::console::{parse_bool, seed, send_gm_feedback};
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
 
 /// Seed file the spawn rows live in.
 const SPAWNLIST_SEED: &str = "db/resources/Worlds/Seed/spawnlist.sql";
@@ -50,7 +49,9 @@ pub(super) async fn save_spawn(
         return;
     };
     let pos = e.position;
-    let heading = heading_of(e.direction);
+    // direction.y is yaw directly (see caller_placement's doc comment in the
+    // parent module) -- not a facing vector to atan2.
+    let heading = e.direction.y;
     let tag = e.tag.clone();
     let spawn_id = e.spawn_id;
     let space_id = e.space_id.0 as u32;
@@ -123,14 +124,24 @@ pub(super) async fn del_spawn(
     let sql = format!("DELETE FROM resources.spawnlist WHERE spawn_id = {spawn_id};");
     seed::record(caller_id, SPAWNLIST_SEED, "delspawn", &sql, tx, space_mgr).await;
 
-    // Apply in memory: despawn the entity now.
-    space_mgr.destroy_entity(target);
-    send_gm_feedback(
-        caller_id,
-        &format!("delspawn [{target}]: despawned in-memory."),
-        tx,
-    )
-    .await;
+    // Apply in memory: despawn the entity now. `despawn_npc` (not bare
+    // `destroy_entity`) fans LeftAoI out to every current witness and scrubs
+    // the target from every witness set immediately, rather than leaving
+    // observers to notice on the next AoI tick.
+    let outcome = space_mgr.despawn_npc(target, tx).await;
+    let msg = match outcome {
+        DespawnOutcome::Despawned { witnesses_notified } => {
+            format!("delspawn [{target}]: despawned in-memory ({witnesses_notified} witness(es) notified).")
+        }
+        // Both already ruled out above (existence + spawn_id checks), but
+        // despawn_npc re-checks independently (D02) -- report truthfully
+        // rather than assume the earlier checks still hold.
+        DespawnOutcome::NotFound => format!("delspawn [{target}]: target not found."),
+        DespawnOutcome::RefusedPlayer => {
+            format!("delspawn [{target}]: refused -- target is a player.")
+        }
+    };
+    send_gm_feedback(caller_id, &msg, tx).await;
 }
 
 /// `.autosavespawn <1|0>` — toggle the per-GM autosave preference.

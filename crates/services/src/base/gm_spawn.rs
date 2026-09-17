@@ -97,9 +97,12 @@ pub async fn handle_gm_spawn_npc(
                     template_id,
                     "GmSpawnNpc: entity_templates query failed: {e}"
                 );
+                // Distinct from the "template not found" line above: this is
+                // a DB outage or row-decode failure, not evidence the
+                // template id is bad. The detailed error stays server-side.
                 send_gm_feedback_to_client(
                     entity_id,
-                    &format!("spawn failed: template {template_id} not found"),
+                    &format!("spawn failed: could not load template {template_id}"),
                     transport,
                     connected,
                     entity_to_addr,
