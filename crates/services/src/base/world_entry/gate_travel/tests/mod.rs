@@ -15,7 +15,14 @@
 //! registry today — `orchestrator_shards.rs` is a read-only loader).
 //! These tests cover the cell→base→cell handoff within a single shard,
 //! which is the production behavior.
+//!
+//! [`transfer`] holds the GM cross-instance transfer half of the same seam:
+//! exact-instance targeting end to end, the validate-before-`CreateEntity`
+//! ordering, and mid-transfer disconnect recovery. It reuses [`make_state`]
+//! and [`make_socket`] from here.
 use super::*;
+
+mod transfer;
 use crate::base::PendingClientReadyInfo;
 use crate::test_support::TestTransport;
 use cimmeria_mercury::encryption::MercuryEncryption;
@@ -38,7 +45,7 @@ fn stub_pending_ready() -> PendingClientReadyInfo {
     }
 }
 
-fn make_state() -> ConnectedClientState {
+pub(super) fn make_state() -> ConnectedClientState {
     ConnectedClientState {
         enc: MercuryEncryption::from_session_key([0xCDu8; 32]),
         key: [0xCDu8; 32],
@@ -85,7 +92,7 @@ fn make_state() -> ConnectedClientState {
     }
 }
 
-async fn make_socket() -> Arc<dyn Transport> {
+pub(super) async fn make_socket() -> Arc<dyn Transport> {
     Arc::new(TestTransport::new())
 }
 
@@ -153,12 +160,19 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
             position,
             rotation,
             destination_ring_id,
+            destination_space_id,
         } => {
             // Stargate dial-travel must NOT carry a ring id — that field is
             // reserved for `Effect::TeleportCrossWorld`.
             assert_eq!(
                 destination_ring_id, None,
                 "stargate dial-gate must leave destination_ring_id=None",
+            );
+            // Stargate travel resolves by world name: no exact-instance
+            // targeting (that is GM `.goto <player>` only, packet P45).
+            assert_eq!(
+                destination_space_id, None,
+                "stargate dial-gate must leave destination_space_id=None",
             );
             (entity_id, target_world_name, position, rotation)
         }
@@ -193,6 +207,7 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
         captured.2,
         captured.3,
         None, // stargate dial-travel has no cross-world ring carry-through
+        None, // ... and no exact-instance targeting
         &transport,
         &connected,
         &entity_to_addr,
@@ -267,6 +282,7 @@ async fn gate_travel_without_active_player_id_aborts_before_persist() {
         "Castle",
         [10.0, 20.0, 30.0],
         [0.0; 3],
+        None,
         None,
         &transport,
         &connected,
@@ -375,6 +391,7 @@ async fn gate_travel_persist_branch_is_a_no_op_when_active_player_id_missing() {
         [999.0, 999.0, 999.0],
         [0.0; 3],
         None,
+        None,
         &transport,
         &connected,
         &entity_to_addr,
@@ -429,6 +446,7 @@ async fn gate_travel_with_unknown_entity_id_returns_err() {
         [0.0; 3],
         [0.0; 3],
         None,
+        None,
         &transport,
         &connected,
         &entity_to_addr,
@@ -463,6 +481,7 @@ async fn gate_travel_with_torn_down_connected_state_returns_err() {
         "Castle",
         [0.0; 3],
         [0.0; 3],
+        None,
         None,
         &transport,
         &connected,

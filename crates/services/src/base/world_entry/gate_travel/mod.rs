@@ -40,7 +40,12 @@ mod tests;
     name = "gate_travel.execute",
     level = "info",
     skip_all,
-    fields(entity_id, target_world_name, destination_ring_id)
+    fields(
+        entity_id,
+        target_world_name,
+        destination_ring_id,
+        destination_space_id
+    )
 )]
 pub(crate) async fn handle_gate_travel(
     entity_id: u32,
@@ -48,6 +53,9 @@ pub(crate) async fn handle_gate_travel(
     position: [f32; 3],
     rotation: [f32; 3],
     destination_ring_id: Option<i32>,
+    // Exact destination instance from `CellToBaseMsg::GateTravel`. `None`
+    // keeps the historical "resolve by world name" behavior.
+    destination_space_id: Option<u32>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -97,6 +105,34 @@ pub(crate) async fn handle_gate_travel(
         "Gate travel: sending RESET_ENTITIES for world transition"
     );
 
+    // Fail closed BEFORE anything destructive. Gate travel without a known
+    // active character can neither persist the destination (it would risk
+    // writing another character's row on a multi-character account) nor
+    // reload the right character, so the whole transfer is refused here.
+    //
+    // This check used to sit *after* the `CreateEntity` round-trip below.
+    // That ordering meant an abort left the cell entity already moved into
+    // the destination space while the client never received RESET_ENTITIES
+    // and never got a `pending_world_entry` — a desynced player with no way
+    // back. Validate first; tear down second. (The cell half of the flow has
+    // already removed the entity from its origin space by the time we get
+    // here, so `CreateEntity` is the point of no return on this side.)
+    let active_player_id: i32 = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        match clients.get(&addr).and_then(|c| c.active_player_id) {
+            Some(pid) => pid,
+            None => {
+                tracing::error!(
+                    %addr, account_id, world = %target_world_name,
+                    "GateTravel: no active_player_id cached — refusing the transfer \
+                     (would risk wrong-character corruption / loading the wrong character \
+                     on multi-character accounts)"
+                );
+                return Ok(());
+            }
+        }
+    };
+
     // Tell CellService to create the entity in the new space and await the
     // resolved space_id via oneshot (needed for the world-entry wire packet).
     let space_id = if let Some(tx) = cell_tx {
@@ -107,6 +143,7 @@ pub(crate) async fn handle_gate_travel(
                 world_name: target_world_name.to_string(),
                 position,
                 rotation,
+                destination_space_id,
                 reply_tx,
             })
             .await
@@ -126,33 +163,47 @@ pub(crate) async fn handle_gate_travel(
         resolve_space_id_fallback(target_world_name)
     };
 
+    // Disconnect-during-transfer reap. The cell already removed the entity
+    // from its origin space, and the `CreateEntity` above put it back in the
+    // destination one. If the client dropped while that round-trip was in
+    // flight, `destroy_client_entities` has already pulled its
+    // `entity_to_addr` mapping and queued its own `DisconnectEntity` — which
+    // the cell may well have processed *before* our `CreateEntity`, leaving a
+    // clientless ghost entity sitting in the destination space forever. Reap
+    // it explicitly instead of leaking it.
+    if cell_tx.is_some() {
+        let addr_still_mapped =
+            entity_to_addr.lock().unwrap().get(&entity_id).copied() == Some(addr);
+        let session_still_open = connected
+            .lock()
+            .map_err(|_| "connected lock poisoned")?
+            .contains_key(&addr);
+        if !addr_still_mapped || !session_still_open {
+            tracing::warn!(
+                entity_id, %addr, world = %target_world_name,
+                addr_still_mapped, session_still_open,
+                "GateTravel: client disconnected mid-transfer — destroying the \
+                 freshly-created destination entity so it doesn't leak"
+            );
+            if let Some(tx) = cell_tx {
+                if let Err(e) = tx.send(BaseToCellMsg::DestroyEntity { entity_id }).await {
+                    tracing::error!(
+                        entity_id, world = %target_world_name,
+                        "GateTravel: DestroyEntity send failed after mid-transfer \
+                         disconnect ({e}) — ghost entity left in the destination space"
+                    );
+                }
+            }
+            return Ok(());
+        }
+    }
+
     // Persist the destination world + position to sgw_player so a future
     // relog or RespawnReload reloads the player at the new world rather than
-    // snapping them back to the saved pre-gate location.
+    // snapping them back to the saved pre-gate location. `active_player_id`
+    // was resolved (fail-closed) before the teardown above.
     if let Some(pool) = db_pool {
-        // Look up active_player_id (cached from playCharacter) — fall back to
-        // lowest-for-account only if missing, to keep gate travel functional
-        // on accounts that somehow skipped the playCharacter cache.
-        let active_pid: Option<i32> = {
-            let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-            clients.get(&addr).and_then(|c| c.active_player_id)
-        };
-
-        // Fail closed: gate travel without a known active character would
-        // otherwise persist against a fallback (e.g., MIN(player_id) for the
-        // account) that could corrupt a different character on multi-character
-        // accounts. The cache is set in play_character; missing here is a
-        // protocol-level error, not something to paper over.
-        let pid = match active_pid {
-            Some(pid) => pid,
-            None => {
-                tracing::error!(
-                    %addr, account_id, world = %target_world_name,
-                    "GateTravel: no active_player_id cached — refusing to persist destination (would risk wrong-character corruption on multi-character accounts)"
-                );
-                return Ok(());
-            }
-        };
+        let pid = active_player_id;
 
         let res = sqlx::query(
             "UPDATE sgw_player \
@@ -192,24 +243,9 @@ pub(crate) async fn handle_gate_travel(
     };
 
     // Query player load data from DB (same player, different world).
-    // Fail closed: a missing active_player_id means we can't safely identify
-    // which character to reload — falling back to "lowest player_id for the
-    // account" would silently load the wrong character on multi-character
-    // accounts. The cache is set in play_character; missing here is a
-    // protocol-level error.
-    let active_player_id: i32 = {
-        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        match clients.get(&addr).and_then(|c| c.active_player_id) {
-            Some(pid) => pid,
-            None => {
-                tracing::error!(
-                    %addr, account_id,
-                    "GateTravel: no active_player_id cached — aborting reload (would risk loading wrong character on multi-character accounts)"
-                );
-                return Ok(());
-            }
-        }
-    };
+    // `active_player_id` is the fail-closed value resolved before teardown:
+    // falling back to "lowest player_id for the account" would silently load
+    // the wrong character on multi-character accounts.
     let player_load_data = query_player_load_data(db_pool, account_id, active_player_id).await;
 
     // Entity teardown: Send RESET_ENTITIES

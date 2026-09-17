@@ -9,11 +9,18 @@ pub enum BaseToCellMsg {
     /// Create a cell entity in the named world at the given position/rotation.
     /// The `reply_tx` oneshot returns the resolved `space_id` so the caller
     /// can `.await` it before building the world-entry wire packet.
+    ///
+    /// `destination_space_id` requests an *exact* already-loaded instance
+    /// (carried through from `CellToBaseMsg::GateTravel`). It is re-validated
+    /// on arrival — a stale/foreign id degrades to the by-world-name
+    /// resolution rather than failing the create, because leaving the entity
+    /// in no space at all is the worse outcome.
     CreateEntity {
         entity_id: u32,
         world_name: String,
         position: [f32; 3],
         rotation: [f32; 3],
+        destination_space_id: Option<u32>,
         reply_tx: tokio::sync::oneshot::Sender<u32>,
     },
 

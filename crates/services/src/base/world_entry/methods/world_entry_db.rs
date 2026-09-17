@@ -82,6 +82,8 @@ pub async fn query_world_entry(
                         world_name: "CombatSim".to_string(),
                         position: [0.0; 3],
                         rotation: [0.0; 3],
+                        // Login always resolves the destination by world name.
+                        destination_space_id: None,
                         reply_tx,
                     })
                     .await
@@ -137,6 +139,8 @@ pub async fn query_world_entry(
                         world_name: row.world_location.clone(),
                         position: pos,
                         rotation: [0.0; 3],
+                        // Login always resolves the destination by world name.
+                        destination_space_id: None,
                         reply_tx,
                     })
                     .await

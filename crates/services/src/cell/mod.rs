@@ -22,6 +22,7 @@ pub mod missions;
 pub mod ring_transport;
 mod service;
 pub mod space_manager;
+pub mod space_transfer;
 pub mod spawner;
 
 use cimmeria_common::{EntityId, SpaceId};
