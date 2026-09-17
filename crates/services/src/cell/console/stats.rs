@@ -1,13 +1,17 @@
 //! Granular per-domain stat readouts (category F): `.stats`,
 //! `.primarystats`, `.speedstats`, `.armorstats`, `.qrstats`,
-//! `.absorbstats`, `.stealthstats`.
+//! `.absorbstats`, `.stealthstats` — each dumps a fixed list of stats of the
+//! selected target (a `Being`) via the feedback channel, one `label: cur/max`
+//! line per stat. These are the granular views the umbrella `/gmprintstats`
+//! doesn't break out.
 //!
-//! Read-only — each dumps a fixed list of stats of the selected target (a
-//! `Being`) via the feedback channel, one `label: cur/max` line per stat. These
-//! are the granular views the umbrella `/gmprintstats` doesn't break out.
+//! Plus one setter (category K): `.speed` ([`set_speed`], P47) — the family's
+//! only mutation, kept in this file rather than a new sibling since it's a
+//! single command sharing `MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` with the
+//! `speedstats` readout above.
 //!
 //! Legacy reference: `deprecated/python/cell/commands/Entity.py`
-//! (`entityStats`, `entityPrimaryStats` … `entityStealthStats`).
+//! (`entityStats`, `entityPrimaryStats` … `entityStealthStats`, `setSpeed`).
 
 use cimmeria_entity::stats::Stat;
 use cimmeria_entity::stats::{
@@ -149,6 +153,25 @@ fn format_stat_line(label: &str, stat: Option<&Stat>) -> String {
         Some(s) => format!("    {label}: {}/{}", s.cur, s.max),
         None => format!("    {label}: n/a"),
     }
+}
+
+/// `.speed <value>` — set the target's current `movementSpeedMod` and
+/// `rotationSpeedMod` together (100 is normal per legacy `setSpeed`,
+/// `deprecated/python/cell/commands/Entity.py:537-548`). **Stub — P47 not yet
+/// implemented.**
+pub(super) async fn set_speed(
+    caller_id: u32,
+    _target: u32,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    _space_mgr: &mut SpaceManager,
+) {
+    send_gm_feedback(
+        caller_id,
+        &format!("speed: not yet implemented (P47) -- args: {args:?}"),
+        tx,
+    )
+    .await;
 }
 
 #[cfg(test)]

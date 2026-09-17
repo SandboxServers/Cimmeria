@@ -10,7 +10,8 @@ use tokio::sync::mpsc;
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
-    crafting, entity, give, mission, net, patrol, query, seed, server, spawn, stats, travel,
+    crafting, entity, give, mission, net, patrol, placement, query, seed, server, spawn, stats,
+    travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -265,6 +266,32 @@ pub(crate) async fn exec(
         }
         // Travel
         "gotoxyz" => travel::goto_xyz(caller_id, target_id, args, tx, space_mgr).await,
+        "goto" | "summon" | "gotolocation" => {
+            travel::dispatch(name, caller_id, target_id, args, tx, space_mgr).await
+        }
+        // J. placement (position / orientation)
+        "location" | "rotation" => {
+            placement::dispatch(
+                name,
+                caller_id,
+                target_id.expect("Target::Spawnable guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        // K. stat setters
+        "speed" => {
+            stats::set_speed(
+                caller_id,
+                target_id.expect("Target::Being guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
         // G. server / maintenance
         "save" | "reloadmap" | "reloadres" | "removerespawner" | "loglevel" | "logclient" => {
             server::dispatch(name, caller_id, args, target_id, tx, space_mgr).await

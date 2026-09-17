@@ -48,7 +48,10 @@
 //! - [`spawn`] — spawn lifecycle + persistence (`spawn`, `despawn`,
 //!   `savespawn`, `delspawn`, …).
 //! - [`patrol`] — FanMMORPG patrol authoring (`path_add`, `path_assign`, …).
-//! - [`travel`] — player-administration travel (`gotoxyz`).
+//! - [`travel`] — player-administration travel (`gotoxyz`, `goto`, `summon`,
+//!   `gotolocation`).
+//! - [`placement`] — selected-entity read/set position + orientation
+//!   (`location`, `rotation`).
 //!
 //! The framework itself splits into:
 //! - [`registry`] — the [`Spec`]/[`Target`] types + the static `COMMANDS` table.
@@ -67,6 +70,7 @@ mod mission;
 mod net;
 mod parse;
 mod patrol;
+mod placement;
 mod query;
 mod registry;
 mod seed;

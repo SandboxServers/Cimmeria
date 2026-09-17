@@ -1,4 +1,13 @@
-//! Player-administration travel console commands: `.gotoxyz`.
+//! Player-administration travel console commands: `.gotoxyz`, `.goto`,
+//! `.summon`, `.gotolocation`.
+//!
+//! `.goto`/`.summon`/`.gotolocation` (P46, G05's third child) are thin
+//! adapters over P44's [`crate::cell::space_manager::SpaceManager::find_online_player_by_name`]
+//! and P45's [`crate::cell::space_transfer::transfer_player_to_space`] — see
+//! `docs/analysis/legacy-command-parity/work-packets.md#p46`. Stubs only for
+//! now; the P46 packet fills in the real bodies of [`goto`], [`summon`], and
+//! [`goto_location`] without needing to touch this file's `dispatch` routing
+//! or the registry/dispatch.rs wiring, which are already complete.
 //!
 //! Same-space authoritative teleport of the selected target, falling back to
 //! the caller when nothing is selected — legacy `gotoXYZ`
@@ -107,6 +116,75 @@ pub(super) async fn goto_xyz(
     send_gm_feedback(
         caller_id,
         &format!("gotoxyz: moved entity {entity} to ({x}, {y}, {z})"),
+        tx,
+    )
+    .await;
+}
+
+/// Route `.goto` / `.summon` / `.gotolocation` (P46) to their handlers.
+pub(super) async fn dispatch(
+    name: &str,
+    caller_id: u32,
+    target: Option<u32>,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    match name {
+        "goto" => goto(caller_id, target, args, tx, space_mgr).await,
+        "summon" => summon(caller_id, target, args, tx, space_mgr).await,
+        "gotolocation" => goto_location(caller_id, target, args, tx, space_mgr).await,
+        _ => {}
+    }
+}
+
+/// `.goto <name>` — move the target (or the caller) to a named online
+/// player's position/instance. **Stub — P46 not yet implemented.**
+async fn goto(
+    caller_id: u32,
+    _target: Option<u32>,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    _space_mgr: &mut SpaceManager,
+) {
+    send_gm_feedback(
+        caller_id,
+        &format!("goto: not yet implemented (P46) -- args: {args:?}"),
+        tx,
+    )
+    .await;
+}
+
+/// `.summon <name>` — move a named online player to the target's (or the
+/// caller's) position/instance. **Stub — P46 not yet implemented.**
+async fn summon(
+    caller_id: u32,
+    _target: Option<u32>,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    _space_mgr: &mut SpaceManager,
+) {
+    send_gm_feedback(
+        caller_id,
+        &format!("summon: not yet implemented (P46) -- args: {args:?}"),
+        tx,
+    )
+    .await;
+}
+
+/// `.gotolocation <worldName> <x> <y> <z>` — move the target (or the caller)
+/// to explicit coordinates in a named world. **Stub — P46 not yet
+/// implemented.**
+async fn goto_location(
+    caller_id: u32,
+    _target: Option<u32>,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    _space_mgr: &mut SpaceManager,
+) {
+    send_gm_feedback(
+        caller_id,
+        &format!("gotolocation: not yet implemented (P46) -- args: {args:?}"),
         tx,
     )
     .await;
