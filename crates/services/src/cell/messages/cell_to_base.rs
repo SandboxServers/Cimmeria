@@ -466,12 +466,22 @@ pub enum CellToBaseMsg {
     /// cell then allocates an NPC id and spawns it into `space_id`. `position`
     /// is the final spawn position (caller position + the command's X/Z
     /// offsets, already validated finite cell-side).
+    ///
+    /// `heading` is the spawn yaw in radians, written straight into the
+    /// materialized `SpawnRecord.heading` (which
+    /// `spawn_npc_from_record_into` turns into `direction = (0, heading, 0)`).
+    /// The dot-console `.spawn` / `.spawnrandom` send the caller's own facing
+    /// here, matching legacy `Resource.spawnEntity`'s
+    /// `space.createEntity(template, player.position, player.rotation)`. The
+    /// native `gmSpawnByCmd` keeps sending `0.0` — its wire signature has no
+    /// rotation argument, so there is nothing to forward.
     GmSpawnNpc {
         entity_id: u32,
         template_id: i32,
         space_id: u32,
         world_name: String,
         position: [f32; 3],
+        heading: f32,
     },
 
     /// Re-anchor the local pawn to a fresh actor without `RESET_ENTITIES`.

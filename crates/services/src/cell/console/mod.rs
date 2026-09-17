@@ -45,7 +45,8 @@
 //! - [`crafting`] — discipline / blueprint grants (`allcraft`, …).
 //! - [`mission`] — mission gaps (`missionfail`, `missionrewards`).
 //! - [`server`] — server / maintenance (`save`, `loglevel`, …).
-//! - [`spawn`] — spawn persistence (`savespawn`, `delspawn`, …).
+//! - [`spawn`] — spawn lifecycle + persistence (`spawn`, `despawn`,
+//!   `savespawn`, `delspawn`, …).
 //! - [`patrol`] — FanMMORPG patrol authoring (`path_add`, `path_assign`, …).
 //! - [`travel`] — player-administration travel (`gotoxyz`).
 //!
