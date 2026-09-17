@@ -1,5 +1,9 @@
 //! Tests for the `.`-console framework: registry integrity, the GM
 //! access gate, the parser, and end-to-end dispatch coverage.
+//!
+//! Per-packet regression suites that would push this file past the 700-line
+//! hard cap live in sibling files (e.g. [`p02`]) and reach back into this
+//! module's `setup`/`decode_feedback` fixtures via `super::`.
 
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
@@ -7,6 +11,9 @@ use tokio::sync::mpsc;
 use super::*;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+
+#[cfg(test)]
+mod p02;
 
 /// Build a SpaceManager with a GM player (entity 1, access_level 2) targeting an
 /// NPC (entity 100001) in a small test world.
