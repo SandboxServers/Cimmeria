@@ -66,6 +66,44 @@ impl SpaceManager {
         self.world_spaces.get(world_name).copied()
     }
 
+    /// Is `world_name` a world this CellApp knows about at all?
+    ///
+    /// Backed by `spaces.xml` (the static world table), so this answers
+    /// "does this world exist" independently of whether any instance of it
+    /// is currently loaded. Cross-world transfer validates against this
+    /// BEFORE tearing an entity out of its origin space.
+    pub fn world_is_known(&self, world_name: &str) -> bool {
+        self.worlds.contains_key(world_name)
+    }
+
+    /// World name of a currently-loaded space instance, or `None` if no such
+    /// instance is loaded.
+    pub fn world_name_for_space(&self, space_id: u32) -> Option<&str> {
+        self.spaces.get(&space_id).map(|s| s.world_name.as_str())
+    }
+
+    /// Resolve the "first/default loaded instance" of `world_name` (D15).
+    ///
+    /// - Non-instanced world: its single startup space.
+    /// - Instanced world: the lowest-numbered currently-loaded instance.
+    ///   Space ids are allocated monotonically (`allocate_space_id`), so
+    ///   "lowest id" == "oldest live instance" and is deterministic —
+    ///   `self.spaces` is a `HashMap`, so picking "any" entry would make the
+    ///   destination vary run to run.
+    /// - `None` when the world has no loaded instance at all (an instanced
+    ///   world with nobody in it). Callers treat that as "let the create path
+    ///   allocate a fresh instance", not as an error.
+    pub fn default_space_for_world(&self, world_name: &str) -> Option<u32> {
+        if let Some(&space_id) = self.world_spaces.get(world_name) {
+            return Some(space_id);
+        }
+        self.spaces
+            .values()
+            .filter(|s| s.world_name == world_name)
+            .map(|s| s.space_id)
+            .min()
+    }
+
     /// Get a mutable reference to a cell entity by its entity ID.
     ///
     /// Searches across all spaces using the entity→space index.

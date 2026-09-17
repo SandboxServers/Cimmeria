@@ -78,7 +78,41 @@ impl SpaceManager {
         rotation: [f32; 3],
     ) -> Result<u32, String> {
         let space_id = self.find_or_create_space(world_name)?;
+        self.insert_entity_into_space(entity_id, space_id, position, rotation)
+    }
 
+    /// Create a cell entity in one *specific, already-loaded* space instance.
+    ///
+    /// This is the cross-instance transfer entry point (GM `.goto <player>`):
+    /// [`Self::create_entity`] resolves by world name, and for an instanced
+    /// world `find_or_create_space` always allocates a BRAND NEW space — so
+    /// it can never be used to join somebody else's existing instance.
+    ///
+    /// Fails if `space_id` isn't loaded; the caller decides whether to fall
+    /// back to by-world-name resolution (it should — an entity in no space at
+    /// all is worse than an entity in the wrong instance of the right world).
+    pub fn create_entity_in_space(
+        &mut self,
+        entity_id: u32,
+        space_id: u32,
+        position: [f32; 3],
+        rotation: [f32; 3],
+    ) -> Result<u32, String> {
+        if !self.spaces.contains_key(&space_id) {
+            return Err(format!("Space {space_id} is not loaded"));
+        }
+        self.insert_entity_into_space(entity_id, space_id, position, rotation)
+    }
+
+    /// Shared tail of the create paths: build the `CellEntity`, index it in
+    /// the space's spatial grid and entity map, and bind `entity_space`.
+    fn insert_entity_into_space(
+        &mut self,
+        entity_id: u32,
+        space_id: u32,
+        position: [f32; 3],
+        rotation: [f32; 3],
+    ) -> Result<u32, String> {
         let pos = Vector3::new(position[0], position[1], position[2]);
         let dir = Vector3::new(rotation[0], rotation[1], rotation[2]);
 

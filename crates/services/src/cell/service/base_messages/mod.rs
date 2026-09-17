@@ -50,6 +50,7 @@ pub(super) async fn handle_base_message(
             world_name,
             position,
             rotation,
+            destination_space_id,
             reply_tx,
         } => {
             lifecycle::handle_create_entity(
@@ -57,6 +58,7 @@ pub(super) async fn handle_base_message(
                 world_name,
                 position,
                 rotation,
+                destination_space_id,
                 reply_tx,
                 tx,
                 space_mgr,

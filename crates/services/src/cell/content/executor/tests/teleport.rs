@@ -49,6 +49,7 @@ async fn cross_world_teleport_action_emits_gate_travel_with_no_ring_id() {
             position,
             rotation,
             destination_ring_id,
+            destination_space_id: _,
         } = msg
         {
             gate_travel = Some((

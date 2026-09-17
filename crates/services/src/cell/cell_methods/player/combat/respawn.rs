@@ -142,6 +142,8 @@ pub(crate) async fn handle_respawn(
                 position: spawn_pos,
                 rotation: [0.0; 3],
                 destination_ring_id: None,
+                // Respawn resolves the destination by world name.
+                destination_space_id: None,
             })
             .await;
         return;

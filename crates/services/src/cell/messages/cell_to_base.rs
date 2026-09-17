@@ -98,12 +98,23 @@ pub enum CellToBaseMsg {
     /// finishes its `onClientReady` handshake — that's the deferred hook
     /// the destination ring's FSM waits on to advance out of
     /// `RemoteLoadWait`. Stargate-driven gate travel leaves it `None`.
+    ///
+    /// `destination_space_id` names an *exact* already-loaded space instance
+    /// to join, rather than letting the cell pick one by world name. Used by
+    /// the GM cross-instance transfer primitive
+    /// ([`crate::cell::space_transfer`]) so `.goto <player>` lands in the
+    /// target's actual instance instead of a freshly-created private one
+    /// (`find_or_create_space` always allocates a NEW space for an instanced
+    /// world). `None` keeps the historical behavior — resolve by world name.
+    /// The id is re-validated cell-side on arrival, because the instance can
+    /// be destroyed (last player left) while this message is in flight.
     GateTravel {
         entity_id: u32,
         target_world_name: String,
         position: [f32; 3],
         rotation: [f32; 3],
         destination_ring_id: Option<i32>,
+        destination_space_id: Option<u32>,
     },
 
     /// Persist a mission state change to the database.

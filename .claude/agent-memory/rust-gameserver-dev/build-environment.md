@@ -1,19 +1,47 @@
 ---
 name: Build environment quirks
-description: Cimmeria repo's .cargo/config.toml hardcodes another user's rust-lld path; need an env override to build.
-type: project
+description: Worktrees need external/ junction-linked before cargo works; cargo's output is block-buffered through the Bash tool, so a hung test looks like a hung build.
+metadata:
+  type: project
 ---
 
-The repo `.cargo/config.toml` hardcodes a `rust-lld` linker path under another user's home directory. To build on this host, prepend:
+## OUTDATED — the rust-lld override is no longer needed
 
+This note used to say `.cargo/config.toml` hardcoded another user's
+`rust-lld` path and that every cargo command needed a
+`CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS` override. **Confirmed
+2026-09-17: that is fixed.** The tracked config now uses a bare
+`linker = "rust-lld"` with `linker-flavor=lld-link`, which rustc resolves
+from the rustup toolchain's bin directory. Plain `cargo test` links fine on
+this host with no env override.
+
+## A fresh worktree cannot build until `external/` is linked
+
+`external/` is gitignored and populated by `setup.ps1` in the main checkout
+only, so a new worktree fails in `cimmeria-entity`'s build script with
+`C1083: Cannot open source file: '../../external/recast/Detour/Source/...'`.
+Fix once per worktree:
+
+```powershell
+cmd /c mklink /J "<worktree>\external" "C:\Users\Steve\source\projects\Cimmeria\external"
 ```
-CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS='-C linker=C:\Users\Steve\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib\rustlib\x86_64-pc-windows-msvc\bin\rust-lld.exe'
-```
 
-to every `cargo check`/`cargo test`/`cargo build` invocation.
+## Cargo through the Bash tool looks hung when it isn't
 
-The original memory note had the path under `C:\Users\steven.cady\...` — that is the value in the tracked `.cargo/config.toml`, NOT the right path on this host. Confirmed 2026-05-27: rust-lld actually lives at the `C:\Users\Steve\...` path above.
+Cargo's progress goes to stderr, which the Bash tool captures block-buffered
+— so a long `cargo test` writes **nothing** to the output file until it
+exits. A genuinely hung *test* is indistinguishable from a slow build.
 
-**Why:** this avoids editing tracked config (which would conflict for the original author).
+Two things that help:
 
-**How to apply:** wrap every cargo command. Tests that don't need a linker (`cargo check`) sometimes work without it but `cargo test` always needs it.
+- Run cargo via the **PowerShell** tool instead (`$env:CARGO_TERM_PROGRESS_WHEN
+  = "never"`, then `& cargo ... | Select-Object -Last N`) — output streams.
+- Diagnose with `Get-CimInstance Win32_Process -Filter "Name='cargo.exe'"` and
+  look at `UserModeTime`. A cargo sitting at ~0.2s CPU after minutes is not
+  compiling; it is parenting something blocked (usually a test awaiting a
+  oneshot/channel reply that will never arrive).
+
+Corollary for tests: always wrap a handler call that awaits a cross-service
+reply in `tokio::time::timeout`, so an ordering regression fails fast instead
+of wedging the suite. See [[cross-world-transfer-flow]] for the case that
+taught this.

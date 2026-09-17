@@ -141,6 +141,8 @@ pub(super) async fn cross_world_teleport(
             position,
             rotation: [0.0, 0.0, 0.0],
             destination_ring_id: None,
+            // Content-chain teleport resolves by world name.
+            destination_space_id: None,
         })
         .await
     {

@@ -178,6 +178,9 @@ pub(super) async fn handle_goto_location(
             position,
             rotation: [0.0; 3],
             destination_ring_id: None,
+            // Native gmGotoLocation has no instance selector; the base side
+            // resolves the destination by world name.
+            destination_space_id: None,
         })
         .await
         .is_err()
