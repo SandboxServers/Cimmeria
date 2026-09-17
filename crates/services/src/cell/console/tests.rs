@@ -281,8 +281,14 @@ async fn legacy_p01_help_zero_match_reports_legacy_wording() {
     let (mut mgr, gm, _npc) = setup();
     let engine = ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(16);
-    handle_console_command(gm, ".help definitely-not-a-registered-command", &tx, &mut mgr, &engine)
-        .await;
+    handle_console_command(
+        gm,
+        ".help definitely-not-a-registered-command",
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
     let mut saw = false;
     while let Ok(msg) = rx.try_recv() {
         if let Some(text) = decode_feedback(&msg) {
@@ -291,7 +297,10 @@ async fn legacy_p01_help_zero_match_reports_legacy_wording() {
             }
         }
     }
-    assert!(saw, "zero-match .help must report the legacy wording exactly");
+    assert!(
+        saw,
+        "zero-match .help must report the legacy wording exactly"
+    );
 }
 
 /// Regression guard: `parse_f32` must reject non-finite values — `NaN`/`inf`

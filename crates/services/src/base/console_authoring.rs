@@ -287,17 +287,83 @@ mod tests {
 
     use super::*;
     use crate::test_support::require_db_or_skip;
+    use crate::test_support::TestTransport;
 
     const TEST_BASE: i32 = 0x7000_5000;
 
     #[test]
     fn escape_ilike_pattern_escapes_percent_underscore_backslash() {
-        assert_eq!(
-            escape_ilike_pattern("50%_off\\sale"),
-            "50\\%\\_off\\\\sale"
-        );
+        assert_eq!(escape_ilike_pattern("50%_off\\sale"), "50\\%\\_off\\\\sale");
         assert_eq!(escape_ilike_pattern("plain text"), "plain text");
         assert_eq!(escape_ilike_pattern(""), "");
+    }
+
+    /// Decrypt a packet built by `send_gm_feedback_to_client` (test fixtures
+    /// use the all-zero key from `test_default_connected_client_state`) and
+    /// pull out the `onPlayerCommunication` text WSTRING. Mirrors the body
+    /// layout `crate::mercury::append_entity_method` produces for a direct-
+    /// encoded (`method_index < idbase`) call —
+    /// `[msg_id(1)][payload_len(2)][entity_id(4)][args...]` — wrapped in
+    /// `build_outgoing`'s `[flags(1)][body][seq(4)]` (see
+    /// `world_entry::teleport::tests` for the same decrypt recipe).
+    fn decode_feedback_text(packet: &[u8]) -> String {
+        let enc = cimmeria_mercury::encryption::MercuryEncryption::from_session_key([0u8; 32]);
+        let pt = enc.decrypt(packet).expect("decrypt test packet");
+        let body = &pt[1..pt.len() - 4];
+        let args = &body[7..];
+        let speaker_len = u32::from_le_bytes(args[0..4].try_into().unwrap()) as usize;
+        let mut offset = 4 + speaker_len * 2 + 1 + 1; // speaker WSTRING + flags + channel
+        let text_len = u32::from_le_bytes(args[offset..offset + 4].try_into().unwrap()) as usize;
+        offset += 4;
+        let mut chars = Vec::with_capacity(text_len);
+        for i in 0..text_len {
+            let o = offset + i * 2;
+            chars.push(u16::from_le_bytes(args[o..o + 2].try_into().unwrap()));
+        }
+        String::from_utf16_lossy(&chars)
+    }
+
+    /// The "no live DB" arm of `handle_console_search` — the "error/no-DB"
+    /// half of the "empty/error responses" acceptance criterion (the "empty"
+    /// half is `legacy_p01_search_no_matches_returns_empty_untruncated`
+    /// below). No live DB needed: `db_pool: &None` short-circuits before
+    /// `run_console_search` (or any query) ever runs.
+    #[tokio::test]
+    async fn legacy_p01_search_no_live_db_reports_exact_feedback() {
+        let entity_id = 42u32;
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+        let fake_addr: SocketAddr = "127.0.0.1:40200".parse().unwrap();
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+            Arc::new(Mutex::new(HashMap::from([(entity_id, fake_addr)])));
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::from([(
+                fake_addr,
+                crate::test_support::test_default_connected_client_state(),
+            )])));
+
+        handle_console_search(
+            entity_id,
+            0,
+            "anything",
+            &None,
+            &dyn_transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
+
+        let sent = transport.drain();
+        assert_eq!(
+            sent.len(),
+            1,
+            "no-DB path must send exactly one feedback packet"
+        );
+        assert_eq!(
+            decode_feedback_text(&sent[0].1),
+            "searchitem: no live DB connection",
+            "no-DB feedback text must match exactly"
+        );
     }
 
     async fn insert_item(pool: &PgPool, id: i32, name: &str) {
