@@ -431,6 +431,103 @@ async fn legacy_p05_grant_xp_feedback_goes_to_caller_not_target() {
     cleanup(&pool, account_id).await;
 }
 
+/// `handle_grant_xp` with no DB pool must drop the grant entirely — no wire
+/// push to the target, no "definitive" GM feedback, no in-memory mutation —
+/// rather than falsely telling the GM the grant succeeded when it will
+/// vanish on the target's next reconnect. Mirrors `handle_grant_cash`'s
+/// existing no-pool behavior (CodeRabbit caught the two functions diverging
+/// on this exact point during P05's review).
+#[tokio::test]
+async fn legacy_p05_grant_xp_with_no_db_pool_drops_grant_silently() {
+    let transport_typed = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = transport_typed.clone();
+    let target_entity: u32 = 9_999_403;
+    let caller_entity: u32 = 9_999_404;
+    let target_addr: SocketAddr = "127.0.0.1:55403".parse().unwrap();
+    let caller_addr: SocketAddr = "127.0.0.1:55404".parse().unwrap();
+
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([
+        (target_entity, target_addr),
+        (caller_entity, caller_addr),
+    ])));
+    let connected = Arc::new(Mutex::new(HashMap::from([
+        (target_addr, make_connected_state(Some(1234))),
+        (caller_addr, make_connected_state(None)),
+    ])));
+
+    handle_grant_xp(
+        target_entity,
+        50,
+        Some(caller_entity),
+        &None, // no DB pool
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    assert_eq!(
+        transport_typed.len(),
+        0,
+        "no DB pool must drop the grant with zero wire traffic — no target push, no GM feedback"
+    );
+    let state = connected.lock().unwrap();
+    assert_eq!(
+        state.get(&target_addr).unwrap().player_xp,
+        Some(0),
+        "in-memory xp must stay at its pre-grant value (0) — the grant must not apply"
+    );
+}
+
+/// Same shape as above, for the `(Some(pool), None)` branch: a DB pool
+/// exists but the target has no `active_player_id` (pre-character-select).
+/// Must drop the grant, not apply an unpersisted mutation with a false
+/// success message.
+#[tokio::test]
+async fn legacy_p05_grant_xp_with_no_active_player_id_drops_grant_silently() {
+    let pool = require_db_or_skip!();
+    let db_pool = Some(Arc::new(pool));
+
+    let transport_typed = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = transport_typed.clone();
+    let target_entity: u32 = 9_999_405;
+    let caller_entity: u32 = 9_999_406;
+    let target_addr: SocketAddr = "127.0.0.1:55405".parse().unwrap();
+    let caller_addr: SocketAddr = "127.0.0.1:55406".parse().unwrap();
+
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([
+        (target_entity, target_addr),
+        (caller_entity, caller_addr),
+    ])));
+    let connected = Arc::new(Mutex::new(HashMap::from([
+        (target_addr, make_connected_state(None)), // no active_player_id
+        (caller_addr, make_connected_state(None)),
+    ])));
+
+    handle_grant_xp(
+        target_entity,
+        50,
+        Some(caller_entity),
+        &db_pool,
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    assert_eq!(
+        transport_typed.len(),
+        0,
+        "missing active_player_id must drop the grant with zero wire traffic"
+    );
+    let state = connected.lock().unwrap();
+    assert_eq!(
+        state.get(&target_addr).unwrap().player_xp,
+        Some(0),
+        "in-memory xp must stay at its pre-grant value (0) when there's no active character to persist to"
+    );
+}
+
 // ── Burst-shape regression guards for the handle_grant_xp bundle migration ──
 //
 // Pure assertions against `build_grant_xp_bundle` — no DB, no transport.

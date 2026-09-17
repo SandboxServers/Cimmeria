@@ -143,23 +143,28 @@ pub async fn handle_grant_xp(
             }
         }
         (Some(_), None) => {
-            // No active character (play-character flow incomplete). Skip
-            // persistence; the in-memory grant will be lost on reconnect, but
-            // we shouldn't be granting XP before character selection anyway.
+            // No active character (play-character flow incomplete). Drop the
+            // grant entirely rather than applying an un-persisted in-memory
+            // mutation and telling the GM it succeeded — mirrors
+            // handle_grant_cash's no-pool branch: an unpersisted "success" is
+            // worse than a dropped grant, since the GM believes the grant
+            // took effect when it will vanish on reconnect.
             tracing::warn!(
                 entity_id, total_xp, new_level,
-                "GrantXP: no active_player_id — skipping persist (likely a pre-character-select grant)"
+                "GrantXP: no active_player_id — dropping grant (likely a pre-character-select grant)"
             );
+            return;
         }
         (None, _) => {
-            // Mirrors the no-DB branch in handle_grant_cash: the in-memory
-            // state is updated but un-authoritative. Log loudly.
+            // No DB pool: same reasoning as the branch above — drop rather
+            // than fake a definitive success.
             tracing::warn!(
                 entity_id,
                 total_xp,
                 new_level,
-                "GrantXP: no DB pool — XP/level not persisted, will be lost on reconnect"
+                "GrantXP: no DB pool — dropping grant (cannot persist XP/level)"
             );
+            return;
         }
     }
 
