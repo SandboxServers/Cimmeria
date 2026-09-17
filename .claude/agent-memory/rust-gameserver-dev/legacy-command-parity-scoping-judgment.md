@@ -103,10 +103,91 @@ See also [test-file-split-without-touching-mod-rs](test-file-split-without-touch
   to every *descendant* module of its defining module, and the new
   submodule is a descendant. P26 split `console/registry.rs` (698/700 hard
   cap) into `registry/mod.rs` (the `Target`/`Spec` types + `spec()` builder)
-  + `registry/commands.rs` (just the `COMMANDS` array) this way — `commands.rs`
+  and `registry/commands.rs` (just the `COMMANDS` array) this way — `commands.rs`
   reaches `spec`/`Spec`/`Target` via a plain `use super::{...}`, no `pub`
   changes anywhere. The parent's own `mod registry;` declaration needs zero
   edits either (`x.rs` → `x/mod.rs` resolves identically).
+
+- **The campaign's mandatory "controlled negative run" has a silent trap:
+  restoring the real implementation with `Copy-Item <backup> <file>` also
+  restores the *backup's* mtime**, which is older than the artifact Cargo
+  just built from the stub. Cargo then decides the crate is unchanged and
+  re-runs the **stale stub test binary**, so the restored (correct) code
+  still shows the negative run's failures and it looks like the restore
+  failed. `git diff` and file hashes both say the file is fine, which makes
+  it maximally confusing. Fix: `(Get-Item $f).LastWriteTime = Get-Date`
+  after any backup-restore, before re-running tests. (For a *pure addition*
+  packet, the "revert" to run is a deliberately naive body — e.g.
+  case-insensitive / first-match-wins / failure-shapes-collapsed — not a
+  deletion; expect only the contract-specific tests to fail and say in the
+  handoff why the happy-path ones correctly still pass.)
+
+- **When a lookup/query returns "which one of several," return a variant,
+  never "the first one."** `SpaceManager.spaces` and `SpaceInstance.entities`
+  are both `HashMap`s, so first-match-wins is genuinely nondeterministic per
+  process, not merely arbitrary-looking. P44's `PlayerNameLookup::Ambiguous
+  { entity_ids }` (sorted ids + `tracing::error!`) is the shape to copy for
+  any "this invariant should hold, but prove we don't silently paper over it"
+  acceptance criterion.
+
+- **`CellEntity::character_name` is the player-only display name and is
+  written by exactly one site** — the `BaseToCellMsg::InitPlayerState` arm in
+  `cell/service/base_messages/mod.rs`. NPCs use the separate `npc_name`.
+  Message ordering is `CreateEntity` → `ConnectEntity` → `InitPlayerState`,
+  so a cell entity has **no name at all** between create and init — which is
+  why a player mid-gate-travel is invisible to any name-keyed cell lookup
+  (`create_entity` builds a fresh `CellEntity` with `character_name: None`).
+  Any "find player by name" feature inherits that window; legacy's
+  `PlayersByName` dict did not, because its key survived until
+  `disconnected()`.
+
+- **Check the legacy Python CLASS HIERARCHY before porting a command's
+  `targetType` string to a Rust `Target` variant.** The legacy registration
+  table's target class is an `isinstance` check against a base class, so
+  subclasses satisfy it. `SGWPlayer(SGWBeing(SGWSpawnableEntity))` means legacy
+  `Command('despawn', ..., 'SGWSpawnableEntity')` accepted a *player* — and the
+  Rust `Target::Spawnable`'s `matches()` returns `true` unconditionally, so a
+  literal port reproduces the hole. `grep '^class SGW' deprecated/python/cell/*.py`
+  gives the whole tree in one call; do it for any command whose legacy target
+  class is a base class (`SGWSpawnableEntity`, `SGWBeing`). D02 says correct
+  these rather than reproduce them. For a destructive command, put the refusal
+  in the `SpaceManager` primitive too, not only the registry spec — a registry
+  `Target` is one table edit away from regressing, and the revert experiment
+  then *demonstrates* the layering (loosening the spec alone left the player
+  alive).
+
+- **`SpaceManager::destroy_entity` does NOT do witness cleanup;
+  `disconnect_entity` does.** `destroy_entity` drops the entity from
+  `space.entities` + the spatial grid but leaves it in every observer's
+  `witnesses` set. The next `compute_aoi_changes()` tick *does* emit `LeftAoI`
+  via its "in previous but not in current" arm, so nothing is silently lost —
+  but it is deferred a tick, skipped for any space whose `players` set the tick
+  guard passes over, missed entirely for an observer who leaves in between, and
+  never an assertable *count*. For any new "destroy an entity" command, reuse
+  `disconnect_entity`'s shape (collect observers from `space.players` where
+  `other.witnesses.contains(&target)` → send `LeftAoI` per observer → scrub the
+  target from every witness set → `destroy_entity`). P08 packaged this as
+  `SpaceManager::despawn_npc` in `space_manager/entities.rs`; `.delspawn` still
+  uses bare `destroy_entity` and should be switched over by P10.
+
+- **The `gmSpawnByCmd` cell↔base round-trip is already truthful about creation
+  results — don't re-derive it, and don't undermine it.** `cell_methods/gm/spawn.rs`
+  enqueues `CellToBaseMsg::GmSpawnNpc` and sends NO feedback; `base/gm_spawn.rs`
+  sends the "template not found" line; `cell/service/base_messages/gm_spawn.rs`
+  sends "spawned npc `<id>`" only after `spawn_npc_from_record_in_space` returns
+  `Ok`. Any new spawn command should ride that and stay silent at enqueue. Its
+  outcome strings are now command-neutral (`spawned npc …`, `spawn failed: …`)
+  because three GM commands share it. `GmSpawnNpc` carries `heading` as of P08;
+  the native `gmSpawnByCmd` sends `0.0` because its wire signature
+  (`WSTRING DesignId, FLOAT XOffset, FLOAT ZOffset`) has no rotation argument.
+
+- **A player's `CellEntity.direction` is a direction VECTOR; an NPC spawned
+  from a `SpawnRecord` has `direction = (0, heading, 0)` (yaw in `.y`).** The
+  two are not interchangeable. `console/spawn/mod.rs`'s `heading_of(dir) =
+  dir.x.atan2(dir.z)` converts the player form to a yaw — correct for a player
+  caller, and it silently yields `0.0` for a record-spawned NPC (`atan2(0,0)`).
+  That is a live latent bug in `.savespawn`'s heading persistence (P09's
+  problem), not something to paper over at a new call site.
 
 - **When a command reuses an existing native handler's core mechanism
   (`update_entity_position` + `note_authorized_teleport`, gated

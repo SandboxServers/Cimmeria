@@ -32,6 +32,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             position,
             rotation,
             destination_ring_id,
+            destination_space_id,
         } => {
             gate_travel(
                 entity_id,
@@ -39,6 +40,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 position,
                 rotation,
                 destination_ring_id,
+                destination_space_id,
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
@@ -93,6 +95,7 @@ pub(super) async fn gate_travel(
     position: [f32; 3],
     rotation: [f32; 3],
     destination_ring_id: Option<i32>,
+    destination_space_id: Option<u32>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -105,6 +108,7 @@ pub(super) async fn gate_travel(
         position,
         rotation,
         destination_ring_id,
+        destination_space_id,
         transport,
         connected,
         entity_to_addr,

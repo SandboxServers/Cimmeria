@@ -41,6 +41,8 @@
 - [reference_combat_exploit_classes.md](reference_combat_exploit_classes.md) — Recurring combat/abilities exploit classes — caller-state gating, target id existence/AoI, faction/LOS, stub-implementation debt
 - [reference_dialog_choice_exploit_shape.md](reference_dialog_choice_exploit_shape.md) — DIALOG_BUTTON_CHOICE has no open-dialog tracking; OnDialogChoice chains are replay-forgeable
 - [reference_gm_auth_plumbing_gap.md](reference_gm_auth_plumbing_gap.md) — Systemic gap: cell-method dispatch has no access_level; every future gm* handler is unauthenticated by default
+- [exploit_entity_id_recycling.md](exploit_entity_id_recycling.md) — Entity ids come off a free list; deferred teardown keyed on a bare entity_id can destroy a different live player
+- [reference_cell_teardown_skips_session_state.md](reference_cell_teardown_skips_session_state.md) — `destroy_entity` skips trade cleanup; only the two lifecycle arms do it, so every other teardown strands the counterparty
 
 ## Per-PR review findings
 

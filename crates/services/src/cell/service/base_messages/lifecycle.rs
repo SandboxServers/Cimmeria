@@ -16,19 +16,55 @@ pub(super) async fn handle_create_entity(
     world_name: String,
     position: [f32; 3],
     rotation: [f32; 3],
+    destination_space_id: Option<u32>,
     reply_tx: tokio::sync::oneshot::Sender<u32>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     spawn_records: &[spawner::SpawnRecord],
 ) {
-    tracing::debug!(entity_id, %world_name, ?position, "CreateEntity");
+    tracing::debug!(entity_id, %world_name, ?position, ?destination_space_id, "CreateEntity");
 
-    // For instanced worlds, every CreateEntity gets a new space with its
-    // own NPCs. For non-instanced worlds, the space already exists from
+    // An explicit destination instance (GM cross-instance transfer, see
+    // `crate::cell::space_transfer`) is re-validated HERE, not trusted from
+    // the message: the cell loop keeps running between the transfer's
+    // validation and this message arriving, and an instanced space is
+    // destroyed the moment its last player leaves. A stale or foreign id
+    // degrades to by-world-name resolution — landing in the wrong instance
+    // of the right world is recoverable, landing in no space is not.
+    let joined_instance =
+        destination_space_id.and_then(|sid| match space_mgr.world_name_for_space(sid) {
+            Some(w) if w == world_name => Some(sid),
+            Some(other) => {
+                tracing::warn!(
+                    entity_id, requested_space_id = sid, %world_name, actual_world = %other,
+                    "CreateEntity: requested destination instance belongs to another world — \
+                     falling back to by-world-name resolution"
+                );
+                None
+            }
+            None => {
+                tracing::warn!(
+                    entity_id, requested_space_id = sid, %world_name,
+                    "CreateEntity: requested destination instance is no longer loaded \
+                     (last player left mid-transfer) — falling back to by-world-name resolution"
+                );
+                None
+            }
+        });
+
+    // Joining an existing instance must NOT re-announce the space or re-spawn
+    // its NPCs — both already happened when that instance was created.
+    // For instanced worlds, every *fresh* CreateEntity gets a new space with
+    // its own NPCs. For non-instanced worlds, the space already exists from
     // startup and NPCs were spawned then.
-    let is_instanced = space_mgr.is_world_instanced(&world_name);
+    let is_instanced = joined_instance.is_none() && space_mgr.is_world_instanced(&world_name);
 
-    match space_mgr.create_entity(entity_id, &world_name, position, rotation) {
+    let created = match joined_instance {
+        Some(sid) => space_mgr.create_entity_in_space(entity_id, sid, position, rotation),
+        None => space_mgr.create_entity(entity_id, &world_name, position, rotation),
+    };
+
+    match created {
         Ok(space_id) => {
             if is_instanced {
                 // Notify BaseApp about the new instanced space so it can
@@ -61,7 +97,19 @@ pub(super) async fn handle_create_entity(
                 .await;
         }
         Err(e) => {
-            tracing::error!(entity_id, %world_name, "Failed to create entity: {e}");
+            // KNOWN GAP: `reply_tx` is `Sender<u32>` with no failure channel,
+            // so dropping it here makes the base side fall back to the
+            // hardcoded `resolve_space_id_fallback` table and build a
+            // world-entry packet for a space this entity is NOT in. Cross-world
+            // GM transfer (`crate::cell::space_transfer`) validates the world
+            // and the destination instance BEFORE teardown precisely so this
+            // arm stays unreachable for that path; widening the oneshot to a
+            // `Result` is the real fix and is tracked for the gate-travel owner.
+            tracing::error!(
+                entity_id, %world_name, ?destination_space_id,
+                "Failed to create entity: {e} — entity is in NO space; \
+                 base will fall back to a hardcoded space id"
+            );
         }
     }
 }

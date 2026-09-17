@@ -11,7 +11,8 @@ use cimmeria_entity::movement_validation::MovementValidator;
 use cimmeria_entity::navigation::NavMesh;
 use cimmeria_entity::space::Space;
 
-pub use entities::ClientMoveOutcome;
+pub use entities::{ClientMoveOutcome, DespawnOutcome};
+pub use queries::PlayerNameLookup;
 
 mod aoi;
 mod entities;

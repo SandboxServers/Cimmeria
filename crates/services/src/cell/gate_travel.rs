@@ -92,19 +92,40 @@ pub async fn handle_dial_gate(
         }
     }
 
-    // Remove entity from current space (CellService side)
-    space_mgr.destroy_entity(entity_id);
-
-    // Tell BaseApp to perform the world transition (RESET_ENTITIES + new world entry)
-    let _ = tx
+    // Tell BaseApp to perform the world transition (RESET_ENTITIES + new world
+    // entry) BEFORE removing the entity locally. A closed base channel must
+    // not leave the player destroyed cell-side with no transfer in flight —
+    // that is an "un-spaced" player who can only recover by relogging. Same
+    // ordering the native `gmGotoLocation` handler already uses.
+    if let Err(e) = tx
         .send(CellToBaseMsg::GateTravel {
             entity_id,
             target_world_name: gate.world_name.clone(),
             position: [gate.x, gate.y, gate.z],
             rotation: [0.0, 0.0, gate.yaw],
             destination_ring_id: None,
+            // Stargate travel resolves the destination by world name.
+            destination_space_id: None,
         })
-        .await;
+        .await
+    {
+        tracing::error!(
+            entity_id, world = %gate.world_name, error = %e,
+            "onDialGate: base channel closed — entity left in place, no transfer"
+        );
+        return;
+    }
+
+    // Cancel any open trade before the entity goes. `destroy_entity` doesn't
+    // clean trade state, and this helper early-returns once `get_entity`
+    // misses — so gating on it afterwards would be a silent no-op, leaving the
+    // traveller's partner with a dangling `trade_partner_entity_id` and no
+    // `onTradeResults(Cancelled)`. Both lifecycle arms call it for the same
+    // reason; stargate travel is just as much a departure.
+    super::cell_methods::player::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr).await;
+
+    // Remove entity from current space (CellService side)
+    space_mgr.destroy_entity(entity_id);
 }
 
 #[cfg(test)]
@@ -189,6 +210,34 @@ mod tests {
         handle_dial_gate(1, 1, 0, &tx, &mut mgr).await;
         assert!(rx.try_recv().is_err());
         assert!(mgr.get_entity(1).is_some());
+    }
+
+    /// A closed base channel must leave the traveller in place. Destroying
+    /// the entity first and *then* discovering the send failed produces a
+    /// player who is in no space with no transfer in flight — recoverable
+    /// only by relogging.
+    #[tokio::test]
+    async fn dial_gate_with_closed_base_channel_leaves_the_entity_in_place() {
+        let mut mgr = make_manager_with_stargates();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+        let space_before = mgr.get_entity_space_id(1);
+
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        drop(rx); // base side is gone
+
+        handle_dial_gate(1, 2, 0, &tx, &mut mgr).await;
+
+        assert!(
+            mgr.get_entity(1).is_some(),
+            "a failed GateTravel enqueue must not tear the traveller out of their space"
+        );
+        assert_eq!(
+            mgr.get_entity_space_id(1),
+            space_before,
+            "the traveller must still be in their origin space"
+        );
     }
 
     #[tokio::test]

@@ -145,6 +145,8 @@ async fn dispatch_effect_inner(
                     position,
                     rotation: [0.0, 0.0, 0.0],
                     destination_ring_id: Some(destination_region_id),
+                    // Ring transport resolves by world name.
+                    destination_space_id: None,
                 })
                 .await
             {
