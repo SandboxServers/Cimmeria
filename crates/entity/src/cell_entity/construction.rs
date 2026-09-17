@@ -25,6 +25,7 @@ impl CellEntity {
             direction: Vector3::zero(),
             velocity: [0.0; 3],
             is_on_ground: true,
+            movement_unrestricted: false,
             properties: HashMap::new(),
             witnesses: HashSet::new(),
             aoi_radius: 100.0, // Default AoI radius (matches grid_vision_distance)
