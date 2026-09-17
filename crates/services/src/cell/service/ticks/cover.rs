@@ -261,6 +261,7 @@ mod tests {
 
         let mut engine = cimmeria_content_engine::chain::ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 0x7000_2700,
             name: "tick: any cover entered → bump counter".to_string(),
             enabled: true,

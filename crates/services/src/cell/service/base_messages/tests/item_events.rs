@@ -26,6 +26,7 @@ async fn item_move_applied_into_bandolier_fires_equip_event() {
 
     let mut engine = ChainEngine::new();
     engine.register_chain(Chain {
+        action_delays: Vec::new(),
         id: 9100,
         name: "test: bandolier-equip → bump".to_string(),
         enabled: true,
@@ -89,6 +90,7 @@ async fn item_move_within_bandolier_does_not_fire_equip_event() {
 
     let mut engine = ChainEngine::new();
     engine.register_chain(Chain {
+        action_delays: Vec::new(),
         id: 9101,
         name: "test: any equip → bump".to_string(),
         enabled: true,
@@ -150,6 +152,7 @@ async fn item_move_out_of_bandolier_does_not_fire_equip_event() {
 
     let mut engine = ChainEngine::new();
     engine.register_chain(Chain {
+        action_delays: Vec::new(),
         id: 9102,
         name: "test: any equip → bump".to_string(),
         enabled: true,
@@ -213,6 +216,7 @@ async fn item_used_fires_on_item_use_content_event() {
 
     let mut engine = ChainEngine::new();
     engine.register_chain(Chain {
+        action_delays: Vec::new(),
         id: 5001,
         name: "test-item-use-chain".into(),
         enabled: true,

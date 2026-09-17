@@ -253,27 +253,68 @@ fn scan_region_triggers(sql: &str) -> Vec<(i32, String)> {
     out
 }
 
-/// Region-tag world prefixes are case-sensitive. The content engine
-/// resolver does a literal string match on the trigger event_key
-/// (event_dispatch.rs::fire_enter_region passes the region tag
-/// through unchanged), and the canonical region tag comes from the
-/// `point_sets` table. If a chain seeds `Castle_CellBlock.Region9`
-/// (capital `B`) but `point_sets` has `Castle_Cellblock.Region9`
-/// (lowercase `b`), the trigger never fires and the player is
-/// silently soft-stuck on whatever step the chain was meant to
-/// advance.
+/// Scan `point_sets.sql` for `INSERT INTO point_sets (set_id, name, ...)`
+/// rows and return the set of canonical `name` values (byte-exact,
+/// including case). `name` is the first quoted string in each VALUES
+/// tuple (the `set_id` column ahead of it is numeric, not quoted).
+fn scan_point_set_names(sql: &str) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for line in sql.lines() {
+        // Each `INSERT INTO point_sets (...) VALUES (...)` is one
+        // physical line in this file (unlike the chain seed files,
+        // point_sets.sql never wraps a single INSERT across multiple
+        // lines), so a substring check on the line is sufficient.
+        if !line.contains("INSERT INTO point_sets") {
+            continue;
+        }
+        let quoted: Vec<&str> = line
+            .split('\'')
+            .enumerate()
+            .filter_map(|(i, s)| if i % 2 == 1 { Some(s) } else { None })
+            .collect();
+        if let Some(name) = quoted.first() {
+            names.insert(name.to_string());
+        }
+    }
+    names
+}
+
+/// Region-tag event_keys must byte-exactly match a real `point_sets.name`
+/// row. The content engine resolver does a literal, case-sensitive
+/// string match on the trigger event_key
+/// (`event_dispatch.rs::fire_enter_region` passes the region tag
+/// through unchanged), so any chain whose `enter_region`/`exit_region`
+/// trigger key isn't a real point-set name — wrong case, typo, or a
+/// region that was never seeded — silently never fires, soft-stucking
+/// the player on whatever step the chain was meant to advance.
 ///
-/// This is exactly what happened in chain 1073 of mission 680
-/// ("Lockdown! Find another way out of the Castle!") — every other
-/// region trigger in `castle_cellblock_chains.sql` uses
-/// `Castle_Cellblock.*`, only chain 1073 had the typo.
-///
-/// The invariant: within a single chain SQL file, every world prefix
-/// (the part before the first `.`) must use a single, consistent
-/// case. Cross-file consistency is also worth checking but is not
-/// strictly required (different files describe different worlds).
+/// This used to be an internal per-file "one canonical case per world
+/// prefix" heuristic (it caught chain 1073 of mission 680, "Lockdown!
+/// Find another way out of the Castle!", which typo'd
+/// `Castle_CellBlock.Region9` against the file's own
+/// `Castle_Cellblock.*` convention). That heuristic produces a false
+/// positive for Castle_CellBlock's Region8: `point_sets.sql` itself
+/// spells every other Castle_Cellblock region with a lowercase `b`
+/// EXCEPT Region8, which is `Castle_CellBlock.Region8` (capital `B`,
+/// set_id 2039) — a genuine, singular inconsistency in the shipped
+/// game data (see audit.md defect B3 in
+/// `docs/analysis/castle-cellblock-rebuild/`). Checking against the
+/// real `point_sets` table instead of file-internal consistency is
+/// both stricter (catches a lone bad key with no correct sibling to
+/// compare against, which the old heuristic could miss) and correctly
+/// allows Region8's legitimate exception.
 #[test]
-fn every_chain_file_uses_consistent_region_world_prefix() {
+fn every_chain_region_key_matches_a_seeded_point_set() {
+    let point_sets_path = workspace_root().join("db/resources/Events/Seed/point_sets.sql");
+    let point_sets_sql = fs::read_to_string(&point_sets_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", point_sets_path.display()));
+    let canonical_names = scan_point_set_names(&point_sets_sql);
+    assert!(
+        !canonical_names.is_empty(),
+        "point_sets.sql scan found zero names — parser drift, not an \
+         empty seed file"
+    );
+
     let seed_dir = workspace_root().join("db/resources/Content/Seed");
     assert!(
         seed_dir.exists(),
@@ -295,39 +336,23 @@ fn every_chain_file_uses_consistent_region_world_prefix() {
             fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         let triggers = scan_region_triggers(&sql);
 
-        // world_lower → (canonical_case, first_chain_id_seen) for the first
-        // occurrence; any later trigger with a different case on the same
-        // lowercase world is a violation.
-        let mut seen: HashMap<String, (String, i32)> = HashMap::new();
         for (chain_id, region) in &triggers {
-            let world = match region.split_once('.') {
-                Some((w, _)) => w,
-                None => continue, // No world prefix; skip rather than erroring.
-            };
-            let key = world.to_ascii_lowercase();
-            match seen.get(&key) {
-                Some((canonical, first_chain)) if canonical != world => {
-                    violations.push(format!(
-                        "  {}: chain {} uses world prefix '{}' but chain {} \
-                         (earlier in file) uses '{}' for the same world — \
-                         the resolver does case-sensitive string matching, \
-                         so one of these will never fire",
-                        filename, chain_id, world, first_chain, canonical,
-                    ));
-                }
-                Some(_) => {}
-                None => {
-                    seen.insert(key, (world.to_string(), *chain_id));
-                }
+            if !canonical_names.contains(region) {
+                violations.push(format!(
+                    "  {filename}: chain {chain_id} triggers on region_key \
+                     '{region}', which is not a byte-exact point_sets.name \
+                     — the resolver does case-sensitive string matching, so \
+                     this trigger never fires",
+                ));
             }
         }
     }
 
     assert!(
         violations.is_empty(),
-        "Chain seed files have inconsistent region-world casing — the \
-         content engine matches event_keys with case-sensitive string \
-         equality, so an inconsistent prefix means the trigger never \
+        "Chain seed files reference region keys that don't byte-match any \
+         seeded point_sets.name — the content engine matches event_keys \
+         with case-sensitive string equality, so a mismatched key never \
          fires and the player is soft-stuck:\n{}",
         violations.join("\n"),
     );
@@ -364,4 +389,71 @@ VALUES (9999, 'set_interaction_type', NULL, 'TestNPC', '{"op":"|","mask":256}', 
     assert!(triggers.contains_key(&9999));
     assert_eq!(triggers.get(&9999).map(String::as_str), Some("TestNPC"));
     assert!(tags.contains("TestNPC"));
+}
+
+#[test]
+fn scan_point_set_names_extracts_the_name_column_byte_exact() {
+    let sql = r#"
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2039, 'Castle_CellBlock.Region8', 'AreaSet', 12, NULL, 0, 'BoundingBox', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2033, 'Castle_Cellblock.Region2', 'AreaSet', 12, NULL, 0, 'BoundingBox', 1);
+"#;
+    let names = scan_point_set_names(sql);
+    assert_eq!(names.len(), 2, "must extract exactly the two seeded names");
+    // The two rows differ only in the casing of "Cellblock" — pinning
+    // both as distinct set members is the whole point: a HashSet<String>
+    // lookup is case-sensitive, so 'Castle_CellBlock.Region8' and
+    // 'Castle_Cellblock.Region8' would collide if the scanner
+    // normalized case anywhere.
+    assert!(names.contains("Castle_CellBlock.Region8"));
+    assert!(names.contains("Castle_Cellblock.Region2"));
+    assert!(!names.contains("Castle_Cellblock.Region8"));
+}
+
+/// Regression guard for the false-positive this check used to produce
+/// (see the doc comment on `every_chain_region_key_matches_a_seeded_point_set`):
+/// a chain file with two DIFFERENT regions that legitimately carry
+/// different casing (because that's what point_sets.sql actually has)
+/// must not be flagged, while a chain that references a region key
+/// with NO matching point_sets row at all — wrong case or a typo — must
+/// still be caught. This exercises the check's core matching logic
+/// directly against synthetic data, independent of the live seed.
+#[test]
+fn region_key_check_allows_legitimate_per_region_casing_but_catches_a_mismatch() {
+    let point_sets_sql = r#"
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2039, 'Castle_CellBlock.Region8', 'AreaSet', 12, NULL, 0, 'BoundingBox', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2033, 'Castle_Cellblock.Region2', 'AreaSet', 12, NULL, 0, 'BoundingBox', 1);
+"#;
+    let canonical_names = scan_point_set_names(point_sets_sql);
+
+    let good_chain_sql = r#"
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1008, 'enter_region', 'Castle_CellBlock.Region8', 'player', true, 0);
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1011, 'enter_region', 'Castle_Cellblock.Region2', 'player', false, 0);
+"#;
+    let good_triggers = scan_region_triggers(good_chain_sql);
+    assert!(
+        good_triggers
+            .iter()
+            .all(|(_, region)| canonical_names.contains(region)),
+        "two legitimately differently-cased region keys for DIFFERENT \
+         regions must both validate — this is exactly the Region8 shape \
+         the old per-file-consistency heuristic false-flagged"
+    );
+
+    let bad_chain_sql = r#"
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (5002, 'enter_region', 'Castle_Cellblock.Region8', 'player', true, 0);
+"#;
+    let bad_triggers = scan_region_triggers(bad_chain_sql);
+    assert!(
+        bad_triggers
+            .iter()
+            .any(|(_, region)| !canonical_names.contains(region)),
+        "a region key with the wrong case for Region8 (lowercase 'b', the \
+         auto-export's actual bug — audit.md defect B3) must be flagged \
+         even though nothing else in the same synthetic file has the \
+         correct casing to compare against; that's the exact case the old \
+         per-file-consistency heuristic could miss"
+    );
 }

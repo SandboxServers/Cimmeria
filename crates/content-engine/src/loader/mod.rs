@@ -134,15 +134,29 @@ pub fn build_chains_from_rows(
         }).collect();
 
         // Build actions (shared across all triggers for this chain).
+        // `action_delays` is built in lockstep with `actions` — pushed only
+        // when `convert_action` succeeds — so the two vecs stay index-aligned
+        // even though a row can be dropped mid-list (unknown action_type).
         let mut act_list = actions_by_chain.remove(&chain_id).unwrap_or_default();
         act_list.sort_by_key(|a| a.sort_order);
-        let actions: Vec<Action> = act_list.iter().filter_map(|a_row| {
-            let result = action::convert_action(a_row);
-            if result.is_none() {
-                warn!(chain_id, action_type = %a_row.action_type, "Unknown action_type, skipping");
+        let mut actions: Vec<Action> = Vec::with_capacity(act_list.len());
+        let mut action_delays: Vec<i32> = Vec::with_capacity(act_list.len());
+        for a_row in &act_list {
+            match action::convert_action(a_row) {
+                Some(action) => {
+                    actions.push(action);
+                    // Negative delay_ms is a malformed seed row (the
+                    // column has a NOT NULL DEFAULT 0 but no CHECK
+                    // constraint against negative values) — clamp rather
+                    // than let `Instant::now() + Duration::from_millis`
+                    // panic on a `try_from` cast at schedule time.
+                    action_delays.push(a_row.delay_ms.max(0));
+                }
+                None => {
+                    warn!(chain_id, action_type = %a_row.action_type, "Unknown action_type, skipping");
+                }
             }
-            result
-        }).collect();
+        }
 
         // Triggers — chains can declare multiple `content_triggers` rows
         // for OR-semantics (e.g., "fire on either MessHall_Guard1 OR
@@ -198,6 +212,7 @@ pub fn build_chains_from_rows(
                 trigger,
                 conditions: conditions.clone(),
                 actions: actions.clone(),
+                action_delays: action_delays.clone(),
                 priority: row.priority,
             });
         }

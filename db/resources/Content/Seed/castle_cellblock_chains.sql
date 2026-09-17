@@ -198,6 +198,53 @@ VALUES (1007, 'step_status', 622, '80623', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1007, 'add_dialog_set', 5230, NULL, '{"slot": 21, "mission_id": 622}', 0, 0);
 
+-- Chain 1008: enter Region8 (any player, unconditional) -> aggro the NID
+-- guard trap. Restored from the purged auto-export (former chain 5002,
+-- space_castle_cellblock_chains.sql, deleted per audit.md defect B3 /
+-- decision D-CB02).
+--
+-- The auto-export's trigger key was 'Castle_Cellblock.Region8' (lowercase
+-- b). The point set is 'Castle_CellBlock.Region8' (capital B) -- see
+-- db/resources/Events/Seed/point_sets.sql, set_id 2039 -- the ONLY
+-- Cellblock region with that spelling; every other region in this file
+-- and in point_sets.sql uses the lowercase 'Castle_Cellblock.*' form.
+-- Region matching is an exact string compare (Trigger::OnRegionEnter in
+-- crates/content-engine/src/triggers/matching.rs), so the case mismatch
+-- meant this chain could never fire.
+--
+-- Python source (Castle_CellBlock.py, n116_trigger_In / n117_trigger_In /
+-- n120_trigger_In): on region entry, find the entity tagged
+-- ArmYourself_NIDGuard (spawnlist.sql id 20), call ent.setAggression(1),
+-- THEN target.threatGenerated(instigator.entityId, 1000) -- aggression
+-- before threat, values 1 and 1000. The auto-export dropped the
+-- setAggression call entirely and used threat_level 5000 instead of
+-- 1000. This chain restores the Python's order and values, matching the
+-- set_aggression + generate_threat pairing already used by chain 1032
+-- (ArmYourself_PrisonerRetrievalUnit).
+--
+-- No mission gate in the Python -- the region trigger fires
+-- unconditionally for any player (Human or Jaffa) regardless of mission
+-- state, so this chain carries no content_conditions rows (same shape as
+-- chain 1013's unconditional system_message). `once = true` on the
+-- trigger matches the Python's `once = True` subscription.
+--
+-- Chain id 1008 is unused headroom inside this file's own declared
+-- Mission-622 range (1001-1010; see the header above and
+-- .github/instructions/content-chains.instructions.md). This encounter
+-- shares the ArmYourself_NIDGuard spawn with the Arm Yourself pistol
+-- area and using this slot keeps the new chain out of the 1112-1120
+-- range work-packets.md reserves for a later packet (C03).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1008, 'Region8 entry: aggro ArmYourself_NIDGuard (restored from purged auto-export, B3 fix)', 'space', 8, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1008, 'enter_region', 'Castle_CellBlock.Region8', 'player', true, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1008, 'set_aggression',  NULL, 'ArmYourself_NIDGuard', '{"level": 1}',           0, 0),
+  (1008, 'generate_threat', NULL, 'ArmYourself_NIDGuard', '{"threat_level": 1000}', 0, 1);
+
 -- ============================================================
 -- MISSION 638 — Speak to Prisoner 329
 -- ============================================================

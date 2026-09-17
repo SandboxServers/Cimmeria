@@ -454,6 +454,21 @@ mod tests {
             }
             other => panic!("expected RemoveItem as second action, got {other:?}"),
         }
+
+        // C08a zero-delay-case regression guard: every seeded action row
+        // today has `delay_ms = 0` (C08b, which authors the first nonzero
+        // row, hasn't landed). `resolved.action_delays` must be
+        // index-aligned with `resolved.actions` and all-zero for this
+        // real seeded chain — proving C08a's threading of
+        // `content_actions.delay_ms` through the loader and resolver
+        // didn't perturb the existing zero-delay behavior this same test
+        // already pins above.
+        assert_eq!(
+            resolved.action_delays,
+            vec![0, 0],
+            "a real seeded chain with no delay_ms rows must resolve with \
+             action_delays all zero, index-aligned with actions"
+        );
     }
 
     /// `load_single_chain_for_test` returns `Ok(None)` for a chain id

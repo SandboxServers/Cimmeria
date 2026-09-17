@@ -88,6 +88,13 @@ pub(super) async fn run_cell_loop(
                 // when the queue is empty.
                 super::ticks::pending_attack_tick(tx, &mut space_mgr, &engine).await;
 
+                // Fire any content-engine action deferred by
+                // `content_actions.delay_ms > 0` (C08a) whose delay has
+                // elapsed — e.g. "play a sequence, then N ms later, show
+                // a dialog". Same tick-drain shape as the two calls
+                // above; short-circuits when the queue is empty.
+                content::deferred_content_action_tick(tx, &mut space_mgr, &engine).await;
+
                 // Drive the server-side auto-cycle loop: re-fire any
                 // armed player's stashed ability against the LIVE
                 // current_target_id whenever its cooldown has cleared.

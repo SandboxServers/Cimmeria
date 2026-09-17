@@ -637,6 +637,7 @@ mod tests {
         // handler at executor/counter.rs.
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 999_999,
             name: "test: drone kill counter".to_string(),
             enabled: true,

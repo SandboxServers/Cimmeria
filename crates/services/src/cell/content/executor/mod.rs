@@ -10,10 +10,15 @@
 //! - [`world`]     — interaction-type/visibility/destroy/move/threat/aggression
 //! - [`counter`]   — increment/reset
 //! - [`transport`] — teleport, ring transporter
+//! - [`deferred`]  — `content_actions.delay_ms > 0` scheduling/tick-drain (C08a)
 //!
 //! Single-arm actions with no shared helpers (PlaySequence, StartMinigame,
 //! SystemMessage, SendMessage, SetActiveSlot, TriggerChain, fallback) stay
-//! inline in the match below.
+//! inline in the match below. `LaunchAbility`/`ApplyEffect` are also inline
+//! but forward to the parent's [`super::effect_apply`] entry point rather
+//! than a sibling module here.
+
+use std::collections::HashMap;
 
 use tokio::sync::mpsc;
 
@@ -24,6 +29,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 mod counter;
+mod deferred;
 mod dialog;
 mod inventory;
 mod mission;
@@ -42,12 +48,26 @@ mod tests;
 #[cfg(test)]
 pub(super) use inventory::item_container;
 
+// `deferred_content_action_tick` is the cell-tick-facing entry point for
+// C08a's delayed-action drain; re-exported so `content/mod.rs` can expose
+// it to `cell::service::message_loop` at the same flat
+// `crate::cell::content::<fn>` depth as `build_engine` and the `fire_*`
+// dispatchers.
+pub(crate) use deferred::deferred_content_action_tick;
+
 /// Execute resolved actions from the content engine against the game state.
 ///
 /// `level = "info"` because chain firings are low-rate and high-signal
 /// — every "player did X, missions did Y" sequence shows up as one
 /// span containing the action vector. The `actions_len` field gives a
 /// quick "how complex is this chain?" view in SigNoz.
+///
+/// Actions with `delay_ms == 0` (the overwhelming majority) run inline,
+/// in order, exactly as before C08a. Actions with `delay_ms > 0` are
+/// queued via `SpaceManager::schedule_content_action` instead of run —
+/// `deferred_content_action_tick` fires them later from the cell tick.
+/// See `deferred` module docs for why a per-entity queue was chosen over
+/// a spawned timer task.
 #[tracing::instrument(
     name = "content.execute_actions",
     level = "info",
@@ -65,448 +85,483 @@ pub(super) async fn execute_actions(
     // Destructure so the inner loop can move `actions` while later
     // action branches still read trigger-time `params`. `Action::RemoveItem`
     // looks up `instance_id` here to consume the exact stack the
-    // player clicked on `useItem`.
-    let ResolvedActions { actions, params } = resolved;
-    for (chain_id, action) in actions {
-        match action {
-            Action::AcceptMission { mission_id } | Action::AdvanceMission { mission_id } => {
-                mission::accept_or_advance(
-                    mission_id, entity_id, player_id, chain_id, tx, space_mgr, engine,
-                )
-                .await;
-            }
-            Action::CompleteMission { mission_id } => {
-                mission::complete(
-                    mission_id, entity_id, player_id, chain_id, tx, space_mgr, engine,
-                )
-                .await;
-            }
-            Action::GrantItem {
+    // player clicked on `useItem`. `action_delays` is index-aligned with
+    // `actions` (a parallel vec, not a wider tuple — see the field doc on
+    // `ResolvedActions`); a missing index means delay_ms == 0.
+    let ResolvedActions {
+        actions,
+        action_delays,
+        params,
+    } = resolved;
+    for (i, (chain_id, action)) in actions.into_iter().enumerate() {
+        let delay_ms = action_delays.get(i).copied().unwrap_or(0);
+        if delay_ms > 0 {
+            tracing::debug!(
+                entity_id,
+                chain_id,
+                delay_ms,
+                action = ?action,
+                "Content: deferring action"
+            );
+            space_mgr.schedule_content_action(
+                entity_id,
+                chain_id,
+                action,
+                player_id,
+                delay_ms,
+                params.clone(),
+            );
+            continue;
+        }
+        execute_one(
+            chain_id, action, entity_id, player_id, &params, tx, space_mgr, engine,
+        )
+        .await;
+    }
+}
+
+/// Dispatch a single resolved action against the game state. Shared by
+/// `execute_actions`'s immediate (`delay_ms == 0`) path and
+/// `deferred_content_action_tick`'s drain of elapsed `delay_ms > 0`
+/// entries — the match arms below are identical either way; only *when*
+/// this function runs differs.
+async fn execute_one(
+    chain_id: i64,
+    action: Action,
+    entity_id: u32,
+    player_id: i32,
+    params: &HashMap<String, serde_json::Value>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
+) {
+    match action {
+        Action::AcceptMission { mission_id } | Action::AdvanceMission { mission_id } => {
+            mission::accept_or_advance(
+                mission_id, entity_id, player_id, chain_id, tx, space_mgr, engine,
+            )
+            .await;
+        }
+        Action::CompleteMission { mission_id } => {
+            mission::complete(
+                mission_id, entity_id, player_id, chain_id, tx, space_mgr, engine,
+            )
+            .await;
+        }
+        Action::GrantItem {
+            item_id,
+            count,
+            container_id,
+        } => {
+            inventory::grant(
                 item_id,
                 count,
                 container_id,
-            } => {
-                inventory::grant(
-                    item_id,
-                    count,
-                    container_id,
+                entity_id,
+                player_id,
+                chain_id,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+        Action::DisplayDialog { dialog_id }
+        | Action::StartDialog {
+            dialog_set_id: dialog_id,
+        } => {
+            dialog::display(dialog_id, entity_id, chain_id, params, tx, space_mgr).await;
+        }
+        Action::PlaySequence { sequence_id } => {
+            tracing::info!(
+                entity_id,
+                sequence_id,
+                chain_id,
+                "Content: playing sequence"
+            );
+            let mut args = Vec::with_capacity(26);
+            args.extend_from_slice(&sequence_id.to_le_bytes()); // KismetEventSetSeqID
+            args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
+            args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // TargetID
+            args.push(1); // PrimaryTarget = true
+            args.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
+            args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs count = 0
+            args.push(0); // ViewType = 0
+            args.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
+            if let Err(e) = tx
+                .send(CellToBaseMsg::EntityMethodCall {
                     entity_id,
-                    player_id,
-                    chain_id,
-                    tx,
-                    space_mgr,
-                )
-                .await;
-            }
-            Action::DisplayDialog { dialog_id }
-            | Action::StartDialog {
-                dialog_set_id: dialog_id,
-            } => {
-                dialog::display(dialog_id, entity_id, chain_id, &params, tx, space_mgr).await;
-            }
-            Action::PlaySequence { sequence_id } => {
-                tracing::info!(
+                    method_index: crate::mercury::method_idx::ON_SEQUENCE,
+                    args,
+                })
+                .await
+            {
+                // cell→base channel drop swallows the
+                // cinematic — player misses the visual cue for the
+                // chain action. warn! so a missing kismet correlates
+                // with a log line.
+                tracing::warn!(
                     entity_id,
                     sequence_id,
                     chain_id,
-                    "Content: playing sequence"
+                    "PlaySequence: cell→base send failed -- kismet sequence will not play: {e}"
                 );
-                let mut args = Vec::with_capacity(26);
-                args.extend_from_slice(&sequence_id.to_le_bytes()); // KismetEventSetSeqID
-                args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
-                args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // TargetID
-                args.push(1); // PrimaryTarget = true
-                args.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
-                args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs count = 0
-                args.push(0); // ViewType = 0
-                args.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
-                if let Err(e) = tx
-                    .send(CellToBaseMsg::EntityMethodCall {
-                        entity_id,
-                        method_index: crate::mercury::method_idx::ON_SEQUENCE,
-                        args,
-                    })
-                    .await
-                {
-                    // cell→base channel drop swallows the
-                    // cinematic — player misses the visual cue for the
-                    // chain action. warn! so a missing kismet correlates
-                    // with a log line.
-                    tracing::warn!(
-                        entity_id,
-                        sequence_id,
-                        chain_id,
-                        "PlaySequence: cell→base send failed -- kismet sequence will not play: {e}"
-                    );
-                }
             }
-            Action::AdvanceStep {
-                mission_id,
-                step_id,
-            } => {
-                mission::advance_step(
-                    mission_id, step_id, entity_id, player_id, chain_id, tx, space_mgr,
-                )
+        }
+        Action::AdvanceStep {
+            mission_id,
+            step_id,
+        } => {
+            mission::advance_step(
+                mission_id, step_id, entity_id, player_id, chain_id, tx, space_mgr,
+            )
+            .await;
+        }
+        Action::AddDialogSet {
+            dialog_set_id,
+            slot,
+            mission_id: _,
+        } => {
+            dialog::add_dialog_set(dialog_set_id, slot, entity_id, chain_id, tx, space_mgr).await;
+        }
+        Action::RemoveDialogSet {
+            dialog_set_id,
+            slot,
+        } => {
+            dialog::remove_dialog_set(dialog_set_id, slot, entity_id, chain_id, tx, space_mgr)
                 .await;
-            }
-            Action::AddDialogSet {
-                dialog_set_id,
-                slot,
-                mission_id: _,
-            } => {
-                dialog::add_dialog_set(dialog_set_id, slot, entity_id, chain_id, tx, space_mgr)
-                    .await;
-            }
-            Action::RemoveDialogSet {
-                dialog_set_id,
-                slot,
-            } => {
-                dialog::remove_dialog_set(dialog_set_id, slot, entity_id, chain_id, tx, space_mgr)
-                    .await;
-            }
-            Action::RemoveItem { item_id, count } => {
-                inventory::remove(item_id, count, entity_id, player_id, chain_id, &params, tx)
-                    .await;
-            }
-            Action::ChangeStat {
+        }
+        Action::RemoveItem { item_id, count } => {
+            inventory::remove(item_id, count, entity_id, player_id, chain_id, params, tx).await;
+        }
+        Action::ChangeStat {
+            stat_id,
+            min,
+            max,
+            set_to_max,
+            amount,
+            use_ammo_stat,
+        } => {
+            stats::change_stat(
                 stat_id,
                 min,
                 max,
                 set_to_max,
                 amount,
                 use_ammo_stat,
-            } => {
-                stats::change_stat(
-                    stat_id,
-                    min,
-                    max,
-                    set_to_max,
-                    amount,
-                    use_ammo_stat,
-                    entity_id,
-                    chain_id,
-                    tx,
-                    space_mgr,
-                )
-                .await;
-            }
-            Action::SetInteractionType {
-                entity_tag,
-                operation,
-                mask,
-            } => {
-                world::set_interaction_type(
-                    entity_tag, operation, mask, entity_id, chain_id, tx, space_mgr,
-                )
-                .await;
-            }
-            Action::StartMinigame {
-                minigame_type,
-                on_victory_chains,
-            } => {
-                tracing::info!(entity_id, %minigame_type, ?on_victory_chains, chain_id, "Content: starting minigame");
-                if let Err(e) = tx
-                    .send(CellToBaseMsg::StartMinigame {
-                        entity_id,
-                        player_id,
-                        game_name: minigame_type.clone(),
-                        difficulty: 1, // TODO: parse from chain params when difficulty field is added
-                        on_victory_chains: on_victory_chains.clone(),
-                    })
-                    .await
-                {
-                    // drop here means the minigame never
-                    // launches but the player click already fired —
-                    // chain stalls with no signal.
-                    tracing::warn!(
-                        entity_id,
-                        %minigame_type,
-                        chain_id,
-                        "StartMinigame: cell→base send failed -- minigame will not launch: {e}"
-                    );
-                }
-            }
-            Action::SetAggression {
-                entity_tag,
-                level: agg_level,
-            } => {
-                world::set_aggression(entity_tag, agg_level, entity_id, chain_id, space_mgr);
-            }
-            Action::SetNpcPoi {
-                entity_tag,
-                x,
-                y,
-                z,
-            } => {
-                world::set_npc_poi(entity_tag, x, y, z, entity_id, chain_id, space_mgr);
-            }
-            Action::SetFollowTarget {
-                entity_tag,
-                target_tag,
-            } => {
-                world::set_follow_target(entity_tag, target_tag, entity_id, chain_id, space_mgr);
-            }
-            Action::SetNpcAiState { entity_tag, state } => {
-                world::set_npc_ai_state(entity_tag, state, entity_id, chain_id, space_mgr);
-            }
-            Action::DestroyTaggedEntity { entity_tag } => {
-                world::destroy_tagged_entity(entity_tag, entity_id, chain_id, space_mgr);
-            }
-            Action::TriggerTransporter { region_id } => {
-                transport::trigger_transporter(
-                    region_id, entity_id, chain_id, tx, space_mgr, engine,
-                )
-                .await;
-            }
-            Action::Teleport { space_id, position } => {
-                transport::teleport(space_id, position, entity_id, chain_id, tx, space_mgr).await;
-            }
-            Action::CrossWorldTeleport {
-                world_name,
-                position,
-            } => {
-                transport::cross_world_teleport(
-                    world_name, position, entity_id, chain_id, tx, space_mgr,
-                )
-                .await;
-            }
-            Action::SystemMessage { message_id } => {
-                // TODO: Wire format for system messages is unknown. The previous
-                // implementation incorrectly used onPlayerCommunication (method 28)
-                // which caused garbled chat spam ("[] says") and client freezes.
-                // Needs RE to find the correct client method for localized string
-                // ID display (possibly onErrorCode or a UI-specific method).
-                tracing::info!(
-                    entity_id,
-                    message_id,
-                    chain_id,
-                    "Content: system message (stub — correct wire format TBD)"
-                );
-            }
-            Action::AbandonMission { mission_id } => {
-                mission::abandon(mission_id, entity_id, chain_id, tx, space_mgr).await;
-            }
-            Action::IncrementCounter {
-                counter_name,
-                amount,
-            } => {
-                counter::increment(
-                    counter_name,
-                    amount,
+                entity_id,
+                chain_id,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+        Action::SetInteractionType {
+            entity_tag,
+            operation,
+            mask,
+        } => {
+            world::set_interaction_type(
+                entity_tag, operation, mask, entity_id, chain_id, tx, space_mgr,
+            )
+            .await;
+        }
+        Action::StartMinigame {
+            minigame_type,
+            on_victory_chains,
+        } => {
+            tracing::info!(entity_id, %minigame_type, ?on_victory_chains, chain_id, "Content: starting minigame");
+            if let Err(e) = tx
+                .send(CellToBaseMsg::StartMinigame {
                     entity_id,
                     player_id,
+                    game_name: minigame_type.clone(),
+                    difficulty: 1, // TODO: parse from chain params when difficulty field is added
+                    on_victory_chains: on_victory_chains.clone(),
+                })
+                .await
+            {
+                // drop here means the minigame never
+                // launches but the player click already fired —
+                // chain stalls with no signal.
+                tracing::warn!(
+                    entity_id,
+                    %minigame_type,
                     chain_id,
-                    space_mgr,
+                    "StartMinigame: cell→base send failed -- minigame will not launch: {e}"
                 );
             }
-            Action::ResetCounter { counter_name } => {
-                counter::reset(counter_name, entity_id, player_id, chain_id, space_mgr);
-            }
-            Action::CompleteObjective {
+        }
+        Action::SetAggression {
+            entity_tag,
+            level: agg_level,
+        } => {
+            world::set_aggression(entity_tag, agg_level, entity_id, chain_id, space_mgr);
+        }
+        Action::SetNpcPoi {
+            entity_tag,
+            x,
+            y,
+            z,
+        } => {
+            world::set_npc_poi(entity_tag, x, y, z, entity_id, chain_id, space_mgr);
+        }
+        Action::SetFollowTarget {
+            entity_tag,
+            target_tag,
+        } => {
+            world::set_follow_target(entity_tag, target_tag, entity_id, chain_id, space_mgr);
+        }
+        Action::SetNpcAiState { entity_tag, state } => {
+            world::set_npc_ai_state(entity_tag, state, entity_id, chain_id, space_mgr);
+        }
+        Action::DestroyTaggedEntity { entity_tag } => {
+            world::destroy_tagged_entity(entity_tag, entity_id, chain_id, space_mgr);
+        }
+        Action::TriggerTransporter { region_id } => {
+            transport::trigger_transporter(region_id, entity_id, chain_id, tx, space_mgr, engine)
+                .await;
+        }
+        Action::Teleport { space_id, position } => {
+            transport::teleport(space_id, position, entity_id, chain_id, tx, space_mgr).await;
+        }
+        Action::CrossWorldTeleport {
+            world_name,
+            position,
+        } => {
+            transport::cross_world_teleport(
+                world_name, position, entity_id, chain_id, tx, space_mgr,
+            )
+            .await;
+        }
+        Action::SystemMessage { message_id } => {
+            // TODO: Wire format for system messages is unknown. The previous
+            // implementation incorrectly used onPlayerCommunication (method 28)
+            // which caused garbled chat spam ("[] says") and client freezes.
+            // Needs RE to find the correct client method for localized string
+            // ID display (possibly onErrorCode or a UI-specific method).
+            tracing::info!(
+                entity_id,
+                message_id,
+                chain_id,
+                "Content: system message (stub — correct wire format TBD)"
+            );
+        }
+        Action::AbandonMission { mission_id } => {
+            mission::abandon(mission_id, entity_id, chain_id, tx, space_mgr).await;
+        }
+        Action::IncrementCounter {
+            counter_name,
+            amount,
+        } => {
+            counter::increment(
+                counter_name,
+                amount,
+                entity_id,
+                player_id,
+                chain_id,
+                space_mgr,
+            );
+        }
+        Action::ResetCounter { counter_name } => {
+            counter::reset(counter_name, entity_id, player_id, chain_id, space_mgr);
+        }
+        Action::CompleteObjective {
+            mission_id,
+            objective_id,
+        } => {
+            mission::complete_objective(
                 mission_id,
                 objective_id,
-            } => {
-                mission::complete_objective(
-                    mission_id,
-                    objective_id,
-                    entity_id,
-                    chain_id,
-                    tx,
-                    space_mgr,
-                )
-                .await;
-            }
-            Action::SendMessage { channel, message } => {
-                tracing::info!(entity_id, %channel, %message, chain_id, "Content: sending message");
-            }
-            Action::AddDialog {
+                entity_id,
+                chain_id,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+        Action::SendMessage { channel, message } => {
+            tracing::info!(entity_id, %channel, %message, chain_id, "Content: sending message");
+        }
+        Action::AddDialog {
+            dialog_set_id,
+            entity_template,
+            mission_id: _,
+        } => {
+            dialog::add_dialog(
                 dialog_set_id,
                 entity_template,
-                mission_id: _,
-            } => {
-                dialog::add_dialog(
-                    dialog_set_id,
-                    entity_template,
+                entity_id,
+                chain_id,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+        Action::GenerateThreat {
+            entity_tag,
+            threat_level,
+        } => {
+            world::generate_threat(entity_tag, threat_level, entity_id, chain_id, tx, space_mgr)
+                .await;
+        }
+        Action::SetVisible {
+            entity_tag,
+            visible,
+        } => {
+            world::set_visible(entity_tag, visible, entity_id, chain_id, tx, space_mgr).await;
+        }
+        Action::GrantXP { amount } => {
+            if amount == 0 {
+                tracing::warn!(
                     entity_id,
                     chain_id,
-                    tx,
-                    space_mgr,
-                )
-                .await;
+                    "GrantXP: action resolved with amount 0 -- seed row is missing \
+                     its `amount` param; no XP awarded"
+                );
+                return;
             }
-            Action::GenerateThreat {
-                entity_tag,
-                threat_level,
-            } => {
-                world::generate_threat(
-                    entity_tag,
-                    threat_level,
+            tracing::info!(entity_id, xp = amount, chain_id, "Content: granting XP");
+            // Same round-trip mob-kill XP and GM `gmGiveXp` use — base
+            // owns the XP/level write and the client notifications.
+            // `gm_feedback_to: None`: a chain grant is gameplay, not a
+            // GM action, so it must not emit a GM feedback line.
+            if let Err(e) = tx
+                .send(CellToBaseMsg::GrantXP {
                     entity_id,
-                    chain_id,
-                    tx,
-                    space_mgr,
-                )
-                .await;
+                    xp_amount: amount,
+                    gm_feedback_to: None,
+                })
+                .await
+            {
+                tracing::error!(
+                    entity_id, xp = amount, chain_id, error = %e,
+                    "GrantXP: cell→base send failed -- player silently loses the chain's XP reward"
+                );
             }
-            Action::SetVisible {
-                entity_tag,
-                visible,
-            } => {
-                world::set_visible(entity_tag, visible, entity_id, chain_id, tx, space_mgr).await;
-            }
-            Action::GrantXP { amount } => {
-                if amount == 0 {
-                    tracing::warn!(
-                        entity_id,
-                        chain_id,
-                        "GrantXP: action resolved with amount 0 -- seed row is missing \
-                         its `amount` param; no XP awarded"
-                    );
-                    continue;
-                }
-                tracing::info!(entity_id, xp = amount, chain_id, "Content: granting XP");
-                // Same round-trip mob-kill XP and GM `gmGiveXp` use — base
-                // owns the XP/level write and the client notifications.
-                // `notify_gm: false`: a chain grant is gameplay, not a GM
-                // action, so it must not emit a GM feedback line.
-                if let Err(e) = tx
-                    .send(CellToBaseMsg::GrantXP {
-                        entity_id,
-                        xp_amount: amount,
-                        notify_gm: false,
-                    })
-                    .await
-                {
-                    tracing::error!(
-                        entity_id, xp = amount, chain_id, error = %e,
-                        "GrantXP: cell→base send failed -- player silently loses the chain's XP reward"
-                    );
-                }
-            }
-            Action::MoveEntity {
+        }
+        Action::MoveEntity {
+            entity_tag,
+            destination,
+            world,
+            use_player,
+        } => {
+            world::move_entity(
                 entity_tag,
                 destination,
                 world,
                 use_player,
-            } => {
-                world::move_entity(
-                    entity_tag,
-                    destination,
-                    world,
-                    use_player,
+                entity_id,
+                chain_id,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+        Action::MoveWaypoint {
+            entity_tag,
+            destination,
+            speed: _,
+        } => {
+            world::move_waypoint(entity_tag, destination, entity_id, chain_id, space_mgr);
+        }
+        Action::SetActiveSlot { bag_id, slot } => {
+            tracing::info!(
+                entity_id,
+                bag_id,
+                slot,
+                chain_id,
+                "Content: set active slot"
+            );
+            // Send onActiveSlotUpdate(bagId, slotId) — slotId is 1-indexed on wire
+            let mut args = Vec::with_capacity(8);
+            args.extend_from_slice(&bag_id.to_le_bytes());
+            args.extend_from_slice(&(slot + 1).to_le_bytes()); // 1-indexed
+            if let Err(e) = tx
+                .send(CellToBaseMsg::EntityMethodCall {
                     entity_id,
-                    chain_id,
-                    tx,
-                    space_mgr,
-                )
-                .await;
-            }
-            Action::MoveWaypoint {
-                entity_tag,
-                destination,
-                speed: _,
-            } => {
-                world::move_waypoint(entity_tag, destination, entity_id, chain_id, space_mgr);
-            }
-            Action::SetActiveSlot { bag_id, slot } => {
-                tracing::info!(
+                    method_index: crate::mercury::method_idx::ON_ACTIVE_SLOT_UPDATE,
+                    args,
+                })
+                .await
+            {
+                // same shape as PlaySequence/StartMinigame;
+                // a dropped active-slot update leaves the client showing
+                // the wrong bandolier slot until the next equip toggle.
+                tracing::warn!(
                     entity_id,
                     bag_id,
                     slot,
                     chain_id,
-                    "Content: set active slot"
+                    "SetActiveSlot: cell→base send failed -- active slot not synced: {e}"
                 );
-                // Send onActiveSlotUpdate(bagId, slotId) — slotId is 1-indexed on wire
-                let mut args = Vec::with_capacity(8);
-                args.extend_from_slice(&bag_id.to_le_bytes());
-                args.extend_from_slice(&(slot + 1).to_le_bytes()); // 1-indexed
-                if let Err(e) = tx
-                    .send(CellToBaseMsg::EntityMethodCall {
-                        entity_id,
-                        method_index: crate::mercury::method_idx::ON_ACTIVE_SLOT_UPDATE,
-                        args,
-                    })
-                    .await
-                {
-                    // same shape as PlaySequence/StartMinigame;
-                    // a dropped active-slot update leaves the client showing
-                    // the wrong bandolier slot until the next equip toggle.
+            }
+        }
+        Action::LaunchAbility {
+            ability_id,
+            entity_tag,
+        } => {
+            // `entity_tag: None` means "the entity that fired the
+            // chain" — for a `player_loaded` trigger that is the
+            // player themselves, which is exactly the self-target the
+            // combat pipeline's friendly-fire gate would reject.
+            let target_id = match entity_tag.as_deref() {
+                None => Some(entity_id),
+                Some(tag) => space_mgr.find_entity_by_tag(entity_id, tag),
+            };
+            match target_id {
+                Some(target_id) => {
+                    super::effect_apply::apply_ability_effects(
+                        ability_id, target_id, entity_id, chain_id, tx, space_mgr,
+                    )
+                    .await;
+                }
+                None => {
+                    // Tagged NPC isn't spawned (or is in another
+                    // space). Same shape as the other tag-resolving
+                    // world actions: skip, don't fall back to self —
+                    // a debuff meant for an NPC must never land on
+                    // the player.
                     tracing::warn!(
                         entity_id,
-                        bag_id,
-                        slot,
+                        ability_id,
+                        entity_tag = ?entity_tag,
                         chain_id,
-                        "SetActiveSlot: cell→base send failed -- active slot not synced: {e}"
+                        "LaunchAbility: no entity matched the tag -- ability not launched"
                     );
                 }
             }
-            Action::LaunchAbility {
-                ability_id,
-                entity_tag,
-            } => {
-                // `entity_tag: None` means "the entity that fired the
-                // chain" — for a `player_loaded` trigger that is the
-                // player themselves, which is exactly the self-target the
-                // combat pipeline's friendly-fire gate would reject.
-                let target_id = match entity_tag.as_deref() {
-                    None => Some(entity_id),
-                    Some(tag) => space_mgr.find_entity_by_tag(entity_id, tag),
-                };
-                match target_id {
-                    Some(target_id) => {
-                        super::effect_apply::apply_ability_effects(
-                            ability_id, target_id, entity_id, chain_id, tx, space_mgr,
-                        )
-                        .await;
-                    }
-                    None => {
-                        // Tagged NPC isn't spawned (or is in another
-                        // space). Same shape as the other tag-resolving
-                        // world actions: skip, don't fall back to self —
-                        // a debuff meant for an NPC must never land on
-                        // the player.
-                        tracing::warn!(
-                            entity_id,
-                            ability_id,
-                            entity_tag = ?entity_tag,
-                            chain_id,
-                            "LaunchAbility: no entity matched the tag -- ability not launched"
-                        );
-                    }
-                }
-            }
-            Action::ApplyEffect {
-                effect_id,
-                duration_secs: _,
-            } => {
-                // `duration_secs` is hardcoded `None` by the action
-                // loader and the effect's own `pulse_count` /
-                // `pulse_duration` already carry the duration, so there
-                // is nothing to honour here yet.
-                //
-                // This arm is correct but currently unreachable: the only
-                // seeded `apply_effect` row is on an `effect`-scoped
-                // chain, and no `effect_*` trigger is dispatched anywhere
-                // in the cell service. It fires as soon as that
-                // dispatch lands.
-                super::effect_apply::apply_effect(
-                    effect_id, entity_id, entity_id, chain_id, tx, space_mgr,
-                )
-                .await;
-            }
-            Action::TriggerChain {
-                chain_id: target_chain_id,
-            } => {
-                tracing::debug!(
-                    entity_id,
-                    target_chain_id,
-                    chain_id,
-                    "Content: trigger chain (caller must re-dispatch)"
-                );
-            }
-            other => {
-                tracing::debug!(entity_id, chain_id, action = ?other, "Content: unhandled action");
-            }
+        }
+        Action::ApplyEffect {
+            effect_id,
+            duration_secs: _,
+        } => {
+            // `duration_secs` is hardcoded `None` by the action
+            // loader and the effect's own `pulse_count` /
+            // `pulse_duration` already carry the duration, so there
+            // is nothing to honour here yet.
+            //
+            // This arm is correct but currently unreachable: the only
+            // seeded `apply_effect` row is on an `effect`-scoped
+            // chain, and no `effect_*` trigger is dispatched anywhere
+            // in the cell service. It fires as soon as that
+            // dispatch lands.
+            super::effect_apply::apply_effect(
+                effect_id, entity_id, entity_id, chain_id, tx, space_mgr,
+            )
+            .await;
+        }
+        Action::TriggerChain {
+            chain_id: target_chain_id,
+        } => {
+            tracing::debug!(
+                entity_id,
+                target_chain_id,
+                chain_id,
+                "Content: trigger chain (caller must re-dispatch)"
+            );
+        }
+        other => {
+            tracing::debug!(entity_id, chain_id, action = ?other, "Content: unhandled action");
         }
     }
 }

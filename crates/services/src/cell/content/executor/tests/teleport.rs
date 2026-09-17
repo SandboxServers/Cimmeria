@@ -26,6 +26,7 @@ async fn cross_world_teleport_action_emits_gate_travel_with_no_ring_id() {
     let (tx, mut rx) = mpsc::channel(16);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             1109,
@@ -116,6 +117,7 @@ async fn cross_world_teleport_action_with_unknown_entity_dispatches_gate_travel(
     let (tx, mut rx) = mpsc::channel(16);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             1109,

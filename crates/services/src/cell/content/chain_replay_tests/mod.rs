@@ -33,4 +33,6 @@ mod mission_639;
 mod mission_641;
 mod mission_687;
 mod mission_688;
+mod region8_guard_aggro;
+mod region_transition_accepts;
 mod sgc_w1_move_entity;

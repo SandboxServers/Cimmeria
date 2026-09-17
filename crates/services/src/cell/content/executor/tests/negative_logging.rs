@@ -25,6 +25,7 @@ async fn play_sequence_warns_when_cell_to_base_channel_closed() {
     drop(rx); // close the cell→base channel
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(9001, Action::PlaySequence { sequence_id: 512 })],
     };
@@ -59,6 +60,7 @@ async fn start_minigame_warns_when_cell_to_base_channel_closed() {
     drop(rx);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             9002,
@@ -96,6 +98,7 @@ async fn set_active_slot_warns_when_cell_to_base_channel_closed() {
     drop(rx);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(9003, Action::SetActiveSlot { bag_id: 3, slot: 0 })],
     };
@@ -163,6 +166,7 @@ async fn remove_dialog_set_warns_when_cell_to_base_channel_closed() {
     drop(rx);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             9004,
@@ -220,6 +224,7 @@ async fn add_dialog_set_warns_when_cell_to_base_channel_closed() {
     drop(rx);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             9005,

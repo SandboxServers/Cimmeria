@@ -30,6 +30,7 @@ async fn set_aggression_level_one_writes_entity_field() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             1032,
@@ -106,6 +107,7 @@ async fn generate_threat_action_refreshes_appearance_before_state_field_on_first
     let (tx, mut rx) = mpsc::channel(32);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             1032,
@@ -219,6 +221,7 @@ async fn set_npc_poi_transitions_target_to_investigating() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             1234,
@@ -267,6 +270,7 @@ async fn set_follow_target_resolves_target_and_transitions_to_follow() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             5678,
@@ -306,6 +310,7 @@ async fn set_follow_target_none_clears_and_returns_to_idle() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             5678,
@@ -347,6 +352,7 @@ async fn set_follow_target_unresolvable_tag_clears_follow() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             5678,
@@ -388,6 +394,7 @@ async fn set_npc_ai_state_despawning_flips_state() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             999,
@@ -434,6 +441,7 @@ async fn set_npc_ai_state_idle_on_patroller_preserves_patrol_index() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             999,
