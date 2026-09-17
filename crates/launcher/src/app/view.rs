@@ -30,7 +30,10 @@ impl eframe::App for LauncherApp {
             self.last_refresh = std::time::Instant::now();
         }
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        // egui 0.35 renamed `CentralPanel::show_inside` to `show` (the old
+        // `show(&Context)` overload is gone — the panel is always nested in a
+        // `Ui` now). Same signature, same semantics.
+        egui::CentralPanel::default().show(ui, |ui| {
             ui.heading("Stargate Worlds Launcher");
             ui.separator();
             self.show_config_panel(ui);

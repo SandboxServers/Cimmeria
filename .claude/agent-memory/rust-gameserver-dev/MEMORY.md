@@ -44,6 +44,10 @@
 
 - [witness-entity-method-dual-fn.md](witness-entity-method-dual-fn.md) — `WitnessEntityMethod` has TWO `witness_entity_method` fns (logging wrapper in aoi_dispatch.rs + emitter in aoi.rs); both need signature changes. idbase via `entity_is_player` (61 player / 62 NPC, matters for method idx ≥61).
 
+## Dependency bumps
+
+- [egui-eframe-split-version-bumps.md](egui-eframe-split-version-bumps.md) — dependabot bumps `egui` and `eframe` separately; the egui-only PR is a no-op for the launcher (two egui versions coexist in the lock) and defers all API breakage to the eframe PR. Launcher clippy only runs in the Windows job of `launcher-build.yml`.
+
 ## Testing patterns
 
 - [cargo-test-vs-nextest-flakiness.md](cargo-test-vs-nextest-flakiness.md) — full-suite `cargo test -p cimmeria-services` has PRE-EXISTING order-dependent failures (LogCapture thread bleed); validate with `cargo nextest`, don't assume you broke it.
