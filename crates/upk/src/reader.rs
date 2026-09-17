@@ -55,7 +55,7 @@ impl<R: Read + Seek> BinaryReader<R> {
             let char_count = (-length) as usize;
             let raw = self.read_bytes(char_count * 2)?;
             let chars: Vec<u16> = raw
-                .chunks_exact(2)
+                .chunks(2)
                 .map(|c| u16::from_le_bytes([c[0], c[1]]))
                 .collect();
             Ok(String::from_utf16_lossy(&chars)

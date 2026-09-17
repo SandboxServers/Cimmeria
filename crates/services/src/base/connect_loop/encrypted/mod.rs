@@ -545,8 +545,10 @@ fn parse_request_entity_update(payload: &[u8]) -> Vec<u32> {
     if payload.len() < 4 {
         return Vec::new();
     }
-    payload[4..]
-        .chunks_exact(4)
+    let body = &payload[4..];
+    let complete_len = body.len() - body.len() % 4;
+    body[..complete_len]
+        .chunks(4)
         .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
 }
