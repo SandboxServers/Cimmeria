@@ -192,7 +192,7 @@ mod tests {
         let text_bytes = &buf[text_offset + 4..text_offset + 4 + text_count * 2];
         let text: String = char::decode_utf16(
             text_bytes
-                .chunks_exact(2)
+                .chunks(2)
                 .map(|c| u16::from_le_bytes([c[0], c[1]])),
         )
         .map(|r| r.unwrap_or('?'))
@@ -218,7 +218,7 @@ mod tests {
         let speaker_bytes = &buf[4..4 + speaker_count * 2];
         let speaker: String = char::decode_utf16(
             speaker_bytes
-                .chunks_exact(2)
+                .chunks(2)
                 .map(|c| u16::from_le_bytes([c[0], c[1]])),
         )
         .map(|r| r.unwrap_or('?'))
