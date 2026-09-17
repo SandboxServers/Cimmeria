@@ -44,7 +44,7 @@ const GENERICPROPERTY_TRAINING_POINTS: i32 = 1;
 pub async fn handle_grant_xp(
     entity_id: u32,
     xp_amount: u64,
-    notify_gm: bool,
+    gm_feedback_to: Option<u32>,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -143,23 +143,28 @@ pub async fn handle_grant_xp(
             }
         }
         (Some(_), None) => {
-            // No active character (play-character flow incomplete). Skip
-            // persistence; the in-memory grant will be lost on reconnect, but
-            // we shouldn't be granting XP before character selection anyway.
+            // No active character (play-character flow incomplete). Drop the
+            // grant entirely rather than applying an un-persisted in-memory
+            // mutation and telling the GM it succeeded — mirrors
+            // handle_grant_cash's no-pool branch: an unpersisted "success" is
+            // worse than a dropped grant, since the GM believes the grant
+            // took effect when it will vanish on reconnect.
             tracing::warn!(
                 entity_id, total_xp, new_level,
-                "GrantXP: no active_player_id — skipping persist (likely a pre-character-select grant)"
+                "GrantXP: no active_player_id — dropping grant (likely a pre-character-select grant)"
             );
+            return;
         }
         (None, _) => {
-            // Mirrors the no-DB branch in handle_grant_cash: the in-memory
-            // state is updated but un-authoritative. Log loudly.
+            // No DB pool: same reasoning as the branch above — drop rather
+            // than fake a definitive success.
             tracing::warn!(
                 entity_id,
                 total_xp,
                 new_level,
-                "GrantXP: no DB pool — XP/level not persisted, will be lost on reconnect"
+                "GrantXP: no DB pool — dropping grant (cannot persist XP/level)"
             );
+            return;
         }
     }
 
@@ -246,11 +251,14 @@ pub async fn handle_grant_xp(
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
 
     // Definitive GM feedback (only for GM-sourced grants — mob-kill XP leaves
-    // `notify_gm` false). Fired only here, on the true success path: every
-    // failure branch above returns early without reaching this point.
-    if notify_gm {
+    // `gm_feedback_to` `None`). Sent to the CALLER (`gm_id`), which is not
+    // necessarily `entity_id` (the XP recipient) — `.givexp` grants to a
+    // selected target while the caller gets the feedback line. Fired only
+    // here, on the true success path: every failure branch above returns
+    // early without reaching this point.
+    if let Some(gm_id) = gm_feedback_to {
         send_gm_feedback_to_client(
-            entity_id,
+            gm_id,
             &format!("gmGiveXp: now level {new_level} ({total_xp} xp total)"),
             transport,
             connected,
@@ -347,7 +355,7 @@ pub async fn handle_grant_cash(
     entity_id: u32,
     player_id: i32,
     amount: i32,
-    notify_gm: bool,
+    gm_feedback_to: Option<u32>,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -419,11 +427,14 @@ pub async fn handle_grant_cash(
         .await;
 
         // Definitive GM feedback — only for GM-sourced grants (loot pickup
-        // leaves `notify_gm` false). Inside the `Some(pool)` + `Ok(Some(total))`
-        // success path: the row was found and updated.
-        if notify_gm {
+        // leaves `gm_feedback_to` `None`). Sent to the CALLER (`gm_id`),
+        // which is not necessarily `entity_id` (the cash recipient) —
+        // `.givecash` grants to a selected target while the caller gets the
+        // feedback line. Inside the `Some(pool)` + `Ok(Some(total))` success
+        // path: the row was found and updated.
+        if let Some(gm_id) = gm_feedback_to {
             send_gm_feedback_to_client(
-                entity_id,
+                gm_id,
                 &format!("gmGiveCash: +{amount} naquadah (total {total})"),
                 transport,
                 connected,

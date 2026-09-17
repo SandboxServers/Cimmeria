@@ -1,0 +1,122 @@
+# legacy-command-parity campaign: scoping judgment calls (from P02)
+
+Working a packet in the Cimmeria `legacy-command-parity` campaign
+(`docs/analysis/legacy-command-parity/`) means porting a legacy Python dot
+command to Rust. Recurring judgment calls worth remembering:
+
+- **A packet's own "read-only reference" file list may not contain the real
+  geometry/logic.** P02's brief pointed at `Entity.py` for `.facing`, but the
+  actual `facing`/`facingType`/`distanceTo` math lives in
+  `SGWSpawnableEntity.py` (a different file, not in the initial read set).
+  Always grep the legacy tree for the method name before assuming a "thin
+  wrapper" (W) label in the audit is correct — verify, don't trust the
+  work-packet's work-kind letter.
+
+- **When a Rust field's numeric scheme has *already diverged* from legacy's
+  enum for the same concept, do NOT port the legacy name table wholesale.**
+  Example: `CellEntity::faction: u8` uses a documented simplified scheme
+  (0=neutral/1=Tau'ri/3=SGC/10=hostile — see `entity_struct.rs` doc comment)
+  that is incompatible with legacy's 34-entry `FACTION_*` table (legacy
+  `FACTION_SGC = 2`, this codebase's `3` means SGC). Porting the wrong table
+  would silently mislabel data. Check whether the *existing* Rust field
+  already has a doc-commented numbering convention before assuming "port the
+  legacy enum names" is safe — it's only safe when the numbering matches
+  (verified true for `alignment`/`archetype` in this codebase, false for
+  `faction`).
+
+- **A named "stop condition" in a work packet is worth verifying by actually
+  reading the struct**, not just taking the coordinator's word that it might
+  apply. For P02's `.combatinfo`, confirmed by reading
+  `crates/entity/src/abilities/defs.rs`/`manager.rs` end to end that there is
+  truly no ability-type field anywhere (only ability *ids* are tracked) — this
+  turns a "maybe blocked" hedge into a confirmed, citable finding for the
+  handoff, which is much more useful to the coordinator than "I think this
+  might be missing."
+
+- **A genuinely scoped-down implementation (some checks real, some omitted
+  with a code comment + handoff writeup) is preferred over blocking the whole
+  command**, per this campaign's D06 ("stubs are not parity" cuts both ways —
+  an unregistered command is also not parity). Register the command, run the
+  checks you can support with real data, and flag the rest as a stop
+  condition for the coordinator to disposition — don't invent data to force
+  full parity, don't withhold a functional partial command either.
+
+- **Clippy's `excessive_precision`/`approx_constant`** will flag a hand-typed
+  legacy float constant (e.g. Python's `0.78539816` for π/4) — swap for the
+  matching `std::f32::consts::*` item; it's the same real number, just
+  expressed correctly.
+
+- **The `Option<u32>` "fall back to caller when no target"-dead-code pattern
+  recurs across every `Target::Being`/`Target::Mob`/`Target::Spawnable`
+  handler, not just the ones P02 happened to touch.** `dispatch::resolve_target`
+  (`crates/services/src/cell/console/dispatch.rs`) returns `Err` before `exec`
+  is ever called for any typed (non-`Target::None`) spec with no current
+  selection — it only ever returns `Ok(None)` for `Target::None` commands. So
+  any handler behind a typed spec that still takes `target_id: Option<u32>`
+  with a `.unwrap_or(caller_id)`/similar fallback has dead code; check for
+  this pattern proactively in every packet that touches an existing typed
+  handler, not just when a reviewer flags it. Fix: change the signature to
+  take the id directly (`target: u32`) and `.expect("Target::X guarantees a
+  resolved target")`-unwrap at the `dispatch.rs` call site — P02 set the
+  precedent in `query.rs`, P03 repeated it in `stats.rs`.
+
+- **`StatList` (`crates/entity/src/stats/stat_list.rs`) has no removal API,
+  and `CellEntity::new` unconditionally calls `StatList::new()`, which
+  populates every stat id currently used anywhere in the `.primarystats`
+  family.** This means any "missing stat" / "stat absent from the block"
+  acceptance criterion in this campaign cannot be satisfied by a real entity
+  fixture built from `crates/services` alone — there is no public way to
+  remove an entry once inserted. Don't spend time hunting for a fixture trick;
+  either test the absent-stat formatting logic as a unit test on the
+  extracted formatting function directly (P03's approach — see
+  `crates/services/src/cell/console/stats.rs`'s `format_stat_line`), or flag
+  a proposed small `StatList::remove` addition in the handoff without adding
+  it unasked (it's outside `crates/services`-scoped packets' owned paths).
+
+See also [test-file-split-without-touching-mod-rs](test-file-split-without-touching-mod-rs.md).
+
+- **`Target::None` is not always "no target" — check whether the command's
+  own legacy semantics are actually optional-target-with-caller-fallback
+  before assuming the "typed spec + `.unwrap_or(caller_id)` = dead code"
+  rule from above applies.** P26's `.gotoxyz` (legacy `entity = target or
+  player`) is genuinely `Target::None`, so `dispatch.rs`'s `resolve_target`
+  really can return `Ok(None)`, and `target.unwrap_or(caller_id)` in the
+  handler is live code — the dead-code trap only applies to *typed*
+  `Target::Being`/`Mob`/`Player`/`Spawnable` specs, where `dispatch.rs`
+  guarantees `Some` before the handler ever runs. `.info` (P01/P02 era) is
+  the other example of this same live pattern.
+
+- **A `pub(super)`-scoped helper in a sibling module tree
+  (`cell_methods::gm::forward_to_base`, `pub(super)` = visible only within
+  `cell_methods`) is NOT reachable from `cell::console`, even though both
+  are children of `cell::`.** Don't widen a shared helper's visibility to
+  reuse it from an unrelated owned-path — that's a shared-file edit outside
+  a worker's normal ownership. Reimplement the same few-line check locally
+  instead (P26 did this for the "closed channel → warn + return, don't
+  claim a snap that never sent" pattern) — cheaper than a coordinator
+  round-trip for a 10-line helper.
+
+- **Splitting a file into `name/mod.rs` + `name/sibling.rs` along a
+  data-vs-types (not code-vs-tests) seam needs zero visibility widening
+  when the moved data is already `pub(crate)` (or private) at the parent
+  module** — Rust's privacy model makes a private/`pub(crate)` item visible
+  to every *descendant* module of its defining module, and the new
+  submodule is a descendant. P26 split `console/registry.rs` (698/700 hard
+  cap) into `registry/mod.rs` (the `Target`/`Spec` types + `spec()` builder)
+  + `registry/commands.rs` (just the `COMMANDS` array) this way — `commands.rs`
+  reaches `spec`/`Spec`/`Target` via a plain `use super::{...}`, no `pub`
+  changes anywhere. The parent's own `mod registry;` declaration needs zero
+  edits either (`x.rs` → `x/mod.rs` resolves identically).
+
+- **When a command reuses an existing native handler's core mechanism
+  (`update_entity_position` + `note_authorized_teleport`, gated
+  `TeleportPlayer` for players only), grep the native handler's own test
+  file for an existing "does this actually reach witnesses" proof before
+  writing a new one from scratch** — `cell_methods/gm/tests/travel.rs`'s
+  `summoned_npc_is_broadcast_to_caller_witness` (a two-tick
+  `compute_aoi_changes()` sequence) is the reusable proof shape for "grid
+  update alone is sufficient, no separate AoI refresh needed." Still write
+  your own copy against your own dispatch path rather than just citing the
+  native test — P26 wrote two (NPC case + player case, since the native
+  test only covers the NPC case), because the acceptance criterion is about
+  *this* command's witness behavior, not the native one's.
