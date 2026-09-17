@@ -32,6 +32,10 @@
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns BYTES CONSUMED, not the new absolute offset; chain with `offset += n`, never `offset = n`.
 - [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — UE3 StaticMeshActor→Component→Mesh resolution in SGW cooked .umap: tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8); ~20% of actors use prefab archetypes; kDOP tri indices reference LOD0 vertices; master .umap files exist alongside chunks.
 
+## Stats / entity systems
+
+- [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat existing in `StatList` + `PUBLIC_STATS` + the AoI create payload does NOT mean anything reads it (`MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` had zero server-side consumers until P47); plus the reject-don't-clamp GM-setter precedent and the canonical mutate→serialize_dirty→clear_dirty→`send_entity_method` publication pattern.
+
 ## Tooling quirks
 
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt sucks standalone comments into the trailing-comment column of the previous statement; insert a blank line to break the run.
@@ -49,6 +53,10 @@
 
 - [witness-entity-method-dual-fn.md](witness-entity-method-dual-fn.md) — `WitnessEntityMethod` has TWO `witness_entity_method` fns (logging wrapper in aoi_dispatch.rs + emitter in aoi.rs); both need signature changes. idbase via `entity_is_player` (61 player / 62 NPC, matters for method idx ≥61).
 
+## Orientation / position
+
+- [cell-entity-direction-semantics.md](cell-entity-direction-semantics.md) — **read before any orientation code.** `direction` is `[pitch, yaw, roll]` RADIANS for players AND NPCs (the struct doc comment is wrong); `update_entity_position`'s `[i8; 3]` param zeroes facing for 6 callers; `FORCED_POSITION` carries no angles; inbound client direction is never unpacked (live bug); `EntityMoved` carries direction every tick so rotation needs no fan-out.
+
 ## Dependency bumps
 
 - [egui-eframe-split-version-bumps.md](egui-eframe-split-version-bumps.md) — dependabot bumps `egui` and `eframe` separately; the egui-only PR is a no-op for the launcher (two egui versions coexist in the lock) and defers all API breakage to the eframe PR. Launcher clippy only runs in the Windows job of `launcher-build.yml`.
@@ -63,4 +71,4 @@
 
 ## legacy-command-parity campaign
 
-- [legacy-command-parity-scoping-judgment.md](legacy-command-parity-scoping-judgment.md) — recurring judgment calls when porting a legacy dot command: verify a packet's "read-only reference" file list actually contains the real logic (P02's `.facing` geometry was in a file NOT in the initial read set); don't port a legacy enum/name table onto a Rust field whose numbering has already diverged (check the field's own doc comment first); confirm a named "stop condition" by reading the actual struct, don't just assume; prefer a genuinely scoped-down partial implementation over blocking the whole command.
+- [legacy-command-parity-scoping-judgment.md](legacy-command-parity-scoping-judgment.md) — recurring judgment calls when porting a legacy dot command: verify a packet's "read-only reference" file list actually contains the real logic (P02's `.facing` geometry was in a file NOT in the initial read set); don't port a legacy enum/name table onto a Rust field whose numbering has already diverged (check the field's own doc comment first); confirm a named "stop condition" by reading the actual struct, don't just assume; prefer a genuinely scoped-down partial implementation over blocking the whole command; read a shared helper's SIGNATURE before copying a sibling command's call verbatim (P18 — the sibling may carry a latent bug); a legacy `x=None, y=None, z=None` signature gated on one arg is a partial-tuple bug to correct, not a feature.

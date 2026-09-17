@@ -417,6 +417,50 @@ pub(crate) static COMMANDS: &[Spec] = &[
         Target::None,
         "Teleport the target (or yourself) to coordinates in this space (x y z)",
     ),
+    spec(
+        "goto",
+        1,
+        1,
+        Target::None,
+        "Move the target (or yourself) to a named online player's position/instance",
+    ),
+    spec(
+        "summon",
+        1,
+        1,
+        Target::None,
+        "Move a named online player to the target's (or your) position/instance",
+    ),
+    spec(
+        "gotolocation",
+        4,
+        4,
+        Target::None,
+        "Move the target (or yourself) to coordinates in a named world (worldName x y z)",
+    ),
+    // ── J. placement (position / orientation) ───────────────────────────────────
+    spec(
+        "location",
+        0,
+        3,
+        Target::Spawnable,
+        "Report (no args) or set (x y z) the target's position",
+    ),
+    spec(
+        "rotation",
+        0,
+        3,
+        Target::Spawnable,
+        "Report (no args) or set (pitch yaw roll) the target's orientation",
+    ),
+    // ── K. stat setters ──────────────────────────────────────────────────────────
+    spec(
+        "speed",
+        1,
+        1,
+        Target::Being,
+        "Set the target's current movement and rotation speed together",
+    ),
     // ── G. server / maintenance ────────────────────────────────────────────────
     spec("save", 0, 0, Target::None, "Persist your player entity now"),
     spec(

@@ -1,13 +1,17 @@
 //! Granular per-domain stat readouts (category F): `.stats`,
 //! `.primarystats`, `.speedstats`, `.armorstats`, `.qrstats`,
-//! `.absorbstats`, `.stealthstats`.
+//! `.absorbstats`, `.stealthstats` — each dumps a fixed list of stats of the
+//! selected target (a `Being`) via the feedback channel, one `label: cur/max`
+//! line per stat. These are the granular views the umbrella `/gmprintstats`
+//! doesn't break out.
 //!
-//! Read-only — each dumps a fixed list of stats of the selected target (a
-//! `Being`) via the feedback channel, one `label: cur/max` line per stat. These
-//! are the granular views the umbrella `/gmprintstats` doesn't break out.
+//! Plus one setter (category K): `.speed` ([`set_speed`], P47) — the family's
+//! only mutation, kept in this file rather than a new sibling since it's a
+//! single command sharing `MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` with the
+//! `speedstats` readout above.
 //!
 //! Legacy reference: `deprecated/python/cell/commands/Entity.py`
-//! (`entityStats`, `entityPrimaryStats` … `entityStealthStats`).
+//! (`entityStats`, `entityPrimaryStats` … `entityStealthStats`, `setSpeed`).
 
 use cimmeria_entity::stats::Stat;
 use cimmeria_entity::stats::{
@@ -149,6 +153,136 @@ fn format_stat_line(label: &str, stat: Option<&Stat>) -> String {
         Some(s) => format!("    {label}: {}/{}", s.cur, s.max),
         None => format!("    {label}: n/a"),
     }
+}
+
+/// The two stats `.speed` writes together, in legacy `setSpeed` order. Named
+/// so the rejection path can say *which* stat a value is out of range for,
+/// and kept separate from [`stat_set`]'s `"speedstats"` group because that
+/// group also carries the four read-only action-speed stats (`speedReload`
+/// …`speedAttack`) that `.speed` must not touch.
+const SPEED_STATS: &[(&str, i32)] = &[
+    ("movementSpeedMod", MOVEMENT_SPEED_MOD),
+    ("rotationSpeedMod", ROTATION_SPEED_MOD),
+];
+
+/// `.speed <value>` — set the target's current `movementSpeedMod` **and**
+/// `rotationSpeedMod` together, then publish the change so both the client
+/// and the server-side NPC movement tick actually apply it.
+///
+/// Legacy `setSpeed` (`deprecated/python/cell/commands/Entity.py:537-548`)
+/// calls `setCurrent(speed)` on both stats — *current* only, never `max` —
+/// then `sendDirtyStats()`, then feeds the caller back. `entities/defs/
+/// alias.xml` documents both aliases as "multiplies movement/rotation speed
+/// by curr/100", so 100 is normal, 200 double, 0 frozen.
+///
+/// Two deliberate deviations from legacy, both recorded in the P47 handoff:
+///
+/// 1. **Reject instead of silently clamping.** Legacy leans on
+///    `Stat.setCurrent`'s clamp into `[min, max]`, so `.speed 9000` quietly
+///    became 500 and `.speed -5` quietly 0 while the feedback still echoed
+///    the typed value. Here an out-of-range value is rejected and *neither*
+///    stat is touched — matching the native `gmSetHealth` handler's
+///    reject-don't-clamp precedent, and keeping the two-stat write atomic so
+///    a GM can never end up with movement clamped one way and rotation
+///    another should the two stats' ranges ever diverge.
+/// 2. **Integer feedback.** Legacy's format string is `'Set speed of entity
+///    %d to %f'`, which renders an int stat as `100.000000`. The prose is
+///    preserved; the bogus float rendering is not (same call as P05/P26 made
+///    on feedback wording — D02 pins spelling/arity/target semantics, not
+///    verbatim legacy prose).
+pub(super) async fn set_speed(
+    caller_id: u32,
+    target: u32,
+    args: &[&str],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let Some(speed) = super::parse_i32(caller_id, args, 0, "speed", tx).await else {
+        return;
+    };
+
+    // Validate against BOTH stats' live bounds *before* mutating either, so a
+    // rejected value leaves the target completely unchanged (acceptance
+    // criterion: no mutation on bad input).
+    let Some(entity) = space_mgr.get_entity(target) else {
+        send_gm_feedback(caller_id, "speed: no entity.", tx).await;
+        return;
+    };
+    let is_player = entity.is_player;
+    for (label, stat_id) in SPEED_STATS {
+        let Some(stat) = entity.stats.get(*stat_id) else {
+            send_gm_feedback(
+                caller_id,
+                &format!("speed: target has no {label} stat."),
+                tx,
+            )
+            .await;
+            return;
+        };
+        if speed < stat.min || speed > stat.max {
+            send_gm_feedback(
+                caller_id,
+                &format!(
+                    "speed: {label} must be between {} and {} (100 = normal)",
+                    stat.min, stat.max
+                ),
+                tx,
+            )
+            .await;
+            return;
+        }
+    }
+
+    // Every check passed — apply both, then publish one `onStatUpdate`
+    // carrying the whole dirty set (legacy's `sendDirtyStats()`). Both ids are
+    // in `PUBLIC_STATS`, so the NPC branch's `serialize_dirty_public` carries
+    // them to witnesses just as the player branch's `serialize_dirty` carries
+    // them to the owning client.
+    let payload = {
+        let entity = space_mgr
+            .get_entity_mut(target)
+            .expect("target existence checked immediately above");
+        for (_, stat_id) in SPEED_STATS {
+            entity
+                .stats
+                .get_mut(*stat_id)
+                .expect("stat presence checked immediately above")
+                .set_current(speed);
+        }
+        let p = if is_player {
+            entity.stats.serialize_dirty()
+        } else {
+            entity.stats.serialize_dirty_public()
+        };
+        entity.stats.clear_dirty();
+        p
+    };
+
+    tracing::info!(
+        caller_id,
+        target,
+        speed,
+        is_player,
+        "console .speed: movement/rotation speed mod applied"
+    );
+    if !payload.is_empty() {
+        crate::cell::abilities::send_entity_method(
+            target,
+            crate::mercury::method_idx::ON_STAT_UPDATE,
+            payload,
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
+    // D03: feedback goes to the calling GM, which for `Target::Being` is
+    // usually not the entity whose speed just changed.
+    send_gm_feedback(
+        caller_id,
+        &format!("Set speed of entity {target} to {speed}"),
+        tx,
+    )
+    .await;
 }
 
 #[cfg(test)]

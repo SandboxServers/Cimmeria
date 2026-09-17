@@ -454,3 +454,38 @@ async fn legacy_p26_gotoxyz_player_target_survives_closed_channel() {
         "the cell-side grid write is authoritative even if the base push failed"
     );
 }
+
+/// Regression guard (found by CodeRabbit review of P46, which shares this
+/// same-space mechanism): `update_entity_position` overwrites `direction`
+/// unconditionally from its `[i8; 3]` parameter, so `.gotoxyz` must not pass
+/// `[0, 0, 0]` and let it stick — the entity's facing must survive the snap
+/// unchanged, exactly like `console/placement.rs::location`'s equivalent
+/// fix. A distinctive non-zero pitch/roll (not just yaw) here so a
+/// regression that only restores `.y` still fails this test.
+#[tokio::test]
+async fn legacy_p26_gotoxyz_preserves_entity_facing() {
+    let (mut mgr, gm, npc) = setup();
+    if let Some(e) = mgr.get_entity_mut(npc) {
+        e.direction = Vector3::new(0.4, 1.1, -0.6);
+    }
+    let engine = ChainEngine::new();
+    let (tx, _rx) = mpsc::channel(16);
+
+    exec(
+        "gotoxyz",
+        gm,
+        &["10", "20", "30"],
+        Some(npc),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    let d = mgr.get_entity(npc).unwrap().direction;
+    assert_eq!(
+        [d.x, d.y, d.z],
+        [0.4, 1.1, -0.6],
+        "gotoxyz must not reset the moved entity's facing"
+    );
+}
