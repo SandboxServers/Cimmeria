@@ -227,7 +227,7 @@ fn parse_fstring_from_bytes(data: &[u8]) -> String {
         let count = (-length) as usize;
         if data.len() >= 4 + count * 2 {
             let chars: Vec<u16> = data[4..4 + count * 2]
-                .chunks_exact(2)
+                .chunks(2)
                 .map(|c| u16::from_le_bytes([c[0], c[1]]))
                 .collect();
             String::from_utf16_lossy(&chars)

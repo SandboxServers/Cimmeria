@@ -222,7 +222,7 @@ pub async fn handle_loot_item(
                 player_id,
                 amount: removed_item.quantity,
                 // Loot pickup is not GM-sourced — no GM feedback line.
-                notify_gm: false,
+                gm_feedback_to: None,
             })
             .await;
     }

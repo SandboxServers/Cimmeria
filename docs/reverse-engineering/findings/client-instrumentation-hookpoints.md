@@ -103,6 +103,16 @@ The minimum hook set that turns "client froze somewhere during world entry" into
 - `Event_NetIn_*` raw occurrences: **1,433** (distinct handler class count ~120 — RTTI-derivable)
 - `Event_SlashCmd_*`: **1,477** (exact match for the issue body's claim)
 
+### Dispatch drop oracle (PR #620)
+
+| Function | Anchor → Entry | Technique | Event name | Status |
+|---|---|---|---|---|
+| `EntityDescription_GetExposedClientMethodByIndex` — sole callee of the silent-drop path in `Client_NetIn_EntityMethodDispatch` (`0x00c6f8f0`), called from `0x00c6fa95` | **entry `0x01590f30`** | Inline | `client.dispatch.method_dropped` (warn, unsampled, carries `method_index`) | ENABLED (PR #620) |
+
+An inbound entity method the client cannot route is discarded with no log, no error, and no wire response. This hook is the client-side half of the round-trip oracle: the server can prove it *sent* a method; this event proves the real client failed to *understand* it. Emitted at `warn` and unsampled — on a healthy session it is silent, so any volume is itself the finding.
+
+Known-expected drops today: the six BlackMarket methods (90–95) are parsed and flagged Exposed but were never bound into the handler map — see [`black-market-client-window-patch.md`](black-market-client-window-patch.md). The hook's zero-false-positive guarantee rests on `0x01590f30` having exactly one xref (the drop site); the anchor-pin test in `crates/client-telemetry/src/hooks/inline_hooks/` records that this property is load-bearing.
+
 ## Tier 3 — Game state, animation, effects, loot (Phase 3)
 
 Anchors from existing RE docs; per-anchor Ghidra revalidation deferred to implementation time.
