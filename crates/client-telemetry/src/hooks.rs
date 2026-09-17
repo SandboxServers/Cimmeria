@@ -14,12 +14,13 @@
 //!   `cme_hooks.rs`. Currently: `Event_NetIn_onClientReady`,
 //!   `Event_NetIn_onClientMapLoad`. Phase 3a will add ~270 events
 //!   via RTTI auto-discovery.
-//! - **Inline JMP** (MinHook) — `inline_hooks.rs`. 11 hooks:
+//! - **Inline JMP** (MinHook) — `inline_hooks/`. 12 hooks:
 //!   Mercury dispatch, FEngineLoop::Tick, FArchiveAsync::Serialize,
 //!   UWorld::UpdateLevelStreamingInner, UObject::StaticLoadObject,
 //!   GameBeing::onStateFieldUpdate, USGWAnimNotify::Notify A+B,
 //!   cooked-data load, APlayerController::execConsoleCommand,
-//!   FFullScreenMovieBink::Tick.
+//!   FFullScreenMovieBink::Tick, and the entity-method silent-drop
+//!   oracle (`client.dispatch.method_dropped`).
 //! - **IAT swap** — `iat_hooks.rs`. 7 hooks: lua_pcall/call/newstate
 //!   + CreateThread + LoadLibraryW/A + GetForegroundWindow.
 //! - **Vtable swap** — `vtable_hooks.rs`. 3 hooks: CEGUI::DefaultLogger::

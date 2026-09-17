@@ -128,7 +128,8 @@ impl StaticMesh {
         // u16/u32 list; every three consecutive entries form a triangle.
         let mut out = Vec::with_capacity(lod0.indices.len() / 3);
         let mut dropped = 0u32;
-        for triplet in lod0.indices.chunks_exact(3) {
+        let complete_len = lod0.indices.len() - lod0.indices.len() % 3;
+        for triplet in lod0.indices[..complete_len].chunks(3) {
             let (i0, i1, i2) = (triplet[0], triplet[1], triplet[2]);
             if i0 >= n || i1 >= n || i2 >= n {
                 dropped += 1;

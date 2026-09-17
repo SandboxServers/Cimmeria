@@ -2,7 +2,7 @@
 title: "SGWPlayer / SGWGmPlayer Exposed CellMethod Dispatch Table"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-17
 ---
 
 # SGWPlayer Exposed CellMethod Dispatch Table
@@ -689,7 +689,7 @@ beyond the 3 verified handlers above.
 | 218 | `trackMob()` | — | read `ai_state`; no debug-stream toggle | ADAPT |
 | 219 | `onXRayEyes(UINT8 on)` | — | client-side presentation only; no server state | NEW |
 | 220 | `onInvisible(UINT8 on)` | — | `mercury/aoi/leave.rs:18 build_entity_invisible` (wire only); no visibility-toggle state | NEW |
-| 221 | `onPhysics(UINT8 on)` | — | — | NEW |
+| 221 | `onPhysics(UINT8 on)` | `/gmsetfly`, `/gmsetghost` | `cell/cell_methods/gm/physics.rs` → `CellEntity::movement_unrestricted` bypass in `space_manager/entities.rs apply_client_position_update_at`. Both slash commands route through this one method identically; client toggles its own pawn physics locally/instantly regardless of the server round-trip. **Wire polarity is inverted**: `on=0` (physics off, GM flying/ghosting) → bypass ON; `on=1` (physics restored) → bypass OFF. | **DONE** |
 | 222 | `sendGMShout(UINT8 global, WSTRING text)` | — | `cell/chat.rs:101 broadcast_to_witnesses` (need space/all-shard variant) | ADAPT |
 | 223 | `regenerateCoverLinks(FLOAT normLimit, UINT32 maxLinks, FLOAT maxDist)` | — | `cover/loader.rs:88` static-load only; no regen algorithm | NEW |
 | 224 | `changeCoverWeight(6×FLOAT)` | — | `cover/scoring.rs:38 CoverWeights` (compile-time const; needs RwLock) | ADAPT |
