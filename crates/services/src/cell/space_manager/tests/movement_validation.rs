@@ -723,3 +723,118 @@ fn feat_onphysics_default_unrestricted_false_still_rejects_out_of_bounds() {
         Vector3::new(SPAWN_POS[0], SPAWN_POS[1], SPAWN_POS[2])
     );
 }
+
+/// **NaN/Infinity poisoning guard.** A non-finite position sent while
+/// `movement_unrestricted` is set must be rejected outright, not written
+/// through, and a subsequent real teleport-shaped jump (after physics is
+/// restored) must still be hard-rejected. This pins the exploit shape the
+/// unconditional `is_finite()` guard closes: if a NaN ever reached
+/// `cell_entity.position`, `check_kinematics`'s `distance_to` would
+/// become NaN, and every `distance > TELEPORT_JUMP_UNITS` comparison
+/// silently and permanently evaluates `false` under IEEE754 — disabling
+/// the teleport gate for that entity until disconnect. Must fail if the
+/// `is_finite()` guard is reverted.
+#[test]
+fn feat_onphysics_bypass_rejects_non_finite_position_and_preserves_teleport_gate() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    let t0 = Instant::now();
+    seed_clock(&mut mgr, 100, t0);
+    mgr.get_entity_mut(100).unwrap().movement_unrestricted = true;
+
+    // Attempt to poison the entity's tracked position with NaN while
+    // bypassed.
+    let poison = [f32::NAN, 0.0, 0.0];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(10),
+        100,
+        poison,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(
+            outcome,
+            ClientMoveOutcome::Rejected {
+                reason: MovementReject::OutOfBounds,
+                ..
+            }
+        ),
+        "non-finite position must be rejected even under the physics bypass, got {outcome:?}"
+    );
+    let entity = &mgr.spaces[&65536].entities[&100];
+    assert!(
+        entity.position.x.is_finite()
+            && entity.position.y.is_finite()
+            && entity.position.z.is_finite(),
+        "cell entity position must never become non-finite, got {:?}",
+        entity.position
+    );
+
+    // Restore physics.
+    mgr.get_entity_mut(100).unwrap().movement_unrestricted = false;
+
+    // A real teleport-shaped jump must still be hard-rejected — proves
+    // the kinematics layer's distance calculation was never poisoned.
+    let teleport = [SPAWN_POS[0] + 100.0, 0.0, SPAWN_POS[2]];
+    let outcome = mgr.apply_client_position_update_at(
+        t0 + Duration::from_millis(60),
+        100,
+        teleport,
+        [0, 0, 0],
+        [0.0; 3],
+    );
+    assert!(
+        matches!(
+            outcome,
+            ClientMoveOutcome::Rejected {
+                reason: MovementReject::Teleport,
+                ..
+            }
+        ),
+        "teleport gate must still work after an attempted NaN poison, got {outcome:?}"
+    );
+}
+
+/// **Scoping regression guard.** With two entities in the same space,
+/// only the one with `movement_unrestricted` set may bypass validation —
+/// the other must still be rejected exactly as before. Proves the bypass
+/// check reads the *calling* entity's own flag, not some shared or
+/// space-level state.
+#[test]
+fn feat_onphysics_bypass_does_not_leak_to_other_entities_in_same_space() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    mgr.create_entity(200, "Agnos", SPAWN_POS, [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(100).unwrap().movement_unrestricted = true;
+    // 200 left at the default `false`.
+
+    let far_out = [-100_000.0, 0.0, 20.0];
+
+    let outcome_bypassed = mgr.apply_client_position_update(100, far_out, [0, 0, 0], [0.0; 3]);
+    assert!(
+        matches!(outcome_bypassed, ClientMoveOutcome::Accepted { .. }),
+        "flagged entity must bypass validation, got {outcome_bypassed:?}"
+    );
+
+    let outcome_normal = mgr.apply_client_position_update(200, far_out, [0, 0, 0], [0.0; 3]);
+    assert!(
+        matches!(
+            outcome_normal,
+            ClientMoveOutcome::Rejected {
+                reason: MovementReject::OutOfBounds,
+                ..
+            }
+        ),
+        "unflagged sibling entity must still be validated normally, got {outcome_normal:?}"
+    );
+    let entity_200 = &mgr.spaces[&65536].entities[&200];
+    assert_eq!(
+        entity_200.position,
+        Vector3::new(SPAWN_POS[0], SPAWN_POS[1], SPAWN_POS[2]),
+        "unflagged entity's position must not have advanced"
+    );
+}

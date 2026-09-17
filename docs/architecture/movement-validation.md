@@ -10,8 +10,8 @@
 The SGW client is *client-authoritative* for its own avatar position: it
 streams raw `f32` world coordinates in `AVATAR_UPDATE_EXPLICIT` (0x03) at
 ~10 Hz and expects the server to mirror them into the cell entity. Before
-#478, the cell wrote those coordinates with **zero validation** — every
-per-tick update was a free teleport. Every position-derived system (AoI /
+issue #478, the cell wrote those coordinates with **zero validation** —
+every per-tick update was a free teleport. Every position-derived system (AoI /
 witness scope, region triggers, mission gates, threat radius, navmesh
 distance) reads from the cell entity's `position`, so a single tampered
 0x03 corrupted all of them downstream. See
@@ -143,28 +143,47 @@ true`; `bTurnOn=1` (physics restored) sets it back to `false`.
 `apply_client_position_update_at` checks the flag immediately after
 resolving `bounds`/`last_valid` — before Layer 1 — and, if set, skips all
 four rejection layers and calls `update_entity_position` directly,
-returning `Accepted`. Two details matter for correctness:
+returning `Accepted`. Three details matter for correctness:
 
 - **The per-entity kinematics clock (`touch_clock`) still runs** on the
   bypass path, so `dt` stays fresh for when physics is restored — an
   unclocked bypass period would otherwise leave the next real check
   comparing against a stale, multi-minute-old sample.
-- **`update_entity_position` still runs** on the bypass path (spatial grid
-  + AoI source-of-truth), so `last_valid` keeps tracking the GM's actual
-  position while flying. Skipping this would freeze `last_valid` at the
-  position where flight began; the first client packet after physics is
-  restored would then measure a huge apparent jump from that stale point
-  and get rejected as a teleport, rubber-banding the GM back to wherever
-  they started flying.
+- **`update_entity_position` still runs** on the bypass path (spatial
+  grid and AoI source-of-truth), so `last_valid` keeps tracking the GM's
+  actual position while flying. Skipping this would freeze `last_valid`
+  at the position where flight began; the first client packet after
+  physics is restored would then measure a huge apparent jump from that
+  stale point and get rejected as a teleport, rubber-banding the GM back
+  to wherever they started flying.
+- **The `is_finite()` gate runs unconditionally, even under the bypass**
+  — before the `movement_unrestricted` branch, not folded into the
+  Layer-1 bounds check it would otherwise share code with. Bounds,
+  navmesh, and kinematics are all skipped while unrestricted, but a
+  non-finite (`NaN`/`±Infinity`) coordinate is rejected regardless.
+  Without this, `update_entity_position` (which does no sanitization of
+  its own) would write `NaN` straight into `cell_entity.position` while
+  the GM is flying. That doesn't corrupt the spatial grid (float→int
+  cell indexing saturates), but it poisons the entity's *own*
+  `check_kinematics` state: `distance_to` against a `NaN` last-position
+  is `NaN`, and every `NaN` comparison (including
+  `distance > TELEPORT_JUMP_UNITS`) is `false` under IEEE754 — so the
+  hard teleport-reject would silently and permanently stop firing for
+  that entity the moment physics was restored, until the next
+  disconnect clears its `CellEntity`. No legitimate fly/ghost movement
+  needs a non-finite coordinate, so the reject is unconditional and
+  costs nothing.
 
 The bypass is scoped to the flagged entity only — every other entity's
 `movement_unrestricted` defaults `false` and is validated exactly as
 before. Regression guards (prefix `feat_onphysics_`) live in
 `crates/services/src/cell/space_manager/tests/movement_validation.rs`
 (bypass accepts out-of-bounds / off-navmesh / teleport-shaped moves; the
-default-false negative control still rejects) and
-`crates/services/src/cell/cell_methods/gm/tests/physics.rs` (polarity,
-feedback text, truncated-arg rejection without mutation).
+default-false negative control still rejects; a NaN poisoning attempt is
+rejected and the teleport gate keeps working afterward; two entities in
+the same space with only one flagged prove the bypass doesn't leak to
+the other) and `crates/services/src/cell/cell_methods/gm/tests/physics.rs`
+(polarity, feedback text, truncated-arg rejection without mutation).
 
 ## Constants
 

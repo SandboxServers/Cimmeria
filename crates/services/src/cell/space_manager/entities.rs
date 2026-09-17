@@ -289,13 +289,37 @@ impl SpaceManager {
         // next real check comparing against a multi-minute-old sample).
         let prev_sample = self.movement_validator.touch_clock(entity_id, now);
 
+        // Non-finite coordinates are rejected unconditionally, even under
+        // the GM physics bypass below — this is deliberately NOT folded
+        // into the `movement_unrestricted` branch. `update_entity_position`
+        // does no sanitization of its own; if a NaN/Infinity slipped
+        // through while unrestricted, it would get written straight into
+        // `cell_entity.position`. That doesn't corrupt the spatial grid
+        // (float->int cell indexing saturates), but it poisons this
+        // entity's own kinematics state: `check_kinematics`'s
+        // `distance_to` against a NaN last-position is NaN, and every NaN
+        // comparison (including `distance > TELEPORT_JUMP_UNITS`) is
+        // `false` under IEEE754 — so the hard teleport-reject would
+        // silently and permanently stop firing for this entity the moment
+        // physics was restored. No legitimate fly/ghost movement needs a
+        // non-finite coordinate.
+        if !proposed.x.is_finite() || !proposed.y.is_finite() || !proposed.z.is_finite() {
+            return ClientMoveOutcome::Rejected {
+                reason: MovementReject::OutOfBounds,
+                last_valid,
+                space_id,
+                bounds,
+            };
+        }
+
         // GM movement-validator bypass (`onPhysics` / `/gmsetfly` /
         // `/gmsetghost` — see `cell_methods::gm::physics`). The client is
         // already authoritative for its own position while flying/
-        // ghosting; skip straight past the four rejection layers below but
-        // still advance the entity's tracked position (spatial grid, AoI
-        // source-of-truth) so witnesses see the GM move and so validation
-        // resumes cleanly (no stale `last_valid`) once physics is restored.
+        // ghosting; skip straight past the remaining rejection layers
+        // below but still advance the entity's tracked position (spatial
+        // grid, AoI source-of-truth) so witnesses see the GM move and so
+        // validation resumes cleanly (no stale `last_valid`) once physics
+        // is restored.
         if movement_unrestricted {
             self.update_entity_position(entity_id, position, direction, velocity);
             return ClientMoveOutcome::Accepted { position };
