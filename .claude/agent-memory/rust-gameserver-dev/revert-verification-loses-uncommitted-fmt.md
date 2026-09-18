@@ -21,7 +21,15 @@ push` reverts the working tree as a side effect, so you immediately have to
 `git stash apply <sha>` to get your work back, and the stash stack is shared
 with other worktrees and concurrent Claude sessions.
 
-One more gotcha in this repo: `git add crates/services` staged files under the
+Scripting the temporary revert: **`crates/**/*.rs` are stored CRLF in this
+repo, not just `docs/`.** A Python/sed patch script that matches exact
+multi-line strings with `\n` silently misses every hunk (and `cat -A` through
+Git Bash can still print bare `$`, so it looks LF). Read the file as bytes,
+`replace('\r\n', '\n')` before matching, and restore the original convention on
+write — otherwise the "revert" is a no-op and the guard looks like it passes
+when reverted.
+
+Another gotcha in this repo: `git add crates/services` staged files under the
 gitignored `crates/services/logs/`. Check `git status --short` after staging
 and `git restore --staged crates/services/logs` if they appear — the
 legacy-command-parity README explicitly requires keeping that directory out of
