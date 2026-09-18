@@ -16,7 +16,7 @@ The minigame system provides puzzle-based mini-activities integrated into the ga
 
 The `MinigamePlayer` interface in `entities/defs/interfaces/MinigamePlayer.def` is the largest interface by method count (25 properties, 78+ methods).
 
-The original SGW minigames were Flash SWFs that connected to a **SmartFoxServer 1.x** TCP endpoint, separate from the Mercury game channel. [`crates/services/src/minigame/`](../../crates/services/src/minigame/) reimplements that server in-process: `protocol.rs` speaks the SmartFox XML packet format, `session.rs` owns the ticket registry, `server.rs` is the TCP listener, and `games/` holds the per-game logic behind a `MinigameInstance` trait.
+The original SGW minigames were Flash SWFs that connected to a **SmartFoxServer 1.x** TCP endpoint, separate from the Mercury game channel. [`crates/services/src/minigame/`](../../crates/services/src/minigame/) reimplements that server in-process: `protocol.rs` speaks the SmartFox XML packet format, `session.rs` owns the ticket registry, `server/` is the TCP listener and connection lifecycle, and `games/` holds the per-game logic behind a `MinigameInstance` trait.
 
 ## How a minigame actually launches
 
@@ -40,7 +40,7 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| SmartFoxServer 1.x host | DONE | `minigame/server.rs` + `protocol.rs` |
+| SmartFoxServer 1.x host | DONE | `minigame/server/` (`mod.rs` lifecycle, `framing.rs`, `handshake.rs`, `result_dispatch.rs`) + `protocol.rs` |
 | Session / ticket registry | DONE | `minigame/session.rs`; ticket carries seed, difficulty, and the victory chains |
 | Session expiry | DONE | A registered session whose SWF never connects is swept after `PENDING_SESSION_TTL` (180 s). See [Session lifecycle](#session-lifecycle) |
 | Abort on SWF close | DONE | `run_session` calls `MinigameInstance::aborted()` and reports result code 0 (Canceled) when the socket drops without an outcome |
@@ -143,8 +143,10 @@ A ticket is minted by `SessionRegistry::register` when the content chain starts 
 A session exists in `SessionRegistry` from the moment the chain fires until
 the connection task that owns it finishes. Two things end it:
 
-1. **The connection task.** Once the SWF authenticates, `mark_connected`
-   flags the session and the task owns it. When the socket closes — win,
+1. **The connection task.** Login validates the ticket and claims the
+   session in one locked step (`authenticate_and_claim`), so a task can
+   only ever own the session it authenticated against. When the socket
+   closes — win,
    loss, or the player closing the window — the task unregisters it. A
    connected session is never expired by age, because a Livewire round can
    run longer than the TTL.
