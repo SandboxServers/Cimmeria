@@ -260,7 +260,7 @@ Two caveats for authors:
 | `params.is_stationary` | Optional. No template column exists, so absent means `false`, not "inherit" |
 | `params.aggression` | Optional, same reasoning — absent means `0` |
 | `params.allow_shared` | Optional. `true` opts out of the shared-world refusal below |
-| `params.respawn_secs` | Accepted but **not honoured** — see below |
+| `params.respawn_secs` | **Not a parameter.** A row that supplies it still loads and still spawns; the loader warns once (`respawn_secs_not_honoured`) — see below |
 
 Four refusals, each with a `warn!` carrying a stable `reason` ([executor/spawn/mod.rs](../../crates/services/src/cell/content/executor/spawn/mod.rs)):
 
@@ -269,7 +269,7 @@ Four refusals, each with a `warn!` carrying a stable `reason` ([executor/spawn/m
 3. **`shared_world_refused`** — the acting player's world is not instanced and `allow_shared` is not `true`. This is the guardrail behind the campaign rule "mission-scoped hostile NPCs go into the player's own instance, never into the shared hub".
 4. **`tag_already_live`** — an entity with that tag is already in this space. Relog-restore chains re-fire their step's actions by design, so a second spawn with the same tag is a no-op rather than a second NPC. The lookup matches **dead** entities too: a corpse still holds its tag, and resurrecting an NPC the player already killed would re-open completed content.
 
-`respawn_secs` is forced to `None` regardless of the param or the template column ([space_manager/spawn.rs:106-118](../../crates/services/src/cell/space_manager/spawn.rs#L106-L118)). The respawn tick keys on `(ai_state, respawn_at)` and has no instance-lifetime awareness, so a revived mission NPC would re-fire its `entity_dead_tag` chain and complete a kill objective twice. Content spawns are always one-shot; asking for a respawn warns (`content_respawn_unsupported`) and spawns anyway.
+`respawn_secs` is forced to `None` regardless of the template column ([space_manager/spawn.rs:106-118](../../crates/services/src/cell/space_manager/spawn.rs#L106-L118)). The respawn tick keys on `(ai_state, respawn_at)` and has no instance-lifetime awareness, so a revived mission NPC would re-fire its `entity_dead_tag` chain and complete a kill objective twice. Content spawns are always one-shot, so `Action::SpawnEntity` carries no respawn field at all — a `respawn_secs` param is dropped at load with a single `warn!` (`reason = "respawn_secs_not_honoured"`) rather than warning on every fire. The row is not rejected: a mission NPC that appears without respawn beats one that never appears.
 
 One more warn worth recognising in a log: **`aggressive_spawn_faction_zero`**. Auto-aggro compares the NPC's faction against the player's, and players are always faction 0, so a hostile template with `faction = 0` or `NULL` never attacks. The fix is in the `entity_templates` row, not the chain.
 
