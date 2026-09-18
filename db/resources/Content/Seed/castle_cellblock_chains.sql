@@ -40,6 +40,9 @@
 --   Mission 686 aftermath (C08b addition, 2026-09-17): chains 1161-1162,
 --     inside work-packets.md's reserved 1161-1170 range for C08. Verified
 --     free first (max chain_id in this file was 1112 before this packet).
+--   GC1 -- Escape escort (2026-09-17): chains 1171-1175, inside
+--     work-packets.md's own reserved 1171-1190 block for GC1's children
+--     (verified empty before use). 5 of 20 reserved ids used so far.
 --   (next free inside 1001-1111: 1026-1030, 1036-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
@@ -2316,3 +2319,197 @@ VALUES
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1162, 'destroy_entity', NULL, 'Preparation_ColMarsh', '{}', 0, 0);
+
+-- ============================================================
+-- GC1 — Escape escort (spec rows 13-14, D-CB13: full escort approved)
+-- ============================================================
+--
+-- Chains 1171-1175, inside work-packets.md's reserved 1171-1190 block for
+-- GC1's children. Three child packets land here:
+--
+--   GC1a (dialogs only): chains 1171 (Marsh interact, step 2344) and 1172
+--     (post-death "you're on your own" beat, dialog 5859 from the v3 spec
+--     audit's `06_Marsh_Companion_Death` finding).
+--   GC1b-1 (ring the rings): chain 1173, one `move_waypoint` on the same
+--     `teleport_in` region-3 event chain 1072 already binds (kept as a
+--     separate chain in this block rather than appended to 1072 itself, so
+--     GC1's rows stay traceable as one unit and C02's chain-1072 assertions
+--     in mission_680.rs are untouched).
+--   GC1b-2 (follow across the topside): chains 1174 (start follow, same
+--     `teleport_in` region-3 event) and 1175 (clear follow on the Straegis
+--     scene, `mission_completed 686`).
+--
+-- Dialog selection for GC1a (documented judgment call, per work-packets.md
+-- GC1's "Approve... worker may decide with a documented rationale" note):
+--   - 2309 ("That's about all we can do from here... let's move out" / "What
+--     about the prisoners we just freed?" / "They'll follow later...") has
+--     speaker_id 261 on its Marsh lines -- confirmed by direct DB read to be
+--     the same speaker_id the v3 audit ties to "Col. Marsh" in his
+--     companion-phase dialogs. Content-wise it is a clean pre-departure
+--     exchange, so it is gated on step 2344 (Preparation-room "Find a way
+--     out of the Castle!", per mission_steps.sql -- the phase BEFORE ring
+--     travel, not after) rather than step 2345.
+--   - 4003 ("Damn!" / "...That sparkly energy field is what's wrong. It's
+--     blocking our way out." / speaker_id 261) is EXCLUDED. Read in full,
+--     it is unambiguously the GC1c lockdown/energy-field beat (spec row 14),
+--     which stays BlockedEvidence -- no energy-field actor or Kismet event
+--     id recovered (work-packets.md GC1c). Playing this dialog with no
+--     accompanying barrier would tell the player their way out is blocked
+--     when nothing in the world actually blocks it.
+--   - 5019 ("Let's move out! / I'll draw their fire!... / Crouch down.../
+--     Flank their position...") is EXCLUDED even though its first four
+--     screens read like a clean Mess Hall flanking cue (matching the v3
+--     audit's `06_Marsh_Companion_Death` note). Its fifth and final screen
+--     ("I don't have much time... I mean the Col. Marsh from this time...
+--     The Straegis can sense time travellers") is the excluded legacy
+--     "Future Self" time-travel content (work-packets.md's Explicit
+--     Non-Goals table: "Hidden mission 642, Frost-alive intro, Future Self
+--     dialog | Legacy revision; nothing in the seed references them").
+--     `display_dialog` shows every screen of a dialog in one action -- there
+--     is no way to author only 5019's first four screens -- so the whole
+--     dialog is out. This also resolves the open "5019 for whom" question
+--     the ledger flagged as unresolved (Legacy_Unresolved row): it was never
+--     resolvable because part of it belongs to different, out-of-scope
+--     content.
+--   - 5859 ("Find a way out of the Cellblock. Without Marsh.") is the v3
+--     spec's newly-surfaced post-death line (audit.md "New Evidence From
+--     v3" section). All its screens are speaker_id 0, so it qualifies for
+--     the monologue fallback in executor/dialog.rs (binds to the player,
+--     no NPC target needed) -- safe to fire from a bare `mission_completed`
+--     trigger with no interact context.
+--
+-- GC1b-1 destination (documented judgment call): (-91.689003, 45.1879997,
+-- -161.533005) is 2 units off the exact `CellblockRing3` ring-transport
+-- landing pad (ring_transport_regions.sql region_id=3: -89.689003,
+-- 45.1879997, -161.533005 -- the same point the player lands at), so Marsh
+-- appears beside the player rather than exactly on top of them. Verified
+-- directly against the real `data/spaces/castle_cellblock.nav` fixture (not
+-- guessed): `is_point_valid` is true at this point, and `find_path` from it
+-- reaches MessHall_Guard1's spawn (-96.25, 34.5909996, -91.5899963) and from
+-- there reaches Hallway01_Guard's spawn (-128.852997, 39.5519981,
+-- -73.5339966) with the path's LAST waypoint landing exactly on each
+-- destination -- the topside route is one connected component, confirming
+-- the GC1 feasibility pass's "component 8" finding operationally (this
+-- engine has no exposed component-id API; connectivity via `find_path`
+-- reaching the destination is the closest observable proxy, and is what the
+-- chain-replay test below asserts). By contrast, `find_path` from
+-- Preparation_ColMarsh's own spawn (-191, 54.7199974, -138.587997) toward
+-- this same destination returns a path whose LAST waypoint stops around
+-- (-181.9, 54.8, -143.8) -- a partial/best-effort route that never reaches
+-- the destination, confirming the Preparation room and the topside route
+-- are genuinely disconnected navmesh components ("component 24" in the
+-- feasibility pass's own numbering).
+--
+-- Known gap, NOT fixed here (documented per the same "watch for, don't
+-- scope-creep" instruction GC1b-1 was given for the #582 AoI-on-spawn risk
+-- class): Castle_CellBlock is an instanced-per-player space
+-- (`SpaceManager::find_or_create_space` -- "the space is NOT cached... it
+-- lives only in `spaces` and is destroyed when the last player leaves").
+-- A player who relogs mid-escort (after chain 1173/1174 fire, before
+-- mission 686 completes) gets a freshly spawned Marsh at his original
+-- Preparation-room position with no follow state -- there is no
+-- `player_loaded`-gated restore chain here for the reposition/follow state,
+-- unlike the interaction-type-bit restore chains elsewhere in this file
+-- (1045/1046/1074/1110/1111 etc.). A correct restore needs an OR across two
+-- mission-680/686 conditions (content_conditions AND within one chain, so
+-- an OR needs two chains) and was judged out of this packet's declared
+-- "seed only, no dependencies" scope; flagging for a coordinator decision
+-- on whether it needs its own follow-up packet.
+
+-- Chain 1171 (GC1a): interact Col Marsh while mission-680 step 2344 is
+-- active (Preparation room, before ring travel) → display dialog 2309.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1171, 'GC1a - Interact ColMarsh (step 2344): "let''s move out" dialog', 'mission', 680, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1171, 'interact_tag', 'Preparation_ColMarsh', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1171, 'step_status', 680, '2344', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1171, 'display_dialog', 2309, NULL, '{}', 0, 0);
+
+-- Chain 1172 (GC1a): mission 686 completes (the Straegis scene) → display
+-- the v3-surfaced post-death blurb 5859. Fires at delay_ms 0 so this
+-- packet is correct standing alone; C08b (not yet landed as of this
+-- packet) is planned to add `display_dialog 2516` at `delay_ms 10100` on
+-- the SAME `mission_completed 686` trigger (work-packets.md#c08b) -- once
+-- that lands, bump this chain's delay_ms (~10600+) so 5859 reads after
+-- 2516 instead of racing it. Self-contained either way: with or without
+-- C08b, 5859 fires exactly once, immediately, on 686 completion.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1172, 'GC1a - Straegis scene: post-death "find a way out without Marsh" blurb', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1172, 'mission_completed', '686', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1172, 'display_dialog', 5859, NULL, '{}', 0, 0);
+
+-- Chain 1173 (GC1b-1): teleport-in to region 3 (same event chain 1072
+-- binds) → snap Marsh from his Preparation-room position onto the topside
+-- navmesh component, beside the Ring 3 landing pad. Priority 1 (above
+-- 1174's default 0) so the reposition is documented as resolving first in
+-- the same event's action list, ahead of 1174 setting the follow target --
+-- matches this file's a51a10d-derived convention of using priority to
+-- document a before/after relationship between same-trigger chains, even
+-- though `execute_actions` runs both synchronously before any AI tick reads
+-- Marsh's position, so the final state does not depend on it.
+--
+-- AoI risk (per work-packets.md GC1b-1, "watch for... exercise deliberately
+-- in UAT", explicitly not something to fix here): Marsh has not been
+-- visible to this player before this point (he was left behind at his
+-- Preparation-room spawn when the player rang ahead), so this reposition is
+-- effectively a fresh AoI entry for whoever is in region 3's radius --
+-- the same `aoi.create_emit`/`create_send_failed` seams issue #582 added to
+-- localize the Castle Cellblock invisible-corpse bug. Nothing here rules
+-- that class of bug in or out for Marsh; flagging for UAT per the packet
+-- instructions.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1173, 'GC1b-1 - Teleport to topside: reposition Marsh near the Ring 3 pad', 'mission', 680, true, 1);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1173, 'teleport_in', '3', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1173, 'move_waypoint', NULL, 'Preparation_ColMarsh',
+ '{"destination": "-91.689003,45.1879997,-161.533005"}', 0, 0);
+
+-- Chain 1174 (GC1b-2): teleport-in to region 3 (same event as 1173,
+-- priority 0 so it resolves after 1173 in this trigger's bucket) → Marsh
+-- starts following the triggering player. `use_player: true` is the only
+-- way to point a follow target at a player (players carry no `tag`; see
+-- `SetFollowTarget`'s doc comment in executor/world/mod.rs). Requires
+-- GC1b-0 (merged) for both the `use_player` param and the move_speed fix
+-- that lets Marsh keep pace.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1174, 'GC1b-2 - Teleport to topside: Marsh starts following the player', 'mission', 680, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1174, 'teleport_in', '3', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1174, 'set_follow_target', NULL, 'Preparation_ColMarsh', '{"use_player": true}', 0, 0);
+
+-- Chain 1175 (GC1b-2): mission 686 completes (the Straegis scene) → clear
+-- Marsh's follow target. Gated directly on `mission_completed 686` rather
+-- than coordinated through C08b's own chain, per the packet instruction:
+-- C08b (chains touching sequence 1751 / dialog 2516 / `destroy_entity
+-- Preparation_ColMarsh`) has not landed in this seed as of this packet, so
+-- this chain is self-contained regardless of C08b's landing order. Once
+-- C08b lands its own `destroy_entity` on the same trigger, clearing the
+-- follow target first is redundant but harmless (an entity with no
+-- follow_target_id set is simply removed one action later); no
+-- coordination edit is required in either direction. No `target_tag` and
+-- no `use_player` in the params resolves to `resolved_target = None` in
+-- `SetFollowTarget`, which drops the NPC to Idle and clears its follow
+-- state (see executor/world/mod.rs `set_follow_target`).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1175, 'GC1b-2 - Straegis scene: clear Marsh''s follow target', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1175, 'mission_completed', '686', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1175, 'set_follow_target', NULL, 'Preparation_ColMarsh', '{}', 0, 0);

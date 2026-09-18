@@ -63,6 +63,21 @@ pub(super) use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
 #[cfg(test)]
 pub(super) use ability_select::compute_backup_waypoint_for_test;
 
+// Test-only re-export: GC1b-2's chain-replay suite
+// (`crate::cell::content::chain_replay_tests::gc1_escort`) drives
+// individual follow AI ticks directly rather than the full
+// `npc_ai_tick` dispatcher (which is `pub(in crate::cell::service)` and
+// snapshots the entire NPC list) so it can assert `nav_path` after each
+// step. `pub(crate)`, not `pub(super)`, because the caller lives outside
+// `cell::service` — same pattern as `compute_backup_waypoint_for_test`
+// above, one visibility level wider because this caller is a sibling of
+// `cell::service`, not a descendant of it. `npc_ai_follow` itself is
+// declared `pub(crate)` under `cfg(test)` in `follow.rs` (see that
+// wrapper's doc comment) — a `use` re-export cannot widen an item's
+// visibility beyond what it was declared with.
+#[cfg(test)]
+pub(crate) use follow::npc_ai_follow_for_test;
+
 /// Co-located span-field record + counter emission for the
 /// `decision_outcome` vocab. The dispatcher span at
 /// [`npc_ai_tick`] declares
