@@ -281,13 +281,15 @@ The forwarded `params` map is load-bearing — it carries trigger-time state (mo
 
 ### How `display_dialog` finds its speaker
 
-`onDialogDisplay` carries a wire `EntityId` that the client uses as its portrait-lookup key, so `display_dialog` has to resolve an NPC. [executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs) tries three sources in order, then gives up:
+`onDialogDisplay` carries a wire `EntityId` that the client uses as its portrait-lookup key, so `display_dialog` has to decide who is speaking. [executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs) resolves it in this order:
 
-1. **`params["target_entity_id"]`** — stamped by `fire_interact_tag` / `fire_interact_template`, so it is present only for the chain fired directly off the click.
-2. **The player's `last_interaction_target`** — the per-player pin. This is what every *follow-up* chain relies on: a chain fired from `dialog_choice`, from a minigame victory, or from the deferred-action drain carries no `target_entity_id` of its own. `fire_chain_by_id` in particular builds `ResolvedActions` with empty `params` by construction, so a victory chain has nothing else to go on.
-3. **The monologue cache** — if every screen of the dialog has `speaker_id = 0`, the player's own id is bound, which renders as inner thought. This is correct for narration and is the only fallback that works with no NPC in scope.
+1. **Monologue dialogs win outright.** If every screen of the dialog has `speaker_id = 0` (the dialog is in the monologue cache), the player's own id is bound and any NPC in scope is ignored. That renders as inner thought, which is what narration is for.
+2. **`params["target_entity_id"]`** — stamped by `fire_interact_tag` / `fire_interact_template`, so it is present only for the chain fired directly off the click.
+3. **The player's `last_interaction_target`** — the per-player pin. This is what every *follow-up* chain relies on: a chain fired from `dialog_choice`, from a minigame victory, or from the deferred-action drain carries no `target_entity_id` of its own. `fire_chain_by_id` in particular builds `ResolvedActions` with empty `params` by construction, so a victory chain has nothing else to go on.
 
 Otherwise the action warns and returns without emitting a frame, because binding the player to an NPC dialog would blank the portrait and put the player's name on every line.
+
+**Why the monologue check is first and not a fallback.** `last_interaction_target` is sticky — it holds the last NPC the player clicked and is never cleared. So for any monologue fired after an interact, which is every minigame victory chain and most `dialog_choice` follow-ups, an NPC is always resolvable. Checked later, the NPC would always win, and the client would show that NPC delivering lines the author wrote as the player's own narration. `Castle.py` makes the same call explicitly: its monologue displays pass `displayDialog(None, …)`.
 
 The pin is written in two places, and both matter: `interactions::dispatch::handle_interact` writes it on the default interaction path, and [cell_methods/player/interaction/interact.rs](../../crates/services/src/cell/cell_methods/player/interaction/interact.rs) writes it *before* the content-chain dispatch. The second write is the load-bearing one for content authors. `handle_interact` runs only when no chain claimed the interact, so without it a chain-handled NPC left the pin stale and **any follow-up chain displaying an NPC-speaker dialog silently never opened** — only monologues survived, via source 3. The pin is deliberately not written on the hostile-NPC combat reroute, so attacking something cannot make it the next dialog's speaker.
 
