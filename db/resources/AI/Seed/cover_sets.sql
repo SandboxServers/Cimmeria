@@ -1385,3 +1385,21 @@ INSERT INTO resources.cover_sets (chunk_id, chunk_name, primary_author, has_vari
   (1378, '_Tol-IonCannon_Destroyed00-15-15', 'SDeiter', false, 'covernodes_nikols.pak'),
   (1379, '_Tol-ShieldGen00-15-15', 'SDeiter', false, 'covernodes_nikols.pak'),
   (1380, '_Tol-ShieldGen_Ruin00-15-15', 'SDeiter', false, 'covernodes_nikols.pak');
+
+-- ============================================================
+-- C05 addition (2026-09-18) -- hand-authored, NOT auto-generated
+-- ============================================================
+-- One-off cover set for the Castle_CellBlock med-station desk (mission
+-- 639, step 2144, objective 2484 "Take cover behind the desk!"). The 7
+-- `SGWSpecCoverNode` actors here are individually hand-placed in
+-- `Castle_CellBlock-fffefffd.umap` -- they resolve to `TheWorld.
+-- PersistentLevel` directly, not to a `PrefabInstance`, so no reusable
+-- prefab chunk from the `tools/ue3_extract_cover_nodes.py` pak union
+-- above covers them. Two independent shape-matching attempts against
+-- every existing 7-node chunk in this table found no true match (see
+-- docs/analysis/castle-cellblock-rebuild/work-packets.md#c05 for the
+-- full citation trail of the game-archaeology-specialist extraction
+-- pass, 2026-09-18). `chunk_id` 1381 is the next free id above this
+-- file's auto-generated max (1380).
+INSERT INTO resources.cover_sets (chunk_id, chunk_name, primary_author, has_variant, src_pak) VALUES
+  (1381, 'Castle_CellBlock_MedStationDesk', 'Cimmeria', false, 'Castle_CellBlock-fffefffd.umap');
