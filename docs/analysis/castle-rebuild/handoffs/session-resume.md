@@ -19,14 +19,14 @@ User authorization (2026-09-17): "do the work described in docs/analysis/castle-
 | #661 | CA02 nullable bind | merged ddbc873e | UAT M1 |
 | #667 | CA05 story actors | merged 364e736d | UAT M2; Harset `setval` collision (below) |
 | #668 | CA08+CA09 missions 706/708 | merged bb47f526 | UAT M3/M4 |
-| #660 | CA06+CA07 missions 702-704 | **open**: branch `castle/m702-704-zuritska-romney`, worktree `castle-m702`; being rebased on main after #667/#668 by worker `m701-chains-2` | `gh pr checks 660`; merge with `gh pr merge 660 --squash --delete-branch` when green |
-| closeout docs PR | ledger statuses, README session record, this handoff, agent-memory sweep | branch `castle/closeout-ledger` (worktree `castle-coordinator`) | merge after #660 so its status row can flip to UATPending |
+| #660 | CA06+CA07 missions 702-704 | merged 2a37ba4c | UAT M2/M3 |
+| #669 | closeout docs: ledger statuses, README session record, this handoff, agent-memory sweep | branch `castle/closeout-ledger` (worktree `castle-coordinator`) | merge when green |
 
 Filed issue: #657 (`active_objective_ids = [step_id]` relog defect, cross-mission).
 
 ## What is left
 
-1. Merge #660, then flip CA06/CA07 to UATPending in [work-packets.md](../work-packets.md) and merge the closeout docs PR.
+1. Merge the closeout docs PR (#669) if it is still open. Every implementable packet (CA00-CA10) is merged.
 2. User in-client UAT M1 to M5 (below). Only CA00 was on main before this session; everything else is now on main and needs a rebuild by the user (`setup.ps1`).
 3. Design-gated, not started: CA13 (NPC over-time movement), CA14 (`castle.nav`), CA15 (optional Level-5 branches, D-CA14). CA11/CA12 come from Harset H03. CA16 (documentation sync) is Ready and carries the `mission-chains.md` / `zone-audit.md` sync deferred out of #667; CA17 (`display_dialog` `target_tag`) is a follow-up candidate.
 4. Small open cleanups:
@@ -48,7 +48,7 @@ Provisional coordinates (RECONSTRUCTION, MEDIUM confidence): the four CA00 respa
 
 ## Worktrees
 
-All under `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\`, each with `external/` junctioned to the primary checkout. Merged and removable once nothing is dirty: `castle-ca00`, `castle-ca02`, `castle-ca04`, `castle-ca05`, `castle-ca10`, `castle-m701`, `castle-m706` (the local branch delete after `gh pr merge` fails harmlessly while a worktree has the branch checked out). Keep `castle-m702` until #660 merges and `castle-coordinator` until the docs PR merges. Each worktree's `target/` is 5-10 GB; `git worktree remove` reclaims it.
+All under `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\`, each with `external/` junctioned to the primary checkout. Merged and removable once nothing is dirty: `castle-ca00`, `castle-ca02`, `castle-ca04`, `castle-ca05`, `castle-ca10`, `castle-m701`, `castle-m706` (the local branch delete after `gh pr merge` fails harmlessly while a worktree has the branch checked out). Keep `castle-coordinator` until #669 merges (`castle-m702` is now removable too). Each worktree's `target/` is 5-10 GB; `git worktree remove` reclaims it.
 
 Workers were `rust-gameserver-dev` agents continued with `SendMessage`, plus two `testing-validation-engineer` reviewers; after `/clear` they are gone. Trap: a base sha recorded for a stacked branch can be rewritten by review rounds (m706 was stacked on CA10 `0d3c9147`, which no longer existed). Find the true fork point with `git log` / `git merge-base` and use `git rebase --onto`.
 
@@ -71,6 +71,6 @@ Recorded in the [README](../README.md) "Implementation Session Record" table: in
 ## Exact next actions on resume
 
 1. `gh pr list --search castle` and `git worktree list`; reconcile with the table above.
-2. If #660 is still open: `gh pr checks 660`; if its worker is gone, relaunch a `rust-gameserver-dev` on `castle-m702` with WORKER-RULES.md; merge when green.
-3. Flip CA06/CA07 to UATPending, merge the closeout docs PR, remove merged worktrees.
+2. Merge #669 if still open; remove merged worktrees.
+3. Check main CI is green (`gh run list --branch main --limit 3`).
 4. Report to the user: UAT M1-M5, provisional coordinates, design-gated packets, the Cellblock 1053/1054 finding, the `Cargo.lock` cleanup.
