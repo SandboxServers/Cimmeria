@@ -226,9 +226,9 @@ Three caveats for authors:
   client-visible effect is `SGWSpawnableEntity.InteractionType(UINT64 TypeId)`
   ([dispatch table](../protocol/client-method-dispatch-table.md), method 3) — a
   lone flags bitfield with no dialog field, so the dialog id never leaves the
-  server. The seed has seven such rows (3062, 3071, 3073, 5828, 5829, 5846,
-  5863), all bound by the Castle content; before CA02 the loader dropped them
-  and every bind was a silent cache miss.
+  server. The seed has **626** such rows across every zone; Castle content binds
+  seven of them (3062, 3071, 3073, 5828, 5829, 5846, 5863). Before CA02 the
+  loader dropped all 626 and every one of those binds was a silent cache miss.
 - **`apply_effect` cannot fire today.** Its only seeded row is on an
   `effect`-scoped chain, and no `effect_*` trigger is dispatched anywhere in
   the cell service. The arm is correct and will work as soon as that

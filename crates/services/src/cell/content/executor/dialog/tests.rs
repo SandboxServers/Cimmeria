@@ -235,6 +235,103 @@ async fn add_dialog_set_with_null_dialog_pushes_flag_only() {
     );
 }
 
+/// **The same guard for the other public entry point (PR #661 review).**
+///
+/// `Action::AddDialog` reaches the same `available_interactions` tuple and the
+/// same `InteractionType` push as `Action::AddDialogSet`, but by a separate
+/// route: it takes `entity_template` as its own parameter rather than deriving
+/// the slot from the action's template field, and it warns and returns when
+/// that is `None`. Nothing structural stops the two from drifting — a future
+/// "substitute 0 for a NULL dialog id" patch applied to one and not the other
+/// would leave `add_dialog` broken with every `add_dialog_set` guard green.
+///
+/// `Castle.py` calls `addDialog(149, 3062)`, so this is the shape the original
+/// content actually uses.
+#[tokio::test]
+async fn add_dialog_with_null_dialog_pushes_flag_only() {
+    use crate::cell::spawner::DialogSetMapEntry;
+    use cimmeria_common::EntityId;
+
+    const TEMPLATE_GERSCHON: i32 = 149;
+    const SET_MAP_3062: i32 = 3062;
+    /// `INT_AStoryMissionActive` — bit 24, the `!` indicator.
+    const INT_A_STORY_MISSION_ACTIVE: i64 = 16_777_216;
+    const NPC_BASE_FLAGS: i64 = 0x2;
+
+    let mut mgr = make_space_manager();
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(2, "Agnos", [1.0; 3], [0.0; 3]).unwrap();
+    mgr.dialog_set_maps.insert(
+        SET_MAP_3062,
+        DialogSetMapEntry {
+            dialog_id: None,
+            interaction_flags: INT_A_STORY_MISSION_ACTIVE,
+        },
+    );
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(42);
+        p.witnesses.insert(EntityId(2));
+    }
+    if let Some(n) = mgr.get_entity_mut(2) {
+        n.template_id = Some(TEMPLATE_GERSCHON);
+        n.interaction_type_flags = NPC_BASE_FLAGS;
+    }
+
+    let (tx, mut rx) = mpsc::channel(8);
+    add_dialog(
+        SET_MAP_3062,
+        Some(TEMPLATE_GERSCHON),
+        /* entity_id */ 1,
+        /* chain_id */ 1201,
+        &tx,
+        &mut mgr,
+    )
+    .await;
+
+    assert_eq!(
+        mgr.get_entity(1)
+            .and_then(|p| p.available_interactions.get(&TEMPLATE_GERSCHON))
+            .map(Vec::as_slice),
+        Some([(SET_MAP_3062, None, INT_A_STORY_MISSION_ACTIVE)].as_slice()),
+        "add_dialog must record dialog_id None too -- a substituted 0 on this \
+         route would make the click open an empty dialog"
+    );
+
+    match rx.try_recv().expect(
+        "add_dialog on a flag-only row must push InteractionType -- with the \
+         loader reverted to dropping NULL rows this is a cache miss and nothing \
+         is sent",
+    ) {
+        CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id,
+            method_index,
+            args,
+            entity_is_player,
+        } => {
+            assert_eq!(witness_id, 1, "push is per-player, to the binding player");
+            assert_eq!(entity_id, 2, "push targets the NPC, not the player");
+            assert_eq!(method_index, crate::mercury::method_idx::INTERACTION_TYPE);
+            assert!(!entity_is_player);
+            assert_eq!(
+                args,
+                ((NPC_BASE_FLAGS | INT_A_STORY_MISSION_ACTIVE) as u64)
+                    .to_le_bytes()
+                    .to_vec(),
+                "payload is the merged flags as UINT64 LE, identical to the \
+                 add_dialog_set route"
+            );
+        }
+        other => panic!("expected WitnessEntityMethod, got {other:?}"),
+    }
+
+    assert!(
+        rx.try_recv().is_err(),
+        "one push, and no onDialogDisplay -- the row has no dialog"
+    );
+}
+
 /// Companion to the flag-only guard: a bind whose row *does* carry a
 /// dialog still behaves exactly as before. Pins that widening
 /// `dialog_id` to `Option` didn't change the with-dialog path, and that
