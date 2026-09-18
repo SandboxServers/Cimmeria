@@ -12,6 +12,7 @@
 //! - [`lifecycle`]   — `fire_player_loaded`, `fire_entity_death`
 //! - [`interaction`] — `fire_interact_tag`, `fire_interact_template`
 //! - [`region`]      — `fire_enter_region`, `fire_exit_region`, `fire_teleport_in`
+//! - [`stargate`]    — `fire_stargate_dialed`, `fire_stargate_crossed`
 //! - [`inventory`]   — `fire_item_use`, `fire_item_equipped`
 //! - [`dialog`]      — `fire_dialog_open`, `fire_dialog_choice`
 //! - [`mission`]     — `fire_mission_accepted`, `fire_mission_completed`
@@ -36,6 +37,7 @@ mod inventory;
 mod lifecycle;
 mod mission;
 mod region;
+mod stargate;
 
 pub use cover::{fire_cover_duration, fire_cover_entered, fire_cover_left, fire_npc_flanked};
 pub use dialog::{fire_dialog_choice, fire_dialog_open};
@@ -43,6 +45,7 @@ pub use interaction::{fire_interact_tag, fire_interact_template};
 pub use inventory::{fire_item_equipped, fire_item_use};
 pub use lifecycle::{fire_entity_death, fire_player_loaded};
 pub use region::{fire_enter_region, fire_exit_region, fire_teleport_in};
+pub use stargate::{fire_stargate_crossed, fire_stargate_dialed};
 
 pub(super) use mission::{fire_mission_accepted, fire_mission_completed};
 

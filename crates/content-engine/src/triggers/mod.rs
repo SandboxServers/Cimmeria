@@ -91,6 +91,18 @@ pub enum Trigger {
     /// Fires when a player arrives via teleporter at a destination region.
     OnTeleportIn { region_id: i32 },
 
+    /// Fires when a player successfully dials a stargate — after address
+    /// validation, when the four-second gate-open timer is armed.
+    /// `destination_world` filters by the destination world's name
+    /// (`resources.worlds.world`, e.g. `"Harset"`); `None` matches any
+    /// destination.
+    OnStargateDialed { destination_world: Option<String> },
+
+    /// Fires when a player steps through an open stargate, immediately
+    /// before the world transition tears the cell entity down. Same
+    /// `destination_world` filter as [`Self::OnStargateDialed`].
+    OnStargateCrossed { destination_world: Option<String> },
+
     /// Fires when an effect is first initialized on an entity.
     OnEffectInit,
 
@@ -184,6 +196,8 @@ pub enum TriggerType {
     ItemUse,
     ItemEquipped,
     TeleportIn,
+    StargateDialed,
+    StargateCrossed,
     EffectInit,
     EffectPulseBegin,
     EffectPulseEnd,
