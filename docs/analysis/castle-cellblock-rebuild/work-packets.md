@@ -60,7 +60,7 @@ Every chain packet ships a chain-replay test that (a) asserts the exact resolved
 
 ### C04
 
-**Status:** BlockedDecision (D-CB03). **Scope title:** Frost's Letter (mission 1360) accepted when the letter is granted. **Depends:** C01. **Advisor:** mission-systems-advisor.
+**Status:** Done — merged to `main` in PR #649 (2026-09-18); in-client UAT pending. **Scope title:** Frost's Letter (mission 1360) accepted when the letter is granted. **Depends:** C01. **Advisor:** mission-systems-advisor.
 **Entries:** chain 1003 in the curated seed, [mission_622.rs](../../../crates/services/src/cell/content/chain_replay_tests/mission_622.rs), missions/steps 1360/4037/4038 in `db/resources/Missions/Seed/`.
 **Scope:** on `dialog_open 3995` while step 2113 is active (extend chain 1003 or add a sibling at priority 0) `accept_mission 1360` when `mission_status 1360 eq not_active`. Step 4037 stays active for the rest of the zone; step 4038 (give the letter to Col. Marsh) belongs to the Castle side and is out of this packet. The mission must survive the cross-world hop (mission state is persisted through `MissionUpdate`; verify nothing on world exit abandons active missions).
 **Acceptance:** replay test resolves exactly one accept; a second Frost interaction does not re-accept; T03 assertion that 1360 is active after loot; a live-DB test that the row persists across the 688 transition path. **Exclude:** completing or advancing 1360.
@@ -69,7 +69,7 @@ Every chain packet ships a chain-replay test that (a) asserts the exact resolved
 
 ### C05
 
-**Status:** BlockedEvidence (cover set id) — confirmed unresolvable from this repo's data, needs a coordinator/user decision (see below). C02 dependency cleared (done). **Scope title:** Take-cover objective 2484 and indicator hide. **Decision:** D-CB05. **Advisor:** npc-ai-spawn-advisor (cover system owner), mission-systems-advisor.
+**Status:** Done — merged to `main` in PR #653 (2026-09-18) using the real world-space cover data found by the extraction pass below (cover set 1381); in-client UAT pending. (Historical evidence trail follows.) C02 dependency cleared (done). **Scope title:** Take-cover objective 2484 and indicator hide. **Decision:** D-CB05. **Advisor:** npc-ai-spawn-advisor (cover system owner), mission-systems-advisor.
 
 **Evidence pass (2026-09-18): the cover-set id cannot be resolved, with high confidence.** `resources.cover_sets`/`cover_nodes` are UE3 prefab *templates* only — the schema carries no per-instance world-placement transform for any space, confirmed by the table's own doc comment. The packet's candidate (chunk 425, `_CA-CellBlock_Int00-15-15`) fails on both axes: its node coordinates run in the thousands of units (a different local-prefab coordinate space entirely) versus the desk's hundreds, and 1,321 of 1,380 `cover_sets` rows share the same `-15-15` suffix regardless of prop type — a baking-grid artifact, not a level-placement key. The literal desk prefab by name is a different, generic chunk (975, `_HT-Desk00-15-15`, reused across many unrelated levels) — matching by name is exactly as unreliable as by coordinate. Chain 1035's own seed comment already flags this exact gap (wildcards `cover_set_id = NULL` for lack of a resolved id). Resolving this for real needs a UE3 `.umap` actor-placement extraction pass for Castle_CellBlock specifically — not done anywhere in this repo yet.
 
@@ -88,7 +88,7 @@ Two independent shape-matching attempts (scale-invariant pairwise-distance histo
 
 ### C06
 
-**Status:** BlockedDecision (D-CB05, gating) and BlockedDependency (C05 pattern). **Scope title:** Flanking objectives 2725 (Mess Hall long table) and 2731 (Hallway05). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
+**Status:** Done — merged to `main` in PR #671 (2026-09-18); in-client UAT pending (guide scenario T29). Built as chains 1141/1142 on a new `player_flanked_npc` trigger, tracked-not-gating per D-CB05. **Reachability caveat (found in review):** the flank event needs a guard already holding a cover slot (reserved only while the target is out of weapon range with a scoring cover node nearby) and credits only the top-threat player, so the objectives may never complete in rooms without cover data — a follow-up packet (cover authoring for the Mess Hall / Hallway05) would make them reachable. **Scope title:** Flanking objectives 2725 (Mess Hall long table) and 2731 (Hallway05). **Advisor:** npc-ai-spawn-advisor, combat-systems-advisor.
 **Entries:** chains 1085-1087 and 1092-1094, [event_dispatch/cover.rs](../../../crates/services/src/cell/content/event_dispatch/cover.rs) (`OnNpcFlanked`, `OnPlayerEnteredCover`), objectives 2724/2725 and 2730/2731.
 **Scope:** track the flank objective from `npc_flanked` (guard template 24 flanked while the mission is active) or from `player_entered_cover` on the long-table set, and `complete_objective` it. Per D-CB05's default, the kill counter still completes the mission; the flank objective is tracked but does not gate. If the decision flips to gating, the completion chain gains an `objective_status` condition and needs a soft-lock analysis (guards killed from range before any flank).
 **Acceptance:** replay tests for flank-then-kill and kill-without-flank; the mission outcome matches the decision; controller stays hidden. Covers T14 flank clause. **Exclude:** cover-AI tuning, table cover-set authoring.
@@ -97,7 +97,7 @@ Two independent shape-matching attempts (scale-invariant pairwise-distance histo
 
 ### C07
 
-**Status:** Ready. D-CB08 answered 2026-09-18 via RE precheck (see below). **Scope title:** Mission prompt blurbs 2305, 4000, 2308, 2518 on accept. **Depends:** C01 (done). **Advisor:** mission-systems-advisor.
+**Status:** Done — merged to `main` in PR #648 (2026-09-18); in-client UAT pending. (D-CB08 answered 2026-09-18 via RE precheck, see below.) **Scope title:** Mission prompt blurbs 2305, 4000, 2308, 2518 on accept. **Depends:** C01 (done). **Advisor:** mission-systems-advisor.
 **Entries:** chains 1034 (640 accept), 1053/1054 (641), 1061 (680), 1105 (688), `mission_accepted` trigger ([loader/trigger.rs](../../../crates/content-engine/src/loader/trigger.rs)), chain 1097 as the trigger fixture, `DUIST_DefaultBlurb` rows in `db/resources/Dialogs/Seed/`.
 
 **D-CB08 (answered 2026-09-18): safe to implement, no double-prompt risk.** A `game-archaeology-specialist` RE precheck (substituting for the unavailable live-client UAT) decompiled the client's mission-accept path directly: `onMissionUpdate` (0x00d1a270) unconditionally fires a fixed, token-indexed HUD toast (`MissionSet_FireUiEvent` at 0x00d163e0, token 0x1393 → string-table id 5011, "Mission Accepted") on every accept, with no mission-specific text and no per-mission conditionality — confirmed against `docs/reverse-engineering/findings/mission-state-machine.md` (V5, HIGH confidence) and re-verified live in Ghidra this session. This generic toast already fires for mission 2298's dialogs-1018/1019 precedent without being a double-prompt problem, so the same toast+`display_dialog` pairing for 640/641/680/688 carries no new risk.
@@ -121,7 +121,7 @@ Two independent shape-matching attempts (scale-invariant pairwise-distance histo
 
 ### GC1
 
-**Status:** Children scoped 2026-09-17 (`npc-ai-spawn-advisor` feasibility pass); ready to dispatch once C01 and C08a are integrated. **Scope title:** Escape escort and lockdown (spec rows 13-14). **Depends:** C01, C08a. **Advisors:** npc-ai-spawn-advisor, movement-teleport-advisor, mission-systems-advisor. **Decision:** D-CB13 (answered: full escort, not dialogs-only).
+**Status:** GC1a, GC1b-0, GC1b-1 and GC1b-2 Done (GC1b-0 in PR #646, the rest in PR #655); GC1c remains BlockedEvidence. Children were scoped 2026-09-17 (`npc-ai-spawn-advisor` feasibility pass). **Scope title:** Escape escort and lockdown (spec rows 13-14). **Depends:** C01, C08a. **Advisors:** npc-ai-spawn-advisor, movement-teleport-advisor, mission-systems-advisor. **Decision:** D-CB13 (answered: full escort, not dialogs-only).
 **Entries:** chains 1061/1071-1074, `set_follow_target` and `set_npc_poi` executor arms, [npc_ai/follow.rs](../../../crates/services/src/cell/service/npc_ai/follow.rs), [construction.rs](../../../crates/entity/src/cell_entity/construction.rs) (hardcoded `move_speed`), [executor/world/mod.rs](../../../crates/services/src/cell/content/executor/world/mod.rs) `move_waypoint`, dialogs 2308/2309/5019/4003, [proposed-extensions.md](../../content/proposed-extensions.md) section 3.3.
 
 **Feasibility findings (evidence pass, 2026-09-17):**

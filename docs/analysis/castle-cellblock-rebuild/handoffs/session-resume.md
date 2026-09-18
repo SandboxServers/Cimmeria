@@ -60,15 +60,21 @@ change was needed.
 
 ## Ledger status (`docs/analysis/castle-cellblock-rebuild/work-packets.md`)
 
-Done (merged): C00, C01, C02, C03, C04, C05, C07, C08a, C08b, GC1a,
-GC1b-0, GC1b-1, GC1b-2 (GC1a/b-1/b-2 = PR #655, marked Done in the
-ledger by docs PR #666; in-client UAT still pending for all of them).
+Done (merged): C00, C01, C02, C03, C04, C05, C06, C07, C08a, C08b, GC1a,
+GC1b-0, GC1b-1, GC1b-2 (GC1a/b-1/b-2 = PR #655, C06 = PR #671; in-client
+UAT still pending for all of them).
+
+C06 shipped as chains 1141/1142 on a NEW trigger `player_flanked_npc`
+(`npc_flanked` runs its actions on the NPC with player id 0 and cannot
+complete a player's objective). Known limits, recorded in the ledger: the
+event needs a guard already holding a cover slot, and credits only the
+top-threat player, so the objectives may be unreachable in rooms without
+cover data (follow-up: cover authoring for the Mess Hall / Hallway05).
 
 Not yet started / still open:
 
-- **C06** (flanking objectives 2725/2731) — unblocked (C05 merged). Not
-  dispatched. Only start it if usage allows; it is a real packet with its
-  own review round.
+- **Follow-up candidates (not started, not required):** cover authoring
+  for Mess Hall / Hallway05 so flank objectives are reachable; issue #656.
 - **GC1c** (lockdown VFX) — BlockedEvidence, out of scope.
 - **GC2** — chain range 1191-1199 reserved, not scoped. Idle research
   teammates `gc2-item-research` and `gc2-re-itemids` may hold findings —
@@ -83,17 +89,20 @@ and 639). Follow-up, not fixed inline.
 
 ## Immediate next actions, in order
 
-1. Merge docs PR #666 (this handoff + the GC1-Done ledger update) once
-   its checks are green (`gh pr checks 666`; if `CONFLICTING`, merge
-   `origin/main` into `docs/cellblock-handoff-refresh` first).
-2. Only if usage allows: dispatch C06 (flank objectives 2725/2731, chain
-   ids 1141-1150) on `pkg/c06-<name>` off fresh `origin/main` through the
-   same pipeline (fmt/clippy/live-DB, PR, `code-review high --comment`,
-   fix, merge). Otherwise stop here.
-3. Peer `cimmeria-f0` (Harset coordinator) owns the cross-zone operator
+1. Merge docs PR #672 (UAT guide + ledger sync + this handoff) once its
+   checks are green (`gh pr checks 672`; if `CONFLICTING`, merge
+   `origin/main` into `docs/cellblock-uat-guide` first).
+2. The owner runs the in-client checks in
+   [uat-guide.md](../uat-guide.md) (24+ scenarios incl. T29 flank) and
+   fills its results table. Failures become issues/fixes; nothing else in
+   the campaign is gated on code right now.
+3. Remaining ledger items are all blocked: GC1c (client evidence), GC2
+   (not scoped), GC3 (owner decision). Do not start them without new
+   evidence or a decision.
+4. Peer `cimmeria-f0` (Harset coordinator) owns the cross-zone operator
    guide (`docs/analysis/zone-restoration-operator-guide.md` on branch
-   `content/harset-wave2`). It was told #655 would be reported when it
-   merged; send it a one-line "#655 merged" if that hasn't happened.
+   `content/harset-wave2`); send it a one-line correction if #671/#672
+   change what it says (C06 is now merged; T29 covers it).
 
 ## What is gated on the owner in-client (nothing has been run)
 
@@ -104,8 +113,8 @@ All in-client UAT is pending. Milestones are in
   hallway controllers accept once; Region8 pistol guard aggros; Stasis
   Sickness icon on load / cleared on cure; relog at each step.
 - **M2** — Frost's Letter in the log; cover indicator shows on vial pickup
-  and hides on taking cover; step 2144 needs both objectives (flank
-  objectives need C06, not built).
+  and hides on taking cover; step 2144 needs both objectives; flank
+  objectives 2725/2731 (T29; may be unreachable without guard cover).
 - **M3** — one prompt per accept; Straegis camera plays once, control
   returns, Marsh gone, 2516 once, then 5859 ~10.6s after scene start;
   relog after the scene does not replay it. For GC1: Marsh follows the
