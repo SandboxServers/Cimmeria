@@ -25,6 +25,7 @@
 
 mod cover_demo;
 mod grant_xp;
+mod harset_spawn_entity;
 mod mission_1562;
 mod mission_622;
 mod mission_638;

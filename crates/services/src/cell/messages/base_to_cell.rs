@@ -274,8 +274,13 @@ pub enum BaseToCellMsg {
     /// Base resolved a `gmSpawnByCmd` template into a `SpawnRecord` and is
     /// handing it back to the cell to spawn. Response to
     /// [`crate::cell::messages::CellToBaseMsg::GmSpawnNpc`] — the round-trip
-    /// exists because only the base side can query `resources.entity_templates`
-    /// to build the record (the cell has no template cache). The cell allocates
+    /// exists because the base owns the DB pool at command time and can query
+    /// `resources.entity_templates` to build the record. (The cell *does* now
+    /// hold a startup template cache — `SpaceManager::spawn_templates`, added
+    /// for the content engine's `spawn_entity`, whose ordered action list
+    /// cannot tolerate an async round-trip. This GM path keeps the round-trip:
+    /// a live query reflects `entity_templates` edits without a restart, which
+    /// is what an authoring command wants.) The cell allocates
     /// an NPC id and calls `spawn_npc_from_record_in_space(id, &record,
     /// space_id)`; AoI fanout handles client visibility on the next tick, so no
     /// extra send is needed. `record.x/y/z` already carry the computed spawn

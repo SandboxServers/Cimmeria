@@ -7,6 +7,8 @@
 //! - [`inventory`] — grant/remove items, bandolier seeding
 //! - [`dialog`]    — display, add/remove dialog set, add dialog
 //! - [`stats`]     — `Action::ChangeStat`
+//! - [`spawn`]     — `SpawnEntity` / `DespawnEntity` (and the despawn
+//!   routine `world::destroy_tagged_entity` delegates to)
 //! - [`world`]     — interaction-type/visibility/destroy/move/threat/aggression
 //! - [`counter`]   — increment/reset
 //! - [`transport`] — teleport, ring transporter
@@ -33,6 +35,7 @@ mod deferred;
 mod dialog;
 mod inventory;
 mod mission;
+mod spawn;
 mod stats;
 mod transport;
 mod world;
@@ -318,7 +321,43 @@ async fn execute_one(
             world::set_npc_ai_state(entity_tag, state, entity_id, chain_id, space_mgr);
         }
         Action::DestroyTaggedEntity { entity_tag } => {
-            world::destroy_tagged_entity(entity_tag, entity_id, chain_id, space_mgr);
+            world::destroy_tagged_entity(entity_tag, entity_id, chain_id, tx, space_mgr).await;
+        }
+        Action::DespawnEntity { entity_tag } => {
+            spawn::despawn_by_tag(
+                entity_tag,
+                entity_id,
+                chain_id,
+                "despawn_entity",
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+        Action::SpawnEntity {
+            template_id,
+            position,
+            heading,
+            tag,
+            respawn_secs,
+            is_stationary,
+            aggression,
+            allow_shared,
+        } => {
+            spawn::spawn_entity(
+                template_id,
+                position,
+                heading,
+                tag,
+                respawn_secs,
+                is_stationary,
+                aggression,
+                allow_shared,
+                entity_id,
+                chain_id,
+                space_mgr,
+            )
+            .await;
         }
         Action::TriggerTransporter { region_id } => {
             transport::trigger_transporter(region_id, entity_id, chain_id, tx, space_mgr, engine)

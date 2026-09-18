@@ -446,7 +446,10 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                 threat_level,
             })
         }
-        _ => None,
+        // Entity lifecycle verbs live in a sibling module (see
+        // `action_spawn`); it returns `None` for anything it doesn't own,
+        // which lands us on the same "unknown action_type" path as before.
+        _ => super::action_spawn::convert_spawn_action(row),
     }
 }
 
