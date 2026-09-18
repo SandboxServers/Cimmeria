@@ -43,3 +43,4 @@ mod mission_701;
 mod region8_guard_aggro;
 mod region_transition_accepts;
 mod sgc_w1_move_entity;
+mod stargate_triggers;

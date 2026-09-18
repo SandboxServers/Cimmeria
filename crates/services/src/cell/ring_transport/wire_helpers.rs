@@ -25,24 +25,15 @@ pub const BSF_MOVEMENT_LOCK: u32 = 1 << 6;
 /// dispatch on the destination-list method id.
 pub const METHOD_ON_RING_TRANSPORTER_LIST: u16 = ON_RING_TRANSPORTER_LIST;
 
-/// KISMET_VIEW_EventInvoker viewType passed to `onSequence`. Same value used
-/// elsewhere for region-driven kismet — the camera follows the triggering
-/// player.
-const KISMET_VIEW_EVENT_INVOKER: u8 = 3;
-
-/// Build an `onSequence` payload (matches the layout in
-/// `cell/content/executor.rs::PlaySequence` and `cell_methods/player/world.rs`).
+/// Build an `onSequence` payload. The byte layout lives in
+/// [`crate::cell::kismet`] — shared with the stargate emitter, which sends
+/// the same frame for `Stargate_MakeGate` / `Stargate_CrossGate`.
 fn build_on_sequence_args(seq_id: i32, entity_id: u32) -> Vec<u8> {
-    let mut args = Vec::with_capacity(26);
-    args.extend_from_slice(&seq_id.to_le_bytes()); // KismetEventSetSeqID
-    args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
-    args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // TargetID
-    args.push(1); // PrimaryTarget = true
-    args.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
-    args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs count = 0
-    args.push(KISMET_VIEW_EVENT_INVOKER); // ViewType
-    args.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
-    args
+    crate::cell::kismet::build_on_sequence_args(
+        seq_id,
+        entity_id,
+        crate::cell::kismet::KISMET_VIEW_EVENT_INVOKER,
+    )
 }
 
 pub(super) async fn send_play_sequence(

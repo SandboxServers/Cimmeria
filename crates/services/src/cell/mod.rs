@@ -16,6 +16,7 @@ pub mod dispatch;
 pub mod effects;
 pub mod gate_travel;
 pub mod interactions;
+pub(crate) mod kismet;
 pub mod mail;
 pub mod messages;
 pub mod missions;

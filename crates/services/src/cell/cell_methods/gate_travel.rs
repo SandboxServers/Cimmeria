@@ -2,6 +2,7 @@
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
 pub const ON_DIAL_GATE: u16 = 35;
@@ -12,6 +13,7 @@ pub async fn dispatch(
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) -> bool {
     match method_index {
         ON_DIAL_GATE => {
@@ -30,6 +32,7 @@ pub async fn dispatch(
                     source_address_id,
                     tx,
                     space_mgr,
+                    engine,
                 )
                 .await;
             }

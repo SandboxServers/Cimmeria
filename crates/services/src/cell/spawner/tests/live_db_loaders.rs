@@ -518,6 +518,50 @@ mod live_db {
         }
     }
 
+    /// The gate-event pipeline's only DB-shaped dependency (CA10):
+    /// `load_stargates` must carry `stargates.event_set_id`, and that
+    /// event set must resolve `Stargate_MakeGate` (6100) and
+    /// `Stargate_CrossGate` (6113). Every `cell::gate_travel` unit test
+    /// seeds its own `sequence_map`, so dropping the column from the
+    /// SELECT, renaming it, or clearing Castle gate 2's event set leaves
+    /// the suite green while the live server plays no gate animation.
+    ///
+    /// Castle gate 2 is the anchor: `stargates.sql` gives it
+    /// `event_set_id = 10011`, mapped to 10145 (6100) and 10158 (6113).
+    #[tokio::test]
+    async fn load_stargates_carries_the_event_set_that_resolves_gate_sequences() {
+        const GATE: i32 = 2;
+        const EVENT_SET: i32 = 10011;
+
+        let pool = require_db_or_skip!();
+        let gates = load_stargates(&pool)
+            .await
+            .expect("load_stargates must succeed");
+        let castle = gates.get(&GATE).expect("seeded stargates has gate 2");
+        assert_eq!(
+            castle.world_name, "Castle",
+            "gate 2 is Castle's — if this moved, re-anchor the test"
+        );
+        assert_eq!(
+            castle.event_set_id,
+            Some(EVENT_SET),
+            "load_stargates must select stargates.event_set_id; None here \
+             means the column left the SELECT or the seed cleared it, and \
+             the gate would open with no animation"
+        );
+
+        let sequences = load_event_set_sequences(&pool)
+            .await
+            .expect("load_event_set_sequences must succeed");
+        for (event_id, label) in [(6100, "Stargate_MakeGate"), (6113, "Stargate_CrossGate")] {
+            assert!(
+                sequences.contains_key(&(EVENT_SET, event_id)),
+                "event set {EVENT_SET} must resolve {label} ({event_id}) — \
+                 without it `send_gate_sequence` warns and emits nothing"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn load_regions_applies_single_point_cylinder_workaround() {
         let pool = require_db_or_skip!();

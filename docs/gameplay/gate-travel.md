@@ -2,13 +2,13 @@
 title: "Gate Travel System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-18
 ---
 
 # Gate Travel System
 
-> **Last updated**: 2026-07-25
-> **Status**: Zone transition and ring transport both work. Every gate *animation* is missing.
+> **Last updated**: 2026-09-18
+> **Status**: Zone transition and ring transport both work. The two stargate animations the 2009 server emitted (6100, 6113) now fire and fan to witnesses; DHD chevrons and squad travel are still missing.
 
 ## Overview
 
@@ -23,6 +23,8 @@ Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../
 | DHD UI display | DONE | `setupStargateInfo` sends gate lists to client |
 | Stargate address tracking | DONE | `knownStargateAddresses` property, give/remove |
 | Stargate zone transition | DONE | `base/world_entry/gate_travel/` — RESET_ENTITIES, persist destination, replay world entry |
+| Stargate dial timer | DONE | `onDialGate` arms a 4 s timer (`SGWPlayer.beginDialing`) instead of travelling; drained by `cell::gate_travel::gate_dial_tick` on the 100 ms cell tick |
+| Stargate walk-through crossing | DONE | Travel fires when the player enters the gate's `REGION_FLAG_Stargate` volume, not on the dial. Worlds with no such region fall back to travelling on the dial |
 | Gate-travel contact event | DONE | Fires `ECONTACT_LIST_EVENT_GateTravel` to the traveller's contacts with the destination `world_id` |
 | Ring transporter interaction | DONE | Sends the destination list |
 | Ring transport FSM | DONE | 8-state machine: IDLE through COOLDOWN |
@@ -31,10 +33,10 @@ Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../
 | Ring movement locking | DONE | `BSF_MovementLock` set/unset during transport |
 | Ring cross-world transport | PARTIAL | Same-world works; cross-world path exists but untested |
 | Ring multi-player sync | FIXME | Only the first player in the region gets the Matinee — the sequence drives a shared world prop |
-| Stargate open/close animation | NOT IMPL | `Stargate_MakeGate` (6100) and `Stargate_DestroyGate` (6103) are never emitted |
-| Stargate crossing animation | NOT IMPL | `Stargate_CrossGate` (6113) never emitted |
+| Stargate open animation | DONE | `Stargate_MakeGate` (6100) fires 4 s after a successful dial. `Stargate_DestroyGate` (6103) stays unemitted — the 2009 `cancelDialing` never sent it either (D-CA10) |
+| Stargate crossing animation | DONE | `Stargate_CrossGate` (6113) fires on entering the gate volume, before the `GateTravel` teardown |
 | DHD chevron lock animations | NOT IMPL | Events 6106–6112 exist in the DB for every gate; never triggered |
-| Stargate witness visibility | NOT IMPL | Even once gate sequences are emitted, they must fan to witnesses, not just the traveller |
+| Stargate witness visibility | DONE | Both gate sequences fan to every witness of the dialer plus the dialer, one `onSequence` each. The 2009 server sent to `self.client` only; this is a deliberate addition |
 | Squad leader gate travel | NOT IMPL | `processSquadLeaderGateTravel` defined; blocked on the group system |
 | Gate address discovery | PARTIAL | `giveStargateAddressStr` / `removeStargateAddressStr` defined |
 

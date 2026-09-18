@@ -2,12 +2,12 @@
 title: "Content engine — reference"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-18
 ---
 
 # Content engine — reference
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-18
 > **Audience**: Engineers working on the Rust server who need to understand, debug, or extend the data-driven content engine.
 > **Prerequisites**: Familiar with the Cimmeria crate layout ([crates/README.md](../../crates/README.md)) and the cell/base service split ([architecture/service-architecture.md](../architecture/service-architecture.md)).
 > **Diátaxis type**: Reference + explanation. For the design rationale ("why does this exist at all?") see [architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md). For "how do I add a new variant?" see [extending-the-engine.md](extending-the-engine.md).
@@ -118,6 +118,8 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnItemUse { item_id }` | Player double-clicked inventory item |
 | `OnItemEquipped { item_id? }` | Player moved a stack into the bandolier (`container_id = 3`) from any other container. `item_id` is the design / `type_id`, not the inventory instance id; `NULL` `event_key` is a wildcard that fires for any equip |
 | `OnTeleportIn { region_id }` | Player arrived via ring transporter |
+| `OnStargateDialed { destination_world? }` | Player successfully dialled a stargate — fired from `handle_dial_gate` when the four-second gate-open timer is armed. `event_key` is the destination world name (`resources.worlds.world`, e.g. `Harset`); `NULL` is a wildcard that fires for any destination |
+| `OnStargateCrossed { destination_world? }` | Player stepped through an open stargate, fired immediately before the world transition tears the cell entity down. Same `destination_world` filter as `OnStargateDialed` |
 | `OnEffectInit / PulseBegin / PulseEnd / Removed` | Effect lifecycle hooks (unit variants) |
 | `OnMissionCompleted { mission_id }` | Mission marked complete |
 | `OnDialogSetOpen { dialog_set_name }` | Dialog set opened |

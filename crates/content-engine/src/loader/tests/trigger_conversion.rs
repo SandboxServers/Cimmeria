@@ -252,3 +252,72 @@ fn convert_npc_flanked_wildcard() {
         other => panic!("Expected wildcard OnNpcFlanked, got {:?}", other),
     }
 }
+
+// ─── Stargate trigger conversions (CA10) ───────────────────────────
+
+fn stargate_trigger_row(event_type: &str, event_key: Option<&str>) -> DbTriggerRow {
+    DbTriggerRow {
+        chain_id: 0x7000_6200,
+        event_type: event_type.to_string(),
+        event_key: event_key.map(|s| s.to_string()),
+        scope: "player".to_string(),
+        once: false,
+        sort_order: 0,
+    }
+}
+
+/// `event_key` carries the destination world name straight through.
+/// The chain-replay guards in `cimmeria-services` cover the same arm,
+/// but self-skip without a database — this is the no-DB signal.
+#[test]
+fn stargate_dialed_row_loads_with_its_destination_world() {
+    match convert_trigger(&stargate_trigger_row("stargate_dialed", Some("Harset"))) {
+        Some(Trigger::OnStargateDialed { destination_world }) => {
+            assert_eq!(destination_world.as_deref(), Some("Harset"));
+        }
+        other => panic!("expected OnStargateDialed(Harset), got {other:?}"),
+    }
+}
+
+#[test]
+fn stargate_crossed_row_loads_with_its_destination_world() {
+    match convert_trigger(&stargate_trigger_row("stargate_crossed", Some("Harset"))) {
+        Some(Trigger::OnStargateCrossed { destination_world }) => {
+            assert_eq!(destination_world.as_deref(), Some("Harset"));
+        }
+        other => panic!("expected OnStargateCrossed(Harset), got {other:?}"),
+    }
+}
+
+/// A NULL `event_key` is the documented wildcard for these two, unlike
+/// the integer-keyed triggers where NULL rejects the row. Pinned so a
+/// future "reject NULL everywhere" sweep can't silently disable every
+/// wildcard gate chain.
+#[test]
+fn stargate_rows_with_no_event_key_load_as_wildcards() {
+    match convert_trigger(&stargate_trigger_row("stargate_dialed", None)) {
+        Some(Trigger::OnStargateDialed { destination_world }) => {
+            assert_eq!(destination_world, None);
+        }
+        other => panic!("expected wildcard OnStargateDialed, got {other:?}"),
+    }
+    match convert_trigger(&stargate_trigger_row("stargate_crossed", None)) {
+        Some(Trigger::OnStargateCrossed { destination_world }) => {
+            assert_eq!(destination_world, None);
+        }
+        other => panic!("expected wildcard OnStargateCrossed, got {other:?}"),
+    }
+}
+
+/// A near-miss `event_type` drops the row rather than binding one of the
+/// two arms. Catches a `starts_with`-style match if anyone rewrites the
+/// dispatch, and pins the exact strings content authors must write.
+#[test]
+fn a_misspelled_stargate_event_type_loads_nothing() {
+    for bad in ["stargate_dial", "stargate_dialled", "stargate", "dialed"] {
+        assert!(
+            convert_trigger(&stargate_trigger_row(bad, Some("Harset"))).is_none(),
+            "event_type {bad:?} must not bind a stargate trigger"
+        );
+    }
+}

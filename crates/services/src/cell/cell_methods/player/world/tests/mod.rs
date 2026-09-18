@@ -91,3 +91,149 @@ async fn trigger_region_with_negative_id_rejects_via_explicit_guard() {
          so the trap region at 0xFFFFFFFB can't fire"
     );
 }
+
+/// A `REGION_FLAG_Stargate` volume routes to `stargatePassed` in addition
+/// to the ordinary region event, and an open dial travels (CA10 / defect
+/// B6). Dropping the flag-2 arm from `dispatch` leaves the player standing
+/// in the gate, so the `GateTravel` assertion fails.
+///
+/// Flag-keyed, not id-keyed: the fixture region's runtime id is whatever
+/// `next_region_id` hands out, which is the same shape the twelve seeded
+/// `*.Stargate` point sets load with.
+#[tokio::test]
+async fn entering_a_stargate_region_with_an_open_dial_travels() {
+    use crate::cell::messages::CellToBaseMsg;
+    use crate::cell::space_manager::{RegionData, REGION_FLAG_CLIENT_HINTED, REGION_FLAG_STARGATE};
+    use crate::cell::spawner::StargateEntry;
+
+    let mut mgr = make_mgr_with_player();
+
+    // A destination gate on another world, and the gate volume the player
+    // walks into on this one.
+    mgr.stargates.insert(
+        2,
+        StargateEntry {
+            world_name: "Harset".to_string(),
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+            yaw: 0.5,
+            event_set_id: None,
+        },
+    );
+    let runtime_id = mgr.next_region_id;
+    mgr.next_region_id += 1;
+    mgr.regions.insert(
+        runtime_id,
+        RegionData {
+            runtime_id,
+            db_set_id: 1002,
+            tag: "Castle_CellBlock.Stargate".to_string(),
+            world_name: "Castle_CellBlock".to_string(),
+            height: 10.0,
+            radius: 2.5,
+            flags: REGION_FLAG_CLIENT_HINTED | REGION_FLAG_STARGATE,
+            points: vec![[0.0; 3]; 4],
+        },
+    );
+
+    // Arm a dial and force it open, as `gate_dial_tick` would.
+    mgr.begin_gate_dial(1, 2, "Harset".to_string(), None);
+    let now = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    assert_eq!(mgr.take_opened_gate_dials(now).len(), 1);
+
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+
+    let mut args = Vec::with_capacity(17);
+    args.extend_from_slice(&(runtime_id as i32).to_le_bytes());
+    args.push(1); // entering
+    args.extend_from_slice(&0.0f32.to_le_bytes());
+    args.extend_from_slice(&0.0f32.to_le_bytes());
+    args.extend_from_slice(&0.0f32.to_le_bytes());
+
+    assert!(dispatch(1, TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await);
+
+    let mut travelled = None;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::GateTravel {
+            entity_id,
+            target_world_name,
+            ..
+        } = msg
+        {
+            travelled = Some((entity_id, target_world_name));
+        }
+    }
+    assert_eq!(
+        travelled,
+        Some((1, "Harset".to_string())),
+        "entering the gate volume with an open dial must emit GateTravel"
+    );
+    assert!(mgr.get_entity(1).is_none(), "cell entity torn down");
+}
+
+/// Exiting a stargate volume is a no-op — the 2009 server had no exit
+/// handler. Guards against a symmetric-looking refactor that routes both
+/// directions and teleports the player as they step back out.
+#[tokio::test]
+async fn exiting_a_stargate_region_does_not_travel() {
+    use crate::cell::messages::CellToBaseMsg;
+    use crate::cell::space_manager::{RegionData, REGION_FLAG_CLIENT_HINTED, REGION_FLAG_STARGATE};
+    use crate::cell::spawner::StargateEntry;
+
+    let mut mgr = make_mgr_with_player();
+    mgr.stargates.insert(
+        2,
+        StargateEntry {
+            world_name: "Harset".to_string(),
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+            yaw: 0.5,
+            event_set_id: None,
+        },
+    );
+    let runtime_id = mgr.next_region_id;
+    mgr.next_region_id += 1;
+    mgr.regions.insert(
+        runtime_id,
+        RegionData {
+            runtime_id,
+            db_set_id: 1002,
+            tag: "Castle_CellBlock.Stargate".to_string(),
+            world_name: "Castle_CellBlock".to_string(),
+            height: 10.0,
+            radius: 2.5,
+            flags: REGION_FLAG_CLIENT_HINTED | REGION_FLAG_STARGATE,
+            points: vec![[0.0; 3]; 4],
+        },
+    );
+    mgr.begin_gate_dial(1, 2, "Harset".to_string(), None);
+    let now = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    mgr.take_opened_gate_dials(now);
+
+    let engine = ChainEngine::new();
+    let (tx, mut rx) = mpsc::channel(16);
+
+    let mut args = Vec::with_capacity(17);
+    args.extend_from_slice(&(runtime_id as i32).to_le_bytes());
+    args.push(0); // exiting
+    args.extend_from_slice(&0.0f32.to_le_bytes());
+    args.extend_from_slice(&0.0f32.to_le_bytes());
+    args.extend_from_slice(&0.0f32.to_le_bytes());
+
+    assert!(dispatch(1, TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await);
+
+    while let Ok(msg) = rx.try_recv() {
+        assert!(
+            !matches!(msg, CellToBaseMsg::GateTravel { .. }),
+            "leaving the gate volume must not travel"
+        );
+    }
+    assert!(mgr.get_entity(1).is_some());
+    assert!(
+        mgr.gate_dial(1).is_some(),
+        "an exit must leave the dial armed"
+    );
+}
