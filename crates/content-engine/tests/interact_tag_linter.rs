@@ -140,6 +140,26 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         // adding the action; if the terminal template already has the bit,
         // remove this entry and document below.
         | ("castle_cellblock_chains.sql", 1060) // Preparation_Terminal: needs verification (see above TODO)
+        // harset_space_chains.sql — the five Harset ring switches (packet H10).
+        // reason: all five spawns (spawnlist.sql rows 4/127/128/129/130) use
+        // entity template 3 "Ring Transporter Switch", whose
+        // `entity_templates.interaction_type` column is already 32
+        // (INT_RingNetwork). The spawner reads that column onto every spawned
+        // entity, so the bit is present from spawn and survives restart —
+        // a `set_interaction_type` action would be redundant and would imply
+        // the bit needs setting. Same template as the three already-shipped
+        // Cellblock ring switches (spawns 17/23/79). See the seed file's
+        // "RING SWITCHES" header comment.
+        //
+        // NOTE (#97): five entries added at once is right at the threshold this
+        // allowlist's own doc comment calls out — the entity-template walker is
+        // the real fix for the whole "bit comes from the template default"
+        // family, which is now 16 of the 20 entries here.
+        | ("harset_space_chains.sql", 6001) // HarsetRingLeftBottom
+        | ("harset_space_chains.sql", 6002) // HarsetRingRightBottom
+        | ("harset_space_chains.sql", 6003) // HarsetRingLeft
+        | ("harset_space_chains.sql", 6004) // HarsetRingLeftTop
+        | ("harset_space_chains.sql", 6005) // HarsetRingRight
         // sgc_w1_chains.sql — baseline (dialog NPCs / quest items / lootable bodies)
         | ("sgc_w1_chains.sql", 3002) // SGCW1_GenHammond: dialog NPC template default
         | ("sgc_w1_chains.sql", 3004) // SGC_W1_Tealc: dialog NPC template default
@@ -303,6 +323,24 @@ fn scan_point_set_names(sql: &str) -> HashSet<String> {
 /// both stricter (catches a lone bad key with no correct sibling to
 /// compare against, which the old heuristic could miss) and correctly
 /// allows Region8's legitimate exception.
+///
+/// **Scan coverage.** There is no per-file scan list to maintain: both
+/// this check and [`every_interact_tag_chain_has_set_interaction_type`]
+/// `read_dir` the seed directory and take every `*_chains.sql` file, so
+/// a newly added seed file is linted the moment it lands. Registering it
+/// for the *loader* is a separate step, and neither of those two checks
+/// notices when it is missed — that is what
+/// [`every_chain_seed_file_is_registered_in_database_sql`] is for.
+///
+/// **Dotless keys are in scope.** The old per-file heuristic keyed on a
+/// `World.Region` prefix and so silently skipped any point-set name
+/// without a dot. This check has no such heuristic — it is a plain
+/// set-membership test against every `point_sets.name`, dotted or not.
+/// `dotless_point_set_names_are_not_skipped` pins that by calling
+/// [`region_key_violations`] — the same function this test uses — because
+/// the Harset ring point sets (`HarsetRingLeftBottomPS` and friends, set
+/// ids 2052-2056) are dotless and a reintroduced prefix heuristic would
+/// exempt them from validation without failing anything.
 #[test]
 fn every_chain_region_key_matches_a_seeded_point_set() {
     let point_sets_path = workspace_root().join("db/resources/Events/Seed/point_sets.sql");
@@ -334,18 +372,7 @@ fn every_chain_region_key_matches_a_seeded_point_set() {
 
         let sql =
             fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        let triggers = scan_region_triggers(&sql);
-
-        for (chain_id, region) in &triggers {
-            if !canonical_names.contains(region) {
-                violations.push(format!(
-                    "  {filename}: chain {chain_id} triggers on region_key \
-                     '{region}', which is not a byte-exact point_sets.name \
-                     — the resolver does case-sensitive string matching, so \
-                     this trigger never fires",
-                ));
-            }
-        }
+        violations.extend(region_key_violations(filename, &sql, &canonical_names));
     }
 
     assert!(
@@ -356,6 +383,35 @@ fn every_chain_region_key_matches_a_seeded_point_set() {
          fires and the player is soft-stuck:\n{}",
         violations.join("\n"),
     );
+}
+
+/// The membership check itself, factored out of
+/// [`every_chain_region_key_matches_a_seeded_point_set`] so tests can
+/// exercise the *production* predicate rather than re-implementing it.
+///
+/// That distinction is the whole point. A test that inlines
+/// `canonical_names.contains(region)` in its own body asserts that
+/// `HashSet::contains` is case-sensitive — which is a property of std,
+/// not of this linter — and keeps passing when someone adds a skip
+/// heuristic here. Calling this function means a heuristic added here
+/// breaks those tests, which is what makes them guards.
+fn region_key_violations(
+    filename: &str,
+    sql: &str,
+    canonical_names: &HashSet<String>,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    for (chain_id, region) in &scan_region_triggers(sql) {
+        if !canonical_names.contains(region) {
+            violations.push(format!(
+                "  {filename}: chain {chain_id} triggers on region_key \
+                 '{region}', which is not a byte-exact point_sets.name \
+                 — the resolver does case-sensitive string matching, so \
+                 this trigger never fires",
+            ));
+        }
+    }
+    violations
 }
 
 #[test]
@@ -455,5 +511,121 @@ VALUES (5002, 'enter_region', 'Castle_Cellblock.Region8', 'player', true, 0);
          even though nothing else in the same synthetic file has the \
          correct casing to compare against; that's the exact case the old \
          per-file-consistency heuristic could miss"
+    );
+}
+
+/// A point-set name with no `World.Region` dot must still be collected
+/// by the scanner and still validate as a region key.
+///
+/// The Harset ring pads (`point_sets.sql` set ids 2052-2056:
+/// `HarsetRingLeftBottomPS`, `HarsetRingRightBottomPS`,
+/// `HarsetRingLeftPS`, `HarsetRingLeftTopPS`, `HarsetRingRightPS`) are
+/// the live instance of this shape — five real, world-57 `AreaSet` rows
+/// whose names carry no world prefix. The superseded per-file
+/// "one canonical case per world prefix" heuristic derived the prefix by
+/// splitting on `.`, so a dotless key had no prefix bucket and was
+/// skipped outright: a chain could reference `HarsetRingLeftBottomPs`
+/// (wrong case) and the linter would say nothing.
+///
+/// The current set-membership check has no prefix logic at all, so it
+/// covers them already. This test exists so that stays true — anyone
+/// reintroducing prefix-based grouping has to make this pass, and the
+/// only way to do that is to keep dotless names inside the checked set
+/// rather than exempting them.
+///
+/// It drives [`region_key_violations`], the same function the production
+/// check calls, rather than re-implementing the membership filter in its
+/// own body. An earlier version of this test did re-implement it and was
+/// a tautology: a skip heuristic added to the production check left the
+/// test green, because the test never ran the heuristic.
+#[test]
+fn dotless_point_set_names_are_not_skipped() {
+    let point_sets_sql = r#"
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2052, 'HarsetRingLeftBottomPS', 'AreaSet', 57, 2.52999997, 1.76999998, 'Cylinder', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2078, 'Harset.CommandCenterTransition', 'AreaSet', 57, NULL, 0, 'BoundingBox', 1);
+"#;
+    let canonical_names = scan_point_set_names(point_sets_sql);
+    assert!(
+        canonical_names.contains("HarsetRingLeftBottomPS"),
+        "the scanner must collect dotless point-set names — the Harset \
+         ring pads (set ids 2052-2056) have no world prefix"
+    );
+
+    // 6001 spells the dotless key correctly; 6002 miscases it. Only 6002
+    // may be reported.
+    let chain_sql = r#"
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (6001, 'enter_region', 'HarsetRingLeftBottomPS', 'player', false, 0);
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (6002, 'enter_region', 'HarsetRingLeftBottomPs', 'player', false, 0);
+"#;
+    let violations = region_key_violations("synthetic_chains.sql", chain_sql, &canonical_names);
+    assert_eq!(
+        violations.len(),
+        1,
+        "exactly one of the two dotless keys is wrong, so the production \
+         check must report exactly one violation. Zero means dotless names \
+         are being skipped entirely and the Harset ring point sets are \
+         unguarded; two means the correctly spelled key was rejected. \
+         Got: {violations:?}"
+    );
+    assert!(
+        violations[0].contains("chain 6002"),
+        "the reported violation must be the miscased key (chain 6002), not \
+         the correct one. Got: {violations:?}"
+    );
+}
+
+/// Every `*_chains.sql` in the seed directory must be `\ir`'d from
+/// `db/database.sql`.
+///
+/// This is the one H10-adjacent failure mode neither linter caught: both
+/// of them `read_dir` the seed directory, so they pass whether or not a
+/// file is registered with the loader. A file that exists but is not in
+/// the `\ir` list is never executed by `psql -f db/database.sql`, so
+/// every chain in it is simply absent at runtime — and the symptom is not
+/// an error, it is content that silently does nothing. CI's `test-live-db`
+/// job builds its database from exactly this file.
+///
+/// Cheap to check and it needs no database: the `\ir` list is plain text.
+#[test]
+fn every_chain_seed_file_is_registered_in_database_sql() {
+    let database_sql_path = workspace_root().join("db/database.sql");
+    let database_sql = fs::read_to_string(&database_sql_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", database_sql_path.display()));
+
+    let seed_dir = workspace_root().join("db/resources/Content/Seed");
+    let mut seen_any = false;
+    let mut missing = Vec::new();
+
+    for entry in fs::read_dir(&seed_dir).expect("read seed dir") {
+        let entry = entry.expect("dir entry");
+        let path = entry.path();
+        let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        if !filename.ends_with("_chains.sql") {
+            continue;
+        }
+        seen_any = true;
+        // The `\ir` paths in database.sql are relative to db/, so the
+        // expected line is `\ir resources/Content/Seed/<filename>`.
+        let expected = format!("\\ir resources/Content/Seed/{filename}");
+        if !database_sql.contains(&expected) {
+            missing.push(expected);
+        }
+    }
+
+    assert!(
+        seen_any,
+        "found zero *_chains.sql files under {} — parser drift, not an \
+         empty seed tree",
+        seed_dir.display()
+    );
+    assert!(
+        missing.is_empty(),
+        "chain seed file(s) exist but are not loaded by db/database.sql. \
+         Every chain in an unregistered file is absent at runtime with no \
+         error — the content just never fires. Add the missing line(s), \
+         keeping the list's alphabetical order:\n{}",
+        missing.join("\n"),
     );
 }

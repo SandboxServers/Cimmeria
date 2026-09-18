@@ -26,6 +26,7 @@
 mod cover_demo;
 mod entity_health_below;
 mod grant_xp;
+mod harset_space;
 mod harset_spawn_entity;
 mod mission_1562;
 mod mission_622;

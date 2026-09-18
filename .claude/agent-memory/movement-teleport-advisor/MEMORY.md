@@ -7,3 +7,5 @@
 - [arrival-coordinate-offnavmesh.md](arrival-coordinate-offnavmesh.md) — Block on sight: authored coords are model origins; gate arrivals land in prefab navmesh holes → silent CorrectionSuppressed. Includes the read-only .nav decode recipe
 - [harset-travel-ground-truth.md](harset-travel-ground-truth.md) — Deprecated-Python ground truth for Harset transitions + what the V5 spec got wrong
 - [ring-fsm-departure-hooks.md](ring-fsm-departure-hooks.md) — The cancel_trade_on_disconnect seam is how async cleanup reaches a sync destroy_entity; which sites are departures vs the ring handoff; 3 ring-FSM block-on-sight modes
+- [cross-world-teleport-arrival-path.md](cross-world-teleport-arrival-path.md) — CrossWorldTeleport is destroy+GateTravel+world-entry, not forced position; zero arrival validation; the cell_spaces.xml startup-space trap
+- [region-trigger-world-scoping.md](region-trigger-world-scoping.md) — Block on sight: enter_region chains are world-unscoped and keyed on a client-supplied region id; no world condition is authorable
