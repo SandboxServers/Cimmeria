@@ -1,0 +1,163 @@
+# Harset Rebuild Handoff
+
+> Type: how-to. Audience: Claude Code coordinator and implementing engineers.
+> Updated: 2026-09-17. Companions: [audit.md](audit.md), [work-packets.md](work-packets.md), [Castle Cellblock campaign](../castle-cellblock-rebuild/README.md), [parity campaign protocol](../legacy-command-parity/README.md), [documentation index](../../readme.md).
+
+## Purpose And Evidence Boundary
+
+Use this document as the coordinator launch prompt for bringing the Harset hub (worlds 57 Harset, 68 Harset_CmdCenter, 69 Harset_Market, 70 Harset_StorageRm) up to the `SGW_Harset_Complete_Rebuild_Spec_v2.xlsx` specification. The [audit](audit.md) compares that spreadsheet (31 sheets) against the original Python and Atrea scripts under `deprecated/`, the DB seed under `db/resources/`, the Rust content engine, and the in-flight Castle Cellblock branch. It is a static comparison produced by eight read-only evidence passes from this repository's own agents (`mission-systems-advisor`, `npc-ai-spawn-advisor`, `movement-teleport-advisor`, `items-systems-advisor`, `aoi-witness-broadcast`, `minigame-systems-advisor`, `social-systems-engineer`, and a docs sweep). No build, test, live-DB run or client session accompanies this handoff.
+
+The headline differs from the Cellblock. There, the spec's "scripts are lost" premise was false. Here it is true for 35 of 36 missions: only mission 742 (Giving the Walls Ears) has a surviving script, and the two space scripts hold nothing but ring switches and the Command Center door. Zero Harset content chains exist in Cimmeria. The zone is a shell with 23 static spawns (guards, ring switches, the DHD, Petbe, one bug basket, Anat), no named regions beyond the gate and ring pads, no vendor data, and a navmesh that is 1,939 disconnected islands. The campaign is therefore mostly new authoring on top of a handful of engine primitives that do not exist yet, and its first packets are travel safety and population, not missions.
+
+Three spec claims the audit overturns, each of which changes the plan: the "all steps disabled" flag is never read by the loader and is false on every working Cellblock mission too, so no step re-enabling work exists; the Command Center is a shared startup space in this repo, not an instance, so Anat is one global entity; and there is no party system anywhere, so every "party-scoped" requirement in the spec is per-player or nothing.
+
+Source baseline: `main` at `d91c5c8c`, inspected 2026-09-17, alongside branch `content/castle-cellblock-rebuild` at `1d9f88dc` and open PRs #618/#619. PR #618 merged as `f23e73fb` before this handoff was committed; the dependency table and the audit's engine-gap table reflect that. A third sibling campaign, the [Castle (World 8) rebuild](../castle-rebuild/README.md), was committed the same evening (`e938d7ba`) and is reconciled below: Castle ends at the Stargate to Harset, and four of its engine packets are the same primitives Harset needs. Unrelated untracked `crates/services/logs/` and the `npc-ai-spawn-advisor` memory edits are excluded.
+
+This handoff adds documentation only. It does not authorize commits, branches, worktrees, builds, runtime edits or new agents. The execution protocol is for a subsequent, user-authorized implementation session.
+
+## Coordinator Launch Prompt
+
+You are the Claude Code coordinator for the Harset rebuild. Work in this repository's root checkout. Implement the approved packets in [work-packets.md](work-packets.md) through small, reviewed changes, not one monolithic content drop. Do not broaden into offworld zones (Agnos, Beta Site, Yotunheim), the party system, the PvP duel state machine, Converse minigame rules, or vendor stock invention.
+
+1. Run `git rev-parse HEAD` and `git status --short --branch`; record them in the ledger. Check the merge state of every upstream dependency in [Dependencies On In-Flight Work](#dependencies-on-in-flight-work) with `git merge-base --is-ancestor <branch> main` and `gh pr view 618 619 --json state`, and read the current status lines of Castle packets CA04, CA09-CA14 in [the Castle ledger](../castle-rebuild/work-packets.md). Record which have landed. Packets marked **BlockedUpstream** stay blocked until their named dependency is on `main`.
+2. Read [AGENTS.md](../../../AGENTS.md), [CLAUDE.md](../../../CLAUDE.md), [.github/instructions/content-chains.instructions.md](../../../.github/instructions/content-chains.instructions.md) and [TESTING.md](../../../TESTING.md) (chain-replay is test type 6). Read [content-engine.md](../../content/content-engine.md) section 3 once, then the three agent-memory notes the audit marks load-bearing: `content-engine-once-semantics`, `dialog-set-engine-gaps`, `spawn-timing-instanced-spaces`.
+3. Read the decisions below. Every **PROPOSED** decision needs the user's answer before its packet leaves BlockedDecision. Record answers as new rows; do not rewrite existing ones.
+4. Confirm implementation-session authorization. Writers are `rust-gameserver-dev` for Rust packets and for seed packets; advisors per packet; discover agents from `.claude/agents/` and run them as defined (no model overrides). Do not create new agents.
+5. Dispatch the lanes in [work-packets.md](work-packets.md#scheduling-and-closeout) in parallel: the four Rust lanes (travel, spawn, combat trigger, minigame) and the two seed lanes (space chains, population) have disjoint owned paths. Use isolated worktrees, one Cargo lane, serialized live-DB tests, per the parity protocol (D-CB11 applies unchanged).
+6. Pause for milestone M0 (the user-assisted placement and arrival-pin session) before any mission packet is UAT'd. No Harset coordinate in this campaign may be taken from authored data without an in-game pin.
+7. For GH1-GH6, collect evidence, propose child manifests, get a decision id, then dispatch children individually.
+8. Integrate one packet at a time, re-run its replay tests plus `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib chain_replay`, and pause for the user's milestone UAT.
+9. When blocked by a decision, evidence or context budget, leave a durable handoff under `handoffs/<packet-id>.md` with the exact next action. Do not substitute a placeholder chain for missing content, and do not invent NPC coordinates, vendor stock, loot tables or reward values.
+
+## Dependencies On In-Flight Work
+
+These are the items to raise with the Castle Cellblock session and the PR owners before Harset dispatches. Each is plumbing both campaigns need; Harset takes a dependency rather than re-implementing.
+
+| ID | What Harset needs | Where it already exists | Ask of the other session | Harset packets blocked |
+|---|---|---|---|---|
+| U1 | `launch_ability`, `apply_effect`, `remove_effect` executor arms via the `effect_apply.rs` entry point | **PR #619** `feat/content-effect-apply-entry-point`, open since 2026-08. Its sibling **PR #618** (`grant_xp` loader and arm, `move_entity` arm) **merged to `main` as `f23e73fb` while this handoff was being written**, so those two are no longer gaps; #619 still carries #618's commits and needs a rebase. | The Cellblock C03 packet plans to write the `LaunchAbility` arm from scratch. Instead: land Cellblock C01/C08a (already on the branch), rebase #619 onto `main` and the new `execute_one_action` refactor, and land it as C03's arm. Update `proposed-extensions.md` section 1.1 (1.3 and 1.4 were updated by #618). | H21 (Rin'la movement lock), H33/H42 (Tollan and symbiote effects), H28 (implant), GH3 formula only |
+| U2 | `content_actions.delay_ms` honored (deferred action queue, disconnect cleanup) | Cellblock branch commit `bfca38bd` (C08a), not yet on `main` | Merge the Cellblock integration branch to `main` before Harset M1. Harset's staged scenes (Marketplace assault waves in 1348, infiltrator fight in 1241) reuse the queue as-is. | H23, H28, H43 |
+| U3 | Purge of `space_castle_cellblock_chains.sql` | Same commit (C01) | Same merge. Until it lands, the 28 `space:8` chains with NULL `event_key` fire on `player_loaded` in **every** space including Harset, so any Harset relog test on `main` today asserts against Cellblock noise. | H10 and every `player_loaded` restore chain |
+| U4 | Cross-file region-key linter `every_chain_region_key_matches_a_seeded_point_set` | Cellblock branch, `crates/content-engine/tests/interact_tag_linter.rs:307` | Confirm it handles dotless keys (Harset ring point sets 2052-2056 have no dot and the legacy linter skips them). Harset adopts it in H10. | H10, H15 |
+| U5 | Content `destroy_entity` routed through `SpaceManager::despawn_npc` (immediate `LeftAoI`, witness scrub) instead of bare `destroy_entity` | Not implemented anywhere; GM `.despawn` does it right (parity P08), the content executor does not | Cellblock C08b despawns Marsh with the content action and will hit the #582 invisible-corpse shape. Whichever campaign lands first ships the ~20-line routing fix; Harset H03 includes it if C08b has not. | H03, H44-H46 |
+| U6 | `set_follow_target` with `use_player`, `move_speed` column | Cellblock GC1b-0 (scoped, unlanded) | No Harset ask. Harset's one escort-shaped beat (1372 Tail) needs an NPC to walk a route, which is `move_waypoint` pathing, a different gap (GH5). | none directly |
+| U7 | Frost's Letter (1360) accepted in the Cellblock | Cellblock C04 (BlockedDecision label stale; D-CB03 answered) | Land C04. Harset owns step 4038 (give the letter to Marsh) and needs the mission active on arrival. | H30 |
+| U8 | `onStoreOpen`/`onStoreUpdate` method-index fix | branch `fix/vendor-index-gm-gate` (3 commits, unmerged, no PR) | Open a PR and merge before any Harset vendor lands. `main` sends vendor windows on mission indices. | GH2 children |
+| U9 | Region-key case rule and the `once` column being dead | Cellblock audit B3; agent memory `content-engine-once-semantics` | No ask; carried forward as authoring rules in [work-packets.md](work-packets.md#worker-input-and-ownership). | all seed packets |
+
+Two stale status lines in the Cellblock ledger are worth the other session's attention while it is there: C04 and C09 both still read `BlockedDecision` although D-CB03 and D-CB09 were answered on 2026-09-17. The Castle ledger already asks for C09 to move to it as CA01; Harset has no stake in that beyond wanting one owner for `castle_chains.sql`.
+
+### Overlap with the Castle campaign
+
+The [Castle ledger](../castle-rebuild/work-packets.md) was written the same day against the same baseline and scopes several engine packets that Harset also needs. Each must have exactly one owner; the recommendation is below. Both ledgers already agree on the merge order for the contended `crates/services/src/cell/content/executor/mod.rs`: PR #618, PR #619, Cellblock C03, then any Castle or Harset arm, one at a time in the single Cargo lane, with workers staging arms in sibling modules and handing the two-line match edit to the coordinator.
+
+| ID | Castle packet | Harset packet | Recommended owner | Why |
+|---|---|---|---|---|
+| U10 | CA09 step 4469 (region 1002 passage with an active gate fires travel and completes 708) and CA10 (emit 6100 four seconds after dial, 6113 on crossing, fanned to witnesses) | H01 part (2): the generic `REGION_FLAG_STARGATE` routing | **Harset H01** owns the flag-2 region routing and the arrival side; **Castle CA10** owns the two event emits and CA09 hooks 708's completion onto H01's routing. Neither re-implements the other's half. | CA09 today plans to wire region 1002 directly; a per-region hack would leave Harset's gate (region 1001) dead. |
+| U11 | CA12 `spawn_entity`/`despawn_entity` arms (gated on D-CA06; Castle prefers static actors) | H03 | **Harset H03.** Castle's static-actor decision means CA12 may never open; Harset's instanced Market and Storage beats cannot ship without it. CA12 consumes H03 if Castle later needs it. | Harset needs the arm; Castle wants it optional. |
+| U12 | CA11 `set_visible` witness routing (BlockedDecision, only under 701 option C) | H03 part (3) | **Harset H03**, same reasoning; CA11 closes as a duplicate. | Both campaigns found the same no-op. |
+| U13 | CA04 minigame session hardening plus the optional `difficulty` param on `start_minigame` (Ready) | H05 | **Castle CA04** owns `difficulty`; **Harset H05** shrinks to `tech_competency` and `abilities_mask` from the player entity. H35 (Replitech) depends on CA04. | CA04 is Ready now and broader. |
+| U14 | CA13 NPC over-time movement (`MoveTo` AI state, `move_waypoint` walks, `OnNpcArrived` trigger) | GH5 | **Castle CA13**; Harset GH5 is closed as a pointer and H37's 1372 Tail consumes CA13's children. | Identical design. |
+| U15 | CA14 produce `castle.nav` via the existing pipeline (`crates/navmesh-extractor` phases 1.3, 1.4, 2 of issue #46 and the C++ NavBuilder) | GH1 navmesh provenance | **Castle CA14** proves the pipeline on Castle_CellBlock and Castle; **Harset GH1** becomes the rollout of that pipeline to `harset.nav` (regenerate), `harset_cmdcenter.nav` and `harset_market.nav` (generate), which is issue #46 phase 4. GH1's "how are `.nav` files produced" question is answered by [navmesh-extractor/README.md](../../../crates/navmesh-extractor/README.md). | One pipeline, two consumers. |
+| U16 | CA00 zero-coordinate respawner guard in `resolve_respawn_target` | H01 arrival fallback, H10 world-57 respawner rows | **Castle CA00** owns the guard; Harset seeds its rows in H10 after M0 and relies on the guard. | Same bug class (#233 adjacent). |
+| U17 | Castle CA06 excludes Romney's Files 2698 ("no acquisition evidence") | H30 step 4039 | Harset keeps 4039 authored but disabled (D-H02) until a Castle packet grants 2698. | Item has no grant path in either zone. |
+
+## Approved And Proposed Decisions
+
+Rows marked **PROPOSED** are the coordinator's recommended defaults with reasoning and confidence. They are questions for the user, not approvals. Confidence describes the evidence for the recommendation, not the difficulty of the work.
+
+| ID | Status | Contract and reason | Confidence |
+|---|---|---|---|
+| D-H01 | PROPOSED | Evidence precedence: original Python/Atrea scripts, then the DB seed, then the spec. Spec rows marked INFERRED, PLACEMENT-INFERRED or UNRESOLVED are proposals. The spec's Mission_Logic sheet is used as the step catalog because the DB agrees with it row for row. | HIGH: the DB was checked against every spec step id. |
+| D-H02 | PROPOSED | Campaign scope: the 26 `mission_label = 'Harset'` missions, plus 742, plus the Castle carry-ins 1360 (step 4038 only) and 567 (step 4039 only), plus the four Human "linked" missions that play out in-zone (1371, 1372, 1374, 1410). **Out:** 1401, 1407, 1409 (labelled Beta Site E2 / Yotunheim; they need zones that do not exist) and all 54 older-revision missions the spec isolates (20 have zero steps; none duplicates a current mission). | HIGH on the facts; the offworld cut is a product call. |
+| D-H03 | PROPOSED | Per-player NPC story state uses instancing, not witness filtering. Worlds 69 and 70 are already per-player private instances (`spaces.xml`); Petbe's hostile and corpse states (1245, 1246), Grogan and the NID operative (1580), the Marketplace assault (1348) and the infiltrator fight (1241) are mission-scoped spawns inside the player's own Market or Storage instance, reached by a `spawn_entity` action that does not exist yet (H03). The shared hub's Petbe, Lethander and guards are never mutated globally. **There is no party system in Cimmeria**; the spec's "party" wording becomes "player" everywhere. | HIGH that the shared-hub alternative needs a new per-witness AoI overlay plus persistence (200-300 lines, amplification risk, #582 shape). MEDIUM that per-player instancing is acceptable to the user for co-op play. |
+| D-H04 | PROPOSED | Harset_CmdCenter stays a shared startup space (`spaces.xml` `Instanced="false"`), matching today's runtime, not the DB `flags = 1`. The leadership NPCs are talk-only; per-player state rides on dialog-set bindings, which are already per-player. Flipping it would also require a `cell_spaces.xml` change and lose the "see other players at council" hub feel. | HIGH on mechanics; the design call is small. |
+| D-H05 | PROPOSED | Mission 742 bug planting ports as three `interact_tag` chains (FirstBug/SecondBug/ThirdBug baskets, bit `INT_MissionWorldObject` set and cleared per step) instead of the original `dialog_set.open` topic menu. Reason: the `dialog_set_open` trigger has no dispatch site anywhere in the engine, the `1000000` dialog-set-map row has a NULL `dialog_id` and is dropped at load, and the trigger could not carry the target's tag even if it fired. The player-facing change is "right-click the basket" instead of "open a topic". | HIGH on the engine facts (agent memory `dialog-set-engine-gaps`); the UX trade is the user's. |
+| D-H06 | PROPOSED | Navmesh repair is a design gate (GH1) that rides the existing pipeline, not a Harset-local packet. `harset.nav` has 1,939 components, 9 of 12 checked spawns are off-mesh, the gate has a 5-unit hole, and worlds 68/69 have no mesh at all. The pipeline exists (`crates/navmesh-extractor` to `.obj`, the C++ NavBuilder to `.nav`, issue #46) but its terrain and BSP decoders are unfinished; Castle CA14 is scheduled to finish them for Castle, and GH1 is the Harset rollout afterwards (U15). Until then every Harset NPC is stationary (H13) and mission packets that need NPC chase (1343, 1348, 1241, 1245, 1580, 1322) are BlockedDesign on GH1; talk-only content is not. Whether the remote ring pads are unmeshed platforms by design is answered by the rebuild, not guessed. | HIGH on the mesh facts (decoded directly) and on the pipeline's existence; MEDIUM on its readiness. |
+| D-H07 | PROPOSED | Gate arrival gets a per-gate arrival offset (Rust, H01) and a world-57 respawner row as the recovery fallback, and every Harset arrival coordinate (gate, five ring pads, both Command Center transitions) is pinned in-game in M0 before being seeded. Reason: `handle_dial_gate` places the player on the gate row's own coordinate, which is the prefab origin inside a navmesh hole, and the recovery chain has no valid candidate in world 57. The failure is silent (`CorrectionSuppressed`), not a rubber-band. Harset is the first navmesh-backed gate destination in the game. | HIGH: search extents are provably too small to reach the mesh. |
+| D-H08 | PROPOSED | Implement the `REGION_FLAG_Stargate` (bit 2) region handler so walking into the event horizon triggers travel (H01). Today only the DHD dial message works, and even the DHD has no interaction handler or `onDisplayDHD` emit. Both were 2009 behavior. | HIGH on the gap; the handler is small. |
+| D-H09 | PROPOSED | Vendors and trainers are a design gate (GH2), out of the mission milestones. Vendor and trainer Rust is complete but the entire seed has two test item lists; every one of the ~60 Harset vendor declarations is a display-name moniker with no template, list, or price. The spec's Vendor_Tier_v2 policy is a reconstruction proposal, not recovered data. GH2 places the vendor NPCs as props in M0 and decides stock separately. | HIGH on the facts; stock policy is the user's. |
+| D-H10 | PROPOSED | Mission XP and cash rewards reuse the Cellblock's GC3 design gate (formula evidence first, no hardcoded constants). All 36 Harset missions have `reward_xp = 0` and `reward_naq = 0`; `grant_xp` is on `main` since `f23e73fb` (PR #618), so only the formula is missing. Harset does not open a second gate. | HIGH. |
+| D-H11 | PROPOSED | Rin'la (1325) is a scripted PvE ritual, not the PvP duel system (which is a stub). Both combatants get a `Stun`-script movement-lock effect via `apply_effect` (U1); Mala'c is a new stationary template (`is_stationary = true`) spawned in the player's Market instance; the ritual ends on a new `entity_health_below { entity_tag, pct }` trigger (H04) that sets `AiState::Submit`. Staff-only enforcement is soft (`set_active_slot`), since no weapon-class gate exists. | MEDIUM: every primitive except the trigger exists; the trigger is a one-file addition plus a damage-path hook. |
+| D-H12 | PROPOSED | The four Converse social checks (1361 Hansen, 1351 Opheltes, 1245 Lo'rak, 1374 Soothe Angry Jaffa) play as dialog-choice branches. Converse is a client SWF with placeholder auto-win server-side; its "Trump" passives (abilities 778/779/792/793) are recorded for a future minigame campaign. | HIGH that real Converse is blocked on Flash disassembly. |
+| D-H13 | PROPOSED | Hack-a-terminal steps (1377 step 4099, 1409 is out, 1407 is out) use Livewire with the Cellblock 1060/1061 chain pair, and the minigame `difficulty` and `tech_competency` fields get plumbed (H05) so a level-31 hack is not the level-1 board. "Search" steps (1244 step 3619, 1580 step 4701, 741 step 2496) use the interact-grant-destroy pattern of Cellblock chain 1032, not a placeholder minigame, because the shipped placeholder SWFs have never been verified to show a win affordance. | HIGH on the Livewire pairs; MEDIUM on the placeholder-SWF risk. |
+| D-H14 | PROPOSED | Duplicate item designs resolve to: Scarab 2820 (the 742 script grants it), Straegis Scanner 4396 (only one bound to the real scan ability 2092), Tollan Control Technology 2743 (bound to "Use on Dawson"), Goa'uld Symbiote 2818 (bound to "Infect Dawson"). Petbe's Bloody Robes 2825 vs 2831 is unresolvable from repo data; pick 2825 and record it. | HIGH for four groups; the fifth is arbitrary. |
+| D-H15 | PROPOSED | Milestone M0 is a user-assisted in-client placement session, not a seed-authoring task. About 25 story NPCs have no coordinate anywhere (the spec marks them PLACEMENT-INFERRED). The GM places each with `.spawn <template>` and records with `.savespawn` (emits seed SQL, never live writes), then pins the eight arrival coordinates with the map debug HUD. Harset mission packets that reference those NPCs are BlockedEvidence until M0 produces their rows. | HIGH: this is the only honest source of coordinates. |
+| D-H16 | PROPOSED | Col. Marsh in Harset is a second spawn of template 10 (`Col Marsh (pet)`, faction 3, speaker 941) in world 68, not a new template; Moh'katan (54), Ba'al (42), Nerus (53), Lethander (46) and Coppleman (48) likewise get spawn rows for their existing templates. New templates are authored only for NPCs with none (Hansen, Jacobs, Lo'rak, Mala'c, Opheltes, Blackstock, Grogan, Dawson, Bra'hin, Royal Guard, NID Operative, Jaffa Volunteer, Storage Lo'taur, the bug baskets 2 and 3). | HIGH. |
+| D-H17 | PROPOSED | Every Harset spawn row and every new template sets `respawn_secs`; the seed never sets it anywhere, so every Harset NPC is one-shot today and the zone would depopulate permanently on first clear. Guards and lieutenants get a real ability set instead of the pistol default. Loot tables stay NULL per the spec (no invented loot). | HIGH. |
+| D-H18 | PROPOSED | Reuse the parity campaign protocol wholesale (worktrees, disjoint ownership, one Cargo lane, serialized live-DB tests, worknotes and handoffs in the repo, milestone UAT). Same as D-CB11. | HIGH. |
+
+## Open Decisions
+
+All eighteen rows above are PROPOSED. The ones whose answer changes what gets built, in the order they block work:
+
+1. D-H03: per-player instancing for Market and Storage beats, accepting that two players on the same mission cannot fight Petbe together (no party system), or gate those missions behind a party-system design that is out of this campaign?
+2. D-H02: confirm the scope cut (in-zone 33, out 3 offworld plus 54 older). Should 567 (Romney's Files) be in, given the Cellblock never grants the item?
+3. D-H06 and D-H07: authorize the navmesh evidence gate and the arrival-offset Rust work as the first packets, ahead of any mission?
+4. D-H05: accept "right-click the basket" for the 742 bug planting?
+5. D-H15: schedule the M0 in-client placement session; it is the critical path for every mission packet.
+6. D-H09: vendors as a separate gate with placement only in this campaign?
+7. D-H11: the Rin'la shape (hit-count fallback is possible if the health-threshold trigger is not wanted).
+8. D-H14: Bloody Robes 2825.
+
+## Where Confidence Is Low Or A Guess
+
+- Whether the remote ring pads and the Command Center transition boxes are unmeshed platforms by design or a navmesh build gap. Measured by vertex proximity, not Detour polygon queries; the gate hole is certain, the pads are indicative.
+- Whether the navmesh pipeline's unfinished terrain and BSP decoders (issue #46 phases 1.3 and 1.4) are what left `harset.nav` fragmented, or whether the 2009 build itself was. Castle CA14's before-and-after on Castle_CellBlock answers it before GH1 spends anything on Harset.
+- Whether the placeholder minigame SWFs (`Analyze`, `Bypass`, `Converse`) present a win button. Untested; D-H13 avoids depending on them.
+- Which dialog rows the 35 unscripted missions should bind. The spec's Dialogs sheet names ids for about half the beats; the rest need a per-mission dialog evidence step against `dialog_screens.sql` (the content is there, 152 SoundBank entries and 95 screens, but unbound).
+- What "Hide Crogan's body" (1352 step 5174) and "Deactivate the monitoring devices" (1410) were meant to look like; 1410 is truncated in the original data (four devices placed, one removal objective).
+- Marketplace assault (1348) and infiltrator (1241) wave shapes. No count, template or timing survives.
+
+## Architecture Guardrails
+
+Content lives in `resources.content_*` rows loaded at boot; the executor in [executor/mod.rs](../../../crates/services/src/cell/content/executor/mod.rs) is the only place side effects happen. A seed verb with no executor arm silently no-ops; the audit's [engine gap table](audit.md#engine-gaps-ranked-by-missions-blocked) is current against `main` and the three branches. Region keys are case-sensitive byte matches against `point_sets.name`, and `OnRegionEnter` does not filter by world, so a chain on `Harset_CmdCenter.HarsetTransition` needs a world condition of its own. `content_triggers.once` is dead; every one-shot guard is a `step_status` or `mission_status` condition. `complete_objective` on a step's last required objective completes the whole mission; use `advance_step` between steps. Counter completion reads the pre-increment value (`gte target-1`). Dialog-set bindings are per-player and in-memory; every chain that binds one needs a `player_loaded` restore chain gated on the active step. `cross_world_teleport` matches world names byte-exactly against `spaces.xml` and cannot set yaw.
+
+Shared-hub NPCs (world 57 and 68) must never be the target of `set_aggression`, `destroy_entity`, `set_visible` or `generate_threat` from mission content. Those verbs are reserved for mission-scoped spawns inside a player's own instance (D-H03).
+
+Keep the 500/700 line caps. Harset seed goes in four files (see [work-packets.md](work-packets.md#worker-input-and-ownership)); data files are exempt from the cap but split by faction anyway. Chain-replay tests are one file per mission. No `MissionOverride` is needed unless a packet invents a step id; all 139 Harset steps exist in the client PAK.
+
+## Agent Selection
+
+Agents are run as defined in `.claude/agents/` with their own model settings.
+
+| Area | Roles |
+|---|---|
+| Rust packets (all lanes), seed packets | `rust-gameserver-dev` writer |
+| Gate arrival, stargate flag, ring FSM, transitions, coordinate pins | `movement-teleport-advisor` |
+| Spawn action, despawn routing, templates, spawns, respawn, navmesh gate | `npc-ai-spawn-advisor` |
+| Per-player state, `set_visible`, fan-out on despawn | `aoi-witness-broadcast` |
+| Health-threshold trigger, effects, ability sets | `combat-systems-advisor` |
+| Chain authoring, mission state, dialogs, step semantics | `mission-systems-advisor` |
+| Livewire wiring, difficulty plumbing | `minigame-systems-advisor` |
+| Items, `item_use` chains, vendors, trainers | `items-systems-advisor` |
+| Rin'la and Lan'toc dialog outcomes | `social-systems-engineer` |
+| `known_stargates` enforcement, instance-reset exposure | `server-authority-enforcer`, `network-security-auth` |
+| Regression strategy review on every packet | `testing-validation-engineer` |
+| Docs | `documentation-writer` |
+| Navmesh provenance if repo evidence runs out | `game-archaeology-specialist` |
+
+## Validation And UAT Gates
+
+Tests must fail when the seed rows or the Rust change are removed. Chain-replay tests assert exact resolved action lists for both the matching and the adjacent non-matching state. Executor arms need a unit test on the side effect. Live-DB tests use `require_db_or_skip!` and serialized execution. Arrival coordinates additionally need a runtime `is_point_valid` assertion against the loaded `harset.nav` where a mesh exists.
+
+| Milestone | User-assisted in-client acceptance; all pending |
+|---|---|
+| M0 Placement and pins | GM pins gate arrival, five ring pads, both Command Center transitions with the debug HUD; places every story NPC and vendor prop with `.spawn`/`.savespawn`; `.seedconfirm` output is committed as seed rows. Nothing else in the campaign is UAT'd before this. |
+| M1 Travel and population (H01-H03, H10-H14) | Human and Jaffa gate in from Castle and land standing on the plaza; walking into the gate dials; each ring offers four destinations and arrives safely; Command Center door works both ways; every static NPC is visible after relog; a killed guard respawns; no Cellblock chain fires on Harset load. Covers spec H-01, J-01, W-01, W-02, S-01, S-02, R-01, N-01, P-01. |
+| M2 First missions (H20-H22, H30-H32, H40-H42) | Jaffa: 1324 to 1326 including the Rin'la ritual ending without a death. Human: 4038 letter delivery, 1361 to 1363 including five dart tags. Goa'uld: 742 end to end with three baskets, then 1200, 741, 1243. Relog at each step. Covers M-01, M-02, M-03, M-08, M-09, M-10, M-12, M-13. |
+| M3 Mid chains (H23-H25, H33-H36, H43-H44) | Jaffa 1343-1348 with a Marketplace assault in the player's own instance; Human 1365-1377, 1580 with Storage fights; Goa'uld 1240, 1241, 1244. Covers M-04, M-05, M-11, M-14, M-15, M-16. |
+| M4 Late chains (H26-H28, H37, H45-H47) | Jaffa 1351-1353 (Agnos leg stubbed as a scripted grant per D-H02); Human 1371, 1372, 1374, 1410; Goa'uld 1245-1247, 1322 including two players at different Petbe stages sharing the hub. Covers M-06, M-07, M-17, M-18, P-02. |
+| M5 Vendors and trainers (GH2 children) | Only after GH2 decides stock policy. Covers V-01. |
+
+Pause at each milestone for the user. Record skipped scenarios explicitly.
+
+## Handoff Validation Record
+
+| Check | Recorded outcome |
+|---|---|
+| Spreadsheet read | All 31 sheets exported via openpyxl (`data_only`) and read in full; 212 KB of cell text. |
+| Repository evidence | Eight parallel read-only agent passes plus coordinator reads of the three Harset Python files, the Cellblock ledger on both `main` and the integration branch, seed id ranges, `spaces.xml`, `worlds.sql`, open PRs #584-#619. Cited file:line throughout the audit. |
+| Cellblock branch, Castle ledger and PR reconciliation | `git log main..content/castle-cellblock-rebuild` (2 commits), `git diff --stat` (40 files), PR list via `gh`, the three Castle rebuild documents at `e938d7ba`, `navmesh-extractor/README.md`, issues #46, #233, #616. Documented in [Dependencies](#dependencies-on-in-flight-work). |
+| Markdown lint and links | `tools/lint-md.ps1 --no-globs` on the three new files and `docs/readme.md`: exit 1, zero issues in the three new documents, the same five pre-existing MD012 blank-line warnings in the index that the parity and Cellblock handoffs recorded. Every relative link in the three files resolves. `git diff --check` clean. Files stored CRLF to match `docs/`. |
+| Runtime, build, live DB, client UAT | Not run; documentation-only session. No commits, branches or runtime edits. |

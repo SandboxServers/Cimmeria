@@ -27,6 +27,8 @@ These are the Cellblock-branch items Castle depends on. Do not re-implement them
 
 Things the Cellblock ledger lists that Castle does **not** need: C00 (Prison Boot), C03's Stasis Sickness (PR #619 shows effect 1634 is a no-op regardless), C05/C06 cover objectives, C08b's Straegis scene, GC2.
 
+The [Harset rebuild](../harset-rebuild/README.md) (the outbound sibling: Castle ends at the Stargate to Harset) was planned the same day and shares five engine primitives with this ledger. Its [overlap table](../harset-rebuild/README.md#overlap-with-the-castle-campaign) names one owner per primitive: Castle keeps CA04 (`difficulty` param), CA10 (gate event emits), CA13 (NPC route walking) and CA14 (navmesh pipeline); Harset H03 becomes the single implementation of CA12 and CA11 (`spawn_entity`/`despawn_entity`, `set_visible`), and Harset H01 owns the generic stargate-region routing that CA09 hooks for 708's completion instead of wiring region 1002 directly. CA06's exclusion of Romney's Files 2698 is mirrored there as a disabled step 4039.
+
 ## Coordinator Launch Prompt
 
 You are the Claude Code coordinator for the Castle rebuild. Work in this repository's root checkout. Implement the approved packets in [work-packets.md](work-packets.md) through small, reviewed changes, not one monolithic zone port. Do not broaden into the Cellblock, Harset, the XP formula, the pet/companion system (#570), or a navmesh-pipeline rewrite beyond what CA14 scopes.

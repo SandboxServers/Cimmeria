@@ -1,0 +1,349 @@
+# Harset Rebuild Work Packets
+
+> Type: how-to. Audience: Claude Code coordinator and packet workers.
+> Updated: 2026-09-17. Companions: [launch prompt and decisions](README.md), [spec audit](audit.md), [testing playbook](../../../TESTING.md), [parity ledger protocol](../legacy-command-parity/work-packets.md#dispatch-rules), [Cellblock ledger](../castle-cellblock-rebuild/work-packets.md).
+
+## Dispatch Rules
+
+This ledger reuses the dispatch, ownership, worknote/handoff and acceptance rules of the [legacy command parity ledger](../legacy-command-parity/work-packets.md#dispatch-rules) verbatim. Initial state: documentation prepared against `main` at `d91c5c8c`; no implementation, build, runtime test or client UAT has run. Implementation-session authorization is required before any packet is dispatched.
+
+Status vocabulary: **Ready**, **BlockedUpstream** (needs a named branch or PR on `main`; see [README dependencies](README.md#dependencies-on-in-flight-work)), **BlockedDependency** (needs another H packet integrated), **BlockedDecision** (needs a D-H answer), **BlockedEvidence** (needs M0 pins, GH1 output or a dialog-evidence step), **BlockedDesign** (GH gate), then **Writing**, **Review**, **Integrated**, **UATPending**, **Done**. None is Done initially.
+
+Writer for every packet is `rust-gameserver-dev` as defined in `.claude/agents/`. Rust packets (H01-H06) own only Rust paths; seed packets own only seed and test paths; the two never share a file. `crates/services/src/cell/content/executor/mod.rs` is contended across three campaigns (PRs #618/#619, Cellblock C03, Castle CA02/CA12/CA13, Harset H03): a packet that adds an arm stages it in a sibling module and hands the two-line match edit to the coordinator. The [Castle overlap table](README.md#overlap-with-the-castle-campaign) names the single owner for each shared primitive; a Harset packet listed there as Castle-owned is **BlockedUpstream** on that Castle packet. `testing-validation-engineer` reviews every regression strategy; `documentation-writer` reviews the [mission-chains.md](../../content/mission-chains.md) and [zone-audit.md](../../content/zone-audit.md) updates.
+
+Packet-id convention: **H0x** engine and travel (Rust), **H1x** population and regions (seed), **H2x** Jaffa missions, **H3x** OP-CORE missions, **H4x** Goa'uld missions, **GHn** design gates, **H99** docs. Missions grouped in one packet share NPCs or an instance and are authored together; they still get one chain-replay file each.
+
+## Worker Input And Ownership
+
+Common read-only entries for every seed packet: [content-engine.md](../../content/content-engine.md#3-the-vocabulary) section 3, [content-chains.instructions.md](../../../.github/instructions/content-chains.instructions.md), [interaction-flags.md](../../content/interaction-flags.md), the three agent-memory notes named in the [README](README.md#coordinator-launch-prompt), [castle_cellblock_chains.sql](../../../db/resources/Content/Seed/castle_cellblock_chains.sql) as the pattern library (chains 1003 loot, 1016/1017 and 1060/1061 Livewire, 1032 interact-grant-destroy, 1045/1046/1065 relog restore, 1085-1087 kill counter, 1109 cross-world), and the spec's Mission_Logic rows for the packet's missions (copied into the packet's worknote, not the whole sheet).
+
+Seed files (new, all `\ir`'d from `db/database.sql` after line 341 in alphabetical order) and chain-id ranges, allocated statically to avoid seed-order sensitivity. Never reuse a 1xxx-5xxx id.
+
+| File | Range | Sub-allocation |
+|---|---|---|
+| `harset_space_chains.sql` | 6001-6099 | rings 6001-6005, Command Center doors 6006-6007, relog restore 6008-6020 |
+| `harset_goauld_chains.sql` | 6101-6300 | 742: 6101-6120; 1200: 6121-6130; 741: 6131-6150; 1243: 6151-6165; 1240: 6166-6180; 1241: 6181-6200; 1244: 6201-6215; 1245: 6216-6230; 1246: 6231-6245; 1247: 6246-6260; 1322: 6261-6275 |
+| `harset_jaffa_chains.sql` | 6301-6500 | 1324: 6301-6310; 1325: 6311-6330; 1326: 6331-6345; 1343: 6346-6365; 1347: 6366-6380; 1348: 6381-6400; 1351: 6401-6415; 1352: 6416-6440; 1353: 6441-6470 |
+| `harset_opcore_chains.sql` | 6501-6800 | 1360/567: 6501-6510; 1361: 6511-6530; 1362: 6531-6550; 1363: 6551-6570; 1365: 6571-6590; 1371: 6591-6605; 1372: 6606-6620; 1374: 6621-6645; 1375: 6646-6665; 1377: 6666-6680; 1410: 6681-6690; 1580: 6691-6710 |
+
+Other id reservations: `entity_templates` 200-299 (current max 167); `spawnlist` 300-399 (current max 237); `point_sets` 2100-2149 with `point_set_points` 2500-2799 (current max 2081); `dialog_set_maps` and `dialog_sets` 120001+ (current max 100007 / 100001, excluding the 742 row at 1000000); `respawners` 20-23 (current max 8).
+
+Canonical item ids (D-H14): Scarab 2820, Straegis Scanner 4396, Tollan Control Technology 2743, Goa'uld Symbiote 2818, Petbe's Bloody Robes 2825, Nanite Tracking Gun 4690, Jaffa Disguise 2819, Monitoring Device 2734, Scarab Map 2864, Frost's Letter 3730, Romney's Files 2698, Lethander's Head 5736, Dawson's Symbiote 2720, shards 5760/5763/5766, themes 5703/5704/5706, beacon core 5146.
+
+Authoring rules that are load-bearing here (each has bitten a prior campaign): region keys are byte-exact against `point_sets.name` and `OnRegionEnter` ignores world, so Harset door chains carry a world condition; `once` is dead, one-shot guards are `step_status`/`mission_status` conditions; `complete_objective` on the last required objective of a step completes the mission, so use `advance_step` between steps and reserve `complete_objective` for optional or tracked objectives and the terminal step; counters read the pre-increment value (`gte target-1`); every `accept_mission` chain carries `mission_status <id> eq not_active`; every chain that sets an interaction bit or binds a dialog set has a `player_loaded` restore chain gated on the active step; `cross_world_teleport` world names are byte-exact against `entities/spaces.xml`; `item_use` chains remove the item explicitly when consumption is intended; mission-scoped hostile NPCs are spawned into the player's own instance (worlds 69/70) and never into world 57 or 68. Shared-hub NPCs are never the target of `set_aggression`, `generate_threat`, `destroy_entity` or `set_visible`.
+
+Run `crates/content-engine/tests/interact_tag_linter.rs` after every seed change, including the cross-file region-key test once U4 lands. Live-DB tests use `require_db_or_skip!`, serialized.
+
+## Common Acceptance
+
+Every chain packet ships a chain-replay test (`crates/services/src/cell/content/chain_replay_tests/mission_<id>.rs`, or `harset_space.rs`) that (a) asserts the exact resolved action list for the happy path, (b) asserts the chain does **not** resolve for the adjacent wrong state (wrong archetype, wrong step, already completed, wrong world for door chains), and (c) asserts the relog-restore chain re-paints every interaction bit and dialog-set binding the packet sets. A test that passes with the new seed rows deleted is not a guard. New Rust arms need a unit test on the executor path (does the side effect reach `space_mgr`, the `CellToBaseMsg` outbox, or the ring FSM). Every coordinate seeded in this campaign is either recovered from the Python (the two Command Center doors) or pinned in M0 and recorded in `worknotes/m0-pins.md`; a packet that seeds an unpinned coordinate is sent back. Where a navmesh exists for the world, arrival and spawn coordinates additionally get an `is_point_valid` assertion against the loaded mesh. Client-visible changes are UAT gated per the README milestones.
+
+## Engine And Travel (Rust lanes, disjoint paths, run in parallel)
+
+### H01
+
+**Status:** Ready. **Scope title:** Safe gate arrival, stargate region flag, DHD interaction. **Depends:** none. **Decision:** D-H07, D-H08. **Advisor:** movement-teleport-advisor; server-authority-enforcer for the flag handler.
+**Entries:** [cell/gate_travel.rs](../../../crates/services/src/cell/gate_travel.rs) (`handle_dial_gate`, arrival at line 104 uses the gate row), [cell_methods/player/world/mod.rs](../../../crates/services/src/cell/cell_methods/player/world/mod.rs) lines 100-107 (region flag test, only bit 1 today), [space_manager/mod.rs](../../../crates/services/src/cell/space_manager/mod.rs) line 41 (`REGION_FLAG_CLIENT_HINTED`), [cell/interactions/mod.rs](../../../crates/services/src/cell/interactions/mod.rs) (no DHD handler), `cell/client_methods/player.rs` line 48 (`onDisplayDHD` 120, never emitted), [navigation/mod.rs](../../../crates/entity/src/navigation/mod.rs) lines 43, 78-82, 466-468 (extents and the identity fallback), `stargates.sql` (a column for arrival offset does not exist), `respawners.sql`.
+**Scope:** (1) arrival: add a per-gate arrival coordinate (new nullable `arrival_x/y/z/yaw` columns on `stargates`, or a yaw-relative offset applied to the gate row; pick after checking how many other gates share the prefab-origin problem) and have `handle_dial_gate` use it, falling back to the row; when the destination space has a navmesh, validate the arrival with `is_point_valid` and, on failure, use the world's respawner (Castle CA00's zero-row guard applies, U16) rather than the identity fallback, logging at warn per the negative-logging convention. Harset's arrival value itself is seeded by H10 after M0. (2) Add `REGION_FLAG_STARGATE = 2` and, in the region-trigger handler, route a flag-2 region entry to the same gate-travel path `onDialGate` uses, honoring the 2009 dispatch order (stargate flag short-circuits before the generic callback); expose the hook Castle CA09 needs to complete 708 on passage, so CA09 does not wire region 1002 by hand (U10). (3) Add the DHD interaction type that emits `onDisplayDHD` with the player's known list; the dial itself already works. **Exclude:** the 6100/6113 gate event emits and the dial timer (Castle CA10 owns them, U10), gate animations (documented NOT IMPL in gate-travel.md), `known_stargates` enforcement (H06), navmesh regeneration (GH1).
+**Acceptance:** unit test proving arrival uses the new coordinate when present and the row otherwise; a test with a synthetic mesh proving an off-mesh arrival is replaced by the respawner and never by the input; a region-entry test proving a flag-2 region triggers travel and a flag-1 region does not; a wire test that the DHD interaction emits 120 with the right list. Spec H-01, J-01, S-02.
+
+### H02
+
+**Status:** Ready. **Scope title:** Ring FSM timeouts and disconnect cleanup. **Depends:** none. **Advisor:** movement-teleport-advisor; aoi-witness-broadcast for the re-show on abort.
+**Entries:** [ring_transport/transporter/mod.rs](../../../crates/services/src/cell/ring_transport/transporter/mod.rs) lines 45-51 (delays), [ring_transport/runtime.rs](../../../crates/services/src/cell/ring_transport/runtime.rs) lines 305-321 (non-Idle destination refused), `ring_transport/dispatch.rs` lines 96-157 (comments asserting a timeout), [space_manager/entities.rs](../../../crates/services/src/cell/space_manager/entities.rs) `destroy_entity` (never touches `ring_transporters`), [ring-transport-system.md](../../gameplay/ring-transport-system.md).
+**Scope:** add a bounded timeout to `SendWait`, `RemoteLoadWait`, `RecvWait` and `RecvWarmup` that returns both ends to `Idle`, un-hides any hidden players and clears `num_remote_players`; on player disconnect or destroy, remove the player from any transporter's pending set and abort if the set empties; make the three misleading comments true. Also validate the arrival position against the destination space's navmesh when one exists (same helper as H01), since `warmup_timer_expired` copies `dst` verbatim. **Exclude:** multi-player Matinee sync (documented FIXME), cross-world rings, changing the delay constants.
+**Acceptance:** loopback tests with a fake clock: a stalled remote returns both rings to Idle after the timeout and the destination becomes selectable again; a disconnect mid-`SendWait` leaves no pending entry; a 5-ring all-to-all fixture keyed on the Harset rows proves no single stall removes a destination permanently. Spec R-01, R-02.
+
+### H03
+
+**Status:** Ready (may land before or after Cellblock C08b; see U5). **Scope title:** `spawn_entity` and `despawn_entity` content actions, despawn routing, `set_visible` fix. **Depends:** none. **Decision:** D-H03. **Advisor:** npc-ai-spawn-advisor, aoi-witness-broadcast. **Owner note:** this packet is the single implementation of Castle CA12 and CA11 as well (U11, U12); its worknote is shared with the Castle ledger and CA12/CA11 close as consumers.
+**Entries:** [actions.rs](../../../crates/content-engine/src/actions.rs) lines 63-69 (`SpawnEntity`, `DespawnEntity` enum ghosts), [loader/action.rs](../../../crates/content-engine/src/loader/action.rs) (no arm), [executor/mod.rs](../../../crates/services/src/cell/content/executor/mod.rs) (no arm; note the Cellblock branch refactors this into `execute_one_action`, rebase onto it), [executor/world/mod.rs](../../../crates/services/src/cell/content/executor/world/mod.rs) lines 204-216 (`destroy_entity` bare) and 305-326 (`set_visible` self-routed), [space_manager/spawn.rs](../../../crates/services/src/cell/space_manager/spawn.rs) line 85 (`spawn_npc_from_record_in_space`), [space_manager/entities.rs](../../../crates/services/src/cell/space_manager/entities.rs) lines 191-274 (`despawn_npc`), [base/gm_spawn.rs](../../../crates/services/src/base/gm_spawn.rs) (template query precedent), `.claude/agent-memory/npc-ai-spawn-advisor/spawn-timing-instanced-spaces.md`.
+**Scope:** (1) `spawn_entity { template_id, position, heading, tag, respawn_secs?, is_stationary?, aggression? }` loader arm and executor arm that spawns into the **acting player's current space** via the existing record path, with the tag set so `entity_dead_tag`/`interact_tag` chains can find it; refuse (warn) when the acting player's space is a non-instanced world unless an explicit `allow_shared: true` param is present, so mission content cannot accidentally populate the hub. (2) `despawn_entity { entity_tag }` and the existing `destroy_entity` both route through `despawn_npc` (immediate `LeftAoI`, witness scrub), closing U5. (3) `set_visible` fans out via the witness list like GM `.visible`, or is removed from the authorable set with a linter rule; pick the former. (4) Idempotence: a second `spawn_entity` with the same tag in the same space is a no-op with a warn (relog restore chains will re-fire it). **Exclude:** per-witness visibility or hostility overlays (rejected by D-H03), party-aware instance join, a spawn-region/spawn-set model.
+**Acceptance:** executor unit tests: spawn reaches `space_mgr` with the tag and the player's space id; the shared-world refusal; the same-tag idempotence; despawn produces exactly one `LeftAoI` per current witness and scrubs witness sets (the #582 shape, per TESTING.md fan-out byte tests); `set_visible` on an NPC reaches every witness. Chain-replay fixture proving a `mission_accepted` chain can spawn a tagged NPC that an `entity_dead_tag` chain then completes an objective on.
+
+### H04
+
+**Status:** Ready. **Scope title:** `entity_health_below` trigger. **Depends:** none. **Decision:** D-H11. **Advisor:** combat-systems-advisor; mission-systems-advisor for the trigger shape.
+**Entries:** [loader/trigger.rs](../../../crates/content-engine/src/loader/trigger.rs) (22 arms, none health-based), [triggers/mod.rs](../../../crates/content-engine/src/triggers/mod.rs), [triggers/matching.rs](../../../crates/content-engine/src/triggers/matching.rs), the damage-apply path in `crates/services/src/cell/combat/` (where `mark_npc_dead` is reached from), [npc_ai/lifecycle.rs](../../../crates/services/src/cell/service/npc_ai/lifecycle.rs) lines 36-57 (`AiState::Submit`), `set_npc_ai_state` executor arm.
+**Scope:** new trigger `entity_health_below` with `event_key = "<tag>:<pct>"`, fired once per crossing from the damage path with the attacker as the acting player; document in content-engine.md section 3. No new action: the ritual end is `set_npc_ai_state submit` plus `advance_step`. **Exclude:** a non-lethal damage cap (`qr_combat_damage` stays unarmed), a generic stat-threshold condition.
+**Acceptance:** unit test that damage from 60% to 40% with a 50% key fires exactly once and a second hit below does not; a hit that kills fires `entity_dead_tag` and not this trigger; replay fixture for Rin'la (H21) consumes it.
+
+### H05
+
+**Status:** BlockedUpstream (Castle CA04, U13). **Scope title:** Minigame tech competency and abilities mask at session mint. **Depends:** Castle CA04 (which owns the optional `difficulty` param on `start_minigame` and session expiry). **Decision:** D-H13. **Advisor:** minigame-systems-advisor.
+**Entries:** [base/world_entry/cell_dispatch/minigame.rs](../../../crates/services/src/base/world_entry/cell_dispatch/minigame.rs) lines 43-47 (`tech_competency: 1`, `abilities_mask: 0`, `intelligence: 0`), [minigame/session.rs](../../../crates/services/src/minigame/session.rs) line 22, [minigame/games/livewire/setup.rs](../../../crates/services/src/minigame/games/livewire/setup.rs) lines 138-166 and 387 (`abilityBitfield`).
+**Scope:** read `tech_competency` from the player entity at session mint and populate `abilities_mask` from the player's known passives (the Converse "Trump" line 778/779/792/793 and any Livewire-relevant passives). **Exclude:** the `difficulty` param (CA04), new games, the placeholder SWF question, Converse rules.
+**Acceptance:** a session-mint test that a player with tech competency N produces a board scaled by N and that the ability bitfield reaches the `fullgamestate`; the existing Cellblock Livewire chains resolve unchanged.
+
+### H06
+
+**Status:** Ready (P1, may trail the M2 packets). **Scope title:** `known_stargates` enforcement on dial. **Depends:** H01. **Advisor:** server-authority-enforcer, network-security-auth.
+**Entries:** [cell/gate_travel.rs](../../../crates/services/src/cell/gate_travel.rs) line 49, `db/sgw/Players/Tables/sgw_player.sql` line 26 (`known_stargates integer[]`), `deprecated/python/cell/SGWPlayer.py` lines 2060-2064 (the 2009 check), security finding CAT-O-01.
+**Scope:** refuse a dial to a gate not in the player's known list with a client-visible failure; write the destination into `known_stargates` on successful arrival (the 2009 unlock-on-visit rule). **Exclude:** address-learning content, per-mission unlocks.
+**Acceptance:** live-DB test: dial to an unknown gate leaves position and DB unchanged; arrival appends exactly once.
+
+## Population And Regions (seed lanes)
+
+### H10
+
+**Status:** Ready to write; UATPending on M0 pins; BlockedUpstream U3 for clean `player_loaded` tests. **Scope title:** Harset space chains: rings, Command Center doors, respawner, linter adoption. **Depends:** M0 (arrival pins), U3, U4. **Decision:** D-H04, D-H07. **Advisor:** movement-teleport-advisor, mission-systems-advisor.
+**Entries:** `deprecated/python/cell/spaces/Harset.py` lines 23-60, `Harset_CmdCenter.py` lines 17-25, `ring_transport_regions.sql` lines 29-53, `point_sets.sql` rows 2052-2056, 2078, 2079, `spawnlist.sql` spawns 4/127/128/129/130, Cellblock chains 1043 (`trigger_transporter`) and 1109 (`cross_world_teleport`), `crates/content-engine/tests/interact_tag_linter.rs` (branch version, line 307).
+**Scope:** new `harset_space_chains.sql`: five `interact_tag` chains (`HarsetRingLeftBottom` -> `trigger_transporter {"regionId":4}`, RightBottom 5, Left 6, LeftTop 7, Right 8); chain 6006 `enter_region Harset.CommandCenterTransition` gated on world Harset -> `cross_world_teleport Harset_CmdCenter (0, 0.355, -20)` unless M0 re-pins it; chain 6007 `enter_region Harset_CmdCenter.HarsetTransition` gated on world Harset_CmdCenter -> `cross_world_teleport Harset (0, -67.600, -231)` unless re-pinned (the audit measured this return point 27 units off the mesh by vertex proximity, so a pin is mandatory); `respawners.sql` row 20 for world 57 at the pinned plaza point and rows 21-23 for 68/69/70; the H01 arrival coordinate for gate 3. Adopt the cross-file region-key linter and confirm it covers the dotless ring point-set names. **Exclude:** Market and Storage doors (no evidence of where they were; they are GH-free new authoring inside H14 once M0 finds the props), ring Matinee sync.
+**Acceptance:** `harset_space.rs` replay: each ring tag resolves exactly one `trigger_transporter` with its region id and nothing on any other tag; each door resolves exactly one teleport for its own world and zero for the other world (the T3 trap); `is_point_valid` passes for every seeded coordinate against `harset.nav`; linter clean. Spec W-01, W-02, R-01.
+
+### H11
+
+**Status:** Ready (no coordinates needed). **Scope title:** Entity templates for the missing Harset NPCs and props. **Depends:** none. **Decision:** D-H16, D-H17. **Advisor:** npc-ai-spawn-advisor; combat-systems-advisor for ability sets.
+**Entries:** [entity_templates.sql](../../../db/resources/Entities/Seed/entity_templates.sql) rows 42, 43, 46, 48, 53, 54, 159, 160, 163, 164 as models; `texts.sql` monikers (`DN_npc_Harset_Banker` "Storage Lotaur" at 41876, vendor and trainer monikers at 39068-55124); `speakers.sql` (Copplemann 968, Lethander 978, Mal'ac 957); the spec's NPCs_Actors sheet; `abilities.sql` staff abilities (594 Strike, 1482 Ground Blast, 1768 Double Blast) for a Jaffa guard ability set.
+**Scope:** templates 200-299: Hansen, Jacobs, Lo'rak, Mala'c (stationary-capable, staff set), Opheltes, Blackstock, Grogan, Dawson, Bra'hin, Anat's Royal Guard, NID Operative, Free Jaffa attacker, Ra's Jaffa infiltrator, Ashrak assassin, Former-Ra Jaffa, Suspicious Jaffa, Haughty Goa'uld, Angry Jaffa, Jaffa Volunteer, Storage Lo'taur (prop-like, no vendor list yet), Lethander's Contact, and prop templates (surveillance anchor, Replitech crate, storage container, shield tower, Petbe's quarters search object, Anat's symbiote tank, Ra beacon, Devlin's device, monitoring-device anchor) using `WorldObject_Small`/`WallTerminal` body sets like templates 1 and 3. Every mob template sets `respawn_secs`, faction, level, alignment and an `ability_set_id`; `loot_table_id` stays NULL. Also fix template 163 Petbe's NULL faction/level/alignment and give 159/160 a staff ability set (H-B8). **Exclude:** vendor/trainer list columns (GH2), body-set art fixes beyond H-B14 being recorded.
+**Acceptance:** live-DB loader test that every new template loads with a non-default ability set and respawn; `loot_table_id` NULL assertion across all Harset templates (spec L-01); no template name collides with an existing row.
+
+### H12
+
+**Status:** BlockedEvidence (M0 coordinates). **Scope title:** Command Center population. **Depends:** H11, M0. **Decision:** D-H04, D-H16. **Advisor:** npc-ai-spawn-advisor.
+**Entries:** `spawnlist.sql` (spawn 222 Anat as the model), M0 pins, the spec's Command_Center sheet.
+**Scope:** spawn rows 300-320 in world 68: Ba'al 42, Moh'katan 54, Marsh 10, Coppleman 48, Nerus 53 (lab), Opheltes, Royal Guard (near Anat), Blackstock (office), the symbiote tank, lab consoles, sarcophagus (prop, inert). All `respawn_secs` set. No navmesh exists for 68, so every NPC here is stationary or talk-only (`is_stationary = true`), which is correct for a council room. **Exclude:** any hostile NPC in 68 (D-H03), vendors.
+**Acceptance:** live-DB test that exactly these rows plus Anat spawn for world 68 and nothing hostile does; relog shows all of them (spec N-01).
+
+### H13
+
+**Status:** Ready. **Scope title:** Respawn and combat data on the existing 23 Harset rows. **Depends:** H11 (ability set ids). **Decision:** D-H17. **Advisor:** npc-ai-spawn-advisor.
+**Entries:** `spawnlist.sql` Harset rows (lines 55-337 as listed in the audit), `db/resources/Worlds/Tables/spawnlist.sql` (columns `is_stationary`, `respawn_secs`, `patrol_path_id`), `crates/services/src/cell/combat/state.rs` lines 110-112, `ticks/npc_respawn/mod.rs` lines 101-109.
+**Scope:** extend the Harset spawn INSERTs to set `respawn_secs` on every mob row and `is_stationary` on the eight plaza guards and four lieutenants (they are gate and door sentries; stationary avoids the fragmented-mesh chase freeze until GH1 resolves); remove debug spawns 1 and 42 from production or gate them behind a dev flag per the spec's DEV/TEST rows. **Exclude:** patrol paths (GH1 first), touching non-Harset rows.
+**Acceptance:** live-DB test that a killed guard gets `respawn_at` and the respawn tick revives it; debug templates absent from world 57.
+
+### H14
+
+**Status:** BlockedEvidence (M0). **Scope title:** Exterior, Market and Storage population and props. **Depends:** H11, M0. **Advisor:** npc-ai-spawn-advisor; items-systems-advisor for the bug baskets.
+**Entries:** M0 pins, spawn 224 (`FirstBug`), template 164, the spec's NPCs_Actors and Props_Interactables sheets, the Mob Stats observations (Hansen and Jacobs left of the gate walking outward, Tau'ri vendors on the OP-CORE side lower level).
+**Scope:** world 57: Hansen, Jacobs, Lo'rak (bazaar), Blackstock if not in 68, Former-Ra Jaffa and Suspicious Jaffa in the Jaffa Zone, `SecondBug` and `ThirdBug` baskets (template 164), shield towers x3, Shield Controls, Bank and Bar anchors, Petbe's quarters exterior anchor, holding pens, vendor and trainer NPCs as inert props (GH2 wires them). Worlds 69 and 70: static props only (crates, containers, Lethander's stall, Devlin's device); every hostile in 69/70 is a mission-scoped `spawn_entity` (H03), never a spawnlist row. Also the Harset <-> Market and Harset <-> Storage doors as `enter_region` + `cross_world_teleport` chains once M0 finds the door volumes (new point sets in H15). **Exclude:** vendor lists, loot.
+**Acceptance:** live-DB population test per world; `is_point_valid` on every world-57 spawn; bug baskets carry `INT_MissionWorldObject` only when H41's chain sets it (bit is off at spawn).
+
+### H15
+
+**Status:** BlockedEvidence (M0 pins). **Scope title:** Named regions. **Depends:** M0. **Advisor:** movement-teleport-advisor, mission-systems-advisor.
+**Entries:** `point_sets.sql` and `point_set_points.sql` (rows 2078/2079 as the BoundingBox model, 1001 as the Cylinder model), `spawner/regions.rs` lines 36-42 (loads `type = 'AreaSet'`), `event_dispatch` `fire_enter_region`.
+**Scope:** point sets 2100-2149: `Harset.JaffaZone`, `Harset.OpCoreZone`, `Harset.Bar`, `Harset.Bank`, `Harset.ShieldControls`, `Harset.ShieldTower1/2/3`, `Harset.PetbeQuarters`, `Harset.HoldingPens`, `Harset.MarketDoor`, `Harset.StorageDoor`, `Harset_Market.HarsetDoor`, `Harset_StorageRm.HarsetDoor`, `Harset_Market.Marketplace`, `Harset_StorageRm.Storage`, `Harset_CmdCenter.Lab`, plus the six 1243 and four 1362 anchor volumes if they are regions rather than props. Names carry the world prefix and a dot so the linters see them. **Exclude:** regions for offworld missions.
+**Acceptance:** loader test that every new set loads as `AreaSet` with the right world; a replay fixture that `enter_region` on each key resolves a probe chain and a differently-cased key does not; cross-file linter clean.
+
+## Loyalist Jaffa Missions
+
+### H20
+
+**Status:** BlockedDependency (H12). **Scope title:** 1324 Present Yourself. **Depends:** H12, U3. **Advisor:** mission-systems-advisor.
+**Entries:** steps 3953 (talk Ba'al, objective 4543), 3954 (return Moh'katan, 4544); dialogs 4357 (objective), 4358 (Castle return), 4363 (council, 17 screens at `dialog_screens.sql:10191-10224`); `dialog_set_maps.sql` (find or author the dsm rows for these dialogs; the spec's ids are `dialogs`, not maps); Cellblock chains 1011-1015 (archetype-gated bind and accept) as the pattern.
+**Scope:** on `player_loaded Harset` with `archetype eq 8` and `mission_status 1324 not_active`: bind Moh'katan's set and set his `!` bit; `dialog_choice` accept; on Ba'al interact while 3953 active: display 4363 then `advance_step`; on Moh'katan interact while 3954 active: `complete_mission`, clear bits; restore chains. Arrival dialog 6169 (speaker 3219, "former Ra dig, go to the Command Center") plays for every faction on first `player_loaded Harset`, gated on 1324/1361/1200 all `not_active`. **Exclude:** rewards (GH3).
+**Acceptance:** `mission_1324.rs` with the three-state assertions and a Human negative; relog restore. Spec M-01, J-01.
+
+### H21
+
+**Status:** BlockedUpstream (U1 for `apply_effect`), BlockedDependency (H03, H04, H14). **Scope title:** 1325 Rin'la. **Depends:** U1, H03, H04, H11 (Mala'c template), M0. **Decision:** D-H11. **Advisor:** social-systems-engineer, combat-systems-advisor, npc-ai-spawn-advisor.
+**Entries:** steps 3957 (challenge, 4547), 3958 (position, 4548), 3959 (commence, 4549), 4036 (return, 4649); dialogs 4368, 4369, 4370 (Mala'c speaker 957, rules), 4372; `effects/scripts.rs` lines 427-465 (`Stun` script sets `BSF_MOVEMENT_LOCK`), `effects/registry.rs` line 26; `AiState::Submit`; new `effects.sql` row with `script_name = 'Stun'`.
+**Scope:** accept from Moh'katan; on entering the player's Market instance with 3957 active, `spawn_entity` Mala'c (tag `Rinla_Malac`, `is_stationary`, staff set) at the pinned duel spot; interact -> 4370 -> `advance_step` 3958; on `enter_region Harset_Market.RinlaCircle` (H15) -> `apply_effect` lock on both, `set_active_slot` staff, `set_aggression 1` on the **instance** Mala'c, `advance_step` 3959; `entity_health_below Rinla_Malac:30` -> `set_npc_ai_state submit`, `remove_effect` both, `advance_step` 4036, `despawn_entity` after a `delay_ms`; Moh'katan turn-in 4372 -> complete. Relog mid-duel despawns and resets to 3958. **Exclude:** real weapon-class enforcement, PvP duel wire.
+**Acceptance:** `mission_1325.rs` positive path, a kill-instead-of-submit negative (death completes nothing and the step resets), relog reset; executor test that the spawn lands in an instanced space and refuses world 57. Spec M-02.
+
+### H22
+
+**Status:** BlockedDependency (H14). **Scope title:** 1326 Lan'toc. **Depends:** H14, H20 pattern. **Advisor:** social-systems-engineer, mission-systems-advisor.
+**Entries:** steps 3960 (present, 4551), 4603 (return, 4620); dialogs 4373, 4374, 4375 (accept), 4376 (reject); Cellblock chains 1014/1015 (dialog-choice branches).
+**Scope:** bind the Lan'toc set to the Former-Ra Jaffa template for this player while 3960 is active; two `dialog_choice` chains (4375 accept, 4376 reject) each `complete_objective 4551` and display the outcome; `advance_step` once; the shared NPC is untouched ("ordered to leave" is dialog text only, recorded as a fidelity note); turn-in. **Exclude:** removing or hiding the NPC.
+**Acceptance:** `mission_1326.rs`: both branches resolve exactly one objective completion; a second interact after completion resolves nothing; two-player isolation via the per-player binding test pattern. Spec M-03.
+
+### H23
+
+**Status:** BlockedDesign (GH1 for chase), BlockedDependency (H03, H15). **Scope title:** 1343 Enemies Within. **Depends:** GH1, H03, H14, H15, U2.
+**Entries:** steps 3974 (patrol Jaffa Zone), 3975 (Storage), 3976 (Market), 5342 (kill Ra's Jaffa, 6362), 3977 (report); dialog 4445 area; Cellblock 1085-1087 kill counter.
+**Scope:** three `enter_region` steps in order; on the Storage and Market legs `spawn_entity` two Ra's Jaffa infiltrators into the player's instance, `entity_dead_tag` counter to 2 completes 5342; report. Wave count is a design value; record it. **Exclude:** ambient hostility in the hub.
+**Acceptance:** `mission_1343.rs` including counter pre-increment semantics; despawn on relog. Spec M-04.
+
+### H24
+
+**Status:** BlockedDependency (H12, H14). **Scope title:** 1347 Divided Loyalties. **Depends:** H12, H14.
+**Entries:** steps 3990 (question Lo'rak or Hansen; 5971 required, 5970 optional), 3991 (Lethander), 3992 (report); dialogs 4424, 4426.
+**Scope:** talk chain; the optional branch uses `complete_objective` on whichever of 5970/5971 fires and `advance_step` on the required one; Lethander at his hub stall (shared, talk-only). **Exclude:** none.
+**Acceptance:** `mission_1347.rs`: either-order completion; optional objective never blocks.
+
+### H25
+
+**Status:** BlockedDesign (GH1), BlockedUpstream (U2), BlockedDependency (H03, H14). **Scope title:** 1348 Shut Down Lethander. **Advisor:** npc-ai-spawn-advisor, aoi-witness-broadcast.
+**Entries:** steps 3993 (find), 3994 (hold off the Marketplace assault), 3995 (talk), 3996 (report); dialogs 4430, 4432; Cellblock C08a deferred queue.
+**Scope:** in the player's Market instance, spawn an instance Lethander and N Free Jaffa attackers in two waves spaced by `delay_ms`; `entity_dead_tag` counter completes 3994; Lethander must survive (his instance clone is `is_stationary`, high level, faction 1 so attackers aggro the player); talk; report. **Exclude:** hub Lethander state changes.
+**Acceptance:** `mission_1348.rs` with wave ordering and the counter; relog mid-assault despawns and resets to 3993. Spec M-05.
+
+### H26
+
+**Status:** BlockedDependency (H12). **Scope title:** 1351 Counter Intelligence. **Decision:** D-H12.
+**Entries:** steps 4005 (approach Opheltes), 4006 (convince, dialog choice), 4715 (report); dialog 4442.
+**Scope:** talk chain with a two-button convince dialog; failure button re-offers. **Acceptance:** `mission_1351.rs`. Spec M-06.
+
+### H27
+
+**Status:** BlockedDependency (H03, H14, H15). **Scope title:** 1352 Murder Spree. **Advisor:** items-systems-advisor (Monitoring Device), aoi-witness-broadcast (body despawn).
+**Entries:** steps 4007-4009 (plant at Market, Bar, Storage anchors), 5174 (Crogan: 5998 hide body optional, 5999, 5995, 5993), 4034 (report); item 2734 x3 granted on accept; anchors from H14/H15.
+**Scope:** three `interact_tag` anchors gated on the active step each `remove_item 2734` and `advance_step`; Crogan is a mission-scoped spawn in the Storage instance, `entity_dead_tag` completes 5995; "hide the body" is `interact_tag` on the corpse -> `despawn_entity` -> `complete_objective 5998` (fidelity note: no drag animation); report. **Acceptance:** `mission_1352.rs`; the optional objective's absence does not block completion.
+
+### H28
+
+**Status:** BlockedUpstream (U1), BlockedDesign (GH2 for the confection purchase), BlockedDependency (H12, H14). **Scope title:** 1353 Transplant. **Decision:** D-H02 (Agnos leg stubbed).
+**Entries:** steps 4010 (shards on Agnos), 4011 (symbiote from Anat's tank), 4012 (to Nerus), 4013 (buy confection), 4712 (deliver), 4713 (volunteer implant), 4714 (report); items 5760/5763/5766, 2818, 4512, `abilities.sql` implant candidates; dialog 4449.
+**Scope:** step 4010 is satisfied by a scripted grant of the three shards from Moh'katan's accept dialog until an Agnos campaign exists (deviation recorded in the seed header); tank `interact_tag` grants 2818 and advances; Nerus; confection via GH2 vendor or, until then, a Nerus-lab grant; volunteer `interact_tag` in Storage -> `launch_ability` implant effect (U1) -> advance; report. **Acceptance:** `mission_1353.rs` including the items-consumed-once rule. Spec M-07.
+
+## OP-CORE Human Missions
+
+### H30
+
+**Status:** BlockedUpstream (U7 for 1360), BlockedDependency (H12). **Scope title:** Castle carry-in deliveries: 1360 step 4038, 567 step 4039. **Decision:** D-H02.
+**Entries:** steps 4038 (letter to Marsh, 4651), 4039 (files to Copplemann, 4652); items 3730 (granted by Cellblock chain 1003), 2698 (granted nowhere); Cellblock C04.
+**Scope:** on Marsh interact with 1360 active and 4038 the current step: `remove_item 3730`, `complete_mission 1360`, display the `DUIST` blurb if one exists; 567's 4039 is authored identically but stays disabled (`enabled = false` on the chain row) until the Castle side grants 2698, with the handoff note in the seed. **Acceptance:** `mission_1360.rs` proves the letter survives the hop (live-DB, the C04 fixture) and is removed exactly once. Spec H-01.
+
+### H31
+
+**Status:** BlockedDependency (H12, H14). **Scope title:** 1361 Meet The Praxis. **Decision:** D-H12.
+**Entries:** steps 4040 (Moh'katan), 4041 (convince Hansen, dialog choice), 4042 (deliver samples to Moh'katan), 4043 (Ba'al), 4693 (Anat), 4694 (Marsh); council dialog 4363.
+**Scope:** six talk steps; the Hansen choice grants a "weapon samples" mission item (no id recovered; author against an existing unused mission item or record the absence and skip the grant, decision in the worknote) which 4042 removes. **Acceptance:** `mission_1361.rs`, strictly ordered steps. Spec M-08.
+
+### H32
+
+**Status:** BlockedDependency (H12, H14, H15). **Scope title:** 1362 Security and 1363 Prudence. **Advisor:** items-systems-advisor.
+**Entries:** 1362 steps 4044 (objectives 4658-4661 at Operations Center, Research Facility, Guardhouse, Science tent), 4045; item 2734 x4; dialog 4468. 1363 steps 4047 (tag Nerus 4664, Petbe 4665, Lo'rak 4666, Athena 4667, Lethander 5817), 4048 (Blackstock); item 4690.
+**Scope:** 1362: four `interact_tag` anchors each `remove_item` + `complete_objective`, `advance_step` when all four (an `objective_status` x4 gate); 1363: `interact_tag` on each of the five NPCs gated on the objective being active and 4047 current, `complete_objective`, no aggro (targets are shared hub NPCs; the chain touches only the player's objective); Athena 44 needs a spawn (H12). **Acceptance:** `mission_1362.rs`, `mission_1363.rs`; relog re-paints the anchor bits. Spec M-09, M-10.
+
+### H33
+
+**Status:** BlockedUpstream (U1), BlockedDependency (H03, H14). **Scope title:** 1365 Tollan Tech.
+**Entries:** steps 4050, 4051 (test troopers in Storage: 4673, 4672 optional; 4674), 4052 (kill Dawson, extract symbiote), 4053; items 2743, 2720; legacy effect 3472 "Use on Dawson".
+**Scope:** Storage instance spawns three troopers and Dawson; `interact_tag` with 2743 held (gate on step) `launch_ability` the detect effect on each, Dawson's flips his instance clone hostile (`set_aggression 1` on the instance entity only); kill grants 2720; report. **Acceptance:** `mission_1365.rs`; optional troopers do not block.
+
+### H34
+
+**Status:** BlockedDesign (GH1), BlockedDependency (H03, H14). **Scope title:** 1375 Moles and 1580 Moles, Part 2. **Decision:** D-H03, D-H13.
+**Entries:** 1375 steps 4093, 4094 (Lethander in Storage), 4095, 4096 (NID in Market), 4092; 1580 steps 4700 (Grogan), 4701 (containers), 4702 (5726 search Grogan, 5723), 4703; Cellblock 1032 for containers.
+**Scope:** Lethander's Storage appearance is an instance spawn for this mission; NID operatives are Market-instance spawns with a kill counter; 1580's containers are three 1032-pattern searches; Grogan and his operative are Storage-instance spawns; "search Grogan for evidence" is a corpse `interact_tag` granting the evidence item (id unrecovered; record). **Acceptance:** `mission_1375.rs`, `mission_1580.rs`. Spec M-11.
+
+### H35
+
+**Status:** BlockedUpstream (Castle CA04 for the `difficulty` param, U13), BlockedDependency (H14). **Scope title:** 1377 Replitech. **Decision:** D-H13.
+**Entries:** steps 4099 (hack Devlin's device), 4100 (three crates, tasks 7059-7061), 4101; Cellblock 1060/1061.
+**Scope:** Livewire pair with `difficulty` 3 on Devlin's device (bit 256 set and cleared, restore chain); three crate `interact_tag`s with a counter; report. **Acceptance:** `mission_1377.rs`; the victory chain fires only on result code 1.
+
+### H36
+
+**Status:** BlockedDependency (H14, H15). **Scope title:** 1374 Security Holes. **Decision:** D-H12.
+**Entries:** steps 4087 (Shield Controls), 4088 (Bank), 4089 (Market + talk Haughty Goa'uld 4719), 4090 (Storage + soothe Angry Jaffa 4721), 4091; item 4396 (ability 2092).
+**Scope:** four `interact_tag` scan anchors gated on step; the two social objectives are dialog choices on new NPCs; report to Blackstock. **Acceptance:** `mission_1374.rs`.
+
+### H37
+
+**Status:** BlockedDesign (GH5 for 1372), BlockedDependency (H14, H15). **Scope title:** 1371 Profiling, 1372 Tail, 1410 Trust.
+**Entries:** 1371 steps 4073 (arrest, objective 4698 has no tasks: defect H-D1), 4074 (Bra'hin), 4075; 1372 steps 4077 (follow Lethander), 4078, 4699; 1410 steps 4220, 4221 (one objective 4875).
+**Scope:** 1371 arrest is a dialog choice on Suspicious Jaffa, Bra'hin an instance spawn kill; 1372 waits on GH5 (NPC walks a route) and is authored last; 1410 reuses one 1362 anchor. **Acceptance:** one replay file each.
+
+## Goa'uld Missions
+
+### H40
+
+**Status:** BlockedDependency (H12). **Scope title:** 1200 Meet Your Queen. **Decision:** D-H12.
+**Entries:** steps 3584 (convince Royal Guard), 3585 (Anat; optional hidden 5399 ask Ba'al); Anat's existing `entity_interactions` row 35 (template 43, dsm 3127, gated `missions_not_accepted {742}`) must keep working alongside.
+**Scope:** Goa'uld arrival accept on `player_loaded Harset` `archetype eq 6`; Royal Guard dialog choice; Anat; the hidden optional completes silently if Ba'al is talked to first. **Acceptance:** `mission_1200.rs`. Spec G-01.
+
+### H41
+
+**Status:** Ready to write once H14 seeds SecondBug/ThirdBug and H12 seeds Nerus; BlockedDecision (D-H05). **Scope title:** 742 Giving the Walls Ears (the RESTORE). **Depends:** H12, H14, U3. **Advisor:** mission-systems-advisor, items-systems-advisor.
+**Entries:** `GivingTheWallsEars.py` (261 lines) and `.script`; dsm 3127 (Anat offer, dialog 2636 `accepts_mission_id 742`), 3129 (Petbe 2638), 3130 (Anat 2639), 3131 (Nerus 2640), 1000000 (NULL dialog, dropped at load); spawns 223 Petbe, 224 FirstBug; items 2819, 2820 x3, 2864; dialog 2637 on disguise use.
+**Scope:** port line for line except the bug-planting step: `mission_accepted 742` -> `add_dialog_set 3129` on Petbe, `add_item 2820 x3`; `dialog_choice 2638` -> `add_item 2819`, `remove_dialog_set`, `advance_step 2503`; `item_use 2819` -> `advance_step 2504`, `display_dialog 2637`, set `INT_MissionWorldObject` on the three baskets; three `interact_tag` chains (`FirstBug`, `SecondBug`, `ThirdBug`) gated on their objective active -> `complete_objective 2913/2914/2915`, optionally `remove_item 2820` (the Python's removal node is orphaned; decide and record), clear that basket's bit; when all three: `advance_step 2505`, bind 3130 on Anat; `dialog_choice 2639` -> `add_item 2864`, `advance_step 2506`, bind 3131 on Nerus; `dialog_choice 2640` -> `remove_item 2864`, `complete_mission 742`. Restore chains per step. Fix the two wrong lines in `mission-chains.md` (H99). **Exclude:** implementing `dialog_set_open`.
+**Acceptance:** `mission_742.rs`: every step positive and adjacent-negative; three baskets in any order; disguise use fires once; relog at each step re-paints exactly the bits for that step. Spec M-12.
+
+### H42
+
+**Status:** BlockedUpstream (U1 for the infect effect), BlockedDependency (H03, H14, H15). **Scope title:** 741 Plant Spy and 1243 Surveillance.
+**Entries:** 741 steps 2491 (tank), 2492 (Ba'al), 2493 (Dawson at ease; use symbiote 2902), 2494 (witnesses 4136, 2903), 2495, 2496 (footage), 3583; items 2818 (effect 2745 "Infect Dawson"), footage item unrecovered. 1243 steps 3610 (OpCORE anchors 4182-4184), 3611 (Jaffa anchors 4185-4187), 3612; item 2820 x6; dialog 4080.
+**Scope:** 741: tank grant, Dawson as a Storage-instance spawn with `launch_ability` infect on `interact_tag`, two witness dialogs, footage as a 1032 search; 1243: six anchors in two steps of three with `objective_status` gates. **Acceptance:** `mission_741.rs`, `mission_1243.rs`. Spec M-13.
+
+### H43
+
+**Status:** BlockedDesign (GH1), BlockedUpstream (U2), BlockedDependency (H03, H14, H15). **Scope title:** 1240 Infiltrators and 1241 Invasion Plans.
+**Entries:** 1240 steps 3606 (three towers 4175-4177), 3607, 3608 (Ba'al's tracker), 4688 (signal source), 4689; dialog 4294; Ashrak template. 1241 steps 3609 (Lab), 3613 (Market), 3614 (Jaffa Zone), 3615 (Storage), 3616 (kill infiltrators 4199, dismantle beacon 5538), 4833; item 5146; dialog 2487.
+**Scope:** towers are three `interact_tag`s; the signal source is a Market-instance Ashrak spawn; 1241's four scans are `enter_region` or `interact_tag` per region; the fight is an instance wave with the beacon prop `interact_tag` after the counter. **Acceptance:** one replay file each. Spec M-14, M-15.
+
+### H44
+
+**Status:** BlockedDependency (H14). **Scope title:** 1244 Find the Mole. **Decision:** D-H13.
+**Entries:** steps 3617 (Hansen), 3618 (Lo'rak), 3619 (search quarters: objective 4203 "Placeholder minigame."), 3620 (paperwork to Ba'al); dialogs 4299, 4300, 4303.
+**Scope:** talk, talk, 1032-pattern search of the quarters prop granting a paperwork item (id unrecovered; record), turn-in. **Acceptance:** `mission_1244.rs`. Spec M-16.
+
+### H45
+
+**Status:** BlockedDependency (H03, H14). **Scope title:** 1245 Extreme Prejudice. **Decision:** D-H03. **Advisor:** aoi-witness-broadcast, server-authority-enforcer.
+**Entries:** steps 3622 (coerce Lo'rak, dialog choice), 3623 (kill Petbe in Storage, 4210), 3624; dialog 4305; items 2823/2825.
+**Scope:** on entering the Storage instance with 3623 active, `spawn_entity` a Petbe clone (template 163, tag `Storage_Petbe`, `aggression 1`); `entity_dead_tag` grants the bloody robes and advances; the corpse stays for the instance's life (no despawn) so the "body is discovered" beat reads; hub spawn 223 is never referenced. **Acceptance:** `mission_1245.rs`; executor test that the spawn is in an instanced space and spawn 223's state is byte-identical before and after (spec M-17, P-02).
+
+### H46
+
+**Status:** BlockedDependency (H12, H14). **Scope title:** 1246 Petbe's Murderer.
+**Entries:** steps 3625, 3626 (Lethander), 3627 (three themes, tasks 6757-6759), 3706, 3869; items 5703/5704/5706; dialog 4309.
+**Scope:** talk chain; the themes are granted by a scripted source (Lethander's contact in the Market, recorded as design) since no Straegis encounter exists in-zone; works regardless of another player's Petbe state because nothing touches the shared entity. **Acceptance:** `mission_1246.rs`. Spec M-18.
+
+### H47
+
+**Status:** BlockedDesign (GH1, GH2), BlockedDependency (H03, H14, H15). **Scope title:** 1247 Patsy and 1322 Vendetta.
+**Entries:** 1247 steps 3628 (Nerus), 3629 (purchase treat), 3630, 3707 (Marketplace, tasks 5135/5136), 3934 (head to Anat); items 4512, 5736. 1322 steps 3939 (arrest Suspicious Jaffa), 3940 (Bra'hin), 3944; shares Bra'hin with 1371.
+**Scope:** 1247's Marketplace beat spawns an instance Lethander whose death grants 5736; the treat is a GH2 purchase or a lab grant until then; 1322 mirrors H37's arrest and kill for archetype 6. **Acceptance:** one replay file each.
+
+## Design Gates
+
+### GH1
+
+**Status:** BlockedUpstream (Castle CA14, U15) and BlockedDesign. **Scope title:** Harset navmesh rebuild (issue #46 phase 4 rollout). **Advisors:** npc-ai-spawn-advisor, movement-teleport-advisor, game-archaeology-specialist. **Decision:** D-H06.
+**Entries:** [navmesh-extractor/README.md](../../../crates/navmesh-extractor/README.md) (pipeline: `.umap` to `.obj` via `cimmeria-upk-objects`, `deprecated/cpp/src/nav_builder` Recast to XRC `.nav`; phases 1.3 terrain, 1.4 BSP and 2 NavBuilder rebuild are follow-ups), `data/spaces/harset.nav` and `harset_storagerm.nav` (the audit's flood-fill numbers), `crates/entity/src/navigation/mod.rs` (loader; the audit corrected the poly-neighbour encoding to direct index), the local map tree `..\SGW\...\CookedPC\Maps\Harset*` (114 files per the spec's Level_Files sheet, presence to be confirmed like Castle's), `docs/engine/space-management.md` navmesh table.
+**Approve:** after CA14 lands phases 1.3, 1.4 and 2 and shows a before-and-after component count on Castle_CellBlock and Castle: regenerate `harset.nav` and `harset_storagerm.nav`, generate `harset_cmdcenter.nav` and `harset_market.nav`, then re-run the audit's coordinate sweep. Interim policy until then: stationary NPCs only (H13), no chase-dependent mission packet dispatched. **Required children:** (a) extractor run over the four Harset map families with OBJ triangle counts per sublevel; (b) NavBuilder run with the CA14 parameters and a flood-fill report proving the plaza, the Jaffa Zone, the Market interior and the Storage interior are single components and every M0 pin is on-mesh; (c) `is_point_valid` sweep of every Harset seed coordinate as a regression fixture. **Exclude:** a straight-line chase fallback in `npc_ai/fight.rs` (masks the defect); the other 19 maps.
+
+### GH2
+
+**Status:** BlockedDesign. **Scope title:** Vendors and trainers. **Advisors:** items-systems-advisor, database-persistence. **Decision:** D-H09.
+**Entries:** `crates/services/src/base/world_entry/methods/vendor/`, `cell/interactions/trainer.rs`, `item_lists.sql` (two test rows), `entity_templates` list columns (one debug row), `texts.sql` Harset vendor and trainer monikers, the spec's Vendor_Tier_v2 and Class_Skills_v2 sheets, branch `fix/vendor-index-gm-gate` (U8), security findings CAT-E-01 to CAT-E-06.
+**Approve:** stock policy (reconstructed tier lists per the spec versus nothing until originals are found); which of the ~60 declarations get a template and where (placement happens in M0 as props regardless); the trainer tree for Scientist, Archaeologist, Jaffa and Goa'uld (only Soldier and Commando have populated `archetype_ability_trees`). **Required children:** U8 merged; templates and list rows per faction band; a live-DB fail-closed test (spec V-01); the confection and treat items for H28 and H47. **Exclude:** a bank service (no handlers exist; separate design), price invention presented as recovered data.
+
+### GH3
+
+**Status:** Closed here; tracked as Cellblock GC3. **Scope title:** Mission XP and cash. **Decision:** D-H10. `grant_xp` is on `main` (`f23e73fb`); Harset seeds no reward values until GC3's formula lands. Every Harset completion chain leaves a `-- GC3: grant_xp` marker comment where the action goes.
+
+### GH5
+
+**Status:** Closed here; tracked as Castle CA13 (U14). **Scope title:** NPC walks a route. Castle CA13 scopes the `MoveTo` AI state, `move_waypoint` walking instead of snapping, and the `OnNpcArrived` trigger (issue #616 is the visibility half). Harset adds nothing to the design; H37's 1372 Tail consumes CA13's children plus a Lethander route seeded from M0 pins. **Exclude:** player-follow (`set_follow_target use_player`, Cellblock GC1b-0).
+
+### GH6
+
+**Status:** BlockedDesign, low priority. **Scope title:** Disguise appearance for item 2819. **Advisor:** items-systems-advisor, aoi-witness-broadcast.
+**Approve:** whether "put on the disguise" changes the player's appearance to witnesses (a new effect script driving `BeingAppearance` recomposite) or stays a step advance with dialog 2637 only. No legacy ability exists for it. H41 ships the latter; GH6 may upgrade it.
+
+## Explicit Non-Goals (record as decisions, do not open packets)
+
+| Item | Why |
+|---|---|
+| Party system and party-scoped instances | Does not exist in Cimmeria; a cross-cutting social feature, not a zone packet. D-H03 makes Market and Storage per-player. |
+| Per-witness NPC state overlay in the shared hub | Rejected by D-H03 for cost and #582 risk; instancing covers every Harset beat. |
+| Offworld missions 1401, 1407, 1409 and the Agnos leg of 1353 | Zones do not exist. D-H02. |
+| 54 older-revision missions | Stubs; no duplication with the current 36. |
+| Real PvP duel state machine, `SGWDuelMarker` | Stub today; Rin'la is scripted PvE (D-H11). |
+| Converse minigame rules | Client SWF logic; placeholder auto-win server-side (D-H12). |
+| Bank deposit and withdraw | No handlers; separate design after GH2. |
+| Random loot tables for Harset templates | Spec rule; none recovered. |
+| Gate dial timer and Kismet gate animations | Documented NOT IMPL in gate-travel.md; not Harset-specific. |
+| Harset VO and music banks | Client-side; none found in supplied archives. |
+| Regenerating cover sets for Harset | `cover_sets` has no world column and no Harset prefix; nothing to attribute. |
+
+## Scheduling And Closeout
+
+Dependency roots after authorization: the four Rust lanes H01, H02, H03, H04 (plus H05) run in parallel with disjoint owned paths (gate travel and regions; ring FSM; content executor and space manager spawn; content-engine triggers and combat damage path; minigame). H11 and H13 (seed, no coordinates) run alongside them. H10's chain rows can be written in parallel but its coordinates and UAT wait on M0. M0 is the user's placement session and should be scheduled as soon as H11 gives the GM the templates to `.spawn`; its output unblocks H12, H14, H15 and every mission packet.
+
+Upstream first: the Cellblock integration branch (U2, U3, U4) merged to `main`, PR #619 rebased and merged as Cellblock C03 (U1), `fix/vendor-index-gm-gate` merged (U8, only for GH2). Rin'la (H21), Tollan Tech (H33), Plant Spy (H42) and Transplant (H28) cannot ship without U1; the Marketplace assault (H25) and infiltrator fight (H43) cannot ship without U2. Across the Castle campaign: Castle CA04 before Harset H05 and H35; Castle CA14 before Harset GH1 and every chase-dependent mission; Castle CA13 before H37's 1372; Harset H01 and H03 before Castle CA09's passage hook and CA12/CA11 respectively (U10-U15). The two coordinators share one worknote per shared primitive.
+
+Mission order within each faction is the spec's progression order and each packet's first chain is its accept. M2 is the first mission milestone: H20, H21, H22 (Jaffa), H30, H31, H32 (Human), H40, H41, H42 (Goa'uld). Combat missions (H23, H25, H33, H34, H43, H45, H47) wait on GH1's verdict; talk and interact missions do not. GH2 is scheduled after M4.
+
+A packet becomes Done only after its replay guard, executor test where applicable, documentation update (H99) and milestone UAT pass.
+
+### H99
+
+**Status:** Ready (rolling, coordinator-owned). **Scope title:** Documentation sync. **Advisor:** documentation-writer.
+**Entries:** [mission-chains.md](../../content/mission-chains.md) (Harset section: fix lines 1017 and 1030 per H-B15; add one section per shipped mission), [zone-audit.md](../../content/zone-audit.md) (Harset rows say "22 spawns", "~1 scripted"; update as packets land), [content-engine.md](../../content/content-engine.md) section 3 (new trigger from H04, new actions from H03, `difficulty` param from H05, and the dispatch-side gap list: `dialog_set_open` and `effect_*` never fire), [proposed-extensions.md](../../content/proposed-extensions.md) (1.1, 1.3, 1.4 partly land with U1), [gate-travel.md](../../gameplay/gate-travel.md) (H01, H06), [ring-transport-system.md](../../gameplay/ring-transport-system.md) (H02 timeouts; the two spellings of the region-8 tag), [space-management.md](../../engine/space-management.md) (the `worlds.flags` is dead-data note; Market AABB), [docs/readme.md](../../readme.md) index.
+**Scope:** one doc update per integrated packet, in the same PR. **Acceptance:** `tools/lint-md.ps1 --no-globs <paths>` clean on touched files; index rows resolve.

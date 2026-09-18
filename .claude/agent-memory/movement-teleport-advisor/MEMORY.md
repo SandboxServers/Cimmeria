@@ -4,3 +4,5 @@
 - [position-validation-finite-gate.md](position-validation-finite-gate.md) — Use `is_finite()`, not `is_nan()`, and test it against an unbounded AABB so the regression actually fires on revert
 - [snap-back-termination.md](snap-back-termination.md) — Block on sight: a snap-back to an invalid target loops forever. Plus GM navmesh allowance + the case-sensitive world-name trap
 - [facing-preservation-primitive.md](facing-preservation-primitive.md) — Block on sight: `update_entity_position(..., [0,0,0], ...)` zeroes facing; teleports use `update_position_preserving_facing`
+- [arrival-coordinate-offnavmesh.md](arrival-coordinate-offnavmesh.md) — Block on sight: authored coords are model origins; gate arrivals land in prefab navmesh holes → silent CorrectionSuppressed. Includes the read-only .nav decode recipe
+- [harset-travel-ground-truth.md](harset-travel-ground-truth.md) — Deprecated-Python ground truth for Harset transitions + what the V5 spec got wrong
