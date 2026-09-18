@@ -219,3 +219,72 @@ pub async fn fire_npc_flanked(
     // the signature stays consistent with the other fire_* helpers.
     executor::execute_actions(resolved, npc_entity_id, 0, tx, space_mgr, engine).await;
 }
+
+/// Fire `OnPlayerFlankedNpc` — the player-perspective twin of
+/// [`fire_npc_flanked`], called from the same AI decision when the
+/// flanked NPC's top-threat is a **player**.
+///
+/// Unlike `fire_npc_flanked` (actions run on the NPC with player id 0),
+/// this executes against the flanking player with that player's mission
+/// context populated, so mission-scoped chains (`objective_status`
+/// conditions, `complete_objective`) work — Castle Cellblock C06's flank
+/// objectives 2725/2731. No-ops when `player_entity_id` is not a player
+/// entity (NPC-vs-NPC threat, or the player left the space mid-tick).
+pub async fn fire_player_flanked_npc(
+    player_entity_id: u32,
+    npc_entity_id: u32,
+    npc_template: &str,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let mut ctx =
+        ExecutionContext::new().with_source(cimmeria_common::EntityId(player_entity_id as i32));
+    ctx.set_param("npc_template".to_string(), serde_json::json!(npc_template));
+    ctx.set_param("npc_id".to_string(), serde_json::json!(npc_entity_id));
+
+    let db_player_id = match space_mgr.get_entity(player_entity_id) {
+        Some(entity) => {
+            let Some(db_player_id) = entity.player_id else {
+                return;
+            };
+            populate_mission_context(entity, &mut ctx);
+            if let Some(archetype_id) = entity.archetype_id {
+                ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+            }
+            db_player_id
+        }
+        None => return,
+    };
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::PlayerFlankedNpc,
+        source_entity: Some(cimmeria_common::EntityId(player_entity_id as i32)),
+        target_entity: Some(cimmeria_common::EntityId(npc_entity_id as i32)),
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    if !resolved.actions.is_empty() {
+        tracing::info!(
+            player_entity_id,
+            npc_entity_id,
+            npc_template,
+            actions = resolved.actions.len(),
+            "fire_player_flanked_npc: matched"
+        );
+    }
+    cimmeria_observability::counter!(
+        "cover_detection_events_total",
+        "kind" => "player_flanked_npc",
+    );
+    executor::execute_actions(
+        resolved,
+        player_entity_id,
+        db_player_id,
+        tx,
+        space_mgr,
+        engine,
+    )
+    .await;
+}

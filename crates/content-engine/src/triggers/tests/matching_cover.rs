@@ -130,6 +130,55 @@ fn npc_flanked_wildcard_matches_any() {
     assert!(trigger.matches(&event));
 }
 
+#[test]
+fn player_flanked_npc_filters_by_template() {
+    let trigger = Trigger::OnPlayerFlankedNpc {
+        npc_template: Some("NID Guard".to_string()),
+    };
+    let matching = make_event(
+        TriggerType::PlayerFlankedNpc,
+        vec![("npc_template", serde_json::json!("NID Guard"))],
+    );
+    assert!(trigger.matches(&matching));
+    let other = make_event(
+        TriggerType::PlayerFlankedNpc,
+        vec![("npc_template", serde_json::json!("Jaffa"))],
+    );
+    assert!(!trigger.matches(&other));
+}
+
+#[test]
+fn player_flanked_npc_wildcard_matches_any() {
+    let trigger = Trigger::OnPlayerFlankedNpc { npc_template: None };
+    let event = make_event(
+        TriggerType::PlayerFlankedNpc,
+        vec![("npc_template", serde_json::json!("AnyGuard"))],
+    );
+    assert!(trigger.matches(&event));
+}
+
+/// The NPC-perspective and player-perspective flank triggers share the
+/// `npc_template` param but must never cross-fire: `OnNpcFlanked` chains
+/// act on the NPC, `OnPlayerFlankedNpc` chains act on the player, so a
+/// cross-match would run mission actions against the wrong entity.
+#[test]
+fn npc_and_player_flank_triggers_do_not_cross_match() {
+    let npc_trigger = Trigger::OnNpcFlanked { npc_template: None };
+    let player_trigger = Trigger::OnPlayerFlankedNpc { npc_template: None };
+    let npc_event = make_event(
+        TriggerType::NpcFlanked,
+        vec![("npc_template", serde_json::json!("NID Guard"))],
+    );
+    let player_event = make_event(
+        TriggerType::PlayerFlankedNpc,
+        vec![("npc_template", serde_json::json!("NID Guard"))],
+    );
+    assert!(npc_trigger.matches(&npc_event));
+    assert!(!npc_trigger.matches(&player_event));
+    assert!(player_trigger.matches(&player_event));
+    assert!(!player_trigger.matches(&npc_event));
+}
+
 // ─── OnPlayerInCoverDuration: wildcard seconds-only mismatch ──
 
 #[test]
