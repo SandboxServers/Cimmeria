@@ -527,4 +527,292 @@ mod tests {
              rejected because the pin was cleared by the first"
         );
     }
+
+    // ── last_interaction_target pin across a chain-handled interact ────
+
+    /// Register the two chains the pin test needs: an `interact_tag` chain
+    /// that CLAIMS the interact (so `interactions::handle_interact`, the
+    /// other writer of `last_interaction_target`, is skipped), and a
+    /// follow-up `dialog_choice` chain that displays an NPC-speaker dialog.
+    fn engine_with_interact_then_dialog(tag: &str, choice_dialog: i32, shown: i32) -> ChainEngine {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut engine = ChainEngine::new();
+        // Claims the interact. The action is incidental — what matters is
+        // that `fire_interact_tag` resolves at least one action and so
+        // returns `handled = true`.
+        engine.register_chain(Chain {
+            action_delays: Vec::new(),
+            id: 70701,
+            name: "test OnInteractTag → claim the interact".into(),
+            enabled: true,
+            trigger: Trigger::OnInteractTag {
+                entity_tag: tag.into(),
+            },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "pin_probe".into(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+        // The follow-up. `fire_dialog_choice` stamps no `target_entity_id`
+        // into the context, so `display_dialog` here can only resolve a
+        // speaker through the pin.
+        engine.register_chain(Chain {
+            action_delays: Vec::new(),
+            id: 70702,
+            name: "test OnDialogChoice → display NPC dialog".into(),
+            enabled: true,
+            trigger: Trigger::OnDialogChoice {
+                dialog_id: choice_dialog,
+            },
+            conditions: vec![],
+            actions: vec![Action::DisplayDialog { dialog_id: shown }],
+            priority: 0,
+        });
+        engine
+    }
+
+    /// Build a Castle-ish space with a player at the origin and one
+    /// neutral tagged NPC at `npc_distance` units away on X. Returns the
+    /// NPC's id.
+    fn space_with_tagged_npc(mgr: &mut SpaceManager, tag: &str, npc_distance: f32) -> u32 {
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(42);
+        }
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [npc_distance, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            npc.tag = Some(tag.to_string());
+            npc.faction = 1; // neutral — no combat reroute
+            npc.clear_all_state_flags();
+        }
+        npc_id
+    }
+
+    /// **Server authority.** An interact on a target beyond
+    /// `MAX_INTERACT_DISTANCE` must neither pin `last_interaction_target`
+    /// nor fire the tag's content chains.
+    ///
+    /// `interactions::handle_interact` has always range-checked, but it is
+    /// the last thing the outer dispatcher tries: the trainer UI and the
+    /// content-chain dispatch both run ahead of it. So before the outer
+    /// gate, a client could name any tagged NPC anywhere on the map and
+    /// drive its chains — accept a mission, advance a step, launch a
+    /// minigame — from arbitrary distance, and (once the pin moved ahead
+    /// of the chain dispatch) stamp an unvalidated entity id that
+    /// `handle_initial_response` puts on the wire.
+    #[tokio::test]
+    async fn out_of_range_interact_does_not_pin_or_fire_chains() {
+        const TAG: &str = "TestRangeNpc";
+        let mut mgr = make_space_manager();
+        // 100 units away — far outside MAX_INTERACT_DISTANCE (5.0).
+        let npc_id = space_with_tagged_npc(&mut mgr, TAG, 100.0);
+
+        let engine = engine_with_interact_then_dialog(TAG, 9861, 9862);
+        let (tx, _rx) = mpsc::channel(16);
+        let mut args = Vec::with_capacity(4);
+        args.extend_from_slice(&(npc_id as i32).to_le_bytes());
+        dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            counter(&mgr, 1, "pin_probe"),
+            0,
+            "an out-of-range interact must not fire the tag's content chain",
+        );
+        assert_eq!(
+            mgr.get_entity(1).and_then(|e| e.last_interaction_target),
+            None,
+            "an out-of-range interact must not pin the target",
+        );
+    }
+
+    /// Same gate, missing-target half: an interact naming an entity id
+    /// that does not exist must pin nothing and fire nothing.
+    #[tokio::test]
+    async fn interact_on_a_missing_target_does_not_pin_or_fire_chains() {
+        const TAG: &str = "TestRangeNpc";
+        let mut mgr = make_space_manager();
+        let _npc_id = space_with_tagged_npc(&mut mgr, TAG, 2.0);
+
+        let engine = engine_with_interact_then_dialog(TAG, 9861, 9862);
+        let (tx, _rx) = mpsc::channel(16);
+        // An id no entity holds (positive, so it survives the negative-id
+        // rejection at the top of the handler and actually reaches the gate).
+        let mut args = Vec::with_capacity(4);
+        args.extend_from_slice(&0x0BAD_F00Di32.to_le_bytes());
+        dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            counter(&mgr, 1, "pin_probe"),
+            0,
+            "an interact on a nonexistent target must not fire any chain",
+        );
+        assert_eq!(
+            mgr.get_entity(1).and_then(|e| e.last_interaction_target),
+            None,
+            "an interact on a nonexistent target must not pin",
+        );
+    }
+
+    /// Positive half of the gate: an in-range interact on a real target
+    /// both pins and fires. Without this the two negatives above would
+    /// pass with the gate stuck closed.
+    #[tokio::test]
+    async fn in_range_interact_pins_and_fires_chains() {
+        const TAG: &str = "TestRangeNpc";
+        let mut mgr = make_space_manager();
+        let npc_id = space_with_tagged_npc(&mut mgr, TAG, 2.0);
+
+        let engine = engine_with_interact_then_dialog(TAG, 9861, 9862);
+        let (tx, _rx) = mpsc::channel(16);
+        let mut args = Vec::with_capacity(4);
+        args.extend_from_slice(&(npc_id as i32).to_le_bytes());
+        dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            counter(&mgr, 1, "pin_probe"),
+            1,
+            "an in-range interact must fire the tag's content chain",
+        );
+        assert_eq!(
+            mgr.get_entity(1).and_then(|e| e.last_interaction_target),
+            Some(npc_id),
+            "an in-range interact must pin the target",
+        );
+    }
+
+    /// The pin must stay behind the hostile-NPC combat reroute: attacking
+    /// something must not make it the speaker of the next dialog. A
+    /// refactor that hoisted the pin to the top of the handler — which is
+    /// where python writes it — would silently break this.
+    #[tokio::test]
+    async fn hostile_reroute_does_not_pin_the_target() {
+        let mut mgr = make_space_manager();
+        let npc_id = space_with_tagged_npc(&mut mgr, "TestHostileNpc", 2.0);
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            npc.faction = 10; // hostile
+            npc.clear_all_state_flags(); // alive
+        }
+
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(16);
+        let mut args = Vec::with_capacity(4);
+        args.extend_from_slice(&(npc_id as i32).to_le_bytes());
+        dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            mgr.get_entity(1).and_then(|e| e.last_interaction_target),
+            None,
+            "the combat reroute must return before the pin — an attacked NPC \
+             must not become the next dialog's speaker",
+        );
+    }
+
+    /// A chain-handled interact must still pin `last_interaction_target`, so
+    /// a later chain-fired `display_dialog` can resolve the NPC as the wire
+    /// `EntityId` of `onDialogDisplay`.
+    ///
+    /// The bug this reproduces: `interactions::handle_interact` is the only
+    /// other writer of that pin and it runs solely in the `if !handled`
+    /// fall-through, so an interact claimed by a content chain left the pin
+    /// stale. `display_dialog` resolves its speaker from chain
+    /// `params["target_entity_id"]` (present only on the `interact_tag`
+    /// trigger itself, never on a follow-up), then the pin, then the
+    /// monologue cache, else warn-and-bail. With the pin unset, every
+    /// follow-up chain that displayed an NPC-speaker dialog — from a
+    /// `dialog_choice`, a minigame victory (`fire_chain_by_id` passes empty
+    /// params by construction), or the deferred-action drain — silently
+    /// never opened. Castle mission 701's Moh'katan radio call (dialog 5862)
+    /// was the first content to hit it.
+    ///
+    /// Dialog 9862 is deliberately absent from `monologue_dialog_ids`, so the
+    /// monologue fallback cannot rescue this: the pin is the only path to a
+    /// speaker. Remove the pin write in `interact.rs` and this fails with
+    /// zero `onDialogDisplay` frames.
+    #[tokio::test]
+    async fn chain_handled_interact_pins_target_for_a_later_chain_dialog() {
+        const NPC_TAG: &str = "TestPinNpc";
+        const CHOICE_DIALOG: i32 = 9861;
+        const SHOWN_DIALOG: i32 = 9862;
+
+        let mut mgr = make_space_manager();
+        // In range, neutral and alive, so neither the combat reroute nor
+        // the outer distance gate diverts the interact.
+        let npc_id = space_with_tagged_npc(&mut mgr, NPC_TAG, 2.0);
+
+        let engine = engine_with_interact_then_dialog(NPC_TAG, CHOICE_DIALOG, SHOWN_DIALOG);
+        let (tx, mut rx) = mpsc::channel(32);
+
+        // 1. The interact, claimed by chain 70701.
+        let mut interact_args = Vec::with_capacity(4);
+        interact_args.extend_from_slice(&(npc_id as i32).to_le_bytes());
+        dispatch(1, INTERACT, &interact_args, &tx, &mut mgr, &engine).await;
+        assert_eq!(
+            counter(&mgr, 1, "pin_probe"),
+            1,
+            "fixture sanity: the interact_tag chain must have claimed the \
+             interact — if it didn't, handle_interact would set the pin \
+             itself and this test would pass for the wrong reason",
+        );
+        assert_eq!(
+            mgr.get_entity(1).and_then(|e| e.last_interaction_target),
+            Some(npc_id),
+            "a chain-handled interact must pin the NPC as the interaction \
+             target",
+        );
+
+        // 2. The follow-up choice. Arm the #479 open-dialog gate first.
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.open_dialog_id = Some(CHOICE_DIALOG);
+        }
+        while rx.try_recv().is_ok() {} // drain the interact's traffic
+        dispatch(
+            1,
+            DIALOG_BUTTON_CHOICE,
+            &dialog_choice_args(CHOICE_DIALOG, 0),
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        let mut displays = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index,
+                args,
+            } = msg
+            {
+                if method_index == crate::mercury::method_idx::ON_DIALOG_DISPLAY {
+                    let wire_entity = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                    let wire_dialog = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                    displays.push((entity_id, wire_entity, wire_dialog));
+                }
+            }
+        }
+
+        assert_eq!(
+            displays.len(),
+            1,
+            "the follow-up chain must emit exactly one onDialogDisplay; zero \
+             means `display_dialog` could not resolve a speaker and took the \
+             warn-and-bail branch — the regression this guards",
+        );
+        assert_eq!(
+            displays[0],
+            (1, npc_id as i32, SHOWN_DIALOG),
+            "onDialogDisplay must be addressed to the player and carry the \
+             NPC's entity id as the wire EntityId (the client's portrait \
+             lookup key) plus the authored dialog id",
+        );
+    }
 }
