@@ -309,6 +309,7 @@ fn convert_entity_health_below_rejects_malformed_keys() {
         Some(":30"),              // empty tag
         Some("Rinla_Malac:0"),    // 0% is death; routes to entity_dead_tag
         Some("Rinla_Malac:-10"),  // negative
+        Some("Rinla_Malac:100"),  // unmatchable: the crossing test is strict
         Some("Rinla_Malac:101"),  // above full health
         Some("Rinla_Malac:30.5"), // fractional
     ] {
@@ -320,14 +321,41 @@ fn convert_entity_health_below_rejects_malformed_keys() {
     }
 }
 
-/// The inclusive bounds are legal. `:100` is noisy but well-defined (the
-/// first scratch fires it), `:1` is the last threshold above death.
+/// The inclusive bounds are legal: `:99` is the first threshold a hit off
+/// full health can cross (100 → 99), `:1` is the last threshold above
+/// death.
 #[test]
 fn convert_entity_health_below_accepts_the_boundary_percentages() {
-    for (key, expected) in [("Boss:1", 1), ("Boss:100", 100)] {
+    for (key, expected) in [("Boss:1", 1), ("Boss:99", 99)] {
         match convert_trigger(&health_row(Some(key))) {
             Some(Trigger::OnEntityHealthBelow { pct, .. }) => assert_eq!(pct, expected),
             other => panic!("expected {key} to load, got {other:?}"),
         }
+    }
+}
+
+/// PR #662 review, finding 2. The matcher is a **strict** downward
+/// crossing (`pct_before > threshold && pct_after <= threshold`), so a
+/// threshold of 100 is unmatchable: full health is 100, `100 > 100` is
+/// false, and any later hit starts from below. The loader used to accept
+/// `1..=100`, which let an author seed a chain that reads as wired and
+/// never runs — the worst failure mode for content, because there is no
+/// error to grep for.
+///
+/// Reverting `HEALTH_PCT_RANGE` to `1..=100` fails the `100` row.
+#[test]
+fn convert_entity_health_below_rejects_the_unmatchable_hundred_percent_band() {
+    for bad in [0, 100, 101] {
+        assert!(
+            convert_trigger(&health_row(Some(&format!("Boss:{bad}")))).is_none(),
+            "threshold {bad} is outside the matchable band and must drop the \
+             trigger row rather than load a chain that can never fire",
+        );
+    }
+    for good in [1, 99] {
+        assert!(
+            convert_trigger(&health_row(Some(&format!("Boss:{good}")))).is_some(),
+            "threshold {good} is inside the matchable band and must load",
+        );
     }
 }

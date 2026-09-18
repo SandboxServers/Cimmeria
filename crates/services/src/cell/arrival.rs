@@ -1,7 +1,7 @@
 //! Safe arrival placement for server-authoritative cross-space moves.
 //!
 //! Every path that drops a player at an authored coordinate in a space they
-//! are not currently in — stargate travel today, ring transport next — has the
+//! are not currently in — stargate travel, ring transport — has the
 //! same failure mode: the authored point is a prop transform lifted out of the
 //! cooked map, and a prop transform is not a standable point. If it lands off
 //! the destination's navmesh, the player's own client keeps moving them
@@ -12,7 +12,11 @@
 //! in XZ, well outside the ±3.0 `DEST_EXTENTS` search box.)
 //!
 //! [`resolve_arrival`] is the single place that answers "is this arrival
-//! standable, and if not, where instead". It deliberately does **not** call
+//! standable, and if not, where instead" — and, when the answer is "nowhere",
+//! it says so: [`ArrivalSource::UnrecoverableOffMesh`] carries no usable
+//! position, and every caller gates on [`ResolvedArrival::is_usable`] and
+//! refuses the move rather than shipping the rejected coordinate into a
+//! transfer. It deliberately does **not** call
 //! [`NavMesh::get_nearest_point`]: that returns the input unchanged on a miss
 //! (`crates/entity/src/navigation/mod.rs` — `unwrap_or(*pos)`), so its output
 //! can never be trusted without re-validating it; and more importantly, an
@@ -20,6 +24,17 @@
 //! two wrong and should be re-pinned in-game, not silently papered over at
 //! runtime. Recovery is the world's authored respawner instead — the server's
 //! existing answer to "where is it safe to put this player".
+//!
+//! **Two flavours, deliberately.** [`resolve_arrival`] *substitutes*: a gate
+//! arrival is a pin on a prop transform, nothing on the client is anchored to
+//! it, and putting the traveller on the world's nearest respawner is strictly
+//! better than not arriving. [`check_arrival`] only *validates*: ring
+//! transport calls it because a pad row is not a pin — the client plays the
+//! ring matinee at that pad — so a substitute would desync the fiction from
+//! the geometry. A ring pad that fails the check aborts the trip instead
+//! (`ring_transport::runtime::tick`). Both share
+//! [`check_arrival_with`] so the two can never disagree about what
+//! "standable" means.
 //!
 //! Reference: `deprecated/python/cell/SGWPlayer.py:2129` (`stargatePassed` →
 //! `moveTo(addr.xPos, addr.yPos, addr.zPos, addr.yaw, ...)`) — the 2009 server
@@ -29,8 +44,77 @@ use cimmeria_common::Vector3;
 use cimmeria_entity::movement_validation::{position_within_bounds, SpaceBounds};
 use cimmeria_entity::navigation::NavMesh;
 
+use super::respawner_fallback::nearest_valid_respawner;
 use super::space_manager::SpaceManager;
 use super::spawner::{RespawnerDef, StargateEntry};
+
+/// Outcome of a **validate-only** arrival check — no substitution, no
+/// fallback, just "would the position validator accept this point".
+///
+/// Ring transport uses this rather than [`resolve_arrival`]: a ring pad row
+/// *is* the arrival. The client plays the ring matinee at the pad and the FSM
+/// fires `FireTeleportIn` for that region, so quietly landing the passengers
+/// on a respawner somewhere else in the world would desync the fiction from
+/// the geometry with nothing in the log tying the two together (PR #662
+/// review, finding 7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArrivalCheck {
+    /// The destination's navmesh (and its AABB) accept the point.
+    Validated,
+    /// The destination space has no navmesh resident on this cell, so nothing
+    /// could be checked. Not a rejection — most worlds have no mesh.
+    Unvalidated,
+    /// The destination has a navmesh and the point is off it (or outside the
+    /// mesh's bounds). Putting a player here means every position update they
+    /// send is suppressed.
+    OffMesh,
+}
+
+/// Validate `desired` against `world_name`'s navmesh without substituting
+/// anything. See [`ArrivalCheck`].
+pub fn check_arrival(
+    space_mgr: &SpaceManager,
+    world_name: &str,
+    desired: [f32; 3],
+) -> ArrivalCheck {
+    check_arrival_with(destination_navmesh(space_mgr, world_name), desired)
+}
+
+/// Pure core of [`check_arrival`], parameterised on the destination's navmesh
+/// so it is testable without a live `SpaceManager`.
+pub fn check_arrival_with(navmesh: Option<&NavMesh>, desired: [f32; 3]) -> ArrivalCheck {
+    let Some(nav) = navmesh else {
+        return ArrivalCheck::Unvalidated;
+    };
+    // Mirror BOTH layers the inbound-position validator applies, not just the
+    // navmesh one. `SpaceManager::apply_client_position_update` sources its
+    // bounds the same way (navmesh extents when a mesh exists), and a
+    // candidate that is on-mesh but outside the AABB is hard-rejected by the
+    // very next client packet — with the correction budget already cleared by
+    // the authorised teleport, which is how a "recovery" turns into a
+    // permanent freeze one position over.
+    let bounds = SpaceBounds::new(nav.bmin, nav.bmax);
+    let p = Vector3::new(desired[0], desired[1], desired[2]);
+    if nav.is_point_valid(&p) && position_within_bounds(p, &bounds) {
+        ArrivalCheck::Validated
+    } else {
+        ArrivalCheck::OffMesh
+    }
+}
+
+/// The navmesh of `world_name`'s startup space, if one is resident here.
+///
+/// Non-instanced worlds keep their startup space (and its navmesh) resident
+/// for the life of the cell, so a stargate or ring destination is resolvable
+/// even though the traveller is not in it yet. Instanced worlds have no entry
+/// in `world_spaces` and come back `None`.
+fn destination_navmesh<'a>(space_mgr: &'a SpaceManager, world_name: &str) -> Option<&'a NavMesh> {
+    space_mgr
+        .world_spaces
+        .get(world_name)
+        .and_then(|space_id| space_mgr.spaces.get(space_id))
+        .and_then(|space| space.navmesh.as_ref())
+}
 
 /// Where a resolved arrival position came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,9 +127,13 @@ pub enum ArrivalSource {
     /// The requested point was off-navmesh and was replaced by one of the
     /// destination world's authored respawners.
     Respawner,
-    /// The requested point was off-navmesh and no respawner qualified. The
-    /// request stands because there is nothing better — the caller has
-    /// already been warned.
+    /// The requested point was off-navmesh and no respawner qualified.
+    ///
+    /// **There is no usable position in this variant.** [`ResolvedArrival`]
+    /// still carries the requested point so the caller can name it in a log,
+    /// but transferring a player to it recreates the exact silent
+    /// `CorrectionSuppressed` freeze this module exists to prevent. Callers
+    /// must gate on [`ResolvedArrival::is_usable`] and refuse the move.
     UnrecoverableOffMesh,
 }
 
@@ -58,6 +146,22 @@ pub struct ResolvedArrival {
     /// authored gate/ring facing is the only non-arbitrary answer.
     pub yaw: f32,
     pub source: ArrivalSource,
+}
+
+impl ResolvedArrival {
+    /// `true` when [`Self::position`] is safe to put a player on.
+    ///
+    /// The only failing variant is [`ArrivalSource::UnrecoverableOffMesh`],
+    /// where `position` is the *rejected* input rather than an answer.
+    /// Every caller that moves a player must gate on this and refuse the
+    /// move: handing the rejected point to a transfer is what produced the
+    /// original Harset freeze (the traveller arrives off-mesh, every inbound
+    /// position update is suppressed, and witnesses see a frozen avatar with
+    /// no error anywhere). Refusing is visible and recoverable; arriving is
+    /// neither.
+    pub fn is_usable(&self) -> bool {
+        self.source != ArrivalSource::UnrecoverableOffMesh
+    }
 }
 
 /// Resolve where a traveller through `gate` should be placed.
@@ -100,15 +204,7 @@ pub fn resolve_arrival(
     desired: [f32; 3],
     yaw: f32,
 ) -> ResolvedArrival {
-    // Non-instanced worlds keep their startup space (and its navmesh) resident
-    // for the life of the cell, so a stargate destination is resolvable here
-    // even though the traveller is not in it yet. Instanced worlds have no
-    // entry in `world_spaces` and fall through to the unvalidated arm.
-    let navmesh = space_mgr
-        .world_spaces
-        .get(world_name)
-        .and_then(|space_id| space_mgr.spaces.get(space_id))
-        .and_then(|space| space.navmesh.as_ref());
+    let navmesh = destination_navmesh(space_mgr, world_name);
     resolve_arrival_with(navmesh, &space_mgr.respawners, world_name, desired, yaw)
 }
 
@@ -122,9 +218,8 @@ pub fn resolve_arrival_with(
     desired: [f32; 3],
     yaw: f32,
 ) -> ResolvedArrival {
-    let nav = match navmesh {
-        Some(nav) => nav,
-        None => {
+    match check_arrival_with(navmesh, desired) {
+        ArrivalCheck::Unvalidated => {
             // Not an error — most worlds have no mesh. Logged so the
             // indefinitely-unvalidated destinations stay queryable rather
             // than invisible.
@@ -140,53 +235,32 @@ pub fn resolve_arrival_with(
                 source: ArrivalSource::Unvalidated,
             };
         }
-    };
+        ArrivalCheck::Validated => {
+            return ResolvedArrival {
+                position: desired,
+                yaw,
+                source: ArrivalSource::Validated,
+            };
+        }
+        ArrivalCheck::OffMesh => {}
+    }
 
-    // Mirror BOTH layers the inbound-position validator applies, not just the
-    // navmesh one. `SpaceManager::apply_client_position_update` sources its
-    // bounds the same way (navmesh extents when a mesh exists), and a
-    // candidate that is on-mesh but outside the AABB is hard-rejected by the
-    // very next client packet — with the correction budget already cleared by
-    // the authorised teleport, which is how a "recovery" turns into a
-    // permanent freeze one position over.
-    let bounds = SpaceBounds::new(nav.bmin, nav.bmax);
-    let desired_v = Vector3::new(desired[0], desired[1], desired[2]);
-
-    if nav.is_point_valid(&desired_v) && position_within_bounds(desired_v, &bounds) {
+    // `OffMesh` is only ever returned when a mesh was present, so this binds
+    // by construction; the `else` is the compiler's price for not unwrapping.
+    let Some(nav) = navmesh else {
         return ResolvedArrival {
             position: desired,
             yaw,
-            source: ArrivalSource::Validated,
+            source: ArrivalSource::Unvalidated,
         };
-    }
-
-    // Nearest-to-desired, matching `SpaceManager::resolve_recovery_position`'s
-    // ordering for the identical candidate class — two different orderings for
-    // the same fallback in one codebase would make the two paths disagree
-    // about the same world.
-    let fallback = respawners
-        .iter()
-        .filter(|r| r.world_name == world_name)
-        // Zero-coordinate respawner guard (Castle CA00 / overlap row U16).
-        //
-        // Note the divergence this creates, deliberately and only for now:
-        // `SpaceManager::resolve_recovery_position` filters the same
-        // candidate class through the same two validity layers but has *no*
-        // zero guard, and `[0,0,0]` demonstrably passes both on the
-        // `castle_cellblock` mesh — so that path can still snap a player to
-        // the world origin there. Castle CA00 owns adding the guard to
-        // `resolve_respawn_target`; this one is self-contained until it lands.
-        // Six seeded rows are literal (0, 0, 0) placeholders — an unfilled
-        // seed cell, not an authored origin-adjacent spawn. Exact equality
-        // on purpose: this is a sentinel test, and an epsilon would exclude a
-        // legitimately-authored near-origin respawner on some future world.
-        .filter(|r| r.pos != [0.0, 0.0, 0.0])
-        .map(|r| Vector3::new(r.pos[0], r.pos[1], r.pos[2]))
-        .filter(|p| nav.is_point_valid(p) && position_within_bounds(*p, &bounds))
-        .min_by(|a, b| {
-            a.distance_to(&desired_v)
-                .total_cmp(&b.distance_to(&desired_v))
-        });
+    };
+    let desired_v = Vector3::new(desired[0], desired[1], desired[2]);
+    let bounds = SpaceBounds::new(nav.bmin, nav.bmax);
+    // Nearest-to-desired, through the one helper
+    // `SpaceManager::resolve_recovery_position` also calls: two orderings (or
+    // two zero-coordinate policies) for the same candidate class in one
+    // codebase is how the two paths end up disagreeing about the same world.
+    let fallback = nearest_valid_respawner(respawners, world_name, desired_v, Some(nav), &bounds);
 
     match fallback {
         Some(p) => {
@@ -223,10 +297,10 @@ pub fn resolve_arrival_with(
                     .count(),
                 reason = "arrival_unrecoverable",
                 "arrival: authored arrival is off the destination navmesh AND \
-                 no usable respawner exists for the world — the traveller will \
-                 arrive off-mesh and every position update they send will be \
-                 suppressed (silent freeze to witnesses); seed a respawner for \
-                 this world"
+                 no usable respawner exists for the world — there is no \
+                 standable point to arrive on, so the caller must refuse the \
+                 transfer (see ResolvedArrival::is_usable); seed a respawner \
+                 for this world or re-pin the authored coordinate"
             );
             ResolvedArrival {
                 position: desired,
@@ -356,10 +430,42 @@ mod tests {
         let respawners = [respawner("Castle_CellBlock", [0.0, 0.0, 0.0])];
         let out = resolve_arrival_with(Some(&mesh), &respawners, "Castle_CellBlock", OFF_MESH, 0.0);
         assert_eq!(out.source, ArrivalSource::UnrecoverableOffMesh);
+        assert!(
+            !out.is_usable(),
+            "an unrecoverable arrival must never be reported as usable — the \
+             PR #662 review found both callers shipping it into a transfer"
+        );
         assert_ne!(
             out.position,
             [0.0, 0.0, 0.0],
             "a placeholder respawner row must not become an arrival"
+        );
+    }
+
+    /// The three recoverable variants are usable; the fourth is not. Pinned
+    /// as a table because `is_usable` is the only thing standing between the
+    /// unrecoverable case and a `GateTravel` / ring teleport, and a future
+    /// variant added without a matching arm here would silently become
+    /// "usable".
+    #[test]
+    fn only_the_unrecoverable_source_is_refused() {
+        let Some(mesh) = fixture_mesh() else { return };
+        let on_mesh = [respawner("Castle_CellBlock", ON_MESH)];
+
+        // Validated.
+        assert!(
+            resolve_arrival_with(Some(&mesh), &[], "Castle_CellBlock", ON_MESH, 0.0).is_usable()
+        );
+        // Respawner.
+        assert!(
+            resolve_arrival_with(Some(&mesh), &on_mesh, "Castle_CellBlock", OFF_MESH, 0.0)
+                .is_usable()
+        );
+        // Unvalidated.
+        assert!(resolve_arrival_with(None, &[], "Harset_Market", OFF_MESH, 0.0).is_usable());
+        // UnrecoverableOffMesh.
+        assert!(
+            !resolve_arrival_with(Some(&mesh), &[], "Castle_CellBlock", OFF_MESH, 0.0).is_usable()
         );
     }
 
@@ -374,7 +480,11 @@ mod tests {
         let respawners = [respawner("Harset", ON_MESH)];
         let out = resolve_arrival_with(Some(&mesh), &respawners, "Castle_CellBlock", OFF_MESH, 0.0);
         assert_eq!(out.source, ArrivalSource::UnrecoverableOffMesh);
+        // `position` still echoes the input — it is the *rejected* point, kept
+        // so the caller's warn can name it. It is NOT an arrival: `is_usable`
+        // is false and both callers refuse the transfer.
         assert_eq!(out.position, OFF_MESH);
+        assert!(!out.is_usable());
         assert_ne!(
             out.position, ON_MESH,
             "a respawner belonging to another world must never be borrowed"

@@ -211,6 +211,12 @@ impl Trigger {
             // Params absent (a caller that forgot to set them) must not
             // match — `unwrap_or` to a value that satisfies the
             // predicate would fire every seeded threshold on every hit.
+            //
+            // The `before > threshold` half is strict, which is why the
+            // loader refuses a threshold of 100: full health is 100, and
+            // 100 > 100 is false, so `:100` could never fire on the hit
+            // that takes an entity off full health. See
+            // `loader::trigger::HEALTH_PCT_RANGE`.
             Trigger::OnEntityHealthBelow { entity_tag, pct } => {
                 let tag_match = event
                     .params
