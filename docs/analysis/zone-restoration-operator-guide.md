@@ -18,7 +18,7 @@ Companions: [Cellblock handoff](castle-cellblock-rebuild/handoffs/session-resume
 | Zone | On `main` | Open PRs (testable from branch) | Testable today |
 |---|---|---|---|
 | Castle Cellblock | C00-C05, C07, C08a, C08b, GC1b-0, GC1 (#655) | none | **Yes: M1, M3 and GC1 on `main`, M2 only partly (needs C06)** |
-| Castle (World 8, ring platform) | CA00 respawners (#651), CA01 + CA03 mission 701 and the dialog-speaker pin fix (#659), CA10 gate open/cross events (#663), CA04 minigame hardening (#652), CA02 "!" dialog bind (#661) | #667, #668, #660 | Respawn and **mission 701 in full** (M1) on `main` |
+| Castle (World 8, ring platform) | CA00 respawners (#651), CA01 + CA03 mission 701 and the dialog-speaker pin fix (#659), CA10 gate open/cross events (#663), CA04 minigame hardening (#652), CA02 "!" dialog bind (#661), CA05 story actors and point sets (#667), missions 706 and 708 (#668), missions 702-704 (#660) | none (docs closeout PR #669 only) | **Yes, M1-M5 on `main` after a rebuild** (the gate leg into Harset excepted, see M4) |
 | Harset | nothing yet | #662 (branch `content/harset-rebuild`, CI green, review fixes in progress) | Travel and population checks, from the branch, after the review fixes merge |
 
 ## Suggested Order If Budget Is Tight
@@ -50,8 +50,8 @@ Test with a Jaffa character and a Human character, relogging at each step:
 
 ## Castle (World 8, ring platform)
 
-**Implemented and merged.** CA00: world-8 respawner coordinates (#651); all four coordinates are provisional (MEDIUM confidence). CA01 + CA03: mission 701 (Gerschon, Copplemann, Livewire) and the dialog-speaker pin fix (#659).
-**Open PRs, not yet on `main`** (#659 has since merged and is listed for reference).
+**Implemented and merged: every implementable Castle packet, CA00-CA10.** CA00 world-8 respawners (#651; all four coordinates provisional, MEDIUM confidence); CA01 + CA03 mission 701 and the dialog-speaker pin fix (#659); CA02 "!" bind (#661); CA04 minigame hardening (#652); CA05 story actors, point sets 2082-2085 and respawn timers (#667; Zuritska is male); CA10 gate events (#663); missions 706 and 708 (#668); missions 702-704 (#660). Hostile Castle mobs respawn after 120 s and region boxes have ceilings.
+**PRs (all merged):**
 
 | PR | Content | State |
 |---|---|---|
@@ -59,16 +59,18 @@ Test with a Jaffa character and a Human character, relogging at each step:
 | #659 | CA01 + CA03 mission 701 (Gerschon, Copplemann, Livewire) and the dialog-speaker pin fix | **merged to `main`** (`f930b4cb`) |
 | #661 | CA02 flag-only dialog bind (the "!" over Gerschon) | **merged to `main`** (`ddbc873e`) |
 | #663 | CA10 stargate open/cross events (6100, 6113, 4 s dial timer); splits `gate_travel.rs` | **merged to `main`** (`a9d0fad7`) |
-| #660 | Missions 702-704 (Zuritska, Romney) | blocked on CA05, conflicts with `main` |
+| #667 | CA05 story actors, point sets 2082-2085, respawn timers | **merged to `main`** (`364e736d`) |
+| #668 | Missions 706 and 708 chains (includes four glow-clear removals for shared NPCs) | **merged to `main`** (`bb47f526`) |
+| #660 | Missions 702-704 (Zuritska, Romney) | **merged to `main`** (`2a37ba4c`) |
 
-**In review:** #667 (CA05 story actors, point sets, respawn timers) and #668 (missions 706 and 708 chains). **Design-gated, not started:** CA13, CA14, CA15.
+**Still to do:** closeout docs PR #669 and CA16 doc sync. **Design-gated, not started:** CA13, CA14, CA15.
 
 | Milestone | Steps | Expected |
 |---|---|---|
 | Respawn (`main` now) | Fresh character on Castle; die once at each of the four checkpoints | You land at a real checkpoint, not the origin and not under the floor. Report any bad coordinate |
 | M1 (#659, #652 and #661 all merged: testable now) | Arrive on the ring platform with mission 688 complete and 1360 active | "!" over Gerschon before accepting (Human sees indicator 2573, Jaffa 5861); 701 accepts once and a second interaction does not re-accept; Copplemann advances the step; the Livewire win shows 2575 once; 2576 completes 701 and accepts 702 and 703; relog at each step re-shows the right indicator |
-| M2/M3 (after CA05 and #660) | Find Zuritska and Romney | Both exist at their positions for every player; freeing Zuritska completes 702 once; killing Romney completes 703 |
-| M4 (#663 merged; after 706/708 and Harset #662) | Dial with the DHD Livewire | The gate opens about 4 s after dial; crossing plays 6113 and lands on Harset once. **Do not dial to Harset on current `main`:** the arrival validation (Harset H01, in PR #662) is not on `main` yet, so you would be placed at the gate's raw coordinate inside a navmesh hole and silently frozen |
+| M2/M3 (on `main`) | Find Zuritska (male, at 268.0 / 66.79 / 1042.59) and Romney | Both exist at their positions for every player; freeing Zuritska completes 702 once; killing Romney completes 703 |
+| M4 (#663 and #668 merged; the Harset leg waits on Harset #662) | Dial with the DHD Livewire | The gate opens about 4 s after dial; crossing plays 6113 and lands on Harset once. **Do not dial to Harset on current `main`:** the arrival validation (Harset H01, in PR #662) is not on `main` yet, so you would be placed at the gate's raw coordinate inside a navmesh hole and silently frozen |
 | M5 | Two players at different steps | Neither disturbs the other's indicators or actors |
 
 **Untested and provisional:** every coordinate (comms room, Armory prefab, and the Op-Core respawner, which could not be located in the map assets, so it is a reconstruction). Issue #657 (`active_objective_ids` lost on relog, affects every mission) is unfixed; Harset packet H50 is a fix in progress.
