@@ -2000,6 +2000,14 @@ VALUES (1111, 'set_interaction_type', NULL, 'Cellblock_ArmoryRingSwitch',
 -- prompt, which would make this a double-prompt) was resolved via an
 -- RE precheck substituting for live UAT -- confirmed safe, no
 -- double-prompt risk.
+--
+-- Review note: the `mission_accepted` trigger fires identically for
+-- `Action::AcceptMission` and `Action::AdvanceMission` (both route
+-- through `mission::accept_or_advance`) -- dormant today since no seed
+-- chain issues `advance_mission` against 640/641/688, but if a future
+-- packet ever does, these blurbs would re-display on every advance
+-- instead of once on accept. Gate on `mission_status <id> eq
+-- not_active` (checked pre-transition) if that changes.
 -- ============================================================
 
 -- Chain 1151: mission 640 accepted (via chain 1034, ambernol use) →
