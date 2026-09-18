@@ -290,7 +290,7 @@ async fn chain_1263_completes_702_accepts_704_and_starts_the_escort() {
             .any(|a| matches!(a, Action::SetInteractionType { .. })),
         "chain 1263 must NOT touch the cell actor's indicator — it stays lit \
          through 704 step 2405 so the escort can be restarted by clicking \
-         her. Chain 1291 owns the clear. Got {actions:?}",
+         the actor. Chain 1291 owns the clear. Got {actions:?}",
     );
 
     let signature: Vec<&str> = actions.iter().map(label).collect();
@@ -477,7 +477,7 @@ async fn chain_1264_does_not_restore_in_another_world() {
 
 /// `set_interaction_type` is global on the entity, so another player's
 /// rescue clears Zuritska's `!` for everyone — including a player still on
-/// step 2419, who then cannot click her at all. Chain 1264 repairs that
+/// step 2419, who then cannot click the actor at all. Chain 1264 repairs that
 /// only on a relog; 1265 repairs it on walking back into the volume.
 #[tokio::test]
 async fn chain_1265_repairs_the_cell_indicator_on_region_re_entry() {

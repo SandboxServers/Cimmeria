@@ -65,13 +65,13 @@
 --   2. `entity_templates.move_speed` on Zuritska's template. The COALESCE
 --      default is 0.6 units/tick = 6.0 u/s against a player run speed of
 --      8.125 u/s (`spawner/npcs.rs`), and `npc_ai/follow.rs` only re-paths
---      when `nav_path` is empty, so at the default she diverges
+--      when `nav_path` is empty, so at the default the actor diverges
 --      monotonically and never re-enters the 2-5 unit follow band. The only
 --      non-default row in the seed is template 10 "Col Marsh (pet)" at 0.9;
 --      Zuritska needs at least that.
 --   3. `wander_radius` 0/NULL and `patrol_path_id` NULL on Zuritska's
 --      template. `npc_ai/dispatch.rs` promotes an Idle NPC to Patrol or
---      Wander when either is set, so she would wander off both before the
+--      Wander when either is set, so the actor would wander off both before the
 --      escort starts and again the tick after chain 1291 clears the follow.
 --
 -- D-CA07 is why Zuritska is two static actors rather than one that moves:
@@ -120,12 +120,12 @@
 -- `set_follow_target` has the same shape and no per-player alternative at
 -- all: there is ONE `Castle_Zuritska_Cell` entity in the zone and
 -- `follow_target_id` is a single field on it. If player B frees Zuritska
--- while player A is mid-escort, she re-points at B and A's escort visually
+-- while player A is mid-escort, the actor re-points at B and A's escort visually
 -- ends. Mission state is unaffected — A's step 2405 still advances on A's
 -- own `Castle.CommsRoom` entry — so this too is presentation, not
 -- progression. A per-player escort needs owner-scoped entities, which is
 -- design gate GCA1, not a content packet. Note that chain 1296 widens this:
--- ANY player sitting on step 2405 who loads into Castle re-points her at
+-- ANY player sitting on step 2405 who loads into Castle re-points the actor at
 -- themselves, and 2405 is a story step players will park on across
 -- sessions. Same severity class, much higher firing rate.
 --
@@ -135,7 +135,7 @@
 -- (`combat/threat/aggro.rs`), and `npc_ai_leash` ends at `AiState::Idle`
 -- and never returns to Follow (`npc_ai/leash.rs`). One stray point of
 -- splash damage to Zuritska on the way to Level 5 ends the escort
--- permanently; GC1b-0 stops her being teleported back to her cell, but
+-- permanently; GC1b-0 stops the actor being teleported back to the cell, but
 -- nothing restarts the follow.
 --
 -- The repair is a click. Chain 1302 (`interact_tag Castle_Zuritska_Cell`
@@ -347,7 +347,7 @@ VALUES
 -- `set_interaction_type` is global on the entity (see the shared-world
 -- caveat at the top of this file), so another player's rescue clears
 -- Zuritska's `!` for everyone — including a player still on 2419, who then
--- cannot click her at all. Chain 1264 repairs that only on a relog. This
+-- cannot click the actor at all. Chain 1264 repairs that only on a relog. This
 -- chain repairs it on walking back into the Interrogation Block, which is a
 -- few seconds rather than a reconnect.
 --
@@ -534,12 +534,12 @@ VALUES
   --
   -- If CA05's spawn position ever moves, this row must move with it; the
   -- live-DB guard `chain_1291_walks_zuritska_back_to_her_seeded_spawn` pins
-  -- the two together so the drift fails a test instead of stranding her
+  -- the two together so the drift fails a test instead of stranding the actor
   -- inside a wall.
   --
-  -- No `speed` param: the default 1.0 multiplier keeps her at the template's
+  -- No `speed` param: the default 1.0 multiplier keeps the actor at the template's
   -- own `move_speed` (0.9, set by CA05 so the follow can keep pace), which
-  -- is the speed the player just watched her walk at.
+  -- is the speed the player just watched the escort move at.
   (1291, 'move_waypoint', NULL, 'Castle_Zuritska_Cell',
    '{"destination": "268.0,66.79,1042.59"}', 0, 2),
   -- RECONSTRUCTION (D-CA09, provisional): INT_MinigameLivewire (256) is the
@@ -564,14 +564,14 @@ VALUES
   (1291, 'set_interaction_type', NULL, 'Castle_Zuritska_Cell',
    '{"op": "~", "mask": "INT_AStoryMissionActive"}', 0, 5);
 
--- Chain 1302: click Zuritska during the escort → she follows again.
+-- Chain 1302: click Zuritska during the escort → the follow restarts.
 --
 -- RECONSTRUCTION, and the reason it exists: `AiState::Follow` is
 -- preemptable into Fighting by any threat (`combat/threat/aggro.rs`), and
 -- `npc_ai_leash` ends at `AiState::Idle` and never returns to Follow
 -- (`npc_ai/leash.rs`). One stray point of splash damage to Zuritska on the
 -- way down to Level 5 therefore ends the escort permanently. GC1b-0 stops
--- her being teleported back to her cell, but nothing restarts the follow.
+-- the actor being teleported back to the cell, but nothing restarts the follow.
 -- Before this chain the only re-fire was 1296 on `player_loaded`, i.e. the
 -- player had to relog.
 --
@@ -603,7 +603,7 @@ VALUES
   (1302, 'set_follow_target', NULL, 'Castle_Zuritska_Cell', '{"use_player": true}', 0, 0);
 
 -- Chain 1299: click the workstation Zuritska while the terminal step is
--- active → she tells the player to use the terminal.
+-- active → Zuritska tells the player to use the terminal.
 --
 -- RECONSTRUCTION: dialog 4866 is CLICK-TO-PLAY, not played on arrival. The
 -- shipped data gives no ordering evidence either way, and only an
@@ -770,7 +770,7 @@ VALUES
 -- `follow_target_id` is per-entity runtime state and the player's entity id
 -- changes across a relog, so a stale id would point Zuritska at nothing (the
 -- follow handler clears it and drops to Idle on the next tick). Re-issuing
--- `use_player` on load rebinds her to the returning player's new entity id.
+-- `use_player` on load rebinds the follow to the returning player's new entity id.
 --
 -- The `!` is restored alongside it because it is the affordance chain 1302
 -- needs: without it a returning player cannot click Zuritska to restart a
@@ -794,7 +794,7 @@ VALUES
 
 -- Chain 1297: relog restore for 704 step 2406 — re-arm BOTH the terminal
 -- and the workstation Zuritska, because step 2406 has two interactables:
--- the terminal (chain 1292's Livewire) and Zuritska herself (chain 1299's
+-- the terminal (chain 1292's Livewire) and Zuritska (chain 1299's
 -- instruction dialog).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1297, '704 - Restore Comms terminal + workstation bits on login (step 2406)', 'mission', 704, true, 0);

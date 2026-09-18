@@ -207,7 +207,7 @@ async fn chain_1291_clears_the_escort_follow() {
     );
     assert!(
         zuritska.nav_path.is_empty(),
-        "the in-flight follow path must be cleared or she keeps walking to \
+        "the in-flight follow path must be cleared or the actor keeps walking to \
          the player's last position",
     );
 }
@@ -331,7 +331,7 @@ async fn the_livewire_victory_hop_reaches_the_data_crystal_grant() {
 /// guard around the Interrogation Block forever.
 ///
 /// Zuritska is staged ALREADY FOLLOWING the player. That is what makes this
-/// a guard rather than a tautology: a fixture that started her at `None`
+/// a guard rather than a tautology: a fixture that staged them at `None`
 /// would assert `None` and pass whether or not the arm ran at all. Starting
 /// at `Some(PLAYER_EID)` forces the assertion to prove two separate things
 /// from one transition — the arm did run (the value changed) and it refused
