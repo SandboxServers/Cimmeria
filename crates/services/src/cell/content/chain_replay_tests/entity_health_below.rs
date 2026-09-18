@@ -26,7 +26,16 @@
 //! the same chain).
 //!
 //! Sentinel id range: `0x7004_0000..0x7004_ffff` (Harset H04's
-//! allocation). Cleanup deletes the exact ids inserted, never a range.
+//! allocation). Cleanup deletes the exact ids inserted, never a range,
+//! and runs before seeding as well as after loading, so a previous
+//! aborted run cannot poison this one.
+//!
+//! **The range isolates this module from other modules, not these tests
+//! from each other** — all of them seed the same `TEST_CHAIN_ID` and
+//! would collide on its primary key if run concurrently. That is safe
+//! only because the `ci-live-db` nextest profile serialises every test
+//! (`threads-required = "num-test-threads"`); with plain `cargo test`,
+//! pass `-- --test-threads=1`.
 
 use cimmeria_content_engine::actions::{Action, NpcAiStateAction};
 use cimmeria_content_engine::chain::ChainEngine;
@@ -50,7 +59,14 @@ const TEST_PCT: i32 = 50;
 const TEST_MISSION: i32 = 0x7004_1001;
 const TEST_STEP: i32 = 0x7004_1002;
 
+/// Seed the sentinel chain with the authored `event_key`.
 async fn seed_sentinel_chain(pool: &PgPool) {
+    seed_sentinel_chain_with_key(pool, &format!("{TEST_TAG}:{TEST_PCT}")).await;
+}
+
+/// Same, with the trigger's `event_key` under the caller's control, so a
+/// malformed key can be pushed through the real loader.
+async fn seed_sentinel_chain_with_key(pool: &PgPool, event_key: &str) {
     sqlx::query(
         "INSERT INTO resources.content_chains \
          (chain_id, description, scope_type, scope_id, enabled, priority) \
@@ -67,7 +83,7 @@ async fn seed_sentinel_chain(pool: &PgPool) {
          VALUES ($1, 'entity_health_below', $2, 'player', false, 0)",
     )
     .bind(TEST_CHAIN_ID)
-    .bind(format!("{TEST_TAG}:{TEST_PCT}"))
+    .bind(event_key)
     .execute(pool)
     .await
     .expect("sentinel content_triggers insert must succeed");
@@ -268,10 +284,53 @@ async fn a_follow_up_hit_below_the_threshold_resolves_nothing() {
     );
 }
 
+/// A malformed `event_key` must take the whole chain out of the engine,
+/// through the **real loader**, not just through `convert_trigger` in
+/// isolation.
+///
+/// `:0` is the interesting shape: it parses as an integer, so only the
+/// range check rejects it, and a chain seeded that way is otherwise
+/// well-formed. `build_chains_from_rows` sees every trigger row fail to
+/// convert, warns "All trigger rows failed to convert — skipping chain",
+/// and drops the chain — so `load_single_chain_for_test` returns `None`
+/// even though `content_chains` has a row. Without that path, a content
+/// author would get a chain that looks wired in the DB and never fires.
+///
+/// This is the one end-to-end case the unit tests on `convert_trigger`
+/// cannot reach: they prove the arm returns `None`, not that the loader
+/// then discards the chain rather than registering it triggerless.
+#[tokio::test]
+async fn a_chain_with_an_unusable_percentage_is_dropped_at_load() {
+    let pool = require_db_or_skip!();
+
+    cleanup_sentinel_chain(&pool).await;
+    seed_sentinel_chain_with_key(&pool, &format!("{TEST_TAG}:0")).await;
+    let loaded = load_single_chain_for_test(&pool, TEST_CHAIN_ID).await;
+    cleanup_sentinel_chain(&pool).await;
+
+    let chain = loaded.expect("DB query for the sentinel chain must succeed");
+    assert!(
+        chain.is_none(),
+        "a `:0` threshold can never fire (a 0% entity is dead and routes \
+         to entity_dead_tag), so the loader must drop the chain rather \
+         than register a dead one; got {:?}",
+        chain.map(|c| c.id),
+    );
+}
+
 /// The author-supplied one-shot guard: once the step has advanced, a
 /// second crossing (a relog that respawns the duel NPC at full health,
-/// then a re-fight) resolves nothing. This is what makes the crossing
-/// semantics safe to re-enter.
+/// then a re-fight) resolves nothing.
+///
+/// This is an **authoring-contract fixture, not an H04 regression
+/// guard**: `step_status` evaluation is pre-existing engine code that no
+/// change in this packet can break, and four other replay modules
+/// already cover it. It earns its place because the stateless crossing
+/// design has no one-shot of its own (`content_triggers.once` is dead),
+/// so every chain on this trigger *must* carry a gate — and H21's
+/// mission 1325 is the first one that will. Reverting the condition row
+/// out of `seed_sentinel_chain_with_key` fails it, which is the point:
+/// it pins the seed shape H21 copies.
 #[tokio::test]
 async fn a_recrossing_after_the_step_advanced_resolves_nothing() {
     let pool = require_db_or_skip!();

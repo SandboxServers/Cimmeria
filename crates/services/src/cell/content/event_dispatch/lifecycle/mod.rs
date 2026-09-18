@@ -179,9 +179,15 @@ pub async fn fire_health_below_for_hit(
     let Some(pct_after) = crate::cell::combat::health_pct(target) else {
         return;
     };
-    // Strictly-downward only. A non-damaging outcome must not fire a
-    // crossing chain, and `pct_after == pct_before` is exactly the miss
-    // / full-absorb case.
+    // Strictly-downward only: a miss, a fully absorbed hit, or a script
+    // that healed the target past where it started is not a crossing.
+    //
+    // This cannot change an outcome on its own — the band predicate is
+    // unsatisfiable for a non-downward move, since `after <= pct` and
+    // `pct < before` together force `after < before`. It is a cheap
+    // early-out that stops the event being built at all, and it keeps
+    // the "downward" part of the contract stated in one place rather
+    // than left implicit in the matcher's arithmetic.
     if pct_after >= pct_before {
         return;
     }

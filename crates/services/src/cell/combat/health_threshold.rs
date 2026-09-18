@@ -27,11 +27,14 @@ pub struct HealthPct(pub f64);
 
 /// Compute a health percentage from raw current/maximum values.
 ///
-/// Returns `None` for a non-positive `max` (uninitialised stat block,
-/// or a debuff that zeroed the maximum) — dividing there would produce
-/// an infinity or a NaN, and NaN compares false against every threshold,
-/// which would silently disable the trigger instead of skipping it
-/// loudly at the call site.
+/// Returns `None` for a non-positive `max` (uninitialised stat block, or
+/// a debuff that zeroed the maximum) — dividing there yields an infinity
+/// or a NaN, and neither survives the trip to the content engine
+/// usefully: `serde_json` maps a non-finite `f64` to `Value::Null`, so
+/// the percentage would reach `Trigger::matches` as an *absent* param and
+/// the trigger would quietly stop firing for that entity. `None` here
+/// keeps that path unreachable and lets the caller skip explicitly
+/// instead.
 ///
 /// `cur` is clamped at zero on the low side: a killing blow can drive
 /// `cur` negative (overkill damage is not floored by the stat setter),
@@ -82,9 +85,13 @@ mod tests {
         );
     }
 
-    /// A non-positive maximum has no defined percentage. Returning
-    /// `Some(inf)` or `Some(NaN)` here would either fire every threshold
-    /// or silently fire none.
+    /// A non-positive maximum has no defined percentage. This `None` is
+    /// the only thing keeping a non-finite percentage out of the content
+    /// engine: returning `Some(NaN)` here passes both of the
+    /// dispatcher's comparison guards (every NaN comparison is false),
+    /// then serialises to JSON `null`, and `Trigger::matches` reads that
+    /// as an absent param and silently stops matching. Nothing
+    /// downstream would catch it, so it is caught here.
     #[test]
     fn non_positive_max_has_no_percentage() {
         assert_eq!(health_pct_from(10, 0), None);

@@ -28,8 +28,15 @@ fn trigger(tag: &str, pct: i32) -> Trigger {
     }
 }
 
-/// The headline case: a hit that takes the duel NPC from 60% to 40%
-/// crosses the 50% threshold and must fire.
+/// The readable spec case: a hit that takes the duel NPC from 60% to
+/// 40% crosses the 50% threshold and must fire.
+///
+/// Note this is **not** a regression guard for either half of the band
+/// predicate — 60→40 against `:50` still matches if you delete either
+/// `before > threshold` or `after <= threshold`. The two halves are
+/// guarded by [`does_not_fire_on_a_second_hit_already_below`] and
+/// [`does_not_fire_when_the_hit_stays_above`] respectively; this test is
+/// here so a reader meets the happy path first.
 #[test]
 fn fires_on_the_hit_that_crosses_downward() {
     assert!(trigger("Rinla_Malac", 50).matches(&health_event("Rinla_Malac", 60.0, 40.0)));
@@ -44,15 +51,14 @@ fn does_not_fire_on_a_second_hit_already_below() {
     assert!(!trigger("Rinla_Malac", 50).matches(&health_event("Rinla_Malac", 40.0, 25.0)));
 }
 
-/// Healed back above the threshold and crossed again → fires again. The
-/// crossing is a property of the hit, not a latched per-entity flag.
-#[test]
-fn fires_again_after_healing_back_above_and_recrossing() {
-    let t = trigger("Rinla_Malac", 50);
-    assert!(t.matches(&health_event("Rinla_Malac", 60.0, 40.0)));
-    // (heal happens; the next damaging hit starts from 70%)
-    assert!(t.matches(&health_event("Rinla_Malac", 70.0, 45.0)));
-}
+// A "healed back above, crossed again, fires again" case does NOT belong
+// here. `matches` is a pure function of (before, after, threshold), so
+// calling it twice with two crossing tuples asserts nothing the single
+// crossing case above doesn't already. The "not a latch" claim only has
+// content where state could accumulate — the dispatcher — and it is
+// pinned there against a real `SpaceManager` by
+// `a_second_genuine_crossing_after_a_heal_fires_again` in
+// `cimmeria-services`.
 
 /// Landing exactly ON the threshold counts as crossed — "at or below".
 #[test]
@@ -69,6 +75,10 @@ fn starting_exactly_on_the_threshold_does_not_refire() {
 }
 
 /// A hit that stays entirely above the threshold does nothing.
+///
+/// **This is the guard for the `after <= threshold` half of the band.**
+/// Delete that half and `90 > 30` alone matches, firing a duel's submit
+/// chain on the opening shot.
 #[test]
 fn does_not_fire_when_the_hit_stays_above() {
     assert!(!trigger("Boss", 30).matches(&health_event("Boss", 90.0, 55.0)));
@@ -77,6 +87,10 @@ fn does_not_fire_when_the_hit_stays_above() {
 /// Two thresholds on the same tag are independent: a 60→40 hit crosses
 /// 50 but not 30. This is what lets an author stage a fight without the
 /// firing site knowing which thresholds exist.
+///
+/// The second assertion is the other guard for the `after <= threshold`
+/// half — without it, the `:30` chain fires on a hit that never reached
+/// 30%.
 #[test]
 fn distinct_thresholds_on_the_same_tag_fire_independently() {
     let ev = health_event("Rinla_Malac", 60.0, 40.0);
@@ -84,13 +98,11 @@ fn distinct_thresholds_on_the_same_tag_fire_independently() {
     assert!(!trigger("Rinla_Malac", 30).matches(&ev));
 }
 
-/// One big hit that spans both thresholds fires both chains.
-#[test]
-fn a_single_hit_spanning_two_thresholds_fires_both() {
-    let ev = health_event("Rinla_Malac", 80.0, 20.0);
-    assert!(trigger("Rinla_Malac", 50).matches(&ev));
-    assert!(trigger("Rinla_Malac", 30).matches(&ev));
-}
+// The "one big hit spans both thresholds" case is covered at the
+// dispatcher level (`one_hit_spanning_two_thresholds_fires_both_chains`)
+// where two chains are actually registered and resolved. Restating it
+// here as two positive `matches` calls would add no signal over the
+// single-crossing case plus the independence test above.
 
 /// Tag filter: a crossing on a different NPC must not fire this chain.
 #[test]
@@ -110,16 +122,9 @@ fn rejects_when_the_percentage_params_are_absent() {
     assert!(!trigger("Rinla_Malac", 50).matches(&ev));
 }
 
-/// Wrong discriminant short-circuits before the params are read.
-#[test]
-fn rejects_an_event_of_a_different_trigger_type() {
-    let ev = make_event(
-        TriggerType::EntityDeath,
-        vec![
-            ("entity_tag", serde_json::json!("Rinla_Malac")),
-            ("pct_before", serde_json::json!(60.0)),
-            ("pct_after", serde_json::json!(40.0)),
-        ],
-    );
-    assert!(!trigger("Rinla_Malac", 50).matches(&ev));
-}
+// No "wrong discriminant rejects" case here: that short-circuit
+// (`if self.trigger_type() != event.trigger_type { return false }`) sits
+// at the top of `matches` and is variant-independent, already pinned by
+// `wrong_trigger_type_never_matches` in `matching_entity.rs`. Restating
+// a shared invariant once per variant is how a matcher test file grows
+// thirty tests that all fail together.

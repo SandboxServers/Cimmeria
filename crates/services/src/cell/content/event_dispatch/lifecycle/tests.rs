@@ -296,8 +296,21 @@ async fn an_untagged_target_fires_nothing() {
 /// An attacker with no `player_id` (NPC-versus-NPC damage, or a caller
 /// that wired this up from a non-player path) must not resolve a chain —
 /// there is no mission to advance.
+///
+/// The counter assertion alone is indistinguishable from the untagged
+/// case, the no-chain case, or an outright dropped event, so this also
+/// pins the negative log that makes the skip visible in production. Per
+/// [the negative-logging convention](../../../../../../../docs/architecture/negative-logging-convention.md)
+/// this seam warns rather than failing silently, because the function is
+/// only reachable from player-driven paths — reaching it without a
+/// `player_id` means a caller wired it up wrong.
 #[tokio::test]
-async fn an_attacker_without_a_player_id_fires_nothing() {
+async fn an_attacker_without_a_player_id_fires_nothing_and_warns() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+
     let mut mgr = make_duel_mgr();
     if let Some(p) = mgr.get_entity_mut(PLAYER_EID) {
         p.player_id = None;
@@ -310,25 +323,21 @@ async fn an_attacker_without_a_player_id_fires_nothing() {
     fire_health_below_for_hit(PLAYER_EID, NPC_EID, before, &engine, &tx, &mut mgr).await;
 
     assert_eq!(counter(&mgr, WOUND_COUNTER), 0);
-}
-
-/// With no chain registered for the trigger the dispatcher must be a
-/// complete no-op — this runs on every damaging hit in the game.
-#[tokio::test]
-async fn an_engine_with_no_health_chains_emits_nothing() {
-    let mut mgr = make_duel_mgr();
-    let engine = ChainEngine::new();
-    let (tx, mut rx) = mpsc::channel(32);
-
-    damage_npc_to(&mut mgr, 60);
-    let before = damage_npc_to(&mut mgr, 40);
-    fire_health_below_for_hit(PLAYER_EID, NPC_EID, before, &engine, &tx, &mut mgr).await;
-
     assert!(
-        rx.try_recv().is_err(),
-        "unseeded server must produce no wire traffic from the hook",
+        capture
+            .find_message(Level::WARN, "attacker has no player_id")
+            .is_some(),
+        "the skip must be visible in the log, not silent — deleting the \
+         warn! leaves an unexplained missing mission advance",
     );
 }
+
+// There is deliberately no "empty engine emits nothing" test. The
+// `chains_for_trigger(...) == 0` fast path at the top of
+// `fire_health_below_for_hit` is a per-hit cost optimisation with no
+// observable behaviour: delete it and an empty `ChainEngine` still
+// resolves nothing, so any black-box assertion passes either way. A test
+// named for that guard would claim coverage it cannot have.
 
 // ─── Damage path (end to end through the kill-credit wrapper) ───────
 
@@ -432,8 +441,16 @@ async fn a_wounding_hit_through_the_damage_path_fires_health_below() {
 /// The exclusivity contract, end to end: a killing blow fires
 /// `entity_dead_tag` and **not** the threshold chain, even though the
 /// kill crosses the threshold on its way down.
+///
+/// Note what this does and does not guard. It pins the *contract*, and
+/// the enforcing layer is the **dispatcher** — `fire_health_below_for_hit`
+/// returns early on both `is_dead_state` and `pct_after <= 0`. Hoisting
+/// the call in `kill_credit.rs` out of its `if !just_died` branch would
+/// leave this test green, because the corpse trips those guards anyway.
+/// The branch placement is defence-in-depth, not the enforcement; the
+/// two dispatcher-level tests above are what guard the enforcement.
 #[tokio::test]
-async fn a_killing_hit_through_the_damage_path_fires_death_not_health_below() {
+async fn a_killing_hit_fires_death_and_the_dispatcher_suppresses_health_below() {
     let mut mgr = make_duel_mgr();
     arm_player_with_ability(&mut mgr, 9999);
     let engine = duel_engine(99);

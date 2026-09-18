@@ -85,12 +85,16 @@ pub async fn handle_use_ability_with_kill_credit(
         .get_entity(target_eid)
         .is_some_and(|t| t.stats.get(HEALTH).is_some_and(|s| s.cur <= 0));
     if !just_died {
-        // Survived the hit — this is the other half of the same
-        // decision. `entity_dead_tag` and `entity_health_below` are
-        // mutually exclusive per hit by construction: a killing blow
-        // takes the branch below and never reaches here, so a chain
-        // author can rely on the ritual-submit chain not firing on the
-        // blow that kills the NPC outright.
+        // Survived the hit — the other half of the same decision, so a
+        // chain author gets exactly one of `entity_dead_tag` and
+        // `entity_health_below` per hit.
+        //
+        // This branch is defence-in-depth, not the enforcement. The
+        // authority for "a killing blow never fires a threshold chain"
+        // lives in `fire_health_below_for_hit`, which drops any hit
+        // whose target ends dead — it has to, because `just_died` here
+        // reads health, and an effect script can heal a corpse back
+        // above zero after the death transition has run.
         crate::cell::content::fire_health_below_for_hit(
             entity_id, target_eid, pct_before, engine, tx, space_mgr,
         )
