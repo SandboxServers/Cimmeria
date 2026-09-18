@@ -106,3 +106,74 @@ Corollary: `resources.mission_tasks.task_type` is not read by any Rust code.
 - `feat/content-effect-apply-entry-point` — **strict superset of the above**,
   plus `effect_apply.rs`, `LaunchAbility` and `ApplyEffect` arms. Supersedes the
   move-entity branch entirely.
+
+## Mission-progression semantics (verified 2026-09-18, castle-m706 worktree)
+
+### `resolve_event` is a single-snapshot resolve, then sequential execute
+
+`content-engine/src/chain/mod.rs:288-325`: **every** matching chain's conditions
+are evaluated against the *same* pre-action `ExecutionContext`, then all their
+actions are concatenated and run in order. So for one event, chain B gated on
+`step_status X eq active` still fires even if chain A already advanced past X.
+This is what makes "kill → advance step" + "kill → set the next NPC's `!`"
+co-fire correctly, and it is the same property the Cellblock counter chains
+document as the "target - 1" rule (`castle_cellblock_chains.sql:1445-1477`).
+Re-entrancy (an action that fires a nested dispatcher) *does* see post-mutation
+state — see the accept/complete note below.
+
+### `complete_objective` can end a mission early — check `is_optional` first
+
+`cell/missions/progression.rs:176-213`: after marking one objective complete it
+tests `active_objectives.iter().filter(|o| !o.optional).all(completed)` and, if
+true, calls `mission.complete()`. **A step whose only non-optional objectives are
+already done — or a step with *zero* non-optional objectives — completes the whole
+mission on the first `complete_objective`.** Always grep `mission_objectives.sql`
+for `is_optional` on the target step before authoring `complete_objective`.
+(Castle step 2415 is safe only because hidden objective 2796 is `is_optional=false`.)
+
+`advance_step` (`progression.rs:57-66`) force-completes every not-yet-complete
+objective of the outgoing step and never runs the all-required check, so
+`complete_objective <the one the player did>` then `advance_step <next>` is the
+correct "leave a multi-objective step" idiom. Two warts: it emits no
+`onObjectiveUpdate` for the force-completed ones, and it force-completes
+*optional* ones too (both "(Option #1)" and "(Option #2)" tick).
+
+Prefer `complete_mission` over N× `complete_objective` for a final step:
+`complete_mission_direct` (`progression.rs:226-309`) sends
+`onMissionUpdate(status = STATUS_COMPLETED)`, whereas `complete_objective`'s
+auto-complete path sends `MISSION_ACTIVE` as the status byte
+(`progression.rs:202`) — almost certainly a bug, and a reason not to rely on it.
+
+### `active_objective_ids` is persisted as the STEP id — objective state does not survive relog
+
+`cell/content/executor/mission.rs:85` and `:242` send
+`active_objective_ids: vec![step_id]` and `completed_objective_ids: vec![]`.
+`player_init/mod.rs:169-189` rebuilds `active_objectives` from that list with
+`hidden: false, optional: false`. So after a relog a mission's
+`active_objectives` is `[<step_id masquerading as an objective>]`:
+`complete_objective` no-ops, `advance_step` still works, objective ticks in the
+client log are lost, and `complete_mission_direct` emits
+`onObjectiveUpdate(<step_id>, COMPLETED)`. Multi-step ports must not depend on
+objective state across a relog.
+
+### `set_interaction_type` is GLOBAL; `add_dialog_set` is PER-PLAYER
+
+`executor/world/mod.rs:19-64` mutates the shared `CellEntity.interaction_type_flags`
+and broadcasts to every witness. `space_manager/aoi.rs:117-180` sends that value
+as the AoI-create base and merges the *per-player* `available_interactions`
+(from `add_dialog_set`) on top as a separate `InteractionType` update. Quest
+glyphs painted with `set_interaction_type` are therefore visible to, and
+clobberable by, every other player in the zone. Entities start from their
+template's `interaction_type` column (`space_manager/spawn.rs:127`), e.g.
+template 162 `DHD_Frost` is already `INT_DHD = 16` at spawn.
+
+### `content_triggers.scope` and `content_chains.scope_type/scope_id` are DEAD
+
+`loader/mod.rs:88-215` reads them into the row structs and never uses them,
+exactly like the `once` column. Only conditions gate a chain.
+
+### Multi-trigger chains are real OR-semantics
+
+`loader/mod.rs:170-205`: N trigger rows → N in-memory `Chain`s sharing one id,
+conditions and action list. Safe as long as no two trigger rows can match the
+same event — if they can, the action list runs twice.

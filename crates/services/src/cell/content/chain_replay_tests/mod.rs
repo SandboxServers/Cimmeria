@@ -15,14 +15,16 @@
 //!
 //! Files are organised by mission family — each sibling module pins the
 //! chains for one mission's branches and edges so a regression surfaces
-//! near the seed it touches. Two modules are organised by *action verb*
+//! near the seed it touches. Four modules are organised by *action verb*
 //! instead, because the risk they guard is the executor arm rather than
-//! any one mission's wiring: [`sgc_w1_move_entity`], [`grant_xp`] and
-//! [`livewire_pairs`]. Those three also run the resolved actions through
+//! any one mission's wiring: [`sgc_w1_move_entity`], [`grant_xp`],
+//! [`livewire_pairs`] and [`castle_702_704_executor`]. Those four also run
+//! the resolved actions through
 //! `executor::execute_actions` and assert on the resulting
 //! `CellToBaseMsg` traffic — a resolve-only test cannot tell a wired
 //! executor arm from the `other =>` catch-all.
 
+mod castle_702_704_executor;
 mod gc1_escort;
 mod grant_xp;
 mod livewire_pairs;
@@ -41,6 +43,11 @@ mod mission_687;
 mod mission_688;
 mod mission_689;
 mod mission_701;
+mod mission_702;
+mod mission_703;
+mod mission_704;
+mod mission_704_escort;
+mod mission_704_restores;
 mod mission_706;
 mod mission_708;
 mod region8_guard_aggro;
