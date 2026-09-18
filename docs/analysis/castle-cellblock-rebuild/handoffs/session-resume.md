@@ -1,9 +1,10 @@
 # Castle Cellblock campaign — session resume handoff
 
-> Written 2026-09-18 ahead of an expected session-limit rollover. If this
-> session dies mid-work, `/clear` and relaunch from this file rather than
-> replaying the full transcript. Update this file (don't append a second
-> one) whenever the state below goes stale.
+> Last updated 2026-09-18 (~11:45 CDT) ahead of an expected usage-limit
+> rollover (owner notice: weekly usage ~85%). If this session dies mid-work,
+> `/clear` and relaunch from this file rather than replaying the transcript.
+> Update this file in place (don't add a second one) whenever the state
+> below goes stale.
 
 ## Operating mode
 
@@ -15,96 +16,128 @@ shared primary checkout) — checkout `pkg/<name>` off fresh `origin/main`
 per packet, validate (fmt/clippy/check/live-DB), push, `gh pr create`,
 run `Skill(code-review high --comment <PR-URL>)`, address findings, merge.
 
-## PR / branch state (as of this writing)
+**Owner constraint (relayed 2026-09-18 by peer `cimmeria-f0`):** usage is
+scarce. Finish and commit what is closest to done, start no new large
+scopes, keep at most 2-3 subagents, commit WIP early. Do not fan out.
+
+## PR / branch state
 
 | Packet | Branch | PR | State |
 |---|---|---|---|
-| C05 (take-cover objective) | `pkg/c05-cover-objective` | #653 | **Merged** (2026-09-18T12:09:38Z), incl. a review-fixup commit (self-completion guards on chains 1033/1132 + `docs/content/mission-chains.md` sync) |
-| C08b (Straegis scene) | `pkg/c08b-straegis-scene` | #650 | **Merged**, incl. a review-fixup commit widening `destroy_entity`→`despawn_npc` to two more call sites |
+| C05 (take-cover objective) | `pkg/c05-cover-objective` | #653 | **Merged** |
+| C08b (Straegis scene) | `pkg/c08b-straegis-scene` | #650 | **Merged** |
 | C08b doc sync | `docs/mark-c08b-done` | #654 | **Merged** |
-| main fmt fix | (peer session `cimmeria-e5`'s PR) | #658 | **Merged** — main's `cargo fmt --check` was red from #650 briefly; fixed, both `pkg/c05-cover-objective` and `pkg/gc1-marsh-escort` were rebased onto the fix afterward |
-| GC1 (Marsh escort) | `pkg/gc1-marsh-escort` | #655 | **Open, mid-fix.** Two real findings from an independent review round: (a) chain 1172's `delay_ms` needed bumping from 0 to 10600 so its dialog doesn't race C08b's chain 1161 Matinee/dialog-2516 beat on the same trigger — **fix applied** to both the SQL and a tightened `gc1_escort.rs` test asserting the exact delay; (b) chain 1175's comment had an inverted claim about execution order vs. C08b's chain 1161 — **fixed**. **UNRESOLVED right now:** after applying the SQL fix, a live-DB run of the new/tightened test (`chain_1172_mission_686_complete_shows_post_death_dialog_5859`) FAILED with "got delay=0" even though a direct `psql` query against the same reloaded `sgw_ccb_coordinator` DB immediately afterward showed `delay_ms=10600` correctly stored. Root cause not yet found — was mid-isolating via a single-test rerun (`cargo nextest run ... -E "test(chain_1172_mission_686_complete_shows_post_death_dialog_5859)"`, `DATABASE_URL=...sgw_ccb_coordinator`, no reload) when this handoff was written. **Next action: read that rerun's result; if it now passes, it was a transient/stale-read issue during the reload+test combo and is safe to just re-verify with a fresh `reload-db.sh` + full `gc1_escort`/`mission_686_straegis` run before pushing. If it still fails, the bug is real — trace `load_single_chain_for_test` → `build_chains_from_rows` → `resolve_event`'s `action_delays` handling for a single-action chain with nonzero delay; none of that code showed an obvious bug on inspection, so the next step is adding an inline `eprintln!`/`dbg!` in the test to print `resolved.action_delays` raw, or checking whether nextest reused a stale test binary (rare, but `cargo clean -p cimmeria-services` would rule it out).** Do not push to `pkg/gc1-marsh-escort` until this is green.
+| main fmt fix | (peer `cimmeria-e5`) | #658 | **Merged** |
+| GC1 (Marsh escort) | `pkg/gc1-marsh-escort` | #655 | **Merged** (2026-09-18T16:32Z, squash `627be660`); all CI green including the review-fix commit `ad4e0748`. |
 
-Issue #656 filed: `advance_step` never sends `ON_OBJECTIVE_UPDATE` for
-objectives it implicitly completes, plus the same root cause has now
-forced hand-split content chains twice (mission 688, mission 639) with no
-general primitive proposed. Tracked as a follow-up, not fixed inline.
+### GC1 / PR #655 detail (merged)
+
+The independent review round found two real issues, both fixed in
+`ad4e0748` and summarised in a PR comment:
+
+1. Chain 1172 (post-death blurb 5859) raced C08b's chain 1161 on the same
+   `mission_completed 686` trigger. `delay_ms` is now 10600 (1161's dialog
+   2516 is at 10100) and `gc1_escort.rs` pins the exact delay.
+2. Chain 1175's comment had the execution order vs. chain 1161's
+   `destroy_entity` inverted; corrected.
+
+The earlier "got delay=0" live-DB failure was **transient, not a code
+bug**: an isolated rerun passed, then a fresh `reload-db.sh` + all 147
+`chain_replay_tests` passed. It coincided with the shared Postgres
+crashing (see Infra notes), which is the likely cause. No loader/resolver
+change was needed.
 
 ## Worktree map
 
-| Worktree | Branch | Purpose / state |
+| Worktree | Branch | State |
 |---|---|---|
-| `.claude/worktrees/ccb-coordinator` | `pkg/gc1-marsh-escort` | Active coordinator worktree. Currently mid-debug on the delay_ms test failure above. Uncommitted changes: SQL fix for chains 1172/1175 comments, `gc1_escort.rs` test tightening — **not yet committed** (staged mentally, not via `git add`) as of this handoff. |
-| `.claude/worktrees/ccb-c08b-fixup` | `pkg/c05-cover-objective` (stale, already merged) | No longer needed — safe to `git worktree remove` once confirmed nothing uncommitted remains (last known state: clean, matches merged PR #653 content). |
+| `.claude/worktrees/ccb-coordinator` | `pkg/gc1-marsh-escort` | Clean apart from this handoff dir (untracked until committed). Everything else is pushed. |
+| `.claude/worktrees/ccb-c08b-fixup` | `docs/cellblock-session-resume` | Not needed for the coordinator; check for uncommitted work before removing. |
+| `.claude/worktrees/ccb-c07-fixup` | `pkg/c07-accept-blurbs` | Stale (C07 merged); safe to remove once confirmed clean. |
 
-Six other stale agent worktrees (`agent-a1823739c7a3597b4`,
-`agent-a20d59dfd37999cdc`, `agent-a7528cb59dea8570b`,
-`agent-a86f727800dba0af5`, `agent-acadac2b412688f44`,
-`agent-af06a84d79c558a5c`) were verified fully superseded by merged PRs
-and removed during this session at peer `cimmeria-e5`'s disk-space
-request (C: was at 98%; back to ~225GB free). One
-(`agent-af06a84d79c558a5c`) is unregistered from `git worktree list` but
-its directory wouldn't delete (Windows "device or resource busy") — retry
-`rm -rf` on it later if it's still present.
+`agent-af06a84d79c558a5c`'s directory may still exist on disk (Windows
+"device or resource busy" on delete); retry `rm -rf` later if present.
 
 ## Ledger status (`docs/analysis/castle-cellblock-rebuild/work-packets.md`)
 
-Done (merged): C00, C01, C02, C03, C04, C05, C07, C08a, C08b, GC1b-0.
-GC1 (a/b1/b2) implemented and in PR #655, not yet marked Done in the
-ledger (mark it Done + PR #655 once merged, matching the pattern used
-for every other packet's docs commit).
+Done (merged): C00, C01, C02, C03, C04, C05, C07, C08a, C08b, GC1a,
+GC1b-0, GC1b-1, GC1b-2 (GC1a/b-1/b-2 = PR #655, marked Done in the
+ledger by docs PR #666; in-client UAT still pending for all of them).
 
 Not yet started / still open:
-- **C06** (flanking objectives 2725/2731) — was blocked on C05's pattern;
-  C05 is merged now, so C06 is unblocked. Not yet dispatched.
-- **GC1c** (lockdown VFX) — BlockedEvidence, explicitly out of scope per
-  the ledger (no energy-field actor or Kismet event id recovered).
-- **GC2** — chain range 1191-1199 reserved, not yet scoped/dispatched.
-  Two idle research teammates from an earlier turn may already have
-  findings: `gc2-item-research` (items-systems-advisor) and
-  `gc2-re-itemids` (game-archaeology-specialist) — check
-  `ListAgents`/message them before re-researching from scratch.
-- **GC3** (mission-completion XP formula) — BlockedDesign, no user
-  decision recorded yet (D-CB10 default: stays out of scope).
+
+- **C06** (flanking objectives 2725/2731) — unblocked (C05 merged). Not
+  dispatched. Only start it if usage allows; it is a real packet with its
+  own review round.
+- **GC1c** (lockdown VFX) — BlockedEvidence, out of scope.
+- **GC2** — chain range 1191-1199 reserved, not scoped. Idle research
+  teammates `gc2-item-research` and `gc2-re-itemids` may hold findings —
+  check `ListAgents`/message them before re-researching.
+- **GC3** (mission-completion XP formula) — BlockedDesign, needs an owner
+  decision (D-CB10 default: stays out of scope).
 - **C10** (rolling doc sync) — ongoing, not a one-shot packet.
 
-Two other idle research teammates exist from earlier work, already spent
-(their findings are presumably folded into GC1/C07, now merged):
-`gc1-escort-research` (npc-ai-spawn-advisor), `c07-precheck-research`
-(game-archaeology-specialist). Don't re-dispatch unless their prior
-findings can't be located.
+Issue #656 tracks: `advance_step` never sends `ON_OBJECTIVE_UPDATE` for
+implicitly completed objectives (forced hand-split chains for missions 688
+and 639). Follow-up, not fixed inline.
 
 ## Immediate next actions, in order
 
-1. Read the result of the in-flight isolated test rerun for
-   `chain_1172_mission_686_complete_shows_post_death_dialog_5859`.
-2. If it passes: run a full fresh `reload-db.sh` + `cargo nextest ... -E
-   "test(gc1_escort) or test(mission_686_straegis)"` to confirm no
-   regression, then `git add`/commit/push the fix to `pkg/gc1-marsh-escort`,
-   comment on PR #655 summarizing the two fixes, and merge once CI is
-   green (checked with `gh pr checks 655`).
-3. If it still fails: debug per the note above before pushing anything.
-4. Mark GC1 (a/b1/b2) Done in `work-packets.md` with PR #655's number, as
-   its own small docs commit/PR (matching the C08b-Done-doc pattern, PR
-   #654) — or fold into the same push if convenient.
-5. Dispatch C06 (now unblocked) via a fresh `pkg/c06-<name>` branch
-   following the same pipeline.
-6. Check in on GC2's two idle research teammates before deciding whether
-   to scope/dispatch GC2.
-7. Continue the "open PRs regularly, one review round each" cadence until
-   the ledger's remaining packets (C06, GC2 if scoped, C10) are done. GC1c
-   and GC3 stay out of scope pending new evidence / a user decision.
+1. Merge docs PR #666 (this handoff + the GC1-Done ledger update) once
+   its checks are green (`gh pr checks 666`; if `CONFLICTING`, merge
+   `origin/main` into `docs/cellblock-handoff-refresh` first).
+2. Only if usage allows: dispatch C06 (flank objectives 2725/2731, chain
+   ids 1141-1150) on `pkg/c06-<name>` off fresh `origin/main` through the
+   same pipeline (fmt/clippy/live-DB, PR, `code-review high --comment`,
+   fix, merge). Otherwise stop here.
+3. Peer `cimmeria-f0` (Harset coordinator) owns the cross-zone operator
+   guide (`docs/analysis/zone-restoration-operator-guide.md` on branch
+   `content/harset-wave2`). It was told #655 would be reported when it
+   merged; send it a one-line "#655 merged" if that hasn't happened.
 
-## Cross-session context
+## What is gated on the owner in-client (nothing has been run)
 
-Three sibling campaigns share this machine's build lane and disk:
-Harset (`cimmeria-3c`), Castle 701-708 (`cimmeria-e5`, handoff at
-`docs/analysis/castle-rebuild/handoffs/session-resume.md` on branch
-`castle/coordinator-session-resume`), and this Cellblock campaign. Build
-infra changed mid-session (peer `cimmeria-e5`): `lane.sh` is now a
-counting semaphore (not a hard mutex) with per-worktree `target/` dirs +
-sccache, and `reload-db.sh`/`live-db-test.sh` now target a
-per-worktree database `sgw_<worktree-dir-name>` (this worktree:
-`sgw_ccb_coordinator`) instead of one shared `sgw` DB — same entry
-points, just no longer need to worry about another session's reload
-landing under your tests.
+All in-client UAT is pending. Milestones are in
+[README.md](../README.md#validation-and-uat-gates):
+
+- **M1** — one Prisoner 329 dialog + one Marsh briefing per Jaffa/Human;
+  hallway controllers accept once; Region8 pistol guard aggros; Stasis
+  Sickness icon on load / cleared on cure; relog at each step.
+- **M2** — Frost's Letter in the log; cover indicator shows on vial pickup
+  and hides on taking cover; step 2144 needs both objectives (flank
+  objectives need C06, not built).
+- **M3** — one prompt per accept; Straegis camera plays once, control
+  returns, Marsh gone, 2516 once, then 5859 ~10.6s after scene start;
+  relog after the scene does not replay it. For GC1: Marsh follows the
+  player topside after the ring hop — watch for the invisible-spawn shape
+  of issue #582.
+- **M4** — arrive near Gerschon with mission 1360 still active; depends on
+  the Castle campaign's CA01.
+
+Owner decision still open: GC3 (XP formula).
+
+## Infra notes
+
+- **Shared Postgres (:5433)** runs from `server/pgdata` in the primary
+  checkout: `postgres.exe -D .../Cimmeria/server/pgdata -p 5433`. It
+  crashed at 10:24 on 2026-09-18 (exception `0xC000026B`) and was
+  restarted ~11:20 with
+  `external/postgresql_server/bin/pg_ctl.exe -D <that pgdata> -o "-p 5433" -l server/logs/postgresql.log start`
+  (crash recovery is quick to replay, but the initial data-dir fsync took
+  a couple of minutes). `db.bat start` does NOT work — it looks for
+  `external/postgresql_server/data`, which doesn't exist. If live-DB tests
+  fail with "connection refused", check this first.
+- **Lane / DB scripts** live in
+  `C:\Users\Steve\AppData\Local\Temp\cimmeria-castle\` (not in the repo):
+  `lane.sh` (counting semaphore, 2 slots, per-worktree `target/` + sccache),
+  `reload-db.sh`, `live-db-test.sh`. `live-db-test.sh` takes a plain
+  substring filter (e.g. `chain_replay_tests`), NOT a nextest `-E`
+  expression — an `-E`-style string matches zero tests and exits 4. This
+  worktree's DB is `sgw_ccb_coordinator`.
+- Building in this worktree rewrites `Cargo.lock` (a `thiserror` 2.0.19 ->
+  2.0.20 bump unrelated to this campaign). `git checkout -- Cargo.lock`
+  before committing.
+- Sibling campaigns sharing this machine: Harset (`cimmeria-3c` /
+  coordinator `cimmeria-f0`), Castle 701-708 (`cimmeria-e5`, handoff at
+  `docs/analysis/castle-rebuild/handoffs/session-resume.md`), and this
+  Cellblock campaign. Never drop or reload another campaign's DB.
