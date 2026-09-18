@@ -9,7 +9,9 @@
 //! - [`diagnosis`] — step 2415, the two mutually-alternative routes
 //!   (chains 1341-1345).
 //! - [`crystal`] — step 2416, the Control Crystal grant and its
-//!   single-grant guard (chains 1346-1351).
+//!   single-grant guard (chains 1346-1349).
+//! - [`report_cue`] — step 2416's "which officer do I report to" cue
+//!   (chains 1350/1351), split from [`crystal`] at the soft cap.
 //! - [`report`] — step 2417, the archetype-split report to Checkpoint
 //!   Alpha (chains 1352-1355).
 //! - [`stargate`] — steps 2418 / 4462 / 4469, the DHD minigame, the dial
@@ -29,6 +31,7 @@
 mod crystal;
 mod diagnosis;
 mod report;
+mod report_cue;
 mod restore;
 mod stargate;
 
@@ -39,6 +42,7 @@ use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 use sqlx::PgPool;
 
 use super::super::engine_loader::{load_chain_expansions_for_test, load_single_chain_for_test};
+use super::assert_no_deferred_actions;
 
 /// The "!" main-story-active cue.
 const BANG: i64 = cimmeria_entity::interaction_flags::INT_A_STORY_MISSION_ACTIVE;
@@ -52,6 +56,17 @@ const LIVEWIRE: i64 = cimmeria_entity::interaction_flags::INT_MINIGAME_LIVEWIRE;
 const JAFFA: i32 = 8;
 /// A concrete non-Jaffa archetype for the negative half of each split.
 const TAURI: i32 = 1;
+
+/// The four tags that can yield the Control Crystal at step 2416, and
+/// the optional objective each one ticks. Shared by [`crystal`] (the
+/// grant chains 1346-1349) and [`report_cue`] (the cue chains
+/// 1350/1351), which both have to enumerate every source.
+const SOURCES: [(i32, &str, i32); 4] = [
+    (1346, "Castle_BravoOfficer1", 2798),
+    (1347, "Castle_BravoOfficer2", 2798),
+    (1348, "Castle_BravoOfficer3", 2798),
+    (1349, "Castle_Muelbach", 2799),
+];
 
 /// Load one seeded chain and register it in a fresh engine.
 async fn engine_for(pool: &PgPool, chain_id: i32) -> ChainEngine {
@@ -112,30 +127,6 @@ fn actions_of(resolved: &ResolvedActions, chain_id: i64) -> Vec<&Action> {
         .iter()
         .filter_map(|(id, a)| if *id == chain_id { Some(a) } else { None })
         .collect()
-}
-
-/// Assert every resolved action for `chain_id` is immediate.
-///
-/// This is the guard the server-authority review made a release
-/// condition for the crystal grant: `execute_actions` QUEUES rather than
-/// runs any action with `delay_ms > 0` (`executor/mod.rs:96-120`), so a
-/// deferred `advance_step` would leave step 2416 active across the delay
-/// window and every officer killed inside it would grant another
-/// crystal. Applied to all of 708's chains, not just the crystal ones —
-/// the same reasoning covers every step gate in the mission.
-fn assert_no_deferred_actions(resolved: &ResolvedActions, chain_id: i64) {
-    for (i, (id, action)) in resolved.actions.iter().enumerate() {
-        if *id != chain_id {
-            continue;
-        }
-        let delay = resolved.action_delays.get(i).copied().unwrap_or(0);
-        assert_eq!(
-            delay, 0,
-            "chain {chain_id} action {action:?} carries delay_ms = {delay}; \
-             a deferred action is queued rather than run, which breaks the \
-             step gate it shares an action list with",
-        );
-    }
 }
 
 /// Context for a step-gated 708 event: the named step active, the

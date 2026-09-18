@@ -37,6 +37,13 @@ const PLAYER_ID: i32 = 7186;
 /// chains are seeded with.
 const HARSET: &str = "Harset";
 
+/// A destination that is neither the keyed world nor the ORIGIN world.
+/// `gate_ctx` always stamps `world_name = "Castle"`, so passing "Castle"
+/// as the destination would make both params equal and the negative would
+/// pass whichever key the trigger matcher happened to read. Using a third
+/// name keeps the wrong-destination negatives discriminating.
+const OTHER_WORLD: &str = "Abydos";
+
 /// Context for a stargate event, matching what
 /// `event_dispatch/stargate.rs` populates: destination world, origin
 /// world, mission state and archetype.
@@ -339,7 +346,7 @@ async fn the_dial_chains_reject_the_wrong_archetype_and_the_wrong_destination() 
                 &fire(
                     engine,
                     TriggerType::StargateDialed,
-                    &gate_ctx("Castle", 4462, archetype)
+                    &gate_ctx(OTHER_WORLD, 4462, archetype)
                 ),
                 chain_id as i64
             )
@@ -417,7 +424,7 @@ async fn chain_1360_completes_708_on_crossing_and_never_on_dialling() {
             &fire(
                 &engine,
                 TriggerType::StargateCrossed,
-                &gate_ctx("Castle", 4469, TAURI)
+                &gate_ctx(OTHER_WORLD, 4469, TAURI)
             ),
             1360
         )

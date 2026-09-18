@@ -48,3 +48,37 @@ mod region_transition_accepts;
 mod sgc_w1_move_entity;
 mod stargate_triggers;
 mod start_minigame_difficulty;
+
+/// Assert every action `chain_id` resolved is immediate (`delay_ms = 0`).
+///
+/// `execute_actions` QUEUES rather than runs any action with a non-zero
+/// delay (`executor/mod.rs:96-120`). For a chain whose action list mixes a
+/// state change with the step gate that closes it, that is a correctness
+/// hole rather than a timing detail: a deferred `advance_step` leaves the
+/// old step active across the delay window, and every event arriving
+/// inside that window passes the gate again. Mission 708's Control
+/// Crystal is the worked example — a deferred advance turns a
+/// grant-exactly-once into a faucet.
+///
+/// Lives here rather than per mission module because the reasoning is not
+/// mission-specific and two copies of it had already started to drift
+/// apart in their panic text. Asserted per chain rather than over the
+/// whole `ResolvedActions` so the failure names the offending chain.
+#[cfg(test)]
+fn assert_no_deferred_actions(
+    resolved: &cimmeria_content_engine::chain::ResolvedActions,
+    chain_id: i64,
+) {
+    for (i, (id, action)) in resolved.actions.iter().enumerate() {
+        if *id != chain_id {
+            continue;
+        }
+        let delay = resolved.action_delays.get(i).copied().unwrap_or(0);
+        assert_eq!(
+            delay, 0,
+            "chain {chain_id} action {action:?} carries delay_ms = {delay}; \
+             a deferred action is queued rather than run, which breaks the \
+             step gate it shares an action list with",
+        );
+    }
+}

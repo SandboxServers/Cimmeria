@@ -44,10 +44,28 @@
 --    2794/2795 and step 2416's 2798/2799 are `is_optional = true`
 --    (6619/6621/6625/6629) with a required objective still active
 --    (2796 hidden, 2797 blank), so the same holds there.
---    CAUTION for future edits: if any of those objectives is ever
---    flipped to optional, the matching chain below completes the whole
---    mission. `mission_708.rs` asserts the mission is still active
---    after chains 1343/1345/1353/1355 precisely to catch that.
+--    CAUTION for future edits: if any of those required objectives is
+--    ever flipped to optional, the matching chain below completes the
+--    whole mission several steps early. Every route that completes an
+--    objective has an EXECUTED guard — it stages the step with the real
+--    `is_optional` flags, pushes the chain through `execute_actions`,
+--    and asserts the mission is still `MISSION_ACTIVE` afterwards:
+--      chain 1343 → diagnosis.rs::guard_route_advances_without_completing_the_mission
+--      chain 1345 → diagnosis.rs::panel_route_advances_without_completing_the_mission
+--      chain 1346 → crystal.rs::crystal_is_granted_only_once_across_two_officer_deaths
+--      chain 1353 → report.rs::reporting_in_advances_the_step_without_completing_the_mission
+--      chain 1355 → report.rs::the_jaffa_report_advances_without_completing_the_mission
+--    A resolve-only test cannot see any of this: `complete_objective`'s
+--    auto-complete branch runs inside the executor, not the resolver.
+--
+--    BE PRECISE ABOUT WHAT THOSE GUARDS CATCH. They read the objective
+--    flags from a hard-coded fixture, NOT from `mission_objectives.sql`.
+--    So they catch a chain here growing an extra `complete_objective`
+--    row, and they catch a regression in the executor's all-required
+--    check — but an `is_optional` flip in `mission_objectives.sql`
+--    itself would NOT fail them, because the fixture would keep
+--    asserting the old flags. Mirroring a flip into the fixtures is a
+--    manual step. See the worknote's Known gaps.
 --
 -- 3. Conditions for EVERY matching chain are evaluated against one
 --    pre-action `ExecutionContext` snapshot, then all matched action
@@ -114,28 +132,66 @@
 --    *** DO NOT ADD BUTTONS TO 5003/5004/5008/5009. *** Doing so stops
 --    the close path emitting and silently soft-locks steps 2415/2417.
 --
--- 7. SHARED-WORLD INTERACTION FLAGS (D-CA15). `set_interaction_type`
---    mutates the SHARED `CellEntity.interaction_type_flags` and
---    broadcasts to every witness (executor/world/mod.rs:19-64); there
---    is no per-player interaction state short of a dialog-set bind
---    (design gate GCA1). Setting a bit is therefore harmless to
---    bystanders (an extra cue) but CLEARING one can strip an entity's
---    only clickable bit out from under another player mid-step.
---    Deliberate split in this file, flagged for the coordinator:
---      - `Castle_AccessPanel` (template 147, `interaction_type = 0` —
---        entity_templates.sql:25): the glow is NEVER cleared. It is
---        the only bit that makes the panel clickable, two different
---        missions use it (706 step 2412 and 708 step 2415), and
---        `accept_mission` can be refused by the offer guard
---        (executor/mission.rs:64-72) — a clear-then-reaccept ordering
---        would leave the panel permanently dark for the whole zone on
---        that path. This deviates from packet CA08's literal wording
---        ("clear the glow"); see the worknote.
---      - NPC `!` cues and the DHD's Livewire bit ARE cleared, matching
---        the packet and Cellblock precedent 1107. A stale `!` on Marsh
---        or a stale Livewire offer on the DHD is worse than the
---        cross-player flicker, and `player_loaded` restore chains
---        1361-1364 repaint on relog.
+-- 7. SHARED-WORLD INTERACTION FLAGS (D-CA15), and the ZERO-BASELINE
+--    RULE this file follows. `set_interaction_type` mutates the SHARED
+--    `CellEntity.interaction_type_flags` and broadcasts to every
+--    witness (executor/world/mod.rs:19-64); there is no per-player
+--    interaction state short of a dialog-set bind (design gate GCA1).
+--    Setting a bit is harmless to bystanders (an extra cue). CLEARING
+--    one is not: `EInteractionNotificationType` is the bitfield that
+--    drives the client's right-click cursor and context menu
+--    (entity/src/interaction_flags.rs:1-9), so clearing an entity's
+--    LAST bit can strip its only affordance out from under another
+--    player mid-step. Nothing server-side re-gates it —
+--    `handle_interact` reads the template's `NpcInteractionType` and
+--    `available_interactions`, never `interaction_type_flags`
+--    (interactions/dispatch/interact.rs:93-131), and
+--    `fire_interact_tag` runs on ANY interact with a tagged entity
+--    (cell_methods/player/interaction/interact.rs:218-238). So the
+--    breakage would be client-side and invisible to these tests.
+--
+--    THE RULE: a mission cue bit may be cleared only if the target's
+--    template baseline is non-zero. `entity_templates.interaction_type`
+--    IS the spawn-time value of `interaction_type_flags`
+--    (space_manager/spawn.rs:127), so the baseline is a one-column
+--    lookup, not a judgement call:
+--      - `Castle_DHD`      template 162 → 16 (`INT_Dhd`). NON-ZERO.
+--        Chain 1357 MAY clear `INT_MinigameLivewire`; the DHD keeps
+--        `INT_Dhd` and stays clickable for everyone.
+--      - `Castle_AccessPanel` template 147 → 0. Chain 1322 does NOT
+--        clear the glow. Two missions use the panel (706 step 2412,
+--        708 step 2415) and `accept_mission` can be refused by the
+--        offer guard (executor/mission.rs:64-72), so a
+--        clear-then-reaccept ordering would leave it permanently dark
+--        for the whole zone.
+--      - `Castle_ColMarsh` template 10 → 0, `Castle_Mohkatan`
+--        template 54 → 0 (entity_templates.sql:25/63). Chains
+--        1353/1355 do NOT clear the `!`. Two players can sit on step
+--        2417 at once and the first to report in would otherwise make
+--        the report NPC unclickable for the second, with no recovery
+--        short of a relog.
+--      - `Castle_SurrenderGuard`: chains 1343/1345 do NOT clear the
+--        `!` either. Its template is seeded by packet CA05 (PR #667)
+--        and is not in this DB yet; when it lands, apply THIS rule to
+--        it rather than re-deciding. If it ships non-zero the clear
+--        may be restored.
+--    The cost of the rule is a stale `!` over an NPC the player has
+--    already dealt with — the same cosmetic cost this file already
+--    accepts for the panel, and strictly preferable to a hard stall.
+--    It deviates from packets CA08/CA09's literal wording ("clear the
+--    glow" / "clear it on advance"); see the worknote.
+--
+--    Cellblock precedent 1053/1054 DOES clear `!`-class bit 8388608
+--    off `Preparation_ColMarsh` — which is template 10, the very same
+--    template as `Castle_ColMarsh` (spawnlist.sql:7 vs :181). That is
+--    the same zero-baseline hazard, unexamined there; it is not
+--    evidence that the clear is safe. Filed as an out-of-scope finding
+--    rather than fixed here.
+--
+--    The `player_loaded` restore chains 1361-1365 are still required:
+--    `interaction_type_flags` is in-memory only, so a server restart
+--    drops every bit painted above regardless of whether any chain
+--    clears it.
 --
 -- 8. `content_triggers.scope` / `content_chains.scope_type` /
 --    `scope_id` / `once` are read into the loader row structs but
@@ -389,8 +445,12 @@ VALUES (1343, 'step_status', 708, '2415', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1343, 'complete_objective',  708, '2794', '{}', 0, 0),
-  (1343, 'advance_step',        708, '2416', '{}', 0, 1),
-  (1343, 'set_interaction_type', NULL, 'Castle_SurrenderGuard', '{"op": "~", "mask": "INT_AStoryMissionActive"}', 0, 2);
+  (1343, 'advance_step',        708, '2416', '{}', 0, 1);
+  -- No `set_interaction_type ~ INT_AStoryMissionActive` on
+  -- `Castle_SurrenderGuard`: zero-baseline rule, engine fact (7).
+  -- Packet CA09 asks for the clear; CA05 has not seeded the guard's
+  -- template yet, so its baseline is unknown and a clear could strip
+  -- the guard's only affordance for a second player still on 2415.
 
 -- Chain 1344: run the panel diagnostic at 2415 → play 5004.
 --
@@ -411,8 +471,8 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1344, 'display_dialog', 5004, NULL, '{}', 0, 0);
 
 -- Chain 1345: close 5004 → tick the panel objective and advance.
--- Mirror of 1343. Clears the guard's "!" too: whichever route the
--- player took, the guard has nothing further to say at 2416.
+-- Mirror of 1343, including its zero-baseline abstention: neither
+-- route clears the guard's "!".
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1345, '708 - Panel diagnosed (5004): complete 2795, advance to 2416', 'mission', 708, true, 0);
 
@@ -425,8 +485,8 @@ VALUES (1345, 'step_status', 708, '2415', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1345, 'complete_objective',  708, '2795', '{}', 0, 0),
-  (1345, 'advance_step',        708, '2416', '{}', 0, 1),
-  (1345, 'set_interaction_type', NULL, 'Castle_SurrenderGuard', '{"op": "~", "mask": "INT_AStoryMissionActive"}', 0, 2);
+  (1345, 'advance_step',        708, '2416', '{}', 0, 1);
+  -- See chain 1343: no guard `!` clear, zero-baseline rule.
 
 -- ── Step 2416 — the Control Crystal, from any of five corpses ──
 --
@@ -548,10 +608,14 @@ VALUES
 -- together (engine fact 9) and the step gate still reads `2416 active`
 -- even though 1346-1349 advance in the same batch (engine fact 3).
 --
--- Only ONE of the two can match a given death, so a Human never sees a
--- "!" over Moh'katan and a Jaffa never sees one over Marsh — packet
--- CA09's "never expose the other faction's" requirement at the cue
--- level, matching the dialog-level gate in chains 1352/1354.
+-- Only ONE of the two RESOLVES for a given death — the killer's own
+-- archetype decides which. But the bit it then sets is zone-wide
+-- (engine fact 7), so a Jaffa's kill lights Moh'katan for every Tau'ri
+-- in AoI as well, and vice versa. Packet CA09's "never expose the other
+-- faction's" is therefore enforced on the DIALOG, not on the cue:
+-- chains 1352/1354 carry the archetype gate, so a Tau'ri who walks up
+-- to a lit Moh'katan gets nothing. The cue is advisory; the dialog is
+-- authoritative. Per-player cues need design gate GCA1.
 
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1350, '708 - Crystal obtained (Tau''ri): mark Col. Marsh', 'mission', 708, true, 0);
@@ -648,8 +712,13 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1353, 'complete_objective',  708, '5185', '{}', 0, 0),
   (1353, 'advance_step',        708, '2418', '{}', 0, 1),
-  (1353, 'set_interaction_type', NULL, 'Castle_ColMarsh', '{"op": "~", "mask": "INT_AStoryMissionActive"}', 0, 2),
-  (1353, 'set_interaction_type', NULL, 'Castle_DHD',      '{"op": "|", "mask": "INT_MinigameLivewire"}',    0, 3);
+  -- NO `~ INT_AStoryMissionActive` on `Castle_ColMarsh`: template 10's
+  -- baseline is 0 (entity_templates.sql:25), so the clear packet CA09
+  -- asks for would drop Marsh to flags 0 and make him unclickable for
+  -- every other player still on step 2417. Zero-baseline rule, engine
+  -- fact (7). The DHD clear in chain 1357 is the permitted case —
+  -- template 162 keeps `INT_Dhd`.
+  (1353, 'set_interaction_type', NULL, 'Castle_DHD',      '{"op": "|", "mask": "INT_MinigameLivewire"}',    0, 2);
 
 -- Chain 1354: Jaffa reports to Moh'katan.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -682,8 +751,9 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1355, 'complete_objective',  708, '5186', '{}', 0, 0),
   (1355, 'advance_step',        708, '2418', '{}', 0, 1),
-  (1355, 'set_interaction_type', NULL, 'Castle_Mohkatan', '{"op": "~", "mask": "INT_AStoryMissionActive"}', 0, 2),
-  (1355, 'set_interaction_type', NULL, 'Castle_DHD',      '{"op": "|", "mask": "INT_MinigameLivewire"}',    0, 3);
+  -- NO `~ INT_AStoryMissionActive` on `Castle_Mohkatan`: template 54's
+  -- baseline is 0 (entity_templates.sql:63). See chain 1353.
+  (1355, 'set_interaction_type', NULL, 'Castle_DHD',      '{"op": "|", "mask": "INT_MinigameLivewire"}',    0, 2);
 
 -- ── Step 2418 — repair the DHD ──
 --

@@ -9,14 +9,156 @@
 //! `advance_step` closes the step instead.
 
 use cimmeria_content_engine::actions::Action;
+use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_content_engine::triggers::TriggerType;
+use cimmeria_entity::missions::{MissionInstance, MissionObjective, MISSION_ACTIVE, STATUS_ACTIVE};
+use tokio::sync::mpsc;
 
+use super::super::super::executor::execute_actions;
 use super::{
-    actions_of, assert_no_deferred_actions, count_flag_ops, dialog_ctx, engine_for, fire, step_ctx,
-    BANG, GLOW, TAURI,
+    actions_of, assert_no_deferred_actions, count_flag_ops, dialog_ctx, engine_for, fire,
+    make_castle_space_mgr, step_ctx, BANG, GLOW, TAURI,
 };
+use crate::cell::space_manager::SpaceManager;
 use crate::test_support::require_db_or_skip;
+
+const PLAYER_EID: u32 = 7185;
+const PLAYER_ID: i32 = 7186;
+
+/// Stage a player mid-708 on step 2415 with the step's REAL objective
+/// set, taken from `mission_objectives.sql:6619/6621/6625`:
+///
+/// - 2796 — required (`is_optional = false`) and hidden,
+/// - 2794 — optional, the guard-interrogation route,
+/// - 2795 — optional, the Access Panel route.
+///
+/// Those flags are the whole point of the two executed guards below.
+/// `complete_objective`'s auto-complete branch filters on `!optional`
+/// (`missions/progression.rs:176-180`); today 2796 keeps the step from
+/// ever being "all required complete", so ticking 2794 or 2795 cannot
+/// end mission 708. A resolve-only test cannot see that either way,
+/// because the auto-complete lives in the executor.
+///
+/// Scope caveat, stated so nobody inherits an overclaim: these flags are
+/// HARD-CODED, not read back from `mission_objectives.sql`. So the
+/// guards catch a chain in `castle_706_708_chains.sql` growing an extra
+/// `complete_objective` row, and they catch a regression in the
+/// executor's all-required check. An `is_optional` flip in the
+/// objectives seed itself would NOT fail them — the fixture would go on
+/// asserting the old flags. Mirroring such a flip into this fixture is a
+/// manual step; see the worknote's Known gaps.
+fn stage_player_on_step_2415(mgr: &mut SpaceManager) {
+    mgr.create_entity(PLAYER_EID, "Castle", [806.0, 55.0, 517.0], [0.0; 3])
+        .expect("Castle startup space must accept the player entity");
+    let p = mgr
+        .get_entity_mut(PLAYER_EID)
+        .expect("player entity must exist immediately after create_entity");
+    p.is_player = true;
+    p.player_id = Some(PLAYER_ID);
+    p.archetype_id = Some(TAURI);
+    p.missions.add_mission(MissionInstance::new(
+        708,
+        2415,
+        vec![
+            MissionObjective {
+                objective_id: 2796,
+                status: STATUS_ACTIVE,
+                hidden: true,
+                optional: false,
+            },
+            MissionObjective {
+                objective_id: 2794,
+                status: STATUS_ACTIVE,
+                hidden: false,
+                optional: true,
+            },
+            MissionObjective {
+                objective_id: 2795,
+                status: STATUS_ACTIVE,
+                hidden: false,
+                optional: true,
+            },
+        ],
+    ));
+    mgr.connect_entity(PLAYER_EID);
+}
+
+/// Execute one diagnosis route end to end and assert mission 708 is
+/// still ACTIVE on step 2416 with `objective_id` recorded complete.
+///
+/// Shared by both routes because the hazard is identical — only the
+/// dialog and the objective differ.
+async fn assert_route_advances_without_completing(
+    pool: &sqlx::PgPool,
+    chain_id: i32,
+    dialog_id: i32,
+    objective_id: i32,
+) {
+    let engine = engine_for(pool, chain_id).await;
+
+    let mut mgr = make_castle_space_mgr();
+    stage_player_on_step_2415(&mut mgr);
+    let (tx, mut rx) = mpsc::channel(64);
+    let exec_engine = ChainEngine::new();
+
+    let resolved = fire(
+        &engine,
+        TriggerType::DialogChoice,
+        &dialog_ctx(dialog_id, 2415),
+    );
+    assert!(
+        !resolved.actions.is_empty(),
+        "chain {chain_id} must resolve — an empty list would make every \
+         assertion below vacuously true",
+    );
+    execute_actions(resolved, PLAYER_EID, PLAYER_ID, &tx, &mut mgr, &exec_engine).await;
+
+    let mission = mgr
+        .get_entity(PLAYER_EID)
+        .and_then(|e| e.missions.get_mission(708))
+        .cloned()
+        .expect("mission 708 must still be tracked on the player");
+
+    assert_eq!(
+        mission.status, MISSION_ACTIVE,
+        "mission 708 must still be ACTIVE after the {chain_id} route. A \
+         `completed` here means required hidden objective 2796 was flipped to \
+         `is_optional = true` and `complete_objective`'s all-required check now \
+         fires on {objective_id}, ending 708 at step 2415.",
+    );
+    assert_eq!(
+        mission.current_step_id,
+        Some(2416),
+        "the player must be on step 2416 (Retrieve the Control Crystal) after \
+         the {chain_id} route",
+    );
+    assert!(
+        mission.completed_objectives.contains(&objective_id),
+        "objective {objective_id} must be recorded completed; got {:?}",
+        mission.completed_objectives,
+    );
+
+    // Drain so a full channel can't mask a send failure in a later run.
+    while rx.try_recv().is_ok() {}
+}
+
+/// Executed guard for the guard-interrogation route (chain 1343).
+#[tokio::test]
+async fn guard_route_advances_without_completing_the_mission() {
+    let pool = require_db_or_skip!();
+    assert_route_advances_without_completing(&pool, 1343, 5003, 2794).await;
+}
+
+/// Executed guard for the Access Panel route (chain 1345). Mirrors
+/// [`guard_route_advances_without_completing_the_mission`] — both
+/// objectives are optional, so either one alone would end the mission if
+/// 2796 stopped being required.
+#[tokio::test]
+async fn panel_route_advances_without_completing_the_mission() {
+    let pool = require_db_or_skip!();
+    assert_route_advances_without_completing(&pool, 1345, 5004, 2795).await;
+}
 
 /// Chain 1341: accepting 708 lights both diagnosis affordances at once.
 /// Both are needed simultaneously because the two routes are
@@ -142,8 +284,8 @@ async fn chain_1343_completes_2794_then_advances_to_2416() {
 
     assert_eq!(
         actions.len(),
-        3,
-        "chain 1343 must resolve exactly three actions; got {actions:?}",
+        2,
+        "chain 1343 must resolve exactly two actions; got {actions:?}",
     );
     assert!(
         matches!(
@@ -169,15 +311,19 @@ async fn chain_1343_completes_2794_then_advances_to_2416() {
         "chain 1343's second action must be AdvanceStep(708, 2416); got {:?}",
         actions[1],
     );
+    // Nothing on this route clears a cue. Both the guard and the panel
+    // sit at template baseline 0 (`Castle_SurrenderGuard`'s template is
+    // CA05's and unknown; `Castle_AccessPanel` is template 147), so
+    // clearing either one's last bit would strip its only affordance
+    // from every other player still on 706 step 2412 or 708 step 2415.
+    // Zero-baseline rule, seed engine fact (7).
     assert_eq!(
         count_flag_ops(&actions, "Castle_SurrenderGuard", "~", BANG),
-        1,
-        "chain 1343 must clear the guard's '!' cue; got {actions:?}",
+        0,
+        "chain 1343 must NOT clear the guard's '!' — the guard's template \
+         baseline is unknown until CA05 lands, and a clear to flags 0 makes a \
+         shared NPC unclickable for a bystander; got {actions:?}",
     );
-
-    // The panel's glow must survive. It is the only bit making a
-    // zero-baseline shared prop clickable and another player may be
-    // mid-706 or mid-2415 on it.
     assert_eq!(
         count_flag_ops(&actions, "Castle_AccessPanel", "~", GLOW),
         0,
@@ -288,8 +434,8 @@ async fn chain_1345_completes_2795_then_advances_to_2416() {
 
     assert_eq!(
         actions.len(),
-        3,
-        "chain 1345 must resolve exactly three actions; got {actions:?}",
+        2,
+        "chain 1345 must resolve exactly two actions; got {actions:?}",
     );
     assert!(
         matches!(
@@ -315,9 +461,9 @@ async fn chain_1345_completes_2795_then_advances_to_2416() {
     );
     assert_eq!(
         count_flag_ops(&actions, "Castle_SurrenderGuard", "~", BANG),
-        1,
-        "chain 1345 must clear the guard's '!' too — whichever route was taken, \
-         the guard has nothing further to say at 2416; got {actions:?}",
+        0,
+        "chain 1345 must NOT clear the guard's '!' either — see chain 1343; \
+         got {actions:?}",
     );
     assert_eq!(
         count_flag_ops(&actions, "Castle_AccessPanel", "~", GLOW),

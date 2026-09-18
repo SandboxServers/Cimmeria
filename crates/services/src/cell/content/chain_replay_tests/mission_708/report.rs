@@ -46,11 +46,15 @@ const PLAYER_ID: i32 = 7184;
 /// Stage a player mid-708 on step 2417 with the step's REAL objective
 /// set: 5184, 5185 and 5186, all three `is_optional = false`
 /// (`mission_objectives.sql:6631/6633/6635`). Reproducing those flags is
-/// the whole point of
-/// [`reporting_in_advances_the_step_without_completing_the_mission`] —
-/// if a future seed edit marked 5184 and 5186 optional, completing 5185
-/// would trip `all_required_complete` and end mission 708 three steps
-/// early.
+/// the whole point of [`assert_report_advances_without_completing`]: if
+/// 5184 and 5186 were optional, completing 5185 would trip
+/// `all_required_complete` and end mission 708 three steps early.
+///
+/// Same scope caveat as `diagnosis.rs::stage_player_on_step_2415` — the
+/// flags are HARD-CODED here, not read back from
+/// `mission_objectives.sql`, so the guards catch a chain growing an extra
+/// `complete_objective` row or an executor regression, NOT an
+/// `is_optional` flip in the objectives seed.
 fn stage_player_on_step_2417(mgr: &mut SpaceManager, archetype: i32) {
     mgr.create_entity(PLAYER_EID, "Castle", [810.0, 55.0, 515.0], [0.0; 3])
         .expect("Castle startup space must accept the player entity");
@@ -200,9 +204,9 @@ async fn each_report_completes_only_its_own_objective_and_arms_the_dhd() {
 
         assert_eq!(
             actions.len(),
-            4,
-            "chain {chain_id} must resolve four actions (objective, advance, \
-             clear cue, arm DHD); got {actions:?}",
+            3,
+            "chain {chain_id} must resolve three actions (objective, advance, \
+             arm DHD); got {actions:?}",
         );
         assert!(
             matches!(
@@ -232,10 +236,22 @@ async fn each_report_completes_only_its_own_objective_and_arms_the_dhd() {
             "chain {chain_id} must advance to 2418; got {:?}",
             actions[1],
         );
+        // The report NPC's '!' must SURVIVE. Templates 10 (Marsh) and 54
+        // (Moh'katan) both ship `interaction_type = 0`
+        // (`entity_templates.sql:25/63`), which is the spawn-time value of
+        // `interaction_type_flags` (`space_manager/spawn.rs:127`), so
+        // clearing the cue drops the NPC to flags 0 — no right-click
+        // affordance for a second player still on step 2417, and no
+        // recovery short of a relog into chain 1362. Packet CA09 asks for
+        // the clear; the zero-baseline rule in the seed's engine fact (7)
+        // overrides it for the same reason the Access Panel glow is never
+        // cleared.
         assert_eq!(
             count_flag_ops(&actions, npc_tag, "~", BANG),
-            1,
-            "chain {chain_id} must clear {npc_tag}'s '!' cue; got {actions:?}",
+            0,
+            "chain {chain_id} must NOT clear {npc_tag}'s '!' cue — {npc_tag}'s \
+             template baseline is 0, so the clear would strip its only \
+             clickable bit zone-wide; got {actions:?}",
         );
         assert_eq!(
             count_flag_ops(&actions, "Castle_DHD", "|", LIVEWIRE),
@@ -288,33 +304,46 @@ async fn report_dialog_choices_are_step_gated_and_do_not_cross_over() {
     }
 }
 
-/// Executed end to end: reporting in must leave mission 708 ACTIVE on
-/// step 2418.
+/// Execute one report route end to end and assert mission 708 is still
+/// ACTIVE on step 2418 with `objective_id` recorded complete.
 ///
 /// This is the regression guard for the data-dependent hazard both
 /// advisory passes flagged. `complete_objective`'s auto-complete branch
 /// fires when every NON-OPTIONAL objective of the current step is
 /// complete (`missions/progression.rs:176-183`). Today step 2417 carries
 /// three required objectives, so ticking one leaves two active and the
-/// branch is not reached. Flip 5184 or 5186 to `is_optional = true` in
-/// `mission_objectives.sql` and this test fails with the mission
-/// completed at step 2417 — three steps before the player ever reaches
-/// the Stargate.
-#[tokio::test]
-async fn reporting_in_advances_the_step_without_completing_the_mission() {
-    let pool = require_db_or_skip!();
-    let engine = engine_for(&pool, 1353).await;
+/// branch is not reached. Flip any of 5184/5185/5186 to
+/// `is_optional = true` in `mission_objectives.sql` and this fails with
+/// the mission completed at step 2417 — three steps before the player
+/// ever reaches the Stargate.
+///
+/// Run for BOTH factions. The two routes tick different objectives out
+/// of the same required trio, so a flip of 5184 alone would be caught by
+/// either, but a flip of 5185 is only visible on the Tau'ri route and a
+/// flip of 5186 only on the Jaffa one.
+async fn assert_report_advances_without_completing(
+    pool: &sqlx::PgPool,
+    chain_id: i32,
+    dialog_id: i32,
+    archetype: i32,
+    objective_id: i32,
+) {
+    let engine = engine_for(pool, chain_id).await;
 
     let mut mgr = make_castle_space_mgr();
-    stage_player_on_step_2417(&mut mgr, TAURI);
+    stage_player_on_step_2417(&mut mgr, archetype);
     let (tx, mut rx) = mpsc::channel(64);
     let exec_engine = ChainEngine::new();
 
-    let resolved = fire(&engine, TriggerType::DialogChoice, &dialog_ctx(5008, 2417));
+    let resolved = fire(
+        &engine,
+        TriggerType::DialogChoice,
+        &dialog_ctx(dialog_id, 2417),
+    );
     assert!(
         !resolved.actions.is_empty(),
-        "chain 1353 must resolve — an empty list would make the assertions below \
-         vacuously true",
+        "chain {chain_id} must resolve — an empty list would make the assertions \
+         below vacuously true",
     );
     execute_actions(resolved, PLAYER_EID, PLAYER_ID, &tx, &mut mgr, &exec_engine).await;
 
@@ -326,9 +355,10 @@ async fn reporting_in_advances_the_step_without_completing_the_mission() {
 
     assert_eq!(
         mission.status, MISSION_ACTIVE,
-        "mission 708 must still be ACTIVE after reporting in. A `completed` here \
-         means a step-2417 objective was flipped to optional and \
-         `complete_objective`'s all-required check now fires on 5185.",
+        "mission 708 must still be ACTIVE after reporting in via chain \
+         {chain_id}. A `completed` here means a step-2417 objective was flipped \
+         to optional and `complete_objective`'s all-required check now fires on \
+         {objective_id}.",
     );
     assert_eq!(
         mission.current_step_id,
@@ -336,13 +366,30 @@ async fn reporting_in_advances_the_step_without_completing_the_mission() {
         "the player must be on step 2418 (Repair the DHD) after reporting in",
     );
     assert!(
-        mission.completed_objectives.contains(&5185),
-        "objective 5185 must be recorded completed; got {:?}",
+        mission.completed_objectives.contains(&objective_id),
+        "objective {objective_id} must be recorded completed; got {:?}",
         mission.completed_objectives,
     );
 
     // Drain so a full channel can't mask a send failure in a later run.
     while rx.try_recv().is_ok() {}
+}
+
+/// Executed guard for the Tau'ri report (chain 1353, objective 5185).
+#[tokio::test]
+async fn reporting_in_advances_the_step_without_completing_the_mission() {
+    let pool = require_db_or_skip!();
+    assert_report_advances_without_completing(&pool, 1353, 5008, TAURI, 5185).await;
+}
+
+/// Executed guard for the Jaffa report (chain 1355, objective 5186).
+/// The Jaffa branch is the one nothing else executes, and it is the
+/// branch a mis-copied `archetype eq 8` condition would silently kill —
+/// see [`archetype_conditions_are_never_placed_on_the_dialog_halves`].
+#[tokio::test]
+async fn the_jaffa_report_advances_without_completing_the_mission() {
+    let pool = require_db_or_skip!();
+    assert_report_advances_without_completing(&pool, 1355, 5009, JAFFA, 5186).await;
 }
 
 /// Guard for the invisible failure described in this module's docs: the

@@ -25,15 +25,15 @@ use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_content_engine::triggers::TriggerType;
-use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE};
+use cimmeria_entity::missions::{MissionInstance, MissionObjective, MISSION_ACTIVE, STATUS_ACTIVE};
 use tokio::sync::mpsc;
 
 use super::super::super::engine_loader::load_single_chain_for_test;
 use super::super::super::executor::execute_actions;
 use super::super::super::mission_context::populate_mission_context;
 use super::{
-    actions_of, assert_no_deferred_actions, count_flag_ops, engine_for, engine_for_all_expansions,
-    fire, make_castle_space_mgr, step_ctx, BANG, JAFFA, TAURI,
+    actions_of, assert_no_deferred_actions, engine_for, fire, make_castle_space_mgr, step_ctx,
+    SOURCES, TAURI,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -46,15 +46,6 @@ const MUELBACH_ITEM: i32 = 2136;
 
 const PLAYER_EID: u32 = 7181;
 const PLAYER_ID: i32 = 7182;
-
-/// The four tags that can yield the crystal, and the objective each one
-/// ticks.
-const SOURCES: [(i32, &str, i32); 4] = [
-    (1346, "Castle_BravoOfficer1", 2798),
-    (1347, "Castle_BravoOfficer2", 2798),
-    (1348, "Castle_BravoOfficer3", 2798),
-    (1349, "Castle_Muelbach", 2799),
-];
 
 /// Stage a player who is mid-708 on step 2416, with the step's real
 /// objective set: required 2797 plus the two optional source objectives.
@@ -292,6 +283,36 @@ async fn no_crystal_source_fires_outside_step_2416() {
             .is_empty(),
             "chain {chain_id} must not resolve before mission 708 is accepted",
         );
+
+        // The case the `mission_status 708 eq active` row actually
+        // defends, and the only one that can distinguish it from the step
+        // gate: step 2416 reported active while the mission itself is
+        // not. The step gate passes here, so if this resolved, the
+        // mission row would be dead weight rather than the "cheap second
+        // line" the seed calls it. `populate_mission_context` always
+        // writes both keys together, so the pairing cannot occur in
+        // production — a fixture is the only way to pin the row.
+        let mut orphan_step = ExecutionContext::new();
+        orphan_step.set_param("entity_tag".to_string(), serde_json::json!(tag));
+        orphan_step.set_param(
+            "mission_708_step_2416_status".to_string(),
+            serde_json::json!("active"),
+        );
+        orphan_step.set_param(
+            "mission_708_status".to_string(),
+            serde_json::json!("not_active"),
+        );
+        orphan_step.set_param("archetype".to_string(), serde_json::json!(TAURI));
+        assert!(
+            actions_of(
+                &fire(&engine, TriggerType::EntityDeath, &orphan_step),
+                chain_id as i64
+            )
+            .is_empty(),
+            "chain {chain_id} must not resolve on an orphaned active step 2416 \
+             with mission 708 inactive — deleting the `mission_status 708 eq \
+             active` condition row is what makes this resolve",
+        );
     }
 }
 
@@ -341,17 +362,36 @@ async fn crystal_is_granted_only_once_across_two_officer_deaths() {
     );
     execute_actions(first, PLAYER_EID, PLAYER_ID, &tx, &mut mgr, &exec_engine).await;
 
-    // The step must have moved in memory, synchronously.
-    let step_after_first = mgr
+    let after_first = mgr
         .get_entity(PLAYER_EID)
         .and_then(|e| e.missions.get_mission(708))
-        .and_then(|m| m.current_step_id);
+        .cloned()
+        .expect("mission 708 must still be tracked on the player");
+
+    // The step must have moved in memory, synchronously.
     assert_eq!(
-        step_after_first,
+        after_first.current_step_id,
         Some(2417),
         "advance_step must have moved the player to 2417 inside execute_actions; \
          a deferred (delay_ms > 0) advance would leave this at 2416 and reopen \
          the crystal faucet",
+    );
+    // ...and the mission must still be running. Step 2416's ONLY required
+    // objective is 2797; 2798/2799 are optional
+    // (`mission_objectives.sql:6625/6629`). Flip 2797 to optional and
+    // `complete_objective 2798` satisfies `all_required_complete`
+    // (`missions/progression.rs:176-183`), ending 708 at step 2416 — and
+    // the `current_step_id` assertion above would STILL pass, because
+    // `advance_step` runs afterwards in the same action list and sets the
+    // step regardless. Same guard as
+    // `report.rs::assert_report_advances_without_completing`, one step
+    // earlier.
+    assert_eq!(
+        after_first.status, MISSION_ACTIVE,
+        "mission 708 must still be ACTIVE after the crystal grant — a \
+         `completed` here means required objective 2797 was flipped to optional \
+         and `complete_objective`'s all-required check now fires on the optional \
+         source objective",
     );
 
     // Second kill: a different officer, context re-derived from the
@@ -404,72 +444,4 @@ async fn crystal_is_granted_only_once_across_two_officer_deaths() {
     );
 }
 
-/// Chains 1350/1351: whichever corpse yielded the crystal, exactly one
-/// report NPC is marked, chosen by the KILLER's archetype.
-///
-/// `entity_dead_tag` populates `archetype` (`lifecycle.rs:78-83`), so
-/// unlike on a `dialog_choice` chain the gate here is real. Both chains
-/// carry four trigger rows, so every expansion is registered — a
-/// regression that dropped trigger rows 2..4 would leave a player who
-/// killed Muelbach with no cue at all.
-#[tokio::test]
-async fn crystal_death_marks_exactly_one_report_npc_by_archetype() {
-    let pool = require_db_or_skip!();
-    let marsh = engine_for_all_expansions(&pool, 1350).await;
-    let mohkatan = engine_for_all_expansions(&pool, 1351).await;
-
-    for (_, tag, _) in SOURCES {
-        let mut tauri = step_ctx(2416, TAURI);
-        tauri.set_param("entity_tag".to_string(), serde_json::json!(tag));
-        let marsh_resolved = fire(&marsh, TriggerType::EntityDeath, &tauri);
-        assert_no_deferred_actions(&marsh_resolved, 1350);
-        let marsh_actions = actions_of(&marsh_resolved, 1350);
-        assert_eq!(
-            count_flag_ops(&marsh_actions, "Castle_ColMarsh", "|", BANG),
-            1,
-            "a Tau'ri killing {tag} must get exactly one '!' on Col. Marsh; \
-             got {marsh_actions:?}",
-        );
-        assert!(
-            actions_of(&fire(&mohkatan, TriggerType::EntityDeath, &tauri), 1351).is_empty(),
-            "a Tau'ri killing {tag} must NOT see a cue on Moh'katan",
-        );
-
-        let mut jaffa = step_ctx(2416, JAFFA);
-        jaffa.set_param("entity_tag".to_string(), serde_json::json!(tag));
-        let moh_resolved = fire(&mohkatan, TriggerType::EntityDeath, &jaffa);
-        assert_no_deferred_actions(&moh_resolved, 1351);
-        let moh_actions = actions_of(&moh_resolved, 1351);
-        assert_eq!(
-            count_flag_ops(&moh_actions, "Castle_Mohkatan", "|", BANG),
-            1,
-            "a Jaffa killing {tag} must get exactly one '!' on Moh'katan; \
-             got {moh_actions:?}",
-        );
-        assert!(
-            actions_of(&fire(&marsh, TriggerType::EntityDeath, &jaffa), 1350).is_empty(),
-            "a Jaffa killing {tag} must NOT see a cue on Col. Marsh",
-        );
-    }
-}
-
-/// The cue chains must be step-gated too: a later kill (the officers
-/// respawn) must not re-light a report NPC the player has already
-/// reported to.
-#[tokio::test]
-async fn report_cue_chains_do_not_fire_outside_step_2416() {
-    let pool = require_db_or_skip!();
-    let marsh = engine_for_all_expansions(&pool, 1350).await;
-
-    for step in [2415, 2417, 2418, 4469] {
-        let mut ctx = step_ctx(step, TAURI);
-        ctx.set_param(
-            "entity_tag".to_string(),
-            serde_json::json!("Castle_BravoOfficer1"),
-        );
-        assert!(
-            actions_of(&fire(&marsh, TriggerType::EntityDeath, &ctx), 1350).is_empty(),
-            "chain 1350 must not re-light Col. Marsh on a kill at step {step}",
-        );
-    }
-}
+// Chains 1350/1351 (the report cue) live in [`super::report_cue`].

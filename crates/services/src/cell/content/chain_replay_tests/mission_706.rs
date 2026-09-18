@@ -34,6 +34,7 @@ use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 use sqlx::PgPool;
 
 use super::super::engine_loader::load_single_chain_for_test;
+use super::assert_no_deferred_actions;
 use crate::test_support::require_db_or_skip;
 
 /// Quest-object glow — the only bit that makes template 147 (the Access
@@ -76,28 +77,6 @@ fn actions_of(resolved: &ResolvedActions, chain_id: i64) -> Vec<&Action> {
         .iter()
         .filter_map(|(id, a)| if *id == chain_id { Some(a) } else { None })
         .collect()
-}
-
-/// Every action row in this file must carry `delay_ms = 0`. A deferred
-/// action is *queued*, not run (`executor/mod.rs:96-120`), which for the
-/// mission verbs here would open a window where the step gate is still
-/// satisfied — the exact shape that turns mission 708's crystal grant
-/// into a repeatable faucet. Asserted per chain rather than once so the
-/// failure names the offender.
-fn assert_no_deferred_actions(resolved: &ResolvedActions, chain_id: i64) {
-    for (i, (id, action)) in resolved.actions.iter().enumerate() {
-        if *id != chain_id {
-            continue;
-        }
-        let delay = resolved.action_delays.get(i).copied().unwrap_or(0);
-        assert_eq!(
-            delay, 0,
-            "chain {chain_id} action {action:?} carries delay_ms = {delay}; \
-             every action in castle_706_708_chains.sql must be immediate — \
-             a deferred mission verb is queued rather than run and breaks \
-             the step gate it shares an action list with",
-        );
-    }
 }
 
 /// Chain 1321 happy path: entering the Throne Room on step 2411 must
@@ -383,4 +362,108 @@ async fn chain_1323_does_not_restore_on_another_step_or_another_world() {
         .is_empty(),
         "chain 1323 is keyed on world `Castle`; a Cellblock load must not match",
     );
+}
+
+/// The 706 → 708 handover invariant, stated once with BOTH panel chains
+/// in one engine: a single click on `Castle_AccessPanel` must never
+/// resolve chain 1322 (706's completion) and chain 1344 (708's
+/// diagnosis) together.
+///
+/// The per-chain negatives above and
+/// `mission_708::diagnosis::chain_1344_does_not_fire_during_mission_706`
+/// each fire one chain in an isolated engine, which approximates this but
+/// never asserts it. The approximation has a real seam:
+/// `Condition::MissionStatus` reads a missing key as `not_active`
+/// (`conditions.rs:190-194`, `.unwrap_or("not_active")`), so a context
+/// carrying only `mission_706_step_2412_status = active` plus
+/// `mission_708_step_2415_status = active` — with `mission_708_status`
+/// absent — satisfies both chains at once. Production's
+/// `populate_mission_context` always writes both keys, so that state is
+/// not live-reachable; the point is that only a both-registered fixture
+/// can tell "mutually exclusive" from "never tested together".
+///
+/// Double-firing here is the worst outcome in either mission: 1322 would
+/// complete 706 and accept 708 while 1344 displayed the 2415 diagnostic
+/// dialog, leaving the player holding a dialog whose `dialog_choice`
+/// chain (1345) then advances 708 out of a step it had only just entered.
+#[tokio::test]
+async fn one_panel_click_never_resolves_both_706_and_708_chains() {
+    let pool = require_db_or_skip!();
+
+    let mut engine = ChainEngine::new();
+    for chain_id in [1322, 1344] {
+        let chain = load_single_chain_for_test(&pool, chain_id)
+            .await
+            .unwrap_or_else(|e| panic!("DB query for chain {chain_id} must succeed: {e}"))
+            .unwrap_or_else(|| panic!("chain {chain_id} must exist in seeded content_chains"));
+        engine.register_chain(chain);
+    }
+
+    /// `(label, [(param, value)], expect_1322, expect_1344)`
+    type State = (&'static str, Vec<(&'static str, &'static str)>, bool, bool);
+
+    let states: Vec<State> = vec![
+        (
+            "mid-706 on step 2412, 708 not yet accepted",
+            vec![
+                ("mission_706_step_2412_status", "active"),
+                ("mission_708_status", "not_active"),
+            ],
+            true,
+            false,
+        ),
+        (
+            "mid-708 on step 2415, 706 already complete",
+            vec![
+                ("mission_706_status", "completed"),
+                ("mission_708_status", "active"),
+                ("mission_708_step_2415_status", "active"),
+            ],
+            false,
+            true,
+        ),
+        (
+            "both missions finished — the panel is inert",
+            vec![
+                ("mission_706_status", "completed"),
+                ("mission_708_status", "completed"),
+            ],
+            false,
+            false,
+        ),
+    ];
+
+    for (label, params, expect_1322, expect_1344) in states {
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param(
+            "entity_tag".to_string(),
+            serde_json::json!("Castle_AccessPanel"),
+        );
+        for (key, value) in params {
+            ctx.set_param(key.to_string(), serde_json::json!(value));
+        }
+
+        let resolved = fire(&engine, TriggerType::InteractTag, &ctx);
+        let from_1322 = actions_of(&resolved, 1322);
+        let from_1344 = actions_of(&resolved, 1344);
+
+        assert_eq!(
+            !from_1322.is_empty(),
+            expect_1322,
+            "state `{label}`: chain 1322 resolution mismatch; got {from_1322:?}",
+        );
+        assert_eq!(
+            !from_1344.is_empty(),
+            expect_1344,
+            "state `{label}`: chain 1344 resolution mismatch; got {from_1344:?}",
+        );
+        assert!(
+            from_1322.is_empty() || from_1344.is_empty(),
+            "state `{label}`: ONE panel click resolved BOTH the 706 completion \
+             chain and the 708 diagnosis chain. 706 would complete and 708 \
+             accept while the 2415 diagnostic dialog opened, and closing that \
+             dialog advances 708 out of a step it just entered. 1322 gave \
+             {from_1322:?}; 1344 gave {from_1344:?}",
+        );
+    }
 }
