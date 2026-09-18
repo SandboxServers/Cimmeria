@@ -705,7 +705,10 @@ This is an orphaned hidden mission with step text that parallels missions 641 an
 
 **Confidence**: CONFIRMED
 **Zone**: Castle (persistent open-world zone)
-**Total scripted missions**: 2 (701, 702)
+**Missions in zone**: 6 -- 701, 702, 703, 704, 706, 708
+**Covered by recovered server script**: 2 (701, 702) -- both in `Castle.py`; 706
+and 708 are reconstruction with no recovered script, and 703/704 are unported
+**Ported to content chains**: 3 (701, 706, 708)
 **All missions**: Level 3
 
 The Castle space script (`deprecated/python/cell/spaces/Castle.py`) handles all mission logic for this zone. There are no per-mission script files for 701 or 702 -- all logic lives in the space script.
@@ -983,7 +986,9 @@ The cost is a stale cue over an NPC or prop the player has finished with; the al
 
 **Entity tags**: `Castle_SurrenderGuard`, `Castle_BravoOfficer1..3`, `Castle_Muelbach` (all owed by packet CA05 and not yet in `spawnlist`), `Castle_AccessPanel` (spawn 92), `Castle_ColMarsh` (spawn 118, template 10), `Castle_Mohkatan` (spawn 120, template 54), `Castle_DHD` (spawn 2, template 162).
 
-**Dialog IDs**: 5003 (guard interrogation), 5004 (panel diagnostic), 5008 / 5009 (report, by archetype), 5010 / 5011 (closing line, by archetype), 2586 (the dial narration, reached through the 3073 topic bind). All are set 656.
+**Dialog IDs**: 5003 (guard interrogation), 5004 (panel diagnostic), 5008 / 5009 (report, by archetype), 5010 / 5011 (closing line, by archetype). All are set 656, and all are displayed directly by a chain's `display_dialog`.
+
+**Dialog 2586 is NOT bound by anything.** No `dialog_set_maps` row anywhere carries `dialog_id = 2586`. Chain 1357's `add_dialog_set(3073 → template 162)` binds row 3073, which is set 656, `interaction_flags = 16` (`INT_Dhd`), `topic_text = 'Dial Harset'` and **`dialog_id = NULL`** -- a bindable *indicator* row, not a dialog. So the bind makes a "Dial Harset" topic available on the DHD and displays no text; 2586's narration ("you dial the DHD... It fires") survives only as the weak evidence D-CA09 cites for which minigame the DHD repair originally used. Contrast row 5711 (set 654), which *does* bind dialog 2584 for mission 706. Chain 1357 is inert until CA02 widens `DialogSetMapEntry.dialog_id` to `Option<i32>` so NULL-dialog rows load at all.
 
 **Items**: 2790 DHD Control Crystal (explicit grant, `container_sets {2}`); 2136 (Muelbach's identifying drop — the item's role is reconstruction).
 
