@@ -45,6 +45,10 @@
 
 - [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — definitive (post-commit) GM feedback for base-round-trip commands: cell-side `cell_methods::gm::feedback::send_gm_feedback` (EntityMethodCall→onPlayerCommunication m28 CHAN_FEEDBACK=8) vs base-side `base::gm_feedback::send_gm_feedback_to_client` (send_to_witness_reliable). `GrantItem`/`RemoveInventoryItem` still gate on `notify_gm: bool`; `GrantCash`/`GrantXP` were changed (P05) to `gm_feedback_to: Option<u32>` so a selected-target grant's feedback goes to the caller, not the target — apply the same pattern to GrantItem/RemoveInventoryItem/GrantExpertise/GrantAppliedSciencePoints when a dot command needs it (P06 `.giveitem` will).
 
+## Ring transport / entity teardown
+
+- [ring-transport-fsm.md](ring-transport-fsm.md) — **read before any ring-travel or entity-teardown work.** `disconnect_entity` (async, has `tx`, emits LeftAoI now) vs `destroy_entity` (sync, no `tx`, deferred) and which hook goes where; the cross-world hand-off destroy trap; track participants by id not count; abort order is show-then-unlock; `BSF_MOVEMENT_LOCK`/`BSF_DEAD` are ref-counted so raw `|=`/`&= !` sticks the bit; reuse `cimmeria_mercury::clock::Clock` for injectable time in services.
+
 ## Cross-world / cross-space transfer
 
 - [cross-world-transfer-flow.md](cross-world-transfer-flow.md) — `handle_gate_travel` is the BACK half (teardown lives cell-side in each caller); `find_or_create_space` can never join an existing instance; `resolve_space_id_fallback` + `register_space` are both fake "default instance" mechanisms; `CreateEntity.reply_tx` has no failure channel; disconnect-vs-create FIFO race leaves ghost entities.
