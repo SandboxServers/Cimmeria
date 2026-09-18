@@ -17,6 +17,12 @@
 --   Mission 639 (C03 addition, 2026-09-17): chain 1112 (Stasis Sickness
 --     load-gate; work-packets.md's own reserved range for C03 is 1112-1120,
 --     one chain used so far)
+--   Mission 1360 (C04 addition, 2026-09-17): chain 1121 (accept Frost's
+--     Letter on Frost body loot; work-packets.md's own reserved range for
+--     C04 is 1121-1130, one chain used so far; verified free the same way
+--     as C00/C03 above -- `grep -oE "VALUES \([0-9]+," ... | sort -n | uniq`
+--     against every chain_id in this file, plus a repo-wide grep of
+--     db/resources/Content/Seed/ for the same range)
 --   Mission 689 -- Prison Boot Lock, internal (C00 addition, 2026-09-17):
 --     chains 1022-1025. work-packets.md had no range reserved for C00 (added
 --     after the range table above was written); 1022-1030 was verified free
@@ -264,6 +270,64 @@ VALUES
   -- Advance to the intermediate Guard-search step (XML index 1). This both
   -- self-gates Frost (gate above flips false) and opens chain 1005's gate.
   (1003, 'advance_step', 622, '80623', '{}', 0, 3);
+
+-- ============================================================
+-- MISSION 1360 -- Frost's Letter (C04)
+-- ============================================================
+--
+-- D-CB03 (answered: accept). Spec row 2 / audit.md's Row-By-Row table:
+-- the original ArmYourself.py grants the letter (3730) but never touches
+-- mission 1360 -- this is new content the spec calls optional. Step 4037
+-- ("Find a way to get Cpl. Frost's Letter to his family") stays active for
+-- the rest of the zone; step 4038 ("Give Cpl. Frost's Letter to Col.
+-- Marsh") is Castle-side and out of this packet's scope (see C09 / the
+-- sibling Castle campaign's CA01, docs/analysis/castle-cellblock-rebuild/
+-- work-packets.md#c09).
+--
+-- Mission state (accepted here) is persisted independently of the cell
+-- entity: `cell::missions::lifecycle::accept_mission` sends
+-- `CellToBaseMsg::MissionUpdate`, which the base UPSERTs into
+-- `sgw_mission` keyed on `player_id`. The Cellblock -> Castle cross-world
+-- hop (chain 1109's `cross_world_teleport`, executor/transport.rs) does
+-- not touch mission state at all -- it only flushes bandolier ammo and
+-- destroys the cell entity, then relies on `BaseToCellMsg::InitPlayerState`
+-- to rebuild missions from `query_saved_missions` on the far side, exactly
+-- as an ordinary relog does. So 1360 survives the hop for the same reason
+-- any other active mission survives a relog; see the live-DB round-trip
+-- test `frosts_letter_accept_round_trips_cell_to_base_to_db` in
+-- crates/services/src/base/world_entry/methods/missions/tests.rs.
+--
+-- Chain ID range: 1121-1130.
+
+-- Chain 1121: player opens dialog 3995 (loot Frost) while step 2113 is
+-- active -> accept mission 1360. A sibling to chain 1003 (identical
+-- trigger + step gate) rather than an extension of it: folding
+-- `accept_mission 1360` into 1003's own action list would force an extra
+-- `mission_status 1360 eq not_active` condition onto that chain, which
+-- would then also gate the unrelated letter-item-grant / Guard-unlock /
+-- step-advance actions on mission 1360's state for no reason. Keeping the
+-- two chains separate means each chain's condition list only constrains
+-- its own actions.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1121, '1360 - Dialog 3995 (loot Frost): accept Frost''s Letter', 'mission', 1360, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1121, 'dialog_open', '3995', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  -- Same gate as chain 1003: valid only on the FIRST Frost interaction.
+  -- Chain 1003 advancing 622 from 2113 -> 80623 flips this false, so a
+  -- re-click of Frost's body can't re-fire this chain either.
+  (1121, 'step_status', 622, '2113', 'eq', 'active', 0),
+  -- Canonical offer guard (.github/instructions/content-chains.instructions.md
+  -- "Mission grants must gate on not_active"). The server-side accept_mission
+  -- offer guard (cell::missions::lifecycle) backstops this authoritatively
+  -- either way, but the review rule still requires the chain-level gate.
+  (1121, 'mission_status', 1360, NULL, 'eq', 'not_active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1121, 'accept_mission', 1360, NULL, '{}', 0, 0);
 
 -- Chain 1004: player equips the pistol (item 55) while step 80622 is
 -- active → play kismet sequence 10000 (opens the stasis-room door — the
