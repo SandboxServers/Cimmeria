@@ -131,11 +131,41 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 -- Mission 688 ring receiver (world 8 / Castle) trigger volume.
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2081, 'Castle.ArmoryRingDropZone', 'AreaSet', 8, 3.52999997, 1.76999998, 'Cylinder', 1);
 
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Interrogation Block" -- HIGH confidence):
+-- footprint of the 36-instance CA-Cell_Doorway01_Pf0 detention corridor spanning
+-- Castle-000a0002.umap / Castle-000a0003.umap, corroborated by a second 36-instance prefab
+-- family (EM-ViewScreen03_Pf0, the per-cell door screens) over the same grid.
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2082, 'Castle.InterrogationBlock', 'AreaSet', 8, NULL, NULL, 'BoundingBox', 1);
+
+-- The NAME is ORIGINAL_DATA: dialog 2576 screen 96821 (`dialog_screens.sql:11759`) says "the
+-- Communications room on Level 5", so `Castle.CommsRoom` names a room the 2009 content
+-- asserts exists, on a stated floor, for a stated purpose.
+-- The BOX is RECONSTRUCTION (CA05, worknotes/ca05.md "Communications room" -- MEDIUM
+-- confidence): the dialog gives no coordinate, so the room was matched to the one enclosed
+-- Castle-00080002.umap room built around a monitor wall -- bounded by the two
+-- `CA-normal_room_corner_a_00` corner meshes at x 261.40 / 282.49, z 861.20, whose z=852.2
+-- wall carries a double `CA-Monitor_Wall00_Pf0` behind two `CA-SecurityLock00_Pf0` access
+-- locks. Floor y=55.20. See Castle_Zuritska_Comms in spawnlist.sql for the full evidence
+-- chain and for why the competing Castle-00090003 screen room was rejected (it is CA15's
+-- symbiote chamber). Confirm the geometry in-client before UAT M3; the name needs no
+-- confirmation.
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2083, 'Castle.CommsRoom', 'AreaSet', 8, NULL, NULL, 'BoundingBox', 1);
+
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Bravo" -- MEDIUM confidence,
+-- Humvee/bunker cluster; see Castle_BravoOfficer* in spawnlist.sql. Muelbach is NOT in this
+-- box -- objective 2799 puts her in the bunker above it).
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2084, 'Castle.CheckpointBravo', 'AreaSet', 8, NULL, NULL, 'BoundingBox', 1);
+
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Alpha" -- HIGH confidence: existing
+-- spawnlist rows 118/119/120/121/123/124/2, cross-confirmed by the recovered Stargate
+-- prefab position).
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2085, 'Castle.CheckpointAlpha', 'AreaSet', 8, NULL, NULL, 'BoundingBox', 1);
+
 --
 -- TOC entry 3330 (class 0 OID 0)
 -- Dependencies: 240
 -- Name: point_sets_set_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('point_sets_set_id_seq', 2081, true);
+SELECT pg_catalog.setval('point_sets_set_id_seq', 2085, true);
 
