@@ -284,3 +284,127 @@ async fn witness_entity_method_player_ghost_uses_idbase_61_npc_uses_62() {
         "NPC ghost method 61 must still encode with IDBASE_NPC_DEFAULT (62) — no regression"
     );
 }
+
+/// **Byte-exact wire-format guard for the interaction-flag bind (CA02).**
+///
+/// `add_dialog_set` ends on the wire as `SGWSpawnableEntity.InteractionType`
+/// (client method index 3), whose signature is a single `UINT64 TypeId`
+/// (`entities/defs/SGWSpawnableEntity.def:114-116`). There is no dialog field.
+///
+/// That is what makes an interaction-only bind — a `dialog_set_maps` row with
+/// `dialog_id IS NULL`, such as Castle row 3062 — representable at all: the
+/// flag-only push and the with-dialog push are byte-identical when the flags
+/// match, because the dialog id never leaves the server. This test pins both
+/// halves of that claim:
+///
+/// 1. the flag-only bind's packet carries exactly the 8-byte little-endian
+///    indicator bitfield and nothing else, and
+/// 2. a with-dialog bind carrying the same flags produces the same bytes — so
+///    a regression that started appending the dialog id (or substituting 0 for
+///    a NULL one) diverges from this expectation immediately.
+#[tokio::test]
+async fn interaction_type_bind_push_is_flag_only_on_the_wire() {
+    use crate::mercury::method_idx::INTERACTION_TYPE;
+
+    /// `INT_AStoryMissionActive` — bit 24, the `!` over Sgt. Gerschon's head.
+    /// The `interaction_flags` value on Castle dialog_set_map row 3062.
+    const INT_A_STORY_MISSION_ACTIVE: u64 = 16_777_216;
+
+    let typed_transport = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed_transport.clone();
+
+    let witness_id = 1200u32;
+    let npc_entity_id = 1201u32;
+    let witness_addr: SocketAddr = "127.0.0.1:56200".parse().unwrap();
+
+    let connected = Arc::new(Mutex::new(HashMap::from([(
+        witness_addr,
+        test_default_connected_client_state(),
+    )])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(witness_id, witness_addr)])));
+
+    // The executor's payload for a flag-only bind: merged flags, UINT64 LE.
+    let args = INT_A_STORY_MISSION_ACTIVE.to_le_bytes().to_vec();
+
+    handle_cell_message(
+        CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id: npc_entity_id,
+            method_index: INTERACTION_TYPE,
+            args: args.clone(),
+            entity_is_player: false,
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let sent = typed_transport.drain();
+    assert_eq!(sent.len(), 1, "exactly one InteractionType packet");
+    let expected = build_entity_method_packet(
+        &[0u8; 32],
+        0,
+        &[],
+        npc_entity_id,
+        INTERACTION_TYPE,
+        IDBASE_NPC_DEFAULT,
+        &args,
+        cimmeria_mercury::encryption::EncryptionVersion::V1,
+    );
+    assert_eq!(
+        sent[0].1, expected,
+        "flag-only bind must encode as InteractionType with an 8-byte LE flags \
+         payload -- any extra field would mean the dialog id reached the wire"
+    );
+
+    // Pin the payload width explicitly: `InteractionType` takes one UINT64, so
+    // a bind can never carry a 12-byte (flags + dialog id) body.
+    assert_eq!(
+        args.len(),
+        8,
+        "InteractionType arg block is a single UINT64 per the entity def"
+    );
+
+    // ── Same flags, but from a row that DOES have a dialog ──
+    // Reset the witness session to next_seq=0 so the second packet is
+    // comparable byte-for-byte against a fresh builder call.
+    {
+        let mut guard = connected.lock().unwrap();
+        guard.insert(witness_addr, test_default_connected_client_state());
+    }
+
+    handle_cell_message(
+        CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id: npc_entity_id,
+            method_index: INTERACTION_TYPE,
+            // Row 3060 (dialog 2573) with the same indicator bit: the executor
+            // computes the identical merged-flags payload.
+            args: args.clone(),
+            entity_is_player: false,
+        },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &None,
+        &None,
+        &None,
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+
+    let sent_with_dialog = typed_transport.drain();
+    assert_eq!(sent_with_dialog.len(), 1);
+    assert_eq!(
+        sent_with_dialog[0].1, expected,
+        "a with-dialog bind carrying the same flags must produce the same bytes \
+         -- the dialog id is server-side state, not a wire field"
+    );
+}

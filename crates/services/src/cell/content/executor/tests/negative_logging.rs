@@ -142,7 +142,11 @@ fn stage_dialog_set_witness(
         p.available_interactions
             .entry(template_id)
             .or_default()
-            .push((dialog_set_id, /* dialog_id */ 7, /* flags */ 0x10));
+            .push((
+                dialog_set_id,
+                /* dialog_id */ Some(7),
+                /* flags */ 0x10,
+            ));
     }
     if let Some(n) = mgr.get_entity_mut(npc_id) {
         n.template_id = Some(template_id);
@@ -209,7 +213,7 @@ async fn add_dialog_set_warns_when_cell_to_base_channel_closed() {
         mgr.dialog_set_maps.insert(
             88,
             DialogSetMapEntry {
-                dialog_id: 7,
+                dialog_id: Some(7),
                 interaction_flags: 0x10,
             },
         );

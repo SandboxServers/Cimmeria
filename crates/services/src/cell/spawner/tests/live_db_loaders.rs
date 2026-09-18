@@ -399,40 +399,71 @@ mod live_db {
         }
     }
 
+    /// **Regression guard (CA02 / defect B3):** rows with a NULL `dialog_id`
+    /// must survive the load, carrying `dialog_id: None`.
+    ///
+    /// These are the interaction-only rows — an indicator bit (`!`, `?`, quest
+    /// glow) with no dialog behind the click. Seven of them are bound by the
+    /// Castle content (3062, 3071, 3073, 5828, 5829, 5846, 5863); the loader
+    /// used to drop every one, so `add_dialog_set` was a cache miss and the
+    /// indicator never reached the client.
+    ///
+    /// The inverse of this test (`..._drops_rows_with_null_dialog_id`) pinned
+    /// the old behaviour and is deliberately replaced rather than kept.
     #[tokio::test]
-    async fn load_dialog_set_maps_drops_rows_with_null_dialog_id() {
+    async fn load_dialog_set_maps_retains_rows_with_null_dialog_id() {
         let pool = require_db_or_skip!();
         let map = load_dialog_set_maps(&pool)
             .await
             .expect("load_dialog_set_maps must succeed");
-        assert!(
-            !map.is_empty(),
-            "seeded dialog_set_maps has rows with non-null dialog_id"
-        );
-        // The loader explicitly drops rows where `dialog_id IS NULL` —
-        // every cached entry must have a positive dialog_id by construction.
+        assert!(!map.is_empty(), "seeded dialog_set_maps must load rows");
+
+        // A cached dialog id, when present, is still a real positive id —
+        // pins that widening to Option didn't open a "0 means no dialog" hole.
         for (set_map_id, entry) in &map {
-            assert!(
-                entry.dialog_id > 0,
-                "dialog_set_map_id {set_map_id} surfaced with non-positive dialog_id {}",
-                entry.dialog_id
-            );
+            if let Some(dialog_id) = entry.dialog_id {
+                assert!(
+                    dialog_id > 0,
+                    "dialog_set_map_id {set_map_id} surfaced with non-positive dialog_id {dialog_id}"
+                );
+            }
         }
-        // Direct invariant pin: any row with NULL dialog_id in the seeded
-        // table must be absent from the loaded cache. Catches a regression
-        // that flips the `if let Some(dialog_id)` to a default-on-None.
-        let null_set_map_id: Option<i32> = sqlx::query_scalar(
-            "SELECT dialog_set_map_id FROM resources.dialog_set_maps WHERE dialog_id IS NULL LIMIT 1",
+
+        // Every NULL-dialog row in the seed must be in the cache with
+        // `dialog_id: None`. Reverting the loader to the `if let Some(..)`
+        // insert fails here on the first id.
+        let null_ids: Vec<i32> = sqlx::query_scalar(
+            "SELECT dialog_set_map_id FROM resources.dialog_set_maps WHERE dialog_id IS NULL",
         )
-        .fetch_optional(&pool)
+        .fetch_all(&pool)
         .await
         .expect("query must succeed");
-        if let Some(id) = null_set_map_id {
-            assert!(
-                !map.contains_key(&id),
-                "dialog_set_map_id {id} has NULL dialog_id in DB but surfaced in the cache"
+        assert!(
+            !null_ids.is_empty(),
+            "seed must still contain interaction-only rows for this guard to mean anything"
+        );
+        for id in &null_ids {
+            let entry = map.get(id).unwrap_or_else(|| {
+                panic!("dialog_set_map_id {id} has NULL dialog_id in DB but was dropped from the cache")
+            });
+            assert_eq!(
+                entry.dialog_id, None,
+                "dialog_set_map_id {id} must cache as None, not a substituted id"
             );
         }
+
+        // Castle row 3062 specifically: `Castle.py` binds it on Sgt. Gerschon
+        // to raise `!` (INT_AStoryMissionActive, bit 24). Both halves matter —
+        // presence AND the flag value, because a present-but-zero-flag entry
+        // would bind silently and show nothing.
+        let gerschon = map
+            .get(&3062)
+            .expect("Castle dialog_set_map 3062 must be cached");
+        assert_eq!(gerschon.dialog_id, None);
+        assert_eq!(
+            gerschon.interaction_flags, 16_777_216,
+            "row 3062 must carry INT_AStoryMissionActive (bit 24)"
+        );
     }
 
     /// **Regression guard for the monologue dialog cache:** dialog 2982
