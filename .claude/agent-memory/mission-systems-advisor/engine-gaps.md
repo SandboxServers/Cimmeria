@@ -84,6 +84,38 @@ default. `mission_tasks.is_enabled` is `true` on all 4,358 rows.
 A spec that infers "all steps disabled ⇒ this content was switched off / must be
 re-enabled" is reading a flag the server never consults. Push back on it.
 
+## Objective state is NOT persisted — `active_objective_ids` carries the STEP id
+
+`executor/mission.rs:85` (accept) and `:242` (advance_step) both send
+`active_objective_ids: vec![step_id]` and `completed_objective_ids: vec![]`.
+The relog hydration at
+`cell/service/base_messages/player_init/mod.rs:172-177` rebuilds
+`MissionInstance.active_objectives` **from that field**, so after any relog a
+mid-mission player's cell-side objective list is `[<step_id>]` — the step id
+masquerading as an objective — and the real objective ids are gone.
+
+Consequences for chain authoring:
+- A later `complete_mission` closes objective `<step_id>` and emits
+  `onObjectiveUpdate(<step_id>, completed)`; the client's real objective row
+  (e.g. 4653 on Castle step 2419) is never closed. Completed mission, objective
+  still active in the log — **only after a relog**, not on a clean run.
+- `Condition::objective_status` on a post-relog player reads the wrong id.
+- Don't "fix" this in a chain. It is an engine defect in the MissionUpdate
+  payload + hydration pair; file it, don't paper over it with
+  `complete_objective` spam.
+
+`complete_mission_direct` itself is fine: `missions/progression.rs:252-281`
+force-completes every entry in `active_objectives` and emits one
+`onObjectiveUpdate(..., STATUS_COMPLETED)` each, and `advance_step`
+(`:57-66`) force-completes the outgoing step's objectives **including optional
+and hidden ones**. Never hand-complete a multi-objective step.
+
+Note `advance_step` emits **no** `onObjectiveUpdate` for the objectives it
+force-completed (`progression.rs:88-128` sends only the two `onStepUpdate`s
+plus the new step's objectives). The client is expected to retire a step's
+objective rows on `onStepUpdate(old, COMPLETED)`. Shipped behavior for every
+Cellblock chain, so precedent — but it is an assumption, not verified.
+
 ## `crates/game/src/missions/objectives.rs` is DEAD CODE
 
 The `MissionObjective` enum (KillCount / CollectItem / VisitRegion / TalkToNpc /

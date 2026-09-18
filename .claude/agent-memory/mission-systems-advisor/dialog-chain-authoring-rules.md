@@ -152,6 +152,22 @@ Binding a sibling row purely for its flag is safe when the chain fires on
 `interact_tag`, because the tag match short-circuits `handle_interact` and the
 bound dialog never auto-opens — the chain's own `display_dialog` wins.
 
+### Castle 702/704 dialogs — speaker + button audit (verified 2026-09-18)
+
+| dialog | screens | speakers | monologue? | buttons |
+|---|---|---|---|---|
+| 2577 (free Zuritska) | 96826-96830 | 1114 + 0 | **no** | **zero** |
+| 4866 (workstation: "use terminal") | 96892-96894 | 1113 + 0 | **no** | **zero** |
+| 2580 (terminal read-out) | 96896 only | 0 | **yes** | **zero** |
+| 2581 (delivery briefing) | 96900-96906 | 1113 + 0 | **no** | **zero** |
+
+So: 2577 and 2581 are displayable only from an `interact_tag` chain (fine).
+**4866 cannot be displayed from an `enter_region` chain** — rule 1 kills it.
+2580 is the only one a victory chain / `fire_chain_by_id` can show.
+
+All four have zero `dialog_screen_buttons` rows, so every `dialog_choice`
+chain hung off them inherits the unverified assumption from rule 3.
+
 ## 5. Deferred (`delay_ms`) actions ARE scrubbed on logout
 
 `space_manager/deferred_content_actions.rs` — tests at `:197-212`
