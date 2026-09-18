@@ -37,6 +37,9 @@
 --     mission), deferred pending GC1 (Marsh escort) landing; see the chain's
 --     own comment below. Occupancy re-checked immediately before use: zero
 --     chain_ids in 1151-1160 existed anywhere under db/resources/Content/Seed/.
+--   Mission 686 aftermath (C08b addition, 2026-09-17): chains 1161-1162,
+--     inside work-packets.md's reserved 1161-1170 range for C08. Verified
+--     free first (max chain_id in this file was 1112 before this packet).
 --   (next free inside 1001-1111: 1026-1030, 1036-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
@@ -2119,3 +2122,86 @@ VALUES (1154, 'mission_accepted', '688', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1154, 'display_dialog', 2518, NULL, '{}', 0, 0);
+
+-- MISSION 686 AFTERMATH — Straegis attack scene (C08b, D-CB07)
+-- ============================================================
+--
+-- On 686 completing (Hallway05 cleared -- see chain 1094), play the
+-- camera-only Matinee "StraegisAttack" (sequence 1751,
+-- `Castle_Cellblock-fffffffe.Main_Sequence.StraegisAttack`, EventSet 747
+-- event 6000, ~10.0096s runtime per the recovered spec), despawn Col
+-- Marsh at his Preparation-room position, then show the aftermath dialog
+-- once the Matinee has finished playing. D-CB07 (answered): camera-only
+-- is acceptable -- no creature spawn, no blood decal/VFX, no data disc;
+-- none of the three has a recovered actor, event id, template or item id
+-- (see work-packets.md's Explicit Non-Goals table).
+--
+-- `viewType` investigation (packet's own flagged uncertainty): the
+-- `onSequence` emitter in `content/executor/mod.rs`'s `PlaySequence` arm
+-- hardcodes `ViewType = 0` (KISMET_VIEW_Witness) for every content-chain
+-- `play_sequence` action -- there is no per-action viewType field on
+-- `Action::PlaySequence` to override it. `docs/gameplay/cinematic-
+-- system.md`'s EKismetViewType table documents 0 as "used by
+-- AbilityManager.playSequence() for all combat ability/effect sequences"
+-- and 3 (KISMET_VIEW_EventInvoker) as "the default in playSequence() if
+-- no viewType is specified... default for most non-combat" (explicitly
+-- used by stargate and ring transport sequences, both camera cinematics
+-- closer in kind to this one than combat). No Atrea script or Python
+-- source exists for StraegisAttack to confirm which value the original
+-- content used -- this is spec-only content with zero legacy reference.
+-- Widening `Action::PlaySequence` with a per-row viewType is an engine
+-- change beyond this chain-only packet's scope (not in C08b's Entries),
+-- so this chain uses `play_sequence` as-is and accepts the existing
+-- hardcoded ViewType=0. If client UAT (T16/T17) shows a broken or
+-- disorienting camera, the fix is a `viewType` field threaded through
+-- `Action::PlaySequence` / `convert_action` / the executor's arg-block
+-- builder -- flagged here rather than guessed at blind.
+--
+-- Chain 1161: mission_completed 686 -> play the Matinee immediately,
+-- despawn Marsh immediately, show the aftermath dialog 10.1s later
+-- (right after the ~10.0096s Matinee finishes). Uses C08a's `delay_ms`
+-- support to stagger the third action without blocking the cell tick.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1161, '686 - Straegis attack scene: play Matinee, despawn Marsh, show aftermath dialog', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1161, 'mission_completed', '686', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1161, 'play_sequence',  1751, NULL,                    '{}', 0,     0),
+  (1161, 'destroy_entity', NULL, 'Preparation_ColMarsh',  '{}', 0,     1),
+  (1161, 'display_dialog', 2516, NULL,                    '{}', 10100, 2);
+
+-- Chain 1162: player_loaded Castle_CellBlock + 686 completed + 687 not
+-- yet accepted -> re-despawn Marsh. The per-player Castle_CellBlock
+-- instance is torn down and recreated fresh from `resources.spawnlist`
+-- on every relog/zone re-entry (`spawn_instance_npcs_from_records`,
+-- called from `handle_create_entity`), so chain 1161's one-time despawn
+-- above does not persist -- Marsh (spawnlist row, Preparation position)
+-- respawns into the new instance exactly as he did on first load. This
+-- is the same restart-resilience gap the interaction-flag restoration
+-- chains in this file guard (1045/1046, 1062-1065, 1104, 1110/1111),
+-- just applied to entity existence instead of a flag. No prior
+-- destroy_entity-on-relog precedent exists in this seed (chain 1032's
+-- `ArmYourself_AmbernolVial` destroy has the same latent gap,
+-- unaddressed -- out of scope here), so this reuses the established
+-- `player_loaded` + `mission_status` restoration *pattern*, substituting
+-- `destroy_entity` for `set_interaction_type` as the corrective action.
+-- Gate is `686 completed AND 687 not_active` (mirrors chain 1063's shape
+-- for the same NPC/mission pair) -- once 687 is accepted, this chain
+-- stops matching; a future escort packet (GC1, not yet landed) owns
+-- what happens to Marsh from that point on.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1162, '686 - Restore Marsh despawn on login (686 done, 687 not started)', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1162, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1162, 'mission_status', 686, NULL, 'eq', 'completed', 0),
+  (1162, 'mission_status', 687, NULL, 'eq', 'not_active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1162, 'destroy_entity', NULL, 'Preparation_ColMarsh', '{}', 0, 0);

@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 
 use super::transport;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
 
 #[cfg(test)]
 mod tests;
@@ -227,19 +227,57 @@ pub(super) fn set_npc_ai_state(
     }
 }
 
-/// `Action::DestroyTaggedEntity` — remove the tagged entity from the
-/// space. Witnesses get the destroy on the next AoI sweep.
-pub(super) fn destroy_tagged_entity(
+/// `Action::DestroyTaggedEntity` — remove the tagged entity from the space
+/// and immediately fan `LeftAoI` to every witness.
+///
+/// C08b (2026-09-17): switched from the bare `SpaceManager::destroy_entity`
+/// to `despawn_npc`. The bare call removes the entity from `space.entities`
+/// and the spatial grid but leaves it sitting in every observer's
+/// `witnesses` set — the next AoI tick *would* eventually notice and emit
+/// `LeftAoI`, but only for players the tick happens to visit and only after
+/// up to a full tick of the client rendering a corpse-less ghost (the same
+/// failure shape as issue #582's invisible-corpse bug). `despawn_npc` fans
+/// `LeftAoI` immediately and scrubs the witness sets in the same pass. This
+/// also (silently) fixes chain 1032's `ArmYourself_AmbernolVial` destroy,
+/// which shared the same latent gap.
+pub(super) async fn destroy_tagged_entity(
     entity_tag: String,
     entity_id: u32,
     chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
-        tracing::info!(entity_id, %entity_tag, target_id, chain_id, "Content: destroying tagged entity");
-        space_mgr.destroy_entity(target_id);
-    } else {
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
         tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for DestroyTaggedEntity");
+        return;
+    };
+    match space_mgr.despawn_npc(target_id, tx).await {
+        DespawnOutcome::Despawned { witnesses_notified } => {
+            tracing::info!(
+                entity_id, %entity_tag, target_id, chain_id, witnesses_notified,
+                "Content: destroying tagged entity"
+            );
+        }
+        DespawnOutcome::RefusedPlayer => {
+            // A tag resolved to a player entity (mistagged content or a
+            // tag collision) -- `despawn_npc` already refused server-side;
+            // WARN so the chain author's target survives loudly rather
+            // than looking like a silent no-op.
+            tracing::warn!(
+                entity_id, %entity_tag, target_id, chain_id,
+                "DestroyTaggedEntity: target resolved to a player entity -- despawn refused"
+            );
+        }
+        DespawnOutcome::NotFound => {
+            // Only reachable if the target left its space between the tag
+            // lookup above and this call's internal check -- `despawn_npc`
+            // awaits per-witness `tx.send`, which can yield to another
+            // task on a full channel.
+            tracing::debug!(
+                entity_id, %entity_tag, target_id, chain_id,
+                "DestroyTaggedEntity: target vanished between tag lookup and despawn"
+            );
+        }
     }
 }
 
