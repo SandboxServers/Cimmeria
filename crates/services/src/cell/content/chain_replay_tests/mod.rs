@@ -23,13 +23,13 @@
 //! `CellToBaseMsg` traffic — a resolve-only test cannot tell a wired
 //! executor arm from the `other =>` catch-all.
 
-mod cover_demo;
 mod grant_xp;
 mod mission_1360;
 mod mission_1562;
 mod mission_622;
 mod mission_638;
 mod mission_639;
+mod mission_639_cover;
 mod mission_640;
 mod mission_641;
 mod mission_680;

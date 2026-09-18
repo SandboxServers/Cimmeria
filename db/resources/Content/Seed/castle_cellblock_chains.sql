@@ -43,6 +43,11 @@
 --   (next free inside 1001-1111: 1026-1030, 1036-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
+--   Mission 639 (C05 addition, 2026-09-18): chains 1131-1133 (take-cover /
+--     drone-kill dual-objective gating for step 2144, replacing demo chain
+--     1035 -- see that section's comment for the auto-complete-trap
+--     rationale). Uses 3 of the 10 ids work-packets.md reserved for C05
+--     (1131-1140); 1134-1140 remain free.
 
 SET search_path = resources, pg_catalog;
 
@@ -688,33 +693,127 @@ VALUES
   (1031, 'set_interaction_type', NULL, 'ArmYourself_AmbernolVial', '{"op": "|", "mask": 1073741824}', 0, 1);
 
 -- ============================================================
--- COVER-SYSTEM DEMO
+-- TAKE-COVER OBJECTIVE (C05, replaces the COVER-SYSTEM DEMO chain 1035)
 -- ============================================================
 --
--- Chain 9209 — proof-of-trigger that the OnPlayerEnteredCover wire
--- path works end-to-end (DB → loader → trigger match → executor).
--- Fires when ANY player enters ANY cover set inside Castle Cellblock,
--- gated on the prisoner-retrieval-unit (med-bay drone) mission being
--- active. The action is a counter bump — observable in the entity's
--- `counters` map and verifiable from the chain-replay test harness.
+-- Step 2144 ("Defend yourself from the drone!") requires BOTH objective
+-- 2482 (kill the drone -- mission_objectives.sql) and 2484 (take cover at
+-- the med-station desk) before advancing to step 2343 (use the Ambernol
+-- cure). D-CB05: the flank objectives (2725/2731, C06) are tracked but do
+-- NOT gate here -- only 2482/2484 do, per the decision.
 --
--- Chain 1035: COVER DEMO — bump a counter on player_entered_cover
--- while step 2145 is active. Slots into the mission 639 range
--- (1031-1040) per the header allocation. v1 wires the trigger plumbing
--- with a wildcard cover_set_id (NULL); per-room tuning (e.g. swap NULL
--- for the med-bay set_id, add BSF_CROUCHING state-flag condition) is a
--- content-author follow-up.
+-- Cover-set data: chunk_id 1381 in cover_sets.sql/cover_nodes.sql -- a
+-- new, one-off, hand-authored entry for the 7 `SGWSpecCoverNode` actors
+-- found at the med-station desk by the C05 UE3 extraction pass (game-
+-- archaeology-specialist, 2026-09-18; see
+-- docs/analysis/castle-cellblock-rebuild/work-packets.md#c05). These are
+-- real world-space coordinates, not a reused prefab template.
+--
+-- AUTO-COMPLETE TRAP (load-bearing -- read before touching this section):
+-- `cell::missions::complete_objective` (progression.rs) auto-calls
+-- `mission.complete()` -- ending the WHOLE MISSION, not just the step --
+-- the moment ALL of the step's `active_objectives` become STATUS_COMPLETED
+-- via that path. Step 2144 has exactly two required objectives (2482,
+-- 2484), so calling `Action::CompleteObjective` for BOTH would complete
+-- mission 639 outright and skip step 2343 (the cure) entirely -- the same
+-- trap chain 1107/1109's comment documents for mission 688's step 2356.
+-- `Action::AdvanceStep` avoids it: `advance_step`'s own implementation
+-- completes the OLD step's remaining active objectives via the raw
+-- `MissionInstance::complete_objective` method directly, bypassing the
+-- wrapper's auto-complete-mission check. So: whichever of the two
+-- objectives is satisfied FIRST uses `complete_objective` (ticks the UI
+-- checkbox, mission stays on step 2144); whichever is satisfied SECOND
+-- uses `advance_step` instead of `complete_objective` (transitions to
+-- 2343, implicitly completing the other objective along the way, no
+-- separate `complete_objective` call needed or safe to add). Each trigger
+-- (drone death, cover entered) therefore needs two chain variants gated on
+-- the OTHER objective's `objective_status`, not one unconditional chain --
+-- this is why chain 1033 below is split into two ids instead of getting a
+-- second action appended to its existing one.
+--
+-- Relog safety (scope item 5): no `player_loaded` chain re-plays sequence
+-- 10001 (show) or 10014 (hide) here -- both are one-shot cinematics gated
+-- purely on live trigger events (vial pickup, cover entry), never on
+-- load. A relog mid-2144 re-derives `objective_status`/`step_status` from
+-- the persisted mission row (see `populate_mission_context`), so the
+-- gating conditions below are correct on the very first evaluation after
+-- login with no separate restore chain required.
+
+-- Chain 1033 (MODIFIED, C05): drone killed while cover NOT yet taken →
+-- mark the kill objective complete only (mission stays on step 2144,
+-- waiting on the cover objective). See the auto-complete-trap note above
+-- for why this no longer unconditionally advances to 2343.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1035, '639 - COVER DEMO: bump counter on player enter cover', 'mission', 639, true, 0);
+VALUES (1033, '639 - Guard killed (cover pending): complete kill objective', 'mission', 639, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (1035, 'player_entered_cover', NULL, 'player', false, 0);
+VALUES (1033, 'entity_dead_tag', 'ArmYourself_PrisonerRetrievalUnit', 'space', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (1035, 'step_status', 639, '2145', 'eq', 'active', 0);
+VALUES
+  (1033, 'step_status', 639, '2144', 'eq', 'active', 0),
+  (1033, 'objective_status', 639, '2484', 'neq', 'completed', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1035, 'increment_counter', NULL, 'cover_demo_entered', '{"amount": 1}', 0, 0);
+VALUES (1033, 'complete_objective', 639, '2482', '{}', 0, 0);
+
+-- Chain 1131 (C05): drone killed while cover ALREADY taken → this is the
+-- second objective to complete, so advance the step directly (which also
+-- completes the kill objective as part of the step transition -- do not
+-- add a `complete_objective` here, see the trap note above).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1131, '639 - Guard killed (cover already taken): advance to 2343', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1131, 'entity_dead_tag', 'ArmYourself_PrisonerRetrievalUnit', 'space', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1131, 'step_status', 639, '2144', 'eq', 'active', 0),
+  (1131, 'objective_status', 639, '2484', 'eq', 'completed', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1131, 'advance_step', 639, '2343', '{}', 0, 0);
+
+-- Chain 1132 (C05): player takes cover at the med-station desk (cover_set
+-- 1381) while the drone is NOT yet dead → mark the cover objective
+-- complete and hide the TakeCoverIndicator (sequence 10014, shown by
+-- chain 1032's sequence 10001 when the drone first aggros).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1132, '639 - Take cover (kill pending): complete cover objective', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1132, 'player_entered_cover', '1381', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1132, 'step_status', 639, '2144', 'eq', 'active', 0),
+  (1132, 'objective_status', 639, '2482', 'neq', 'completed', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1132, 'complete_objective', 639, '2484', '{}', 0, 0),
+  (1132, 'play_sequence', 10014, NULL, '{}', 0, 1);
+
+-- Chain 1133 (C05): player takes cover while the drone is ALREADY dead →
+-- second objective to complete, advance the step directly (implicitly
+-- completes the cover objective too -- see the trap note above) and still
+-- hide the indicator.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1133, '639 - Take cover (kill already done): advance to 2343', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1133, 'player_entered_cover', '1381', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1133, 'step_status', 639, '2144', 'eq', 'active', 0),
+  (1133, 'objective_status', 639, '2482', 'eq', 'completed', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1133, 'advance_step', 639, '2343', '{}', 0, 0),
+  (1133, 'play_sequence', 10014, NULL, '{}', 0, 1);
 
 -- Chain 1032: interact with Ambernol vial while step 2145 active → pick up, destroy, aggro guard, advance
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -744,18 +843,10 @@ VALUES
   (1032, 'play_sequence',   10001, NULL,                               '{}',                             0, 5),
   (1032, 'advance_step',    639,  '2144',                              '{}',                             0, 6);
 
--- Chain 1033: entity dead tag for guard (space-scoped) while step 2144 active → advance to 2343
-INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1033, '639 - Guard killed: advance step to 2343', 'mission', 639, true, 0);
-
-INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (1033, 'entity_dead_tag', 'ArmYourself_PrisonerRetrievalUnit', 'space', false, 0);
-
-INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (1033, 'step_status', 639, '2144', 'eq', 'active', 0);
-
-INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1033, 'advance_step', 639, '2343', '{}', 0, 0);
+-- Chain 1033 is now defined above in the "TAKE-COVER OBJECTIVE (C05)"
+-- section (dual-objective gating for step 2144 -> 2343) alongside its
+-- 1131/1132/1133 siblings -- kept next to that logic instead of here so
+-- the four related chains aren't split across the file.
 
 -- Chain 1034: use item 19 (ambernol) while step 2343 active → complete 639, accept 640.
 --   The chain is responsible for consumption via `remove_item`. Mirrors python
