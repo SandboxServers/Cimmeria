@@ -112,12 +112,13 @@ fn make_space_mgr() -> SpaceManager {
 /// A `grant_xp` action row must survive the loader as
 /// `Action::GrantXP { amount }` and execute as exactly one
 /// `CellToBaseMsg::GrantXP` carrying that amount, addressed to the
-/// firing player, with `notify_gm: false`.
+/// firing player, with `gm_feedback_to: None`.
 ///
-/// `notify_gm` is asserted explicitly: it is the discriminator that
-/// makes the base emit a GM-feedback line, and only the `gmGiveXp` path
-/// sets it. A chain grant is gameplay, not a GM action — flipping it
-/// would spam every player who completes the chain with GM chatter.
+/// `gm_feedback_to` is asserted explicitly: it is the discriminator that
+/// makes the base emit a GM-feedback line, and only the `gmGiveXp` /
+/// `.givexp` path sets it (to the calling GM's entity id). A chain grant
+/// is gameplay, not a GM action — leaving it `Some(_)` would spam every
+/// player who completes the chain with GM chatter.
 #[tokio::test]
 async fn grant_xp_action_row_reaches_base_with_the_authored_amount() {
     let pool = require_db_or_skip!();
@@ -175,10 +176,10 @@ async fn grant_xp_action_row_reaches_base_with_the_authored_amount() {
         if let CellToBaseMsg::GrantXP {
             entity_id,
             xp_amount,
-            notify_gm,
+            gm_feedback_to,
         } = msg
         {
-            grants.push((entity_id, xp_amount, notify_gm));
+            grants.push((entity_id, xp_amount, gm_feedback_to));
         }
     }
     assert_eq!(
@@ -190,7 +191,7 @@ async fn grant_xp_action_row_reaches_base_with_the_authored_amount() {
     );
     assert_eq!(
         grants[0],
-        (PLAYER_EID, TEST_XP, false),
-        "GrantXP must carry (firing entity, authored amount, notify_gm=false)",
+        (PLAYER_EID, TEST_XP, None),
+        "GrantXP must carry (firing entity, authored amount, gm_feedback_to=None)",
     );
 }

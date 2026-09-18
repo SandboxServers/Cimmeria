@@ -186,6 +186,7 @@ async fn same_space_teleport_action_preserves_facing() {
                 position: [12.0, 34.0, 56.0],
             },
         )],
+        action_delays: Vec::new(),
     };
     execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
 
