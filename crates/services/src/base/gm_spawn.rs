@@ -3,9 +3,16 @@
 //! [`handle_gm_spawn_npc`] is the base half of the `gmSpawnByCmd` round-trip:
 //! it queries `resources.entity_templates` for the requested template,
 //! materializes a [`SpawnRecord`], and ships it back to the cell via
-//! `BaseToCellMsg::GmSpawnNpcReady`. The cell can't build a `SpawnRecord` for
-//! an arbitrary `template_id` (it has no template cache), so the base owns the
-//! DB query and the record construction.
+//! `BaseToCellMsg::GmSpawnNpcReady`. The base owns the DB query because it
+//! owns the pool at request time.
+//!
+//! The row -> `SpawnRecord` mapping itself is **not** owned here: both the
+//! SELECT and the field mapping come from
+//! [`crate::cell::spawner::entity_template_select`] /
+//! [`crate::cell::spawner::build_prototype`], shared with the cell's startup
+//! template cache so the two can never drift on a schema change. Only the
+//! GM-specific overrides (position, world, one-shot respawn) live in this
+//! file.
 
 use tokio::sync::mpsc;
 
@@ -19,7 +26,7 @@ use cimmeria_mercury::transport::Transport;
 use crate::base::gm_feedback::send_gm_feedback_to_client;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
-use crate::cell::spawner::SpawnRecord;
+use crate::cell::spawner::{build_prototype, entity_template_select, SpawnRecord};
 
 /// Handle `gmSpawnByCmd` from CellService — look up the requested template in
 /// `resources.entity_templates`, build a [`SpawnRecord`] from it (filling the
@@ -155,7 +162,7 @@ pub async fn handle_gm_spawn_npc(
 /// Returns `Ok(None)` when the template doesn't exist. The ability-id bucket
 /// is loaded via the same correlated-subquery shape as the spawnlist loader so
 /// a GM-spawned mob is armed identically to a seeded one.
-async fn load_spawn_record_for_template(
+pub(crate) async fn load_spawn_record_for_template(
     pool: &PgPool,
     template_id: i32,
     world_name: &str,
@@ -164,33 +171,10 @@ async fn load_spawn_record_for_template(
 ) -> Result<Option<SpawnRecord>, sqlx::Error> {
     use sqlx::Row;
 
-    let row_opt = sqlx::query(
-        "SELECT t.template_id, t.template_name, t.class, t.static_mesh, t.body_set, \
-                t.components, t.flags, t.interaction_type, t.event_set_id, t.level, \
-                t.alignment, t.faction, t.name_id, t.speaker_id, \
-                t.static_interaction_sets, t.has_dynamic_properties, \
-                t.loot_table_id, \
-                t.patrol_path_id, \
-                COALESCE(t.patrol_point_delay, 2.0) AS patrol_point_delay, \
-                COALESCE(t.wander_radius, 0.0) AS wander_radius, \
-                COALESCE(t.wander_min_dwell_secs, 3.0) AS wander_min_dwell_secs, \
-                COALESCE(t.wander_max_dwell_secs, 8.0) AS wander_max_dwell_secs, \
-                COALESCE(t.follow_min_distance, 2.0) AS follow_min_distance, \
-                COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
-                COALESCE(t.move_speed, 0.6) AS move_speed, \
-                t.respawn_secs, \
-                COALESCE( \
-                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
-                   FROM resources.ability_set_abilities asa \
-                   WHERE asa.ability_set_id = t.ability_set_id), \
-                  ARRAY[]::int[] \
-                ) AS ability_ids \
-         FROM resources.entity_templates t \
-         WHERE t.template_id = $1",
-    )
-    .bind(template_id)
-    .fetch_optional(pool)
-    .await?;
+    let row_opt = sqlx::query(entity_template_select!(" WHERE t.template_id = $1"))
+        .bind(template_id)
+        .fetch_optional(pool)
+        .await?;
 
     let row = match row_opt {
         Some(r) => r,
@@ -199,66 +183,35 @@ async fn load_spawn_record_for_template(
 
     // Patrol points, if any, follow the same `point_set_points` lookup the
     // spawnlist loader uses. For a GM spawn we resolve the single template's
-    // patrol_path_id (NULL → empty path).
+    // patrol_path_id (NULL → empty path). The resolved map is handed to the
+    // shared mapper, which does the id → path lookup itself.
     let patrol_path_id: Option<i32> = row.try_get("patrol_path_id")?;
-    let patrol_path = match patrol_path_id {
-        Some(path_id) => crate::cell::spawner::load_patrol_points(pool, &[path_id])
-            .await?
-            .remove(&path_id)
-            .unwrap_or_default(),
-        None => Vec::new(),
+    let patrol_paths = match patrol_path_id {
+        Some(path_id) => crate::cell::spawner::load_patrol_points(pool, &[path_id]).await?,
+        None => std::collections::HashMap::new(),
     };
 
-    let record = SpawnRecord {
-        // Spawn-instance fields sourced from the GM command, not a spawnlist
-        // row. spawn_id = -1 marks this as a non-DB (GM) spawn; tag = None
-        // because a command spawn has no authoring tag yet. `heading` comes
-        // from the command (the dot-console sends the caller's own facing,
-        // matching legacy `Resource.spawnEntity`'s `player.rotation`; the
-        // native `gmSpawnByCmd` has no rotation argument and sends 0.0).
-        spawn_id: -1,
-        world_name: world_name.to_string(),
-        x: position[0],
-        y: position[1],
-        z: position[2],
-        heading,
-        tag: None,
-        // Template-derived fields. Use `try_get` + `?` throughout so a NULL in a
-        // non-nullable column (the seed has half-wired content) surfaces as a
-        // decode error → the handler drops the spawn with a warn, rather than
-        // `row.get` panicking the whole base task.
-        template_id: row.try_get("template_id")?,
-        template_name: row.try_get("template_name")?,
-        class: row.try_get("class")?,
-        static_mesh: row.try_get("static_mesh")?,
-        body_set: row.try_get("body_set")?,
-        components: row.try_get("components")?,
-        flags: row.try_get("flags")?,
-        interaction_type: row.try_get("interaction_type")?,
-        event_set_id: row.try_get("event_set_id")?,
-        level: row.try_get("level")?,
-        alignment: row.try_get("alignment")?,
-        faction: row.try_get("faction")?,
-        name_id: row.try_get("name_id")?,
-        speaker_id: row.try_get("speaker_id")?,
-        static_interaction_sets: row.try_get("static_interaction_sets")?,
-        has_dynamic_properties: row.try_get("has_dynamic_properties")?,
-        loot_table_id: row.try_get("loot_table_id")?,
-        // GM spawns are placeable mobs, not stationary props.
-        is_stationary: false,
-        ability_ids: row.try_get::<Vec<i32>, _>("ability_ids")?,
-        // GM spawns are one-shot: force `respawn_secs = None` so a `spawn_id = -1`
-        // (non-DB) instance is never handed to the respawner.
-        respawn_secs: None,
-        patrol_path,
-        patrol_point_delay_secs: row.try_get::<f32, _>("patrol_point_delay")?,
-        wander_radius: row.try_get::<f32, _>("wander_radius")?,
-        wander_min_dwell_secs: row.try_get::<f32, _>("wander_min_dwell_secs")?,
-        wander_max_dwell_secs: row.try_get::<f32, _>("wander_max_dwell_secs")?,
-        follow_min_distance: row.try_get::<f32, _>("follow_min_distance")?,
-        follow_max_distance: row.try_get::<f32, _>("follow_max_distance")?,
-        move_speed: row.try_get::<f32, _>("move_speed")?,
-    };
+    // Template-derived fields come from the shared mapper so this handler
+    // and the cell's startup template cache can never drift apart on a
+    // schema change (PR #662 review, finding 3). Everything below the
+    // mapper call is what makes a GM spawn a GM spawn.
+    let mut record = build_prototype(&row, &patrol_paths)?;
+
+    // Spawn-instance fields sourced from the GM command, not a spawnlist
+    // row. `spawn_id = -1` and `tag = None` are already the prototype's
+    // placeholders; `heading` comes from the command (the dot-console sends
+    // the caller's own facing, matching legacy `Resource.spawnEntity`'s
+    // `player.rotation`; the native `gmSpawnByCmd` has no rotation argument
+    // and sends 0.0).
+    record.world_name = world_name.to_string();
+    record.x = position[0];
+    record.y = position[1];
+    record.z = position[2];
+    record.heading = heading;
+    // GM spawns are one-shot: force `respawn_secs = None` so a `spawn_id = -1`
+    // (non-DB) instance is never handed to the respawner. The prototype
+    // carries the template's value verbatim, so this override is load-bearing.
+    record.respawn_secs = None;
 
     Ok(Some(record))
 }
