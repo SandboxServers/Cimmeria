@@ -148,10 +148,13 @@ Given this, the user chose (2026-09-17) to keep the shipped two-branch mapping a
 
 ### C09
 
-**Status:** BlockedDecision (D-CB09). **Scope title:** Castle arrival and Sgt. Gerschon handoff. **Depends:** C04 (letter persistence check), C01. **Advisor:** mission-systems-advisor, movement-teleport-advisor.
-**Entries:** [Castle.py](../../../deprecated/python/cell/spaces/Castle.py), chain 1109, spawn 112 `Castle_SgtGerschon` (world 8), dialog set 3062, dialogs 2573 (Human) and 5861 (Jaffa), mission 701, [mission-chains.md](../../content/mission-chains.md#castle-persistent-zone).
-**Scope:** new seed file `castle_chains.sql` (`\ir` after the Cellblock files) porting only the handoff slice of `Castle.py`: on `player_loaded Castle` with 701 not active, bind dialog set 3062 to template 149; on interact `Castle_SgtGerschon` display 2573 (archetype neq 8) or 5861 (archetype eq 8, spec-only addition, same shape as the Prisoner 329 branch); on the matching dialog choice accept 701 and remove the set. Verify the arrival coordinate in chain 1109 lands within interaction range of spawn 112 or on the ring platform the comment cites. Mission 1360 must still be active after arrival. Stop at 701 accept; the rest of `Castle.py` (Copplemann, Livewire, 702) is a separate zone campaign.
-**Acceptance:** replay tests for both archetype branches and the accept; live-DB test that 1360 and 688-completed survive the world hop; UAT T21/T22. **Exclude:** mission 701 steps beyond accept; Castle spawn/navmesh work.
+**Status:** Reassigned off this ledger, 2026-09-17. **Scope title:** ~~Castle arrival and Sgt. Gerschon handoff~~.
+
+A sibling session is running its own Castle-zone restoration campaign and owns `castle_chains.sql` as **CA01** in its own ledger. Two sessions both creating that file was the one guaranteed conflict between the two campaigns, so the full authoring scope below moved there. Original scope kept verbatim for reference — do not implement any of it from this ledger:
+
+> new seed file `castle_chains.sql` (`\ir` after the Cellblock files) porting only the handoff slice of `Castle.py`: on `player_loaded Castle` with 701 not active, bind dialog set 3062 to template 149; on interact `Castle_SgtGerschon` display 2573 (archetype neq 8) or 5861 (archetype eq 8, spec-only addition, same shape as the Prisoner 329 branch); on the matching dialog choice accept 701 and remove the set. Verify the arrival coordinate in chain 1109 lands within interaction range of spawn 112 or on the ring platform the comment cites. Mission 1360 must still be active after arrival. Stop at 701 accept; the rest of `Castle.py` (Copplemann, Livewire, 702) is a separate zone campaign.
+
+**What this ledger keeps:** one UAT check, folded into milestone M4 in [README.md](README.md#validation-and-uat-gates) — after CA01 lands on the Castle side, confirm the player arrives near spawn 112 `Castle_SgtGerschon` with mission 1360 (Frost's Letter, C04) still active. No packet, no chain authoring, no `castle_chains.sql` edits from this session. **Entries (read-only, for the UAT check only):** chain 1109 (`cross_world_teleport`, already landed), spawn 112 `Castle_SgtGerschon` (world 8).
 
 ### GC3
 
@@ -178,6 +181,6 @@ Given this, the user chose (2026-09-17) to keep the shipped two-branch mapping a
 
 ## Scheduling And Closeout
 
-Dependency roots: authorize implementation, then C01 (purge) and C08a (delay support) can run in parallel with disjoint files; C02 follows C01; C03 and C04 follow C01. C05 needs the cover-set evidence step before its writer starts; C06 follows C05. C07 waits on the UAT precheck in D-CB08. C08b waits on C08a. C09 waits on the D-CB09 scope answer. GC1/GC2/GC3 are design gates: propose children, record a decision id, then dispatch.
+Dependency roots: authorize implementation, then C01 (purge) and C08a (delay support) can run in parallel with disjoint files; C02 follows C01; C03 and C04 follow C01. C05 needs the cover-set evidence step before its writer starts; C06 follows C05. C07 waits on the UAT precheck in D-CB08. C08b waits on C08a. C09 is reassigned off this ledger (see its entry) — its only remaining item is a UAT check gated on the sibling Castle campaign's own CA01 landing. GC1/GC2/GC3 are design gates: propose children, record a decision id, then dispatch.
 
 Milestones for the user's in-client UAT are in [README.md](README.md#validation-and-uat-gates). A packet becomes Done only after its replay guard, executor test where applicable, documentation update and milestone UAT pass.
