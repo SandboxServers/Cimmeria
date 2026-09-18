@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use crate::cell::spawner::RespawnerDef;
 
 /// In-place respawn: keep the cell entity (and instance) alive, send a
 /// targeted client-side burst that re-creates just the pawn actor and
@@ -283,6 +284,30 @@ pub(crate) async fn handle_respawn(
     }
 }
 
+/// A respawner row sitting exactly at the world origin is an unauthored
+/// placeholder, not a respawn point.
+///
+/// `load_respawners` copies `resources.respawners` in with no validation,
+/// and the recovered data ships rows whose name survived but whose
+/// coordinates did not (all four World 8 / Castle rows were `(0,0,0)`
+/// until CA00; the two World 23 rows still are — see the KNOWN GAP
+/// comment in `db/resources/Worlds/Seed/respawners.sql`). Treating those
+/// as real is worse than having no respawner at all: because the row
+/// *exists*, every fallback below it becomes unreachable and the player
+/// is teleported to the world origin on death — usually out of bounds,
+/// under the map, or in an inescapable void, with `unstuck` still
+/// unimplemented. Skipping them instead degrades to the in-place /
+/// Castle-default fallbacks, which are survivable.
+///
+/// Exact equality is the right test: (0,0,0) is a sentinel written by the
+/// authoring gap, never a coordinate anyone would author deliberately, and
+/// a tolerance band would start rejecting legitimately near-origin points
+/// in worlds whose geometry straddles it. `-0.0 == 0.0` in IEEE-754, so
+/// negative zeros are caught too.
+fn is_unauthored(r: &RespawnerDef) -> bool {
+    r.pos == [0.0, 0.0, 0.0]
+}
+
 /// Resolve `(world, position)` for the respawn target.
 ///
 /// Priority:
@@ -291,6 +316,10 @@ pub(crate) async fn handle_respawn(
 ///   3. Castle default for `Castle_CellBlock` / unknown world.
 ///   4. In-place at the player's current position for any other world
 ///      (avoids silently teleporting players cross-world).
+///
+/// Respawners that fail [`is_unauthored`] are invisible to steps 1 and 2 —
+/// an all-zero row is treated as absent at every priority, so the search
+/// continues past it instead of returning the world origin.
 ///
 /// Operational note: in-place respawn outside Castle can produce death
 /// loops if the player died standing in damaging geometry (lava tile, AoE
@@ -307,24 +336,69 @@ pub(super) fn resolve_respawn_target(
     const CASTLE_DEFAULT_POS: [f32; 3] = [-334.231, 73.472, -228.026];
 
     if respawner_id > 0 {
-        if let Some(r) = space_mgr
+        match space_mgr
             .respawners
             .iter()
             .find(|r| r.respawner_id == respawner_id)
         {
-            return (r.world_name.clone(), r.pos);
+            Some(r) if is_unauthored(r) => {
+                // Negative-log seam, `reason` pinned by
+                // `origin_respawner_warn_fires_once_on_the_explicit_id_path`.
+                // `world` (not `world_name`) matches the field this
+                // function's other logs already use, so one ops query
+                // catches every respawn-resolution event; see the
+                // worknote for the convention-vs-practice note.
+                tracing::warn!(
+                    entity_id,
+                    respawner_id,
+                    respawner_name = %r.name,
+                    world = %r.world_name,
+                    reason = "respawner_at_origin",
+                    "Respawn: requested respawner is at the world origin \
+                     (unauthored coordinates) — ignoring it and falling back, \
+                     so the player lands at a fallback point rather than at \
+                     (0,0,0); fix the row in \
+                     db/resources/Worlds/Seed/respawners.sql"
+                );
+            }
+            Some(r) => return (r.world_name.clone(), r.pos),
+            None => tracing::warn!(
+                entity_id,
+                respawner_id,
+                "Respawner not found, falling back to world default"
+            ),
         }
-        tracing::warn!(
-            entity_id,
-            respawner_id,
-            "Respawner not found, falling back to world default"
-        );
     }
 
     let world_name = space_mgr.get_entity_world_name(entity_id);
     if let Some(ref wn) = world_name {
-        if let Some(r) = space_mgr.respawners.iter().find(|r| r.world_name == *wn) {
+        let mut skipped = 0usize;
+        let usable = space_mgr.respawners.iter().find(|r| {
+            if r.world_name != *wn {
+                return false;
+            }
+            if is_unauthored(r) {
+                skipped += 1;
+                return false;
+            }
+            true
+        });
+        if let Some(r) = usable {
             return (r.world_name.clone(), r.pos);
+        }
+        if skipped > 0 {
+            // Negative-log seam, `reason` pinned by
+            // `origin_respawner_warn_fires_once_on_the_world_scan_path`.
+            tracing::warn!(
+                entity_id,
+                world = %wn,
+                skipped,
+                reason = "world_respawners_all_at_origin",
+                "Respawn: every respawner registered for this world is at the \
+                 origin (unauthored coordinates) — falling back, so the player \
+                 respawns in place rather than at (0,0,0); fix the rows in \
+                 db/resources/Worlds/Seed/respawners.sql"
+            );
         }
     }
 
