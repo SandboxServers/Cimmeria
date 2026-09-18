@@ -576,6 +576,146 @@ mod tests {
         engine
     }
 
+    /// Build a Castle-ish space with a player at the origin and one
+    /// neutral tagged NPC at `npc_distance` units away on X. Returns the
+    /// NPC's id.
+    fn space_with_tagged_npc(mgr: &mut SpaceManager, tag: &str, npc_distance: f32) -> u32 {
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(42);
+        }
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [npc_distance, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            npc.tag = Some(tag.to_string());
+            npc.faction = 1; // neutral — no combat reroute
+            npc.clear_all_state_flags();
+        }
+        npc_id
+    }
+
+    /// **Server authority.** An interact on a target beyond
+    /// `MAX_INTERACT_DISTANCE` must neither pin `last_interaction_target`
+    /// nor fire the tag's content chains.
+    ///
+    /// `interactions::handle_interact` has always range-checked, but it is
+    /// the last thing the outer dispatcher tries: the trainer UI and the
+    /// content-chain dispatch both run ahead of it. So before the outer
+    /// gate, a client could name any tagged NPC anywhere on the map and
+    /// drive its chains — accept a mission, advance a step, launch a
+    /// minigame — from arbitrary distance, and (once the pin moved ahead
+    /// of the chain dispatch) stamp an unvalidated entity id that
+    /// `handle_initial_response` puts on the wire.
+    #[tokio::test]
+    async fn out_of_range_interact_does_not_pin_or_fire_chains() {
+        const TAG: &str = "TestRangeNpc";
+        let mut mgr = make_space_manager();
+        // 100 units away — far outside MAX_INTERACT_DISTANCE (5.0).
+        let npc_id = space_with_tagged_npc(&mut mgr, TAG, 100.0);
+
+        let engine = engine_with_interact_then_dialog(TAG, 9861, 9862);
+        let (tx, _rx) = mpsc::channel(16);
+        let mut args = Vec::with_capacity(4);
+        args.extend_from_slice(&(npc_id as i32).to_le_bytes());
+        dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            counter(&mgr, 1, "pin_probe"),
+            0,
+            "an out-of-range interact must not fire the tag's content chain",
+        );
+        assert_eq!(
+            mgr.get_entity(1).and_then(|e| e.last_interaction_target),
+            None,
+            "an out-of-range interact must not pin the target",
+        );
+    }
+
+    /// Same gate, missing-target half: an interact naming an entity id
+    /// that does not exist must pin nothing and fire nothing.
+    #[tokio::test]
+    async fn interact_on_a_missing_target_does_not_pin_or_fire_chains() {
+        const TAG: &str = "TestRangeNpc";
+        let mut mgr = make_space_manager();
+        let _npc_id = space_with_tagged_npc(&mut mgr, TAG, 2.0);
+
+        let engine = engine_with_interact_then_dialog(TAG, 9861, 9862);
+        let (tx, _rx) = mpsc::channel(16);
+        // An id no entity holds (positive, so it survives the negative-id
+        // rejection at the top of the handler and actually reaches the gate).
+        let mut args = Vec::with_capacity(4);
+        args.extend_from_slice(&0x0BAD_F00Di32.to_le_bytes());
+        dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            counter(&mgr, 1, "pin_probe"),
+            0,
+            "an interact on a nonexistent target must not fire any chain",
+        );
+        assert_eq!(
+            mgr.get_entity(1).and_then(|e| e.last_interaction_target),
+            None,
+            "an interact on a nonexistent target must not pin",
+        );
+    }
+
+    /// Positive half of the gate: an in-range interact on a real target
+    /// both pins and fires. Without this the two negatives above would
+    /// pass with the gate stuck closed.
+    #[tokio::test]
+    async fn in_range_interact_pins_and_fires_chains() {
+        const TAG: &str = "TestRangeNpc";
+        let mut mgr = make_space_manager();
+        let npc_id = space_with_tagged_npc(&mut mgr, TAG, 2.0);
+
+        let engine = engine_with_interact_then_dialog(TAG, 9861, 9862);
+        let (tx, _rx) = mpsc::channel(16);
+        let mut args = Vec::with_capacity(4);
+        args.extend_from_slice(&(npc_id as i32).to_le_bytes());
+        dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            counter(&mgr, 1, "pin_probe"),
+            1,
+            "an in-range interact must fire the tag's content chain",
+        );
+        assert_eq!(
+            mgr.get_entity(1).and_then(|e| e.last_interaction_target),
+            Some(npc_id),
+            "an in-range interact must pin the target",
+        );
+    }
+
+    /// The pin must stay behind the hostile-NPC combat reroute: attacking
+    /// something must not make it the speaker of the next dialog. A
+    /// refactor that hoisted the pin to the top of the handler — which is
+    /// where python writes it — would silently break this.
+    #[tokio::test]
+    async fn hostile_reroute_does_not_pin_the_target() {
+        let mut mgr = make_space_manager();
+        let npc_id = space_with_tagged_npc(&mut mgr, "TestHostileNpc", 2.0);
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            npc.faction = 10; // hostile
+            npc.clear_all_state_flags(); // alive
+        }
+
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(16);
+        let mut args = Vec::with_capacity(4);
+        args.extend_from_slice(&(npc_id as i32).to_le_bytes());
+        dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            mgr.get_entity(1).and_then(|e| e.last_interaction_target),
+            None,
+            "the combat reroute must return before the pin — an attacked NPC \
+             must not become the next dialog's speaker",
+        );
+    }
+
     /// A chain-handled interact must still pin `last_interaction_target`, so
     /// a later chain-fired `display_dialog` can resolve the NPC as the wire
     /// `EntityId` of `onDialogDisplay`.
@@ -604,23 +744,9 @@ mod tests {
         const SHOWN_DIALOG: i32 = 9862;
 
         let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
-            .unwrap();
-        if let Some(p) = mgr.get_entity_mut(1) {
-            p.is_player = true;
-            p.player_id = Some(42);
-        }
-
-        let npc_id = mgr.allocate_npc_id();
-        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
-            .unwrap();
-        if let Some(npc) = mgr.get_entity_mut(npc_id) {
-            npc.tag = Some(NPC_TAG.to_string());
-            // Neutral and alive so the hostile-combat reroute (which
-            // deliberately does NOT pin) is not taken.
-            npc.faction = 1;
-            npc.clear_all_state_flags();
-        }
+        // In range, neutral and alive, so neither the combat reroute nor
+        // the outer distance gate diverts the interact.
+        let npc_id = space_with_tagged_npc(&mut mgr, NPC_TAG, 2.0);
 
         let engine = engine_with_interact_then_dialog(NPC_TAG, CHOICE_DIALOG, SHOWN_DIALOG);
         let (tx, mut rx) = mpsc::channel(32);

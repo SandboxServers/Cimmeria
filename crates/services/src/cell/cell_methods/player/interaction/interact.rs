@@ -144,6 +144,28 @@ pub(super) async fn handle_interact(
         return;
     }
 
+    // Server-authority gate for everything below: the target must exist
+    // and be within `MAX_INTERACT_DISTANCE`.
+    //
+    // `interactions::handle_interact` has always checked this, but it is
+    // the LAST thing this function tries. The trainer UI and the
+    // content-chain dispatch both run ahead of it and so never inherited
+    // the check, which meant a client could name any tagged NPC anywhere
+    // on the map and fire its chains — accepting missions, advancing
+    // steps, launching minigames — from arbitrary distance. Moving the
+    // `last_interaction_target` pin ahead of the chain dispatch (below)
+    // made that worse, because `handle_initial_response` stamps the pin
+    // straight onto the wire as an `onDialogDisplay` EntityId, so an
+    // unvalidated id could reach the client.
+    //
+    // Deliberately placed AFTER the hostile-NPC combat reroute above:
+    // attacks have their own range rules and gating them on the 5-unit
+    // interaction distance would break every ranged weapon.
+    if !crate::cell::interactions::interact_target_in_range(entity_id, target_entity_u32, space_mgr)
+    {
+        return;
+    }
+
     // Pin the interaction target BEFORE any chain dispatch, mirroring
     // python's `SGWPlayer.interact()`, which writes
     // `lastInteractionTarget` as its first act.
