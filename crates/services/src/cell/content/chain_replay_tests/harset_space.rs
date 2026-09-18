@@ -3,7 +3,8 @@
 //!
 //! These are not mission chains; they are the permanent furniture of
 //! worlds 57 (`Harset`) and 68 (`Harset_CmdCenter`), ported line-for-line
-//! from the two surviving 2009 space scripts. They carry no conditions,
+//! from the two surviving 2009 space scripts. The ring chains carry no
+//! conditions and the two door chains carry only a `world` gate (H07),
 //! so the whole regression surface is *which key resolves which action*:
 //! a transposed `regionId`, a miscopied spawn tag, or a `params` key
 //! renamed out of camelCase are the realistic authoring errors, and each
@@ -20,10 +21,10 @@
 //!    catch a transposition made at authoring time.
 //! 3. **Door isolation (the T3 trap).** Each door's region key resolves
 //!    exactly one `CrossWorldTeleport` to its own destination world, and
-//!    zero to the other. `OnRegionEnter` does not filter by world and no
-//!    world condition is authorable at this packet's base (see the seed
-//!    file's "WORLD GATING" comment), so byte-distinct region keys are
-//!    the *only* thing keeping the two doors apart.
+//!    zero to the other. `OnRegionEnter` does not filter by world, so
+//!    each door carries a `world eq <id>` condition (H07) and the test
+//!    proves the same key resolves nothing from the other world or from
+//!    a context with no world at all (the fail-closed case).
 //! 4. **The off-mesh return coordinate**, stated as a biconditional —
 //!    chain 6007 may be enabled only if its arrival is on the mesh — so
 //!    the M0 re-pin is checked rather than requiring a manual edit.
@@ -91,12 +92,16 @@ fn resolve_interact_tag(
 }
 
 /// Fire an `enter_region` event for `region_key` through the full seeded
-/// engine.
+/// engine, as a player standing in `world_id` (`None` models a dispatch
+/// site that never populated the world context — the H07 fail-closed
+/// case).
 fn resolve_enter_region(
     engine: &ChainEngine,
     region_key: &str,
+    world_id: Option<i32>,
 ) -> cimmeria_content_engine::chain::ResolvedActions {
     let mut ctx = ExecutionContext::new();
+    ctx.world_id = world_id;
     ctx.set_param("region_key".to_string(), serde_json::json!(region_key));
     let event = TriggerEvent {
         trigger_type: TriggerType::RegionEnter,
@@ -266,13 +271,27 @@ async fn harset_command_center_door_teleports_only_to_the_command_center() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
-    let resolved = resolve_enter_region(&engine, "Harset.CommandCenterTransition");
+    // Chain 6006 carries `world eq 57` (H07). A player in Harset trips it;
+    // the same region key hinted from the Command Center (68) or from a
+    // dispatch site that never populated the world must resolve nothing —
+    // that is the real closure of the T3 trap, not the byte-distinct keys.
+    for (world, label) in [(Some(68), "world 68"), (None, "no world context")] {
+        let wrong = resolve_enter_region(&engine, "Harset.CommandCenterTransition", world);
+        assert!(
+            wrong.actions.is_empty(),
+            "chain 6006 must not resolve for a player with {label}; the `world eq 57` \
+             condition row is missing or evaluated open. Actions: {:?}",
+            wrong.actions,
+        );
+    }
+
+    let resolved = resolve_enter_region(&engine, "Harset.CommandCenterTransition", Some(57));
 
     assert_eq!(
         resolved.actions.len(),
         1,
         "enter_region 'Harset.CommandCenterTransition' must resolve exactly \
-         one action (chain 6006); got {}. Actions: {:?}",
+         one action (chain 6006) for a player in world 57; got {}. Actions: {:?}",
         resolved.actions.len(),
         resolved.actions,
     );
@@ -381,7 +400,9 @@ async fn harset_return_door_is_disabled_pending_an_m0_pin() {
     );
 
     let engine = build_engine(Some(&pool)).await;
-    let resolved = resolve_enter_region(&engine, "Harset_CmdCenter.HarsetTransition");
+    // World 68 is the one world the chain's `world eq 68` row admits, so an
+    // empty result here is the `enabled = false` flag and nothing else.
+    let resolved = resolve_enter_region(&engine, "Harset_CmdCenter.HarsetTransition", Some(68));
     assert!(
         resolved.actions.is_empty(),
         "a disabled chain must resolve zero actions; got {:?}",

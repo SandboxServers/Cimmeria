@@ -11,6 +11,7 @@ use cimmeria_content_engine::chain::ChainEngine;
 use super::super::dispatch::{dispatch_effects, dispatch_release_effects, try_advance_after_load};
 use super::super::regions::RingRegion;
 use super::super::transporter::{AbortReason, Effect, State};
+use crate::cell::arrival::resolve_arrival;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -160,14 +161,23 @@ async fn run_one_deadline(
         return;
     }
 
+    // H01 arrival contract: the destination pad's own row coordinate is the
+    // only place a ring arrival is chosen, so validate it here against the
+    // destination world's navmesh (respawner fallback on a miss, never the
+    // raw input) before the transporter copies it into the teleport effects.
+    // Ring rows carry no yaw; the transporter does not use one either.
+    let warmup_arrival: Option<[f32; 3]> = destination_for_warmup.as_ref().map(|dst| {
+        resolve_arrival(space_mgr, &dst.world_name, [dst.x, dst.y, dst.z], 0.0).position
+    });
+
     let effects: Vec<Effect> = if let Some(t) = space_mgr.ring_transporters.get_mut(region_id) {
         if deadline.is_hide() {
             t.hide_timer_expired()
         } else if deadline.is_warmup() {
-            match destination_for_warmup.as_ref() {
-                Some(dst) => t.warmup_timer_expired([dst.x, dst.y, dst.z], &dst.world_name),
+            match (destination_for_warmup.as_ref(), warmup_arrival) {
+                (Some(dst), Some(arrival)) => t.warmup_timer_expired(arrival, &dst.world_name),
                 // Unreachable: the `is_none()` guard above returned already.
-                None => return,
+                _ => return,
             }
         } else if deadline.is_remote_warmup() {
             t.remote_warmup_timer_expired(now)

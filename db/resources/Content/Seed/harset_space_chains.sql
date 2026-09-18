@@ -156,14 +156,13 @@ VALUES (6005, 'trigger_transporter', NULL, NULL, '{"regionId": 8}', 0, 0);
 -- WORLD GATING — a guardrail that is documented rather than enforced.
 -- docs/analysis/harset-rebuild/README.md "Architecture Guardrails" says
 -- these chains should carry a world condition because OnRegionEnter
--- ignores world. They do not, because they CANNOT: only six condition
--- types are authorable (mission_status, step_status, archetype,
--- objective_status, counter, stat_below_max —
--- crates/content-engine/src/loader/condition.rs:12-69).
--- `Condition::PropertyEquals` exists in the enum but has no loader arm,
--- so a `content_conditions` row naming it is dropped with a `warn!`,
--- and `content_chains.scope_type`/`scope_id` below are documentary only
--- — nothing reads them at resolve time.
+-- ignores world. When this file was authored they could not: only six
+-- condition types were authorable (mission_status, step_status,
+-- archetype, objective_status, counter, stat_below_max). Packet H07 added
+-- the seventh, `world`, and both door chains now carry it (rows below).
+-- `Condition::PropertyEquals` still has no loader arm, and
+-- `content_chains.scope_type`/`scope_id` remain documentary only —
+-- nothing reads them at resolve time.
 --
 -- For legitimate play this is safe: the two region keys are
 -- world-prefixed and byte-distinct, and each is unique across the whole
@@ -175,14 +174,13 @@ VALUES (6005, 'trigger_transporter', NULL, NULL, '{"regionId": 8}', 0, 0);
 -- unconditionally open to everyone), but the next `enter_region` chain
 -- that grants or completes something will need a real gate.
 --
--- *** FOLLOW-UP: packet H07 is adding an authorable world condition. ***
--- When it lands, both chains below should gain one:
---   6006 -> world eq 'Harset'
---   6007 -> world eq 'Harset_CmdCenter'
--- (exact condition_type / value spelling per H07's loader arm). Note a
--- condition alone does NOT close the client-supplied-region-id hole
--- described above — `fire_interact_tag` never populates a world param at
--- all, so the dispatch-site check is still wanted. See
+-- Packet H07 (same PR) added the authorable `world` condition, so both
+-- door chains below carry one: 6006 -> world eq 57 (Harset), 6007 ->
+-- world eq 68 (Harset_CmdCenter). Shape: (chain_id, 'world', <world_id>,
+-- NULL, 'eq', NULL, sort_order); `target_id` is resources.worlds.world_id.
+-- Note a condition alone does NOT close the client-supplied-region-id
+-- hole described above — `fire_interact_tag` never populates a world
+-- param at all, so the dispatch-site check is still wanted (H06). See
 -- docs/analysis/harset-rebuild/worknotes/H10.md, IR-1.
 --
 -- `cross_world_teleport` cannot set yaw (the executor sends
@@ -207,6 +205,11 @@ VALUES (6006, 'Harset - Command Center door: cross-world teleport to Harset_CmdC
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (6006, 'enter_region', 'Harset.CommandCenterTransition', 'player', false, 0);
+
+-- World gate (H07): only a player standing in Harset (57) may trip the
+-- outbound door, whatever region id the client hints.
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (6006, 'world', 57, NULL, 'eq', NULL, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (6006, 'cross_world_teleport', NULL, 'Harset_CmdCenter',
@@ -247,6 +250,11 @@ VALUES (6007, 'Harset_CmdCenter - Harset door: cross-world teleport to Harset (D
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (6007, 'enter_region', 'Harset_CmdCenter.HarsetTransition', 'player', false, 0);
+
+-- World gate (H07): only a player standing in Harset_CmdCenter (68) may
+-- trip the return door.
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (6007, 'world', 68, NULL, 'eq', NULL, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (6007, 'cross_world_teleport', NULL, 'Harset',
