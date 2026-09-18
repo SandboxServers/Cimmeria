@@ -4,6 +4,8 @@
 
 Companions: [Cellblock handoff](castle-cellblock-rebuild/handoffs/session-resume.md), [Castle handoff](castle-rebuild/handoffs/session-resume.md), [Harset handoff](harset-rebuild/handoffs/session-1-resume.md), and each campaign's `README.md` for its full UAT milestone list.
 
+> **Step-by-step runbook** for every milestone (action, expected result, what to report) is the last section of this file: [Step-By-Step UAT Runbook](#step-by-step-uat-runbook). Use it when you sit down to test.
+
 ## Before You Test Anything
 
 1. **Which build.** Only merged work is on `main`. Open PRs are testable only by building that branch (the PR number and branch are named per zone below). You build and run with `setup.ps1` as usual.
@@ -70,7 +72,7 @@ Test with a Jaffa character and a Human character, relogging at each step:
 | Respawn (`main` now) | Fresh character on Castle; die once at each of the four checkpoints | You land at a real checkpoint, not the origin and not under the floor. Report any bad coordinate |
 | M1 (#659, #652 and #661 all merged: testable now) | Arrive on the ring platform with mission 688 complete and 1360 active | "!" over Gerschon before accepting (Human sees indicator 2573, Jaffa 5861); 701 accepts once and a second interaction does not re-accept; Copplemann advances the step; the Livewire win shows 2575 once; 2576 completes 701 and accepts 702 and 703; relog at each step re-shows the right indicator |
 | M2/M3 (on `main`) | Find Zuritska (male, at 268.0 / 66.79 / 1042.59) and Romney | Both exist at their positions for every player; freeing Zuritska completes 702 once; killing Romney completes 703 |
-| M4 (#663 and #668 merged; the Harset leg waits on Harset #662) | Dial with the DHD Livewire | The gate opens about 4 s after dial; crossing plays 6113 and lands on Harset once. **Do not dial to Harset on current `main`:** the arrival validation (Harset H01, in PR #662) is not on `main` yet, so you would be placed at the gate's raw coordinate inside a navmesh hole and silently frozen |
+| M4 (#663 and #668 merged; the Harset leg waits on Harset #662) | Dial with the DHD Livewire | The gate opens about 4 s after dial; crossing plays 6113. **The Harset landing itself needs Harset M0 (runbook section C4/C5): until gate 3's arrival is pinned, a crossing is refused by design after #662.** **Do not dial to Harset on current `main`:** the arrival validation (Harset H01, in PR #662) is not on `main` yet, so you would be placed at the gate's raw coordinate inside a navmesh hole and silently frozen |
 | M5 | Two players at different steps | Neither disturbs the other's indicators or actors |
 
 **Untested and provisional:** every coordinate (comms room, Armory prefab, and the Op-Core respawner, which could not be located in the map assets, so it is a reconstruction). Issue #657 (`active_objective_ids` lost on relog, affects every mission) is unfixed; Harset packet H50 is a fix in progress.
@@ -123,3 +125,88 @@ Test with a Jaffa character and a Human character, relogging at each step:
 | Harset | [harset-rebuild/handoffs/session-1-resume.md](harset-rebuild/handoffs/session-1-resume.md) |
 
 Each coordinator was asked to refresh its handoff before it runs out of budget. Treat this guide as a snapshot: if a PR merged after 2026-09-18, the handoff is more current.
+
+## Step-By-Step UAT Runbook
+
+Work top to bottom inside a zone. A step passes only if the expected result happens **and** it still holds after a relog where the step says so. Coordinates are given only where a session recorded one; where a location is not known, finding the thing is part of the test, and "could not find X" is a valid report.
+
+**Report template (paste this per failure):** `Zone / milestone / step` - `character (Human or Jaffa, level)` - `saw:` - `expected:` - `server log lines around the time` - `did relog fix it (yes/no)`.
+
+### A. Castle Cellblock (build: current `main`; use one Jaffa and one Human character)
+
+| # | Where / command | Do | Expect | If it fails, report |
+|---|---|---|---|---|
+| A1 | Cellblock, on entering | Log in fresh; open the mission log | Frost's Letter (1360) is in the log after the loot step | Whether the letter is missing, duplicated, or present but not usable |
+| A2 | Prisoner 329 | Talk to him | Exactly one topic dialog | How many dialogs; screenshot of the topics |
+| A3 | Marsh | Talk to him | Exactly one briefing | Repeats, or none |
+| A4 | Hallway controllers | Use each once, then again | Each accepts once; the second use does not re-accept | Which controller, and what the second use did |
+| A5 | Region8 (the pistol guard's room) | Walk in | The pistol guard aggros on entry | Guard did not aggro, or aggroed early |
+| A6 | Any time on load | Watch the buff bar, then cure Stasis Sickness | Icon shows on load, clears on cure | Icon missing, stuck, or returns after relog |
+| A7 | Relog after A2-A6 | Log out and in | Every state above is unchanged | Which step regressed |
+| A8 | Vial pickup, then cover | Pick up the vial; take cover | Cover indicator shows on pickup and hides in cover (objective 2484) | Indicator never shows, or never hides |
+| A9 | Straegis scene | Accept each mission (640, 641, 680, 688), then trigger the scene | One prompt per accept. Camera plays once, control returns, Marsh is gone, dialog 2516 shows once, then 5859 about 10.6 s after the scene starts | Any repeated prompt, camera replay, Marsh still visible, or 5859 missing or early |
+| A10 | Relog right after A9 | Log out and in | The scene does not replay | That it replayed |
+| A11 | GC1 (mission 686 escort) | Complete the escort to the ring, take the ring hop | Marsh follows you topside | Marsh missing or invisible after the hop (issue #582 shape: watch for a corpse or actor that only appears after relog) |
+| A12 | Skip | Flank objectives 2725 and 2731, and step 2144 | Not testable: C06 is not built | Nothing to report |
+
+### B. Castle (World 8, ring platform; build: current `main`, all of CA00-CA10 merged)
+
+Provisional (reconstructed, MEDIUM confidence) coordinates: the four CA00 respawners, the Op-Core respawner, the Armory prefab, the comms-room placement. Report any bad spot.
+
+| # | Where / command | Do | Expect | If it fails, report |
+|---|---|---|---|---|
+| B1 | Each of the 4 Castle checkpoints | Die once at each | You respawn on real ground, not at the origin, not under the floor | Which checkpoint and where you ended up |
+| B2 | Ring platform, mission 688 complete and 1360 active | Look at Gerschon before talking | A "!" over Gerschon. Human sees indicator 2573, Jaffa 5861 | No "!", wrong indicator, or the wrong one for your faction |
+| B3 | Gerschon | Accept 701; interact again | 701 accepts exactly once; the second interaction does not re-accept | Double accept |
+| B4 | Copplemann | Follow the step | Step advances with no wave spawning | A wave appeared, or the step is stuck |
+| B5 | Livewire terminal | Win the minigame | The win prompt shows 2575 once; then 2576 completes 701 and accepts 702 (and 703) | Prompt shows twice, or no accept |
+| B6 | Any point in B2-B5 | Relog | The right indicator re-shows for the current step | Which step lost or duplicated its indicator |
+| B7 | `Castle_Zuritska_Cell` at 268.0 / 66.79 / 1042.59 | Look for Zuritska (male) and Romney | Both exist for every player | Missing, wrong gender, wrong position |
+| B8 | Zuritska | Free her | Completes 702 once | Not complete, or completes twice |
+| B9 | Romney | Kill him | Completes 703 | Not complete |
+| B10 | Any hostile Castle mob | Kill it, wait 120 s | It respawns after about 120 s | Respawn time, or it never respawns |
+| B11 | Interrogation Block | Walk in | Fires mission 702 step 2402. Region boxes now have ceilings, so watch for a box that does not fire | The exact spot where you crossed and nothing happened |
+| B12 | Communications room (Level 5) | Take Zuritska there, or enter the region | Zuritska follows to the room, or the step advances on region entry | Neither happened |
+| B13 | Communications terminal | Win its Livewire | Grants 5029 exactly once; delivering it starts 706 | Missing or granted twice |
+| B14 | ThroneRoom | Walk in | Advances step 2411 | Did not advance |
+| B15 | Access Panel | Use it | Completes 706 | Not complete |
+| B16 | Surrender or panel diagnosis | Trigger it | The crystal is revealed | Not revealed |
+| B17 | Bravo, or Muelbach (the bunker above Bravo) | Pick up the crystal | Grants 2790 exactly once | Twice or never |
+| B18 | Report-in | Human reports to Marsh; Jaffa reports to Moh'katan | Only your faction's NPC accepts it, never both | Wrong NPC accepted it, or both did |
+| B19 | DHD | Do the DHD Livewire | Wins; then the gate opens about 4 s after the dial | Gate did not open, opened at once, or took much longer than 4 s |
+| B20 | Two players | Put two players on different steps of 701-708 | Neither disturbs the other's indicators, actors or steps. A second player on step 2417 can still click Marsh after the first reports in | What one player saw change because of the other |
+
+### C. Harset (worlds 57, 68, 69, 70)
+
+**C0. Which build.** These need PR #662 on `main` (or its branch `content/harset-rebuild`). Reload the play DB from `db/database.sql` after switching. Until then, do not dial to Harset from Castle.
+
+**C1. Checks that need no placement (from #662):**
+
+| # | Where / command | Do | Expect | If it fails, report |
+|---|---|---|---|---|
+| C1.1 | Harset (world 57), on login | Watch the log, dialogs and objectives | Nothing from the Cellblock fires (no stray icons, dialogs or objectives) | What fired and its id |
+| C1.2 | A ring switch (chains 6001-6005) | Right-click it | A list of four destinations. It does **not** teleport by itself, by design | No list, or fewer than four |
+| C1.3 | The list from C1.2 | Pick a destination and wait | You arrive on that pad within about 90 s | It hung; how long you waited; and any `arrival_unrecoverable` or off-mesh line in the server log. An off-mesh pad is expected to abort and leave you where you stood, not freeze you |
+| C1.4 | The door to the Command Center (chain 6006) | Walk into the transition | You arrive in Harset_CmdCenter | Nothing happened, or you arrived somewhere wrong. Note: the return door (6007) is disabled until M0, so use GM travel to come back |
+| C1.5 | The Harset DHD | Click it | The DHD window opens with the local world's point-of-origin glyph | No window, or a nonsense glyph |
+| C1.6 | A seeded guard or mob (not a `.spawn` copy) | Kill it; wait | It respawns in about 30 s. Guards, lieutenants, Petbe and Anat stand still | Respawn time; a guard that walks; or it never returns |
+
+**C4. The Castle-to-Harset gate check (this is the M4 gate-arrival check).** What is tested: the server validates the destination exactly once per placement, and never puts you on an unusable point.
+
+| # | Where / command | Do | Expect | If it fails, report |
+|---|---|---|---|---|
+| C4.1 | Castle gate, on `main` **before** #662 | **Do not do this.** | You would be placed at the gate's raw coordinate inside a navmesh hole and silently frozen | Nothing, this is a known defect that #662 closes |
+| C4.2 | Castle gate, **after** #662 and **before** Harset M0 | Dial Harset and walk into the gate | The transfer is **refused**: you stay in Castle. The server log has one `arrival_unrecoverable_off_mesh` warning per attempt (exactly one, not two). The crossing animation (6113) may still play; that is a known quirk on this path | Any case where you were moved, or were left frozen, or the warning appeared twice |
+| C4.3 | After Harset M0 has pinned gate 3's arrival and it is seeded | Dial and cross again | You land on Harset exactly once, standing on the plaza, and can move. No `arrival_unrecoverable` warning | Where you landed, whether you could move, and the log |
+
+**C5. Harset M0: the placement session (only you can do it; the critical path for every Harset mission).** Work in the game with GM rights and the debug HUD. The commands are the `.` console commands in [commands.md](../commands.md).
+
+| # | Where / command | Do | Expect | If it fails, report |
+|---|---|---|---|---|
+| C5.1 | Harset gate (gate 3) | Stand on the spot where a player should arrive; read the HUD coordinates | A point on the navmesh, on the plaza | If you cannot find one, say so |
+| C5.2 | The five ring pads (regions 4-8) | Read the HUD coordinate at the centre of each | A point on the navmesh for each | Which pad is off-mesh |
+| C5.3 | Both Command Center transitions | Read a coordinate on the far side of each. For the return door (6007) pick a point about 8 units clear of point set 2078 | Two on-mesh points | Overlap or ping-pong when you walk through |
+| C5.4 | Each story NPC and vendor prop | `.spawn <template>` (templates 200-223 are mobs, 240-248 props), place it, then `.savespawn` | The NPC appears where placed | Which template failed or misplaced |
+| C5.5 | When done | Run `.seedconfirm` | It emits the seed SQL and never writes live rows | Hand the output to a session to commit. It is the only deliverable of M0 |
+
+After M0 is committed, the follow-up work (still gated on this) is: respawner rows 20/22/23, gate 3's `arrival_*` values, enabling chain 6007, and the H12/H14/H15 population and region packets. None of the Harset mission chains (M2-M4) can be tested before that.
