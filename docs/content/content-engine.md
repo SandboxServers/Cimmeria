@@ -2,12 +2,12 @@
 title: "Content engine — reference"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-18
 ---
 
 # Content engine — reference
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-18
 > **Audience**: Engineers working on the Rust server who need to understand, debug, or extend the data-driven content engine.
 > **Prerequisites**: Familiar with the Cimmeria crate layout ([crates/README.md](../../crates/README.md)) and the cell/base service split ([architecture/service-architecture.md](../architecture/service-architecture.md)).
 > **Diátaxis type**: Reference + explanation. For the design rationale ("why does this exist at all?") see [architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md). For "how do I add a new variant?" see [extending-the-engine.md](extending-the-engine.md).

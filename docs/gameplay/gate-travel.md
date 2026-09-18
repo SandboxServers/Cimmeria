@@ -2,7 +2,7 @@
 title: "Gate Travel System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-18
 ---
 
 # Gate Travel System
