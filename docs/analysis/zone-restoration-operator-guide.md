@@ -19,7 +19,7 @@ Companions: [Cellblock handoff](castle-cellblock-rebuild/handoffs/session-resume
 |---|---|---|---|
 | Castle Cellblock | C00-C05, C07, C08a, C08b, GC1b-0, GC1 (#655) | none | **Yes: M1, M3 and GC1 on `main`, M2 only partly (needs C06)** |
 | Castle (World 8, ring platform) | CA00 respawners (#651), CA01 + CA03 mission 701 and the dialog-speaker pin fix (#659), CA10 gate open/cross events (#663), CA04 minigame hardening (#652), CA02 "!" dialog bind (#661), CA05 story actors and point sets (#667), missions 706 and 708 (#668), missions 702-704 (#660) | none (docs closeout PR #669 only) | **Yes, M1-M5 on `main` after a rebuild** (the gate leg into Harset excepted, see M4) |
-| Harset | nothing yet | #662 (branch `content/harset-rebuild`, CI green, review fixes in progress) | Travel and population checks, from the branch, after the review fixes merge |
+| Harset | nothing yet | #662 (branch `content/harset-rebuild`, all review findings answered, CI running on the final head, waiting on your merge go-ahead) | Travel and population checks, from the branch now, or from `main` once #662 merges |
 
 ## Suggested Order If Budget Is Tight
 
