@@ -55,15 +55,25 @@ const MISSION_ARMORY: i32 = 688;
 const STATUS_ACTIVE: i32 = 1;
 const STATUS_COMPLETED: i32 = 2;
 
+/// Delete the sentinel rows, children first so the FK ordering is
+/// explicit rather than relying on the cascade.
+///
+/// Both deletes `.expect()`: a failure here leaks a sentinel account and
+/// player into the shared test database, which makes every later run of
+/// this test fail on the account insert with a confusing duplicate-key
+/// error. Deleting zero rows is not a failure, so the defensive
+/// pre-seed call is safe.
 async fn cleanup(pool: &PgPool) {
-    let _ = sqlx::query("DELETE FROM sgw_mission WHERE player_id = $1")
+    sqlx::query("DELETE FROM sgw_mission WHERE player_id = $1")
         .bind(TEST_PLAYER)
         .execute(pool)
-        .await;
-    let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+        .await
+        .expect("sentinel sgw_mission cleanup must succeed");
+    sqlx::query("DELETE FROM account WHERE account_id = $1")
         .bind(TEST_ACCOUNT)
         .execute(pool)
-        .await;
+        .await
+        .expect("sentinel account cleanup must succeed");
 }
 
 /// Insert the account + player, parked in the Cellblock.
@@ -170,14 +180,21 @@ async fn missions_survive_the_cellblock_to_castle_world_change() {
     );
 }
 
-/// Companion schema guard, cheap and blunt: `sgw_mission` must carry no
-/// world-scoping column at all.
+/// **Documentation, not coverage.** This is an executable comment about
+/// the shape of `sgw_mission`, and it should be read as one.
 ///
-/// The test above proves today's query ignores the world. This one proves
-/// the *table* offers nothing to scope by, so a future "just filter by
-/// world" change has to add a column and will trip here first. Named
-/// columns rather than a whole-schema snapshot so ordinary column
-/// additions don't churn it.
+/// It substring-matches column names against "world"/"space"/"zone", so
+/// it only fires for a future column that happens to be named one of
+/// those. A world filter added under any other name — `map_id`,
+/// `location`, `realm`, or a join against `sgw_player.world_location` —
+/// sails straight past it. It cannot fail for the bug shape it describes,
+/// so it is not a regression guard and should not be counted as one.
+///
+/// The actual guard is
+/// [`missions_survive_the_cellblock_to_castle_world_change`] above, which
+/// exercises the production restore path across a real world change.
+/// Kept because the assertion states the invariant plainly for the next
+/// reader, and the cost is one cheap query.
 #[tokio::test]
 async fn sgw_mission_has_no_world_scoping_column() {
     let pool = require_db_or_skip!();

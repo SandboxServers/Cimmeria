@@ -18,9 +18,12 @@ use super::{
 };
 use crate::test_support::require_db_or_skip;
 
-/// Every step of 701 and the chain that restores it. The `None` entry is
-/// the not-yet-accepted case, which chain 1201 covers from the arrival
-/// module rather than a dedicated restore chain.
+/// Every step of 701 paired with the chain that restores it on login.
+///
+/// Only the four in-progress steps appear here. The not-yet-accepted case
+/// has no restore chain of its own: chain 1201 already fires on
+/// `player_loaded` when `mission_status 701` is `not_active`, and it is
+/// covered in the [`super::arrival`] module.
 const RESTORES: [(i32, i32); 4] = [(2399, 1240), (2400, 1241), (2401, 1242), (2421, 1243)];
 
 /// Chain 1240 — logging in mid-step-2399 re-binds the Copplemann

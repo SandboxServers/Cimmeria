@@ -316,6 +316,49 @@ async fn step_gate_key_matches_the_runtime_populator() {
     );
 }
 
+/// Documents where a player with no `archetype_id` lands.
+///
+/// `fire_interact_tag` only writes the `archetype` param when
+/// `entity.archetype_id` is `Some`, and the condition evaluator defaults a
+/// missing archetype to -1. So `archetype neq 8` is TRUE and `archetype eq
+/// 8` is FALSE: an archetype-less player gets the Human branch (dialog
+/// 2573), not the Jaffa one, and never gets both or neither.
+///
+/// That is the right failure direction — a player with no archetype is a
+/// broken-state edge case, and defaulting them into the Tau'ri script is
+/// far better than a silent dead end at Gerschon — but it is a default,
+/// not a decision anyone made. Pinned so a change to the evaluator's
+/// default (or to `neq`'s handling of a missing key) surfaces here rather
+/// than as "Jaffa players can't start 701".
+#[tokio::test]
+async fn player_without_an_archetype_gets_the_human_branch() {
+    let pool = require_db_or_skip!();
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param(
+        "entity_tag".to_string(),
+        serde_json::json!("Castle_SgtGerschon"),
+    );
+    // Deliberately no `archetype` param — the shape `fire_interact_tag`
+    // produces for an entity whose `archetype_id` is None.
+    with_step(&mut ctx, 701, 2399, "not_active");
+
+    let human = engine_for(&pool, 1202).await;
+    assert_eq!(
+        summarized(&fire(&human, INTERACT, &ctx), 1202),
+        vec!["display_dialog(2573)"],
+        "`archetype neq 8` must hold for a missing archetype (evaluator \
+         defaults it to -1), so the player gets the Human offer",
+    );
+
+    let jaffa = engine_for(&pool, 1203).await;
+    assert!(
+        summarized(&fire(&jaffa, INTERACT, &ctx), 1203).is_empty(),
+        "`archetype eq 8` must not match a missing archetype — the player \
+         must get exactly one branch, never both",
+    );
+}
+
 /// Turn-in choice must not accept 701 a third time via some other
 /// mission's dialog: chain 1204's trigger is dialog 2573 only.
 #[tokio::test]

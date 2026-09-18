@@ -178,6 +178,74 @@ async fn chain_1234_victory_unbinds_shows_2575_and_advances_to_2401() {
     );
 }
 
+/// Executor-level guard for the victory dialog's speaker: dialog 2575
+/// must reach the client bound to the **player**, not to Copplemann.
+///
+/// 2575 is one screen with `speaker_id = 0` — narration, not speech
+/// ("You manage to free Capt. Copplemann from her security boot.") — and
+/// `Castle.py` displays it with an explicit `displayDialog(None, 2575)`.
+///
+/// The trap this guards: `last_interaction_target` is a sticky pin, and
+/// reaching the victory chain always means the player just clicked
+/// Copplemann to launch the Livewire. So an NPC is always resolvable
+/// here. Only because `executor/dialog.rs` consults the monologue cache
+/// *before* the pin does the player win. Reordering those two branches
+/// makes Copplemann appear to speak the player's own narration, and a
+/// resolve-only test cannot see it — the action list is identical either
+/// way.
+#[tokio::test]
+async fn chain_1234_victory_dialog_binds_the_player_not_copplemann() {
+    let pool = require_db_or_skip!();
+    let engine = engine_for(&pool, 1234).await;
+
+    let mut mgr = make_space_mgr();
+    // Reproduce the state chain 1233 leaves behind: the player clicked
+    // Copplemann, so the pin holds an NPC.
+    const COPPLEMANN_EID: u32 = 7788;
+    if let Some(p) = mgr.get_entity_mut(PLAYER_EID) {
+        p.last_interaction_target = Some(COPPLEMANN_EID);
+    }
+    // 2575 is a monologue in production; mirror that here.
+    mgr.monologue_dialog_ids.insert(2575);
+
+    // Fire the victory chain exactly as the minigame callback does:
+    // by id, with empty params.
+    let actions = engine.get_chain_actions(1234);
+    let (actions, action_delays): (Vec<_>, Vec<_>) =
+        actions.into_iter().map(|(a, d)| ((1234i64, a), d)).unzip();
+    let resolved = cimmeria_content_engine::chain::ResolvedActions {
+        actions,
+        action_delays,
+        ..Default::default()
+    };
+
+    let (tx, mut rx) = mpsc::channel(32);
+    let exec_engine = ChainEngine::new();
+    execute_actions(resolved, PLAYER_EID, PLAYER_ID, &tx, &mut mgr, &exec_engine).await;
+
+    let mut dialog_frames = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall {
+            method_index, args, ..
+        } = msg
+        {
+            if method_index == crate::mercury::method_idx::ON_DIALOG_DISPLAY {
+                let wire_entity = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let wire_dialog = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                dialog_frames.push((wire_entity, wire_dialog));
+            }
+        }
+    }
+
+    assert_eq!(
+        dialog_frames,
+        vec![(PLAYER_EID as i32, 2575)],
+        "the Livewire victory must display 2575 bound to the PLAYER \
+         ({PLAYER_EID}), not to the pinned Copplemann ({COPPLEMANN_EID}) — \
+         2575 is player narration and Castle.py passes a NULL speaker",
+    );
+}
+
 /// Chain 1235 — the escort. Both actions must be deferred by the
 /// authored 10.5 s, and the resolved list must be exactly the advance
 /// plus the turn-in bind.
@@ -203,19 +271,65 @@ async fn chain_1235_defers_both_escort_actions() {
     );
 }
 
-/// Chain 1235 negative — the escort must not re-arm from a stale 2575
-/// choice once the player is already on the turn-in step.
+/// Chain 1235 negative — the escort must not arm from a 2575 choice on
+/// any step other than 2401. 2421 is the stale-replay case (the walk
+/// already finished); 2399 and 2400 are the "somehow got the dialog
+/// early" case, where arming would skip the Livewire entirely.
 #[tokio::test]
-async fn chain_1235_does_not_rearm_on_step_2421() {
+async fn chain_1235_only_arms_on_step_2401() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1235).await;
 
-    let ctx = choice_at_step(2575, 2421, "active");
+    for step in [2399, 2400, 2421] {
+        let ctx = choice_at_step(2575, step, "active");
+        assert!(
+            summarized(&fire(&engine, CHOICE, &ctx), 1235).is_empty(),
+            "chain 1235 must not resolve while step {step} is active",
+        );
+    }
 
+    // Positive control, so the loop above cannot pass with the chain
+    // permanently disabled.
+    let ok = choice_at_step(2575, 2401, "active");
     assert!(
-        summarized(&fire(&engine, CHOICE, &ctx), 1235).is_empty(),
-        "chain 1235 must not resolve once step 2421 is active",
+        !summarized(&fire(&engine, CHOICE, &ok), 1235).is_empty(),
+        "sanity: chain 1235 must still resolve on step 2401",
     );
+}
+
+/// `onStepUpdate` — `cell::missions::ON_STEP_UPDATE`, duplicated here
+/// because that constant is `pub(super)` to the missions module.
+const ON_STEP_UPDATE: u16 = 81;
+
+/// Render one cell→base message compactly so the deferred test can assert
+/// the whole ordered list instead of filtering to the one variant it
+/// expects. A filtered assertion cannot notice a *missing* action.
+fn describe(msg: &CellToBaseMsg) -> String {
+    match msg {
+        CellToBaseMsg::MissionUpdate {
+            player_id,
+            mission_id,
+            current_step_id,
+            ..
+        } => format!(
+            "MissionUpdate(player={player_id}, mission={mission_id}, step={current_step_id:?})"
+        ),
+        CellToBaseMsg::EntityMethodCall {
+            method_index, args, ..
+        } if *method_index == ON_STEP_UPDATE && args.len() >= 5 => {
+            let step = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+            format!("onStepUpdate(step={step}, status={})", args[4])
+        }
+        CellToBaseMsg::EntityMethodCall { method_index, .. } => {
+            format!("EntityMethodCall(method={method_index})")
+        }
+        CellToBaseMsg::WitnessEntityMethod {
+            entity_id,
+            method_index,
+            ..
+        } => format!("WitnessEntityMethod(entity={entity_id}, method={method_index})"),
+        other => format!("{other:?}"),
+    }
 }
 
 /// A Castle space holding one connected player who is mid-701 on step
@@ -253,6 +367,20 @@ fn make_space_mgr() -> SpaceManager {
             optional: false,
         }],
     ));
+    // Seed the dialog-set cache the deferred `add_dialog_set 3063` needs.
+    // A bare `SpaceManager` has an empty cache, so the action would take
+    // the "dialog_set_maps cache miss" warn branch and no-op — and a test
+    // that only watched for `MissionUpdate` would still pass with the
+    // `add_dialog_set` row deleted from chain 1235 entirely. Values match
+    // the seeded row: dialog 2576, flags 33554432
+    // (`INT_AStoryMissionTurnIn`).
+    mgr.dialog_set_maps.insert(
+        3063,
+        crate::cell::spawner::DialogSetMapEntry {
+            dialog_id: 2576,
+            interaction_flags: 33_554_432,
+        },
+    );
     mgr.connect_entity(PLAYER_EID);
     mgr
 }
@@ -351,24 +479,32 @@ async fn chain_1235_escort_walk_defers_then_advances_to_2421() {
         "the drain must empty the queue once both deadlines have passed",
     );
 
-    let mut advances = Vec::new();
+    // Assert the FULL ordered message list, not a filtered view. Filtering
+    // to `MissionUpdate` would let the second deferred action
+    // (`add_dialog_set 3063`) be deleted from chain 1235 without failing
+    // anything.
+    let mut drained = Vec::new();
     while let Ok(msg) = rx.try_recv() {
-        if let CellToBaseMsg::MissionUpdate {
-            player_id,
-            mission_id,
-            current_step_id,
-            ..
-        } = msg
-        {
-            advances.push((player_id, mission_id, current_step_id));
-        }
+        drained.push(describe(&msg));
     }
     assert_eq!(
-        advances,
-        vec![(PLAYER_ID, 701, Some(2421))],
-        "draining the escort must persist exactly one advance of mission 701 \
-         to step 2421 (zero means the AdvanceStep arm never ran)",
+        drained,
+        vec![
+            // `cell::missions::advance_step` closes the old step, opens the
+            // new one, then emits one objective frame per objective of the
+            // new step (none here — a bare SpaceManager has no step-objective
+            // cache, and 2421's objectives are not what this test is about).
+            "onStepUpdate(step=2401, status=1)".to_string(),
+            "onStepUpdate(step=2421, status=0)".to_string(),
+            // Then the executor's own persist message.
+            "MissionUpdate(player=7702, mission=701, step=Some(2421))".to_string(),
+        ],
+        "draining the escort must emit exactly the advance's traffic in \
+         order. Zero MissionUpdate means the AdvanceStep arm never ran; a \
+         WitnessEntityMethod appearing here would mean the fixture grew an \
+         NPC on template 48 and the interaction push is now in scope too.",
     );
+
     assert_eq!(
         mgr.get_entity(PLAYER_EID)
             .and_then(|e| e.missions.get_mission(701))
@@ -376,6 +512,22 @@ async fn chain_1235_escort_walk_defers_then_advances_to_2421() {
         Some(2421),
         "the drain must move the player's in-memory mission to step 2421, \
          not merely emit a persist message",
+    );
+
+    // The second deferred action: the turn-in topic must now be bound to
+    // Copplemann's template (48) on this player, carrying row 3063's
+    // dialog and flags. This is what a `MissionUpdate`-only assertion
+    // could not see.
+    let bound = mgr
+        .get_entity(PLAYER_EID)
+        .and_then(|e| e.available_interactions.get(&48).cloned())
+        .unwrap_or_default();
+    assert_eq!(
+        bound,
+        vec![(3063, 2576, 33_554_432i64)],
+        "the drain must bind dialog-set map 3063 (dialog 2576, \
+         INT_AStoryMissionTurnIn) to template 48 — deleting the \
+         `add_dialog_set` action from chain 1235 fails here",
     );
 }
 
@@ -396,20 +548,21 @@ async fn chain_1236_shows_turn_in_dialog_2576_on_step_2421() {
     );
 }
 
-/// Chain 1236 negative — the turn-in must not be reachable mid-escort.
-/// If it resolved on 2401 the player could take 702/703 without ever
-/// finishing the walk.
+/// Chain 1236 negative — the turn-in dialog must not be reachable on any
+/// earlier step. On 2401 it would let the player take 702/703 without
+/// finishing the walk; on 2399/2400 it would skip the whole mission body.
 #[tokio::test]
-async fn chain_1236_does_not_show_turn_in_during_the_escort() {
+async fn chain_1236_does_not_show_turn_in_before_step_2421() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, 1236).await;
 
-    let ctx = interact_at_step(COPPLEMANN, NON_JAFFA, 2401, "active");
-
-    assert!(
-        summarized(&fire(&engine, INTERACT, &ctx), 1236).is_empty(),
-        "chain 1236 must not resolve while step 2401 is still active",
-    );
+    for step in [2399, 2400, 2401] {
+        let ctx = interact_at_step(COPPLEMANN, NON_JAFFA, step, "active");
+        assert!(
+            summarized(&fire(&engine, INTERACT, &ctx), 1236).is_empty(),
+            "chain 1236 must not resolve while step {step} is active",
+        );
+    }
 }
 
 /// Chain 1237 — the turn-in itself: drop the "?" topic, complete 701.
@@ -514,6 +667,51 @@ async fn chain_1239_does_not_re_accept_an_active_703() {
         summarized(&fire(&engine, CHOICE, &ctx), 1239).is_empty(),
         "chain 1239 must not re-accept 703 when it is already active",
     );
+}
+
+/// Both accept chains carry TWO gates: the step and the target mission's
+/// `not_active`. The tests above exercise only the mission half, so a
+/// dropped `step_status` row would go unnoticed and a stray 2576 choice
+/// at any point in the mission would hand out 702/703 early.
+///
+/// Each case here leaves the mission `not_active` — so the mission gate
+/// passes — and varies only the step.
+#[tokio::test]
+async fn accept_chains_also_require_step_2421() {
+    let pool = require_db_or_skip!();
+
+    for (chain_id, mission) in [(1238, 702), (1239, 703)] {
+        let engine = engine_for(&pool, chain_id).await;
+
+        for step in [2399, 2400, 2401] {
+            let mut ctx = choice_at_step(2576, step, "active");
+            with_mission(&mut ctx, mission, "not_active");
+            assert!(
+                summarized(&fire(&engine, CHOICE, &ctx), chain_id as i64).is_empty(),
+                "chain {chain_id} must not accept {mission} while step {step} \
+                 is active — the step gate is the other half of its guard",
+            );
+        }
+
+        // And the already-completed turn-in step: a replayed 2576 choice
+        // after 701 finished must not re-offer the follow-ups.
+        let mut done = choice_at_step(2576, 2421, "completed");
+        with_mission(&mut done, 701, "completed");
+        with_mission(&mut done, mission, "not_active");
+        assert!(
+            summarized(&fire(&engine, CHOICE, &done), chain_id as i64).is_empty(),
+            "chain {chain_id} must not accept {mission} once step 2421 is \
+             completed",
+        );
+
+        // Positive control.
+        let mut ok = choice_at_step(2576, 2421, "active");
+        with_mission(&mut ok, mission, "not_active");
+        assert!(
+            !summarized(&fire(&engine, CHOICE, &ok), chain_id as i64).is_empty(),
+            "sanity: chain {chain_id} must still accept {mission} on step 2421",
+        );
+    }
 }
 
 /// The reason the turn-in is three chains and not one: a player who
