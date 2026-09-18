@@ -339,6 +339,9 @@
 \ir resources/Content/Seed/castle_cellblock_chains.sql
 \ir resources/Content/Seed/consumables_chains.sql
 \ir resources/Content/Seed/effects_chains.sql
+\ir resources/Content/Seed/harset_goauld_chains.sql
+\ir resources/Content/Seed/harset_jaffa_chains.sql
+\ir resources/Content/Seed/harset_opcore_chains.sql
 \ir resources/Content/Seed/harset_space_chains.sql
 \ir resources/Content/Seed/sgc_w1_chains.sql
 
