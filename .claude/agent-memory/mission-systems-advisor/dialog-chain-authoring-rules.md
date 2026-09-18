@@ -28,7 +28,7 @@ So a chain that fires on `interact_tag` never populates
 `last_interaction_target`. Any *follow-up* chain (triggered by
 `dialog_choice`, `mission_accepted`, a minigame victory via
 `fire_chain_by_id`, or a `delay_ms` deferral) therefore has **neither**
-source 1 nor source 2 and can only display a **monologue** dialog.
+source 1, and source 2 is whatever `handle_interact` last pinned (absent on a fresh login, or a STALE NPC from an earlier non-chain interact): the follow-up either bails or binds the wrong portrait. Chain-handled interacts do not write the pin today (`cell_methods/player/interaction/interact.rs` skips `handle_interact`); the Castle mission-701 PR adds the pin write before the chain dispatch, after which follow-ups bind the interacted NPC.
 
 Corollary: python `displayDialog(None, X)` ports cleanly **iff** X is an
 all-speaker_id-0 dialog. If X has any NPC speaker, the port is silently dead.
