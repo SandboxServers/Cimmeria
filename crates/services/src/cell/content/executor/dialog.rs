@@ -64,8 +64,15 @@ pub(super) async fn display(
     // to be in scope — see the resolution order on this fn for why this
     // must come before the pin rather than after it.
     let npc_entity_id = if space_mgr.monologue_dialog_ids.contains(&dialog_id) {
+        // `debug!`, not `info!`: the "Content: displaying dialog" line
+        // below already reports every display at info, carrying the same
+        // entity/dialog/chain plus the resolved npc_entity_id. This line
+        // adds only the *reason* for that resolution, and the span's
+        // `monologue` field records it for anyone filtering in SigNoz, so
+        // an info-level copy is duplicate volume on a common path
+        // (~42% of authored screens are monologue).
         tracing::Span::current().record("monologue", true);
-        tracing::info!(
+        tracing::debug!(
             entity_id,
             dialog_id,
             chain_id,

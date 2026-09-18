@@ -75,9 +75,19 @@ pub(crate) fn interact_target_in_range(
         }
     };
 
-    let dist = player_pos.distance_squared_to(&target_pos).sqrt();
-    if dist > MAX_INTERACT_DISTANCE {
-        tracing::info!(entity_id, target_entity_id, dist, "interact: too far away");
+    // Compare squared distances so the common (in-range) path does no
+    // sqrt. This runs on every interact, including the right-click spam
+    // of ordinary play. The sqrt is paid only on the rejection branch,
+    // where it buys a log line an operator can read in world units.
+    let dist_sq = player_pos.distance_squared_to(&target_pos);
+    if dist_sq > MAX_INTERACT_DISTANCE * MAX_INTERACT_DISTANCE {
+        tracing::info!(
+            entity_id,
+            target_entity_id,
+            dist = dist_sq.sqrt(),
+            max = MAX_INTERACT_DISTANCE,
+            "interact: too far away"
+        );
         return false;
     }
     true

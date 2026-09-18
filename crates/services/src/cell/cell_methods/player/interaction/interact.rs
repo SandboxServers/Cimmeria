@@ -183,17 +183,20 @@ pub(super) async fn handle_interact(
     // could not resolve a speaker at all, and any NPC-speaker dialog it
     // tried to display hit the warn-and-bail branch and silently never
     // opened. Only monologue dialogs (every screen `speaker_id = 0`)
-    // survived, via the third fallback.
+    // survived, because those bind the player and need no NPC at all.
     //
     // Deliberately placed after the hostile-combat reroute above: an
     // attack must not pin its victim as the next dialog's speaker. This
     // is also the reason the write is here rather than beside the
     // `target_entity_u32` binding at the top of the function.
     //
-    // No range gate here on purpose — `handle_interact` checks
-    // `MAX_INTERACT_DISTANCE` before its own write, but the chain
-    // dispatch below has never had a range check, so pinning here is no
-    // more permissive than the chain firing already is.
+    // The target has already been validated at this point: the
+    // `interact_target_in_range` gate directly above returned early
+    // unless the entity exists and is within `MAX_INTERACT_DISTANCE`. So
+    // the id pinned here is one the player could legitimately reach,
+    // which matters because `interactions/dispatch/initial_response.rs`
+    // stamps this pin straight onto the wire as an `onDialogDisplay`
+    // EntityId.
     if let Some(player) = space_mgr.get_entity_mut(entity_id) {
         player.last_interaction_target = Some(target_entity_u32);
     }
