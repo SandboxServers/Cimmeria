@@ -213,6 +213,74 @@ mod live_db {
         }
     }
 
+    /// Seeded respawners must carry authored coordinates, not the world
+    /// origin.
+    ///
+    /// Bug shape (Castle audit defect B1): all four World 8 / `Castle` rows
+    /// shipped as `(0, 0, 0)` — the recovered data kept the checkpoint names
+    /// and lost the positions. That is worse than having no row at all,
+    /// because `resolve_respawn_target` finds the row by id (the Defeat
+    /// Window offers it by name) or by world, returns its zeros, and never
+    /// reaches the in-place / Castle-default fallbacks below it. Every death
+    /// in Castle teleported the player to the world origin.
+    ///
+    /// `respawn.rs`'s `is_unauthored` guard now skips origin rows at
+    /// runtime, but the guard only downgrades the failure to "respawn where
+    /// you died" — the coordinates still have to exist for a checkpoint to
+    /// work. This is the seed-side half of that pair.
+    ///
+    /// Scope: every row EXCEPT the two World 23 `Beta_Site_Evo_1` rows,
+    /// which are a documented, evidence-less gap (see the KNOWN GAP comment
+    /// in `db/resources/Worlds/Seed/respawners.sql`). Listing them by id
+    /// rather than weakening the assertion to "world 8 only" means a new
+    /// unauthored row in any world trips this test.
+    ///
+    /// The Castle count assertion is load-bearing: without it, deleting the
+    /// four rows instead of authoring them would pass the origin check
+    /// vacuously.
+    #[tokio::test]
+    async fn seeded_respawners_are_not_at_the_world_origin() {
+        /// World 23 `Beta_Site_Evo_1`: names survived, positions did not,
+        /// and nothing in the seed or the recovered scripts says where the
+        /// zone's respawn points were. Left at the origin deliberately.
+        const UNAUTHORED_BY_DESIGN: [i32; 2] = [6, 7];
+        const CASTLE_WORLD: &str = "Castle";
+        const CASTLE_RESPAWNER_COUNT: usize = 4;
+
+        let pool = require_db_or_skip!();
+        let respawners = load_respawners(&pool)
+            .await
+            .expect("load_respawners must succeed");
+
+        let at_origin: Vec<String> = respawners
+            .iter()
+            .filter(|r| !UNAUTHORED_BY_DESIGN.contains(&r.respawner_id))
+            .filter(|r| r.pos == [0.0, 0.0, 0.0])
+            .map(|r| format!("{} '{}' (world {})", r.respawner_id, r.name, r.world_name))
+            .collect();
+        assert!(
+            at_origin.is_empty(),
+            "respawner rows sitting at the world origin: {at_origin:?} — a player who \
+             picks one of these in the Defeat Window is teleported to (0,0,0). Author \
+             the coordinates in db/resources/Worlds/Seed/respawners.sql, or add the id \
+             to UNAUTHORED_BY_DESIGN here with a seed comment saying why it cannot be \
+             authored"
+        );
+
+        let castle: Vec<&str> = respawners
+            .iter()
+            .filter(|r| r.world_name == CASTLE_WORLD)
+            .map(|r| r.name.as_str())
+            .collect();
+        assert_eq!(
+            castle.len(),
+            CASTLE_RESPAWNER_COUNT,
+            "world '{CASTLE_WORLD}' must ship its {CASTLE_RESPAWNER_COUNT} authored \
+             checkpoints (Checkpoint Alpha / Throne / Op-Core Triangle / Armory); \
+             got {castle:?}"
+        );
+    }
+
     #[tokio::test]
     async fn load_spawns_returns_records_with_resolved_world_names() {
         let pool = require_db_or_skip!();
