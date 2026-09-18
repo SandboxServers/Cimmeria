@@ -234,6 +234,8 @@ pub(super) fn set_npc_ai_state(
 /// witness and scrubs the witness sets before destroying. This used to call
 /// bare `SpaceManager::destroy_entity`, which left the id in every
 /// observer's witness set — audit defect H-B6.
+/// C08b (PR #650) landed the same `despawn_npc` routing on `main` for this
+/// arm; H03 generalised it into `despawn_by_tag` so `despawn_entity` shares it.
 pub(super) async fn destroy_tagged_entity(
     entity_tag: String,
     entity_id: u32,

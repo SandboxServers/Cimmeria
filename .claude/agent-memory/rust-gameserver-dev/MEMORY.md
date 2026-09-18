@@ -81,6 +81,10 @@
 
 - [tracing-span-fields-not-on-log-records.md](tracing-span-fields-not-on-log-records.md) — **read before any "stamp X onto every log" task.** `opentelemetry-appender-tracing` does NOT flatten ancestor span fields onto log records, so span-only enrichment is invisible in SigNoz Logs; spans don't cross the base↔cell mpsc boundary; `Option<T>` tracing fields are omitted when `None` (never `unwrap_or(0)`); `LogCapture` sees only event-own fields.
 
+## AoI / entity lifecycle
+
+- [destroy-entity-vs-despawn-npc.md](destroy-entity-vs-despawn-npc.md) — `SpaceManager::destroy_entity` is bare state-removal with NO immediate LeftAoI fanout; `despawn_npc` is the correct primitive for any observer-visible NPC removal (content chains, GM commands). `content::executor::world::destroy_tagged_entity` had this exact gap until C08b fixed it.
+
 ## Testing patterns
 
 - [cargo-test-vs-nextest-flakiness.md](cargo-test-vs-nextest-flakiness.md) — full-suite `cargo test -p cimmeria-services` has PRE-EXISTING order-dependent failures (LogCapture thread bleed); validate with `cargo nextest`, don't assume you broke it.

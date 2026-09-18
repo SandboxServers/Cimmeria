@@ -554,8 +554,10 @@ async fn destroy_tagged_entity_removes_target_from_space() {
         "fixture sanity: NPC exists pre-destroy"
     );
 
-    let (tx, _rx) = mpsc::channel(8);
+    let (tx, mut rx) = mpsc::channel(8);
     destroy_tagged_entity("Drone".to_string(), 1, 1032, &tx, &mut mgr).await;
+    drop(tx);
+    while rx.recv().await.is_some() {}
 
     assert!(
         mgr.get_entity(101).is_none(),
@@ -565,6 +567,52 @@ async fn destroy_tagged_entity_removes_target_from_space() {
         mgr.get_entity(1).is_some(),
         "source entity (the player) must NOT be touched — \
          a regression that destroyed `entity_id` instead of `target_id` would trip here"
+    );
+}
+
+/// C08b: `destroy_tagged_entity` must fan `LeftAoI` to every witness of
+/// the target **immediately** (via `SpaceManager::despawn_npc`), not rely
+/// on the next AoI tick to notice the entity is gone. This is the guard
+/// that would fail if the fix reverted to the bare `destroy_entity` call
+/// — that path removes the entity from the space but leaves it sitting in
+/// every observer's `witnesses` set, so this test would see zero
+/// `LeftAoI` messages instead of one per witness.
+#[tokio::test]
+async fn destroy_tagged_entity_fans_left_aoi_to_witnesses() {
+    let mut mgr = make_space_mgr();
+    // Drone (target) witnessed by both player 1 (the chain's triggering
+    // entity) and player 2 (an unrelated bystander) — proves the fan-out
+    // isn't scoped to just the source.
+    stage_drone_with_witness(&mut mgr, 1, 101, 0x00);
+    mgr.create_entity(2, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    let p2 = mgr
+        .get_entity_mut(2)
+        .expect("player 2 entity must exist immediately after create_entity");
+    p2.is_player = true;
+    p2.player_id = Some(43);
+    p2.witnesses.insert(EntityId(101));
+    mgr.connect_entity(2);
+
+    let (tx, mut rx) = mpsc::channel(8);
+    destroy_tagged_entity("Drone".to_string(), 1, 1032, &tx, &mut mgr).await;
+    drop(tx);
+
+    let mut left_aoi: Vec<(u32, u32)> = Vec::new();
+    while let Some(msg) = rx.recv().await {
+        if let CellToBaseMsg::LeftAoI {
+            witness_id,
+            entity_id,
+        } = msg
+        {
+            left_aoi.push((witness_id, entity_id));
+        }
+    }
+    left_aoi.sort();
+    assert_eq!(
+        left_aoi,
+        vec![(1, 101), (2, 101)],
+        "destroy_tagged_entity must fan LeftAoI(entity_id=101) to every witness \
+         (players 1 and 2) immediately, not defer to the next AoI tick"
     );
 }
 

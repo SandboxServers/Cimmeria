@@ -33,7 +33,7 @@ When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/comb
 
 ### Same-world flow (`CellToBaseMsg::ReanchorPlayer`)
 
-1. **Resolve target** — `resolve_respawn_target(respawner_id, entity_id, space_mgr)` returns `(world, [x, y, z])`. Priority: explicit respawner_id → first respawner registered for the player's current world → Castle default for `Castle_CellBlock`/unknown → in-place at the player's current position for any other world.
+1. **Resolve target** — `resolve_respawn_target(respawner_id, entity_id, space_mgr)` returns `(world, [x, y, z])`. Priority: explicit respawner_id → first respawner registered for the player's current world → Castle default for `Castle_CellBlock`/unknown → in-place at the player's current position for any other world. Rows sitting exactly at the world origin are skipped at every priority — see [Unauthored respawner rows](#unauthored-respawner-rows).
 2. **`onEndAidWait`** (method 99) — close the Defeat Window first.
 3. **Reset cell-entity state in place** — HEALTH/FOCUS to max, `clear_all_state_flags` (drops both `state_field` and the per-flag refcount map — a raw `state_field = 0` would leave stale counters), `clear_all_cooldowns`, `update_entity_position` to the spawn point.
 4. **`onStatUpdate`** — push the refreshed HEALTH/FOCUS to the HUD.
@@ -49,6 +49,14 @@ The result: ragdoll cleared, pawn standing with full appearance, while every oth
 ### Cross-world flow (`CellToBaseMsg::GateTravel`)
 
 Identical to stargate travel: flush bandolier, `space_mgr.destroy_entity`, send `GateTravel`. BaseApp creates a new cell entity in the destination world, sends `RESET_ENTITIES`, and replays the full world-entry flow including `ConnectEntity` + `InitPlayerState`. The instance teardown is unavoidable (the player is leaving the space).
+
+## Unauthored respawner rows
+
+`resources.respawners` is recovered data, and some rows kept their name while losing their coordinates. `load_respawners` copies the columns in with no validation, so those rows reach `resolve_respawn_target` looking like any other respawn point — and because the row *exists*, it wins its priority slot and makes every fallback beneath it unreachable. A player who died in that world was teleported to the world origin: out of bounds, usually under the map, and `unstuck` is still unimplemented.
+
+`resolve_respawn_target` therefore treats a respawner whose position is exactly `(0, 0, 0)` as absent, at both the explicit-id priority and the world-match priority, and logs a `warn` naming the respawner and world. The search continues past it to the next authored row, then to the Castle default / in-place fallbacks. The test is exact equality, not a tolerance band: the origin is a sentinel written by the authoring gap, and a proximity check would discard legitimate coordinates in worlds whose geometry straddles the origin.
+
+The guard is a safety net, not a substitute for coordinates — an unauthored row still means that checkpoint does nothing, and the Defeat Window still offers it by name. Two rows are knowingly left at the origin (world 23, `Beta_Site_Evo_1`) because no evidence of their positions survives; every other row must be authored, which the live-DB guard `seeded_respawners_are_not_at_the_world_origin` enforces against the seed.
 
 ## Why a re-anchor (not the in-place kismet path, not a full reload)
 

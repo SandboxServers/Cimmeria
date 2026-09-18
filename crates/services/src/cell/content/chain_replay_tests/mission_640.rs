@@ -652,3 +652,80 @@ async fn chain_1046_does_not_fire_while_step_2120_still_active() {
          switch hasn't been hacked); got {chain_1046_actions} actions",
     );
 }
+
+/// Chain 1151 (C07, D-CB08): accepting mission 640 (via chain 1034's
+/// ambernol-use completion of 639) must display prompt blurb 2305
+/// exactly once. Precedent: chain 1097's `mission_accepted` shape for
+/// 687.
+#[tokio::test]
+async fn chain_1151_displays_blurb_2305_when_mission_640_accepted() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1151)
+        .await
+        .expect("DB query for chain 1151 must succeed")
+        .expect("chain 1151 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("mission_id".to_string(), serde_json::json!(640));
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::MissionAccepted,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let blurbs = resolved
+        .actions
+        .iter()
+        .filter(|(id, action)| {
+            *id == 1151 && matches!(action, Action::DisplayDialog { dialog_id: 2305 })
+        })
+        .count();
+    assert_eq!(
+        blurbs, 1,
+        "chain 1151 must resolve exactly one DisplayDialog(2305) when \
+         mission 640 is accepted; got {blurbs} actions. Resolved: {:?}",
+        resolved.actions,
+    );
+}
+
+/// Chain 1151 negative: a `mission_accepted` event for a different
+/// mission id must not also fire the 640 blurb.
+#[tokio::test]
+async fn chain_1151_does_not_fire_for_wrong_mission_id() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1151)
+        .await
+        .expect("DB query for chain 1151 must succeed")
+        .expect("chain 1151 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("mission_id".to_string(), serde_json::json!(641));
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::MissionAccepted,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let chain_1151_actions = resolved
+        .actions
+        .iter()
+        .filter(|(id, _)| *id == 1151)
+        .count();
+    assert_eq!(
+        chain_1151_actions, 0,
+        "chain 1151 must NOT fire when mission 641 (not 640) is accepted; \
+         got {chain_1151_actions} actions",
+    );
+}

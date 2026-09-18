@@ -17,6 +17,12 @@
 --   Mission 639 (C03 addition, 2026-09-17): chain 1112 (Stasis Sickness
 --     load-gate; work-packets.md's own reserved range for C03 is 1112-1120,
 --     one chain used so far)
+--   Mission 1360 (C04 addition, 2026-09-17): chain 1121 (accept Frost's
+--     Letter on Frost body loot; work-packets.md's own reserved range for
+--     C04 is 1121-1130, one chain used so far; verified free the same way
+--     as C00/C03 above -- `grep -oE "VALUES \([0-9]+," ... | sort -n | uniq`
+--     against every chain_id in this file, plus a repo-wide grep of
+--     db/resources/Content/Seed/ for the same range)
 --   Mission 689 -- Prison Boot Lock, internal (C00 addition, 2026-09-17):
 --     chains 1022-1025. work-packets.md had no range reserved for C00 (added
 --     after the range table above was written); 1022-1030 was verified free
@@ -25,6 +31,15 @@
 --     chain_id in this file, matching the method C01's worker used for
 --     chain 1008). Kept deliberately separate from C03's 1112-1120 range so
 --     the two packets' new ids never collide.
+--   C07 addition (2026-09-17): mission-accepted prompt blurbs, work-packets.md's
+--     reserved range 1151-1160. Used: 1151 (640), 1152 (641), 1154 (688).
+--     1153 skipped -- reserved for mission 680's blurb 2308 (D-CB08's fourth
+--     mission), deferred pending GC1 (Marsh escort) landing; see the chain's
+--     own comment below. Occupancy re-checked immediately before use: zero
+--     chain_ids in 1151-1160 existed anywhere under db/resources/Content/Seed/.
+--   Mission 686 aftermath (C08b addition, 2026-09-17): chains 1161-1162,
+--     inside work-packets.md's reserved 1161-1170 range for C08. Verified
+--     free first (max chain_id in this file was 1112 before this packet).
 --   (next free inside 1001-1111: 1026-1030, 1036-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
@@ -264,6 +279,64 @@ VALUES
   -- Advance to the intermediate Guard-search step (XML index 1). This both
   -- self-gates Frost (gate above flips false) and opens chain 1005's gate.
   (1003, 'advance_step', 622, '80623', '{}', 0, 3);
+
+-- ============================================================
+-- MISSION 1360 -- Frost's Letter (C04)
+-- ============================================================
+--
+-- D-CB03 (answered: accept). Spec row 2 / audit.md's Row-By-Row table:
+-- the original ArmYourself.py grants the letter (3730) but never touches
+-- mission 1360 -- this is new content the spec calls optional. Step 4037
+-- ("Find a way to get Cpl. Frost's Letter to his family") stays active for
+-- the rest of the zone; step 4038 ("Give Cpl. Frost's Letter to Col.
+-- Marsh") is Castle-side and out of this packet's scope (see C09 / the
+-- sibling Castle campaign's CA01, docs/analysis/castle-cellblock-rebuild/
+-- work-packets.md#c09).
+--
+-- Mission state (accepted here) is persisted independently of the cell
+-- entity: `cell::missions::lifecycle::accept_mission` sends
+-- `CellToBaseMsg::MissionUpdate`, which the base UPSERTs into
+-- `sgw_mission` keyed on `player_id`. The Cellblock -> Castle cross-world
+-- hop (chain 1109's `cross_world_teleport`, executor/transport.rs) does
+-- not touch mission state at all -- it only flushes bandolier ammo and
+-- destroys the cell entity, then relies on `BaseToCellMsg::InitPlayerState`
+-- to rebuild missions from `query_saved_missions` on the far side, exactly
+-- as an ordinary relog does. So 1360 survives the hop for the same reason
+-- any other active mission survives a relog; see the live-DB round-trip
+-- test `frosts_letter_accept_round_trips_cell_to_base_to_db` in
+-- crates/services/src/base/world_entry/methods/missions/tests.rs.
+--
+-- Chain ID range: 1121-1130.
+
+-- Chain 1121: player opens dialog 3995 (loot Frost) while step 2113 is
+-- active -> accept mission 1360. A sibling to chain 1003 (identical
+-- trigger + step gate) rather than an extension of it: folding
+-- `accept_mission 1360` into 1003's own action list would force an extra
+-- `mission_status 1360 eq not_active` condition onto that chain, which
+-- would then also gate the unrelated letter-item-grant / Guard-unlock /
+-- step-advance actions on mission 1360's state for no reason. Keeping the
+-- two chains separate means each chain's condition list only constrains
+-- its own actions.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1121, '1360 - Dialog 3995 (loot Frost): accept Frost''s Letter', 'mission', 1360, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1121, 'dialog_open', '3995', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  -- Same gate as chain 1003: valid only on the FIRST Frost interaction.
+  -- Chain 1003 advancing 622 from 2113 -> 80623 flips this false, so a
+  -- re-click of Frost's body can't re-fire this chain either.
+  (1121, 'step_status', 622, '2113', 'eq', 'active', 0),
+  -- Canonical offer guard (.github/instructions/content-chains.instructions.md
+  -- "Mission grants must gate on not_active"). The server-side accept_mission
+  -- offer guard (cell::missions::lifecycle) backstops this authoritatively
+  -- either way, but the review rule still requires the chain-level gate.
+  (1121, 'mission_status', 1360, NULL, 'eq', 'not_active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1121, 'accept_mission', 1360, NULL, '{}', 0, 0);
 
 -- Chain 1004: player equips the pistol (item 55) while step 80622 is
 -- active → play kismet sequence 10000 (opens the stasis-room door — the
@@ -1976,3 +2049,159 @@ VALUES (1111, 'step_status', 688, '80688', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1111, 'set_interaction_type', NULL, 'Cellblock_ArmoryRingSwitch',
         '{"op": "|", "mask": "INT_MissionWorldObject"}', 0, 0);
+
+-- ============================================================
+-- MISSION PROMPT BLURBS (C07, D-CB08)
+--
+-- Spec-only content: four `DUIST_DefaultBlurb` dialogs shown on mission
+-- accept, mirroring the precedent chains 1018/1019 already established
+-- for mission 639's blurb 2298 (dialog_choice → accept_mission →
+-- display_dialog, all in one chain). C07 instead hangs off the generic
+-- `mission_accepted` follow-up event (see chain 1097's comment) so the
+-- blurb fires regardless of which upstream chain performed the accept
+-- -- mission 641 alone has two accept paths (chains 1053/1054, one per
+-- archetype branch) that would otherwise both need their own
+-- display_dialog action.
+--
+-- D-CB08's precondition (does the client already show its own accept
+-- prompt, which would make this a double-prompt) was resolved via an
+-- RE precheck substituting for live UAT -- confirmed safe, no
+-- double-prompt risk.
+--
+-- Review note: the `mission_accepted` trigger fires identically for
+-- `Action::AcceptMission` and `Action::AdvanceMission` (both route
+-- through `mission::accept_or_advance`) -- dormant today since no seed
+-- chain issues `advance_mission` against 640/641/688, but if a future
+-- packet ever does, these blurbs would re-display on every advance
+-- instead of once on accept. Gate on `mission_status <id> eq
+-- not_active` (checked pre-transition) if that changes.
+-- ============================================================
+
+-- Chain 1151: mission 640 accepted (via chain 1034, ambernol use) →
+-- display blurb 2305.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1151, '640 - Mission accepted: display prompt blurb 2305', 'mission', 640, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1151, 'mission_accepted', '640', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1151, 'display_dialog', 2305, NULL, '{}', 0, 0);
+
+-- Chain 1152: mission 641 accepted (via chain 1053 non-sci or 1054 sci
+-- dialog-choice branch) → display blurb 4000. One chain covers both
+-- accept paths since both funnel through the same `accept_mission 641`
+-- action and therefore the same follow-up event.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1152, '641 - Mission accepted: display prompt blurb 4000', 'mission', 641, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1152, 'mission_accepted', '641', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1152, 'display_dialog', 4000, NULL, '{}', 0, 0);
+
+-- Chain 1153 (reserved, NOT authored): mission 680 accepted (via chain
+-- 1061, Livewire victory) → blurb 2308. Skipped per the packet's own
+-- Exclude note -- 2308's text references "follow Marsh," which only
+-- makes sense once GC1 (the Marsh escort, D-CB13) actually has Marsh
+-- following the player. work-packets.md's GC1 section shows only
+-- GC1b-0 (the engine capability) merged; GC1a/GC1b-1/GC1b-2 (the seed
+-- chains that make Marsh actually follow and ring-hop) are still in
+-- progress as of this packet. Re-add chain 1153 with this exact shape
+-- once GC1's escort chains land -- do not reuse chain_id 1153 for
+-- anything else in the interim.
+
+-- Chain 1154: mission 688 accepted (via chain 1105, auto-accept on 687
+-- complete) → display blurb 2518.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1154, '688 - Mission accepted: display prompt blurb 2518', 'mission', 688, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1154, 'mission_accepted', '688', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1154, 'display_dialog', 2518, NULL, '{}', 0, 0);
+
+-- MISSION 686 AFTERMATH — Straegis attack scene (C08b, D-CB07)
+-- ============================================================
+--
+-- On 686 completing (Hallway05 cleared -- see chain 1094), play the
+-- camera-only Matinee "StraegisAttack" (sequence 1751,
+-- `Castle_Cellblock-fffffffe.Main_Sequence.StraegisAttack`, EventSet 747
+-- event 6000, ~10.0096s runtime per the recovered spec), despawn Col
+-- Marsh at his Preparation-room position, then show the aftermath dialog
+-- once the Matinee has finished playing. D-CB07 (answered): camera-only
+-- is acceptable -- no creature spawn, no blood decal/VFX, no data disc;
+-- none of the three has a recovered actor, event id, template or item id
+-- (see work-packets.md's Explicit Non-Goals table).
+--
+-- `viewType` investigation (packet's own flagged uncertainty): the
+-- `onSequence` emitter in `content/executor/mod.rs`'s `PlaySequence` arm
+-- hardcodes `ViewType = 0` (KISMET_VIEW_Witness) for every content-chain
+-- `play_sequence` action -- there is no per-action viewType field on
+-- `Action::PlaySequence` to override it. `docs/gameplay/cinematic-
+-- system.md`'s EKismetViewType table documents 0 as "used by
+-- AbilityManager.playSequence() for all combat ability/effect sequences"
+-- and 3 (KISMET_VIEW_EventInvoker) as "the default in playSequence() if
+-- no viewType is specified... default for most non-combat" (explicitly
+-- used by stargate and ring transport sequences, both camera cinematics
+-- closer in kind to this one than combat). No Atrea script or Python
+-- source exists for StraegisAttack to confirm which value the original
+-- content used -- this is spec-only content with zero legacy reference.
+-- Widening `Action::PlaySequence` with a per-row viewType is an engine
+-- change beyond this chain-only packet's scope (not in C08b's Entries),
+-- so this chain uses `play_sequence` as-is and accepts the existing
+-- hardcoded ViewType=0. If client UAT (T16/T17) shows a broken or
+-- disorienting camera, the fix is a `viewType` field threaded through
+-- `Action::PlaySequence` / `convert_action` / the executor's arg-block
+-- builder -- flagged here rather than guessed at blind.
+--
+-- Chain 1161: mission_completed 686 -> play the Matinee immediately,
+-- despawn Marsh immediately, show the aftermath dialog 10.1s later
+-- (right after the ~10.0096s Matinee finishes). Uses C08a's `delay_ms`
+-- support to stagger the third action without blocking the cell tick.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1161, '686 - Straegis attack scene: play Matinee, despawn Marsh, show aftermath dialog', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1161, 'mission_completed', '686', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1161, 'play_sequence',  1751, NULL,                    '{}', 0,     0),
+  (1161, 'destroy_entity', NULL, 'Preparation_ColMarsh',  '{}', 0,     1),
+  (1161, 'display_dialog', 2516, NULL,                    '{}', 10100, 2);
+
+-- Chain 1162: player_loaded Castle_CellBlock + 686 completed + 687 not
+-- yet accepted -> re-despawn Marsh. The per-player Castle_CellBlock
+-- instance is torn down and recreated fresh from `resources.spawnlist`
+-- on every relog/zone re-entry (`spawn_instance_npcs_from_records`,
+-- called from `handle_create_entity`), so chain 1161's one-time despawn
+-- above does not persist -- Marsh (spawnlist row, Preparation position)
+-- respawns into the new instance exactly as he did on first load. This
+-- is the same restart-resilience gap the interaction-flag restoration
+-- chains in this file guard (1045/1046, 1062-1065, 1104, 1110/1111),
+-- just applied to entity existence instead of a flag. No prior
+-- destroy_entity-on-relog precedent exists in this seed (chain 1032's
+-- `ArmYourself_AmbernolVial` destroy has the same latent gap,
+-- unaddressed -- out of scope here), so this reuses the established
+-- `player_loaded` + `mission_status` restoration *pattern*, substituting
+-- `destroy_entity` for `set_interaction_type` as the corrective action.
+-- Gate is `686 completed AND 687 not_active` (mirrors chain 1063's shape
+-- for the same NPC/mission pair) -- once 687 is accepted, this chain
+-- stops matching; a future escort packet (GC1, not yet landed) owns
+-- what happens to Marsh from that point on.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1162, '686 - Restore Marsh despawn on login (686 done, 687 not started)', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1162, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1162, 'mission_status', 686, NULL, 'eq', 'completed', 0),
+  (1162, 'mission_status', 687, NULL, 'eq', 'not_active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1162, 'destroy_entity', NULL, 'Preparation_ColMarsh', '{}', 0, 0);

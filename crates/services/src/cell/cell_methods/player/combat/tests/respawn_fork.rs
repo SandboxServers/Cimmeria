@@ -1,66 +1,14 @@
-//! Tests for combat dispatch + respawn fork.
+//! `handle_respawn` — the same-world in-place reanchor burst vs. the
+//! cross-world GateTravel branch, and the cell-entity state each leaves
+//! behind. Split out of the monolithic `combat/tests.rs` (CA00); test
+//! bodies are unchanged.
 
-use super::respawn::{handle_respawn, resolve_respawn_target};
-use super::*;
+use super::super::respawn::handle_respawn;
+use super::make_mgr_with_player;
+use crate::cell::messages::CellToBaseMsg;
 use crate::cell::spawner::RespawnerDef;
 use cimmeria_entity::stats::{FOCUS, HEALTH};
-
-/// Build a SpaceManager with one player at id=1 in the
-/// Castle_CellBlock instanced space (every dispatch test sees a
-/// fresh world). Caller can override is_player and stats.
-fn make_mgr_with_player(world: &str) -> SpaceManager {
-    let mut mgr = SpaceManager::new(1);
-    let xml = format!(
-        r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
-    );
-    mgr.parse_spaces_xml(&xml).unwrap();
-    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
-        .unwrap();
-    mgr.create_entity(1, world, [42.0, 1.0, 17.0], [0.0; 3])
-        .unwrap();
-    if let Some(p) = mgr.get_entity_mut(1) {
-        p.is_player = true;
-        p.player_id = Some(100);
-    }
-    mgr.connect_entity(1);
-    mgr
-}
-
-#[tokio::test]
-async fn dispatch_returns_false_for_unknown_method() {
-    let mut mgr = make_mgr_with_player("Castle_CellBlock");
-    let engine = ChainEngine::new();
-    let (tx, _rx) = mpsc::channel(8);
-    let handled = dispatch(1, 9999, &[], &tx, &mut mgr, &engine).await;
-    assert!(!handled);
-}
-
-/// USE_ABILITY with a too-short payload (< 8 bytes) must return
-/// true (handler took the method) but not start any cooldown,
-/// not consume any state, and not emit packets — the args are
-/// silently ignored. Pre-seed an ability + cooldown-free state so
-/// a regression that decodes garbage args and starts a cooldown
-/// gets caught.
-#[tokio::test]
-async fn use_ability_with_short_args_silently_drops() {
-    let mut mgr = make_mgr_with_player("Castle_CellBlock");
-    if let Some(p) = mgr.get_entity_mut(1) {
-        p.abilities.add_ability(7);
-    }
-    let engine = ChainEngine::new();
-    let (tx, mut rx) = mpsc::channel(8);
-
-    let handled = dispatch(1, USE_ABILITY, &[1u8, 2, 3], &tx, &mut mgr, &engine).await;
-    assert!(handled);
-    assert!(
-        rx.try_recv().is_err(),
-        "short USE_ABILITY must not emit packets"
-    );
-    assert!(
-        !mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
-        "short USE_ABILITY must not start a cooldown"
-    );
-}
+use tokio::sync::mpsc;
 
 /// Same-world `handle_respawn` keeps the cell entity (and instance)
 /// alive and sends an in-place burst that re-creates only the local
@@ -320,74 +268,6 @@ async fn handle_respawn_cross_world_falls_back_to_gate_travel() {
         captured_world.as_deref(),
         Some("Castle_CellBlock"),
         "GateTravel must target the respawner's world"
-    );
-}
-
-/// `resolve_respawn_target` matches a `respawner_id` to its stored
-/// (world, pos) tuple. The id-match path is the primary one — pin it
-/// so a refactor that drops the iter().find() doesn't fall back
-/// silently to the world-default branch (which can pick a different
-/// respawner if multiple are registered for the same world).
-#[test]
-fn resolve_respawn_target_uses_matching_respawner_id() {
-    let mut mgr = make_mgr_with_player("Castle_CellBlock");
-    mgr.respawners.push(RespawnerDef {
-        respawner_id: 42,
-        world_name: "Castle_CellBlock".to_string(),
-        name: "Hub".to_string(),
-        pos: [10.0, 20.0, 30.0],
-    });
-    let (world, pos) = resolve_respawn_target(42, 1, &mgr);
-    assert_eq!(world, "Castle_CellBlock");
-    assert_eq!(pos, [10.0, 20.0, 30.0]);
-}
-
-/// `resolve_respawn_target` falls back to the world's first respawner
-/// when the requested id isn't found. Pin so the fallback path can't
-/// silently degrade to the Castle default when the player's world has
-/// its own respawner registered.
-#[test]
-fn resolve_respawn_target_falls_back_to_world_respawner_on_id_miss() {
-    let mut mgr = make_mgr_with_player("Agnos_test");
-    mgr.respawners.push(RespawnerDef {
-        respawner_id: 7,
-        world_name: "Agnos_test".to_string(),
-        name: "Outpost".to_string(),
-        pos: [-5.0, 5.0, -5.0],
-    });
-    // respawner_id 999 doesn't exist.
-    let (world, pos) = resolve_respawn_target(999, 1, &mgr);
-    assert_eq!(world, "Agnos_test");
-    assert_eq!(pos, [-5.0, 5.0, -5.0]);
-}
-
-/// `resolve_respawn_target` returns the Castle default world+pos for
-/// `Castle_CellBlock` when no respawners exist (ship-config
-/// fallback). Pin the canonical fallback so a regression that uses
-/// the in-place path inside Castle can't silently strand players at
-/// their corpse.
-#[test]
-fn resolve_respawn_target_returns_castle_default_when_no_respawners() {
-    let mgr = make_mgr_with_player("Castle_CellBlock");
-    let (world, pos) = resolve_respawn_target(-1, 1, &mgr);
-    assert_eq!(world, "Castle_CellBlock");
-    assert_eq!(pos, [-334.231, 73.472, -228.026]);
-}
-
-/// `resolve_respawn_target` for non-Castle worlds with no respawner
-/// falls back to in-place (current world, current position) — NOT a
-/// cross-world snap to Castle. Pin the cross-world teleport-prevention
-/// shape: if a content gap leaves a world without a respawner, the
-/// player should respawn where they died, not get yanked across worlds.
-#[test]
-fn resolve_respawn_target_uses_in_place_for_other_worlds_without_respawners() {
-    let mgr = make_mgr_with_player("Agnos_test");
-    let (world, pos) = resolve_respawn_target(-1, 1, &mgr);
-    assert_eq!(world, "Agnos_test");
-    assert_eq!(
-        pos,
-        [42.0, 1.0, 17.0],
-        "must respawn in place, not at Castle default"
     );
 }
 

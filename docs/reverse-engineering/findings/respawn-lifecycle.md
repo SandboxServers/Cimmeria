@@ -205,6 +205,12 @@ Priority order:
 3. Castle default: world `"Castle_CellBlock"`, position `[-334.231, 73.472, -228.026]`.
 4. In-place at current position (warn log; avoids silent cross-world teleport).
 
+Steps 1 and 2 skip any `RespawnerDef` whose position is exactly `[0.0, 0.0, 0.0]`
+(warn log). Those are recovered rows whose name survived and whose coordinates did
+not; treating one as real makes every fallback beneath it unreachable and drops the
+player at the world origin. See
+[death-respawn-system.md](../../gameplay/death-respawn-system.md#unauthored-respawner-rows).
+
 `RespawnerDef` structure (from `crates/services/src/cell/spawner/respawners.rs`):
 ```rust
 pub struct RespawnerDef {
