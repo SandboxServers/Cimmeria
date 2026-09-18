@@ -124,6 +124,26 @@ pub(super) async fn npc_ai_follow(
     );
 }
 
+/// Test-only, crate-visible entry point that drives a single follow tick
+/// directly. Production reaches `npc_ai_follow` only through
+/// `npc_ai_tick`, which is `pub(in crate::cell::service)` and snapshots
+/// every NPC in the space — too coarse for a test that wants to assert
+/// `nav_path` after each individual step. `npc_ai_follow` itself stays
+/// `pub(super)` (npc_ai-internal); this thin wrapper is the one item
+/// whose visibility widens, and only under `cfg(test)`, so production
+/// callers keep the same narrow surface. Re-exported up through
+/// `npc_ai::mod` and `cell::service::mod` for
+/// `cell::content::chain_replay_tests::gc1_escort`, which lives outside
+/// `cell::service` entirely.
+#[cfg(test)]
+pub(crate) async fn npc_ai_follow_for_test(
+    npc_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    npc_ai_follow(npc_id, tx, space_mgr).await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

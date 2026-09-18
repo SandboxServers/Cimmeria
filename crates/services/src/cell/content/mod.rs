@@ -25,7 +25,7 @@ pub use event_dispatch::{
     fire_dialog_open, fire_enter_region, fire_entity_death, fire_entity_health_below,
     fire_exit_region, fire_health_below_for_hit, fire_interact_tag, fire_interact_template,
     fire_item_equipped, fire_item_use, fire_npc_flanked, fire_pending_health_below,
-    fire_player_loaded, fire_teleport_in,
+    fire_player_loaded, fire_stargate_crossed, fire_stargate_dialed, fire_teleport_in,
 };
 // Cell-tick drain for `content_actions.delay_ms > 0` (C08a) — called once
 // per tick from `cell::service::message_loop`, same flat depth as the

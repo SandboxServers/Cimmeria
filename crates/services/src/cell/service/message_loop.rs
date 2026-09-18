@@ -95,6 +95,13 @@ pub(super) async fn run_cell_loop(
                 // above; short-circuits when the queue is empty.
                 content::deferred_content_action_tick(tx, &mut space_mgr, &engine).await;
 
+                // Open any stargate whose 4-second dial timer has
+                // elapsed (CA10): fires `Stargate_MakeGate` to the
+                // dialer and their witnesses and makes the gate
+                // crossable. Same tick-drain shape; short-circuits
+                // when nobody is dialling.
+                super::super::gate_travel::gate_dial_tick(tx, &mut space_mgr).await;
+
                 // Drive the server-side auto-cycle loop: re-fire any
                 // armed player's stashed ability against the LIVE
                 // current_target_id whenever its cooldown has cleared.

@@ -59,6 +59,17 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
         "teleport_in" => Some(Trigger::OnTeleportIn {
             region_id: key?.parse().ok()?,
         }),
+        // Stargate events (CA10). `event_key` is the destination world
+        // name from `resources.worlds.world` (e.g. `"Harset"`); NULL is
+        // the wildcard "any destination". Unlike the integer-keyed
+        // triggers there is nothing to reject on a typo — a world name
+        // that doesn't exist simply never matches.
+        "stargate_dialed" => Some(Trigger::OnStargateDialed {
+            destination_world: key.map(|s| s.to_string()),
+        }),
+        "stargate_crossed" => Some(Trigger::OnStargateCrossed {
+            destination_world: key.map(|s| s.to_string()),
+        }),
         "effect_init" => Some(Trigger::OnEffectInit),
         "effect_pulse_begin" => Some(Trigger::OnEffectPulseBegin),
         "effect_pulse_end" => Some(Trigger::OnEffectPulseEnd),

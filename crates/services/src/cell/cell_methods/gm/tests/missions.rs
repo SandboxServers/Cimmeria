@@ -18,7 +18,7 @@ async fn gm_mission_clear_rejects_non_numeric_design_id() {
     let (tx, mut rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "FindAmbernol");
-    assert!(dispatch(1, GM_MISSION_CLEAR, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_MISSION_CLEAR, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs.iter().any(is_mission_action),
@@ -37,7 +37,7 @@ async fn gm_mission_advance_truncated_step_is_noop() {
     // Numeric DesignID but missing the INT32 step → no panic, no emit.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "1001");
-    assert!(dispatch(1, GM_MISSION_ADVANCE, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_MISSION_ADVANCE, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs.iter().any(is_mission_action),
@@ -54,13 +54,13 @@ async fn mission_handlers_reject_malformed_design_id() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
     // Empty args → WSTRING parse fails for both.
-    assert!(dispatch(1, GM_MISSION_CLEAR, &[], &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_MISSION_ADVANCE, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_MISSION_CLEAR, &[], &tx, &mut mgr, &test_engine()).await);
+    assert!(dispatch(1, GM_MISSION_ADVANCE, &[], &tx, &mut mgr, &test_engine()).await);
     // Non-numeric design id on advance.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "QuestName");
     args.extend_from_slice(&2i32.to_le_bytes());
-    assert!(dispatch(1, GM_MISSION_ADVANCE, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_MISSION_ADVANCE, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs.iter().any(is_mission_action),
@@ -76,7 +76,7 @@ async fn mission_handlers_reject_malformed_design_id() {
 async fn mission_list_reports_no_missions() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
-    assert!(dispatch(1, GM_MISSION_LIST, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_MISSION_LIST, &[], &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(fb.contains("no active missions"), "got: {fb}");
 }
@@ -135,7 +135,17 @@ async fn mission_lifecycle_assign_list_advance_clear() {
     let (tx, mut rx) = mpsc::channel(32);
 
     // ── Assign ──────────────────────────────────────────────────────────────
-    assert!(dispatch(1, GM_MISSION_ASSIGN, &assign_args("1001", 1), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_MISSION_ASSIGN,
+            &assign_args("1001", 1),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     // Drain the onMissionUpdate/onStepUpdate/onObjectiveUpdate burst, but first
     // confirm the cell-local success fed back what happened.
     let assign_msgs = drain(&mut rx);
@@ -163,7 +173,7 @@ async fn mission_lifecycle_assign_list_advance_clear() {
     }
 
     // ── List (active only) ────────────────────────────────────────────────────
-    assert!(dispatch(1, GM_MISSION_LIST, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_MISSION_LIST, &[], &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("gmMissionList must feed back");
     assert!(
         fb.contains("#1001") && fb.contains("active"),
@@ -171,7 +181,7 @@ async fn mission_lifecycle_assign_list_advance_clear() {
     );
 
     // ── List-full (all missions) ──────────────────────────────────────────────
-    assert!(dispatch(1, GM_MISSION_LIST_FULL, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_MISSION_LIST_FULL, &[], &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("gmMissionListFull must feed back");
     assert!(
         fb.contains("#1001"),
@@ -181,7 +191,17 @@ async fn mission_lifecycle_assign_list_advance_clear() {
     // ── Details (one mission by numeric DesignID) ─────────────────────────────
     let mut details_args = Vec::new();
     write_wstring_arg(&mut details_args, "1001");
-    assert!(dispatch(1, GM_MISSION_DETAILS, &details_args, &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_MISSION_DETAILS,
+            &details_args,
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let fb = feedback_text(&drain(&mut rx), 1).expect("gmMissionDetails must feed back");
     assert!(
         fb.contains("gmMissionDetails") && fb.contains("#1001"),
@@ -192,7 +212,17 @@ async fn mission_lifecycle_assign_list_advance_clear() {
     let mut advance_args = Vec::new();
     write_wstring_arg(&mut advance_args, "1001");
     advance_args.extend_from_slice(&201i32.to_le_bytes());
-    assert!(dispatch(1, GM_MISSION_ADVANCE, &advance_args, &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_MISSION_ADVANCE,
+            &advance_args,
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     drain(&mut rx);
     assert_eq!(
         mgr.get_entity(1)
@@ -208,7 +238,17 @@ async fn mission_lifecycle_assign_list_advance_clear() {
     // ── Clear (abandon) ───────────────────────────────────────────────────────
     let mut clear_args = Vec::new();
     write_wstring_arg(&mut clear_args, "1001");
-    assert!(dispatch(1, GM_MISSION_CLEAR, &clear_args, &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_MISSION_CLEAR,
+            &clear_args,
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     drain(&mut rx);
     assert!(
         mgr.get_entity(1)
@@ -228,7 +268,7 @@ async fn mission_details_unknown_id_reports_not_found() {
     let (tx, mut rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "1001");
-    assert!(dispatch(1, GM_MISSION_DETAILS, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_MISSION_DETAILS, &args, &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(
         fb.contains("not found") && fb.contains("1001"),
@@ -245,7 +285,7 @@ async fn mission_details_non_numeric_design_id_reports_guidance() {
     let (tx, mut rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "FindAmbernol");
-    assert!(dispatch(1, GM_MISSION_DETAILS, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_MISSION_DETAILS, &args, &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("must feed back");
     assert!(
         fb.contains("positive numeric id"),

@@ -23,7 +23,7 @@ async fn gm_spawn_by_cmd_emits_spawn_with_offset_position() {
 
     // Template 4321, X+10, Z-5 → spawn at (110, 50, 195) (Y unchanged).
     let args = spawn_args("4321", 10.0, -5.0);
-    assert!(dispatch(1, GM_SPAWN_BY_CMD, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SPAWN_BY_CMD, &args, &tx, &mut mgr, &test_engine()).await);
 
     match rx.try_recv().expect("gmSpawnByCmd must emit GmSpawnNpc") {
         CellToBaseMsg::GmSpawnNpc {
@@ -72,7 +72,8 @@ async fn gm_spawn_by_cmd_rejects_non_numeric_template() {
             GM_SPAWN_BY_CMD,
             &spawn_args("Goauld", 0.0, 0.0),
             &tx,
-            &mut mgr
+            &mut mgr,
+            &test_engine(),
         )
         .await
     );
@@ -95,7 +96,8 @@ async fn gm_spawn_by_cmd_rejects_non_numeric_template() {
             GM_SPAWN_BY_CMD,
             &spawn_args("0", 0.0, 0.0),
             &tx,
-            &mut mgr
+            &mut mgr,
+            &test_engine(),
         )
         .await
     );
@@ -120,7 +122,7 @@ async fn gm_spawn_by_cmd_rejects_truncated_and_nonfinite() {
     // WSTRING present but missing the two FLOAT offsets.
     let mut short = Vec::new();
     write_wstring_arg(&mut short, "4321");
-    assert!(dispatch(1, GM_SPAWN_BY_CMD, &short, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SPAWN_BY_CMD, &short, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -135,7 +137,7 @@ async fn gm_spawn_by_cmd_rejects_truncated_and_nonfinite() {
 
     // NaN offset → non-finite computed position → reject.
     let args = spawn_args("4321", f32::NAN, 0.0);
-    assert!(dispatch(1, GM_SPAWN_BY_CMD, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SPAWN_BY_CMD, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs

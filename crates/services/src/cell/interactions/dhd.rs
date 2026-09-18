@@ -178,6 +178,7 @@ mod tests {
             yaw: 0.0,
             address_origin,
             arrival: None,
+            event_set_id: None,
         }
     }
 

@@ -119,6 +119,8 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnItemUse { item_id }` | Player double-clicked inventory item |
 | `OnItemEquipped { item_id? }` | Player moved a stack into the bandolier (`container_id = 3`) from any other container. `item_id` is the design / `type_id`, not the inventory instance id; `NULL` `event_key` is a wildcard that fires for any equip |
 | `OnTeleportIn { region_id }` | Player arrived via ring transporter |
+| `OnStargateDialed { destination_world? }` | Player successfully dialled a stargate — fired from `handle_dial_gate` when the four-second gate-open timer is armed. `event_key` is the destination world name (`resources.worlds.world`, e.g. `Harset`); `NULL` is a wildcard that fires for any destination |
+| `OnStargateCrossed { destination_world? }` | Player stepped through an open stargate, fired immediately before the world transition tears the cell entity down. Same `destination_world` filter as `OnStargateDialed` |
 | `OnEffectInit / PulseBegin / PulseEnd / Removed` | Effect lifecycle hooks (unit variants) |
 | `OnMissionCompleted { mission_id }` | Mission marked complete |
 | `OnDialogSetOpen { dialog_set_name }` | Dialog set opened |
@@ -335,6 +337,22 @@ pub struct ResolvedActions {
 
 The forwarded `params` map is load-bearing — it carries trigger-time state (most importantly `instance_id`) into the executor so that `RemoveItem` consumes the exact stack the player clicked rather than first-by-type.
 
+### How `display_dialog` finds its speaker
+
+`onDialogDisplay` carries a wire `EntityId` that the client uses as its portrait-lookup key, so `display_dialog` has to decide who is speaking. [executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs) resolves it in this order:
+
+1. **Monologue dialogs win outright.** If every screen of the dialog has `speaker_id = 0` (the dialog is in the monologue cache), the player's own id is bound and any NPC in scope is ignored. That renders as inner thought, which is what narration is for.
+2. **`params["target_entity_id"]`** — stamped by `fire_interact_tag` / `fire_interact_template`, so it is present only for the chain fired directly off the click.
+3. **The player's `last_interaction_target`** — the per-player pin. This is what every *follow-up* chain relies on: a chain fired from `dialog_choice`, from a minigame victory, or from the deferred-action drain carries no `target_entity_id` of its own. `fire_chain_by_id` in particular builds `ResolvedActions` with empty `params` by construction, so a victory chain has nothing else to go on.
+
+Otherwise the action warns and returns without emitting a frame, because binding the player to an NPC dialog would blank the portrait and put the player's name on every line.
+
+**Why the monologue check is first and not a fallback.** `last_interaction_target` is sticky — it holds the last NPC the player clicked and is never cleared. So for any monologue fired after an interact, which is every minigame victory chain and most `dialog_choice` follow-ups, an NPC is always resolvable. Checked later, the NPC would always win, and the client would show that NPC delivering lines the author wrote as the player's own narration. `Castle.py` makes the same call explicitly: its monologue displays pass `displayDialog(None, …)`.
+
+The pin is written in two places, and both matter: `interactions::dispatch::handle_interact` writes it on the default interaction path, and [cell_methods/player/interaction/interact.rs](../../crates/services/src/cell/cell_methods/player/interaction/interact.rs) writes it *before* the content-chain dispatch. The second write is the load-bearing one for content authors. `handle_interact` runs only when no chain claimed the interact, so without it a chain-handled NPC left the pin stale and **any follow-up chain displaying an NPC-speaker dialog silently never opened** — only monologues survived, via source 3. The pin is deliberately not written on the hostile-NPC combat reroute, so attacking something cannot make it the next dialog's speaker.
+
+Practical consequence when authoring: a `display_dialog` on a non-`interact_tag` trigger works as long as the player reached that chain through an interact with the NPC you want on screen. A dialog with NPC speakers fired from a trigger that follows no interact at all (a bare `player_loaded`, a region entry, a timer) still has no speaker to resolve and will warn.
+
 ---
 
 ## 5. Schema
@@ -490,6 +508,7 @@ Worked example chains in [chain_replay_tests/](../../crates/services/src/cell/co
 | Action `Error` result | `warn!` at [chain.rs:201-209](../../crates/content-engine/src/chain.rs#L201-L209) |
 | `RemoveItem` channel send fails | `error!` at [executor/inventory.rs:226](../../crates/services/src/cell/content/executor/inventory.rs#L226) — explicitly loud because mission progress depends on the consume |
 | `ChangeStat` source entity missing | `warn!` at [executor/stats.rs:37](../../crates/services/src/cell/content/executor/stats.rs#L37) |
+| `display_dialog` cannot resolve a speaker | `warn!` ("no NPC entity id in chain params or last_interaction_target") at [executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs) + **no frame emitted**, so the dialog silently never opens for the player. Means the chain reached an NPC-speaker dialog with no interact in its history; see the resolution order in §4. Not reachable for monologue dialogs. |
 | Empty engine on startup | `warn!` ("No DB pool available") or `error!` ("Failed to load") at [engine_loader.rs:33-41](../../crates/services/src/cell/content/engine_loader.rs#L33-L41) — server runs without content |
 
 The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` site in [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/) are the production observability story. Every action execution emits an `info!` with `chain_id`, the action params, and entity. Tracing-grep for `Content:` to scope to executor activity.

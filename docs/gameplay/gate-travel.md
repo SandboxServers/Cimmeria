@@ -8,7 +8,7 @@ last_updated: 2026-09-18
 # Gate Travel System
 
 > **Last updated**: 2026-09-18
-> **Status**: Zone transition and ring transport both work. Every gate *animation* is missing.
+> **Status**: Zone transition and ring transport both work. The two stargate animations the 2009 server emitted (6100, 6113) now fire and fan to witnesses; DHD chevrons and squad travel are still missing.
 
 ## Overview
 
@@ -16,7 +16,7 @@ Gate travel enables zone transitions via stargates and ring transporters. Starga
 
 Stargate zone transition is implemented in [`base/world_entry/gate_travel/`](../../crates/services/src/base/world_entry/gate_travel/): on `CellToBaseMsg::GateTravel` the base sends RESET_ENTITIES to tear down the client's view of the old space, persists the destination world and position, and seeds `pending_world_entry` so the client's next ENABLE_ENTITIES drives a fresh create-player + enter-world cycle. Ring transport lives in [`cell/ring_transport/`](../../crates/services/src/cell/ring_transport/) with an 8-state finite state machine.
 
-> **What is *not* here yet.** Walking into the event horizon — the `REGION_FLAG_Stargate` (bit 2) region routing — and the pending-dial state machine that owns the 4-second dial timer and the `Stargate_MakeGate` / `Stargate_CrossGate` emits belong to the **Castle CA10 packet** and are not on this branch. Today the only way to travel is the explicit `onDialGate` RPC from the DHD UI. When CA10 lands it must carry the one-line `validate_gate_arrival` call in [`cell/gate_travel.rs:95`](../../crates/services/src/cell/gate_travel.rs#L95) with it, or the walk-through arrival loses the validation the dial arrival has.
+> **Where the placement is chosen.** Castle CA10 split the dial from the crossing: `onDialGate` arms a 4-second dial and the player then walks into the `REGION_FLAG_Stargate` (bit 2) volume to cross. Both that crossing and the no-gate-volume immediate fallback funnel through one function, `cell::gate_travel::perform_gate_travel`, which holds the single `validate_gate_arrival` call. There is deliberately exactly one — a second call in either caller would validate, and warn, twice per crossing.
 
 ## Arrival placement
 
@@ -33,7 +33,7 @@ A `resources.stargates` row's `x_pos` / `y_pos` / `z_pos` / `yaw` is the **starg
 
 The outcome is reported as an `ArrivalSource`: `Validated`, `Respawner`, `UnrecoverableOffMesh`, or `Unvalidated`. The last one covers destinations with nothing to check against — a world with no `.nav` file, or an **instanced** destination, which has no space until one is created and so never appears in `world_spaces`. Those arrivals are accepted as-is and logged at `debug`.
 
-**`UnrecoverableOffMesh` carries no usable position.** `ResolvedArrival::position` still echoes the *rejected* input so the caller's warn can name it, but `ResolvedArrival::is_usable()` is false and every caller that moves a player gates on it. `handle_dial_gate` returns `false` and enqueues no `GateTravel`: the traveller keeps the position they had, which they can at least walk out of. Handing the rejected point to the transfer is the same silent freeze one layer further along — the traveller is torn out of a world they *could* stand in and re-created off-mesh on one they can't. `gmDHD` reports the refusal to the GM rather than the unconditional "dialing gate address N" it used to print for every outcome.
+**`UnrecoverableOffMesh` carries no usable position.** `ResolvedArrival::position` still echoes the *rejected* input so the caller's warn can name it, but `ResolvedArrival::is_usable()` is false and every caller that moves a player gates on it. `perform_gate_travel` refuses and enqueues no `GateTravel` — on the crossing and on the immediate-travel fallback alike: the traveller keeps the position they had, which they can at least walk out of. Handing the rejected point to the transfer is the same silent freeze one layer further along — the traveller is torn out of a world they *could* stand in and re-created off-mesh on one they can't. `gmDHD` reports the refusal to the GM rather than the unconditional "dialing gate address N" it used to print for every outcome.
 
 The helper deliberately does **not** call `NavMesh::get_nearest_point`. That returns its input unchanged on a miss, so its output can never be trusted without re-validating it; and an arrival Detour *can* reproject is an authored pin that is a metre or two wrong and should be corrected at authoring time rather than papered over on every arrival.
 
@@ -45,9 +45,11 @@ The yaw is carried through unchanged even when the position falls back to a resp
 |---------|--------|-------|
 | DHD UI display | DONE | `setupStargateInfo` sends the gate list at world entry; right-clicking a DHD prop (`INT_DHD`, bit 16) emits `onDisplayDHD` (120) — see below |
 | Gate arrival validation | DONE | Per-gate `stargates.arrival_*` pin, validated against the destination navmesh with a respawner fallback — see [Arrival placement](#arrival-placement) |
-| Walking into the gate | SEE CA10 | `REGION_FLAG_Stargate` (bit 2) region routing and the 4-second dial timer are the Castle CA10 packet's, not on this branch |
+| Walking into the gate | DONE | `REGION_FLAG_Stargate` (bit 2) region routing plus the 4-second dial timer (CA10); the crossing shares the dial's arrival validation |
 | Stargate address tracking | DONE | `knownStargateAddresses` property, give/remove |
 | Stargate zone transition | DONE | `base/world_entry/gate_travel/` — RESET_ENTITIES, persist destination, replay world entry |
+| Stargate dial timer | DONE | `onDialGate` arms a 4 s timer (`SGWPlayer.beginDialing`) instead of travelling; drained by `cell::gate_travel::gate_dial_tick` on the 100 ms cell tick |
+| Stargate walk-through crossing | DONE | Travel fires when the player enters the gate's `REGION_FLAG_Stargate` volume, not on the dial. Worlds with no such region fall back to travelling on the dial |
 | Gate-travel contact event | DONE | Fires `ECONTACT_LIST_EVENT_GateTravel` to the traveller's contacts with the destination `world_id` |
 | Ring transporter interaction | DONE | Sends the destination list |
 | Ring transport FSM | DONE | 8-state machine: IDLE through COOLDOWN |
@@ -56,10 +58,10 @@ The yaw is carried through unchanged even when the position falls back to a resp
 | Ring movement locking | DONE | `BSF_MovementLock` set/unset during transport |
 | Ring cross-world transport | PARTIAL | Same-world works; cross-world path exists but untested |
 | Ring multi-player sync | FIXME | Only the first player in the region gets the Matinee — the sequence drives a shared world prop |
-| Stargate open/close animation | NOT IMPL | `Stargate_MakeGate` (6100) and `Stargate_DestroyGate` (6103) are never emitted |
-| Stargate crossing animation | NOT IMPL | `Stargate_CrossGate` (6113) never emitted |
+| Stargate open animation | DONE | `Stargate_MakeGate` (6100) fires 4 s after a successful dial. `Stargate_DestroyGate` (6103) stays unemitted — the 2009 `cancelDialing` never sent it either (D-CA10) |
+| Stargate crossing animation | DONE | `Stargate_CrossGate` (6113) fires on entering the gate volume, before the `GateTravel` teardown |
 | DHD chevron lock animations | NOT IMPL | Events 6106–6112 exist in the DB for every gate; never triggered |
-| Stargate witness visibility | NOT IMPL | Even once gate sequences are emitted, they must fan to witnesses, not just the traveller |
+| Stargate witness visibility | DONE | Both gate sequences fan to every witness of the dialer plus the dialer, one `onSequence` each. The 2009 server sent to `self.client` only; this is a deliberate addition |
 | Squad leader gate travel | NOT IMPL | `processSquadLeaderGateTravel` defined; blocked on the group system |
 | Gate address discovery | PARTIAL | `giveStargateAddressStr` / `removeStargateAddressStr` defined |
 

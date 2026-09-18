@@ -24,6 +24,7 @@
 //! executor arm from the `other =>` catch-all.
 
 mod entity_health_below;
+mod gc1_escort;
 mod grant_xp;
 mod harset_space;
 mod harset_spawn_entity;
@@ -41,7 +42,9 @@ mod mission_686_straegis;
 mod mission_687;
 mod mission_688;
 mod mission_689;
+mod mission_701;
 mod region8_guard_aggro;
 mod region_transition_accepts;
 mod sgc_w1_move_entity;
+mod stargate_triggers;
 mod world_condition;

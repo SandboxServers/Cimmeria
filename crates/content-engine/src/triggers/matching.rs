@@ -25,6 +25,8 @@ impl Trigger {
             Trigger::OnItemUse { .. } => TriggerType::ItemUse,
             Trigger::OnItemEquipped { .. } => TriggerType::ItemEquipped,
             Trigger::OnTeleportIn { .. } => TriggerType::TeleportIn,
+            Trigger::OnStargateDialed { .. } => TriggerType::StargateDialed,
+            Trigger::OnStargateCrossed { .. } => TriggerType::StargateCrossed,
             Trigger::OnEffectInit => TriggerType::EffectInit,
             Trigger::OnEffectPulseBegin => TriggerType::EffectPulseBegin,
             Trigger::OnEffectPulseEnd => TriggerType::EffectPulseEnd,
@@ -159,6 +161,18 @@ impl Trigger {
             Trigger::OnTeleportIn { region_id } => {
                 event.params.get("region_id").and_then(|v| v.as_i64()) == Some(*region_id as i64)
             }
+            // Wildcard (`destination_world: None`) fires for any gate
+            // destination; a named world must match exactly. Same shape
+            // as `OnPlayerLoaded`.
+            Trigger::OnStargateDialed { destination_world }
+            | Trigger::OnStargateCrossed { destination_world } => match destination_world {
+                Some(expected) => event
+                    .params
+                    .get("destination_world")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|actual| actual == expected),
+                None => true,
+            },
             // Unit triggers match any event of the right type
             Trigger::OnEffectInit
             | Trigger::OnEffectPulseBegin

@@ -41,6 +41,7 @@ async fn interact_on_a_dhd_prop_routes_to_on_display_dhd() {
             yaw: 0.0,
             address_origin: 15,
             arrival: None,
+            event_set_id: None,
         },
     );
 
@@ -179,6 +180,17 @@ async fn interact_pins_last_interaction_target_on_player() {
 /// Out-of-range interact must NOT pin `last_interaction_target` — a
 /// stale pin from a too-far click would then misroute a subsequent
 /// `initialResponse` (or chain-fired dialog) at the wrong NPC.
+///
+/// Scope note: this covers the **inner** path only — `handle_interact`
+/// is reached from `cell_methods::player::interaction::interact` just
+/// once no content chain claimed the interact. The outer dispatcher now
+/// runs its own existence + range gate ahead of the pin, the trainer UI
+/// and the chain dispatch, via
+/// [`super::interact_target_in_range`]; its guards live in
+/// `cell_methods::player::interaction::tests`
+/// (`out_of_range_interact_does_not_pin_or_fire_chains` and siblings).
+/// Both checks are wanted: this one keeps `handle_interact` correct for
+/// any future caller that bypasses the outer dispatcher.
 #[tokio::test]
 async fn out_of_range_interact_does_not_pin_target() {
     let mut mgr = crate::cell::space_manager::SpaceManager::new(1);

@@ -14,24 +14,33 @@ use crate::cell::space_manager::SpaceManager;
 /// uses for `LookupEntityListenerEntry` to bind the dialog portrait actor
 /// and the per-screen speaker entity (see
 /// `docs/reverse-engineering/findings/dialog-portrait-lookup.md`).
-/// Resolution order, from most to least direct:
+/// Resolution order:
 ///
-/// 1. Chain `params["target_entity_id"]` — present when the chain was
+/// 1. **Monologue dialogs win outright.** If the dialog is in
+///    `space_mgr.monologue_dialog_ids` (every screen has
+///    `speaker_id = 0`, i.e. player-narration / inner-thought), bind the
+///    player as the wire EntityId and ignore any NPC in scope. The
+///    client's per-screen lookup of `speaker_id = 0` falls back to the
+///    player's name and the portrait shows the player — exactly the
+///    intended render for "the player is talking to themselves."
+///
+///    This check is **first**, not a fallback, and the ordering is
+///    load-bearing. `last_interaction_target` is a sticky pin: it holds
+///    the last NPC the player clicked and is never cleared, so for a
+///    monologue fired after any interact (a minigame victory chain, a
+///    follow-up `dialog_choice`) an NPC would always be in scope and
+///    would be bound, portraying the NPC for lines the author wrote as
+///    the player's own thoughts. `Castle.py` makes the same call
+///    explicitly: its monologue displays pass `displayDialog(None, …)`.
+/// 2. Chain `params["target_entity_id"]` — present when the chain was
 ///    fired from an `InteractTag` / `InteractTemplate` trigger
 ///    (`fire_interact_*` stamps it into the context).
-/// 2. Player's `last_interaction_target` — the per-player pin set by
-///    `handle_interact`. Covers follow-up chains (e.g. an
-///    `OnDialogChoice` trigger that fires another `display_dialog` on
-///    the same NPC) where the trigger event itself carries no NPC.
-/// 3. **Monologue fallback** — if the dialog is in
-///    `space_mgr.monologue_dialog_ids` (every screen has
-///    `speaker_id = 0`, i.e. player-narration / inner-thought), bind
-///    the player as the wire EntityId. The client's per-screen lookup
-///    of `speaker_id = 0` naturally falls back to the player's name and
-///    the portrait shows the player — exactly the intended render for
-///    "the player is talking to themselves." Without this branch,
-///    monologue dialogs (~42% of authored screens) silently never
-///    display.
+/// 3. Player's `last_interaction_target` — the per-player pin, written by
+///    the interact handler before the content-chain dispatch and again by
+///    `interactions::handle_interact` on the non-chain path. Covers
+///    follow-up chains (an `OnDialogChoice` trigger, a minigame victory
+///    chain, the deferred-action drain) where the trigger event itself
+///    carries no NPC.
 /// 4. Abort with a `warn` — the dialog is NPC-shaped but no NPC could
 ///    be resolved. Binding the player here would blank the NPC portrait
 ///    and substitute the player's name for every NPC line — the bug
@@ -51,32 +60,41 @@ pub(super) async fn display(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let npc_entity_id = params
-        .get("target_entity_id")
-        .and_then(|v| v.as_u64())
-        .map(|v| v as i32)
-        .or_else(|| {
-            space_mgr
-                .get_entity(entity_id)
-                .and_then(|p| p.last_interaction_target)
-                .map(|id| id as i32)
-        });
+    // A monologue dialog binds the player regardless of what NPC happens
+    // to be in scope — see the resolution order on this fn for why this
+    // must come before the pin rather than after it.
+    let npc_entity_id = if space_mgr.monologue_dialog_ids.contains(&dialog_id) {
+        // `debug!`, not `info!`: the "Content: displaying dialog" line
+        // below already reports every display at info, carrying the same
+        // entity/dialog/chain plus the resolved npc_entity_id. This line
+        // adds only the *reason* for that resolution, and the span's
+        // `monologue` field records it for anyone filtering in SigNoz, so
+        // an info-level copy is duplicate volume on a common path
+        // (~42% of authored screens are monologue).
+        tracing::Span::current().record("monologue", true);
+        tracing::debug!(
+            entity_id,
+            dialog_id,
+            chain_id,
+            "DisplayDialog: dialog is player-monologue (all screens \
+             speaker_id=0) — binding player as context entity"
+        );
+        entity_id as i32
+    } else {
+        let resolved = params
+            .get("target_entity_id")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as i32)
+            .or_else(|| {
+                space_mgr
+                    .get_entity(entity_id)
+                    .and_then(|p| p.last_interaction_target)
+                    .map(|id| id as i32)
+            });
 
-    let npc_entity_id = match npc_entity_id {
-        Some(id) => id,
-        None => {
-            // Monologue fallback — see doc on this fn for rationale.
-            if space_mgr.monologue_dialog_ids.contains(&dialog_id) {
-                tracing::Span::current().record("monologue", true);
-                tracing::info!(
-                    entity_id,
-                    dialog_id,
-                    chain_id,
-                    "DisplayDialog: no NPC resolved, dialog is player-monologue \
-                     (all screens speaker_id=0) — binding player as context entity"
-                );
-                entity_id as i32
-            } else {
+        match resolved {
+            Some(id) => id,
+            None => {
                 tracing::warn!(
                     entity_id,
                     dialog_id,
@@ -522,6 +540,67 @@ mod tests {
                 assert_eq!(
                     wire_entity_id, 1,
                     "monologue must bind the player's own entity id as the wire EntityId"
+                );
+            }
+            other => panic!("expected EntityMethodCall, got {other:?}"),
+        }
+    }
+
+    /// **Precedence guard.** A monologue dialog must bind the player even
+    /// when an NPC *is* resolvable — both from the sticky
+    /// `last_interaction_target` pin and from an explicit
+    /// `target_entity_id` chain param.
+    ///
+    /// `last_interaction_target` is never cleared, so once the player has
+    /// clicked any NPC there is permanently an NPC in scope. If the
+    /// monologue check were a fallback rather than the first branch, every
+    /// monologue fired after an interact — a minigame victory chain, a
+    /// follow-up `dialog_choice` — would portray that NPC speaking lines
+    /// the author wrote as the player's inner thoughts. Castle mission
+    /// 701's dialog 2575 ("You manage to free Capt. Copplemann...") is
+    /// exactly this shape, and `Castle.py` passes an explicit
+    /// `displayDialog(None, 2575)`.
+    #[tokio::test]
+    async fn monologue_binds_player_even_when_an_npc_is_resolvable() {
+        const NPC_ID: u32 = 0xC0FFEE;
+        const MONOLOGUE: i32 = 2575;
+
+        // Case 1: NPC available via the sticky pin.
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.monologue_dialog_ids.insert(MONOLOGUE);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.last_interaction_target = Some(NPC_ID);
+        }
+
+        let (tx, mut rx) = mpsc::channel(4);
+        display(MONOLOGUE, 1, 1234, &empty_params(), &tx, &mut mgr).await;
+
+        match rx.try_recv().expect("monologue must still display") {
+            CellToBaseMsg::EntityMethodCall { args, .. } => {
+                let wire = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                assert_eq!(
+                    wire, 1,
+                    "a monologue must bind the PLAYER, not the pinned NPC \
+                     ({NPC_ID}) — reverting the monologue-first ordering \
+                     fails here",
+                );
+            }
+            other => panic!("expected EntityMethodCall, got {other:?}"),
+        }
+
+        // Case 2: NPC available via an explicit chain param, which is an
+        // even stronger source than the pin.
+        let mut params = empty_params();
+        params.insert("target_entity_id".into(), serde_json::json!(NPC_ID as u64));
+        display(MONOLOGUE, 1, 1234, &params, &tx, &mut mgr).await;
+
+        match rx.try_recv().expect("monologue must still display") {
+            CellToBaseMsg::EntityMethodCall { args, .. } => {
+                let wire = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                assert_eq!(
+                    wire, 1,
+                    "a monologue must outrank an explicit target_entity_id too",
                 );
             }
             other => panic!("expected EntityMethodCall, got {other:?}"),
