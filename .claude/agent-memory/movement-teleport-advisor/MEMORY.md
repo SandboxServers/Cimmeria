@@ -5,4 +5,5 @@
 - [snap-back-termination.md](snap-back-termination.md) — Block on sight: a snap-back to an invalid target loops forever. Plus GM navmesh allowance + the case-sensitive world-name trap
 - [facing-preservation-primitive.md](facing-preservation-primitive.md) — Block on sight: `update_entity_position(..., [0,0,0], ...)` zeroes facing; teleports use `update_position_preserving_facing`
 - [arrival-coordinate-offnavmesh.md](arrival-coordinate-offnavmesh.md) — Block on sight: authored coords are model origins; gate arrivals land in prefab navmesh holes → silent CorrectionSuppressed. Includes the read-only .nav decode recipe
-- [harset-travel-ground-truth.md](harset-travel-ground-truth.md) — Deprecated-Python ground truth for Harset transitions + what the V5 spec got wrong
+- [harset-travel-ground-truth.md](harset-travel-ground-truth.md) — Deprecated-Python ground truth for Harset transitions, the full 2009 dial FSM, + what the V5 spec got wrong
+- [region-trigger-containment-gap.md](region-trigger-containment-gap.md) — Block on sight: TRIGGER_REGION never re-checks server-known containment (2009 did); routing a region to travel makes it a free teleport
