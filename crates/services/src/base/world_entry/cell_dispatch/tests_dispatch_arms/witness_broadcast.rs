@@ -285,25 +285,33 @@ async fn witness_entity_method_player_ghost_uses_idbase_61_npc_uses_62() {
     );
 }
 
-/// **Byte-exact wire-format guard for the interaction-flag bind (CA02).**
+/// **Wire-shape pin plus witness-cardinality guard for the interaction-flag
+/// bind (CA02).**
+///
+/// Not a revert-guard for CA02's logic: no change to the bind path can make
+/// this fail. It pins the wire claim the packet rests on, and the fan-out
+/// property this file exists for.
 ///
 /// `add_dialog_set` ends on the wire as `SGWSpawnableEntity.InteractionType`
 /// (client method index 3), whose signature is a single `UINT64 TypeId`
-/// (`entities/defs/SGWSpawnableEntity.def:114-116`). There is no dialog field.
+/// (`entities/defs/SGWSpawnableEntity.def:114-116`). There is no dialog field,
+/// which is what makes an interaction-only bind — a `dialog_set_maps` row with
+/// `dialog_id IS NULL`, such as Castle row 3062 — representable at all. A
+/// regression that appended the dialog id to the payload diverges from the
+/// expected bytes here.
 ///
-/// That is what makes an interaction-only bind — a `dialog_set_maps` row with
-/// `dialog_id IS NULL`, such as Castle row 3062 — representable at all: the
-/// flag-only push and the with-dialog push are byte-identical when the flags
-/// match, because the dialog id never leaves the server. This test pins both
-/// halves of that claim:
+/// The cardinality half: the indicator is **per player**, so the packet must
+/// reach the binding player and nobody else — least of all the NPC whose
+/// bitfield it describes. Registering the observee's address is what makes a
+/// witness/observee swap visible; without it such a swap would silently send
+/// nothing and the packet-count assertion alone would still pass.
 ///
-/// 1. the flag-only bind's packet carries exactly the 8-byte little-endian
-///    indicator bitfield and nothing else, and
-/// 2. a with-dialog bind carrying the same flags produces the same bytes — so
-///    a regression that started appending the dialog id (or substituting 0 for
-///    a NULL one) diverges from this expectation immediately.
+/// The "same flags with a dialog produce the same bytes" claim lives in
+/// `executor/dialog/tests.rs`, where the executor actually computes the
+/// payload from a `DialogSetMapEntry`. Re-sending an identical byte vector
+/// through this arm twice would only assert that a pure function is pure.
 #[tokio::test]
-async fn interaction_type_bind_push_is_flag_only_on_the_wire() {
+async fn interaction_type_bind_push_is_flag_only_and_reaches_only_the_witness() {
     use crate::mercury::method_idx::INTERACTION_TYPE;
 
     /// `INT_AStoryMissionActive` — bit 24, the `!` over Sgt. Gerschon's head.
@@ -316,12 +324,18 @@ async fn interaction_type_bind_push_is_flag_only_on_the_wire() {
     let witness_id = 1200u32;
     let npc_entity_id = 1201u32;
     let witness_addr: SocketAddr = "127.0.0.1:56200".parse().unwrap();
+    // The observee gets a session of its own so a wrong-recipient regression
+    // has somewhere to land and can be detected.
+    let observee_addr: SocketAddr = "127.0.0.1:56201".parse().unwrap();
 
-    let connected = Arc::new(Mutex::new(HashMap::from([(
-        witness_addr,
-        test_default_connected_client_state(),
-    )])));
-    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(witness_id, witness_addr)])));
+    let connected = Arc::new(Mutex::new(HashMap::from([
+        (witness_addr, test_default_connected_client_state()),
+        (observee_addr, test_default_connected_client_state()),
+    ])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([
+        (witness_id, witness_addr),
+        (npc_entity_id, observee_addr),
+    ])));
 
     // The executor's payload for a flag-only bind: merged flags, UINT64 LE.
     let args = INT_A_STORY_MISSION_ACTIVE.to_le_bytes().to_vec();
@@ -345,8 +359,20 @@ async fn interaction_type_bind_push_is_flag_only_on_the_wire() {
     )
     .await;
 
-    let sent = typed_transport.drain();
-    assert_eq!(sent.len(), 1, "exactly one InteractionType packet");
+    assert_eq!(
+        typed_transport.send_count_to(witness_addr),
+        1,
+        "the indicator is per-player: exactly one packet to the binding player"
+    );
+    assert_eq!(
+        typed_transport.send_count_to(observee_addr),
+        0,
+        "the NPC must NOT receive its own interaction-type update -- a \
+         witness/observee swap would show up here"
+    );
+    assert_eq!(typed_transport.len(), 1, "no traffic to any other address");
+
+    let sent = typed_transport.filter_to(witness_addr);
     let expected = build_entity_method_packet(
         &[0u8; 32],
         0,
@@ -358,53 +384,9 @@ async fn interaction_type_bind_push_is_flag_only_on_the_wire() {
         cimmeria_mercury::encryption::EncryptionVersion::V1,
     );
     assert_eq!(
-        sent[0].1, expected,
-        "flag-only bind must encode as InteractionType with an 8-byte LE flags \
-         payload -- any extra field would mean the dialog id reached the wire"
-    );
-
-    // Pin the payload width explicitly: `InteractionType` takes one UINT64, so
-    // a bind can never carry a 12-byte (flags + dialog id) body.
-    assert_eq!(
-        args.len(),
-        8,
-        "InteractionType arg block is a single UINT64 per the entity def"
-    );
-
-    // ── Same flags, but from a row that DOES have a dialog ──
-    // Reset the witness session to next_seq=0 so the second packet is
-    // comparable byte-for-byte against a fresh builder call.
-    {
-        let mut guard = connected.lock().unwrap();
-        guard.insert(witness_addr, test_default_connected_client_state());
-    }
-
-    handle_cell_message(
-        CellToBaseMsg::WitnessEntityMethod {
-            witness_id,
-            entity_id: npc_entity_id,
-            method_index: INTERACTION_TYPE,
-            // Row 3060 (dialog 2573) with the same indicator bit: the executor
-            // computes the identical merged-flags payload.
-            args: args.clone(),
-            entity_is_player: false,
-        },
-        &transport,
-        &connected,
-        &entity_to_addr,
-        &None,
-        &None,
-        &None,
-        "127.0.0.1",
-        7777,
-    )
-    .await;
-
-    let sent_with_dialog = typed_transport.drain();
-    assert_eq!(sent_with_dialog.len(), 1);
-    assert_eq!(
-        sent_with_dialog[0].1, expected,
-        "a with-dialog bind carrying the same flags must produce the same bytes \
-         -- the dialog id is server-side state, not a wire field"
+        sent[0], expected,
+        "flag-only bind must encode as InteractionType on the observee's id \
+         with the 8-byte LE flags payload -- an extra field would mean the \
+         dialog id reached the wire"
     );
 }
