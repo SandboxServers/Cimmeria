@@ -538,3 +538,89 @@ async fn goto_summon_reject_non_numeric() {
         "non-numeric gmSummon must feed back a rejection"
     );
 }
+
+/// CA10 changed what `gmDHD` does. It routes through `handle_dial_gate`,
+/// so on a world with a `REGION_FLAG_Stargate` volume it now ARMS a dial
+/// — the GM has to walk into the gate — while on a world without one it
+/// still travels on the dial. A GM who expects the old instant warp needs
+/// this difference to be deliberate and pinned, not discovered in-game.
+///
+/// Reverting the arm branch makes the first half emit `GateTravel`
+/// immediately and leaves `gate_dial(1)` empty.
+#[tokio::test]
+async fn gm_dhd_arms_a_dial_where_a_gate_volume_exists_and_travels_where_none_does() {
+    use crate::cell::space_manager::{RegionData, REGION_FLAG_CLIENT_HINTED, REGION_FLAG_STARGATE};
+    use crate::cell::spawner::StargateEntry;
+
+    const DEST_ADDR: i32 = 3;
+
+    // Castle is the GM's world; the gate they dial leads elsewhere.
+    fn mgr_with_destination() -> SpaceManager {
+        let mut mgr = mgr_with_player(1, "Castle");
+        mgr.stargates.insert(
+            DEST_ADDR,
+            StargateEntry {
+                world_name: "Harset".to_string(),
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+                yaw: 0.0,
+                event_set_id: None,
+            },
+        );
+        mgr
+    }
+
+    // ── with a gate volume: arms, does not travel ──
+    let mut mgr = mgr_with_destination();
+    let runtime_id = mgr.next_region_id;
+    mgr.next_region_id += 1;
+    mgr.regions.insert(
+        runtime_id,
+        RegionData {
+            runtime_id,
+            db_set_id: 1002,
+            tag: "Castle.Stargate".to_string(),
+            world_name: "Castle".to_string(),
+            height: 10.0,
+            radius: 2.5,
+            flags: REGION_FLAG_CLIENT_HINTED | REGION_FLAG_STARGATE,
+            points: vec![[0.0; 3]; 4],
+        },
+    );
+
+    let (tx, mut rx) = mpsc::channel(16);
+    assert!(dispatch(1, GM_DHD, &[DEST_ADDR as u8], &tx, &mut mgr, &test_engine()).await);
+
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GateTravel { .. })),
+        "with a gate volume, gmDHD must arm the dial rather than warp"
+    );
+    assert!(
+        mgr.get_entity(1).is_some(),
+        "arming must not tear the GM out of their space"
+    );
+    let dial = mgr.gate_dial(1).expect("gmDHD must arm a dial");
+    assert_eq!(dial.target_address_id, DEST_ADDR);
+    assert_eq!(dial.target_world_name, "Harset");
+
+    // ── without a gate volume: travels on the dial, as before ──
+    let mut mgr = mgr_with_destination();
+    let (tx, mut rx) = mpsc::channel(16);
+    assert!(dispatch(1, GM_DHD, &[DEST_ADDR as u8], &tx, &mut mgr, &test_engine()).await);
+
+    let msgs = drain(&mut rx);
+    let travelled = msgs.iter().any(|m| {
+        matches!(m, CellToBaseMsg::GateTravel { target_world_name, .. }
+            if target_world_name == "Harset")
+    });
+    assert!(
+        travelled,
+        "with no gate volume to walk into, gmDHD must still travel on the \
+         dial — otherwise a GM on those worlds can never leave. Got {msgs:?}"
+    );
+    assert!(mgr.gate_dial(1).is_none(), "the fallback arms nothing");
+}
