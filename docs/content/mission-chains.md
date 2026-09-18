@@ -710,6 +710,8 @@ This is an orphaned hidden mission with step text that parallels missions 641 an
 
 The Castle space script (`deprecated/python/cell/spaces/Castle.py`) handles all mission logic for this zone. There are no per-mission script files for 701 or 702 -- all logic lives in the space script.
 
+Mission 701 has been **ported to content chains** in `db/resources/Content/Seed/castle_701_chains.sql` (chains 1201-1243) by campaign packets CA01 and CA03; see the shipped-chain table below. Missions 702-708 remain unported and are tracked in [docs/analysis/castle-rebuild/work-packets.md](../analysis/castle-rebuild/work-packets.md).
+
 #### Mission 701: "Reinforce Copplemann" [CONFIRMED]
 
 | Field | Value |
@@ -767,6 +769,68 @@ The Castle space script (`deprecated/python/cell/spaces/Castle.py`) handles all 
 
 **Link to next**: Explicitly calls `missions.complete(701)` and `missions.accept(702)` on dialog.choice::2576. [CONFIRMED]
 
+##### Shipped chains (castle_701_chains.sql, 1201-1243)
+
+Everything above describes the original Python. This is what the server
+actually runs. Evidence classes follow the campaign convention:
+`RECOVERED_SCRIPT` is a 1:1 port of a `Castle.py` node, `RECONSTRUCTION`
+is built from original DB data with no recovered logic, and `NEW CONTENT`
+is neither.
+
+| Chain | Trigger | Gate | Actions | Evidence |
+|---|---|---|---|---|
+| 1201 | `player_loaded Castle` | 701 `not_active` | bind dsm 3062 → tpl 149 | RECOVERED_SCRIPT |
+| 1202 | `interact_tag Castle_SgtGerschon` | step 2399 `not_active`, archetype ≠ 8 | dialog 2573 | RECOVERED_SCRIPT |
+| 1203 | `interact_tag Castle_SgtGerschon` | step 2399 `not_active`, archetype = 8 | dialog 5861 | NEW CONTENT (D-CA13) |
+| 1204 | `dialog_choice 2573` | 701 `not_active` | accept 701, unbind 3062/149, bind 3062/48 | RECOVERED_SCRIPT |
+| 1205 | `dialog_choice 5861` | 701 `not_active` | as 1204, then dialog 5862 | NEW CONTENT (D-CA13) |
+| 1231 | `interact_tag Castle_Coppleman` | step 2399 `active` | dialog 2574 | RECOVERED_SCRIPT |
+| 1232 | `dialog_choice 2574` | step 2399 `active` | advance 2400 | RECOVERED_SCRIPT |
+| 1233 | `interact_tag Castle_Coppleman` | step 2400 `active` | start Livewire, victory → 1234 | RECOVERED_SCRIPT |
+| 1234 | none (victory callback) | none | unbind 3062/48, dialog 2575, advance 2401 | RECOVERED_SCRIPT |
+| 1235 | `dialog_choice 2575` | step 2401 `active` | **delay 10500 ms**: advance 2421, bind 3063/48 | RECONSTRUCTION (D-CA02 A) |
+| 1236 | `interact_tag Castle_Coppleman` | step 2421 `active` | dialog 2576 | RECOVERED_SCRIPT (D-CA04) |
+| 1237 | `dialog_choice 2576` | step 2421 `active` | unbind 3063/48, complete 701 | RECOVERED_SCRIPT |
+| 1238 | `dialog_choice 2576` | step 2421 `active`, 702 `not_active` | accept 702 | RECOVERED_SCRIPT |
+| 1239 | `dialog_choice 2576` | step 2421 `active`, 703 `not_active` | accept 703 | RECONSTRUCTION (D-CA05) |
+| 1240 | `player_loaded Castle` | step 2399 `active` | bind 3062/48 | RECOVERED_SCRIPT |
+| 1241 | `player_loaded Castle` | step 2400 `active` | bind 3062/48 | RECOVERED_SCRIPT |
+| 1242 | `player_loaded Castle` | step 2401 `active` | **delay 10500 ms**: advance 2421, bind 3063/48 | RECONSTRUCTION (D-CA02 A) |
+| 1243 | `player_loaded Castle` | step 2421 `active` | bind 3063/48 | RECOVERED_SCRIPT |
+
+**The option-A escort compromise.** `Castle.py` implemented step 2401 by
+creating a second template-48 entity, hiding the static Copplemann with
+`setVisible(False)`, walking the clone 63 units down the hall and
+re-binding the topic from the arrival callback. None of those three
+primitives is usable: `set_visible` on an NPC is routed to the entity's
+own session and dropped (and undone by the AoI create packet's
+unconditional `onVisible(1)`), `move_waypoint` is an instant grid snap
+with no arrival event, and a per-player clone in a shared world would
+spawn one Copplemann per player, which decision D-CA15 forbids. Chain
+1235 substitutes a 10.5-second deferred action — 63.23 units at the
+6.0 u/s NPC speed — after which the step advances and the turn-in topic
+appears. Copplemann never moves. Chain 1242 re-arms the timer on login
+because the deferred queue is scrubbed on disconnect.
+
+Two other deliberate divergences from the Python, both labelled above:
+the turn-in binds row **3063** (the `INT_AStoryMissionTurnIn` "?" row)
+rather than reusing 3062's "!" row, and the `dialog_set.open 3062` node
+is re-authored as chain 1236 on `interact_tag` because the
+`dialog_set_open` trigger has no dispatch site in services and has never
+fired (D-CA04).
+
+**Known gaps at time of writing** (all tracked in
+[worknotes/m701.md](../analysis/castle-rebuild/worknotes/m701.md)):
+dialog-set row 3062 has a NULL `dialog_id` and is dropped by the loader,
+so every 3062 bind is a no-op until packet CA02 widens
+`DialogSetMapEntry.dialog_id`; chain 1205's dialog 5862 cannot render
+because no chain-fired `display_dialog` can resolve a non-monologue
+speaker; and dialog 2576's "Take Missions" button is present on only 3 of
+its 5 screens.
+
+**Tests**: `crates/services/src/cell/content/chain_replay_tests/mission_701/`
+(live-DB chain-replay, split `arrival.rs` / `body.rs` / `restore.rs`).
+
 ---
 
 #### Mission 702: "Rescue Dr. Zuritska" [CONFIRMED]
@@ -786,11 +850,11 @@ The Castle space script (`deprecated/python/cell/spaces/Castle.py`) handles all 
 | 2402 | 0 | "Make your way to the Interrogation Block." |
 | 2419 | 1 | "Zuritska is in one of the detention cells. Locate him and free him!" |
 
-**How it starts**: Accepted by Castle.py space script when mission 701 completes (dialog.choice::2576).
+**How it starts**: Accepted by Castle.py space script when mission 701 completes (dialog.choice::2576). In Cimmeria this is chain **1238** in `castle_701_chains.sql`; chain **1239** additionally accepts mission 703 "Payback" on the same choice, which is a reconstruction (decision D-CA05 — `Castle.py` never references 703, and without it "Payback" has no acquisition path).
 
 **No further script logic exists for mission 702.** The DB has step data but there is no Python code to advance, complete, or otherwise interact with this mission. It is accepted and then becomes a dead end.
 
-**Link to next**: **DEAD END**. No script handles step advancement or completion for mission 702.
+**Link to next**: **DEAD END** for now. Acceptance is wired (chain 1238) but no chain advances or completes 702; the body is campaign packet CA06 in [docs/analysis/castle-rebuild/work-packets.md](../analysis/castle-rebuild/work-packets.md).
 
 ---
 
