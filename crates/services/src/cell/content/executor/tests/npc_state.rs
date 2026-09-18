@@ -277,6 +277,7 @@ async fn set_follow_target_resolves_target_and_transitions_to_follow() {
             Action::SetFollowTarget {
                 entity_tag: "Pet".to_string(),
                 target_tag: Some("Owner".to_string()),
+                use_player: None,
             },
         )],
     };
@@ -317,6 +318,7 @@ async fn set_follow_target_none_clears_and_returns_to_idle() {
             Action::SetFollowTarget {
                 entity_tag: "Pet".to_string(),
                 target_tag: None,
+                use_player: None,
             },
         )],
     };
@@ -359,6 +361,7 @@ async fn set_follow_target_unresolvable_tag_clears_follow() {
             Action::SetFollowTarget {
                 entity_tag: "Pet".to_string(),
                 target_tag: Some("Nonexistent".to_string()),
+                use_player: None,
             },
         )],
     };
@@ -372,6 +375,104 @@ async fn set_follow_target_unresolvable_tag_clears_follow() {
         "Unresolvable target_tag must drop to Idle (treated as clear)",
     );
     assert_eq!(pet.follow_target_id, None);
+}
+
+/// `Action::SetFollowTarget { use_player: Some(true) }` resolves the
+/// follow target to the triggering player's own entity_id, NOT a
+/// `target_tag` lookup — this is the GC1b-0 addition that lets an NPC
+/// follow a player. Player entities carry no `tag` (tags only come
+/// from `spawnlist.tag` at NPC spawn), so before this change there was
+/// no way to point `follow_target_id` at a player at all.
+#[tokio::test]
+async fn set_follow_target_use_player_resolves_to_triggering_player() {
+    use cimmeria_entity::cell_entity::AiState;
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(101) {
+        npc.tag = Some("Marsh".to_string());
+    }
+    // Triggering player — has no tag, so a target_tag lookup could
+    // never have found it. `entity_id = 1` is what execute_actions
+    // passes as the chain's source entity.
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(42);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        action_delays: Vec::new(),
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            1074,
+            Action::SetFollowTarget {
+                entity_tag: "Marsh".to_string(),
+                target_tag: None,
+                use_player: Some(true),
+            },
+        )],
+    };
+
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let marsh = mgr.get_entity(101).unwrap();
+    assert_eq!(marsh.ai_state, AiState::Follow);
+    assert_eq!(
+        marsh.follow_target_id,
+        Some(1),
+        "use_player=true must resolve follow_target_id to the \
+         triggering entity_id (the player), not run a tag lookup"
+    );
+}
+
+/// `use_player: Some(true)` guards against resolving to a non-player
+/// triggering entity (e.g. an NPC-triggered cover-node chain, which
+/// passes `npc_entity_id` as the source with no player context — see
+/// `event_dispatch::cover`'s `execute_actions(resolved, npc_entity_id,
+/// 0, ...)` call). Without this guard a misconfigured chain could
+/// point a follow target at an arbitrary NPC.
+#[tokio::test]
+async fn set_follow_target_use_player_with_non_player_source_leaves_unresolved() {
+    use cimmeria_entity::cell_entity::AiState;
+    let mut mgr = make_space_mgr();
+    mgr.spawn_npc(101, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(101) {
+        npc.tag = Some("Marsh".to_string());
+        npc.ai_state = AiState::Follow;
+        npc.follow_target_id = Some(999);
+    }
+    // Non-player triggering entity (e.g. a cover-node NPC).
+    mgr.spawn_npc(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+
+    let (tx, _rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        action_delays: Vec::new(),
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            1074,
+            Action::SetFollowTarget {
+                entity_tag: "Marsh".to_string(),
+                target_tag: None,
+                use_player: Some(true),
+            },
+        )],
+    };
+
+    execute_actions(resolved, 1, 0, &tx, &mut mgr, &engine).await;
+
+    let marsh = mgr.get_entity(101).unwrap();
+    assert_eq!(
+        marsh.ai_state,
+        AiState::Idle,
+        "use_player=true with a non-player source must NOT resolve — \
+         follow state drops to Idle same as an unresolvable tag"
+    );
+    assert_eq!(marsh.follow_target_id, None);
 }
 
 /// `Action::SetNpcAiState { state: Despawning }` flips the state.

@@ -35,8 +35,17 @@ pub(super) async fn npc_ai_leash(
             None => return,
         };
 
-        // Snap back to spawn position
-        if let Some(spawn_pos) = npc.spawn_position {
+        // Snap back to spawn position -- but NOT for a follower. A
+        // fighting escort NPC (follow_target_id still set — Follow
+        // doesn't auto-clear on threat preemption, see
+        // `Action::SetFollowTarget` doc) that got yanked back to
+        // spawn_position here would be stranded: Follow doesn't
+        // auto-resume post-fight either, so nothing would walk it back
+        // to the player, and it would sit at spawn until a content
+        // chain re-fires SetFollowTarget. Leaving it at its
+        // leash-time position keeps it near the player it was
+        // escorting instead of teleporting it away (GC1b-0 hardening).
+        if let (None, Some(spawn_pos)) = (npc.follow_target_id, npc.spawn_position) {
             npc.position = spawn_pos;
         }
 

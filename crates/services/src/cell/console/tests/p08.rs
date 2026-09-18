@@ -124,6 +124,7 @@ fn record_from_request(
         wander_max_dwell_secs: 8.0,
         follow_min_distance: 2.0,
         follow_max_distance: 5.0,
+        move_speed: 0.6,
     }
 }
 

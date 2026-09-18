@@ -171,15 +171,21 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
             // target_key carries the NPC tag (the follower); the
             // optional `target_tag` param carries the entity to follow.
             // Missing/empty `target_tag` clears the follow state.
+            // `use_player` (same convention as `move_entity`) resolves
+            // the follow target to the chain's triggering entity
+            // instead of a tag lookup — the only way to follow a
+            // player, since player entities carry no tag.
             let entity_tag = row.target_key.as_deref()?.to_string();
             let target_tag = params
                 .get("target_tag")
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
                 .map(|s| s.to_string());
+            let use_player = params.get("use_player").and_then(|v| v.as_bool());
             Some(Action::SetFollowTarget {
                 entity_tag,
                 target_tag,
+                use_player,
             })
         }
         "set_npc_ai_state" => {

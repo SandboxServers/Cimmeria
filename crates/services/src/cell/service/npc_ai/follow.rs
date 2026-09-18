@@ -123,3 +123,76 @@ pub(super) async fn npc_ai_follow(
         "NPC AI: follow → pathfinding toward target"
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cimmeria_entity::cell_entity::AiState;
+
+    /// Non-instanced "Agnos" fixture with no navmesh loaded — matches
+    /// `SpaceManager::find_path`'s documented "no navmesh loaded ->
+    /// pathfinding returns `None`" branch. This is the same failure
+    /// shape as two disconnected navmesh components (the Castle
+    /// Cellblock Preparation-room / topside split the GC1 feasibility
+    /// pass found): `find_path` returning `None` either way.
+    fn make_space_mgr() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr
+    }
+
+    /// Pins the CURRENT silent-failure shape in the out-of-band
+    /// pathfind branch, flagged by the GC1b-0 feasibility pass as a
+    /// trap worth documenting (fixing it is out of scope here).
+    ///
+    /// `space_mgr.find_path(...).unwrap_or_default()` turns a `None`
+    /// (no navmesh loaded, or the navmesh has no route between two
+    /// disconnected components) into an empty `Vec` — not an error.
+    /// `path.len() > 1` is then false, so the code falls into the
+    /// `else` arm and pushes exactly one waypoint: `dest`, the raw
+    /// straight-line point short of the target. The NPC then walks
+    /// directly toward that point on the next movement tick with zero
+    /// awareness of walls or navmesh containment — a "cuts straight
+    /// through geometry" bug that produces no error, no log at
+    /// warn-or-above, and no visible signal beyond the NPC clipping
+    /// through a wall.
+    #[tokio::test]
+    async fn out_of_band_follow_with_no_navmesh_falls_back_to_straight_line_waypoint() {
+        let mut mgr = make_space_mgr();
+        mgr.spawn_npc(101, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.spawn_npc(102, "Agnos", [50.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(101) {
+            npc.ai_state = AiState::Follow;
+            npc.follow_target_id = Some(102);
+            // follow_min/max_distance default to 2.0/5.0 (construction.rs);
+            // the target is 50 units away, well outside the band, so the
+            // out-of-band pathfind branch runs.
+        }
+
+        let (tx, _rx) = mpsc::channel(8);
+        npc_ai_follow(101, &tx, &mut mgr).await;
+
+        let npc = mgr.get_entity(101).unwrap();
+        assert_eq!(
+            npc.nav_path.len(),
+            1,
+            "no navmesh loaded -> find_path returns None -> the fallback \
+             pushes exactly one waypoint (the raw destination), not a \
+             navmesh-routed multi-waypoint path"
+        );
+        // stop_distance = follow_min_distance.max(0.1) = 2.0; dest sits
+        // 2.0 short of the target along the straight line from npc to
+        // target: 50.0 - 2.0 = 48.0 on the x axis.
+        let dest = npc.nav_path.front().copied().expect("waypoint pushed");
+        assert!(
+            (dest.x - 48.0).abs() < 0.01 && dest.y.abs() < 0.01 && dest.z.abs() < 0.01,
+            "fallback waypoint must be the unrouted straight-line point, \
+             got {dest:?}"
+        );
+    }
+}

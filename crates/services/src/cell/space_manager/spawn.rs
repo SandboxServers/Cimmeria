@@ -160,6 +160,13 @@ impl SpaceManager {
         e.wander_max_dwell_secs = record.wander_max_dwell_secs;
         e.follow_min_distance = record.follow_min_distance;
         e.follow_max_distance = record.follow_max_distance;
+        // Per-template movement speed override. `CellEntity::new`
+        // already defaults `move_speed` to 0.6, and the spawner's SQL
+        // COALESCEs a NULL template column to the same 0.6 — this
+        // assignment is a no-op for every template except ones that
+        // opt into a faster (or slower) pace, e.g. escort NPCs that
+        // need to keep up with a following player (GC1b-0).
+        e.move_speed = record.move_speed;
 
         // Per-template ability bucket. Empty `ability_ids` (template has
         // no `ability_set_id`) falls back to `NPC_DEFAULT_ABILITY` so

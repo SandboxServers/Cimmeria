@@ -88,6 +88,16 @@ pub struct SpawnRecord {
     /// NPC walks toward the target whenever the distance exceeds
     /// this. Defaulted to `5.0` when NULL.
     pub follow_max_distance: f32,
+    /// Per-tick movement speed, in world units per 100ms tick.
+    /// Defaulted to `0.6` (the historical hardcoded value from
+    /// `CellEntity::new`) when the template's `move_speed` is NULL.
+    ///
+    /// `0.6` (6.0 units/sec) is 26% slower than World 12's player run
+    /// speed (8.125 units/sec) — too slow for a follower NPC to ever
+    /// close the follow-distance band against a moving player.
+    /// Templates that need to keep pace (escort/companion NPCs) set
+    /// this column explicitly; see `entity_templates.move_speed`.
+    pub move_speed: f32,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
@@ -135,6 +145,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                COALESCE(t.wander_max_dwell_secs, 8.0) AS wander_max_dwell_secs, \
                COALESCE(t.follow_min_distance, 2.0) AS follow_min_distance, \
                COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
+               COALESCE(t.move_speed, 0.6) AS move_speed, \
                COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -206,6 +217,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
             wander_max_dwell_secs: r.get::<f32, _>("wander_max_dwell_secs"),
             follow_min_distance: r.get::<f32, _>("follow_min_distance"),
             follow_max_distance: r.get::<f32, _>("follow_max_distance"),
+            move_speed: r.get::<f32, _>("move_speed"),
         })
         .collect();
 

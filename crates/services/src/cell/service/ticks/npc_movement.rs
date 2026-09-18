@@ -424,6 +424,129 @@ mod tests {
         );
     }
 
+    // ── GC1b-0 — `entity_templates.move_speed` DB wiring ─────────────────────
+    //
+    // The tests above pin the per-tick math from a raw `npc.move_speed`
+    // field write. This one closes the loop from the other end: a
+    // `SpawnRecord.move_speed` value (what `load_spawns_from_db` reads
+    // off `entity_templates.move_speed`, COALESCEd to the historical
+    // 0.6 default) must actually reach `CellEntity.move_speed` via
+    // `spawn_npc_from_record`, and a template that opts into a faster
+    // pace (e.g. an escort NPC, ~0.9/tick per the GC1b-0 feasibility
+    // pass) must move measurably farther per tick than the 0.6 default
+    // — not just carry a different number that nothing reads.
+
+    /// Build a minimal `SpawnRecord` for the movement-speed wiring test.
+    /// Field values mirror `spawner::tests::spawn_records::make_test_record`
+    /// (this module can't reach that private test helper across the
+    /// `spawner`/`service` module boundary, so it's duplicated narrowly).
+    fn make_spawn_record(move_speed: f32) -> crate::cell::spawner::SpawnRecord {
+        crate::cell::spawner::SpawnRecord {
+            spawn_id: 1,
+            world_name: "Castle".to_string(),
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            heading: 0.0,
+            tag: None,
+            template_id: 10,
+            template_name: "Test Escort".to_string(),
+            // Must be "mob" (class_id 0x04) -- `npc_movement_tick` sources
+            // its candidate set from `all_npc_entity_ids`, which filters on
+            // `class_id == 0x04` specifically (SGWMob), not merely
+            // `!is_player`. "being" (0x01) would silently exclude this
+            // fixture from the tick and both assertions would read 0.0.
+            class: "mob".to_string(),
+            static_mesh: None,
+            body_set: "GLB_Components.WorldObject_Small".to_string(),
+            components: None,
+            flags: 0,
+            interaction_type: 0,
+            event_set_id: None,
+            level: Some(1),
+            alignment: Some(0),
+            faction: Some(1),
+            name_id: None,
+            speaker_id: None,
+            static_interaction_sets: vec![],
+            has_dynamic_properties: true,
+            loot_table_id: None,
+            is_stationary: false,
+            ability_ids: vec![],
+            respawn_secs: None,
+            patrol_path: vec![],
+            patrol_point_delay_secs: 2.0,
+            wander_radius: 0.0,
+            wander_min_dwell_secs: 3.0,
+            wander_max_dwell_secs: 8.0,
+            follow_min_distance: 2.0,
+            follow_max_distance: 5.0,
+            move_speed,
+        }
+    }
+
+    /// A template `move_speed` of 0.9 (GC1b-0's suggested escort speed) must
+    /// move an NPC farther per tick than the 0.6 historical default — proving
+    /// the DB column actually changes effective NPC speed, not just that it
+    /// round-trips through `SpawnRecord`. 0.6 and 0.9 are chosen to match
+    /// `construction.rs`'s hardcoded default and Marsh's seeded template
+    /// value exactly, so the assertions are exact `f32` equality.
+    #[test]
+    fn spawn_record_move_speed_produces_proportionally_faster_movement() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+
+        let default_npc = mgr.allocate_npc_id();
+        mgr.spawn_npc_from_record(default_npc, &make_spawn_record(0.6))
+            .unwrap();
+        let escort_npc = mgr.allocate_npc_id();
+        mgr.spawn_npc_from_record(escort_npc, &make_spawn_record(0.9))
+            .unwrap();
+
+        assert_eq!(
+            mgr.get_entity(default_npc).unwrap().move_speed,
+            0.6,
+            "SpawnRecord.move_speed=0.6 must land on CellEntity.move_speed unchanged"
+        );
+        assert_eq!(
+            mgr.get_entity(escort_npc).unwrap().move_speed,
+            0.9,
+            "SpawnRecord.move_speed=0.9 must land on CellEntity.move_speed unchanged"
+        );
+
+        for npc_id in [default_npc, escort_npc] {
+            if let Some(e) = mgr.get_entity_mut(npc_id) {
+                e.nav_path
+                    .push_back(cimmeria_common::Vector3::new(100.0, 0.0, 0.0));
+            }
+        }
+
+        npc_movement_tick(&mut mgr);
+
+        let default_x = mgr.get_entity(default_npc).unwrap().position.x;
+        let escort_x = mgr.get_entity(escort_npc).unwrap().position.x;
+        assert_eq!(
+            default_x, 0.6,
+            "the 0.6 default must move exactly 0.6 units in one tick"
+        );
+        assert_eq!(
+            escort_x, 0.9,
+            "the 0.9 escort-speed template must move exactly 0.9 units in \
+             one tick -- 50% farther than the 0.6 default per tick"
+        );
+        assert!(
+            escort_x > default_x,
+            "a higher template move_speed must produce more per-tick \
+             movement than the default -- the DB column must actually \
+             change effective NPC speed"
+        );
+    }
+
     /// Guards `effective_move_speed`'s two defensive branches directly.
     ///
     /// The absent-stat fallback can't be reached through a real `StatList`:

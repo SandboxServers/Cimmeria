@@ -177,6 +177,7 @@ async fn load_spawn_record_for_template(
                 COALESCE(t.wander_max_dwell_secs, 8.0) AS wander_max_dwell_secs, \
                 COALESCE(t.follow_min_distance, 2.0) AS follow_min_distance, \
                 COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
+                COALESCE(t.move_speed, 0.6) AS move_speed, \
                 t.respawn_secs, \
                 COALESCE( \
                   (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -256,6 +257,7 @@ async fn load_spawn_record_for_template(
         wander_max_dwell_secs: row.try_get::<f32, _>("wander_max_dwell_secs")?,
         follow_min_distance: row.try_get::<f32, _>("follow_min_distance")?,
         follow_max_distance: row.try_get::<f32, _>("follow_max_distance")?,
+        move_speed: row.try_get::<f32, _>("move_speed")?,
     };
 
     Ok(Some(record))

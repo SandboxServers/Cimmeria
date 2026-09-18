@@ -308,8 +308,11 @@ async fn execute_one(
         Action::SetFollowTarget {
             entity_tag,
             target_tag,
+            use_player,
         } => {
-            world::set_follow_target(entity_tag, target_tag, entity_id, chain_id, space_mgr);
+            world::set_follow_target(
+                entity_tag, target_tag, use_player, entity_id, chain_id, space_mgr,
+            );
         }
         Action::SetNpcAiState { entity_tag, state } => {
             world::set_npc_ai_state(entity_tag, state, entity_id, chain_id, space_mgr);
