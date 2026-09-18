@@ -105,6 +105,13 @@ Every chain packet ships a chain-replay test (`crates/services/src/cell/content/
 **Scope:** widen the key to `(ability_set_id, ability_id)`, confirm the loader and chooser handle a multi-row set, then give sets 4 and 5 their full staff / ribbon-device lists (1482 Ground Blast, 1768 Double Blast alongside 594 Strike for set 4). **Exclude:** new ability design, per-template overrides.
 **Acceptance:** live-DB test that a set with three rows loads three abilities and the chooser can select each; existing single-row sets unchanged.
 
+### H50
+
+**Status:** Writing (opened 2026-09-18 from the H41 worker's finding H41-B1, branch `harset/H50`). **Scope title:** Persist per-objective mission state across relog. **Depends:** none (repo-wide defect, not Harset-specific). **Advisor:** mission-systems-advisor, database-persistence.
+**Entries:** [executor/mission.rs](../../../crates/services/src/cell/content/executor/mission.rs) lines ~84-85 (accept) and ~241-242 (`advance_step`) send `completed_objective_ids: []` and `active_objective_ids: [step_id]` (the STEP id in the OBJECTIVE array); ~172-173 (complete) sends both empty; ~273-291 `Action::CompleteObjective` sends only the `onObjectiveUpdate` wire frame and no `MissionUpdate`; [player_init/mod.rs](../../../crates/services/src/cell/service/base_messages/player_init/mod.rs) ~172-188 rebuilds `active_objectives` with `hidden: false, optional: false` hardcoded; `progression.rs` ~176-180 (`all_required_complete`).
+**Scope:** populate both objective arrays from `MissionInstance.active_objectives` / `completed_objectives` after every mutation; send a `MissionUpdate` from the `complete_objective` arm; carry `hidden` and `optional` through hydration so a restored optional objective no longer counts toward `all_required_complete` (live today for 1200's optional 5399); make `populate_mission_context` emit `mission_<id>_obj_<oid>_status` from the restored arrays. **Exclude:** a `HasItem` condition, counters persistence, `dialog_choice` branching on `button_id`.
+**Acceptance:** live-DB relog test: accept 742, complete objective 2913, simulate relog, and the `objective_status 742 2913 eq completed` chain resolves while 2914 does not; the same shape for Castle chain 1109 (`objective_status 688 2734`); a restored optional objective does not complete the mission; a `MissionUpdate` is emitted on `complete_objective`. Each test fails when reverted.
+
 ## Population And Regions (seed lanes)
 
 ### H10
@@ -333,6 +340,11 @@ Every chain packet ships a chain-replay test (`crates/services/src/cell/content/
 ### GH5
 
 **Status:** Closed here; tracked as Castle CA13 (U14). **Scope title:** NPC walks a route. Castle CA13 scopes the `MoveTo` AI state, `move_waypoint` walking instead of snapping, and the `OnNpcArrived` trigger (issue #616 is the visibility half). Harset adds nothing to the design; H37's 1372 Tail consumes CA13's children plus a Lethander route seeded from M0 pins. **Exclude:** player-follow (`set_follow_target use_player`, Cellblock GC1b-0).
+
+### Engine issues recorded by wave 2 (no packet yet)
+
+- `set_interaction_type` mutates the shared entity's flags and broadcasts to every witness, so mission-object glows (the 742 bug baskets) are global, not per player: two Goa'ulds on 742 clear each other's highlights. Per-witness interaction bits would be the fix; out of this campaign unless UAT shows it matters.
+- `dialog_choice` cannot branch on `button_id`: `event_dispatch/dialog.rs` ~90 populates the param but no loader arm exposes it, which is why 1200 accepts on arrival instead of on dialog 4019's Accept / More Info buttons.
 
 ### GH6
 
