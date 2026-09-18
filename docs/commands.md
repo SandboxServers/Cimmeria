@@ -568,6 +568,7 @@ restart, never written to the DB):**
 | Patrol authoring | `.path_add` `.path_show` `.path_clear` `.path_assign` `.path_unassign` `.path_set_seq` `.path_clear_seq` `.path_set_tp` `.path_clear_tp` `.path_set_tp_seq` `.path_set_tp_delay` | ✅ Yes — all except `.path_show` **write the DB** (commit seed) |
 | Server / maint | `.save` `.reloadmap` `.reloadres` `.removerespawner` `.loglevel` `.logclient` | ❌ Differs (see `.help`) |
 | Seed commit | `.seedconfirm` `.seedpending` `.seedcancel` | ✅ Yes |
+| Travel | `.gotoxyz` `.goto` `.summon` `.gotolocation` `.gotospace` | ✅ Yes — world names match case-insensitively; `.gotospace` takes a loaded space id so it needs no world name at all |
 
 A few commands (`.debug_controller`, the server/maint family, `.allcraft`) report
 an honest limitation in-game where the Rust server handles the concern

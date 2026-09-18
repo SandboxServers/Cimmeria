@@ -50,6 +50,9 @@ pub(super) async fn handle_base_message(
             world_name,
             position,
             rotation,
+            destination_space_id,
+            account_id,
+            player_id,
             reply_tx,
         } => {
             lifecycle::handle_create_entity(
@@ -57,6 +60,9 @@ pub(super) async fn handle_base_message(
                 world_name,
                 position,
                 rotation,
+                destination_space_id,
+                account_id,
+                player_id,
                 reply_tx,
                 tx,
                 space_mgr,
@@ -128,6 +134,7 @@ pub(super) async fn handle_base_message(
         BaseToCellMsg::InitPlayerState {
             entity_id,
             player_id,
+            account_id,
             world_name,
             archetype_id,
             saved_missions,
@@ -147,6 +154,16 @@ pub(super) async fn handle_base_message(
             // already exists (created by the prior `ConnectEntity`).
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.character_name = character_name;
+                // Re-assert the account half of the stable log-correlation
+                // identity. `CreateEntity` already stamped it; this is the
+                // belt-and-braces path for any create route that didn't, so a
+                // session can never reach in-world play with un-attributable
+                // logs. Only the account half needs re-asserting here:
+                // `handle_init_player_state` below already stamps
+                // `player_id` unconditionally, and `account_id` is the one
+                // field not threaded into its signature — which, like
+                // `character_name`, is at the argument-count lint ceiling.
+                entity.account_id = Some(account_id);
             } else {
                 // The entity should already exist (ConnectEntity precedes
                 // InitPlayerState). If it doesn't, the name cache silently
@@ -154,6 +171,8 @@ pub(super) async fn handle_base_message(
                 // `entity:<id>` — surface the ordering bug rather than hiding it.
                 tracing::warn!(
                     entity_id,
+                    account_id,
+                    player_id,
                     "InitPlayerState: entity absent when caching character_name -- \
                      ConnectEntity ordering bug; cell-side emits will fall back to entity id"
                 );

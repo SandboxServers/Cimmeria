@@ -387,7 +387,7 @@ mod tests {
         let cert_path = dir.path().join("cert.pem");
         let key_path = dir.path().join("key.pem");
         std::fs::write(&cert_path, certified.cert.pem()).unwrap();
-        std::fs::write(&key_path, certified.key_pair.serialize_pem()).unwrap();
+        std::fs::write(&key_path, certified.signing_key.serialize_pem()).unwrap();
         (cert_path, key_path)
     }
 
@@ -411,7 +411,7 @@ mod tests {
         // Overwrite the cert files with a fresh pair, then reload.
         let fresh = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
         std::fs::write(&cert_path, fresh.cert.pem()).unwrap();
-        std::fs::write(&key_path, fresh.key_pair.serialize_pem()).unwrap();
+        std::fs::write(&key_path, fresh.signing_key.serialize_pem()).unwrap();
         store.reload().expect("reload succeeds");
 
         let after = Arc::as_ptr(&store.current());

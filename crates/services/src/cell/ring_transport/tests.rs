@@ -4,6 +4,7 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_common::Vector3;
 use cimmeria_content_engine::chain::ChainEngine;
 
 use super::dispatch::dispatch_effects;
@@ -74,6 +75,10 @@ async fn full_ring_cycle_dispatches_expected_messages() {
     mgr.connect_entity(42);
     if let Some(p) = mgr.get_entity_mut(42) {
         p.player_id = Some(700);
+        // Non-zero, non-uniform so a reintroduced `update_entity_position(…,
+        // [0, 0, 0], …)` bug (which snaps facing to north) can't accidentally
+        // match — see the facing assertion at the end of this test.
+        p.direction = Vector3::new(0.0, 137.0, 0.0);
     }
 
     let (tx, mut rx) = mpsc::channel(64);
@@ -232,6 +237,15 @@ async fn full_ring_cycle_dispatches_expected_messages() {
         final_state_field & BSF_MOVEMENT_LOCK,
         0,
         "BSF_MovementLock not cleared at cooldown"
+    );
+
+    // `same_world_teleport` must move the entity without re-facing it —
+    // it goes through `update_position_preserving_facing`, not the raw
+    // `update_entity_position`, which would have zeroed this to [0,0,0].
+    assert_eq!(
+        mgr.get_entity(42).unwrap().direction,
+        Vector3::new(0.0, 137.0, 0.0),
+        "ring transport must not reset the player's facing"
     );
 }
 

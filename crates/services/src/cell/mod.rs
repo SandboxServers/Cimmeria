@@ -22,6 +22,12 @@ pub mod missions;
 pub mod ring_transport;
 mod service;
 pub mod space_manager;
+// Crate-internal: `transfer_player_to_space` is a destructive, unauthenticated
+// entry point (privilege is enforced by the console dispatch layer above it),
+// so it must not be reachable from outside this crate. Its production callers
+// are the `.goto`/`.summon`/`.gotolocation` console commands in
+// `cell::console::travel` (P46).
+pub(crate) mod space_transfer;
 pub mod spawner;
 
 use cimmeria_common::{EntityId, SpaceId};

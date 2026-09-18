@@ -112,7 +112,7 @@ pub(crate) async fn handle_on_client_ready(
     // same lock so the welcome-message send below doesn't need a second
     // round-trip. `player_name` is set during `playCharacter` and stays
     // for the session, so reading it here is safe.
-    let (pending, player_name, access_level) = {
+    let (pending, player_name, access_level, account_id) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let entry = clients.get_mut(&addr);
         match entry {
@@ -125,8 +125,12 @@ pub(crate) async fn handle_on_client_ready(
                 c.pending_client_ready.take(),
                 c.player_name.clone(),
                 c.access_level,
+                c.account_id,
             ),
-            None => (None, None, 0),
+            // No session for this addr: `pending` is `None` so we bail below
+            // before `account_id` is ever read. The 0 is unreachable filler,
+            // not a sentinel any log will carry.
+            None => (None, None, 0, 0),
         }
     };
 
@@ -140,6 +144,7 @@ pub(crate) async fn handle_on_client_ready(
     tracing::info!(
         %addr,
         entity_id,
+        account_id,
         player_id = pending.player_id,
         world = %pending.world_name,
         "SGWPlayer.onClientReady received -- finalizing world entry"
@@ -273,6 +278,8 @@ pub(crate) async fn handle_on_client_ready(
             // recovery requires the player to log out and back in.
             tracing::error!(
                 entity_id,
+                account_id,
+                player_id = pending.player_id,
                 "ConnectEntity: base→cell send failed -- cell will not see this player, all AoI traffic will drop: {e}"
             );
         }
@@ -281,6 +288,7 @@ pub(crate) async fn handle_on_client_ready(
             .send(BaseToCellMsg::InitPlayerState {
                 entity_id,
                 player_id: pending.player_id,
+                account_id,
                 world_name: pending.world_name.clone(),
                 archetype_id,
                 saved_missions,
@@ -300,6 +308,7 @@ pub(crate) async fn handle_on_client_ready(
             // will appear loaded but quests / hotbar will be empty.
             tracing::error!(
                 entity_id,
+                account_id,
                 player_id = pending.player_id,
                 world_name = %pending.world_name,
                 "InitPlayerState: base→cell send failed -- player loaded with empty mission/ability state: {e}"

@@ -32,6 +32,7 @@
 - [reference_gm_command_wire_spec.md](reference_gm_command_wire_spec.md) — Authoritative wire shapes for ~125 SGW GM commands; SGWGmPlayer.def + Ghidra Event_NetOut_* anchors
 - [reference_world_space_gate_wire_spec.md](reference_world_space_gate_wire_spec.md) — CAT-O wire shapes + Ghidra anchors + server-side authority sources for gate/ring/region/movie/system-options
 - [reference_cell_method_entity_id_authority.md](reference_cell_method_entity_id_authority.md) — Cell-method entity_id is overwritten with session player_eid in cell_arms.rs
+- [exploit_movement_bypass_nan_poisoning.md](exploit_movement_bypass_nan_poisoning.md) — found and fixed in the onPhysics bypass (2026-09-17): a bypass branch that skips the finite-coordinate gate lets NaN in last_valid permanently disable teleport-detection for that entity; general pattern for reviewing any future movement-validator bypass
 
 ## Recurring exploit classes (rule-of-thumb anchors)
 
@@ -40,6 +41,8 @@
 - [reference_combat_exploit_classes.md](reference_combat_exploit_classes.md) — Recurring combat/abilities exploit classes — caller-state gating, target id existence/AoI, faction/LOS, stub-implementation debt
 - [reference_dialog_choice_exploit_shape.md](reference_dialog_choice_exploit_shape.md) — DIALOG_BUTTON_CHOICE has no open-dialog tracking; OnDialogChoice chains are replay-forgeable
 - [reference_gm_auth_plumbing_gap.md](reference_gm_auth_plumbing_gap.md) — Systemic gap: cell-method dispatch has no access_level; every future gm* handler is unauthenticated by default
+- [exploit_entity_id_recycling.md](exploit_entity_id_recycling.md) — Entity ids come off a free list; deferred teardown keyed on a bare entity_id can destroy a different live player
+- [reference_cell_teardown_skips_session_state.md](reference_cell_teardown_skips_session_state.md) — `destroy_entity` skips trade cleanup; only the two lifecycle arms do it, so every other teardown strands the counterparty
 
 ## Per-PR review findings
 

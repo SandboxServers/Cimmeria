@@ -4,46 +4,32 @@
 //! entities are tracked in `SpaceInstance::players`; their disconnection
 //! triggers AoI cleanup via the BaseService channel.
 
-use std::time::Instant;
-
 use cimmeria_common::{EntityId, SpaceId, Vector3};
-use cimmeria_entity::cell_entity::CellEntity;
-use cimmeria_entity::movement_validation::{MovementReject, MovementValidator, SpaceBounds};
+use cimmeria_entity::cell_entity::{CellEntity, PlayerIdentity};
 
 use super::super::messages::CellToBaseMsg;
 use super::SpaceManager;
 
-/// Outcome of `SpaceManager::apply_client_position_update`.
+/// Outcome of [`SpaceManager::despawn_npc`].
 ///
-/// `Accepted` means the cell entity's position has been advanced; the
-/// caller does not need to do anything else. `Rejected` means the
-/// validator refused the proposed position and the cell entity is
-/// unchanged — the caller must emit `CellToBaseMsg::TeleportPlayer` so
-/// the offending client snaps back to `last_valid`. `EntityMissing` is
-/// the cell-side equivalent of "address not found" — log and drop.
-#[derive(Debug)]
-pub enum ClientMoveOutcome {
-    /// Position passed validation and was written. Carries the new
-    /// position so callers that want to log it can do so without
-    /// re-querying the entity.
-    Accepted { position: [f32; 3] },
-    /// Position failed validation. Carries the last-valid position and
-    /// the space id needed to compose the `BASEMSG_FORCED_POSITION`
-    /// snap-back message.
-    Rejected {
-        reason: MovementReject,
-        last_valid: [f32; 3],
-        space_id: u32,
-        /// The bounds the proposed position was tested against. Carried
-        /// out so the caller's structured log can include `bounds_min`
-        /// and `bounds_max` per the negative-logging convention.
-        bounds: SpaceBounds,
-    },
-    /// The entity is not currently in any space — likely a stale
-    /// inbound packet that arrived after destroy / disconnect. The
-    /// caller can safely no-op; the original `update_entity_position`
-    /// silently dropped the same shape.
-    EntityMissing,
+/// Every variant is a *real* outcome the caller must report to the GM
+/// verbatim — an "accepted" despawn request is not the same as a completed
+/// one, and the dot-console `.despawn` handler is required to propagate the
+/// difference (see `docs/analysis/legacy-command-parity/README.md`'s
+/// Architecture Guardrails).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use = "a despawn outcome must be reported to the calling GM, not discarded"]
+pub enum DespawnOutcome {
+    /// The entity was removed from its space. `witnesses_notified` is the
+    /// number of observing players that were sent `LeftAoI` for it.
+    Despawned { witnesses_notified: usize },
+    /// No such entity in any loaded space (already despawned, or never here).
+    NotFound,
+    /// The entity is a player. `despawn_npc` is an NPC/spawnable-only
+    /// primitive and refuses players structurally — destroying a connected
+    /// player's cell entity out from under its session would strand the
+    /// client with no avatar and no disconnect handshake.
+    RefusedPlayer,
 }
 
 impl SpaceManager {
@@ -56,7 +42,41 @@ impl SpaceManager {
         rotation: [f32; 3],
     ) -> Result<u32, String> {
         let space_id = self.find_or_create_space(world_name)?;
+        self.insert_entity_into_space(entity_id, space_id, position, rotation)
+    }
 
+    /// Create a cell entity in one *specific, already-loaded* space instance.
+    ///
+    /// This is the cross-instance transfer entry point (GM `.goto <player>`):
+    /// [`Self::create_entity`] resolves by world name, and for an instanced
+    /// world `find_or_create_space` always allocates a BRAND NEW space — so
+    /// it can never be used to join somebody else's existing instance.
+    ///
+    /// Fails if `space_id` isn't loaded; the caller decides whether to fall
+    /// back to by-world-name resolution (it should — an entity in no space at
+    /// all is worse than an entity in the wrong instance of the right world).
+    pub fn create_entity_in_space(
+        &mut self,
+        entity_id: u32,
+        space_id: u32,
+        position: [f32; 3],
+        rotation: [f32; 3],
+    ) -> Result<u32, String> {
+        if !self.spaces.contains_key(&space_id) {
+            return Err(format!("Space {space_id} is not loaded"));
+        }
+        self.insert_entity_into_space(entity_id, space_id, position, rotation)
+    }
+
+    /// Shared tail of the create paths: build the `CellEntity`, index it in
+    /// the space's spatial grid and entity map, and bind `entity_space`.
+    fn insert_entity_into_space(
+        &mut self,
+        entity_id: u32,
+        space_id: u32,
+        position: [f32; 3],
+        rotation: [f32; 3],
+    ) -> Result<u32, String> {
         let pos = Vector3::new(position[0], position[1], position[2]);
         let dir = Vector3::new(rotation[0], rotation[1], rotation[2]);
 
@@ -73,6 +93,12 @@ impl SpaceManager {
         space.entities.insert(entity_id, cell_entity);
         self.entity_space.insert(entity_id, space_id);
 
+        // No identity fields here by design: the `CellEntity` was constructed
+        // one statement ago and is not stamped until the caller
+        // (`base_messages::lifecycle::handle_create_entity`) applies the
+        // identity from `BaseToCellMsg::CreateEntity`. That handler emits the
+        // identity-bearing "CreateEntity" line for this same event — this one
+        // is the spatial-grid insert, keyed by entity/space only.
         tracing::debug!(entity_id, space_id, ?position, "Cell entity created");
         Ok(space_id)
     }
@@ -82,6 +108,11 @@ impl SpaceManager {
     /// If the entity was in an instanced space and was the last player, the
     /// entire space instance is destroyed (all remaining NPCs removed).
     pub fn destroy_entity(&mut self, entity_id: u32) {
+        // Snapshot the identity while the entity still exists — it is removed
+        // from its space below, and this is the last chance to attribute the
+        // teardown to an account. `entity_id` alone is not enough here of all
+        // places: the id is released for reuse the moment this returns.
+        let id = self.player_identity(entity_id);
         // GM-only session buffers are keyed by entity_id; drop them so a
         // destroyed (and possibly later reused) id can't inherit stale pending
         // authoring SQL or the autosave-spawn flag.
@@ -114,7 +145,132 @@ impl SpaceManager {
         // Release the entity's movement-validator clock so it can't leak
         // or carry a stale speed sample across `entity_id` reuse.
         self.movement_validator.forget(entity_id);
-        tracing::debug!(entity_id, "Cell entity destroyed");
+        tracing::debug!(
+            entity_id,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            "Cell entity destroyed"
+        );
+    }
+
+    /// Despawn a **non-player** entity: tell every player currently
+    /// witnessing it that it left, scrub it out of every witness set, then
+    /// destroy it.
+    ///
+    /// This is the runtime half of the legacy `Resource.despawnEntity`
+    /// (`Atrea.destroyCellEntity(target.entityId)`) — purely ephemeral, it
+    /// never touches `resources.spawnlist`. Deleting the persistent row is a
+    /// separate operation (`.delspawn`).
+    ///
+    /// # Why this is not just `destroy_entity`
+    ///
+    /// [`Self::destroy_entity`] removes the entity from `space.entities` and
+    /// the spatial grid but leaves it sitting in every observer's
+    /// `witnesses` set. The next AoI tick *would* eventually notice and emit
+    /// `LeftAoI`, but only for players the tick happens to visit, only after
+    /// up to a full tick of the client still rendering a corpse-less ghost,
+    /// and only while the observer is still in the space. Fanning the
+    /// `LeftAoI` out here — the same shape [`Self::disconnect_entity`] uses
+    /// for a leaving player — makes the removal immediate and makes the
+    /// *count* of notified observers an assertable result rather than a
+    /// timing accident. Because the witness sets are scrubbed in the same
+    /// pass, the following AoI tick does not emit a duplicate `LeftAoI`.
+    ///
+    /// # NPC-only
+    ///
+    /// A player target is refused with [`DespawnOutcome::RefusedPlayer`] and
+    /// nothing is mutated. The check lives here, in the primitive, rather
+    /// than only in the console command's registry `Target` — the legacy
+    /// registration used `SGWSpawnableEntity`, and `SGWPlayer` derives from
+    /// it (`SGWPlayer(SGWBeing(SGWSpawnableEntity))` in
+    /// `deprecated/python/cell/`), so the legacy command would happily
+    /// destroy a logged-in player's cell entity. Correcting that is D02
+    /// ("correct legacy bugs rather than reproducing them"), and a guard that
+    /// only exists in the command table would be one registry edit away from
+    /// regressing.
+    pub async fn despawn_npc(
+        &mut self,
+        entity_id: u32,
+        tx: &tokio::sync::mpsc::Sender<CellToBaseMsg>,
+    ) -> DespawnOutcome {
+        let Some(&space_id) = self.entity_space.get(&entity_id) else {
+            return DespawnOutcome::NotFound;
+        };
+        let Some(space) = self.spaces.get(&space_id) else {
+            return DespawnOutcome::NotFound;
+        };
+        let Some(entity) = space.entities.get(&entity_id) else {
+            return DespawnOutcome::NotFound;
+        };
+
+        // Two independent player signals, both checked: `is_player` is the
+        // flag every other call site discriminates on, and `space.players`
+        // is the client-controller registry the AoI tick iterates. They are
+        // set together by `connect_entity`, but reading both means a future
+        // change that forgets one still cannot route a player in here.
+        if entity.is_player || space.players.contains(&entity_id) {
+            tracing::warn!(
+                target: "console.despawn",
+                entity_id,
+                space_id,
+                is_player = entity.is_player,
+                in_players_set = space.players.contains(&entity_id),
+                "despawn refused: target is a player — despawn_npc is NPC/spawnable-only"
+            );
+            return DespawnOutcome::RefusedPlayer;
+        }
+
+        // Observers = players in this space (other than the target) whose
+        // witness set contains it. NPCs never receive LeftAoI, so scanning
+        // `space.players` keeps this O(P) rather than O(E) — same rationale
+        // as `disconnect_entity`.
+        let target = EntityId(entity_id as i32);
+        let observers: Vec<u32> = space
+            .players
+            .iter()
+            .copied()
+            .filter(|other_id| {
+                *other_id != entity_id
+                    && space
+                        .entities
+                        .get(other_id)
+                        .is_some_and(|other| other.witnesses.contains(&target))
+            })
+            .collect();
+
+        let mut witnesses_notified = 0usize;
+        for witness_id in observers {
+            match tx
+                .send(CellToBaseMsg::LeftAoI {
+                    witness_id,
+                    entity_id,
+                })
+                .await
+            {
+                Ok(()) => witnesses_notified += 1,
+                Err(e) => {
+                    // Report what actually reached a witness, not what we
+                    // intended to send — the caller turns this count into GM
+                    // feedback.
+                    tracing::warn!(
+                        target: "console.despawn",
+                        witness_id, entity_id, error = %e,
+                        "LeftAoI send to base failed during despawn"
+                    );
+                }
+            }
+        }
+
+        // Scrub the dead id out of every witness set (players and NPCs
+        // alike) so the next AoI tick has nothing left to diff.
+        if let Some(space) = self.spaces.get_mut(&space_id) {
+            for other in space.entities.values_mut() {
+                other.witnesses.remove(&target);
+            }
+        }
+
+        self.destroy_entity(entity_id);
+        DespawnOutcome::Despawned { witnesses_notified }
     }
 
     /// Mark an entity as having a client controller (player).
@@ -122,11 +278,23 @@ impl SpaceManager {
         if let Some(&space_id) = self.entity_space.get(&entity_id) {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.insert(entity_id);
-                if let Some(entity) = space.entities.get_mut(&entity_id) {
-                    entity.is_player = true;
-                    entity.class_id = 0x02; // SGWPlayer
-                }
-                tracing::debug!(entity_id, space_id, "Entity connected (player)");
+                // Identity read from the entity we already have borrowed, so
+                // the log below needs no second lookup.
+                let id = match space.entities.get_mut(&entity_id) {
+                    Some(entity) => {
+                        entity.is_player = true;
+                        entity.class_id = 0x02; // SGWPlayer
+                        entity.identity()
+                    }
+                    None => PlayerIdentity::UNKNOWN,
+                };
+                tracing::debug!(
+                    entity_id,
+                    account_id = id.account_id,
+                    player_id = id.player_id,
+                    space_id,
+                    "Entity connected (player)"
+                );
             }
         }
     }
@@ -137,6 +305,9 @@ impl SpaceManager {
         entity_id: u32,
         tx: &tokio::sync::mpsc::Sender<CellToBaseMsg>,
     ) {
+        // Snapshot identity up front: `destroy_entity` below removes the
+        // entity, so the closing log can no longer resolve it.
+        let id = self.player_identity(entity_id);
         // Drop GM-only session buffers (keyed by entity_id) on disconnect so
         // pending authoring SQL / the autosave-spawn flag don't outlive the
         // session. Same rationale as `destroy_entity`.
@@ -174,7 +345,10 @@ impl SpaceManager {
                         .await
                     {
                         tracing::warn!(
-                            witness_id, entity_id, error = %e,
+                            witness_id, entity_id,
+                            account_id = id.account_id,
+                            player_id = id.player_id,
+                            error = %e,
                             "LeftAoI send to base failed during disconnect"
                         );
                     }
@@ -189,190 +363,63 @@ impl SpaceManager {
 
         // Then destroy the cell entity
         self.destroy_entity(entity_id);
-        tracing::debug!(entity_id, "Entity disconnected and destroyed");
-    }
-
-    /// Apply a client-authoritative position update through the
-    /// movement validator.
-    ///
-    /// This is the **only** seam that should be called from the inbound
-    /// `BaseToCellMsg::EntityMove` handler — every other position
-    /// mutation in the cell is server-authoritative (ring transport,
-    /// respawn, content-engine teleport, NPC movement) and goes through
-    /// the unchecked [`Self::update_entity_position`] directly.
-    ///
-    /// On accept, the call is equivalent to `update_entity_position`.
-    /// On reject, the cell entity is left untouched so the next AoI
-    /// tick rebroadcasts the last-valid position to witnesses; the
-    /// caller emits `CellToBaseMsg::TeleportPlayer` so the offending
-    /// client receives `BASEMSG_FORCED_POSITION` and snaps its own
-    /// avatar back to the last-valid position.
-    ///
-    /// All four validation layers run here, in cheapest-first order:
-    /// bounds (catches NaN / infinity / absurd coordinates and the
-    /// Z-floor-clip), navmesh containment (off-walkable-polygon), then
-    /// the stateful speed/teleport kinematics. Bounds and navmesh both
-    /// hard-reject; speed is warn-only (logged + counted, still
-    /// accepted); teleport hard-rejects. The `spaceId` cross-check
-    /// lives in the `EntityMove` handler, where the client-claimed space
-    /// id is in hand.
-    ///
-    /// Production callers use this 4-arg form (server `Instant::now()`);
-    /// the time-injected [`Self::apply_client_position_update_at`] backs
-    /// it so the speed/teleport layer is deterministic under test.
-    pub fn apply_client_position_update(
-        &mut self,
-        entity_id: u32,
-        position: [f32; 3],
-        direction: [i8; 3],
-        velocity: [f32; 3],
-    ) -> ClientMoveOutcome {
-        self.apply_client_position_update_at(
-            Instant::now(),
+        tracing::debug!(
             entity_id,
-            position,
-            direction,
-            velocity,
-        )
-    }
-
-    /// Time-injected core of [`Self::apply_client_position_update`]. `now`
-    /// is the server's monotonic processing time, threaded in so unit
-    /// tests can drive the speed/teleport layer with controlled deltas.
-    pub fn apply_client_position_update_at(
-        &mut self,
-        now: Instant,
-        entity_id: u32,
-        position: [f32; 3],
-        direction: [i8; 3],
-        velocity: [f32; 3],
-    ) -> ClientMoveOutcome {
-        let space_id = match self.entity_space.get(&entity_id) {
-            Some(&id) => id,
-            None => return ClientMoveOutcome::EntityMissing,
-        };
-
-        // Source bounds from the active space's navmesh if present; fall
-        // back to the generous default for spaces without a loaded
-        // navmesh (most non-Castle zones today). The fallback is wider
-        // than any legitimate world by an order of magnitude — see
-        // `SpaceBounds::FALLBACK`.
-        let (bounds, last_valid) = {
-            let space = match self.spaces.get(&space_id) {
-                Some(s) => s,
-                None => return ClientMoveOutcome::EntityMissing,
-            };
-            let bounds = match &space.navmesh {
-                Some(nav) => SpaceBounds::new(nav.bmin, nav.bmax),
-                None => SpaceBounds::FALLBACK,
-            };
-            let last_valid = match space.entities.get(&entity_id) {
-                Some(e) => [e.position.x, e.position.y, e.position.z],
-                None => return ClientMoveOutcome::EntityMissing,
-            };
-            (bounds, last_valid)
-        };
-
-        let proposed = Vector3::new(position[0], position[1], position[2]);
-
-        // Advance the per-entity processing clock up front and recover the
-        // previous sample, *before* any layer can short-circuit. This is
-        // what stops an attacker from spamming cheaply-rejected
-        // (out-of-bounds / off-navmesh) packets to inflate `dt`, then
-        // slipping one large jump past the teleport gate at an
-        // artificially low implied speed. Every processed packet advances
-        // the clock by exactly one tick regardless of which layer rejects.
-        let prev_sample = self.movement_validator.touch_clock(entity_id, now);
-
-        // Layer 1 — bounds (also the Z-axis floor-clip / NaN / infinity gate).
-        if let Err(reason) = self.movement_validator.check_bounds(proposed, &bounds) {
-            return ClientMoveOutcome::Rejected {
-                reason,
-                last_valid,
-                space_id,
-                bounds,
-            };
-        }
-
-        // Layer 4 — navmesh containment. `is_position_valid` fails open
-        // for spaces with no loaded navmesh, so this is a no-op there and
-        // the bounds AABB remains the only spatial gate. Checked before
-        // kinematics so an off-mesh point is reported as `OffNavmesh`
-        // regardless of how far it is from the last position.
-        if !self.is_position_valid(entity_id, &proposed) {
-            return ClientMoveOutcome::Rejected {
-                reason: MovementReject::OffNavmesh,
-                last_valid,
-                space_id,
-                bounds,
-            };
-        }
-
-        // Layers 2+3 — speed (warn-only) + teleport (hard reject). Measured
-        // against the entity's current authoritative position.
-        let last_pos = Vector3::new(last_valid[0], last_valid[1], last_valid[2]);
-        let kin = self.movement_validator.check_kinematics(
-            now,
-            prev_sample,
-            last_pos,
-            proposed,
-            MovementValidator::DEFAULT_TOP_SPEED,
+            account_id = id.account_id,
+            player_id = id.player_id,
+            "Entity disconnected and destroyed"
         );
-        if let Some(reason) = kin.reject {
-            return ClientMoveOutcome::Rejected {
-                reason,
-                last_valid,
-                space_id,
-                bounds,
-            };
-        }
-        if let Some(sample) = kin.speed_warn {
-            // Warn-only: the move is accepted. Surface the full
-            // (distance, dt, implied_speed) triple so the SigNoz
-            // tolerance-calibration pipeline can compute the legitimate
-            // p99.9 before the speed layer is ever promoted to snap-back.
-            tracing::warn!(
-                target: "movement.validation",
-                entity_id,
-                space_id,
-                client_x = position[0],
-                client_y = position[1],
-                client_z = position[2],
-                distance = sample.distance,
-                dt_secs = sample.dt_secs,
-                implied_speed = sample.implied_speed,
-                top_speed = sample.top_speed,
-                ratio = sample.implied_speed / sample.top_speed,
-                reason = "speed",
-                "movement.speed_warning: client move exceeded speed tolerance \
-                 (warn-only — accepted; calibrate before enforcing)"
-            );
-            cimmeria_observability::counter!(
-                "movement_validation_warns_total",
-                "reason" => "speed",
-            );
-        }
-
-        self.update_entity_position(entity_id, position, direction, velocity);
-        ClientMoveOutcome::Accepted { position }
-    }
-
-    /// Reseed an entity's movement-validator clock after a server-
-    /// authoritative position write (ring transport, respawn, gate
-    /// arrival, content-engine teleport, GM travel). Suppresses a
-    /// spurious speed warn on the first post-teleport client packet; see
-    /// [`MovementValidator::note_authorized_teleport`].
-    pub fn note_authorized_teleport(&mut self, entity_id: u32) {
-        self.movement_validator
-            .note_authorized_teleport(entity_id, Instant::now());
     }
 
     /// Update an entity's position from a client movement packet.
+    ///
+    /// `direction` is written **unconditionally**. A caller that is moving an
+    /// entity without also re-facing it — every server-authoritative teleport
+    /// — wants [`Self::update_position_preserving_facing`] instead; passing
+    /// `[0, 0, 0]` here silently snaps the entity's facing to north.
     pub fn update_entity_position(
         &mut self,
         entity_id: u32,
         position: [f32; 3],
         direction: [i8; 3],
+        velocity: [f32; 3],
+    ) {
+        let facing = Vector3::new(
+            direction[0] as f32,
+            direction[1] as f32,
+            direction[2] as f32,
+        );
+        self.write_position(entity_id, position, Some(facing), velocity);
+    }
+
+    /// Move an entity without touching its facing — the position-only write
+    /// every server-authoritative teleport needs (GM travel, snap-back
+    /// recovery, console placement).
+    ///
+    /// [`Self::update_entity_position`] takes a `[i8; 3]` direction and writes
+    /// it unconditionally, so a teleport that has no new facing to supply had
+    /// to pass `[0, 0, 0]` and then hand-restore the captured `direction`
+    /// afterwards. That workaround was duplicated across every GM travel call
+    /// site and simply missing from the native `gm*` handlers, which zeroed
+    /// facing on every teleport. This preserves facing **by construction**:
+    /// `direction` is never written, so there is nothing to forget to restore.
+    pub fn update_position_preserving_facing(
+        &mut self,
+        entity_id: u32,
+        position: [f32; 3],
+        velocity: [f32; 3],
+    ) {
+        self.write_position(entity_id, position, None, velocity);
+    }
+
+    /// Shared tail of the two position writers: move the entity in
+    /// `space.entities` and keep the AoI spatial grid's index in sync.
+    /// `direction: None` leaves the entity's facing untouched.
+    fn write_position(
+        &mut self,
+        entity_id: u32,
+        position: [f32; 3],
+        direction: Option<Vector3>,
         velocity: [f32; 3],
     ) {
         let space_id = match self.entity_space.get(&entity_id) {
@@ -390,11 +437,9 @@ impl SpaceManager {
             let new_pos = Vector3::new(position[0], position[1], position[2]);
 
             cell_entity.position = new_pos;
-            cell_entity.direction = Vector3::new(
-                direction[0] as f32,
-                direction[1] as f32,
-                direction[2] as f32,
-            );
+            if let Some(facing) = direction {
+                cell_entity.direction = facing;
+            }
             cell_entity.velocity = velocity;
 
             // Update the spatial grid

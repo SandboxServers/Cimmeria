@@ -9,11 +9,32 @@ pub enum BaseToCellMsg {
     /// Create a cell entity in the named world at the given position/rotation.
     /// The `reply_tx` oneshot returns the resolved `space_id` so the caller
     /// can `.await` it before building the world-entry wire packet.
+    ///
+    /// `destination_space_id` requests an *exact* already-loaded instance
+    /// (carried through from `CellToBaseMsg::GateTravel`). It is re-validated
+    /// on arrival — a stale/foreign id degrades to the by-world-name
+    /// resolution rather than failing the create, because leaving the entity
+    /// in no space at all is the worse outcome.
     CreateEntity {
         entity_id: u32,
         world_name: String,
         position: [f32; 3],
         rotation: [f32; 3],
+        destination_space_id: Option<u32>,
+        /// Owning account for a player entity, from the base session's
+        /// `ConnectedClientState::account_id`. Carried here (rather than
+        /// waiting for `InitPlayerState`) so the cell entity is identity-
+        /// stamped from birth: every cell log for this session — including
+        /// the pre-`onClientReady` window and the fresh entity a gate-travel
+        /// creates in the destination world — can name the account. `None`
+        /// for server-spawned entities that have no account (NPCs).
+        account_id: Option<u32>,
+        /// The `sgw_player.player_id` being played, from
+        /// `ConnectedClientState::active_player_id`. Same rationale as
+        /// `account_id`: `InitPlayerState` re-asserts it, but that arrives
+        /// only after `onClientReady`, which is too late for the world-entry
+        /// movement and lifecycle logs. `None` for NPCs.
+        player_id: Option<i32>,
         reply_tx: tokio::sync::oneshot::Sender<u32>,
     },
 
@@ -69,6 +90,14 @@ pub enum BaseToCellMsg {
     InitPlayerState {
         entity_id: u32,
         player_id: i32,
+        /// Owning `account.account_id` for the session. Re-asserted here
+        /// (it is also sent on `CreateEntity`) so a cell entity that somehow
+        /// reached `InitPlayerState` without the create-time stamp — a
+        /// future create path that forgets it, or a re-init on an existing
+        /// entity — still ends up identity-stamped. Paired with `player_id`
+        /// it is the stable log correlator per
+        /// `docs/architecture/instrumentation-discipline.md` §Rule 5.
+        account_id: u32,
         world_name: String,
         /// Player archetype id from `sgw_player.archetype`. Drives any
         /// archetype-keyed lookups on the cell side — currently the

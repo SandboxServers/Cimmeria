@@ -21,4 +21,19 @@ Then `cd` into the worktree for all bash/cargo commands. The worktree has indepe
 
 **Symptom of a forgotten `external/` junction:** the build dies in `cc-rs` while building `cimmeria-entity`, with nothing in the error mentioning `external/` — `fatal error C1083: Cannot open include file: 'DetourNavMesh.h'`, repeated once per Detour source file. If you see Detour/Recast compile errors in a fresh worktree, you're missing the junction, not the toolchain.
 
+**A pre-provisioned worktree may be behind the branch it's meant to build on.**
+When a coordinator provisions worktrees up front and then keeps landing
+commits on the campaign branch (shared plumbing, other packets' merges), an
+agent dropped into one of those worktrees starts on a *stale* base — the files
+the task prompt describes ("the stubs are already there") simply won't exist.
+First command in any coordinator-dispatched worktree: compare
+`git rev-parse HEAD` with `git log --oneline -3 <campaign-branch>`. If the
+worktree branch has no commits of its own, run `git status --porcelain`
+first and stop if it isn't empty — a freshly provisioned worktree usually has
+nothing to lose, but `git reset --hard <campaign-branch>` silently discards
+any tracked changes that *are* there, and "no commits yet" doesn't mean "no
+edits yet." Only reset once the working tree is confirmed clean. Worktrees
+share one object store, so the newer commit is already local — no fetch
+needed.
+
 Cleanup when the PR merges: `git worktree remove <path>`. The worktree pattern is already used heavily in this repo (see `git worktree list` — 30+ active worktrees for parallel feature branches).

@@ -148,6 +148,12 @@ pub(super) async fn handle_spawn_by_cmd(
             space_id,
             world_name,
             position,
+            // `gmSpawnByCmd(WSTRING DesignId, FLOAT XOffset, FLOAT ZOffset)`
+            // has no rotation argument, so there is no caller facing to
+            // forward — keep the historical "drop it here facing forward"
+            // heading. The dot-console `.spawn` sends the caller's own facing
+            // instead (legacy `Resource.spawnEntity` passes `player.rotation`).
+            heading: 0.0,
         })
         .await
     {

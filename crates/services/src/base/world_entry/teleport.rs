@@ -68,8 +68,13 @@ pub(super) async fn handle_teleport_player(
         }
     };
 
+    // The identity pair is already resolved above for the DB persist; emitting
+    // it here costs nothing and is what makes a snap-back attributable to an
+    // account rather than to a recycled entity slot.
     tracing::info!(
         entity_id,
+        account_id,
+        player_id = active_player_id,
         ?position,
         space_id,
         "TeleportPlayer: snapping avatar"

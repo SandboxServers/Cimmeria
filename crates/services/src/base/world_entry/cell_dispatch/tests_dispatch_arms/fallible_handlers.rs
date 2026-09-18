@@ -29,6 +29,7 @@ async fn gate_travel_logs_error_when_entity_has_no_session() {
             position: [0.0; 3],
             rotation: [0.0; 3],
             destination_ring_id: None,
+            destination_space_id: None,
         },
         &transport,
         &connected,

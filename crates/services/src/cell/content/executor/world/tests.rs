@@ -502,11 +502,20 @@ async fn destroy_tagged_entity_removes_target_from_space() {
 /// clamped/zeroed/swapped. Bug shape: a regression that called
 /// `update_entity_position(entity_id, ...)` instead of
 /// `(target_id, ...)` would move the source player instead of the NPC.
+///
+/// Also pins facing preservation: this function's own doc comment says
+/// "No yaw/orientation change", so it must go through
+/// `update_position_preserving_facing`, not the raw `update_entity_position`
+/// (which writes `direction` unconditionally and would zero it here).
+/// Reverting to the raw call zeroes the drone's facing asserted below; the
+/// non-zero, non-uniform value is deliberate so a `[0, 0, 0]` regression
+/// can't accidentally match.
 #[tokio::test]
 async fn move_waypoint_updates_target_position_to_destination() {
     let mut mgr = make_space_mgr();
     stage_drone_with_witness(&mut mgr, 1, 101, 0x00);
     let player_pos_before = mgr.get_entity(1).unwrap().position;
+    mgr.get_entity_mut(101).unwrap().direction = cimmeria_common::Vector3::new(0.0, 137.0, 0.0);
 
     move_waypoint("Drone".to_string(), [50.0, 1.5, 75.0], 1, 1032, &mut mgr);
 
@@ -515,6 +524,11 @@ async fn move_waypoint_updates_target_position_to_destination() {
         (drone.position.x, drone.position.y, drone.position.z),
         (50.0, 1.5, 75.0),
         "target NPC must be moved to the destination verbatim"
+    );
+    assert_eq!(
+        drone.direction,
+        cimmeria_common::Vector3::new(0.0, 137.0, 0.0),
+        "move_waypoint must not re-face the entity it moves"
     );
     let player_pos_after = mgr.get_entity(1).unwrap().position;
     assert_eq!(

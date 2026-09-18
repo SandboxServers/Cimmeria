@@ -98,12 +98,23 @@ pub enum CellToBaseMsg {
     /// finishes its `onClientReady` handshake — that's the deferred hook
     /// the destination ring's FSM waits on to advance out of
     /// `RemoteLoadWait`. Stargate-driven gate travel leaves it `None`.
+    ///
+    /// `destination_space_id` names an *exact* already-loaded space instance
+    /// to join, rather than letting the cell pick one by world name. Used by
+    /// the GM cross-instance transfer primitive
+    /// ([`crate::cell::space_transfer`]) so `.goto <player>` lands in the
+    /// target's actual instance instead of a freshly-created private one
+    /// (`find_or_create_space` always allocates a NEW space for an instanced
+    /// world). `None` keeps the historical behavior — resolve by world name.
+    /// The id is re-validated cell-side on arrival, because the instance can
+    /// be destroyed (last player left) while this message is in flight.
     GateTravel {
         entity_id: u32,
         target_world_name: String,
         position: [f32; 3],
         rotation: [f32; 3],
         destination_ring_id: Option<i32>,
+        destination_space_id: Option<u32>,
     },
 
     /// Persist a mission state change to the database.
@@ -131,13 +142,16 @@ pub enum CellToBaseMsg {
     /// this to BaseApp, which updates the player's XP/level and sends client
     /// notifications.
     ///
-    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
-    /// `entity_id` after the write commits. Only the GM `gmGiveXp` path sets
-    /// this; non-GM senders (mob-kill XP) leave it false.
+    /// `gm_feedback_to`: when `Some(gm_entity_id)`, the base sends a
+    /// definitive GM-feedback line to that caller entity — which is NOT
+    /// necessarily `entity_id` (the XP recipient); `.givexp` grants to a
+    /// selected target while the caller receives the feedback — after the
+    /// write commits. Only the GM `gmGiveXp` / `.givexp` paths set this;
+    /// non-GM senders (mob-kill XP) leave it `None`.
     GrantXP {
         entity_id: u32,
         xp_amount: u64,
-        notify_gm: bool,
+        gm_feedback_to: Option<u32>,
     },
 
     /// Train a new ability for a player — debit one training point and
@@ -376,14 +390,17 @@ pub enum CellToBaseMsg {
 
     /// Grant cash (naquadah) to a player and persist to the database.
     ///
-    /// `notify_gm`: when true, the base sends a definitive GM-feedback line to
-    /// `entity_id` after the write commits. Only the GM `gmGiveCash` path sets
-    /// this; non-GM senders (loot pickup) leave it false.
+    /// `gm_feedback_to`: when `Some(gm_entity_id)`, the base sends a
+    /// definitive GM-feedback line to that caller entity — which is NOT
+    /// necessarily `entity_id` (the cash recipient); `.givecash` grants to a
+    /// selected target while the caller receives the feedback — after the
+    /// write commits. Only the GM `gmGiveCash` / `.givecash` paths set this;
+    /// non-GM senders (loot pickup) leave it `None`.
     GrantCash {
         entity_id: u32,
         player_id: i32,
         amount: i32,
-        notify_gm: bool,
+        gm_feedback_to: Option<u32>,
     },
 
     /// Grant crafting expertise in one discipline and persist to the database
@@ -460,12 +477,22 @@ pub enum CellToBaseMsg {
     /// cell then allocates an NPC id and spawns it into `space_id`. `position`
     /// is the final spawn position (caller position + the command's X/Z
     /// offsets, already validated finite cell-side).
+    ///
+    /// `heading` is the spawn yaw in radians, written straight into the
+    /// materialized `SpawnRecord.heading` (which
+    /// `spawn_npc_from_record_into` turns into `direction = (0, heading, 0)`).
+    /// The dot-console `.spawn` / `.spawnrandom` send the caller's own facing
+    /// here, matching legacy `Resource.spawnEntity`'s
+    /// `space.createEntity(template, player.position, player.rotation)`. The
+    /// native `gmSpawnByCmd` keeps sending `0.0` — its wire signature has no
+    /// rotation argument, so there is nothing to forward.
     GmSpawnNpc {
         entity_id: u32,
         template_id: i32,
         space_id: u32,
         world_name: String,
         position: [f32; 3],
+        heading: f32,
     },
 
     /// Re-anchor the local pawn to a fresh actor without `RESET_ENTITIES`.

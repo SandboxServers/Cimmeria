@@ -24,6 +24,141 @@ fn load_castle_cellblock_nav() {
     );
 }
 
+/// The real client jump apex: `jumpSpeed² / (2 * |gravity|)` from the
+/// `gravity = -9.8` / `jumpSpeed = 8.0` values the server hands the client
+/// in `build_world_params_args`
+/// (`crates/services/src/mercury/world_data/mod.rs`). A jump-height fix that
+/// only covers a smaller test value (e.g. `2.0`) can pass while still
+/// rejecting a real full-height jump — this is the number that must clear
+/// `JUMP_HEIGHT_TOLERANCE` with margin to close the bug for real players.
+const REAL_JUMP_APEX: f32 = 8.0 * 8.0 / (2.0 * 9.8);
+
+/// Regression guard for the jump-height bug: a client-authoritative jump
+/// lifts the avatar above the walkable surface without moving it
+/// horizontally. Pre-fix, `is_point_valid` measured the raw 3D distance to
+/// the nearest polygon against `agent_radius * 2.0` (1.2 units for this
+/// fixture) — so a jump apex taller than ~1.2 units already read as
+/// off-navmesh, which is what made every jump in place trigger a
+/// `MovementReject::Teleport`-style snap-back.
+///
+/// Exercises the *real* jump apex (~3.27 units — see [`REAL_JUMP_APEX`]),
+/// not an arbitrary smaller test value: an earlier version of this fix used
+/// `JUMP_HEIGHT_TOLERANCE = 3.0`, which is tighter than the real apex and
+/// would still have rejected a full jump. The current tolerance (4.0) and
+/// the widened nearest-poly search extents (which must exceed the
+/// tolerance or Detour can fail to find the ground polygon near the top of
+/// the accepted range) must both clear this.
+///
+/// Reverting `is_point_valid` to the combined-3D-distance check, or
+/// reverting `JUMP_HEIGHT_TOLERANCE`/`JUMP_SEARCH_EXTENTS` to values below
+/// the real apex, makes this fail.
+#[test]
+fn jump_above_navmesh_same_xz_is_still_valid() {
+    let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
+    if !path.exists() {
+        return;
+    }
+    let mesh = NavMesh::load(path).expect("Failed to load castle_cellblock.nav");
+    assert!(
+        mesh.agent_radius * 2.0 < REAL_JUMP_APEX,
+        "test fixture assumption: the old combined-distance gate (agent_radius \
+         * 2.0 = {}) must be tighter than the real jump apex ({REAL_JUMP_APEX}) \
+         tested below, or this test doesn't actually exercise the bug",
+        mesh.agent_radius * 2.0
+    );
+
+    let ground = Vector3::new(-289.465, 68.542, -154.276);
+    let mid_jump = Vector3::new(ground.x, ground.y + REAL_JUMP_APEX, ground.z);
+    assert!(
+        mesh.is_point_valid(&mid_jump),
+        "a same-XZ point at the real client jump apex ({REAL_JUMP_APEX} units) \
+         above a known-walkable position must still read as on-navmesh — this \
+         is what the peak of a real jump looks like"
+    );
+}
+
+/// Guard that the loosened *upward* tolerance stays bounded: a point just
+/// past `JUMP_HEIGHT_TOLERANCE` — but still well within the nearest-poly
+/// search extents, so the lookup itself succeeds — must be rejected.
+///
+/// This specifically does NOT use an absurd height like `+50`: at that
+/// height Detour's nearest-poly search (bounded by `JUMP_SEARCH_EXTENTS`)
+/// already returns `None` regardless of the height comparison, so such a
+/// test would pass even if the height check itself were deleted entirely.
+/// Using a height just past the tolerance (but inside the search box) means
+/// this only passes because the height comparison actually fires.
+#[test]
+fn just_above_jump_tolerance_is_still_invalid() {
+    let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
+    if !path.exists() {
+        return;
+    }
+    let mesh = NavMesh::load(path).expect("Failed to load castle_cellblock.nav");
+
+    let ground = Vector3::new(-289.465, 68.542, -154.276);
+    // JUMP_HEIGHT_TOLERANCE (4.0) < this < JUMP_SEARCH_EXTENTS Y (5.0).
+    let just_too_high = Vector3::new(ground.x, ground.y + 4.5, ground.z);
+    assert!(
+        !mesh.is_point_valid(&just_too_high),
+        "a point past the jump-height tolerance (but still within the \
+         nearest-poly search box) must not read as on-navmesh — the upward \
+         tolerance must stay bounded"
+    );
+}
+
+/// Guard that a point far enough below the surface to leave the search box
+/// entirely is still rejected (belt-and-suspenders alongside the tight
+/// downward gate below).
+#[test]
+fn far_below_navmesh_same_xz_is_still_invalid() {
+    let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
+    if !path.exists() {
+        return;
+    }
+    let mesh = NavMesh::load(path).expect("Failed to load castle_cellblock.nav");
+
+    let ground = Vector3::new(-289.465, 68.542, -154.276);
+    let way_down = Vector3::new(ground.x, ground.y - 50.0, ground.z);
+    assert!(
+        !mesh.is_point_valid(&way_down),
+        "a point 50 units below ground must not read as on-navmesh"
+    );
+}
+
+/// Asymmetry guard (CodeRabbit finding): the jump-height fix must not widen
+/// the *downward* tolerance to match the upward one. A same-XZ point
+/// clipped just below the walkable surface — well past the tight
+/// `agent_radius * 2` floor-clip gate, but well within the loose upward
+/// `JUMP_HEIGHT_TOLERANCE` — must still be rejected. If `is_point_valid`
+/// used one symmetric `.abs()` tolerance for both directions (as an earlier
+/// version of this fix did), this same displacement below the surface
+/// would incorrectly pass.
+#[test]
+fn below_navmesh_small_clip_is_still_invalid() {
+    let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
+    if !path.exists() {
+        return;
+    }
+    let mesh = NavMesh::load(path).expect("Failed to load castle_cellblock.nav");
+    let below_surface_gate = mesh.agent_radius * 2.0;
+    assert!(
+        below_surface_gate < JUMP_HEIGHT_TOLERANCE,
+        "test fixture assumption: the floor-clip gate ({below_surface_gate}) must \
+         be tighter than JUMP_HEIGHT_TOLERANCE ({JUMP_HEIGHT_TOLERANCE}), or this \
+         test doesn't actually exercise the asymmetry"
+    );
+
+    let ground = Vector3::new(-289.465, 68.542, -154.276);
+    let clipped_below = Vector3::new(ground.x, ground.y - (below_surface_gate + 0.3), ground.z);
+    assert!(
+        !mesh.is_point_valid(&clipped_below),
+        "a same-XZ point clipped just below the floor-clip gate must still be \
+         rejected even though the displacement is within the (much looser) \
+         upward jump tolerance — the fix must not have widened downward \
+         containment to match the upward one"
+    );
+}
+
 #[test]
 fn load_and_pathfind_castle_cellblock() {
     let path = std::path::Path::new("../../data/spaces/castle_cellblock.nav");
