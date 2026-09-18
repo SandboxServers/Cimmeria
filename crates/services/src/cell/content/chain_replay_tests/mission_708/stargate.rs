@@ -77,9 +77,14 @@ async fn chain_1356_launches_livewire_with_1357_as_its_victory_chain() {
         "chain 1356 must resolve exactly one action; got {actions:?}",
     );
     match actions[0] {
+        // `..` deliberately: this arm asserts the two fields the chain owns.
+        // `Action::StartMinigame` grows loader-defaulted fields over time
+        // (CA04 adds `difficulty`), and an exhaustive destructure here would
+        // break every time one lands without adding any signal.
         Action::StartMinigame {
             minigame_type,
             on_victory_chains,
+            ..
         } => {
             assert_eq!(
                 minigame_type, "Livewire",

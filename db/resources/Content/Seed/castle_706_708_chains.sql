@@ -737,8 +737,8 @@ VALUES
 
 -- ── Steps 4462 / 4469 — dial, then walk through ──
 --
--- The dial and the crossing are both NATIVE (packet CA10, branch
--- castle/ca10-stargate-events): `stargate_dialed` fires when the
+-- The dial and the crossing are both NATIVE (packet CA10, merged as
+-- PR #663): `stargate_dialed` fires when the
 -- four-second dial timer arms, `stargate_crossed` fires from
 -- `cell::gate_travel::on_stargate_passage` immediately before the
 -- world-transition teardown. `event_key` is the DESTINATION world name
