@@ -136,8 +136,20 @@ async fn chain_1292_terminal_starts_livewire_naming_the_victory_chain() {
     match &actions[0] {
         Action::StartMinigame {
             minigame_type,
+            difficulty,
             on_victory_chains,
         } => {
+            // `difficulty` arrived with #652. Chain 1292's seed row omits it,
+            // so it must come through as the loader's default of 1 — asserted
+            // rather than `..`-ignored, because a stray `difficulty` param in
+            // this file's seed rows would otherwise go unnoticed, and an
+            // out-of-range one drops the whole action row (a launcher that
+            // silently resolves nothing).
+            assert_eq!(
+                *difficulty, 1,
+                "chain 1292 authors no difficulty, so the loader default (1) \
+                 must survive to the resolved action",
+            );
             assert_eq!(
                 minigame_type, "Livewire",
                 "D-CA09 (provisional): Livewire is the only implemented \
