@@ -10,6 +10,8 @@
 //! a single byte (`entities/defs/SGWPlayer.def:1236-1238`,
 //! `docs/protocol/client-method-dispatch-table.md:267`).
 
+use std::ops::RangeInclusive;
+
 use tokio::sync::mpsc;
 
 use cimmeria_entity::interaction_flags::INT_DHD;
@@ -17,6 +19,16 @@ use cimmeria_entity::interaction_flags::INT_DHD;
 use crate::cell::client_methods::player::ON_DISPLAY_DHD;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+
+/// Legal values of `stargates.address_origin` — the point-of-origin glyph
+/// the client renders on the DHD ring.
+///
+/// There are 38 authored glyphs. The wire slot is a `UINT8`
+/// (`entities/defs/SGWPlayer.def:1236-1238`), so the type alone admits
+/// 0..=255; the column is `INT32`, so it admits anything. Neither is the
+/// domain, and a value outside this range is a seed defect that would
+/// otherwise reach the client as a missing symbol.
+const ADDRESS_ORIGIN_RANGE: RangeInclusive<u8> = 1..=38;
 
 /// If `target_entity_id` is a DHD, emit `onDisplayDHD` and return `true`.
 ///
@@ -84,24 +96,31 @@ pub(crate) async fn try_open_dhd(
         }
     };
 
-    // `address_origin` is a point-of-origin GLYPH (1–38), not an identifier:
-    // it repeats across rows (value 1 on both `SGC W2` and `SGC`, 13 on both
+    // `address_origin` is a point-of-origin GLYPH, not an identifier: it
+    // repeats across rows (value 1 on both `SGC W2` and `SGC`, 13 on both
     // Dakara E2 and E3). Never key `stargates` by it — that map is keyed by
-    // `stargate_id`. `try_from` rather than `as u8` because a 256 would wrap
-    // to a perfectly in-range-looking 0 and render a silently wrong DHD that
-    // nobody would report as a data error.
+    // `stargate_id`.
+    //
+    // Validate against the *glyph* range, not just the wire's UINT8 range.
+    // `u8::try_from` alone (the pre-review guard) accepted 0 and 39..=255 —
+    // every one of which serialises cleanly and renders a DHD the client has
+    // no symbol for, which reads as a client bug rather than the seed error
+    // it is. 1..=38 is the authored domain; anything else is a data defect
+    // and refusing to emit is what makes it findable.
     let origin_byte = match u8::try_from(address_origin) {
-        Ok(b) => b,
-        Err(_) => {
+        Ok(b) if ADDRESS_ORIGIN_RANGE.contains(&b) => b,
+        _ => {
             tracing::warn!(
                 entity_id,
                 stargate_id,
                 address_origin,
+                min = *ADDRESS_ORIGIN_RANGE.start(),
+                max = *ADDRESS_ORIGIN_RANGE.end(),
                 world_name = %world_name,
                 reason = "address_origin_out_of_range",
-                "onDisplayDHD: stargates.address_origin is outside the wire's \
-                 UINT8 range — refusing to emit rather than wrapping it into a \
-                 wrong glyph; fix the seed row"
+                "onDisplayDHD: stargates.address_origin is outside the 1-38 \
+                 point-of-origin glyph range — refusing to emit rather than \
+                 rendering a glyph the client has no symbol for; fix the seed row"
             );
             return true;
         }
@@ -249,6 +268,52 @@ mod tests {
             "the interaction is still claimed — it just doesn't emit"
         );
         assert_eq!(drain_dhd(&mut rx), None);
+    }
+
+    /// PR #662 review, finding 3. The glyph domain is 1-38, but the
+    /// pre-review guard was `u8::try_from` alone — so 0, 39 and 255 all
+    /// serialised cleanly and reached the client as a DHD with no symbol to
+    /// render, which reads as a client bug rather than the seed error it is.
+    ///
+    /// Reverting the `ADDRESS_ORIGIN_RANGE.contains(&b)` arm makes all three
+    /// rejected rows emit.
+    #[tokio::test]
+    async fn dhd_refuses_an_origin_glyph_outside_the_authored_1_to_38_range() {
+        for bad in [0, 39, 255] {
+            let mut mgr = mgr_with_dhd();
+            mgr.stargates.insert(15, gate("Agnos", bad));
+
+            let (tx, mut rx) = mpsc::channel(16);
+            assert!(
+                try_open_dhd(1, 100, &tx, &mut mgr).await,
+                "the interaction is still claimed — it just doesn't emit"
+            );
+            assert_eq!(
+                drain_dhd(&mut rx),
+                None,
+                "address_origin {bad} is outside the 1-38 glyph range and must \
+                 not reach the client"
+            );
+        }
+    }
+
+    /// Positive control for the guard above: both ends of the authored
+    /// range still emit. Without this, tightening the check to something
+    /// absurd (`38..=38`) would leave the rejection test green.
+    #[tokio::test]
+    async fn dhd_emits_both_ends_of_the_authored_glyph_range() {
+        for good in [1u8, 38u8] {
+            let mut mgr = mgr_with_dhd();
+            mgr.stargates.insert(15, gate("Agnos", i32::from(good)));
+
+            let (tx, mut rx) = mpsc::channel(16);
+            assert!(try_open_dhd(1, 100, &tx, &mut mgr).await);
+            assert_eq!(
+                drain_dhd(&mut rx),
+                Some(vec![good]),
+                "address_origin {good} is a legal glyph and must be emitted"
+            );
+        }
     }
 
     /// A DHD prop on a world with no `stargates` row is a seed gap, not a

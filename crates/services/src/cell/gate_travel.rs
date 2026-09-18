@@ -24,6 +24,13 @@ use super::space_manager::SpaceManager;
 /// space, and sends a `GateTravel` message to BaseApp to initiate the world
 /// transition.
 ///
+/// Returns `true` when a `GateTravel` was enqueued and the traveller was torn
+/// down cell-side; `false` on every refusal (cancel, unknown address, entity
+/// missing, same world, no standable arrival, closed base channel). The bool
+/// exists because [`super::cell_methods::gm::travel`] is the one dial caller
+/// with a client-visible feedback channel and used to report "dialing gate
+/// address N" unconditionally — including for dials the primitive refused.
+///
 /// Reference: `python/cell/SGWPlayer.py:onDialGate()` — the Python version
 /// starts a 4-second dial timer; we skip the timer and travel immediately
 /// for simplicity.
@@ -39,11 +46,11 @@ pub async fn handle_dial_gate(
     _source_address_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-) {
+) -> bool {
     // target_address_id == -1 means cancel dialing (no-op for us)
     if target_address_id == -1 {
         tracing::debug!(entity_id, "onDialGate: cancel dial (no-op)");
-        return;
+        return false;
     }
 
     // Look up the destination stargate from the DB cache
@@ -55,7 +62,7 @@ pub async fn handle_dial_gate(
                 target_address_id,
                 "onDialGate: invalid stargate address"
             );
-            return;
+            return false;
         }
     };
 
@@ -64,7 +71,7 @@ pub async fn handle_dial_gate(
         Some(w) => w,
         None => {
             tracing::warn!(entity_id, "onDialGate: entity not found");
-            return;
+            return false;
         }
     };
 
@@ -74,7 +81,7 @@ pub async fn handle_dial_gate(
             entity_id, target_address_id, world = %gate.world_name,
             "onDialGate: already in destination world"
         );
-        return;
+        return false;
     }
 
     tracing::info!(
@@ -93,6 +100,32 @@ pub async fn handle_dial_gate(
     // it so the walk-through-the-event-horizon arrival gets the same
     // validation the dial arrival does.
     let arrival = validate_gate_arrival(space_mgr, &gate);
+
+    // No standable point on the destination world: refuse the dial outright.
+    //
+    // Shipping the rejected coordinate into `GateTravel` is the H-B1 defect
+    // with extra steps — the traveller is torn out of a world they *could*
+    // stand in and re-created off-mesh on one they can't, where every inbound
+    // position update is suppressed and the only trace is
+    // `CorrectionSuppressed`. A refused dial is the strictly better failure:
+    // the player keeps their position and the operator gets a greppable warn
+    // naming the gate whose pin (or whose world's respawner seed) is missing.
+    if !arrival.is_usable() {
+        tracing::warn!(
+            entity_id,
+            target_address_id,
+            stargate_id = target_address_id,
+            world = %gate.world_name,
+            desired_x = arrival.position[0],
+            desired_y = arrival.position[1],
+            desired_z = arrival.position[2],
+            reason = "arrival_unrecoverable_off_mesh",
+            "onDialGate: destination world has no standable arrival — refusing \
+             the dial; the traveller stays where they are. Re-pin \
+             stargates.arrival_* for this gate or seed a respawner for the world"
+        );
+        return false;
+    }
 
     // Stage D: world transition destroys the cell entity and re-creates it on
     // the destination world. Flush any pending bandolier ammo writes before
@@ -125,7 +158,7 @@ pub async fn handle_dial_gate(
             entity_id, world = %gate.world_name, error = %e,
             "onDialGate: base channel closed — entity left in place, no transfer"
         );
-        return;
+        return false;
     }
 
     // Cancel any open trade before the entity goes. `destroy_entity` doesn't
@@ -138,6 +171,7 @@ pub async fn handle_dial_gate(
 
     // Remove entity from current space (CellService side)
     space_mgr.destroy_entity(entity_id);
+    true
 }
 
 #[cfg(test)]
@@ -404,6 +438,80 @@ mod tests {
             rotation[2], 1.75,
             "a respawner fallback carries the authored facing through"
         );
+    }
+
+    /// PR #662 review, finding 1. When the destination world's navmesh
+    /// rejects the arrival **and** no respawner qualifies, there is nowhere
+    /// safe to land — so the dial is refused outright rather than shipping
+    /// the rejected coordinate into `GateTravel`.
+    ///
+    /// Regression shape: before the fix `resolve_arrival_with` returned the
+    /// invalid point with `source = UnrecoverableOffMesh` and
+    /// `handle_dial_gate` passed `arrival.position` straight through, so the
+    /// traveller was destroyed cell-side and re-created off-mesh on a world
+    /// they could not stand in — the silent `CorrectionSuppressed` freeze
+    /// H01 exists to prevent, one layer further along. Deleting the
+    /// `!arrival.is_usable()` guard fails every assertion below.
+    #[tokio::test]
+    async fn dial_gate_to_an_unrecoverable_arrival_sends_no_transfer() {
+        use crate::cell::arrival::{test_fixture_mesh, test_insert_navmesh_space};
+
+        let Some(mesh) = test_fixture_mesh() else {
+            return;
+        };
+        const OFF_MESH: [f32; 3] = [-289.465, 268.542, -154.276];
+
+        let mut mgr = make_manager_with_stargates();
+        // Meshed destination, and deliberately NO respawner for it: the
+        // fallback has no candidate, which is the unrecoverable case.
+        test_insert_navmesh_space(&mut mgr, "Castle_CellBlock", mesh);
+        assert!(
+            mgr.respawners
+                .iter()
+                .all(|r| r.world_name != "Castle_CellBlock"),
+            "precondition: the unrecoverable case needs zero qualifying respawners"
+        );
+        mgr.stargates.insert(
+            97,
+            StargateEntry {
+                world_name: "Castle_CellBlock".to_string(),
+                x: OFF_MESH[0],
+                y: OFF_MESH[1],
+                z: OFF_MESH[2],
+                yaw: 1.75,
+                address_origin: 18,
+                arrival: None,
+            },
+        );
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+        let space_before = mgr.get_entity_space_id(1);
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        let dialed = handle_dial_gate(1, 97, 0, &tx, &mut mgr).await;
+
+        assert!(!dialed, "an unrecoverable arrival must refuse the dial");
+        assert!(
+            !saw_gate_travel(&mut rx),
+            "no GateTravel may reach the base — an off-mesh arrival with no \
+             recovery is the silent-freeze bug"
+        );
+        assert!(
+            mgr.get_entity(1).is_some(),
+            "a refused dial must leave the traveller in their own space, not \
+             tear them down with no transfer in flight"
+        );
+        assert_eq!(mgr.get_entity_space_id(1), space_before);
+    }
+
+    fn saw_gate_travel(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> bool {
+        while let Ok(msg) = rx.try_recv() {
+            if matches!(msg, CellToBaseMsg::GateTravel { .. }) {
+                return true;
+            }
+        }
+        false
     }
 
     fn expect_gate_travel(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> ([f32; 3], [f32; 3]) {

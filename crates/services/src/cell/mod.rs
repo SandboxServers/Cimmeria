@@ -20,6 +20,9 @@ pub mod interactions;
 pub mod mail;
 pub mod messages;
 pub mod missions;
+/// Crate-internal: the shared respawner search behind both
+/// [`arrival::resolve_arrival`] and `SpaceManager::resolve_recovery_position`.
+pub(crate) mod respawner_fallback;
 pub mod ring_transport;
 mod service;
 pub mod space_manager;

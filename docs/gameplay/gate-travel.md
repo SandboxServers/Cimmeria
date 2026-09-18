@@ -24,14 +24,16 @@ A `resources.stargates` row's `x_pos` / `y_pos` / `z_pos` / `yaw` is the **starg
 
 `resources.stargates` now carries four nullable columns — `arrival_x`, `arrival_y`, `arrival_z`, `arrival_yaw` — holding an absolute "stand here on arrival" point pinned in-game. All four are set or all four are `NULL`, enforced by the `stargates_arrival_all_or_nothing` CHECK; when `NULL` the arrival falls back to the gate row, `yaw` included. No gate is pinned yet: Harset's gate-3 value waits on the in-client placement session.
 
-[`cell/arrival.rs`](../../crates/services/src/cell/arrival.rs) resolves the final placement. `validate_gate_arrival` is the gate-specific wrapper; `resolve_arrival` is the gate-agnostic core that ring transport also calls. The order is:
+[`cell/arrival.rs`](../../crates/services/src/cell/arrival.rs) resolves the final placement. `validate_gate_arrival` is the gate-specific wrapper; `resolve_arrival` is the gate-agnostic core. (Ring transport calls the *validate-only* half, `check_arrival`, and never the respawner substitution — a ring pad is a pad the client is animating at, not a pin on a prop transform. See [ring-transport-system.md](ring-transport-system.md#bounded-aborts-cimmeria-not-2009).) The order is:
 
 1. The authored `arrival_*` pin, or the gate row when there is no pin.
 2. If the destination world has a **resident** navmesh, the point must pass both `NavMesh::is_point_valid` and the space AABB derived from the mesh extents. Both layers, because a point that is on-mesh but outside the AABB is hard-rejected by the very next client packet — with the correction budget already cleared by the authorised teleport, which is how a "recovery" turns into a permanent freeze one position over.
 3. On failure, the **nearest** authored respawner for that world that is not a placeholder `(0,0,0)` row and that passes the same two checks. Logged at `warn` with `reason = "arrival_off_navmesh"` naming the world and both coordinates, so the operator-actionable seam is "re-pin this gate".
-4. If nothing qualifies, the requested point stands and the failure is logged at `error` with `reason = "arrival_unrecoverable"` — the player *will* arrive off-mesh, and the fix is to seed a respawner for the world.
+4. If nothing qualifies, there is **no arrival** and the dial is refused. The failure is logged at `error` with `reason = "arrival_unrecoverable"`, and the fix is to seed a respawner for the world or re-pin the gate.
 
 The outcome is reported as an `ArrivalSource`: `Validated`, `Respawner`, `UnrecoverableOffMesh`, or `Unvalidated`. The last one covers destinations with nothing to check against — a world with no `.nav` file, or an **instanced** destination, which has no space until one is created and so never appears in `world_spaces`. Those arrivals are accepted as-is and logged at `debug`.
+
+**`UnrecoverableOffMesh` carries no usable position.** `ResolvedArrival::position` still echoes the *rejected* input so the caller's warn can name it, but `ResolvedArrival::is_usable()` is false and every caller that moves a player gates on it. `handle_dial_gate` returns `false` and enqueues no `GateTravel`: the traveller keeps the position they had, which they can at least walk out of. Handing the rejected point to the transfer is the same silent freeze one layer further along — the traveller is torn out of a world they *could* stand in and re-created off-mesh on one they can't. `gmDHD` reports the refusal to the GM rather than the unconditional "dialing gate address N" it used to print for every outcome.
 
 The helper deliberately does **not** call `NavMesh::get_nearest_point`. That returns its input unchanged on a miss, so its output can never be trusted without re-validating it; and an arrival Detour *can* reproject is an authored pin that is a metre or two wrong and should be corrected at authoring time rather than papered over on every arrival.
 
@@ -67,7 +69,7 @@ Right-clicking a prop whose `interaction_type_flags` carry `INT_DHD` (bit 16) op
 
 Three things are easy to get wrong here:
 
-- **`address_origin` is a glyph (1-38), not an identifier.** It repeats across rows (value 1 on both `SGC W2` and `SGC`, 13 on both Dakara E2 and E3), so it must never be used as a key into the `stargates` map, which is keyed by `stargate_id`. The emit uses `u8::try_from` rather than `as u8`, so a seed value of 256 refuses to emit instead of wrapping to a plausible-looking 0.
+- **`address_origin` is a glyph (1-38), not an identifier.** It repeats across rows (value 1 on both `SGC W2` and `SGC`, 13 on both Dakara E2 and E3), so it must never be used as a key into the `stargates` map, which is keyed by `stargate_id`. The emit validates against the **authored glyph range**, not just the wire's `UINT8` domain: `0`, `39`-`255` and anything that fails `u8::try_from` all refuse to emit. The column is `INT32` and the wire slot is `UINT8`, so neither type is the domain — a value outside 1-38 serialises perfectly cleanly and reaches the client as a DHD with no symbol to render, which reads as a client bug rather than the seed error it is. Refusing to emit is what makes it findable (`reason = "address_origin_out_of_range"`).
 - **The known-address list is not sent here.** It rides `setupStargateInfo` at world entry; the client filters against what it already has.
 - **Two gates on one world resolve deterministically** by lowest `stargate_id`, because `stargates` is a `HashMap` and an unordered pick would hand the client a different glyph across restarts.
 
