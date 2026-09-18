@@ -1,0 +1,168 @@
+# Castle Rebuild Work Packets
+
+> Type: how-to. Audience: Claude Code coordinator and packet workers.
+> Updated: 2026-09-17. Companions: [launch prompt and decisions](README.md), [spec audit](audit.md), [Cellblock ledger](../castle-cellblock-rebuild/work-packets.md), [testing playbook](../../../TESTING.md), [parity ledger protocol](../legacy-command-parity/work-packets.md#dispatch-rules).
+
+## Dispatch Rules
+
+This ledger reuses the dispatch, ownership, worknote/handoff and acceptance rules of the [legacy command parity ledger](../legacy-command-parity/work-packets.md#dispatch-rules) verbatim. Initial state: documentation prepared against `main` `d91c5c8c` and Cellblock branch `1d9f88dc`; no implementation, build, runtime test or client UAT has run. Implementation-session authorization is required before any packet is dispatched.
+
+Status vocabulary: **Ready**, **BlockedDependency**, **BlockedDesign**, **BlockedDecision** (needs a D-CA answer from [README.md](README.md#open-decisions)), **BlockedCellblock** (waits on an item in the [Cellblock-first table](README.md#what-the-cellblock-session-should-land-first)), then **Writing**, **Review**, **Integrated**, **UATPending**, **Done**, **BlockedEvidence**. None is Done initially.
+
+Writers and advisors run as defined in `.claude/agents/`. Chain-only packets (seed plus chain-replay test) are the smallest unit; a packet that needs an executor arm ships the arm, the seed rows and the replay guard together, and hands the `executor/mod.rs` match-arm edit to the coordinator because that file is contended (PRs #618/#619, Cellblock C03, CA02/CA12/CA13). `testing-validation-engineer` reviews every regression strategy; `documentation-writer` reviews the [mission-chains.md](../../content/mission-chains.md) updates.
+
+## Worker Input And Ownership
+
+Common read-only entries: [Castle.py](../../../deprecated/python/cell/spaces/Castle.py), [castle_cellblock_chains.sql](../../../db/resources/Content/Seed/castle_cellblock_chains.sql) (chains 1001-1007, 1016/1017 and 1109 are the precedents), [content-engine.md](../../content/content-engine.md) sections 3 and 9, [content-chains.instructions.md](../../../.github/instructions/content-chains.instructions.md), [interaction-flags.md](../../content/interaction-flags.md), and the [audit's port table](audit.md#mission-701-port-table-castlepy--chains). The neighbouring test fixture is `crates/services/src/cell/content/chain_replay_tests/mission_<id>.rs`.
+
+Seed file: `db/resources/Content/Seed/castle_chains.sql`, included from `db/database.sql` after the Cellblock files. Chain id allocation: `1201-1230` CA01, `1231-1260` CA03, `1261-1290` CA06, `1291-1320` CA07, `1321-1340` CA08, `1341-1380` CA09, `1381-1400` CA15. (The Cellblock ledger reserved `1201-1250`; this ledger extends the block to `1201-1400`, which is free: Cellblock ends at 1199 and effects start at 2001.) New point sets for Castle take ids after the current maximum in `point_sets.sql`; new spawnlist rows and templates take ids after the current maxima and are tagged `Castle_<Actor>`.
+
+Seed rules: edit `db/resources/` seeds directly (no `db/scripts/` migrations); keep `Castle.*` region keys byte-identical to `point_sets.name`; run `crates/content-engine/tests/interact_tag_linter.rs` after every seed change; obey D-CA15 (no zone-wide `set_visible`/`destroy_entity`/`move_*` on mission actors). Live-DB tests use `require_db_or_skip!`, serialized.
+
+## Common Acceptance
+
+Every chain packet ships a chain-replay test that (a) asserts the exact resolved action list for the happy path, (b) asserts the chain does not resolve for the adjacent wrong state (wrong archetype, wrong step, already completed), (c) asserts the `player_loaded Castle` restore chain re-paints any bind the packet sets, and (d) where an executor arm is involved, pushes the actions through `execute_actions` and asserts the emitted `CellToBaseMsg` (PR #618's extension of TESTING.md type 6). A test that passes with the new seed rows deleted is not a guard. Wire-emitting work needs a byte-exact wire-format test (type 2). Client-visible changes are UAT gated per the README milestones. Every reconstruction row carries a seed comment naming its evidence class (`RECOVERED_SCRIPT`, `ORIGINAL_DATA`, `RECONSTRUCTION`, `NEW CONTENT`).
+
+## Foundation
+
+### CA00
+
+**Status:** Ready. **Scope title:** Real coordinates for the four World 8 respawners (live bug B1). **Depends:** implementation-session authorization; an in-client `.location` pass by the user at the four checkpoints (D-CA11). **Advisor:** movement-teleport-advisor, database-persistence.
+**Entries:** [respawners.sql](../../../db/resources/Worlds/Seed/respawners.sql) rows 1-4, [respawn.rs](../../../crates/services/src/cell/cell_methods/player/combat/respawn.rs) `resolve_respawn_target` (301-347), [damage_apply/mod.rs](../../../crates/services/src/cell/abilities/damage_apply/mod.rs) 362-373 (Defeat Window list), issue #233.
+**Scope:** replace the four `(0,0,0)` rows with authored coordinates: Checkpoint Alpha beside spawns 118/120 (~810, 55, 515); Throne checkpoint inside point set 2049; Armory at the arrival platform (466.4, 70.4, 991.5) unless the Armory prefab position from CA05 is better; Op-Core Triangle from CA05. Add a guard in `resolve_respawn_target` that treats an all-zero respawner as absent (warn, fall through to the safe fallbacks) so a future zero row cannot regress this. Do not implement #233's progression gating.
+**Acceptance:** live-DB test that no respawner row in any world is at the origin; unit test that a zero row is skipped and the fallback used; UAT: die once in Castle, land at a checkpoint. **Exclude:** per-player respawner unlocks (#233), corpse lifecycle (#62).
+
+### CA01
+
+**Status:** BlockedCellblock (C09 reassignment) and BlockedDecision (D-CA03, D-CA13). **Scope title:** Castle arrival and Gerschon handoff (Cellblock C09, moved here). **Depends:** Cellblock C04 (letter 1360 persistence) for one assertion only. **Advisor:** mission-systems-advisor, movement-teleport-advisor.
+**Entries:** [Castle.py](../../../deprecated/python/cell/spaces/Castle.py) `loaded`, `dialogChoiceCb 2573`, `interactCb Castle_SgtGerschon`; chain 1109; spawn 112 `Castle_SgtGerschon` (template 149) at (429.6, 70.1, 996.6); dialog_set_maps rows 3059/3060/3062; dialogs 2573, 5861, 5862; [mission-chains.md](../../content/mission-chains.md#castle-persistent-zone).
+**Scope:** create `castle_chains.sql` (header with the id block above, `\ir` in `database.sql`). Chains: `player_loaded Castle` with `mission_status 701 eq not_active` binds the Gerschon topic to template 149 (row 3062 under D-CA03's widened bind, else row 3059); `interact_tag Castle_SgtGerschon` with `step_status 701 2399 eq not_active` displays 2573 (`archetype neq 8`) or 5861 (`archetype eq 8`, NEW CONTENT); `dialog_choice 2573` and `dialog_choice 5861` accept 701, remove the Gerschon bind and bind the Copplemann topic to template 48; for Jaffa also display 5862 (D-CA13). Verify the arrival coordinate lands within interaction range of spawn 112 or on the ring platform. Mission 1360 must still be active after the hop.
+**Acceptance:** `mission_701.rs` replay tests for both archetype branches, the accept, the second-interaction no-re-accept, and the relog restore; live-DB test that 1360 and 688-completed survive the world hop; UAT M1. **Exclude:** steps beyond 2399 (CA03).
+
+### CA02
+
+**Status:** BlockedDecision (D-CA03). **Scope title:** Interaction-only dialog-set bind (defect B3). **Depends:** none. **Advisor:** mission-systems-advisor; aoi-witness-broadcast for the client push.
+**Entries:** [spawner/dialogs.rs](../../../crates/services/src/cell/spawner/dialogs.rs) 24-58, [executor/dialog.rs](../../../crates/services/src/cell/content/executor/dialog.rs) 135-175 and 303-324, `live_db_loaders.rs:269`, the base-side per-player interaction push that `add_dialog_set` ends in (trace from `executor/dialog.rs`), [interaction-flags.md](../../content/interaction-flags.md).
+**Scope:** widen `DialogSetMapEntry.dialog_id` to `Option<i32>` and keep NULL rows in the cache; make the bind push the interaction flag with no dialog when the row has none; keep `display_dialog` untouched. First step is an evidence check of what the client wire message carries for the dialog id (0, absent, or required); if a flag-only bind is impossible on the wire, close this packet with that finding and switch CA01/CA03 to the sibling-row fallback.
+**Acceptance:** loader unit test that NULL rows are retained (inverting `load_dialog_set_maps_drops_rows_with_null_dialog_id`); executor test that binding 3062 emits the `!` flag for template 149 and no dialog; wire-format test on the push; UAT: the `!` appears over Gerschon before accept. **Exclude:** dialog-set data edits.
+
+### CA03
+
+**Status:** BlockedDependency (CA01) and BlockedDecision (D-CA02, D-CA04, D-CA05). **Scope title:** Mission 701 body, steps 2399 through 2421. **Advisor:** mission-systems-advisor, minigame-systems-advisor.
+**Entries:** [Castle.py](../../../deprecated/python/cell/spaces/Castle.py) `n31_propagator_Out`, `n37_trigger_In`, `n37_propagator_Won`, `n65_propagator_Out`, `n71_trigger_In`; chains 1016/1017 (Livewire launcher and victory precedent); spawn 87 `Castle_Coppleman` (template 48) at (352.69, 70.27, 952.32); dialog_set_maps rows 3061/3063/4961; dialogs 2574-2576; [executor/deferred.rs](../../../crates/services/src/cell/content/executor/deferred.rs) (Cellblock branch) for `delay_ms`; [audit port table](audit.md#mission-701-port-table-castlepy--chains).
+**Scope:** `interact_tag Castle_Coppleman` at `2399 active` displays 2574; `dialog_choice 2574` advances 2400; `interact_tag Castle_Coppleman` at `2400 active` starts Livewire with `on_victory_chains` naming a conditionless victory chain that removes the Copplemann bind, displays 2575 and advances 2401; `dialog_choice 2575` runs the D-CA02 option (A: `advance_step 2421` with `delay_ms` ≈ 10500 and rebind of the turn-in row 3063 to template 48; B: additionally `move_entity Castle_Coppleman` to (358.8, 70.2, 889.7); C: deferred to CA11-CA13); `interact_tag Castle_Coppleman` at `2421 active` displays 2576 (replaces the `dialog_set_open` node, D-CA04); `dialog_choice 2576` at `2421 active` removes the bind, completes 701, accepts 702 and, per D-CA05, 703. Restore chains for 2399/2400/2421 (and 2401 under option A). No enemy wave anywhere (T05).
+**Acceptance:** `mission_701.rs` covers every step transition, the Livewire launcher gate (does not resolve at 2399 or 2401), the deferred advance under a fake clock, the 2576 completion exactly once, and every restore; UAT M1 (T05, T06, T09, T10). **Exclude:** the clone, the hide, real walking.
+
+### CA04
+
+**Status:** Ready. **Scope title:** Minigame session hardening and Livewire replay coverage (defects B4, B5). **Depends:** none. **Advisor:** minigame-systems-advisor, testing-validation-engineer.
+**Entries:** [minigame/session.rs](../../../crates/services/src/minigame/session.rs) 27, 86, 90-93; [minigame/server.rs](../../../crates/services/src/minigame/server.rs) 255-292, 367; `games/placeholder.rs:59` (`aborted`, no call site); [cell_dispatch/minigame.rs](../../../crates/services/src/base/world_entry/cell_dispatch/minigame.rs) 35-57, 82-85; [executor/mod.rs](../../../crates/services/src/cell/content/executor/mod.rs) 203-228; [loader/action.rs](../../../crates/content-engine/src/loader/action.rs) `start_minigame`; chains 1016/1017, 1041/1042, 1060/1061.
+**Scope:** (1) expire sessions that never connect (a sweep on `created_at`, TTL a few minutes) and call `aborted()` on SWF close, with a duplicate-register regression guard so a second interaction after an abandoned launch succeeds; (2) `difficulty` as an optional `start_minigame` param defaulting to 1, range-checked 1-5; (3) chain-replay tests for the three existing Livewire launcher/victory pairs, executed through the arm, so CA03/CA07/CA09 have a pattern to copy. Decision inputs recorded, not implemented: an `on_defeat_chains` list, seed clamping to `0..0x7fffffff`.
+**Acceptance:** unit tests for expiry and abort; replay tests for 1016/1017, 1041/1042, 1060/1061; `difficulty` round-trips loader → message. **Exclude:** porting Hack/Bypass/Activate; the SFS DoS hardening in #532.
+
+## Story Actors
+
+### CA05
+
+**Status:** Ready (evidence packet; assets local). **Scope title:** Castle map recon and story-actor authoring. **Depends:** none for the recon; the authoring step needs a user in-client session. **Advisor:** game-archaeology-specialist (recon), npc-ai-spawn-advisor (templates and placement), items-systems-advisor (mission items on death).
+**Entries:** the local map tree `..\SGW\Stargate Worlds-QA\Working\SGWGame\CookedPC\Maps\Castle\` (146 files), [crates/upk-objects](../../../crates/upk-objects/), [navmesh-extractor/src/staticmesh.rs](../../../crates/navmesh-extractor/src/staticmesh.rs) (actor-walk precedent), `entity_templates.sql` rows 146/148 (NID guards), 48, 145; `spawnlist` world 8; `point_sets.sql`/`point_set_points.sql`; the parity console commands `.location`, `.spawn`, `.savespawn`, `.despawn` (`console/spawn/`), which emit seed SQL rather than writing the live DB.
+**Scope:** (1) enumerate actors and prefab instances in every Castle sublevel with `upk-objects` and record world positions for: Interrogation Room 01/02, the Level-5 Communications room, the infirmary and symbiote chamber, the bunker above Checkpoint Bravo, Checkpoint Bravo and Alpha, the Armory prefab, and any respawn/checkpoint actor (feeds CA00); write the table to `worknotes/ca05.md`. (2) Author seed rows: templates `Castle_Zuritska` (non-hostile, faction 1, body from a human male set), `Castle_Romney` (hostile, template 148 clone, named), `Castle_Muelbach` (hostile, female per objective 2799 text), `Castle_BravoOfficer` (hostile, template 146 clone) × N (decide N with the recon; default 3), `Castle_SurrenderGuard` (non-hostile variant of 148); spawnlist rows `Castle_Zuritska_Cell`, `Castle_Zuritska_Comms`, `Castle_Romney`, `Castle_Muelbach`, `Castle_BravoOfficer1..N`, `Castle_SurrenderGuard`; point sets `Castle.InterrogationBlock`, `Castle.CommsRoom`, `Castle.CheckpointBravo`, `Castle.CheckpointAlpha` (boxes from the recon). Every row's comment says `RECONSTRUCTION` and cites the recon line. (3) The comms terminal: if the recon finds a terminal prop, add a spawnlist row for it (`Castle_CommsTerminal`, template 147 clone); otherwise reuse the `Castle_AccessPanel` pattern with a new static row at the workstation.
+**Acceptance:** recon table with one line per landmark and a confidence per line; seed linter clean; live-DB test that every new tag resolves to exactly one spawn row in world 8 and every new point set has ≥ 1 point; UAT: walk to each actor. **Exclude:** stats balancing; `spawn_entity` (CA12); navmesh output (CA14).
+
+### CA06
+
+**Status:** BlockedDependency (CA03, CA05). **Scope title:** Missions 702 and 703. **Advisor:** mission-systems-advisor, combat-systems-advisor (Romney fight), items-systems-advisor.
+**Entries:** steps 2402/2419 and 2403/2404; objectives 2778/2779/4653 and 2780/2781; task 5701; dialog 2577; item 2135; `entity_death` trigger (`kill_credit.rs:88-105`); chain 1033 (drone death → objective) as precedent.
+**Scope:** 702: `enter_region Castle.InterrogationBlock` at `2402 active` advances 2419; `interact_tag Castle_Zuritska_Cell` at `2419 active` displays 2577; `dialog_choice 2577` completes objective 4653 (task 5701 is `task_type 1`, no payload) by advancing and completing 702, then accepts 704 (704's step 2405 is the escort that starts here; there is no other accept point in the data). Interaction flag `!` on the cell actor while 2419 is active, cleared after. 703: `enter_region Castle.InterrogationBlock` at `2403 active` advances 2404; `entity_death Castle_Romney` with `mission_status 703 eq active` completes 703 and, if the user opts in, `add_item 2135` (explicit grant, not loot). Romney respawns on the normal spawner timer for other players; the chain is per killer.
+**Acceptance:** `mission_702.rs` and `mission_703.rs`: region/interact/death happy paths, wrong-step negatives, no double accept of 704, restore of the cell-actor flag; UAT M2 (T11-T14, T33). **Exclude:** Zuritska's escort (CA07); Romney's Files 2698 (no acquisition evidence).
+
+### CA07
+
+**Status:** BlockedCellblock (GC1b-0) and BlockedDependency (CA05, CA06). **BlockedDecision** (D-CA07, D-CA08, D-CA09). **Scope title:** Mission 704, the Communications room. **Advisor:** npc-ai-spawn-advisor, mission-systems-advisor, minigame-systems-advisor.
+**Entries:** steps 2405/2406/2407; objectives 2782/2783/2784/5151; task 6341; dialogs 4866, 2580, 2581; item 5029; `set_follow_target` (`executor/world/mod.rs:135`, `npc_ai/follow.rs`), `move_waypoint` (`executor/world/mod.rs:330`), point sets `Castle.CommsRoom`, the terminal row from CA05; chain 1004/1034 (`add_item` on interact) precedents.
+**Scope:** on 704 accept: `set_follow_target Castle_Zuritska_Cell {"use_player": true}` (presentation only); `enter_region Castle.CommsRoom` at `2405 active` advances 2406, clears the follow and `move_waypoint`s the cell actor home, displays 4866 from the comms actor; `interact_tag Castle_CommsTerminal` at `2406 active` starts Livewire (provisional, D-CA09) whose victory chain displays 2580, `add_item 5029`, advances 2407; `interact_tag Castle_Zuritska_Comms` at `2407 active` displays 2581; `dialog_choice 2581` optionally `remove_item 5029`, completes 704, accepts 706. Step state is the possession proof (D-CA08). Straight-line follow is accepted as provisional until CA14; record what the follow looks like in-client.
+**Acceptance:** `mission_704.rs` for every transition including the terminal gate not resolving at 2405/2407, the grant exactly once, and restore chains; a follow test asserting the cell actor's `follow_target_id` is the player after accept and `None` after 2405; UAT M3 (T15-T17). **Exclude:** `HasItem`; navmesh.
+
+### CA08
+
+**Status:** BlockedDependency (CA01 only, for the seed file). **Scope title:** Mission 706, the Throne Room. **Advisor:** mission-systems-advisor.
+**Entries:** steps 2411/2412; objectives 2790/2791/2792; dialog 2584 and set 654 rows 3071/5711; spawn 92 `Castle_AccessPanel` (template 147) at (330.49, 41.18, 653.11); point set 2049 `Castle.ThroneRoom`; chains 1107/1108 (terminal interact with highlight swap) as precedent.
+**Scope:** `enter_region Castle.ThroneRoom` at `2411 active` advances 2412 and sets the quest-object glow (`set_interaction_type` bit 30, or bind row 3071 under CA02) on `Castle_AccessPanel`; `interact_tag Castle_AccessPanel` at `2412 active` completes 2792 then 2791 by `advance_step`-free means: display 2584 (row 5711), clear the glow, complete 706, accept 708. Because `complete_objective` on the last non-optional objective completes the mission, use a single chain that displays 2584 and calls `complete_mission 706` directly rather than completing 2791 and 2792 separately. Restore chain for 2412 re-paints the glow. This packet can run in parallel with CA06/CA07: disjoint chain ids and test file.
+**Acceptance:** `mission_706.rs`: region advance once, panel interact gated on 2412, 706 complete and 708 accepted exactly once, glow restore; UAT M3 (T20, T21). **Exclude:** the 708 panel-diagnostic route (CA09).
+
+### CA09
+
+**Status:** BlockedDependency (CA05, CA08) and BlockedDecision (D-CA08, D-CA09, D-CA10). **Scope title:** Mission 708, Secure the Stargate. **Advisor:** mission-systems-advisor, combat-systems-advisor, items-systems-advisor, server-authority-enforcer (crystal grant on death), movement-teleport-advisor (travel).
+**Entries:** steps 2415-4469 with objectives per the [audit table](audit.md#missions-702-708-what-exists-to-reconstruct-from); dialogs 5003, 5004, 5008-5011, 2586; set 656 rows 3073/5840/5841/5846/5850-5855/5863; spawns 2 (`Castle_DHD`), 118 (`Castle_ColMarsh`), 120 (`Castle_Mohkatan`); actors from CA05; items 2790, 2136; region 1002 and the existing gate-travel path (`base/world_entry/gate_travel/`); chains 1098/1099 (archetype split) precedent; `progression.rs:176-213`.
+**Scope:** 2415: `interact_tag Castle_SurrenderGuard` at `2415 active` displays 5003 and on choice completes 2794; `interact_tag Castle_AccessPanel` at `2415 active` displays 5004 and completes 2795; either path then `advance_step 2416` in the same chain. 2416: `entity_death Castle_BravoOfficer*` (any of N) or `entity_death Castle_Muelbach` at `2416 active` grants 2790 explicitly (`add_item`, optional 2136 from Muelbach), completes the matching optional objective and advances 2417; guard against a second grant when both are killed. 2417: `interact_tag Castle_ColMarsh` with `archetype neq 8` displays 5008 and on choice completes 5185 and advances 2418; `interact_tag Castle_Mohkatan` with `archetype eq 8` displays 5009, completes 5186, advances 2418. Never complete both report objectives; never expose the other faction's dialog. 2418: `interact_tag Castle_DHD` at `2418 active` starts Livewire (provisional); victory advances 4462 and displays 2586's precondition topic (row 3073 `INT_Dhd` under CA02). 4462: on the existing `onDialGate` to Harset, advance 4469 (the dial itself is native, not a chain; wire the step advance from the dial handler's success path or a `custom_event`), display 5010/5011 by archetype. 4469: region 1002 entry with the gate active fires the existing travel and completes 708 once (task 6404). Gate visuals come from CA10.
+**Acceptance:** `mission_708.rs` covering both diagnosis routes, both crystal sources with the single-grant guard, both archetype reports and the cross-archetype negatives, the DHD gate, the dial advance, and the completion on travel; a server-authority review that the grant cannot be repeated by re-killing a respawned officer while 2416 is no longer active; UAT M4 (T22-T29, T31). **Exclude:** chevron events; squad travel.
+
+## Engine And Presentation
+
+### CA10
+
+**Status:** Ready. **Scope title:** Stargate open and cross events (defect B6; D-CA10). **Depends:** Cellblock C08a for the 4 s deferral if implemented as a content action, otherwise a `tokio` timer in the dial handler. **Advisor:** aoi-witness-broadcast, movement-teleport-advisor, game-archaeology-specialist (order verification).
+**Entries:** [SGWPlayer.py](../../../deprecated/python/cell/SGWPlayer.py) 2078-2129 (`beginDialing`, `gateDialTimerExpired`, `stargatePassed`, `cancelDialing`), [wire_helpers.rs](../../../crates/services/src/cell/ring_transport/wire_helpers.rs) 33-71, the `onDialGate` cell handler and the region-1002 passage path, `event_sets_sequences.sql:3839-3865` (sequences 10145-10158 → events 6100-6113), `sequences.sql`, [gate-travel.md](../../gameplay/gate-travel.md), [cinematic-system.md](../../gameplay/cinematic-system.md) 254-267.
+**Scope:** after a successful dial, start a 4-second timer; on expiry send `onSequence` for the origin gate's sequence whose event is 6100 to the dialer **and every witness of the gate** (the witness fan-out the gate-travel doc lists as NOT IMPL); on region-1002 passage send the 6113 sequence the same way before the `GateTravel` teardown; cancel the pending 6100 if the dialer leaves or re-dials. Resolve the sequence id per gate from `event_sets_sequences` + `sequences` (event set from `stargates.sql`), never hardcode 10145. Do not emit 6103 or 6106-6112.
+**Acceptance:** wire-format test for the 6100 and 6113 `onSequence` byte layout; fan-out byte test that every witness receives the packet once; unit test for the timer cancel; UAT M4 (T30): the Castle gate visibly opens after the dial and the crossing animation plays for a second observer. **Exclude:** DHD chevron animation; ring-transport multi-player sync (#406).
+
+### CA11
+
+**Status:** BlockedDecision (D-CA02 option C). **Scope title:** `set_visible` for NPCs (defect B2). **Advisor:** aoi-witness-broadcast.
+**Entries:** [executor/world/mod.rs](../../../crates/services/src/cell/content/executor/world/mod.rs) 307-326, [cell_dispatch/aoi_dispatch.rs](../../../crates/services/src/base/world_entry/cell_dispatch/aoi_dispatch.rs) 365, [mercury/aoi/create.rs](../../../crates/services/src/mercury/aoi/create.rs) 234, the witness-fanout helper.
+**Scope:** route NPC `setVisible` to the entity's witnesses; make the AoI create packet honour a per-entity visibility flag instead of appending `onVisible(1)` unconditionally; persist the flag on `CellEntity` so re-entry stays consistent. **Acceptance:** fan-out byte test (hide reaches every witness once, create packet for a hidden entity carries `onVisible(0)`); executor test. **Exclude:** per-player visibility (GCA1).
+
+### CA12
+
+**Status:** BlockedDecision (D-CA06; only if dynamic actors are chosen over static rows). **Scope title:** `spawn_entity` / `despawn_entity` executor arms. **Advisor:** npc-ai-spawn-advisor, server-authority-enforcer.
+**Entries:** `actions.rs:63,69`, `loader/action.rs`, [gm_spawn.rs](../../../crates/services/src/base/gm_spawn.rs) 59-125, [base_messages/gm_spawn.rs](../../../crates/services/src/cell/service/base_messages/gm_spawn.rs) 13-28, [space_manager/spawn.rs](../../../crates/services/src/cell/space_manager/spawn.rs) 85-190.
+**Scope:** loader verbs; generalise `GmSpawnNpc`/`GmSpawnNpcReady` with optional `tag`, `heading` and a `feedback: bool` so content can reuse the base-side `SpawnRecord` build (~120 lines, 2 files) rather than a parallel message pair; `despawn_entity` via `despawn_npc` (witness cleanup). **Acceptance:** executor test that the round trip inserts a tagged entity at the position; replay test executed through the arm; despawn fans `LeftAoI`. **Exclude:** owner scoping.
+
+### CA13
+
+**Status:** BlockedDesign. **Scope title:** NPC over-time movement and arrival trigger (engine Tier 3, `proposed-extensions.md` 3.3). **Advisor:** npc-ai-spawn-advisor, movement-teleport-advisor.
+**Entries:** `move_waypoint` (`executor/world/mod.rs:330-345`), [ticks/npc_movement.rs](../../../crates/services/src/cell/service/ticks/npc_movement.rs) 120-135, `npc_ai/follow.rs` (the path stepper to reuse), `triggers/mod.rs`, `event_dispatch/lifecycle.rs`, issue #616.
+**Approve:** a `MoveTo` AI state driven by the existing stepper, `move_waypoint` setting it instead of snapping (keeping the snap under a `snap: true` param for the existing callers), and a `Trigger::OnNpcArrived { entity_tag }` fired from `path_complete`. **Required children:** (a) `MoveTo` state + speed from GC1b-0's column; (b) the trigger and its `fire_npc_arrived` site; (c) 701 option C seed (`spawn` via CA12, hide via CA11, walk, rebind on arrival). **Exclude:** path interpolation beyond the current per-tick stepper.
+
+### CA14
+
+**Status:** BlockedDesign (scope approval; Large). **Scope title:** Produce `data/spaces/castle.nav` (issue #46 phases 1.3, 1.4, 2). **Advisor:** game-archaeology-specialist, npc-ai-spawn-advisor.
+**Entries:** [navmesh-extractor/README.md](../../../crates/navmesh-extractor/README.md), `.claude/agent-memory/game-archaeology-specialist/ue3-terrain-serialize.md`, `deprecated/cpp/src/nav_builder`, the local Castle map tree, `space_manager/lifecycle.rs:27-28` (expects `castle.nav`).
+**Approve:** scope and order: (a) run the existing StaticMesh extractor over the 144 sublevels and measure coverage; (b) terrain decoder (phase 1.3); (c) BSP `Model`/`Polys` decoder (phase 1.4, needs a Ghidra trace of `UModel::Serialize`); (d) NavBuilder run with the Cellblock parameters and a component flood-fill check that the 701 hallway, the Interrogation Block, the Level-5 route and the gate approach are single connected components. **Acceptance per child:** OBJ triangle counts per sublevel; `castle.nav` loads at space creation; a `find_path` test between the arrival platform and the DHD returns `Some`. **Exclude:** the other 22 maps.
+
+### CA15
+
+**Status:** BlockedDecision (D-CA14). **Scope title:** Optional Level-5 branches: Human infirmary (set 1571, Ogilvie, Med Dispenser, Ambernol 19) and Jaffa symbiote (set 1572, chamber prefab in `Castle-00090003`, item 2718 vs 4652 unresolved). **Advisor:** mission-systems-advisor, items-systems-advisor. **Entries:** rows 5824-5832, dialogs 4982-4985 and 4989-4991, point set 2051. **Approve:** trigger (region 2051 entry after 704? by archetype), the Ogilvie template, the symbiote item. **Exclude:** until M4 passes.
+
+### CA16
+
+**Status:** Ready (rolling, coordinator-owned). **Scope title:** Documentation sync. **Advisor:** documentation-writer.
+**Entries:** [mission-chains.md](../../content/mission-chains.md#castle-persistent-zone) (701 is documented from the Python; 702-708 sections are missing; every reconstruction must be labelled), [content-engine.md](../../content/content-engine.md) section 3 (new arms and the nullable bind), [gate-travel.md](../../gameplay/gate-travel.md) status table (CA10), [zone-audit.md](../../content/zone-audit.md) Castle row, [docs/readme.md](../../readme.md) index, `docs/content/README.md`.
+**Scope:** one doc update per integrated packet, in the same PR. **Acceptance:** `tools/lint-md.ps1 --no-globs <paths>` clean on touched files.
+
+## Design Gates
+
+### GCA1
+
+**Status:** BlockedDesign, no packet. **Scope title:** Owner-scoped (per-player) mission entities in a shared world. **Advisors:** aoi-witness-broadcast, bigworld-engine-advisor. **Evidence:** no per-observer filter exists in AoI (`space_manager/aoi.rs`), roughly 6 files and 250-350 lines to add an `owner_player_id` branch to the per-player tick plus despawn on owner leave. **Why deferred:** D-CA06/D-CA15 make every Castle actor static and shared, which is also how BigWorld shipped the zone (the 2009 script created a clone per player into the shared space). Open only if UAT M5 shows a shared-world break that interaction flags cannot hide.
+
+### GCA2
+
+**Status:** Closed here; tracked as Cellblock GC3. **Scope title:** Mission completion XP. `grant_xp` arrives with PR #618; the formula is still unknown; every Castle `reward_xp` is 0.
+
+## Explicit Non-Goals (record as decisions, do not open packets)
+
+| Item | Why |
+|---|---|
+| Mission 688 or Armory logic in World 8 | Cellblock-local; chain 1109 hands off. |
+| Events 6103, 6106-6112 | The 2009 server never emitted them (`SGWPlayer.py`). |
+| Legacy Romney/security-grid revisions, Humvee disable, Castle VO, new cinematics | No original link or asset. |
+| `HasItem` populator | The cell has no inventory; step state is the gate (D-CA08). |
+| `dialog_set_open` dispatch site | Retired for Castle (D-CA04). |
+| Pet/companion system (#570) for Zuritska | The escort is `set_follow_target`; no command dispatch or ownership. |
+
+## Scheduling And Closeout
+
+Dependency roots after authorization, all with disjoint files and runnable in parallel worktrees: **CA00** (seed), **CA02** (spawner/dialogs + executor/dialog), **CA04** (minigame/), **CA10** (gate_travel + wire_helpers), **CA05** (recon, then seed rows). **CA01** starts when the Cellblock releases C09 and D-CA03/D-CA13 are answered; **CA03** follows CA01. **CA08** needs only CA01 and runs beside CA06. **CA06** needs CA03 + CA05; **CA07** needs CA06 + CA05 + Cellblock GC1b-0; **CA09** needs CA05 + CA08 (+ CA10 for visuals, not for logic). CA11-CA14 are engine gates with no content packet blocked on them under the recommended decisions; CA13/CA14 can be scoped and started any time without touching the seed. Merge order for the contended `executor/mod.rs`: PR #618, PR #619, Cellblock C03, then any Castle arm.
+
+Milestones for the user's in-client UAT are in [README.md](README.md#validation-and-uat-gates). A packet becomes Done only after its replay guard, executor or wire test where applicable, documentation update and milestone UAT pass.

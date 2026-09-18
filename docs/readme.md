@@ -66,6 +66,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Slash Commands](commands.md) | Player-friendly guide to all 266 in-game `/commands` (the real typed names captured live), with what each does, whether it works on our server yet, access level, parameters, and examples |
 | [Legacy Dot Command Parity](analysis/legacy-command-parity/README.md) | Static 116-command emulator audit, approved restoration contracts, and Claude Code coordinator handoff with bounded work packets |
 | [Castle Cellblock Rebuild](analysis/castle-cellblock-rebuild/README.md) | Audit of the Castle_CellBlock rebuild spreadsheet against the original Python scripts and the live chain seed, proposed decisions, and a bounded packet ledger for the remaining work |
+| [Castle Rebuild](analysis/castle-rebuild/README.md) | Audit of the World 8 Castle rebuild spreadsheet (missions 701-708) against `Castle.py`, the original gate code, the seed and the local client maps; the Cellblock-branch items Castle depends on; proposed decisions and a parallel packet ledger |
 | [Connection Flow](connection-flow.md) | End-to-end login and world entry sequence |
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
 | [Project Status](project-status.md) | What works, what is left, and the roadmap |
