@@ -6,6 +6,7 @@
 
 use tokio::sync::mpsc;
 
+use super::transport;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -323,6 +324,116 @@ pub(super) async fn set_visible(
             })
             .await;
     }
+}
+
+/// `Action::MoveEntity` — reposition either the acting player or a
+/// tagged NPC. One seed verb, two very different mechanisms:
+///
+/// - **`use_player: true`** (seed rows 3007 / 3028, both with
+///   `target_key` NULL) moves the *player* who fired the chain. That has
+///   to go through [`transport::teleport`], which owns the spatial-grid
+///   update, the `note_authorized_teleport` validator reseed, the
+///   `CellToBaseMsg::TeleportPlayer` forced-position snap and the
+///   prev-position anti-camera-snap. `update_entity_position` alone
+///   moves the server's idea of the player and nothing the client sees.
+/// - **`entity_tag`** (rows 3005 / 3009 / 3011) repositions an NPC, which
+///   is exactly [`move_waypoint`]'s job.
+///
+/// `use_player` wins when both are set — the seed never does that, but
+/// "move the player" is the more specific instruction.
+///
+/// The `world` param is a cross-world guard, not a destination selector.
+/// All five seeded rows name the world they are already on, so it
+/// normally resolves to the same-world path; a genuine mismatch on the
+/// player path routes to [`transport::cross_world_teleport`] instead of
+/// silently dropping the avatar at those coordinates on the wrong map.
+/// A mismatch on the NPC path is refused: NPCs have no gate-travel
+/// equivalent, and snapping one to coordinates in a world it isn't in
+/// would place it somewhere arbitrary.
+pub(super) async fn move_entity(
+    entity_tag: Option<String>,
+    destination: [f32; 3],
+    world: Option<String>,
+    use_player: Option<bool>,
+    entity_id: u32,
+    chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    if use_player == Some(true) {
+        let current_world = space_mgr.get_entity_world_name(entity_id);
+        // Only a *known* mismatch counts. An unresolvable current world
+        // (entity already gone) falls through to the same-world path,
+        // which fail-softs on the missing entity rather than firing a
+        // gate travel for a player the cell can't see.
+        let cross_world = match (world.as_deref(), current_world.as_deref()) {
+            (Some(want), Some(cur)) => want != cur,
+            _ => false,
+        };
+        if cross_world {
+            // `world` is Some in this branch by construction.
+            let target_world = world.unwrap_or_default();
+            tracing::info!(
+                entity_id, %target_world, ?destination, chain_id,
+                "Content: move_entity crosses worlds -- routing through gate travel"
+            );
+            transport::cross_world_teleport(
+                target_world,
+                destination,
+                entity_id,
+                chain_id,
+                tx,
+                space_mgr,
+            )
+            .await;
+            return;
+        }
+        // Same-world player move. `transport::teleport` treats its
+        // `space_id` as the *destination* space and warns on a mismatch,
+        // so pass the player's current space to keep it on the
+        // same-space path. `0` is its "unspecified" sentinel and is what
+        // a missing entity degrades to.
+        let space_id = space_mgr
+            .get_entity(entity_id)
+            .map(|e| e.space_id.0)
+            .unwrap_or(0);
+        transport::teleport(space_id, destination, entity_id, chain_id, tx, space_mgr).await;
+        return;
+    }
+
+    let Some(entity_tag) = entity_tag else {
+        tracing::warn!(
+            entity_id,
+            ?destination,
+            chain_id,
+            "MoveEntity: row has neither use_player nor target_key -- nothing moved"
+        );
+        return;
+    };
+
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        tracing::warn!(
+            entity_id, %entity_tag, ?destination, chain_id,
+            "MoveEntity: no entity matched tag in the source entity's space -- NPC reposition skipped"
+        );
+        return;
+    };
+
+    if let (Some(want), Some(cur)) = (
+        world.as_deref(),
+        space_mgr.get_entity_world_name(target_id).as_deref(),
+    ) {
+        if want != cur {
+            tracing::warn!(
+                entity_id, %entity_tag, target_id, want_world = %want, current_world = %cur,
+                chain_id,
+                "MoveEntity: cross-world NPC move is not supported -- NPC reposition skipped"
+            );
+            return;
+        }
+    }
+
+    move_waypoint(entity_tag, destination, entity_id, chain_id, space_mgr);
 }
 
 /// `Action::MoveWaypoint` — snap the tagged entity to a new position.

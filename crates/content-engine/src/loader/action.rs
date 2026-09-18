@@ -54,6 +54,15 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                 container_id: container,
             })
         }
+        "grant_xp" => {
+            // `amount` is the only param; a row without it is almost
+            // certainly an authoring slip, so keep the action (the
+            // action_type IS known — returning None here would emit the
+            // loader's misleading "Unknown action_type" warn) and let
+            // the executor refuse the zero grant loudly.
+            let amount = params.get("amount").and_then(|v| v.as_u64()).unwrap_or(0);
+            Some(Action::GrantXP { amount })
+        }
         "remove_item" => {
             let item_id = row.target_id?;
             let qty = params.get("qty").and_then(|v| v.as_i64()).unwrap_or(1) as i32;

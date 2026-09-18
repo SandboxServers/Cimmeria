@@ -27,7 +27,7 @@ The recent direction is informative: each addition has shipped with seed data, e
 
 These variants exist in the `Action` / `Condition` enum and are accepted by the loader, but [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) has no match arm — they fall through to `debug!("Unhandled")` no-ops. Wiring them is mostly executor work, not engine work.
 
-**Four of these are not roadmap items but live bugs**: `move_entity` (5 seeded rows), `launch_ability` (3), `qr_combat_damage` (2), and `fail_objective` (1) are already authored into the shipped seed and silently do nothing every time they resolve. See §1.4.
+**Three of these are not roadmap items but live bugs**: `launch_ability` (3 seeded rows), `qr_combat_damage` (2), and `fail_objective` (1) are already authored into the shipped seed and silently do nothing every time they resolve. See §1.4. `move_entity` was the fourth and shipped in issue #613.
 
 ### 1.1 `Action::ApplyEffect` / `Action::RemoveEffect`
 
@@ -47,23 +47,23 @@ These variants exist in the `Action` / `Condition` enum and are accepted by the 
 | Unlocks | Timed objectives ("defuse in 30s"). Wave-spawn delays. Daily-reset scaffolding (paired with §3.2). Escort-fail-on-pause patterns. Timed buff cleanup if §1.1 doesn't already drive it. |
 | Why | Several SGW missions in the bomb-defusal/escape-sequence pattern need this. There's no good Rust-side substitute that an authored chain could call into without reinventing the dispatcher. |
 
-### 1.3 `Action::GrantXP`
+### 1.3 `Action::GrantXP` — **shipped (issue #611)**
 
 | | |
 |---|---|
-| Status today | Variant defined ([actions.rs:23](../../crates/content-engine/src/actions.rs#L23)). No loader arm. No executor arm. **No mission in the seed data uses XP rewards** — every `reward_xp` field is 0. |
-| Effort | Small (S) — once the XP/leveling system lands. |
-| Unlocks | Mission XP rewards. Currently every chain that completes a mission fires `CompleteMission` followed by `GrantItem` rewards — `GrantXP` is not authored anywhere. |
-| Why | Already on the roadmap via [.claude/plans/2026-03-08-xp-leveling-design.md](../../.claude/plans/2026-03-08-xp-leveling-design.md). The chain-side wiring should land alongside the leveling system. |
+| Status today | Both arms wired: `grant_xp` in [loader/action.rs](../../crates/content-engine/src/loader/action.rs) reads `params.amount`; the executor sends `CellToBaseMsg::GrantXP { notify_gm: false }`, the same round-trip mob-kill XP and GM `gmGiveXp` use. |
+| Remaining | **No content uses it — 0 seed rows**, and **no mission in the seed data uses XP rewards** (every `reward_xp` field is 0). Authoring the rewards is the open half. |
+| Unlocks | Mission XP rewards. Every chain that completes a mission today fires `CompleteMission` followed by `GrantItem` rewards and nothing else. |
+| Why | Roadmapped via [.claude/plans/2026-03-08-xp-leveling-design.md](../../.claude/plans/2026-03-08-xp-leveling-design.md); the chain-side plumbing landed ahead of the reward authoring so content can start using it. |
 
-### 1.4 Seeded-but-inert actions — `move_entity`, `launch_ability`, `qr_combat_damage`, `fail_objective`
+### 1.4 Seeded-but-inert actions — `launch_ability`, `qr_combat_damage`, `fail_objective`
 
 | | |
 |---|---|
-| Status today | All four have loader arms ([loader/action.rs](../../crates/content-engine/src/loader/action.rs)) and are **used by shipped seed data** — 5 / 3 / 2 / 1 rows respectively. None has an executor arm, so all 11 rows resolve, emit a `debug!`, and do nothing. |
-| Effort | Small (S) each. `MoveEntity` can reuse the `MoveWaypoint` handler's position-write path; `LaunchAbility` calls into `crate::cell::abilities`; `QrCombatDamage` calls the existing damage-apply path; `FailObjective` mirrors the `CompleteObjective` handler in [executor/mission.rs](../../crates/services/src/cell/content/executor/mission.rs). |
-| Unlocks | Nothing new — it makes already-authored content work. Scripted NPC repositioning, scripted ability fires, scripted damage, and objective-fail branches are all currently silent no-ops in Castle_CellBlock and SGC_W1. |
-| Why | This is the highest-value Tier 1 entry because the content authoring is already done and merged. Unlike §1.1–§1.3 it needs no new seed data, no new design, and no dependency on an unshipped system. Each one should ship with a chain-replay guard asserting the action reaches its handler. |
+| Status today | All three have loader arms ([loader/action.rs](../../crates/content-engine/src/loader/action.rs)) and are **used by shipped seed data** — 3 / 2 / 1 rows respectively. None has an executor arm, so all 6 rows resolve, emit a `debug!`, and do nothing. `move_entity` (5 rows) was the fourth entry here until issue #613 wired it. |
+| Effort | Small (S) each. `LaunchAbility` calls into `crate::cell::abilities`; `QrCombatDamage` calls the existing damage-apply path; `FailObjective` mirrors the `CompleteObjective` handler in [executor/mission.rs](../../crates/services/src/cell/content/executor/mission.rs). |
+| Unlocks | Nothing new — it makes already-authored content work. Scripted ability fires, scripted damage, and objective-fail branches are all currently silent no-ops in Castle_CellBlock and SGC_W1. |
+| Why | This is the highest-value remaining Tier 1 entry because the content authoring is already done and merged. `move_entity` shipped on exactly this rationale in issue #613. Unlike §1.1–§1.3 it needs no new seed data, no new design, and no dependency on an unshipped system. Each one should ship with a chain-replay guard asserting the action reaches its handler. |
 
 ---
 
