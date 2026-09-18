@@ -255,5 +255,38 @@ INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUE
 
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2081, 2396, 466.365, 70.397, 991.466, 0, 0, 0);
 
-SELECT pg_catalog.setval('point_set_points_point_id_seq', 2396, true);
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Interrogation Block"): 4 corners of the detention
+-- corridor, y=66.79 floor. The prefab grid measures x[228.32, 333.29] z[1021.82, 1099.58]
+-- across the 36 CA-Cell_Doorway01_Pf0 and 36 EM-ViewScreen03_Pf0 instances in
+-- Castle-000a0002/000a0003; the box is rounded ~2-3 units outward on every side so the
+-- outermost cell doors fall inside it, because mission 702 step 2402 uses this set as an
+-- `enter_region` trigger and a box flush with the doors would miss a player hugging a wall.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2082, 2397, 226.0, 66.79, 1018.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2082, 2398, 226.0, 66.79, 1103.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2082, 2399, 336.0, 66.79, 1018.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2082, 2400, 336.0, 66.79, 1103.0, 0, 0, 0);
+
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Communications room"): 4 corners of the
+-- Castle-00080002.umap monitor-wall room -- x[260,284] and z[848,863] around the measured
+-- room (corner meshes at x 261.40 / 282.49 z 861.20; monitor walls and wallstations on the
+-- z=852.1-852.2 wall at x 264.89-278.79), floor y=55.20. See point_sets.sql 2083.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2083, 2401, 260.0, 55.2, 848.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2083, 2402, 260.0, 55.2, 863.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2083, 2403, 284.0, 55.2, 848.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2083, 2404, 284.0, 55.2, 863.0, 0, 0, 0);
+
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Bravo" -- Humvee/bunker cluster).
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2084, 2405, 950.0, 25.0, 470.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2084, 2406, 950.0, 25.0, 497.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2084, 2407, 975.0, 25.0, 470.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2084, 2408, 975.0, 25.0, 497.0, 0, 0, 0);
+
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Alpha" -- from existing spawnlist
+-- rows 118/119/120/121/123/124/2, HIGH confidence).
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2409, 786.0, 55.2, 511.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2410, 786.0, 55.2, 519.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2411, 811.0, 55.2, 511.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2412, 811.0, 55.2, 519.0, 0, 0, 0);
+
+SELECT pg_catalog.setval('point_set_points_point_id_seq', 2412, true);
 

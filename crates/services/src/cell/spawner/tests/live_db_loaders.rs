@@ -553,4 +553,173 @@ mod live_db {
              path)"
         );
     }
+
+    /// **CA05 regression guard** (docs/analysis/castle-rebuild/work-packets.md CA05
+    /// acceptance): every new Castle story-actor tag must resolve to exactly one
+    /// `resources.spawnlist` row in World 8 ("Castle") whose `entity_templates` join
+    /// succeeds (non-empty `template_name`), and every new Castle point set must have
+    /// at least one point. Deleting a tag's spawnlist row, its template row, or a point
+    /// set's points must fail this test — that is the guard's whole job.
+    #[tokio::test]
+    async fn castle_ca05_story_actor_tags_resolve_to_exactly_one_spawn_row() {
+        let pool = require_db_or_skip!();
+        let records = load_spawns_from_db(&pool)
+            .await
+            .expect("load_spawns_from_db must succeed");
+
+        const CASTLE_TAGS: [&str; 9] = [
+            "Castle_Zuritska_Cell",
+            "Castle_Zuritska_Comms",
+            "Castle_Romney",
+            "Castle_Muelbach",
+            "Castle_BravoOfficer1",
+            "Castle_BravoOfficer2",
+            "Castle_BravoOfficer3",
+            "Castle_SurrenderGuard",
+            "Castle_CommsTerminal",
+        ];
+
+        for tag in CASTLE_TAGS {
+            let matches: Vec<&SpawnRecord> = records
+                .iter()
+                .filter(|r| r.tag.as_deref() == Some(tag))
+                .collect();
+            assert_eq!(
+                matches.len(),
+                1,
+                "tag {tag} must resolve to exactly one resources.spawnlist row in \
+                 World 8 (Castle); found {} — a deleted or duplicated CA05 spawn row \
+                 would fail this assertion",
+                matches.len()
+            );
+            let record = matches[0];
+            assert_eq!(
+                record.world_name, "Castle",
+                "tag {tag} must be a World 8 (Castle) spawn, got world {}",
+                record.world_name
+            );
+            assert!(
+                !record.template_name.is_empty(),
+                "tag {tag} spawn row's entity_templates join produced an empty \
+                 template_name — the referenced template_id was deleted or renamed"
+            );
+        }
+    }
+
+    /// **CA05 regression guard**: every new Castle point set (Interrogation Block,
+    /// Comms Room, Checkpoint Bravo, Checkpoint Alpha) must have at least one point.
+    /// Deleting a point set's `point_set_points` rows must fail this test.
+    #[tokio::test]
+    async fn castle_ca05_point_sets_have_at_least_one_point() {
+        let pool = require_db_or_skip!();
+        let regions = load_regions_from_db(&pool)
+            .await
+            .expect("load_regions_from_db must succeed");
+
+        const CASTLE_POINT_SETS: [&str; 4] = [
+            "Castle.InterrogationBlock",
+            "Castle.CommsRoom",
+            "Castle.CheckpointBravo",
+            "Castle.CheckpointAlpha",
+        ];
+
+        for name in CASTLE_POINT_SETS {
+            let region = regions.iter().find(|r| r.name == name).unwrap_or_else(|| {
+                panic!("point set {name} must be loaded by load_regions_from_db")
+            });
+            assert!(
+                !region.points.is_empty(),
+                "point set {name} (set_id={}) has no points — a deleted \
+                 point_set_points row would fail this assertion",
+                region.set_id
+            );
+        }
+    }
+
+    /// **CA05 regression guard** (coordinator scope addition, worknotes/ca05.md "Zone-wide
+    /// hostile respawn timers"): every hostile (faction 10) World 8 spawn row must have a
+    /// non-NULL resolved `respawn_secs`, or the first player to kill it locks that mob out
+    /// of the shared world for everyone else (no shipped Castle spawn row set a respawn
+    /// timer before this packet). A regression that drops `respawn_secs` from a hostile
+    /// row — new or pre-existing — must fail this test.
+    #[tokio::test]
+    async fn castle_hostile_world8_spawns_all_have_a_respawn_timer() {
+        let pool = require_db_or_skip!();
+        let records = load_spawns_from_db(&pool)
+            .await
+            .expect("load_spawns_from_db must succeed");
+
+        let hostile_castle_spawns: Vec<&SpawnRecord> = records
+            .iter()
+            .filter(|r| r.world_name == "Castle" && r.faction == Some(10))
+            .collect();
+        assert!(
+            !hostile_castle_spawns.is_empty(),
+            "expected at least one hostile (faction 10) World 8 spawn row \
+             (NID Guard / Prisoner Retrieval Unit templates 145/146/148, plus \
+             Castle_Romney/Castle_Muelbach/Castle_BravoOfficer*) — none found, \
+             the probe query itself may be broken"
+        );
+        for r in &hostile_castle_spawns {
+            assert!(
+                r.respawn_secs.is_some(),
+                "hostile World 8 spawn {} (tag={:?}, template_id={}) has no \
+                 resolved respawn_secs — it would permanently disappear from the \
+                 shared world after the first kill",
+                r.spawn_id,
+                r.tag,
+                r.template_id
+            );
+        }
+    }
+
+    /// **CA05 regression guard** (worknotes/ca05.md "Recovered display names"): every named
+    /// CA05 story actor must resolve a non-zero `name_id`.
+    ///
+    /// `name_id` is written raw onto the AoI create packet and only when it is `Some(n)` with
+    /// `n != 0` (`mercury/aoi/create.rs:211-218`), so a NULL or 0 column silently ships a
+    /// nameless NPC to the client — there is no server-side fallback and no error. The ids
+    /// themselves are recovered originals from `texts.sql` (7066 'Dr. Zuritska', 6962 'NID
+    /// Interrogator Romney', 6965 'Warden Muelbach', 6966 'NID Officer', 7720
+    /// 'Communications Terminal'), and new ids cannot be minted because the client resolves
+    /// them against its own PAK string table. Reverting any of those columns to NULL — which
+    /// is what this packet's first draft shipped — must fail this test.
+    #[tokio::test]
+    async fn castle_ca05_story_actors_all_have_a_client_resolvable_name_id() {
+        let pool = require_db_or_skip!();
+        let records = load_spawns_from_db(&pool)
+            .await
+            .expect("load_spawns_from_db must succeed");
+
+        // Castle_SurrenderGuard is deliberately included: objective 2794 names him only
+        // "a guard", so he keeps template 148's generic 7417 'NID Guard' rather than a
+        // recovered unique name — but he still must have *a* name.
+        const NAMED_CASTLE_TAGS: [&str; 9] = [
+            "Castle_Zuritska_Cell",
+            "Castle_Zuritska_Comms",
+            "Castle_Romney",
+            "Castle_Muelbach",
+            "Castle_BravoOfficer1",
+            "Castle_BravoOfficer2",
+            "Castle_BravoOfficer3",
+            "Castle_SurrenderGuard",
+            "Castle_CommsTerminal",
+        ];
+
+        for tag in NAMED_CASTLE_TAGS {
+            let record = records
+                .iter()
+                .find(|r| r.tag.as_deref() == Some(tag))
+                .unwrap_or_else(|| panic!("tag {tag} must have a spawnlist row"));
+            let name_id = record.name_id.unwrap_or(0);
+            assert!(
+                name_id != 0,
+                "tag {tag} (template_id={}) resolves name_id={:?} — the AoI create packet \
+                 omits the name property for NULL/0, so this actor would appear unnamed \
+                 in-client",
+                record.template_id,
+                record.name_id
+            );
+        }
+    }
 }
