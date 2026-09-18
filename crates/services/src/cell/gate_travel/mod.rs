@@ -79,14 +79,23 @@ pub async fn handle_dial_gate(
         return;
     }
 
+    // Every rejection below cancels the dial in flight, because
+    // `SGWPlayer.onDialGate` does: each of its three reject branches
+    // (`SGWPlayer.py:2050`, `:2061`, `:2067`) calls `self.cancelDialing()`
+    // before warning and returning. Without it a rejected re-dial leaves
+    // the PREVIOUS destination armed and, once its timer expires,
+    // crossable — the player walks into the gate and is sent somewhere
+    // they did not dial.
+
     // Look up the destination stargate from the DB cache
     let gate = match space_mgr.stargates.get(&target_address_id) {
         Some(g) => g.clone(),
         None => {
+            space_mgr.cancel_gate_dial(entity_id);
             tracing::warn!(
                 entity_id,
                 target_address_id,
-                "onDialGate: invalid stargate address"
+                "onDialGate: invalid stargate address — pending dial cancelled"
             );
             return;
         }
@@ -96,6 +105,7 @@ pub async fn handle_dial_gate(
     let current_world = match space_mgr.get_entity_world_name(entity_id) {
         Some(w) => w,
         None => {
+            space_mgr.cancel_gate_dial(entity_id);
             tracing::warn!(entity_id, "onDialGate: entity not found");
             return;
         }
@@ -103,9 +113,10 @@ pub async fn handle_dial_gate(
 
     // Don't travel to the same world (Python also checks this implicitly)
     if gate.world_name == current_world {
+        space_mgr.cancel_gate_dial(entity_id);
         tracing::debug!(
             entity_id, target_address_id, world = %gate.world_name,
-            "onDialGate: already in destination world"
+            "onDialGate: already in destination world — pending dial cancelled"
         );
         return;
     }
@@ -123,6 +134,7 @@ pub async fn handle_dial_gate(
         tracing::warn!(
             entity_id, target_address_id,
             from = %current_world, to = %gate.world_name,
+            reason = "no_stargate_region",
             "onDialGate: origin world has no REGION_FLAG_Stargate region — \
              travelling on the dial instead of on the crossing (no gate \
              volume exists for the player to walk into)"

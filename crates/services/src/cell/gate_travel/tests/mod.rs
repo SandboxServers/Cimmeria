@@ -139,6 +139,54 @@ async fn dial_gate_to_unknown_address_is_noop() {
     );
 }
 
+/// Every rejection branch cancels the dial in flight, as
+/// `SGWPlayer.onDialGate` does (`SGWPlayer.py:2050`, `:2061`, `:2067`
+/// each call `cancelDialing()` before returning).
+///
+/// The bug shape without this: dial Castle, then re-dial a bad address.
+/// The Castle dial stays armed, opens on its timer, and the player walks
+/// into the gate and is sent to a world they never dialled. All three
+/// branches are exercised against a live armed dial.
+#[tokio::test]
+async fn a_rejected_dial_cancels_the_dial_already_in_flight() {
+    let mut mgr = make_manager_with_stargates();
+    mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(1);
+    let (tx, _rx) = tokio::sync::mpsc::channel(16);
+
+    // ── unknown address ──
+    handle_dial_gate(1, 2, 0, &tx, &mut mgr, &engine()).await;
+    assert!(mgr.gate_dial(1).is_some(), "precondition: a dial is armed");
+    handle_dial_gate(1, 999, 0, &tx, &mut mgr, &engine()).await;
+    assert!(
+        mgr.gate_dial(1).is_none(),
+        "an unknown address must cancel the dial in flight, not leave the \
+         previous destination armed and crossable"
+    );
+
+    // ── same world as the dialer (gate 1 is Agnos's own gate) ──
+    handle_dial_gate(1, 2, 0, &tx, &mut mgr, &engine()).await;
+    assert!(mgr.gate_dial(1).is_some(), "precondition: a dial is armed");
+    handle_dial_gate(1, 1, 0, &tx, &mut mgr, &engine()).await;
+    assert!(
+        mgr.gate_dial(1).is_none(),
+        "dialling the world you are already in must cancel the dial"
+    );
+
+    // ── entity not found ──
+    // `destroy_entity` scrubs the dial itself, so re-arm the map directly
+    // afterwards to isolate `handle_dial_gate`'s entity-missing branch.
+    mgr.destroy_entity(1);
+    mgr.begin_gate_dial(1, 2, "Castle".to_string(), Some(CASTLE_EVENT_SET));
+    handle_dial_gate(1, 2, 0, &tx, &mut mgr, &engine()).await;
+    assert!(
+        mgr.gate_dial(1).is_none(),
+        "a dial from an entity that no longer exists must be cancelled, \
+         not left to fire against a reused entity id"
+    );
+}
+
 #[tokio::test]
 async fn dial_gate_cancel_is_noop() {
     let mut mgr = make_manager_with_stargates();
@@ -196,6 +244,7 @@ async fn dial_gate_with_closed_base_channel_leaves_the_entity_in_place() {
 /// fallback that keeps the ~18 gate-region-less worlds reachable.
 #[tokio::test]
 async fn dial_gate_without_a_gate_region_travels_immediately() {
+    let capture = crate::test_support::LogCapture::install();
     let mut mgr = make_manager_with_stargates();
     strip_stargate_regions(&mut mgr);
     mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
@@ -204,6 +253,24 @@ async fn dial_gate_without_a_gate_region_travels_immediately() {
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(16);
     handle_dial_gate(1, 2, 0, &tx, &mut mgr, &engine()).await;
+
+    // Negative-logging convention: taking the fallback is a documented
+    // divergence from the 2009 flow, so it must be visible in the log.
+    // Silently travelling on the dial is indistinguishable from the
+    // walk-through path in a live trace, which is exactly the "why did
+    // this world behave differently?" question an operator will ask.
+    assert!(
+        capture
+            .find_event(
+                tracing::Level::WARN,
+                "no REGION_FLAG_Stargate region",
+                "no_stargate_region",
+            )
+            .is_some(),
+        "must WARN with reason=no_stargate_region when the origin world \
+         has no gate volume. Captured events: {:#?}",
+        capture.all()
+    );
 
     assert!(mgr.get_entity(1).is_none());
 
