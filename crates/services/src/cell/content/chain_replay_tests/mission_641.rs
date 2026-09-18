@@ -12,7 +12,7 @@ use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 
-use super::super::engine_loader::load_single_chain_for_test;
+use super::super::engine_loader::{build_engine, load_single_chain_for_test};
 use crate::test_support::require_db_or_skip;
 
 /// Test 1: with mission 641 not yet accepted, the chain matches
@@ -348,6 +348,87 @@ async fn chain_1066_does_not_fire_without_step_80641_active() {
         !chain_1066_fired,
         "chain 1066 must NOT fire before step 80641 is reached. \
          Got actions: {:?}",
+        resolved.actions,
+    );
+}
+
+/// Full-seed regression guard for audit.md defect B1 on the Marsh-interact
+/// branch (former auto-export chains 5014/5015). Loads the entire seeded
+/// content engine via [`build_engine`], same rationale as the Region2
+/// guard in `mission_638.rs`: a single-chain load can't observe a second
+/// chain double-firing on the same trigger.
+///
+/// Before the purge, a Jaffa interacting with Preparation_ColMarsh before
+/// accepting mission 641 matched curated chain 1052 (`DisplayDialog 5022`
+/// x1) *and* the auto-export's chain 5014 (`DisplayDialog 5022` x1) and
+/// chain 5015 (`DisplayDialog 5022` x3, `DisplayDialog 4001` x1 — the
+/// Human dialog cross-bound onto the Jaffa branch). That's five 5022s and
+/// one stray 4001. This test asserts exactly one 5022 and zero 4001,
+/// which fails pre-purge and passes once
+/// `space_castle_cellblock_chains.sql` is deleted.
+#[tokio::test]
+async fn jaffa_marsh_interact_before_641_resolves_exactly_one_dialog_5022_and_zero_4001() {
+    use cimmeria_content_engine::actions::Action;
+
+    const ARCHETYPE_JAFFA: i32 = 8;
+
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param(
+        "entity_tag".to_string(),
+        serde_json::json!("Preparation_ColMarsh"),
+    );
+    ctx.set_param(
+        "mission_641_status".to_string(),
+        serde_json::json!("not_active"),
+    );
+    // "Before mission 641" also means step 2121 hasn't been reached yet;
+    // the MissionStatus/StepStatus evaluators default an unset key to
+    // "not_active" (see conditions.rs), which matches this state without
+    // needing an explicit param — set it anyway for clarity and to match
+    // what fire_interact_tag actually populates at this point in the flow.
+    ctx.set_param(
+        "mission_641_step_2121_status".to_string(),
+        serde_json::json!("not_active"),
+    );
+    ctx.set_param("archetype".to_string(), serde_json::json!(ARCHETYPE_JAFFA));
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::InteractTag,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+
+    let dialog_5022_count = resolved
+        .actions
+        .iter()
+        .filter(|(_, action)| matches!(action, Action::DisplayDialog { dialog_id: 5022 }))
+        .count();
+    assert_eq!(
+        dialog_5022_count, 1,
+        "Jaffa interacting with ColMarsh before mission 641 must resolve \
+         exactly one DisplayDialog(5022); got {dialog_5022_count} — \
+         duplicate chains from the purged auto-export are still in the \
+         seed. Actions: {:?}",
+        resolved.actions,
+    );
+
+    let dialog_4001_count = resolved
+        .actions
+        .iter()
+        .filter(|(_, action)| matches!(action, Action::DisplayDialog { dialog_id: 4001 }))
+        .count();
+    assert_eq!(
+        dialog_4001_count, 0,
+        "Jaffa interacting with ColMarsh before mission 641 must resolve \
+         zero DisplayDialog(4001) — that's the Human briefing dialog and \
+         must not cross-bind onto the Jaffa branch. Got {dialog_4001_count}. \
+         Actions: {:?}",
         resolved.actions,
     );
 }

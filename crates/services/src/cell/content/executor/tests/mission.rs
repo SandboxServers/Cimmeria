@@ -45,6 +45,7 @@ async fn complete_mission_action_against_failed_mission_does_not_fire_completion
     // production chain 1105's 687→688 auto-accept.
     let mut engine = ChainEngine::new();
     engine.register_chain(Chain {
+        action_delays: Vec::new(),
         id: 1105,
         name: "test_complete_chain".to_string(),
         enabled: true,
@@ -59,6 +60,7 @@ async fn complete_mission_action_against_failed_mission_does_not_fire_completion
 
     let (tx, _rx) = mpsc::channel(64);
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(9000, Action::CompleteMission { mission_id: 687 })],
     };
@@ -113,6 +115,7 @@ async fn accept_mission_action_inserts_active_instance() {
     let (tx, _rx) = mpsc::channel(64);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(9000, Action::AcceptMission { mission_id: 700 })],
     };
@@ -155,6 +158,7 @@ async fn complete_mission_action_against_active_mission_marks_completed() {
     let (tx, _rx) = mpsc::channel(64);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(9000, Action::CompleteMission { mission_id: 700 })],
     };

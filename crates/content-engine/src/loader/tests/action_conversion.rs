@@ -284,9 +284,41 @@ fn set_follow_target_with_string_target_tag_resolves_to_some() {
         Action::SetFollowTarget {
             entity_tag,
             target_tag,
+            use_player,
         } => {
             assert_eq!(entity_tag, "Pet");
             assert_eq!(target_tag.as_deref(), Some("Owner"));
+            assert_eq!(
+                use_player, None,
+                "use_player absent from params must parse to None"
+            );
+        }
+        other => panic!("expected SetFollowTarget, got {other:?}"),
+    }
+}
+
+/// `set_follow_target` with `use_player: true` parses it through,
+/// mirroring `move_entity`'s `use_player` convention. This is the
+/// GC1b-0 addition that lets a follow target resolve to the chain's
+/// triggering player instead of a tag lookup (player entities carry
+/// no tag).
+#[test]
+fn set_follow_target_with_use_player_true_parses() {
+    use crate::actions::Action;
+    let row = make_row(
+        "set_follow_target",
+        Some("Marsh"),
+        serde_json::json!({ "use_player": true }),
+    );
+    match convert_action(&row).expect("parse must succeed") {
+        Action::SetFollowTarget {
+            entity_tag,
+            target_tag,
+            use_player,
+        } => {
+            assert_eq!(entity_tag, "Marsh");
+            assert_eq!(target_tag, None);
+            assert_eq!(use_player, Some(true));
         }
         other => panic!("expected SetFollowTarget, got {other:?}"),
     }

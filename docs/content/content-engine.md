@@ -445,7 +445,7 @@ Thirteen `Action` variants have **no match arm in [executor/mod.rs](../../crates
 
 Three of those **are authorable from seed data and are used today** — `qr_combat_damage` (2 rows), `remove_effect` (1), `fail_objective` (1). Those 4 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
 
-`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play — both chains carrying it (5000 and 5001) also have mutually-exclusive `mission_status` conditions, and its effect is single-shot and script-less. See §3.
+`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
 
 Two more arms exist but are log-only: `SystemMessage` (11 seeded rows — wire format unknown, see below) and `SendMessage` (no seed verb).
 

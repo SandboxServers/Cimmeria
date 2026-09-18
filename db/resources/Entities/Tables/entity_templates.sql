@@ -79,6 +79,22 @@ CREATE TABLE entity_templates (
     -- → runtime defaults `[2.0, 5.0]`.
     follow_min_distance real,
     follow_max_distance real,
+    -- Per-tick movement speed, in world units per 100ms tick (the same
+    -- unit the runtime's `CellEntity::move_speed` field already uses).
+    -- NULL → runtime falls back to the historical hardcoded default of
+    -- 0.6 (6.0 units/sec), set in
+    -- `crates/entity/src/cell_entity/construction.rs`.
+    --
+    -- 0.6 units/tick was measured against World 12's player run speed
+    -- (8.125 units/sec) and found to be 26% too slow — a follower NPC
+    -- pathing at the default would never close the follow-distance
+    -- band against a moving player and would trail further every
+    -- hallway (GC1b-0 feasibility pass, Castle Cellblock escort work).
+    -- Set this column on templates that need to keep pace with (or
+    -- catch up to) a player, e.g. escort/companion NPCs.
+    move_speed real,
+    CONSTRAINT entity_templates_move_speed_positive
+        CHECK (move_speed IS NULL OR move_speed > 0.0),
     CONSTRAINT entity_templates_respawn_secs_min_3
         CHECK (respawn_secs IS NULL OR respawn_secs >= 3),
     CONSTRAINT entity_templates_wander_radius_positive

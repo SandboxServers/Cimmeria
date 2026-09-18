@@ -101,6 +101,7 @@ fn spawn_npc_from_record_sets_template_fields() {
         wander_max_dwell_secs: 8.0,
         follow_min_distance: 2.0,
         follow_max_distance: 5.0,
+        move_speed: 0.6,
     };
 
     mgr.spawn_npc_from_record(600, &record).unwrap();

@@ -133,9 +133,23 @@ pub(super) fn set_npc_poi(
 /// `AiState::Follow` and maintains the distance band defined by
 /// `follow_min/max_distance`. When `target_tag` is None (or doesn't
 /// resolve), the follow state clears and the NPC returns to Idle.
+///
+/// `use_player: Some(true)` resolves the target to `entity_id` — the
+/// entity that triggered the chain — instead of doing a `target_tag`
+/// lookup, and takes precedence over `target_tag` when set. This is
+/// the only way to point a follow target at a player: player entities
+/// carry no `tag` (tags only come from `spawnlist.tag` at NPC spawn —
+/// see `crates/services/src/cell/spawner/npcs.rs`), so
+/// `find_entity_by_tag` can never resolve one. Most dispatch call
+/// sites (dialog, interaction, mission) pass the triggering player's
+/// own entity_id as `entity_id`; the one exception is
+/// `event_dispatch::cover`'s NPC-triggered chains (`npc_entity_id, 0`)
+/// — guarded below so `use_player` never silently points a follow
+/// target at the wrong (non-player) entity.
 pub(super) fn set_follow_target(
     entity_tag: String,
     target_tag: Option<String>,
+    use_player: Option<bool>,
     entity_id: u32,
     chain_id: i64,
     space_mgr: &mut SpaceManager,
@@ -145,12 +159,25 @@ pub(super) fn set_follow_target(
         tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetFollowTarget");
         return;
     };
-    let resolved_target = match &target_tag {
-        Some(tag) => space_mgr.find_entity_by_tag(entity_id, tag),
-        None => None,
+    let resolved_target = if use_player.unwrap_or(false) {
+        let triggering_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
+        if triggering_is_player {
+            Some(entity_id)
+        } else {
+            tracing::warn!(
+                entity_id, %entity_tag, chain_id,
+                "Content: SetFollowTarget use_player=true but the triggering \
+                 entity is not a player; follow target left unresolved"
+            );
+            None
+        }
+    } else {
+        target_tag
+            .as_deref()
+            .and_then(|tag| space_mgr.find_entity_by_tag(entity_id, tag))
     };
     tracing::info!(
-        entity_id, %entity_tag, npc_id, ?target_tag, ?resolved_target, chain_id,
+        entity_id, %entity_tag, npc_id, ?target_tag, use_player, ?resolved_target, chain_id,
         "Content: set follow target"
     );
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {

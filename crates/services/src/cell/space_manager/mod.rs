@@ -12,11 +12,13 @@ use cimmeria_entity::navigation::NavMesh;
 use cimmeria_entity::space::Space;
 
 pub use client_move::ClientMoveOutcome;
+pub(crate) use deferred_content_actions::PendingContentAction;
 pub use entities::DespawnOutcome;
 pub use queries::PlayerNameLookup;
 
 mod aoi;
 mod client_move;
+mod deferred_content_actions;
 mod entities;
 mod lifecycle;
 mod queries;
@@ -241,6 +243,13 @@ pub struct SpaceManager {
     /// `patrol_path` immediately; the durable copy is the recorded
     /// `point_set_points` seed SQL. Path id == `point_sets.set_id`.
     pub patrol_authoring: HashMap<i32, Vec<cimmeria_common::Vector3>>,
+    /// Content-engine actions deferred by `content_actions.delay_ms > 0`,
+    /// keyed by the entity that triggered the chain. Drained by
+    /// `content::executor::deferred_content_action_tick` on the existing
+    /// 100ms cell tick — see `deferred_content_actions` for the scheduling
+    /// API and `SpaceManager::destroy_entity` for the disconnect/leave-space
+    /// cleanup (same choke point as `authoring_changes`/`autosave_spawns`).
+    pub(crate) pending_content_actions: HashMap<u32, Vec<PendingContentAction>>,
 }
 
 impl SpaceManager {
@@ -282,6 +291,7 @@ impl SpaceManager {
             authoring_changes: HashMap::new(),
             autosave_spawns: HashSet::new(),
             patrol_authoring: HashMap::new(),
+            pending_content_actions: HashMap::new(),
         }
     }
 }

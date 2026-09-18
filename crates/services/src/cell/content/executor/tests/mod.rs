@@ -21,11 +21,14 @@
 //! every submodule; theme-specific fixtures live with their tests.
 
 // Re-export the parent (executor) scope so submodules can `use super::*`.
-pub(super) use super::{execute_actions, CellToBaseMsg, SpaceManager};
+pub(super) use super::{
+    deferred_content_action_tick, execute_actions, CellToBaseMsg, SpaceManager,
+};
 pub(super) use cimmeria_content_engine::actions::Action;
 pub(super) use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};
 pub(super) use tokio::sync::mpsc;
 
+mod deferred;
 mod effects;
 mod inventory_counter;
 mod mission;

@@ -13,6 +13,154 @@
 use super::super::engine_loader::load_single_chain_for_test;
 use crate::test_support::require_db_or_skip;
 
+/// C03: `launch_ability 1374` (Cure Stasis Sickness) was added to chain
+/// 1034 as the first action, before `remove_item`. Investigated whether
+/// this was redundant: item 19's `items_event_sets` binding `(2, 19, 1374,
+/// 5)` is loaded into `space_mgr.item_event_set_abilities` but read ONLY
+/// by the weapon-ability-resolution helpers in
+/// `crates/services/src/cell/abilities/resolve.rs`, both of which require
+/// the item to be in the ACTIVE BANDOLIER SLOT — a consumable vial used
+/// from the mission-item container never reaches that code path. This test
+/// pins that chain 1034 is therefore the only place ability 1374 actually
+/// fires.
+#[tokio::test]
+async fn chain_1034_launches_cure_ability_1374() {
+    use cimmeria_content_engine::actions::Action;
+
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1034)
+        .await
+        .expect("DB query for chain 1034 must succeed")
+        .expect("chain 1034 must exist in seeded content_chains");
+
+    assert!(
+        chain.actions.iter().any(|a| matches!(
+            a,
+            Action::LaunchAbility {
+                ability_id: 1374,
+                entity_tag: None
+            }
+        )),
+        "chain 1034 must launch ability 1374 (Cure Stasis Sickness, self) \
+         when the ambernol vial is used -- the items_event_sets binding \
+         for item 19 is unreachable from the consumable-use path, so this \
+         chain is the only place 1374 fires. Actions: {:?}",
+        chain.actions,
+    );
+
+    // Ordering: launch_ability 1374 must run before remove_item 19 (see
+    // the seed comment on chain 1034) -- not load-bearing mechanically
+    // (both effects are complete no-ops today, see chain 1112's
+    // investigation), but pins the intuitive "cast the cure, then consume
+    // the reagent" order against an accidental future re-sort.
+    let launch_idx = chain
+        .actions
+        .iter()
+        .position(|a| {
+            matches!(
+                a,
+                Action::LaunchAbility {
+                    ability_id: 1374,
+                    ..
+                }
+            )
+        })
+        .expect("launch_ability 1374 must be present");
+    let remove_idx = chain
+        .actions
+        .iter()
+        .position(|a| matches!(a, Action::RemoveItem { item_id: 19, .. }))
+        .expect("remove_item 19 must be present");
+    assert!(
+        launch_idx < remove_idx,
+        "chain 1034 must launch ability 1374 BEFORE consuming the vial; \
+         got launch at index {launch_idx}, remove at index {remove_idx}. \
+         Actions: {:?}",
+        chain.actions,
+    );
+}
+
+/// C03 (decision D-CB04): chain 1112 restores the Python's unconditional
+/// `player.loaded` → `launch_ability 1372` (Stasis Sickness - Stage 1),
+/// gated `mission_status 639 neq completed` -- the idempotence stop the
+/// 2009 script never needed. Positive: fires while 639 is `not_active`
+/// (the very first load, before the mission even starts) and `active`
+/// (mid-mission relog). Negative: does NOT fire once 639 is `completed`
+/// (relog after cure must not re-apply).
+///
+/// Asserts inside the helper (rather than returning the resolved actions)
+/// so `require_db_or_skip!`'s bare `return;` stays valid — every caller is
+/// a `#[tokio::test]` fn returning `()`.
+async fn assert_1112_player_loaded_resolves(mission_639_status: &str, should_fire: bool) {
+    use cimmeria_content_engine::actions::Action;
+    use cimmeria_content_engine::chain::ChainEngine;
+    use cimmeria_content_engine::context::ExecutionContext;
+    use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
+
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1112)
+        .await
+        .unwrap_or_else(|e| panic!("DB query for chain 1112 must succeed: {e}"))
+        .unwrap_or_else(|| panic!("chain 1112 must exist in seeded content_chains"));
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param(
+        "world_name".to_string(),
+        serde_json::json!("Castle_CellBlock"),
+    );
+    ctx.set_param(
+        "mission_639_status".to_string(),
+        serde_json::json!(mission_639_status),
+    );
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::PlayerLoaded,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let fired: Vec<&Action> = resolved
+        .actions
+        .iter()
+        .filter(|(id, _)| *id == 1112)
+        .map(|(_, a)| a)
+        .collect();
+    let launches_1372 = fired.iter().any(|a| {
+        matches!(
+            a,
+            Action::LaunchAbility {
+                ability_id: 1372,
+                entity_tag: None
+            }
+        )
+    });
+    assert_eq!(
+        launches_1372, should_fire,
+        "chain 1112 with mission_639_status={mission_639_status:?} expected \
+         to launch ability 1372 = {should_fire}; got actions {fired:?}"
+    );
+}
+
+#[tokio::test]
+async fn chain_1112_launches_stasis_sickness_when_not_active() {
+    assert_1112_player_loaded_resolves("not_active", true).await;
+}
+
+#[tokio::test]
+async fn chain_1112_launches_stasis_sickness_when_active() {
+    assert_1112_player_loaded_resolves("active", true).await;
+}
+
+#[tokio::test]
+async fn chain_1112_does_not_relaunch_once_cured() {
+    assert_1112_player_loaded_resolves("completed", false).await;
+}
+
 /// Chain 1034: regression guard for an actual production bug — the seed
 /// file was updated to add the `remove_item` action, but a stale local
 /// DB without a re-seed surfaced as "ambernol use no longer removes the

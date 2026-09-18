@@ -26,6 +26,10 @@ pub use event_dispatch::{
     fire_interact_template, fire_item_equipped, fire_item_use, fire_npc_flanked,
     fire_player_loaded, fire_teleport_in,
 };
+// Cell-tick drain for `content_actions.delay_ms > 0` (C08a) — called once
+// per tick from `cell::service::message_loop`, same flat depth as the
+// `fire_*` dispatchers above.
+pub(crate) use executor::deferred_content_action_tick;
 
 #[cfg(test)]
 mod tests {

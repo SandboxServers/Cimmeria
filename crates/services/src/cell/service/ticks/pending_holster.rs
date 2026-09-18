@@ -308,6 +308,7 @@ mod tests {
 
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 999_997,
             name: "test: pending_attack drone kill counter".to_string(),
             enabled: true,

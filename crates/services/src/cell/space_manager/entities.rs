@@ -118,6 +118,11 @@ impl SpaceManager {
         // authoring SQL or the autosave-spawn flag.
         self.authoring_changes.remove(&entity_id);
         self.autosave_spawns.remove(&entity_id);
+        // A destroy (disconnect, cross-world teleport, GM despawn, death)
+        // before a deferred content-engine action's delay elapses must drop
+        // the action, not fire it later against a torn-down (and possibly
+        // id-reused) entity.
+        self.pending_content_actions.remove(&entity_id);
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 
@@ -313,6 +318,10 @@ impl SpaceManager {
         // session. Same rationale as `destroy_entity`.
         self.authoring_changes.remove(&entity_id);
         self.autosave_spawns.remove(&entity_id);
+        // Same rationale, C08a: a disconnect before a deferred
+        // content-engine action's delay elapses must drop the action, not
+        // fire it later against a session that no longer exists.
+        self.pending_content_actions.remove(&entity_id);
         if let Some(&space_id) = self.entity_space.get(&entity_id) {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.remove(&entity_id);

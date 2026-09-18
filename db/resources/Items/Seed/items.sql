@@ -12379,7 +12379,30 @@ INSERT INTO items (item_id, applied_science_id, description, icon_location, name
 
 INSERT INTO items (item_id, applied_science_id, description, icon_location, name, quality_id, tech_comp, tier, container_sets, max_stack_size, moniker_ids, max_ranged_range, min_ranged_range, visual_component, max_melee_range, min_melee_range, discipline_ids, flags, ammo_types, default_ammo_type, clip_size, charges) VALUES (8769, NULL, 'NO ITEM DESCRIPTION', 'set:ItemIcon001 image:DVD', 'Blueprint: Jaffa Minigame Consumable TC38', 'ITEM_QUALITY_Normal', 33, 3, '{17,15}', 1, '{552498541}', 0, 0, NULL, 0, 0, '{}', 35840, '{}', NULL, 0, 0);
 
-INSERT INTO items (item_id, applied_science_id, description, icon_location, name, quality_id, tech_comp, tier, container_sets, max_stack_size, moniker_ids, max_ranged_range, min_ranged_range, visual_component, max_melee_range, min_melee_range, discipline_ids, flags, ammo_types, default_ammo_type, clip_size, charges) VALUES (3438, 2, 'NO ITEM DESCRIPTION', 'set:ArmorIcon001 image:AR_H_Ballistic00.AR_HM_BB1_BH100', 'Prison Boots', 'ITEM_QUALITY_Normal', 1, 1, '{1,12,17}', 1, '{2365924106}', 0, 0, 'AR_H_Ballistic00.AR_HM_BB1_BH100', 0, 0, '{78,80,79,85,81,82}', 34176, '{}', NULL, 0, 0);
+-- C00 (Castle Cellblock rebuild, 2026-09-17): item 3438 "Prison Boots" is the
+-- item forced onto every non-Goa'uld Castle_CellBlock starting archetype via
+-- char_creation_choices.sql / char_creation_visgroups.sql, and is the item
+-- the Prison Boot movement-lock mechanic (abilities 1597/1598, effects
+-- 1939/3081/1942) is attached to. Its visual_component/icon_location used to
+-- point at 'AR_H_Ballistic00.AR_HM_BB1_BH100' -- a generic mesh shared
+-- byte-for-byte with 7 other "Titanium Ballistic Boots" items (2951-2954,
+-- 2959-2961), not a Prison Boots asset at all. A user-supplied reference
+-- screenshot of the intended model (a distinctive bulky gold/orange restraint
+-- boot with a status light) matches a dedicated, already-seeded
+-- 'AR_Global.Prisoner_*' package family instead: item 5865 (also named
+-- "Prison Boots"), item 3440 "Prison Jacket" -> AR_Global.Prisoner_Torso, and
+-- item 3437 "BDU Pants" -> AR_Global.Prisoner_Legs -- both of which
+-- char_creation_choices.sql already force-equips on the SAME vis-groups as
+-- 3438. Fixed in place here rather than re-pointing char_creation_choices at
+-- item 5865: 5865 is an incomplete duplicate row (name/description fields are
+-- swapped -- name='NO ITEM NAME' -- and it carries none of 3438's
+-- moniker_ids/discipline_ids/applied_science_id), while 3438 is the
+-- well-formed item every char_creation_choices row and the new
+-- launch_ability/item_use chains (C00) already reference by id. Re-pointing
+-- only these two fields keeps the fix to a single row with zero risk of
+-- orphaning 3438 anywhere else it's referenced. Item 5865 is left as an
+-- unused, functionally-orphaned duplicate -- not touched by this fix.
+INSERT INTO items (item_id, applied_science_id, description, icon_location, name, quality_id, tech_comp, tier, container_sets, max_stack_size, moniker_ids, max_ranged_range, min_ranged_range, visual_component, max_melee_range, min_melee_range, discipline_ids, flags, ammo_types, default_ammo_type, clip_size, charges) VALUES (3438, 2, 'NO ITEM DESCRIPTION', 'set:ArmorIcon001 image:AR_Global.Prisoner_Boots', 'Prison Boots', 'ITEM_QUALITY_Normal', 1, 1, '{1,12,17}', 1, '{2365924106}', 0, 0, 'AR_Global.Prisoner_Boots', 0, 0, '{78,80,79,85,81,82}', 34176, '{}', NULL, 0, 0);
 
 INSERT INTO items (item_id, applied_science_id, description, icon_location, name, quality_id, tech_comp, tier, container_sets, max_stack_size, moniker_ids, max_ranged_range, min_ranged_range, visual_component, max_melee_range, min_melee_range, discipline_ids, flags, ammo_types, default_ammo_type, clip_size, charges) VALUES (4494, 3, 'Flame Ribbon Device (Fire Damage)', 'set:CoreWidgets image:IconMissing', 'Flame Ribbon Device', 'ITEM_QUALITY_Normal', 20, 2, '{3,1,17}', 1, '{4193235610,3901383057}', 30, 0, NULL, 2, 0, '{59,63,66,68}', 36224, '{}', NULL, 0, 0);
 

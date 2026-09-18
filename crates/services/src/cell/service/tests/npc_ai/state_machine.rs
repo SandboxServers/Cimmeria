@@ -286,6 +286,64 @@ async fn npc_ai_leashing_snaps_to_spawn_restores_health_and_idles() {
     );
 }
 
+/// GC1b-0 hardening: a follower NPC (`follow_target_id.is_some()`)
+/// aggroed mid-escort must NOT be snapped back to `spawn_position` on
+/// the Leashing → Idle transition. Follow doesn't auto-resume after a
+/// fight (only Patrol/Wander do — see `Action::SetFollowTarget` doc),
+/// so teleporting a leashing follower back to spawn would strand it
+/// there with no route back to the player short of a content chain
+/// re-firing `SetFollowTarget`. Health/threat/cooldown cleanup must
+/// still run exactly as the non-follower case above.
+#[tokio::test]
+async fn npc_ai_leashing_with_follow_target_skips_spawn_snap() {
+    let mut mgr = make_ai_fixture([0.0; 3], [40.0, 0.0, 40.0]);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.ai_state = AiState::Leashing;
+        npc.follow_target_id = Some(999);
+        npc.threat_list.insert(100, 5.0);
+        npc.abilities
+            .start_ability_cooldown(592, std::time::Duration::from_secs(60));
+        if let Some(h) = npc.stats.get_mut(HEALTH) {
+            h.update(0, 5, 100); // damaged
+            h.clear_dirty();
+        }
+    }
+    let (tx, _rx) = mpsc::channel(16);
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
+    let npc = mgr.get_entity(200).unwrap();
+    assert!(matches!(npc.ai_state, AiState::Idle));
+    assert_eq!(
+        npc.position,
+        Vector3::new(40.0, 0.0, 40.0),
+        "a follower (follow_target_id.is_some()) must NOT be snapped \
+         back to spawn_position — it stays where the fight left it"
+    );
+    assert_eq!(
+        npc.stats.get(HEALTH).unwrap().cur,
+        100,
+        "leash must still restore health to max for a follower"
+    );
+    assert!(
+        npc.threat_list.is_empty(),
+        "leash must still wipe threat targets for a follower"
+    );
+    assert!(
+        !npc.abilities.is_on_cooldown(592),
+        "leash must still clear cooldowns for a follower"
+    );
+    assert_eq!(
+        npc.follow_target_id,
+        Some(999),
+        "follow_target_id itself is untouched by leash — Follow doesn't \
+         auto-clear on threat preemption, per Action::SetFollowTarget doc"
+    );
+}
+
 /// Fighting NPC with three live threats must pick the highest-threat
 /// target for attack. The dead-target sibling test only seeds two
 /// threats and the dead one is pruned, so the survivor is selected by

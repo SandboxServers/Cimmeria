@@ -605,6 +605,7 @@ async fn set_auto_cycle_immediate_fire_credits_quest_kill_on_tagged_npc_death() 
 
     let mut engine = ChainEngine::new();
     engine.register_chain(Chain {
+        action_delays: Vec::new(),
         id: 999_998,
         name: "test: SET_AUTO_CYCLE drone kill counter".to_string(),
         enabled: true,

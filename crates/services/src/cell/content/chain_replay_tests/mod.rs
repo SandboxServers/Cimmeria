@@ -23,14 +23,19 @@
 //! `CellToBaseMsg` traffic — a resolve-only test cannot tell a wired
 //! executor arm from the `other =>` catch-all.
 
-mod castle_cellblock_wakeup;
 mod cover_demo;
 mod grant_xp;
 mod mission_1562;
 mod mission_622;
 mod mission_638;
 mod mission_639;
+mod mission_640;
 mod mission_641;
+mod mission_680;
+mod mission_681_686;
 mod mission_687;
 mod mission_688;
+mod mission_689;
+mod region8_guard_aggro;
+mod region_transition_accepts;
 mod sgc_w1_move_entity;

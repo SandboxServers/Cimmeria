@@ -38,6 +38,7 @@ async fn mis_gated_player_loaded_chain_cannot_resurrect_completed_mission() {
     // The mis-gated chain: player_loaded, NO conditions, accepts 622.
     let mut engine = ChainEngine::new();
     engine.register_chain(Chain {
+        action_delays: Vec::new(),
         id: 9999,
         name: "mis-gated 622 grant (no not_active condition)".into(),
         enabled: true,

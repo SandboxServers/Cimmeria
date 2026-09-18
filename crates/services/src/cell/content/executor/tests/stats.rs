@@ -36,6 +36,7 @@ async fn change_stat_amount_advances_health_and_emits_on_stat_update() {
     let (tx, mut rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             4001,
@@ -114,6 +115,7 @@ async fn change_stat_amount_clamps_to_max() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             4001,
@@ -151,6 +153,7 @@ async fn change_stat_negative_amount_damages_stat() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             4001,
@@ -188,6 +191,7 @@ async fn change_stat_set_to_max_snaps_current_to_max() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             4001,
@@ -225,6 +229,7 @@ async fn change_stat_with_use_ammo_stat_skips_cleanly() {
     let (tx, mut rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![
             (

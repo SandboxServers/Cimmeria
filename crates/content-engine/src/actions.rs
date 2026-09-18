@@ -188,6 +188,17 @@ pub enum Action {
     /// typo or a removed tag doesn't leave the follower in a half
     /// state.
     ///
+    /// `use_player: Some(true)` resolves the follow target to the
+    /// entity that triggered the chain instead of doing a `target_tag`
+    /// lookup — mirrors `MoveEntity::use_player`. This is the only way
+    /// to make an NPC follow a player: player entities carry no `tag`
+    /// (tags only come from `spawnlist.tag` at NPC spawn), so
+    /// `find_entity_by_tag` can never resolve one. When `use_player` is
+    /// set but the triggering entity isn't a player (e.g. a cover-node
+    /// chain firing with an NPC as the source entity), the follow
+    /// target is left unresolved rather than silently following the
+    /// wrong entity.
+    ///
     /// Threat preemption converts Follow → Fighting; the follow
     /// target field persists on the entity but doesn't auto-route
     /// back — only Patrol and Wander auto-resume from their per-state
@@ -196,6 +207,7 @@ pub enum Action {
     SetFollowTarget {
         entity_tag: String,
         target_tag: Option<String>,
+        use_player: Option<bool>,
     },
 
     /// Push a tagged NPC into a specific AI state. Supports the

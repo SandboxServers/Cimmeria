@@ -16,6 +16,7 @@ async fn remove_item_action_emits_remove_inventory_by_type() {
     let (tx, mut rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             1034,
@@ -59,6 +60,7 @@ async fn increment_counter_initializes_and_adds_amount() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             1085,
@@ -97,6 +99,7 @@ async fn increment_counter_adds_to_existing_value() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             1086,
@@ -133,6 +136,7 @@ async fn reset_counter_clears_entry() {
     let (tx, _rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
     let resolved = ResolvedActions {
+        action_delays: Vec::new(),
         params: std::collections::HashMap::new(),
         actions: vec![(
             1087,

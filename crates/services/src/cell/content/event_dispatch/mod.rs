@@ -74,8 +74,13 @@ pub async fn fire_chain_by_id(
         action_count = actions.len(),
         "fire_chain_by_id: executing"
     );
+    let (actions, action_delays): (Vec<_>, Vec<_>) = actions
+        .into_iter()
+        .map(|(a, delay_ms)| ((chain_id, a), delay_ms))
+        .unzip();
     let resolved = cimmeria_content_engine::chain::ResolvedActions {
-        actions: actions.into_iter().map(|a| (chain_id, a)).collect(),
+        actions,
+        action_delays,
         ..Default::default()
     };
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
@@ -201,6 +206,7 @@ mod tests {
         let mut mgr = make_mgr_with_player_and_npc();
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 9001,
             name: "test: equip pistol → bump counter".to_string(),
             enabled: true,
@@ -236,6 +242,7 @@ mod tests {
         let mut mgr = make_mgr_with_player_and_npc();
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 9002,
             name: "test: any equip → bump counter".to_string(),
             enabled: true,
@@ -332,6 +339,7 @@ mod tests {
         let mut mgr = make_mgr_with_player_and_npc();
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 9209,
             name: "test: enter cover set 42 → bump counter".to_string(),
             enabled: true,
@@ -380,6 +388,7 @@ mod tests {
         let mut mgr = make_mgr_with_player_and_npc();
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 9210,
             name: "test: enter ANY cover → bump counter".to_string(),
             enabled: true,
@@ -428,6 +437,7 @@ mod tests {
         let mut mgr = make_mgr_with_player_and_npc();
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 0x7000_2A00,
             name: "test: leave cover set 42 → bump counter".to_string(),
             enabled: true,
@@ -469,6 +479,7 @@ mod tests {
         let mut mgr = make_mgr_with_player_and_npc();
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 0x7000_2A01,
             name: "test: in cover set 42 for any duration → bump counter".to_string(),
             enabled: true,
@@ -510,6 +521,7 @@ mod tests {
         let mut mgr = make_mgr_with_player_and_npc();
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 0x7000_2A02,
             name: "test: HumanGuard flank → bump counter".to_string(),
             enabled: true,
@@ -552,6 +564,7 @@ mod tests {
         let mut mgr = make_mgr_with_player_and_npc();
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 9211,
             name: "test: HumanGuard flank only".to_string(),
             enabled: true,
@@ -595,6 +608,7 @@ mod tests {
         let mut mgr = make_mgr_with_player_and_npc();
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 9003,
             name: "test: pistol-only".to_string(),
             enabled: true,

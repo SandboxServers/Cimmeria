@@ -16,7 +16,7 @@ use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 
-use super::super::engine_loader::load_single_chain_for_test;
+use super::super::engine_loader::{build_engine, load_single_chain_for_test};
 use crate::test_support::require_db_or_skip;
 
 /// Load `chain_id`, fire a `RegionEnter('Castle_Cellblock.Region2')`
@@ -183,4 +183,144 @@ async fn chain_1011_does_not_match_jaffa_archetype() {
 async fn chain_1012_does_not_match_non_jaffa_archetype() {
     const ARCHETYPE_SOLDIER: i32 = 1;
     assert_region_enter_does_not_resolve(1012, ARCHETYPE_SOLDIER).await;
+}
+
+/// Full-seed regression guard for audit.md defect B1 (the purged
+/// `space_castle_cellblock_chains.sql` auto-export). Unlike the helpers
+/// above, which load ONE named chain and so can never observe a second,
+/// unrelated chain double-firing on the same trigger, this loads the
+/// *entire* seeded content engine via [`build_engine`] — the same
+/// assembly path the live server uses — so a duplicate chain anywhere in
+/// the DB shows up in the resolved action count.
+///
+/// Before the purge, a Jaffa entering Region2 matched curated chain 1012
+/// (`AddDialogSet 5866` x1, `AcceptMission 638` x1) *and* the auto-export's
+/// chains 5004 (`AddDialog 5866` x1, `AcceptMission 638` x1) and 5005
+/// (`AddDialog 5866` x4, `AddDialog 2794` x1, `AcceptMission 638` x2) —
+/// six dialog-bind actions and four accepts total. This test asserts
+/// exactly one of each, which fails on the pre-purge tree and passes
+/// once `space_castle_cellblock_chains.sql` is deleted.
+#[tokio::test]
+async fn jaffa_region2_entry_resolves_exactly_one_dialog_bind_and_accept() {
+    use cimmeria_content_engine::actions::Action;
+
+    const ARCHETYPE_JAFFA: i32 = 8;
+    const JAFFA_DIALOG_SET_MAP: i32 = 5866;
+
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param(
+        "region_key".to_string(),
+        serde_json::json!("Castle_Cellblock.Region2"),
+    );
+    ctx.set_param(
+        "mission_638_status".to_string(),
+        serde_json::json!("not_active"),
+    );
+    ctx.set_param("archetype".to_string(), serde_json::json!(ARCHETYPE_JAFFA));
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::RegionEnter,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+
+    // Count both `AddDialogSet` (curated seed's action verb) and
+    // `AddDialog` (the auto-export's action verb) for dialog_set_id
+    // 5866 — the purged duplicate used the other verb, so a count that
+    // only checked one variant would miss the double-fire.
+    let dialog_binds: Vec<_> = resolved
+        .actions
+        .iter()
+        .filter(|(_, action)| match action {
+            Action::AddDialogSet { dialog_set_id, .. } => *dialog_set_id == JAFFA_DIALOG_SET_MAP,
+            Action::AddDialog { dialog_set_id, .. } => *dialog_set_id == JAFFA_DIALOG_SET_MAP,
+            _ => false,
+        })
+        .collect();
+    assert_eq!(
+        dialog_binds.len(),
+        1,
+        "Jaffa entering Region2 must resolve exactly one dialog-set bind for \
+         5866 (AddDialogSet or AddDialog); got {} — duplicate chains from the \
+         purged auto-export are still in the seed. Actions: {:?}",
+        dialog_binds.len(),
+        resolved.actions,
+    );
+
+    let accepts: Vec<_> = resolved
+        .actions
+        .iter()
+        .filter(|(_, action)| matches!(action, Action::AcceptMission { mission_id: 638 }))
+        .collect();
+    assert_eq!(
+        accepts.len(),
+        1,
+        "Jaffa entering Region2 must resolve exactly one AcceptMission(638); \
+         got {} — duplicate chains from the purged auto-export are still in \
+         the seed. Actions: {:?}",
+        accepts.len(),
+        resolved.actions,
+    );
+}
+
+/// Sibling of the Jaffa guard above: a Human (non-Jaffa) player entering
+/// Region2 must resolve only the Human dialog-set bind (2794), never the
+/// Jaffa one (5866). The purged auto-export never had a non-Jaffa branch
+/// at all (chains 5004/5005 both gated `archetype eq 8`), so this side
+/// of the bug was never double-firing — this test pins that it stays
+/// correct now that the duplicate file is gone.
+#[tokio::test]
+async fn human_region2_entry_resolves_only_human_dialog_bind() {
+    use cimmeria_content_engine::actions::Action;
+
+    const ARCHETYPE_SOLDIER: i32 = 1;
+    const HUMAN_DIALOG_SET_MAP: i32 = 2794;
+    const JAFFA_DIALOG_SET_MAP: i32 = 5866;
+
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param(
+        "region_key".to_string(),
+        serde_json::json!("Castle_Cellblock.Region2"),
+    );
+    ctx.set_param(
+        "mission_638_status".to_string(),
+        serde_json::json!("not_active"),
+    );
+    ctx.set_param(
+        "archetype".to_string(),
+        serde_json::json!(ARCHETYPE_SOLDIER),
+    );
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::RegionEnter,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let dialog_set_ids: Vec<i32> = resolved
+        .actions
+        .iter()
+        .filter_map(|(_, action)| match action {
+            Action::AddDialogSet { dialog_set_id, .. } => Some(*dialog_set_id),
+            Action::AddDialog { dialog_set_id, .. } => Some(*dialog_set_id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        dialog_set_ids,
+        vec![HUMAN_DIALOG_SET_MAP],
+        "Human entering Region2 must resolve exactly one dialog-set bind, \
+         2794, and never the Jaffa one ({JAFFA_DIALOG_SET_MAP}); got {dialog_set_ids:?}",
+    );
 }

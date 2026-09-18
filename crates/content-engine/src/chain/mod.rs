@@ -4,6 +4,11 @@
 //! of conditions, and a list of actions. The [`ChainEngine`] indexes chains by
 //! trigger type and provides the main [`fire_event`](ChainEngine::fire_event)
 //! entry point that the game servers call when gameplay events occur.
+//!
+//! Split from a single `chain.rs` once the `#[cfg(test)] mod tests` block
+//! crossed the 500-line soft cap from `CLAUDE.md` — the natural seam is
+//! definition/engine vs. tests, so the test body moved to [`tests`]
+//! unchanged, with no behavior change on this side.
 
 use std::collections::HashMap;
 
@@ -14,6 +19,9 @@ use crate::actions::{Action, ActionResult};
 use crate::conditions::Condition;
 use crate::context::ExecutionContext;
 use crate::triggers::{Trigger, TriggerEvent, TriggerType};
+
+#[cfg(test)]
+mod tests;
 
 /// A single content chain: trigger + conditions + actions.
 ///
@@ -41,6 +49,17 @@ pub struct Chain {
 
     /// Actions to execute in order when the chain fires.
     pub actions: Vec<Action>,
+
+    /// Per-action delay in milliseconds, index-aligned with `actions`
+    /// (`action_delays[i]` is the delay for `actions[i]`). A missing index
+    /// — e.g. a hand-built chain in a test that never sets this field —
+    /// means `delay_ms == 0` for that action, which is the overwhelming
+    /// majority case and matches pre-C08a behavior exactly. Sourced from
+    /// `content_actions.delay_ms`; see `resolve_event` and
+    /// `services::cell::content::executor::execute_actions` for how a
+    /// nonzero delay defers execution instead of running inline.
+    #[serde(default)]
+    pub action_delays: Vec<i32>,
 
     /// Ordering priority. Higher values execute first when multiple chains
     /// match the same event.
@@ -91,13 +110,24 @@ impl ChainEngine {
         self.chains_by_trigger.values().map(|v| v.len()).sum()
     }
 
-    /// Get the actions for a chain by its ID, bypassing trigger matching.
+    /// Get the actions for a chain by its ID, bypassing trigger matching,
+    /// paired with each action's `delay_ms` (0 when `action_delays` has no
+    /// entry for that index — see the field doc on [`Chain::action_delays`]).
     /// Used for direct invocation (e.g., minigame victory callbacks).
-    pub fn get_chain_actions(&self, chain_id: i64) -> Vec<Action> {
+    pub fn get_chain_actions(&self, chain_id: i64) -> Vec<(Action, i32)> {
         for chains in self.chains_by_trigger.values() {
             for chain in chains {
                 if chain.id == chain_id {
-                    return chain.actions.clone();
+                    return chain
+                        .actions
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, action)| {
+                            let delay_ms = chain.action_delays.get(i).copied().unwrap_or(0);
+                            (action, delay_ms)
+                        })
+                        .collect();
                 }
             }
         }
@@ -231,9 +261,20 @@ impl ChainEngine {
 /// original context. This is how `Action::RemoveItem` looks up
 /// `instance_id` set by `fire_item_use` to consume the exact stack the
 /// player clicked instead of the player's first-by-type instance.
+///
+/// `action_delays` is index-aligned with `actions` (kept as a parallel
+/// vec, not a wider tuple, so the many existing test call sites that
+/// build a `ResolvedActions` literal by hand only need one new field
+/// added, not every `(chain_id, action)` pair touched). `action_delays[i]`
+/// is the `content_actions.delay_ms` value for `actions[i]`; a missing
+/// index (an empty `action_delays`, the common case in hand-built test
+/// fixtures) means `delay_ms == 0`. The caller
+/// (`services::cell::content::executor::execute_actions`) runs
+/// `delay_ms == 0` actions inline and defers the rest.
 #[derive(Default)]
 pub struct ResolvedActions {
     pub actions: Vec<(i64, Action)>,
+    pub action_delays: Vec<i32>,
     pub params: std::collections::HashMap<String, serde_json::Value>,
 }
 
@@ -264,8 +305,10 @@ impl ChainEngine {
             }
 
             debug!(chain_id = chain.id, chain_name = %chain.name, actions = chain.actions.len(), "resolve_event: chain matched");
-            for action in &chain.actions {
+            for (i, action) in chain.actions.iter().enumerate() {
+                let delay_ms = chain.action_delays.get(i).copied().unwrap_or(0);
                 resolved.actions.push((chain.id, action.clone()));
+                resolved.action_delays.push(delay_ms);
             }
         }
 
@@ -285,213 +328,5 @@ impl ChainEngine {
 impl Default for ChainEngine {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::triggers::TriggerType;
-
-    /// Helper to build a simple chain with no conditions.
-    fn make_chain(id: i64, trigger: Trigger, actions: Vec<Action>, priority: i32) -> Chain {
-        Chain {
-            id,
-            name: format!("test_chain_{}", id),
-            enabled: true,
-            trigger,
-            conditions: Vec::new(),
-            actions,
-            priority,
-        }
-    }
-
-    #[test]
-    fn new_engine_has_no_chains() {
-        let engine = ChainEngine::new();
-        assert_eq!(engine.chain_count(), 0);
-    }
-
-    #[test]
-    fn register_chain_increases_count() {
-        let mut engine = ChainEngine::new();
-        let chain = make_chain(1, Trigger::OnEntityCreated { entity_type: None }, vec![], 0);
-        engine.register_chain(chain);
-        assert_eq!(engine.chain_count(), 1);
-        assert_eq!(engine.chains_for_trigger(&TriggerType::EntityCreated), 1);
-    }
-
-    #[test]
-    fn chains_sorted_by_priority_descending() {
-        let mut engine = ChainEngine::new();
-        engine.register_chain(make_chain(
-            1,
-            Trigger::OnEntityCreated { entity_type: None },
-            vec![],
-            10,
-        ));
-        engine.register_chain(make_chain(
-            2,
-            Trigger::OnEntityCreated { entity_type: None },
-            vec![],
-            50,
-        ));
-        engine.register_chain(make_chain(
-            3,
-            Trigger::OnEntityCreated { entity_type: None },
-            vec![],
-            30,
-        ));
-
-        let chains = engine
-            .chains_by_trigger
-            .get(&TriggerType::EntityCreated)
-            .unwrap();
-        assert_eq!(chains[0].id, 2); // priority 50
-        assert_eq!(chains[1].id, 3); // priority 30
-        assert_eq!(chains[2].id, 1); // priority 10
-    }
-
-    #[test]
-    fn fire_event_with_no_matching_chains() {
-        let engine = ChainEngine::new();
-        let event = TriggerEvent {
-            trigger_type: TriggerType::EntityCreated,
-            source_entity: None,
-            target_entity: None,
-            params: HashMap::new(),
-        };
-        let mut ctx = ExecutionContext::new();
-        // Should not panic - just a no-op.
-        engine.fire_event(&event, &mut ctx);
-        assert!(ctx.results.is_empty());
-    }
-
-    #[test]
-    fn disabled_chain_is_skipped() {
-        let mut engine = ChainEngine::new();
-        let mut chain = make_chain(
-            1,
-            Trigger::OnEntityCreated { entity_type: None },
-            vec![Action::TriggerChain { chain_id: 99 }],
-            0,
-        );
-        chain.enabled = false;
-        engine.register_chain(chain);
-
-        let event = TriggerEvent {
-            trigger_type: TriggerType::EntityCreated,
-            source_entity: None,
-            target_entity: None,
-            params: HashMap::new(),
-        };
-        let mut ctx = ExecutionContext::new();
-        engine.fire_event(&event, &mut ctx);
-        // No actions should have executed.
-        assert!(ctx.results.is_empty());
-    }
-
-    #[test]
-    fn trigger_chain_action_produces_chain_trigger_result() {
-        let mut engine = ChainEngine::new();
-        let chain = make_chain(
-            1,
-            Trigger::OnCustomEvent {
-                event_name: "test".to_string(),
-            },
-            vec![Action::TriggerChain { chain_id: 42 }],
-            0,
-        );
-        engine.register_chain(chain);
-
-        let mut params = HashMap::new();
-        params.insert(
-            "event_name".to_string(),
-            serde_json::Value::String("test".to_string()),
-        );
-        let event = TriggerEvent {
-            trigger_type: TriggerType::CustomEvent,
-            source_entity: None,
-            target_entity: None,
-            params,
-        };
-        let mut ctx = ExecutionContext::new();
-        engine.fire_event(&event, &mut ctx);
-
-        assert_eq!(ctx.results.len(), 1);
-        match &ctx.results[0] {
-            ActionResult::ChainTrigger(id) => assert_eq!(*id, 42),
-            other => panic!("Expected ChainTrigger(42), got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn chain_serialization_roundtrip() {
-        let chain = Chain {
-            id: 1,
-            name: "Test Chain".to_string(),
-            enabled: true,
-            trigger: Trigger::OnEntityDeath {
-                entity_type: Some("SGWMob".to_string()),
-                entity_tag: None,
-            },
-            conditions: vec![Condition::HasItem {
-                item_id: 10,
-                min_count: Some(1),
-            }],
-            actions: vec![
-                Action::GrantXP { amount: 100 },
-                Action::GrantItem {
-                    item_id: 20,
-                    count: 1,
-                    container_id: None,
-                },
-            ],
-            priority: 5,
-        };
-
-        let json = serde_json::to_string_pretty(&chain).unwrap();
-        let deserialized: Chain = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(deserialized.id, 1);
-        assert_eq!(deserialized.name, "Test Chain");
-        assert!(deserialized.enabled);
-        assert_eq!(deserialized.priority, 5);
-        assert_eq!(deserialized.conditions.len(), 1);
-        assert_eq!(deserialized.actions.len(), 2);
-    }
-
-    #[test]
-    fn multiple_trigger_types_are_independent() {
-        let mut engine = ChainEngine::new();
-        engine.register_chain(make_chain(
-            1,
-            Trigger::OnEntityCreated { entity_type: None },
-            vec![],
-            0,
-        ));
-        engine.register_chain(make_chain(
-            2,
-            Trigger::OnEntityDeath {
-                entity_type: None,
-                entity_tag: None,
-            },
-            vec![],
-            0,
-        ));
-        engine.register_chain(make_chain(
-            3,
-            Trigger::OnEntityDeath {
-                entity_type: None,
-                entity_tag: None,
-            },
-            vec![],
-            0,
-        ));
-
-        assert_eq!(engine.chain_count(), 3);
-        assert_eq!(engine.chains_for_trigger(&TriggerType::EntityCreated), 1);
-        assert_eq!(engine.chains_for_trigger(&TriggerType::EntityDeath), 2);
-        assert_eq!(engine.chains_for_trigger(&TriggerType::Timer), 0);
     }
 }

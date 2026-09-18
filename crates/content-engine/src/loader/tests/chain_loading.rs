@@ -227,6 +227,125 @@ fn triggerless_chain_gets_custom_event() {
     }
 }
 
+/// `build_chains_from_rows` must carry `DbActionRow.delay_ms` into
+/// `Chain::action_delays`, index-aligned with `actions` — including when a
+/// row in the *middle* of the sort_order gets dropped by `convert_action`
+/// (unknown `action_type`). Before C08a, `delay_ms` was read into
+/// `DbActionRow` and then discarded entirely; this is the B4 regression
+/// guard (docs/analysis/castle-cellblock-rebuild/audit.md).
+#[test]
+fn build_chains_from_rows_threads_delay_ms_and_skips_bad_rows_without_misaligning() {
+    let chain_rows = vec![DbChainRow {
+        chain_id: 1161,
+        description: Some("686 complete: Straegis scene".to_string()),
+        scope_type: "mission".to_string(),
+        scope_id: Some(686),
+        enabled: true,
+        priority: 0,
+    }];
+    let trigger_rows = vec![DbTriggerRow {
+        chain_id: 1161,
+        event_type: "mission_completed".to_string(),
+        event_key: Some("686".to_string()),
+        scope: "player".to_string(),
+        once: false,
+        sort_order: 0,
+    }];
+    let action_rows = vec![
+        DbActionRow {
+            chain_id: 1161,
+            action_type: "play_sequence".to_string(),
+            target_id: Some(1751),
+            target_key: None,
+            params: serde_json::json!({}),
+            delay_ms: 0,
+            sort_order: 0,
+        },
+        // Bad row in the middle — unknown action_type. Must be dropped by
+        // convert_action WITHOUT leaving a gap in action_delays that would
+        // desync it from actions.
+        DbActionRow {
+            chain_id: 1161,
+            action_type: "this_action_type_does_not_exist".to_string(),
+            target_id: None,
+            target_key: None,
+            params: serde_json::json!({}),
+            delay_ms: 5_000,
+            sort_order: 1,
+        },
+        DbActionRow {
+            chain_id: 1161,
+            action_type: "destroy_entity".to_string(),
+            target_id: None,
+            target_key: Some("Preparation_ColMarsh".to_string()),
+            params: serde_json::json!({}),
+            delay_ms: 0,
+            sort_order: 2,
+        },
+        DbActionRow {
+            chain_id: 1161,
+            action_type: "display_dialog".to_string(),
+            target_id: Some(2516),
+            target_key: None,
+            params: serde_json::json!({}),
+            delay_ms: 10_100,
+            sort_order: 3,
+        },
+    ];
+
+    let chains = build_chains_from_rows(chain_rows, trigger_rows, vec![], action_rows);
+    assert_eq!(chains.len(), 1);
+    let chain = &chains[0];
+
+    // Three actions survive (the bad row is dropped); action_delays stays
+    // index-aligned with the surviving actions, not the original row list.
+    assert_eq!(chain.actions.len(), 3);
+    assert_eq!(chain.action_delays, vec![0, 0, 10_100]);
+
+    match &chain.actions[0] {
+        Action::PlaySequence { sequence_id } => assert_eq!(*sequence_id, 1751),
+        other => panic!("expected PlaySequence, got {:?}", other),
+    }
+    match &chain.actions[1] {
+        Action::DestroyTaggedEntity { entity_tag } => {
+            assert_eq!(entity_tag, "Preparation_ColMarsh")
+        }
+        other => panic!("expected DestroyTaggedEntity, got {:?}", other),
+    }
+    match &chain.actions[2] {
+        Action::DisplayDialog { dialog_id } => assert_eq!(*dialog_id, 2516),
+        other => panic!("expected DisplayDialog, got {:?}", other),
+    }
+}
+
+/// A negative `delay_ms` (malformed seed row — the column has no CHECK
+/// constraint) must clamp to 0 rather than propagate a value that would
+/// panic `Duration::from_millis` at schedule time downstream.
+#[test]
+fn build_chains_from_rows_clamps_negative_delay_ms_to_zero() {
+    let chain_rows = vec![DbChainRow {
+        chain_id: 1162,
+        description: Some("negative delay guard".to_string()),
+        scope_type: "mission".to_string(),
+        scope_id: None,
+        enabled: true,
+        priority: 0,
+    }];
+    let action_rows = vec![DbActionRow {
+        chain_id: 1162,
+        action_type: "complete_mission".to_string(),
+        target_id: Some(1),
+        target_key: None,
+        params: serde_json::json!({}),
+        delay_ms: -500,
+        sort_order: 0,
+    }];
+
+    let chains = build_chains_from_rows(chain_rows, vec![], vec![], action_rows);
+    assert_eq!(chains.len(), 1);
+    assert_eq!(chains[0].action_delays, vec![0]);
+}
+
 /// `parse_step_status` accepts each of the three valid step states.
 /// `completed` is the recently-added third leaf (matches the `completed_steps`
 /// list populated in `services::cell::content::mission_context`); without

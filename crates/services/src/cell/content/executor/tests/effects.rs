@@ -86,6 +86,7 @@ fn resolved(action: Action) -> ResolvedActions {
     ResolvedActions {
         params: std::collections::HashMap::new(),
         actions: vec![(5000, action)],
+        action_delays: Vec::new(),
     }
 }
 

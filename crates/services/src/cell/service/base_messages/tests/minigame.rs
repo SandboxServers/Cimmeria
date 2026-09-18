@@ -27,6 +27,7 @@ async fn minigame_result_victory_fires_on_victory_chains() {
 
     let mut engine = ChainEngine::new();
     engine.register_chain(Chain {
+        action_delays: Vec::new(),
         id: 9999,
         name: "test-victory-chain".into(),
         enabled: true,
@@ -98,6 +99,7 @@ async fn minigame_result_defeat_does_not_fire_chains() {
 
     let mut engine = ChainEngine::new();
     engine.register_chain(Chain {
+        action_delays: Vec::new(),
         id: 9999,
         name: "test-victory-chain".into(),
         enabled: true,

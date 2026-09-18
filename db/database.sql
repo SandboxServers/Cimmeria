@@ -340,7 +340,6 @@
 \ir resources/Content/Seed/consumables_chains.sql
 \ir resources/Content/Seed/effects_chains.sql
 \ir resources/Content/Seed/sgc_w1_chains.sql
-\ir resources/Content/Seed/space_castle_cellblock_chains.sql
 
 \ir resources/_foreign_keys.sql
 

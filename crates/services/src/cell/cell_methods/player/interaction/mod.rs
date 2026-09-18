@@ -359,6 +359,7 @@ mod tests {
 
         let mut engine = ChainEngine::new();
         engine.register_chain(Chain {
+            action_delays: Vec::new(),
             id: 70479,
             name: "test OnDialogChoice → increment counter".into(),
             enabled: true,
