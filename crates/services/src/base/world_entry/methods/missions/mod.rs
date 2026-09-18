@@ -1,0 +1,155 @@
+use std::sync::Arc;
+
+use sqlx::PgPool;
+
+use crate::cell::messages::SavedMission;
+
+pub async fn query_saved_missions(
+    db_pool: &Option<Arc<PgPool>>,
+    player_id: i32,
+) -> Vec<SavedMission> {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => return vec![],
+    };
+
+    #[derive(sqlx::FromRow)]
+    struct MissionRow {
+        mission_id: i32,
+        status: i32,
+        current_step_id: Option<i32>,
+        completed_step_ids: Vec<i32>,
+        completed_objective_ids: Vec<i32>,
+        active_objective_ids: Vec<i32>,
+        failed_objective_ids: Vec<i32>,
+        repeats: i32,
+    }
+
+    match sqlx::query_as::<_, MissionRow>(
+        "SELECT mission_id, status, current_step_id, \
+         completed_step_ids, completed_objective_ids, active_objective_ids, failed_objective_ids, \
+         repeats \
+         FROM sgw_mission WHERE player_id = $1",
+    )
+    .bind(player_id)
+    .fetch_all(pool.as_ref())
+    .await
+    {
+        Ok(rows) => {
+            let missions: Vec<_> = rows
+                .into_iter()
+                .map(|r| {
+                    let status = i8::try_from(r.status).unwrap_or_else(|_| {
+                        tracing::warn!(
+                            player_id,
+                            mission_id = r.mission_id,
+                            db_status = r.status,
+                            "Mission status out of i8 range, clamping"
+                        );
+                        // Clamp at i32, then cast — casting first wraps modulo 256.
+                        r.status.clamp(i8::MIN as i32, i8::MAX as i32) as i8
+                    });
+                    SavedMission {
+                        mission_id: r.mission_id,
+                        status,
+                        current_step_id: r.current_step_id,
+                        completed_step_ids: r.completed_step_ids,
+                        completed_objective_ids: r.completed_objective_ids,
+                        active_objective_ids: r.active_objective_ids,
+                        failed_objective_ids: r.failed_objective_ids,
+                        repeats: r.repeats,
+                    }
+                })
+                .collect();
+            tracing::info!(
+                player_id,
+                count = missions.len(),
+                "Loaded saved missions from DB"
+            );
+            missions
+        }
+        Err(e) => {
+            tracing::error!(player_id, "Failed to query saved missions: {e}");
+            vec![]
+        }
+    }
+}
+
+#[tracing::instrument(
+    name = "mission.persist",
+    level = "info",
+    skip_all,
+    fields(player_id, mission_id, status, ?current_step_id, repeats),
+)]
+pub async fn handle_mission_update(
+    player_id: i32,
+    mission_id: i32,
+    status: i8,
+    current_step_id: Option<i32>,
+    completed_step_ids: &[i32],
+    completed_objective_ids: &[i32],
+    active_objective_ids: &[i32],
+    failed_objective_ids: &[i32],
+    repeats: i32,
+    db_pool: &Option<Arc<PgPool>>,
+) {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::debug!(player_id, mission_id, "MissionUpdate: no DB pool");
+            return;
+        }
+    };
+
+    // `repeats = EXCLUDED.repeats` is the fix for #118 — the prior UPSERT
+    // omitted this column, so re-completing a repeatable mission appeared to
+    // reset the counter on relog instead of advancing it. Cell is the
+    // authoritative source for the post-bump value (set by
+    // `MissionInstance::complete`/`fail`).
+    let result = sqlx::query(
+        "INSERT INTO sgw_mission (player_id, mission_id, status, current_step_id, \
+         completed_step_ids, completed_objective_ids, active_objective_ids, failed_objective_ids, \
+         repeats) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+         ON CONFLICT (player_id, mission_id) DO UPDATE SET \
+         status = EXCLUDED.status, \
+         current_step_id = EXCLUDED.current_step_id, \
+         completed_step_ids = EXCLUDED.completed_step_ids, \
+         completed_objective_ids = EXCLUDED.completed_objective_ids, \
+         active_objective_ids = EXCLUDED.active_objective_ids, \
+         failed_objective_ids = EXCLUDED.failed_objective_ids, \
+         repeats = EXCLUDED.repeats",
+    )
+    .bind(player_id)
+    .bind(mission_id)
+    .bind(status as i32)
+    .bind(current_step_id)
+    .bind(completed_step_ids)
+    .bind(completed_objective_ids)
+    .bind(active_objective_ids)
+    .bind(failed_objective_ids)
+    .bind(repeats)
+    .execute(pool.as_ref())
+    .await;
+
+    match result {
+        Ok(_) => tracing::debug!(
+            player_id,
+            mission_id,
+            status,
+            repeats,
+            "Mission state persisted"
+        ),
+        Err(e) => tracing::error!(player_id, mission_id, "Failed to persist mission: {e}"),
+    }
+}
+
+// Split out of a single missions.rs (was 691 lines, over the repo's 700-line
+// hard cap) when C04 added a persistence round-trip test for mission 1360 —
+// see docs/analysis/castle-cellblock-rebuild/work-packets.md#c04. Production
+// code stays here; every existing and new test moved to tests.rs verbatim
+// (no behavior change, no public-surface change — `pub mod missions;` in
+// ../mod.rs resolves identically whether this is missions.rs or
+// missions/mod.rs).
+#[cfg(test)]
+mod tests;
