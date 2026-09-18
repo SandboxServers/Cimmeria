@@ -1642,6 +1642,25 @@ INSERT INTO missions (mission_id, history_text, award_xp, can_abandon, can_fail,
 
 INSERT INTO missions (mission_id, history_text, award_xp, can_abandon, can_fail, can_repeat_on_fail, difficulty, is_a_story, is_enabled, is_hidden, is_override_mission, is_shareable, level, mission_defn, mission_label, num_repeats, show_faction_change_icon, show_instance_icon, show_pvp_icon, script_name, reward_naq, reward_xp, script_spaces) VALUES (688, 'Secure the Armory', true, true, true, true, 1, false, true, false, false, true, 1, 'Secure the Armory', 'General', 1, false, false, false, NULL, 0, 0, NULL);
 
+-- C00 (Castle Cellblock rebuild, 2026-09-17): mission 689 is a new, purely
+-- internal tracking mission for the Prison Boot movement-lock gate (see
+-- docs/analysis/castle-cellblock-rebuild/work-packets.md#c00). No Python
+-- script or spec sheet names a mission for this -- the original mechanic
+-- (item 3438, abilities 1597/1598, effects 1939/1942/3081) has no recovered
+-- trigger at all. `is_hidden = true` follows the exact precedent already
+-- shipped for the Hallway0N Controller sub-missions (682-686, see the
+-- MissionDefEntry doc comment in crates/services/src/cell/spawner/missions.rs):
+-- it accepts/completes through the normal mission_status lifecycle (so it
+-- persists across relog via the existing sgw_mission UPSERT and never needs
+-- new schema or a new content-engine condition type) but never appears in the
+-- player's quest log. `mission_status 689` is the gate chains 1009/1010 (load)
+-- and 1010's Livewire-victory sibling (see castle_cellblock_chains.sql) key
+-- off: not_active/active both mean "still locked" (re-launch ability 1597 on
+-- every relog); completed means "cleared" (never re-lock, never re-offer --
+-- num_repeats = 0 refuses a re-accept once completed, per the offer guard in
+-- crates/services/src/cell/missions/lifecycle.rs).
+INSERT INTO missions (mission_id, history_text, award_xp, can_abandon, can_fail, can_repeat_on_fail, difficulty, is_a_story, is_enabled, is_hidden, is_override_mission, is_shareable, level, mission_defn, mission_label, num_repeats, show_faction_change_icon, show_instance_icon, show_pvp_icon, script_name, reward_naq, reward_xp, script_spaces) VALUES (689, 'Prison Boot Lock (internal)', false, false, false, false, 1, false, true, true, false, false, 1, 'Prison Boot Lock', 'General', 0, false, false, false, NULL, 0, 0, NULL);
+
 INSERT INTO missions (mission_id, history_text, award_xp, can_abandon, can_fail, can_repeat_on_fail, difficulty, is_a_story, is_enabled, is_hidden, is_override_mission, is_shareable, level, mission_defn, mission_label, num_repeats, show_faction_change_icon, show_instance_icon, show_pvp_icon, script_name, reward_naq, reward_xp, script_spaces) VALUES (700, 'The Hidden Empire', true, true, true, true, 2, true, true, false, false, true, 21, 'The Hidden Empire', 'General', 1, false, false, false, NULL, 0, 0, NULL);
 
 INSERT INTO missions (mission_id, history_text, award_xp, can_abandon, can_fail, can_repeat_on_fail, difficulty, is_a_story, is_enabled, is_hidden, is_override_mission, is_shareable, level, mission_defn, mission_label, num_repeats, show_faction_change_icon, show_instance_icon, show_pvp_icon, script_name, reward_naq, reward_xp, script_spaces) VALUES (701, 'Reinforce Copplemann', true, true, true, true, 1, true, true, false, false, true, 3, 'Reinforce Copplemann', 'General', 1, false, false, false, NULL, 0, 0, NULL);

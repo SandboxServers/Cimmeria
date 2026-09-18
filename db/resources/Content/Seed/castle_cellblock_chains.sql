@@ -14,9 +14,160 @@
 --   Mission 680:  chains 1071-1080
 --   Missions 681-687: chains 1081-1104
 --   Mission 688:  chains 1105-1111
---   (next free: 1112)
+--   Mission 639 (C03 addition, 2026-09-17): chain 1112 (Stasis Sickness
+--     load-gate; work-packets.md's own reserved range for C03 is 1112-1120,
+--     one chain used so far)
+--   Mission 689 -- Prison Boot Lock, internal (C00 addition, 2026-09-17):
+--     chains 1022-1025. work-packets.md had no range reserved for C00 (added
+--     after the range table above was written); 1022-1030 was verified free
+--     headroom inside this file's own declared Mission-638 range before use
+--     (`grep -oE "VALUES \([0-9]+," ... | sort -n | uniq` against every
+--     chain_id in this file, matching the method C01's worker used for
+--     chain 1008). Kept deliberately separate from C03's 1112-1120 range so
+--     the two packets' new ids never collide.
+--   (next free inside 1001-1111: 1026-1030, 1036-1040, 1047-1050, 1067-1070,
+--    1075-1080, 1095-1096; next free above 1111 for an unreserved future
+--    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
 
 SET search_path = resources, pg_catalog;
+
+-- ============================================================
+-- MISSION 689 — Prison Boot Lock (internal, hidden; C00)
+-- ============================================================
+--
+-- New mechanic surfaced by the v3 spec audit (docs/analysis/castle-cellblock-
+-- rebuild/audit.md#new-finding-the-prison-boot-movement-lock-gate), not in
+-- any recovered Python script. Every non-Goa'uld Castle_CellBlock starting
+-- archetype spawns wearing item 3438 "Prison Boots" (forced via
+-- char_creation_choices.sql), which should lock movement (ability 1597 ->
+-- effect 1939) until a Livewire minigame clears it (ability 1598 -> effects
+-- 3081 item-swap + 1942 lock-clear). D-CB14 (answered): reuse Livewire,
+-- already wired twice more in this zone (cell-door hack, Preparation stasis
+-- terminal) -- no new minigame infrastructure.
+--
+-- Persistence design (this packet's own call, flagged as an open design
+-- point in work-packets.md#c00 for the coordinator to review): there is no
+-- authorable content_conditions variant that reads ability/effect/item
+-- presence (`HasAbility`/`HasItem` are both dead -- see content-engine.md
+-- section 3), so "has this character cleared the gate" cannot be expressed
+-- directly. Mission 689 is a new, purely internal, `is_hidden = true`
+-- tracking mission (see the doc comment on its `missions.sql` row) that
+-- reuses the exact same precedent already shipped for the Hallway0N
+-- Controllers (682-686): accept/complete through the normal mission
+-- lifecycle so state persists across relog via the existing `sgw_mission`
+-- UPSERT, with zero client-visible quest-log entry. `mission_status 689`
+-- gates all four chains below.
+--
+-- Movement-lock enforcement design (also this packet's own call): effect
+-- 1939 has `script_name = NULL` and `pulse_count = 1` (single-shot, not
+-- channelled/pulsing per `EffectDef::is_pulsing()`, which requires
+-- `pulse_count == 0 || pulse_count > 1`). `Action::LaunchAbility` resolves
+-- through `cell::content::effect_apply::apply_ability_effects` (the
+-- server-authoritative effect path added alongside this packet, deliberately
+-- bypassing the client-facing combat gates -- see that module's doc
+-- comment), which for each of the ability's effects: skips script dispatch
+-- (no `script_name`), then calls `register_active_effect`, which returns
+-- `false` immediately for a non-pulsing effect WITHOUT sending anything --
+-- not `onTimerUpdate`, not any other wire packet (confirmed directly against
+-- `crates/services/src/cell/effects/pulsing/register.rs`'s early
+-- `if !effect.is_pulsing() { return false; }`, and pinned by the live-DB
+-- test `single_shot_scriptless_effect_registers_no_active_instance` in
+-- `executor/tests/effects.rs`). Firing ability 1597 today is therefore a
+-- complete no-op: no state flag, no movement-input rejection, and NO
+-- client-visible signal of any kind -- same conclusion chain 1112 reaches
+-- for effect 1634, and confirmed the same way. This packet does NOT add a
+-- `client_move.rs` rejection gate or a new `BSF_*`-style anti-cheat flag --
+-- that would be inventing new movement-validation infrastructure with no
+-- evidence for what the client itself does on receiving the effect, which is
+-- explicitly out of scope per D-CB14's own "don't invent new infra" framing.
+-- Flagged for the coordinator at HIGH urgency: since there is currently no
+-- client-visible signal at all from this self-cast, a client UAT is needed
+-- to confirm the client does anything on its own when the player's boot
+-- ability list changes (or whether it needs the effect id surfaced some
+-- other way this repo doesn't wire yet). If UAT shows the client does NOT
+-- self-lock movement, a follow-up packet should add server-side movement
+-- rejection keyed on `mission_status 689 neq completed` (cheap to add once
+-- UAT tells us it's needed -- the mission-based gate this packet builds is
+-- exactly the signal such a check would key off).
+--
+-- Livewire trigger design (also this packet's own call, flagged as an
+-- assumption needing UAT): the two existing Livewire triggers in this zone
+-- (chains 1016, 1041, 1060) are all `interact_tag` on a spawned world
+-- object (a door button, a ring switch, a terminal) -- there is no
+-- equivalent spawned "boot control panel" object for this mechanic, and
+-- spawnlist data is outside this packet's Entries. Chain 1024 below uses
+-- `item_use` on item 3438 instead (double-click the worn boot itself),
+-- matching the ONE other item-triggered Livewire-adjacent flow in this file
+-- (chain 1034, item 19). This is UNVERIFIED against a real client session:
+-- whether the client's inventory UI offers a "use" action for an item
+-- currently worn in an equipped slot (rather than sitting in a backpack
+-- container) has no evidence either way in this repository. If UAT shows the
+-- client doesn't expose "use" for equipped items, the fix is a chain_id swap
+-- to an `interact_tag` (once a boot-control-panel spawn or a self-tag exists)
+-- without touching the ability/effect/mission data at all.
+
+-- Chain 1022: zone load while mission 689 has never been accepted → accept it.
+-- Runs once per character (num_repeats = 0 on the mission refuses re-accept
+-- once completed; while active, `eq not_active` is already false).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1022, '689 - Zone load: accept internal Prison Boot lock tracking', 'mission', 689, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1022, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1022, 'mission_status', 689, NULL, 'eq', 'not_active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1022, 'accept_mission', 689, NULL, '{}', 0, 0);
+
+-- Chain 1023: zone load while mission 689 is not completed → (re-)launch
+-- ability 1597 (Prison Boot) on the player. `neq completed` covers both
+-- `not_active` (the very first load, same tick as chain 1022's accept --
+-- mission_status defaults missing keys to `not_active`, so this still
+-- evaluates true against the pre-action snapshot even before chain 1022's
+-- accept commits) and `active` (every relog while still locked). Only
+-- `completed` (set by chain 1025 on Livewire victory) stops it -- this is
+-- what makes "relog mid-lock re-applies the lock" and "relog after clearing
+-- does not re-apply it" both fall out of the same condition for free.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1023, '689 - Zone load: (re-)apply Prison Boot lock while not cleared', 'mission', 689, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1023, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1023, 'mission_status', 689, NULL, 'neq', 'completed', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1023, 'launch_ability', 1597, NULL, '{}', 0, 0);
+
+-- Chain 1024: use item 3438 (Prison Boots, worn) while mission 689 is not
+-- completed → start a Livewire session. on_victory_chains: 1025.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1024, '689 - Use Prison Boots: start Livewire minigame', 'mission', 689, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1024, 'item_use', '3438', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1024, 'mission_status', 689, NULL, 'neq', 'completed', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1024, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1025]}', 0, 0);
+
+-- Chain 1025: Livewire victory (triggered by 1024 on_victory_chains) →
+-- launch ability 1598 (Disable Your Prison Boot -- effects 3081 item-swap +
+-- 1942 lock-clear) and complete mission 689 so chain 1023 stops re-locking.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1025, '689 - Livewire victory: launch ability 1598, clear lock', 'mission', 689, true, 0);
+
+-- no trigger row — invoked directly by the minigame callback in chain 1024
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1025, 'launch_ability',   1598, NULL, '{}', 0, 0),
+  (1025, 'complete_mission', 689,  NULL, '{}', 0, 1);
 
 -- ============================================================
 -- MISSION 622 — Arm Yourself!
@@ -541,6 +692,21 @@ VALUES (1033, 'advance_step', 639, '2343', '{}', 0, 0);
 --   The previous global consume-on-use behavior was wrong for reusable items
 --   (radios, multi-step "use on target" objectives) which silently lost stacks
 --   on every use.
+--
+-- C03 (2026-09-17): added `launch_ability 1374` (Cure Stasis Sickness) as the
+-- FIRST action. Investigated whether this was already redundant: item 19 has
+-- an `items_event_sets` row `(2, 19, 1374, 5)` binding it to ability 1374 on
+-- event_id 5 (USE), but that table is loaded into
+-- `space_mgr.item_event_set_abilities` and read ONLY by
+-- `crates/services/src/cell/abilities/resolve.rs`'s weapon-ability-resolution
+-- helpers (`ability_for_active_weapon` / `is_ability_granted_by_active_weapon`),
+-- both of which require the item to be sitting in the player's ACTIVE
+-- BANDOLIER SLOT. A consumable vial used from the inventory/mission-item
+-- container never reaches that code path, so the binding is presently
+-- unreachable for this item and 1374 was never actually firing server-side —
+-- confirmed by grepping every `items_event_sets` reference in
+-- crates/services/src and crates/entity/src. This chain is therefore the only
+-- place ability 1374 gets launched.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1034, '639 - Use ambernol: complete 639, accept 640', 'mission', 639, true, 0);
 
@@ -552,17 +718,77 @@ VALUES (1034, 'step_status', 639, '2343', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  -- Consume the vial first — the step-status condition is locked in by the
+  -- Cure ability first, before consuming the vial — mirrors chain 1112's
+  -- Stage-1 cast (both effects 1634/1636 are complete no-ops today,
+  -- script_name = NULL and pulse_count = 1, see chain 1112's comment for
+  -- the full investigation), so ordering here doesn't gate anything
+  -- mechanical; it just keeps "cast the cure" and "consume the reagent" in
+  -- the intuitive order.
+  (1034, 'launch_ability',   1374, NULL, '{}',         0, 0),
+  -- Consume the vial next — the step-status condition is locked in by the
   -- time the chain fires, so subsequent actions can't double-trigger off the
   -- removal's wire updates.
-  (1034, 'remove_item',      19,  NULL, '{"qty": 1}', 0, 0),
-  (1034, 'complete_mission', 639, NULL, '{}',         0, 1),
-  (1034, 'accept_mission',   640, NULL, '{}',         0, 2),
+  (1034, 'remove_item',      19,  NULL, '{"qty": 1}', 0, 1),
+  (1034, 'complete_mission', 639, NULL, '{}',         0, 2),
+  (1034, 'accept_mission',   640, NULL, '{}',         0, 3),
   -- Make the ring switch right-clickable with the Livewire icon so the player can hack it.
   -- The classic Python script (HackTheRings.py) didn't set this bit; the original Atrea editor
   -- presumably wired it implicitly off the Event_EntityInteract node. We do it explicitly here.
   (1034, 'set_interaction_type', NULL, 'HackTheRings_Switch',
-   '{"op": "|", "mask": 256}', 0, 3);
+   '{"op": "|", "mask": 256}', 0, 4);
+
+-- Chain 1112 (C03, decision D-CB04): zone load while 639 is not completed →
+-- launch ability 1372 (Stasis Sickness - Stage 1) on the player. Restores
+-- Python `Castle_CellBlock.py`'s `player.loaded` handler, which launched
+-- 1372 UNCONDITIONALLY on every load (defect B2: the auto-exported chains
+-- 5000/5001 that were supposed to carry this had self-contradictory
+-- conditions -- `622 not_active` AND `622 completed` -- and never fired; both
+-- were purged with the rest of the auto-export per D-CB02/C01). The
+-- `mission_status 639 neq completed` gate is new: it's the idempotence stop
+-- the 2009 script never needed because nothing else in this repo could cure
+-- 639 until this same packet's chain 1034 change landed. `neq completed`
+-- covers both `not_active` (the very first load, before mission 639 even
+-- starts -- matches the Python firing before any mission gating) and
+-- `active` (mid-mission relog) the same way; only `completed` stops it.
+--
+-- What effect 1634 actually does when 1372 fires, investigated per this
+-- packet's scope: `effects.sql` row 1634 has `script_name = NULL` and
+-- `pulse_count = 1` (single-shot). `Action::LaunchAbility` resolves through
+-- `cell::content::effect_apply::apply_ability_effects` (the server-
+-- authoritative effect path this packet's arm lands alongside -- see that
+-- module's doc comment for why it deliberately bypasses the client-facing
+-- combat gates rather than routing through `handle_use_ability`, which would
+-- reject a player self-cast as forged friendly fire). For each of the
+-- ability's effects, `apply_effect` skips script dispatch (no `script_name`)
+-- and calls `register_active_effect`, which returns `false` immediately for
+-- any non-pulsing effect (`EffectDef::is_pulsing()` requires
+-- `pulse_count == 0 || pulse_count > 1`; 1 satisfies neither) WITHOUT
+-- sending any wire packet at all -- confirmed directly against
+-- `crates/services/src/cell/effects/pulsing/register.rs`'s early
+-- `if !effect.is_pulsing() { return false; }`, and pinned by the live-DB
+-- test `single_shot_scriptless_effect_registers_no_active_instance` in
+-- `executor/tests/effects.rs`. VERDICT: firing 1372 today is a complete
+-- no-op -- NO client-visible signal of any kind, not even a timer packet
+-- (this arm never touches the ability-cast cooldown/animation system;
+-- that's `handle_use_ability`'s job, and this path never calls it). Stricter
+-- than D-CB04's MEDIUM-confidence "icon-only" guess. No DoT exists or is
+-- invented here; whether the client renders anything at all from this is
+-- unverified and is flagged for UAT (if the client does nothing,
+-- `effect.icon_location` / `ability` wiring may need a dedicated status-
+-- effect-list sync this repo doesn't have yet -- out of scope for this
+-- packet). Re-firing on every relog is trivially idempotent regardless
+-- (there is no accumulating state to double-apply either way).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1112, '639 - Zone load: apply Stasis Sickness while not cured (C03, D-CB04)', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1112, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1112, 'mission_status', 639, NULL, 'neq', 'completed', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1112, 'launch_ability', 1372, NULL, '{}', 0, 0);
 
 -- ============================================================
 -- MISSION 640 — Hack the Rings

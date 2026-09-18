@@ -3305,6 +3305,14 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (689, 199, false, 1, true, 'Report back to Coppelmann', 5);
 
+-- C00 (Castle Cellblock rebuild, 2026-09-17): single step for the hidden
+-- internal mission 689 (Prison Boot Lock). step_id 68900 is a fresh id in the
+-- global mission_steps namespace (step ids are NOT scoped per-mission --
+-- confirmed unused before picking it). step_display_log_text is never shown
+-- to the player (mission 689 is is_hidden = true), so it documents intent for
+-- the next reader, not the client.
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (68900, 689, false, 1, false, 'Locked -- clear the Prison Boot Livewire hack', 0);
+
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (690, 200, false, 1, true, 'Convince Coppelmann that Bench''s visit has many benefits', 0);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (691, 200, false, 1, false, 'Tell Bench Coppelmann''s approved the trip to Svarog''s Retreat', 1);
