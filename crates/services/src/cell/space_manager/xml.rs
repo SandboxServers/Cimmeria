@@ -88,6 +88,9 @@ impl SpaceManager {
                             world_name.clone(),
                             WorldDef {
                                 world_name,
+                                // Stamped later by `stamp_world_ids` — the
+                                // numeric id lives in the DB, not in spaces.xml.
+                                world_id: None,
                                 instanced,
                                 min_x,
                                 max_x,

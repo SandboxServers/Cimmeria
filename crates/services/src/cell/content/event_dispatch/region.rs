@@ -16,7 +16,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::executor;
-use super::super::mission_context::populate_mission_context;
+use super::super::mission_context::{populate_mission_context, populate_world_context};
 
 /// Fire the `RegionEnter` event when the client enters a Kismet region.
 ///
@@ -34,10 +34,12 @@ pub async fn fire_enter_region(
     let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("region_key".to_string(), serde_json::json!(region_tag));
 
-    let world_name = space_mgr
-        .get_entity_world_name(entity_id)
-        .unwrap_or_else(|| "Unknown".to_string());
-    ctx.set_param("world_name".to_string(), serde_json::json!(&world_name));
+    // Sets both `ctx.world_id` (for `Condition::World`) and the
+    // `world_name` param this site has always emitted. Load-bearing here:
+    // `region_key` is a bare `point_sets.name` and the trigger carries no
+    // world, so two worlds with an identically-named region fire the same
+    // chain unless it is gated on the world.
+    populate_world_context(entity_id, space_mgr, &mut ctx);
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
@@ -76,10 +78,7 @@ pub async fn fire_exit_region(
     let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("region_key".to_string(), serde_json::json!(region_tag));
 
-    let world_name = space_mgr
-        .get_entity_world_name(entity_id)
-        .unwrap_or_else(|| "Unknown".to_string());
-    ctx.set_param("world_name".to_string(), serde_json::json!(&world_name));
+    populate_world_context(entity_id, space_mgr, &mut ctx);
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
@@ -120,6 +119,7 @@ pub async fn fire_teleport_in(
 ) {
     let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("region_id".to_string(), serde_json::json!(region_id));
+    populate_world_context(entity_id, space_mgr, &mut ctx);
     // The content engine's `teleport_in` trigger reads `region_id` as i64 (see
     // `Trigger::OnTeleportIn::matches` in crates/content-engine/src/triggers.rs).
     // No `event_key` params are needed — the loader already converts the SQL

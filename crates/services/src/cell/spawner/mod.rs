@@ -11,6 +11,7 @@
 //! - `npcs` — `SpawnRecord`, class-id mapping, DB-driven NPC population.
 //! - `respawners` — defeat-window respawn locations.
 //! - `stargates` — gate destination cache.
+//! - `worlds` — world name → `world_id` map (the DB-only half of `spaces.xml`).
 //! - `regions` — generic region (AreaSet) loading.
 //! - `abilities` — ability/effect defs + event-set sequence map.
 //! - `loot` — loot tables + item container map + weapon defs.
@@ -26,6 +27,7 @@ mod npcs;
 mod regions;
 mod respawners;
 mod stargates;
+mod worlds;
 
 #[cfg(test)]
 mod tests;
@@ -52,3 +54,4 @@ pub(crate) use npcs::load_patrol_points;
 pub use regions::{load_regions_from_db, RegionLoadData};
 pub use respawners::{load_respawners, RespawnerDef};
 pub use stargates::{load_stargates, StargateEntry};
+pub use worlds::load_world_ids;

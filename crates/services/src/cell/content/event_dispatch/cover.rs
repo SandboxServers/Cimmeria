@@ -21,7 +21,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::executor;
-use super::super::mission_context::populate_mission_context;
+use super::super::mission_context::{populate_mission_context, populate_world_context};
 
 /// Fire `OnPlayerEnteredCover` for a player who just entered a cover set.
 ///
@@ -45,6 +45,7 @@ pub async fn fire_cover_entered(
     ctx.set_param("height".to_string(), serde_json::json!(height));
     ctx.set_param("quality".to_string(), serde_json::json!(quality));
 
+    populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
         if let Some(archetype_id) = entity.archetype_id {
@@ -97,6 +98,7 @@ pub async fn fire_cover_left(
     let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("cover_set_id".to_string(), serde_json::json!(cover_set_id));
 
+    populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
         if let Some(archetype_id) = entity.archetype_id {
@@ -144,6 +146,7 @@ pub async fn fire_cover_duration(
     ctx.set_param("cover_set_id".to_string(), serde_json::json!(cover_set_id));
     ctx.set_param("seconds".to_string(), serde_json::json!(seconds));
 
+    populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
         if let Some(archetype_id) = entity.archetype_id {
@@ -191,6 +194,10 @@ pub async fn fire_npc_flanked(
         ExecutionContext::new().with_source(cimmeria_common::EntityId(npc_entity_id as i32));
     ctx.set_param("npc_template".to_string(), serde_json::json!(npc_template));
     ctx.set_param("threat_id".to_string(), serde_json::json!(threat_entity_id));
+    // Source here is the NPC, not a player — the world resolution is the
+    // same either way (entity → space → world), and a `world`-gated flank
+    // chain is exactly as legitimate as a `world`-gated region chain.
+    populate_world_context(npc_entity_id, space_mgr, &mut ctx);
 
     let event = TriggerEvent {
         trigger_type: TriggerType::NpcFlanked,
