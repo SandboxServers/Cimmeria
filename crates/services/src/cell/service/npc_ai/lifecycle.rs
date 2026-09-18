@@ -34,7 +34,8 @@ pub(super) async fn npc_ai_despawn(
     match space_mgr.despawn_npc(npc_id, tx).await {
         DespawnOutcome::Despawned { witnesses_notified } => {
             tracing::info!(
-                npc_id, witnesses_notified,
+                npc_id,
+                witnesses_notified,
                 "NPC AI: despawn → removed entity from space"
             );
         }
