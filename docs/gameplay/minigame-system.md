@@ -2,12 +2,12 @@
 title: "Minigame System"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-18
 ---
 
 # Minigame System
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-18
 > **Status**: Content-triggered minigames work end-to-end — SmartFoxServer host, ticket handshake, Livewire, six auto-win placeholders, and victory-chain callback. The player-facing `MinigamePlayer` cell methods (helpers, spectating, manual start) are all stubs.
 
 ## Overview
@@ -22,8 +22,9 @@ The original SGW minigames were Flash SWFs that connected to a **SmartFoxServer 
 
 The working path is content-driven, not client-driven:
 
-```
-Content chain fires Action::StartMinigame { minigame_type, on_victory_chains }
+```text
+Content chain fires Action::StartMinigame { minigame_type, difficulty,
+                                           on_victory_chains }
   |-> Cell: CellToBaseMsg::StartMinigame
   |-> Base: SessionRegistry::register(...) -> ticket (seed, difficulty, tech
   |         competency, victory chains all captured server-side)
@@ -41,6 +42,8 @@ Content chain fires Action::StartMinigame { minigame_type, on_victory_chains }
 |---------|--------|-------|
 | SmartFoxServer 1.x host | DONE | `minigame/server.rs` + `protocol.rs` |
 | Session / ticket registry | DONE | `minigame/session.rs`; ticket carries seed, difficulty, and the victory chains |
+| Session expiry | DONE | A registered session whose SWF never connects is swept after `PENDING_SESSION_TTL` (180 s). See [Session lifecycle](#session-lifecycle) |
+| Abort on SWF close | DONE | `run_session` calls `MinigameInstance::aborted()` and reports result code 0 (Canceled) when the socket drops without an outcome |
 | Content-triggered start | DONE | `Action::StartMinigame` → `CellToBaseMsg::StartMinigame` → `onStartMinigame(URL)` |
 | Victory-chain callback | DONE | `MinigameResult` forwards to the cell, which runs `on_victory_chains` |
 | Livewire | DONE | Fully ported in `minigame/games/livewire/` |
@@ -53,6 +56,7 @@ Content chain fires Action::StartMinigame { minigame_type, on_victory_chains }
 | Helper call protocol | STUB | `minigameCallAccept` (31), `Decline` (32), `Abort` (33) log `UNIMPLEMENTED` |
 | NPC contacts | STUB | `minigameContactRequest` (34) logs `UNIMPLEMENTED` |
 | Tech competency | PARTIAL | The ticket carries a tech-competency field, but it is hardcoded to `1` — the value is not yet read from the player entity |
+| `endMinigameForPlayer` / `minigameStartCancel` | NOT IMPL | The original's two client-driven session-cancel RPCs. Cell method 30 logs `UNIMPLEMENTED`; the TTL sweep is the stand-in |
 | Mob/item attempt tracking | NOT IMPL | `minigameMobAttemptTracker`, `minigameItemAttemptTracker` unused |
 | Item integration | NOT IMPL | `addItemToMinigame`, `consumeItemByMinigame` unused |
 | Cheat detection | NOT IMPL | `updateMinigameItemCheats` unused |
@@ -128,11 +132,50 @@ A ticket is minted by `SessionRegistry::register` when the content chain starts 
 |-------|--------|
 | `entity_id`, `player_id` | The triggering player |
 | `game_name` | `Action::StartMinigame { minigame_type }` |
-| `difficulty` | The content chain |
+| `difficulty` | The `start_minigame` chain action's `difficulty` param, 1-5, default 1 |
 | `tech_competency` | **Hardcoded to `1`** — reading it from the player entity is still a TODO |
 | `seed` | `rand::random::<u32>()` |
 | `abilities`, `intelligence`, `player_level` | Hardcoded to `0`, `0`, `1` |
 | `on_victory_chains` | The chains to run when the game is won |
+
+## Session lifecycle
+
+A session exists in `SessionRegistry` from the moment the chain fires until
+the connection task that owns it finishes. Two things end it:
+
+1. **The connection task.** Once the SWF authenticates, `mark_connected`
+   flags the session and the task owns it. When the socket closes — win,
+   loss, or the player closing the window — the task unregisters it. A
+   connected session is never expired by age, because a Livewire round can
+   run longer than the TTL.
+2. **The expiry sweep.** A session whose SWF never connects has no task to
+   clean it up. `spawn_sweep` runs every `SWEEP_INTERVAL` (60 s) and drops
+   every unconnected session older than `PENDING_SESSION_TTL` (180 s).
+   `register` also sweeps before its duplicate check, so the next
+   interaction recovers without waiting for a sweep tick.
+
+Only one session may exist per entity at a time; a second launch inside the
+TTL is rejected. Before the sweep existed, an abandoned launch pinned the
+entity id and every later interaction with the same object was rejected
+until the player relogged.
+
+The TTL is a **backstop, not a port**. The original had no timeout at all:
+its `MinigameRequestManager::QueueEntry` carries no timestamp. It relied on
+two client-driven RPCs instead — `endMinigameForPlayer` and
+`minigameStartCancel` — neither of which Cimmeria implements yet. Wiring
+those through to `SessionRegistry::remove` is the faithful fix; the TTL
+still earns its place afterwards for the case the original had no answer to
+either, a client that crashes without sending anything.
+
+### Result codes
+
+| Code | Name | When |
+|---|---|---|
+| 0 | Canceled | The session ended with no outcome — socket dropped, SWF closed. Inert on the cell today, but it is what the original used to clear `BSF_PlayingMinigame` and release the movement lock |
+| 1 | Victory | The game reported a win. The only code that fires `on_victory_chains` |
+| 2 | Defeat | The game reported a loss, including a Livewire timeout. Carries no chains |
+
+A cancel does not emit a Discord notification; a win or loss does.
 
 ## Helper Call Protocol
 
@@ -169,6 +212,7 @@ Either player:
 4. **Helper call protocol** — the whole request → PhaseTwo → accept/decline flow, including tip cash movement
 5. **Spectating** — `requestSpectateList` / `spectateMinigame`
 6. **NPC contacts** — contact acquisition and expiry mechanics
+7. **Session-cancel RPCs** — `endMinigameForPlayer` and `minigameStartCancel` (cell method 30). Until they land, an abandoned launch is recovered by the TTL sweep rather than by the client telling the server it closed the window
 
 ## Related Docs
 
