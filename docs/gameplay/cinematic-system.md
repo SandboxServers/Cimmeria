@@ -267,6 +267,8 @@ These are used for zone-specific cinematics — door animations, console activat
 
 Each stargate event set contains exactly **14 sequences** (one per event type above). 14 zones have stargate event sets.
 
+Of the fourteen, the server emits exactly **two**: `Stargate_MakeGate` (6100) four seconds after a successful dial, and `Stargate_CrossGate` (6113) as the player enters the gate volume. That is what the 2009 server did — `cancelDialing` sent no `Stargate_DestroyGate`, and nothing ever drove the chevron events. Both are emitted by [`cell::gate_travel::sequences`](../../crates/services/src/cell/gate_travel/sequences.rs) to the dialer **and every witness of them**; see the [gate travel reference](gate-travel.md).
+
 ### Region Transport Events (8000-8001)
 
 | Value | Name | Purpose |
