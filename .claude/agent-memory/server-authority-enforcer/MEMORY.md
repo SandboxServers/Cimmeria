@@ -39,7 +39,8 @@
 - [reference_auth_handshake_layers.md](reference_auth_handshake_layers.md) — Where Cimmeria's auth/session/character-lifecycle handlers live; which layer is authoritative for what
 - [reference_auth_exploit_classes.md](reference_auth_exploit_classes.md) — Recurring SGW auth/handshake exploit classes — TLS, IV reuse, replay, race windows, dev-mode bypass
 - [reference_combat_exploit_classes.md](reference_combat_exploit_classes.md) — Recurring combat/abilities exploit classes — caller-state gating, target id existence/AoI, faction/LOS, stub-implementation debt
-- [reference_dialog_choice_exploit_shape.md](reference_dialog_choice_exploit_shape.md) — DIALOG_BUTTON_CHOICE has no open-dialog tracking; OnDialogChoice chains are replay-forgeable
+- [reference_dialog_choice_exploit_shape.md](reference_dialog_choice_exploit_shape.md) — #479 open_dialog_id pin CLOSED the forgery vector; residual: unscoped initialResponse scan + archetype fails-open on dialog chains
+- [reference_content_chain_authority_invariants.md](reference_content_chain_authority_invariants.md) — Step-gate single-grant holds unless delay_ms>0; vacuous all_required_complete; entity_dead_tag is server-authoritative
 - [reference_gm_auth_plumbing_gap.md](reference_gm_auth_plumbing_gap.md) — Systemic gap: cell-method dispatch has no access_level; every future gm* handler is unauthenticated by default
 - [exploit_entity_id_recycling.md](exploit_entity_id_recycling.md) — Entity ids come off a free list; deferred teardown keyed on a bare entity_id can destroy a different live player
 - [reference_cell_teardown_skips_session_state.md](reference_cell_teardown_skips_session_state.md) — `destroy_entity` skips trade cleanup; only the two lifecycle arms do it, so every other teardown strands the counterparty
