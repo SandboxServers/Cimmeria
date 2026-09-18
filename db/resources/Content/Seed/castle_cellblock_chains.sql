@@ -25,6 +25,12 @@
 --     chain_id in this file, matching the method C01's worker used for
 --     chain 1008). Kept deliberately separate from C03's 1112-1120 range so
 --     the two packets' new ids never collide.
+--   C07 addition (2026-09-17): mission-accepted prompt blurbs, work-packets.md's
+--     reserved range 1151-1160. Used: 1151 (640), 1152 (641), 1154 (688).
+--     1153 skipped -- reserved for mission 680's blurb 2308 (D-CB08's fourth
+--     mission), deferred pending GC1 (Marsh escort) landing; see the chain's
+--     own comment below. Occupancy re-checked immediately before use: zero
+--     chain_ids in 1151-1160 existed anywhere under db/resources/Content/Seed/.
 --   (next free inside 1001-1111: 1026-1030, 1036-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
@@ -1976,3 +1982,68 @@ VALUES (1111, 'step_status', 688, '80688', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1111, 'set_interaction_type', NULL, 'Cellblock_ArmoryRingSwitch',
         '{"op": "|", "mask": "INT_MissionWorldObject"}', 0, 0);
+
+-- ============================================================
+-- MISSION PROMPT BLURBS (C07, D-CB08)
+--
+-- Spec-only content: four `DUIST_DefaultBlurb` dialogs shown on mission
+-- accept, mirroring the precedent chains 1018/1019 already established
+-- for mission 639's blurb 2298 (dialog_choice → accept_mission →
+-- display_dialog, all in one chain). C07 instead hangs off the generic
+-- `mission_accepted` follow-up event (see chain 1097's comment) so the
+-- blurb fires regardless of which upstream chain performed the accept
+-- -- mission 641 alone has two accept paths (chains 1053/1054, one per
+-- archetype branch) that would otherwise both need their own
+-- display_dialog action.
+--
+-- D-CB08's precondition (does the client already show its own accept
+-- prompt, which would make this a double-prompt) was resolved via an
+-- RE precheck substituting for live UAT -- confirmed safe, no
+-- double-prompt risk.
+-- ============================================================
+
+-- Chain 1151: mission 640 accepted (via chain 1034, ambernol use) →
+-- display blurb 2305.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1151, '640 - Mission accepted: display prompt blurb 2305', 'mission', 640, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1151, 'mission_accepted', '640', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1151, 'display_dialog', 2305, NULL, '{}', 0, 0);
+
+-- Chain 1152: mission 641 accepted (via chain 1053 non-sci or 1054 sci
+-- dialog-choice branch) → display blurb 4000. One chain covers both
+-- accept paths since both funnel through the same `accept_mission 641`
+-- action and therefore the same follow-up event.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1152, '641 - Mission accepted: display prompt blurb 4000', 'mission', 641, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1152, 'mission_accepted', '641', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1152, 'display_dialog', 4000, NULL, '{}', 0, 0);
+
+-- Chain 1153 (reserved, NOT authored): mission 680 accepted (via chain
+-- 1061, Livewire victory) → blurb 2308. Skipped per the packet's own
+-- Exclude note -- 2308's text references "follow Marsh," which only
+-- makes sense once GC1 (the Marsh escort, D-CB13) actually has Marsh
+-- following the player. work-packets.md's GC1 section shows only
+-- GC1b-0 (the engine capability) merged; GC1a/GC1b-1/GC1b-2 (the seed
+-- chains that make Marsh actually follow and ring-hop) are still in
+-- progress as of this packet. Re-add chain 1153 with this exact shape
+-- once GC1's escort chains land -- do not reuse chain_id 1153 for
+-- anything else in the interim.
+
+-- Chain 1154: mission 688 accepted (via chain 1105, auto-accept on 687
+-- complete) → display blurb 2518.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1154, '688 - Mission accepted: display prompt blurb 2518', 'mission', 688, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1154, 'mission_accepted', '688', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1154, 'display_dialog', 2518, NULL, '{}', 0, 0);

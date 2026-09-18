@@ -432,3 +432,83 @@ async fn jaffa_marsh_interact_before_641_resolves_exactly_one_dialog_5022_and_ze
         resolved.actions,
     );
 }
+
+/// Chain 1152 (C07, D-CB08): accepting mission 641 (via either the
+/// non-sci chain 1053 or sci chain 1054 dialog-choice branch) must
+/// display prompt blurb 4000 exactly once. One `mission_accepted`
+/// chain covers both accept paths since both funnel through the same
+/// `accept_mission 641` action. Precedent: chain 1097's shape for 687.
+#[tokio::test]
+async fn chain_1152_displays_blurb_4000_when_mission_641_accepted() {
+    use cimmeria_content_engine::actions::Action;
+
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1152)
+        .await
+        .expect("DB query for chain 1152 must succeed")
+        .expect("chain 1152 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("mission_id".to_string(), serde_json::json!(641));
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::MissionAccepted,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let blurbs = resolved
+        .actions
+        .iter()
+        .filter(|(id, action)| {
+            *id == 1152 && matches!(action, Action::DisplayDialog { dialog_id: 4000 })
+        })
+        .count();
+    assert_eq!(
+        blurbs, 1,
+        "chain 1152 must resolve exactly one DisplayDialog(4000) when \
+         mission 641 is accepted; got {blurbs} actions. Resolved: {:?}",
+        resolved.actions,
+    );
+}
+
+/// Chain 1152 negative: a `mission_accepted` event for a different
+/// mission id must not also fire the 641 blurb.
+#[tokio::test]
+async fn chain_1152_does_not_fire_for_wrong_mission_id() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1152)
+        .await
+        .expect("DB query for chain 1152 must succeed")
+        .expect("chain 1152 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("mission_id".to_string(), serde_json::json!(640));
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::MissionAccepted,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let chain_1152_actions = resolved
+        .actions
+        .iter()
+        .filter(|(id, _)| *id == 1152)
+        .count();
+    assert_eq!(
+        chain_1152_actions, 0,
+        "chain 1152 must NOT fire when mission 640 (not 641) is accepted; \
+         got {chain_1152_actions} actions",
+    );
+}
