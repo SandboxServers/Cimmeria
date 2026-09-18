@@ -65,7 +65,7 @@ Every chain packet ships a chain-replay test (`crates/services/src/cell/content/
 
 ### H04
 
-**Status:** Writing (2026-09-17, branch `harset/H04`, base `3c1fed6c`). **Scope title:** `entity_health_below` trigger. **Depends:** none. **Decision:** D-H11. **Advisor:** combat-systems-advisor; mission-systems-advisor for the trigger shape.
+**Status:** Integrated 2026-09-18 into `content/harset-rebuild` (branch `harset/H04`, commit `90593af7`; [worknote](worknotes/H04.md)). Stateless band test (`pct_before > pct && pct_after <= pct`) on one event per damaging hit, killing blows excluded by the dispatcher via `BSF_DEAD`; the hook lives in `abilities/use_ability/kill_credit.rs` (the only layer with a `ChainEngine`), a recorded ownership deviation. 31 tests, live-DB suite green. Follow-ups opened as H08: `npc_ai_submit` clears `threat_list` without the player-side combat scrub (stuck `BSF_InCombat`), Submit leaves the attacker's auto-cycle and faction hostile, and H21 needs a death-path fallback chain. **Scope title:** `entity_health_below` trigger. **Depends:** none. **Decision:** D-H11. **Advisor:** combat-systems-advisor; mission-systems-advisor for the trigger shape.
 **Entries:** [loader/trigger.rs](../../../crates/content-engine/src/loader/trigger.rs) (22 arms, none health-based), [triggers/mod.rs](../../../crates/content-engine/src/triggers/mod.rs), [triggers/matching.rs](../../../crates/content-engine/src/triggers/matching.rs), the damage-apply path in `crates/services/src/cell/combat/` (where `mark_npc_dead` is reached from), [npc_ai/lifecycle.rs](../../../crates/services/src/cell/service/npc_ai/lifecycle.rs) lines 36-57 (`AiState::Submit`), `set_npc_ai_state` executor arm.
 **Scope:** new trigger `entity_health_below` with `event_key = "<tag>:<pct>"`, fired once per crossing from the damage path with the attacker as the acting player; document in content-engine.md section 3. No new action: the ritual end is `set_npc_ai_state submit` plus `advance_step`. **Exclude:** a non-lethal damage cap (`qr_combat_damage` stays unarmed), a generic stat-threshold condition.
 **Acceptance:** unit test that damage from 60% to 40% with a 50% key fires exactly once and a second hit below does not; a hit that kills fires `entity_dead_tag` and not this trigger; replay fixture for Rin'la (H21) consumes it.
@@ -83,6 +83,20 @@ Every chain packet ships a chain-replay test (`crates/services/src/cell/content/
 **Entries:** [cell/gate_travel.rs](../../../crates/services/src/cell/gate_travel.rs) line 49, `db/sgw/Players/Tables/sgw_player.sql` line 26 (`known_stargates integer[]`), `deprecated/python/cell/SGWPlayer.py` lines 2060-2064 (the 2009 check), security finding CAT-O-01.
 **Scope:** refuse a dial to a gate not in the player's known list with a client-visible failure; write the destination into `known_stargates` on successful arrival (the 2009 unlock-on-visit rule). **Exclude:** address-learning content, per-mission unlocks.
 **Acceptance:** live-DB test: dial to an unknown gate leaves position and DB unchanged; arrival appends exactly once.
+
+### H07
+
+**Status:** Writing (coordinator-added 2026-09-18, branch `harset/H07`). **Scope title:** Authorable `world` condition. **Depends:** none. **Advisor:** mission-systems-advisor.
+**Why:** H10 found that the loader has six authorable conditions and none tests the acting player's world, so the "door chains carry a world condition" rule in [Worker Input And Ownership](#worker-input-and-ownership) could not be authored; `OnRegionEnter` and `player_loaded` chains fire in every world.
+**Scope:** `Condition::World` (`world`, params `world_id` + `op` eq/neq), evaluated against a new `ExecutionContext.world_id` that every services-side context builder populates from the player's space; unset evaluates false. Content-engine loader/evaluation tests plus a sentinel replay fixture. **Exclude:** the server-authority fix for client-supplied region ids (folded into H06).
+**Acceptance:** loader round-trip; eq/neq/unset evaluation; replay fixture gated `world eq 57` resolves for a world-57 context and not for 68. H10's chains 6006/6007 gain the condition once this lands.
+
+### H08
+
+**Status:** Ready (after H04; wave 2). **Scope title:** `AiState::Submit` combat cleanup. **Depends:** H04. **Advisor:** combat-systems-advisor, npc-ai-spawn-advisor.
+**Entries:** [npc_ai/lifecycle.rs](../../../crates/services/src/cell/service/npc_ai/lifecycle.rs) (`npc_ai_submit`), the player-side scrub `clear_dead_npc_from_all_player_threat` in `cell/combat/`, the attacker's auto-cycle and faction state; H04 worknote integration requests B and C.
+**Scope:** (1) route the Submit threat clear through the same player-side scrub death uses, so the attacker's `BSF_InCombat`, weapon-drawn state and regen denial clear; (2) stop the attacker's auto-attack cycle on the submitting NPC and make it non-hostile to the player for the instance's life, so the surrendered duelist is not killed seconds later. **Exclude:** the H21 death-path fallback chain (a seed row; H21 records it), a generic surrender system.
+**Acceptance:** unit tests that Submit reached from a health crossing leaves the attacker out of combat and not auto-attacking; a kill after Submit is impossible from auto-cycle (explicit attack behaviour is recorded, not changed).
 
 ## Population And Regions (seed lanes)
 
@@ -109,7 +123,7 @@ Every chain packet ships a chain-replay test (`crates/services/src/cell/content/
 
 ### H13
 
-**Status:** Writing (2026-09-17, branch `harset/H13`, base `3c1fed6c`). **Scope title:** Respawn and combat data on the existing 23 Harset rows. **Depends:** H11 (ability set ids). **Decision:** D-H17. **Advisor:** npc-ai-spawn-advisor.
+**Status:** Integrated 2026-09-18 into `content/harset-rebuild` (branch `harset/H13`, commit `d58d6663`; [worknote](worknotes/H13.md)). Per-spawn `respawn_secs = 30` on the 14 Harset mob rows, `is_stationary` on the guards, lieutenants, Petbe and Anat; debug spawns 1 and 42 deleted; nine live-DB guards, revert-verified. Finding: the declared H11 dependency runs the other way (spawnlist has no ability column; H11's Petbe faction flip must not land before these rows), and template-level respawn on shared templates 159/160 would leak to Castle world 8, so H11 was told to leave those two NULL. UATPending (M1). **Scope title:** Respawn and combat data on the existing 23 Harset rows. **Depends:** H11 (ability set ids). **Decision:** D-H17. **Advisor:** npc-ai-spawn-advisor.
 **Entries:** `spawnlist.sql` Harset rows (lines 55-337 as listed in the audit), `db/resources/Worlds/Tables/spawnlist.sql` (columns `is_stationary`, `respawn_secs`, `patrol_path_id`), `crates/services/src/cell/combat/state.rs` lines 110-112, `ticks/npc_respawn/mod.rs` lines 101-109.
 **Scope:** extend the Harset spawn INSERTs to set `respawn_secs` on every mob row and `is_stationary` on the eight plaza guards and four lieutenants (they are gate and door sentries; stationary avoids the fragmented-mesh chase freeze until GH1 resolves); remove debug spawns 1 and 42 from production or gate them behind a dev flag per the spec's DEV/TEST rows. **Exclude:** patrol paths (GH1 first), touching non-Harset rows.
 **Acceptance:** live-DB test that a killed guard gets `respawn_at` and the respawn tick revives it; debug templates absent from world 57.
