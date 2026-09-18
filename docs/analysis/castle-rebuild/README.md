@@ -1,7 +1,7 @@
 # Castle Rebuild Handoff
 
 > Type: how-to. Audience: Claude Code coordinator and implementing engineers.
-> Updated: 2026-09-17. Companions: [audit.md](audit.md), [work-packets.md](work-packets.md), [Cellblock campaign](../castle-cellblock-rebuild/README.md) (the inbound sibling), [parity campaign protocol](../legacy-command-parity/README.md), [documentation index](../../readme.md).
+> Updated: 2026-09-17 (implementation session record added). Companions: [audit.md](audit.md), [work-packets.md](work-packets.md), [Cellblock campaign](../castle-cellblock-rebuild/README.md) (the inbound sibling), [parity campaign protocol](../legacy-command-parity/README.md), [documentation index](../../readme.md).
 
 ## Purpose And Evidence Boundary
 
@@ -21,7 +21,7 @@ These are the Cellblock-branch items Castle depends on. Do not re-implement them
 |---|---|---|---|
 | 1 | **Merge open PRs #618 and #619** (`move_entity` + `grant_xp` arms; `launch_ability` + `apply_effect` arms via the `effect_apply.rs` entry point) before the Cellblock's C03/C00/GC3 re-implement the same arms. Both PRs touch `executor/mod.rs`, the file every later arm also edits. | `move_entity` is the only NPC reposition verb with a cross-world guard (CA03 option B). `grant_xp` closes GC3 for both zones. | CA03 (option B), GCA2 |
 | 2 | **GC1b-0** (`use_player` on `set_follow_target`; `move_speed` as an `entity_templates` column instead of the hardcoded 0.6 units/tick; `npc_ai_leash` skips the spawn-snap while `follow_target_id.is_some()`). | Zuritska's escort (704 step 2405) is a player-follow. Players have no `tag`, so today no NPC can follow one; at 6.0 u/s a follower never re-enters the 2-5 unit band behind an 8.125 u/s runner; a stray hit would teleport Zuritska back to her cell for good. | CA07 |
-| 3 | **Reassign C09 to this ledger** (it becomes CA01). C09 creates `castle_chains.sql` and ports the Gerschon handoff; two sessions authoring the same new seed file is the one guaranteed merge conflict in this plan. The Cellblock keeps only its M4 UAT check (arrive near Gerschon, letter 1360 still active). | Single owner for `castle_chains.sql`, chain range 1201-1400 and `chain_replay_tests/mission_701.rs`. | CA01 |
+| 3 | **Reassign C09 to this ledger** (it becomes CA01). C09 creates the Castle seed file (`castle_chains.sql` in the original plan; `castle_701_chains.sql` since D-CA17) and ports the Gerschon handoff; two sessions authoring the same new seed file is the one guaranteed merge conflict in this plan. The Cellblock keeps only its M4 UAT check (arrive near Gerschon, letter 1360 still active). | Single owner for the Castle seed files (`castle_701_chains.sql` and siblings, D-CA17), chain range 1201-1400 and `chain_replay_tests/mission_701/`. | CA01 |
 | done | **C08a** (`delay_ms` honored, `deferred_content_actions.rs`), landed in `bfca38bd`. | The 4-second dial timer (CA10) and the escort-walk approximation (CA03 option A) are `delay_ms` actions. | CA03, CA10 |
 | nice | **C02's chain-replay baseline pattern** and C10's `content-engine.md` catalog update. | CA04 adds the first Livewire-victory replay guards; the catalog must list the new arms before Castle seeds cite them. | CA04, CA16 |
 
@@ -74,6 +74,21 @@ Rows marked **PROPOSED** are the coordinator's recommended defaults with the rea
 5. D-CA09: Livewire for the terminal and the DHD, or leave them click-to-win?
 6. D-CA10: emit gate events per the 2009 server (6100 after 4 s, 6113 on cross), yes or no?
 7. Cellblock handoff: reassign C09 to this ledger, prioritize GC1b-0, and merge #618/#619 first?
+
+## Implementation Session Record (2026-09-17)
+
+The user authorized an autonomous implementation session ("do the work described in this folder ... work autonomously until you complete all work packets, open PRs at regular intervals"). Rows below are the session's answers to the open decisions and the state it found; they do not rewrite the PROPOSED rows above. The user may override any of them; a packet whose decision is overridden goes back to **Writing**.
+
+| ID | Answer (2026-09-17) | Reason |
+|---|---|---|
+| D-CA01 … D-CA16 | **Adopted the recommended default of every PROPOSED row.** | No user answer was available in an autonomous session; every default is the coordinator's HIGH- or MEDIUM-confidence recommendation. The content decisions (D-CA02 option A, D-CA05, D-CA06/07, D-CA08, D-CA09, D-CA13) are reversible at the seed level and their rows are labelled RECONSTRUCTION so a later reversal is a row edit. The engine and process decisions (D-CA10 gate emits, D-CA11 respawner coordinates, D-CA12 navmesh-in-parallel, D-CA16 protocol) are ordinary reviewed changes whose reversal costs an engine, data or process change, not a seed edit. |
+| Open decision 7 | **Landed before this session started.** PR #618 (`move_entity`, `grant_xp`) merged `f23e73fb`; PR #619 (`launch_ability`, `apply_effect`) merged `b528d145`; Cellblock C00/C01/C02/C03/C08a/GC1b-0 merged in PR #646 (`73a99e6b`); C09 reassigned to this ledger in `694f17a7`. | `git log`/`gh pr view` at session start, `main` @ `3c1fed6c`. No Cellblock branch remains ahead of `main`. |
+| D-CA17 (new) | **Seed split by mission family from day one:** `castle_701_chains.sql` (1201-1260), `castle_702_704_chains.sql` (1261-1320), `castle_706_708_chains.sql` (1321-1380), each `\ir`'d from `database.sql` after the Cellblock file. `castle_chains.sql` is never created; every older mention of that path in this ledger, the Cellblock ledger's C09 row and the Harset overlap table is superseded by this row. | CLAUDE.md's foresight rule, and it lets the three mission workers run in parallel worktrees with disjoint files instead of serialising on one seed. Chain-id blocks are unchanged. |
+| D-CA18 (new) | **CA10 also adds two loader-reachable content triggers, `stargate_dialed` and `stargate_crossed`** (event_key = destination world name), fired from the dial handler's success path and from one passage function in `cell/gate_travel.rs`. CA09 hooks 4462/4469 on them. | `custom_event` has no loader arm, so the ledger's "or a custom_event" fallback for 4462 was unauthorable. Agreed 2026-09-17 with the concurrent Harset session (its H01 owns the generic flag-2 stargate region routing and will call the same passage function; it adds no triggers of its own; whichever lands second rebases). |
+| D-CA19 (new) | **CA11 and CA12 are not implemented here.** They are consumed from Harset H03 per the overlap table. CA13, CA14 and CA15 stay design/decision gated; under option A no content packet needs them. | Single owner per primitive. |
+| Concurrency | Three Claude sessions worked the repo at once (this one, the Cellblock session, the Harset session). Coordination points: every cargo/psql invocation goes through the machine-wide lane lock `lane.sh`; the shared `sgw` test DB is dropped and reloaded from the calling worktree's seed by `live-db-test.sh`; the Harset session moved to its own `sgw_harset` database; nobody runs git in the primary checkout. | Concurrent `rustc` OOMs the host; concurrent live-DB runs against one database collide. |
+
+Worktrees and branches per packet are recorded beside each packet's status in [work-packets.md](work-packets.md).
 
 ## Where Confidence Is Low Or A Guess
 
