@@ -38,14 +38,12 @@ async fn spawn_placeholder_session(
         .register(entity_id, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![4242])
         .await
         .expect("fresh registry must accept the session");
-    // Go through `authenticate` + `mark_connected` rather than building a
-    // `MinigameSession` by hand, so the test walks the same path the login
-    // handler does.
+    // Go through the claiming path rather than building a `MinigameSession`
+    // by hand, so the test walks the same call the login handler makes.
     let session = registry
-        .authenticate(entity_id, &ticket, "Hack")
+        .authenticate_and_claim(entity_id, &ticket, "Hack")
         .await
-        .expect("session must authenticate");
-    registry.mark_connected(entity_id).await;
+        .expect("session must authenticate and claim");
     let game = create_game(&session).expect("placeholder instance");
 
     let (tx, rx) = mpsc::channel(16);
@@ -64,10 +62,11 @@ async fn spawn_placeholder_session(
     (client, rx, handle)
 }
 
-/// Read whatever the server has queued, then drop the socket. Draining
-/// first keeps the server's writes from ever blocking.
+/// Wait until the server is in its game loop, then drop the socket. Reading
+/// first both keeps the server's writes from blocking and guarantees the
+/// close lands mid-game rather than mid-handshake.
 async fn drain_and_close(mut client: TcpStream) {
-    read_once(&mut client).await;
+    read_until_game_begin(&mut client).await;
     drop(client);
 }
 
@@ -115,16 +114,56 @@ fn count_failure_frames(stream: &str) -> usize {
     stream.matches("<var n='_cmd' t='s'>failure</var>").count()
 }
 
-/// One bounded read. The whole handshake is a few hundred bytes and arrives
-/// coalesced, so a single read is enough to unblock the server; anything
-/// left over is discarded when the socket drops.
-async fn read_once(client: &mut TcpStream) {
+/// One bounded read, for a phase with no later frame to miss.
+async fn read_one_chunk(client: &mut TcpStream) {
     let mut sink = vec![0u8; MAX_MESSAGE_LEN];
     let _ = tokio::time::timeout(
         Duration::from_secs(5),
         tokio::io::AsyncReadExt::read(client, &mut sink),
     )
     .await;
+}
+
+/// Read framed messages until `onGameBegin`, the last frame the server
+/// sends before entering its game loop.
+///
+/// A single bounded read is not enough: it can return after any one early
+/// startup frame, so closing the socket on the strength of it can make a
+/// *later* startup write fail. The session then exits through the handshake
+/// path instead of the mid-game path, and a test meaning to exercise a
+/// mid-game close silently exercises something else. Waiting for the
+/// milestone makes "the server is in its game loop" an assertion rather
+/// than an assumption.
+///
+/// Panics on timeout, EOF or I/O error — reaching the game loop is a
+/// precondition of every caller, not something to paper over.
+async fn read_until_game_begin(client: &mut TcpStream) {
+    const MILESTONE: &str = "<var n='_cmd' t='s'>onGameBegin</var>";
+    let mut seen = String::new();
+    let mut chunk = vec![0u8; MAX_MESSAGE_LEN];
+    loop {
+        match tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio::io::AsyncReadExt::read(client, &mut chunk),
+        )
+        .await
+        {
+            Ok(Ok(n)) if n > 0 => {
+                seen.push_str(&String::from_utf8_lossy(&chunk[..n]));
+                if seen.contains(MILESTONE) {
+                    return;
+                }
+            }
+            // EOF, read error, or timeout: the server never reached its
+            // game loop, so whatever the caller meant to exercise did not
+            // happen. Show the frames that did arrive, NULs swapped for
+            // newlines so the message stays printable.
+            other => panic!(
+                "server did not reach onGameBegin ({other:?}); frames so far:\n{}",
+                seen.replace('\0', "\n"),
+            ),
+        }
+    }
 }
 
 /// Collect every `MinigameResult` the session dispatched.
@@ -168,6 +207,12 @@ async fn closing_the_swf_reports_canceled_and_runs_aborted() {
         "the original reported MinigameCanceled (0) on abort, never Defeat \
          (2) — Defeat is reserved for a game the player actually lost",
     );
+    assert!(
+        stream.contains("<var n='_cmd' t='s'>onGameBegin</var>"),
+        "the capture must show the server reached its game loop, or this is \
+         not the mid-game close the test claims to exercise. Captured \
+         stream: {stream}",
+    );
     assert_eq!(
         count_failure_frames(&stream),
         1,
@@ -186,16 +231,19 @@ async fn closing_the_swf_reports_canceled_and_runs_aborted() {
 async fn a_won_game_reports_victory_once_and_never_canceled() {
     let (mut client, mut rx, handle) = spawn_placeholder_session(4302).await;
 
-    // Let the handshake land, then win. `PlaceholderGame` treats the
-    // `victory` extension command as an instant win.
-    read_once(&mut client).await;
+    // Wait until the server is actually in its game loop, then win.
+    // `PlaceholderGame` treats the `victory` extension command as an
+    // instant win.
+    read_until_game_begin(&mut client).await;
     let victory = "<msg t='xt'><body action='xtReq'>\
          <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
          </body></msg>";
     send_null_terminated(&mut client, victory)
         .await
         .expect("victory send must succeed");
-    drain_and_close(client).await;
+    // The milestone is already behind us, so just let go of the socket —
+    // waiting for a second `onGameBegin` would hang until the timeout.
+    drop(client);
     handle.await.expect("session task must not panic");
 
     let results = drain_results(&mut rx);
@@ -218,13 +266,11 @@ async fn a_won_game_reports_victory_once_and_never_canceled() {
 /// ever allowed to return past it — which is exactly what the four
 /// handshake sends used to do before they were moved behind `run_session`.
 ///
-/// It also pins the `mark_connected` call, which is the *only* production
-/// call site. Without that assertion, deleting it passes every other test
-/// here while reopening a worse bug than B4: a Livewire round running past
-/// `PENDING_SESSION_TTL` gets swept mid-play, a second interaction
-/// registers a fresh session for the same entity, and this task's teardown
-/// would delete the second player's session. (`remove_if_ticket` now blocks
-/// that last step, but an unconnected live session is still wrong.)
+/// It also pins that login claims the session, which happens at exactly one
+/// production call site. Without this assertion, dropping the claim passes
+/// every other test here while reopening a worse bug than B4: a Livewire
+/// round running past `PENDING_SESSION_TTL` gets swept mid-play and a second
+/// interaction registers a fresh session for the same entity.
 #[tokio::test]
 async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -252,7 +298,10 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
     )
     .await
     .expect("verChk send must succeed");
-    read_once(&mut client).await;
+    // One bounded read is right here: the version phase answers with the
+    // cross-domain policy and apiOK and then waits for login, so there is no
+    // later frame to miss.
+    read_one_chunk(&mut client).await;
 
     // Phase 2 — login. `z` is the game name, `nick` the entity id, `pword`
     // the ticket minted above.
@@ -267,10 +316,9 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
     .await
     .expect("login send must succeed");
 
-    // The login handler has to have marked the session connected before it
-    // starts the room sends. Poll rather than assert immediately: the
-    // handshake reply tells us the server got past login, but this test
-    // races the spawned task, so give it a bounded window.
+    // The login handler has to have claimed the session before it starts the
+    // room sends. Poll rather than assert immediately: this test races the
+    // spawned task, so give it a bounded window.
     let connected = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if let Some(s) = registry.authenticate(4303, &ticket, "Hack").await {
@@ -285,12 +333,11 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
         }
     })
     .await
-    .expect("mark_connected must happen well within 5s");
+    .expect("the claim must happen well within 5s");
     assert!(
         connected,
-        "handle_connection must mark the session connected once login \
-         succeeds; without it the sweep can evict a session that is being \
-         actively played",
+        "login must claim the session; without it the sweep can evict a \
+         session that is being actively played",
     );
 
     // Player closes the minigame window mid-game.
@@ -336,10 +383,9 @@ async fn a_send_failure_during_handshake_still_reports_canceled() {
         .await
         .expect("fresh registry must accept the session");
     let session = registry
-        .authenticate(4304, &ticket, "Hack")
+        .authenticate_and_claim(4304, &ticket, "Hack")
         .await
-        .expect("session must authenticate");
-    registry.mark_connected(4304).await;
+        .expect("session must authenticate and claim");
     let game = create_game(&session).expect("placeholder instance");
 
     // Linger 0 makes close() emit RST instead of FIN, which turns the

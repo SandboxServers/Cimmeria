@@ -98,11 +98,10 @@ async fn handle_connection(
 
     let entity_id = session.entity_id;
 
-    // From here the session belongs to this task: the sweep must stop
-    // considering it, and *every* exit path below has to unregister it or
-    // the player can never start another minigame without relogging
-    // (defect B4).
-    registry.mark_connected(entity_id).await;
+    // The login phase already claimed this session under the registry lock,
+    // so the sweep will leave it alone. What is left is the other half:
+    // *every* exit path below has to unregister it, or the player can never
+    // start another minigame without relogging (defect B4).
     let game_name = session.game_name.clone();
     // Captured before `run_session` takes the session: the teardown deletes
     // by ticket so a stale task can never unregister a *newer* session that

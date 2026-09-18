@@ -76,11 +76,24 @@ pub(super) async fn read_and_handle_login(
             }
 
             let entity_id: u32 = nick.parse().ok()?;
-            let session = registry.authenticate(entity_id, &password, &zone).await?;
+            // Validate and claim atomically — see `authenticate_and_claim` for
+            // the interleaving that a separate `mark_connected` would allow.
+            let session = registry
+                .authenticate_and_claim(entity_id, &password, &zone)
+                .await?;
 
-            // Create game instance
+            // Create game instance. Unreachable today: `games::create` has a
+            // `_` arm that falls back to `PlaceholderGame`, so it always
+            // returns `Some`. Kept as a guard for the first game type that
+            // rejects a session (a bad seed, an unsupported difficulty), which
+            // is why there is no test driving this branch.
             let game = create_game(&session);
             if game.is_none() {
+                // The session is already claimed, so nothing else will sweep
+                // it and no connection task is going to tear it down. Release
+                // it here or the entity is stuck until relog — the very shape
+                // of defect B4.
+                registry.remove_if_ticket(entity_id, &session.ticket).await;
                 let fail = protocol::encode_extension_raw(
                     "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginFailed</var>",
                 );

@@ -59,11 +59,13 @@ pub struct MinigameSession {
     /// `tokio::time::pause()` / `advance()` drive the TTL deterministically
     /// in tests instead of a wall-clock sleep.
     pub created_at: Instant,
-    /// Set by [`SessionRegistry::mark_connected`] once the SWF has
-    /// authenticated and its connection task has taken ownership of the
-    /// session. A connected session is exempt from age-based expiry: the
-    /// connection task removes it when the socket closes, and a long
-    /// Livewire round can easily outlive [`PENDING_SESSION_TTL`].
+    /// Set by [`SessionRegistry::authenticate_and_claim`] in the same locked
+    /// step that validates the ticket, so a connection task can only ever
+    /// claim the session it authenticated against.
+    ///
+    /// A connected session is exempt from age-based expiry: its connection
+    /// task removes it when the socket closes, and a long Livewire round can
+    /// easily outlive [`PENDING_SESSION_TTL`].
     pub connected: bool,
 }
 
@@ -168,16 +170,50 @@ impl SessionRegistry {
         });
     }
 
-    /// Mark a session as owned by a live connection task, exempting it from
-    /// age-based expiry. Idempotent; a no-op if the session is already gone.
-    pub async fn mark_connected(&self, entity_id: u32) {
+    /// Authenticate a login attempt **and claim the matched session**, in one
+    /// locked step. Returns the claimed session if the ticket and game name
+    /// match.
+    ///
+    /// This is the only entry point a connection task may use. Validating and
+    /// claiming separately is a real race, not a theoretical one: `authenticate`
+    /// releases the lock after cloning, and between that and a
+    /// `mark_connected(entity_id)` the pending entry can cross
+    /// [`PENDING_SESSION_TTL`], be swept, and be replaced by a `register` for
+    /// the same entity. The claim would then land on the *replacement*, and the
+    /// first connection's teardown would later delete a session it never owned.
+    /// Doing both under one lock makes the interleaving unrepresentable: either
+    /// the claim wins and the session is connected (so the sweep skips it), or
+    /// the sweep wins and this returns `None`.
+    pub async fn authenticate_and_claim(
+        &self,
+        entity_id: u32,
+        password: &str,
+        game_name: &str,
+    ) -> Option<MinigameSession> {
         let mut inner = self.inner.lock().await;
-        if let Some(session) = inner.sessions.get_mut(&entity_id) {
-            session.connected = true;
+        let session = inner.sessions.get_mut(&entity_id)?;
+        if session.ticket != password {
+            tracing::warn!(entity_id, "Minigame ticket mismatch");
+            return None;
         }
+        if session.game_name != game_name {
+            tracing::warn!(
+                entity_id,
+                expected = %session.game_name,
+                got = %game_name,
+                "Minigame game name mismatch"
+            );
+            return None;
+        }
+        session.connected = true;
+        Some(session.clone())
     }
 
-    /// Authenticate a login attempt. Returns the session if valid.
+    /// Validate a ticket without claiming the session.
+    ///
+    /// Read-only: useful for asserting registry state in tests. A connection
+    /// task must use [`Self::authenticate_and_claim`] instead — see the race
+    /// documented there.
     pub async fn authenticate(
         &self,
         entity_id: u32,
@@ -218,7 +254,7 @@ impl SessionRegistry {
     /// The connection task's teardown must not delete a session it does not
     /// own. Sequence that makes it matter: a session outlives
     /// [`PENDING_SESSION_TTL`] without being marked connected (a bug, or a
-    /// future code path that forgets `mark_connected`), the sweep drops it,
+    /// future code path that skips the claim), the sweep drops it,
     /// the player interacts again and `register` mints a *second* session
     /// for the same entity id — and then the first task finishes and its
     /// unconditional `remove` deletes the second one, leaving the live
@@ -421,8 +457,10 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn connected_session_is_never_expired_by_age() {
         let reg = SessionRegistry::new();
-        register_livewire(&reg, 42).await.unwrap();
-        reg.mark_connected(42).await;
+        let ticket = register_livewire(&reg, 42).await.unwrap();
+        reg.authenticate_and_claim(42, &ticket, "Livewire")
+            .await
+            .expect("claim must succeed");
 
         tokio::time::advance(PENDING_SESSION_TTL * 10).await;
 
@@ -565,7 +603,9 @@ mod tests {
         let interval = Duration::from_secs(5);
         let reg = SessionRegistry::new();
         let ticket = register_livewire(&reg, 42).await.unwrap();
-        reg.mark_connected(42).await;
+        reg.authenticate_and_claim(42, &ticket, "Livewire")
+            .await
+            .expect("claim must succeed");
         reg.spawn_sweep(ttl, interval);
         let_spawned_task_start().await;
 
@@ -593,7 +633,9 @@ mod tests {
         // The first session ages out and the player interacts again.
         tokio::time::advance(PENDING_SESSION_TTL + Duration::from_secs(1)).await;
         let live_ticket = register_livewire(&reg, 42).await.unwrap();
-        reg.mark_connected(42).await;
+        reg.authenticate_and_claim(42, &live_ticket, "Livewire")
+            .await
+            .expect("claim must succeed");
 
         // Only now does the first task finish and run its teardown.
         assert!(
@@ -621,6 +663,102 @@ mod tests {
         assert!(
             reg.authenticate(42, &ticket, "Livewire").await.is_none(),
             "the session must be gone after its owner tears it down",
+        );
+    }
+
+    /// **Claim-race regression guard** (PR #652, both review bots).
+    ///
+    /// The interleaving: a pending session crosses the TTL, the next
+    /// `register` sweeps and replaces it, and only then does the first
+    /// connection reach its claim. With a `mark_connected(entity_id)` keyed
+    /// on the entity alone, that claim lands on the *replacement* — marking
+    /// a session this task never authenticated against, and setting up its
+    /// teardown to delete a live minigame belonging to a second launch.
+    ///
+    /// `authenticate_and_claim` validates and claims under one lock, so the
+    /// stale ticket simply fails and touches nothing.
+    #[tokio::test(start_paused = true)]
+    async fn a_stale_login_cannot_claim_the_replacement_session() {
+        let reg = SessionRegistry::new();
+        let stale_ticket = register_livewire(&reg, 42).await.unwrap();
+
+        // The first SWF never connects. The session ages out, and the next
+        // interaction sweeps it and registers a replacement.
+        tokio::time::advance(PENDING_SESSION_TTL + Duration::from_secs(1)).await;
+        let live_ticket = register_livewire(&reg, 42).await.unwrap();
+        assert_ne!(
+            stale_ticket, live_ticket,
+            "the replacement must be a new session"
+        );
+
+        // Only now does the first connection get as far as logging in.
+        assert!(
+            reg.authenticate_and_claim(42, &stale_ticket, "Livewire")
+                .await
+                .is_none(),
+            "a stale ticket must not authenticate against the replacement",
+        );
+
+        let replacement = reg
+            .authenticate(42, &live_ticket, "Livewire")
+            .await
+            .expect("the replacement must still be registered");
+        assert!(
+            !replacement.connected,
+            "the stale login must not have claimed the replacement; a claim \
+             keyed only on the entity id would have, and this task's teardown \
+             would then delete a session it never owned",
+        );
+    }
+
+    /// The claim is what exempts a session from the sweep, so it has to be
+    /// visible on the stored entry, not only on the returned clone.
+    #[tokio::test(start_paused = true)]
+    async fn authenticate_and_claim_marks_the_stored_session() {
+        let reg = SessionRegistry::new();
+        let ticket = register_livewire(&reg, 42).await.unwrap();
+
+        let claimed = reg
+            .authenticate_and_claim(42, &ticket, "Livewire")
+            .await
+            .expect("claim must succeed");
+        assert!(claimed.connected, "the returned session must be claimed");
+
+        tokio::time::advance(PENDING_SESSION_TTL * 4).await;
+        assert!(
+            reg.expire_pending(PENDING_SESSION_TTL).await.is_empty(),
+            "the claim must be stored, not just returned — otherwise the sweep \
+             still evicts a session that is being played",
+        );
+    }
+
+    /// A rejected login must not claim anything. A wrong ticket that still
+    /// flipped `connected` would make the session immortal and unplayable.
+    #[tokio::test(start_paused = true)]
+    async fn a_rejected_login_claims_nothing() {
+        let reg = SessionRegistry::new();
+        let ticket = register_livewire(&reg, 42).await.unwrap();
+
+        assert!(
+            reg.authenticate_and_claim(42, "WRONG", "Livewire")
+                .await
+                .is_none(),
+            "a wrong ticket must be rejected",
+        );
+        assert!(
+            reg.authenticate_and_claim(42, &ticket, "Alignment")
+                .await
+                .is_none(),
+            "a wrong game name must be rejected",
+        );
+
+        let session = reg
+            .authenticate(42, &ticket, "Livewire")
+            .await
+            .expect("the session must survive two rejected logins");
+        assert!(
+            !session.connected,
+            "a rejected login must leave the session unclaimed",
         );
     }
 }
