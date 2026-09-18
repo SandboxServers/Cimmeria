@@ -109,7 +109,18 @@ pub(super) fn convert_spawn_action(row: &DbActionRow) -> Option<Action> {
             })
         }
         "despawn_entity" => {
+            // Same empty-tag gate as `spawn_entity`, for the same reason:
+            // `?` catches `None` but not `Some("")`, and an empty tag can
+            // never resolve an entity, so the row would be a silent no-op
+            // at runtime instead of a loud drop at load.
             let entity_tag = row.target_key.as_deref()?.to_string();
+            if entity_tag.is_empty() {
+                warn!(
+                    chain_id = row.chain_id,
+                    "despawn_entity: empty target_key (tag); dropping action"
+                );
+                return None;
+            }
             Some(Action::DespawnEntity { entity_tag })
         }
         _ => None,

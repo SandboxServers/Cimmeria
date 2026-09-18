@@ -170,20 +170,30 @@ async fn cleanup_sentinel_chains(pool: &PgPool) {
     }
 }
 
-/// Pick a real, fully-populated `entity_templates` row rather than a
-/// hard-coded id — per TESTING.md "don't trust seed data", template ids
-/// churn. Filtered to the columns `build_prototype` reads as NOT NULL so
-/// the cache actually holds it.
+/// Pick a real `entity_templates` row rather than a hard-coded id — per
+/// TESTING.md "don't trust seed data", template ids churn.
+///
+/// `respawn_secs IS NOT NULL` is **load-bearing, not incidental**: the
+/// one-shot assertion below is only meaningful against a template that
+/// actually opts into respawn. Picking `ORDER BY template_id LIMIT 1`
+/// instead lands on a row whose `respawn_secs` is already NULL, and the
+/// assertion then passes on the seed's value rather than on the executor's
+/// override — it stayed green with `record.respawn_secs = None` deleted.
 async fn pick_template_id(pool: &PgPool) -> i32 {
     use sqlx::Row;
     sqlx::query(
         "SELECT template_id FROM resources.entity_templates \
          WHERE template_name IS NOT NULL AND class IS NOT NULL AND body_set IS NOT NULL \
+           AND respawn_secs IS NOT NULL \
          ORDER BY template_id LIMIT 1",
     )
     .fetch_one(pool)
     .await
-    .expect("seed must contain at least one fully-populated entity_template")
+    .expect(
+        "seed must contain a fully-populated entity_template with a non-NULL \
+         respawn_secs -- without one the one-shot assertion is satisfied by \
+         the seed instead of by the executor override",
+    )
     .get("template_id")
 }
 
@@ -301,6 +311,12 @@ async fn mission_accept_spawns_a_tagged_npc_that_entity_dead_tag_can_complete_on
         "position must come from the seeded action params"
     );
     assert_eq!(npc.aggression, 1, "the seeded aggression param must apply");
+    assert!(
+        mgr.spawn_templates[&template_id].respawn_secs.is_some(),
+        "fixture precondition: the picked template must opt into respawn, or \
+         the one-shot assertion below is satisfied by the seed rather than by \
+         the executor's override"
+    );
     assert_eq!(
         npc.respawn_secs, None,
         "a content-scoped spawn is one-shot regardless of the template row"
@@ -308,16 +324,37 @@ async fn mission_accept_spawns_a_tagged_npc_that_entity_dead_tag_can_complete_on
     // The spawn itself emits no cell→base traffic; AoI fan-out introduces
     // the NPC on the next 100ms tick. Pin that so a future "helpful" extra
     // send has to be deliberate.
+    // `Empty`, not merely `is_err()`: `Disconnected` is also an `Err`, and
+    // would pass this assertion for the wrong reason if `tx` were ever
+    // dropped early.
     assert!(
-        rx.try_recv().is_err(),
+        matches!(
+            rx.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ),
         "spawn_entity must not emit cell→base traffic of its own — client \
          visibility is the AoI tick's job"
     );
 
     // ── Phase 2: that NPC dies → objective completes ──
-    // The tag is read back off the *spawned entity*, not from the constant:
-    // that is what proves the two chains are actually linked.
-    let live_tag = npc
+    //
+    // Re-resolve the spawned entity by **template**, not by tag, and read
+    // the tag off whatever comes back. Resolving it by tag and then reading
+    // its tag is a tautology — `find_entity_by_tag` matches on exact
+    // equality, so `live_tag == SPAWN_TAG` would hold by construction and
+    // add nothing over using the constant. Going in via the template means a
+    // spawn that wrote the *wrong* tag breaks phase 2 (the death chain fails
+    // to resolve) rather than phase 1.
+    let by_template = mgr.find_entities_by_template(PLAYER_EID, template_id);
+    assert_eq!(
+        by_template.len(),
+        1,
+        "exactly one entity of the spawned template must be in the player's \
+         space; got {by_template:?}"
+    );
+    let live_tag = mgr
+        .get_entity(by_template[0])
+        .expect("template-resolved entity must be readable")
         .tag
         .clone()
         .expect("the spawned entity must carry a tag or no death chain can find it");

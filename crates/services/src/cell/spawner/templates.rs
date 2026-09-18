@@ -24,8 +24,8 @@
 //!
 //! So the cell caches the templates at startup instead, the same way it
 //! already caches `dialog_set_maps`, `mission_defs`, `stargates`,
-//! `ability_defs`, `item_defs`, `loot_tables` and `ring_regions`. ~167 rows
-//! at ~380 bytes is ~65 KB.
+//! `ability_defs`, `item_defs`, `loot_tables` and `ring_regions`. 186 rows
+//! at ~380 bytes is ~70 KB.
 //!
 //! # What a prototype record is and is not
 //!
@@ -57,10 +57,19 @@ use super::npcs::SpawnRecord;
 /// content-spawned mob is armed, paced and configured identically to a
 /// seeded or GM-spawned one.
 ///
-/// A row that fails to decode (a NULL in a non-`Option` column — the seed
-/// has half-wired content) is skipped with a `warn!` rather than failing
-/// the whole load: one malformed template must not cost the cell every
-/// other one.
+/// A row that fails to decode (a NULL in a non-`Option` column) is skipped
+/// with a `warn!` rather than failing the whole load: one malformed
+/// template must not cost the cell every other one.
+///
+/// That branch is **unreachable against the current schema** — every column
+/// read without an `Option` here (`template_name`, `class`, `body_set`,
+/// `flags`, `interaction_type`, `static_interaction_sets`,
+/// `has_dynamic_properties`) is `NOT NULL` in
+/// `db/resources/Entities/Tables/entity_templates.sql`, so it is defence
+/// against a future schema relaxation rather than against today's seed. It
+/// is deliberately untested for that reason; the base-side GM loader keeps
+/// an equivalent guard with a live-DB test that drops the constraint to
+/// reach it (`base::gm_spawn::tests::gm_spawn_malformed_template_drops_gracefully`).
 pub async fn load_spawn_templates(pool: &PgPool) -> Result<HashMap<i32, SpawnRecord>, sqlx::Error> {
     use sqlx::Row;
 

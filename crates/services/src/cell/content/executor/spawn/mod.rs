@@ -14,8 +14,11 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
 
+// `pub(super)` so the executor's negative-logging guards can reuse the
+// prototype-`SpawnRecord` fixture below instead of duplicating a 30-field
+// struct literal that would break twice whenever `SpawnRecord` gains a field.
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
 
 /// `Action::SpawnEntity` — instantiate an `entity_templates` row into the
 /// **acting player's current space**, tagged so `entity_dead_tag` /

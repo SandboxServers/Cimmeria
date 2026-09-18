@@ -64,11 +64,16 @@ fn convert_spawn_entity_full_descriptor() {
     }
 }
 
-/// With only the mandatory fields, every override must be `None` — that is
-/// the signal the executor uses to mean "inherit the template row". A
-/// regression that substituted `Some(0)` / `Some(false)` here would force a
-/// passive, non-respawning, non-stationary spawn onto templates that
-/// specify otherwise.
+/// With only the mandatory fields, every optional field must arrive as
+/// `None` so the executor can tell "the author said nothing" from "the
+/// author said no".
+///
+/// Only `allow_shared` changes behaviour on that distinction — a
+/// regression that substituted `Some(true)` would silently lift the
+/// shared-hub guard on every spawn row in the seed. `is_stationary` and
+/// `aggression` have no `entity_templates` column, so `None` means off
+/// either way; they are pinned here to keep the shape uniform and to catch
+/// a loader that started inventing values.
 #[test]
 fn convert_spawn_entity_minimal_leaves_overrides_none() {
     let row = DbActionRow {
@@ -217,22 +222,30 @@ fn convert_despawn_entity_action() {
     }
 }
 
-/// Without a tag there is nothing to despawn.
+/// Without a tag there is nothing to despawn. Both the missing and the
+/// empty spelling are dropped — `?` catches only the first, and an empty
+/// tag would otherwise become a silent runtime no-op instead of a loud
+/// load-time drop.
 #[test]
-fn convert_despawn_entity_without_tag_is_dropped() {
-    let row = DbActionRow {
-        chain_id: 6309,
-        action_type: "despawn_entity".to_string(),
-        target_id: None,
-        target_key: None,
-        params: serde_json::json!({}),
-        delay_ms: 0,
-        sort_order: 0,
-    };
-    assert!(
-        convert_action(&row).is_none(),
-        "a despawn row with no target_key must be dropped"
-    );
+fn convert_despawn_entity_without_a_usable_tag_is_dropped() {
+    for (label, target_key) in [
+        ("missing target_key", None),
+        ("empty target_key", Some(String::new())),
+    ] {
+        let row = DbActionRow {
+            chain_id: 6309,
+            action_type: "despawn_entity".to_string(),
+            target_id: None,
+            target_key,
+            params: serde_json::json!({}),
+            delay_ms: 0,
+            sort_order: 0,
+        };
+        assert!(
+            convert_action(&row).is_none(),
+            "a despawn row with {label} must be dropped"
+        );
+    }
 }
 
 /// The delegation must not swallow genuinely unknown verbs — those still

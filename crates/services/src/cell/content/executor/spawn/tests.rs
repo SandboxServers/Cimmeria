@@ -30,7 +30,7 @@ use cimmeria_common::EntityId;
 
 use crate::cell::spawner::SpawnRecord;
 
-const TEMPLATE_ID: i32 = 4242;
+pub(in crate::cell::content::executor) const TEMPLATE_ID: i32 = 4242;
 const SHARED_WORLD: &str = "Agnos";
 const INSTANCED_WORLD: &str = "Castle_CellBlock";
 const TAG: &str = "Harset_H03_Mala_c";
@@ -55,7 +55,7 @@ fn make_space_mgr() -> SpaceManager {
 /// one: spawn-instance fields are placeholders, template fields are set.
 /// `respawn_secs` is deliberately non-`None` so the executor's
 /// unconditional override has something to override.
-fn template(faction: i32) -> SpawnRecord {
+pub(in crate::cell::content::executor) fn template(faction: i32) -> SpawnRecord {
     SpawnRecord {
         spawn_id: -1,
         world_name: String::new(),
@@ -137,14 +137,25 @@ fn npc_with_tag(mgr: &SpaceManager, actor: u32) -> Option<u32> {
 // ── spawn_entity ─────────────────────────────────────────────────────────
 
 /// The load-bearing positive: the NPC must land in the **acting player's**
-/// space (an instanced one, so the space id is not simply "the world's"),
-/// carrying the authored tag, position and heading. Reverting the space
-/// resolution to anything world-derived puts it in the wrong instance.
+/// space and nowhere else.
+///
+/// Two players are staged in the same instanced world, which
+/// `find_or_create_space` gives *separate* instances. That is what makes
+/// "the acting player's space" distinguishable from "the world's space" —
+/// with one player staged the two are the same id and a world-derived
+/// regression would pass. The bystander's instance is asserted empty.
 #[tokio::test]
-async fn spawn_lands_in_the_acting_players_space_with_the_tag() {
+async fn spawn_lands_in_the_acting_players_space_and_not_a_bystanders() {
     let mut mgr = make_space_mgr();
     let actor = 7001;
+    let bystander = 7099;
     let space_id = stage_player(&mut mgr, actor, INSTANCED_WORLD);
+    let bystander_space = stage_player(&mut mgr, bystander, INSTANCED_WORLD);
+    assert_ne!(
+        space_id, bystander_space,
+        "fixture precondition: an instanced world must give each player its \
+         own space, or this test cannot tell the two resolutions apart"
+    );
 
     spawn_default(&mut mgr, actor).await;
 
@@ -174,6 +185,38 @@ async fn spawn_lands_in_the_acting_players_space_with_the_tag() {
          every mission spawn the same way"
     );
     assert!(!npc.is_player, "a spawned template is never a player");
+
+    assert!(
+        mgr.find_entity_by_tag(bystander, TAG).is_none(),
+        "the bystander's own instance must be untouched -- a world-derived \
+         space resolution would populate whichever instance it found first"
+    );
+
+    // The spawn deliberately emits no cell→base traffic: client visibility
+    // is the 100ms AoI tick's job, which recomputes each player's AoI from
+    // the spatial grid and diffs it against their witness set.
+    //
+    // That contract only holds if the NPC actually reached the **grid**.
+    // `find_entity_by_tag` reads `space.entities` alone, so every assertion
+    // above passes even if `spawn_npc_from_record_into`'s
+    // `space.space.add_entity(...)` call were dropped — and the result
+    // would be an NPC no AoI tick can ever see. That is the #582
+    // invisible-entity shape on the spawn side, in the packet that closes
+    // it on the despawn side, so pin it through the real AoI path.
+    let entered: Vec<u32> = mgr
+        .compute_aoi_changes_for_player(actor)
+        .into_iter()
+        .filter_map(|msg| match msg {
+            CellToBaseMsg::EnteredAoI { entity_id, .. } => Some(entity_id),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        entered.contains(&npc_id),
+        "the AoI tick must introduce the spawned NPC to the acting player; \
+         got {entered:?}. A miss here means the entity went into \
+         space.entities but not into the spatial grid"
+    );
 }
 
 /// A content-scoped spawn must be one-shot even when the template row opts
@@ -525,10 +568,16 @@ async fn destroy_entity_routes_through_the_same_despawn() {
     super::super::world::destroy_tagged_entity(TAG.to_string(), witnesses[0], 6303, &tx, &mut mgr)
         .await;
 
+    // Exact pairs, not a count: a routing bug that fanned `LeftAoI` naming
+    // the *source* entity instead of the target would still emit two
+    // messages and satisfy a length assertion.
+    let mut expected: Vec<(u32, u32)> = witnesses.iter().map(|w| (*w, npc_id)).collect();
+    expected.sort_unstable();
     assert_eq!(
-        left_aoi_pairs(&mut rx).len(),
-        2,
-        "destroy_entity must fan LeftAoI like despawn_entity does"
+        left_aoi_pairs(&mut rx),
+        expected,
+        "destroy_entity must fan LeftAoI like despawn_entity does, naming the \
+         target entity"
     );
     assert!(mgr.get_entity(npc_id).is_none());
 }
