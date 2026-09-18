@@ -139,6 +139,16 @@ SET search_path = resources, pg_catalog;
 -- Chain 1201 [RECOVERED_SCRIPT] — Castle.py `loaded` → n13_trigger_In.
 -- Zone load with 701 never accepted → bind the Gerschon offer topic to
 -- template 149. See GAP 1: this is a no-op until CA02 lands.
+--
+-- DEVIATION (undecided, cosmetic): n13_trigger_In first scans the space
+-- for an entity tagged `Castle_SgtGerschon` and binds only if one is
+-- found. `add_dialog_set` has no such precondition — the bind goes onto
+-- the player's `available_interactions` regardless of whether Gerschon is
+-- spawned. Harmless in both directions: the binding is per-player state
+-- keyed by template, so with no Gerschon in the world there is nothing to
+-- push the flag to and nothing to click, and the entry is simply unused.
+-- Reproducing the guard would need an entity-existence condition the
+-- engine does not have. Recorded rather than worked around.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1201, '701 - Zone load: bind Gerschon offer topic (701 not accepted)', 'mission', 701, true, 0);
 
@@ -204,6 +214,17 @@ VALUES (1203, 'display_dialog', 5861, NULL, '{}', 0, 0);
 -- carrying `accept_mission` (.github/instructions/content-chains.instructions.md).
 -- It is also the no-re-accept guard: a second click on Gerschon after
 -- accepting finds 701 active and resolves nothing.
+--
+-- DEVIATION (undecided): the Python nests the rebind inside the unbind's
+-- success — `if removeDialog(149, 3062): addDialog(48, 3062)`. A content
+-- chain's action list has no conditional execution, so the three actions
+-- here run unconditionally in sort order. Divergence only shows up when
+-- `remove_dialog_set` finds nothing to remove (a player whose bind was
+-- already gone), where the Python would skip the Copplemann rebind and
+-- this chain performs it anyway. The chain's behaviour is the more
+-- forgiving one and is what the relog-restore chains (1240/1241) do
+-- regardless, so it does not create a state the rest of the mission
+-- cannot handle. Chain 1237 flattens the same nesting.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1204, '701 - Dialog 2573 choice (Human): accept 701, rebind topic to Copplemann', 'mission', 701, true, 0);
 
@@ -289,6 +310,16 @@ VALUES (1231, 'display_dialog', 2574, NULL, '{}', 0, 0);
 -- `dialogButtonChoice` on a button-less dialog's close. That inference is
 -- the single largest untested assumption in this mission and is called
 -- out for UAT M1 in the worknote.
+--
+-- DEVIATION (undecided): the Python's dialogChoiceCb for 2574 calls
+-- `missions.advance(701, 2400)` UNCONDITIONALLY — it carries no step
+-- check at all. This chain adds `step_status 2399 eq active`. The gate is
+-- defensive: `advance_step` is unconditional in the executor, so a
+-- replayed or forged 2574 choice at step 2421 would otherwise rewind the
+-- player to 2400 and make them redo the Livewire and the escort. The
+-- Python got away without it because its `dialog.choice` subscription was
+-- torn down with the space script and the client only offers the dialog
+-- once. Pinned by `chain_1232_does_not_advance_twice`.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1232, '701 - Dialog 2574 choice: advance to step 2400', 'mission', 701, true, 0);
 
@@ -338,13 +369,23 @@ VALUES (1233, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1234]}
 -- on 1233) and also ignores `content_chains.enabled`, so do not try to
 -- disable this chain with that column.
 --
--- `display_dialog 2575` reaches the monologue branch of
--- executor/dialog.rs: `fire_chain_by_id` passes empty params, and
--- `last_interaction_target` is unset because a chain-handled interact
--- skips `handle_interact`. Dialog 2575 is a single screen with
--- speaker_id = 0, so it IS in the monologue cache and binds the player as
--- the wire EntityId — which is exactly the Python's
--- `displayDialog(None, 2575)`.
+-- `display_dialog 2575` binds the PLAYER as the wire EntityId, matching
+-- the Python's `displayDialog(None, 2575)`. Dialog 2575 is a single
+-- screen with speaker_id = 0, so it is in the monologue cache, and
+-- `executor/dialog.rs` checks that cache FIRST — ahead of both the
+-- `target_entity_id` param and the `last_interaction_target` pin.
+--
+-- That ordering is what makes this correct, and it is load-bearing here.
+-- The pin is sticky: reaching this chain always means the player just
+-- clicked Copplemann to start the Livewire, so an NPC is always in scope.
+-- If the monologue check were a fallback rather than the first branch,
+-- Copplemann would be bound and would appear to speak a line the author
+-- wrote as the player's own narration ("You manage to free Capt.
+-- Copplemann from her security boot."). Pinned by
+-- `monologue_binds_player_even_when_an_npc_is_resolvable` in
+-- executor/dialog.rs and by
+-- `chain_1234_victory_dialog_binds_the_player_not_copplemann` in the
+-- mission_701 tests.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1234, '701 - Livewire victory: unbind topic, dialog 2575, advance to step 2401', 'mission', 701, true, 0);
 
@@ -405,6 +446,17 @@ VALUES
 -- list; splitting it across two `interact_tag` chains would require two
 -- clicks. Recorded in the worknote as the one behavioural difference a
 -- player could notice.
+--
+-- DEVIATION (undecided): the Python calls `displayDialog(None, 2576)` —
+-- an explicitly NULL speaker — whereas this chain fires off an
+-- `interact_tag`, so `fire_interact_tag` stamps `target_entity_id` and
+-- the executor resolves Copplemann as 2576's wire EntityId. Dialog 2576
+-- is NOT a monologue (screens 96821/96823/96825 carry speaker 1110,
+-- Copplemann), so binding her is very likely the intended render and the
+-- Python's None looks like the same shortcut it takes for 2575. Flagged
+-- because it is a real difference in what reaches the client and nobody
+-- decided it: if UAT shows a wrong or doubled portrait on 2576, this is
+-- the line to revisit.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1236, '701 - Copplemann interact (step 2421): turn-in dialog 2576', 'mission', 701, true, 0);
 

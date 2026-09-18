@@ -823,13 +823,34 @@ fired (D-CA04).
 [worknotes/m701.md](../analysis/castle-rebuild/worknotes/m701.md)):
 dialog-set row 3062 has a NULL `dialog_id` and is dropped by the loader,
 so every 3062 bind is a no-op until packet CA02 widens
-`DialogSetMapEntry.dialog_id`; chain 1205's dialog 5862 cannot render
-because no chain-fired `display_dialog` can resolve a non-monologue
-speaker; and dialog 2576's "Take Missions" button is present on only 3 of
-its 5 screens.
+`DialogSetMapEntry.dialog_id`; and dialog 2576's "Take Missions" button is
+present on only 3 of its 5 screens, so a player who reads to the last
+screen raises no choice and the turn-in does not fire.
+
+**Dialog speakers.** Two engine fixes in this PR decide who the client
+shows on each of 701's chain-fired dialogs, and they pull in opposite
+directions on purpose:
+
+- Chain 1205's Moh'katan radio call (5862) **now renders**. It is fired
+  from a `dialog_choice`, which stamps no `target_entity_id`, and 5862 is
+  not a monologue, so it previously had no resolvable speaker and the
+  executor warned and bailed. The interact handler now pins
+  `last_interaction_target` before the content-chain dispatch, so
+  Gerschon is in scope and the dialog opens. The same fix is what lets
+  any minigame victory chain display an NPC dialog, which packets CA07
+  and CA09 both need.
+- Chain 1234's victory dialog (2575) **must not** pick up that pin. It is
+  one screen of player narration (`speaker_id = 0`), and `Castle.py`
+  displays it with an explicit `displayDialog(None, 2575)`. Because the
+  pin is sticky and the player always reaches this chain by clicking
+  Copplemann, the monologue cache is now checked *before* both the
+  `target_entity_id` param and the pin, so a monologue binds the player
+  and ignores any NPC in scope. See
+  [content-engine.md §4](content-engine.md) for the full resolution order.
 
 **Tests**: `crates/services/src/cell/content/chain_replay_tests/mission_701/`
-(live-DB chain-replay, split `arrival.rs` / `body.rs` / `restore.rs`).
+(live-DB chain-replay, split `arrival.rs` / `body.rs` / `restore.rs`, plus
+`persistence.rs` for the world-hop invariant).
 
 ---
 
