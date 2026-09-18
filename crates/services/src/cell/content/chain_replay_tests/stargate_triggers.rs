@@ -62,15 +62,16 @@ async fn seed_chain(pool: &PgPool, chain_id: i32, event_type: &str) {
     .await
     .expect("sentinel content_triggers insert must succeed");
 
+    // `increment_counter` reads the counter name from `target_key`, not
+    // from `params` — see `loader/action.rs`'s arm. A NULL `target_key`
+    // makes `convert_action` return `None` and the row is dropped.
     sqlx::query(
         "INSERT INTO resources.content_actions \
          (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order) \
-         VALUES ($1, 'increment_counter', NULL, NULL, $2::jsonb, 0, 0)",
+         VALUES ($1, 'increment_counter', NULL, $2, '{\"amount\": 1}'::jsonb, 0, 0)",
     )
     .bind(chain_id)
-    .bind(format!(
-        r#"{{"counter_name": "cimmeria_test_{event_type}", "amount": 1}}"#
-    ))
+    .bind(format!("cimmeria_test_{event_type}"))
     .execute(pool)
     .await
     .expect("sentinel content_actions insert must succeed");
@@ -218,8 +219,8 @@ async fn stargate_dialed_with_null_event_key_is_a_wildcard() {
     sqlx::query(
         "INSERT INTO resources.content_actions \
          (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order) \
-         VALUES ($1, 'increment_counter', NULL, NULL, \
-                 '{\"counter_name\": \"cimmeria_test_sg_wildcard\", \"amount\": 1}'::jsonb, 0, 0)",
+         VALUES ($1, 'increment_counter', NULL, 'cimmeria_test_sg_wildcard', \
+                 '{\"amount\": 1}'::jsonb, 0, 0)",
     )
     .bind(chain_id)
     .execute(&pool)
