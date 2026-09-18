@@ -17,7 +17,7 @@ Companions: [Cellblock handoff](castle-cellblock-rebuild/handoffs/session-resume
 
 | Zone | On `main` | Open PRs (testable from branch) | Testable today |
 |---|---|---|---|
-| Castle Cellblock | C00-C05, C07, C08a, C08b, GC1b-0 | #655 (GC1 Marsh escort, branch `pkg/gc1-marsh-escort`) | **Yes: M1 and M3 on `main`, M2 only partly (needs C06)** |
+| Castle Cellblock | C00-C05, C07, C08a, C08b, GC1b-0, GC1 (#655) | none | **Yes: M1, M3 and GC1 on `main`, M2 only partly (needs C06)** |
 | Castle (World 8, ring platform) | CA00 respawners (#651), CA01 + CA03 mission 701 and the dialog-speaker pin fix (#659) | #652, #661, #663, #660 | Respawn on `main`; mission 701 partly (the "!" over Gerschon needs #661, Livewire hardening needs #652) |
 | Harset | nothing yet | #662 (branch `content/harset-rebuild`, CI green, review fixes in progress) | Travel and population checks, from the branch, after the review fixes merge |
 
@@ -33,8 +33,8 @@ Highest value per minute first.
 
 ## Castle Cellblock (Castle_CellBlock)
 
-**Implemented (merged).** Prisoner 329 and Marsh briefing dialogs; hallway controllers; Region8 guard aggro; the Stasis Sickness icon; Frost's Letter (mission 1360); the take-cover objective 2484 with its cover indicator; accept-blurbs for missions 640, 641, 680 and 688; the Straegis camera scene (Matinee, Marsh despawns, dialog 2516).
-**Open.** PR #655: Marsh escort dialogs, ring-hop and topside follow, and the post-death blurb 5859 on mission 686 completion. Review fixes are pushed; the 147-test chain-replay suite passes on a fresh DB.
+**Implemented (merged).** GC1 (#655, `627be660`): Marsh escort dialogs, ring-hop and topside follow, and the post-death blurb 5859 on mission 686 completion. Also: Prisoner 329 and Marsh briefing dialogs; hallway controllers; Region8 guard aggro; the Stasis Sickness icon; Frost's Letter (mission 1360); the take-cover objective 2484 with its cover indicator; accept-blurbs for missions 640, 641, 680 and 688; the Straegis camera scene (Matinee, Marsh despawns, dialog 2516).
+**Open.** Only a docs PR (#666, ledger and handoff). The 147-test chain-replay suite passed on a fresh DB before the GC1 merge.
 **Not built.** C06 flank objectives 2725 and 2731 (unblocked, not started), GC1c lockdown VFX (needs client evidence), GC2 (unscoped), GC3 XP formula (needs your decision).
 
 Test with a Jaffa character and a Human character, relogging at each step:
@@ -44,7 +44,7 @@ Test with a Jaffa character and a Human character, relogging at each step:
 | M1 | Load in; talk to Prisoner 329 and Marsh; walk the hallway controllers; enter Region8; observe the Stasis Sickness icon, then cure it | Exactly one topic dialog from Prisoner 329 and one Marsh briefing; each controller accepts once; the pistol guard aggros on Region8 entry; the icon shows on load and clears on cure |
 | M2 (partial on `main`) | Check the mission log; pick up the vial; take cover. Step 2144 and the flank objectives (2725, 2731) cannot be tested: they depend on C06, which is not built | Frost's Letter is in the log; the cover indicator shows on vial pickup and hides in cover |
 | M3 | Accept each mission; trigger the Straegis scene; relog afterwards | One prompt per accept; the camera plays once, control returns, Marsh is gone, dialog 2516 shows once, then 5859 about 10.6 s after the scene starts; the scene does not replay after relog |
-| GC1 (branch only) | After the ring hop | Marsh follows you topside |
+| GC1 (on `main`) | After the ring hop | Marsh follows you topside; dialog 5859 shows about 10.6 s after the Straegis scene starts |
 
 **Watch for:** the open invisible-corpse bug (issue #582: a corpse stays invisible until relog). Look for the same failure on Marsh's spawn after the ring hop. M4 (arriving near Gerschon with mission 1360 active) depends on the Castle campaign.
 
