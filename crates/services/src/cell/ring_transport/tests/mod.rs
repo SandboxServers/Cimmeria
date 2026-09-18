@@ -8,7 +8,9 @@
 
 mod disconnect;
 mod harset_mesh;
+mod pairing;
 mod stall;
+mod state_flag;
 mod support;
 
 use tokio::sync::mpsc;

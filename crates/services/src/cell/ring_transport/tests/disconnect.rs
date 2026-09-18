@@ -11,9 +11,7 @@ use tokio::sync::mpsc;
 use cimmeria_content_engine::chain::ChainEngine;
 
 use super::support::{spawn_player, state_of, three_ring_mgr, FakeClock};
-use crate::cell::ring_transport::{
-    forget_player, handle_select_destination, run_tick_with_engine, State,
-};
+use crate::cell::ring_transport::{handle_select_destination, run_tick_with_engine, State};
 
 // ---------------------------------------------------------------------------
 
@@ -148,7 +146,10 @@ async fn disconnect_of_one_co_traveller_lets_the_other_complete() {
     }
     assert_eq!(state_of(&mgr, 2), State::RemoteLoadWait);
 
-    forget_player(42, &tx, &mut mgr).await;
+    // Through the real disconnect path, not `forget_player` directly, so this
+    // also guards the hook wiring in `SpaceManager::disconnect_entity` and not
+    // just the set arithmetic underneath it.
+    mgr.disconnect_entity(42, &tx).await;
     {
         let dst = mgr.ring_transporters.get(2).unwrap();
         assert_eq!(dst.expected_players, vec![43]);

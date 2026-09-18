@@ -17,9 +17,12 @@ use cimmeria_content_engine::chain::ChainEngine;
 
 use super::support::{harset_mgr, spawn_player, state_of, three_ring_mgr, FakeClock};
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::ring_transport::transporter::{REMOTE_LOAD_WAIT_TIMEOUT, SEND_WAIT_TIMEOUT};
+use crate::cell::ring_transport::transporter::{
+    RECV_WARMUP_TIMEOUT, REMOTE_LOAD_WAIT_TIMEOUT, SEND_WAIT_TIMEOUT,
+};
 use crate::cell::ring_transport::{
-    handle_select_destination, run_tick_with_engine, State, BSF_MOVEMENT_LOCK,
+    handle_remote_player_loaded, handle_select_destination, run_tick_with_engine, State,
+    BSF_MOVEMENT_LOCK,
 };
 use crate::mercury::method_idx::{ON_STATE_FIELD_UPDATE, ON_VISIBLE};
 
@@ -79,6 +82,47 @@ async fn send_wait_stall_returns_both_rings_to_idle_and_frees_the_destination() 
     handle_select_destination(3, 2, 43, &tx, &mut mgr, &engine).await;
     assert_eq!(state_of(&mgr, 3), State::SendWait);
     assert_eq!(state_of(&mgr, 2), State::RecvWait);
+}
+
+/// The destination-busy rollback in `handle_select_destination` runs one
+/// statement after `enter_send_wait` armed the 60s `SendWait` deadline. It
+/// used to write `state` and `remote_region_id` by hand, which left that
+/// deadline armed on an `Idle` ring where it would abort a later, unrelated
+/// trip. `reset_to_idle` is the fix; `ready_regions` is the observable.
+#[tokio::test]
+async fn a_rejected_select_leaves_no_armed_deadline_on_the_rolled_back_source() {
+    let clock = FakeClock::new();
+    let mut mgr = three_ring_mgr(clock.clone());
+    spawn_player(&mut mgr, 42, 700);
+    spawn_player(&mut mgr, 43, 701);
+    let (tx, mut _rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+
+    handle_select_destination(1, 2, 42, &tx, &mut mgr, &engine).await;
+    // Ring 3 reaches SendWait, then discovers 2 is taken and rolls back.
+    handle_select_destination(3, 2, 43, &tx, &mut mgr, &engine).await;
+    assert_eq!(state_of(&mgr, 3), State::Idle);
+
+    let far_future = mgr.ring_transporters.now() + SEND_WAIT_TIMEOUT * 10;
+    let armed: Vec<i32> = mgr
+        .ring_transporters
+        .ready_regions(far_future)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    // Positive control: without this the assertion below also passes when
+    // `enter_send_wait` stops arming anything at all, which is a different
+    // bug wearing this test's name.
+    assert!(
+        armed.contains(&1),
+        "ring 1 is legitimately in SendWait and must still be armed \
+         (armed regions at far future: {armed:?})"
+    );
+    assert!(
+        !armed.contains(&3),
+        "the rolled-back source must carry no deadline into its next trip \
+         (armed regions at far future: {armed:?})"
+    );
 }
 
 /// The `RemoteLoadWait` stall: the cross-world arrival hand-off never comes
@@ -146,11 +190,16 @@ async fn remote_load_wait_stall_releases_the_hidden_passenger_on_the_wire() {
             } if method_index == ON_VISIBLE && args == &[1] => {
                 saw_visible_at.get_or_insert(idx);
             }
+            // Match the payload, not just the method: an `onStateFieldUpdate`
+            // that still carries the lock bit is not an unlock.
             CellToBaseMsg::EntityMethodCall {
                 entity_id: 42,
                 method_index,
-                ..
-            } if method_index == ON_STATE_FIELD_UPDATE => {
+                ref args,
+            } if method_index == ON_STATE_FIELD_UPDATE
+                && args.len() >= 4
+                && u32::from_le_bytes(args[..4].try_into().unwrap()) & BSF_MOVEMENT_LOCK == 0 =>
+            {
                 saw_unlock_at.get_or_insert(idx);
             }
             _ => {}
@@ -201,6 +250,15 @@ async fn warmup_with_a_missing_destination_region_aborts_instead_of_spinning() {
         "an unresolvable destination must abort the trip, not re-fire the warmup \
          deadline every tick with the passenger locked and hidden"
     );
+    // Free second guard: ring 2 was driven into `RecvWarmup` by
+    // `kick_off_warmup` and is dragged out of it by `abort_pair`'s peer path.
+    // This is the only assertion in the suite that a peer is torn down from
+    // `RecvWarmup` specifically.
+    assert_eq!(
+        state_of(&mgr, 2),
+        State::Idle,
+        "the peer must be released from RecvWarmup too, not left reserved"
+    );
     assert_eq!(
         mgr.get_entity(42).unwrap().state_field & BSF_MOVEMENT_LOCK,
         0
@@ -209,6 +267,148 @@ async fn warmup_with_a_missing_destination_region_aborts_instead_of_spinning() {
     // And it stays quiet: a second tick produces no further transition.
     run_tick_with_engine(&tx, &mut mgr, &engine).await;
     assert_eq!(state_of(&mgr, 1), State::Idle);
+}
+
+/// `RecvWarmup` is the one bounded state with no end-to-end guard otherwise:
+/// the mesh test never drives a ring into it, so `remote_send`'s `arm_stall`
+/// is deletable with the rest of the suite green.
+///
+/// Reachable in production when the source dies between `kick_off_warmup`
+/// (which advances the destination to `RecvWarmup`) and its own warmup
+/// deadline — the destination is left holding a slot for a trip that will
+/// never send.
+#[tokio::test]
+async fn recv_warmup_stall_releases_the_destination() {
+    let clock = FakeClock::new();
+    let mut mgr = three_ring_mgr(clock.clone());
+    let (tx, mut _rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+
+    let now = mgr.ring_transporters.now();
+    {
+        let dst = mgr.ring_transporters.get_mut(2).unwrap();
+        dst.remote_wait(1, now);
+        dst.remote_send(now);
+    }
+    assert_eq!(state_of(&mgr, 2), State::RecvWarmup);
+
+    // Not yet: `RecvWarmup` normally lasts the source's 4.0s WARMUP_DELAY.
+    clock.advance(RECV_WARMUP_TIMEOUT - Duration::from_secs(1));
+    run_tick_with_engine(&tx, &mut mgr, &engine).await;
+    assert_eq!(state_of(&mgr, 2), State::RecvWarmup);
+
+    clock.advance(Duration::from_secs(2));
+    run_tick_with_engine(&tx, &mut mgr, &engine).await;
+    assert_eq!(state_of(&mgr, 2), State::Idle);
+
+    // Selectable again.
+    spawn_player(&mut mgr, 43, 701);
+    handle_select_destination(3, 2, 43, &tx, &mut mgr, &engine).await;
+    assert_eq!(state_of(&mgr, 3), State::SendWait);
+    assert_eq!(state_of(&mgr, 2), State::RecvWait);
+}
+
+/// A late cross-world arrival — the client finished loading *after*
+/// `REMOTE_LOAD_WAIT_TIMEOUT` released the ring.
+///
+/// H02 created this situation, so H02 owns the recovery. Without the
+/// late-arrival branch in `handle_remote_player_loaded`,
+/// `try_advance_after_load`'s readiness gate silently drops the arrival: the
+/// player stays hidden and movement-locked with no FSM left to release them,
+/// and the `teleport_in` chain event that carries arrival mission credit is
+/// never fired.
+#[tokio::test]
+async fn a_late_cross_world_arrival_is_released_instead_of_dropped() {
+    let clock = FakeClock::new();
+    let mut mgr = three_ring_mgr(clock.clone());
+    spawn_player(&mut mgr, 42, 700);
+    let (tx, mut rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+
+    let now = mgr.ring_transporters.now();
+    {
+        let dst = mgr.ring_transporters.get_mut(2).unwrap();
+        dst.remote_wait(1, now);
+        dst.remote_send(now);
+        dst.remote_expect(vec![42]);
+        dst.remote_transport(now);
+    }
+    if let Some(p) = mgr.get_entity_mut(42) {
+        p.set_state_flag(BSF_MOVEMENT_LOCK);
+        p.destination_ring_id = Some(2);
+    }
+
+    // The timeout fires while the client is still loading.
+    clock.advance(REMOTE_LOAD_WAIT_TIMEOUT + Duration::from_secs(1));
+    run_tick_with_engine(&tx, &mut mgr, &engine).await;
+    assert_eq!(state_of(&mgr, 2), State::Idle);
+    while rx.try_recv().is_ok() {}
+    // Re-lock so the late arrival has something to release: the abort already
+    // ran, and in the real sequence the traveller is re-created on the
+    // destination world with its own lock from the cross-world hand-off.
+    if let Some(p) = mgr.get_entity_mut(42) {
+        p.set_state_flag(BSF_MOVEMENT_LOCK);
+        p.destination_ring_id = Some(2);
+    }
+    while rx.try_recv().is_ok() {}
+
+    // ...and only now does the base report the player loaded.
+    handle_remote_player_loaded(2, 42, &tx, &mut mgr, &engine).await;
+
+    // The discriminator is structural, not a log assertion: ring 2 is `Idle`,
+    // so `mark_player_loaded`'s readiness gate cannot fire and the normal
+    // path could not have produced any of the effects below. (An earlier
+    // draft pinned the `late_ring_arrival` warn with `LogCapture`; that
+    // installs a tracing subscriber and destabilised two unrelated
+    // `npc_ai` LogCapture tests in the same `cargo test` process. Dropped —
+    // the state assertions are sufficient and carry no global side effect.)
+    assert_eq!(
+        state_of(&mgr, 2),
+        State::Idle,
+        "precondition: the ring must have already left RemoteLoadWait"
+    );
+    assert_eq!(
+        mgr.get_entity(42).unwrap().state_field & BSF_MOVEMENT_LOCK,
+        0,
+        "a late arrival must not be left movement-locked"
+    );
+    assert_eq!(
+        mgr.get_entity(42).unwrap().destination_ring_id,
+        None,
+        "the routing pointer must be cleared or the player stays 'in transit' forever"
+    );
+
+    let mut saw_visible = false;
+    let mut saw_unlock = false;
+    while let Ok(msg) = rx.try_recv() {
+        match msg {
+            CellToBaseMsg::WitnessEntityMethod {
+                entity_id: 42,
+                method_index,
+                ref args,
+                ..
+            } if method_index == ON_VISIBLE && args == &[1] => saw_visible = true,
+            CellToBaseMsg::EntityMethodCall {
+                entity_id: 42,
+                method_index,
+                ref args,
+            } if method_index == ON_STATE_FIELD_UPDATE
+                && args.len() >= 4
+                && u32::from_le_bytes(args[..4].try_into().unwrap()) & BSF_MOVEMENT_LOCK == 0 =>
+            {
+                saw_unlock = true
+            }
+            _ => {}
+        }
+    }
+    assert!(saw_visible, "late arrival must be re-shown");
+    assert!(saw_unlock, "late arrival must be unlocked");
+    // The third effect, `FireTeleportIn`, reaches `content::fire_teleport_in`
+    // and is a no-op against an empty `ChainEngine`, so it has no wire
+    // observable here. Its *refusal* path is what would silently eat arrival
+    // mission credit, and that is gated on the entity having a `player_id` —
+    // asserted by construction via `spawn_player`. A chain-replay fixture is
+    // the right layer to prove the chain itself fires (TESTING.md type 6).
 }
 
 /// The Harset-specific shape of the `SendWait` stall, raised by the H10

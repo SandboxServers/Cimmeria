@@ -202,32 +202,43 @@ fn destination_with_no_loaded_players_skips_sequence() {
 
 /// Every state that waits on something outside the FSM has a bound, and every
 /// state that carries its own deadline does not get a second one. This is the
-/// claim that justifies a single `stall_at` field; if a future change adds a
-/// waiting state without a bound, this fails.
+/// claim that justifies a single `stall_at` field.
+///
+/// The `match` is deliberately exhaustive with no wildcard arm: adding a ninth
+/// `State` variant is a **compile error** here, which forces the author to
+/// declare whether it waits on something outside the FSM. A version of this
+/// test that iterated a hard-coded list would let a new unbounded waiting
+/// state through silently — which is exactly the H-B3 defect shape.
 #[test]
 fn only_externally_waiting_states_have_a_stall_bound() {
-    for state in [
-        State::SendWait,
-        State::RecvWait,
-        State::RecvWarmup,
-        State::RemoteLoadWait,
-    ] {
-        assert!(
-            stall_timeout_for(state).is_some(),
-            "{state:?} waits on something outside the FSM and must be bounded"
-        );
-    }
-    for state in [
+    const ALL_STATES: [State; 8] = [
         State::Idle,
+        State::SendWait,
         State::SendWarmup,
+        State::RemoteLoadWait,
         State::RemoteWarmup,
         State::Cooldown,
-    ] {
-        assert!(
-            stall_timeout_for(state).is_none(),
-            "{state:?} has its own deadline; a second one would race it"
+        State::RecvWait,
+        State::RecvWarmup,
+    ];
+
+    for state in ALL_STATES {
+        let must_be_bounded = match state {
+            // Waits on a player, the peer ring, or a client world load.
+            State::SendWait | State::RecvWait | State::RecvWarmup | State::RemoteLoadWait => true,
+            // Terminal, or owns its own deadline: hide+warmup, remote_warmup,
+            // cooldown. A second deadline here would race the real one.
+            State::Idle | State::SendWarmup | State::RemoteWarmup | State::Cooldown => false,
+        };
+        assert_eq!(
+            stall_timeout_for(state).is_some(),
+            must_be_bounded,
+            "{state:?}: stall-bound presence does not match its classification"
         );
     }
+
+    // The table carries no row for a state that is not in ALL_STATES.
+    assert_eq!(STALL_TIMEOUTS.len(), 4);
 }
 
 /// The destination must never expire before the source it is reserved for.
@@ -252,13 +263,18 @@ fn send_wait_arms_and_disarms_its_stall_deadline() {
 
     // Leaving SendWait must take the deadline with it, or the 60s bound
     // fires against a later healthy trip.
+    //
+    // Assert on the field, NOT via `elapsed_deadline`: `start_sending` arms
+    // `hide_at` at +3.5s and the probe checks it first, so at any far-future
+    // instant `elapsed_deadline` returns `Some(Hide)` whether or not the
+    // stall deadline was cleared — an `assert_ne!(.., Some(Stall))` there
+    // passes unconditionally and would let a deleted `arm_stall` in
+    // `start_sending` through.
     r.region_triggered(true, 100);
     r.start_sending(now);
-    let long_after = now + SEND_WAIT_TIMEOUT * 2;
-    assert_ne!(
-        r.elapsed_deadline(long_after),
-        Some(DeadlineKind::Stall),
-        "SendWarmup must not carry the SendWait stall deadline"
+    assert!(
+        r.timers.stall_at.is_none(),
+        "SendWarmup owns hide+warmup and must not also carry the SendWait stall deadline"
     );
 }
 
