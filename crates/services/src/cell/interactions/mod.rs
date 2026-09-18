@@ -6,6 +6,7 @@
 //!
 //! Reference: `python/cell/SGWPlayer.py:1148-1203`
 
+mod dhd;
 mod dialog;
 mod dispatch;
 mod loot;

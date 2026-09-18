@@ -137,6 +137,10 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
             y: TARGET_Y,
             z: TARGET_Z,
             yaw: TARGET_YAW,
+            address_origin: 18,
+            // Unpinned: this fixture asserts the traveller lands on the gate
+            // row, which is what an unpinned gate must keep doing.
+            arrival: None,
         },
     );
     mgr.create_entity(ENTITY_ID, "Agnos", [10.0; 3], [0.0; 3])
