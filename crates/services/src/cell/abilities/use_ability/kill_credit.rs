@@ -53,12 +53,22 @@ pub async fn handle_use_ability_with_kill_credit(
     // re-fire `fire_entity_death` and double-count mission progress on
     // every post-death swing. Player targets are excluded because PvP
     // kills don't drive mission progression today.
-    let was_alive_before = if target_id > 0 {
-        space_mgr
-            .get_entity(target_id as u32)
-            .is_some_and(|t| !t.is_player && t.stats.get(HEALTH).is_some_and(|s| s.cur > 0))
+    //
+    // The health *percentage* is snapshotted in the same pass for the
+    // `entity_health_below` trigger (Harset H04). It has to happen here:
+    // once `handle_use_ability` returns, the pre-hit value is gone, and
+    // a downward threshold crossing can only be computed from both
+    // sides of the hit.
+    let (was_alive_before, pct_before) = if target_id > 0 {
+        match space_mgr.get_entity(target_id as u32) {
+            Some(t) if !t.is_player => (
+                t.stats.get(HEALTH).is_some_and(|s| s.cur > 0),
+                crate::cell::combat::health_pct(t),
+            ),
+            _ => (false, None),
+        }
     } else {
-        false
+        (false, None)
     };
 
     let committed = handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr).await;
@@ -75,6 +85,16 @@ pub async fn handle_use_ability_with_kill_credit(
         .get_entity(target_eid)
         .is_some_and(|t| t.stats.get(HEALTH).is_some_and(|s| s.cur <= 0));
     if !just_died {
+        // Survived the hit — this is the other half of the same
+        // decision. `entity_dead_tag` and `entity_health_below` are
+        // mutually exclusive per hit by construction: a killing blow
+        // takes the branch below and never reaches here, so a chain
+        // author can rely on the ritual-submit chain not firing on the
+        // blow that kills the NPC outright.
+        crate::cell::content::fire_health_below_for_hit(
+            entity_id, target_eid, pct_before, engine, tx, space_mgr,
+        )
+        .await;
         return committed;
     }
 
