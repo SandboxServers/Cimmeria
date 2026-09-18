@@ -37,6 +37,40 @@ The genuinely per-player alternative is `add_dialog_set` (writes the player's
 `available_interactions`). `set_follow_target` has the same shared-entity
 problem with no alternative at all — one `follow_target_id` field per NPC.
 
+### The zero-baseline rule — never clear an entity's LAST interaction bit
+
+Established on Castle 706/708 (PR #668) after both the TVE and Copilot reviews
+hit it independently. **`entity_templates.interaction_type` IS the spawn-time
+value of the runtime `interaction_type_flags` bitfield**
+(`space_manager/spawn.rs:127`) — they are the same number, not two systems. So:
+
+- Clearing a cue on an entity whose template column is `0` drops it to flags
+  `0`. `EInteractionNotificationType` drives the client's right-click cursor and
+  context menu (`entity/src/interaction_flags.rs:1-9`), so the entity becomes
+  unclickable — zone-wide, for every witness, with no recovery but a relog into
+  a `player_loaded` restore chain.
+- Clearing a cue on an entity with a non-zero baseline is safe: it reverts to
+  the baseline. Castle's DHD (template 162, `interaction_type = 16` =
+  `INT_Dhd`) is the worked example — clearing `INT_MinigameLivewire` leaves 16.
+
+**Rule: clear a mission cue only when the target template's `interaction_type`
+is non-zero.** One column lookup, no judgement call. Setting a bit is always
+safe (a bystander sees an extra cue); clearing is the dangerous direction.
+
+Nothing server-side saves you — `handle_interact` reads the template's
+`NpcInteractionType` and `available_interactions`, **never**
+`interaction_type_flags` (`interactions/dispatch/interact.rs:93-131`), and
+`fire_interact_tag` runs on any interact with a tagged entity
+(`cell_methods/player/interaction/interact.rs:218-238`). The break is entirely
+client-side, so **no chain-replay test can observe it** — it has to be caught
+by review, or by a two-player UAT. Chain-replay (TESTING.md type 6) is
+single-player by construction.
+
+Known live instance of the bug: Cellblock chains 1053/1054 clear `!`-class bit
+8388608 off `Preparation_ColMarsh`, spawn 7 on **template 10** — the same
+template as `Castle_ColMarsh` (`spawnlist.sql:7` vs `:181`), baseline `0`.
+Restore chain 1063 repaints only on login.
+
 ## Verify respawn configuration before relying on `entity_dead_tag`
 
 `cell/spawner/npcs.rs` resolves respawn duration with
