@@ -30,8 +30,12 @@ pub async fn handle_initial_response(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    // Search all per-player available_interactions for a matching dialog_set_map_id
-    let dialog_id = space_mgr.get_entity(entity_id).and_then(|p| {
+    // Search all per-player available_interactions for a matching dialog_set_map_id.
+    // The outer Option is "was the set map bound at all"; the inner one is
+    // "does that bind carry a dialog" — an interaction-only bind
+    // (`dialog_set_maps.dialog_id IS NULL`) is bound but has nothing to
+    // display, and the two cases get different logs below.
+    let matched: Option<Option<i32>> = space_mgr.get_entity(entity_id).and_then(|p| {
         for entries in p.available_interactions.values() {
             for &(dsm_id, dialog_id, _) in entries {
                 if dsm_id == interaction_set_map_id {
@@ -42,7 +46,20 @@ pub async fn handle_initial_response(
         None
     });
 
-    if let Some(dialog_id) = dialog_id {
+    if let Some(None) = matched {
+        // Interaction-only bind: the row exists to raise an indicator bit, not
+        // to open a dialog. Sending `onDialogDisplay` with a fabricated id
+        // (0 or otherwise) would open an empty dialog on the client, so bail.
+        tracing::info!(
+            entity_id,
+            interaction_set_map_id,
+            "handle_initial_response: bound set map is interaction-only (NULL dialog) -- \
+             nothing to display"
+        );
+        return;
+    }
+
+    if let Some(Some(dialog_id)) = matched {
         // Resolve player_id only after we know we have a dialog to fire.
         // Falling back to 0 here would attribute the resulting content-engine
         // side effects (mission progress, chain triggers) to a non-existent

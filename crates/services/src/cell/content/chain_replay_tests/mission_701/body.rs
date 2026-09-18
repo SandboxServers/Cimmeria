@@ -377,7 +377,9 @@ fn make_space_mgr() -> SpaceManager {
     mgr.dialog_set_maps.insert(
         3063,
         crate::cell::spawner::DialogSetMapEntry {
-            dialog_id: 2576,
+            // `Option<i32>` since CA02 widened the loader to keep
+            // `dialog_id IS NULL` rows; row 3063 carries a real dialog.
+            dialog_id: Some(2576),
             interaction_flags: 33_554_432,
         },
     );
@@ -524,7 +526,7 @@ async fn chain_1235_escort_walk_defers_then_advances_to_2421() {
         .unwrap_or_default();
     assert_eq!(
         bound,
-        vec![(3063, 2576, 33_554_432i64)],
+        vec![(3063, Some(2576), 33_554_432i64)],
         "the drain must bind dialog-set map 3063 (dialog 2576, \
          INT_AStoryMissionTurnIn) to template 48 — deleting the \
          `add_dialog_set` action from chain 1235 fails here",

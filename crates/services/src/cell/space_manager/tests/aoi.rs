@@ -278,3 +278,86 @@ async fn disconnect_emits_left_aoi_to_observers_then_destroys_entity() {
     // entry removed) — `destroy_entity` chains off the disconnect path.
     assert!(!mgr.entity_space.contains_key(&100));
 }
+
+/// **Coverage for the relog / re-entry path (PR #661 review, item 4).**
+///
+/// A bind installed while the NPC is out of view sends nothing at bind time —
+/// `send_interaction_update_if_visible` logs "deferring InteractionType to AoI
+/// create" and returns. The indicator only reaches the client when the NPC
+/// enters the player's AoI and `compute_player_aoi` re-sends the folded
+/// per-player flags as a standalone `InteractionType` after the `EnteredAoI`
+/// cascade (the `dynamicUpdate` half of the C++
+/// `createOnClient(base)` → `dynamicUpdate(merged)` flow).
+///
+/// That is the packet's client-visible acceptance for an interaction-only bind:
+/// log in near Sgt. Gerschon and the `!` is over his head. It is gated on
+/// `has_dynamic_properties`, so a template with that flag unset silently never
+/// gets the update — which is why the flag is set explicitly here rather than
+/// relied upon.
+#[test]
+fn aoi_entry_resends_interaction_only_bind_flags() {
+    use crate::mercury::method_idx::INTERACTION_TYPE;
+
+    const TEMPLATE_GERSCHON: i32 = 149;
+    const SET_MAP_3062: i32 = 3062;
+    /// `INT_AStoryMissionActive` — bit 24, the `!`.
+    const BIT_ACTIVE: i64 = 16_777_216;
+    /// A pre-existing flag on the NPC, to prove the re-send merges over the
+    /// base rather than replacing it.
+    const NPC_BASE_FLAGS: i64 = 0x2;
+
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    let npc_id = mgr.allocate_npc_id();
+    mgr.spawn_npc(npc_id, "Agnos", [12.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    if let Some(n) = mgr.get_entity_mut(npc_id) {
+        n.template_id = Some(TEMPLATE_GERSCHON);
+        n.interaction_type_flags = NPC_BASE_FLAGS;
+        n.has_dynamic_properties = true;
+    }
+    // The bind, as `add_dialog_set` would have left it: NULL dialog, indicator
+    // bit only. Installed before the NPC is in view.
+    if let Some(p) = mgr.get_entity_mut(100) {
+        p.available_interactions
+            .insert(TEMPLATE_GERSCHON, vec![(SET_MAP_3062, None, BIT_ACTIVE)]);
+    }
+    mgr.connect_entity(100);
+
+    let events = mgr.compute_aoi_changes();
+
+    let pushes: Vec<&CellToBaseMsg> = events
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                CellToBaseMsg::WitnessEntityMethod { method_index, entity_id, .. }
+                    if *method_index == INTERACTION_TYPE && *entity_id == npc_id
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        pushes.len(),
+        1,
+        "AoI entry must re-send the interaction-type update exactly once -- \
+         zero means an interaction-only bind never reaches the client on relog"
+    );
+    match pushes[0] {
+        CellToBaseMsg::WitnessEntityMethod {
+            witness_id, args, ..
+        } => {
+            assert_eq!(*witness_id, 100, "push goes to the binding player");
+            assert_eq!(
+                *args,
+                ((NPC_BASE_FLAGS | BIT_ACTIVE) as u64)
+                    .to_le_bytes()
+                    .to_vec(),
+                "payload is the bind's indicator bit merged over the NPC's base \
+                 flags, UINT64 LE"
+            );
+        }
+        other => panic!("expected WitnessEntityMethod, got {other:?}"),
+    }
+}

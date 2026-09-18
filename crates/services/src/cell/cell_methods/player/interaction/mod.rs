@@ -815,4 +815,96 @@ mod tests {
              lookup key) plus the authored dialog id",
         );
     }
+
+    /// **The headline CA02 invariant, at the level that actually gates it
+    /// (PR #661 review, item 3).**
+    ///
+    /// The three sibling guards in
+    /// `interactions/dispatch/tests/interaction_only_bind.rs` call the inner
+    /// `interactions::handle_interact` directly. In the real flow that function
+    /// is never reached for a Castle story NPC: `fire_interact_tag` runs first
+    /// here, and a matching chain sets `handled`, short-circuiting the inner
+    /// path entirely. So the inner guards prove the fall-through is safe, but
+    /// not that the shipped behaviour is right.
+    ///
+    /// This is the shape CA01 will author: Sgt. Gerschon carries an
+    /// interaction-only bind for the `!` over his head, and an
+    /// `interact_tag Castle_SgtGerschon` chain supplies the dialog. Clicking
+    /// him must produce the chain's dialog and nothing else — in particular no
+    /// second, empty dialog frame from a NULL bind being handed a substituted
+    /// id.
+    #[tokio::test]
+    async fn interaction_only_bind_plus_interact_tag_emits_only_the_chain_dialog() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::{Chain, ChainEngine};
+        use cimmeria_content_engine::triggers::Trigger;
+
+        const TEMPLATE_GERSCHON: i32 = 149;
+        const SET_MAP_3062: i32 = 3062;
+        const DIALOG_2573: i32 = 2573;
+        /// `INT_AStoryMissionActive` — bit 24, the `!`.
+        const BIT_ACTIVE: i64 = 16_777_216;
+        const TAG: &str = "Castle_SgtGerschon";
+
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(42);
+            // The bind `player_loaded` installs: indicator only, no dialog.
+            p.available_interactions
+                .insert(TEMPLATE_GERSCHON, vec![(SET_MAP_3062, None, BIT_ACTIVE)]);
+        }
+        // In range and alive, so the dispatcher's existence/distance checks
+        // pass and control reaches chain dispatch.
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            npc.template_id = Some(TEMPLATE_GERSCHON);
+            npc.tag = Some(TAG.to_string());
+            npc.faction = 1; // non-hostile: no useAbility reroute
+            npc.clear_all_state_flags();
+        }
+
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 1201,
+            name: "Gerschon interact".to_string(),
+            enabled: true,
+            trigger: Trigger::OnInteractTag {
+                entity_tag: TAG.to_string(),
+            },
+            conditions: vec![],
+            actions: vec![Action::DisplayDialog {
+                dialog_id: DIALOG_2573,
+            }],
+            action_delays: vec![],
+            priority: 0,
+        });
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let mut args = Vec::with_capacity(4);
+        args.extend_from_slice(&(npc_id as i32).to_le_bytes());
+        assert!(dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await);
+
+        let dialogs: Vec<i32> = std::iter::from_fn(|| rx.try_recv().ok())
+            .filter_map(|msg| match msg {
+                CellToBaseMsg::EntityMethodCall {
+                    method_index, args, ..
+                } if method_index == crate::mercury::method_idx::ON_DIALOG_DISPLAY => {
+                    Some(i32::from_le_bytes([args[4], args[5], args[6], args[7]]))
+                }
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            dialogs,
+            vec![DIALOG_2573],
+            "exactly one dialog, the chain's -- a second frame (or a 0) would \
+             mean the interaction-only bind was handed a substituted dialog id"
+        );
+    }
 }
