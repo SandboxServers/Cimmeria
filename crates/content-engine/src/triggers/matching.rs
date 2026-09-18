@@ -38,6 +38,7 @@ impl Trigger {
             Trigger::OnPlayerLeftCover { .. } => TriggerType::PlayerLeftCover,
             Trigger::OnPlayerInCoverDuration { .. } => TriggerType::PlayerInCoverDuration,
             Trigger::OnNpcFlanked { .. } => TriggerType::NpcFlanked,
+            Trigger::OnPlayerFlankedNpc { .. } => TriggerType::PlayerFlankedNpc,
         }
     }
 
@@ -211,7 +212,8 @@ impl Trigger {
                 };
                 seconds_match && set_match
             }
-            Trigger::OnNpcFlanked { npc_template } => match npc_template {
+            Trigger::OnNpcFlanked { npc_template }
+            | Trigger::OnPlayerFlankedNpc { npc_template } => match npc_template {
                 Some(expected) => event
                     .params
                     .get("npc_template")

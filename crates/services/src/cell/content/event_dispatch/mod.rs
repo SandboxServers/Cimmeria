@@ -31,6 +31,8 @@ use crate::cell::space_manager::SpaceManager;
 use super::executor;
 
 mod cover;
+#[cfg(test)]
+mod cover_flank_tests;
 mod dialog;
 mod interaction;
 mod inventory;
@@ -39,7 +41,10 @@ mod mission;
 mod region;
 mod stargate;
 
-pub use cover::{fire_cover_duration, fire_cover_entered, fire_cover_left, fire_npc_flanked};
+pub use cover::{
+    fire_cover_duration, fire_cover_entered, fire_cover_left, fire_npc_flanked,
+    fire_player_flanked_npc,
+};
 pub use dialog::{fire_dialog_choice, fire_dialog_open};
 pub use interaction::{fire_interact_tag, fire_interact_template};
 pub use inventory::{fire_item_equipped, fire_item_use};

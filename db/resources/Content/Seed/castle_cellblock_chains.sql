@@ -51,6 +51,10 @@
 --     1035 -- see that section's comment for the auto-complete-trap
 --     rationale). Uses 3 of the 10 ids work-packets.md reserved for C05
 --     (1131-1140); 1134-1140 remain free.
+--   Missions 681/686 flank objectives (C06 addition, 2026-09-18): chains
+--     1141-1142 (work-packets.md's reserved range for C06 is 1141-1150;
+--     occupancy checked immediately before use: zero chain_ids in
+--     1141-1150 existed anywhere under db/resources/Content/Seed/).
 
 SET search_path = resources, pg_catalog;
 
@@ -2515,3 +2519,87 @@ VALUES (1175, 'mission_completed', '686', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1175, 'set_follow_target', NULL, 'Preparation_ColMarsh', '{}', 0, 0);
+
+-- ─────────────────────────────────────────────────────────────────────
+-- C06: flanking objectives 2725 (Mess Hall) and 2731 (Hallway05)
+-- ─────────────────────────────────────────────────────────────────────
+--
+-- Objectives 2725 ("Take position behind the long table to flank the
+-- guards and negate their cover") and 2731 ("Take a flanking position to
+-- negate the guards' protective cover") are the secondary objectives of
+-- steps 2348 (mission 681) and 2353 (mission 686). NOTE they are seeded
+-- `is_optional = false` in mission_objectives.sql, like the kill
+-- objectives 2724/2730 -- they are only "secondary" in that nothing
+-- completes the mission through them. D-CB05
+-- (took the recommended default): they are TRACKED but do NOT gate --
+-- chains 1087/1094 still complete the mission on the kill counter alone,
+-- so a player who kills the guards from range never soft-locks.
+--
+-- Trigger: `player_flanked_npc` (new in C06). It fires from the same NPC-AI
+-- decision as `npc_flanked` -- an NPC holding a cover slot whose top-threat
+-- moved outside the cover's defensive arc, i.e. exactly "negate their
+-- cover" -- but executes against the flanking PLAYER with that player's
+-- mission context. `npc_flanked` cannot be used here: it runs its actions
+-- on the NPC with player id 0, so `complete_objective` would target the
+-- NPC and mission conditions would read no mission state.
+--
+-- Filter: template name 'NID Guard' (entity_templates.template_id 24, the
+-- template of every MessHall_Guard*/Hallway05_Guard* spawn), gated on the
+-- mission being active so a flank in any other room does nothing.
+--
+-- AUTO-COMPLETE TRAP check (see the C05 comment above chain 1033):
+-- `cell::missions::complete_objective` completes the WHOLE mission when
+-- every required active objective is complete. Steps 2348/2353 each carry
+-- TWO objectives (kill 2724/2730 + flank 2725/2731), and the kill
+-- objective is never completed through this path (chains 1087/1094 use
+-- `complete_mission`), so completing only the flank objective cannot end
+-- the mission early. That safety rests on 2724/2730 staying off the
+-- `complete_objective` path (NOT on the flank objectives being optional):
+-- if the kill path is ever moved to `complete_objective`, a flank could
+-- end the mission early. Pinned by `flank_completes_only_the_flank_
+-- objective_and_keeps_the_mission_active` in event_dispatch/
+-- cover_flank_tests.rs and the replay tests in
+-- chain_replay_tests/mission_681_686_flank.rs.
+--
+-- KNOWN LIMITS (found in review, 2026-09-18): (1) the event fires only when
+-- a guard ALREADY HOLDS a cover slot -- slots are reserved only while the
+-- target is out of weapon range and a cover node scores nearby (see
+-- `cover/ai_integration.rs::maintain_cover_for_npc`) -- so where the room
+-- has no usable cover data or the guards engage inside weapon range these
+-- objectives never complete. Non-gating, so no soft-lock. (2) Credit goes
+-- to the guard's top-threat player only; a groupmate who flanks without
+-- holding threat gets nothing (objective progress is not shared).
+--
+-- Self-completion guard: the AI fires the flank event on every cover
+-- release, so each chain checks its own objective is not already
+-- completed (otherwise every re-flank would resend onObjectiveUpdate).
+
+-- Chain 1141 (C06): flank a Mess Hall guard while mission 681 is active.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1141, '681 - Flank a guard: complete flank objective 2725', 'mission', 681, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1141, 'player_flanked_npc', 'NID Guard', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1141, 'mission_status', 681, NULL, 'eq', 'active', 0),
+  (1141, 'objective_status', 681, '2725', 'neq', 'completed', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1141, 'complete_objective', 681, '2725', '{}', 0, 0);
+
+-- Chain 1142 (C06): flank a Hallway05 guard while mission 686 is active.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1142, '686 - Flank a guard: complete flank objective 2731', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1142, 'player_flanked_npc', 'NID Guard', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1142, 'mission_status', 686, NULL, 'eq', 'active', 0),
+  (1142, 'objective_status', 686, '2731', 'neq', 'completed', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1142, 'complete_objective', 686, '2731', '{}', 0, 0);
