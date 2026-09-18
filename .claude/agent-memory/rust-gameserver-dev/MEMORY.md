@@ -30,7 +30,12 @@
 - [gm-tail-dispatch-doc-filename-trap.md](gm-tail-dispatch-doc-filename-trap.md) — `client-method-dispatch-table.md` (interface, 0-66ish) vs `cell-method-dispatch-table.md` (full + 109+ GM tail) are DIFFERENT files, easy to cite the wrong one; GM-tail offset counting convention (`index = 109 + K`, count every `<Exposed/>` in def document order); movement-validator per-entity bypass pattern (touch_clock + update_entity_position must both still run on the bypass path).
 - [method-idx-duplicate-table-drift.md](method-idx-duplicate-table-drift.md) — TWO client-method index tables; `cell/client_methods/` is authoritative, `mercury::method_idx` is a drifted partial copy (shipped vendor payload to mission handlers).
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns BYTES CONSUMED, not the new absolute offset; chain with `offset += n`, never `offset = n`.
+- [dialog-set-bind-carries-no-dialog-id.md](dialog-set-bind-carries-no-dialog-id.md) — an `add_dialog_set` bind pushes only `InteractionType(UINT64 TypeId)`; NULL-dialog rows are bindable indicators, `onInitialInteraction` (104) is never emitted, `topic_text` is dead data.
 - [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — UE3 StaticMeshActor→Component→Mesh resolution in SGW cooked .umap: tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8); ~20% of actors use prefab archetypes; kDOP tri indices reference LOD0 vertices; master .umap files exist alongside chunks.
+
+## Content engine / chain authoring
+
+- [content-chain-authoring-traps.md](content-chain-authoring-traps.md) — `display_dialog` silently drops NPC dialogs on non-interact triggers (monologue fallback only); `set_interaction_type` is zone-global; NOTHING respawns (`respawn_secs` NULL everywhere) so `entity_dead_tag` missions are one-shot; victory chains evaluate no conditions; label-signature asserts mask later test assertions.
 
 ## Stats / entity systems
 
@@ -40,6 +45,7 @@
 
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt sucks standalone comments into the trailing-comment column of the previous statement; insert a blank line to break the run.
 - [clippy-items-after-test-module.md](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be the LAST item in a file; clippy `-D warnings` rejects trailing free functions after it.
+- [gitignore-swallows-new-dirs.md](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules (`server/`) silently hide a new `foo/mod.rs` split from `git add`; `git status --short` shows nothing. Check with `git check-ignore -v`.
 
 ## GM feedback (cell ↔ base)
 
@@ -72,7 +78,7 @@
 ## Testing patterns
 
 - [cargo-test-vs-nextest-flakiness.md](cargo-test-vs-nextest-flakiness.md) — full-suite `cargo test -p cimmeria-services` has PRE-EXISTING order-dependent failures (LogCapture thread bleed); validate with `cargo nextest`, don't assume you broke it.
-- [db-test-revert-verification.md](db-test-revert-verification.md) — split async DB-touching function into pure sync helper + DB shell; unit-test the helper so local revert-verification works when live-DB is the canonical guard.
+- [db-test-revert-verification.md](db-test-revert-verification.md) — split async DB-touching function into pure sync helper + DB shell; unit-test the helper so local revert-verification works when live-DB is the canonical guard. Also: revert-prove a *seed-content* guard with an in-place UPDATE (no second reload), and fit code+seed proofs into ONE lane hold.
 - [bincode-persisted-cache-format.md](bincode-persisted-cache-format.md) — bincode 2 needs `config::legacy()` for 1.x-written files; wrong config decodes SILENTLY, so assert bytes-consumed == len and use an old-version byte fixture (round-trip alone can't catch it).
 - [live-db-scratch-cluster.md](live-db-scratch-cluster.md) — `db.bat init` does NOT create the db/role or load the schema; recipe for an isolated scratchpad Postgres on :5544 so live-DB guards can actually be revert-verified.
 - [chain-replay-executor-guards.md](chain-replay-executor-guards.md) — chain-replay must run `execute_actions` (not just `resolve_event`) when the change is an executor arm; sentinel-chain pattern for verbs with zero seed rows; `0x7000_5000` reserved.

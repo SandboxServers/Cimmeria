@@ -41,3 +41,29 @@ fn pick_free_main_slots_excluding(raw_occupied: &[i32], vacating: &[i32], needed
 Tip: write the test to demonstrate BOTH the pre-fix and post-fix shape side-by-side. Call the helper with `vacating: &[]` (pre-fix mimic) AND with `vacating: &[39]` (post-fix). Assert `None` for the former and `Some(_)` for the latter. The single test then "shows its work" — any reviewer can see the discriminator.
 
 Revert-verification protocol: temporarily revert the fix (drop the `.filter()`, or comment out the exclusion line), `cargo test -p cimmeria-services --lib trade::execute::slot_exclusion_accounting`, confirm the discriminating tests fail with the expected error. Restore the fix.
+
+## Revert-proving a *seed-content* live-DB guard (no second reload)
+
+When the guard asserts something about **seed rows** rather than code (e.g. "no
+`resources.respawners` row is at the origin"), the reverted state is just
+different row values. Don't reload the DB twice (~3 min each, and it wipes the
+shared DB under other workers):
+
+1. Reload once from the worktree's `db/database.sql`, run the guard → PASS.
+2. `UPDATE` the rows in place to the pre-fix values via psql, rerun → FAIL.
+3. `UPDATE` them back, rerun → PASS.
+
+Say in the worknote that you applied the pre-fix values to the loaded rows
+rather than re-loading a reverted seed file — it's the same condition the test
+reads, but a reviewer should not have to infer that.
+
+In shared test infrastructure, reload the database from this worktree's
+`db/database.sql` immediately before the assertions. Do not assume a prior
+worker's database contents remain available.
+
+The historical `lane.sh`, `reload-db.sh`, and `live-db-test.sh` helpers are not
+tracked repository tooling. Use the documented live-DB command for the current
+environment; if an external lane runner is required, document its location and
+Bash dependency in the worknote. Revert steps are expected to fail, so capture
+their exit status explicitly. Restore only the files changed by the proof and
+do not routinely reset `Cargo.lock` in a shared dirty worktree.
