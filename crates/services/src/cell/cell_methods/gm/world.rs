@@ -1,6 +1,6 @@
 //! GM world/entity-op handlers — `gmKillTarget`, `gmDespawnByCmd` / `despawnMob`,
 //! `gmRespawn`, and `gmSetTarget`. Each reuses a canonical cell primitive
-//! (`abilities::gm_kill_npc`, `SpaceManager::destroy_entity`, combat
+//! (`abilities::kill_npc_out_of_band`, `SpaceManager::destroy_entity`, combat
 //! `handle_respawn`, and the `current_target_id` write + `onTargetUpdate`
 //! fanout).
 
@@ -18,7 +18,7 @@ use crate::mercury::read_wstring;
 /// Safety: REFUSE player targets (player death goes
 /// through the PvP/respawn path, not a GM one-shot), resolve only entities in
 /// the GM's own space, and run the kill through the canonical death sequence
-/// ([`crate::cell::abilities::gm_kill_npc`]) so loot, threat fanout, and the
+/// ([`crate::cell::abilities::kill_npc_out_of_band`]) so loot, threat fanout, and the
 /// dead-state flip land in protocol order.
 pub(super) async fn handle_kill_target(
     entity_id: u32,
@@ -102,7 +102,11 @@ pub(super) async fn handle_kill_target(
     }
 
     tracing::info!(entity_id, target_eid, "gmKillTarget: killing NPC");
-    let killed = crate::cell::abilities::gm_kill_npc(target_eid, entity_id, tx, space_mgr).await;
+    // `attacker_is_player: false` — a GM `.kill` never went through the
+    // combat HUD, so there is no reticle on the GM to drop.
+    let killed =
+        crate::cell::abilities::kill_npc_out_of_band(target_eid, entity_id, false, tx, space_mgr)
+            .await;
     if killed {
         send_gm_feedback(
             entity_id,
@@ -111,7 +115,7 @@ pub(super) async fn handle_kill_target(
         )
         .await;
     } else {
-        // gm_kill_npc fails closed on already-dead / re-resolved-as-player —
+        // kill_npc_out_of_band fails closed on already-dead / re-resolved-as-player —
         // surface it so the GM knows the command no-op'd.
         tracing::warn!(
             entity_id,

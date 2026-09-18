@@ -12,6 +12,7 @@ use super::{
 };
 
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::abilities::EffectDef;
 use cimmeria_entity::stats::HEALTH;
 use std::collections::HashMap;
@@ -450,7 +451,7 @@ async fn pulse_tick_fires_due_pulse_and_decrements_remaining() {
         }
     }
     let hp_before = mgr.get_entity(2).unwrap().stats.get(HEALTH).unwrap().cur;
-    effect_pulse_tick(&tx, &mut mgr).await;
+    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
     let hp_after = mgr.get_entity(2).unwrap().stats.get(HEALTH).unwrap().cur;
     assert_eq!(hp_after, hp_before - 10, "DoT pulse should subtract 10");
     let active = &mgr.get_entity(2).unwrap().active_effects;
@@ -471,7 +472,7 @@ async fn pulse_tick_removes_instance_when_remaining_hits_zero() {
             inst.remaining_pulses = 1;
         }
     }
-    effect_pulse_tick(&tx, &mut mgr).await;
+    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
     let active = &mgr.get_entity(2).unwrap().active_effects;
     assert!(
         active.is_empty(),
@@ -494,7 +495,7 @@ async fn pulse_tick_skips_pulse_on_dead_target() {
             inst.next_pulse_at = Instant::now() - Duration::from_secs(2);
         }
     }
-    effect_pulse_tick(&tx, &mut mgr).await;
+    effect_pulse_tick(&ChainEngine::new(), &tx, &mut mgr).await;
     let hp = mgr.get_entity(2).unwrap().stats.get(HEALTH).unwrap().cur;
     assert_eq!(hp, 0);
     let remaining = mgr.get_entity(2).unwrap().active_effects[0].remaining_pulses;

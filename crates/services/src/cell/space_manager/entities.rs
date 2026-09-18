@@ -123,6 +123,13 @@ impl SpaceManager {
         // the action, not fire it later against a torn-down (and possibly
         // id-reused) entity.
         self.pending_content_actions.remove(&entity_id);
+        // Same reasoning for the `entity_health_below` sample queue: a
+        // sample naming a destroyed entity on either side would fire a
+        // threshold chain against a torn-down (and possibly id-reused)
+        // attacker or target. The drain re-looks-up both, so this is
+        // belt-and-braces against id reuse rather than a crash guard.
+        self.pending_health_below
+            .retain(|s| s.attacker_entity_id != entity_id && s.target_entity_id != entity_id);
         // Ring transport: a destroy mid-trip (GM despawn, gate travel,
         // respawn, content transport) must not leave the ring pad parked in
         // a non-`Idle` state, because `handle_select_destination` refuses
