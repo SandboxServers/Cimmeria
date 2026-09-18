@@ -165,55 +165,67 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (37, 4.40700006, -68.9570007, 31.5249996, 3.13996291, 57, 1, 'Harset_DHD', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (90, 364.778015, 70.2720032, 921.562012, 0, 8, 145, 'Castle_PRU1', NULL);
+-- RECONSTRUCTION (CA05 scope addition, worknotes/ca05.md "Zone-wide hostile respawn timers"):
+-- no shipped World 8 spawn row set respawn_secs at all (spawner reads
+-- `COALESCE(spawnlist.respawn_secs, entity_templates.respawn_secs)`, both NULL everywhere),
+-- so nothing hostile in Castle ever respawned -- the original SpawnSet timers were never
+-- recovered (`spawn_sets.sql`/`spawn_points.sql` are both empty). Every hostile World 8 row
+-- (templates 145 Prisoner Retrieval Unit, 146 NID Guard - Castle outside, 148 NID Guard -
+-- Castle inside, plus this packet's own Castle_Romney/Castle_Muelbach/Castle_BravoOfficer*
+-- above) gets the same respawn_secs=120 for one consistent zone-wide value. Non-hostile
+-- World 8 NPCs (Gerschon, Copplemann, Marsh, Moh'katan, the Jaffa guards at Checkpoint
+-- Alpha, the DHD, the Access Panel, both Zuritska rows, the comms terminal) are left NULL
+-- (no death-gated mission step touches them; a one-shot NPC that "never respawns" is the
+-- correct behavior for a unique named character).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (90, 364.778015, 70.2720032, 921.562012, 0, 8, 145, 'Castle_PRU1', NULL, 120);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (92, 330.490997, 41.1819992, 653.107971, 0, 8, 147, 'Castle_AccessPanel', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (93, 782.252991, 29.809, 374.493988, 0, 8, 146, 'Castle_NidGuard2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (93, 782.252991, 29.809, 374.493988, 0, 8, 146, 'Castle_NidGuard2', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (94, 850.327026, 29.677, 384.031006, 0, 8, 146, 'Castle_nidGuard3', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (94, 850.327026, 29.677, 384.031006, 0, 8, 146, 'Castle_nidGuard3', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (95, 904.536011, 28.5310001, 501.947998, 0, 8, 146, 'Castle_NidGuard4', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (95, 904.536011, 28.5310001, 501.947998, 0, 8, 146, 'Castle_NidGuard4', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (96, 924.85199, 24.2639999, 485.769012, 0, 8, 146, 'Castle_NidGuard5', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (96, 924.85199, 24.2639999, 485.769012, 0, 8, 146, 'Castle_NidGuard5', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (97, 923.387024, 24.2639999, 472.053009, 0, 8, 146, 'Castle_NidGuard6', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (97, 923.387024, 24.2639999, 472.053009, 0, 8, 146, 'Castle_NidGuard6', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (98, 939.864014, 24.2639999, 495.997009, 0, 8, 145, 'Castle_PRU2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (98, 939.864014, 24.2639999, 495.997009, 0, 8, 145, 'Castle_PRU2', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (99, 906.872009, 26.5900002, 535.080994, 0, 8, 146, 'Castle_NidGuard7', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (99, 906.872009, 26.5900002, 535.080994, 0, 8, 146, 'Castle_NidGuard7', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (100, 891.768005, 24.2639999, 453.825989, 0, 8, 146, 'Castle_NidGuard8', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (100, 891.768005, 24.2639999, 453.825989, 0, 8, 146, 'Castle_NidGuard8', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (101, 962.408997, 24.7989998, 469.571991, 0, 8, 146, 'Castle_NidGuard9', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (101, 962.408997, 24.7989998, 469.571991, 0, 8, 146, 'Castle_NidGuard9', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (102, 940.247009, 24.2639999, 526.40802, 0, 8, 146, 'Castle_NidGuard10', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (102, 940.247009, 24.2639999, 526.40802, 0, 8, 146, 'Castle_NidGuard10', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (104, 589.320984, 24.0149994, 610.692993, 0, 8, 146, 'Castle_NidGuard11', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (104, 589.320984, 24.0149994, 610.692993, 0, 8, 146, 'Castle_NidGuard11', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (105, 581.228027, 22.0650005, 638.406982, 0, 8, 146, 'Castle_NidGuard12', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (105, 581.228027, 22.0650005, 638.406982, 0, 8, 146, 'Castle_NidGuard12', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (106, 613.719971, 17.3050003, 625.083984, 0, 8, 145, 'Castle_PRU3', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (106, 613.719971, 17.3050003, 625.083984, 0, 8, 145, 'Castle_PRU3', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (107, 648.77301, 20.3920002, 631.796997, 0, 8, 146, 'Castle_NidGuard13', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (107, 648.77301, 20.3920002, 631.796997, 0, 8, 146, 'Castle_NidGuard13', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (108, 623.005005, 19.2490005, 564.64801, 0, 8, 146, 'Castle_NidGuard14', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (108, 623.005005, 19.2490005, 564.64801, 0, 8, 146, 'Castle_NidGuard14', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (109, 686.63501, 25.1779995, 475.608002, 0, 8, 146, 'Castle_NidGuard15', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (109, 686.63501, 25.1779995, 475.608002, 0, 8, 146, 'Castle_NidGuard15', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (110, 758.171997, 29.8799992, 421.436005, 0, 8, 146, 'Castle_NidGuard16', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (110, 758.171997, 29.8799992, 421.436005, 0, 8, 146, 'Castle_NidGuard16', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (111, 554.335022, 24.3710003, 607.067017, 0, 8, 145, 'Castle_PRU4', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (111, 554.335022, 24.3710003, 607.067017, 0, 8, 145, 'Castle_PRU4', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (114, 359.778992, 70.2720032, 983.057983, 0, 8, 145, 'Castle_PRU5', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (114, 359.778992, 70.2720032, 983.057983, 0, 8, 145, 'Castle_PRU5', NULL, 120);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (112, 429.638, 70.1110001, 996.55603, 1.79999995, 8, 149, 'Castle_SgtGerschon', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (115, 326.414001, 70.2720032, 933.495972, 0, 8, 148, 'Castle_NidGuard17Inside', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (115, 326.414001, 70.2720032, 933.495972, 0, 8, 148, 'Castle_NidGuard17Inside', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (89, 381.843994, 70.2720032, 997.200012, 0, 8, 148, 'CastleNidGuardXInside', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (89, 381.843994, 70.2720032, 997.200012, 0, 8, 148, 'CastleNidGuardXInside', NULL, 120);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (116, 294.158997, 55.3919983, 894.442993, 0, 8, 148, 'CastleNidGuard18Inside', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (116, 294.158997, 55.3919983, 894.442993, 0, 8, 148, 'CastleNidGuard18Inside', NULL, 120);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (118, 810.731995, 55.2010002, 515.012024, 0, 8, 10, 'Castle_ColMarsh', NULL);
 
@@ -375,11 +387,132 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (237, 5.97424412, 0.351500005, 11.9172192, 3.58337903, 2, 166, NULL, NULL);
 
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Interrogation Block" -- HIGH confidence):
+-- anchored on one of 36 CA-Cell_Doorway01_Pf0 prefab instances recovered from
+-- Castle-000a0002.umap (raw UE3 X=104258.69, Y=26799.88, Z=6679.10), converted via
+-- server.x=rawY/100, server.y=rawZ/100, server.z=rawX/100 (formula confirmed against
+-- the existing Castle.ThroneRoom (2049) and the Stargate/DHD prefab, both within a few
+-- units of their known seeded positions). Independently corroborated by a second prefab
+-- family: 36 `EM-ViewScreen03_Pf0` instances (the per-cell door screens, a variant that
+-- appears in NO other Castle tile) occupy the same two tiles at y=69.27 -- i.e. ~2.5 units
+-- up the wall from this row's 66.79 floor -- on a grid spanning x[228.32, 333.29] and
+-- z[1021.82, 1099.58], which is the corridor bbox point set 2082 uses. Exact spot within the
+-- cell is a MEDIUM-confidence placement at the doorway itself.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (238, 268.0, 66.79, 1042.59, 0, 8, 168, 'Castle_Zuritska_Cell', NULL);
+
+-- Two separable claims here; only the second is a reconstruction.
+--
+-- ORIGINAL_DATA -- the room's NAME AND FLOOR. Dialog 2576 screen 96821
+-- (`dialog_screens.sql:11759`) says "take him to **the Communications room on Level 5**. He
+-- has to patch me into the Castle's comm systems". So a Communications room exists, it is on
+-- Level 5, and its purpose is the comm systems. None of that is inferred, and the point set's
+-- name is not a label this packet invented.
+--
+-- RECONSTRUCTION (MEDIUM confidence) -- WHERE it is. The dialog gives no coordinate, and no
+-- map asset carries the string "Communications" or "Level 5", so the room had to be matched
+-- to geometry. It IS located, on a fourth recon pass: the first three searched the map name
+-- tables for comm/terminal/workstation and found nothing, and texts.sql moniker 7720
+-- `DN_Ob_D_HumanViewScreen_Castle_CommTerminal` supplies the missing search term -- the assets
+-- are called *screens*, never "terminals". Scanning all 145 tiles for the screen/monitor
+-- families turns up exactly one enclosed room built around a monitor wall, in
+-- Castle-00080002.umap:
+--   * two `CA-Monitor_Wall00_Pf0` PrefabInstances (`GP-Monitor_Wall00`) side by side at
+--     server (268.38, 55.48, 852.20) and (275.04, 55.48, 852.20) -- a double-wide monitor
+--     wall, the only one in the Castle that is not set dressing in another named room;
+--   * two `CA-SecurityLock00_Pf0` above them at (266.96, 60.29, 851.82) and
+--     (276.53, 60.29, 851.82) -- the room is access-controlled, which fits a Level-5
+--     communications room and nothing else the Castle has;
+--   * three `Ca-StasisCamber_Wallstation00` sharing the same z=852.08 wall at x 264.89 /
+--     271.79 / 278.79, floor height y=55.20;
+--   * two `CA-normal_room_corner_a_00` corner meshes at (261.40, 62.55, 861.20) and
+--     (282.49, 62.55, 861.20), which is what actually bounds the room: x[261.4, 282.5],
+--     monitor wall on z=852.2, opposite side near z=861.2.
+-- The earlier draft of this row placed the comms actors in the Castle-00090003 room at
+-- (388-392, 55.2, 930-944) because it also has a six-screen `EM-ViewScreen02_Pf0` bank.
+-- That was wrong: the same room holds four `CA-SymbioteChamber00` and five
+-- `Ca-StasisCamber_Wallstation01` at x 398.2-398.8, so it is CA15's symbiote chamber and its
+-- screens are the stasis monitors. Do not put mission 704 there.
+-- Existing spawn 116 (CastleNidGuard18Inside, (294.16, 55.39, 894.44)) stands on this same
+-- y~55.2 interior level ~40 units away, so the floor is real and populated -- and y~55 is one
+-- interior level below the Interrogation Block (y~66.79) and above the throne room (y~41-48),
+-- which is consistent with "Level 5" but does not prove it, since nothing maps the game's
+-- floor numbering onto these heights. MEDIUM not HIGH for that reason: the room's identity is
+-- matched by set dressing, so confirm the exact standing spot -- and that this room is the one
+-- on Level 5 -- with an in-client `.location` walk before UAT M3. The NAME is not in question.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (239, 271.7, 55.2, 858.0, 0, 8, 168, 'Castle_Zuritska_Comms', NULL);
+
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Interrogation Block" -- HIGH confidence):
+-- second cell-corridor segment in Castle-000a0003.umap (raw X=104258.69, Y=32063.88,
+-- Z=6679.10), same conversion formula as Castle_Zuritska_Cell above. Romney is placed in
+-- the second half of the corridor (interpreted as "Interrogation Room 02").
+-- respawn_secs=120: mission 703 completes on `entity_death Castle_Romney`; the shipped seed
+-- sets no respawn on any NID template (146/148 both NULL), which would permanently lock 703
+-- for every other player in the shared world after the first kill. No existing NID-guard
+-- value to copy, so this uses the packet's own fallback (120s) per the missions 702-704
+-- worker's finding (docs/analysis/castle-rebuild/worknotes/ca05.md).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (240, 320.64, 66.79, 1042.59, 0, 8, 169, 'Castle_Romney', NULL, 120);
+
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Bunker above Checkpoint Bravo" -- MEDIUM-HIGH
+-- confidence): objective 2799 (mission_objectives.sql:6629) states outright that Muelbach
+-- "is holed up in the bunker above Checkpoint Bravo", so she does NOT stand at the
+-- checkpoint with the officers (this row previously placed her at (960, 25, 490), inside
+-- the Humvee cluster, which contradicts that line). The Castle tree has exactly one bunker
+-- asset elevated over the checkpoint: the `CastleEast_SmallBunkerTunnel` PrefabInstance in
+-- Castle-0004000a.umap at server (1004.16, 48.00, 413.60) -- 23 units above and ~85 units
+-- from the Checkpoint Bravo cluster (y 24.2-28.5), versus `EM-Bunker_Frost00`(_Pf0) at
+-- (985.65, 27.95, 495.64)/(962.06, 24.26, 471.59), which are level with the checkpoint and
+-- therefore not "above" it. The tunnel is a lit interior with its floor at exactly y=48.00
+-- (the prefab and a co-located TriggerVolume, with EM-Brace_Wall01 at 48.00,
+-- EM-Pipe_Floor_Med00 at 49.32, EM-WallLight01_Pf0 wall lights at 54.08 and CA-Cell_Decor03
+-- ceiling decor at 56.02 above it), spanning x[1001,1017] z[406,423]; she is placed on that
+-- floor midway between the two wall-light pairs (x 1007.2 / 1014.9). Not HIGH because no
+-- asset is named "Bravo"/"Checkpoint", so the checkpoint identification the "above" relation
+-- is measured against is itself inferred from set dressing.
+-- respawn_secs=120: mission 708 step 2416 completes on `entity_death` of Muelbach or any
+-- Bravo officer; same shared-world lockout concern and fallback as Castle_Romney above.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (241, 1008.0, 48.0, 414.0, 0, 8, 170, 'Castle_Muelbach', NULL, 120);
+
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Bravo" -- MEDIUM confidence): inside
+-- the Humvee/bunker cluster in Castle-00040009.umap -- three `EM-Humvee00` PrefabInstances
+-- at server (950.60, 24.20, 496.75), (960.41, 28.51, 478.33), (973.96, 25.12, 471.08) with
+-- `EM-Bunker_Frost00_Pf0` at (962.06, 24.26, 471.59); a parked Humvee alongside bunker set
+-- dressing reads as a military checkpoint, though no "Bravo"/"Checkpoint" named asset exists
+-- to confirm the label. Objective 2798 ("NID Officers at Checkpoint Bravo may have a Control
+-- Crystal", mission_objectives.sql:6625) is what puts the officers HERE and Muelbach in the
+-- bunker above -- the two options on step 2416 are deliberately in different places.
+-- N=3 officers per packet default. The exact ground height at each spot is not decodable
+-- until the terrain decoder lands (CA14), so y is taken from the nearest recovered asset.
+-- respawn_secs=120, same reasoning as Castle_Romney above.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (242, 955.0, 25.0, 475.0, 0, 8, 171, 'Castle_BravoOfficer1', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (243, 965.0, 25.0, 485.0, 0, 8, 171, 'Castle_BravoOfficer2', NULL, 120);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (244, 970.0, 26.0, 478.0, 0, 8, 171, 'Castle_BravoOfficer3', NULL, 120);
+
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Bravo" -- LOW confidence on the
+-- position, this is the weakest coordinate in the packet): objective 2794 ("(Option #1)
+-- Force a guard to surrender and reveal what he knows", mission_objectives.sql:6619) names
+-- no location at all, and unlike 2798/2799 there is nothing to anchor him to. Placed inside
+-- the Checkpoint Bravo cluster because step 2415's other option is the throne-room Access
+-- Panel (spawn 92) and putting the two options in different rooms matches how 2416's pair
+-- is laid out. A competing reading -- a guard nearer the gate/Checkpoint Alpha, since 2415
+-- is about why the gate is malfunctioning -- is equally consistent with the text; resolve it
+-- in the in-client pass, not from the map assets. Non-hostile, so no respawn timer.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (245, 958.0, 25.0, 480.0, 0, 8, 172, 'Castle_SurrenderGuard', NULL);
+
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Communications room" -- MEDIUM confidence):
+-- on the y=55.20 comms-room floor, centred between the two monitor walls (x 268.38 and
+-- 275.04) and 2.8 units out from the z=852.2 wall they are mounted on, so the interactable
+-- prop stands in front of the screens it represents and the player can reach it from the
+-- room side. See Castle_Zuritska_Comms above for the full evidence chain. `heading` is 0
+-- like every other Castle prop row (spawns 2, 92); the facing that would turn it toward the
+-- monitor wall is unverified, so this does not invent one -- fix it in the same in-client
+-- `.location` pass that confirms the room.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (246, 271.7, 55.2, 855.0, 0, 8, 173, 'Castle_CommsTerminal', NULL);
+
 --
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256
 -- Name: spawnlist_spawn_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 237, true);
+SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 246, true);
 

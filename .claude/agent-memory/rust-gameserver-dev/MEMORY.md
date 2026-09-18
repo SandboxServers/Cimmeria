@@ -24,6 +24,7 @@
 ## Working Environment
 
 - [concurrent-claude-sessions.md](concurrent-claude-sessions.md) — when other Claude sessions are running on the same repo, use a git worktree under `.claude/worktrees/<slug>/` for branch isolation. Junction-link `external/` into the worktree (`external/` is gitignored).
+- [stacked-branch-rebase-traps.md](stacked-branch-rebase-traps.md) — a handed-down base sha is often NOT an ancestor (the parent rewrote it); find the fork point by message. Cargo.lock re-dirties every build. Use `..` in `Action::` test match arms.
 
 ## Wire-format gotchas
 
@@ -48,6 +49,7 @@
 ## Content engine / chain authoring
 
 - [content-chain-authoring-traps.md](content-chain-authoring-traps.md) — `display_dialog` silently drops NPC dialogs on non-interact triggers (monologue fallback only); `set_interaction_type` is zone-global; NOTHING respawns (`respawn_secs` NULL everywhere) so `entity_dead_tag` missions are one-shot; victory chains evaluate no conditions; label-signature asserts mask later test assertions.
+- **zero-baseline rule** (in the same file) — `entity_templates.interaction_type` IS the runtime `interaction_type_flags` value (`spawn.rs:127`); never clear an entity's last cue bit or it goes unclickable zone-wide, and NO test type can observe it.
 - [content-chain-dispatch-traps.md](content-chain-dispatch-traps.md) — **read before authoring any chain.** `display_dialog` needs an interact in the player's history (follow-up chains have only `last_interaction_target`); `dialog_choice` carries NO archetype so splits key on dialog id; `enabled=false` does nothing to a victory chain; deferred actions survive death but not disconnect (+ the rewind-`fire_at` test pattern); button-less dialogs still raise `dialog_choice`.
 
 ## Stats / entity systems
@@ -85,6 +87,10 @@
 ## Dependency bumps
 
 - [egui-eframe-split-version-bumps.md](egui-eframe-split-version-bumps.md) — dependabot bumps `egui` and `eframe` separately; the egui-only PR is a no-op for the launcher (two egui versions coexist in the lock) and defers all API breakage to the eframe PR. Launcher clippy only runs in the Windows job of `launcher-build.yml`.
+
+## Content chains (seed authoring)
+
+- [content-chain-condition-context-gaps.md](content-chain-condition-context-gaps.md) — **read before authoring any `content_*` rows.** `archetype` is NOT in the context on dialog chains so `archetype neq N` fails OPEN; zero-button dialogs DO fire `dialog_choice` with `button_id = -1` (adding a button kills the chain); `complete_objective` auto-complete sends the WRONG status byte; `delay_ms > 0` queues not runs; multi-trigger chains need `load_chain_expansions_for_test`; `set_interaction_type` is zone-wide so clearing can break other players.
 
 ## Observability / logging
 

@@ -338,6 +338,7 @@
 \ir resources/Worlds/Seed/worlds.sql
 \ir resources/Content/Seed/castle_cellblock_chains.sql
 \ir resources/Content/Seed/castle_701_chains.sql
+\ir resources/Content/Seed/castle_706_708_chains.sql
 \ir resources/Content/Seed/consumables_chains.sql
 \ir resources/Content/Seed/effects_chains.sql
 \ir resources/Content/Seed/harset_space_chains.sql
