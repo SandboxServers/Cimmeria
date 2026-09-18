@@ -17,4 +17,7 @@ The audit workflow:
 
 **How to apply:** Run on highest-trap-risk PRs first (trading state machine, security bounds checks, dispatch routing matrices). Lower-risk PRs (pure deletions, asset-dependent tests) can be static-read for assertion exactness.
 
-Related: [[finding_log_capture_serial]], [[finding_external_junction]]
+6. **Under wave parallelism the shared cargo lane (`/c/Users/Steve/AppData/Local/Temp/cimmeria-castle/lane.sh`) starves.** Six-plus sibling worktrees queue on one `mkdir` lock; a single acquisition took **52 minutes** during the Harset wave. Consequence: do NOT plan one lane call per revert. Write ONE script that applies every (disjoint) revert, builds once, runs all affected suites, applies the next revert, and restores — then run that script inside a single `lane.sh bash <script>` hold. Bundling also stops another worktree rebuilding the *shared* `target/debug/deps/cimmeria_services-<hash>.exe` (worktrees collide on the same fingerprint hash) out from under your test run.
+7. **Reverts whose effects are disjoint can be bundled and attributed by failure set.** Group them so no revert masks another's assertion — e.g. reverting a loader arm makes every downstream executor replay fail at the resolve step, so stage that one *last*, after the executor reverts have been measured.
+
+Related: [[finding_log_capture_serial]], [[finding_external_junction]], [[finding_seed_null_masks_livedb_assertion]]
