@@ -128,6 +128,14 @@ pub(super) async fn display(
 /// `Action::AddDialogSet` — register a dialog set on the player's
 /// `available_interactions` for the given template slot, and push an
 /// InteractionType update for any matching NPC already in AoI.
+///
+/// The bound row may be **interaction-only** (`dialog_id IS NULL`): it then
+/// contributes its indicator bit to the pushed flags and nothing else, which is
+/// exactly what `Castle.py`'s `addDialog(149, 3062)` does — raise the `!` over
+/// Sgt. Gerschon while the dialog itself comes from an `interact_tag` chain.
+/// The push is `SGWSpawnableEntity.InteractionType(UINT64 TypeId)`
+/// (`entities/defs/SGWSpawnableEntity.def:114-116`), a lone flags bitfield, so
+/// there is no dialog field to fill and no "absent dialog" sentinel to invent.
 #[tracing::instrument(
     name = "dialog.add_set",
     level = "info",
@@ -155,7 +163,8 @@ pub(super) async fn add_dialog_set(
             entity_id,
             dialog_set_id,
             slot,
-            dialog_id = entry.dialog_id,
+            dialog_id = ?entry.dialog_id,
+            interaction_only = entry.dialog_id.is_none(),
             interaction_flags = entry.interaction_flags,
             "add_dialog_set: resolved dialog_set_map entry"
         );
@@ -323,7 +332,8 @@ pub(super) async fn add_dialog(
             entity_id,
             dialog_set_id,
             slot,
-            dialog_id = entry.dialog_id,
+            dialog_id = ?entry.dialog_id,
+            interaction_only = entry.dialog_id.is_none(),
             interaction_flags = entry.interaction_flags,
             "add_dialog: resolved dialog_set_map entry"
         );
@@ -376,7 +386,7 @@ async fn send_interaction_update_if_visible(
             tracing::debug!(
                 entity_id,
                 target_id,
-                dialog_id = entry.dialog_id,
+                dialog_id = ?entry.dialog_id,
                 base_flags,
                 merged,
                 "Sending per-player InteractionType for {}",
@@ -400,7 +410,7 @@ async fn send_interaction_update_if_visible(
                 tracing::warn!(
                     entity_id,
                     target_id,
-                    dialog_id = entry.dialog_id,
+                    dialog_id = ?entry.dialog_id,
                     slot,
                     phase = label,
                     "interaction-type send failed -- NPC prompt stale: {e}"
@@ -605,6 +615,174 @@ mod tests {
             }
             other => panic!("expected EntityMethodCall, got {other:?}"),
         }
+    }
+
+    /// Castle dialog_set_map 3062: `dialog_id IS NULL`, `interaction_flags =
+    /// 16777216` (`INT_AStoryMissionActive`, the `!` over an NPC's head).
+    /// `Castle.py` binds it on Sgt. Gerschon (template 149) with
+    /// `addDialog(149, 3062)`.
+    ///
+    /// **Regression guard for defect B3.** Before CA02 the loader dropped
+    /// NULL-dialog rows, so this bind was a `dialog_set_maps cache miss` warn
+    /// and a no-op — the `!` never appeared. The guard asserts the three
+    /// things that must hold for a flag-only bind:
+    ///
+    /// 1. the bind is recorded with `dialog_id: None` (not a substituted 0),
+    /// 2. exactly one `InteractionType` push goes out, carrying the `!` bit
+    ///    merged over the NPC's base flags,
+    /// 3. no dialog is displayed — a flag-only row has nothing to show, and
+    ///    Gerschon's dialog comes from a separate `interact_tag` chain.
+    #[tokio::test]
+    async fn add_dialog_set_with_null_dialog_pushes_flag_only() {
+        use crate::cell::spawner::DialogSetMapEntry;
+        use cimmeria_common::EntityId;
+
+        const TEMPLATE_GERSCHON: i32 = 149;
+        const SET_MAP_3062: i32 = 3062;
+        /// `INT_AStoryMissionActive` — bit 24, the `!` indicator.
+        const INT_A_STORY_MISSION_ACTIVE: i64 = 16_777_216;
+        /// Arbitrary pre-existing base flag on the NPC, to prove the push
+        /// merges rather than replaces.
+        const NPC_BASE_FLAGS: i64 = 0x2;
+
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(2, "Agnos", [1.0; 3], [0.0; 3]).unwrap();
+        mgr.dialog_set_maps.insert(
+            SET_MAP_3062,
+            DialogSetMapEntry {
+                dialog_id: None,
+                interaction_flags: INT_A_STORY_MISSION_ACTIVE,
+            },
+        );
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(42);
+            p.witnesses.insert(EntityId(2));
+        }
+        if let Some(n) = mgr.get_entity_mut(2) {
+            n.template_id = Some(TEMPLATE_GERSCHON);
+            n.interaction_type_flags = NPC_BASE_FLAGS;
+        }
+
+        let (tx, mut rx) = mpsc::channel(8);
+        add_dialog_set(
+            SET_MAP_3062,
+            TEMPLATE_GERSCHON,
+            /* entity_id */ 1,
+            /* chain_id */ 1201,
+            &tx,
+            &mut mgr,
+        )
+        .await;
+
+        assert_eq!(
+            mgr.get_entity(1)
+                .and_then(|p| p.available_interactions.get(&TEMPLATE_GERSCHON))
+                .map(Vec::as_slice),
+            Some([(SET_MAP_3062, None, INT_A_STORY_MISSION_ACTIVE)].as_slice()),
+            "the bind must be recorded with dialog_id None -- a substituted 0 \
+             would make the click open an empty dialog"
+        );
+
+        let msg = rx.try_recv().expect(
+            "flag-only bind must still push InteractionType -- with the loader \
+             reverted to dropping NULL rows this is a cache miss and nothing is sent",
+        );
+        match msg {
+            CellToBaseMsg::WitnessEntityMethod {
+                witness_id,
+                entity_id,
+                method_index,
+                args,
+                entity_is_player,
+            } => {
+                assert_eq!(witness_id, 1, "push is per-player, to the binding player");
+                assert_eq!(entity_id, 2, "push targets the NPC, not the player");
+                assert_eq!(method_index, crate::mercury::method_idx::INTERACTION_TYPE);
+                assert!(!entity_is_player);
+                assert_eq!(
+                    args,
+                    ((NPC_BASE_FLAGS | INT_A_STORY_MISSION_ACTIVE) as u64)
+                        .to_le_bytes()
+                        .to_vec(),
+                    "payload is the merged flags as UINT64 LE -- the `!` bit OR'd \
+                     over the NPC's base flags"
+                );
+            }
+            other => panic!("expected WitnessEntityMethod, got {other:?}"),
+        }
+
+        assert!(
+            rx.try_recv().is_err(),
+            "a flag-only bind must emit the InteractionType push and nothing else -- \
+             no onDialogDisplay, because the row has no dialog"
+        );
+    }
+
+    /// Companion to the flag-only guard: a bind whose row *does* carry a
+    /// dialog still behaves exactly as before. Pins that widening
+    /// `dialog_id` to `Option` didn't change the with-dialog path, and that
+    /// the dialog id stays off the wire in both cases — the pushed payload is
+    /// the flags bitfield alone, per
+    /// `entities/defs/SGWSpawnableEntity.def:114-116`.
+    #[tokio::test]
+    async fn add_dialog_set_with_dialog_pushes_same_flag_only_payload() {
+        use crate::cell::spawner::DialogSetMapEntry;
+        use cimmeria_common::EntityId;
+
+        const TEMPLATE_GERSCHON: i32 = 149;
+        const SET_MAP_3060: i32 = 3060;
+        const DIALOG_2573: i32 = 2573;
+        const FLAGS: i64 = 16_777_216;
+
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(2, "Agnos", [1.0; 3], [0.0; 3]).unwrap();
+        mgr.dialog_set_maps.insert(
+            SET_MAP_3060,
+            DialogSetMapEntry {
+                dialog_id: Some(DIALOG_2573),
+                interaction_flags: FLAGS,
+            },
+        );
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(42);
+            p.witnesses.insert(EntityId(2));
+        }
+        if let Some(n) = mgr.get_entity_mut(2) {
+            n.template_id = Some(TEMPLATE_GERSCHON);
+        }
+
+        let (tx, mut rx) = mpsc::channel(8);
+        add_dialog_set(SET_MAP_3060, TEMPLATE_GERSCHON, 1, 1201, &tx, &mut mgr).await;
+
+        assert_eq!(
+            mgr.get_entity(1)
+                .and_then(|p| p.available_interactions.get(&TEMPLATE_GERSCHON))
+                .map(Vec::as_slice),
+            Some([(SET_MAP_3060, Some(DIALOG_2573), FLAGS)].as_slice())
+        );
+
+        match rx
+            .try_recv()
+            .expect("with-dialog bind must push InteractionType")
+        {
+            CellToBaseMsg::WitnessEntityMethod {
+                method_index, args, ..
+            } => {
+                assert_eq!(method_index, crate::mercury::method_idx::INTERACTION_TYPE);
+                assert_eq!(
+                    args,
+                    (FLAGS as u64).to_le_bytes().to_vec(),
+                    "the dialog id is server-side state and must never appear in \
+                     the InteractionType payload"
+                );
+            }
+            other => panic!("expected WitnessEntityMethod, got {other:?}"),
+        }
+        assert!(rx.try_recv().is_err(), "exactly one push");
     }
 
     /// Companion guard: a dialog NOT in the monologue cache still

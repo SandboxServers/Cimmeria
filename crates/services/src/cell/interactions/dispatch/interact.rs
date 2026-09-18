@@ -92,12 +92,25 @@ pub async fn handle_interact(
 
     // Check per-player available interactions (from add_dialog_set content actions).
     // These take priority over static interaction_type.
+    //
+    // `find_map` rather than `first()`: an interaction-only bind
+    // (`dialog_set_maps.dialog_id IS NULL` — an indicator bit with no dialog
+    // behind it, e.g. Castle row 3062) sits in this list with `dialog_id:
+    // None`. It must not swallow the click, and it must not be mistaken for a
+    // dialog. Scanning past it leaves a sibling bind that *does* carry a dialog
+    // free to answer; with no such sibling we fall through to the static
+    // interaction type, which is what the original does — the dialog for a
+    // flag-only bind comes from an `interact_tag` chain, dispatched earlier in
+    // `cell_methods/player/interaction/interact.rs`.
     if let Some(tmpl_id) = target_template_id {
+        let entry_count = space_mgr
+            .get_entity(entity_id)
+            .and_then(|p| p.available_interactions.get(&tmpl_id))
+            .map_or(0, |entries| entries.len());
         let dialog_id = space_mgr
             .get_entity(entity_id)
             .and_then(|p| p.available_interactions.get(&tmpl_id))
-            .and_then(|entries| entries.first())
-            .map(|&(_, dialog_id, _)| dialog_id);
+            .and_then(|entries| entries.iter().find_map(|&(_, dialog_id, _)| dialog_id));
 
         if let Some(dialog_id) = dialog_id {
             tracing::info!(
@@ -109,6 +122,18 @@ pub async fn handle_interact(
             );
             send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx, space_mgr).await;
             return Some(dialog_id);
+        } else if entry_count > 0 {
+            // Binds exist but every one of them is interaction-only. Not an
+            // error: the indicator is the whole point of the bind. Logged
+            // distinctly from "nothing bound" so an operator debugging a
+            // silent click can tell the two apart.
+            tracing::info!(
+                entity_id,
+                tmpl_id,
+                entry_count,
+                "interact: per-player binds are all interaction-only (no dialog) -- \
+                 falling through to static interaction type"
+            );
         } else {
             tracing::info!(
                 entity_id,
