@@ -363,10 +363,19 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- cell is a MEDIUM-confidence placement at the doorway itself.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (238, 268.0, 66.79, 1042.59, 0, 8, 168, 'Castle_Zuritska_Cell', NULL);
 
--- RECONSTRUCTION (CA05, worknotes/ca05.md "Communications room" -- MEDIUM confidence):
--- the room IS located, on a fourth recon pass. The first three searched the map name tables
--- for comm/terminal/workstation and found nothing. texts.sql moniker 7720
--- `DN_Ob_D_HumanViewScreen_Castle_CommTerminal` supplies the missing search term: the assets
+-- Two separable claims here; only the second is a reconstruction.
+--
+-- ORIGINAL_DATA -- the room's NAME AND FLOOR. Dialog 2576 screen 96821
+-- (`dialog_screens.sql:11759`) says "take him to **the Communications room on Level 5**. He
+-- has to patch me into the Castle's comm systems". So a Communications room exists, it is on
+-- Level 5, and its purpose is the comm systems. None of that is inferred, and the point set's
+-- name is not a label this packet invented.
+--
+-- RECONSTRUCTION (MEDIUM confidence) -- WHERE it is. The dialog gives no coordinate, and no
+-- map asset carries the string "Communications" or "Level 5", so the room had to be matched
+-- to geometry. It IS located, on a fourth recon pass: the first three searched the map name
+-- tables for comm/terminal/workstation and found nothing, and texts.sql moniker 7720
+-- `DN_Ob_D_HumanViewScreen_Castle_CommTerminal` supplies the missing search term -- the assets
 -- are called *screens*, never "terminals". Scanning all 145 tiles for the screen/monitor
 -- families turns up exactly one enclosed room built around a monitor wall, in
 -- Castle-00080002.umap:
@@ -387,9 +396,12 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- `Ca-StasisCamber_Wallstation01` at x 398.2-398.8, so it is CA15's symbiote chamber and its
 -- screens are the stasis monitors. Do not put mission 704 there.
 -- Existing spawn 116 (CastleNidGuard18Inside, (294.16, 55.39, 894.44)) stands on this same
--- y~55.2 interior level ~40 units away, so the floor is real and populated. MEDIUM not HIGH:
--- no asset names the room "Communications" or "Level 5", so confirm the label and the exact
--- standing spot with an in-client `.location` walk before UAT M3.
+-- y~55.2 interior level ~40 units away, so the floor is real and populated -- and y~55 is one
+-- interior level below the Interrogation Block (y~66.79) and above the throne room (y~41-48),
+-- which is consistent with "Level 5" but does not prove it, since nothing maps the game's
+-- floor numbering onto these heights. MEDIUM not HIGH for that reason: the room's identity is
+-- matched by set dressing, so confirm the exact standing spot -- and that this room is the one
+-- on Level 5 -- with an in-client `.location` walk before UAT M3. The NAME is not in question.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (239, 271.7, 55.2, 858.0, 0, 8, 168, 'Castle_Zuritska_Comms', NULL);
 
 -- RECONSTRUCTION (CA05, worknotes/ca05.md "Interrogation Block" -- HIGH confidence):

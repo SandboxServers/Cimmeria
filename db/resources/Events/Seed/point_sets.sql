@@ -137,14 +137,18 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 -- family (EM-ViewScreen03_Pf0, the per-cell door screens) over the same grid.
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2082, 'Castle.InterrogationBlock', 'AreaSet', 8, NULL, NULL, 'BoundingBox', 1);
 
--- RECONSTRUCTION (CA05, worknotes/ca05.md "Communications room" -- MEDIUM confidence): the
--- Castle-00080002.umap room bounded by the two `CA-normal_room_corner_a_00` corner meshes at
--- x 261.40 / 282.49, z 861.20, whose z=852.2 wall carries a double `CA-Monitor_Wall00_Pf0`
--- monitor wall behind two `CA-SecurityLock00_Pf0` access locks. Floor y=55.20. See
--- Castle_Zuritska_Comms in spawnlist.sql for the full evidence chain and for why the
--- competing Castle-00090003 screen room was rejected (it is CA15's symbiote chamber). The
--- room is real and measured; the "Level-5 Communications" *label* is the inference, so
--- confirm it in-client before UAT M3.
+-- The NAME is ORIGINAL_DATA: dialog 2576 screen 96821 (`dialog_screens.sql:11759`) says "the
+-- Communications room on Level 5", so `Castle.CommsRoom` names a room the 2009 content
+-- asserts exists, on a stated floor, for a stated purpose.
+-- The BOX is RECONSTRUCTION (CA05, worknotes/ca05.md "Communications room" -- MEDIUM
+-- confidence): the dialog gives no coordinate, so the room was matched to the one enclosed
+-- Castle-00080002.umap room built around a monitor wall -- bounded by the two
+-- `CA-normal_room_corner_a_00` corner meshes at x 261.40 / 282.49, z 861.20, whose z=852.2
+-- wall carries a double `CA-Monitor_Wall00_Pf0` behind two `CA-SecurityLock00_Pf0` access
+-- locks. Floor y=55.20. See Castle_Zuritska_Comms in spawnlist.sql for the full evidence
+-- chain and for why the competing Castle-00090003 screen room was rejected (it is CA15's
+-- symbiote chamber). Confirm the geometry in-client before UAT M3; the name needs no
+-- confirmation.
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2083, 'Castle.CommsRoom', 'AreaSet', 8, NULL, NULL, 'BoundingBox', 1);
 
 -- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Bravo" -- MEDIUM confidence,

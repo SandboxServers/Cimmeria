@@ -311,27 +311,46 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (167, '', 'BS_GoauldMale.BS_GoauldMale', '{AR_G_Praxis.AR_GM_PB1_PH100,AR_G_Praxis.AR_GM_PL1_PB100,AR_G_Praxis.AR_GM_PL1_PL100,AR_G_Praxis.AR_GM_PT1_PT100,AR_G_Praxis.AR_GM_PT1_PT102,AR_G_Praxis.AR_GM_PT1_PT105,BS_GoauldMale.BS_GM_Base_Boots00_00,BS_GoauldMale.BS_GM_Base_Hands00_00,BS_GoauldMale.BS_GM_Base_Legs00_00,BS_GoauldMale.BS_GM_Base_Torso00_00,NPC_Goauld.NPC_GM_Baal_Head_BC}', 0, 0, 570, 50, 0, 1, 8186, '', NULL, NULL, 'Sandbox Ba''al', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -1014470144, NULL, '{}', NULL, 942, true, 100001, NULL);
 
 -- RECONSTRUCTION (CA05 packet, docs/analysis/castle-rebuild/worknotes/ca05.md "Templates" table):
--- Castle_Zuritska (D-CA06/D-CA07) -- non-hostile, faction 1, human female, cloned from
--- template 48 (Capt. Copplemann, the closest existing friendly-female civilian archetype
--- in this zone) with Copplemann's character-specific hair/head swapped for the generic
--- BS_HF_Head_00 base head. Kept AR_Global.Prisoner_Boots since Zuritska is a detainee.
--- speaker_id left NULL to match the Castle convention set by template 149 (Gerschon),
--- which also carries dialogue without a template-level speaker_id.
+-- Castle_Zuritska (D-CA06/D-CA07) -- non-hostile, faction 1, **human male**.
+--
+-- Gender is ORIGINAL_DATA, not a choice. Every shipped dialog screen that refers to
+-- Dr. Zuritska uses masculine pronouns, decisively in the one that drives this very actor:
+-- dialog 2576 screen 96821 (`dialog_screens.sql:11759`) -- "I need you to rescue Dr. Zuritska
+-- and take HIM to the Communications room on Level 5. HE has to patch me into the Castle's
+-- comm systems". Corroborated by dialog 88 screen 9427 ("Dr. Zuritska has also finished HIS
+-- weapon") and dialog 514 screen 5212 ("...if you can stand to be in the room with HIM").
+-- A sweep of every Zuritska-bearing screen finds no feminine pronoun referring to him; the
+-- single "her" nearby (dialog 2572 screen 96765) is Copplemann, who IS female. An earlier
+-- draft of this row cloned template 48 (Capt. Copplemann) and shipped Zuritska as
+-- BS_HumanFemale -- right gender source, wrong character. work-packets.md:69 already said
+-- "human male"; the draft contradicted both it and the dialog.
+--
+-- Cloned from template 149 (Sgt. Gerschon) -- the closest in-zone friendly male civilian
+-- archetype: faction 1, level 50, event_set 570, BS_HumanMale, no WP-* weapon component.
+-- Two deliberate departures from 149:
+--   * head `BS_HM_Head_05` instead of Gerschon's character-specific `BS_HM_Head_09`, because
+--     both NPCs stand in World 8 and must not share a face. 05 is the head this seed already
+--     assigns to its scientist archetype (template 151, 'Lucian - Blue Faction Scientist'),
+--     which suits a "Dr."; appearance is out of CA05 scope, so flag it for visual QA rather
+--     than treat it as settled.
+--   * `AR_Global.Prisoner_Boots` added, since Zuritska is a detainee.
+-- speaker_id left NULL to match the Castle convention 149 itself sets (it carries dialogue
+-- without a template-level speaker_id).
 -- patrol_path_id/patrol_point_delay left NULL (no patrol/wander for a cell/follow NPC;
 -- wander_radius etc. are also untouched and default to 0.0 -- see npcs.rs COALESCE).
 -- move_speed=0.9 (GC1b-0 column, world units per 100ms tick -> 9.0 u/s, per
--- npc_ai/follow.rs's `speed_per_sec = move_speed * 10.0`): World 8's run_speed is 8.125 u/s
--- (worlds.sql row 8); the engine default of 0.6 (6.0 u/s) can never re-close the 2-5 unit
--- follow band behind an 8.125 u/s player (GC1b-0 finding). 0.9 matches the ONLY other
--- non-NULL move_speed in this seed, template 10 (Col. Marsh, also a follow/escort-style
--- NPC), giving Zuritska the same ~11% speed margin over the player during the 704 escort.
+-- cell/service/ticks/npc_movement.rs:74's `speed_per_sec = move_speed * 10.0`): World 8's
+-- run_speed is 8.125 u/s (worlds.sql row 8); the engine default of 0.6 (6.0 u/s) can never
+-- re-close the 2-5 unit follow band behind an 8.125 u/s player (GC1b-0 finding). 0.9 matches
+-- the ONLY other non-NULL move_speed in this seed, template 10 (Col. Marsh, also a
+-- follow/escort-style NPC), giving Zuritska the same ~11% margin during the 704 escort.
 -- name_id 7066 is ORIGINAL_DATA, not a reconstruction: texts.sql moniker 7066
 -- `DN_npc_mg_Zuritska_Castle_OLD` = 'Dr. Zuritska', the same `DN_npc_*` display-name
 -- convention templates 48 (7035 'Capt. Copplemann') and 149 (7034 'Sgt. Gerschon') use.
 -- New moniker ids are NOT an option: `name_id` is written raw onto the AoI create packet
 -- (mercury/aoi/create.rs:211-218) and resolved by the client against its own PAK string
 -- table, so only ids that already shipped in the client can render.
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (168, NULL, 'BS_HumanFemale.BS_HumanFemale', '{AR_H_Clothing00.AR_HM_PL1_PL100AB100,AR_H_Clothing00.AR_HM_PT1_PT100,BS_HumanFemale.BS_HF_Base_Boots00_00,BS_HumanFemale.BS_HF_Base_Hands00_00,BS_HumanFemale.BS_HF_Base_Legs00_00,BS_HumanFemale.BS_HF_Base_Torso00_00,BS_HumanFemale.BS_HF_Boots_00,BS_HumanFemale.BS_HF_Head_00,AR_Global.Prisoner_Boots}', 0, 0, 570, 50, 0, 1, 7066, NULL, NULL, NULL, 'Castle_Zuritska', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -52773120, 21, '{}', NULL, NULL, true, NULL, 0.9);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (168, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_Global.Prisoner_Boots,AR_H_Clothing00.AR_HM_PL1_PL100,AR_H_Clothing00.AR_HM_PT1_PT100,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_05,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00}', 0, 0, 570, 50, 0, 1, 7066, NULL, NULL, NULL, 'Castle_Zuritska', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, -256, -256, -52773120, 21, '{}', NULL, NULL, true, NULL, 0.9);
 
 -- RECONSTRUCTION: Castle_Romney (D-CA06) -- hostile, verbatim clone of template 148
 -- (NID Guard - Castle inside) per packet scope. Stats/appearance unchanged; only
