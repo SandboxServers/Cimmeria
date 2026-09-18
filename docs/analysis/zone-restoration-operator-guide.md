@@ -19,7 +19,7 @@ Companions: [Cellblock handoff](castle-cellblock-rebuild/handoffs/session-resume
 
 | Zone | On `main` | Open PRs (testable from branch) | Testable today |
 |---|---|---|---|
-| Castle Cellblock | C00-C05, C07, C08a, C08b, GC1b-0, GC1 (#655) | none | **Yes: M1, M3 and GC1 on `main`, M2 only partly (needs C06)** |
+| Castle Cellblock | C00-C05, C06, C07, C08a, C08b, GC1b-0, GC1 (#655), C06 flank objectives (#671) | none | **Yes: M1-M3 and GC1 on `main`.** The flank check may be unreachable in play (see A12) |
 | Castle (World 8, ring platform) | CA00 respawners (#651), CA01 + CA03 mission 701 and the dialog-speaker pin fix (#659), CA10 gate open/cross events (#663), CA04 minigame hardening (#652), CA02 "!" dialog bind (#661), CA05 story actors and point sets (#667), missions 706 and 708 (#668), missions 702-704 (#660) | none (docs closeout PR #669 only) | **Yes, M1-M5 on `main` after a rebuild** (the gate leg into Harset excepted, see M4) |
 | Harset | nothing yet | #662 (branch `content/harset-rebuild`, all review findings answered, CI running on the final head, waiting on your merge go-ahead) | Travel and population checks, from the branch now, or from `main` once #662 merges |
 
@@ -27,7 +27,7 @@ Companions: [Cellblock handoff](castle-cellblock-rebuild/handoffs/session-resume
 
 Highest value per minute first.
 
-1. **Cellblock M1 and M3 on current `main`, and the testable half of M2.** The largest body of already-merged content and it needs nothing else to land first. The flank objectives and step 2144 wait for C06.
+1. **Cellblock M1-M3 on current `main`.** The largest body of already-merged content and it needs nothing else to land first. Its own 24+ scenario guide with a results table is [castle-cellblock-rebuild/uat-guide.md](castle-cellblock-rebuild/uat-guide.md); use that for the full pass and this file for the quick one.
 2. **Castle respawn check on `main`.** Five minutes, catches bad coordinates.
 3. **Harset M1 checks** once #662 merges (or from its branch). Cheap, and tells us whether ring and door travel is safe.
 4. **Castle M1** (mission 701). All its PRs (#659, #652, #661) are on `main`, so this is testable now after a rebuild.
@@ -37,14 +37,14 @@ Highest value per minute first.
 
 **Implemented (merged).** GC1 (#655, `627be660`): Marsh escort dialogs, ring-hop and topside follow, and the post-death blurb 5859 on mission 686 completion. Also: Prisoner 329 and Marsh briefing dialogs; hallway controllers; Region8 guard aggro; the Stasis Sickness icon; Frost's Letter (mission 1360); the take-cover objective 2484 with its cover indicator; accept-blurbs for missions 640, 641, 680 and 688; the Straegis camera scene (Matinee, Marsh despawns, dialog 2516).
 **Open.** Only a docs PR (#666, ledger and handoff). The 147-test chain-replay suite passed on a fresh DB before the GC1 merge.
-**Not built.** C06 flank objectives 2725 and 2731 (unblocked, not started), GC1c lockdown VFX (needs client evidence), GC2 (unscoped), GC3 XP formula (needs your decision).
+**Not built.** GC1c lockdown VFX (needs client evidence), GC2 (unscoped), GC3 XP formula (needs your decision).
 
 Test with a Jaffa character and a Human character, relogging at each step:
 
 | Milestone | Steps | Expected |
 |---|---|---|
 | M1 | Load in; talk to Prisoner 329 and Marsh; walk the hallway controllers; enter Region8; observe the Stasis Sickness icon, then cure it | Exactly one topic dialog from Prisoner 329 and one Marsh briefing; each controller accepts once; the pistol guard aggros on Region8 entry; the icon shows on load and clears on cure |
-| M2 (partial on `main`) | Check the mission log; pick up the vial; take cover. Step 2144 and the flank objectives (2725, 2731) cannot be tested: they depend on C06, which is not built | Frost's Letter is in the log; the cover indicator shows on vial pickup and hides in cover |
+| M2 | Check the mission log; pick up the vial; take cover; try the flank objectives (2725, 2731, C06, #671) and step 2144 | Frost's Letter is in the log; the cover indicator shows on vial pickup and hides in cover; step 2144 needs both objectives. The flank check may be unreachable in play (it needs a guard already holding a cover slot, and slots are only reserved while you are out of weapon range with cover data nearby), but the mission still completes on kills either way |
 | M3 | Accept each mission; trigger the Straegis scene; relog afterwards | One prompt per accept; the camera plays once, control returns, Marsh is gone, dialog 2516 shows once, then 5859 about 10.6 s after the scene starts; the scene does not replay after relog |
 | GC1 (on `main`) | After the ring hop | Marsh follows you topside; dialog 5859 shows about 10.6 s after the Straegis scene starts |
 
@@ -134,6 +134,8 @@ Work top to bottom inside a zone. A step passes only if the expected result happ
 
 ### A. Castle Cellblock (build: current `main`; use one Jaffa and one Human character)
 
+This is the quick pass. The Cellblock session's full guide, with 24+ numbered scenarios and a results table, is [castle-cellblock-rebuild/uat-guide.md](castle-cellblock-rebuild/uat-guide.md) (merged in #672).
+
 | # | Where / command | Do | Expect | If it fails, report |
 |---|---|---|---|---|
 | A1 | Cellblock, on entering | Log in fresh; open the mission log | Frost's Letter (1360) is in the log after the loot step | Whether the letter is missing, duplicated, or present but not usable |
@@ -141,13 +143,13 @@ Work top to bottom inside a zone. A step passes only if the expected result happ
 | A3 | Marsh | Talk to him | Exactly one briefing | Repeats, or none |
 | A4 | Hallway controllers | Use each once, then again | Each accepts once; the second use does not re-accept | Which controller, and what the second use did |
 | A5 | Region8 (the pistol guard's room) | Walk in | The pistol guard aggros on entry | Guard did not aggro, or aggroed early |
-| A6 | Any time on load | Watch the buff bar, then cure Stasis Sickness | Icon shows on load, clears on cure | Icon missing, stuck, or returns after relog |
+| A6 | Any time on load | Watch the buff bar, then cure Stasis Sickness | Icon shows on load, clears on cure. **Note:** the Prison Boot lock and the Stasis Sickness effects are no-ops server-side, so this check depends on the client | Icon missing, stuck, or returns after relog |
 | A7 | Relog after A2-A6 | Log out and in | Every state above is unchanged | Which step regressed |
 | A8 | Vial pickup, then cover | Pick up the vial; take cover | Cover indicator shows on pickup and hides in cover (objective 2484) | Indicator never shows, or never hides |
 | A9 | Straegis scene | Accept each mission (640, 641, 680, 688), then trigger the scene | One prompt per accept. Camera plays once, control returns, Marsh is gone, dialog 2516 shows once, then 5859 about 10.6 s after the scene starts | Any repeated prompt, camera replay, Marsh still visible, or 5859 missing or early |
 | A10 | Relog right after A9 | Log out and in | The scene does not replay | That it replayed |
 | A11 | GC1 (mission 686 escort) | Complete the escort to the ring, take the ring hop | Marsh follows you topside | Marsh missing or invisible after the hop (issue #582 shape: watch for a corpse or actor that only appears after relog) |
-| A12 | Skip | Flank objectives 2725 and 2731, and step 2144 | Not testable: C06 is not built | Nothing to report |
+| A12 | Flank objectives 2725 and 2731 (scenario T29 in the Cellblock guide) | Try to trigger a flank event | The flank event fires. It may be unreachable in play: it needs a guard already holding a cover slot. The mission still completes on kills either way | Whether you could ever get the event to fire, and how you killed the guards |
 
 ### B. Castle (World 8, ring platform; build: current `main`, all of CA00-CA10 merged)
 
