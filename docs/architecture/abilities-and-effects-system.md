@@ -216,6 +216,56 @@ The 0.5m number is a guess pending playtest feedback — if it's too aggressive,
 
 **Code:** [`crates/services/src/cell/service/message_loop.rs`](../../crates/services/src/cell/service/message_loop.rs).
 
+### 16. Content-initiated effects use a separate entry point, not `handle_use_ability`
+
+**Decision:** Content chains that apply an ability or an effect
+(`Action::LaunchAbility`, `Action::ApplyEffect`) call
+[`cell/content/effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs),
+which resolves the effect defs and calls `dispatch_by_name` +
+`register_active_effect` directly. They do **not** route through
+`cell::abilities::use_ability::handle_use_ability`.
+
+**Why:** `handle_use_ability` is the *client* combat entry point, and its gates
+are correct for client input and wrong for content. A scripted debuff — the
+Castle Cellblock wake-up "Stasis Sickness" (ability 1372) is the motivating
+case — is rejected by it three independent ways:
+
+1. `has_ability` fails. The player never trained the ability and it is not
+   weapon-granted, so the check returns false with a WARN.
+2. Self-target trips the friendly-fire gate — a player entity may only
+   single-target a hostile NPC.
+3. The path resolves unconditionally as QR damage. There is no
+   offensive-vs-supportive branch, so "apply a debuff" has nowhere to land.
+
+Loosening any of those to admit content would loosen them for forged client
+packets too. A second entry point keeps the client gates intact.
+
+**The security constraint — this is the load-bearing part.** The helper
+bypasses the combat gates by design, so it is only safe while nothing
+client-driven can reach it. Three properties enforce that and none may be
+widened without re-deciding this ADR:
+
+- `mod effect_apply;` is declared **without `pub`**, so the path does not
+  exist outside `cell::content`. A `use` from a cell method or a Mercury
+  handler is a compile error, not a lint.
+- Both entry points are `pub(super)` — nameable only from `cell::content`
+  and its descendants (in practice `cell::content::executor`).
+- Neither takes a client-supplied id. `ability_id` / `effect_id` come from a
+  `content_actions` seed row loaded at startup; no wire field reaches them.
+
+Do not re-export these from `cell::content`, and do not add a cell method
+that forwards to them. That would turn this into an "apply arbitrary effect
+to arbitrary entity" primitive drivable by any forged packet.
+
+**Reversibility:** High. If an ability ever needs both client and content
+entry with shared warmup/cooldown/animation semantics, the right move is to
+factor the *effect-application tail* of `handle_use_ability` into a shared
+function that both call — not to route content back through the gated front
+door.
+
+**Code:** [`crates/services/src/cell/content/effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs),
+dispatched from [`executor/mod.rs`](../../crates/services/src/cell/content/executor/mod.rs).
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:
