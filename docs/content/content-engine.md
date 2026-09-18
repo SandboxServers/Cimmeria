@@ -250,6 +250,27 @@ Two caveats for authors:
   the action. Effect 1634, the sole effect on the Castle Cellblock wake-up
   ability 1372, is exactly this shape.
 
+##### `start_minigame` params
+
+`target_key` names the minigame type (`Livewire`, `Hack`, ...). Two params:
+
+| Param | Required | Meaning |
+|---|---|---|
+| `on_victory_chains` | no (defaults to `[]`) | Chain ids fired when the player wins. They are invoked directly, not through `resolve_event`, so **no conditions on them are evaluated** — put the gate on the launcher chain. |
+| `difficulty` | no (defaults to `1`) | Difficulty tier, integer 1-5. |
+
+`difficulty` is **rejected, not clamped**: a row outside 1-5 is dropped at
+load time with a `warn!` naming the chain id, so an authoring mistake shows
+up as a missing minigame rather than a silently different tier. The 1-5
+range is what the original content layer asserted
+(`deprecated/python/cell/Minigame.py`). Note that every per-game difficulty
+table only has rows 1-4, so an authored `5` reaches the game and is clamped
+down to 4 with a `warn!` — 1-4 is the range content should actually use.
+
+A victory chain needs no `content_triggers` row; the loader gives a
+triggerless chain a never-firing `OnCustomEvent` placeholder so it stays
+reachable only through `on_victory_chains`.
+
 #### Entity-lifecycle verbs
 
 `spawn_entity` instantiates an `entity_templates` row into the **acting player's current space**. The seed row never names a space, because a chain authored for a per-player instance cannot know which instance the firing player is in — so the space is read off the triggering entity.

@@ -271,15 +271,18 @@ async fn execute_one(
         }
         Action::StartMinigame {
             minigame_type,
+            difficulty,
             on_victory_chains,
         } => {
-            tracing::info!(entity_id, %minigame_type, ?on_victory_chains, chain_id, "Content: starting minigame");
+            tracing::info!(entity_id, %minigame_type, difficulty, ?on_victory_chains, chain_id, "Content: starting minigame");
             if let Err(e) = tx
                 .send(CellToBaseMsg::StartMinigame {
                     entity_id,
                     player_id,
                     game_name: minigame_type.clone(),
-                    difficulty: 1, // TODO: parse from chain params when difficulty field is added
+                    // Range-checked 1-5 at load time (loader/action.rs);
+                    // the seed default is 1.
+                    difficulty,
                     on_victory_chains: on_victory_chains.clone(),
                 })
                 .await
