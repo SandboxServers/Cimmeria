@@ -18,7 +18,7 @@ Companions: [Cellblock handoff](castle-cellblock-rebuild/handoffs/session-resume
 | Zone | On `main` | Open PRs (testable from branch) | Testable today |
 |---|---|---|---|
 | Castle Cellblock | C00-C05, C07, C08a, C08b, GC1b-0, GC1 (#655) | none | **Yes: M1, M3 and GC1 on `main`, M2 only partly (needs C06)** |
-| Castle (World 8, ring platform) | CA00 respawners (#651), CA01 + CA03 mission 701 and the dialog-speaker pin fix (#659) | #652, #661, #663, #660 | Respawn on `main`; mission 701 partly (the "!" over Gerschon needs #661, Livewire hardening needs #652) |
+| Castle (World 8, ring platform) | CA00 respawners (#651), CA01 + CA03 mission 701 and the dialog-speaker pin fix (#659), CA10 gate open/cross events (#663) | #652, #661, #660 | Respawn on `main`; mission 701 partly (the "!" over Gerschon needs #661, Livewire hardening needs #652) |
 | Harset | nothing yet | #662 (branch `content/harset-rebuild`, CI green, review fixes in progress) | Travel and population checks, from the branch, after the review fixes merge |
 
 ## Suggested Order If Budget Is Tight
@@ -58,7 +58,7 @@ Test with a Jaffa character and a Human character, relogging at each step:
 | #652 | CA04 minigame hardening; `start_minigame` difficulty | CI green |
 | #659 | CA01 + CA03 mission 701 (Gerschon, Copplemann, Livewire) and the dialog-speaker pin fix | **merged to `main`** (`f930b4cb`) |
 | #661 | CA02 flag-only dialog bind (the "!" over Gerschon) | CI green |
-| #663 | CA10 stargate open/cross events (6100, 6113, 4 s dial timer); splits `gate_travel.rs` | CI green |
+| #663 | CA10 stargate open/cross events (6100, 6113, 4 s dial timer); splits `gate_travel.rs` | **merged to `main`** (`a9d0fad7`) |
 | #660 | Missions 702-704 (Zuritska, Romney) | blocked on CA05, conflicts with `main` |
 
 **Not pushed:** CA05 story actors and respawn timers (worker running); CA08 + CA09 missions 706 and 708, stacked on CA10. **Design-gated, not started:** CA13, CA14, CA15.
@@ -68,7 +68,7 @@ Test with a Jaffa character and a Human character, relogging at each step:
 | Respawn (`main` now) | Fresh character on Castle; die once at each of the four checkpoints | You land at a real checkpoint, not the origin and not under the floor. Report any bad coordinate |
 | M1 (#659 merged; after #652 and #661) | Arrive on the ring platform with mission 688 complete and 1360 active | "!" over Gerschon before accepting (Human sees indicator 2573, Jaffa 5861); 701 accepts once and a second interaction does not re-accept; Copplemann advances the step; the Livewire win shows 2575 once; 2576 completes 701 and accepts 702 and 703; relog at each step re-shows the right indicator |
 | M2/M3 (after CA05 and #660) | Find Zuritska and Romney | Both exist at their positions for every player; freeing Zuritska completes 702 once; killing Romney completes 703 |
-| M4 (after #663 and 706/708) | Dial with the DHD Livewire | The gate opens about 4 s after dial; crossing plays 6113 and lands on Harset once (needs Harset H01 arrival validation) |
+| M4 (#663 merged; after 706/708 and Harset #662) | Dial with the DHD Livewire | The gate opens about 4 s after dial; crossing plays 6113 and lands on Harset once. **Do not dial to Harset on current `main`:** the arrival validation (Harset H01, in PR #662) is not on `main` yet, so you would be placed at the gate's raw coordinate inside a navmesh hole and silently frozen |
 | M5 | Two players at different steps | Neither disturbs the other's indicators or actors |
 
 **Untested and provisional:** every coordinate (comms room, Armory prefab, and the Op-Core respawner, which could not be located in the map assets, so it is a reconstruction). Issue #657 (`active_objective_ids` lost on relog, affects every mission) is unfixed; Harset packet H50 is a fix in progress.
