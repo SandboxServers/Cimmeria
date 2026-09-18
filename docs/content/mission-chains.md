@@ -879,6 +879,116 @@ directions on purpose:
 
 ---
 
+#### Mission 706: "Power Behind the Throne" [RECONSTRUCTION]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 706 |
+| **Name** | Power Behind the Throne |
+| **Level** | 3 |
+| **is_story** | true |
+| **Script** | None recovered. `Castle.py` stops at mission 701 and never references 706. |
+| **Seed** | `db/resources/Content/Seed/castle_706_708_chains.sql`, chains 1321-1323 |
+| **Ledger** | [Castle rebuild packet CA08](../analysis/castle-rebuild/work-packets.md#ca08), [worknote](../analysis/castle-rebuild/worknotes/m706-708.md) |
+
+**Steps** (from DB, ORIGINAL_DATA):
+
+| Step ID | Index | Text | Objectives |
+|---------|-------|------|------------|
+| 2411 | 0 | "Get to the Throne Room." | 2790 (required) |
+| 2412 | 1 | "Hack into the Goa'uld communications grid." | 2791 "Use the access panel behind the throne to boost Zuritska's communications signal." + 2792 "Locate the access panel behind the Throne." (both required) |
+
+**How it starts**: accepted by mission 704's delivery chain (packet CA07). Nothing in this file accepts 706.
+
+**Chains** — every row below is RECONSTRUCTION; the ids, dialogs, region and spawn are original data, the wiring is not:
+
+| Chain | Trigger | Conditions | Actions |
+|-------|---------|-----------|---------|
+| 1321 | `enter_region('Castle.ThroneRoom')` | `step_status(706, 2411) = active` | `advance_step(706, 2412)`; `set_interaction_type(Castle_AccessPanel, \|, INT_MissionWorldObject)` |
+| 1322 | `interact_tag('Castle_AccessPanel')` | `step_status(706, 2412) = active`; `mission_status(708) = not_active` | `display_dialog(2584)`; `complete_mission(706)`; `accept_mission(708)` |
+| 1323 | `player_loaded('Castle')` | `step_status(706, 2412) = active` | `set_interaction_type(Castle_AccessPanel, \|, INT_MissionWorldObject)` — relog restore |
+
+**Entity tags**: `Castle_AccessPanel` (spawn 92, template 147, at 330.49, 41.18, 653.11).
+
+**Regions**: `Castle.ThroneRoom` (point set 2049).
+
+**Dialog IDs**: 2584 (Copplemann and Col. Marsh over the boosted radio; dialog-set map row 5711, set 654).
+
+**Why `complete_mission` and not two `complete_objective` calls**: step 2412's two objectives are both required, and `complete_objective` on the last required objective of a step routes through an auto-complete branch that sends `onMissionUpdate` with the *active* status byte rather than *completed*. `complete_mission_direct` emits the correct objective/step/mission sequence. Same reasoning applies to chain 1360 on mission 708.
+
+**Why the panel glow is never cleared**: `interaction_type_flags` live on the shared cell entity and broadcast to every witness, template 147 ships `interaction_type = 0`, and mission 708's step 2415 needs the same panel immediately afterwards. Clearing it would make a shared prop unclickable for any other player mid-706 or mid-2415, and would strand it permanently if `accept_mission` hit its offer guard. Per-player interaction state is design gate GCA1.
+
+**Link to next**: chain 1322 completes 706 and accepts 708 in the same action list. `accept_mission` synchronously fires the `mission_accepted` event, so mission 708's setup chain 1341 runs before chain 1322's list finishes.
+
+---
+
+#### Mission 708: "Secure the Stargate" [RECONSTRUCTION]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 708 |
+| **Name** | Secure the Stargate |
+| **Level** | 3 |
+| **is_story** | true |
+| **Script** | None recovered. |
+| **Seed** | `db/resources/Content/Seed/castle_706_708_chains.sql`, chains 1341-1365 |
+| **Ledger** | [Castle rebuild packet CA09](../analysis/castle-rebuild/work-packets.md#ca09), [worknote](../analysis/castle-rebuild/worknotes/m706-708.md) |
+
+**Steps** (from DB, ORIGINAL_DATA):
+
+| Step ID | Index | Text | Objectives |
+|---------|-------|------|------------|
+| 2415 | 0 | "Discover why the Stargate will not dial out." | 2796 (required, hidden); 2794 optional "(Option #1) Force a guard to surrender"; 2795 optional "(Option #2) Use the Access Panel on the Goa'uld Throne" |
+| 2416 | 1 | "Retrieve the DHD Control Crystal." | 2797 (required); 2798 optional "NID Officers at Checkpoint Bravo"; 2799 optional "Warden Muelbach... in the bunker above Checkpoint Bravo" |
+| 2417 | 2 | "Take the Control Crystal to Checkpoint Alpha." | 5184, 5185 "Report to Col. Marsh", 5186 "Report to Moh'katan" — **all three required** |
+| 2418 | 3 | "Repair the DHD." | 5197 (required) |
+| 4462 | 4 | "Use the DHD to dial the Stargate to Harset." | 5198 (task 6403) |
+| 4469 | 5 | "Enter the active Stargate to leave the Castle." | 5200 (task 6404) |
+
+**How it starts**: accepted by mission 706's chain 1322.
+
+**Chains** — all RECONSTRUCTION:
+
+| Chain | Trigger | Conditions | Actions |
+|-------|---------|-----------|---------|
+| 1341 | `mission_accepted('708')` | — | mark `Castle_SurrenderGuard` with `INT_AStoryMissionActive`; re-assert the `Castle_AccessPanel` glow |
+| 1342 | `interact_tag('Castle_SurrenderGuard')` | `step_status(708, 2415) = active` | `display_dialog(5003)` |
+| 1343 | `dialog_choice('5003')` | `step_status(708, 2415) = active` | `complete_objective(708, 2794)`; `advance_step(708, 2416)`; clear the guard cue |
+| 1344 | `interact_tag('Castle_AccessPanel')` | `step_status(708, 2415) = active` | `display_dialog(5004)` |
+| 1345 | `dialog_choice('5004')` | `step_status(708, 2415) = active` | `complete_objective(708, 2795)`; `advance_step(708, 2416)`; clear the guard cue |
+| 1346-1348 | `entity_dead_tag('Castle_BravoOfficer1\|2\|3')` | `mission_status(708) = active`; `step_status(708, 2416) = active` | `add_item(2790)`; `complete_objective(708, 2798)`; `advance_step(708, 2417)` |
+| 1349 | `entity_dead_tag('Castle_Muelbach')` | same | `add_item(2790)`; `add_item(2136)`; `complete_objective(708, 2799)`; `advance_step(708, 2417)` |
+| 1350 | any of the four deaths | `step_status(708, 2416) = active`; `archetype != 8` | mark `Castle_ColMarsh` |
+| 1351 | any of the four deaths | `step_status(708, 2416) = active`; `archetype = 8` | mark `Castle_Mohkatan` |
+| 1352 | `interact_tag('Castle_ColMarsh')` | `step_status(708, 2417) = active`; `archetype != 8` | `display_dialog(5008)` |
+| 1353 | `dialog_choice('5008')` | `step_status(708, 2417) = active` | `complete_objective(708, 5185)`; `advance_step(708, 2418)`; clear Marsh's cue; arm the DHD with `INT_MinigameLivewire` |
+| 1354 | `interact_tag('Castle_Mohkatan')` | `step_status(708, 2417) = active`; `archetype = 8` | `display_dialog(5009)` |
+| 1355 | `dialog_choice('5009')` | `step_status(708, 2417) = active` | `complete_objective(708, 5186)`; `advance_step(708, 2418)`; clear Moh'katan's cue; arm the DHD |
+| 1356 | `interact_tag('Castle_DHD')` | `step_status(708, 2418) = active` | `start_minigame(Livewire, on_victory_chains=[1357])` |
+| 1357 | none (minigame victory) | none — victory chains skip condition evaluation | `advance_step(708, 4462)`; clear the Livewire cue; `add_dialog_set(3073 → template 162)` |
+| 1358 | `stargate_dialed('Harset')` | `step_status(708, 4462) = active`; `archetype != 8` | `advance_step(708, 4469)`; `display_dialog(5010)`; unbind 3073 |
+| 1359 | `stargate_dialed('Harset')` | `step_status(708, 4462) = active`; `archetype = 8` | `advance_step(708, 4469)`; `display_dialog(5011)`; unbind 3073 |
+| 1360 | `stargate_crossed('Harset')` | `step_status(708, 4469) = active` | `complete_mission(708)` |
+| 1361-1365 | `player_loaded('Castle')` | one per step that owns a cue: 2415, 2417 (×2 by archetype), 2418, 4462 | repaint that cue |
+
+**Entity tags**: `Castle_SurrenderGuard`, `Castle_BravoOfficer1..3`, `Castle_Muelbach` (all owed by packet CA05 and not yet in `spawnlist`), `Castle_AccessPanel` (spawn 92), `Castle_ColMarsh` (spawn 118, template 10), `Castle_Mohkatan` (spawn 120, template 54), `Castle_DHD` (spawn 2, template 162).
+
+**Dialog IDs**: 5003 (guard interrogation), 5004 (panel diagnostic), 5008 / 5009 (report, by archetype), 5010 / 5011 (closing line, by archetype), 2586 (the dial narration, reached through the 3073 topic bind). All are set 656.
+
+**Items**: 2790 DHD Control Crystal (explicit grant, `container_sets {2}`); 2136 (Muelbach's identifying drop — the item's role is reconstruction).
+
+**Minigames**: Livewire on the DHD at step 2418, labelled provisional per D-CA09 — the original minigame for the DHD repair is unrecovered.
+
+**Where the archetype split is enforced**: on the *interact* chains (1352 / 1354), never on the `dialog_choice` chains. The dialog-choice dispatcher does not populate `archetype` into the chain context, and a missing `archetype` evaluates as `-1`, which makes `archetype = 8` permanently false and `archetype != 8` permanently true — a condition that reads like a guard and fails open. The choice halves are discriminated by dialog id instead, which is server-authoritative because a `dialogButtonChoice` is rejected unless the server displayed that dialog to that player, and the only path that displays 5008 is the archetype-gated interact chain.
+
+**Zero-button dialogs**: none of 5003, 5004, 5008, 5009, 5010, 5011, 2584 or 2586 has a `dialog_screen_buttons` row. The 2009 client emits its dialog choice from the close path with button id `-1` when a dialog carries no buttons at all, and emits nothing on close when it does — which is why `Castle.py` could key on `dialog.choice::2574` and `::2575`. **Adding a button to any of these dialogs silently breaks the chain that keys on it.**
+
+**How the crystal can only be granted once**: the step gate is the guard. Each source chain advances out of step 2416 in the same action list it grants in, and the advance mutates the in-memory step synchronously, so a second kill — including re-killing a respawned officer, which reuses the same entity and tag — resolves nothing. This holds only while every action row carries `delay_ms = 0`; a deferred advance would leave the step active across the delay window. The replay guard executes the first death, re-derives the context from the mutated player and fires a second death, asserting exactly one grant reaches the base.
+
+**Link to next**: crossing to Harset completes 708. Castle has no further missions.
+
+---
+
 ### SGC_W1 (SGU Starting Zone)
 
 **Confidence**: CONFIRMED
