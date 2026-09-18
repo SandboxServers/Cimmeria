@@ -80,7 +80,7 @@ async fn actions_land_on_the_flanking_player_not_the_npc() {
     ));
     let (tx, _rx) = mpsc::channel(16);
 
-    fire_player_flanked_npc(1, 2, "NID Guard", &engine, &tx, &mut mgr).await;
+    fire_player_flanked_npc(2, 1, "NID Guard", &engine, &tx, &mut mgr).await;
 
     let player = mgr.get_entity(1).expect("player must still exist");
     assert_eq!(
@@ -110,7 +110,7 @@ async fn typed_chain_rejects_a_different_template() {
     ));
     let (tx, _rx) = mpsc::channel(16);
 
-    fire_player_flanked_npc(1, 2, "Jaffa Warrior", &engine, &tx, &mut mgr).await;
+    fire_player_flanked_npc(2, 1, "Jaffa Warrior", &engine, &tx, &mut mgr).await;
 
     assert!(
         !mgr.get_entity(1)
@@ -138,9 +138,9 @@ async fn no_ops_when_the_threat_is_not_a_player() {
     let (tx, mut rx) = mpsc::channel(16);
 
     // Threat is the NPC (entity 2): it carries no db player_id.
-    fire_player_flanked_npc(2, 1, "NID Guard", &engine, &tx, &mut mgr).await;
+    fire_player_flanked_npc(1, 2, "NID Guard", &engine, &tx, &mut mgr).await;
     // Threat id that doesn't exist in any space.
-    fire_player_flanked_npc(999, 2, "NID Guard", &engine, &tx, &mut mgr).await;
+    fire_player_flanked_npc(2, 999, "NID Guard", &engine, &tx, &mut mgr).await;
 
     for eid in [1u32, 2] {
         assert!(
@@ -184,7 +184,7 @@ async fn flank_completes_only_the_flank_objective_and_keeps_the_mission_active()
     ));
     let (tx, mut rx) = mpsc::channel(16);
 
-    fire_player_flanked_npc(1, 2, "NID Guard", &engine, &tx, &mut mgr).await;
+    fire_player_flanked_npc(2, 1, "NID Guard", &engine, &tx, &mut mgr).await;
 
     let mission = mgr
         .get_entity(1)

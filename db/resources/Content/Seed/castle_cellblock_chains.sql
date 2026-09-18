@@ -2526,8 +2526,11 @@ VALUES (1175, 'set_follow_target', NULL, 'Preparation_ColMarsh', '{}', 0, 0);
 --
 -- Objectives 2725 ("Take position behind the long table to flank the
 -- guards and negate their cover") and 2731 ("Take a flanking position to
--- negate the guards' protective cover") are the optional flavour
--- objectives of steps 2348 (mission 681) and 2353 (mission 686). D-CB05
+-- negate the guards' protective cover") are the secondary objectives of
+-- steps 2348 (mission 681) and 2353 (mission 686). NOTE they are seeded
+-- `is_optional = false` in mission_objectives.sql, like the kill
+-- objectives 2724/2730 -- they are only "secondary" in that nothing
+-- completes the mission through them. D-CB05
 -- (took the recommended default): they are TRACKED but do NOT gate --
 -- chains 1087/1094 still complete the mission on the kill counter alone,
 -- so a player who kills the guards from range never soft-locks.
@@ -2550,7 +2553,22 @@ VALUES (1175, 'set_follow_target', NULL, 'Preparation_ColMarsh', '{}', 0, 0);
 -- TWO objectives (kill 2724/2730 + flank 2725/2731), and the kill
 -- objective is never completed through this path (chains 1087/1094 use
 -- `complete_mission`), so completing only the flank objective cannot end
--- the mission early. Pinned by the replay tests in c06_flank.rs.
+-- the mission early. That safety rests on 2724/2730 staying off the
+-- `complete_objective` path (NOT on the flank objectives being optional):
+-- if the kill path is ever moved to `complete_objective`, a flank could
+-- end the mission early. Pinned by `flank_completes_only_the_flank_
+-- objective_and_keeps_the_mission_active` in event_dispatch/
+-- cover_flank_tests.rs and the replay tests in
+-- chain_replay_tests/mission_681_686_flank.rs.
+--
+-- KNOWN LIMITS (found in review, 2026-09-18): (1) the event fires only when
+-- a guard ALREADY HOLDS a cover slot -- slots are reserved only while the
+-- target is out of weapon range and a cover node scores nearby (see
+-- `cover/ai_integration.rs::maintain_cover_for_npc`) -- so where the room
+-- has no usable cover data or the guards engage inside weapon range these
+-- objectives never complete. Non-gating, so no soft-lock. (2) Credit goes
+-- to the guard's top-threat player only; a groupmate who flanks without
+-- holding threat gets nothing (objective progress is not shared).
 --
 -- Self-completion guard: the AI fires the flank event on every cover
 -- release, so each chain checks its own objective is not already

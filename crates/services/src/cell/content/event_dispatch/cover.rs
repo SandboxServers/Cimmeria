@@ -222,7 +222,13 @@ pub async fn fire_npc_flanked(
 
 /// Fire `OnPlayerFlankedNpc` — the player-perspective twin of
 /// [`fire_npc_flanked`], called from the same AI decision when the
-/// flanked NPC's top-threat is a **player**.
+/// flanked NPC's top-threat is a **player**. Argument order matches
+/// `fire_npc_flanked` (`npc_entity_id`, then the threat) so the two
+/// adjacent call sites can't be swapped silently.
+///
+/// Returns immediately when no `PlayerFlankedNpc` chain is registered,
+/// so the per-mission context population below doesn't run on every
+/// cover release in rooms with no flank content.
 ///
 /// Unlike `fire_npc_flanked` (actions run on the NPC with player id 0),
 /// this executes against the flanking player with that player's mission
@@ -231,13 +237,16 @@ pub async fn fire_npc_flanked(
 /// objectives 2725/2731. No-ops when `player_entity_id` is not a player
 /// entity (NPC-vs-NPC threat, or the player left the space mid-tick).
 pub async fn fire_player_flanked_npc(
-    player_entity_id: u32,
     npc_entity_id: u32,
+    player_entity_id: u32,
     npc_template: &str,
     engine: &ChainEngine,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    if engine.chains_for_trigger(&TriggerType::PlayerFlankedNpc) == 0 {
+        return;
+    }
     let mut ctx =
         ExecutionContext::new().with_source(cimmeria_common::EntityId(player_entity_id as i32));
     ctx.set_param("npc_template".to_string(), serde_json::json!(npc_template));

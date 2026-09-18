@@ -329,8 +329,8 @@ pub(super) async fn npc_ai_fight(
                 // objectives, C06) need the flanking player as the action
                 // target. No-ops when the threat isn't a player.
                 crate::cell::content::fire_player_flanked_npc(
-                    target_id,
                     npc_id,
+                    target_id,
                     &npc_template,
                     engine,
                     tx,
