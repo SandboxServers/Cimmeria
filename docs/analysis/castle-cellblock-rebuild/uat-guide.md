@@ -630,7 +630,12 @@ This is the highest-risk scenario in the guide. **Read the [Known risks](#known-
 
 **Server evidence:** `logs\content.log` for the `Content:` and `fire_player_flanked_npc` lines, `logs\server.log` for the NPC AI line (see [Before you start](#3-know-where-the-logs-are)): NPC AI target `npc_ai` line `cover_released_flanked`; `fire_player_flanked_npc: matched` with `npc_template=NID Guard`; then `Content: complete objective` with `mission_id=681 objective_id=2725 chain_id=1141` (or `686 / 2731 / 1142`).
 
-**Known uncertainty:** the trigger only fires if the guards actually take cover in this room. If they never do, 2725/2731 will simply never complete and the fight still works — record that as "flank not exercisable" rather than a failure, and note whether the guards ever moved to cover. If the guards never take cover in the Mess Hall, that points at the cover data for this space, not at C06.
+**Set your expectations first — this may be unreachable in practice.** The flank event fires only when a guard *already holds a cover slot*. The AI reserves a slot only while you are **out of the guard's weapon range** and a cover node scores nearby (`maintain_cover_for_npc`); if you are in range, or the room has no usable cover data, the guard never takes cover and the event never fires. So:
+
+- If 2725/2731 never complete and the guards never moved to cover, record **"flank not exercisable"**, not a C06 failure. The fight and the mission completion must still work (they do not depend on the flank objective).
+- To give it the best chance, open fire from **long range** so the guards break for cover, then circle wide.
+- Only the guard's **top-threat player** is credited; in a group, a member who flanks without holding threat gets nothing.
+- If the guards never take cover in the Mess Hall or Hallway05, that points at missing cover data for those rooms (the med-station desk set 1381 is the only hand-authored one) — a follow-up packet, not a bug in these chains.
 
 ### T16 / T17 — The Straegis attack scene (C08b, GC1a, GC1b-2)
 
