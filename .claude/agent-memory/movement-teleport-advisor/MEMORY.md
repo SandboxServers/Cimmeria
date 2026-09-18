@@ -6,3 +6,4 @@
 - [facing-preservation-primitive.md](facing-preservation-primitive.md) — Block on sight: `update_entity_position(..., [0,0,0], ...)` zeroes facing; teleports use `update_position_preserving_facing`
 - [arrival-coordinate-offnavmesh.md](arrival-coordinate-offnavmesh.md) — Block on sight: authored coords are model origins; gate arrivals land in prefab navmesh holes → silent CorrectionSuppressed. Includes the read-only .nav decode recipe
 - [harset-travel-ground-truth.md](harset-travel-ground-truth.md) — Deprecated-Python ground truth for Harset transitions + what the V5 spec got wrong
+- [ring-fsm-departure-hooks.md](ring-fsm-departure-hooks.md) — The cancel_trade_on_disconnect seam is how async cleanup reaches a sync destroy_entity; which sites are departures vs the ring handoff; 3 ring-FSM block-on-sight modes

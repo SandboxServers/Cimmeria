@@ -123,6 +123,23 @@ impl SpaceManager {
         // the action, not fire it later against a torn-down (and possibly
         // id-reused) entity.
         self.pending_content_actions.remove(&entity_id);
+        // Ring transport: a destroy mid-trip (GM despawn, gate travel,
+        // respawn, content transport) must not leave the ring pad parked in
+        // a non-`Idle` state, because `handle_select_destination` refuses
+        // every destination that is not `Idle` — one stall removes that pad
+        // from every peer in an all-to-all mesh (audit H-B3).
+        //
+        // Queued, not applied: this method is synchronous and has no
+        // `CellToBaseMsg` sender, so it cannot dispatch the survivors'
+        // `ShowPlayer`/`UnlockMovement`. Flipping FSM state here while the
+        // wire effects waited for the tick would let a player re-trigger the
+        // pad inside the gap and receive the previous trip's release on top
+        // of their new one. The ring tick does both together.
+        //
+        // The real client-disconnect path takes
+        // `ring_transport::forget_player` from `disconnect_entity` below
+        // instead, which is async and releases everyone immediately.
+        self.ring_transporters.note_player_gone(entity_id);
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 
@@ -322,6 +339,17 @@ impl SpaceManager {
         // content-engine action's delay elapses must drop the action, not
         // fire it later against a session that no longer exists.
         self.pending_content_actions.remove(&entity_id);
+        // Ring transport: release every trip this player was part of BEFORE
+        // the AoI teardown below, while `tx` is in hand. Synchronous by
+        // design — this is the one departure path that can dispatch the
+        // survivors' `ShowPlayer`/`UnlockMovement` in the same step as the
+        // FSM state flip, so there is no window in which a re-triggered pad
+        // receives the old trip's release. It is also the only path that may
+        // touch the *destination*'s expected-passenger set: a cross-world
+        // ring handoff destroys the cell entity too, and confusing the two
+        // would strand the traveller (see
+        // `RingTransporterManager::forget_source_side`).
+        crate::cell::ring_transport::forget_player(entity_id, tx, self).await;
         if let Some(&space_id) = self.entity_space.get(&entity_id) {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.remove(&entity_id);

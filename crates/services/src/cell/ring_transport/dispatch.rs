@@ -8,8 +8,6 @@
 //! the synchronous `TeleportPlayer → mark_player_loaded → all_players_loaded`
 //! chain that same-world teleports collapse into one tick.
 
-use std::time::Instant;
-
 use tokio::sync::mpsc;
 
 use cimmeria_content_engine::chain::ChainEngine;
@@ -91,16 +89,31 @@ async fn dispatch_effect_inner(
             let space_id = match space_mgr.get_entity(entity_id).map(|e| e.space_id.0 as u32) {
                 Some(s) => s,
                 None => {
+                    // The destination is in `RemoteLoadWait` still expecting
+                    // this player. H02 gave that state a bounded deadline
+                    // (`REMOTE_LOAD_WAIT_TIMEOUT`), so the ring now really
+                    // does time out and release itself instead of parking
+                    // forever — but the entity is already gone from the
+                    // space, so nothing here is left hidden or locked.
                     tracing::error!(
-                        entity_id, destination_region_id,
-                        "TeleportPlayer effect: entity missing from space — destination ring will time out in RemoteLoadWait"
+                        entity_id,
+                        destination_region_id,
+                        "TeleportPlayer effect: entity missing from space — destination ring \
+                         stays in RemoteLoadWait until REMOTE_LOAD_WAIT_TIMEOUT releases it"
                     );
                     return;
                 }
             };
             if !same_world_teleport(entity_id, position, &world_name, space_id, tx, space_mgr).await
             {
-                // Send failed — don't mark loaded; let the destination time out.
+                // Send failed — don't mark loaded. The player is still in the
+                // space, still movement-locked and still hidden, and is now
+                // in no set on either ring (`warmup_timer_expired` took
+                // `send_players`), so the destination's expectation is the
+                // only thing still naming them. That is why the expectation
+                // is a list of ids rather than a bare count: when
+                // `REMOTE_LOAD_WAIT_TIMEOUT` fires, `abort_to_idle` releases
+                // everyone in `expected_players`, this player included.
                 return;
             }
             // Mark the player as "loaded" on the destination ring immediately —
@@ -136,6 +149,14 @@ async fn dispatch_effect_inner(
                     .await;
                 }
             }
+            // NOTE: this `destroy_entity` is a LEGITIMATE ring handoff, not a
+            // player leaving. It queues `note_player_gone`, which the tick
+            // reconciles — and that reconciliation is deliberately
+            // source-side only (`players`/`send_players`) precisely so it
+            // cannot drop this traveller from the destination's
+            // `expected_players` and fast-path the destination to `Idle`
+            // before they arrive. See
+            // `RingTransporterManager::forget_source_side`.
             space_mgr.destroy_entity(entity_id);
 
             if let Err(e) = tx
@@ -152,9 +173,11 @@ async fn dispatch_effect_inner(
             {
                 // The destination ring is already in RemoteLoadWait at this
                 // point. A failed send means base never tears down the
-                // client view and the destination FSM will sit until a
-                // future ring tick stalls. Log loudly; the player has to
-                // relog to recover. No retry: the channel is gone.
+                // client view, so `AdvanceRingDestination` never comes back
+                // and the destination ring sits until
+                // `REMOTE_LOAD_WAIT_TIMEOUT` aborts it and makes it
+                // selectable again (H02). The player still has to relog to
+                // recover their own session. No retry: the channel is gone.
                 tracing::error!(
                     entity_id, %world_name, destination_region_id,
                     error = %e,
@@ -197,6 +220,41 @@ pub(super) async fn dispatch_effects(
     }
 }
 
+/// Dispatch the release effects an abort produces — `ShowPlayer` and
+/// `UnlockMovement` only.
+///
+/// Exists because the abort paths reachable from
+/// `SpaceManager::disconnect_entity` have no [`ChainEngine`] in hand, and
+/// [`dispatch_effect`] needs one for `Effect::FireTeleportIn`. Restricting
+/// the accepted set is the point, not a limitation: an abort must never fire
+/// arrival content for a trip that did not arrive. Anything else in the list
+/// is an FSM bug and is logged rather than silently skipped.
+pub(super) async fn dispatch_release_effects(
+    effects: Vec<Effect>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    for effect in effects {
+        match effect {
+            Effect::ShowPlayer { entity_id } => {
+                send_visible(entity_id, true, tx, space_mgr).await;
+            }
+            Effect::UnlockMovement { entity_id } => {
+                update_state_flag(entity_id, BSF_MOVEMENT_LOCK, false, tx, space_mgr).await;
+            }
+            other => {
+                tracing::error!(
+                    effect = ?other,
+                    reason = "non_release_effect_in_abort",
+                    "ring abort: FSM produced an effect that is not a player release — \
+                     dropped, because the abort path has no ChainEngine and must not fire \
+                     arrival content for a trip that never arrived"
+                );
+            }
+        }
+    }
+}
+
 /// Mark a player as loaded on the destination ring and, if the destination is
 /// ready, fire its `all_players_loaded` transition.
 pub(super) async fn mark_player_loaded(
@@ -235,11 +293,11 @@ pub(super) async fn try_advance_after_load(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    let now = Instant::now();
+    let now = space_mgr.ring_transporters.now();
     let (do_fire, do_fast_path) = match space_mgr.ring_transporters.get(dst_region_id) {
         Some(t) => {
             let ready = t.state == State::RemoteLoadWait
-                && t.players_loaded.len() as u32 == t.num_remote_players;
+                && t.players_loaded.len() as u32 == t.num_remote_players();
             let empty = ready && t.players_loaded.is_empty();
             (ready, empty)
         }

@@ -74,6 +74,26 @@ pub(super) async fn send_play_sequence(
         .await;
 }
 
+/// Set or clear a ref-counted state flag on the entity and, when the bit
+/// actually changed, tell the owning client.
+///
+/// Goes through `CellEntity::set_state_flag` / `unset_state_flag` rather than
+/// a raw `|=` / `&= !`. `BSF_MOVEMENT_LOCK` is explicitly a ref-counted flag
+/// (`crates/entity/src/cell_entity/state_flags.rs`) with other writers —
+/// death and the `Stun` effect script. Mixing a raw write with the helpers
+/// desyncs the counter from the bit: a raw `|=` never bumps the count, so
+/// the next `unset_state_flag` sees count == 0, takes the no-op branch and
+/// leaves the bit stuck forever.
+///
+/// The concrete case this was fixed for (H02): a player who dies during
+/// `SendWarmup` has `BSF_MOVEMENT_LOCK` set by the death path's counted
+/// write; the ring's raw clear would then free the corpse. The abort path
+/// added in H02 fires precisely in the states where something else already
+/// went wrong, so it multiplies the exposure.
+///
+/// `onStateFieldUpdate` is owner-only by design — witnesses have no
+/// rendering hook for "this avatar's input is suppressed" distinct from it
+/// simply not moving.
 pub(super) async fn update_state_flag(
     entity_id: u32,
     flag: u32,
@@ -81,24 +101,40 @@ pub(super) async fn update_state_flag(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let new_state = match space_mgr.get_entity_mut(entity_id) {
+    let changed = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => {
-            if set {
-                e.state_field |= flag;
+            let transitioned = if set {
+                e.set_state_flag(flag)
             } else {
-                e.state_field &= !flag;
-            }
-            e.state_field
+                e.unset_state_flag(flag)
+            };
+            transitioned.then_some(e.state_field)
         }
         None => return,
     };
-    let _ = tx
+    // Another holder still owns the bit (or already released it): the client
+    // view is correct as-is, so skip the redundant broadcast.
+    let Some(new_state) = changed else {
+        return;
+    };
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: ON_STATE_FIELD_UPDATE,
             args: new_state.to_le_bytes().to_vec(),
         })
-        .await;
+        .await
+    {
+        tracing::warn!(
+            entity_id,
+            flag,
+            set,
+            error = %e,
+            reason = "cell_to_base_send_failed",
+            "ring update_state_flag: cell→base send failed — the client keeps the stale \
+             movement-lock state and the player may be unable to move until they relog"
+        );
+    }
 }
 
 /// Broadcasts a visibility change to every witness of the entity (and the
