@@ -33,10 +33,23 @@ const INT_A_STORY_MISSION_ACTIVE: i64 = 16_777_216;
 /// The hackable-console bit (`INT_MinigameLivewire`).
 const INT_MINIGAME_LIVEWIRE: i64 = 256;
 
+/// `Castle_Zuritska_Cell`'s seeded spawn position — spawn_id 238, template
+/// 168, world 8, authored by packet CA05
+/// (`docs/analysis/castle-rebuild/worknotes/ca05.md`, "Spawnlist rows").
+///
+/// Chain 1291 walks her back here when the escort ends, as a literal
+/// destination, because `MoveWaypoint` takes a parsed `[f32; 3]` and the
+/// content engine has no "walk to your spawn" verb. This constant and the
+/// seed row are therefore two copies of one fact;
+/// `chain_1291_destination_matches_the_seeded_spawn_row` ties them to the
+/// third copy, `resources.spawnlist`.
+const ZURITSKA_CELL_SPAWN: [f32; 3] = [268.0, 66.79, 1042.59];
+
 fn label(a: &Action) -> &'static str {
     match a {
         Action::AdvanceStep { .. } => "advance_step",
         Action::SetFollowTarget { .. } => "set_follow_target",
+        Action::MoveWaypoint { .. } => "move_waypoint",
         Action::DisplayDialog { .. } => "display_dialog",
         Action::SetInteractionType { .. } => "set_interaction_type",
         Action::StartMinigame { .. } => "start_minigame",
@@ -158,6 +171,7 @@ async fn chain_1291_arrival_advances_ends_the_escort_and_arms_the_terminal() {
         vec![
             "advance_step",
             "set_follow_target",
+            "move_waypoint",
             "set_interaction_type",
             "set_interaction_type",
             "set_interaction_type",
@@ -195,8 +209,34 @@ async fn chain_1291_arrival_advances_ends_the_escort_and_arms_the_terminal() {
         }
         other => panic!("chain 1291 action 2 must be set_follow_target; got {other:?}"),
     }
+    // The walk home. Order is load-bearing and is why this is asserted
+    // positionally rather than with `.any()`: `set_follow_target` with no
+    // target drops the NPC to Idle and clears `nav_path`, so a
+    // `move_waypoint` resolved *before* it would have its path thrown away
+    // and she would stand in the Comms Room forever.
+    match &actions[2] {
+        Action::MoveWaypoint {
+            entity_tag,
+            destination,
+            speed,
+        } => {
+            assert_eq!(entity_tag, "Castle_Zuritska_Cell");
+            assert_eq!(
+                *destination, ZURITSKA_CELL_SPAWN,
+                "chain 1291 must walk the cell actor back to her CA05 spawn \
+                 position; a drifted literal here strands her in the \
+                 Communications Room or inside a wall",
+            );
+            assert_eq!(
+                *speed, 1.0,
+                "no `speed` param — the default 1.0 multiplier keeps her at \
+                 the template's own move_speed (0.9)",
+            );
+        }
+        other => panic!("chain 1291 action 3 must be move_waypoint; got {other:?}"),
+    }
     assert_interaction(
-        &actions[2],
+        &actions[3],
         "Castle_CommsTerminal",
         "|",
         INT_MINIGAME_LIVEWIRE,
@@ -206,7 +246,7 @@ async fn chain_1291_arrival_advances_ends_the_escort_and_arms_the_terminal() {
     // (chain 1299's instruction dialog). Arming only the terminal would
     // leave the player with no way to hear 4866 at all.
     assert_interaction(
-        &actions[3],
+        &actions[4],
         "Castle_Zuritska_Comms",
         "|",
         INT_A_STORY_MISSION_ACTIVE,
@@ -218,7 +258,7 @@ async fn chain_1291_arrival_advances_ends_the_escort_and_arms_the_terminal() {
     // deliberately leaves it alone so chain 1302 stays reachable for the
     // whole of step 2405.
     assert_interaction(
-        &actions[4],
+        &actions[5],
         "Castle_Zuritska_Cell",
         "~",
         INT_A_STORY_MISSION_ACTIVE,
@@ -380,6 +420,91 @@ async fn chains_1262_and_1302_never_claim_the_same_click() {
             vec![expected],
             "with 702/2419={step_2419} and 704/2405={step_2405} only chain \
              {expected} may fire",
+        );
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Cross-packet drift guard: chain 1291's literal vs CA05's spawn row
+// ──────────────────────────────────────────────────────────────────────
+
+/// Chain 1291's `move_waypoint` destination is a **second copy** of
+/// `Castle_Zuritska_Cell`'s spawn position, which CA05 owns in
+/// `resources.spawnlist` (spawn_id 238). `MoveWaypoint` takes a parsed
+/// `[f32; 3]` and the content engine has no "walk to your spawn" verb, so the
+/// duplication is forced; this test is what stops the two copies drifting.
+/// If CA05's position moves and this seed row does not, Zuritska walks to
+/// wherever she used to live — which, in a room bounded by prefab geometry,
+/// means inside a wall.
+///
+/// **Two modes, deliberately, and the active one depends on a sibling PR.**
+/// CA05's spawnlist row ships on PR #667, not here. Until that merges the
+/// row is absent and this test asserts only what is knowable without it: that
+/// the chain resolves a `move_waypoint` at CA05's *documented* coordinate and
+/// that nothing else claims the tag. Once #667 lands, the row appears and the
+/// equality assertion below activates with no edit to this file — the test
+/// becomes the drift guard its name promises. The mode is printed in the
+/// failure message either way, so a green run is never ambiguous about which
+/// half ran.
+///
+/// This is the only conditional assertion in the 702-704 suite. It is here
+/// rather than in CA05's own tests because the duplicated literal is *this*
+/// packet's, so the drift is this packet's to catch.
+#[tokio::test]
+async fn chain_1291_destination_matches_the_seeded_spawn_row() {
+    let pool = require_db_or_skip!();
+
+    let actions = resolve_chain(
+        &pool,
+        1291,
+        TriggerType::RegionEnter,
+        &comms_arrival_params(),
+    )
+    .await;
+    let dest = actions
+        .iter()
+        .find_map(|a| match a {
+            Action::MoveWaypoint {
+                entity_tag,
+                destination,
+                ..
+            } if entity_tag == "Castle_Zuritska_Cell" => Some(*destination),
+            _ => None,
+        })
+        .expect(
+            "chain 1291 must carry a move_waypoint for Castle_Zuritska_Cell --              without it the escort ends with her standing in the Comms Room",
+        );
+    assert_eq!(
+        dest, ZURITSKA_CELL_SPAWN,
+        "chain 1291's destination drifted from the coordinate CA05 documented",
+    );
+
+    let rows: Vec<(f32, f32, f32)> = sqlx::query_as(
+        "SELECT x, y, z FROM resources.spawnlist          WHERE tag = $1 AND world_id = 8",
+    )
+    .bind("Castle_Zuritska_Cell")
+    .fetch_all(&pool)
+    .await
+    .expect("spawnlist query must succeed");
+
+    assert!(
+        rows.len() <= 1,
+        "exactly one spawn row may claim Castle_Zuritska_Cell; {} do, so \
+         `move_waypoint`'s tag lookup is nondeterministic",
+        rows.len(),
+    );
+
+    // Absent row = pre-#667 mode; the assertions above already ran and this
+    // half activates the moment CA05's spawnlist lands.
+    if let Some(&(x, y, z)) = rows.first() {
+        assert_eq!(
+            [x, y, z],
+            ZURITSKA_CELL_SPAWN,
+            "DRIFT: CA05's spawn row for Castle_Zuritska_Cell is {:?} but \
+             chain 1291 walks her to {ZURITSKA_CELL_SPAWN:?}. Update the \
+             `move_waypoint` row in castle_702_704_chains.sql and this \
+             constant together.",
+            [x, y, z],
         );
     }
 }

@@ -518,22 +518,35 @@ VALUES
   -- clears `follow_target_id`, drops the NPC to Idle and clears `nav_path`
   -- (executor/world/mod.rs:186-192).
   --
-  -- KNOWN GAP, deliberate: this stops the follow but does NOT walk the cell
-  -- actor back to her spawn. The packet asked for a `move_waypoint` home,
-  -- which needs the spawnlist coordinate that packet CA05 authors and that
-  -- does not exist in this branch; authoring a placeholder coordinate would
-  -- drop her through the floor (`parse_destination` defaults to 0,0,0).
-  -- `set_npc_ai_state Idle` was considered and rejected: it is what the
-  -- clear already does, so it would add nothing. Once CA05 publishes the
-  -- `Castle_Zuritska_Cell` spawn position, add
-  -- `move_waypoint Castle_Zuritska_Cell {"destination": "x,y,z"}` as a
-  -- fourth action here. Until then she stands where the escort ended.
+  -- The clear must precede the walk home: `set_follow_target` drops the NPC
+  -- to Idle and clears `nav_path`, so running it after `move_waypoint` would
+  -- throw the freshly-issued path away. Action order inside a chain is the
+  -- `sort_order` below, and the executor runs them in that order.
   (1291, 'set_follow_target', NULL, 'Castle_Zuritska_Cell', '{}', 0, 1),
+  -- Walk the cell actor home, closing the gap the first draft of this chain
+  -- left open. The coordinate is spawn_id 238 `Castle_Zuritska_Cell`,
+  -- template 168, world 8 — ORIGINAL_DATA relative to this packet, authored
+  -- by CA05 (docs/analysis/castle-rebuild/worknotes/ca05.md, "Spawnlist
+  -- rows"), which is also where the `Castle.InterrogationBlock` box that
+  -- contains it is defined. Writing it as a literal rather than reading the
+  -- spawn row is forced: `MoveWaypoint` takes a parsed `[f32; 3]` and the
+  -- content engine has no "walk to your spawn" verb.
+  --
+  -- If CA05's spawn position ever moves, this row must move with it; the
+  -- live-DB guard `chain_1291_walks_zuritska_back_to_her_seeded_spawn` pins
+  -- the two together so the drift fails a test instead of stranding her
+  -- inside a wall.
+  --
+  -- No `speed` param: the default 1.0 multiplier keeps her at the template's
+  -- own `move_speed` (0.9, set by CA05 so the follow can keep pace), which
+  -- is the speed the player just watched her walk at.
+  (1291, 'move_waypoint', NULL, 'Castle_Zuritska_Cell',
+   '{"destination": "268.0,66.79,1042.59"}', 0, 2),
   -- RECONSTRUCTION (D-CA09, provisional): INT_MinigameLivewire (256) is the
   -- hackable-console cursor. Matched clear is in chain 1293; restore is 1297,
   -- re-entry repair is 1300.
   (1291, 'set_interaction_type', NULL, 'Castle_CommsTerminal',
-   '{"op": "|", "mask": "INT_MinigameLivewire"}', 0, 2),
+   '{"op": "|", "mask": "INT_MinigameLivewire"}', 0, 3),
   -- The workstation Zuritska becomes clickable HERE rather than at the
   -- Livewire victory, because dialog 4866 ("While I do this you use terminal
   -- there") is delivered by chain 1299 on a click rather than on arrival —
@@ -541,7 +554,7 @@ VALUES
   -- this file, and chain 1299's own comment. Matched clear is in chain 1295;
   -- restores are 1297/1298, repairs are 1300/1301.
   (1291, 'set_interaction_type', NULL, 'Castle_Zuritska_Comms',
-   '{"op": "|", "mask": "INT_AStoryMissionActive"}', 0, 3),
+   '{"op": "|", "mask": "INT_AStoryMissionActive"}', 0, 4),
   -- Matched clear for the `!` chain 1261 set on the CELL actor. It is
   -- cleared HERE rather than at the rescue (chain 1263) so the actor stays
   -- clickable for the whole of step 2405 and chain 1302 can restart a broken
@@ -549,7 +562,7 @@ VALUES
   -- also what ends the affordance. Restore is 1296; there is no region
   -- re-entry repair for this one (see the note on 1302).
   (1291, 'set_interaction_type', NULL, 'Castle_Zuritska_Cell',
-   '{"op": "~", "mask": "INT_AStoryMissionActive"}', 0, 4);
+   '{"op": "~", "mask": "INT_AStoryMissionActive"}', 0, 5);
 
 -- Chain 1302: click Zuritska during the escort → she follows again.
 --
