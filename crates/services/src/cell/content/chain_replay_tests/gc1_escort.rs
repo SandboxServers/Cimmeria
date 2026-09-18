@@ -195,7 +195,11 @@ async fn chain_1171_does_not_fire_once_step_2344_advanced_past() {
 
 /// Chain 1172 positive: mission 686 completing (the Straegis scene)
 /// resolves exactly one `DisplayDialog(5859)`, the v3-surfaced post-death
-/// "find a way out without Marsh" beat.
+/// "find a way out without Marsh" beat, at `delay_ms = 10600` -- after
+/// C08b's own chain 1161 plays the StraegisAttack Matinee (delay_ms 0)
+/// and shows dialog 2516 (delay_ms 10100) on the same trigger. Pinning
+/// the exact delay (found in review, 2026-09-18) guards against 5859
+/// popping up while the Matinee is still playing.
 #[tokio::test]
 async fn chain_1172_mission_686_complete_shows_post_death_dialog_5859() {
     let pool = require_db_or_skip!();
@@ -216,17 +220,24 @@ async fn chain_1172_mission_686_complete_shows_post_death_dialog_5859() {
         params: ctx.params.clone(),
     };
     let resolved = engine.resolve_event(&event, &ctx);
-    let shows = resolved
+    let shows: Vec<i32> = resolved
         .actions
         .iter()
-        .filter(|(id, action)| {
-            *id == 1172 && matches!(action, Action::DisplayDialog { dialog_id: 5859 })
+        .zip(resolved.action_delays.iter())
+        .filter_map(|((id, action), delay)| {
+            if *id == 1172 && matches!(action, Action::DisplayDialog { dialog_id: 5859 }) {
+                Some(*delay)
+            } else {
+                None
+            }
         })
-        .count();
+        .collect();
     assert_eq!(
-        shows, 1,
-        "chain 1172 must resolve exactly one DisplayDialog(5859) on mission \
-         686 completion; got {shows}. Resolved: {:?}",
+        shows,
+        vec![10600],
+        "chain 1172 must resolve exactly one DisplayDialog(5859) at \
+         delay_ms=10600 on mission 686 completion (after C08b's Matinee + \
+         dialog 2516); got {shows:?}. Resolved: {:?}",
         resolved.actions,
     );
 }

@@ -2431,13 +2431,15 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1171, 'display_dialog', 2309, NULL, '{}', 0, 0);
 
 -- Chain 1172 (GC1a): mission 686 completes (the Straegis scene) → display
--- the v3-surfaced post-death blurb 5859. Fires at delay_ms 0 so this
--- packet is correct standing alone; C08b (not yet landed as of this
--- packet) is planned to add `display_dialog 2516` at `delay_ms 10100` on
--- the SAME `mission_completed 686` trigger (work-packets.md#c08b) -- once
--- that lands, bump this chain's delay_ms (~10600+) so 5859 reads after
--- 2516 instead of racing it. Self-contained either way: with or without
--- C08b, 5859 fires exactly once, immediately, on 686 completion.
+-- the v3-surfaced post-death blurb 5859, after C08b's own aftermath beat
+-- finishes. C08b (chains 1161/1162, PR #650) landed before this packet
+-- and shares this same `mission_completed 686` trigger: chain 1161 plays
+-- the StraegisAttack Matinee (sequence 1751, ~10.0096s) and shows dialog
+-- 2516 at `delay_ms 10100`. Both chains default to `priority 0`, and the
+-- loader orders same-trigger chains by `chain_id`, so without a delay
+-- here 5859 would pop up at essentially the same instant chain 1161's
+-- Matinee starts (found in review, 2026-09-18). `delay_ms` 10600 reads
+-- 5859 after 2516 (10100 + a ~500ms read gap) instead of racing it.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1172, 'GC1a - Straegis scene: post-death "find a way out without Marsh" blurb', 'mission', 686, true, 0);
 
@@ -2445,7 +2447,7 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (1172, 'mission_completed', '686', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1172, 'display_dialog', 5859, NULL, '{}', 0, 0);
+VALUES (1172, 'display_dialog', 5859, NULL, '{}', 10600, 0);
 
 -- Chain 1173 (GC1b-1): teleport-in to region 3 (same event chain 1072
 -- binds) → snap Marsh from his Preparation-room position onto the topside
@@ -2494,17 +2496,17 @@ VALUES (1174, 'set_follow_target', NULL, 'Preparation_ColMarsh', '{"use_player":
 
 -- Chain 1175 (GC1b-2): mission 686 completes (the Straegis scene) → clear
 -- Marsh's follow target. Gated directly on `mission_completed 686` rather
--- than coordinated through C08b's own chain, per the packet instruction:
--- C08b (chains touching sequence 1751 / dialog 2516 / `destroy_entity
--- Preparation_ColMarsh`) has not landed in this seed as of this packet, so
--- this chain is self-contained regardless of C08b's landing order. Once
--- C08b lands its own `destroy_entity` on the same trigger, clearing the
--- follow target first is redundant but harmless (an entity with no
--- follow_target_id set is simply removed one action later); no
--- coordination edit is required in either direction. No `target_tag` and
--- no `use_player` in the params resolves to `resolved_target = None` in
--- `SetFollowTarget`, which drops the NPC to Idle and clears its follow
--- state (see executor/world/mod.rs `set_follow_target`).
+-- than coordinated through C08b's own chain 1161 (PR #650, already landed
+-- in this seed): both default to `priority 0` and the loader orders
+-- same-trigger chains by `chain_id`, so 1161's `destroy_entity` on
+-- `Preparation_ColMarsh` actually runs BEFORE this chain's clear, not
+-- after (corrected 2026-09-18 -- the opposite of what this comment used
+-- to claim). This chain's `set_follow_target` clear then runs against an
+-- already-destroyed entity and is a harmless no-op; no coordination edit
+-- is required either way. No `target_tag` and no `use_player` in the
+-- params resolves to `resolved_target = None` in `SetFollowTarget`, which
+-- would drop the NPC to Idle and clear its follow state if it still
+-- existed (see executor/world/mod.rs `set_follow_target`).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1175, 'GC1b-2 - Straegis scene: clear Marsh''s follow target', 'mission', 686, true, 0);
 
