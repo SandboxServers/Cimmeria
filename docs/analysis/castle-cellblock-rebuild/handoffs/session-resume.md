@@ -28,9 +28,9 @@ scopes, keep at most 2-3 subagents, commit WIP early. Do not fan out.
 | C08b (Straegis scene) | `pkg/c08b-straegis-scene` | #650 | **Merged** |
 | C08b doc sync | `docs/mark-c08b-done` | #654 | **Merged** |
 | main fmt fix | (peer `cimmeria-e5`) | #658 | **Merged** |
-| GC1 (Marsh escort) | `pkg/gc1-marsh-escort` | #655 | **Open, review fixes pushed (`ad4e0748`), CI re-running.** `mergeable=MERGEABLE`; `origin/main` was 4 commits ahead at last check (no conflict). |
+| GC1 (Marsh escort) | `pkg/gc1-marsh-escort` | #655 | **Merged** (2026-09-18T16:32Z, squash `627be660`); all CI green including the review-fix commit `ad4e0748`. |
 
-### GC1 / PR #655 detail
+### GC1 / PR #655 detail (merged)
 
 The independent review round found two real issues, both fixed in
 `ad4e0748` and summarised in a PR comment:
@@ -60,10 +60,9 @@ change was needed.
 
 ## Ledger status (`docs/analysis/castle-cellblock-rebuild/work-packets.md`)
 
-Done (merged): C00, C01, C02, C03, C04, C05, C07, C08a, C08b, GC1b-0.
-GC1 (a/b1/b2) is implemented in PR #655 and not yet marked Done in the
-ledger (mark it Done + PR #655 once merged, in its own small docs
-commit/PR like #654).
+Done (merged): C00, C01, C02, C03, C04, C05, C07, C08a, C08b, GC1a,
+GC1b-0, GC1b-1, GC1b-2 (GC1a/b-1/b-2 = PR #655, marked Done in the
+ledger by docs PR #666; in-client UAT still pending for all of them).
 
 Not yet started / still open:
 
@@ -84,17 +83,17 @@ and 639). Follow-up, not fixed inline.
 
 ## Immediate next actions, in order
 
-1. `gh pr checks 655` — wait for CI on `ad4e0748`. If a check fails,
-   diagnose that check (don't assume flake). If `origin/main` moved and
-   the PR turns `CONFLICTING`, merge main into the branch (CI does not run
-   on a conflicting PR).
-2. When green: merge #655.
-3. Mark GC1 Done in `work-packets.md` (with PR #655) as a small docs
-   commit/PR, branching off fresh `origin/main` in the coordinator
-   worktree.
-4. Only then, if usage allows: dispatch C06 on `pkg/c06-<name>` through
-   the same pipeline. Otherwise stop here.
-5. Commit this handoff (it is untracked as of writing) if not yet done.
+1. Merge docs PR #666 (this handoff + the GC1-Done ledger update) once
+   its checks are green (`gh pr checks 666`; if `CONFLICTING`, merge
+   `origin/main` into `docs/cellblock-handoff-refresh` first).
+2. Only if usage allows: dispatch C06 (flank objectives 2725/2731, chain
+   ids 1141-1150) on `pkg/c06-<name>` off fresh `origin/main` through the
+   same pipeline (fmt/clippy/live-DB, PR, `code-review high --comment`,
+   fix, merge). Otherwise stop here.
+3. Peer `cimmeria-f0` (Harset coordinator) owns the cross-zone operator
+   guide (`docs/analysis/zone-restoration-operator-guide.md` on branch
+   `content/harset-wave2`). It was told #655 would be reported when it
+   merged; send it a one-line "#655 merged" if that hasn't happened.
 
 ## What is gated on the owner in-client (nothing has been run)
 
