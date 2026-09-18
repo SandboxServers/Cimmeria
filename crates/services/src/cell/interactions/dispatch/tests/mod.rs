@@ -1,6 +1,13 @@
 //! Tests for the interaction dispatch entry points (`handle_interact` and
 //! `handle_initial_response`). They drive the public functions end-to-end
 //! against a real `SpaceManager`, so they exercise both submodules.
+//!
+//! - this file — routing, range, per-player vs static dispatch, the
+//!   deprecated trainer arm, and the `onDialogDisplay` entity-id binding.
+//! - [`interaction_only_bind`] — the click paths' handling of a bind whose
+//!   `dialog_set_maps` row has a NULL dialog (CA02 / defect B3).
+
+mod interaction_only_bind;
 
 use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::cell_entity::NpcInteractionType;
@@ -241,7 +248,7 @@ async fn initial_response_uses_last_interaction_target_for_wire_entity_id() {
         p.player_id = Some(42);
         p.last_interaction_target = Some(NPC_ID);
         p.available_interactions
-            .insert(TEMPLATE_ID, vec![(DIALOG_SET_MAP_ID, DIALOG_ID, 0)]);
+            .insert(TEMPLATE_ID, vec![(DIALOG_SET_MAP_ID, Some(DIALOG_ID), 0)]);
     }
 
     let (tx, mut rx) = mpsc::channel(16);
@@ -289,7 +296,7 @@ async fn initial_response_aborts_when_last_interaction_target_missing() {
         p.player_id = Some(42);
         // last_interaction_target intentionally left as None.
         p.available_interactions
-            .insert(TEMPLATE_ID, vec![(DIALOG_SET_MAP_ID, DIALOG_ID, 0)]);
+            .insert(TEMPLATE_ID, vec![(DIALOG_SET_MAP_ID, Some(DIALOG_ID), 0)]);
     }
 
     let (tx, mut rx) = mpsc::channel(16);
@@ -399,7 +406,7 @@ async fn initial_response_skips_when_player_id_missing() {
             "default CellEntity must have no player_id for this test"
         );
         p.available_interactions
-            .insert(TEMPLATE_ID, vec![(DIALOG_SET_MAP_ID, DIALOG_ID, 0)]);
+            .insert(TEMPLATE_ID, vec![(DIALOG_SET_MAP_ID, Some(DIALOG_ID), 0)]);
     }
 
     let (tx, mut rx) = mpsc::channel(16);

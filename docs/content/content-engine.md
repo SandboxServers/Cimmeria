@@ -238,8 +238,21 @@ three, so it is private to `cell::content` and takes no client-supplied id;
 see [../architecture/abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md)
 for the full rationale and the constraints that must not be widened.
 
-Two caveats for authors:
+Three caveats for authors:
 
+- **`add_dialog_set` / `add_dialog` can bind a row that has no dialog.** A
+  `dialog_set_maps` row with `dialog_id IS NULL` is an *interaction-only* bind:
+  it contributes its `interaction_flags` bit to the per-player indicator over
+  the NPC's head (`!`, `?`, quest glow — see
+  [interaction-flags.md](interaction-flags.md)) and nothing else. Clicking the
+  NPC then displays no dialog; pair the bind with an `interact_tag` chain if
+  the click should say something. This works because a bind's only
+  client-visible effect is `SGWSpawnableEntity.InteractionType(UINT64 TypeId)`
+  ([dispatch table](../protocol/client-method-dispatch-table.md), method 3) — a
+  lone flags bitfield with no dialog field, so the dialog id never leaves the
+  server. The seed has **626** such rows across every zone; Castle content binds
+  seven of them (3062, 3071, 3073, 5828, 5829, 5846, 5863). Before CA02 the
+  loader dropped all 626 and every one of those binds was a silent cache miss.
 - **`apply_effect` cannot fire today.** Its only seeded row is on an
   `effect`-scoped chain, and no `effect_*` trigger is dispatched anywhere in
   the cell service. The arm is correct and will work as soon as that

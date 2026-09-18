@@ -128,6 +128,14 @@ pub(super) async fn display(
 /// `Action::AddDialogSet` — register a dialog set on the player's
 /// `available_interactions` for the given template slot, and push an
 /// InteractionType update for any matching NPC already in AoI.
+///
+/// The bound row may be **interaction-only** (`dialog_id IS NULL`): it then
+/// contributes its indicator bit to the pushed flags and nothing else, which is
+/// exactly what `Castle.py`'s `addDialog(149, 3062)` does — raise the `!` over
+/// Sgt. Gerschon while the dialog itself comes from an `interact_tag` chain.
+/// The push is `SGWSpawnableEntity.InteractionType(UINT64 TypeId)`
+/// (`entities/defs/SGWSpawnableEntity.def:114-116`), a lone flags bitfield, so
+/// there is no dialog field to fill and no "absent dialog" sentinel to invent.
 #[tracing::instrument(
     name = "dialog.add_set",
     level = "info",
@@ -155,7 +163,8 @@ pub(super) async fn add_dialog_set(
             entity_id,
             dialog_set_id,
             slot,
-            dialog_id = entry.dialog_id,
+            dialog_id = ?entry.dialog_id,
+            interaction_only = entry.dialog_id.is_none(),
             interaction_flags = entry.interaction_flags,
             "add_dialog_set: resolved dialog_set_map entry"
         );
@@ -181,7 +190,7 @@ pub(super) async fn add_dialog_set(
         send_interaction_update_if_visible(
             entity_id,
             slot,
-            &entry,
+            entry.dialog_id,
             tx,
             space_mgr,
             "add_dialog_set",
@@ -323,7 +332,8 @@ pub(super) async fn add_dialog(
             entity_id,
             dialog_set_id,
             slot,
-            dialog_id = entry.dialog_id,
+            dialog_id = ?entry.dialog_id,
+            interaction_only = entry.dialog_id.is_none(),
             interaction_flags = entry.interaction_flags,
             "add_dialog: resolved dialog_set_map entry"
         );
@@ -336,8 +346,15 @@ pub(super) async fn add_dialog(
                 .push((dialog_set_id, entry.dialog_id, entry.interaction_flags));
         }
 
-        send_interaction_update_if_visible(entity_id, slot, &entry, tx, space_mgr, "add_dialog")
-            .await;
+        send_interaction_update_if_visible(
+            entity_id,
+            slot,
+            entry.dialog_id,
+            tx,
+            space_mgr,
+            "add_dialog",
+        )
+        .await;
     } else {
         tracing::warn!(dialog_set_id, "dialog_set_maps cache miss for add_dialog");
     }
@@ -349,14 +366,34 @@ pub(super) async fn add_dialog(
 /// Shared by `AddDialogSet` and `AddDialog` — both register a new dialog
 /// entry and need to push the resulting flags to any sibling entity that
 /// shares the template and is already witnessed by the player.
+///
+/// Both callers insert into `available_interactions[slot]` *before* calling
+/// this, and the pushed value is the fold of that whole list over the NPC's
+/// base flags — not just the entry that was added. Folding only the new entry
+/// would clear every previously bound indicator on the same template until the
+/// next AoI entry re-sent the full set, because `InteractionType` replaces the
+/// client's bitfield rather than OR-ing into it. Two binds on one template is a
+/// designed shape since CA02 (an interaction-only indicator alongside a topic
+/// that carries a dialog), so this has to match the two places that already
+/// fold: `remove_dialog_set` and the AoI re-send in
+/// `space_manager/aoi.rs::compute_player_aoi`.
+///
+/// `dialog_id` is passed for the log line only; it never reaches the wire.
 async fn send_interaction_update_if_visible(
     entity_id: u32,
     slot: i32,
-    entry: &crate::cell::spawner::DialogSetMapEntry,
+    dialog_id: Option<i32>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
     label: &str,
 ) {
+    let player_flags = space_mgr
+        .get_entity(entity_id)
+        .and_then(|p| p.available_interactions.get(&slot))
+        .map_or(0i64, |entries| {
+            entries.iter().fold(0i64, |acc, &(_, _, f)| acc | f)
+        });
+
     // Update every entity sharing this template instead of an arbitrary
     // first match -- spaces with multiple template-equal NPCs would otherwise
     // get a single nondeterministic update.
@@ -371,13 +408,14 @@ async fn send_interaction_update_if_visible(
                 .get_entity(target_id)
                 .map(|e| e.interaction_type_flags)
                 .unwrap_or(0);
-            let merged = base_flags | entry.interaction_flags;
+            let merged = base_flags | player_flags;
 
             tracing::debug!(
                 entity_id,
                 target_id,
-                dialog_id = entry.dialog_id,
+                dialog_id = ?dialog_id,
                 base_flags,
+                player_flags,
                 merged,
                 "Sending per-player InteractionType for {}",
                 label
@@ -400,7 +438,7 @@ async fn send_interaction_update_if_visible(
                 tracing::warn!(
                     entity_id,
                     target_id,
-                    dialog_id = entry.dialog_id,
+                    dialog_id = ?dialog_id,
                     slot,
                     phase = label,
                     "interaction-type send failed -- NPC prompt stale: {e}"
@@ -417,223 +455,4 @@ async fn send_interaction_update_if_visible(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_support::{make_space_manager, LogCapture};
-    use std::collections::HashMap;
-    use tracing::Level;
-
-    fn empty_params() -> HashMap<String, serde_json::Value> {
-        HashMap::new()
-    }
-
-    /// Chain `params["target_entity_id"]` is the most direct source — it's
-    /// stamped by `fire_interact_*` for chains fired off an interact. The
-    /// wire `EntityId` of `onDialogDisplay` must match that, not the
-    /// player's id.
-    #[tokio::test]
-    async fn display_uses_target_entity_id_from_chain_params() {
-        let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-
-        const NPC_ID: u32 = 0xABCD;
-        let mut params = empty_params();
-        params.insert("target_entity_id".into(), serde_json::json!(NPC_ID as u64));
-
-        let (tx, mut rx) = mpsc::channel(4);
-        display(
-            /* dialog_id */ 4001, /* entity_id */ 1, /* chain_id */ 99, &params,
-            &tx, &mut mgr,
-        )
-        .await;
-
-        let msg = rx.try_recv().expect("must emit onDialogDisplay");
-        match msg {
-            CellToBaseMsg::EntityMethodCall { args, .. } => {
-                let wire_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                assert_eq!(
-                    wire_entity_id as u32, NPC_ID,
-                    "params.target_entity_id must win over any fallback; got {wire_entity_id}, expected {NPC_ID}"
-                );
-            }
-            other => panic!("expected EntityMethodCall, got {other:?}"),
-        }
-    }
-
-    /// When the chain didn't stamp `target_entity_id` (e.g. an
-    /// `OnDialogChoice`-triggered follow-up dialog), fall back to the
-    /// player's `last_interaction_target` pin.
-    #[tokio::test]
-    async fn display_falls_back_to_last_interaction_target() {
-        let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-        const NPC_ID: u32 = 0xBEEF;
-        if let Some(p) = mgr.get_entity_mut(1) {
-            p.last_interaction_target = Some(NPC_ID);
-        }
-
-        let params = empty_params();
-        let (tx, mut rx) = mpsc::channel(4);
-        display(2299, 1, 1021, &params, &tx, &mut mgr).await;
-
-        let msg = rx.try_recv().expect("must emit onDialogDisplay");
-        match msg {
-            CellToBaseMsg::EntityMethodCall { args, .. } => {
-                let wire_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                assert_eq!(wire_entity_id as u32, NPC_ID);
-            }
-            other => panic!("expected EntityMethodCall, got {other:?}"),
-        }
-    }
-
-    /// With neither `target_entity_id` in params nor a
-    /// `last_interaction_target` pin, the handler must abort with a warn
-    /// rather than emit a wire frame that binds the player as the
-    /// speaker. The warn level is load-bearing — operators rely on it
-    /// to correlate "dialog never opened" with a chain that wasn't
-    /// fired off an interact path.
-    #[tokio::test]
-    async fn display_aborts_with_warn_when_no_npc_id_available() {
-        let capture = LogCapture::install();
-        let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-        // last_interaction_target intentionally None.
-
-        let params = empty_params();
-        let (tx, mut rx) = mpsc::channel(4);
-        display(4001, 1, 9999, &params, &tx, &mut mgr).await;
-
-        assert!(
-            rx.try_recv().is_err(),
-            "must not emit onDialogDisplay when no NPC id can be resolved"
-        );
-        assert!(
-            capture
-                .find_message(Level::WARN, "DisplayDialog: no NPC entity id")
-                .is_some(),
-            "abort must surface a WARN — silent return masks the chain-author bug"
-        );
-    }
-
-    /// When no NPC resolves and the dialog is in the monologue cache,
-    /// the wire EntityId must be the player's own id (not bail). The
-    /// per-screen `speaker_id = 0` lookup on the client falls back to
-    /// the player's name, rendering as inner thought.
-    #[tokio::test]
-    async fn display_binds_player_when_no_npc_and_dialog_is_monologue() {
-        let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-        // Cache dialog 2982 as a known monologue.
-        mgr.monologue_dialog_ids.insert(2982);
-
-        let params = empty_params();
-        let (tx, mut rx) = mpsc::channel(4);
-        display(2982, 1, 1001, &params, &tx, &mut mgr).await;
-
-        let msg = rx.try_recv().expect(
-            "monologue dialog must emit onDialogDisplay even with no NPC \
-             resolved — reverting the monologue branch in display() fails here",
-        );
-        match msg {
-            CellToBaseMsg::EntityMethodCall { args, .. } => {
-                let wire_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                assert_eq!(
-                    wire_entity_id, 1,
-                    "monologue must bind the player's own entity id as the wire EntityId"
-                );
-            }
-            other => panic!("expected EntityMethodCall, got {other:?}"),
-        }
-    }
-
-    /// **Precedence guard.** A monologue dialog must bind the player even
-    /// when an NPC *is* resolvable — both from the sticky
-    /// `last_interaction_target` pin and from an explicit
-    /// `target_entity_id` chain param.
-    ///
-    /// `last_interaction_target` is never cleared, so once the player has
-    /// clicked any NPC there is permanently an NPC in scope. If the
-    /// monologue check were a fallback rather than the first branch, every
-    /// monologue fired after an interact — a minigame victory chain, a
-    /// follow-up `dialog_choice` — would portray that NPC speaking lines
-    /// the author wrote as the player's inner thoughts. Castle mission
-    /// 701's dialog 2575 ("You manage to free Capt. Copplemann...") is
-    /// exactly this shape, and `Castle.py` passes an explicit
-    /// `displayDialog(None, 2575)`.
-    #[tokio::test]
-    async fn monologue_binds_player_even_when_an_npc_is_resolvable() {
-        const NPC_ID: u32 = 0xC0FFEE;
-        const MONOLOGUE: i32 = 2575;
-
-        // Case 1: NPC available via the sticky pin.
-        let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-        mgr.monologue_dialog_ids.insert(MONOLOGUE);
-        if let Some(p) = mgr.get_entity_mut(1) {
-            p.last_interaction_target = Some(NPC_ID);
-        }
-
-        let (tx, mut rx) = mpsc::channel(4);
-        display(MONOLOGUE, 1, 1234, &empty_params(), &tx, &mut mgr).await;
-
-        match rx.try_recv().expect("monologue must still display") {
-            CellToBaseMsg::EntityMethodCall { args, .. } => {
-                let wire = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                assert_eq!(
-                    wire, 1,
-                    "a monologue must bind the PLAYER, not the pinned NPC \
-                     ({NPC_ID}) — reverting the monologue-first ordering \
-                     fails here",
-                );
-            }
-            other => panic!("expected EntityMethodCall, got {other:?}"),
-        }
-
-        // Case 2: NPC available via an explicit chain param, which is an
-        // even stronger source than the pin.
-        let mut params = empty_params();
-        params.insert("target_entity_id".into(), serde_json::json!(NPC_ID as u64));
-        display(MONOLOGUE, 1, 1234, &params, &tx, &mut mgr).await;
-
-        match rx.try_recv().expect("monologue must still display") {
-            CellToBaseMsg::EntityMethodCall { args, .. } => {
-                let wire = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                assert_eq!(
-                    wire, 1,
-                    "a monologue must outrank an explicit target_entity_id too",
-                );
-            }
-            other => panic!("expected EntityMethodCall, got {other:?}"),
-        }
-    }
-
-    /// Companion guard: a dialog NOT in the monologue cache still
-    /// bails when no NPC resolves. Pins that the fallback is gated on
-    /// the cache, not an "accept anything" hole — an NPC dialog whose
-    /// chain context was lost must still warn, because binding the
-    /// player there would blank the NPC portrait and substitute the
-    /// player's name for every screen.
-    #[tokio::test]
-    async fn display_still_aborts_for_npc_dialog_not_in_monologue_cache() {
-        let capture = LogCapture::install();
-        let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
-        // monologue_dialog_ids intentionally empty for dialog 4001 (NPC
-        // dialog — Future Col Marsh).
-
-        let params = empty_params();
-        let (tx, mut rx) = mpsc::channel(4);
-        display(4001, 1, 9999, &params, &tx, &mut mgr).await;
-
-        assert!(
-            rx.try_recv().is_err(),
-            "non-monologue dialog with no NPC must still bail"
-        );
-        assert!(
-            capture
-                .find_message(Level::WARN, "DisplayDialog: no NPC entity id")
-                .is_some(),
-            "non-monologue bail must still surface the WARN"
-        );
-    }
-}
+mod tests;
