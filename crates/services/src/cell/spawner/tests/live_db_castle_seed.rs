@@ -420,33 +420,43 @@ mod live_db {
     }
 
     /// **CA05 regression guard** (worknotes/ca05.md "Zone-wide hostile respawn
-    /// timers"): every hostile (faction 10) World 8 spawn row has a non-NULL resolved
+    /// timers"): every faction-10 World 8 spawn row has a non-NULL resolved
     /// `respawn_secs`.
     ///
-    /// No shipped Castle row set one, on either `spawnlist` or `entity_templates`, so
+    /// Named for what it filters on, not for what that currently means. Faction 10 is
+    /// the only hostile faction present in World 8 today — the 28 faction-10 rows are
+    /// templates 145 (Prisoner Retrieval Unit), 146/148 (NID Guards) and CA05's 169/170/171,
+    /// while every other World 8 row is faction 1 (10 rows, including the Praxis Jaffa
+    /// guards at Checkpoint Alpha), faction 3 (Col. Marsh) or NULL (the DHD, Access Panel
+    /// and comms terminal). But "hostile" is a claim about the faction table that this test
+    /// does not check, so if a future Castle hostile arrives on another faction it will pass
+    /// silently; that is a coverage limit, not a bug, and the name should not hide it.
+    ///
+    /// No shipped Castle row set a timer, on either `spawnlist` or `entity_templates`, so
     /// the first player to kill any Castle mob removed it from the shared world
     /// permanently — including Romney and the Officers, whose deaths gate missions 703
     /// and 708. Covers the pre-existing rows as well as CA05's own, because the fix
-    /// was zone-wide.
+    /// was zone-wide. No count assertion beyond "non-empty": pinning 28 would fail on
+    /// every future Castle spawn row for no benefit.
     #[tokio::test]
-    async fn castle_hostile_world8_spawns_all_have_a_respawn_timer() {
+    async fn castle_faction_10_world8_spawns_all_have_a_respawn_timer() {
         let pool = require_db_or_skip!();
         let records = load_spawns_from_db(&pool)
             .await
             .expect("load_spawns_from_db must succeed");
 
-        let hostile_castle_spawns: Vec<&SpawnRecord> = records
+        let faction_10_castle_spawns: Vec<&SpawnRecord> = records
             .iter()
             .filter(|r| r.world_name == "Castle" && r.faction == Some(10))
             .collect();
         assert!(
-            !hostile_castle_spawns.is_empty(),
+            !faction_10_castle_spawns.is_empty(),
             "expected at least one hostile (faction 10) World 8 spawn row \
              (NID Guard / Prisoner Retrieval Unit templates 145/146/148, plus \
              Castle_Romney/Castle_Muelbach/Castle_BravoOfficer*) — none found, \
              the probe query itself may be broken"
         );
-        for r in &hostile_castle_spawns {
+        for r in &faction_10_castle_spawns {
             assert!(
                 r.respawn_secs.is_some(),
                 "hostile World 8 spawn {} (tag={:?}, template_id={}) has no \
