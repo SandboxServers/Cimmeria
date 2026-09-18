@@ -139,7 +139,16 @@ impl SpaceManager {
         // The real client-disconnect path takes
         // `ring_transport::forget_player` from `disconnect_entity` below
         // instead, which is async and releases everyone immediately.
-        self.ring_transporters.note_player_gone(entity_id);
+        //
+        // Gated on the entity actually being a player (it is still resident
+        // at this point, so the lookup works). `destroy_entity` is the
+        // teardown for every NPC too — mission despawns, GM `.despawn`, the
+        // respawn sweep — and only a *player* can be on a ring pad, so
+        // queueing all of them just made the ring tick walk a list that was
+        // mostly NPC ids it would never match (PR #662 review, finding 2).
+        if self.get_entity(entity_id).is_some_and(|e| e.is_player) {
+            self.ring_transporters.note_player_gone(entity_id);
+        }
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 
