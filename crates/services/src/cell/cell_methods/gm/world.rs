@@ -218,7 +218,9 @@ pub(super) async fn handle_despawn(
     // `content::executor::world::destroy_tagged_entity`, issue #582).
     let feedback = match space_mgr.despawn_npc(target_eid, tx).await {
         DespawnOutcome::Despawned { witnesses_notified } => {
-            format!("gmDespawn: despawned npc {target_eid} ({witnesses_notified} witnesses notified)")
+            format!(
+                "gmDespawn: despawned npc {target_eid} ({witnesses_notified} witnesses notified)"
+            )
         }
         // Both refused/not-found are effectively unreachable here (the
         // player-refusal and existence checks above already ran), but
