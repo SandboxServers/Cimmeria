@@ -155,6 +155,15 @@ pub enum Trigger {
     /// react to "you outflanked the guard" (the AI itself already
     /// repositions; this is just an authoring hook).
     OnNpcFlanked { npc_template: Option<String> },
+
+    /// Player-perspective twin of [`Trigger::OnNpcFlanked`]: fires from the
+    /// same AI decision, but the chain's actions execute against the
+    /// **flanking player** (with that player's mission context), not the
+    /// NPC. `OnNpcFlanked` runs its actions on the NPC with player id 0, so
+    /// it cannot advance a mission objective; this variant exists for
+    /// "you outflanked the guard" objectives (Castle Cellblock C06,
+    /// objectives 2725/2731). Only fires when the top-threat is a player.
+    OnPlayerFlankedNpc { npc_template: Option<String> },
 }
 
 /// Runtime event payload passed to the chain engine when a game event occurs.
@@ -209,4 +218,5 @@ pub enum TriggerType {
     PlayerLeftCover,
     PlayerInCoverDuration,
     NpcFlanked,
+    PlayerFlankedNpc,
 }

@@ -325,6 +325,18 @@ pub(super) async fn npc_ai_fight(
                     space_mgr,
                 )
                 .await;
+                // Player-perspective twin: mission-scoped chains (flank
+                // objectives, C06) need the flanking player as the action
+                // target. No-ops when the threat isn't a player.
+                crate::cell::content::fire_player_flanked_npc(
+                    npc_id,
+                    target_id,
+                    &npc_template,
+                    engine,
+                    tx,
+                    space_mgr,
+                )
+                .await;
             }
             CoverDecision::NoCover => {}
         }
