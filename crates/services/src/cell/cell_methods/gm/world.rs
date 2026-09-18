@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 use super::feedback::send_gm_feedback;
 use super::{read_i32, read_i64};
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
 use crate::mercury::method_idx::ON_TARGET_UPDATE;
 use crate::mercury::read_wstring;
 
@@ -211,13 +211,27 @@ pub(super) async fn handle_despawn(
     }
 
     tracing::info!(entity_id, target_eid, "gmDespawn: despawning NPC");
-    space_mgr.destroy_entity(target_eid);
-    send_gm_feedback(
-        entity_id,
-        &format!("gmDespawn: despawned npc {target_eid}"),
-        tx,
-    )
-    .await;
+    // C08b (2026-09-18): switched from the bare `SpaceManager::destroy_entity`
+    // to `despawn_npc`, which fans `LeftAoI` to every witness immediately
+    // instead of leaving the corpse visible until the next AoI tick (the
+    // same failure shape documented on
+    // `content::executor::world::destroy_tagged_entity`, issue #582).
+    let feedback = match space_mgr.despawn_npc(target_eid, tx).await {
+        DespawnOutcome::Despawned { witnesses_notified } => {
+            format!("gmDespawn: despawned npc {target_eid} ({witnesses_notified} witnesses notified)")
+        }
+        // Both refused/not-found are effectively unreachable here (the
+        // player-refusal and existence checks above already ran), but
+        // `despawn_npc` re-checks server-side and returns rather than
+        // panicking, so surface whatever it reports instead of assuming.
+        DespawnOutcome::RefusedPlayer => {
+            format!("gmDespawn: target {target_eid} is a player -- despawn refused")
+        }
+        DespawnOutcome::NotFound => {
+            format!("gmDespawn: target {target_eid} not found")
+        }
+    };
+    send_gm_feedback(entity_id, &feedback, tx).await;
     true
 }
 

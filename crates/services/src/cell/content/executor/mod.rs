@@ -318,7 +318,7 @@ async fn execute_one(
             world::set_npc_ai_state(entity_tag, state, entity_id, chain_id, space_mgr);
         }
         Action::DestroyTaggedEntity { entity_tag } => {
-            world::destroy_tagged_entity(entity_tag, entity_id, chain_id, space_mgr);
+            world::destroy_tagged_entity(entity_tag, entity_id, chain_id, tx, space_mgr).await;
         }
         Action::TriggerTransporter { region_id } => {
             transport::trigger_transporter(region_id, entity_id, chain_id, tx, space_mgr, engine)
