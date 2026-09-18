@@ -32,6 +32,10 @@
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns BYTES CONSUMED, not the new absolute offset; chain with `offset += n`, never `offset = n`.
 - [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — UE3 StaticMeshActor→Component→Mesh resolution in SGW cooked .umap: tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8); ~20% of actors use prefab archetypes; kDOP tri indices reference LOD0 vertices; master .umap files exist alongside chunks.
 
+## Content engine / executor
+
+- [cell-startup-caches-vs-base-roundtrip.md](cell-startup-caches-vs-base-roundtrip.md) — the cell HAS a DB pool at startup and ~20 `SpaceManager` caches (incl. `spawn_templates` since H03); a cell→base round-trip inside a content action breaks the chain's ordered action list, because the next action resolves via `find_entity_by_tag`.
+
 ## Stats / entity systems
 
 - [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat existing in `StatList` + `PUBLIC_STATS` + the AoI create payload does NOT mean anything reads it (`MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` had zero server-side consumers until P47); plus the reject-don't-clamp GM-setter precedent and the canonical mutate→serialize_dirty→clear_dirty→`send_entity_method` publication pattern.
@@ -39,6 +43,7 @@
 ## Tooling quirks
 
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt sucks standalone comments into the trailing-comment column of the previous statement; insert a blank line to break the run.
+- [rustfmt-reorders-mod-declarations.md](rustfmt-reorders-mod-declarations.md) — `reorder_modules` is on by default, so a coordinator's "append your `mod` line at the END of the shared mod.rs" cannot survive `cargo fmt`; expect an alphabetical three-way merge.
 - [clippy-items-after-test-module.md](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be the LAST item in a file; clippy `-D warnings` rejects trailing free functions after it.
 
 ## GM feedback (cell ↔ base)
