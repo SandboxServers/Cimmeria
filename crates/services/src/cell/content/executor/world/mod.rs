@@ -269,13 +269,17 @@ pub(super) async fn destroy_tagged_entity(
             );
         }
         DespawnOutcome::NotFound => {
-            // Only reachable if the target left its space between the tag
-            // lookup above and this call's internal check -- `despawn_npc`
-            // awaits per-witness `tx.send`, which can yield to another
-            // task on a full channel.
+            // Not actually reachable today: `despawn_npc`'s own
+            // existence checks (`entity_space`/`spaces`/`entities`
+            // lookups) run synchronously before its first `.await`, and
+            // `SpaceManager` is owned exclusively by this single-threaded
+            // cell message loop, so nothing can remove the entity between
+            // the tag lookup above and those checks. Handled defensively
+            // rather than `unreachable!()` in case that invariant ever
+            // changes.
             tracing::debug!(
                 entity_id, %entity_tag, target_id, chain_id,
-                "DestroyTaggedEntity: target vanished between tag lookup and despawn"
+                "DestroyTaggedEntity: despawn_npc reported target not found"
             );
         }
     }

@@ -4,13 +4,20 @@
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
 
 use super::record_decision_outcome;
 
 /// NPC despawn behavior: remove the entity from the space. Used by
 /// scripted cleanup (e.g., "the boss died, his bodyguards retreat
-/// off-screen"). The destroy fires AoI-left events to all witnesses.
+/// off-screen"). Fans `LeftAoI` to every witness immediately.
+///
+/// C08b (2026-09-18): switched from the bare `SpaceManager::destroy_entity`
+/// to `despawn_npc` — the bare call left the entity in every observer's
+/// `witnesses` set until the next AoI tick happened to visit them (this
+/// function's own doc comment used to claim immediate fanout, which was
+/// false; see `content::executor::world::destroy_tagged_entity`'s doc
+/// comment for the full failure-shape writeup, issue #582).
 ///
 /// One-shot: the entity is gone by the time this returns, so any
 /// subsequent tick filters skip it naturally.
@@ -24,8 +31,25 @@ pub(super) async fn npc_ai_despawn(
     // before the destroy. The broadcast itself is dedup'd on None and
     // emits nothing — this is purely a state-clean step.
     crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
-    tracing::info!(npc_id, "NPC AI: despawn → removing entity from space");
-    space_mgr.destroy_entity(npc_id);
+    match space_mgr.despawn_npc(npc_id, tx).await {
+        DespawnOutcome::Despawned { witnesses_notified } => {
+            tracing::info!(
+                npc_id, witnesses_notified,
+                "NPC AI: despawn → removed entity from space"
+            );
+        }
+        DespawnOutcome::RefusedPlayer => {
+            // Scripted AI cleanup should never target a player entity;
+            // WARN loudly rather than silently no-opping.
+            tracing::warn!(
+                npc_id,
+                "NPC AI: despawn target resolved to a player entity -- refused"
+            );
+        }
+        DespawnOutcome::NotFound => {
+            tracing::debug!(npc_id, "NPC AI: despawn target already gone");
+        }
+    }
 }
 
 /// NPC submit behavior: the NPC surrenders. Clears combat state and
