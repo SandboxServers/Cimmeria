@@ -39,6 +39,9 @@
 ## Content engine
 
 - [content-engine-condition-gotchas.md](content-engine-condition-gotchas.md) — **read before adding a `Condition` variant.** A rejected condition row UNGATES the chain (loader `filter_map` drops the row, keeps the chain) so reject-at-load is fail-OPEN; fail-closed is the minority convention; world ids live only in `resources.worlds` (column `world`, not `world_name`), never in spaces.xml; ~17 `event_dispatch` sites with no chokepoint; `console/net.rs` puts a space id in a world-id field.
+## Content engine / executor
+
+- [cell-startup-caches-vs-base-roundtrip.md](cell-startup-caches-vs-base-roundtrip.md) — the cell HAS a DB pool at startup and ~20 `SpaceManager` caches (incl. `spawn_templates` since H03); a cell→base round-trip inside a content action breaks the chain's ordered action list, because the next action resolves via `find_entity_by_tag`.
 
 ## Stats / entity systems
 
@@ -47,6 +50,7 @@
 ## Tooling quirks
 
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt sucks standalone comments into the trailing-comment column of the previous statement; insert a blank line to break the run.
+- [rustfmt-reorders-mod-declarations.md](rustfmt-reorders-mod-declarations.md) — `reorder_modules` is on by default, so a coordinator's "append your `mod` line at the END of the shared mod.rs" cannot survive `cargo fmt`; expect an alphabetical three-way merge.
 - [clippy-items-after-test-module.md](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be the LAST item in a file; clippy `-D warnings` rejects trailing free functions after it.
 
 ## GM feedback (cell ↔ base)

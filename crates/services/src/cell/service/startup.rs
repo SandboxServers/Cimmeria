@@ -292,6 +292,29 @@ impl CellService {
                     tracing::warn!("Failed to load loot tables: {e}");
                 }
             }
+            // Prototype records for the content engine's `spawn_entity`
+            // action. Distinct from the `spawn_records` above: those are
+            // `spawnlist` placements, these are every template whether or
+            // not it is placed anywhere.
+            match spawner::load_spawn_templates(pool).await {
+                Ok(map) => {
+                    tracing::info!(
+                        count = map.len(),
+                        "Loaded entity templates for content spawn_entity"
+                    );
+                    space_mgr.spawn_templates = map;
+                }
+                Err(e) => {
+                    // Not fatal, but every `spawn_entity` chain action will
+                    // refuse until a restart succeeds — worth an error, not
+                    // a warn, since the symptom (missions with no NPCs) is
+                    // far from the cause.
+                    tracing::error!(
+                        "Failed to load entity templates: {e} -- every content \
+                         spawn_entity action will refuse for this process lifetime"
+                    );
+                }
+            }
             match super::super::ring_transport::load_ring_regions(pool).await {
                 Ok(regions) => {
                     space_mgr.ring_transporters.load(&regions);

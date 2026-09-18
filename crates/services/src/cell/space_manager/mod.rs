@@ -200,6 +200,18 @@ pub struct SpaceManager {
     /// Respawner definitions loaded from `resources.respawners`.
     /// Used to populate the Defeat Window and look up respawn positions.
     pub respawners: Vec<super::spawner::RespawnerDef>,
+    /// Prototype `SpawnRecord` per `resources.entity_templates` row, keyed
+    /// by `template_id`. Loaded at startup by
+    /// [`super::spawner::load_spawn_templates`].
+    ///
+    /// Separate from the `spawn_records` the cell loop threads around:
+    /// those are `spawnlist` rows (a template *placed* somewhere), and a
+    /// mission-scoped `spawn_entity` deliberately has no `spawnlist` row.
+    /// This cache is what lets the content executor spawn a template
+    /// synchronously instead of round-tripping through the base — see
+    /// `cell/spawner/templates.rs` for why the round-trip is wrong for a
+    /// chain's ordered action list.
+    pub spawn_templates: HashMap<i32, super::spawner::SpawnRecord>,
     /// Ring transporter region definitions keyed by `region_id` (cross-world unique).
     /// Loaded once at startup from `resources.ring_transport_regions`.
     pub ring_regions: HashMap<i32, super::ring_transport::RingRegion>,
@@ -290,6 +302,7 @@ impl SpaceManager {
             item_defs: HashMap::new(),
             loot_tables: HashMap::new(),
             respawners: Vec::new(),
+            spawn_templates: HashMap::new(),
             ring_regions: HashMap::new(),
             ring_point_set_to_region: HashMap::new(),
             ring_transporters: super::ring_transport::RingTransporterManager::new(),

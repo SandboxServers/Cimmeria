@@ -427,54 +427,124 @@ async fn set_interaction_type_broadcasts_to_target_witnesses_not_source_witnesse
     );
 }
 
-/// `set_visible` emits exactly one `EntityMethodCall` (not
-/// `WitnessEntityMethod` — this method is dispatched at the entity-id
-/// level, base routes it). Pin both true/false to catch a regression
-/// that hard-coded `1` regardless of the `visible` argument.
+/// Stage a second player who also witnesses the drone, so the
+/// `set_visible` fan-out tests below have a *cardinality* to assert. One
+/// witness cannot distinguish "fans out" from "sends one message".
+fn add_second_drone_witness(mgr: &mut SpaceManager, player_id: u32, npc_id: u32) {
+    mgr.create_entity(player_id, "Agnos", [1.0, 0.0, 1.0], [0.0; 3])
+        .unwrap();
+    let p = mgr.get_entity_mut(player_id).unwrap();
+    p.is_player = true;
+    p.player_id = Some(43);
+    p.witnesses.insert(EntityId(npc_id as i32));
+    mgr.connect_entity(player_id);
+}
+
+/// **H-B5.** `set_visible(false)` must fan `EntityInvisible` to *every*
+/// witness of the target.
+///
+/// Bug shape: the pre-H03 code sent one `CellToBaseMsg::EntityMethodCall`
+/// addressed to `target_id`. Base routes that through `entity_to_addr`,
+/// which only holds player entries — an NPC id resolves to no address and
+/// the packet is dropped, so every seeded `set_visible` row was a silent
+/// no-op. The old test asserted only that the message was *constructed*,
+/// which is exactly why it passed for as long as it did. Reverting to
+/// `EntityMethodCall` fails the variant match below.
 #[tokio::test]
-async fn set_visible_emits_on_visible_with_correct_bool_byte() {
+async fn set_visible_false_fans_entity_invisible_to_every_witness() {
+    let mut mgr = make_space_mgr();
+    stage_drone_with_witness(&mut mgr, 1, 101, 0x00);
+    add_second_drone_witness(&mut mgr, 2, 101);
+
+    let (tx, mut rx) = mpsc::channel(16);
+    set_visible("Drone".to_string(), false, 1, 1032, &tx, &mgr).await;
+
+    let mut hidden_for: Vec<u32> = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        match msg {
+            CellToBaseMsg::EntityInvisible {
+                witness_id,
+                entity_id,
+            } => {
+                assert_eq!(entity_id, 101, "the hidden entity is the tagged NPC");
+                hidden_for.push(witness_id);
+            }
+            other => panic!(
+                "hide must use BASEMSG_ENTITY_INVISIBLE (0x0B) per witness — \
+                 the engine does not hide on onVisible(0); got {other:?}"
+            ),
+        }
+    }
+    hidden_for.sort_unstable();
+    assert_eq!(
+        hidden_for,
+        vec![1, 2],
+        "both witnesses must be told; a single entity-addressed message \
+         reaches neither, since an NPC has no client of its own"
+    );
+}
+
+/// `set_visible(true)` uses the other half of the asymmetry: entity method
+/// `onVisible(1)` per witness, with `entity_is_player = false` driving the
+/// wire idbase. Asserted separately from the hide direction because the
+/// two use genuinely different primitives (C++
+/// `ClientHandler::enterAoI` / `leaveAoI`, `client_handler.cpp:507-528`).
+#[tokio::test]
+async fn set_visible_true_fans_on_visible_to_every_witness() {
+    let mut mgr = make_space_mgr();
+    stage_drone_with_witness(&mut mgr, 1, 101, 0x00);
+    add_second_drone_witness(&mut mgr, 2, 101);
+
+    let (tx, mut rx) = mpsc::channel(16);
+    set_visible("Drone".to_string(), true, 1, 1032, &tx, &mgr).await;
+
+    let mut shown_for: Vec<u32> = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        match msg {
+            CellToBaseMsg::WitnessEntityMethod {
+                witness_id,
+                entity_id,
+                method_index,
+                args,
+                entity_is_player,
+            } => {
+                assert_eq!(entity_id, 101);
+                assert_eq!(method_index, crate::mercury::method_idx::ON_VISIBLE);
+                assert_eq!(args, vec![1u8], "show must encode as byte 1");
+                assert!(
+                    !entity_is_player,
+                    "the observee is an NPC — entity_is_player selects the \
+                     wire idbase (61 player / 62 NPC)"
+                );
+                shown_for.push(witness_id);
+            }
+            other => panic!("show must use WitnessEntityMethod; got {other:?}"),
+        }
+    }
+    shown_for.sort_unstable();
+    assert_eq!(shown_for, vec![1, 2]);
+}
+
+/// A tag that resolves nothing emits nothing in either direction.
+#[tokio::test]
+async fn set_visible_with_an_unknown_tag_emits_nothing() {
     let mut mgr = make_space_mgr();
     stage_drone_with_witness(&mut mgr, 1, 101, 0x00);
 
-    // visible=false → byte 0
     let (tx, mut rx) = mpsc::channel(8);
-    set_visible("Drone".to_string(), false, 1, 1032, &tx, &mgr).await;
-    let msg = rx.try_recv().expect("expected EntityMethodCall");
-    match msg {
-        CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index,
-            args,
-        } => {
-            assert_eq!(entity_id, 101, "entity_id must be the target NPC's eid");
-            assert_eq!(method_index, crate::mercury::method_idx::ON_VISIBLE);
-            assert_eq!(args, vec![0u8], "visible=false must encode as byte 0");
-        }
-        other => panic!("expected EntityMethodCall, got {other:?}"),
-    }
-    {
-        use tokio::sync::mpsc::error::TryRecvError;
-        assert!(
-            matches!(rx.try_recv(), Err(TryRecvError::Empty)),
-            "exactly one message expected — channel must be empty, not disconnected"
-        );
-    }
+    set_visible("NoSuchTag".to_string(), false, 1, 1032, &tx, &mgr).await;
 
-    // visible=true → byte 1
-    let (tx, mut rx) = mpsc::channel(8);
-    set_visible("Drone".to_string(), true, 1, 1032, &tx, &mgr).await;
-    let msg = rx.try_recv().expect("expected EntityMethodCall");
-    match msg {
-        CellToBaseMsg::EntityMethodCall { args, .. } => {
-            assert_eq!(args, vec![1u8], "visible=true must encode as byte 1");
-        }
-        other => panic!("expected EntityMethodCall, got {other:?}"),
-    }
+    use tokio::sync::mpsc::error::TryRecvError;
+    assert!(matches!(rx.try_recv(), Err(TryRecvError::Empty)));
 }
 
 /// `destroy_tagged_entity` removes the target from the space —
 /// subsequent `get_entity` returns None. Pin the by-tag lookup
 /// resolved correctly (target gone, source still present).
+///
+/// The witness fan-out it now performs is asserted in
+/// [`super::super::spawn::tests`]; this test keeps the by-tag targeting
+/// invariant (destroy the *target*, never the source).
 #[tokio::test]
 async fn destroy_tagged_entity_removes_target_from_space() {
     let mut mgr = make_space_mgr();
@@ -484,7 +554,8 @@ async fn destroy_tagged_entity_removes_target_from_space() {
         "fixture sanity: NPC exists pre-destroy"
     );
 
-    destroy_tagged_entity("Drone".to_string(), 1, 1032, &mut mgr);
+    let (tx, _rx) = mpsc::channel(8);
+    destroy_tagged_entity("Drone".to_string(), 1, 1032, &tx, &mut mgr).await;
 
     assert!(
         mgr.get_entity(101).is_none(),
