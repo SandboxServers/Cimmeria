@@ -25,6 +25,7 @@
 
 mod cover_demo;
 mod grant_xp;
+mod harset_space;
 mod mission_1562;
 mod mission_622;
 mod mission_638;
