@@ -151,6 +151,10 @@ pub enum Action {
     /// Start a minigame for the player.
     StartMinigame {
         minigame_type: String,
+        /// Difficulty tier handed to the SWF in the `joinOK` game params.
+        /// The original client asserted 1-5; the loader range-checks and
+        /// defaults to 1 when the seed row omits it.
+        difficulty: u32,
         on_victory_chains: Vec<i64>,
     },
 
