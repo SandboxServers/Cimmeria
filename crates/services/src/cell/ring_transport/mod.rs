@@ -35,7 +35,7 @@ mod wire_helpers;
 #[cfg(test)]
 mod tests;
 
-pub use regions::{load_ring_regions, RingRegion};
+pub use regions::{audit_ring_pads, load_ring_regions, RingRegion};
 pub use runtime::{
     forget_player, handle_interact, handle_region_trigger, handle_remote_player_loaded,
     handle_select_destination, run_tick_with_engine,
