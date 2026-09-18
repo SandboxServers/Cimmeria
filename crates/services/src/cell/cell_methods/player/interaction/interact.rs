@@ -144,6 +144,38 @@ pub(super) async fn handle_interact(
         return;
     }
 
+    // Pin the interaction target BEFORE any chain dispatch, mirroring
+    // python's `SGWPlayer.interact()`, which writes
+    // `lastInteractionTarget` as its first act.
+    //
+    // `interactions::handle_interact` also writes this pin, but it only
+    // runs in the `if !handled` fall-through below — i.e. only when NO
+    // content chain claimed the interact. That left the pin stale for
+    // every chain-handled NPC, and the pin is the second resolution step
+    // for `display_dialog`'s wire `EntityId`
+    // (`content/executor/dialog.rs`): chain params carry
+    // `target_entity_id` only for the `interact_tag` / `interact_template`
+    // trigger itself, never for a follow-up. So a chain fired from
+    // `dialog_choice`, from a minigame victory (`fire_chain_by_id` passes
+    // empty params by construction), or from the deferred-action drain
+    // could not resolve a speaker at all, and any NPC-speaker dialog it
+    // tried to display hit the warn-and-bail branch and silently never
+    // opened. Only monologue dialogs (every screen `speaker_id = 0`)
+    // survived, via the third fallback.
+    //
+    // Deliberately placed after the hostile-combat reroute above: an
+    // attack must not pin its victim as the next dialog's speaker. This
+    // is also the reason the write is here rather than beside the
+    // `target_entity_u32` binding at the top of the function.
+    //
+    // No range gate here on purpose — `handle_interact` checks
+    // `MAX_INTERACT_DISTANCE` before its own write, but the chain
+    // dispatch below has never had a range check, so pinning here is no
+    // more permissive than the chain firing already is.
+    if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+        player.last_interaction_target = Some(target_entity_u32);
+    }
+
     // Trainer NPC check — runs BEFORE the tag/template chain
     // dispatch so a trainer's UI opens directly rather than the
     // generic dialog. A trainer is any NPC whose template_id has

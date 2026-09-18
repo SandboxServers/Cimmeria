@@ -279,6 +279,20 @@ pub struct ResolvedActions {
 
 The forwarded `params` map is load-bearing — it carries trigger-time state (most importantly `instance_id`) into the executor so that `RemoveItem` consumes the exact stack the player clicked rather than first-by-type.
 
+### How `display_dialog` finds its speaker
+
+`onDialogDisplay` carries a wire `EntityId` that the client uses as its portrait-lookup key, so `display_dialog` has to resolve an NPC. [executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs) tries three sources in order, then gives up:
+
+1. **`params["target_entity_id"]`** — stamped by `fire_interact_tag` / `fire_interact_template`, so it is present only for the chain fired directly off the click.
+2. **The player's `last_interaction_target`** — the per-player pin. This is what every *follow-up* chain relies on: a chain fired from `dialog_choice`, from a minigame victory, or from the deferred-action drain carries no `target_entity_id` of its own. `fire_chain_by_id` in particular builds `ResolvedActions` with empty `params` by construction, so a victory chain has nothing else to go on.
+3. **The monologue cache** — if every screen of the dialog has `speaker_id = 0`, the player's own id is bound, which renders as inner thought. This is correct for narration and is the only fallback that works with no NPC in scope.
+
+Otherwise the action warns and returns without emitting a frame, because binding the player to an NPC dialog would blank the portrait and put the player's name on every line.
+
+The pin is written in two places, and both matter: `interactions::dispatch::handle_interact` writes it on the default interaction path, and [cell_methods/player/interaction/interact.rs](../../crates/services/src/cell/cell_methods/player/interaction/interact.rs) writes it *before* the content-chain dispatch. The second write is the load-bearing one for content authors. `handle_interact` runs only when no chain claimed the interact, so without it a chain-handled NPC left the pin stale and **any follow-up chain displaying an NPC-speaker dialog silently never opened** — only monologues survived, via source 3. The pin is deliberately not written on the hostile-NPC combat reroute, so attacking something cannot make it the next dialog's speaker.
+
+Practical consequence when authoring: a `display_dialog` on a non-`interact_tag` trigger works as long as the player reached that chain through an interact with the NPC you want on screen. A dialog with NPC speakers fired from a trigger that follows no interact at all (a bare `player_loaded`, a region entry, a timer) still has no speaker to resolve and will warn.
+
 ---
 
 ## 5. Schema
@@ -433,6 +447,7 @@ Worked example chains in [chain_replay_tests/](../../crates/services/src/cell/co
 | Action `Error` result | `warn!` at [chain.rs:201-209](../../crates/content-engine/src/chain.rs#L201-L209) |
 | `RemoveItem` channel send fails | `error!` at [executor/inventory.rs:226](../../crates/services/src/cell/content/executor/inventory.rs#L226) — explicitly loud because mission progress depends on the consume |
 | `ChangeStat` source entity missing | `warn!` at [executor/stats.rs:37](../../crates/services/src/cell/content/executor/stats.rs#L37) |
+| `display_dialog` cannot resolve a speaker | `warn!` ("no NPC entity id in chain params or last_interaction_target") at [executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs) + **no frame emitted**, so the dialog silently never opens for the player. Means the chain reached an NPC-speaker dialog with no interact in its history; see the resolution order in §4. Not reachable for monologue dialogs. |
 | Empty engine on startup | `warn!` ("No DB pool available") or `error!` ("Failed to load") at [engine_loader.rs:33-41](../../crates/services/src/cell/content/engine_loader.rs#L33-L41) — server runs without content |
 
 The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` site in [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/) are the production observability story. Every action execution emits an `info!` with `chain_id`, the action params, and entity. Tracing-grep for `Content:` to scope to executor activity.
