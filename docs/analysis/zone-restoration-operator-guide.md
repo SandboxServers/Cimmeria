@@ -18,7 +18,7 @@ Companions: [Cellblock handoff](castle-cellblock-rebuild/handoffs/session-resume
 | Zone | On `main` | Open PRs (testable from branch) | Testable today |
 |---|---|---|---|
 | Castle Cellblock | C00-C05, C07, C08a, C08b, GC1b-0 | #655 (GC1 Marsh escort, branch `pkg/gc1-marsh-escort`) | **Yes: M1 and M3 on `main`, M2 only partly (needs C06)** |
-| Castle (World 8, ring platform) | CA00 respawners (#651) | #652, #659, #661, #663, #660 | Respawn only, on `main` |
+| Castle (World 8, ring platform) | CA00 respawners (#651), CA01 + CA03 mission 701 and the dialog-speaker pin fix (#659) | #652, #661, #663, #660 | Respawn on `main`; mission 701 partly (the "!" over Gerschon needs #661, Livewire hardening needs #652) |
 | Harset | nothing yet | #662 (branch `content/harset-rebuild`, CI green, review fixes in progress) | Travel and population checks, from the branch, after the review fixes merge |
 
 ## Suggested Order If Budget Is Tight
@@ -28,7 +28,7 @@ Highest value per minute first.
 1. **Cellblock M1 and M3 on current `main`, and the testable half of M2.** The largest body of already-merged content and it needs nothing else to land first. The flank objectives and step 2144 wait for C06.
 2. **Castle respawn check on `main`.** Five minutes, catches bad coordinates.
 3. **Harset M1 checks** once #662 merges (or from its branch). Cheap, and tells us whether ring and door travel is safe.
-4. **Castle M1** (mission 701) once #652, #659 and #661 have merged.
+4. **Castle M1** (mission 701) once #652 and #661 have merged (#659 already has).
 5. **Harset M0 placement session.** The longest job and the critical path for every Harset mission, but it needs the least Claude budget until the final commit of the generated seed SQL, so it can run whenever you have the time.
 
 ## Castle Cellblock (Castle_CellBlock)
@@ -50,13 +50,13 @@ Test with a Jaffa character and a Human character, relogging at each step:
 
 ## Castle (World 8, ring platform)
 
-**Implemented and merged.** CA00: world-8 respawner coordinates (#651). All four coordinates are provisional (MEDIUM confidence).
-**Open PRs, none on `main`.**
+**Implemented and merged.** CA00: world-8 respawner coordinates (#651); all four coordinates are provisional (MEDIUM confidence). CA01 + CA03: mission 701 (Gerschon, Copplemann, Livewire) and the dialog-speaker pin fix (#659).
+**Open PRs, not yet on `main`** (#659 has since merged and is listed for reference).
 
 | PR | Content | State |
 |---|---|---|
 | #652 | CA04 minigame hardening; `start_minigame` difficulty | CI green |
-| #659 | CA01 + CA03 mission 701 (Gerschon, Copplemann, Livewire) and the dialog-speaker pin fix | conflicts with `main`, being rebased |
+| #659 | CA01 + CA03 mission 701 (Gerschon, Copplemann, Livewire) and the dialog-speaker pin fix | **merged to `main`** (`f930b4cb`) |
 | #661 | CA02 flag-only dialog bind (the "!" over Gerschon) | CI green |
 | #663 | CA10 stargate open/cross events (6100, 6113, 4 s dial timer); splits `gate_travel.rs` | CI green |
 | #660 | Missions 702-704 (Zuritska, Romney) | blocked on CA05, conflicts with `main` |
@@ -66,7 +66,7 @@ Test with a Jaffa character and a Human character, relogging at each step:
 | Milestone | Steps | Expected |
 |---|---|---|
 | Respawn (`main` now) | Fresh character on Castle; die once at each of the four checkpoints | You land at a real checkpoint, not the origin and not under the floor. Report any bad coordinate |
-| M1 (after #652, #659, #661) | Arrive on the ring platform with mission 688 complete and 1360 active | "!" over Gerschon before accepting (Human sees indicator 2573, Jaffa 5861); 701 accepts once and a second interaction does not re-accept; Copplemann advances the step; the Livewire win shows 2575 once; 2576 completes 701 and accepts 702 and 703; relog at each step re-shows the right indicator |
+| M1 (#659 merged; after #652 and #661) | Arrive on the ring platform with mission 688 complete and 1360 active | "!" over Gerschon before accepting (Human sees indicator 2573, Jaffa 5861); 701 accepts once and a second interaction does not re-accept; Copplemann advances the step; the Livewire win shows 2575 once; 2576 completes 701 and accepts 702 and 703; relog at each step re-shows the right indicator |
 | M2/M3 (after CA05 and #660) | Find Zuritska and Romney | Both exist at their positions for every player; freeing Zuritska completes 702 once; killing Romney completes 703 |
 | M4 (after #663 and 706/708) | Dial with the DHD Livewire | The gate opens about 4 s after dial; crossing plays 6113 and lands on Harset once (needs Harset H01 arrival validation) |
 | M5 | Two players at different steps | Neither disturbs the other's indicators or actors |
