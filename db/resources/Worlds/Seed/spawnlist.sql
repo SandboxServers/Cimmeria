@@ -4,6 +4,47 @@
 -- Data for Name: spawnlist; Type: TABLE DATA; Schema: resources; Owner: -
 --
 
+--
+-- Harset hub respawn / stationary policy (packet H13, defect H-B7).
+--
+-- The 14 Harset mob rows -- eight Praxis Jaffa Guards (template 160) on
+-- the stargate plaza, four Praxis Jaffa Lieutenants (159) on the two
+-- door thresholds, Petbe (163) and Anat (43, world 68) -- carry
+-- `respawn_secs = 30` and `is_stationary = true`. Before this, every
+-- Harset NPC was one-shot: `mark_npc_dead` only stamps `respawn_at`
+-- when `respawn_secs` resolves, so clearing the plaza emptied it until
+-- a server restart. 30s is the "typical mob" floor documented on
+-- `entity_templates.respawn_secs`, applied uniformly rather than tiered
+-- because no Harset template has a `loot_table_id` -- the delay only
+-- controls how fast world density is restored, never a farm rate.
+--
+-- Deliberately per-spawn, not per-template: templates 159 and 160 are
+-- shared with the Castle hub (world 8, spawns 119/121/123/124), so a
+-- template-level delay would silently change those too. Note the
+-- precedence -- `COALESCE(spawnlist.respawn_secs,
+-- entity_templates.respawn_secs)` in `cell/spawner/npcs.rs` means these
+-- rows override whatever packet H11 later puts on the template.
+--
+-- `is_stationary` is interim, per decision D-H06: `harset.nav` is split
+-- into 1,939 disconnected components and world 68 has no mesh at all,
+-- so an NPC chasing across a boundary hits the `no_path` branch in
+-- `npc_ai/fight.rs` and freezes mid-pursuit. The flag routes it to the
+-- hold-position-and-fire branch, which is correct for a sentry anyway.
+-- It gates fight-time pathing ONLY -- patrol, wander and follow never
+-- read it -- so it is not a movement lock. Revisit after GH1.
+--
+-- Ring switches (template 3), the DHD (1) and the merchant basket (164)
+-- are props that can never enter combat, so they stay NULL; a delay on
+-- them would read as intent to the next author.
+--
+-- Removed by H13: spawn 1 (template 23, "Loot debug item") and spawn 42
+-- (template 25, "Interaction Debug NPC - DO NOT USE"), both standing on
+-- the gate plaza in the player's face on arrival. `spawnlist` has no
+-- enabled/dev column, so deletion was the only available gate. Both
+-- templates remain in `entity_templates.sql` and a GM reconstitutes
+-- either on demand with `.spawn 23` / `.spawn 25`.
+--
+
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (28, -95.8899994, 34.5909996, -98.8079987, 2.09426737, 12, 24, 'MessHall_Guard2', NULL);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (27, -49.6899986, 24.6700001, -127.110001, 3.1414969, 12, 24, 'Cellblock_ArmoryGuard1', NULL);
@@ -52,15 +93,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (86, -61.348999, 34.5909996, -69.0319977, 0, 12, 24, 'Hallway04_Guard', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (222, 61.9690399, 1.77149999, 77.1715775, 3.11704898, 68, 43, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (222, 61.9690399, 1.77149999, 77.1715775, 3.11704898, 68, 43, NULL, NULL, true, 30);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (224, -176.697678, -41.2540016, 125.271324, 5.93957376, 57, 164, 'FirstBug', NULL);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (4, -25.7569981, -67.8280029, 15.1359997, 0, 57, 3, 'HarsetRingLeftBottom', NULL);
-
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (42, 3.61799979, -69.1439972, -2.56699967, 0, 57, 25, NULL, NULL);
-
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (1, -6, -68.9570007, 27, 3.13996291, 57, 23, NULL, NULL);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (33, -101.5, 24.6700001, -51.2999992, 1.57079637, 12, 24, 'Hallway05_Guard2', NULL);
 
@@ -196,7 +233,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (40, 629.596008, -60.9129982, 381.289001, 0, 23, 1, 'Beta_Site_Evo_1_DHD', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (223, -165.512543, -41.2696266, 99.4154739, 3.21522403, 57, 163, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (223, -165.512543, -41.2696266, 99.4154739, 3.21522403, 57, 163, NULL, NULL, true, 30);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (129, -171.774002, -27.0149994, 235.979996, 0, 57, 3, 'HarsetRingLeftTop', NULL);
 
@@ -228,7 +265,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (143, -189.376007, -170.645004, -720.789001, 0, 15, 3, 'LuciaRing_fff8fffe', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (232, 4.69599581, -58.6540871, -188.246613, 0, 57, 159, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (232, 4.69599581, -58.6540871, -188.246613, 0, 57, 159, NULL, NULL, true, 30);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (145, 1113.26599, -146.867996, 214.621994, 0, 15, 3, 'LuciaRing_0002000b', NULL);
 
@@ -236,7 +273,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (147, -761.302002, -173.593002, -160.951996, 0, 15, 3, 'LuciaRing_fffefff8', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (233, -5.13134289, -58.6591301, -188.338028, 6.2586422, 57, 159, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (233, -5.13134289, -58.6591301, -188.338028, 6.2586422, 57, 159, NULL, NULL, true, 30);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (149, 746.554993, -19.2099991, 68.75, 0, 23, 3, 'BetaSite_00000007', NULL);
 
@@ -246,9 +283,9 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (152, 834.53302, 20.7049999, 773.976013, 0, 23, 3, 'BetaSite_Ring_00070008', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (235, -4.43621397, -67.6082916, -231.103455, 1.57079601, 57, 159, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (235, -4.43621397, -67.6082916, -231.103455, 1.57079601, 57, 159, NULL, NULL, true, 30);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (236, 4.33233595, -67.6082916, -231.151123, 4.71238899, 57, 159, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (236, 4.33233595, -67.6082916, -231.151123, 4.71238899, 57, 159, NULL, NULL, true, 30);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (153, 72.1409988, -167.167999, -75.0699997, 2.5999999, 15, 1, 'Lucia_DHD', NULL);
 
@@ -318,21 +355,21 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (188, 183.636002, 94.7699966, 857.731018, 0, 15, 3, 'LuciaRing_00080001', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (234, -18.6429996, -68.9227982, 11.3282003, 1.59534001, 57, 160, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (234, -18.6429996, -68.9227982, 11.3282003, 1.59534001, 57, 160, NULL, NULL, true, 30);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (225, -18.7497005, -68.9227982, 19.3561001, 1.54615676, 57, 160, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (225, -18.7497005, -68.9227982, 19.3561001, 1.54615676, 57, 160, NULL, NULL, true, 30);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (231, 18.5478001, -68.9227982, 11.3548994, 4.73683691, 57, 160, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (231, 18.5478001, -68.9227982, 11.3548994, 4.73683691, 57, 160, NULL, NULL, true, 30);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (230, 29.6623993, -68.9227982, 22.3821983, 0, 57, 160, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (230, 29.6623993, -68.9227982, 22.3821983, 0, 57, 160, NULL, NULL, true, 30);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (229, 21.5998001, -68.9227982, 22.1867008, 6.25854588, 57, 160, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (229, 21.5998001, -68.9227982, 22.1867008, 6.25854588, 57, 160, NULL, NULL, true, 30);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (228, 18.6380997, -68.9227982, 19.4368992, 4.68784523, 57, 160, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (228, 18.6380997, -68.9227982, 19.4368992, 4.68784523, 57, 160, NULL, NULL, true, 30);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (227, -29.5678005, -68.9227982, 22.3317986, 0, 57, 160, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (227, -29.5678005, -68.9227982, 22.3317986, 0, 57, 160, NULL, NULL, true, 30);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (226, -21.5496998, -68.9227982, 22.1611977, 6.25854588, 57, 160, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (226, -21.5496998, -68.9227982, 22.1611977, 6.25854588, 57, 160, NULL, NULL, true, 30);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (127, 26.1189976, -67.8280029, 15.4709997, 0, 57, 3, 'HarsetRingRightBottom', NULL);
 
