@@ -312,10 +312,13 @@ mod live_db {
             .collect();
         assert!(
             at_origin.is_empty(),
-            "respawner rows sitting at the world origin: {at_origin:?} — a player who \
-             picks one of these in the Defeat Window is teleported to (0,0,0). Author \
-             the coordinates in db/resources/Worlds/Seed/respawners.sql, or add the id \
-             to UNAUTHORED_BY_DESIGN here with a seed comment saying why it cannot be \
+            "respawner rows sitting at the world origin: {at_origin:?} — (0,0,0) means \
+             the row was never authored, so the checkpoint does not work: the Defeat \
+             Window still offers it by name, `resolve_respawn_target` skips it, and the \
+             player is quietly put wherever the fallback lands (in place, or the Castle \
+             default) instead of at the checkpoint they picked. Author the coordinates \
+             in db/resources/Worlds/Seed/respawners.sql, or add the row to \
+             UNAUTHORED_BY_DESIGN here with a seed comment saying why it cannot be \
              authored"
         );
 
