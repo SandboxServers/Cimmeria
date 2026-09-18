@@ -1,14 +1,19 @@
 ---
 name: local-postgres-port
-description: This host's dev Postgres listens on 5544, not the 5433 that CLAUDE.md and TESTING.md document — live-DB tests silently self-skip on the wrong port.
+description: Verify the dev Postgres port and database name before every live-DB run — they move, and require_db_or_skip! turns a wrong one into a green self-skip.
 type: project
 ---
 
-The bundled Postgres on this host listens on **port 5544**, not the 5433 documented in CLAUDE.md / TESTING.md. Working `DATABASE_URL`:
+**Probe, don't assume.** The port has been 5544 on this host in the past; as of 2026-09-17 the bundled cluster listens on the documented **5433**. Either way, check before trusting a run.
 
+**The database name also moves.** During parallel campaign work the coordinator may stand up a per-campaign scratch DB (e.g. `sgw_harset`) because a sibling session drops and recreates `sgw` mid-run. Rows applied to the wrong database vanish without an error. List first:
+
+```powershell
+$env:PGPASSWORD='w-testing'
+& external\postgresql_server\bin\psql.exe -h localhost -p 5433 -U w-testing -d postgres -tAc "select datname from pg_database order by 1"
 ```
-postgres://w-testing:w-testing@localhost:5544/sgw
-```
+
+A `FATAL: database "sgw" does not exist ... seems to have just been dropped or renamed` means a sibling session is mid-reload — retry, don't conclude the cluster is broken.
 
 Binary lives at `external/postgresql_server/bin/` (`psql.exe`, `postgres.exe`). Role `w-testing` (password same as the name) exists; role `sgw` does not.
 

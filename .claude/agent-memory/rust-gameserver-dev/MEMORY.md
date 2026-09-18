@@ -32,6 +32,10 @@
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns BYTES CONSUMED, not the new absolute offset; chain with `offset += n`, never `offset = n`.
 - [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — UE3 StaticMeshActor→Component→Mesh resolution in SGW cooked .umap: tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8); ~20% of actors use prefab archetypes; kDOP tri indices reference LOD0 vertices; master .umap files exist alongside chunks.
 
+## Seed authoring
+
+- [entity-template-seed-authoring.md](entity-template-seed-authoring.md) — **read before touching `entity_templates` / `ability_sets` seed rows.** One ability per set (PK is `ability_set_id` alone); `event_set_id = NULL` on an ability means no attack animation; faction 10 is immutable AND gates both the player damage path and the right-click reroute, so talk-then-kill NPCs need two templates; mob level bands live in `texts.sql` moniker names; a template with neither `components` nor `static_mesh` is permanently invisible.
+
 ## Stats / entity systems
 
 - [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat existing in `StatList` + `PUBLIC_STATS` + the AoI create payload does NOT mean anything reads it (`MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` had zero server-side consumers until P47); plus the reject-don't-clamp GM-setter precedent and the canonical mutate→serialize_dirty→clear_dirty→`send_entity_method` publication pattern.
@@ -72,7 +76,7 @@
 - [bincode-persisted-cache-format.md](bincode-persisted-cache-format.md) — bincode 2 needs `config::legacy()` for 1.x-written files; wrong config decodes SILENTLY, so assert bytes-consumed == len and use an old-version byte fixture (round-trip alone can't catch it).
 - [live-db-scratch-cluster.md](live-db-scratch-cluster.md) — `db.bat init` does NOT create the db/role or load the schema; recipe for an isolated scratchpad Postgres on :5544 so live-DB guards can actually be revert-verified.
 - [chain-replay-executor-guards.md](chain-replay-executor-guards.md) — chain-replay must run `execute_actions` (not just `resolve_event`) when the change is an executor arm; sentinel-chain pattern for verbs with zero seed rows; `0x7000_5000` reserved.
-- [local-postgres-port.md](local-postgres-port.md) — dev Postgres is on **5544**, not the documented 5433; on the wrong port `require_db_or_skip!` self-skips and still reports PASS, so green means nothing until you check the skip count.
+- [local-postgres-port.md](local-postgres-port.md) — probe the dev Postgres port AND database name before every live-DB run (both move; parallel campaigns use per-campaign scratch DBs like `sgw_harset`); on a wrong one `require_db_or_skip!` self-skips and still reports PASS, so green means nothing until you check the skip count.
 - [test-file-split-without-touching-mod-rs.md](test-file-split-without-touching-mod-rs.md) — `tests.rs` → `tests/mod.rs` + `tests/newfile.rs` needs ZERO edits to the shared parent `mod.rs` (`mod tests;` resolves identically either way); private helpers stay reachable via `super::` with no visibility changes.
 - [revert-verification-loses-uncommitted-fmt.md](revert-verification-loses-uncommitted-fmt.md) — `git checkout --` restoring from a WIP checkpoint silently discards an uncommitted `cargo fmt` pass; fmt BEFORE the checkpoint. Also: `git add crates/services` stages the gitignored `logs/`.
 
