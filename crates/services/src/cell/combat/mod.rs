@@ -2,16 +2,20 @@
 //!
 //! Submodules:
 //! - [`damage`]: QR (Quality Rating) hit/miss/crit and damage pipeline.
+//! - [`health_threshold`]: health-percentage snapshots for the
+//!   `entity_health_below` content trigger.
 //! - [`state`]: dead/alive flag bit-packing in `stateField`.
 //! - [`threat`]: NPC aggro state, threat list, leash/attack-range constants.
 
 pub mod auto_cycle;
 pub mod damage;
+pub mod health_threshold;
 pub mod state;
 pub mod threat;
 
 pub use auto_cycle::{arm_auto_cycle, clear_auto_cycle, clear_auto_cycle_for_target};
 pub use damage::{calculate_damage, calculate_qr, calculate_result, QrResult};
+pub use health_threshold::{health_pct, health_pct_from, HealthPct};
 
 /// Faction sentinel for "this entity is hostile to players" — every
 /// damage / interact path that needs to gate on hostility imports this.

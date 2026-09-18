@@ -24,6 +24,7 @@
 //! executor arm from the `other =>` catch-all.
 
 mod cover_demo;
+mod entity_health_below;
 mod grant_xp;
 mod mission_1562;
 mod mission_622;

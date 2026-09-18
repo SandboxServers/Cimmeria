@@ -35,6 +35,7 @@ impl Trigger {
             Trigger::OnPlayerEnteredCover { .. } => TriggerType::PlayerEnteredCover,
             Trigger::OnPlayerLeftCover { .. } => TriggerType::PlayerLeftCover,
             Trigger::OnPlayerInCoverDuration { .. } => TriggerType::PlayerInCoverDuration,
+            Trigger::OnEntityHealthBelow { .. } => TriggerType::EntityHealthBelow,
             Trigger::OnNpcFlanked { .. } => TriggerType::NpcFlanked,
         }
     }
@@ -196,6 +197,37 @@ impl Trigger {
                     None => true,
                 };
                 seconds_match && set_match
+            }
+            // Downward-crossing test. The event carries the pre- and
+            // post-hit health percentage of the damaged entity; the
+            // chain fires only on the hit that takes it from strictly
+            // above the threshold to at-or-below. Doing the comparison
+            // here (rather than firing one event per crossed integer
+            // percent at the dispatch site) keeps the firing site
+            // independent of which thresholds are seeded, and keeps the
+            // per-hit cost at one event regardless of how big the hit
+            // was.
+            //
+            // Params absent (a caller that forgot to set them) must not
+            // match — `unwrap_or` to a value that satisfies the
+            // predicate would fire every seeded threshold on every hit.
+            Trigger::OnEntityHealthBelow { entity_tag, pct } => {
+                let tag_match = event
+                    .params
+                    .get("entity_tag")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|actual| actual == entity_tag);
+                if !tag_match {
+                    return false;
+                }
+                let (Some(before), Some(after)) = (
+                    event.params.get("pct_before").and_then(|v| v.as_f64()),
+                    event.params.get("pct_after").and_then(|v| v.as_f64()),
+                ) else {
+                    return false;
+                };
+                let threshold = f64::from(*pct);
+                before > threshold && after <= threshold
             }
             Trigger::OnNpcFlanked { npc_template } => match npc_template {
                 Some(expected) => event

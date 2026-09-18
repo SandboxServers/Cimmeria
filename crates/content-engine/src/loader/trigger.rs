@@ -98,6 +98,36 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
                 },
             })
         }
+        // `entity_health_below` needs a tag *and* a percentage in one
+        // `event_key`. Convention: `"<tag>:<pct>"`, e.g.
+        // `"Rinla_Malac:30"`.
+        //
+        // NOTE the field order is the reverse of
+        // `player_in_cover_duration` above (`"<seconds>:<set_id>"`,
+        // number first): here the numeric field is **last**, and it is
+        // parsed with `rsplit_once` so a tag that itself contains a
+        // colon still resolves.
+        //
+        // Every malformed shape rejects the chain rather than degrading:
+        // no key, no colon, an empty tag, a non-integer percentage, or a
+        // percentage outside 1..=100. A `:0` key could never fire (an
+        // entity at 0% is dead and routes to `entity_dead_tag`), so
+        // accepting it would silently produce a chain that looks wired
+        // and never runs.
+        "entity_health_below" => {
+            let (tag, pct_str) = key?.rsplit_once(':')?;
+            if tag.is_empty() {
+                return None;
+            }
+            let pct: i32 = pct_str.parse().ok()?;
+            if !(1..=100).contains(&pct) {
+                return None;
+            }
+            Some(Trigger::OnEntityHealthBelow {
+                entity_tag: tag.to_string(),
+                pct,
+            })
+        }
         "npc_flanked" => Some(Trigger::OnNpcFlanked {
             npc_template: key.map(|s| s.to_string()),
         }),

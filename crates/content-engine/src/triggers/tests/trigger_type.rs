@@ -132,6 +132,13 @@ fn trigger_type_covers_every_variant() {
             },
             PlayerInCoverDuration,
         ),
+        (
+            Trigger::OnEntityHealthBelow {
+                entity_tag: "Boss".to_string(),
+                pct: 30,
+            },
+            EntityHealthBelow,
+        ),
         (Trigger::OnNpcFlanked { npc_template: None }, NpcFlanked),
     ];
     for (trigger, expected) in cases {

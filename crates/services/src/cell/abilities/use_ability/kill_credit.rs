@@ -53,12 +53,22 @@ pub async fn handle_use_ability_with_kill_credit(
     // re-fire `fire_entity_death` and double-count mission progress on
     // every post-death swing. Player targets are excluded because PvP
     // kills don't drive mission progression today.
-    let was_alive_before = if target_id > 0 {
-        space_mgr
-            .get_entity(target_id as u32)
-            .is_some_and(|t| !t.is_player && t.stats.get(HEALTH).is_some_and(|s| s.cur > 0))
+    //
+    // The health *percentage* is snapshotted in the same pass for the
+    // `entity_health_below` trigger (Harset H04). It has to happen here:
+    // once `handle_use_ability` returns, the pre-hit value is gone, and
+    // a downward threshold crossing can only be computed from both
+    // sides of the hit.
+    let (was_alive_before, pct_before) = if target_id > 0 {
+        match space_mgr.get_entity(target_id as u32) {
+            Some(t) if !t.is_player => (
+                t.stats.get(HEALTH).is_some_and(|s| s.cur > 0),
+                crate::cell::combat::health_pct(t),
+            ),
+            _ => (false, None),
+        }
     } else {
-        false
+        (false, None)
     };
 
     let committed = handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr).await;
@@ -75,6 +85,20 @@ pub async fn handle_use_ability_with_kill_credit(
         .get_entity(target_eid)
         .is_some_and(|t| t.stats.get(HEALTH).is_some_and(|s| s.cur <= 0));
     if !just_died {
+        // Survived the hit — the other half of the same decision, so a
+        // chain author gets exactly one of `entity_dead_tag` and
+        // `entity_health_below` per hit.
+        //
+        // This branch is defence-in-depth, not the enforcement. The
+        // authority for "a killing blow never fires a threshold chain"
+        // lives in `fire_health_below_for_hit`, which drops any hit
+        // whose target ends dead — it has to, because `just_died` here
+        // reads health, and an effect script can heal a corpse back
+        // above zero after the death transition has run.
+        crate::cell::content::fire_health_below_for_hit(
+            entity_id, target_eid, pct_before, engine, tx, space_mgr,
+        )
+        .await;
         return committed;
     }
 
