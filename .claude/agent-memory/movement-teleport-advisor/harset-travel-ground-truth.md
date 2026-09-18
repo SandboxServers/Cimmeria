@@ -29,4 +29,30 @@ Recovered 2026-09-17 during the read-only evidence pass for a Harset zone restor
 
 **The DHD "interaction 6891" in the spec is a `dialog_set_maps` row, not an `interactions` row:** `dialog_set_map_id 6891, dialog_set_id 1916, topic_text 'Dial Home Device (DHD)'`. The DHD entity is `spawnlist` spawn 37, tag `Harset_DHD`, template 1.
 
-See [[arrival-coordinate-offnavmesh]] — the recovered coordinates above are *authored* values and none of them has been checked against `data/spaces/harset.nav`; the gate arrival demonstrably fails.
+**The 2009 dial state machine (`SGWPlayer.py:2044-2130`), recovered in full:**
+`onDialGate` validates (`DefMgr.get('stargate', id)`, then `knownStargates`/`hiddenStargates`,
+then "world has no stargates") and only **arms** — `beginDialing` sets
+`dialedAddress` + `gatePassable = False` and a 4 s `Atrea.addTimer`.
+`gateDialTimerExpired` sets `gatePassable = True` and emits
+`onSequence(Stargate_MakeGate)`. **Travel happens only in `stargatePassed`**,
+which is a silent no-op unless `dialedAddress is not None and gatePassable`, then
+emits `onSequence(Stargate_CrossGate)`, fires `stargate::passage`, clears both
+fields, and calls
+`moveTo(addr.xPos, addr.yPos, addr.zPos, addr.yaw, addr.world.clientMap)`.
+
+Two consequences that keep getting missed:
+
+1. **2009 also arrived on the gate row verbatim, and used `addr.yaw` as the
+   facing.** So a per-gate arrival column is *new authoring*, not restoration —
+   justified only because Harset is the first navmesh-backed destination and the
+   2009 server had no containment validator. Any `arrival_yaw` must fall back to
+   `stargates.yaw`, which is already the authored "face this way" value.
+2. **The dial state lived on the cell entity** (`dialedAddress`, `gatePassable`,
+   `gateDialTimer` are `SGWPlayer` attributes), so it died with the entity for
+   free. A Cimmeria manager-side map does not get that; it needs an explicit
+   scrub in `SpaceManager::destroy_entity` (`space_manager/entities.rs`, which
+   already scrubs `authoring_changes`, `autosave_spawns`,
+   `pending_content_actions` and calls `movement_validator.forget`). 2009 put no
+   expiry on an arm — that is a gap to close, not parity to copy.
+
+See [[arrival-coordinate-offnavmesh]] — the recovered coordinates above are *authored* values and none of them has been checked against `data/spaces/harset.nav`; the gate arrival demonstrably fails. See [[region-trigger-containment-gap]] for why routing the flag-2 region to travel needs the 2009 containment re-check ported alongside it.

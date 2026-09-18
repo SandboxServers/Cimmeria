@@ -12,6 +12,7 @@
 
 use tokio::sync::mpsc;
 
+use super::arrival::validate_gate_arrival;
 use super::messages::CellToBaseMsg;
 use super::space_manager::SpaceManager;
 
@@ -82,6 +83,17 @@ pub async fn handle_dial_gate(
         "Gate travel: initiating world transition"
     );
 
+    // Resolve a standable arrival before anything destructive happens. Prefers
+    // the gate's authored `arrival_*` pin, falls back to the gate row, and
+    // replaces either with the destination world's respawner when the
+    // destination has a navmesh that rejects it — see `cell::arrival`.
+    //
+    // **This one line is the whole arrival contract.** Castle CA10 moves the
+    // placement from here to the gate-volume entry path; carry this call with
+    // it so the walk-through-the-event-horizon arrival gets the same
+    // validation the dial arrival does.
+    let arrival = validate_gate_arrival(space_mgr, &gate);
+
     // Stage D: world transition destroys the cell entity and re-creates it on
     // the destination world. Flush any pending bandolier ammo writes before
     // teardown — anything still in `bandolier_ammo_dirty` after this is lost
@@ -101,8 +113,8 @@ pub async fn handle_dial_gate(
         .send(CellToBaseMsg::GateTravel {
             entity_id,
             target_world_name: gate.world_name.clone(),
-            position: [gate.x, gate.y, gate.z],
-            rotation: [0.0, 0.0, gate.yaw],
+            position: arrival.position,
+            rotation: [0.0, 0.0, arrival.yaw],
             destination_ring_id: None,
             // Stargate travel resolves the destination by world name.
             destination_space_id: None,
@@ -155,6 +167,8 @@ mod tests {
                 y: 0.0,
                 z: 0.0,
                 yaw: 0.0,
+                address_origin: 15,
+                arrival: None,
             },
         );
         mgr.stargates.insert(
@@ -165,6 +179,8 @@ mod tests {
                 y: 63.466,
                 z: 551.716,
                 yaw: 2.152,
+                address_origin: 18,
+                arrival: None,
             },
         );
         mgr.stargates.insert(
@@ -175,6 +191,23 @@ mod tests {
                 y: 0.0,
                 z: 0.0,
                 yaw: 0.0,
+                address_origin: 15,
+                arrival: None,
+            },
+        );
+        // Same Castle destination, but with an authored arrival pin. Synthetic
+        // — this packet seeds no arrival coordinate for any gate; Harset's is
+        // pinned in-game during milestone M0.
+        mgr.stargates.insert(
+            99,
+            StargateEntry {
+                world_name: "Castle".to_string(),
+                x: 761.677,
+                y: 63.466,
+                z: 551.716,
+                yaw: 2.152,
+                address_origin: 18,
+                arrival: Some(([700.5, 60.25, 540.75], 1.0)),
             },
         );
 
@@ -266,5 +299,122 @@ mod tests {
             }
             _ => panic!("Expected GateTravel message, got {:?}", msg),
         }
+    }
+
+    /// An unpinned gate arrives on the gate row, facing the row's authored
+    /// yaw — the pre-H01 behaviour, pinned here so the arrival change can't
+    /// silently alter it for the 28 gates that have no pin.
+    #[tokio::test]
+    async fn dial_gate_without_an_arrival_pin_uses_the_gate_row() {
+        let mut mgr = make_manager_with_stargates();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        handle_dial_gate(1, 2, 0, &tx, &mut mgr).await;
+
+        let (position, rotation) = expect_gate_travel(&mut rx);
+        assert!((position[0] - 761.677).abs() < 0.01);
+        assert!((position[1] - 63.466).abs() < 0.01);
+        assert!((position[2] - 551.716).abs() < 0.01);
+        assert!((rotation[2] - 2.152).abs() < 0.01);
+    }
+
+    /// A pinned gate arrives on the pin, yaw included. Reverting
+    /// `handle_dial_gate` to `[gate.x, gate.y, gate.z]` / `gate.yaw` — the
+    /// pre-H01 line — fails this.
+    #[tokio::test]
+    async fn dial_gate_with_an_arrival_pin_uses_the_pin() {
+        let mut mgr = make_manager_with_stargates();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        handle_dial_gate(1, 99, 0, &tx, &mut mgr).await;
+
+        let (position, rotation) = expect_gate_travel(&mut rx);
+        // Exact, not tolerance-based: these literals are copied verbatim
+        // through the call chain with no arithmetic applied.
+        assert_eq!(position, [700.5, 60.25, 540.75]);
+        assert_eq!(rotation[2], 1.0);
+        assert_ne!(
+            position,
+            [761.677, 63.466, 551.716],
+            "the prefab-origin gate row must not win over an authored pin"
+        );
+    }
+
+    /// End to end, on the wire the base actually receives: a gate whose
+    /// arrival is off the destination world's navmesh must hand BaseApp the
+    /// respawner position, not the authored one.
+    ///
+    /// `cell::arrival`'s own tests prove the *decision*; the two tests above
+    /// prove the *pin plumbing*. Without this one the defect the packet
+    /// exists to prevent — an off-mesh coordinate reaching
+    /// `CellToBaseMsg::GateTravel` — is only covered in two disjoint halves.
+    #[tokio::test]
+    async fn dial_gate_to_an_off_mesh_arrival_sends_the_respawner_position() {
+        use crate::cell::arrival::{test_fixture_mesh, test_insert_navmesh_space};
+        use crate::cell::spawner::RespawnerDef;
+
+        let Some(mesh) = test_fixture_mesh() else {
+            return;
+        };
+        // Same fixture coordinates as `cell::arrival::tests`.
+        const ON_MESH: [f32; 3] = [-289.465, 68.542, -154.276];
+        const OFF_MESH: [f32; 3] = [-289.465, 268.542, -154.276];
+
+        let mut mgr = make_manager_with_stargates();
+        test_insert_navmesh_space(&mut mgr, "Castle_CellBlock", mesh);
+        mgr.respawners.push(RespawnerDef {
+            respawner_id: 1,
+            world_name: "Castle_CellBlock".to_string(),
+            name: "test".to_string(),
+            pos: ON_MESH,
+        });
+        mgr.stargates.insert(
+            98,
+            StargateEntry {
+                world_name: "Castle_CellBlock".to_string(),
+                x: OFF_MESH[0],
+                y: OFF_MESH[1],
+                z: OFF_MESH[2],
+                yaw: 1.75,
+                address_origin: 18,
+                arrival: None,
+            },
+        );
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        handle_dial_gate(1, 98, 0, &tx, &mut mgr).await;
+
+        let (position, rotation) = expect_gate_travel(&mut rx);
+        assert_eq!(position, ON_MESH, "the off-mesh gate row must be replaced");
+        assert_ne!(
+            position, OFF_MESH,
+            "an off-navmesh arrival must never reach the base — that is the \
+             silent-freeze bug"
+        );
+        assert_eq!(
+            rotation[2], 1.75,
+            "a respawner fallback carries the authored facing through"
+        );
+    }
+
+    fn expect_gate_travel(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> ([f32; 3], [f32; 3]) {
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::GateTravel {
+                position, rotation, ..
+            } = msg
+            {
+                return (position, rotation);
+            }
+        }
+        panic!("Expected GateTravel message");
     }
 }
