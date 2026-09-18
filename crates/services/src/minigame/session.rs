@@ -202,10 +202,48 @@ impl SessionRegistry {
         Some(session.clone())
     }
 
-    /// Remove a session (called on game completion or disconnect).
+    /// Remove a session unconditionally.
+    ///
+    /// Prefer [`Self::remove_if_ticket`] from a connection task — see the
+    /// race it closes. This stays as the blunt primitive for a caller that
+    /// genuinely wants the entity's session gone whatever it is.
     pub async fn remove(&self, entity_id: u32) {
         let mut inner = self.inner.lock().await;
         inner.sessions.remove(&entity_id);
+    }
+
+    /// Remove a session only if it is still the one that minted `ticket`.
+    /// Returns whether it was removed.
+    ///
+    /// The connection task's teardown must not delete a session it does not
+    /// own. Sequence that makes it matter: a session outlives
+    /// [`PENDING_SESSION_TTL`] without being marked connected (a bug, or a
+    /// future code path that forgets `mark_connected`), the sweep drops it,
+    /// the player interacts again and `register` mints a *second* session
+    /// for the same entity id — and then the first task finishes and its
+    /// unconditional `remove` deletes the second one, leaving the live
+    /// minigame with no registry entry. Keying the delete on the ticket,
+    /// which is 64 hex chars of CSPRNG output per registration, makes a
+    /// stale task's teardown a no-op instead.
+    pub async fn remove_if_ticket(&self, entity_id: u32, ticket: &str) -> bool {
+        let mut inner = self.inner.lock().await;
+        match inner.sessions.get(&entity_id) {
+            Some(session) if session.ticket == ticket => {
+                inner.sessions.remove(&entity_id);
+                true
+            }
+            Some(_) => {
+                // Not an error the player sees, but it means two tasks
+                // overlapped on one entity — worth a line if it ever fires.
+                tracing::warn!(
+                    entity_id,
+                    "Minigame: stale connection task tried to unregister a \
+                     newer session; leaving it in place"
+                );
+                false
+            }
+            None => false,
+        }
     }
 
     /// Allocate a unique room ID.
@@ -474,6 +512,115 @@ mod tests {
         assert!(
             reg.authenticate(99, &fresh, "Livewire").await.is_some(),
             "the younger session must be untouched by the sweep",
+        );
+    }
+
+    /// Let a just-spawned task reach its first await point.
+    ///
+    /// `spawn_sweep` builds its `Interval` *inside* the task, so the
+    /// interval's epoch is whenever the task is first polled. Advancing the
+    /// clock before that happens moves the epoch forward with it and the
+    /// sweep never fires — which made the first version of these two tests
+    /// pass vacuously. Yielding here pins the epoch at `now` first.
+    async fn let_spawned_task_start() {
+        for _ in 0..4 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// **`spawn_sweep` wiring guard.** Everything else about expiry is
+    /// tested by calling `expire_pending` directly, which leaves the
+    /// background task itself — and its two `Duration` arguments — unpinned.
+    /// Swapping `ttl` and `interval` at the call site in
+    /// `minigame::server::run` would be invisible without this.
+    ///
+    /// Uses a short interval so the assertion does not depend on the
+    /// production 60 s constant.
+    #[tokio::test(start_paused = true)]
+    async fn spawn_sweep_evicts_a_stale_session_on_its_own() {
+        let ttl = Duration::from_secs(30);
+        let interval = Duration::from_secs(5);
+        let reg = SessionRegistry::new();
+        let ticket = register_livewire(&reg, 42).await.unwrap();
+        reg.spawn_sweep(ttl, interval);
+        let_spawned_task_start().await;
+
+        // Past the TTL plus a full interval, so at least one real sweep
+        // tick has fired (the first `tick()` is burned at startup).
+        tokio::time::advance(ttl + interval * 2).await;
+        let_spawned_task_start().await;
+
+        assert!(
+            reg.authenticate(42, &ticket, "Livewire").await.is_none(),
+            "the background sweep must evict a stale session without anyone              calling expire_pending; if this hangs on the arguments being              swapped, the sweep is running on a 30 s interval with a 5 s TTL",
+        );
+    }
+
+    /// The background sweep must leave a connected session alone, for the
+    /// same reason `expire_pending` does: a Livewire round can outlive the
+    /// TTL and its connection task owns the entry.
+    #[tokio::test(start_paused = true)]
+    async fn spawn_sweep_leaves_a_connected_session_alone() {
+        let ttl = Duration::from_secs(30);
+        let interval = Duration::from_secs(5);
+        let reg = SessionRegistry::new();
+        let ticket = register_livewire(&reg, 42).await.unwrap();
+        reg.mark_connected(42).await;
+        reg.spawn_sweep(ttl, interval);
+        let_spawned_task_start().await;
+
+        tokio::time::advance(ttl + interval * 2).await;
+        let_spawned_task_start().await;
+
+        assert!(
+            reg.authenticate(42, &ticket, "Livewire").await.is_some(),
+            "the background sweep must not evict a connected session",
+        );
+    }
+
+    /// **Stale-teardown guard.** A connection task whose session was already
+    /// swept and replaced must not delete the replacement. Keyed on the
+    /// ticket, so the first task's teardown becomes a no-op.
+    ///
+    /// Fails with `remove_if_ticket` reverted to the unconditional
+    /// `remove`: the second session disappears and the live minigame is
+    /// left with no registry entry.
+    #[tokio::test(start_paused = true)]
+    async fn a_stale_task_cannot_unregister_a_newer_session() {
+        let reg = SessionRegistry::new();
+        let stale_ticket = register_livewire(&reg, 42).await.unwrap();
+
+        // The first session ages out and the player interacts again.
+        tokio::time::advance(PENDING_SESSION_TTL + Duration::from_secs(1)).await;
+        let live_ticket = register_livewire(&reg, 42).await.unwrap();
+        reg.mark_connected(42).await;
+
+        // Only now does the first task finish and run its teardown.
+        assert!(
+            !reg.remove_if_ticket(42, &stale_ticket).await,
+            "the stale task must not report a removal -- its session is gone",
+        );
+        assert!(
+            reg.authenticate(42, &live_ticket, "Livewire")
+                .await
+                .is_some(),
+            "the newer session must survive a stale task's teardown",
+        );
+    }
+
+    /// The owning task's teardown must still work: same ticket, removed.
+    #[tokio::test]
+    async fn remove_if_ticket_removes_the_session_it_owns() {
+        let reg = SessionRegistry::new();
+        let ticket = register_livewire(&reg, 42).await.unwrap();
+
+        assert!(
+            reg.remove_if_ticket(42, &ticket).await,
+            "the owning task's teardown must remove its own session",
+        );
+        assert!(
+            reg.authenticate(42, &ticket, "Livewire").await.is_none(),
+            "the session must be gone after its owner tears it down",
         );
     }
 }

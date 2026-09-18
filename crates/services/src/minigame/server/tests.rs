@@ -71,6 +71,50 @@ async fn drain_and_close(mut client: TcpStream) {
     drop(client);
 }
 
+/// Close only the client's write half, then read the server's side to EOF.
+///
+/// A half-close is what lets a test *observe* the teardown: the server sees
+/// EOF on its next read and runs the abort path, and the client is still
+/// able to receive everything the abort path writes. Dropping the whole
+/// socket instead throws those bytes away, which is why the abort tests
+/// could not tell whether `aborted()` had actually run.
+async fn half_close_and_read_to_eof(mut client: TcpStream) -> String {
+    tokio::io::AsyncWriteExt::shutdown(&mut client)
+        .await
+        .expect("client write-half shutdown must succeed");
+
+    let mut out = Vec::new();
+    let mut chunk = vec![0u8; MAX_MESSAGE_LEN];
+    loop {
+        match tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio::io::AsyncReadExt::read(&mut client, &mut chunk),
+        )
+        .await
+        {
+            // EOF: the server dropped its end after teardown.
+            Ok(Ok(0)) | Err(_) => break,
+            Ok(Ok(n)) => out.extend_from_slice(&chunk[..n]),
+            Ok(Err(_)) => break,
+        }
+    }
+    // Frames are NUL-delimited on the wire. Swap the terminators for
+    // newlines: a raw NUL in a captured stream makes the whole assertion
+    // message register as binary, and `grep` on a failing CI log then
+    // prints "Binary file matches" instead of the failure.
+    String::from_utf8_lossy(&out).replace('\0', "\n")
+}
+
+/// Count the `failure` extension frames in a captured server stream.
+///
+/// `PlaceholderGame::aborted` is the only thing that emits one — `started()`
+/// sends `fullgamestate` and the teardown sends onPlayerLeaveGame /
+/// onGameEnd / roomDel — so this is a direct observation of the
+/// `aborted()` call.
+fn count_failure_frames(stream: &str) -> usize {
+    stream.matches("<var n='_cmd' t='s'>failure</var>").count()
+}
+
 /// One bounded read. The whole handshake is a few hundred bytes and arrives
 /// coalesced, so a single read is enough to unblock the server; anything
 /// left over is discarded when the socket drops.
@@ -98,16 +142,18 @@ fn drain_results(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(u8, Vec<i64>)> 
 }
 
 /// **Defect B4 regression guard (abort half).** A client that closes its
-/// socket mid-game must produce exactly one upstream result, coded
-/// `RESULT_CANCELED`.
+/// socket mid-game must produce exactly one upstream result coded
+/// `RESULT_CANCELED`, *and* the instance's `aborted()` must actually run.
 ///
-/// Fails with the `if !result_reported` block removed from `run_session`:
-/// no result is dispatched at all, which is the behaviour that left
-/// `MinigameInstance::aborted` with zero call sites in the tree.
+/// Two independent reverts fail this. Removing the `if !result_reported`
+/// block drops the upstream report. Removing just the
+/// `for output in game.aborted()` loop inside it leaves the report intact
+/// but stops the `failure` frame reaching the client — which is why the
+/// client stream is asserted on rather than only the result code.
 #[tokio::test]
-async fn closing_the_swf_reports_canceled_not_defeat() {
+async fn closing_the_swf_reports_canceled_and_runs_aborted() {
     let (client, mut rx, handle) = spawn_placeholder_session(4301).await;
-    drain_and_close(client).await;
+    let stream = half_close_and_read_to_eof(client).await;
     handle.await.expect("session task must not panic");
 
     let results = drain_results(&mut rx);
@@ -121,6 +167,14 @@ async fn closing_the_swf_reports_canceled_not_defeat() {
         (RESULT_CANCELED, vec![]),
         "the original reported MinigameCanceled (0) on abort, never Defeat \
          (2) — Defeat is reserved for a game the player actually lost",
+    );
+    assert_eq!(
+        count_failure_frames(&stream),
+        1,
+        "`MinigameInstance::aborted()` must run exactly once on an abandoned \
+         session and its output must reach the client; the placeholder's \
+         only `failure` frame comes from `aborted()`. Captured stream: \
+         {stream}",
     );
 }
 
@@ -159,10 +213,18 @@ async fn a_won_game_reports_victory_once_and_never_canceled() {
 ///
 /// This is the half that makes the player whole: the TTL sweep covers a
 /// session whose SWF never connected, and `handle_connection`'s
-/// `registry.remove` covers one that connected and then went away. Fails
-/// with that `remove` deleted, and fails if any `run_session` exit path is
+/// `remove_if_ticket` covers one that connected and then went away. Fails
+/// with that removal deleted, and fails if any `run_session` exit path is
 /// ever allowed to return past it — which is exactly what the four
 /// handshake sends used to do before they were moved behind `run_session`.
+///
+/// It also pins the `mark_connected` call, which is the *only* production
+/// call site. Without that assertion, deleting it passes every other test
+/// here while reopening a worse bug than B4: a Livewire round running past
+/// `PENDING_SESSION_TTL` gets swept mid-play, a second interaction
+/// registers a fresh session for the same entity, and this task's teardown
+/// would delete the second player's session. (`remove_if_ticket` now blocks
+/// that last step, but an unconnected live session is still wrong.)
 #[tokio::test]
 async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -205,6 +267,32 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
     .await
     .expect("login send must succeed");
 
+    // The login handler has to have marked the session connected before it
+    // starts the room sends. Poll rather than assert immediately: the
+    // handshake reply tells us the server got past login, but this test
+    // races the spawned task, so give it a bounded window.
+    let connected = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(s) = registry.authenticate(4303, &ticket, "Hack").await {
+                if s.connected {
+                    return true;
+                }
+            } else {
+                // Session already torn down — connected was never observed.
+                return false;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("mark_connected must happen well within 5s");
+    assert!(
+        connected,
+        "handle_connection must mark the session connected once login \
+         succeeds; without it the sweep can evict a session that is being \
+         actively played",
+    );
+
     // Player closes the minigame window mid-game.
     drain_and_close(client).await;
     handle.await.expect("connection task must not panic");
@@ -217,5 +305,91 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
         "after a connection closes, the entity must be able to launch again \
          immediately — not after waiting out PENDING_SESSION_TTL, and not \
          only after a relog",
+    );
+}
+
+/// **Regression guard for the `break 'session` routing.** A send that
+/// fails during the handshake must still reach the common teardown:
+/// `aborted()` runs and exactly one `RESULT_CANCELED` is reported.
+///
+/// Before this, each of the seven handshake / `started()` sends `return`ed
+/// straight past the teardown block, so a socket that died between
+/// `game.started()` and the game loop produced no `aborted()` call and no
+/// upstream result at all — the session just evaporated.
+///
+/// The failure is forced deterministically: the client sets `SO_LINGER` to
+/// zero and closes *before* the server writes anything, so the close is an
+/// RST rather than a FIN and the server's first `write_all` errors. Reverting
+/// any `break 'session` to `return` fails this.
+#[tokio::test]
+async fn a_send_failure_during_handshake_still_reports_canceled() {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind loopback");
+    let addr = listener.local_addr().expect("local_addr");
+    let client = TcpStream::connect(addr).await.expect("connect loopback");
+    let (server, _) = listener.accept().await.expect("accept loopback");
+
+    let registry = SessionRegistry::new();
+    let ticket = registry
+        .register(4304, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![])
+        .await
+        .expect("fresh registry must accept the session");
+    let session = registry
+        .authenticate(4304, &ticket, "Hack")
+        .await
+        .expect("session must authenticate");
+    registry.mark_connected(4304).await;
+    let game = create_game(&session).expect("placeholder instance");
+
+    // Linger 0 makes close() emit RST instead of FIN, which turns the
+    // server's next write into an error rather than a successful buffered
+    // send. Done before the server task starts so the reset is already
+    // queued when `run_session` writes rmList.
+    //
+    // A half-close (`shutdown`) or a plain drop sends FIN, and a FIN does
+    // not stop the peer writing -- the server's sends would all succeed and
+    // the test would stop being a guard for the routing at all. The reset is
+    // the whole point, so this goes through `socket2::SockRef`, which
+    // borrows the tokio socket and offers the same option without tokio's
+    // deprecated `TcpStream::set_linger` wrapper.
+    socket2::SockRef::from(&client)
+        .set_linger(Some(Duration::ZERO))
+        .expect("SO_LINGER must be settable on a loopback TCP socket");
+    drop(client);
+    // Let the RST land before the first server write.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    let (tx, mut rx) = mpsc::channel(16);
+    let reg = registry.clone();
+    tokio::spawn(async move {
+        run_session(
+            server,
+            &reg,
+            &tx,
+            session,
+            game,
+            vec![0u8; MAX_MESSAGE_LEN],
+            0,
+        )
+        .await;
+        reg.remove_if_ticket(4304, &ticket).await;
+    })
+    .await
+    .expect("session task must not panic");
+
+    let results = drain_results(&mut rx);
+    assert_eq!(
+        results,
+        vec![(RESULT_CANCELED, vec![])],
+        "a handshake send failure must route to the shared teardown and \
+         report Canceled exactly once, not return past it",
+    );
+    assert!(
+        registry
+            .register(4304, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![])
+            .await
+            .is_some(),
+        "the session must still be unregistered after a handshake failure",
     );
 }
