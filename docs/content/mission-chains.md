@@ -2,12 +2,12 @@
 title: "Mission Chains: Complete Inventory"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-18
 ---
 
 # Mission Chains: Complete Inventory
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-18
 > **Scope**: All 1,040 missions in the Stargate Worlds server emulator
 > **Sources**: [db/resources/Missions/Seed/missions.sql](../../db/resources/Missions/Seed/missions.sql) (1,040 mission INSERTs), `deprecated/python/cell/missions/` (20 script files), `deprecated/python/cell/spaces/` (11 space scripts), `deprecated/python/cell/MissionManager.py`
 >
@@ -975,6 +975,29 @@ if status == Constants.MISSION_Not_Active:
 **Zone**: Harset (persistent hub zone, Praxis faction)
 **Total scripted missions**: 1 (742)
 
+#### Harset space chains (worlds 57, 68) — chains 6001-6007
+
+Not mission chains: permanent space furniture, ported line-for-line from the two surviving 2009 space scripts (`deprecated/python/cell/spaces/Harset.py`, 70 lines, and `Harset_CmdCenter.py`, 31 lines). Those two files are the *only* surviving Harset space logic — they hold ring switches and one door, nothing else. Seeded in [`db/resources/Content/Seed/harset_space_chains.sql`](../../db/resources/Content/Seed/harset_space_chains.sql), which owns chain ids 6001-6099.
+
+| Chain | Trigger | Condition | Action |
+|---|---|---|---|
+| 6001 | `interact_tag` `HarsetRingLeftBottom` | — | `trigger_transporter {"regionId": 4}` |
+| 6002 | `interact_tag` `HarsetRingRightBottom` | — | `trigger_transporter {"regionId": 5}` |
+| 6003 | `interact_tag` `HarsetRingLeft` | — | `trigger_transporter {"regionId": 6}` |
+| 6004 | `interact_tag` `HarsetRingLeftTop` | — | `trigger_transporter {"regionId": 7}` |
+| 6005 | `interact_tag` `HarsetRingRight` | — | `trigger_transporter {"regionId": 8}` |
+| 6006 | `enter_region` `Harset.CommandCenterTransition` | `world eq 57` | `cross_world_teleport Harset_CmdCenter (0, 0.355, -20)` |
+| 6007 | `enter_region` `Harset_CmdCenter.HarsetTransition` | `world eq 68` | `cross_world_teleport Harset (0, -67.6, -231)` — **`enabled = false`** |
+
+Four things worth knowing before you touch this file:
+
+- **The ring switches carry no `set_interaction_type`.** Entity template 3 ("Ring Transporter Switch") already has `interaction_type = 32` (`INT_RingNetwork`) as a template default, and the spawner reads that column onto every spawned entity. Seeding the bit again would imply it needs setting. The `interact_tag` linter carries five allowlist entries recording exactly this.
+- **A right-click opens the destination list; it does not teleport.** The hop is the follow-up `setRingTransporterDestination`. All five regions list the other four, so every ring reaches every other one.
+- **Chain 6007 ships disabled.** Its recovered arrival point `(0, -67.6, -231)` is off the shipped `harset.nav` mesh — verified by a replay guard that loads the real `.nav` and asserts the verdict — and world 57 has no seeded respawner yet, so an enabled 6007 would strand the player: they would move on their own screen, never move for witnesses, and get no error. A visibly one-way door is a strictly better failure. The in-client placement session must replace the coordinate **and** flip `enabled` in the same change, keeping ~8 units of clearance from point set 2078 so the door does not ping-pong. The replay guard asserts both halves, so they cannot drift apart. Chain 6006's destination needs no pin: world 68 has no navmesh at all, so there is no off-mesh failure mode to guard against and the raw 2009 coordinate ships as recovered.
+- **The `world` conditions are defence in depth, not the gate.** The two region keys are world-prefixed and byte-distinct, so a player in one world cannot trip the other's chain by accident. The residual hole is that `SpaceManager::get_region` is a world-global map keyed on a **client-supplied** region id. Here that buys an attacker nothing (both doors are unconditionally open to everyone), but the next `enter_region` chain that grants or completes something will need a dispatch-site check, not just a condition.
+
+There are **no relog-restore chains** in this file, and the reserved 6008-6020 block is deliberately unused: no chain here sets an interaction bit or binds a dialog set, and the ring switches' `INT_RingNetwork` bit comes from the template column that the spawner re-reads on every spawn, so it survives a restart by construction.
+
 #### Mission 742: "Giving the Walls Ears" [CONFIRMED]
 
 | Field | Value |
@@ -1012,9 +1035,9 @@ if status == Constants.MISSION_Not_Active:
 1. On acceptance: add dialog set 3129 to entity template 163 (Petbe), grant 3x listening devices (item 2820, bag 0)
 2. dialog.choice::2638 (talk to Petbe): grant disguise (item 2819, bag 0), remove dialog set 3129 from template 163, advance to step 2503
 3. item.use::2819 (put on disguise): display dialog 2637, add dialog set 1000000 to template 164, advance to step 2504
-4. dialog_set.open::1000000 (interact with NPCs): check entity tag against FirstBug/SecondBug/ThirdBug
+4. dialog_set.open::1000000 (interact with a basket): check entity tag against FirstBug/SecondBug/ThirdBug
    - Complete objectives 2913/2914/2915 for matching tags
-   - Remove 1 listening device (item 2820) per bug planted
+   - The devices are **not** consumed. The script's per-bug `Act_RemoveItems(2820)` node is orphaned in the compiled Python: `GivingTheWallsEars.py:129` guards it with a literal `None`, and the call underneath it (`None.inventory.removeItemByDesign`) would raise if it were ever reached. The player finishes the mission still holding all three. Audit defect H-B15 — an earlier revision of this line said they were consumed, and that was wrong. Whoever ports 742 (packet H41) must decide explicitly whether to keep the un-consumed behaviour or add a `remove_item`, and record the choice in the seed header
    - After all 3 objectives complete: advance to step 2505, add dialog set 3130 to template 43 (Anat)
 5. dialog.choice::2639 (report to Anat): remove dialog set 3130 from template 43, grant map (item 2864, bag 0), advance to step 2506, add dialog set 3131 to template 53 (Nerus)
 6. dialog.choice::2640 (give map to Nerus): remove item 2864, complete mission 742
@@ -1023,11 +1046,11 @@ if status == Constants.MISSION_Not_Active:
 
 | Item ID | Bag | Qty | Notes |
 |---------|-----|-----|-------|
-| 2820 | 0 | 3 | Listening devices (consumed as objectives complete) |
+| 2820 | 0 | 3 | Listening devices (Scarabs). **Never consumed** — the removal node is orphaned; see step 4 above |
 | 2819 | 0 | 1 | Disguise (consumed on use) |
 | 2864 | 0 | 1 | Device map (given to Nerus) |
 
-**Entity templates**: 163 (Petbe), 164 (NPCs with bugs), 43 (Anat), 53 (Nerus)
+**Entity templates**: 163 (Petbe), 164 (the bug baskets — `GA-Props.GA-MerchantBasket05` on a `WorldObject_Small` body set, a **prop**, not an NPC; an earlier revision of this line called it "NPCs with bugs" and that was wrong, audit defect H-B15), 43 (Anat), 53 (Nerus)
 
 **Bug target tags**: `FirstBug`, `SecondBug`, `ThirdBug`
 

@@ -1,6 +1,6 @@
 # Abilities + Effects System
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-18
 > **Audience**: Engineers touching combat / abilities / effects on the cell
 > **Type**: ADR + reference
 > **Owner**: Combat systems
@@ -266,6 +266,44 @@ door.
 **Code:** [`crates/services/src/cell/content/effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs),
 dispatched from [`executor/mod.rs`](../../crates/services/src/cell/content/executor/mod.rs).
 
+### 17. `entity_health_below` hooks into the kill-credit wrapper, not the damage path
+
+**Decision:** The content-engine `entity_health_below` trigger is fired from
+[`abilities/use_ability/kill_credit.rs`](../../crates/services/src/cell/abilities/use_ability/kill_credit.rs) —
+`handle_use_ability_with_kill_credit` — after the ability resolves, in the existing
+`!just_died` early-return. The pure percentage arithmetic lives in
+[`cell/combat/health_threshold.rs`](../../crates/services/src/cell/combat/health_threshold.rs).
+
+**Why here.** The trigger needs three things at once: the target's health on **both** sides
+of the hit, the attacking player as the acting entity, and a `&ChainEngine`. Only this
+wrapper has all three. `mark_npc_dead` is *defined* in `cell/combat/state.rs` but *reached
+from* `cell/abilities/damage_apply/`, and neither layer carries a `ChainEngine`. The wrapper
+already snapshots `was_alive_before` and re-checks after the call; the health percentage is
+snapshotted in the same pass, because once `handle_use_ability` returns the pre-hit value is
+gone and a downward crossing cannot be computed from one side. All five production call
+sites that reach a player single-target attack go through this wrapper, so nothing bypasses
+it.
+
+**Death is read from `BSF_DEAD`, not `health.cur <= 0`.** This is the load-bearing detail.
+An effect script runs after the NVP damage path and outside its `target_died` guard, so a
+heal script on a killing blow can leave a corpse sitting at positive health. A health-based
+liveness check would then fire a threshold chain on that corpse. The dispatcher
+(`fire_health_below_for_hit`) drops any hit whose target ends dead, keeping the zero-health
+check alongside the flag for an entity that is at zero but not yet marked. The `!just_died`
+branch in the wrapper is defence in depth, not the enforcement — the authority is at the
+dispatcher, at the one place that knows the hit was lethal.
+
+**Consequence for effect authors.** Damage-over-time pulses (`cell/effects/pulsing/tick.rs`)
+mutate NPC health with no `ChainEngine` in scope, and the `apply_effect` content action can
+damage through `effect_apply.rs` without firing the trigger. Neither crosses a threshold
+*visibly*, and because the band test needs `pct_before` to still be above the threshold, a
+silent crossing permanently disables the chain. **Do not attach a DoT to an NPC whose
+scripted beat depends on `entity_health_below`.**
+
+**Reversibility:** Moderate. Closing the AoE-secondary gap means an attacker-side scratchpad
+in `crates/entity` mirroring `last_aoe_deaths` (decision 13); closing the DoT gap means
+threading a `ChainEngine` into the pulse tick. Both are additive.
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:
@@ -282,4 +320,5 @@ These were considered and deliberately deferred:
 - [`state-field-bits.md`](state-field-bits.md) — the `BSF_*` bit catalog
 - [`negative-logging-convention.md`](negative-logging-convention.md) — the observability discipline applied across the effect dispatcher
 - [`docs/game-systems.md`](../game-systems.md) — top-level systems overview (abilities + effects section gets updated alongside this ADR)
+- [`docs/content/content-engine.md`](../content/content-engine.md) — the `entity_health_below` trigger's authoring shape and band-test semantics (decision 17), and the `launch_ability` / `apply_effect` action rows (decision 16)
 - [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md) — `onTimerUpdate` (12), `onEffectResults` (14), `onKnownAbilitiesUpdate` (101)

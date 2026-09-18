@@ -2,12 +2,12 @@
 title: "Content engine — reference"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-18
 ---
 
 # Content engine — reference
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-09-18
 > **Audience**: Engineers working on the Rust server who need to understand, debug, or extend the data-driven content engine.
 > **Prerequisites**: Familiar with the Cimmeria crate layout ([crates/README.md](../../crates/README.md)) and the cell/base service split ([architecture/service-architecture.md](../architecture/service-architecture.md)).
 > **Diátaxis type**: Reference + explanation. For the design rationale ("why does this exist at all?") see [architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md). For "how do I add a new variant?" see [extending-the-engine.md](extending-the-engine.md).
@@ -50,7 +50,7 @@ The boundary exists so the engine stays declarative. Chain authors write SQL row
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-Implementation status (2026-07-25): **shipped and driving Castle_CellBlock and SGC_W1 end-to-end.** Since the original write-up the surface has grown to cover NPC AI direction (`SetNpcPoi` / `SetFollowTarget` / `SetNpcAiState`), cover-proximity triggers, and cross-world teleport. Note that a handful of authorable actions still have no executor arm — read §3's catalog before authoring a chain.
+Implementation status (2026-09-18): **shipped and driving Castle_CellBlock and SGC_W1 end-to-end.** Since the original write-up the surface has grown to cover NPC AI direction (`SetNpcPoi` / `SetFollowTarget` / `SetNpcAiState`), cover-proximity triggers, cross-world teleport, entity spawn/despawn, and a health-threshold trigger. Note that a handful of authorable actions still have no executor arm, and five authorable trigger types have no dispatch site at all — read §3's catalogs before authoring a chain.
 
 > **Unmerged work described here.** This document was revised on the
 > `feat/571-black-market-phase1` branch. The `OpenBlackMarket` action, the
@@ -83,7 +83,7 @@ This crate does not depend on `cimmeria-services`, `cimmeria-base`, or `tokio` r
 | [mod.rs](../../crates/services/src/cell/content/mod.rs) | Public re-exports for the rest of the cell service |
 | [engine_loader.rs](../../crates/services/src/cell/content/engine_loader.rs) | `build_engine` — runs the four boot SQL queries |
 | [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/) | `fire_<event>` factory functions, grouped by family: `cover.rs`, `dialog.rs`, `interaction.rs`, `inventory.rs`, `lifecycle.rs`, `mission.rs`, `region.rs` |
-| [executor/](../../crates/services/src/cell/content/executor/) | `execute_actions` — the `match action { ... }` in [mod.rs](../../crates/services/src/cell/content/executor/mod.rs), forwarding to per-family handlers (`mission.rs`, `inventory.rs`, `dialog.rs`, `stats.rs`, `world/`, `counter.rs`, `transport.rs`, `black_market.rs`) |
+| [executor/](../../crates/services/src/cell/content/executor/) | `execute_actions` — the `match action { ... }` in [mod.rs](../../crates/services/src/cell/content/executor/mod.rs), forwarding to per-family handlers (`mission.rs`, `inventory.rs`, `dialog.rs`, `stats.rs`, `world/`, `spawn/`, `counter.rs`, `transport.rs`, `black_market.rs`) |
 | [mission_context.rs](../../crates/services/src/cell/content/mission_context.rs) | Populators: write mission/counter/stat state into `ExecutionContext` |
 | [chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/) | Live-DB regression guards that pin chain behavior, one module per mission/feature (`mission_622.rs`, `mission_638.rs`, …, `black_market.rs`, `cover_demo.rs`) |
 
@@ -102,6 +102,7 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnEntityCreated { entity_type? }` | Entity spawns (filterable by template-string type) |
 | `OnEntityDestroyed { entity_type? }` | Entity removed |
 | `OnEntityDeath { entity_type?, entity_tag? }` | Entity dies; tag wins over type when both set |
+| `OnEntityHealthBelow { entity_tag, pct }` | A tagged entity's health crosses `pct` **downward** on a single damaging hit. Seed `event_key` is `"<tag>:<pct>"` (e.g. `"Rinla_Malac:30"`), parsed with `rsplit_once(':')` so a tag containing a colon still resolves; `pct` must be `1..=100` or the row is dropped ([loader/trigger.rs:117-130](../../crates/content-engine/src/loader/trigger.rs#L117-L130)). See the band-test note below |
 | `OnAbilityUsed { ability_id? }` | Any entity uses an ability |
 | `OnInteraction { interaction_type? }` | Generic right-click |
 | `OnRegionEnter { region_key }` | Player enters a Kismet region (string key like `Castle_CellBlock.Region2`) |
@@ -129,7 +130,26 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 
 Within a single chain's bucket, `Trigger::matches` ([triggers/matching.rs:43](../../crates/content-engine/src/triggers/matching.rs#L43)) decides whether the event matches the chain's specific trigger variant + filter. Bucketing is by **`TriggerType` discriminant** — see §6.
 
+**`entity_health_below` is a stateless band test.** The damage path emits **one event per damaging hit**, carrying the target's health percentage before and after the hit; `Trigger::matches` fires the chain iff `pct_before > pct && pct_after <= pct`. Nothing tracks which thresholds have already been crossed, so the cost is one event and one hash lookup per hit no matter how large the hit was, and the dispatch site stays independent of what content seeded. Consequences worth knowing before you author one:
+
+- A hit from 60% to 40% fires a `:50` chain once; the next hit, 40% → 25%, does not (`pct_before > 50` is false). Healing back above the threshold re-arms it.
+- Two thresholds on one tag are independent bands: a hit spanning both fires both.
+- **A killing blow never fires it.** The suppression is at the dispatcher (`fire_health_below_for_hit`), not in the predicate — a `31% → 0%` hit satisfies the band test, so the dispatcher drops any hit whose target ends dead. Deadness is read from `BSF_DEAD` rather than `health.cur <= 0`, because an effect script runs after the damage path and can heal a corpse back above zero. The kill goes to `entity_dead_tag` instead; a chain author gets exactly one of the two per hit.
+- **Only single-target player damage fires it.** AoE secondaries reach `apply_damage_to_target` directly and surface only *deaths* to the caller layer, damage-over-time pulses run with no `ChainEngine` in scope, and the `apply_effect` content action can damage without firing it. The practical constraint: **do not put a DoT on an NPC whose ritual depends on this trigger** — once the DoT carries it past the threshold, `pct_before` is already at or below it on every later hit and the chain can never fire.
+
 **Not reachable from seed data.** `OnEntityCreated`, `OnEntityDestroyed`, `OnAbilityUsed`, `OnInteraction`, `OnMissionStep`, `OnItemAcquired`, and `OnTimer` have no match arm in [loader/trigger.rs](../../crates/content-engine/src/loader/trigger.rs), so no `content_triggers` row can bind them — a chain authored with those `event_type` strings is dropped with a `warn!`. `OnCustomEvent` has no arm either but is generated internally, as the synthetic `__direct_invoke_<id>` trigger for chains with zero trigger rows (§6). `OnEntityDeath` is reachable only through the `entity_dead_tag` (tag-filtered) form; there is no `event_type` that binds the `entity_type` form.
+
+**Authorable but never dispatched — the other half of the gap.** Five trigger types have a loader arm (so a `content_triggers` row binds cleanly and the chain registers) but **no `fire_*` site anywhere in the cell service constructs their `TriggerType`**, so they can never fire:
+
+| Seed `event_type` | Variant | Why it matters |
+|---|---|---|
+| `dialog_set_open` | `OnDialogSetOpen` | The 2009 scripts used `dialog_set.open::<id>` as the "player interacted with a bound NPC" hook — mission 742's bug-planting step is written against it. Port that shape to `interact_tag` instead |
+| `effect_init` | `OnEffectInit` | No effect-lifecycle dispatch exists |
+| `effect_pulse_begin` | `OnEffectPulseBegin` | " |
+| `effect_pulse_end` | `OnEffectPulseEnd` | " |
+| `effect_removed` | `OnEffectRemoved` | " |
+
+This is the trigger-side mirror of the action-side gap catalogued below, and it is the reason `apply_effect`'s one seeded row cannot fire: the row sits on an `effect`-scoped chain whose trigger is one of these.
 
 ### Conditions — *gates that AND together*
 
@@ -183,6 +203,8 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `set_interaction_type` | `SetInteractionType` | 70 |
 | `set_visible` | `SetVisible` | 1 |
 | `destroy_entity` | `DestroyTaggedEntity` | 1 |
+| `spawn_entity` | `SpawnEntity` | 0 |
+| `despawn_entity` | `DespawnEntity` | 0 |
 | `generate_threat` | `GenerateThreat` | 3 |
 | `set_aggression` | `SetAggression` | 1 |
 | `set_npc_poi` | `SetNpcPoi` | 0 |
@@ -225,6 +247,38 @@ Two caveats for authors:
   the action. Effect 1634, the sole effect on the Castle Cellblock wake-up
   ability 1372, is exactly this shape.
 
+#### Entity-lifecycle verbs
+
+`spawn_entity` instantiates an `entity_templates` row into the **acting player's current space**. The seed row never names a space, because a chain authored for a per-player instance cannot know which instance the firing player is in — so the space is read off the triggering entity.
+
+| Column | Meaning |
+|---|---|
+| `target_id` | `entity_templates.template_id`. Mandatory |
+| `target_key` | The spawn tag `entity_dead_tag` / `interact_tag` / `despawn_entity` chains address it by. Mandatory, non-empty |
+| `params.x` / `.y` / `.z` | Mandatory and finite. A missing or `NaN` coordinate drops the action rather than spawning at the world origin |
+| `params.heading` | Optional, defaults to `0.0` |
+| `params.is_stationary` | Optional. No template column exists, so absent means `false`, not "inherit" |
+| `params.aggression` | Optional, same reasoning — absent means `0` |
+| `params.allow_shared` | Optional. `true` opts out of the shared-world refusal below |
+| `params.respawn_secs` | Accepted but **not honoured** — see below |
+
+Four refusals, each with a `warn!` carrying a stable `reason` ([executor/spawn/mod.rs](../../crates/services/src/cell/content/executor/spawn/mod.rs)):
+
+1. **`actor_not_player`** — the acting entity is an NPC, so "the acting player's space" is undefined. Cover-node and NPC-death chains fire this way.
+2. **`template_not_cached`** — the template id is not in the cell-side `entity_templates` cache. The cache is populated at startup precisely so the spawn is synchronous: a cell-to-base round trip would break the ordering of the `set_aggression` / `add_dialog_set` actions that follow a spawn in the same chain.
+3. **`shared_world_refused`** — the acting player's world is not instanced and `allow_shared` is not `true`. This is the guardrail behind the campaign rule "mission-scoped hostile NPCs go into the player's own instance, never into the shared hub".
+4. **`tag_already_live`** — an entity with that tag is already in this space. Relog-restore chains re-fire their step's actions by design, so a second spawn with the same tag is a no-op rather than a second NPC. The lookup matches **dead** entities too: a corpse still holds its tag, and resurrecting an NPC the player already killed would re-open completed content.
+
+`respawn_secs` is forced to `None` regardless of the param or the template column ([space_manager/spawn.rs:106-118](../../crates/services/src/cell/space_manager/spawn.rs#L106-L118)). The respawn tick keys on `(ai_state, respawn_at)` and has no instance-lifetime awareness, so a revived mission NPC would re-fire its `entity_dead_tag` chain and complete a kill objective twice. Content spawns are always one-shot; asking for a respawn warns (`content_respawn_unsupported`) and spawns anyway.
+
+One more warn worth recognising in a log: **`aggressive_spawn_faction_zero`**. Auto-aggro compares the NPC's faction against the player's, and players are always faction 0, so a hostile template with `faction = 0` or `NULL` never attacks. The fix is in the `entity_templates` row, not the chain.
+
+Because the idempotence guard is per-tag, **wave content needs one tag per spawn** (`ra_infiltrator_1`, `_2`, …) with one `spawn_entity` row each. A shared tag both trips the guard and makes `despawn_entity` reach only one of them — `entity_dead_tag` matching is exact, not prefixed.
+
+`despawn_entity` takes the tag in `target_key`. It and `destroy_entity` are now the same behaviour: both route through `SpaceManager::despawn_npc`, which fans `LeftAoI` to every current witness and scrubs the witness sets before destroying. `destroy_entity` previously called the bare `destroy_entity`, which dropped the entity from the space and the spatial grid but left its id in every observer's witness set — the client kept rendering a ghost until an AoI tick happened to visit that player. That is the #582 invisible-corpse shape.
+
+`set_visible` now fans out over the target's witness list. It used to send one message addressed to the target itself, which for an NPC resolves to no client address, so **every seeded `set_visible` row was a silent no-op**. Hide and show deliberately use different primitives, mirroring the engine's `leaveAoI` / `enterAoI`: hide sends `BASEMSG_ENTITY_INVISIBLE (0x0B)` per witness, show sends `onVisible(1)` per witness. Neither direction is recorded on the entity and the AoI create cascade unconditionally appends `onVisible(1)`, so **a hide is not durable across an AoI re-entry** — it holds only for witnesses who stay in range.
+
 #### Authorable but NOT executed — seeded rows that silently no-op
 
 These have a loader arm, so the seed accepts them and the engine resolves them, but **[executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) has no match arm** — every one falls through to the `debug!` catch-all and does nothing. This is a live correctness gap, not a roadmap item: 4 seeded rows are currently dead.
@@ -239,7 +293,7 @@ These have a loader arm, so the seed accepts them and the engine resolves them, 
 
 #### Not authorable — defined in the enum, no loader arm
 
-No `content_actions` row can name these; they are reachable only from Rust (or not at all). `SpawnEntity`, `DespawnEntity`, `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`. None has an executor arm either, so wiring any of them is a two-sided job. `GrantXP` used to head this list; it was wired on both sides in issue #611 and now appears in the executed table above with **0 seed rows** — the plumbing exists, no content uses it yet, and the seed still has `reward_xp = 0` on all 1,040 mission rows (§9).
+No `content_actions` row can name these; they are reachable only from Rust (or not at all). `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`. None has an executor arm either, so wiring any of them is a two-sided job. `GrantXP` used to head this list; it was wired on both sides in issue #611 and now appears in the executed table above with **0 seed rows** — the plumbing exists, no content uses it yet, and the seed still has `reward_xp = 0` on all 1,040 mission rows (§9). `SpawnEntity` and `DespawnEntity` left it in Harset H03, wired on both sides in the same change.
 
 Four variants have an executor arm but no seed verb, reached only as internal aliases or from Rust: `AdvanceMission` (aliased onto the `AcceptMission` arm), `StartDialog` (aliased onto `DisplayDialog`), `Teleport` (same-space teleport; only `cross_world_teleport` is authorable), and `TriggerChain` (resolved by the engine, re-dispatched by the caller). `SendMessage` has an arm that only logs.
 
@@ -441,13 +495,13 @@ The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` si
 
 ### Defined-but-unhandled actions
 
-Thirteen `Action` variants have **no match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs)** and fall through to the `debug!` catch-all at [mod.rs:453-455](../../crates/services/src/cell/content/executor/mod.rs#L453-L455):
+Eleven `Action` variants have **no match arm in [executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs)** and fall through to the `debug!` catch-all:
 
-`RemoveEffect`, `SpawnEntity`, `DespawnEntity`, `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`, `QrCombatDamage`, `FailObjective`.
+`RemoveEffect`, `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`, `QrCombatDamage`, `FailObjective`.
 
 Three of those **are authorable from seed data and are used today** — `qr_combat_damage` (2 rows), `remove_effect` (1), `fail_objective` (1). Those 4 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
 
-`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
+`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613; `spawn_entity` and `despawn_entity` came off it in Harset H03. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
 
 Two more arms exist but are log-only: `SystemMessage` (11 seeded rows — wire format unknown, see below) and `SendMessage` (no seed verb).
 

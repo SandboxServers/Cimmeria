@@ -2,7 +2,7 @@
 title: "Zone Completeness Audit"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-18
 ---
 
 # Zone Completeness Audit
@@ -10,7 +10,7 @@ last_updated: 2026-05-27
 Per-zone scorecard for the Cimmeria server emulator. Documents what actually exists,
 what works, and what is missing for every zone in the project.
 
-**Last updated:** 2026-03-01
+**Last updated:** 2026-09-18
 
 ---
 
@@ -285,12 +285,14 @@ equally empty.
 | Client Art | 73 .umap tiles | **HIGH** — Compact zone |
 | Navigation | YES — `harset.nav` | **CONFIRMED** — NavMesh file present |
 | Space Script | YES (71 lines Python + 22 .script nodes) | **CONFIRMED** — Script focused on ring transporters |
-| NPCs | 22 spawns | **HIGH** — Spawnlist has 22 entries |
+| NPCs | 20 spawns (12 sentries, Petbe, 7 props) | **CONFIRMED** — two debug spawns removed by Harset H13; every mob row carries `respawn_secs = 30` and `is_stationary = true` |
+| Entity templates | 33 new (200-223 mobs, 240-248 props) | **CONFIRMED** — seeded by Harset H11 alongside ability sets 4 (Jaffa staff) and 5 (Goa'uld ribbon device). Not yet placed; placement waits on an in-client pin session |
 | Missions | 26 labeled in DB, ~1 scripted | **MEDIUM** — DB has 26 "Harset" mission records; script has limited mission hooks |
+| Content chains | 7 (6001-6007) | **CONFIRMED** — five ring switches plus the two Command Center doors, in `harset_space_chains.sql`. 6007 ships `enabled = false` pending a coordinate pin |
 | Dialogs | ~few estimated | **LOW** — 26 DB missions imply associated dialogs but script does not set them up |
-| Stargate | YES (gate ID 3) | **HIGH** — DB stargate record exists |
+| Stargate | YES (gate ID 3) | **HIGH** — DB stargate record exists; `arrival_*` columns present but not yet pinned |
 | Transporters | 5 ring transporters (IDs 4-8) | **CONFIRMED** — Script explicitly sets up 5 ring transporters |
-| Loot | Unknown | **LOW** — Not directly referenced in space script |
+| Loot | Unknown | **LOW** — Not directly referenced in space script. Every Harset template has `loot_table_id` NULL by design |
 | Events | Region-based teleport to CmdCenter | **HIGH** — Script defines region trigger for sub-zone transition |
 
 **Script Content Details:**
@@ -303,9 +305,12 @@ equally empty.
 Harset is one of only 5 zones with a navmesh and has a functioning space script, making it
 one of the more complete zones. However, the script is primarily transport infrastructure —
 5 ring transporters and a region teleport to the Command Center sub-zone. Of the 26 missions
-labeled "Harset" in the DB, only about 1 appears to have scripted implementation. The 22
-spawn entries suggest NPCs were placed but without full mission scripting most would be
-non-interactive. Harset has the bones of a playable zone (navmesh + script + spawns +
+labeled "Harset" in the DB, only about 1 appears to have scripted implementation. The 20
+spawn entries are 12 Praxis Jaffa sentries (4 lieutenants, 8 guards) at the gate and the two
+door thresholds, Petbe, and 7 props — the DHD, five ring switches and a merchant basket. As
+of Harset H13 the mob rows respawn on a 30-second cadence and hold their posts rather than
+chasing, an interim measure while `harset.nav` is fragmented. They remain non-interactive
+pending mission content. Harset has the bones of a playable zone (navmesh + script + spawns +
 stargate + transporters) but the mission content that would make it a complete gameplay
 experience is largely unimplemented.
 
@@ -318,7 +323,7 @@ experience is largely unimplemented.
 | Client Art | 17 .umap tiles | **HIGH** — Small interior |
 | Navigation | NO | **HIGH** — No .nav file found |
 | Space Script | YES (31 lines Python + 4 .script nodes) | **CONFIRMED** — Minimal script for return teleport |
-| NPCs | 0 spawns | **HIGH** — Spawnlist has 0 entries |
+| NPCs | 1 spawn (Anat, spawn 222) | **CONFIRMED** — stationary with a 30-second respawn as of Harset H13. An earlier revision of this row said 0 |
 | Missions | 0 scripted | **HIGH** — No mission hooks in script |
 | Dialogs | 0 | **HIGH** — No dialog infrastructure |
 | Stargate | NO | **HIGH** — No gate record |
@@ -334,9 +339,15 @@ experience is largely unimplemented.
 
 The Harset Command Center is a small interior sub-zone (17 tiles) whose only functionality
 is a return teleport to the main Harset zone. It has a space script, but that script does
-nothing beyond transport. No NPCs, no missions, no navmesh. This is a one-way corridor
-back to Harset. The 4 .script nodes are the minimum viable authored logic. Classified as
-PARTIAL because the transport does function, but there is no gameplay content whatsoever.
+nothing beyond transport. One NPC (Anat), no missions, no navmesh. The 4 .script nodes are
+the minimum viable authored logic. Classified as PARTIAL because the transport does
+function, but there is no gameplay content whatsoever.
+
+The return door is ported as content chain 6007 and currently ships **disabled**: the
+recovered arrival coordinate is off the `harset.nav` mesh and world 57 has no respawner row
+to fall back to, so an enabled chain would silently ghost the player. Until it is re-pinned
+in-client, the Harset → Command Center door (chain 6006) is genuinely one-way. See
+[mission-chains.md § Harset space chains](mission-chains.md#harset-space-chains-worlds-57-68--chains-6001-6007).
 
 ---
 
@@ -1038,8 +1049,8 @@ All 24 defined spaces with their verdicts, sorted by verdict then alphabetically
 | Castle_CellBlock | Instanced | **PLAYABLE** | 511 lines + 230 nodes | YES | 28 | NO | 65 |
 | SGC_W1 | Instanced | **PLAYABLE** | 480 lines + 178 nodes | YES | 26 | YES | 37 |
 | Castle | Persistent | **PARTIAL** | 344 lines + 76 nodes | NO | 33 | YES | 145 |
-| Harset | Persistent | **PARTIAL** | 71 lines + 22 nodes | YES | 22 | YES | 73 |
-| Harset_CmdCenter | Persistent | **PARTIAL** (transport) | 31 lines + 4 nodes | NO | 0 | NO | 17 |
+| Harset | Persistent | **PARTIAL** | 71 lines + 22 nodes | YES | 20 | YES | 73 |
+| Harset_CmdCenter | Persistent | **PARTIAL** (transport) | 31 lines + 4 nodes | NO | 1 | NO | 17 |
 | Lucia | Persistent | **PARTIAL** (transport) | 101 lines + 41 nodes | NO | 12 | YES | 892 |
 | Menfa_Dark | Persistent | **PARTIAL** (transport) | 37 lines + 45 nodes | NO | 25 | YES | 271 |
 | Omega_Site | Persistent | **PARTIAL** (transport) | 53 lines + 21 nodes | NO | 7 | YES | 133 |
