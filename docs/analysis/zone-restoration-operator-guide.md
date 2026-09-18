@@ -17,7 +17,7 @@ Companions: [Cellblock handoff](castle-cellblock-rebuild/handoffs/session-resume
 
 | Zone | On `main` | Open PRs (testable from branch) | Testable today |
 |---|---|---|---|
-| Castle Cellblock | C00-C05, C07, C08a, C08b, GC1b-0 | #655 (GC1 Marsh escort, branch `pkg/gc1-marsh-escort`) | **Yes, M1-M3 on `main`** |
+| Castle Cellblock | C00-C05, C07, C08a, C08b, GC1b-0 | #655 (GC1 Marsh escort, branch `pkg/gc1-marsh-escort`) | **Yes: M1 and M3 on `main`, M2 only partly (needs C06)** |
 | Castle (World 8, ring platform) | CA00 respawners (#651) | #652, #659, #661, #663, #660 | Respawn only, on `main` |
 | Harset | nothing yet | #662 (branch `content/harset-rebuild`, CI green, review fixes in progress) | Travel and population checks, from the branch, after the review fixes merge |
 
@@ -25,7 +25,7 @@ Companions: [Cellblock handoff](castle-cellblock-rebuild/handoffs/session-resume
 
 Highest value per minute first.
 
-1. **Cellblock M1-M3 on current `main`.** The largest body of already-merged content and it needs nothing else to land first.
+1. **Cellblock M1 and M3 on current `main`, and the testable half of M2.** The largest body of already-merged content and it needs nothing else to land first. The flank objectives and step 2144 wait for C06.
 2. **Castle respawn check on `main`.** Five minutes, catches bad coordinates.
 3. **Harset M1 checks** once #662 merges (or from its branch). Cheap, and tells us whether ring and door travel is safe.
 4. **Castle M1** (mission 701) once #652, #659 and #661 have merged.
@@ -42,7 +42,7 @@ Test with a Jaffa character and a Human character, relogging at each step:
 | Milestone | Steps | Expected |
 |---|---|---|
 | M1 | Load in; talk to Prisoner 329 and Marsh; walk the hallway controllers; enter Region8; observe the Stasis Sickness icon, then cure it | Exactly one topic dialog from Prisoner 329 and one Marsh briefing; each controller accepts once; the pistol guard aggros on Region8 entry; the icon shows on load and clears on cure |
-| M2 | Check the mission log; pick up the vial; take cover; reach step 2144 | Frost's Letter is in the log; the cover indicator shows on vial pickup and hides in cover; step 2144 needs both objectives |
+| M2 (partial on `main`) | Check the mission log; pick up the vial; take cover. Step 2144 and the flank objectives (2725, 2731) cannot be tested: they depend on C06, which is not built | Frost's Letter is in the log; the cover indicator shows on vial pickup and hides in cover |
 | M3 | Accept each mission; trigger the Straegis scene; relog afterwards | One prompt per accept; the camera plays once, control returns, Marsh is gone, dialog 2516 shows once, then 5859 about 10.6 s after the scene starts; the scene does not replay after relog |
 | GC1 (branch only) | After the ring hop | Marsh follows you topside |
 
