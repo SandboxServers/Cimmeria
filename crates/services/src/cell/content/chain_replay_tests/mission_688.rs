@@ -537,3 +537,80 @@ async fn chain_1111_restores_ring_highlight_when_step_80688_active() {
         "chain 1111 must restore the ring switch highlight on login; got {n}",
     );
 }
+
+/// Chain 1154 (C07, D-CB08): accepting mission 688 (auto-accepted by
+/// chain 1105 on 687 complete) must display prompt blurb 2518 exactly
+/// once. Precedent: chain 1097's `mission_accepted` shape for 687.
+#[tokio::test]
+async fn chain_1154_displays_blurb_2518_when_mission_688_accepted() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1154)
+        .await
+        .expect("DB query for chain 1154 must succeed")
+        .expect("chain 1154 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("mission_id".to_string(), serde_json::json!(688));
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::MissionAccepted,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let blurbs = resolved
+        .actions
+        .iter()
+        .filter(|(id, action)| {
+            *id == 1154 && matches!(action, Action::DisplayDialog { dialog_id: 2518 })
+        })
+        .count();
+    assert_eq!(
+        blurbs, 1,
+        "chain 1154 must resolve exactly one DisplayDialog(2518) when \
+         mission 688 is accepted; got {blurbs} actions. Resolved: {:?}",
+        resolved.actions,
+    );
+}
+
+/// Chain 1154 negative: a `mission_accepted` event for a different
+/// mission id (e.g. 687, the mission that auto-accepts 688) must not
+/// also fire the 688 blurb.
+#[tokio::test]
+async fn chain_1154_does_not_fire_for_wrong_mission_id() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1154)
+        .await
+        .expect("DB query for chain 1154 must succeed")
+        .expect("chain 1154 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("mission_id".to_string(), serde_json::json!(687));
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::MissionAccepted,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let chain_1154_actions = resolved
+        .actions
+        .iter()
+        .filter(|(id, _)| *id == 1154)
+        .count();
+    assert_eq!(
+        chain_1154_actions, 0,
+        "chain 1154 must NOT fire when mission 687 (not 688) is accepted; \
+         got {chain_1154_actions} actions",
+    );
+}
