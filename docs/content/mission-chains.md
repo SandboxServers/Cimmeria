@@ -871,7 +871,7 @@ directions on purpose:
 | **Name** | Rescue Dr. Zuritska |
 | **Level** | 3 |
 | **is_story** | true |
-| **Script** | None. Accepted by `Castle.py`; body reconstructed as chains 1261-1264 |
+| **Script** | None. Accepted by `Castle.py`; body reconstructed as chains 1261-1265 |
 
 **Steps** (from DB):
 
@@ -953,7 +953,7 @@ Death credit is per killer (the killer must have a `player_id`), and Romney resp
 | **Name** | Hack Communications |
 | **Level** | 3 |
 | **is_story** | true |
-| **Script** | None. Reconstructed as chains 1291-1298 |
+| **Script** | None. Reconstructed as chains 1291-1302 |
 
 **Steps** (from DB):
 

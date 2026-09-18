@@ -192,6 +192,105 @@ async fn chain_1271_does_not_resolve_without_703() {
     );
 }
 
+/// The seed comment on chain 1271 claims 702's chain 1261 and 703's 1271
+/// both fire on a single Interrogation Block entry when the player holds
+/// both missions, which is the intended shape under D-CA05 (703 is accepted
+/// alongside 702). Every other test here registers one chain at a time and
+/// so cannot see that; this one registers both and asserts they co-fire.
+///
+/// It is a real guard, not a restatement: the two chains share a region
+/// trigger, and a future author who "de-duplicated" them onto one chain, or
+/// who gated 1271 on 702's step by mistake, would leave a player holding
+/// only 703 stuck on step 2403 forever.
+#[tokio::test]
+async fn chains_1261_and_1271_both_claim_one_interrogation_block_entry() {
+    let pool = require_db_or_skip!();
+    let actions = resolve_chains(
+        &pool,
+        &[1261, 1271],
+        TriggerType::RegionEnter,
+        &[
+            ("region_key", serde_json::json!("Castle.InterrogationBlock")),
+            ("world_name", serde_json::json!("Castle")),
+            ("mission_702_step_2402_status", serde_json::json!("active")),
+            ("mission_703_step_2403_status", serde_json::json!("active")),
+        ],
+    )
+    .await;
+
+    let claiming: Vec<i64> = {
+        let mut ids: Vec<i64> = actions.iter().map(|(id, _)| *id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    };
+    assert_eq!(
+        claiming,
+        vec![1261_i64, 1271_i64],
+        "a player holding both 702 and 703 on their travel steps must have \
+         BOTH advance on one entry; got {actions:?}",
+    );
+
+    // Each advances its own mission, and neither touches the other's.
+    assert!(
+        actions.iter().any(|(id, a)| *id == 1261
+            && matches!(
+                a,
+                Action::AdvanceStep {
+                    mission_id: 702,
+                    step_id: 2419
+                }
+            )),
+        "chain 1261 must advance 702 to 2419; got {actions:?}",
+    );
+    assert!(
+        actions.iter().any(|(id, a)| *id == 1271
+            && matches!(
+                a,
+                Action::AdvanceStep {
+                    mission_id: 703,
+                    step_id: 2404
+                }
+            )),
+        "chain 1271 must advance 703 to 2404; got {actions:?}",
+    );
+}
+
+/// The other half of the same claim: holding only 703 must advance only
+/// 703. This is what a player who took 703 without 702 (or who finished 702
+/// on an earlier visit) sees.
+#[tokio::test]
+async fn only_703_advances_when_the_player_holds_only_703() {
+    let pool = require_db_or_skip!();
+    let actions = resolve_chains(
+        &pool,
+        &[1261, 1271],
+        TriggerType::RegionEnter,
+        &[
+            ("region_key", serde_json::json!("Castle.InterrogationBlock")),
+            ("world_name", serde_json::json!("Castle")),
+            (
+                "mission_702_step_2402_status",
+                serde_json::json!("completed"),
+            ),
+            ("mission_703_step_2403_status", serde_json::json!("active")),
+        ],
+    )
+    .await;
+
+    let claiming: Vec<i64> = {
+        let mut ids: Vec<i64> = actions.iter().map(|(id, _)| *id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    };
+    assert_eq!(
+        claiming,
+        vec![1271_i64],
+        "only 703's chain may fire once 702's travel step is done; got {actions:?}",
+    );
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Chain 1272 — Romney dies on the kill step (the expected path)
 // ──────────────────────────────────────────────────────────────────────

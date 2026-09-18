@@ -522,6 +522,31 @@ async fn chain_1295_does_not_resolve_when_706_is_already_active() {
     );
 }
 
+/// The repeat-player case. `mission_status ... eq not_active` is false for
+/// `completed` as well as for `active`, so a player who has already
+/// finished 706 and somehow re-reaches this dialog neither re-consumes a
+/// crystal nor re-accepts. Mirrors `mission_702`'s pair on chain 1263.
+#[tokio::test]
+async fn chain_1295_does_not_resolve_when_706_is_already_completed() {
+    let pool = require_db_or_skip!();
+    let actions = resolve_chain(
+        &pool,
+        1295,
+        TriggerType::DialogChoice,
+        &[
+            ("dialog_id", serde_json::json!(2581)),
+            ("mission_704_step_2407_status", serde_json::json!("active")),
+            ("mission_706_status", serde_json::json!("completed")),
+        ],
+    )
+    .await;
+    assert!(
+        actions.is_empty(),
+        "chain 1295 must not re-run for a player who already finished 706 — \
+         it would consume another Data Crystal. Got {actions:?}",
+    );
+}
+
 #[tokio::test]
 async fn chain_1295_does_not_resolve_on_the_wrong_step() {
     let pool = require_db_or_skip!();

@@ -329,6 +329,13 @@ async fn the_livewire_victory_hop_reaches_the_data_crystal_grant() {
 /// dialog choice today, but the arm is shared, and the guard is the thing
 /// standing between a future NPC-triggered caller and Zuritska following a
 /// guard around the Interrogation Block forever.
+///
+/// Zuritska is staged ALREADY FOLLOWING the player. That is what makes this
+/// a guard rather than a tautology: a fixture that started her at `None`
+/// would assert `None` and pass whether or not the arm ran at all. Starting
+/// at `Some(PLAYER_EID)` forces the assertion to prove two separate things
+/// from one transition — the arm did run (the value changed) and it refused
+/// the NPC (the value is not `Some(NOT_A_PLAYER_EID)`).
 #[tokio::test]
 async fn chain_1263_refuses_to_follow_a_non_player_trigger_entity() {
     const NOT_A_PLAYER_EID: u32 = 7433;
@@ -347,9 +354,17 @@ async fn chain_1263_refuses_to_follow_a_non_player_trigger_entity() {
     .await;
 
     let mut mgr = make_castle_space_mgr();
-    stage_zuritska(&mut mgr, [20.0, 0.0, 20.0], false);
+    stage_player(&mut mgr);
+    stage_zuritska(&mut mgr, [20.0, 0.0, 20.0], true);
     mgr.spawn_npc(NOT_A_PLAYER_EID, "Castle", [1.0, 0.0, 1.0], [0.0; 3])
         .expect("Castle startup space must accept the second NPC");
+    assert_eq!(
+        mgr.get_entity(ZURITSKA_CELL_EID)
+            .and_then(|z| z.follow_target_id),
+        Some(PLAYER_EID),
+        "fixture precondition: Zuritska must start the test following the \
+         player, or the assertion below proves nothing",
+    );
 
     let (tx, _rx) = mpsc::channel(64);
     let exec_engine = ChainEngine::new();
@@ -366,10 +381,16 @@ async fn chain_1263_refuses_to_follow_a_non_player_trigger_entity() {
     let zuritska = mgr
         .get_entity(ZURITSKA_CELL_EID)
         .expect("Zuritska must survive the chain");
+    assert_ne!(
+        zuritska.follow_target_id,
+        Some(NOT_A_PLAYER_EID),
+        "`use_player` must never bind a non-player entity as the follow \
+         target — that is the guard at executor/world/mod.rs",
+    );
     assert_eq!(
         zuritska.follow_target_id, None,
-        "`use_player` must resolve to nothing when the triggering entity is \
-         not a player, rather than binding the NPC",
+        "an unresolved `use_player` must clear the follow, not leave the \
+         previous target in place",
     );
     assert_eq!(zuritska.ai_state, AiState::Idle);
 }

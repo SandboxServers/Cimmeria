@@ -625,11 +625,34 @@ VALUES
 
 -- Chain 1292: use the terminal while 2406 is active → launch Livewire.
 --
--- The step gate lives HERE and nowhere else: the victory chain (1293) is
--- fired by id with `ResolvedActions::default()` and evaluates no conditions,
--- so gating the launcher is the only way to stop a repeat grant of item
--- 5029. Precedent: chains 1016/1017 and 1041/1042 in
+-- The step gate lives HERE and not on the victory chain, because 1293 is
+-- fired by id with `ResolvedActions::default()` and evaluates no
+-- conditions — a condition row there would read as a guard while guarding
+-- nothing. Precedent: chains 1016/1017 and 1041/1042 in
 -- castle_cellblock_chains.sql.
+--
+-- What actually stops a second Data Crystal, precisely, because the two
+-- races have DIFFERENT answers and it is easy to credit the wrong one:
+--
+--   * SEQUENTIAL (win, then click the terminal again). The step gate. 1293
+--     advances to 2407 as part of the victory action list, so this chain's
+--     `step_status 2406 active` is already false by the time the player can
+--     click again. Pinned by
+--     `chain_1292_does_not_resolve_on_the_delivery_step`.
+--   * CONCURRENT (two clicks before any win). NOT the step gate — 2406 is
+--     still active for both, so this chain resolves twice and emits two
+--     `StartMinigame` messages, each carrying `on_victory_chains: [1293]`.
+--     The guard is the minigame registry: `MinigameRegistry::register`
+--     (crates/services/src/minigame/session.rs) returns `None` when
+--     `sessions` already holds an entry for the entity, so the second
+--     launch never becomes a session and can never report a victory. Its
+--     own test `duplicate_session_rejected` pins that.
+--
+-- The registry guard is therefore load-bearing for this mission, which
+-- makes CA04's session-lifecycle work (PR #652: expire never-connected
+-- sessions after 180 s, abort on SWF close) load-bearing too — it is what
+-- stops an abandoned launch from locking the terminal until relog. Recorded
+-- in worknotes/m702-704.md as an input to that packet's design.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1292, '704 - Comms terminal: start Livewire minigame', 'mission', 704, true, 0);
 
