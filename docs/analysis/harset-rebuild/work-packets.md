@@ -72,7 +72,7 @@ Every chain packet ships a chain-replay test (`crates/services/src/cell/content/
 
 ### H05
 
-**Status:** BlockedUpstream (Castle CA04, U13). **Scope title:** Minigame tech competency and abilities mask at session mint. **Depends:** Castle CA04 (which owns the optional `difficulty` param on `start_minigame` and session expiry). **Decision:** D-H13. **Advisor:** minigame-systems-advisor.
+**Status:** BlockedUpstream (Castle CA04, U13; CA04 is open as PR #652 on 2026-09-18, so this unblocks on its merge). **Scope title:** Minigame tech competency and abilities mask at session mint. **Depends:** Castle CA04 (which owns the optional `difficulty` param on `start_minigame` and session expiry). **Decision:** D-H13. **Advisor:** minigame-systems-advisor.
 **Entries:** [base/world_entry/cell_dispatch/minigame.rs](../../../crates/services/src/base/world_entry/cell_dispatch/minigame.rs) lines 43-47 (`tech_competency: 1`, `abilities_mask: 0`, `intelligence: 0`), [minigame/session.rs](../../../crates/services/src/minigame/session.rs) line 22, [minigame/games/livewire/setup.rs](../../../crates/services/src/minigame/games/livewire/setup.rs) lines 138-166 and 387 (`abilityBitfield`).
 **Scope:** read `tech_competency` from the player entity at session mint and populate `abilities_mask` from the player's known passives (the Converse "Trump" line 778/779/792/793 and any Livewire-relevant passives). **Exclude:** the `difficulty` param (CA04), new games, the placeholder SWF question, Converse rules.
 **Acceptance:** a session-mint test that a player with tech competency N produces a board scaled by N and that the ability bitfield reaches the `fullgamestate`; the existing Cellblock Livewire chains resolve unchanged.
@@ -215,7 +215,7 @@ Every chain packet ships a chain-replay test (`crates/services/src/cell/content/
 
 ### H30
 
-**Status:** BlockedUpstream (U7 for 1360), BlockedDependency (H12). **Scope title:** Castle carry-in deliveries: 1360 step 4038, 567 step 4039. **Decision:** D-H02.
+**Status:** BlockedDependency (H12 for the Marsh spawn); U7 landed 2026-09-18 (Cellblock C04, PR #649: 1360 accepted on loot, with a `mission_1360.rs` replay). Chain authoring can start in wave 2; UAT waits on M0. **Scope title:** Castle carry-in deliveries: 1360 step 4038, 567 step 4039. **Decision:** D-H02.
 **Entries:** steps 4038 (letter to Marsh, 4651), 4039 (files to Copplemann, 4652); items 3730 (granted by Cellblock chain 1003), 2698 (granted nowhere); Cellblock C04.
 **Scope:** on Marsh interact with 1360 active and 4038 the current step: `remove_item 3730`, `complete_mission 1360`, display the `DUIST` blurb if one exists; 567's 4039 is authored identically but stays disabled (`enabled = false` on the chain row) until the Castle side grants 2698, with the handoff note in the seed. **Acceptance:** `mission_1360.rs` proves the letter survives the hop (live-DB, the C04 fixture) and is removed exactly once. Spec H-01.
 
