@@ -8,6 +8,7 @@ use std::time::Instant;
 
 use tokio::sync::mpsc;
 
+use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::abilities::{
     serialize_timer_update, EffectDef, DT_PHYSICAL, TIMER_DURATION_EFFECT,
 };
@@ -31,7 +32,24 @@ use crate::cell::space_manager::SpaceManager;
 ///      decrement `remaining_pulses` / reschedule `next_pulse_at`.
 ///   3. Sweep removed instances (remaining_pulses == 0) after the
 ///      pulse-fire loop completes.
-pub async fn effect_pulse_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
+///
+/// The `engine` handle is what makes a DoT tick content-visible. Each
+/// fired pulse is followed immediately by two content hooks, both of which
+/// were missing before the PR #662 review:
+///
+/// - [`crate::cell::content::fire_pending_health_below`], draining the
+///   pre-pulse health sample so `entity_health_below` fires for a
+///   threshold a DoT crossed. Draining per pulse rather than per tick
+///   keeps `pct_after` exact when two DoTs land on the same target in the
+///   same 100ms tick.
+/// - [`dot_kill_credit`], because a pulse that takes a mob to zero used to
+///   leave it standing at 0 HP with no death transition and no
+///   `entity_dead_tag` credit at all.
+pub async fn effect_pulse_tick(
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
     let now = Instant::now();
 
     // Snapshot entities with at least one active effect so we don't
@@ -85,6 +103,15 @@ pub async fn effect_pulse_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut
         // because between awaits another tick could mutate.
         for (inst, effect_def) in &due {
             fire_pulse(entity_id, inst, effect_def, tx, space_mgr).await;
+            // Death first, threshold second: `dot_kill_credit` stamps
+            // `BSF_DEAD` on a mob the pulse finished, which is exactly what
+            // `fire_health_below_for_hit` reads to suppress the threshold
+            // chain. Running the drain first would let a lethal pulse fire
+            // `entity_health_below` on its way past the band, breaking the
+            // "exactly one of the two per hit" contract that the
+            // single-target path already honours.
+            dot_kill_credit(entity_id, inst.invoker_id, engine, tx, space_mgr).await;
+            crate::cell::content::fire_pending_health_below(engine, tx, space_mgr).await;
             // Update schedule + decrement on the matching instance,
             // located by (effect_id, invoker_id) — index would be unsafe.
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
@@ -167,6 +194,72 @@ pub async fn effect_pulse_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut
     }
 }
 
+/// Death credit for a pulse that finished the target.
+///
+/// A DoT kill has no other credit path: `fire_pulse` writes the HEALTH
+/// stat directly, so none of `apply_damage_to_target`'s death machinery
+/// runs. Before the PR #662 review a mob killed by a DoT sat at zero
+/// health, never flipped to `BSF_DEAD`, dropped no loot, and never fired
+/// `entity_dead_tag` — so a kill-count mission stalled if the killing
+/// blow happened to be a tick rather than a shot.
+///
+/// Routes through the canonical
+/// [`crate::cell::abilities::kill_npc_out_of_band`] so loot, threat fanout
+/// and the dead-state flip land in the same protocol order a shot produces,
+/// then fires `EntityDeath` for the invoker exactly as the single-target
+/// wrapper does. No-ops unless the pulse actually finished a tagged,
+/// live, non-player target for a player invoker.
+async fn dot_kill_credit(
+    target_id: u32,
+    invoker_id: u32,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let Some(target) = space_mgr.get_entity(target_id) else {
+        return;
+    };
+    if target.is_player || crate::cell::combat::is_dead_state(target.state_field) {
+        return;
+    }
+    // No HEALTH stat, or still above zero — the pulse wounded but did not
+    // finish, so the threshold drain owns this hit, not the death path.
+    if target.stats.get(HEALTH).is_none_or(|s| s.cur > 0) {
+        return;
+    }
+    let tag = target.tag.clone();
+
+    let invoker_is_player = space_mgr
+        .get_entity(invoker_id)
+        .is_some_and(|e| e.is_player);
+    // The kill itself is unconditional once the health check passes: an
+    // NPC's DoT still has to produce a corpse, loot and a threat drain
+    // even though there is no mission to credit.
+    if !crate::cell::abilities::kill_npc_out_of_band(
+        target_id,
+        invoker_id,
+        invoker_is_player,
+        tx,
+        space_mgr,
+    )
+    .await
+    {
+        return;
+    }
+
+    // Mission credit is player-only and tag-only, matching
+    // `handle_use_ability_with_kill_credit`. A tagless mob or an NPC-owned
+    // DoT still died above; there is just no chain to advance.
+    let Some(tag) = tag else {
+        return;
+    };
+    let Some(player_id) = space_mgr.get_entity(invoker_id).and_then(|e| e.player_id) else {
+        return;
+    };
+    crate::cell::content::fire_entity_death(invoker_id, player_id, &tag, engine, tx, space_mgr)
+        .await;
+}
+
 /// Apply a single pulse to `target_id`. Re-dispatches the effect's
 /// script if it has one, otherwise applies the legacy NVP damage path
 /// (HealthDamage / FocusDamage as raw stat mutations).
@@ -192,6 +285,15 @@ async fn fire_pulse(
         );
         return;
     }
+
+    // `entity_health_below` pre-pulse sample. The second of the two
+    // health-application seams (the other is `apply_damage_to_target`);
+    // without it a DoT that dragged a tagged mob through its threshold
+    // lost the crossing permanently, because the band predicate needs
+    // `pct_before > threshold` and every later hit arrives below it. The
+    // attacker is the effect's invoker, not whoever is shooting the target
+    // this tick. See `combat::damage_credit`.
+    crate::cell::combat::note_pre_damage_health(space_mgr, inst.invoker_id, target_id);
 
     // Script path takes precedence over NVP path so a registered
     // script can fully decide what happens on each pulse.

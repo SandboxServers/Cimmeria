@@ -140,6 +140,18 @@ pub(super) async fn apply_damage_to_target(
         health_base_damage
     };
 
+    // ── `entity_health_below` pre-hit sample ──
+    //
+    // This is the one seam every ability-driven health mutation passes
+    // through — single target, AoE secondary, cone secondary, and the
+    // effect scripts dispatched at the bottom of this function. Sampling
+    // here (rather than at the single-target caller, where H04 originally
+    // put it) is what makes the trigger fire for all of them; see
+    // `combat::damage_credit` for why a missed sample is unrecoverable
+    // rather than merely late. The content-layer drain runs at the
+    // caller that owns the `ChainEngine`.
+    combat::note_pre_damage_health(space_mgr, entity_id, target_eid);
+
     // Apply health damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {
         Some(e) => e,

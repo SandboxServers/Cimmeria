@@ -83,6 +83,17 @@ pub async fn dispatch(
                 )
                 .await;
 
+                // `entity_health_below` drain for every target this cast
+                // wounded — primary and AoE secondaries alike. Before the
+                // PR #662 review the trigger only existed on the
+                // single-target path, so a ground cast that dragged a
+                // tagged mob through its threshold lost the crossing
+                // permanently (the band predicate needs `pct_before >
+                // threshold`, which no later hit can satisfy). Drained
+                // before the death fan-out below; a killing blow is
+                // suppressed inside `fire_health_below_for_hit`.
+                crate::cell::content::fire_pending_health_below(engine, tx, space_mgr).await;
+
                 if !deaths.is_empty() {
                     // Resolve player_id once — it doesn't change across kills.
                     let player_id = space_mgr.get_entity(entity_id).and_then(|e| e.player_id);

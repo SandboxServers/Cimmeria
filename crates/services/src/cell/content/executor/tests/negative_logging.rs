@@ -289,7 +289,6 @@ async fn run_spawn(
                 position: [1.0, 2.0, 3.0],
                 heading: 0.0,
                 tag: tag.to_string(),
-                respawn_secs: None,
                 is_stationary: None,
                 aggression: None,
                 allow_shared,

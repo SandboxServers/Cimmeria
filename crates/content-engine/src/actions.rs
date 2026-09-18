@@ -75,12 +75,18 @@ pub enum Action {
     /// gets attacked by it). Mission content must not be able to do that by
     /// accident, so the executor refuses unless the author opts in.
     ///
-    /// `respawn_secs` / `is_stationary` / `aggression` complete the spawn
-    /// descriptor. Only `respawn_secs` has an `entity_templates` column at
-    /// all — `is_stationary` lives on `spawnlist` and aggression is a pure
-    /// runtime field — so `None` means "off" for those two rather than
-    /// "inherit". `respawn_secs` is accepted but not honoured; see the
-    /// executor for why a content-scoped spawn must be one-shot.
+    /// `is_stationary` / `aggression` complete the spawn descriptor.
+    /// Neither has an `entity_templates` column — `is_stationary` lives on
+    /// `spawnlist` and aggression is a pure runtime field — so `None` means
+    /// "off" rather than "inherit".
+    ///
+    /// There is deliberately **no `respawn_secs`**. A content-scoped spawn
+    /// is always one-shot (the respawn tick has no instance-lifetime
+    /// awareness, and a revived mission NPC would re-fire its
+    /// `entity_dead_tag` chain), so the field was parsed, carried here,
+    /// threaded through the executor and then unconditionally discarded. A
+    /// seed row that supplies it still loads; the loader warns once with
+    /// `reason = "respawn_secs_not_honoured"` (PR #662 review, finding 5).
     SpawnEntity {
         template_id: i32,
         position: [f32; 3],
@@ -90,7 +96,6 @@ pub enum Action {
         /// can never be despawned, killed-by-tag or interacted with, and the
         /// idempotence guard keys on it.
         tag: String,
-        respawn_secs: Option<i32>,
         is_stationary: Option<bool>,
         aggression: Option<i32>,
         /// Opt in to spawning into a non-instanced (shared) world.

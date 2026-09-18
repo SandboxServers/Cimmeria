@@ -271,6 +271,13 @@ pub struct SpaceManager {
     /// API and `SpaceManager::destroy_entity` for the disconnect/leave-space
     /// cleanup (same choke point as `authoring_changes`/`autosave_spawns`).
     pub(crate) pending_content_actions: HashMap<u32, Vec<PendingContentAction>>,
+    /// Pre-hit health percentages sampled at the damage-application seams,
+    /// awaiting the content-layer `entity_health_below` drain. Filled by
+    /// [`crate::cell::combat::note_pre_damage_health`], emptied by
+    /// `content::fire_pending_health_below`. See
+    /// [`crate::cell::combat::damage_credit`] for why the sample cannot
+    /// live at the ability caller.
+    pub(crate) pending_health_below: Vec<super::combat::HealthBelowSample>,
 }
 
 impl SpaceManager {
@@ -314,6 +321,7 @@ impl SpaceManager {
             autosave_spawns: HashSet::new(),
             patrol_authoring: HashMap::new(),
             pending_content_actions: HashMap::new(),
+            pending_health_below: Vec::new(),
         }
     }
 }

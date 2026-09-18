@@ -49,13 +49,62 @@ use sqlx::PgPool;
 
 use super::npcs::SpawnRecord;
 
+/// Every column a prototype [`SpawnRecord`] needs, plus the `FROM`, with
+/// the caller's trailing clause (`""` for "all templates", or a `WHERE`)
+/// concatenated onto the end.
+///
+/// Shared with the base-side GM spawn handler
+/// ([`crate::base::gm_spawn`]), which reads one template by id. Before the
+/// PR #662 review the two sites carried byte-identical copies of this
+/// 25-column SELECT *and* of the field mapping below — so a new
+/// `entity_templates` column had to be added in two places, and a GM-
+/// spawned mob could silently diverge from a content-spawned one if only
+/// one copy was updated. The `WHERE` is the only thing that ever differed.
+///
+/// A macro rather than a `fn(&str) -> String` because sqlx 0.9 only accepts
+/// `&'static str` (`SqlSafeStr`): `concat!` keeps the composed query a
+/// compile-time literal, so the sharing costs nothing and the
+/// dynamic-SQL-injection escape hatch (`AssertSqlSafe`) is never needed.
+/// The suffix is a literal at both call sites and the `$1` it references is
+/// still bound by the caller, so no user data is interpolated either way.
+macro_rules! entity_template_select {
+    ($tail:literal) => {
+        concat!(
+            "SELECT t.template_id, t.template_name, t.class, t.static_mesh, t.body_set, \
+                    t.components, t.flags, t.interaction_type, t.event_set_id, t.level, \
+                    t.alignment, t.faction, t.name_id, t.speaker_id, \
+                    t.static_interaction_sets, t.has_dynamic_properties, \
+                    t.loot_table_id, \
+                    t.patrol_path_id, \
+                    COALESCE(t.patrol_point_delay, 2.0) AS patrol_point_delay, \
+                    COALESCE(t.wander_radius, 0.0) AS wander_radius, \
+                    COALESCE(t.wander_min_dwell_secs, 3.0) AS wander_min_dwell_secs, \
+                    COALESCE(t.wander_max_dwell_secs, 8.0) AS wander_max_dwell_secs, \
+                    COALESCE(t.follow_min_distance, 2.0) AS follow_min_distance, \
+                    COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
+                    COALESCE(t.move_speed, 0.6) AS move_speed, \
+                    t.respawn_secs, \
+                    COALESCE( \
+                      (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
+                       FROM resources.ability_set_abilities asa \
+                       WHERE asa.ability_set_id = t.ability_set_id), \
+                      ARRAY[]::int[] \
+                    ) AS ability_ids \
+             FROM resources.entity_templates t",
+            $tail,
+        )
+    };
+}
+
+pub(crate) use entity_template_select;
+
 /// Load every `resources.entity_templates` row into a prototype
 /// [`SpawnRecord`], keyed by `template_id`.
 ///
-/// Column → field mapping mirrors `load_spawns_from_db` and
-/// `base::gm_spawn::load_spawn_record_for_template` exactly, so a
-/// content-spawned mob is armed, paced and configured identically to a
-/// seeded or GM-spawned one.
+/// Column → field mapping mirrors `load_spawns_from_db` exactly, and is
+/// literally shared with `base::gm_spawn::load_spawn_record_for_template`
+/// (see [`build_prototype`]), so a content-spawned mob is armed, paced and
+/// configured identically to a seeded or GM-spawned one.
 ///
 /// A row that fails to decode (a NULL in a non-`Option` column) is skipped
 /// with a `warn!` rather than failing the whole load: one malformed
@@ -67,37 +116,16 @@ use super::npcs::SpawnRecord;
 /// `has_dynamic_properties`) is `NOT NULL` in
 /// `db/resources/Entities/Tables/entity_templates.sql`, so it is defence
 /// against a future schema relaxation rather than against today's seed. It
-/// is deliberately untested for that reason; the base-side GM loader keeps
+/// is deliberately untested for that reason; the base-side GM loader — which
+/// since the PR #662 review shares [`build_prototype`] with this one — keeps
 /// an equivalent guard with a live-DB test that drops the constraint to
 /// reach it (`base::gm_spawn::tests::gm_spawn_malformed_template_drops_gracefully`).
 pub async fn load_spawn_templates(pool: &PgPool) -> Result<HashMap<i32, SpawnRecord>, sqlx::Error> {
     use sqlx::Row;
 
-    let rows = sqlx::query(
-        "SELECT t.template_id, t.template_name, t.class, t.static_mesh, t.body_set, \
-                t.components, t.flags, t.interaction_type, t.event_set_id, t.level, \
-                t.alignment, t.faction, t.name_id, t.speaker_id, \
-                t.static_interaction_sets, t.has_dynamic_properties, \
-                t.loot_table_id, \
-                t.patrol_path_id, \
-                COALESCE(t.patrol_point_delay, 2.0) AS patrol_point_delay, \
-                COALESCE(t.wander_radius, 0.0) AS wander_radius, \
-                COALESCE(t.wander_min_dwell_secs, 3.0) AS wander_min_dwell_secs, \
-                COALESCE(t.wander_max_dwell_secs, 8.0) AS wander_max_dwell_secs, \
-                COALESCE(t.follow_min_distance, 2.0) AS follow_min_distance, \
-                COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
-                COALESCE(t.move_speed, 0.6) AS move_speed, \
-                t.respawn_secs, \
-                COALESCE( \
-                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
-                   FROM resources.ability_set_abilities asa \
-                   WHERE asa.ability_set_id = t.ability_set_id), \
-                  ARRAY[]::int[] \
-                ) AS ability_ids \
-         FROM resources.entity_templates t",
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows = sqlx::query(entity_template_select!(""))
+        .fetch_all(pool)
+        .await?;
 
     // Resolve every referenced patrol path in one query rather than one per
     // template — same helper the spawnlist loader uses.
@@ -150,8 +178,20 @@ pub async fn load_spawn_templates(pool: &PgPool) -> Result<HashMap<i32, SpawnRec
     Ok(out)
 }
 
-/// Materialize one template row into a prototype `SpawnRecord`.
-fn build_prototype(
+/// Materialize one `entity_templates` row (as selected by
+/// [`entity_template_select`]) into a prototype `SpawnRecord`.
+///
+/// The spawn-instance fields are placeholders — `world_name` empty,
+/// position/heading zero, `tag` `None`, `spawn_id = -1`. Callers that have
+/// real values (the GM spawn command, the `spawn_entity` executor)
+/// overwrite them; see the module header for what is and is not
+/// "inherited" from a template.
+///
+/// `patrol_paths` is the resolved `point_set_points` lookup keyed by
+/// `patrol_path_id`. A single-row caller can pass a one-entry map from
+/// [`crate::cell::spawner::load_patrol_points`]; a NULL or unresolved
+/// `patrol_path_id` yields an empty path either way.
+pub(crate) fn build_prototype(
     row: &sqlx::postgres::PgRow,
     patrol_paths: &HashMap<i32, Vec<cimmeria_common::Vector3>>,
 ) -> Result<SpawnRecord, sqlx::Error> {

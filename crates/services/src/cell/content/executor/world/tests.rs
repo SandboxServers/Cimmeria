@@ -13,6 +13,36 @@
 use super::*;
 use cimmeria_common::EntityId;
 
+/// Drive the `Action::DestroyTaggedEntity` arm of [`super::super::execute_one`].
+///
+/// The arm used to call a `world::destroy_tagged_entity` wrapper that did
+/// nothing but forward to `spawn::despawn_by_tag`; the PR #662 review
+/// deleted the wrapper and pointed the arm straight at the routine. These
+/// tests follow it to the arm rather than to the routine, so they still
+/// fail if the *arm* is rewired (to bare `destroy_entity`, or to the
+/// `despawn_entity` verb) — which is the thing they were written to guard.
+async fn run_destroy_tagged_entity(
+    entity_tag: &str,
+    entity_id: u32,
+    chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    super::super::execute_one(
+        chain_id,
+        cimmeria_content_engine::actions::Action::DestroyTaggedEntity {
+            entity_tag: entity_tag.to_string(),
+        },
+        entity_id,
+        0,
+        &std::collections::HashMap::new(),
+        tx,
+        space_mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
+}
+
 /// Build a fresh `SpaceManager` with the `Agnos` startup space
 /// pre-created. All tests below stage entities into that one space so
 /// `find_entity_by_tag` (space-scoped) resolves consistently.
@@ -555,7 +585,7 @@ async fn destroy_tagged_entity_removes_target_from_space() {
     );
 
     let (tx, mut rx) = mpsc::channel(8);
-    destroy_tagged_entity("Drone".to_string(), 1, 1032, &tx, &mut mgr).await;
+    run_destroy_tagged_entity("Drone", 1, 1032, &tx, &mut mgr).await;
     drop(tx);
     while rx.recv().await.is_some() {}
 
@@ -594,7 +624,7 @@ async fn destroy_tagged_entity_fans_left_aoi_to_witnesses() {
     mgr.connect_entity(2);
 
     let (tx, mut rx) = mpsc::channel(8);
-    destroy_tagged_entity("Drone".to_string(), 1, 1032, &tx, &mut mgr).await;
+    run_destroy_tagged_entity("Drone", 1, 1032, &tx, &mut mgr).await;
     drop(tx);
 
     let mut left_aoi: Vec<(u32, u32)> = Vec::new();

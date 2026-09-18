@@ -123,6 +123,13 @@ impl SpaceManager {
         // the action, not fire it later against a torn-down (and possibly
         // id-reused) entity.
         self.pending_content_actions.remove(&entity_id);
+        // Same reasoning for the `entity_health_below` sample queue: a
+        // sample naming a destroyed entity on either side would fire a
+        // threshold chain against a torn-down (and possibly id-reused)
+        // attacker or target. The drain re-looks-up both, so this is
+        // belt-and-braces against id reuse rather than a crash guard.
+        self.pending_health_below
+            .retain(|s| s.attacker_entity_id != entity_id && s.target_entity_id != entity_id);
         // Ring transport: a destroy mid-trip (GM despawn, gate travel,
         // respawn, content transport) must not leave the ring pad parked in
         // a non-`Idle` state, because `handle_select_destination` refuses
@@ -139,7 +146,16 @@ impl SpaceManager {
         // The real client-disconnect path takes
         // `ring_transport::forget_player` from `disconnect_entity` below
         // instead, which is async and releases everyone immediately.
-        self.ring_transporters.note_player_gone(entity_id);
+        //
+        // Gated on the entity actually being a player (it is still resident
+        // at this point, so the lookup works). `destroy_entity` is the
+        // teardown for every NPC too — mission despawns, GM `.despawn`, the
+        // respawn sweep — and only a *player* can be on a ring pad, so
+        // queueing all of them just made the ring tick walk a list that was
+        // mostly NPC ids it would never match (PR #662 review, finding 2).
+        if self.get_entity(entity_id).is_some_and(|e| e.is_player) {
+            self.ring_transporters.note_player_gone(entity_id);
+        }
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 
