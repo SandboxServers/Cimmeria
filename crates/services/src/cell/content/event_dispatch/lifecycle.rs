@@ -16,7 +16,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::executor;
-use super::super::mission_context::populate_mission_context;
+use super::super::mission_context::{populate_mission_context, populate_world_context};
 
 /// Fire the `PlayerLoaded` event for a player entering a world.
 pub async fn fire_player_loaded(
@@ -29,7 +29,25 @@ pub async fn fire_player_loaded(
 ) {
     let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
 
+    // Order matters. `populate_world_context` sets `world_id` *and* a
+    // space-derived `world_name`, but this site is the one that gets the
+    // world from its caller — and at player-load time the entity may not
+    // be in a space yet, where the space-derived name degrades to
+    // "Unknown". `OnPlayerLoaded`'s optional `world_name` filter matches
+    // on that param, so the caller's value has to win. Keep the explicit
+    // `set_param` below this call.
+    populate_world_context(entity_id, space_mgr, &mut ctx);
     ctx.set_param("world_name".to_string(), serde_json::json!(world_name));
+
+    // Same window, same reason, for the numeric form: with no space there
+    // is no entity → world resolution, but the caller just told us the
+    // world by name, and that name resolves through the same stamped
+    // table. Without this, a `world`-gated `player_loaded` chain — one of
+    // the two shapes the condition was added for — would fail closed on
+    // every arrival that fires before the entity is in its space.
+    if ctx.world_id.is_none() {
+        ctx.world_id = space_mgr.world_id_for_world(world_name);
+    }
 
     // Populate mission/step/archetype context from entity state
     if let Some(entity) = space_mgr.get_entity(entity_id) {
@@ -75,6 +93,7 @@ pub async fn fire_entity_death(
         ExecutionContext::new().with_source(cimmeria_common::EntityId(killer_entity_id as i32));
     ctx.set_param("entity_tag".to_string(), serde_json::json!(entity_tag));
 
+    populate_world_context(killer_entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(killer_entity_id) {
         populate_mission_context(entity, &mut ctx);
         if let Some(archetype_id) = entity.archetype_id {

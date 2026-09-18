@@ -92,6 +92,34 @@ pub enum Condition {
     /// if either param is missing — fail-closed so a wiring mistake
     /// can't accidentally make consumables free-to-spam at full stat.
     StatBelowMax { stat_id: i32 },
+
+    /// True iff the acting player's current world matches `world_id` under
+    /// `operator`. `world_id` is `resources.worlds.world_id` — the same id
+    /// space `spawnlist`, `stargates` and `ring_transport_regions` use;
+    /// `entities/spaces.xml` maps the id's world name to its bounds.
+    ///
+    /// Reads the typed [`ExecutionContext::world_id`] field, *not* a
+    /// `params` key: the value is resolved from the player's space by the
+    /// services-side populator, and a typed field makes "nobody populated
+    /// it" distinguishable from "populated with 0".
+    ///
+    /// Exists because no trigger carries the world. `OnRegionEnter` matches
+    /// a bare `point_sets.name` string, so two worlds that both contain a
+    /// region called `X.CommandCenterTransition` fire the same chain, and
+    /// `OnPlayerLoaded`'s optional `world_name` filter is the only other
+    /// world-aware primitive in the engine. A `world` condition lets any
+    /// chain — region, player_loaded, interact, death — be zone-scoped.
+    ///
+    /// **Fail-closed** when `ctx.world_id` is `None`, for *every* operator
+    /// including `Neq`: an unpopulated context means we do not know where
+    /// the player is, and firing a door teleport in the wrong world is the
+    /// exact bug class this condition was added to prevent. An author who
+    /// wants "anywhere but Harset" still writes `neq 57`, which holds
+    /// wherever the populator ran.
+    World {
+        operator: ComparisonOp,
+        world_id: i32,
+    },
 }
 
 /// Faction relationship levels.
@@ -266,7 +294,36 @@ impl Condition {
                     _ => false,
                 }
             }
+            Condition::World { operator, world_id } => {
+                let Some(actual) = ctx.world_id else {
+                    // Fail-closed for every operator. A dispatcher that
+                    // forgot `populate_world_context` must not make a
+                    // world-gated chain fire everywhere — that is the
+                    // `OnRegionEnter`-ignores-world bug the condition
+                    // exists to close.
+                    tracing::debug!(
+                        expected_world_id = world_id,
+                        "Condition::World evaluated against a context with no world_id — \
+                         failing closed; the firing dispatcher did not populate it"
+                    );
+                    return false;
+                };
+                compare_world_id(actual, *world_id, operator)
+            }
         }
+    }
+}
+
+/// Compare two world ids. Only `Eq` and `Neq` are meaningful — a world id
+/// is an opaque identifier, not a scale, so `world gt 57` has no sane
+/// meaning and answers `false` rather than "Harset_CmdCenter (68) is
+/// greater than Harset (57)". The loader keeps such a row (dropping it
+/// would leave the chain ungated) but warns at load time.
+fn compare_world_id(actual: i32, expected: i32, op: &ComparisonOp) -> bool {
+    match op {
+        ComparisonOp::Eq => actual == expected,
+        ComparisonOp::Neq => actual != expected,
+        _ => false,
     }
 }
 
@@ -504,5 +561,93 @@ mod tests {
         let mut partial = ExecutionContext::new();
         partial.set_param("stat_7_cur".to_string(), serde_json::json!(50));
         assert!(!condition.evaluate(&partial));
+    }
+
+    // ── Condition::World (Harset H07) ────────────────────────────────────
+    //
+    // World ids below are the real `resources.worlds.world_id` values:
+    // Harset = 57, Harset_CmdCenter = 68.
+
+    /// `world eq 57` fires in Harset and nowhere else. The negative half is
+    /// the whole point: `OnRegionEnter` matches a bare `point_sets.name`,
+    /// so the Command Center door chain and its mirror in
+    /// `Harset_CmdCenter` are only distinguishable by world.
+    #[test]
+    fn world_eq_matches_only_the_named_world() {
+        let condition = Condition::World {
+            operator: ComparisonOp::Eq,
+            world_id: 57,
+        };
+        assert!(condition.evaluate(&ExecutionContext::new().with_world(57)));
+        assert!(
+            !condition.evaluate(&ExecutionContext::new().with_world(68)),
+            "a chain gated on Harset (57) must not fire in Harset_CmdCenter (68)",
+        );
+    }
+
+    #[test]
+    fn world_neq_matches_every_other_world() {
+        let condition = Condition::World {
+            operator: ComparisonOp::Neq,
+            world_id: 57,
+        };
+        assert!(condition.evaluate(&ExecutionContext::new().with_world(68)));
+        assert!(!condition.evaluate(&ExecutionContext::new().with_world(57)));
+    }
+
+    /// Fail-closed on an unpopulated context — for `Neq` as well as `Eq`.
+    ///
+    /// `Neq` is the branch worth pinning: the "obvious" implementation
+    /// (`ctx.world_id != Some(expected)`) answers **true** for `None`, so a
+    /// dispatcher that forgot `populate_world_context` would fire every
+    /// `neq`-gated chain in every world — silently, and only in the
+    /// dispatch paths nobody tested.
+    #[test]
+    fn world_fails_closed_when_context_has_no_world() {
+        let unset = ExecutionContext::new();
+        assert!(!Condition::World {
+            operator: ComparisonOp::Eq,
+            world_id: 57,
+        }
+        .evaluate(&unset),);
+        assert!(
+            !Condition::World {
+                operator: ComparisonOp::Neq,
+                world_id: 57,
+            }
+            .evaluate(&unset),
+            "an unpopulated world_id must not satisfy `neq` — a missing \
+             populator would otherwise fire the chain in every world",
+        );
+    }
+
+    /// Ordered operators are meaningless on an opaque id. They must answer
+    /// `false`, not compare numerically: `68 > 57` is true as arithmetic
+    /// and nonsense as a world gate.
+    ///
+    /// Each operator is checked against a world on *both* sides of the
+    /// authored id. Against 68 alone, `Lt`/`Lte` answer `false` under a
+    /// numeric fall-through too (`68 < 57` is false), so half the loop
+    /// would be a tautology that passes with the bug present.
+    #[test]
+    fn world_ordered_operators_never_match() {
+        for op in [
+            ComparisonOp::Gt,
+            ComparisonOp::Gte,
+            ComparisonOp::Lt,
+            ComparisonOp::Lte,
+        ] {
+            let condition = Condition::World {
+                operator: op.clone(),
+                world_id: 57,
+            };
+            for actual in [68, 57, 8] {
+                assert!(
+                    !condition.evaluate(&ExecutionContext::new().with_world(actual)),
+                    "world {op:?} against world {actual} must not fall through to \
+                     numeric comparison — a world id is an opaque key",
+                );
+            }
+        }
     }
 }

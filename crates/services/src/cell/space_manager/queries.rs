@@ -165,6 +165,27 @@ impl SpaceManager {
         Some(space.world_name.clone())
     }
 
+    /// Numeric `resources.worlds.world_id` for a world name, or `None` if
+    /// the world is unknown or was never stamped (see
+    /// [`SpaceManager::stamp_world_ids`]).
+    pub fn world_id_for_world(&self, world_name: &str) -> Option<i32> {
+        self.worlds.get(world_name)?.world_id
+    }
+
+    /// Numeric `resources.worlds.world_id` of the world an entity is
+    /// currently in.
+    ///
+    /// Deliberately *not* `space_id`: a space id is a runtime instance
+    /// handle (`(cell_id << 16) | local_index`) and several live instances
+    /// of one world share a single world id. Read by the content engine's
+    /// `world` condition via `populate_world_context`, and the value the
+    /// client's `getWorldInfo` index space uses.
+    pub fn get_entity_world_id(&self, entity_id: u32) -> Option<i32> {
+        let &space_id = self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(&space_id)?;
+        self.world_id_for_world(&space.world_name)
+    }
+
     /// Get the `space_id` for an entity's current space.
     ///
     /// Use this when constructing a `CellToBaseMsg` (or other space-keyed

@@ -12,7 +12,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::executor;
-use super::super::mission_context::populate_mission_context;
+use super::super::mission_context::{populate_mission_context, populate_world_context};
 
 /// Fire the `DialogOpen` event when a dialog is displayed to a player.
 #[tracing::instrument(
@@ -32,6 +32,7 @@ pub async fn fire_dialog_open(
     let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("dialog_id".to_string(), serde_json::json!(dialog_id));
 
+    populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
     }
@@ -88,6 +89,7 @@ pub async fn fire_dialog_choice(
     ctx.set_param("dialog_id".to_string(), serde_json::json!(dialog_id));
     ctx.set_param("button_id".to_string(), serde_json::json!(button_id));
 
+    populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
     }

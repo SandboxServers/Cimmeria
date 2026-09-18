@@ -150,8 +150,9 @@ Defined at [conditions.rs:12-95](../../crates/content-engine/src/conditions.rs#L
 | `Counter { counter_name, op, value }` | reads `counter_<name>` |
 | `StatBelowMax { stat_id }` | `stat_<id>_cur < stat_<id>_max`. **Fail-closed** on missing params ([conditions.rs:255-268](../../crates/content-engine/src/conditions.rs#L255-L268)) |
 | `CustomExpression { expression }` | bool-key lookup, escape hatch |
+| `World { op, world_id }` | `ctx.world_id == world_id` (`eq`/`neq` only; ordered operators never match). Reads the typed `ExecutionContext.world_id`, not a param key. **Fail-closed** when unset — unlike the mission conditions, which fall back to `not_active` and can fail *open* |
 
-**Only six are authorable.** [loader/condition.rs](../../crates/content-engine/src/loader/condition.rs) has match arms for exactly `mission_status`, `step_status`, `archetype`, `objective_status`, `counter`, and `stat_below_max`. The other seven variants (`PropertyEquals`, `PropertyInRange`, `HasItem`, `HasAbility`, `InRegion`, `FactionCheck`, `CustomExpression`) cannot be named by a `content_conditions` row at all — a seed row using them is dropped with a `warn!`. `HasItem` and `FactionCheck` are doubly dead: even reached from Rust, no populator writes the `item_<id>_count` / `faction_<name>` keys they read (§9).
+**Only seven are authorable.** [loader/condition.rs](../../crates/content-engine/src/loader/condition.rs) has match arms for exactly `mission_status`, `step_status`, `archetype`, `objective_status`, `counter`, `stat_below_max`, and `world` (`target_id` = `resources.worlds.world_id`, `operator` = `eq`/`neq`; `target_key` and `value` unused). The other seven variants (`PropertyEquals`, `PropertyInRange`, `HasItem`, `HasAbility`, `InRegion`, `FactionCheck`, `CustomExpression`) cannot be named by a `content_conditions` row at all — a seed row using them is dropped with a `warn!`. `HasItem` and `FactionCheck` are doubly dead: even reached from Rust, no populator writes the `item_<id>_count` / `faction_<name>` keys they read (§9).
 
 ### Actions — *side effects*
 
@@ -409,6 +410,7 @@ Worked example chains in [chain_replay_tests/](../../crates/services/src/cell/co
 | `counter_<name>` | every entity counter | `Condition::Counter` |
 | `stat_<id>_cur` / `stat_<id>_max` | populated only by `fire_item_use` (via `populate_stats_context`) | `Condition::StatBelowMax` |
 | `archetype` | set directly by every `fire_*` site | `Condition::Archetype` |
+| `world_id` (typed field, not a param) / `world_name` | the entity's space → `WorldDef.world_id`, via `populate_world_context`; called by every `fire_*` site | `Condition::World` |
 
 **Not exposed today** (gap list — see [proposed-extensions.md](proposed-extensions.md)):
 

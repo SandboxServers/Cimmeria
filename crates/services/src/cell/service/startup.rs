@@ -55,6 +55,24 @@ impl CellService {
         let npc_count = spawner::spawn_npcs_from_records(&spawn_records, &mut space_mgr);
         tracing::info!(npc_count, "NPC population initialized");
 
+        // Stamp numeric world ids onto the spaces.xml world table. The
+        // content engine's `world` condition resolves the acting player's
+        // space through these; without them every `world`-gated chain
+        // fails closed, so this logs at WARN rather than staying silent.
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_world_ids(pool).await {
+                Ok(ids) => {
+                    space_mgr.stamp_world_ids(&ids);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to load world ids: {e} — content-engine `world` \
+                         conditions will fail closed everywhere"
+                    );
+                }
+            }
+        }
+
         // Load dialog_set_maps cache for per-player interaction system
         if let Some(ref pool) = self.db_pool {
             match spawner::load_dialog_set_maps(pool).await {

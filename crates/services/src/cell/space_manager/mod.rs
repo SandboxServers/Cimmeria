@@ -70,6 +70,15 @@ pub struct RegionData {
 #[derive(Debug, Clone)]
 pub struct WorldDef {
     pub world_name: String,
+    /// Numeric `resources.worlds.world_id` — the id space `spawnlist`,
+    /// `stargates` and `ring_transport_regions` reference, and the one a
+    /// content-engine `world` condition row is authored against.
+    ///
+    /// `None` until [`SpaceManager::stamp_world_ids`] runs at startup, and
+    /// permanently `None` for a world that exists in `spaces.xml` but has
+    /// no `resources.worlds` row. `spaces.xml` itself carries names only,
+    /// which is why this cannot be filled at parse time.
+    pub world_id: Option<i32>,
     pub instanced: bool,
     pub min_x: i32,
     pub max_x: i32,
