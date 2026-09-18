@@ -1,7 +1,7 @@
 # Castle Rebuild Handoff
 
 > Type: how-to. Audience: Claude Code coordinator and implementing engineers.
-> Updated: 2026-09-17. Companions: [audit.md](audit.md), [work-packets.md](work-packets.md), [Cellblock campaign](../castle-cellblock-rebuild/README.md) (the inbound sibling), [parity campaign protocol](../legacy-command-parity/README.md), [documentation index](../../readme.md).
+> Updated: 2026-09-17 (implementation session record added). Companions: [audit.md](audit.md), [work-packets.md](work-packets.md), [Cellblock campaign](../castle-cellblock-rebuild/README.md) (the inbound sibling), [parity campaign protocol](../legacy-command-parity/README.md), [documentation index](../../readme.md).
 
 ## Purpose And Evidence Boundary
 
@@ -74,6 +74,21 @@ Rows marked **PROPOSED** are the coordinator's recommended defaults with the rea
 5. D-CA09: Livewire for the terminal and the DHD, or leave them click-to-win?
 6. D-CA10: emit gate events per the 2009 server (6100 after 4 s, 6113 on cross), yes or no?
 7. Cellblock handoff: reassign C09 to this ledger, prioritize GC1b-0, and merge #618/#619 first?
+
+## Implementation Session Record (2026-09-17)
+
+The user authorized an autonomous implementation session ("do the work described in this folder ... work autonomously until you complete all work packets, open PRs at regular intervals"). Rows below are the session's answers to the open decisions and the state it found; they do not rewrite the PROPOSED rows above. The user may override any of them; a packet whose decision is overridden goes back to **Writing**.
+
+| ID | Answer (2026-09-17) | Reason |
+|---|---|---|
+| D-CA01 … D-CA16 | **Adopted the recommended default of every PROPOSED row.** | No user answer was available in an autonomous session; every default is the coordinator's HIGH- or MEDIUM-confidence recommendation and each is reversible at the seed level. Product-call rows (D-CA02 option A, D-CA05, D-CA09) are labelled RECONSTRUCTION in the seed so a later reversal is a row edit, not an engine change. |
+| Open decision 7 | **Landed before this session started.** PR #618 (`move_entity`, `grant_xp`) merged `f23e73fb`; PR #619 (`launch_ability`, `apply_effect`) merged `b528d145`; Cellblock C00/C01/C02/C03/C08a/GC1b-0 merged in PR #646 (`73a99e6b`); C09 reassigned to this ledger in `694f17a7`. | `git log`/`gh pr view` at session start, `main` @ `3c1fed6c`. No Cellblock branch remains ahead of `main`. |
+| D-CA17 (new) | **Seed split by mission family from day one:** `castle_701_chains.sql` (1201-1260), `castle_702_704_chains.sql` (1261-1320), `castle_706_708_chains.sql` (1321-1380), each `\ir`'d from `database.sql` after the Cellblock file. `castle_chains.sql` is never created. | CLAUDE.md's foresight rule, and it lets the three mission workers run in parallel worktrees with disjoint files instead of serialising on one seed. Chain-id blocks are unchanged. |
+| D-CA18 (new) | **CA10 also adds two loader-reachable content triggers, `stargate_dialed` and `stargate_crossed`** (event_key = destination world name), fired from the dial handler's success path and from one passage function in `cell/gate_travel.rs`. CA09 hooks 4462/4469 on them. | `custom_event` has no loader arm, so the ledger's "or a custom_event" fallback for 4462 was unauthorable. Agreed 2026-09-17 with the concurrent Harset session (its H01 owns the generic flag-2 stargate region routing and will call the same passage function; it adds no triggers of its own; whichever lands second rebases). |
+| D-CA19 (new) | **CA11 and CA12 are not implemented here.** They are consumed from Harset H03 per the overlap table. CA13, CA14 and CA15 stay design/decision gated; under option A no content packet needs them. | Single owner per primitive. |
+| Concurrency | Three Claude sessions worked the repo at once (this one, the Cellblock session, the Harset session). Coordination points: every cargo/psql invocation goes through the machine-wide lane lock `lane.sh`; the shared `sgw` test DB is dropped and reloaded from the calling worktree's seed by `live-db-test.sh`; the Harset session moved to its own `sgw_harset` database; nobody runs git in the primary checkout. | Concurrent `rustc` OOMs the host; concurrent live-DB runs against one database collide. |
+
+Worktrees and branches per packet are recorded beside each packet's status in [work-packets.md](work-packets.md).
 
 ## Where Confidence Is Low Or A Guess
 
