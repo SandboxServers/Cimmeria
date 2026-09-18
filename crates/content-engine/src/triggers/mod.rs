@@ -167,6 +167,11 @@ pub enum Trigger {
     ///
     /// Seed form: `event_type = 'entity_health_below'`,
     /// `event_key = "<tag>:<pct>"` (e.g. `"Rinla_Malac:30"`).
+    ///
+    /// `pct` is `1..=99` (`loader::trigger::HEALTH_PCT_RANGE`); the
+    /// loader drops the trigger row otherwise. 100 is excluded because
+    /// the band test's upper half is strict, so a full-health entity
+    /// (`before == 100`) can never satisfy `before > 100`.
     OnEntityHealthBelow { entity_tag: String, pct: i32 },
 
     /// Fires when an NPC currently occupying a cover slot is flanked —
