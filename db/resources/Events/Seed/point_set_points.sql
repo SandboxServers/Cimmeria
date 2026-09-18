@@ -255,38 +255,84 @@ INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUE
 
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2081, 2396, 466.365, 70.397, 991.466, 0, 0, 0);
 
--- RECONSTRUCTION (CA05, worknotes/ca05.md "Interrogation Block"): 4 corners of the detention
--- corridor, y=66.79 floor. The prefab grid measures x[228.32, 333.29] z[1021.82, 1099.58]
--- across the 36 CA-Cell_Doorway01_Pf0 and 36 EM-ViewScreen03_Pf0 instances in
--- Castle-000a0002/000a0003; the box is rounded ~2-3 units outward on every side so the
--- outermost cell doors fall inside it, because mission 702 step 2402 uses this set as an
--- `enter_region` trigger and a box flush with the doors would miss a player hugging a wall.
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2082, 2397, 226.0, 66.79, 1018.0, 0, 0, 0);
+-- ============================================================================
+-- CA05 Castle (world 8) region boxes. Read this before editing the four sets
+-- below, because their corner layout is load-bearing and not obvious.
+--
+-- An `AreaSet` volume is derived from the point-wise min/max of x/y/z, so a box
+-- whose four corners all share one y has **zero vertical extent** and only ever
+-- contains a player standing exactly on the floor plane. The shipped convention
+-- avoids that by putting three corners on the floor and raising the FOURTH, which
+-- is also exactly what the engine's own cylinder->bbox workaround emits:
+-- `spawner/regions.rs` builds `[px-r, py, pz-r], [px-r, py, pz+r],
+-- [px+r, py, pz+r], [px+r, py+h, pz-r]` and its comment says the asymmetry is
+-- intentional -- "do not 'normalize' by raising all four corners".
+--
+-- Every pre-existing BoundingBox set follows it: 2040 (+6.31), 2041 (+5.70),
+-- 2042 (+16.31), 2043 (+7.26), 2044 (+7.61), 2049 Castle.ThroneRoom (+7.04),
+-- 2050 (+8.07), 2051 Castle.Infirmary (+4.33).
+--
+-- The first draft of these four sets was flat, which would have given mission 702
+-- step 2402 and mission 704 step 2405 zero-height trigger volumes -- the exact
+-- symptom being "the step never fires and nothing logs an error". Corner order is
+-- also a real traversal now (max x/max z -> min x/max z -> min x/min z ->
+-- max x/min z, the raised one last), matching 2051; the draft's order zig-zagged,
+-- which is harmless for an AABB but wrong for anything treating the four points
+-- as a polygon.
+--
+-- Ceiling heights are per-room and justified individually; where no ceiling mesh
+-- was recovered the rise is taken from the convention's own 4-8 unit range rather
+-- than invented precision.
+-- ============================================================================
+
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Interrogation Block"): the detention
+-- corridor, floor y=66.79. The prefab grid measures x[228.32, 333.29]
+-- z[1021.82, 1099.58] across the 36 CA-Cell_Doorway01_Pf0 and 36
+-- EM-ViewScreen03_Pf0 instances in Castle-000a0002/000a0003; the box is rounded
+-- ~2-3 units outward on every side so the outermost cell doors fall inside it,
+-- because mission 702 step 2402 uses this set as an `enter_region` trigger and a
+-- box flush with the doors would miss a player hugging a wall.
+-- Ceiling 74.79 (+8.0): no ceiling mesh was recovered for the block, so this takes
+-- the upper end of the convention's range -- comparable to 2050 (+8.07) and 2044
+-- (+7.61) -- and comfortably clears the cell-door screens at y=69.27.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2082, 2397, 336.0, 66.79, 1103.0, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2082, 2398, 226.0, 66.79, 1103.0, 0, 0, 0);
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2082, 2399, 336.0, 66.79, 1018.0, 0, 0, 0);
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2082, 2400, 336.0, 66.79, 1103.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2082, 2399, 226.0, 66.79, 1018.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2082, 2400, 336.0, 74.79, 1018.0, 0, 0, 0);
 
--- RECONSTRUCTION (CA05, worknotes/ca05.md "Communications room"): 4 corners of the
--- Castle-00080002.umap monitor-wall room -- x[260,284] and z[848,863] around the measured
--- room (corner meshes at x 261.40 / 282.49 z 861.20; monitor walls and wallstations on the
--- z=852.1-852.2 wall at x 264.89-278.79), floor y=55.20. See point_sets.sql 2083.
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2083, 2401, 260.0, 55.2, 848.0, 0, 0, 0);
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Communications room"): the
+-- Castle-00080002.umap monitor-wall room -- x[260,284] and z[848,863] around the
+-- measured room (corner meshes at x 261.40 / 282.49 z 861.20; monitor walls and
+-- wallstations on the z=852.1-852.2 wall at x 264.89-278.79), floor y=55.20.
+-- See point_sets.sql 2083.
+-- Ceiling 63.1 (+7.9): this one is measured rather than conventional -- the room's
+-- upper structure sits at y 62.35-63.08 (EM-WallLight02_Pf0 wall lights at 62.35
+-- and 63.08, CA-Cell_Decor01 at 62.46, the CA-normal_room_corner_a_00 corner
+-- meshes at 62.55), so 63.1 is just above the highest recovered fixture.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2083, 2401, 284.0, 55.2, 863.0, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2083, 2402, 260.0, 55.2, 863.0, 0, 0, 0);
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2083, 2403, 284.0, 55.2, 848.0, 0, 0, 0);
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2083, 2404, 284.0, 55.2, 863.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2083, 2403, 260.0, 55.2, 848.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2083, 2404, 284.0, 63.1, 848.0, 0, 0, 0);
 
--- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Bravo" -- Humvee/bunker cluster).
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2084, 2405, 950.0, 25.0, 470.0, 0, 0, 0);
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Bravo" -- Humvee/bunker
+-- cluster), floor y=25.0.
+-- Ceiling 35.0 (+10.0): outdoor and on uneven ground -- the cluster's own assets
+-- already span y 24.20-28.51 -- so this is deliberately the most generous of the
+-- four, in the spirit of 2042's +16.31. Muelbach at y=48 stays well clear of it,
+-- which matters: objective 2799 puts her ABOVE this volume, not in it.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2084, 2405, 975.0, 25.0, 497.0, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2084, 2406, 950.0, 25.0, 497.0, 0, 0, 0);
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2084, 2407, 975.0, 25.0, 470.0, 0, 0, 0);
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2084, 2408, 975.0, 25.0, 497.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2084, 2407, 950.0, 25.0, 470.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2084, 2408, 975.0, 35.0, 470.0, 0, 0, 0);
 
--- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Alpha" -- from existing spawnlist
--- rows 118/119/120/121/123/124/2, HIGH confidence).
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2409, 786.0, 55.2, 511.0, 0, 0, 0);
+-- RECONSTRUCTION (CA05, worknotes/ca05.md "Checkpoint Alpha" -- from existing
+-- spawnlist rows 118/119/120/121/123/124/2, HIGH confidence), floor y=55.2.
+-- Ceiling 63.5 (+8.3): sized to clear the Stargate itself, whose recovered prefab
+-- origin is y=61.88 and which stands in this volume.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2409, 811.0, 55.2, 519.0, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2410, 786.0, 55.2, 519.0, 0, 0, 0);
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2411, 811.0, 55.2, 511.0, 0, 0, 0);
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2412, 811.0, 55.2, 519.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2411, 786.0, 55.2, 511.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2412, 811.0, 63.5, 511.0, 0, 0, 0);
 
 SELECT pg_catalog.setval('point_set_points_point_id_seq', 2412, true);
 

@@ -15,10 +15,16 @@
 //!   room (the comms pair sat at y = 66.79 while `Castle.CommsRoom` was at
 //!   y = 55.20, and Warden Muelbach stood at Checkpoint Bravo when objective 2799
 //!   says she is in the bunker *above* it);
+//! * a region box authored flat — all four corners sharing one y — which is a
+//!   zero-height volume containing only a player standing exactly on the floor
+//!   plane, so its `enter_region` trigger effectively never fires;
 //! * a `name_id` left NULL or pointing at the wrong recovered moniker, which ships
 //!   a nameless or mislabelled NPC with no server-side error;
 //! * a hostile row with no respawn timer, which deletes that mob from the shared
 //!   world for everyone the first time anybody kills it.
+//!
+//! Every one of those shipped in some draft of this packet and every one of them
+//! survived a fully green test run, which is the argument for this file existing.
 //!
 //! Note on the position guards: the server does **not** hit-test these boxes.
 //! Region entry is client-reported — `fire_enter_region`'s own doc comment says it
@@ -76,19 +82,26 @@ mod live_db {
         ("Castle_SurrenderGuard", "Castle.CheckpointBravo"),
     ];
 
-    /// Vertical slack allowed between an actor and its box's floor plane, in world
+    /// Downward slack allowed between an actor and its box's floor plane, in world
     /// units. Generous enough for uneven terrain (`Castle_BravoOfficer3` sits 1.0
     /// above the Checkpoint Bravo plane on a rise) but far tighter than the errors
     /// this is here to catch: the comms pair were 11.6 units off their room's floor
-    /// and Muelbach 23 units off the bunker's.
+    /// and Muelbach 23 units off the bunker's. Upward slack needs no constant — the
+    /// box carries its own ceiling.
     const FLOOR_TOLERANCE: f32 = 3.0;
 
-    /// Axis-aligned footprint of a seeded `BoundingBox` point set: x/z extent plus
-    /// the single floor plane the four corners share.
+    /// Smallest vertical extent a Castle region box may have. See
+    /// [`castle_ca05_point_sets_are_four_corner_world8_boxes`] for why zero is a bug
+    /// and not merely untidy.
+    const MIN_BOX_HEIGHT: f32 = 1.0;
+
+    /// Axis-aligned volume derived from a seeded `BoundingBox` point set the way the
+    /// engine derives it: the point-wise min/max on each axis.
     struct Box3 {
         x: (f32, f32),
         z: (f32, f32),
         floor: f32,
+        ceiling: f32,
     }
 
     impl Box3 {
@@ -96,8 +109,14 @@ mod live_db {
             x >= self.x.0 && x <= self.x.1 && z >= self.z.0 && z <= self.z.1
         }
 
-        fn on_floor(&self, y: f32) -> bool {
-            (y - self.floor).abs() <= FLOOR_TOLERANCE
+        /// Vertically inside the volume, allowing [`FLOOR_TOLERANCE`] below the floor
+        /// plane for terrain slop. The ceiling is the box's own, not a constant.
+        fn contains_y(&self, y: f32) -> bool {
+            y >= self.floor - FLOOR_TOLERANCE && y <= self.ceiling
+        }
+
+        fn height(&self) -> f32 {
+            self.ceiling - self.floor
         }
     }
 
@@ -110,24 +129,16 @@ mod live_db {
             !region.points.is_empty(),
             "point set {name} has no points, cannot form a box"
         );
-        let xs: Vec<f32> = region.points.iter().map(|p| p[0]).collect();
-        let ys: Vec<f32> = region.points.iter().map(|p| p[1]).collect();
-        let zs: Vec<f32> = region.points.iter().map(|p| p[2]).collect();
-        let fold = |v: &[f32]| {
+        let fold = |v: Vec<f32>| {
             v.iter()
                 .fold((f32::MAX, f32::MIN), |(lo, hi), &n| (lo.min(n), hi.max(n)))
         };
-        let (y_lo, y_hi) = fold(&ys);
-        assert!(
-            (y_hi - y_lo).abs() < 0.001,
-            "point set {name} is not a flat box: its corners span y {y_lo}..{y_hi}. \
-             These Castle boxes are authored as a single floor plane, and the \
-             containment guards below assume it"
-        );
+        let (y_lo, y_hi) = fold(region.points.iter().map(|p| p[1]).collect());
         Box3 {
-            x: fold(&xs),
-            z: fold(&zs),
+            x: fold(region.points.iter().map(|p| p[0]).collect()),
+            z: fold(region.points.iter().map(|p| p[2]).collect()),
             floor: y_lo,
+            ceiling: y_hi,
         }
     }
 
@@ -237,13 +248,28 @@ mod live_db {
     }
 
     /// **CA05 regression guard**: every new Castle point set loads in World 8 with
-    /// exactly four corner points.
+    /// exactly four corner points **and a non-zero vertical extent**.
     ///
     /// Four is an engine invariant, not a style preference — `space_manager/mod.rs:74`:
     /// "After the cylinder→bbox workaround, all regions should have exactly 4 points."
     /// A three-point box is a degenerate triangle the client hit-tests wrongly, and a
     /// zero-point set never fires its `enter_region` trigger at all, soft-locking
     /// whichever mission step waits on it.
+    ///
+    /// The height assertion is the one that caught a live bug, so it is worth spelling
+    /// out. An `AreaSet` volume is the point-wise min/max of its corners, so four
+    /// corners sharing one y describe a box of zero height that contains only a player
+    /// standing exactly on the floor plane. The shipped convention puts three corners
+    /// on the floor and raises the fourth — which is literally what the engine's own
+    /// cylinder→bbox workaround emits (`spawner/regions.rs`, whose comment insists the
+    /// asymmetry is intentional: "do not 'normalize' by raising all four corners") —
+    /// and every pre-existing box follows it: 2040 +6.31, 2041 +5.70, 2042 +16.31,
+    /// 2043 +7.26, 2044 +7.61, 2049 +7.04, 2050 +8.07, 2051 +4.33.
+    ///
+    /// CA05's first draft authored all four boxes flat. Nothing failed: the seed loads,
+    /// the loaders are happy, and the only symptom would have been mission 702 step
+    /// 2402 and mission 704 step 2405 never firing in-client, with no error logged
+    /// anywhere. Flattening any of these boxes again must fail here.
     #[tokio::test]
     async fn castle_ca05_point_sets_are_four_corner_world8_boxes() {
         let pool = require_db_or_skip!();
@@ -267,6 +293,21 @@ mod live_db {
                 "point set {name} (set_id {}) must have exactly 4 corner points, has {}",
                 region.set_id,
                 region.points.len()
+            );
+
+            let bx = region_box(&regions, name);
+            assert!(
+                bx.height() >= MIN_BOX_HEIGHT,
+                "point set {name} (set_id {}) has a vertical extent of {:.2} units \
+                 (floor {}, ceiling {}), under the {MIN_BOX_HEIGHT} minimum. A box whose \
+                 corners all share one y is a zero-height volume: it contains only a \
+                 player standing exactly on the floor plane, so the enter_region trigger \
+                 effectively never fires and nothing logs an error. Raise the fourth \
+                 corner, as every other seeded box does",
+                region.set_id,
+                bx.height(),
+                bx.floor,
+                bx.ceiling
             );
         }
     }
@@ -307,13 +348,14 @@ mod live_db {
                 bx.z.1
             );
             assert!(
-                bx.on_floor(record.y),
-                "{tag} at y = {} is {:.2} units off {set_name}'s floor plane \
-                 (y = {}, tolerance {FLOOR_TOLERANCE}) — right footprint, wrong floor, \
-                 which in a multi-storey interior means a different room entirely",
+                bx.contains_y(record.y),
+                "{tag} at y = {} is outside {set_name}'s vertical extent (floor {}, \
+                 ceiling {}, {FLOOR_TOLERANCE} units of slack below the floor) — right \
+                 footprint, wrong floor, which in a multi-storey interior means a \
+                 different room entirely",
                 record.y,
-                (record.y - bx.floor).abs(),
-                bx.floor
+                bx.floor,
+                bx.ceiling
             );
         }
     }
@@ -342,11 +384,11 @@ mod live_db {
         let muelbach = spawn_by_tag(&records, "Castle_Muelbach");
         let bravo = region_box(&regions, "Castle.CheckpointBravo");
 
-        let inside = bravo.contains_xz(muelbach.x, muelbach.z) && bravo.on_floor(muelbach.y);
+        let inside = bravo.contains_xz(muelbach.x, muelbach.z) && bravo.contains_y(muelbach.y);
         assert!(
             !inside,
             "Castle_Muelbach at ({}, {}, {}) is inside Castle.CheckpointBravo \
-             (x {}..{}, z {}..{}, floor {}), but objective 2799 places her in the \
+             (x {}..{}, z {}..{}, y {}..{}), but objective 2799 places her in the \
              bunker ABOVE the checkpoint. Step 2416's two options must not share a \
              location",
             muelbach.x,
@@ -356,7 +398,8 @@ mod live_db {
             bravo.x.1,
             bravo.z.0,
             bravo.z.1,
-            bravo.floor
+            bravo.floor,
+            bravo.ceiling
         );
 
         // "above" is the load-bearing word in 2799: the bunker is the only Castle
