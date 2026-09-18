@@ -100,6 +100,7 @@ pub(super) fn summarize(action: &Action) -> String {
         Action::StartMinigame {
             minigame_type,
             on_victory_chains,
+            ..
         } => format!("start_minigame({minigame_type}, victory={on_victory_chains:?})"),
         other => format!("UNEXPECTED({other:?})"),
     }

@@ -226,6 +226,27 @@ Two caveats for authors:
   the action. Effect 1634, the sole effect on the Castle Cellblock wake-up
   ability 1372, is exactly this shape.
 
+##### `start_minigame` params
+
+`target_key` names the minigame type (`Livewire`, `Hack`, ...). Two params:
+
+| Param | Required | Meaning |
+|---|---|---|
+| `on_victory_chains` | no (defaults to `[]`) | Chain ids fired when the player wins. They are invoked directly, not through `resolve_event`, so **no conditions on them are evaluated** — put the gate on the launcher chain. |
+| `difficulty` | no (defaults to `1`) | Difficulty tier, integer 1-5. |
+
+`difficulty` is **rejected, not clamped**: a row outside 1-5 is dropped at
+load time with a `warn!` naming the chain id, so an authoring mistake shows
+up as a missing minigame rather than a silently different tier. The 1-5
+range is what the original content layer asserted
+(`deprecated/python/cell/Minigame.py`). Note that every per-game difficulty
+table only has rows 1-4, so an authored `5` reaches the game and is clamped
+down to 4 with a `warn!` — 1-4 is the range content should actually use.
+
+A victory chain needs no `content_triggers` row; the loader gives a
+triggerless chain a never-firing `OnCustomEvent` placeholder so it stays
+reachable only through `on_victory_chains`.
+
 #### Authorable but NOT executed — seeded rows that silently no-op
 
 These have a loader arm, so the seed accepts them and the engine resolves them, but **[executor/mod.rs](../../crates/services/src/cell/content/executor/mod.rs) has no match arm** — every one falls through to the `debug!` catch-all and does nothing. This is a live correctness gap, not a roadmap item: 4 seeded rows are currently dead.

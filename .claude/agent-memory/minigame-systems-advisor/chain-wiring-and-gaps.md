@@ -1,6 +1,6 @@
 ---
 name: chain-wiring-and-gaps
-description: How a content chain launches a minigame (start_minigame params), the full cell->minigame->cell victory loop, and the two hardcoded params that limit difficulty
+description: How a content chain launches a minigame (start_minigame params), the full cell->minigame->cell victory loop, and the tech_competency param still hardcoded to 1
 metadata:
   type: project
 ---
@@ -17,8 +17,10 @@ VALUES (1060, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1061]}
 - `target_key` = the **game name string**, matched verbatim against
   `games/mod.rs:11` (`"Livewire"`, `"Hack"`, …). Case-sensitive.
 - `params.on_victory_chains` = array of chain ids fired on victory.
-- **There is no difficulty param.** Loader: `crates/content-engine/src/loader/action.rs:110-121`
-  reads only those two fields.
+- `params.difficulty` = optional integer 1-5, default 1. Added by Castle CA04;
+  out of range drops the action row at load with a `warn!`. NOTE: every
+  per-game difficulty table only has tiers 1-4, so an authored 5 reaches the
+  game and is clamped to 4 with a `warn!` — see [[difficulty-ranges]].
 
 Live precedents in `db/resources/Content/Seed/castle_cellblock_chains.sql`:
 lines 319, 536, 930 (chains 1016, 1041, 1060). Paired victory chains 1017,
@@ -47,18 +49,17 @@ the icon disappears on relog.
 Result codes (RE, `findings/minigame-architecture.md:59-67`): 1 Success,
 2 Failure, 3 Interrupted, 4 Defeated. Only 1 fires chains.
 
-## Two hardcoded params that cap difficulty
+## One hardcoded param left
 
-- `difficulty: 1` — `cell/content/executor/mod.rs:213`, marked
-  `// TODO: parse from chain params when difficulty field is added`.
+- `difficulty` — **FIXED by Castle CA04.** Authorable per chain (see above).
 - `tech_competency: 1` — `base/world_entry/cell_dispatch/minigame.rs:43`,
-  `// TODO: read from player entity`.
+  `// TODO: read from player entity`. Still hardcoded.
 
 Livewire consumes BOTH in `games/livewire/setup.rs:138-166` (goal count, timer
-base, obstacle count, move timer all scale off them). So **every Livewire in
-the game today is the easiest board**, regardless of the mission's level. This
-is the single Rust change that unblocks difficulty-tiered minigames for
-high-level content.
+base, obstacle count, move timer all scale off them). Every *seeded* Livewire
+is still the easiest board, because no seed row sets `difficulty` yet — but
+that is now an authoring choice, not a code gap. Reading `tech_competency`
+from the player entity is the remaining Rust change.
 
 ## Interaction bit must match the game
 

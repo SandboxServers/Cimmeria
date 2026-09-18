@@ -17,14 +17,15 @@
 //! chains for one mission's branches and edges so a regression surfaces
 //! near the seed it touches. Two modules are organised by *action verb*
 //! instead, because the risk they guard is the executor arm rather than
-//! any one mission's wiring: [`sgc_w1_move_entity`] and [`grant_xp`].
-//! Those two also run the resolved actions through
+//! any one mission's wiring: [`sgc_w1_move_entity`], [`grant_xp`] and
+//! [`livewire_pairs`]. Those three also run the resolved actions through
 //! `executor::execute_actions` and assert on the resulting
 //! `CellToBaseMsg` traffic — a resolve-only test cannot tell a wired
 //! executor arm from the `other =>` catch-all.
 
 mod gc1_escort;
 mod grant_xp;
+mod livewire_pairs;
 mod mission_1360;
 mod mission_1562;
 mod mission_622;
@@ -44,3 +45,4 @@ mod region8_guard_aggro;
 mod region_transition_accepts;
 mod sgc_w1_move_entity;
 mod stargate_triggers;
+mod start_minigame_difficulty;

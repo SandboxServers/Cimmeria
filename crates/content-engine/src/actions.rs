@@ -15,6 +15,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::context::ExecutionContext;
 
+/// Serde default for [`Action::StartMinigame`]'s `difficulty`.
+///
+/// Must stay equal to the DB-row loader's default in
+/// `loader/action.rs`; the two are the same contract reached by two paths.
+fn default_minigame_difficulty() -> u32 {
+    1
+}
+
 /// An action to execute when a chain's trigger fires and conditions pass.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Action {
@@ -151,6 +159,17 @@ pub enum Action {
     /// Start a minigame for the player.
     StartMinigame {
         minigame_type: String,
+        /// Difficulty tier handed to the SWF in the `joinOK` game params.
+        /// The original client asserted 1-5; the loader range-checks and
+        /// defaults to 1 when the seed row omits it.
+        ///
+        /// The serde default mirrors that loader default so the two agree.
+        /// `Action` is `Deserialize`, and this field was added after the
+        /// variant shipped — without the default, any previously serialized
+        /// payload fails to deserialize on a missing key rather than taking
+        /// the same 1 the DB-row path would give it.
+        #[serde(default = "default_minigame_difficulty")]
+        difficulty: u32,
         on_victory_chains: Vec<i64>,
     },
 
@@ -562,6 +581,46 @@ mod tests {
         match deserialized {
             Action::AcceptMission { mission_id } => assert_eq!(mission_id, 622),
             _ => panic!("Expected AcceptMission"),
+        }
+    }
+
+    /// A payload serialized before `difficulty` existed must still
+    /// deserialize, taking the same default the DB-row loader applies.
+    /// Without `#[serde(default)]` this fails on a missing field, so an
+    /// older stored `Action` would break rather than degrade.
+    #[test]
+    fn start_minigame_deserializes_a_payload_without_difficulty() {
+        let json = r#"{"StartMinigame":{"minigame_type":"Livewire","on_victory_chains":[1017]}}"#;
+        let action: Action =
+            serde_json::from_str(json).expect("a pre-difficulty payload must still deserialize");
+        match action {
+            Action::StartMinigame {
+                minigame_type,
+                difficulty,
+                on_victory_chains,
+            } => {
+                assert_eq!(minigame_type, "Livewire");
+                assert_eq!(difficulty, 1, "the omitted field must default to 1");
+                assert_eq!(on_victory_chains, vec![1017]);
+            }
+            other => panic!("expected StartMinigame, got {other:?}"),
+        }
+    }
+
+    /// An explicit difficulty must survive a round trip unchanged -- the
+    /// default must not shadow an authored value.
+    #[test]
+    fn start_minigame_round_trips_an_explicit_difficulty() {
+        let original = Action::StartMinigame {
+            minigame_type: "Livewire".to_string(),
+            difficulty: 4,
+            on_victory_chains: vec![1042],
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let back: Action = serde_json::from_str(&json).unwrap();
+        match back {
+            Action::StartMinigame { difficulty, .. } => assert_eq!(difficulty, 4),
+            other => panic!("expected StartMinigame, got {other:?}"),
         }
     }
 }
