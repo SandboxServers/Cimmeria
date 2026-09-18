@@ -231,30 +231,82 @@ mod live_db {
     ///
     /// Scope: every row EXCEPT the two World 23 `Beta_Site_Evo_1` rows,
     /// which are a documented, evidence-less gap (see the KNOWN GAP comment
-    /// in `db/resources/Worlds/Seed/respawners.sql`). Listing them by id
-    /// rather than weakening the assertion to "world 8 only" means a new
+    /// in `db/resources/Worlds/Seed/respawners.sql`). Listing them rather
+    /// than weakening the assertion to "world 8 only" means a new
     /// unauthored row in any world trips this test.
     ///
-    /// The Castle count assertion is load-bearing: without it, deleting the
-    /// four rows instead of authoring them would pass the origin check
-    /// vacuously.
+    /// The exemption is a **composite** pin — id, world and still-at-origin
+    /// — not a bare id allowlist. A bare id list silently exempts whatever
+    /// row happens to hold that id later: renumber the seed, or delete row
+    /// 6 and reuse the id for a real checkpoint, and the exemption follows
+    /// the number rather than the gap it was written for. Pinning the world
+    /// and the zeros means any of those edits fails here and forces the
+    /// author to re-read the KNOWN GAP comment.
+    ///
+    /// The Castle assertions are load-bearing too: without the name set,
+    /// deleting the four rows instead of authoring them would pass the
+    /// origin check vacuously, and the distinctness check catches the
+    /// copy-paste collapse (four rows, one position) that the origin check
+    /// cannot see. Positions themselves are deliberately not pinned — they
+    /// move after the in-client UAT (D-CA11).
     #[tokio::test]
     async fn seeded_respawners_are_not_at_the_world_origin() {
         /// World 23 `Beta_Site_Evo_1`: names survived, positions did not,
         /// and nothing in the seed or the recovered scripts says where the
         /// zone's respawn points were. Left at the origin deliberately.
-        const UNAUTHORED_BY_DESIGN: [i32; 2] = [6, 7];
+        const UNAUTHORED_BY_DESIGN: [(i32, &str); 2] =
+            [(6, "Beta_Site_Evo_1"), (7, "Beta_Site_Evo_1")];
         const CASTLE_WORLD: &str = "Castle";
-        const CASTLE_RESPAWNER_COUNT: usize = 4;
+        const CASTLE_CHECKPOINTS: [&str; 4] = [
+            "Armory Respawn",
+            "Checkpoint Alpha Respawn",
+            "Op-Core Triangle Respawn",
+            "Throne Checkpoint Respawn",
+        ];
 
         let pool = require_db_or_skip!();
         let respawners = load_respawners(&pool)
             .await
             .expect("load_respawners must succeed");
 
+        // The exemption must still describe the rows it was written for.
+        for (id, world) in UNAUTHORED_BY_DESIGN {
+            let row = respawners
+                .iter()
+                .find(|r| r.respawner_id == id)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "respawner {id} is exempted as an unauthored world-23 row but no \
+                         longer exists — drop it from UNAUTHORED_BY_DESIGN (and from the \
+                         KNOWN GAP comment in db/resources/Worlds/Seed/respawners.sql) \
+                         rather than leaving a stale exemption that a future row can \
+                         inherit"
+                    )
+                });
+            assert_eq!(
+                row.world_name, world,
+                "respawner {id} is exempted as a world-23 ({world}) row but now belongs \
+                 to '{}' — the exemption is following the id, not the documented gap",
+                row.world_name
+            );
+            assert_eq!(
+                row.pos,
+                [0.0, 0.0, 0.0],
+                "respawner {id} '{}' has been authored ({:?}) — remove it from \
+                 UNAUTHORED_BY_DESIGN so it is covered by the origin check like every \
+                 other row",
+                row.name,
+                row.pos
+            );
+        }
+
         let at_origin: Vec<String> = respawners
             .iter()
-            .filter(|r| !UNAUTHORED_BY_DESIGN.contains(&r.respawner_id))
+            .filter(|r| {
+                !UNAUTHORED_BY_DESIGN
+                    .iter()
+                    .any(|(id, _)| *id == r.respawner_id)
+            })
             .filter(|r| r.pos == [0.0, 0.0, 0.0])
             .map(|r| format!("{} '{}' (world {})", r.respawner_id, r.name, r.world_name))
             .collect();
@@ -267,18 +319,29 @@ mod live_db {
              authored"
         );
 
-        let castle: Vec<&str> = respawners
+        let castle: Vec<&RespawnerDef> = respawners
             .iter()
             .filter(|r| r.world_name == CASTLE_WORLD)
-            .map(|r| r.name.as_str())
             .collect();
+
+        let mut names: Vec<&str> = castle.iter().map(|r| r.name.as_str()).collect();
+        names.sort_unstable();
         assert_eq!(
-            castle.len(),
-            CASTLE_RESPAWNER_COUNT,
-            "world '{CASTLE_WORLD}' must ship its {CASTLE_RESPAWNER_COUNT} authored \
-             checkpoints (Checkpoint Alpha / Throne / Op-Core Triangle / Armory); \
-             got {castle:?}"
+            names, CASTLE_CHECKPOINTS,
+            "world '{CASTLE_WORLD}' must ship exactly these four authored checkpoints"
         );
+
+        for (i, a) in castle.iter().enumerate() {
+            for b in castle.iter().skip(i + 1) {
+                assert_ne!(
+                    a.pos, b.pos,
+                    "'{}' and '{}' share a position {:?} — four checkpoints that all \
+                     land on the same spot is the copy-paste failure the origin check \
+                     cannot see",
+                    a.name, b.name, a.pos
+                );
+            }
+        }
     }
 
     #[tokio::test]

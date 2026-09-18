@@ -342,13 +342,22 @@ pub(super) fn resolve_respawn_target(
             .find(|r| r.respawner_id == respawner_id)
         {
             Some(r) if is_unauthored(r) => {
+                // Negative-log seam, `reason` pinned by
+                // `origin_respawner_warn_fires_once_on_the_explicit_id_path`.
+                // `world` (not `world_name`) matches the field this
+                // function's other logs already use, so one ops query
+                // catches every respawn-resolution event; see the
+                // worknote for the convention-vs-practice note.
                 tracing::warn!(
                     entity_id,
                     respawner_id,
                     respawner_name = %r.name,
                     world = %r.world_name,
-                    "Respawner is at the world origin (unauthored coordinates) — \
-                     ignoring it and falling back; fix the row in \
+                    reason = "respawner_at_origin",
+                    "Respawn: requested respawner is at the world origin \
+                     (unauthored coordinates) — ignoring it and falling back, \
+                     so the player lands at a fallback point rather than at \
+                     (0,0,0); fix the row in \
                      db/resources/Worlds/Seed/respawners.sql"
                 );
             }
@@ -378,12 +387,16 @@ pub(super) fn resolve_respawn_target(
             return (r.world_name.clone(), r.pos);
         }
         if skipped > 0 {
+            // Negative-log seam, `reason` pinned by
+            // `origin_respawner_warn_fires_once_on_the_world_scan_path`.
             tracing::warn!(
                 entity_id,
                 world = %wn,
                 skipped,
-                "Every respawner registered for this world is at the origin \
-                 (unauthored coordinates) — falling back; fix the rows in \
+                reason = "world_respawners_all_at_origin",
+                "Respawn: every respawner registered for this world is at the \
+                 origin (unauthored coordinates) — falling back, so the player \
+                 respawns in place rather than at (0,0,0); fix the rows in \
                  db/resources/Worlds/Seed/respawners.sql"
             );
         }
