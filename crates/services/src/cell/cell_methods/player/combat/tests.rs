@@ -391,6 +391,106 @@ fn resolve_respawn_target_uses_in_place_for_other_worlds_without_respawners() {
     );
 }
 
+/// A respawner at the world origin is treated as absent on the
+/// explicit-id path (the one the Defeat Window drives).
+///
+/// Bug shape (Castle audit defect B1): all four World 8 rows shipped as
+/// `(0,0,0)`. The player clicks "Checkpoint Alpha Respawn" in the Defeat
+/// Window, `callForAid` hands the id to `resolve_respawn_target`, the row
+/// is found by id, and its zeros are returned — every fallback below is
+/// unreachable *because the row exists*. Result: respawn at the world
+/// origin, out of bounds, with `unstuck` unimplemented.
+///
+/// Here the origin row is the only respawner for the player's world, so a
+/// correct skip has to fall all the way through to the in-place fallback.
+/// With the guard removed this returns `[0.0, 0.0, 0.0]`.
+#[test]
+fn resolve_respawn_target_skips_origin_respawner_on_explicit_id() {
+    let mut mgr = make_mgr_with_player("Agnos_test");
+    mgr.respawners.push(RespawnerDef {
+        respawner_id: 3,
+        world_name: "Agnos_test".to_string(),
+        name: "Unauthored Checkpoint".to_string(),
+        pos: [0.0, 0.0, 0.0],
+    });
+
+    let (world, pos) = resolve_respawn_target(3, 1, &mgr);
+
+    assert_eq!(world, "Agnos_test");
+    assert_eq!(
+        pos,
+        [42.0, 1.0, 17.0],
+        "an all-zero respawner must be treated as absent and the search must \
+         continue past it — returning (0,0,0) teleports the player to the world \
+         origin (Castle audit defect B1)"
+    );
+}
+
+/// The same skip applies on the world-match path (priority 2), and it
+/// must not stop at the first origin row — the scan continues to a later
+/// authored row for the same world.
+///
+/// Shape matters: the Castle seed had four rows for one world. A guard
+/// that only checked `respawners.first()` would still hand back zeros
+/// whenever the origin row happened to be first. With the guard removed
+/// this returns the origin row's `[0.0, 0.0, 0.0]`.
+#[test]
+fn resolve_respawn_target_skips_origin_row_for_a_later_authored_one() {
+    let mut mgr = make_mgr_with_player("Agnos_test");
+    mgr.respawners.push(RespawnerDef {
+        respawner_id: 1,
+        world_name: "Agnos_test".to_string(),
+        name: "Unauthored Checkpoint".to_string(),
+        pos: [0.0, 0.0, 0.0],
+    });
+    mgr.respawners.push(RespawnerDef {
+        respawner_id: 2,
+        world_name: "Agnos_test".to_string(),
+        name: "Outpost".to_string(),
+        pos: [-5.0, 5.0, -5.0],
+    });
+
+    // No explicit id — priority 2 (first respawner for the player's world).
+    let (world, pos) = resolve_respawn_target(-1, 1, &mgr);
+
+    assert_eq!(world, "Agnos_test");
+    assert_eq!(
+        pos,
+        [-5.0, 5.0, -5.0],
+        "the world scan must skip the origin row and keep looking, not stop at it"
+    );
+}
+
+/// The origin test is exact equality, not a tolerance band: a respawner
+/// authored a few centimetres off the origin is a real respawn point and
+/// must still be honoured.
+///
+/// Pins the guard's blast radius. `(0,0,0)` is a sentinel written by the
+/// authoring gap; a proximity check would start silently discarding
+/// legitimate coordinates in any world whose geometry straddles the
+/// origin (`Castle_CellBlock`'s own default is 334 units out, but
+/// `CombatSim` and the test spaces sit on top of it).
+#[test]
+fn resolve_respawn_target_honours_a_respawner_just_off_the_origin() {
+    let mut mgr = make_mgr_with_player("Agnos_test");
+    mgr.respawners.push(RespawnerDef {
+        respawner_id: 4,
+        world_name: "Agnos_test".to_string(),
+        name: "Near Origin".to_string(),
+        pos: [0.0, 0.05, 0.0],
+    });
+
+    let (world, pos) = resolve_respawn_target(4, 1, &mgr);
+
+    assert_eq!(world, "Agnos_test");
+    assert_eq!(
+        pos,
+        [0.0, 0.05, 0.0],
+        "only an exactly-zero position is unauthored; a near-origin respawner is a \
+         real respawn point"
+    );
+}
+
 /// Same-world respawn must dispatch `ListInventoryItems` AFTER
 /// `ReanchorPlayer` so the client's bag panel repopulates.
 ///
