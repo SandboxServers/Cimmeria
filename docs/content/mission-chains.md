@@ -703,15 +703,21 @@ This is an orphaned hidden mission with step text that parallels missions 641 an
 
 ### Castle (Persistent Zone)
 
-**Confidence**: CONFIRMED
+**Confidence**: CONFIRMED for 701 and for every mission's DB data; RECONSTRUCTION for the 702/703/704/706/708 chains
 **Zone**: Castle (persistent open-world zone)
 **Missions in zone**: 6 -- 701, 702, 703, 704, 706, 708
-**Covered by recovered server script**: 2 (701, 702) -- both in `Castle.py`; 706
-and 708 are reconstruction with no recovered script, and 703/704 are unported
-**Ported to content chains**: 3 (701, 706, 708)
+**Covered by recovered server script**: 2 (701, 702) -- both in `Castle.py`, and for 702 only the accept; 703, 704, 706 and 708 are reconstruction with no recovered script
+**Ported to content chains**: 6 -- all of them (701, 706 and 708 already on `main`; 702, 703 and 704 in this packet)
 **All missions**: Level 3
 
-The Castle space script (`deprecated/python/cell/spaces/Castle.py`) handles all mission logic for this zone. There are no per-mission script files for 701 or 702 -- all logic lives in the space script.
+The Castle space script (`deprecated/python/cell/spaces/Castle.py`) handles all recovered mission logic for this zone. There are no per-mission script files for 701 or 702 -- all logic lives in the space script.
+
+`Castle.py` accepts mission 702 and then stops: it never references 702's steps, nor 703, 704, 706 or 708 anywhere. Missions 702, 703 and 704 are therefore **reconstructed** from original shipped data (mission steps/objectives/tasks, dialogs and dialog screens, items) rather than ported from recovered logic. Their chains live in [`db/resources/Content/Seed/castle_702_704_chains.sql`](../../db/resources/Content/Seed/castle_702_704_chains.sql), authored by packets CA06 (702, 703) and CA07 (704) of the [Castle rebuild ledger](../analysis/castle-rebuild/work-packets.md). Every row below labelled RECONSTRUCTION is an authoring decision, not a recovered fact; rows labelled ORIGINAL_DATA are literal values from the shipped seed.
+
+Two cross-packet notes apply to all three reconstructed missions:
+
+- The spawnlist tags (`Castle_Zuritska_Cell`, `Castle_Zuritska_Comms`, `Castle_Romney`, `Castle_CommsTerminal`) and the point sets (`Castle.InterrogationBlock`, `Castle.CommsRoom`) are contracts owned by packet CA05. Until CA05 lands they are referenced but not seeded. Three column-level requirements ride along: `spawnlist.respawn_secs` on the Romney row (no row in the shipped seed sets it, and without it Romney never respawns, so the first kill locks mission 703 for everyone else), and `move_speed` plus a null `wander_radius` / `patrol_path_id` on Zuritska's template.
+- `set_interaction_type` is global on the entity, not per player (see [interaction-flags.md](interaction-flags.md)). Castle is a persistent shared world, so one player's `!` set or clear is visible to everyone in the zone. The chains' `step_status` conditions mean nothing fires for the wrong player, but the cursor itself is shared. Each set therefore carries both a `player_loaded` restore and a region re-entry repair, so a player whose bit was cleared by someone else gets it back by walking out and in rather than by relogging. The per-player replacement is the dialog-set bind of packet CA02.
 
 Mission 701 has been **ported to content chains** in `db/resources/Content/Seed/castle_701_chains.sql` (chains 1201-1243) by campaign packets CA01 and CA03, and missions 706 and 708 in `castle_706_708_chains.sql` (chains 1321-1323 and 1341-1365) by packets CA08 and CA09; see the per-mission sections below. Missions 702, 703 and 704 remain unported and are tracked in [docs/analysis/castle-rebuild/work-packets.md](../analysis/castle-rebuild/work-packets.md).
 
@@ -857,7 +863,7 @@ directions on purpose:
 
 ---
 
-#### Mission 702: "Rescue Dr. Zuritska" [CONFIRMED]
+#### Mission 702: "Rescue Dr. Zuritska" [RECONSTRUCTION]
 
 | Field | Value |
 |-------|-------|
@@ -865,7 +871,7 @@ directions on purpose:
 | **Name** | Rescue Dr. Zuritska |
 | **Level** | 3 |
 | **is_story** | true |
-| **Script** | None (accepted by Castle.py, no further scripting) |
+| **Script** | None. Accepted by `Castle.py`; body reconstructed as chains 1261-1265 |
 
 **Steps** (from DB):
 
@@ -874,11 +880,121 @@ directions on purpose:
 | 2402 | 0 | "Make your way to the Interrogation Block." |
 | 2419 | 1 | "Zuritska is in one of the detention cells. Locate him and free him!" |
 
-**How it starts**: Accepted by Castle.py space script when mission 701 completes (dialog.choice::2576). In Cimmeria this is chain **1238** in `castle_701_chains.sql`; chain **1239** additionally accepts mission 703 "Payback" on the same choice, which is a reconstruction (decision D-CA05 — `Castle.py` never references 703, and without it "Payback" has no acquisition path).
+**Objectives** (from DB): 2778 (required) and 2779 (optional, hidden) on 2402; 4653 on 2419 via task 5701 (`task_type 1`, no payload).
 
-**No further script logic exists for mission 702.** The DB has step data but there is no Python code to advance, complete, or otherwise interact with this mission. It is accepted and then becomes a dead end.
+**How it starts**: accepted by `Castle.py` when mission 701 completes (`dialog.choice::2576`). In Cimmeria that is chain **1238** in `castle_701_chains.sql` (packet CA01/CA03); chain **1239** additionally accepts mission 703 "Payback" on the same choice, which is a reconstruction (decision D-CA05 — `Castle.py` never references 703, and without it "Payback" has no acquisition path).
 
-**Link to next**: **DEAD END** for now. Acceptance is wired (chain 1238) but no chain advances or completes 702; the body is campaign packet CA06 in [docs/analysis/castle-rebuild/work-packets.md](../analysis/castle-rebuild/work-packets.md).
+**Chains**:
+
+| Chain | Trigger | Conditions | Actions | Evidence |
+|---|---|---|---|---|
+| 1261 | `enter_region Castle.InterrogationBlock` | 702 step 2402 active | `advance_step 702 2419`; `set_interaction_type Castle_Zuritska_Cell \| INT_AStoryMissionActive` | RECONSTRUCTION -- step 2402 is a travel instruction and region entry is the only verb that expresses it |
+| 1262 | `interact_tag Castle_Zuritska_Cell` | 702 step 2419 active | `display_dialog 2577` | ORIGINAL_DATA (dialog 2577, speaker 1114) wired by RECONSTRUCTION |
+| 1263 | `dialog_choice 2577` | 702 step 2419 active; 704 not_active | `complete_mission 702`; `accept_mission 704`; `set_follow_target Castle_Zuritska_Cell {"use_player": true}` | RECONSTRUCTION -- 2577 is the only accept point for 704 in the shipped data |
+| 1264 | `player_loaded Castle` | 702 step 2419 active | re-set the `!` bit | RECONSTRUCTION (relog restore) |
+| 1265 | `enter_region Castle.InterrogationBlock` | 702 step 2419 active | re-set the `!` bit | RECONSTRUCTION (shared-bit repair) |
+
+Objective 4653 is completed by `complete_mission 702`, not by a separate `complete_objective`: it is the only objective on the mission's last step, and completing a last non-optional objective completes the mission on its own.
+
+Chain 1265 exists because the `!` bit is global: another player's progress clears it for everyone, including a player still on step 2419, who then cannot click the actor at all. Chain 1264 repairs that only on a relog; 1265 repairs it on walking back into the volume.
+
+The `!` on `Castle_Zuritska_Cell` deliberately **outlives mission 702**. Chain 1263 does not clear it, because it is the affordance mission 704's chain 1302 needs to restart an escort broken by splash damage. Its lifecycle is: set by 1261 when the player enters the Interrogation Block, kept through 702's completion and the whole of 704 step 2405, cleared by 704's chain 1291 on Communications Room arrival.
+
+**Escort caveat**: the follow set by chain 1263 is presentation only and is **provisional** until `castle.nav` exists (packet CA14). With no navmesh, `find_path` returns `None` and the follower walks a straight line, so expect clipping through Castle interior geometry.
+
+**Link to next**: completes 702 and accepts **704**. Mission 703 is accepted alongside 702 by mission 701's chain under decision D-CA05.
+
+---
+
+#### Mission 703: "Payback" [RECONSTRUCTION]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 703 |
+| **Name** | Payback |
+| **Level** | 3 |
+| **is_story** | true |
+| **Script** | None. Reconstructed as chains 1271-1273 |
+
+**Steps** (from DB):
+
+| Step ID | Index | Text |
+|---------|-------|------|
+| 2403 | 0 | "Locate NID Interrogator Romney in the Castle." |
+| 2404 | 1 | "Romney must be somewhere in the Interrogation Block. Locate and eliminate him." |
+
+**Objectives** (from DB): 2780 on 2403; 2781 on 2404. Neither is optional and there is no mission-specific dialog -- 703 is a kill mission end to end.
+
+**How it starts**: accepted with 702 by mission 701's dialog-2576 chain (decision D-CA05).
+
+**Chains**:
+
+| Chain | Trigger | Conditions | Actions | Evidence |
+|---|---|---|---|---|
+| 1271 | `enter_region Castle.InterrogationBlock` | 703 step 2403 active | `advance_step 703 2404` | RECONSTRUCTION -- same volume as 702's chain 1261; both fire on one entry |
+| 1272 | `entity_dead_tag Castle_Romney` | 703 step 2404 active | `add_item 2135`; `complete_mission 703` | RECONSTRUCTION -- explicit grant, not loot |
+| 1273 | `entity_dead_tag Castle_Romney` | 703 step 2403 active | `advance_step 703 2404`; `add_item 2135`; `complete_mission 703` | RECONSTRUCTION -- the off-path kill |
+
+Item 2135 "Romney's NID Badge" is an **explicit chain grant**. There is no loot table and no `mission_reward_groups` row for 701-708, so a chain grant is the only mechanism available; the item is the one row in the seed that names Romney. Its description text is a copy-paste of the Ambernol vial's and is not evidence of anything.
+
+Chain 1273 exists because Castle is an open world and region entry is client-hinted: a player can reach Romney without ever crossing `Castle.InterrogationBlock`, and without 1273 the mission would stick on step 2403 behind a corpse. The two death chains can never both fire for one kill -- `fire_entity_death` snapshots the killer's mission context once and evaluates every chain against that single snapshot, so the badge is granted exactly once.
+
+Death credit is per killer (the killer must have a `player_id`), and Romney respawns on the ordinary spawner timer, so every player can take the kill.
+
+**Link to next**: none. 703 is a side branch off the 702 → 704 spine.
+
+---
+
+#### Mission 704: "Hack Communications" [RECONSTRUCTION]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 704 |
+| **Name** | Hack Communications |
+| **Level** | 3 |
+| **is_story** | true |
+| **Script** | None. Reconstructed as chains 1291-1302 |
+
+**Steps** (from DB):
+
+| Step ID | Index | Text |
+|---------|-------|------|
+| 2405 | 0 | "Escort Dr. Zuritska to the Communications Room down on Level 5." |
+| 2406 | 1 | "Use the Communications Terminal to download specifications for the Castle's security system." |
+| 2407 | 2 | "Deliver the Data crystal to Zuritska." |
+
+**Objectives** (from DB): 2782 (required) and 2783 (optional, hidden) on 2405; 2784 on 2406 via task 6341; 5151 on 2407.
+
+**How it starts**: accepted by mission 702's chain 1263 on the dialog-2577 choice.
+
+**Chains**:
+
+| Chain | Trigger | Conditions | Actions | Evidence |
+|---|---|---|---|---|
+| 1291 | `enter_region Castle.CommsRoom` | 704 step 2405 active | `advance_step 704 2406`; `set_follow_target Castle_Zuritska_Cell {}` (clear); arm the terminal and the workstation actor; clear the `!` on `Castle_Zuritska_Cell` | RECONSTRUCTION |
+| 1292 | `interact_tag Castle_CommsTerminal` | 704 step 2406 active | `start_minigame Livewire {"on_victory_chains": [1293]}` | RECONSTRUCTION, provisional minigame (D-CA09) |
+| 1293 | none -- invoked by 1292's `on_victory_chains` | none | `display_dialog 2580`; `add_item 5029`; `advance_step 704 2407`; clear the terminal bit; re-assert the `!` on `Castle_Zuritska_Comms` | RECONSTRUCTION; dialogs and item are ORIGINAL_DATA |
+| 1294 | `interact_tag Castle_Zuritska_Comms` | 704 step 2407 active | `display_dialog 2581` | ORIGINAL_DATA wired by RECONSTRUCTION |
+| 1295 | `dialog_choice 2581` | 704 step 2407 active; 706 not_active | `remove_item 5029`; clear the `!`; `complete_mission 704`; `accept_mission 706` | RECONSTRUCTION |
+| 1296 | `player_loaded Castle` | 704 step 2405 active | re-arm the escort follow and the cell actor's `!` | RECONSTRUCTION (relog restore) |
+| 1297 | `player_loaded Castle` | 704 step 2406 active | re-set the terminal bit and the workstation `!` | RECONSTRUCTION (relog restore) |
+| 1298 | `player_loaded Castle` | 704 step 2407 active | re-set the workstation `!` | RECONSTRUCTION (relog restore) |
+| 1299 | `interact_tag Castle_Zuritska_Comms` | 704 step 2406 active | `display_dialog 4866` | ORIGINAL_DATA wired by RECONSTRUCTION (click-to-play) |
+| 1300 | `enter_region Castle.CommsRoom` | 704 step 2406 active | re-set both 2406 bits | RECONSTRUCTION (shared-bit repair) |
+| 1301 | `enter_region Castle.CommsRoom` | 704 step 2407 active | re-set the workstation `!` | RECONSTRUCTION (shared-bit repair) |
+| 1302 | `interact_tag Castle_Zuritska_Cell` | 704 step 2405 active | `set_follow_target Castle_Zuritska_Cell {"use_player": true}` | RECONSTRUCTION (escort repair) |
+
+**Why clicking Zuritska restarts the escort (chain 1302)**: `AiState::Follow` is preemptable into Fighting by any threat, and the leash handler ends at Idle and never returns to Follow. One point of splash damage to Zuritska on the way down to Level 5 therefore ends the escort permanently, and the only other recovery is a relog. The click is the "follow me again" affordance, which is why the cell actor's `!` is kept alight for the whole of step 2405 rather than cleared at the rescue. Known gap: because the bit is global, another player reaching the Communications Room clears this player's affordance too, and the only repair for that is the relog restore -- step 2405 is spent in the corridor between the two rooms, which has no point set for a re-entry repair to trigger on.
+
+**Why the step gate lives on chain 1292 and not on 1293**: victory chains are fired by id with `ResolvedActions::default()` and evaluate **no conditions**. A condition row on 1293 would read as a guard while guarding nothing, so the single-grant guarantee for item 5029 comes entirely from 1292's `step_status 2406 active` plus 1293's own advance to 2407, which shuts that gate.
+
+**Why dialog 4866 is click-to-play rather than played on arrival** (a RECONSTRUCTION choice; the shipped data gives no ordering evidence): `display_dialog` needs an NPC to bind the client's portrait lookup to. It resolves the chain's `target_entity_id` param, which only `interact_tag` and `interact_template` triggers stamp, then the player's `last_interaction_target` pin, then a monologue fallback for dialogs whose every screen carries `speaker_id = 0`. If none resolves it warns and returns. Dialog 4866 carries `speaker_id = 1113` on two of its three screens, so on a region-entry chain it would bind through the pin — which resolves to the cell Zuritska the player just freed, and is empty after a relog. Chain 1299's interact trigger stamps the id directly and always resolves the workstation actor. Dialog 2580 needs none of this: it is a single screen with `speaker_id = 0`, so the monologue fallback carries it on the victory chain. The engine change that would let 4866 play on arrival is a `target_tag` param on `display_dialog`, recorded as a campaign follow-up candidate.
+
+**Possession is proved by step state, not by the item** (decision D-CA08). The cell service has no inventory view at all -- `CellEntity` carries only bandolier and loot -- so a `HasItem` gate could never evaluate true. Chain 1293 grants the crystal and advances the step in the same action list, which makes the step the proof. Accepted divergence: dropping or selling the crystal does not regress step 2407.
+
+**Walk home**: chain 1291 ends the escort by clearing the follow and then walks `Castle_Zuritska_Cell` back to the seeded spawn with `move_waypoint` to (268.0, 66.79, 1042.59) — spawn_id 238, template 168, world 8, authored by packet CA05. Order matters: the follow clear drops the actor to Idle and wipes `nav_path`, so the walk has to be issued after it, and `chain_1291_arrival_advances_ends_the_escort_and_arms_the_terminal` asserts the action signature positionally for that reason. The coordinate is a second copy of CA05's spawn row, so `chain_1291_destination_matches_the_seeded_spawn_row` cross-checks the two against `resources.spawnlist`.
+
+**Link to next**: completes 704 and accepts **706** ("Power Behind the Throne", packet CA08, not yet implemented).
 
 ---
 

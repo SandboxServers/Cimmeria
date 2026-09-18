@@ -9,4 +9,4 @@
 - [engine-gaps.md](engine-gaps.md) — Triggers that never dispatch (`dialog_set_open`!), actions with no executor arm, no timers, no spawn/XP/cash, no per-player state; `MissionObjective` enum is dead code.
 - [harset-zone-evidence.md](harset-zone-evidence.md) — Harset has exactly 1 mission script (742) + 2 space scripts, zero chains, and a 22-row spawn table; mission 742's full chain shape and template ids.
 - [atrea-node-mapping.md](atrea-node-mapping.md) — Atrea `Event_*`/`Act_*` node → Cimmeria trigger/action mapping, with the nodes that have no port.
-- [dialog-chain-authoring-rules.md](dialog-chain-authoring-rules.md) — CRITICAL: non-interact chains can only display MONOLOGUE dialogs; `dialog_choice` gated on `open_dialog_id`; NULL-dialog_set binds are no-ops that kill clickability; buttons keyed by screen_id.
+- [dialog-chain-authoring-rules.md](dialog-chain-authoring-rules.md) — CRITICAL: non-interact chains can only display MONOLOGUE dialogs; `dialog_choice` gated on `open_dialog_id`; NULL-dialog_set binds are interaction-only flag carriers since #661 (were no-ops); buttons keyed by screen_id.
