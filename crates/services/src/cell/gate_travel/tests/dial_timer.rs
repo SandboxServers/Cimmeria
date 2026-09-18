@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 
 use super::super::sequences::{EVENT_STARGATE_CROSS_GATE, EVENT_STARGATE_MAKE_GATE};
 use super::super::{gate_dial_tick, handle_dial_gate, handle_stargate_region_entered};
-use super::{engine, make_manager_with_stargates, CASTLE_EVENT_SET, SEQ_CROSS_GATE, SEQ_MAKE_GATE};
+use super::{engine, make_manager_with_stargates, SEQ_CROSS_GATE, SEQ_MAKE_GATE};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -120,13 +120,20 @@ async fn cancel_dial_stops_the_pending_make_gate() {
 async fn leaving_the_space_stops_the_pending_make_gate() {
     let (mut mgr, mut rx, tx) = armed_dialer().await;
 
+    // Expire the deadline FIRST. Without this the dial is still four
+    // seconds out, so the tick emits nothing whether or not
+    // `destroy_entity` scrubbed it — the test would pass with the scrub
+    // reverted and prove nothing.
+    expire_the_timer(&mut mgr);
     mgr.destroy_entity(DIALER);
 
     gate_dial_tick(&tx, &mut mgr).await;
     assert!(
         rx.try_recv().is_err(),
-        "a dialer who left the space must not get a late gate-open"
+        "a dialer who left the space must not get a late gate-open, even \
+         though their dial deadline has passed"
     );
+    assert!(mgr.gate_dial(DIALER).is_none());
 }
 
 /// Re-dialling restarts the timer: `beginDialing` cancels the in-flight
@@ -232,22 +239,17 @@ async fn crossing_an_open_gate_sends_cross_gate_then_travels() {
     assert!(mgr.gate_dial(DIALER).is_none(), "dial consumed");
 }
 
-/// Event ids are original data — pin them so a "tidy up the constants"
-/// refactor can't quietly start emitting `Stargate_DestroyGate` (6103)
-/// or a chevron event (6106-6112), which the 2009 server never sent.
+/// Event ids are original data (`entities/defs/enumerations.xml:821,834`)
+/// — pin them so a "tidy up the constants" refactor can't quietly point
+/// the emitter at `Stargate_DestroyGate` (6103) or a chevron event
+/// (6106-6112), which the 2009 server never sent.
+///
+/// That the emitter *refuses* an unmapped event is a separate claim, and
+/// `sequences::missing_event_set_or_sequence_emits_nothing` pins it
+/// against 6103. Asserting here that the fixture's own two-entry map
+/// lacks the other twelve would only be the fixture checking itself.
 #[test]
 fn only_6100_and_6113_are_wired() {
     assert_eq!(EVENT_STARGATE_MAKE_GATE, 6100);
     assert_eq!(EVENT_STARGATE_CROSS_GATE, 6113);
-    // The fixture maps only these two events for Castle's event set;
-    // `missing_event_set_or_sequence_emits_nothing` covers 6103.
-    let mgr = make_manager_with_stargates();
-    for unwired in [
-        6101, 6102, 6103, 6104, 6105, 6106, 6107, 6108, 6109, 6110, 6111, 6112,
-    ] {
-        assert!(
-            !mgr.sequence_map.contains_key(&(CASTLE_EVENT_SET, unwired)),
-            "event {unwired} must not be reachable from the gate emitter"
-        );
-    }
 }

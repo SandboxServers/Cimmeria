@@ -85,6 +85,7 @@ pub(crate) async fn send_gate_sequence(
         tracing::warn!(
             entity_id,
             event_id,
+            reason = "gate_event_set_missing",
             "gate sequence: origin gate has no event_set_id — \
              stargates.event_set_id is NULL for this world's gate, so the \
              client plays no gate animation"
@@ -96,6 +97,7 @@ pub(crate) async fn send_gate_sequence(
             entity_id,
             event_set_id,
             event_id,
+            reason = "gate_sequence_unmapped",
             "gate sequence not in event_sets_sequences map — kismet \
              sequence will not play"
         );

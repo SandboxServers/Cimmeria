@@ -192,6 +192,7 @@ async fn gate_sequence_reaches_every_witness_and_the_dialer_exactly_once() {
 /// a bogus sequence id.
 #[tokio::test]
 async fn missing_event_set_or_sequence_emits_nothing() {
+    let capture = crate::test_support::LogCapture::install();
     let mut mgr = make_manager_with_stargates();
     one_player(&mut mgr, 7);
     let (tx, mut rx) = mpsc::channel(16);
@@ -203,9 +204,41 @@ async fn missing_event_set_or_sequence_emits_nothing() {
     assert!(rx.try_recv().is_err(), "NULL event set → no frame");
 
     // Event set present but the (set, event) pair is not in the map.
+    // 6103 is `Stargate_DestroyGate` — deliberately never wired (D-CA10),
+    // so it doubles as the unmapped-event probe.
     assert_eq!(
         send_gate_sequence(7, Some(CASTLE_EVENT_SET), 6103, &tx, &mgr).await,
         None
     );
     assert!(rx.try_recv().is_err(), "unmapped event → no frame");
+
+    // Negative-logging convention: both misses are silent on the wire, so
+    // the log is the only signal that a gate opened with no animation.
+    // Distinct `reason` values keep "this world's gate has no event set"
+    // apart from "this event set is missing that sequence" — different
+    // seed fixes.
+    assert!(
+        capture
+            .find_event(
+                tracing::Level::WARN,
+                "origin gate has no event_set_id",
+                "gate_event_set_missing",
+            )
+            .is_some(),
+        "a NULL stargates.event_set_id must WARN with \
+         reason=gate_event_set_missing. Captured events: {:#?}",
+        capture.all()
+    );
+    assert!(
+        capture
+            .find_event(
+                tracing::Level::WARN,
+                "not in event_sets_sequences map",
+                "gate_sequence_unmapped",
+            )
+            .is_some(),
+        "an event set with no sequence for the event must WARN with \
+         reason=gate_sequence_unmapped. Captured events: {:#?}",
+        capture.all()
+    );
 }
