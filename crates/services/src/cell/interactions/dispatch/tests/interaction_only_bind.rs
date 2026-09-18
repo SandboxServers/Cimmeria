@@ -160,3 +160,49 @@ async fn initial_response_on_null_dialog_bind_displays_nothing() {
          bind -- a substituted dialog id opens an empty dialog"
     );
 }
+
+/// **Ordering pin (PR #661 review, item 5):** whichever order the two binds
+/// were installed in, the click opens the dialog.
+///
+/// `handle_interact` scans with `find_map`, so a NULL row can never shadow a
+/// row that carries a dialog. The companion above already covers NULL-first
+/// (the order Castle actually produces, since the indicator is bound at
+/// `player_loaded`); this pins the other order too, so a future change back to
+/// "first entry wins" cannot pass by accident just because the seed happens to
+/// order its binds favourably.
+#[tokio::test]
+async fn interact_finds_the_dialog_bind_in_either_order() {
+    const TEMPLATE_GERSCHON: i32 = 149;
+    const SET_MAP_3062: i32 = 3062;
+    const SET_MAP_3060: i32 = 3060;
+    const DIALOG_2573: i32 = 2573;
+
+    let flag_only = (SET_MAP_3062, None, INT_A_STORY_MISSION_ACTIVE);
+    let with_dialog = (SET_MAP_3060, Some(DIALOG_2573), 0i64);
+
+    for (label, binds) in [
+        ("null row first", vec![flag_only, with_dialog]),
+        ("dialog row first", vec![with_dialog, flag_only]),
+    ] {
+        let (mut mgr, npc_id) = stage_player_and_npc(TEMPLATE_GERSCHON);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.available_interactions.insert(TEMPLATE_GERSCHON, binds);
+        }
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let opened = handle_interact(1, npc_id, &tx, &mut mgr).await;
+
+        assert_eq!(
+            opened,
+            Some(DIALOG_2573),
+            "{label}: the dialog-carrying bind must answer the click"
+        );
+        match rx.try_recv().expect("must emit onDialogDisplay") {
+            CellToBaseMsg::EntityMethodCall { args, .. } => {
+                let dialog_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                assert_eq!(dialog_id, DIALOG_2573, "{label}: wrong dialog on the wire");
+            }
+            other => panic!("{label}: expected EntityMethodCall, got {other:?}"),
+        }
+    }
+}
