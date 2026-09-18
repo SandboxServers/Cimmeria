@@ -17,9 +17,23 @@
 //!   chain lands in the wrong index bucket and resolves zero actions) or
 //!   the `destination_world` comparison (the wrong-world negative fires).
 //!
-//! Sentinel id range: `0x7000_6000` / `0x7000_6010`. Steps past every
-//! reservation in `crates/services` (`…_0000`–`…_5000`). Cleanup deletes
-//! the exact ids inserted, never a range.
+//! Sentinel ids — all three declared here, per TESTING.md's sentinel
+//! discipline (an undeclared derived id is how collisions happen):
+//!
+//! | Id | Used by |
+//! |---|---|
+//! | `0x7000_6200` | [`DIALED_CHAIN_ID`] — the `stargate_dialed` sentinel |
+//! | `0x7000_6210` | [`CROSSED_CHAIN_ID`] — the `stargate_crossed` sentinel |
+//! | `0x7000_6220` | [`WILDCARD_CHAIN_ID`] — the NULL-`event_key` sentinel |
+//!
+//! Neighbouring slots, so a future packet can see what is free: the
+//! `crates/services` reservations run `0x7000_0000`–`0x7000_5000` with
+//! scattered `+1`/`+0x10` derivatives; `0x7000_6000` and `0x7000_6010`
+//! belong to CA04's `livewire_pairs` and `0x7000_6001` to mission 701's
+//! `TEST_PLAYER`, which is why this module moved to the `_62xx` block.
+//! `0x7000_6230` upward is unclaimed.
+//!
+//! Cleanup deletes the exact ids inserted, never a range.
 
 use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_content_engine::context::ExecutionContext;
@@ -29,8 +43,13 @@ use sqlx::PgPool;
 use super::super::engine_loader::load_single_chain_for_test;
 use crate::test_support::require_db_or_skip;
 
-const DIALED_CHAIN_ID: i32 = 0x7000_6000;
-const CROSSED_CHAIN_ID: i32 = 0x7000_6010;
+const DIALED_CHAIN_ID: i32 = 0x7000_6200;
+const CROSSED_CHAIN_ID: i32 = 0x7000_6210;
+/// The NULL-`event_key` wildcard sentinel. Declared rather than derived
+/// as `DIALED_CHAIN_ID + 1` — a derived id is invisible to anyone
+/// grepping for reservations, which is exactly how `0x7000_6001` ended up
+/// shared with mission 701's `TEST_PLAYER`.
+const WILDCARD_CHAIN_ID: i32 = 0x7000_6220;
 
 /// The destination world the sentinel chains key on. A real
 /// `resources.worlds.world` value so the fixture matches what
@@ -195,7 +214,7 @@ async fn stargate_crossed_chain_matches_its_world_only() {
 #[tokio::test]
 async fn stargate_dialed_with_null_event_key_is_a_wildcard() {
     let pool = require_db_or_skip!();
-    let chain_id = DIALED_CHAIN_ID + 1;
+    let chain_id = WILDCARD_CHAIN_ID;
 
     cleanup_chain(&pool, chain_id).await;
     sqlx::query(
