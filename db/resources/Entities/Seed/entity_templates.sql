@@ -285,25 +285,29 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- Harset H11 (defect H-B8): `ability_set_id` was NULL, so the eight plaza
 -- guards fell back to `NPC_DEFAULT_ABILITY = 592` (Pistol Shot) -- Jaffa with
 -- staff models firing a pistol. Set 4 is ability 584 Staff Auto Attack.
--- `respawn_secs` added for defect H-B7: the column list here omitted it, and
--- with NULL on both template and spawn row `mark_npc_dead` never stamps
--- `respawn_at`, so clearing the plaza emptied it until restart. 300s is the
--- template default; H13's per-spawn `spawnlist.respawn_secs` overrides it
--- (COALESCE, spawn wins), and the template value also covers any spawn row
--- M0's `.savespawn` emits without the column.
+-- `respawn_secs` is deliberately NOT set on this row, even though H-B7 is about
+-- exactly that column. Templates 159 and 160 are shared with Castle world 8
+-- (spawns 119, 121, 123, 124), and because the runtime resolves
+-- `COALESCE(spawnlist.respawn_secs, entity_templates.respawn_secs)` a template
+-- default would silently opt Castle's guards into respawning too. That is a
+-- Castle-ledger decision, not Harset's. Harset packet H13 sets
+-- `respawn_secs = 30` on each Harset spawn row of 159/160 instead, which is
+-- where the per-zone value belongs. The new Harset-only templates 200-248 do
+-- carry a template default; they are shared with nothing.
 -- NOT changed here: `components` still carries no `WP-Jaffa.*` entry, so the
 -- guard mimes the staff. That is an art fix outside this packet's scope
 -- (H-B14 is record-only); see worknotes/H11.md.
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (160, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 0, 0, 570, 50, 0, 1, 8917, NULL, NULL, NULL, 'Praxis Jaffa Guard', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (160, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 0, 0, 570, 50, 0, 1, 8917, NULL, NULL, NULL, 'Praxis Jaffa Guard', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
--- Harset H11 (defects H-B8 and H-B7): same fix as template 160 above, applied
--- to the four Harset lieutenants. There is only one staff ability set: 584
--- Staff Auto Attack is the sole ranged staff ability in the seed with a
--- non-NULL `event_set_id`, and `ability_set_abilities` has
--- `PRIMARY KEY (ability_set_id)` (db/resources/_primary_keys.sql), so a set
--- cannot hold more than one ability. An elite variant is therefore blocked on
--- widening that key; see worknotes/H11.md.
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (159, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 0, 0, 570, 50, 0, 1, 8918, NULL, NULL, NULL, 'Praxis Jaffa Lieuternant', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+-- Harset H11 (defect H-B8): same fix as template 160 above, applied to the four
+-- Harset lieutenants, and `respawn_secs` left NULL for the same Castle-sharing
+-- reason. There is only one staff ability set: 584 Staff Auto Attack is the sole
+-- ranged staff ability in the seed with a non-NULL `event_set_id`, and
+-- `ability_set_abilities` has `PRIMARY KEY (ability_set_id)`
+-- (db/resources/_primary_keys.sql), so a set cannot hold more than one ability.
+-- An elite variant is therefore blocked on widening that key; see
+-- worknotes/H11.md.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (159, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 0, 0, 570, 50, 0, 1, 8918, NULL, NULL, NULL, 'Praxis Jaffa Lieuternant', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (158, NULL, 'BS_GoauldMale.BS_GoauldMale', '{BS_GoauldMale.BS_GM_Boots_00,BS_GoauldMale.BS_GM_Hair_03,BS_GoauldMale.BS_GM_Hands_00,BS_GoauldMale.BS_GM_Head_00,BS_GoauldMale.BS_GM_Legs_00,BS_GoauldMale.BS_GM_Torso_00}', 0, 0, 570, 1, 0, 1, NULL, NULL, NULL, NULL, 'GoauldMale Template - DO NOT USE', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, -16777216, -340158464, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
