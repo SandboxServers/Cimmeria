@@ -1,8 +1,9 @@
-//! Mission 704 "Hack Communications" — the mission spine, chains 1291-1295
-//! and 1299 in `db/resources/Content/Seed/castle_702_704_chains.sql`
-//! (packet CA07). The relog restores and shared-bit repairs (1296-1298,
-//! 1300, 1301) are in [`super::mission_704_restores`]; the executor-path
-//! guards for the escort and the Livewire victory hop are in
+//! Mission 704 "Hack Communications" — the terminal and delivery steps,
+//! chains 1292-1295 and 1299 in
+//! `db/resources/Content/Seed/castle_702_704_chains.sql` (packet CA07).
+//! The step-2405 escort (1291, 1302) is in [`super::mission_704_escort`],
+//! the relog restores and shared-bit repairs (1296-1298, 1300, 1301) are in
+//! [`super::mission_704_restores`], and the executor-path guards are in
 //! [`super::castle_702_704_executor`].
 //!
 //! RECONSTRUCTION, not a port: `Castle.py` never mentions 704. The
@@ -20,11 +21,11 @@
 //! * D-CA08: step state is the possession proof. Chain 1295 consumes the
 //!   crystal but does NOT gate on holding it, because the cell has no
 //!   inventory view to gate against.
-//! * The escort ends by CLEARING the follow, and dialog 4866 is
-//!   click-to-play on chain 1299 rather than played on arrival: only an
-//!   `interact_tag` trigger stamps the `target_entity_id` that binds the
-//!   client's portrait to the workstation Zuritska. Both facts are pinned
-//!   on chain 1291 below.
+//! * Dialog 4866 is click-to-play on chain 1299 rather than played on
+//!   arrival: only an `interact_tag` trigger stamps the `target_entity_id`
+//!   that binds the client's portrait to the workstation Zuritska. The
+//!   arrival side of that decision is pinned in
+//!   [`super::mission_704_escort`].
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::ChainEngine;
@@ -108,155 +109,6 @@ fn assert_interaction(a: &Action, tag: &str, op: &str, mask: i64, what: &str) {
         }
         other => panic!("{what}: expected set_interaction_type, got {other:?}"),
     }
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Chain 1291 — reach the Communications Room on step 2405
-// ──────────────────────────────────────────────────────────────────────
-
-fn comms_arrival_params() -> Vec<(&'static str, serde_json::Value)> {
-    vec![
-        ("region_key", serde_json::json!("Castle.CommsRoom")),
-        ("world_name", serde_json::json!("Castle")),
-        ("mission_704_step_2405_status", serde_json::json!("active")),
-    ]
-}
-
-#[tokio::test]
-async fn chain_1291_arrival_advances_ends_the_escort_and_arms_the_terminal() {
-    let pool = require_db_or_skip!();
-    let actions = resolve_chain(
-        &pool,
-        1291,
-        TriggerType::RegionEnter,
-        &comms_arrival_params(),
-    )
-    .await;
-
-    // Dialog 4866 is click-to-play on chain 1299, never on this chain. A
-    // region-entry chain stamps no `target_entity_id`, and 4866 is not a
-    // monologue (speaker 1113 on screens 96892 and 96894), so it would bind
-    // through the player's `last_interaction_target` pin — which resolves to
-    // the CELL Zuritska they just freed, and is empty entirely after a
-    // relog. Arming the workstation actor is what makes 1299's click
-    // reachable, so both facts are pinned here, before the signature check
-    // narrows the failure message.
-    assert!(
-        !actions
-            .iter()
-            .any(|a| matches!(a, Action::DisplayDialog { .. })),
-        "chain 1291 must not display a dialog — a region-entry chain has no \
-         NPC to bind the client's portrait lookup to. Dialog 4866 belongs on \
-         chain 1299's interact_tag trigger. Got {actions:?}",
-    );
-    assert!(
-        actions.iter().any(|a| matches!(
-            a,
-            Action::SetInteractionType { entity_tag, .. } if entity_tag == "Castle_Zuritska_Comms"
-        )),
-        "chain 1291 must arm the workstation actor or chain 1299's click is \
-         unreachable and the player never hears 4866; got {actions:?}",
-    );
-
-    let signature: Vec<&str> = actions.iter().map(label).collect();
-    assert_eq!(
-        signature,
-        vec![
-            "advance_step",
-            "set_follow_target",
-            "set_interaction_type",
-            "set_interaction_type",
-        ],
-        "chain 1291 action ordering drifted; got {actions:?}",
-    );
-    assert!(
-        matches!(
-            actions[0],
-            Action::AdvanceStep {
-                mission_id: 704,
-                step_id: 2406
-            }
-        ),
-        "chain 1291 must advance 704 to step 2406; got {:?}",
-        actions[0],
-    );
-    match &actions[1] {
-        Action::SetFollowTarget {
-            entity_tag,
-            target_tag,
-            use_player,
-        } => {
-            assert_eq!(entity_tag, "Castle_Zuritska_Cell");
-            assert_eq!(
-                *target_tag, None,
-                "the escort CLEAR carries no target_tag — a tag here would \
-                 re-point the follow instead of ending it",
-            );
-            assert_eq!(
-                *use_player, None,
-                "`use_player` must be absent on the clear; Some(true) would \
-                 re-arm the follow on the player who just arrived",
-            );
-        }
-        other => panic!("chain 1291 action 2 must be set_follow_target; got {other:?}"),
-    }
-    assert_interaction(
-        &actions[2],
-        "Castle_CommsTerminal",
-        "|",
-        INT_MINIGAME_LIVEWIRE,
-        "chain 1291 terminal bit",
-    );
-    // Step 2406 has two interactables: the terminal and Zuritska herself
-    // (chain 1299's instruction dialog). Arming only the terminal would
-    // leave the player with no way to hear 4866 at all.
-    assert_interaction(
-        &actions[3],
-        "Castle_Zuritska_Comms",
-        "|",
-        INT_A_STORY_MISSION_ACTIVE,
-        "chain 1291 workstation bit",
-    );
-}
-
-#[tokio::test]
-async fn chain_1291_does_not_resolve_once_the_terminal_step_is_active() {
-    let pool = require_db_or_skip!();
-    let actions = resolve_chain(
-        &pool,
-        1291,
-        TriggerType::RegionEnter,
-        &[
-            ("region_key", serde_json::json!("Castle.CommsRoom")),
-            ("world_name", serde_json::json!("Castle")),
-            ("mission_704_step_2406_status", serde_json::json!("active")),
-        ],
-    )
-    .await;
-    assert!(
-        actions.is_empty(),
-        "re-entering the room on 2406 must not re-play 4866 or re-advance; \
-         got {actions:?}",
-    );
-}
-
-#[tokio::test]
-async fn chain_1291_does_not_resolve_without_704() {
-    let pool = require_db_or_skip!();
-    let actions = resolve_chain(
-        &pool,
-        1291,
-        TriggerType::RegionEnter,
-        &[
-            ("region_key", serde_json::json!("Castle.CommsRoom")),
-            ("world_name", serde_json::json!("Castle")),
-        ],
-    )
-    .await;
-    assert!(
-        actions.is_empty(),
-        "a passer-by without 704 must not arm the terminal; got {actions:?}",
-    );
 }
 
 // ──────────────────────────────────────────────────────────────────────

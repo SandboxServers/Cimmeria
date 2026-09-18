@@ -46,6 +46,7 @@ mod mission_701;
 mod mission_702;
 mod mission_703;
 mod mission_704;
+mod mission_704_escort;
 mod mission_704_restores;
 mod mission_706;
 mod mission_708;

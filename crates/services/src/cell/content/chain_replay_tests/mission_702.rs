@@ -279,38 +279,38 @@ async fn chain_1263_completes_702_accepts_704_and_starts_the_escort() {
         "chain 1263 must NOT hand-complete objective 4653; \
          `complete_mission 702` does it. Got {actions:?}",
     );
+    // The `!` on the cell actor must SURVIVE this chain. It is the
+    // affordance mission 704's chain 1302 needs to restart an escort broken
+    // by splash damage, so it is cleared on Comms Room arrival (1291), not
+    // at the rescue. A clear here would silently re-introduce the
+    // relog-only recovery this design replaced.
+    assert!(
+        !actions
+            .iter()
+            .any(|a| matches!(a, Action::SetInteractionType { .. })),
+        "chain 1263 must NOT touch the cell actor's indicator — it stays lit \
+         through 704 step 2405 so the escort can be restarted by clicking \
+         her. Chain 1291 owns the clear. Got {actions:?}",
+    );
 
     let signature: Vec<&str> = actions.iter().map(label).collect();
     assert_eq!(
         signature,
-        vec![
-            "set_interaction_type",
-            "complete_mission",
-            "accept_mission",
-            "set_follow_target",
-        ],
-        "chain 1263 action ordering drifted — the `!` must clear before any \
-         mission state moves, and the follow must be armed after 704 is \
-         accepted. Got {actions:?}",
-    );
-    assert_interaction(
-        &actions[0],
-        "Castle_Zuritska_Cell",
-        "~",
-        INT_A_STORY_MISSION_ACTIVE,
-        "chain 1263 indicator clear",
+        vec!["complete_mission", "accept_mission", "set_follow_target"],
+        "chain 1263 action ordering drifted — the follow must be armed after \
+         704 is accepted. Got {actions:?}",
     );
     assert!(
-        matches!(actions[1], Action::CompleteMission { mission_id: 702 }),
+        matches!(actions[0], Action::CompleteMission { mission_id: 702 }),
         "chain 1263 must complete 702; got {:?}",
+        actions[0],
+    );
+    assert!(
+        matches!(actions[1], Action::AcceptMission { mission_id: 704 }),
+        "chain 1263 must accept 704; got {:?}",
         actions[1],
     );
-    assert!(
-        matches!(actions[2], Action::AcceptMission { mission_id: 704 }),
-        "chain 1263 must accept 704; got {:?}",
-        actions[2],
-    );
-    match &actions[3] {
+    match &actions[2] {
         Action::SetFollowTarget {
             entity_tag,
             target_tag,
@@ -328,7 +328,7 @@ async fn chain_1263_completes_702_accepts_704_and_starts_the_escort() {
                  carry no spawnlist tag",
             );
         }
-        other => panic!("chain 1263 action 4 must be set_follow_target; got {other:?}"),
+        other => panic!("chain 1263 action 3 must be set_follow_target; got {other:?}"),
     }
 }
 

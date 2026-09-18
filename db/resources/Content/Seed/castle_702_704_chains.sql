@@ -22,8 +22,8 @@
 --     702: 1261-1265   703: 1271-1273
 --     (next free: 1266-1270, 1274-1290)
 --   CA07 (mission 704):        1291-1320
---     704: 1291-1301
---     (next free: 1302-1320)
+--     704: 1291-1302
+--     (next free: 1303-1320)
 --
 -- Chains appear in PLAYER-FLOW order, not id order: 1299 (Zuritska's arrival
 -- instruction) sits between 1291 and 1292 because that is when the player
@@ -92,10 +92,10 @@
 --   * Player A entering the Interrogation Block lights the `!` over
 --     Zuritska's cell actor for EVERY player in the zone, including
 --     players who have not accepted 702.
---   * Player A freeing Zuritska CLEARS that bit for every player, so a
---     player B who is mid-step 2419 loses the ability to click the actor
---     until B's next `player_loaded` restore chain re-arms it (i.e. until
---     B relogs or re-enters the world).
+--   * Player A reaching the Communications Room CLEARS that bit for every
+--     player, so a player B who is mid-step 2419 or mid-escort loses the
+--     ability to click the actor until B's restore or repair chain re-arms
+--     it.
 --
 -- The chains' own `step_status` conditions mean nothing FIRES for the
 -- wrong player — a spurious cursor is cosmetic, and a cleared bit is a
@@ -129,18 +129,28 @@
 -- themselves, and 2405 is a story step players will park on across
 -- sessions. Same severity class, much higher firing rate.
 --
--- One more escort limitation, recorded and NOT fixed here because the fix
--- is a design change to the indicator lifecycle rather than a seed row: the
--- Follow state is preemptable into Fighting by any threat
+-- ESCORT REPAIR, and why the cell actor's `!` outlives mission 702.
+--
+-- `AiState::Follow` is preemptable into Fighting by any threat
 -- (`combat/threat/aggro.rs`), and `npc_ai_leash` ends at `AiState::Idle`
--- and never returns to Follow. One stray point of splash damage to Zuritska
--- therefore ends the escort until a chain re-fires `set_follow_target` —
--- and the only re-fire authored here is chain 1296 on `player_loaded`, so
--- the player must relog. The cheap repair, if the coordinator wants it, is
--- to keep the `!` on `Castle_Zuritska_Cell` through step 2405 (i.e. move
--- chain 1263's clear into chain 1291) and add an
--- `interact_tag Castle_Zuritska_Cell` + `step_status 704 2405 eq active`
--- chain that re-arms the follow on a click.
+-- and never returns to Follow (`npc_ai/leash.rs`). One stray point of
+-- splash damage to Zuritska on the way to Level 5 ends the escort
+-- permanently; GC1b-0 stops her being teleported back to her cell, but
+-- nothing restarts the follow.
+--
+-- The repair is a click. Chain 1302 (`interact_tag Castle_Zuritska_Cell`
+-- gated on 704 step 2405) re-issues `set_follow_target`, which means the
+-- actor has to stay clickable for the whole of step 2405 — so chain 1263
+-- does NOT clear the `!` it inherits from 1261, and chain 1291 clears it on
+-- Comms Room arrival instead. Chain 1296 restores both the follow and the
+-- bit on relog. The bit's lifecycle across the two missions is therefore:
+--
+--   1261  set    (702 step 2402 → 2419: entering the Interrogation Block)
+--   1263  kept   (702 completes, 704 accepted, escort starts)
+--   1291  clear  (704 step 2405 → 2406: reaching the Comms Room)
+--
+-- with restores at 1264 (702/2419) and 1296 (704/2405) and a re-entry
+-- repair at 1265 (702/2419 only).
 --
 -- ============================================================
 -- OTHER ENGINE FACTS THESE CHAINS RELY ON
@@ -290,16 +300,19 @@ VALUES
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  -- Clear the `!` FIRST so the actor stops soliciting clicks before any
-  -- mission state moves (mirrors chain 1003's clear-then-grant ordering).
-  (1263, 'set_interaction_type', NULL, 'Castle_Zuritska_Cell',
-   '{"op": "~", "mask": "INT_AStoryMissionActive"}', 0, 0),
+  -- NOTE: this chain deliberately does NOT clear the `!` on
+  -- `Castle_Zuritska_Cell`. The indicator set by chain 1261 stays lit
+  -- through 704 step 2405 so the player can re-click Zuritska to restart a
+  -- broken escort (chain 1302); chain 1291 clears it on Comms Room arrival.
+  -- See the escort-repair note in the shared-world block at the top of this
+  -- file for why.
+  --
   -- ORIGINAL_DATA: 2419 is 702's last step and 4653 its only objective, so
   -- the rescue completes the mission.
-  (1263, 'complete_mission', 702, NULL, '{}', 0, 1),
+  (1263, 'complete_mission', 702, NULL, '{}', 0, 0),
   -- RECONSTRUCTION: dialog 2577 is the only place in the shipped data that
   -- points the player at the Communications Room (704 step 2405).
-  (1263, 'accept_mission', 704, NULL, '{}', 0, 2),
+  (1263, 'accept_mission', 704, NULL, '{}', 0, 1),
   -- RECONSTRUCTION, presentation only: 704 step 2405 is "Escort Dr. Zuritska
   -- to the Communications Room down on Level 5." `use_player: true` resolves
   -- the follow target to the triggering player (executor/world/mod.rs:135-192)
@@ -308,7 +321,7 @@ VALUES
   -- the follower walks a straight line to the player
   -- (space_manager/spatial.rs:49, npc_ai/follow.rs:110). Expect clipping
   -- through Castle interior geometry until packet CA14 produces the navmesh.
-  (1263, 'set_follow_target', NULL, 'Castle_Zuritska_Cell', '{"use_player": true}', 0, 3);
+  (1263, 'set_follow_target', NULL, 'Castle_Zuritska_Cell', '{"use_player": true}', 0, 2);
 
 -- Chain 1264: relog restore for 702 step 2419. Interaction flags do not
 -- survive a relog or a server restart, so without this a player who logs out
@@ -528,7 +541,53 @@ VALUES
   -- this file, and chain 1299's own comment. Matched clear is in chain 1295;
   -- restores are 1297/1298, repairs are 1300/1301.
   (1291, 'set_interaction_type', NULL, 'Castle_Zuritska_Comms',
-   '{"op": "|", "mask": "INT_AStoryMissionActive"}', 0, 3);
+   '{"op": "|", "mask": "INT_AStoryMissionActive"}', 0, 3),
+  -- Matched clear for the `!` chain 1261 set on the CELL actor. It is
+  -- cleared HERE rather than at the rescue (chain 1263) so the actor stays
+  -- clickable for the whole of step 2405 and chain 1302 can restart a broken
+  -- escort. Arriving in the Comms Room is what ends the escort, so it is
+  -- also what ends the affordance. Restore is 1296; there is no region
+  -- re-entry repair for this one (see the note on 1302).
+  (1291, 'set_interaction_type', NULL, 'Castle_Zuritska_Cell',
+   '{"op": "~", "mask": "INT_AStoryMissionActive"}', 0, 4);
+
+-- Chain 1302: click Zuritska during the escort → she follows again.
+--
+-- RECONSTRUCTION, and the reason it exists: `AiState::Follow` is
+-- preemptable into Fighting by any threat (`combat/threat/aggro.rs`), and
+-- `npc_ai_leash` ends at `AiState::Idle` and never returns to Follow
+-- (`npc_ai/leash.rs`). One stray point of splash damage to Zuritska on the
+-- way down to Level 5 therefore ends the escort permanently. GC1b-0 stops
+-- her being teleported back to her cell, but nothing restarts the follow.
+-- Before this chain the only re-fire was 1296 on `player_loaded`, i.e. the
+-- player had to relog.
+--
+-- The click is the "follow me again" affordance, which is why chain 1263 no
+-- longer clears the cell actor's `!` and chain 1291 clears it instead: the
+-- indicator has to survive the whole of step 2405 for this to be reachable.
+--
+-- Disjoint from chain 1262 on the same tag: 1262 gates on 702 step 2419,
+-- this on 704 step 2405, and 1263 closes the first as it opens the second.
+--
+-- KNOWN GAP, deliberate: `set_interaction_type` is global on the entity, so
+-- another player arriving in the Comms Room (chain 1291) clears this
+-- player's affordance too. The only repair is the relog restore (1296).
+-- The region re-entry repair used for the other bits (1265/1300/1301) does
+-- not fit here — the player spends step 2405 in the corridor between the
+-- Interrogation Block and the Comms Room, which has no point set to trigger
+-- on.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1302, '704 - Interact Zuritska (cell) on 2405: re-arm the escort follow', 'mission', 704, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1302, 'interact_tag', 'Castle_Zuritska_Cell', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1302, 'step_status', 704, '2405', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1302, 'set_follow_target', NULL, 'Castle_Zuritska_Cell', '{"use_player": true}', 0, 0);
 
 -- Chain 1299: click the workstation Zuritska while the terminal step is
 -- active → she tells the player to use the terminal.
@@ -669,13 +728,21 @@ VALUES
   -- 706's own chains are packet CA08 (another worker).
   (1295, 'accept_mission', 706, NULL, '{}', 0, 3);
 
--- Chain 1296: relog restore for 704 step 2405 — re-arm the escort follow.
+-- Chain 1296: relog restore for 704 step 2405 — re-arm the escort follow
+-- AND the cell actor's `!`.
+--
 -- `follow_target_id` is per-entity runtime state and the player's entity id
 -- changes across a relog, so a stale id would point Zuritska at nothing (the
 -- follow handler clears it and drops to Idle on the next tick). Re-issuing
 -- `use_player` on load rebinds her to the returning player's new entity id.
+--
+-- The `!` is restored alongside it because it is the affordance chain 1302
+-- needs: without it a returning player cannot click Zuritska to restart a
+-- broken escort, which is the whole point of 1302. This is also the ONLY
+-- repair for that bit once another player's Comms Room arrival has cleared
+-- it globally — see the known-gap note on chain 1302.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1296, '704 - Restore Zuritska escort on login (step 2405)', 'mission', 704, true, 0);
+VALUES (1296, '704 - Restore Zuritska escort + cell indicator on login (step 2405)', 'mission', 704, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1296, 'player_loaded', 'Castle', 'player', false, 0);
@@ -685,7 +752,9 @@ VALUES (1296, 'step_status', 704, '2405', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  (1296, 'set_follow_target', NULL, 'Castle_Zuritska_Cell', '{"use_player": true}', 0, 0);
+  (1296, 'set_follow_target', NULL, 'Castle_Zuritska_Cell', '{"use_player": true}', 0, 0),
+  (1296, 'set_interaction_type', NULL, 'Castle_Zuritska_Cell',
+   '{"op": "|", "mask": "INT_AStoryMissionActive"}', 0, 1);
 
 -- Chain 1297: relog restore for 704 step 2406 — re-arm BOTH the terminal
 -- and the workstation Zuritska, because step 2406 has two interactables:

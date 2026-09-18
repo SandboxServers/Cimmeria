@@ -890,13 +890,15 @@ directions on purpose:
 |---|---|---|---|---|
 | 1261 | `enter_region Castle.InterrogationBlock` | 702 step 2402 active | `advance_step 702 2419`; `set_interaction_type Castle_Zuritska_Cell \| INT_AStoryMissionActive` | RECONSTRUCTION -- step 2402 is a travel instruction and region entry is the only verb that expresses it |
 | 1262 | `interact_tag Castle_Zuritska_Cell` | 702 step 2419 active | `display_dialog 2577` | ORIGINAL_DATA (dialog 2577, speaker 1114) wired by RECONSTRUCTION |
-| 1263 | `dialog_choice 2577` | 702 step 2419 active; 704 not_active | `set_interaction_type ... ~`; `complete_mission 702`; `accept_mission 704`; `set_follow_target Castle_Zuritska_Cell {"use_player": true}` | RECONSTRUCTION -- 2577 is the only accept point for 704 in the shipped data |
+| 1263 | `dialog_choice 2577` | 702 step 2419 active; 704 not_active | `complete_mission 702`; `accept_mission 704`; `set_follow_target Castle_Zuritska_Cell {"use_player": true}` | RECONSTRUCTION -- 2577 is the only accept point for 704 in the shipped data |
 | 1264 | `player_loaded Castle` | 702 step 2419 active | re-set the `!` bit | RECONSTRUCTION (relog restore) |
 | 1265 | `enter_region Castle.InterrogationBlock` | 702 step 2419 active | re-set the `!` bit | RECONSTRUCTION (shared-bit repair) |
 
 Objective 4653 is completed by `complete_mission 702`, not by a separate `complete_objective`: it is the only objective on the mission's last step, and completing a last non-optional objective completes the mission on its own.
 
-Chain 1265 exists because the `!` bit is global: another player's rescue clears it for everyone, including a player still on step 2419, who then cannot click the actor at all. Chain 1264 repairs that only on a relog; 1265 repairs it on walking back into the volume.
+Chain 1265 exists because the `!` bit is global: another player's progress clears it for everyone, including a player still on step 2419, who then cannot click the actor at all. Chain 1264 repairs that only on a relog; 1265 repairs it on walking back into the volume.
+
+The `!` on `Castle_Zuritska_Cell` deliberately **outlives mission 702**. Chain 1263 does not clear it, because it is the affordance mission 704's chain 1302 needs to restart an escort broken by splash damage. Its lifecycle is: set by 1261 when the player enters the Interrogation Block, kept through 702's completion and the whole of 704 step 2405, cleared by 704's chain 1291 on Communications Room arrival.
 
 **Escort caveat**: the follow set by chain 1263 is presentation only and is **provisional** until `castle.nav` exists (packet CA14). With no navmesh, `find_path` returns `None` and the follower walks a straight line, so expect clipping through Castle interior geometry.
 
@@ -969,17 +971,20 @@ Death credit is per killer (the killer must have a `player_id`), and Romney resp
 
 | Chain | Trigger | Conditions | Actions | Evidence |
 |---|---|---|---|---|
-| 1291 | `enter_region Castle.CommsRoom` | 704 step 2405 active | `advance_step 704 2406`; `set_follow_target Castle_Zuritska_Cell {}` (clear); `set_interaction_type Castle_CommsTerminal \| INT_MinigameLivewire`; `set_interaction_type Castle_Zuritska_Comms \| INT_AStoryMissionActive` | RECONSTRUCTION |
+| 1291 | `enter_region Castle.CommsRoom` | 704 step 2405 active | `advance_step 704 2406`; `set_follow_target Castle_Zuritska_Cell {}` (clear); arm the terminal and the workstation actor; clear the `!` on `Castle_Zuritska_Cell` | RECONSTRUCTION |
 | 1292 | `interact_tag Castle_CommsTerminal` | 704 step 2406 active | `start_minigame Livewire {"on_victory_chains": [1293]}` | RECONSTRUCTION, provisional minigame (D-CA09) |
 | 1293 | none -- invoked by 1292's `on_victory_chains` | none | `display_dialog 2580`; `add_item 5029`; `advance_step 704 2407`; clear the terminal bit; re-assert the `!` on `Castle_Zuritska_Comms` | RECONSTRUCTION; dialogs and item are ORIGINAL_DATA |
 | 1294 | `interact_tag Castle_Zuritska_Comms` | 704 step 2407 active | `display_dialog 2581` | ORIGINAL_DATA wired by RECONSTRUCTION |
 | 1295 | `dialog_choice 2581` | 704 step 2407 active; 706 not_active | `remove_item 5029`; clear the `!`; `complete_mission 704`; `accept_mission 706` | RECONSTRUCTION |
-| 1296 | `player_loaded Castle` | 704 step 2405 active | re-arm the escort follow | RECONSTRUCTION (relog restore) |
+| 1296 | `player_loaded Castle` | 704 step 2405 active | re-arm the escort follow and the cell actor's `!` | RECONSTRUCTION (relog restore) |
 | 1297 | `player_loaded Castle` | 704 step 2406 active | re-set the terminal bit and the workstation `!` | RECONSTRUCTION (relog restore) |
 | 1298 | `player_loaded Castle` | 704 step 2407 active | re-set the workstation `!` | RECONSTRUCTION (relog restore) |
 | 1299 | `interact_tag Castle_Zuritska_Comms` | 704 step 2406 active | `display_dialog 4866` | ORIGINAL_DATA wired by RECONSTRUCTION (click-to-play) |
 | 1300 | `enter_region Castle.CommsRoom` | 704 step 2406 active | re-set both 2406 bits | RECONSTRUCTION (shared-bit repair) |
 | 1301 | `enter_region Castle.CommsRoom` | 704 step 2407 active | re-set the workstation `!` | RECONSTRUCTION (shared-bit repair) |
+| 1302 | `interact_tag Castle_Zuritska_Cell` | 704 step 2405 active | `set_follow_target Castle_Zuritska_Cell {"use_player": true}` | RECONSTRUCTION (escort repair) |
+
+**Why clicking Zuritska restarts the escort (chain 1302)**: `AiState::Follow` is preemptable into Fighting by any threat, and the leash handler ends at Idle and never returns to Follow. One point of splash damage to Zuritska on the way down to Level 5 therefore ends the escort permanently, and the only other recovery is a relog. The click is the "follow me again" affordance, which is why the cell actor's `!` is kept alight for the whole of step 2405 rather than cleared at the rescue. Known gap: because the bit is global, another player reaching the Communications Room clears this player's affordance too, and the only repair for that is the relog restore -- step 2405 is spent in the corridor between the two rooms, which has no point set for a re-entry repair to trigger on.
 
 **Why the step gate lives on chain 1292 and not on 1293**: victory chains are fired by id with `ResolvedActions::default()` and evaluate **no conditions**. A condition row on 1293 would read as a guard while guarding nothing, so the single-grant guarantee for item 5029 comes entirely from 1292's `step_status 2406 active` plus 1293's own advance to 2407, which shuts that gate.
 

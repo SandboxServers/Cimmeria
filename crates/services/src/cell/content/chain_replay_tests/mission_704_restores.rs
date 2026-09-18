@@ -116,10 +116,10 @@ async fn restore_actions(pool: &sqlx::PgPool, chain_id: i32, active_step: i32) -
 }
 
 #[tokio::test]
-async fn chain_1296_restores_the_escort_follow_on_login() {
+async fn chain_1296_restores_the_escort_follow_and_indicator_on_login() {
     let pool = require_db_or_skip!();
     let actions = restore_actions(&pool, 1296, 2405).await;
-    assert_eq!(actions.len(), 1, "got {actions:?}");
+    assert_eq!(actions.len(), 2, "got {actions:?}");
     match &actions[0] {
         Action::SetFollowTarget {
             entity_tag,
@@ -138,6 +138,17 @@ async fn chain_1296_restores_the_escort_follow_on_login() {
         }
         other => panic!("chain 1296 must re-arm the follow; got {other:?}"),
     }
+    // The indicator is the affordance chain 1302 needs. Restoring the follow
+    // without it leaves a returning player unable to click Zuritska, which
+    // is the only recovery once another player's Comms Room arrival has
+    // cleared the bit globally.
+    assert_interaction(
+        &actions[1],
+        "Castle_Zuritska_Cell",
+        "|",
+        INT_A_STORY_MISSION_ACTIVE,
+        "chain 1296 cell-actor restore",
+    );
 }
 
 /// Step 2406 has two interactables, so its restore must re-arm both. A
