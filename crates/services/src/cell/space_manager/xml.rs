@@ -145,6 +145,24 @@ impl SpaceManager {
                             tracing::warn!(world = %world_name, "Startup space references unknown world — skipping");
                             continue;
                         }
+                        // An instanced world must never get a `world_spaces`
+                        // entry. `find_or_create_space` returns that cached id
+                        // without checking the space still exists, and
+                        // `destroy_space` (which fires when an instanced
+                        // space's last player leaves) removes it from `spaces`
+                        // but not from `world_spaces` — so a cached instanced
+                        // world would hand out a dangling space id forever
+                        // after the first time it emptied. The shipped
+                        // spaces.xml and cell_spaces.xml happen to be disjoint;
+                        // this makes that a rule rather than a coincidence.
+                        if self.is_world_instanced(&world_name) {
+                            tracing::warn!(
+                                world = %world_name,
+                                "cell_spaces.xml lists an instanced world as a startup space — \
+                                 skipping (instanced worlds allocate a space per player)"
+                            );
+                            continue;
+                        }
                         let space_id = self.allocate_space_id();
                         self.create_space_instance(space_id, &world_name);
                         self.world_spaces.insert(world_name, space_id);

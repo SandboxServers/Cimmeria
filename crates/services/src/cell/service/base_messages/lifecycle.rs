@@ -16,20 +16,92 @@ pub(super) async fn handle_create_entity(
     world_name: String,
     position: [f32; 3],
     rotation: [f32; 3],
+    destination_space_id: Option<u32>,
+    account_id: Option<u32>,
+    player_id: Option<i32>,
     reply_tx: tokio::sync::oneshot::Sender<u32>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     spawn_records: &[spawner::SpawnRecord],
 ) {
-    tracing::debug!(entity_id, %world_name, ?position, "CreateEntity");
+    tracing::debug!(
+        entity_id,
+        account_id,
+        player_id,
+        %world_name,
+        ?position,
+        ?destination_space_id,
+        "CreateEntity"
+    );
 
-    // For instanced worlds, every CreateEntity gets a new space with its
-    // own NPCs. For non-instanced worlds, the space already exists from
+    // An explicit destination instance (GM cross-instance transfer, see
+    // `crate::cell::space_transfer`) is re-validated HERE, not trusted from
+    // the message: the cell loop keeps running between the transfer's
+    // validation and this message arriving, and an instanced space is
+    // destroyed the moment its last player leaves. A stale or foreign id
+    // degrades to by-world-name resolution — landing in the wrong instance
+    // of the right world is recoverable, landing in no space is not.
+    let joined_instance =
+        destination_space_id.and_then(|sid| match space_mgr.world_name_for_space(sid) {
+            Some(w) if w == world_name => Some(sid),
+            Some(other) => {
+                tracing::warn!(
+                    entity_id, requested_space_id = sid, %world_name, actual_world = %other,
+                    "CreateEntity: requested destination instance belongs to another world — \
+                     falling back to by-world-name resolution"
+                );
+                None
+            }
+            None => {
+                tracing::warn!(
+                    entity_id, requested_space_id = sid, %world_name,
+                    "CreateEntity: requested destination instance is no longer loaded \
+                     (last player left mid-transfer) — falling back to by-world-name resolution"
+                );
+                None
+            }
+        });
+
+    // Joining an existing instance must NOT re-announce the space or re-spawn
+    // its NPCs — both already happened when that instance was created.
+    // For instanced worlds, every *fresh* CreateEntity gets a new space with
+    // its own NPCs. For non-instanced worlds, the space already exists from
     // startup and NPCs were spawned then.
-    let is_instanced = space_mgr.is_world_instanced(&world_name);
+    let is_instanced = joined_instance.is_none() && space_mgr.is_world_instanced(&world_name);
 
-    match space_mgr.create_entity(entity_id, &world_name, position, rotation) {
+    let created = match joined_instance {
+        Some(sid) => space_mgr.create_entity_in_space(entity_id, sid, position, rotation),
+        None => space_mgr.create_entity(entity_id, &world_name, position, rotation),
+    };
+
+    match created {
         Ok(space_id) => {
+            // Identity-stamp the entity the moment it exists, before any
+            // other handler can observe it. `InitPlayerState` re-asserts the
+            // same pair later, but that only arrives after `onClientReady` —
+            // stamping here is what lets world-entry movement rejects and the
+            // gate-travel destination entity carry the account. NPCs pass
+            // `None`/`None` and are left UNKNOWN.
+            if account_id.is_some() || player_id.is_some() {
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    entity.account_id = account_id;
+                    entity.player_id = player_id;
+                } else {
+                    // The create reported success, so the entity must be
+                    // resolvable; if it isn't, every subsequent log for this
+                    // session silently loses its identity fields.
+                    tracing::warn!(
+                        entity_id,
+                        account_id,
+                        player_id,
+                        space_id,
+                        reason = "identity_stamp_entity_missing",
+                        "CreateEntity: entity absent immediately after a successful create -- \
+                         session logs will carry no account_id/player_id until InitPlayerState"
+                    );
+                }
+            }
+
             if is_instanced {
                 // Notify BaseApp about the new instanced space so it can
                 // route entity messages to it
@@ -61,7 +133,19 @@ pub(super) async fn handle_create_entity(
                 .await;
         }
         Err(e) => {
-            tracing::error!(entity_id, %world_name, "Failed to create entity: {e}");
+            // KNOWN GAP: `reply_tx` is `Sender<u32>` with no failure channel,
+            // so dropping it here makes the base side fall back to the
+            // hardcoded `resolve_space_id_fallback` table and build a
+            // world-entry packet for a space this entity is NOT in. Cross-world
+            // GM transfer (`crate::cell::space_transfer`) validates the world
+            // and the destination instance BEFORE teardown precisely so this
+            // arm stays unreachable for that path; widening the oneshot to a
+            // `Result` is the real fix and is tracked for the gate-travel owner.
+            tracing::error!(
+                entity_id, account_id, player_id, %world_name, ?destination_space_id,
+                "Failed to create entity: {e} — entity is in NO space; \
+                 base will fall back to a hardcoded space id"
+            );
         }
     }
 }
@@ -72,7 +156,15 @@ pub(super) async fn handle_destroy_entity(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    tracing::debug!(entity_id, "DestroyEntity");
+    // Resolve identity BEFORE the teardown below removes the entity —
+    // afterwards `player_identity` can only return UNKNOWN.
+    let id = space_mgr.player_identity(entity_id);
+    tracing::debug!(
+        entity_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        "DestroyEntity"
+    );
     // Cancel any open trade BEFORE the rest of the teardown: the
     // surviving partner needs an onTradeResults(Cancelled) +
     // their own trade state cleared, otherwise their session
@@ -98,7 +190,13 @@ pub(super) async fn handle_connect_entity(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    tracing::debug!(entity_id, "ConnectEntity (player)");
+    let id = space_mgr.player_identity(entity_id);
+    tracing::debug!(
+        entity_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        "ConnectEntity (player)"
+    );
     space_mgr.connect_entity(entity_id);
     // Introduce the just-connected player to everything already in
     // range immediately, rather than waiting for the next AoI tick.
@@ -111,6 +209,8 @@ pub(super) async fn handle_connect_entity(
         if let Err(e) = tx.send(event).await {
             tracing::warn!(
                 entity_id,
+                account_id = id.account_id,
+                player_id = id.player_id,
                 error = %e,
                 "ConnectEntity: AoI introduction send failed — \
                  player may see a delayed entity population"
@@ -126,7 +226,16 @@ pub(super) async fn handle_disconnect_entity(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    tracing::debug!(entity_id, "DisconnectEntity");
+    // Resolved before teardown — this is the last log line of the session
+    // that can still name the account, so losing it here is what forced the
+    // wall-clock correlation this convention replaces.
+    let id = space_mgr.player_identity(entity_id);
+    tracing::debug!(
+        entity_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
+        "DisconnectEntity"
+    );
     // Same as DestroyEntity: tear down any open trade with
     // Cancelled before the entity is removed. The disconnect
     // path doesn't reach the DestroyEntity arm directly (it

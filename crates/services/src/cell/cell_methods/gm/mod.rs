@@ -26,6 +26,8 @@
 //! - [`spawn`] — spawn-by-cmd (cell↔base template round-trip).
 //! - [`query`] — inspection/show + users + test-LOS (report via [`feedback`]).
 //! - [`feedback`] — single-recipient `onPlayerCommunication` delivery.
+//! - [`physics`] — `onPhysics` movement-validator bypass (backs
+//!   `/gmsetfly`, `/gmsetghost`).
 //!
 //! The full 117-method inventory + handler-status map (DONE/REUSE/ADAPT/NEW)
 //! lives in `docs/protocol/cell-method-dispatch-table.md`; the ADAPT roadmap
@@ -34,6 +36,7 @@
 pub(crate) mod feedback;
 mod give;
 mod missions;
+mod physics;
 mod query;
 mod spawn;
 mod stats;
@@ -175,6 +178,17 @@ pub const DESPAWN_MOB: u16 = 213;
 /// navmesh line-of-sight between two entities via the feedback channel.
 pub const TEST_LOS: u16 = 216;
 
+// -- Physics bypass (221) ------------------------------------------------------
+/// `onPhysics(UINT8 bTurnOn)` — def line 645. Offset 112. Backs
+/// `/gmsetfly` and `/gmsetghost` (both route through this one method
+/// identically). Toggles `CellEntity::movement_unrestricted`, which the
+/// movement validator (`space_manager::client_move::apply_client_position_update_at`)
+/// checks to bypass bounds/navmesh/speed/teleport rejection for this
+/// entity. **Wire polarity is inverted**: `bTurnOn=0` (physics off) ->
+/// unrestricted=true; `bTurnOn=1` (physics on) -> unrestricted=false. See
+/// [`physics::handle_physics`].
+pub const GM_PHYSICS: u16 = 221;
+
 /// Dispatch an SGWGmPlayer own cell method (flattened index >= 109).
 ///
 /// Returns `true` if the index was handled, `false` if it's an unimplemented
@@ -244,6 +258,8 @@ pub async fn dispatch(
         }
         GM_SHOW_MOB_COUNT => query::handle_show_mob_count(entity_id, args, tx, space_mgr).await,
         GM_DEBUG_MOB_DATA => query::handle_debug_mob_data(entity_id, args, tx, space_mgr).await,
+        // -- physics bypass --
+        GM_PHYSICS => physics::handle_physics(entity_id, args, tx, space_mgr).await,
         // Any other 109+ index is an unimplemented (but authorized) gm*
         // method — let the router fall through to its warn arm.
         _ => false,

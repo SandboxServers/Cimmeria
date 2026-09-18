@@ -207,7 +207,7 @@ pub async fn enforce_gm_gate(
 /// out-of-range stored level should never *lose* privilege, and the
 /// source column is server-controlled so this is defense-in-depth, not a
 /// trust boundary.
-fn access_level_from_u32(level: u32) -> AccessLevel {
+pub(crate) fn access_level_from_u32(level: u32) -> AccessLevel {
     match level {
         0 => AccessLevel::Player,
         1 => AccessLevel::Moderator,

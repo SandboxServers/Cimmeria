@@ -38,14 +38,16 @@ pub(super) async fn handle_gm_spawn_npc_ready(
             );
             // Definitive success line: the spawn actually took, so the
             // GM gets confirmation with the real new NPC id. This is
-            // the cell-side completion of the gmSpawnByCmd round-trip
-            // (the cell-side "requested" optimism was removed).
+            // the cell-side completion of the spawn round-trip (the
+            // cell-side "requested" optimism was removed).
+            //
+            // Command-neutral wording: the same round-trip serves the native
+            // `gmSpawnByCmd` and the dot-console `.spawn` / `.spawnrandom`,
+            // so naming one of them would misreport which command the GM
+            // actually typed.
             crate::cell::cell_methods::gm::feedback::send_gm_feedback(
                 requester_entity_id,
-                &format!(
-                    "gmSpawnByCmd: spawned npc {id} (template {})",
-                    record.template_id
-                ),
+                &format!("spawned npc {id} (template {})", record.template_id),
                 tx,
             )
             .await;
@@ -59,10 +61,7 @@ pub(super) async fn handle_gm_spawn_npc_ready(
             );
             crate::cell::cell_methods::gm::feedback::send_gm_feedback(
                 requester_entity_id,
-                &format!(
-                    "gmSpawnByCmd: spawn failed for template {}",
-                    record.template_id
-                ),
+                &format!("spawn failed for template {}", record.template_id),
                 tx,
             )
             .await;

@@ -9,7 +9,10 @@ use tokio::sync::mpsc;
 
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
-use super::{crafting, entity, mission, net, patrol, query, seed, server, spawn, stats};
+use super::{
+    crafting, entity, give, mission, net, patrol, placement, query, seed, server, spawn, stats,
+    travel,
+};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -92,8 +95,16 @@ pub(crate) async fn handle_console_command(
         .get_entity(caller_id)
         .map(|e| e.access_level)
         .unwrap_or(0);
+    // Stable identity for the audit trail. `access_level` used to be the only
+    // way to guess WHICH GM ran a command — matching level values between a
+    // login line and this one, then correlating by wall clock. That breaks the
+    // moment two GMs are online, and `entity_id` can't stand in for identity
+    // because it's a recycled per-space slot. Log the account directly.
+    let id = space_mgr.player_identity(caller_id);
     tracing::info!(
         entity_id = caller_id,
+        account_id = id.account_id,
+        player_id = id.player_id,
         access_level,
         command = name,
         argc = args.len(),
@@ -180,9 +191,47 @@ pub(crate) async fn exec(
         "searchmission" => query::search_mission(caller_id, args, tx, space_mgr).await,
         "searchtemplate" => query::search_template(caller_id, args, tx, space_mgr).await,
         "players" => query::players(caller_id, tx, space_mgr).await,
+        "listabilities" => {
+            query::list_abilities(
+                caller_id,
+                target_id.expect("Target::Player guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        // I. entity / combat inspection
+        "info" => query::info(caller_id, args, target_id, tx, space_mgr).await,
+        "facing" => {
+            query::facing(
+                caller_id,
+                target_id.expect("Target::Spawnable guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        "combatinfo" => {
+            query::combat_info(
+                caller_id,
+                target_id.expect("Target::Mob guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
         // F. stat dumps
-        "primarystats" | "speedstats" | "armorstats" | "qrstats" | "absorbstats"
-        | "stealthstats" => stats::show(name, caller_id, target_id, tx, space_mgr).await,
+        "stats" | "primarystats" | "speedstats" | "armorstats" | "qrstats" | "absorbstats"
+        | "stealthstats" => {
+            stats::show(
+                name,
+                caller_id,
+                target_id.expect("Target::Being guarantees a resolved target"),
+                tx,
+                space_mgr,
+            )
+            .await
+        }
         // A. entity authoring
         "tag" | "name" | "alignment" | "nameid" | "staticmesh" | "bodyset" | "eventset"
         | "interactiontype" | "lookat" | "visible" | "setcombatant" | "unsetcombatant"
@@ -202,12 +251,62 @@ pub(crate) async fn exec(
         // Mission gaps
         "missionfail" => mission::fail(caller_id, args, target_id, tx, space_mgr).await,
         "missionrewards" => mission::rewards(caller_id, args, target_id, tx, space_mgr).await,
+        // Player grants
+        "givecash" => {
+            give::give_cash(
+                caller_id,
+                target_id.expect("Target::Player guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        "givexp" => {
+            give::give_xp(
+                caller_id,
+                target_id.expect("Target::Player guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        // Travel
+        "gotoxyz" => travel::goto_xyz(caller_id, target_id, args, tx, space_mgr).await,
+        "goto" | "summon" | "gotolocation" | "gotospace" => {
+            travel::dispatch(name, caller_id, target_id, args, tx, space_mgr).await
+        }
+        // J. placement (position / orientation)
+        "location" | "rotation" => {
+            placement::dispatch(
+                name,
+                caller_id,
+                target_id.expect("Target::Spawnable guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
+        // K. stat setters
+        "speed" => {
+            stats::set_speed(
+                caller_id,
+                target_id.expect("Target::Being guarantees a resolved target"),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
         // G. server / maintenance
         "save" | "reloadmap" | "reloadres" | "removerespawner" | "loglevel" | "logclient" => {
             server::dispatch(name, caller_id, args, target_id, tx, space_mgr).await
         }
-        // B. spawn authoring
-        "savespawn" | "delspawn" | "autosavespawn" | "respawnall" | "spawnrandom" => {
+        // B. spawn lifecycle + authoring
+        "spawn" | "despawn" | "savespawn" | "delspawn" | "autosavespawn" | "respawnall"
+        | "spawnrandom" => {
             spawn::dispatch(name, caller_id, args, target_id, tx, space_mgr, engine).await
         }
         // C. patrol authoring

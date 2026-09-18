@@ -1,4 +1,3 @@
-use super::super::*; // gm module: dispatch + GM_* constants
 use super::*; // shared helpers from tests/mod.rs
 use crate::cell::messages::CellToBaseMsg;
 use tokio::sync::mpsc;
@@ -33,6 +32,7 @@ async fn gm_spawn_by_cmd_emits_spawn_with_offset_position() {
             space_id: _,
             world_name,
             position,
+            heading,
         } => {
             assert_eq!(entity_id, 1);
             assert_eq!(template_id, 4321);
@@ -40,6 +40,11 @@ async fn gm_spawn_by_cmd_emits_spawn_with_offset_position() {
             assert_eq!(position[0], 110.0, "X offset applied");
             assert_eq!(position[1], 50.0, "Y unchanged (ground-plane offset)");
             assert_eq!(position[2], 195.0, "Z offset applied");
+            // `gmSpawnByCmd(DesignId, XOffset, ZOffset)` has no rotation
+            // argument — there is no caller facing on the wire to forward, so
+            // the native path keeps the historical 0.0. The dot-console
+            // `.spawn` is the one that sends the caller's own heading.
+            assert_eq!(heading, 0.0, "native gmSpawnByCmd carries no rotation arg");
         }
         other => panic!("expected GmSpawnNpc, got {other:?}"),
     }

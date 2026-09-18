@@ -69,8 +69,8 @@ pub(super) async fn teleport(
     // then route through TeleportPlayer for the authoritative
     // FORCED_POSITION snap + persist. The bare 116-only path the
     // previous version emitted does NOT move the avatar.
-    // `update_entity_position` already writes `cell_entity.position`.
-    space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
+    // `update_position_preserving_facing` already writes `cell_entity.position`.
+    space_mgr.update_position_preserving_facing(entity_id, position, [0.0; 3]);
     // Authorized teleport: reseed the movement-validator clock so the
     // first post-teleport client packet doesn't log a spurious speed warn.
     space_mgr.note_authorized_teleport(entity_id);
@@ -141,6 +141,8 @@ pub(super) async fn cross_world_teleport(
             position,
             rotation: [0.0, 0.0, 0.0],
             destination_ring_id: None,
+            // Content-chain teleport resolves by world name.
+            destination_space_id: None,
         })
         .await
     {

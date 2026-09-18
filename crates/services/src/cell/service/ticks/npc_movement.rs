@@ -1,3 +1,5 @@
+use cimmeria_entity::stats::StatList;
+
 use super::super::super::space_manager::SpaceManager;
 
 /// 1-in-N sampling rate for in-between NPC movement steps. State
@@ -12,12 +14,25 @@ use super::super::super::space_manager::SpaceManager;
 /// when the field is quiet.
 const NPC_STEP_LOG_SAMPLE: u32 = 10;
 
+/// Scale an NPC's template `move_speed` (world units per 100ms tick) by its
+/// `movementSpeedMod` stat.
+///
+/// Without the scale the stat had **no** server-side effect at all and a GM's
+/// `.speed` (see [`crate::cell::console::stats::set_speed`]) would desync the
+/// client's prediction from the authoritative path stepping. See
+/// [`StatList::movement_speed_scale`] for the stat's contract and its
+/// fallbacks.
+fn effective_move_speed(base: f32, stats: &StatList) -> f32 {
+    base * stats.movement_speed_scale()
+}
+
 /// NPC movement along nav paths — runs every AoI tick (100ms) for smooth pathing.
 ///
 /// For each NPC with a non-empty `nav_path`, move it toward the next waypoint
-/// by `move_speed` units. When it reaches (or overshoots) a waypoint, consume
-/// it and continue to the next. Position updates propagate to witnesses via
-/// the AoI tick's `EntityMoved` messages.
+/// by its [`effective_move_speed`] (template `move_speed` scaled by the
+/// `movementSpeedMod` stat). When it reaches (or overshoots) a waypoint,
+/// consume it and continue to the next. Position updates propagate to
+/// witnesses via the AoI tick's `EntityMoved` messages.
 pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
     // Collect NPCs that have active paths
     let moving_npcs: Vec<u32> = space_mgr
@@ -42,7 +57,12 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 Some(wp) => *wp,
                 None => continue,
             };
-            (next_wp, npc.move_speed, npc.position, npc.nav_path.len())
+            (
+                next_wp,
+                effective_move_speed(npc.move_speed, &npc.stats),
+                npc.position,
+                npc.nav_path.len(),
+            )
         };
 
         let dx = next_wp.x - cur_pos.x;
@@ -174,6 +194,7 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
 mod tests {
     use super::*;
     use crate::cell::space_manager::SpaceManager;
+    use cimmeria_entity::stats::MOVEMENT_SPEED_MOD;
 
     #[test]
     fn npc_movement_tick_advances_along_nav_path() {
@@ -287,6 +308,147 @@ mod tests {
         assert!(
             npc.nav_path.is_empty(),
             "path must be empty after reaching final waypoint"
+        );
+    }
+
+    // ── P47 (`.speed`) — tick-level movement effect ─────────────────────────
+    //
+    // The stat-level half of P47 lives in
+    // `crate::cell::console::tests::p47`; these prove the setter's effect
+    // reaches real tick behavior rather than stopping at the stat value.
+    // `cargo test --lib legacy_p47_` runs both halves.
+
+    /// Build a GM caller + a pathing NPC in one space. The NPC starts at the
+    /// origin with a single waypoint 80 units down +X and `move_speed = 5.0`,
+    /// so every per-tick step in these tests (`t = speed / 80`) lands on an
+    /// exact binary fraction and the position assertions can be exact `f32`
+    /// equality rather than an epsilon compare.
+    fn speed_fixture() -> (SpaceManager, u32, u32) {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+
+        let gm = 1u32;
+        mgr.create_entity(gm, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(gm) {
+            e.is_player = true;
+            e.access_level = 2;
+        }
+
+        let npc = 200u32;
+        mgr.create_entity(npc, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(npc) {
+            e.is_player = false;
+            e.class_id = 0x04;
+            e.move_speed = 5.0;
+            e.nav_path
+                .push_back(cimmeria_common::Vector3::new(80.0, 0.0, 0.0));
+        }
+        (mgr, gm, npc)
+    }
+
+    /// Run `.speed <arg>` through the real console dispatch, then one movement
+    /// tick, and report how far along +X the NPC actually got.
+    async fn speed_then_tick(arg: &str) -> f32 {
+        let (mut mgr, gm, npc) = speed_fixture();
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        crate::cell::console::exec("speed", gm, &[arg], Some(npc), &tx, &mut mgr, &engine).await;
+        npc_movement_tick(&mut mgr);
+        mgr.get_entity(npc).unwrap().position.x
+    }
+
+    /// The acceptance criterion: `.speed` changes how far the NPC actually
+    /// moves on the next tick, not merely what the stat reads back.
+    /// `move_speed = 5.0` at the default mod of 100 steps 5.0 units; `.speed
+    /// 200` must step exactly 10.0 and `.speed 50` exactly 2.5.
+    ///
+    /// Reverting `effective_move_speed` back to a bare `npc.move_speed` makes
+    /// every non-100 row collapse onto 5.0 and fails here.
+    #[tokio::test]
+    async fn legacy_p47_speed_scales_the_npc_tick_step_proportionally() {
+        for (arg, expected) in [("50", 2.5f32), ("100", 5.0), ("200", 10.0), ("400", 20.0)] {
+            let got = speed_then_tick(arg).await;
+            assert_eq!(
+                got, expected,
+                ".speed {arg} must move the NPC exactly {expected} units on the next tick"
+            );
+        }
+    }
+
+    /// `.speed 0` freezes the NPC in place: no displacement, and the waypoint
+    /// is NOT consumed (a zero-length step must not be mistaken for "reached
+    /// the waypoint" — `dist <= move_speed` would be `80.0 <= 0.0`, false).
+    #[tokio::test]
+    async fn legacy_p47_speed_zero_freezes_the_npc_without_consuming_its_path() {
+        let (mut mgr, gm, npc) = speed_fixture();
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        crate::cell::console::exec("speed", gm, &["0"], Some(npc), &tx, &mut mgr, &engine).await;
+
+        npc_movement_tick(&mut mgr);
+        npc_movement_tick(&mut mgr);
+
+        let e = mgr.get_entity(npc).unwrap();
+        assert_eq!(e.position.x, 0.0, ".speed 0 must stop the NPC moving");
+        assert_eq!(e.position.z, 0.0, ".speed 0 must stop the NPC moving");
+        assert_eq!(
+            e.nav_path.len(),
+            1,
+            "a frozen NPC must not consume waypoints"
+        );
+    }
+
+    /// The effect accumulates across ticks rather than applying once: two
+    /// ticks at `.speed 200` cover exactly 20.0 units.
+    #[tokio::test]
+    async fn legacy_p47_speed_effect_persists_across_ticks() {
+        let (mut mgr, gm, npc) = speed_fixture();
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        crate::cell::console::exec("speed", gm, &["200"], Some(npc), &tx, &mut mgr, &engine).await;
+
+        npc_movement_tick(&mut mgr);
+        assert_eq!(mgr.get_entity(npc).unwrap().position.x, 10.0);
+        npc_movement_tick(&mut mgr);
+        assert_eq!(
+            mgr.get_entity(npc).unwrap().position.x,
+            20.0,
+            "the speed mod must apply on every subsequent tick, not just the first"
+        );
+    }
+
+    /// Guards `effective_move_speed`'s two defensive branches directly.
+    ///
+    /// The absent-stat fallback can't be reached through a real `StatList`:
+    /// `StatList::new()` always installs `movementSpeedMod` and exposes no
+    /// public way to remove an entry (same constraint `stats.rs`'s
+    /// `format_stat_line` documents for its `None` arm), so only the
+    /// default-mod and negative-`cur` branches are exercised here. A negative
+    /// `cur` is itself only reachable by poking the field directly — the
+    /// `.speed` path rejects out-of-range values and `Stat::set_current`
+    /// clamps — but the floor is what keeps a stray write from driving an NPC
+    /// backwards along its own path.
+    #[test]
+    fn legacy_p47_effective_move_speed_fallbacks_are_safe() {
+        let mut stats = cimmeria_entity::stats::StatList::new();
+        assert_eq!(
+            effective_move_speed(5.0, &stats),
+            5.0,
+            "the default mod of 100 must leave move_speed unscaled"
+        );
+
+        stats.get_mut(MOVEMENT_SPEED_MOD).unwrap().cur = -250;
+        assert_eq!(
+            effective_move_speed(5.0, &stats),
+            0.0,
+            "a negative mod must stall the NPC, never reverse it"
         );
     }
 }

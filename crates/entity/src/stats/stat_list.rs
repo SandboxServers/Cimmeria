@@ -160,6 +160,25 @@ impl StatList {
         self.stats.get_mut(&stat_id)
     }
 
+    /// The `movementSpeedMod` multiplier as a plain scale factor.
+    ///
+    /// `entities/defs/alias.xml` documents the stat as "multiplies movement
+    /// speed by curr/100" — 100 is unmodified, 200 double, 0 frozen — and the
+    /// client applies the same factor to its own local prediction when it
+    /// receives the stat in an `onStatUpdate`. Every server-side speed number
+    /// that the client can observe must go through here or the two halves of
+    /// that contract drift apart (the NPC path-stepping tick and the
+    /// client-position speed gate are both such numbers).
+    ///
+    /// A missing stat reads as 100 (unmodified) rather than 0, so an entity
+    /// built without the full `StatList::new()` block still moves. A negative
+    /// `cur` floors at 0: `Stat::set_current` clamps into `[min, max]`, but a
+    /// directly-poked field must stall movement rather than reverse it.
+    pub fn movement_speed_scale(&self) -> f32 {
+        let pct = self.get(MOVEMENT_SPEED_MOD).map_or(100, |s| s.cur).max(0);
+        pct as f32 / 100.0
+    }
+
     /// Apply archetype base stats for a fresh player.
     ///
     /// Mirrors `python/cell/SGWPlayer.py:setupPlayer()` lines 424-437.

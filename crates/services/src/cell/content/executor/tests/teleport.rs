@@ -41,7 +41,7 @@ async fn cross_world_teleport_action_emits_gate_travel_with_no_ring_id() {
     // also flushes dirty bandolier ammo before sending GateTravel —
     // we don't assert on that here (the player has no dirty ammo) but
     // it's why we drain rather than just `try_recv`.
-    let mut gate_travel: Option<(u32, String, [f32; 3], [f32; 3], Option<i32>)> = None;
+    let mut gate_travel: Option<(u32, String, [f32; 3], [f32; 3], Option<i32>, Option<u32>)> = None;
     while let Ok(msg) = rx.try_recv() {
         if let CellToBaseMsg::GateTravel {
             entity_id,
@@ -49,6 +49,7 @@ async fn cross_world_teleport_action_emits_gate_travel_with_no_ring_id() {
             position,
             rotation,
             destination_ring_id,
+            destination_space_id,
         } = msg
         {
             gate_travel = Some((
@@ -57,11 +58,17 @@ async fn cross_world_teleport_action_emits_gate_travel_with_no_ring_id() {
                 position,
                 rotation,
                 destination_ring_id,
+                destination_space_id,
             ));
         }
     }
-    let (eid, world, pos, rot, ring_id) =
+    let (eid, world, pos, rot, ring_id, destination_space_id) =
         gate_travel.expect("CrossWorldTeleport action must produce a GateTravel send");
+    assert_eq!(
+        destination_space_id, None,
+        "Action::CrossWorldTeleport has no destination-instance input — must not \
+         silently route to a specific space"
+    );
     assert_eq!(
         eid, 1,
         "GateTravel.entity_id must be the player's entity_id"
@@ -138,5 +145,57 @@ async fn cross_world_teleport_action_with_unknown_entity_dispatches_gate_travel(
         got_gate_travel,
         "CrossWorldTeleport must dispatch GateTravel even when local \
          cell entity is absent — base may still hold the connection"
+    );
+}
+
+/// `Action::Teleport` — same-space chain teleport — must not re-face the
+/// entity it moves. `transport::teleport` goes through
+/// `update_position_preserving_facing`, not the raw `update_entity_position`
+/// (which writes `direction` unconditionally from its `[i8; 3]` parameter
+/// and would zero it here).
+///
+/// Reverting to `update_entity_position(entity_id, position, [0, 0, 0],
+/// [0.0; 3])` zeroes the facing asserted below. The non-zero, non-uniform
+/// value is deliberate: a `[0, 0, 0]` or symmetric facing would still match
+/// after the bug was reintroduced.
+#[tokio::test]
+async fn same_space_teleport_action_preserves_facing() {
+    use cimmeria_common::Vector3;
+
+    let mut mgr = make_space_mgr();
+    mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    let space_id = mgr.get_entity(1).unwrap().space_id.0;
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(42);
+        e.direction = Vector3::new(0.0, 137.0, 0.0);
+    }
+    mgr.connect_entity(1);
+
+    let (tx, _rx) = mpsc::channel(16);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            1109,
+            Action::Teleport {
+                space_id,
+                position: [12.0, 34.0, 56.0],
+            },
+        )],
+    };
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let e = mgr.get_entity(1).unwrap();
+    assert_eq!(
+        [e.position.x, e.position.y, e.position.z],
+        [12.0, 34.0, 56.0],
+        "precondition: Action::Teleport must actually have moved the entity"
+    );
+    assert_eq!(
+        e.direction,
+        Vector3::new(0.0, 137.0, 0.0),
+        "Action::Teleport must not re-face the entity it moves"
     );
 }

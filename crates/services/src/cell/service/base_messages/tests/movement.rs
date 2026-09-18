@@ -529,3 +529,139 @@ async fn test_authorized_teleport_does_not_trigger_bounds_anomaly() {
     assert_eq!(entity.position.y, 0.0);
     assert_eq!(entity.position.z, 500.1);
 }
+
+/// **Live-bug regression guard, handler level.** When the entity's own
+/// authoritative position is one the validator rejects, the handler must
+/// snap the client to the *recovered* position, not back to the bad one —
+/// re-issuing the bad one is exactly what produced the observed
+/// ~12-15 corrections/second rubber-band.
+///
+/// Reverting the recovery gate makes the emitted `TeleportPlayer` carry the
+/// unreachable position again, and the assertion fires.
+#[tokio::test]
+async fn entity_move_snaps_to_the_recovered_position_not_the_unreachable_one() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(7777, "Castle_CellBlock", [10.0, 5.0, 20.0], [0.0; 3])
+        .unwrap();
+    // A server-authoritative write strands the entity outside the AABB —
+    // the `.gotoxyz` / stale-persisted-position shape.
+    let stranded = [50_000.0_f32, 5.0, 20.0];
+    mgr.update_entity_position(7777, stranded, [0, 0, 0], [0.0; 3]);
+
+    let (tx, mut rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+
+    handle_base_message(
+        BaseToCellMsg::EntityMove {
+            entity_id: 7777,
+            claimed_space_id: 0,
+            position: stranded,
+            direction: [0, 0, 0],
+            velocity: [0.0; 3],
+        },
+        &tx,
+        &mut mgr,
+        &engine,
+        &[],
+    )
+    .await;
+
+    let mut snap = None;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::TeleportPlayer {
+            position, prev_pos, ..
+        } = msg
+        {
+            assert_eq!(position, prev_pos, "snap must stay zero-distance");
+            snap = Some(position);
+        }
+    }
+    let snap = snap.expect("a recovery must still snap the owning client somewhere");
+    assert_ne!(
+        snap, stranded,
+        "snapping the client back to the position that was just rejected is the \
+         rubber-band loop — the correction has to go somewhere the validator accepts"
+    );
+    let entity = mgr.get_entity(7777).unwrap();
+    assert_eq!(
+        [entity.position.x, entity.position.y, entity.position.z],
+        snap,
+        "the cell entity must have been relocated to the same place the client \
+         was told, or server and client disagree from the first tick"
+    );
+
+    capture
+        .find_event(Level::WARN, "movement.validation_recovered", "bounds")
+        .expect(
+            "a recovery must surface as warn-level movement.validation_recovered — \
+             an operator needs to see that an entity was stranded, not just that \
+             the rubber-band stopped",
+        );
+}
+
+/// A client that ignores its corrections stops receiving them. The server
+/// still never writes its position, so witnesses are unaffected; what stops
+/// is the outbound `FORCED_POSITION` stream, which is the part the player
+/// experiences as rubber-banding.
+#[tokio::test]
+async fn entity_move_stops_emitting_forced_position_once_the_budget_is_spent() {
+    use cimmeria_entity::movement_validation::MovementValidator;
+
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    let spawn_pos = [10.0_f32, 5.0, 20.0];
+    mgr.create_entity(7777, "Castle_CellBlock", spawn_pos, [0.0; 3])
+        .unwrap();
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let engine = ChainEngine::new();
+
+    // Twice the budget's worth of identical out-of-bounds packets.
+    for _ in 0..(MovementValidator::MAX_SNAP_BACK_CORRECTIONS * 2) {
+        handle_base_message(
+            BaseToCellMsg::EntityMove {
+                entity_id: 7777,
+                claimed_space_id: 0,
+                position: [50_000.0, 5.0, 20.0],
+                direction: [0, 0, 0],
+                velocity: [0.0; 3],
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+    }
+
+    let mut corrections = 0u32;
+    while let Ok(msg) = rx.try_recv() {
+        if matches!(msg, CellToBaseMsg::TeleportPlayer { .. }) {
+            corrections += 1;
+        }
+    }
+    assert_eq!(
+        corrections,
+        MovementValidator::MAX_SNAP_BACK_CORRECTIONS,
+        "the handler must emit at most one correction per budget slot, then go \
+         quiet — got {corrections}"
+    );
+    let entity = mgr.get_entity(7777).unwrap();
+    assert_eq!(
+        [entity.position.x, entity.position.y, entity.position.z],
+        spawn_pos,
+        "going quiet must not mean accepting the position"
+    );
+}
