@@ -23,7 +23,7 @@ This is the acceptance pass for everything the Castle Cellblock rebuild campaign
 | GC1b-1 | Marsh rides the rings to region 3 (chain 1173) | #655 |
 | GC1b-2 | Marsh follows the player topside; follow cleared at the Straegis scene (chains 1174/1175) | #655 |
 
-Not covered, because it is not built: **C06** (flank objectives 2725 / 2731), **GC1c** (lockdown energy field), **GC3** (mission-completion XP). See [Known limitations](#known-limitations--not-validated).
+Not covered, because it is not built: **GC1c** (lockdown energy field), **GC3** (mission-completion XP). See [Known limitations](#known-limitations--not-validated).
 
 ## Before you start
 
@@ -562,7 +562,7 @@ This is the highest-risk scenario in the guide. **Read the [Known risks](#known-
 - Mission 680 completing again if you backtrack out of and into Region9.
 - Mission 681 completing after only one kill.
 - **Mission 681 appearing as a visible quest-log entry with a "Kill the Guards" step you are expected to track.** It is the only one of the six controller missions with `is_hidden = false` and `is_a_story = true`, unlike 682-686 which are all hidden. Record whether it shows in the log — a visible controller mission would be a UI defect worth its own issue.
-- The flank objective **2725** "Take position behind the long table to flank the guards and negate their cover." doing anything. It is **not built** — see [Known limitations](#known-limitations--not-validated).
+- Killing both guards *without* flanking failing to complete 681. The flank objective **2725** never gates (D-CB05). Flank behaviour itself is scenario [T29](#t29--flank-objectives-2725-and-2731-c06).
 
 **Relog check:** relog mid-Mess-Hall. The kill counter (`messhall_kills`) is content-engine state; confirm that killing the remaining guard after a relog still completes 681.
 
@@ -588,11 +588,49 @@ This is the highest-risk scenario in the guide. **Read the [Known risks](#known-
 
 - **Each region transition accepting its mission more than once.** Before the C01 purge, the Region3-exit / Region4 / Region5 / Region6 triggers each resolved two to five accepts. Exactly one each.
 - Any controller mission (682-686) appearing in the visible quest log.
-- Flank objective **2731** doing anything on Hallway05 — not built.
+- Killing both Hallway05 guards *without* flanking failing to complete 686. Flank objective **2731** never gates. See [T29](#t29--flank-objectives-2725-and-2731-c06).
 
 **Relog check:** relog between hallways; the next region transition must still accept exactly one mission.
 
 **Server evidence:** `logs\content.log`, `Content: accepting mission` — grep per mission id and confirm **one** line each for 682, 684, 686. `fire_exit_region: matched` for Region3; `fire_enter_region: matched` for Region4/5/6.
+
+### T29 — Flank objectives 2725 and 2731 (C06)
+
+> Requires C06 (PR #671). Skip this scenario if that PR is not merged into the build you are testing.
+
+**Chains:** 1141 (Mess Hall, mission 681, objective 2725), 1142 (Hallway05, mission 686, objective 2731).
+
+**How it works:** the NPC AI fires a flank event when a guard **holding a cover slot** has its top threat (you) move outside that cover's defensive arc — the same moment the guard abandons the cover to reposition. The chain completes the objective if the guard is an `NID Guard` and the matching mission is active. It is tracked only: killing the guards without ever flanking still completes the mission (D-CB05).
+
+**Preconditions:** mission 681 active (Mess Hall) for 2725, or 686 active (Hallway05) for 2731; a character that can fight the guards; the server log open (see [Before you start](#3-know-where-the-logs-are)).
+
+**Steps (Mess Hall, objective 2725):**
+
+1. Walk into `Castle_Cellblock.Region9` so 681 is active.
+2. Open the mission log and note objective 2725 ("Take position behind the long table to flank the guards and negate their cover.") if 681 is visible to you.
+3. Engage `MessHall_Guard1` / `MessHall_Guard2` from the front, near the long table, until a guard moves to cover.
+4. Move sideways so you are well off the guard's facing (roughly beyond 90 degrees from the direction the cover faces), staying alive.
+5. Watch the log and the client, then finish the fight.
+
+**Expected:**
+
+- When a guard gives up its cover because you flanked it, the objective **2725** ticks complete in the mission log (`onObjectiveUpdate`).
+- Mission 681 stays active until the second guard dies, then completes and accepts 682 as in T14.
+- Flanking again afterwards does nothing more (no repeat update).
+
+**Must NOT happen:**
+
+- Mission 681 completing at the moment you flank, before the guards are dead.
+- Objective 2725 completing when you flank a guard while a *different* mission is the only active one, or any time 681 is not active.
+- 2725 being required: a run where you never flank must still complete 681 on the kills.
+
+**Steps (Hallway05, objective 2731):** repeat with mission 686 active in the Hallway05 area against `Hallway05_Guard1` / `Hallway05_Guard2`. Completing 686 must still fire the Straegis scene exactly as in T16.
+
+**Relog check:** relog with 2725 already complete: flanking again must not re-send it. Relog with it incomplete: it can still complete afterwards.
+
+**Server evidence:** `logs\content.log` for the `Content:` and `fire_player_flanked_npc` lines, `logs\server.log` for the NPC AI line (see [Before you start](#3-know-where-the-logs-are)): NPC AI target `npc_ai` line `cover_released_flanked`; `fire_player_flanked_npc: matched` with `npc_template=NID Guard`; then `Content: complete objective` with `mission_id=681 objective_id=2725 chain_id=1141` (or `686 / 2731 / 1142`).
+
+**Known uncertainty:** the trigger only fires if the guards actually take cover in this room. If they never do, 2725/2731 will simply never complete and the fight still works — record that as "flank not exercisable" rather than a failure, and note whether the guards ever moved to cover. If the guards never take cover in the Mess Hall, that points at the cover data for this space, not at C06.
 
 ### T16 / T17 — The Straegis attack scene (C08b, GC1a, GC1b-2)
 
@@ -789,6 +827,7 @@ Fill this in as you go. "Blocked" means you could not reach the scenario.
 | T13 — Stasis terminal, mission 680 | | |
 | T27 — Marsh's pre-departure line (GC1a) | | |
 | T28 — Marsh rings + follows topside (GC1b) | | |
+| T29 — Flank objectives 2725 / 2731 (C06, PR #671) | | |
 | T14 — Mess Hall (681) | | |
 | T15 — Hallway chain (682-686) | | |
 | T16 / T17 — Straegis scene (C08b + GC1a) | | |
@@ -802,7 +841,7 @@ Fill this in as you go. "Blocked" means you could not reach the scenario.
 
 These are expected absences. Do not file them as bugs from this pass.
 
-- **C06 — flank objectives, pending.** Objectives **2725** ("Take position behind the long table to flank the guards and negate their cover.", step 2348, mission 681) and **2731** ("Take a flanking position to negate the guards' protective cover.", step 2353, mission 686) have no chains. Chain ids 1141-1150 are reserved and unused. Per D-CB05 the flank objectives are meant to be *tracked but not gating*, so even when C06 lands the kill counter still completes the mission. Their sibling objectives **2724** and **2730** have a single space as their display text and will render blank in the objective list — that is seed data.
+- **C06 — flank objectives** (PR #671): built, covered by [T29](#t29--flank-objectives-2725-and-2731-c06). Depends on guards actually taking cover in the room (unverified). Their sibling objectives **2724** and **2730** have a single space as their display text and will render blank in the objective list — that is seed data.
 - **GC1c — lockdown VFX, not built.** No energy-field actor and no Kismet event id have been recovered. Sequence 10000 is already bound to the mission-622 stasis door and cannot double as the lockdown route. Dialog 4003 is deliberately not played because it describes a barrier that does not exist. Step 2345's log text still reads "Lockdown!" — that is just the step's text, not a promise of a barrier.
 - **Chain 1153 — mission 680's accept blurb 2308, reserved and not authored.** Held back because its "follow Marsh" text only reads correctly with GC1 in place. GC1 has since merged, so re-adding 1153 is now a small follow-up.
 - **GC3 — mission-completion XP, blocked on design.** No XP is awarded for completing 680 / 681 / 686. The spec's observed 52 XP is an observation, not a DB value; every `reward_xp` is 0 and the formula is unknown.
