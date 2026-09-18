@@ -33,6 +33,8 @@
 //!   no-pool / no-addr — pinned via `LogCapture`).
 //! - [`witness_broadcast`] — `WitnessEntityMethod` / `EntityInvisible`
 //!   single-witness fan-out byte tests.
+//! - [`stargate_fanout`]   — the gate `onSequence` fan-out, driven
+//!   end-to-end from the cell emitter through the dispatcher.
 
 use super::*;
 use crate::base::PendingClientReadyInfo;
@@ -42,6 +44,7 @@ mod aoi_defer_gate;
 mod fallible_handlers;
 mod gm_grant_arms;
 mod passthrough;
+mod stargate_fanout;
 mod witness_broadcast;
 
 /// Empty maps shared by routing tests that don't need a session installed.

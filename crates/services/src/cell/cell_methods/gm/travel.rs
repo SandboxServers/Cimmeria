@@ -210,6 +210,7 @@ pub(super) async fn handle_dhd(
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
 ) -> bool {
     let gate_addr = match args.first() {
         Some(&b) => b as i8, // INT8 (signed)
@@ -235,7 +236,7 @@ pub(super) async fn handle_dhd(
     }
     tracing::info!(entity_id, gate_addr, "gmDHD: dialing stargate");
     // source address is unused by the primitive.
-    handle_dial_gate(entity_id, i32::from(gate_addr), 0, tx, space_mgr).await;
+    handle_dial_gate(entity_id, i32::from(gate_addr), 0, tx, space_mgr, engine).await;
     send_gm_feedback(
         entity_id,
         &format!("gmDHD: dialing gate address {gate_addr}"),

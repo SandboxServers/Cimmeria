@@ -12,7 +12,7 @@ async fn gm_goto_xyz_updates_position_and_emits_teleport() {
     for c in [10.0f32, 20.0, 30.0] {
         args.extend_from_slice(&c.to_le_bytes());
     }
-    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr, &test_engine()).await);
 
     match rx.try_recv().expect("gmGotoXYZ must emit TeleportPlayer") {
         CellToBaseMsg::TeleportPlayer {
@@ -49,7 +49,7 @@ async fn gm_goto_xyz_rejects_non_finite() {
     args.extend_from_slice(&f32::NAN.to_le_bytes());
     args.extend_from_slice(&0.0f32.to_le_bytes());
     args.extend_from_slice(&0.0f32.to_le_bytes());
-    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -73,7 +73,7 @@ async fn gm_goto_location_emits_gate_travel_and_destroys_entity() {
     for c in [1.0f32, 2.0, 3.0] {
         args.extend_from_slice(&c.to_le_bytes());
     }
-    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr, &test_engine()).await);
 
     match rx.try_recv().expect("gmGotoLocation must emit GateTravel") {
         CellToBaseMsg::GateTravel {
@@ -103,7 +103,7 @@ async fn gm_goto_location_rejects_empty_world() {
     for c in [1.0f32, 2.0, 3.0] {
         args.extend_from_slice(&c.to_le_bytes());
     }
-    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -126,7 +126,7 @@ async fn gm_dhd_list_request_is_noop() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
     // Address 0 = "request list" — unsupported without a feedback channel.
-    assert!(dispatch(1, GM_DHD, &[0u8], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_DHD, &[0u8], &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -144,13 +144,13 @@ async fn gm_dhd_list_request_is_noop() {
 async fn travel_handlers_reject_truncated_args() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
-    assert!(dispatch(1, GM_GOTO_XYZ, &[], &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_GOTO_LOCATION, &[], &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_DHD, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_XYZ, &[], &tx, &mut mgr, &test_engine()).await);
+    assert!(dispatch(1, GM_GOTO_LOCATION, &[], &tx, &mut mgr, &test_engine()).await);
+    assert!(dispatch(1, GM_DHD, &[], &tx, &mut mgr, &test_engine()).await);
     // goto_location with a world name but no coords.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "Abydos");
-    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_LOCATION, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs.iter().any(|m| matches!(
@@ -177,7 +177,7 @@ async fn goto_teleports_caller_to_target() {
     let (tx, mut rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
-    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr, &test_engine()).await);
     // Caller's grid position moved to the target.
     let p = mgr.get_entity(1).unwrap().position;
     assert_eq!([p.x, p.y, p.z], [50.0, 0.0, 60.0]);
@@ -202,7 +202,7 @@ async fn summon_moves_npc_to_caller() {
     let (tx, _rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "50");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
     let p = mgr.get_entity(50).unwrap().position;
     assert_eq!(
         [p.x, p.y, p.z],
@@ -226,7 +226,7 @@ async fn summon_player_snaps_target_via_teleport() {
     let (tx, mut rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
 
     // Grid position moved to the caller…
     let p = mgr.get_entity(2).unwrap().position;
@@ -275,7 +275,7 @@ async fn summon_missing_and_cross_space_refused() {
     // Cross-space summon: refused — no teleport, target unmoved.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -297,7 +297,7 @@ async fn summon_missing_and_cross_space_refused() {
     // Missing target id: refused — no teleport.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "4242");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -331,7 +331,7 @@ async fn goto_missing_and_cross_space_refused() {
     // Cross-space goto: refused — caller not moved, no teleport.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
-    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -347,7 +347,7 @@ async fn goto_missing_and_cross_space_refused() {
     // Missing target id: refused.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "4242");
-    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -395,7 +395,7 @@ async fn summoned_npc_is_broadcast_to_caller_witness() {
     let (tx, _rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "50");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
 
     // Tick 2: NPC is still in AoI → EntityMoved to the caller with the caller's pos.
     let moved = mgr.compute_aoi_changes().into_iter().find_map(|m| match m {
@@ -446,7 +446,7 @@ async fn native_gm_travel_preserves_facing() {
     for c in [10.0f32, 20.0, 30.0] {
         args.extend_from_slice(&c.to_le_bytes());
     }
-    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO_XYZ, &args, &tx, &mut mgr, &test_engine()).await);
     let e = mgr.get_entity(1).unwrap();
     assert_eq!(
         [e.position.x, e.position.y, e.position.z],
@@ -466,7 +466,7 @@ async fn native_gm_travel_preserves_facing() {
     let (tx, _rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "2");
-    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr, &test_engine()).await);
     let e = mgr.get_entity(1).unwrap();
     assert_eq!(
         [e.position.x, e.position.y, e.position.z],
@@ -492,7 +492,7 @@ async fn native_gm_travel_preserves_facing() {
     let (tx, _rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "50");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
     let e = mgr.get_entity(50).unwrap();
     assert_eq!(
         [e.position.x, e.position.y, e.position.z],
@@ -511,7 +511,7 @@ async fn goto_summon_reject_non_numeric() {
     let (tx, mut rx) = mpsc::channel(8);
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "SomeName");
-    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_GOTO, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs
@@ -525,7 +525,7 @@ async fn goto_summon_reject_non_numeric() {
     );
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "SomeName");
-    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SUMMON, &args, &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     assert!(
         !msgs

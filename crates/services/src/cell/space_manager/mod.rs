@@ -14,12 +14,14 @@ use cimmeria_entity::space::Space;
 pub use client_move::ClientMoveOutcome;
 pub(crate) use deferred_content_actions::PendingContentAction;
 pub use entities::DespawnOutcome;
+pub(crate) use gate_dial_state::PendingGateDial;
 pub use queries::PlayerNameLookup;
 
 mod aoi;
 mod client_move;
 mod deferred_content_actions;
 mod entities;
+mod gate_dial_state;
 mod lifecycle;
 mod queries;
 mod spatial;
@@ -41,6 +43,13 @@ pub(crate) const GRID_CELL_SIZE: f32 = 50.0;
 /// Flag indicating this region should be sent to the client for client-side
 /// hit testing. Matches `Atrea.enums.REGION_FLAG_ClientHinted`.
 pub const REGION_FLAG_CLIENT_HINTED: i32 = 1;
+
+/// Flag marking a region as the walk-through volume in front of a
+/// stargate. Matches `Atrea.enums.REGION_FLAG_Stargate`
+/// (`entities/defs/enumerations.xml:1653`). Entering one dispatches
+/// `stargatePassed` rather than a generic region event — see
+/// `GenericRegion.py:174-176` and `cell::gate_travel`.
+pub const REGION_FLAG_STARGATE: i32 = 2;
 
 /// A registered generic region from the database.
 ///
@@ -250,6 +259,14 @@ pub struct SpaceManager {
     /// API and `SpaceManager::destroy_entity` for the disconnect/leave-space
     /// cleanup (same choke point as `authoring_changes`/`autosave_spawns`).
     pub(crate) pending_content_actions: HashMap<u32, Vec<PendingContentAction>>,
+    /// In-flight stargate dials, keyed by the dialing player. Armed by
+    /// `cell::gate_travel::handle_dial_gate`, opened (and marked passable)
+    /// by `cell::gate_travel::gate_dial_tick` on the 100ms cell tick, and
+    /// consumed by the stargate-region crossing. Scrubbed by
+    /// `destroy_entity` / `disconnect_entity` so a dialer who leaves the
+    /// space never gets a late `Stargate_MakeGate`. See
+    /// `gate_dial_state` for the state machine.
+    pub(crate) pending_gate_dials: HashMap<u32, PendingGateDial>,
 }
 
 impl SpaceManager {
@@ -292,6 +309,7 @@ impl SpaceManager {
             autosave_spawns: HashSet::new(),
             patrol_authoring: HashMap::new(),
             pending_content_actions: HashMap::new(),
+            pending_gate_dials: HashMap::new(),
         }
     }
 }

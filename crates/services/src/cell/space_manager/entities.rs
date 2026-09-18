@@ -123,6 +123,11 @@ impl SpaceManager {
         // the action, not fire it later against a torn-down (and possibly
         // id-reused) entity.
         self.pending_content_actions.remove(&entity_id);
+        // CA10: an armed stargate dial dies with the space membership.
+        // `SGWPlayer.cancelDialing` on leaving is the 2009 equivalent —
+        // without this, `gate_dial_tick` would emit `Stargate_MakeGate`
+        // for an entity that is no longer in any space.
+        self.pending_gate_dials.remove(&entity_id);
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 
@@ -322,6 +327,9 @@ impl SpaceManager {
         // content-engine action's delay elapses must drop the action, not
         // fire it later against a session that no longer exists.
         self.pending_content_actions.remove(&entity_id);
+        // CA10: same rationale — a disconnect mid-dial must not leave a
+        // pending gate-open queued against a dead session.
+        self.pending_gate_dials.remove(&entity_id);
         if let Some(&space_id) = self.entity_space.get(&entity_id) {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.remove(&entity_id);

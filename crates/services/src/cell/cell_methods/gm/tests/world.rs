@@ -8,7 +8,17 @@ async fn gm_kill_target_kills_npc_in_same_space() {
     mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
     let (tx, mut rx) = mpsc::channel(32);
 
-    assert!(dispatch(1, GM_KILL_TARGET, &2i64.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &2i64.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let npc = mgr.get_entity(2).unwrap();
     assert!(
         crate::cell::combat::is_dead_state(npc.state_field),
@@ -33,7 +43,17 @@ async fn gm_kill_target_refuses_player() {
     }
     let (tx, mut _rx) = mpsc::channel(32);
 
-    assert!(dispatch(1, GM_KILL_TARGET, &2i64.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &2i64.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     let victim = mgr.get_entity(2).unwrap();
     assert!(
         !crate::cell::combat::is_dead_state(victim.state_field),
@@ -54,14 +74,34 @@ async fn gm_despawn_removes_npc_but_refuses_player() {
     let (tx, _rx) = mpsc::channel(8);
 
     // Player target refused.
-    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &3i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            GM_DESPAWN_BY_CMD,
+            &3i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     assert!(
         mgr.get_entity(3).is_some(),
         "gmDespawn must refuse a player target"
     );
 
     // NPC despawned (despawnMob alias hits the same handler).
-    assert!(dispatch(1, DESPAWN_MOB, &2i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(
+        dispatch(
+            1,
+            DESPAWN_MOB,
+            &2i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     assert!(
         mgr.get_entity(2).is_none(),
         "despawnMob must remove the NPC"
@@ -75,7 +115,7 @@ async fn gm_respawn_requires_player_id() {
     mgr.get_entity_mut(1).unwrap().player_id = None;
     let (tx, mut rx) = mpsc::channel(16);
 
-    assert!(dispatch(1, GM_RESPAWN, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_RESPAWN, &[], &tx, &mut mgr, &test_engine()).await);
     let msgs = drain(&mut rx);
     // The only thing emitted must be the rejection feedback line — no respawn
     // sequence (which would open with the Defeat-Window close, method != 28).
@@ -100,7 +140,7 @@ async fn gm_respawn_runs_for_player() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(16);
 
-    assert!(dispatch(1, GM_RESPAWN, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_RESPAWN, &[], &tx, &mut mgr, &test_engine()).await);
     // The respawn sequence always opens by closing the Defeat Window, so at
     // least one message must have been emitted.
     assert!(
@@ -117,7 +157,7 @@ async fn gm_set_target_sets_and_clears() {
     // Numeric id form: set target 42.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "42");
-    assert!(dispatch(1, GM_SET_TARGET, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SET_TARGET, &args, &tx, &mut mgr, &test_engine()).await);
     assert_eq!(mgr.get_entity(1).unwrap().current_target_id, Some(42));
     assert!(
         drain(&mut rx)
@@ -129,7 +169,7 @@ async fn gm_set_target_sets_and_clears() {
     // "0" clears the target.
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "0");
-    assert!(dispatch(1, GM_SET_TARGET, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SET_TARGET, &args, &tx, &mut mgr, &test_engine()).await);
     assert_eq!(
         mgr.get_entity(1).unwrap().current_target_id,
         None,
@@ -144,9 +184,29 @@ async fn kill_target_rejects_bad_ids_and_missing_target() {
     mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
     let (tx, mut rx) = mpsc::channel(8);
     // Truncated INT64 / out-of-u32-range / well-formed but nonexistent.
-    assert!(dispatch(1, GM_KILL_TARGET, &[], &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_KILL_TARGET, &(i64::MAX).to_le_bytes(), &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_KILL_TARGET, &4242i64.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_KILL_TARGET, &[], &tx, &mut mgr, &test_engine()).await);
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &(i64::MAX).to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &4242i64.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     // Postcondition: no side effects — the bystander NPC is alive and nothing
     // was emitted on the wire. Fails if a reject path falls through to a kill.
     let npc = mgr.get_entity(2).unwrap();
@@ -175,9 +235,29 @@ async fn despawn_rejects_truncated_invalid_and_missing() {
     mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
     let before = mgr.all_entity_ids().len();
     let (tx, mut rx) = mpsc::channel(8);
-    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &[], &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &0i32.to_le_bytes(), &tx, &mut mgr).await);
-    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &4242i32.to_le_bytes(), &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_DESPAWN_BY_CMD, &[], &tx, &mut mgr, &test_engine()).await);
+    assert!(
+        dispatch(
+            1,
+            GM_DESPAWN_BY_CMD,
+            &0i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(
+        dispatch(
+            1,
+            GM_DESPAWN_BY_CMD,
+            &4242i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
     // Postcondition: nothing despawned, nothing emitted.
     assert!(
         mgr.get_entity(2).is_some(),
@@ -212,11 +292,11 @@ async fn set_target_rejects_malformed_and_non_numeric() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
     // Empty args → WSTRING parse fails.
-    assert!(dispatch(1, GM_SET_TARGET, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SET_TARGET, &[], &tx, &mut mgr, &test_engine()).await);
     // Non-numeric name (no name→id resolution in the cell).
     let mut args = Vec::new();
     write_wstring_arg(&mut args, "SomeMobName");
-    assert!(dispatch(1, GM_SET_TARGET, &args, &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_SET_TARGET, &args, &tx, &mut mgr, &test_engine()).await);
     assert_eq!(
         mgr.get_entity(1).unwrap().current_target_id,
         None,
