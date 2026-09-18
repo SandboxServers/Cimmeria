@@ -55,7 +55,7 @@ fn validate_destination_rejects_self_busy_unknown() {
 #[test]
 fn idle_to_send_wait_via_enter_send_wait() {
     let mut r = RingTransporter::from_region(&make_region(1, "Castle", vec![2]));
-    r.enter_send_wait(2);
+    r.enter_send_wait(2, 100, Instant::now());
     assert_eq!(r.state, State::SendWait);
     assert_eq!(r.remote_region_id, Some(2));
 }
@@ -63,7 +63,7 @@ fn idle_to_send_wait_via_enter_send_wait() {
 #[test]
 fn remote_wait_idle_to_recv_wait() {
     let mut r = RingTransporter::from_region(&make_region(2, "Castle", vec![1]));
-    r.remote_wait(1);
+    r.remote_wait(1, Instant::now());
     assert_eq!(r.state, State::RecvWait);
     assert_eq!(r.remote_region_id, Some(1));
 }
@@ -71,13 +71,13 @@ fn remote_wait_idle_to_recv_wait() {
 #[test]
 fn full_cycle_source_side() {
     let mut src = RingTransporter::from_region(&make_region(1, "Castle", vec![2]));
-    src.enter_send_wait(2);
+    let now = Instant::now();
+    src.enter_send_wait(2, 100, now);
 
     // Player walks onto the pad
     src.region_triggered(true, 100);
     assert!(src.should_auto_start());
 
-    let now = Instant::now();
     let effs = src.start_sending(now);
     assert_eq!(src.state, State::SendWarmup);
     // Should produce: PlaySequence (1) + OnTeleportOut + LockMovement = 3 for one player.
@@ -134,11 +134,12 @@ fn full_cycle_source_side() {
 #[test]
 fn full_cycle_destination_side() {
     let mut dst = RingTransporter::from_region(&make_region(2, "Castle", vec![1]));
-    dst.remote_wait(1);
-    dst.remote_send();
+    let now = Instant::now();
+    dst.remote_wait(1, now);
+    dst.remote_send(now);
     assert_eq!(dst.state, State::RecvWarmup);
-    dst.remote_count_update(2);
-    dst.remote_transport();
+    dst.remote_expect(vec![100, 101]);
+    dst.remote_transport(now);
     assert_eq!(dst.state, State::RemoteLoadWait);
     // 1 of 2 loaded → not yet ready.
     assert!(!dst.player_loaded(100));
@@ -149,14 +150,14 @@ fn full_cycle_destination_side() {
 #[test]
 fn destination_full_cycle_to_idle() {
     let mut dst = RingTransporter::from_region(&make_region(2, "Castle", vec![1]));
-    dst.remote_wait(1);
-    dst.remote_send();
-    dst.remote_count_update(1);
-    dst.remote_transport();
+    let now = Instant::now();
+    dst.remote_wait(1, now);
+    dst.remote_send(now);
+    dst.remote_expect(vec![100]);
+    dst.remote_transport(now);
 
     assert!(dst.player_loaded(100));
 
-    let now = Instant::now();
     let effs = dst.all_players_loaded(now);
     assert_eq!(dst.state, State::RemoteWarmup);
     assert_eq!(effs.len(), 1); // PlaySequence(TeleportIn) for first player
@@ -184,12 +185,202 @@ fn destination_full_cycle_to_idle() {
 #[test]
 fn destination_with_no_loaded_players_skips_sequence() {
     let mut dst = RingTransporter::from_region(&make_region(2, "Castle", vec![1]));
-    dst.remote_wait(1);
-    dst.remote_send();
-    dst.remote_count_update(0);
-    dst.remote_transport();
+    let now = Instant::now();
+    dst.remote_wait(1, now);
+    dst.remote_send(now);
+    dst.remote_expect(Vec::new());
+    dst.remote_transport(now);
 
-    let effs = dst.all_players_loaded(Instant::now());
+    let effs = dst.all_players_loaded(now);
     assert!(effs.is_empty());
     assert_eq!(dst.state, State::RemoteWarmup);
+}
+
+// ---------------------------------------------------------------------------
+// H02: bounded stall deadlines (audit defect H-B3)
+// ---------------------------------------------------------------------------
+
+/// Every state that waits on something outside the FSM has a bound, and every
+/// state that carries its own deadline does not get a second one. This is the
+/// claim that justifies a single `stall_at` field; if a future change adds a
+/// waiting state without a bound, this fails.
+#[test]
+fn only_externally_waiting_states_have_a_stall_bound() {
+    for state in [
+        State::SendWait,
+        State::RecvWait,
+        State::RecvWarmup,
+        State::RemoteLoadWait,
+    ] {
+        assert!(
+            stall_timeout_for(state).is_some(),
+            "{state:?} waits on something outside the FSM and must be bounded"
+        );
+    }
+    for state in [
+        State::Idle,
+        State::SendWarmup,
+        State::RemoteWarmup,
+        State::Cooldown,
+    ] {
+        assert!(
+            stall_timeout_for(state).is_none(),
+            "{state:?} has its own deadline; a second one would race it"
+        );
+    }
+}
+
+/// The destination must never expire before the source it is reserved for.
+/// If it did it would return to Idle, a third ring could claim it, and the
+/// original source's passengers would land in someone else's trip.
+#[test]
+fn recv_wait_outlives_send_wait() {
+    assert!(RECV_WAIT_TIMEOUT > SEND_WAIT_TIMEOUT);
+}
+
+/// `SendWait` is armed on entry and disarmed on the way out.
+#[test]
+fn send_wait_arms_and_disarms_its_stall_deadline() {
+    let mut r = RingTransporter::from_region(&make_region(1, "Castle", vec![2]));
+    let now = Instant::now();
+    r.enter_send_wait(2, 100, now);
+    assert_eq!(
+        r.elapsed_deadline(now + SEND_WAIT_TIMEOUT),
+        Some(DeadlineKind::Stall)
+    );
+    assert_eq!(r.elapsed_deadline(now + SEND_WAIT_TIMEOUT / 2), None);
+
+    // Leaving SendWait must take the deadline with it, or the 60s bound
+    // fires against a later healthy trip.
+    r.region_triggered(true, 100);
+    r.start_sending(now);
+    let long_after = now + SEND_WAIT_TIMEOUT * 2;
+    assert_ne!(
+        r.elapsed_deadline(long_after),
+        Some(DeadlineKind::Stall),
+        "SendWarmup must not carry the SendWait stall deadline"
+    );
+}
+
+/// The rollback in `handle_select_destination` (destination busy) used to
+/// write `state`/`remote_region_id` by hand, which left the stall deadline
+/// armed on an Idle ring. `reset_to_idle` is the guard.
+#[test]
+fn reset_to_idle_clears_the_stall_deadline() {
+    let mut r = RingTransporter::from_region(&make_region(1, "Castle", vec![2]));
+    let now = Instant::now();
+    r.enter_send_wait(2, 100, now);
+    r.reset_to_idle();
+    assert_eq!(r.state, State::Idle);
+    assert_eq!(r.elapsed_deadline(now + SEND_WAIT_TIMEOUT * 10), None);
+}
+
+/// `RemoteLoadWait` is the state a stalled cross-world arrival parks in.
+/// Abort must release the in-flight passengers — including the ones that
+/// never reported loaded, which is only possible because the expectation
+/// carries ids rather than a bare count.
+#[test]
+fn abort_releases_expected_and_loaded_passengers_show_before_unlock() {
+    let mut dst = RingTransporter::from_region(&make_region(2, "Castle", vec![1]));
+    let now = Instant::now();
+    dst.remote_wait(1, now);
+    dst.remote_send(now);
+    dst.remote_expect(vec![100, 101]);
+    dst.remote_transport(now);
+    // Only 100 made it; 101 is still loading when the deadline fires.
+    dst.player_loaded(100);
+
+    assert_eq!(
+        dst.elapsed_deadline(now + REMOTE_LOAD_WAIT_TIMEOUT),
+        Some(DeadlineKind::Stall)
+    );
+
+    let effs = dst.abort_to_idle(None);
+    assert_eq!(dst.state, State::Idle);
+    assert!(dst.expected_players.is_empty());
+    assert!(dst.players_loaded.is_empty());
+    assert_eq!(dst.num_remote_players(), 0);
+    assert_eq!(dst.remote_region_id, None);
+
+    // Both passengers released, show strictly before unlock for each:
+    // unlocking first lets the player move while witnesses still hold them
+    // hidden, and `send_visible` resolves its witness set at call time.
+    assert_eq!(effs.len(), 4);
+    assert_eq!(effs[0], Effect::ShowPlayer { entity_id: 100 });
+    assert_eq!(effs[1], Effect::UnlockMovement { entity_id: 100 });
+    assert_eq!(effs[2], Effect::ShowPlayer { entity_id: 101 });
+    assert_eq!(effs[3], Effect::UnlockMovement { entity_id: 101 });
+}
+
+/// Players merely standing on the pad were never locked or hidden, so an
+/// abort must not broadcast a stray `onVisible(1)` for them.
+#[test]
+fn abort_does_not_release_players_who_only_stood_on_the_pad() {
+    let mut src = RingTransporter::from_region(&make_region(1, "Castle", vec![2]));
+    let now = Instant::now();
+    src.enter_send_wait(2, 100, now);
+    src.region_triggered(true, 100);
+
+    let effs = src.abort_to_idle(None);
+    assert!(
+        effs.is_empty(),
+        "pad occupants get no Show/Unlock — they never got Hide/Lock: {effs:?}"
+    );
+    assert_eq!(src.state, State::Idle);
+}
+
+/// The entity whose teardown caused the abort is already out of the space;
+/// addressing effects to it would only produce a witness-lookup miss.
+#[test]
+fn abort_skips_the_departing_entity() {
+    let mut src = RingTransporter::from_region(&make_region(1, "Castle", vec![2]));
+    let now = Instant::now();
+    src.enter_send_wait(2, 100, now);
+    src.region_triggered(true, 100);
+    src.region_triggered(true, 101);
+    src.start_sending(now);
+
+    let effs = src.abort_to_idle(Some(100));
+    assert_eq!(effs.len(), 2);
+    assert_eq!(effs[0], Effect::ShowPlayer { entity_id: 101 });
+    assert_eq!(effs[1], Effect::UnlockMovement { entity_id: 101 });
+}
+
+/// Removing a passenger must clear them from BOTH destination sets. Clearing
+/// only the expectation leaves `players_loaded.len() != num_remote_players()`
+/// forever — a fresh stall in place of the old one.
+#[test]
+fn forget_participant_clears_both_destination_sets() {
+    let mut dst = RingTransporter::from_region(&make_region(2, "Castle", vec![1]));
+    let now = Instant::now();
+    dst.remote_wait(1, now);
+    dst.remote_send(now);
+    dst.remote_expect(vec![100, 101]);
+    dst.remote_transport(now);
+    dst.player_loaded(100);
+
+    assert!(dst.forget_participant(100));
+    assert_eq!(dst.expected_players, vec![101]);
+    assert!(dst.players_loaded.is_empty());
+    assert_eq!(dst.num_remote_players(), 1);
+
+    // Idempotent: a second forget of the same id reports no change and
+    // cannot underflow the derived count.
+    assert!(!dst.forget_participant(100));
+    assert_eq!(dst.num_remote_players(), 1);
+}
+
+/// A real deadline must win over the abort if the exclusivity invariant on
+/// `stall_at` is ever violated by a future change.
+#[test]
+fn real_deadlines_are_checked_before_the_stall_deadline() {
+    let mut r = RingTransporter::from_region(&make_region(1, "Castle", vec![2]));
+    let now = Instant::now();
+    r.enter_send_wait(2, 100, now);
+    // Force the (normally impossible) overlap.
+    r.timers.hide_at = Some(now);
+    assert_eq!(
+        r.elapsed_deadline(now + SEND_WAIT_TIMEOUT),
+        Some(DeadlineKind::Hide)
+    );
 }

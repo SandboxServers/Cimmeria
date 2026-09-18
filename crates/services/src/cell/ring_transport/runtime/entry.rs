@@ -1,167 +1,15 @@
-//! Public ring-transport entry points: `interact()`, `selectDestination()`,
-//! region-trigger crossings, and the per-tick deadline scan.
-//!
-//! All of these turn external events (chain action, cell-method call,
-//! point-set crossing, tick) into FSM transitions on a [`super::transporter::RingTransporter`]
-//! plus an [`Effect`] dispatch via [`super::dispatch`].
-
-use std::time::Instant;
+//! Outward-facing ring-transport entry points: `interact()`,
+//! `selectDestination()`, region-trigger crossings and the cross-world
+//! deferred-load callback.
 
 use tokio::sync::mpsc;
 
 use cimmeria_content_engine::chain::ChainEngine;
 
-use super::dispatch::{
-    dispatch_effect, dispatch_effects, mark_player_loaded, try_advance_after_load,
-};
-use super::regions::RingRegion;
-use super::transporter::{Effect, State};
+use super::super::dispatch::{dispatch_effect, dispatch_effects, mark_player_loaded};
+use super::super::transporter::{Effect, State};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
-
-/// Per-tick deadline scan with an explicit engine handle. Used by the cell
-/// loop's tick scheduler.
-///
-/// Drains every elapsed deadline at `now` before returning. A single tick
-/// can span multiple deadlines on the same region — the documented timings
-/// (3.5s hide, 4.0s warmup, 3.0s remote-warmup, 2.5s cooldown) are tighter
-/// than worst-case tick lag, so re-scanning until quiescent preserves the
-/// timeline under jitter. Bounded per region by `MAX_PER_REGION` to keep a
-/// hypothetical FSM bug from spinning.
-pub async fn run_tick_with_engine(
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-    engine: &ChainEngine,
-) {
-    /// Hard ceiling on transitions per region per tick. The FSM has 4
-    /// deadline-driven transitions in a single trip (hide, warmup,
-    /// remote_warmup, cooldown); 8 leaves headroom without letting a bug
-    /// loop forever.
-    const MAX_PER_REGION: usize = 8;
-    let now = Instant::now();
-    let mut iterations: std::collections::HashMap<i32, usize> = std::collections::HashMap::new();
-    loop {
-        let ready = space_mgr.ring_transporters.ready_regions(now);
-        if ready.is_empty() {
-            break;
-        }
-        let mut made_progress = false;
-        for (region_id, deadline) in ready {
-            let count = iterations.entry(region_id).or_insert(0);
-            if *count >= MAX_PER_REGION {
-                tracing::error!(
-                    region_id,
-                    max = MAX_PER_REGION,
-                    "ring tick: hit per-region transition cap — possible FSM loop"
-                );
-                continue;
-            }
-            *count += 1;
-            run_one_deadline(region_id, deadline, now, tx, space_mgr, engine).await;
-            made_progress = true;
-        }
-        if !made_progress {
-            break;
-        }
-    }
-}
-
-/// Apply a single elapsed deadline transition for one region. Factored out
-/// of `run_tick_with_engine` so the scanner can re-poll for additional
-/// deadlines on the same region within one tick.
-async fn run_one_deadline(
-    region_id: i32,
-    deadline: super::transporter::RawDeadline,
-    now: Instant,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-    engine: &ChainEngine,
-) {
-    // Resolve any cross-region lookups (warmup needs the destination's
-    // position) BEFORE taking a `&mut` to the source transporter.
-    let (destination_for_warmup, warmup_num_players, warmup_dst_id): (
-        Option<RingRegion>,
-        u32,
-        i32,
-    ) = if deadline.is_warmup() {
-        let (dst_id, num_players) = space_mgr
-            .ring_transporters
-            .get(region_id)
-            .map(|t| (t.remote_region_id.unwrap_or(0), t.send_players.len() as u32))
-            .unwrap_or((0, 0));
-        (
-            space_mgr.ring_regions.get(&dst_id).cloned(),
-            num_players,
-            dst_id,
-        )
-    } else {
-        (None, 0, 0)
-    };
-
-    let effects: Vec<Effect> = if let Some(t) = space_mgr.ring_transporters.get_mut(region_id) {
-        if deadline.is_hide() {
-            t.hide_timer_expired()
-        } else if deadline.is_warmup() {
-            match destination_for_warmup.as_ref() {
-                Some(dst) => t.warmup_timer_expired([dst.x, dst.y, dst.z], &dst.world_name),
-                None => {
-                    tracing::error!(region_id, "ring warmup: destination region not loaded");
-                    return;
-                }
-            }
-        } else if deadline.is_remote_warmup() {
-            t.remote_warmup_timer_expired(now)
-        } else if deadline.is_cooldown() {
-            t.cooldown_timer_expired()
-        } else {
-            return;
-        }
-    } else {
-        return;
-    };
-
-    // For warmup we have to update the destination's `num_remote_players`
-    // BEFORE dispatching the TeleportPlayer effects — same-world teleports
-    // synchronously call `mark_player_loaded`, and that won't fire
-    // `all_players_loaded` until the count is set. The Python original
-    // does this in the opposite order (teleport then count update) because
-    // its `playerLoaded` callback is genuinely async (waits for the
-    // client's `mapLoaded`). We collapse the timing into one tick.
-    if deadline.is_warmup() {
-        advance_destination_after_warmup(warmup_dst_id, warmup_num_players, tx, space_mgr, engine)
-            .await;
-    }
-
-    dispatch_effects(effects, tx, space_mgr, engine).await;
-}
-
-/// After the source ring's warmup expires, push the destination ring through
-/// RecvWarmup → RemoteLoadWait → (eventually) RemoteWarmup. This is the
-/// cross-link work that the Python `__warmupTimerExpired` does inline.
-///
-/// `dst_id` and `num_players` are captured by the caller BEFORE
-/// `warmup_timer_expired` runs — that call clears `send_players` and resets
-/// the source to `Idle` so the next trip can start cleanly.
-pub(super) async fn advance_destination_after_warmup(
-    dst_id: i32,
-    num_players: u32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-    engine: &ChainEngine,
-) {
-    if let Some(dst) = space_mgr.ring_transporters.get_mut(dst_id) {
-        // Python order: remoteCountUpdate, then remoteTransport. The order
-        // matters because remoteCountUpdate(0) fast-paths into __allPlayersLoaded.
-        dst.remote_count_update(num_players);
-        if dst.state == State::RecvWarmup {
-            dst.remote_transport();
-        }
-    }
-    // Same-world teleports were already marked-loaded synchronously by
-    // dispatch_effects → mark_player_loaded. If `players_loaded` already
-    // satisfies the count we need to fire `all_players_loaded` now.
-    try_advance_after_load(dst_id, tx, space_mgr, engine).await;
-}
 
 /// Returns true only when the player has completed the gating mission.
 /// Fail-closed: an unknown entity OR an entity that hasn't accepted the
@@ -254,7 +102,8 @@ pub async fn handle_select_destination(
     // ring still resets to Idle in `warmup_timer_expired`; destination
     // advances out of `RemoteLoadWait` only after the base sends
     // `BaseToCellMsg::AdvanceRingDestination` once the player finishes
-    // loading on the destination world.
+    // loading on the destination world — or, failing that, after
+    // `REMOTE_LOAD_WAIT_TIMEOUT`.
     let src_required_mission_id = match space_mgr.ring_transporters.get(source_region_id) {
         Some(src) => {
             if let Err(e) = src.validate_destination(destination_region_id) {
@@ -298,8 +147,9 @@ pub async fn handle_select_destination(
         return;
     }
 
+    let now = space_mgr.ring_transporters.now();
     if let Some(src) = space_mgr.ring_transporters.get_mut(source_region_id) {
-        src.enter_send_wait(destination_region_id);
+        src.enter_send_wait(destination_region_id, entity_id, now);
     }
     {
         let dst_state = space_mgr
@@ -312,15 +162,18 @@ pub async fn handle_select_destination(
                 ?dst_state,
                 "selectDestination: destination busy — aborting"
             );
-            // Reset the source we just nudged into SendWait.
+            // Roll the source back. `reset_to_idle` rather than writing
+            // `state`/`remote_region_id` by hand: `enter_send_wait` one
+            // statement ago armed the 60s SendWait stall deadline, and an
+            // ad-hoc field write would leave it armed on an Idle ring, where
+            // it would later abort an unrelated healthy trip.
             if let Some(src) = space_mgr.ring_transporters.get_mut(source_region_id) {
-                src.state = State::Idle;
-                src.remote_region_id = None;
+                src.reset_to_idle();
             }
             return;
         }
         if let Some(dst) = space_mgr.ring_transporters.get_mut(destination_region_id) {
-            dst.remote_wait(source_region_id);
+            dst.remote_wait(source_region_id, now);
         }
     }
 
@@ -359,6 +212,12 @@ pub async fn handle_select_destination(
 /// the player is recorded as loaded, `try_advance_after_load` (already
 /// called by `mark_player_loaded`) walks the FSM through `RemoteWarmup
 /// → Cooldown → Idle` exactly like the same-world path.
+///
+/// If the ring has already left `RemoteLoadWait` — because
+/// `REMOTE_LOAD_WAIT_TIMEOUT` fired while the client was still loading —
+/// `try_advance_after_load`'s readiness gate would silently drop this
+/// arrival, and with it the `FireTeleportIn` chain event that carries
+/// arrival mission credit. Release the late traveller directly instead.
 pub async fn handle_remote_player_loaded(
     region_id: i32,
     entity_id: u32,
@@ -366,7 +225,34 @@ pub async fn handle_remote_player_loaded(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    mark_player_loaded(region_id, entity_id, tx, space_mgr, engine).await;
+    let ring_state = space_mgr.ring_transporters.get(region_id).map(|t| t.state);
+    if ring_state == Some(State::RemoteLoadWait) {
+        mark_player_loaded(region_id, entity_id, tx, space_mgr, engine).await;
+        return;
+    }
+
+    tracing::warn!(
+        region_id,
+        entity_id,
+        state = ?ring_state,
+        reason = "late_ring_arrival",
+        "ring: player finished loading after the destination ring left RemoteLoadWait \
+         (stall timeout, or the ring was never armed) — releasing them directly so they \
+         are not left hidden and movement-locked, and firing teleport_in so arrival \
+         mission credit is not lost"
+    );
+    if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+        player.destination_ring_id = None;
+    }
+    let effects = vec![
+        Effect::ShowPlayer { entity_id },
+        Effect::UnlockMovement { entity_id },
+        Effect::FireTeleportIn {
+            entity_id,
+            region_id,
+        },
+    ];
+    dispatch_effects(effects, tx, space_mgr, engine).await;
 }
 
 /// Hook called from the existing region-trigger path when a player crosses a
@@ -419,14 +305,39 @@ async fn kick_off_warmup(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
+    let now = space_mgr.ring_transporters.now();
     let effects = match space_mgr.ring_transporters.get_mut(source_region_id) {
-        Some(t) => t.start_sending(Instant::now()),
+        Some(t) => t.start_sending(now),
         None => return,
     };
-    if let Some(dst) = space_mgr.ring_transporters.get_mut(destination_region_id) {
-        if dst.state == State::RecvWait {
-            dst.remote_send();
+    // Back-pointer check, not just `state == RecvWait`. Without it a
+    // destination reserved by a DIFFERENT source (whose own RecvWait has not
+    // yet expired) would be dragged into this trip and would then receive
+    // passengers it was not holding a slot for. Correctness here must not
+    // depend on the 5s margin between SEND_WAIT_TIMEOUT and
+    // RECV_WAIT_TIMEOUT.
+    let dst_link = space_mgr
+        .ring_transporters
+        .get(destination_region_id)
+        .map(|d| (d.state, d.remote_region_id));
+    match dst_link {
+        Some((State::RecvWait, Some(back))) if back == source_region_id => {
+            if let Some(dst) = space_mgr.ring_transporters.get_mut(destination_region_id) {
+                dst.remote_send(now);
+            }
         }
+        Some((State::RecvWait, back)) => {
+            tracing::warn!(
+                source_region_id,
+                destination_region_id,
+                destination_back_pointer = back,
+                reason = "peer_backpointer_mismatch",
+                "ring warmup: destination is reserved for a different source — not advancing it; \
+                 this trip will release its passengers when SendWarmup's warmup deadline finds \
+                 the destination unprepared"
+            );
+        }
+        _ => {}
     }
     dispatch_effects(effects, tx, space_mgr, engine).await;
 }
