@@ -30,8 +30,8 @@ mod npcs;
 mod regions;
 mod respawners;
 mod stargates;
-mod worlds;
 mod templates;
+mod worlds;
 
 #[cfg(test)]
 mod tests;
@@ -58,5 +58,5 @@ pub(crate) use npcs::load_patrol_points;
 pub use regions::{load_regions_from_db, RegionLoadData};
 pub use respawners::{load_respawners, RespawnerDef};
 pub use stargates::{load_stargates, StargateEntry};
-pub use worlds::load_world_ids;
 pub use templates::load_spawn_templates;
+pub use worlds::load_world_ids;
