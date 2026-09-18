@@ -743,6 +743,14 @@ VALUES
 -- mark the kill objective complete only (mission stays on step 2144,
 -- waiting on the cover objective). See the auto-complete-trap note above
 -- for why this no longer unconditionally advances to 2343.
+--
+-- Self-completion guard (found in review, 2026-09-18): condition 2 below
+-- checks its own target (2482) is not already completed, not just the
+-- other objective (2484). `entity_dead_tag` is normally one-shot so this
+-- is mostly defensive, but without it a second `entity_dead_tag` event
+-- for the same tag (e.g. a respawn/relog edge) would re-run
+-- `complete_objective` -- harmless on its own (idempotent), but keeps
+-- this chain's guard shape consistent with 1132's fix below.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1033, '639 - Guard killed (cover pending): complete kill objective', 'mission', 639, true, 0);
 
@@ -752,7 +760,8 @@ VALUES (1033, 'entity_dead_tag', 'ArmYourself_PrisonerRetrievalUnit', 'space', f
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
   (1033, 'step_status', 639, '2144', 'eq', 'active', 0),
-  (1033, 'objective_status', 639, '2484', 'neq', 'completed', 1);
+  (1033, 'objective_status', 639, '2484', 'neq', 'completed', 1),
+  (1033, 'objective_status', 639, '2482', 'neq', 'completed', 2);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1033, 'complete_objective', 639, '2482', '{}', 0, 0);
@@ -779,6 +788,16 @@ VALUES (1131, 'advance_step', 639, '2343', '{}', 0, 0);
 -- 1381) while the drone is NOT yet dead → mark the cover objective
 -- complete and hide the TakeCoverIndicator (sequence 10014, shown by
 -- chain 1032's sequence 10001 when the drone first aggros).
+--
+-- Self-completion guard (found in review, 2026-09-18): `player_entered_cover`
+-- is edge-triggered on every proximity enter (once=false, see
+-- crates/services/src/cell/cover/detection.rs), and `Action::PlaySequence`
+-- sends unconditionally with no dedup (executor/mod.rs). Without condition
+-- 2 below, a player who leans out of cover and back in before killing the
+-- drone would re-fire this chain on every re-entry, resending
+-- PlaySequence(10014) each time (the complete_objective call itself is a
+-- harmless no-op the second time). Condition 2 checks the chain's own
+-- target (2484) isn't already completed, closing that gap.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1132, '639 - Take cover (kill pending): complete cover objective', 'mission', 639, true, 0);
 
@@ -788,7 +807,8 @@ VALUES (1132, 'player_entered_cover', '1381', 'player', false, 0);
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
   (1132, 'step_status', 639, '2144', 'eq', 'active', 0),
-  (1132, 'objective_status', 639, '2482', 'neq', 'completed', 1);
+  (1132, 'objective_status', 639, '2482', 'neq', 'completed', 1),
+  (1132, 'objective_status', 639, '2484', 'neq', 'completed', 2);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES

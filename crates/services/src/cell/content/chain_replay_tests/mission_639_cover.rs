@@ -190,6 +190,41 @@ async fn chain_1033_does_not_fire_when_step_2144_inactive() {
     );
 }
 
+#[tokio::test]
+async fn chain_1033_does_not_refire_once_kill_already_completed() {
+    // Self-completion guard (found in review): a second `entity_dead_tag`
+    // event for the same tag (e.g. a respawn/relog edge) must not re-run
+    // `CompleteObjective(2482)` once 2482 is already completed -- chain
+    // 1033 must check its OWN target's status, not just the other
+    // objective's.
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1033)
+        .await
+        .expect("DB query for chain 1033 must succeed")
+        .expect("chain 1033 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let (mut ctx, mut event) = drone_death_event("active", "active");
+    ctx.set_param(
+        "mission_639_obj_2482_status".to_string(),
+        serde_json::json!("completed"),
+    );
+    event.params = ctx.params.clone();
+    let resolved = engine.resolve_event(&event, &ctx);
+    let n = resolved
+        .actions
+        .iter()
+        .filter(|(id, _)| *id == 1033)
+        .count();
+    assert_eq!(
+        n, 0,
+        "chain 1033 must NOT re-fire once its own target (2482) is already \
+         completed, even with cover still pending; got {n} actions"
+    );
+}
+
 // ── Chain 1131: drone killed, cover already taken (second objective) ───
 
 #[tokio::test]
@@ -330,6 +365,44 @@ async fn chain_1132_does_not_fire_when_kill_already_done() {
         n, 0,
         "chain 1132 must NOT fire once kill (2482) is already completed \
          (chain 1133 owns that branch); got {n} actions"
+    );
+}
+
+#[tokio::test]
+async fn chain_1132_does_not_refire_on_cover_reentry_once_already_completed() {
+    // Self-completion guard (found in review): `player_entered_cover` fires
+    // on every proximity enter/leave edge (once=false), and
+    // `Action::PlaySequence` sends unconditionally with no dedup. A player
+    // who leans out of cover and back in before killing the drone must not
+    // re-trigger chain 1132 (and resend PlaySequence(10014)) once 2484 is
+    // already completed -- chain 1132 must check its OWN target's status,
+    // not just the kill objective's.
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1132)
+        .await
+        .expect("DB query for chain 1132 must succeed")
+        .expect("chain 1132 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let (mut ctx, mut event) = cover_entered_event(1381, "active", "active");
+    ctx.set_param(
+        "mission_639_obj_2484_status".to_string(),
+        serde_json::json!("completed"),
+    );
+    event.params = ctx.params.clone();
+    let resolved = engine.resolve_event(&event, &ctx);
+    let n = resolved
+        .actions
+        .iter()
+        .filter(|(id, _)| *id == 1132)
+        .count();
+    assert_eq!(
+        n, 0,
+        "chain 1132 must NOT re-fire (and must not resend PlaySequence(10014)) \
+         on cover re-entry once its own target (2484) is already completed, \
+         even with the kill still pending; got {n} actions"
     );
 }
 
