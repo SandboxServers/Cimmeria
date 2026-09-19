@@ -162,10 +162,74 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2085, 'Castle.CheckpointAlpha', 'AreaSet', 8, NULL, NULL, 'BoundingBox', 1);
 
 --
+-- Interior named regions (packet H15, placement cluster PL-C).
+--
+-- RECONSTRUCTION, no in-client walk; evidence class and confidence per row in
+-- `docs/analysis/harset-rebuild/placements/C-interiors-68-69-70.md`. Footprints
+-- are `obj_slab` floor extents over the extracted chunk OBJ for each map, and
+-- the shape follows 2078/2079 exactly: four corner points, three at the floor
+-- Y and the fourth carrying the ceiling, because `load_regions_from_db` takes
+-- the AABB of the points and `GenericRegion.workaround()`'s asymmetric
+-- elevation is the authored convention (see `cell/spawner/regions.rs`).
+--
+-- Door regions are deliberately absent: `Harset.MarketDoor`,
+-- `Harset.StorageDoor`, `Harset_Market.HarsetDoor` and
+-- `Harset_StorageRm.HarsetDoor` belong to the world-57 placement cluster.
+--
+-- Each footprint stops short of the room its visitors arrive from, so that an
+-- `enter_region` trigger on these keys is a real edge crossing rather than a
+-- state a player is already standing in when the world loads (the H9 /
+-- `player_loaded` edge-trigger shape).
+--
+
+-- The Command Center laboratory: the east wing, x[27.5,69.0] z[-31.0,11.0],
+-- floor 0.32, ceiling 10.02 (+9.70, same headroom as 2079 in the same map).
+-- MAP-LANDMARK + MAP-GEOMETRY, HIGH on the room: four `GA-PuzzleStation00`
+-- consoles in a row at (32.12 / 33.95 / 35.68 / 37.43, 0.32, -27.88), three
+-- `GA-WaterTower00` tanks at (48.48, -25.36), (63.36, -14.60) and
+-- (63.36, -0.40), and 26 `GA-Viewscreens00` in wall banks. It is the only
+-- laboratory signature in the map, and the room's walls (`obj_slab` reports
+-- no floor at x 25 or x 70, and none at z -32) are what set the bounds. Its
+-- two doorways onto the cross hall at z 11-12 (x~42 and x~60-62) are inside
+-- the box by 1 m, so a player entering from the cross hall crosses the edge.
+-- Consumer: mission 1241 step 3609, "scan CmdCenter Lab".
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2100, 'Harset_CmdCenter.Lab', 'AreaSet', 68, NULL, NULL, 'BoundingBox', 1);
+
+-- The Market trading floor: x[30,100] z[30,100], floor 3.60, ceiling 13.60.
+-- MAP-GEOMETRY HIGH on the floor plane, MEDIUM on where to stop it. The whole
+-- of world 69 is one 3.60 platform; 274 `SGWSpecCoverNode` actors sit on it at
+-- y 3.6-3.7 (i.e. at floor level), spanning x 12.5-96.3 and z 11.2-96.8, which
+-- is the strongest single statement that the 3.60 plane is the walkable market.
+-- The box deliberately excludes the south-west pocket at x[12,26] z[9,21],
+-- which is a separate room raised to 4.80 and ringed by four `JF-WallTorch01`
+-- wall torches: that reads as the vestibule the Harset door opens into, so
+-- leaving it out is what makes `enter_region Harset_Market.Marketplace` fire.
+-- If the world-57 Market door turns out to land elsewhere, this is the one
+-- number to revisit. Consumers: 1348 step 3994, 1352 step 4007, 1374 step
+-- 4089, 1241 step 3613.
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2101, 'Harset_Market.Marketplace', 'AreaSet', 69, NULL, NULL, 'BoundingBox', 1);
+
+-- The Storage room floor: x[19.0,84.0] z[38.0,97.0], floor 0.30, ceiling
+-- 10.30. MAP-GEOMETRY + on-mesh, HIGH: this is component 36 of the shipped
+-- `data/spaces/harset_storagerm.nav` (314 polygons, 3055.7 m2,
+-- x[16.1,87.5] y[0.2,1.2] z[34.1,99.2]), trimmed to the sub-rectangle where
+-- every metre resolves to component 36 rather than to one of the six
+-- neighbouring components that overlap its bounding box -- found by walking
+-- the mesh a metre at a time, not by taking the component's bounds. It is the
+-- same extent `obj_slab` reports for the 0.0-0.4 floor. The room is a grid of fenced pens -- 19 `GA-Fence00`/`GA-Fence03`
+-- gates each with a TriggerVolume on it, at x 19-83 and z 51-97 -- which is
+-- what 1580 step 4701 "search containers" is searching. The box excludes the
+-- upper wing at x[45,75] z[0,40] (floor 5.10, nav component 6), the corridor
+-- a visitor arrives along, so entering Storage is an edge crossing.
+-- Consumers: 1343 step 3975, 1352 step 4009, 1365 step 4051, 1374 step 4090,
+-- 1375 step 4094, 1580 steps 4700-4702, 1241 step 3615, 1245 step 3623.
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2102, 'Harset_StorageRm.Storage', 'AreaSet', 70, NULL, NULL, 'BoundingBox', 1);
+
+--
 -- TOC entry 3330 (class 0 OID 0)
 -- Dependencies: 240
 -- Name: point_sets_set_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('point_sets_set_id_seq', 2085, true);
+SELECT pg_catalog.setval('point_sets_set_id_seq', 2102, true);
 
