@@ -98,6 +98,19 @@ impl MissionInstance {
     }
 
     /// Complete a specific objective by ID.
+    ///
+    /// Returns `false` when the id isn't on the current step's roster —
+    /// callers use that to distinguish a real completion from a no-op
+    /// (e.g. a chain firing `complete_objective` for a step the player
+    /// has already advanced past).
+    ///
+    /// The `contains` guard is not cosmetic: `advance_step` force-completes
+    /// every open objective and `complete_mission_direct` completes them
+    /// all again, so without it the same id lands in
+    /// `completed_objectives` twice and the list grows by one on every
+    /// re-completion — which, now that the list is persisted into
+    /// `sgw_mission.completed_objective_ids` (Harset H50), would grow the
+    /// DB array unboundedly across relogs.
     pub fn complete_objective(&mut self, objective_id: i32) -> bool {
         if let Some(obj) = self
             .active_objectives
@@ -105,7 +118,9 @@ impl MissionInstance {
             .find(|o| o.objective_id == objective_id)
         {
             obj.status = STATUS_COMPLETED;
-            self.completed_objectives.push(objective_id);
+            if !self.completed_objectives.contains(&objective_id) {
+                self.completed_objectives.push(objective_id);
+            }
             true
         } else {
             false
@@ -314,6 +329,20 @@ mod tests {
     fn complete_unknown_objective() {
         let mut m = test_mission();
         assert!(!m.complete_objective(999));
+    }
+
+    /// Re-completing the same objective must not append a second entry.
+    /// `advance_step` force-completes every open objective and
+    /// `complete_mission_direct` completes them all again, so the double
+    /// push was reachable — and `completed_objectives` is now persisted
+    /// into `sgw_mission.completed_objective_ids`, where the duplicate
+    /// would accumulate across relogs.
+    #[test]
+    fn complete_objective_twice_does_not_duplicate() {
+        let mut m = test_mission();
+        assert!(m.complete_objective(300));
+        assert!(m.complete_objective(300));
+        assert_eq!(m.completed_objectives, vec![300]);
     }
 
     #[test]

@@ -12,7 +12,7 @@ use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::abilities::{
     serialize_timer_update, EffectDef, DT_PHYSICAL, TIMER_DURATION_EFFECT,
 };
-use cimmeria_entity::cell_entity::ActiveEffectInstance;
+use cimmeria_entity::cell_entity::{ActiveEffectInstance, AiState};
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 
 use crate::cell::abilities::send_entity_method;
@@ -224,6 +224,12 @@ async fn dot_kill_credit(
     }
     // No HEALTH stat, or still above zero — the pulse wounded but did not
     // finish, so the threshold drain owns this hit, not the death path.
+    //
+    // This is also where a surrendered NPC exits: `fire_pulse` floors an
+    // `AiState::Submit` target at 1 HP before returning, so the `cur > 0`
+    // probe is the surrender guard as well as the wounded-not-killed one.
+    // Deliberately not restated as a second `ai_state` check — one guard
+    // that can drift is better than two.
     if target.stats.get(HEALTH).is_none_or(|s| s.cur > 0) {
         return;
     }
@@ -379,6 +385,50 @@ async fn fire_pulse(
                     let cur = stat.cur;
                     let new_cur = (cur - f_dmg).max(0);
                     stat.update(stat.min, new_cur, stat.max);
+                }
+            }
+        }
+    }
+
+    // Surrender floor: an automatic damage source may wound a
+    // surrendered NPC but may never finish it. See
+    // `docs/architecture/abilities-and-effects-system.md` decision 18.
+    //
+    // A pulse is an *automatic* damage path by the same definition
+    // `is_auto_cycle_target_valid` uses: the deliberate act was applying
+    // the effect, and everything after it is the server re-delivering
+    // damage on its own cadence. Harset H08 stops the auto-cycle loop
+    // from killing a surrendered NPC; without this, a DoT the player
+    // applied *before* the surrender walks the NPC to zero seconds
+    // later and `dot_kill_credit` produces a corpse — exactly the
+    // outcome the surrender exists to prevent, just on a different
+    // clock. (Before PR #662's R1 fix a lethal pulse left the mob alive
+    // at 0 HP, so this hazard did not exist when H08 was specified.)
+    //
+    // Clamped here, after both the script and NVP branches, rather than
+    // in `dot_kill_credit`: the dirty flush below is the same pulse's
+    // stat broadcast, so the client is told `1` and never sees a `0`
+    // frame. The clamp also makes `dot_kill_credit`'s `cur > 0` probe
+    // early-out on its own, so there is one guard, not two.
+    //
+    // Deliberately NOT a full immunity: the pulse still lands its
+    // damage, and a single deliberate shot still kills a surrendered
+    // NPC (H08 records explicit-attack behaviour rather than changing
+    // it). Only the killing blow from a self-repeating source is
+    // refused.
+    if let Some(target) = space_mgr.get_entity_mut(target_id) {
+        if !target.is_player && target.ai_state == AiState::Submit {
+            if let Some(stat) = target.stats.get_mut(HEALTH) {
+                if stat.cur <= 0 {
+                    stat.update(stat.min, 1, stat.max);
+                    tracing::debug!(
+                        target: "abilities",
+                        event = "pulse_surrender_floor",
+                        target_id,
+                        effect_id = inst.effect_id,
+                        invoker_id = inst.invoker_id,
+                        "Pulse would have killed a surrendered NPC -- health floored at 1"
+                    );
                 }
             }
         }

@@ -286,3 +286,138 @@ fn resolve_event_threads_per_action_delay_ms() {
         "action_delays shorter than actions must default missing entries to 0"
     );
 }
+
+// ── `is_mission_gated` / `resolve_event_filtered` (Harset H52) ────────────
+
+/// Build a `RegionEnter` chain with the given conditions.
+fn gated_region_chain(id: i64, conditions: Vec<crate::conditions::Condition>) -> Chain {
+    Chain {
+        id,
+        name: format!("gated_{id}"),
+        enabled: true,
+        trigger: Trigger::OnRegionEnter {
+            region_key: "Harset.JaffaZone".to_string(),
+        },
+        conditions,
+        actions: vec![Action::GrantXP { amount: 1 }],
+        action_delays: Vec::new(),
+        priority: 0,
+    }
+}
+
+fn region_enter_event() -> TriggerEvent {
+    let mut params = std::collections::HashMap::new();
+    params.insert(
+        "region_key".to_string(),
+        serde_json::json!("Harset.JaffaZone"),
+    );
+    TriggerEvent {
+        trigger_type: TriggerType::RegionEnter,
+        source_entity: None,
+        target_entity: None,
+        params,
+    }
+}
+
+/// Exactly the three per-player mission reads count as a gate. `World` and
+/// `Archetype` are the ones that look like they should and must not: neither
+/// changes when the chain runs, so neither makes a re-fire idempotent.
+#[test]
+fn is_mission_gated_recognises_only_mission_state_conditions() {
+    use crate::conditions::{ComparisonOp, Condition, MissionStatusValue, StepStatusValue};
+
+    let gated = [
+        Condition::MissionStatus {
+            mission_id: 1343,
+            operator: ComparisonOp::Eq,
+            expected_status: MissionStatusValue::Active,
+        },
+        Condition::StepStatus {
+            mission_id: 1343,
+            step_id: 4402,
+            operator: ComparisonOp::Eq,
+            expected_status: StepStatusValue::Active,
+        },
+        Condition::ObjectiveStatus {
+            mission_id: 1343,
+            objective_id: 5401,
+            operator: ComparisonOp::Eq,
+            expected_status: "active".to_string(),
+        },
+    ];
+    for (i, c) in gated.into_iter().enumerate() {
+        assert!(
+            gated_region_chain(900 + i as i64, vec![c.clone()]).is_mission_gated(),
+            "{c:?} reads per-player mission state and must count as a gate",
+        );
+    }
+
+    let ungated = [
+        Condition::World {
+            operator: ComparisonOp::Eq,
+            world_id: 57,
+        },
+        Condition::Archetype {
+            operator: ComparisonOp::Eq,
+            archetype_id: 3,
+        },
+        Condition::Counter {
+            counter_name: "kills".to_string(),
+            operator: ComparisonOp::Gte,
+            value: 3,
+        },
+    ];
+    for (i, c) in ungated.into_iter().enumerate() {
+        assert!(
+            !gated_region_chain(910 + i as i64, vec![c.clone()]).is_mission_gated(),
+            "{c:?} does not change when the chain runs, so it cannot make a \
+             re-fire idempotent",
+        );
+    }
+
+    assert!(
+        !gated_region_chain(920, vec![]).is_mission_gated(),
+        "a chain with no conditions at all is the worst replay candidate"
+    );
+}
+
+/// `resolve_event_filtered` drops a matching chain the filter refuses, and
+/// `resolve_event` (the unfiltered default) still returns it — so the filter
+/// cannot silently change ordinary dispatch.
+#[test]
+fn resolve_event_filtered_refuses_chains_the_predicate_rejects() {
+    use crate::conditions::{ComparisonOp, Condition, StepStatusValue};
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(gated_region_chain(
+        930,
+        vec![Condition::StepStatus {
+            mission_id: 1343,
+            step_id: 4402,
+            operator: ComparisonOp::Neq,
+            expected_status: StepStatusValue::Active,
+        }],
+    ));
+    engine.register_chain(gated_region_chain(931, vec![]));
+
+    let event = region_enter_event();
+    let ctx = ExecutionContext::new();
+
+    let all = engine.resolve_event(&event, &ctx);
+    assert_eq!(
+        all.actions.len(),
+        2,
+        "both chains match the trigger and pass their conditions"
+    );
+
+    let filtered = engine.resolve_event_filtered(&event, &ctx, Chain::is_mission_gated);
+    assert_eq!(
+        filtered
+            .actions
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>(),
+        vec![930],
+        "only the mission-gated chain survives the filter"
+    );
+}

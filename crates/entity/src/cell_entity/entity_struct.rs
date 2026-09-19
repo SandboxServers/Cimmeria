@@ -154,6 +154,19 @@ pub struct CellEntity {
     /// entity whose login row didn't set it. (#475 / CAT-N-03)
     pub access_level: u32,
 
+    /// Stargate addresses this character has unlocked, from
+    /// `sgw_player.known_stargates`. Carried into the cell on
+    /// `InitPlayerState` and read by `cell::gate_travel::handle_dial_gate`
+    /// to refuse a dial to an address the player was never given — the
+    /// 2009 rule at `deprecated/python/cell/SGWPlayer.py:2060-2064`
+    /// (security finding CAT-O-01).
+    ///
+    /// **Snapshot, not a live view**: taken once at `onClientReady` and
+    /// again on every gate arrival (which replays world entry). Empty for
+    /// NPCs and for any player whose row failed to load, which fails the
+    /// dial check closed.
+    pub known_stargates: Vec<i32>,
+
     /// Entity level (for XP calculations on kill). Default 1.
     pub level: u32,
 

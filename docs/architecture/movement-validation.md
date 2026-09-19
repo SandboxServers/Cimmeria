@@ -46,7 +46,7 @@ rows because they have different actions.
 | Order | Layer | Action | Catches |
 |-------|-------|--------|---------|
 | 1 | **Bounds** (`check_bounds`) | reject | NaN / ±∞ / absurd coords, **Z-axis floor-clip** (full X/Y/**Z** AABB test) |
-| 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded. Horizontal (X/Z) containment is tight (`agent_radius`-based) in both directions; vertical (Y) containment is asymmetric — up to `JUMP_HEIGHT_TOLERANCE` (4.0 units, physics-derived) *above* the surface so a legitimate jump apex isn't rejected, but only `agent_radius * 2.0` *below* it — see "Jump-height fix" below. |
+| 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded **or when the world is seeded `navmesh_mode = 'advisory'`** — see [navmesh-containment-modes.md](navmesh-containment-modes.md). Horizontal (X/Z) containment is tight (`agent_radius`-based) in both directions; vertical (Y) containment is asymmetric — up to `JUMP_HEIGHT_TOLERANCE` (4.0 units, physics-derived) *above* the surface so a legitimate jump apex isn't rejected, but only `agent_radius * 2.0` *below* it — see "Jump-height fix" below. |
 | 3 | **Speed** (`check_kinematics`) | **warn-only** | sustained over-tolerance velocity (`implied_speed > top_speed × 1.5`) |
 | 4 | **Teleport** (`check_kinematics`) | reject | single update both `> 50 u` **and** `> top_speed × 10` (or, on the first packet with no time baseline, `> 50 u` from the authoritative spawn) |
 
@@ -153,23 +153,27 @@ a walked-surface map per world. Hooked in `SpaceManager::accept`, so a
 rejected position is never sampled. Budget and level rationale:
 [instrumentation-discipline.md](instrumentation-discipline.md#sampled-positive-telemetry-movementposition_sample).
 
-### Known gap: advisory worlds will not emit navmesh rejects
+### Known gap: advisory worlds carry no navmesh diagnosis
 
-The reporting above hangs off the **reject** path. If a world is ever
-configured so the navmesh containment layer stops rejecting — accepting
-off-mesh positions instead of snapping them back — then that world
-stops producing `movement.validation_reject` rows with
-`reason = "navmesh"`, and with them the gate diagnosis that finds mesh
-holes. The worlds most likely to want such a mode are the ones with the
-worst meshes, which is precisely where the signal is most needed.
+The reporting above hangs off the **reject** path. A world whose
+`resources.worlds.navmesh_mode` is `advisory` accepts off-mesh positions
+instead of snapping them back, so it produces no
+`movement.validation_reject` rows with `reason = "navmesh"`. What it
+emits instead is `movement.navmesh` with
+`reason = "advisory_off_mesh_accepted"` (`cell::space_manager::client_move`)
+— at **TRACE**, level-gated, unthrottled, and carrying only the entity,
+space and client position: no `gate`, no `nav_horiz_dist` / `nav_dy`, no
+mesh hash. The advisory worlds are the ones with the worst meshes, which
+is where the diagnosis is most needed, so finding mesh holes there means
+enabling TRACE for that target and joining positions to the mesh by hand.
 
 `report_movement_reject` is deliberately a standalone function rather
 than inline in the message handler so a non-rejecting caller can reuse
-the diagnosis, but no such caller exists today and nothing emits when
-containment is not enforced. The pre-existing GM off-navmesh allowance
-below has the same shape at a smaller scale: it emits its own
-unthrottled `movement.navmesh_gm_bypass` warn and does **not** carry
-the gate, distances or mesh hash.
+the diagnosis and the throttle; routing the advisory branch through it
+is the obvious follow-up and was left out of this change on purpose. The
+pre-existing GM off-navmesh allowance below has the same shape at a
+smaller scale: it emits its own unthrottled `movement.navmesh_gm_bypass`
+warn and does **not** carry the gate, distances or mesh hash.
 
 ### Why the teleport gate is a dual gate (distance AND speed)
 
@@ -313,6 +317,14 @@ The remaining layers stay enforced for GMs. Bounds still hard-rejects, so
 a GM cannot write a NaN or an absurd coordinate into the spatial grid, and
 the teleport gate still hard-rejects — the GM travel commands already call
 `note_authorized_teleport`, so their own moves are unaffected.
+
+The GM allowance is also the reason a partial navmesh stays invisible: only
+ordinary players hit the holes, so no GM tester reports them. That is the
+blind spot the per-world containment mode closes — the navmesh layer is now
+gated on `resources.worlds.navmesh_mode`, and an `advisory` world skips
+containment for *everyone* while keeping the mesh for pathing, line of sight
+and height. See
+[navmesh-containment-modes.md](navmesh-containment-modes.md).
 
 `access_level` is read from the `account.accesslevel` column at login and
 carried into the cell by `InitPlayerState`; it is never derived from a

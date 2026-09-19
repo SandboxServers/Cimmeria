@@ -52,11 +52,24 @@ mod wander;
 // Keeping the names re-exported here means those paths are identical
 // after the split — this is an internal refactor, not a public-surface
 // change.
-// Only the sibling `cell/service/tests/` suite reaches this via the
-// `npc_ai::` re-export; production callers use `ability_select::` directly.
-// Gate to the test build so clippy's non-test pass doesn't flag it unused.
+// Only test code reaches this via the `npc_ai::` re-export; production
+// callers use `ability_select::` directly. Gate to the test build so
+// clippy's non-test pass doesn't flag it unused.
+//
+// Scope is `crate::cell` rather than `super` because the Harset H09
+// loader-to-chooser round-trip guard lives with the other live-DB seed
+// guards in `cell/spawner/tests/harset/` — it loads a multi-row ability
+// set out of Postgres, spawns it, and then drives this selector. Keeping
+// that guard next to the spawner tests it shares a fixture with is worth
+// one module level of visibility; nothing outside `cell` can see it.
+//
+// `choose_npc_ability_within_reach` is re-exported at the same scope for
+// the same reason: the Harset live-DB guard drives the *production*
+// selector (the reach-filtered one `fight` calls) over set 4 and set 5 as
+// the seed actually loads them, so the seed and the melee gate are pinned
+// together rather than in two tests that could drift apart.
 #[cfg(test)]
-pub(super) use ability_select::choose_npc_ability;
+pub(in crate::cell) use ability_select::{choose_npc_ability, choose_npc_ability_within_reach};
 pub(super) use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
 
 // Test-only re-export: the sibling `tests/npc_ai.rs` exercises the
