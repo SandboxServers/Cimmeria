@@ -65,4 +65,4 @@ pub use templates::load_spawn_templates;
 // `cargo fmt` sorts these re-exports, so keep this comment glued to the
 // line below rather than to the group.
 pub(crate) use templates::{build_prototype, entity_template_select};
-pub use worlds::load_world_ids;
+pub use worlds::{load_world_rows, WorldRow};

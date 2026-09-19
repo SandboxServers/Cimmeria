@@ -28,6 +28,24 @@ CREATE TABLE worlds (
     backwards_swim_speed real DEFAULT 1 NOT NULL,
     jump_speed real DEFAULT 6 NOT NULL,
     has_script boolean DEFAULT false NOT NULL,
-    client_map character varying(100) NOT NULL
+    client_map character varying(100) NOT NULL,
+    -- How the cell treats this world's `data/spaces/<world>.nav` mesh.
+    --
+    --   'enforce'  (default) the mesh is a containment gate: a non-GM client
+    --              position that is off the walkable mesh is rejected and the
+    --              player is snapped back, and an authored arrival that is off
+    --              the mesh is refused or redirected.
+    --   'advisory' the mesh is information only. Pathing, line of sight and
+    --              surface-height sampling still use it; nothing gates on it.
+    --              A world whose mesh has holes a player can legitimately walk
+    --              through belongs here, because a partial mesh used as a gate
+    --              fails CLOSED — an ordinary player cannot cross the hole,
+    --              while a GM (warn-only) never notices.
+    --
+    -- Explicit per world on purpose: a security-relevant movement gate must
+    -- never turn itself off because some heuristic decided the mesh looked
+    -- bad. See docs/architecture/navmesh-containment-modes.md.
+    navmesh_mode character varying(16) DEFAULT 'enforce' NOT NULL
+        CHECK (navmesh_mode IN ('enforce', 'advisory'))
 );
 

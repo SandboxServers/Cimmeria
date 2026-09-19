@@ -88,9 +88,13 @@ impl SpaceManager {
                             world_name.clone(),
                             WorldDef {
                                 world_name,
-                                // Stamped later by `stamp_world_ids` — the
+                                // Stamped later by `stamp_world_rows` — the
                                 // numeric id lives in the DB, not in spaces.xml.
                                 world_id: None,
+                                // Same: `resources.worlds.navmesh_mode`. The
+                                // `Default` is `Enforce`, so a world the stamp
+                                // never reaches keeps containment on.
+                                navmesh_mode: super::NavmeshMode::default(),
                                 instanced,
                                 min_x,
                                 max_x,

@@ -86,9 +86,15 @@ mod tests {
         let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Harset" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
         mgr.create_startup_spaces(cxml).unwrap();
-        mgr.stamp_world_ids(&std::collections::HashMap::from([
-            ("Harset".to_string(), 57),
-            ("Harset_CmdCenter".to_string(), 68),
+        mgr.stamp_world_rows(&std::collections::HashMap::from([
+            (
+                "Harset".to_string(),
+                crate::cell::spawner::WorldRow::enforcing(57),
+            ),
+            (
+                "Harset_CmdCenter".to_string(),
+                crate::cell::spawner::WorldRow::enforcing(68),
+            ),
         ]));
         mgr
     }
