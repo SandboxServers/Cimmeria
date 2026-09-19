@@ -15,7 +15,7 @@
 --   H40 -- mission 1200 "Meet Your Queen"       : 6121-6127 (6128-6130 spare)
 -- Base: content/harset-wave2 @ 94e65324.
 --
--- Worknotes: docs/analysis/harset-rebuild/worknotes/H41.md and H40.md.
+-- Worknotes: docs/analysis/harset-rebuild/worknotes/H40-H41.md.
 -- Replay guards: crates/services/src/cell/content/chain_replay_tests/
 --   mission_742.rs and mission_1200.rs.
 -- ============================================================
@@ -59,7 +59,7 @@ SET search_path = resources, pg_catalog;
 -- chains: those fire on player state rather than on location, and a
 -- world gate on them would break legitimate play (the disguise may be
 -- double-clicked in the Command Center; 742 may be accepted in either
--- world). Recorded in worknotes/H41.md, IR-2.
+-- world). Recorded in worknotes/H40-H41.md.
 --
 -- ONE-SHOT GUARDS ARE CONDITIONS, NOT `once`. `content_triggers.once` is
 -- loaded and then dropped on the floor (agent-memory
@@ -118,7 +118,7 @@ SET search_path = resources, pg_catalog;
 -- lands and need no edit here.
 --
 -- The fix (owner: rust-gameserver-dev + database-persistence, tracked as
--- H41-B1 in worknotes/H41.md): populate both objective arrays from
+-- H41-B1 in worknotes/H40-H41.md): populate both objective arrays from
 -- `MissionInstance.active_objectives` / `.completed_objectives` after
 -- each mutation, add a `MissionUpdate` send to the `complete_objective`
 -- arm, and carry `hidden`/`optional` through hydration -- the last one
@@ -373,7 +373,7 @@ VALUES
 -- `None.inventory.removeItemByDesign(...)` at
 -- GivingTheWallsEars.py:128-135. The 2009 build shipped a data bug, not
 -- a design decision: three granted, three consumed was the intent.
--- DECISION: consume one 2820 per basket. Recorded in worknotes/H41.md
+-- DECISION: consume one 2820 per basket. Recorded in worknotes/H40-H41.md
 -- and flagged for the H99 correction to mission-chains.md:1017, which
 -- states the consumption as fact and was therefore accidentally right
 -- about the intent and wrong about the shipped behaviour.
@@ -903,7 +903,7 @@ VALUES
 -- rather than from Ba'al's offer dialog. Dialog 4019's Accept / More
 -- Info buttons and dsm 4750/4754 are therefore recovered evidence that
 -- this authoring does NOT consume; they are recorded in
--- worknotes/H40.md as the alternative offer-driven shape, for the
+-- worknotes/H40-H41.md as the alternative offer-driven shape, for the
 -- coordinator to rule on if the arrival accept plays badly in UAT.
 
 -- ------------------------------------------------------------
@@ -982,7 +982,7 @@ VALUES
 -- (1200 has `reward_xp = 0` / `reward_naq = 0`; step 3584 is the only
 -- Harset step in either of these two missions with `award_xp = t`, so
 -- the GC3 formula will need to read the step rather than the mission.
--- Recorded in worknotes/H40.md.)
+-- Recorded in worknotes/H40-H41.md.)
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (6123, '1200 - Anat flattered: complete "Meet Your Queen"', 'mission', 1200, true, 0);
 
