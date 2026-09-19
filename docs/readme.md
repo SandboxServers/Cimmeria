@@ -278,15 +278,17 @@ Design documents for development and administration tools.
 
 ---
 
-### `agents/` -- Engineering Agent Skill Configuration
+### `agents/` -- AI Harness Workflow, Rules, and Skill Configuration
 
-Per-repo settings consumed by the Matt Pocock engineering skills (`/triage`, `/to-tickets`, `/to-spec`, `/code-review`, `/domain-modeling`). Summarised in the `## Agent skills` block of [../CLAUDE.md](../CLAUDE.md); regenerate with `/mattpocock-skills:setup-matt-pocock-skills`.
+What an AI-assisted contributor (or their agents) needs that the code does not say: the ticket-to-PR workflow, decisions already made, known traps, and the per-repo settings that agent skills read. Entry points are [../AGENTS.md](../AGENTS.md) and the "Project rules" section of [../CLAUDE.md](../CLAUDE.md). The skill settings were scaffolded with `/mattpocock-skills:setup-matt-pocock-skills` (`/triage`, `/to-tickets`, `/to-spec`, `/domain-modeling`, `/wayfinder`) and then adapted to this repo; re-running the setup skill overwrites those adaptations, so diff before committing.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [issue-tracker.md](agents/issue-tracker.md) | Issues live in GitHub Issues via the `gh` CLI; PRs-as-request-surface flag (off by default); wayfinder map / child / blocking conventions | Complete |
-| [triage-labels.md](agents/triage-labels.md) | Maps the five canonical triage roles to this repo's label strings (defaults kept) | Complete |
-| [domain.md](agents/domain.md) | Consumer rules for `CONTEXT.md` / `docs/adr/`, plus repo-specific pointers to the `architecture/` ADRs and `spec/glossary.md` | Complete |
+| [development-workflow.md](agents/development-workflow.md) | Ticket-to-PR pipeline, the roster of domain advisors under `.claude/agents/`, rules for running agents in parallel (worktrees, one `cargo`, one test DB), definition of done | Complete |
+| [rules-and-gotchas.md](agents/rules-and-gotchas.md) | Maintainer decisions and known traps: evidence rules, protocol traps (entity clientIndex), "free" vs client-patch scoping, UI feedback, GM command channels, seeds over migrations, CI clippy drift, Windows/CRLF/Git Bash traps, client assets and RE tooling | Complete |
+| [domain.md](agents/domain.md) | Where domain docs live (glossary = `spec/glossary.md`, ADRs = `architecture/`; no `CONTEXT.md` or `docs/adr/`), what to read before exploring, and what to do when sources disagree | Complete |
+| [issue-tracker.md](agents/issue-tracker.md) | GitHub Issues via the `gh` CLI; repo-specific `gh` traps; the ticket body contract; PRs-as-request-surface flag (off); wayfinder map / child / blocking conventions | Complete |
+| [triage-labels.md](agents/triage-labels.md) | Maps the five canonical triage roles to this repo's label strings, and defines what `ready-for-agent` and `ready-for-human` mean here | Complete |
 
 ---
 

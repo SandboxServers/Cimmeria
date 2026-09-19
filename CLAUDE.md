@@ -9,6 +9,20 @@ For human-readable project overview, see [README.md](README.md).
 - `external/` is **not in git** — populated by `setup.ps1`. A fresh checkout looks broken until setup runs.
 - Active schemas: `db/database.sql`, `db/sgw/`, `db/resources/`.
 - Frontend convention: every meaningful frontend change requires a REPL-style logic UAT in addition to tests/builds — see [AGENTS.md](AGENTS.md).
+- The game client is **not in git** either — `game/sgw/` is a placeholder. Map, prefab, and navmesh work needs your own client copy.
+
+## Project rules (read before designing)
+
+The full list, with the reasons, is [docs/agents/rules-and-gotchas.md](docs/agents/rules-and-gotchas.md). The ones that cost the most when missed:
+
+- **Check `docs/` first.** Search the docs and the `docs/protocol/*-dispatch-table.md` files before Ghidra, before counting `.def` entries, before guessing.
+- **A ticket or draft chapter is a claim, not evidence.** Reconcile it against `docs/protocol/` and the RE findings before changing a wire constant, index, or layout. If sources disagree, verify against the binary and fix the losing doc in the same PR — see [docs/agents/domain.md](docs/agents/domain.md).
+- **Wire entity typeIDs are the client's clientIndex** (`<ServerOnly/>` entries skipped): `Account = 0x07`, not its `entities.xml` row.
+- **Seeds are the source of truth.** Change seeded data in `db/resources/`; do not add `db/scripts/*.sql` migrations without asking.
+- **Prefer server-authoritative changes that need no client patch.** New opcodes, wire-crypto changes, and new client UI need a maintainer decision first.
+- **Every button press gets visible feedback on the first press**, whatever the original server did.
+- **CI clippy runs on current stable Rust**, usually newer than yours. Run clippy on that toolchain before pushing.
+- **Parallel agents: one worktree each, one `cargo` at a time, one test database each.** Workflow and agent roster: [docs/agents/development-workflow.md](docs/agents/development-workflow.md).
 
 ## Build rules
 
@@ -181,7 +195,7 @@ The map of "what changed → what to update":
 | Admin-API / Admin-panel / Tauri-app surface (REST routes, WebSocket streams, IPC commands) | [docs/tools/admin-api.md](docs/tools/admin-api.md), [docs/tools/admin-panel.md](docs/tools/admin-panel.md), and the `cimmeria-admin-api` row in [crates/README.md](crates/README.md) if the public surface shifts |
 | Developer how-to guides (adding a handler, extending the content engine, writing a migration) | [docs/guides/add-a-message-handler.md](docs/guides/add-a-message-handler.md), [docs/guides/extend-the-content-engine.md](docs/guides/extend-the-content-engine.md), [docs/guides/write-a-database-migration.md](docs/guides/write-a-database-migration.md). When adding a new how-to, also link from [docs/readme.md](docs/readme.md) → `guides/` and from [CONTRIBUTING.md](CONTRIBUTING.md). |
 | Operations / deployment runbooks (container image, colo deploy, telemetry, SigNoz) | [docs/operations/<file>.md](docs/operations/) and the `Top-Level Documents` table in [docs/readme.md](docs/readme.md) if a new operator-facing entry is added |
-| Issue-tracker, triage-label, or domain-doc configuration consumed by the engineering agent skills (`/triage`, `/to-tickets`, `/to-spec`, `/code-review`, `/domain-modeling`) | [docs/agents/](docs/agents/) (`issue-tracker.md`, `triage-labels.md`, `domain.md`) and the `## Agent skills` block at the bottom of this file. Re-run `/mattpocock-skills:setup-matt-pocock-skills` to switch trackers or regenerate from scratch. |
+| AI-harness configuration: issue-tracker, triage-label, or domain-doc settings read by agent skills; the agent workflow or roster; a new project rule, maintainer decision, or gotcha a contributor off this machine would need | [docs/agents/](docs/agents/) (`issue-tracker.md`, `triage-labels.md`, `domain.md`, `development-workflow.md`, `rules-and-gotchas.md`) and its table in [docs/readme.md](docs/readme.md). If the rule is one of the few that must load every session, also the "Project rules" list in this file, [AGENTS.md](AGENTS.md), and [.github/copilot-instructions.md](.github/copilot-instructions.md). A new subagent goes in `.claude/agents/` with a roster row in `development-workflow.md`. |
 
 Index entries in [docs/readme.md](docs/readme.md) and the per-section `README.md` files (`docs/content/README.md`, `docs/protocol/README.md`, etc.) must stay in sync with the documents they list — adding or renaming a doc means updating the index in the same PR.
 
@@ -202,14 +216,8 @@ Files should "do what it says on the tin" — a reader (human or LLM) should pre
 
 ## Agent skills
 
-### Issue tracker
+Per-repo configuration for agent skills that triage, write tickets, or model the domain lives in [docs/agents/](docs/agents/):
 
-Issues live in GitHub Issues for `SandboxServers/Cimmeria`, driven via the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: `CONTEXT.md` at the repo root plus `docs/adr/` for new ADRs; existing architecture decisions live under `docs/architecture/`. See `docs/agents/domain.md`.
+- **Issue tracker:** GitHub Issues for `SandboxServers/Cimmeria` via the `gh` CLI — [issue-tracker.md](docs/agents/issue-tracker.md), including the ticket body contract.
+- **Triage labels:** `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` — [triage-labels.md](docs/agents/triage-labels.md), including what `ready-for-agent` requires here.
+- **Domain docs:** glossary is `docs/spec/glossary.md`, ADRs are `docs/architecture/`. Do **not** create `CONTEXT.md` or `docs/adr/` — [domain.md](docs/agents/domain.md).

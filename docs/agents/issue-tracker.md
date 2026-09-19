@@ -13,6 +13,49 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Repo specifics
+
+- **The maintainer's GitHub handle is `@Cadacious`.** Use it for @-mentions on issues and PRs. The git author name is not a GitHub handle.
+- **Leading-slash arguments get mangled in Git Bash on Windows.** `gh pr comment <n> --body "/release"` posts `C:/Program Files/Git/release`, and the ChatOps workflow then skips silently. The same conversion breaks `git show <ref>:.github/...`. Use `--body-file`, run from PowerShell, or prefix the command with `MSYS_NO_PATHCONV=1`. Verify a posted body with `gh pr view <n> --json comments --jq '.comments[-1].body'`.
+- **`/release` on a merged PR deploys `main` to the colo.** It is a maintainer action. Agents never post it.
+- **GitHub starts no CI run on a PR that is `CONFLICTING`.** If checks never appear, merge `main` into the branch first.
+- **CodeRabbit does not review automatically here** (the repo is under its star threshold, and it skips PRs over 100 files). A green CodeRabbit status means "skipped", not "reviewed". Copilot code review does run automatically.
+- PRs are squash-merged. Title format and the body checklist are in [`CONTRIBUTING.md`](../../CONTRIBUTING.md), and the PR template pre-fills them.
+
+## Ticket body contract
+
+When a skill writes a ticket (`/to-tickets`, `/to-spec`, `/triage` rewriting a report), the body carries these sections so that whoever picks it up, human or agent, starts with what this repo's reviewers will ask for:
+
+```markdown
+## Problem
+What is wrong or missing, in glossary terms (docs/spec/glossary.md).
+
+## Evidence
+Doc links, Ghidra addresses, log lines, or capture offsets that support the premise.
+State what docs/protocol/ and the RE findings already say about it, including disagreement.
+
+## Acceptance criteria
+Observable outcomes: a byte string, a DB row, a log field, a client-visible behaviour.
+
+## Test type
+One or more of the types in TESTING.md, with the bug shape the guard must reproduce.
+
+## Docs to update
+The rows of the CLAUDE.md doc-update map this change touches.
+
+## Client impact
+"Free" (server-authoritative, reuses messages the client already speaks) or
+"needs a client patch" (new opcode, wire-crypto change, UI the client lacks).
+
+## Domain advisor
+The .claude/agents/ advisor to consult first (see docs/agents/development-workflow.md).
+
+## Needs a human for
+RE, in-game UAT, colo access, or "nothing".
+```
+
+A ticket with an empty **Evidence** section is `needs-triage`, not `ready-for-agent`. See [`triage-labels.md`](triage-labels.md).
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
