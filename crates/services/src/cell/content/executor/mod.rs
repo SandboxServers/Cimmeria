@@ -13,6 +13,8 @@
 //! - [`world`]     — interaction-type/visibility/move/threat/aggression
 //! - [`counter`]   — increment/reset
 //! - [`transport`] — teleport, ring transporter
+//! - [`stargate`]  — `GrantStargateAddress` (the address book: cell entity,
+//!   client method 66, and the base persistence request)
 //! - [`deferred`]  — `content_actions.delay_ms > 0` scheduling/tick-drain (C08a)
 //!
 //! Single-arm actions with no shared helpers (PlaySequence, StartMinigame,
@@ -37,6 +39,7 @@ mod dialog;
 mod inventory;
 mod mission;
 mod spawn;
+mod stargate;
 mod stats;
 mod transport;
 mod world;
@@ -238,7 +241,7 @@ async fn execute_one(
             step_id,
         } => {
             mission::advance_step(
-                mission_id, step_id, entity_id, player_id, chain_id, tx, space_mgr,
+                mission_id, step_id, entity_id, player_id, chain_id, tx, space_mgr, engine,
             )
             .await;
         }
@@ -426,7 +429,10 @@ async fn execute_one(
             );
         }
         Action::AbandonMission { mission_id } => {
-            mission::abandon(mission_id, entity_id, chain_id, tx, space_mgr).await;
+            mission::abandon(
+                mission_id, entity_id, player_id, chain_id, tx, space_mgr, engine,
+            )
+            .await;
         }
         Action::IncrementCounter {
             counter_name,
@@ -452,9 +458,11 @@ async fn execute_one(
                 mission_id,
                 objective_id,
                 entity_id,
+                player_id,
                 chain_id,
                 tx,
                 space_mgr,
+                engine,
             )
             .await;
         }
@@ -517,6 +525,17 @@ async fn execute_one(
                     "GrantXP: cell→base send failed -- player silently loses the chain's XP reward"
                 );
             }
+        }
+        Action::GrantStargateAddress { stargate_id } => {
+            stargate::grant_stargate_address(
+                stargate_id,
+                entity_id,
+                player_id,
+                chain_id,
+                tx,
+                space_mgr,
+            )
+            .await;
         }
         Action::MoveEntity {
             entity_tag,

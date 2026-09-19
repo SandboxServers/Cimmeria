@@ -348,11 +348,16 @@ async fn harset_return_door_is_disabled_pending_an_m0_pin() {
             );
     assert!(
         !enabled,
-        "chain 6007 must stay `enabled = false` until M0 replaces its \
-         arrival coordinate: (0, -67.6, -231) fails is_point_valid against \
-         harset.nav, and world 57 has no seeded respawner to recover to, so \
-         an enabled return door silently ghosts the player \
-         (CorrectionSuppressed) instead of failing visibly",
+        "chain 6007 must stay `enabled = false` until M0 pins its arrival \
+         in-game. (0, -67.6, -231) is a coordinate recovered from a prop \
+         transform that nobody has ever stood on: the Harset audit measured \
+         it ~27 units from the nearest mesh vertex, and `is_point_valid` \
+         against harset.nav agrees. Since H53 the validator is no longer the \
+         objection — Harset is `navmesh_mode = 'advisory'`, so an arrival \
+         there is `Unvalidated` and a player who lands on it can walk away \
+         normally. What is still unknown is whether the point is on a floor \
+         at all: it may be inside geometry or above a fall. Only standing on \
+         it clears that, which is the M0 pin",
     );
 
     // "Disabled" must not be allowed to hide "structurally broken". A
@@ -411,7 +416,19 @@ async fn harset_return_door_is_disabled_pending_an_m0_pin() {
 }
 
 /// The recovered return coordinate `(0, -67.600, -231)` is off the
-/// `harset.nav` mesh — the fact that forces chain 6007 to ship disabled.
+/// `harset.nav` mesh — the fact that keeps chain 6007 shipping disabled.
+///
+/// **Why this still holds after H53.** Harset is now
+/// `navmesh_mode = 'advisory'`, so the mesh no longer gates anything:
+/// `check_arrival` there returns `Unvalidated`, and a player who landed on
+/// this point would not be frozen by the position validator. The guard is
+/// unchanged anyway, because the reason it exists never was the validator.
+/// The coordinate came out of a prop transform in the cooked map; nobody
+/// has stood on it; and off-mesh is the only automated proxy the repo has
+/// for "unverified". A point the mesh does not cover may be a floor the
+/// mesh simply missed — most of Harset is — or it may be inside geometry
+/// or above a drop, and enabling a door onto it without an in-game pin
+/// bets a player's session on which. That is the M0 pin.
 ///
 /// The Harset audit measured this point ~27 units off-mesh by vertex
 /// proximity, which is an approximation; this runs the real Detour query
@@ -428,6 +445,9 @@ async fn harset_return_door_is_disabled_pending_an_m0_pin() {
 /// satisfies it. When M0 pins an on-mesh point and flips `enabled`, this
 /// still passes — and if M0 flips `enabled` while leaving an off-mesh
 /// coordinate, or re-pins the coordinate and forgets the flip, it fails.
+/// If M0 instead pins a verified point that the mesh still does not cover
+/// (entirely possible on an advisory world), replace this guard with one
+/// that records the in-game verification rather than relaxing it.
 ///
 /// The coordinate is read from the DB rather than hardcoded, because a
 /// hardcoded literal silently stops describing the seed the moment the
@@ -472,10 +492,12 @@ async fn harset_return_arrival_is_disabled_while_off_mesh() {
     assert!(
         !enabled || on_mesh,
         "chain 6007 is enabled but its arrival {arrival:?} is OFF the \
-         harset.nav mesh. World 57 validates arrivals and has no seeded \
-         respawner to recover to, so this strands the player in a silent \
-         CorrectionSuppressed — they move on their own screen and nowhere \
-         else. Either re-pin the coordinate (M0) or disable the chain.",
+         harset.nav mesh. Since H53 that no longer freezes the player — \
+         world 57 is `navmesh_mode = 'advisory'`, so the arrival is \
+         `Unvalidated` and they can walk away from wherever they land. It \
+         does mean nobody has confirmed anything is *there*: the coordinate \
+         came from a prop transform and could be inside geometry or above a \
+         fall. Pin it in-game (M0) or disable the chain.",
     );
 
     // The other direction: an on-mesh coordinate with the chain still

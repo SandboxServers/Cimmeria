@@ -169,14 +169,15 @@ async fn test_los_reports_via_feedback() {
     let (tx, mut rx) = mpsc::channel(8);
 
     // Both entities are in the caller's space; no navmesh is loaded in the
-    // fixture, so has_line_of_sight conservatively reports CLEAR.
+    // fixture, so the honest verdict is UNKNOWN, not CLEAR: a GM hunting for
+    // off-mesh spawns must be able to tell "no wall" from "no data".
     let mut args = 1i32.to_le_bytes().to_vec();
     args.extend_from_slice(&2i32.to_le_bytes());
     assert!(dispatch(1, TEST_LOS, &args, &tx, &mut mgr, &test_engine()).await);
     let fb = feedback_text(&drain(&mut rx), 1).expect("testLOS must feed back to the caller");
     assert!(
-        fb.contains("testLOS") && fb.contains("CLEAR"),
-        "expected a CLEAR verdict line, got: {fb}"
+        fb.contains("testLOS") && fb.contains("UNKNOWN") && !fb.contains("BLOCKED"),
+        "expected an UNKNOWN verdict line with no navmesh loaded, got: {fb}"
     );
 }
 

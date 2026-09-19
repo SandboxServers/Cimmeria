@@ -42,6 +42,7 @@ impl CellEntity {
             account_id: None,
             archetype_id: None,
             access_level: 0,
+            known_stargates: Vec::new(),
             level: 1,
             template_id: None,
             spawn_id: None,

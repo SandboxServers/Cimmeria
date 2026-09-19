@@ -1,31 +1,144 @@
-//! World-name → `world_id` startup cache.
+//! World-name → per-world cell settings startup cache.
 //!
-//! `entities/spaces.xml` carries world *names* only; the numeric
-//! `world_id` that `spawnlist`, `stargates`, `ring_transport_regions` and
-//! content-engine `world` condition rows all reference lives exclusively
-//! in `resources.worlds`. Every other cell-side loader JOINs that table to
-//! recover the name and throws the id away, so this is the one place the
-//! mapping is kept.
+//! `entities/spaces.xml` carries world *names* only. Two things the cell
+//! needs live exclusively in `resources.worlds`:
 //!
-//! Consumed by [`SpaceManager::stamp_world_ids`](crate::cell::space_manager::SpaceManager::stamp_world_ids),
-//! which writes each id onto the matching `WorldDef`.
+//! * the numeric `world_id` that `spawnlist`, `stargates`,
+//!   `ring_transport_regions` and content-engine `world` condition rows all
+//!   reference, and
+//! * `navmesh_mode`, which decides whether that world's navmesh is a
+//!   containment gate on player movement or information only (see
+//!   [`crate::cell::space_manager::NavmeshMode`]).
+//!
+//! Every other cell-side loader JOINs that table to recover the name and
+//! throws the rest away, so this is the one place the mapping is kept. One
+//! query for both columns: a second round trip for the mode could fail on
+//! its own and leave the two halves of a world's definition disagreeing.
+//!
+//! Consumed by [`SpaceManager::stamp_world_rows`](crate::cell::space_manager::SpaceManager::stamp_world_rows),
+//! which writes both onto the matching `WorldDef`.
 
 use std::collections::HashMap;
 
 use sqlx::PgPool;
 
-/// Load `world name → world_id` from `resources.worlds`.
+use crate::cell::space_manager::NavmeshMode;
+
+/// The `resources.worlds` columns the cell stamps onto a `WorldDef`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorldRow {
+    pub world_id: i32,
+    pub navmesh_mode: NavmeshMode,
+}
+
+impl WorldRow {
+    /// A row with containment enforced — the shape every world but Harset
+    /// has, and the one test fixtures want.
+    pub fn enforcing(world_id: i32) -> Self {
+        Self {
+            world_id,
+            navmesh_mode: NavmeshMode::Enforce,
+        }
+    }
+}
+
+/// Load `world name → {world_id, navmesh_mode}` from `resources.worlds`.
 ///
-/// The column is `world`, not `world_name` — every sibling loader aliases
-/// it the same way (`spawner/stargates.rs`, `spawner/respawners.rs`).
-pub async fn load_world_ids(pool: &PgPool) -> Result<HashMap<String, i32>, sqlx::Error> {
-    let rows: Vec<(i32, String)> =
-        sqlx::query_as("SELECT world_id, world FROM resources.worlds ORDER BY world_id")
-            .fetch_all(pool)
-            .await?;
+/// The name column is `world`, not `world_name` — every sibling loader
+/// aliases it the same way (`spawner/stargates.rs`, `spawner/respawners.rs`).
+///
+/// An unrecognised `navmesh_mode` string is logged and read as
+/// [`NavmeshMode::Enforce`]; see
+/// [`mode_from_db_value`](crate::cell::space_manager::NavmeshMode) for why
+/// the fallback is the strict side.
+pub async fn load_world_rows(pool: &PgPool) -> Result<HashMap<String, WorldRow>, sqlx::Error> {
+    let rows: Vec<(i32, String, String)> = sqlx::query_as(
+        "SELECT world_id, world, navmesh_mode FROM resources.worlds ORDER BY world_id",
+    )
+    .fetch_all(pool)
+    .await?;
 
     Ok(rows
         .into_iter()
-        .map(|(world_id, world)| (world, world_id))
+        .map(|(world_id, world, mode)| {
+            let navmesh_mode = crate::cell::space_manager::mode_from_db_value(&world, &mode);
+            (
+                world,
+                WorldRow {
+                    world_id,
+                    navmesh_mode,
+                },
+            )
+        })
         .collect())
+}
+
+#[cfg(test)]
+mod live_db_tests {
+    //! Live-DB guards on the seeded `navmesh_mode` column. The column is a
+    //! movement gate: a world that loses its `'advisory'` row becomes
+    //! unwalkable for ordinary players, and a world that gains one silently
+    //! loses containment. Both directions are asserted against the real
+    //! seed rather than a fixture, because the defect shape is "the seed
+    //! says something different from what the code assumes".
+
+    use super::*;
+    use crate::test_support::require_db_or_skip;
+
+    /// Harset (57) is the one world seeded advisory, and SGC_W1 (58) — a
+    /// world with a mesh nobody has reported holes in — is not.
+    ///
+    /// Asserted as a pair on purpose. "Harset is advisory" alone passes
+    /// just as well if the loader hardcoded advisory for everything, which
+    /// would drop containment server-wide with one green test.
+    #[tokio::test]
+    async fn harset_loads_advisory_and_a_meshed_neighbour_loads_enforce() {
+        let pool = require_db_or_skip!();
+        let rows = load_world_rows(&pool).await.expect("load_world_rows");
+
+        let harset = rows.get("Harset").expect(
+            "resources.worlds must carry world 57 'Harset' — \
+             db/resources/Worlds/Seed/worlds.sql is unseeded or not \\ir'd",
+        );
+        assert_eq!(harset.world_id, 57);
+        assert_eq!(
+            harset.navmesh_mode,
+            NavmeshMode::Advisory,
+            "Harset must load 'advisory': harset.nav has a 30-unit hole across \
+             the only walk to the Command Center door, and enforcing it snaps \
+             every non-GM player back at the boundary (H53)",
+        );
+
+        let sgc = rows
+            .get("SGC_W1")
+            .expect("resources.worlds must carry world 58 'SGC_W1'");
+        assert_eq!(sgc.world_id, 58);
+        assert_eq!(
+            sgc.navmesh_mode,
+            NavmeshMode::Enforce,
+            "a world nobody demoted must load 'enforce' — advisory is opt-in \
+             per world, never the default",
+        );
+    }
+
+    /// The column's default does the work for the ~180 rows the seed never
+    /// mentions it on: exactly one row in the whole table is advisory.
+    /// A seed edit that widened the demotion would show up here as a count.
+    #[tokio::test]
+    async fn exactly_one_world_is_seeded_advisory() {
+        let pool = require_db_or_skip!();
+        let rows = load_world_rows(&pool).await.expect("load_world_rows");
+
+        let advisory: Vec<&str> = rows
+            .iter()
+            .filter(|(_, r)| r.navmesh_mode == NavmeshMode::Advisory)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(
+            advisory,
+            ["Harset"],
+            "advisory is a per-world escape hatch for a known-bad mesh, not a \
+             default; every other world's containment gate must stay on",
+        );
+    }
 }

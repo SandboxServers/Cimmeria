@@ -8,8 +8,17 @@
 //!   top-threat selection, NaN-threat safety, leash witness fan-out.
 //! - [`aggression`]    — Idle-NPC auto-aggro via the `aggression` field
 //!   (opposing-faction aggro, no-aggro defaults, same-faction skip).
+//! - [`stationary_facing`] — a pinned NPC turns to face its target even
+//!   while holding fire (`stationary_holds`), and keeps its yaw when the
+//!   target has no XZ bearing.
+//! - [`off_mesh_sentry`] — a sentry outside navmesh coverage still has line
+//!   of sight (real `harset.nav`), so it does not hold fire forever.
 //! - [`selector`]      — `choose_npc_ability` three-bucket selection
 //!   (cooldown skip, all-cooling, empty-bucket fallback, ammo-bearing).
+//! - [`melee_reach`]   — the reach filter H09 added on top of that
+//!   partition: a melee ability is only selectable inside
+//!   `NPC_MELEE_RANGE`, a mobile NPC closes the distance first, and a
+//!   pinned one uses its ranged half or holds.
 //! - [`ability_range`] — per-ability min/max range gating, max_range=0
 //!   fallback, min-range backup waypoint, launch-failure retry schedule
 //!   + sweep, missing-def fallback, stationary no-backoff.
@@ -30,8 +39,11 @@ use cimmeria_entity::stats::HEALTH;
 
 mod ability_range;
 mod aggression;
+mod melee_reach;
+mod off_mesh_sentry;
 mod selector;
 mod state_machine;
+mod stationary_facing;
 mod tick_row;
 
 /// Build a non-instanced "Castle" space and seed an NPC at id=200 in

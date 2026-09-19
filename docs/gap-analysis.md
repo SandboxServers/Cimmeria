@@ -518,7 +518,7 @@ last_updated: 2026-07-25
 
 - **Confidence**: MEDIUM
 - **Documentation**: [gameplay/chat-system.md](gameplay/chat-system.md), [reverse-engineering/findings/chat-wire-formats.md](reverse-engineering/findings/chat-wire-formats.md)
-- **Rust code**: [`crates/services/src/cell/chat.rs`](../crates/services/src/cell/chat.rs) (447), [`crates/services/src/base/dispatch/chat.rs`](../crates/services/src/base/dispatch/chat.rs) (198), [`crates/services/src/base/world_entry_chat.rs`](../crates/services/src/base/world_entry_chat.rs) (237), [`crates/game/src/social/chat.rs`](../crates/game/src/social/chat.rs) (46) — 928 non-test lines
+- **Rust code**: [`crates/services/src/cell/chat.rs`](../crates/services/src/cell/chat.rs) (447), [`crates/services/src/base/dispatch/chat.rs`](../crates/services/src/base/dispatch/chat.rs) (198), [`crates/services/src/base/world_entry_chat.rs`](../crates/services/src/base/world_entry_chat.rs) (237) — 882 non-test lines
 - **Path forward**: Message *routing* on the non-spatial channels (the channels are registered but carry no traffic); direct tells; admin/moderation tools.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
@@ -708,7 +708,7 @@ last_updated: 2026-07-25
 
 - **Confidence**: STUB
 - **Documentation**: [gameplay/group-system.md](gameplay/group-system.md), [reverse-engineering/findings/group-wire-formats.md](reverse-engineering/findings/group-wire-formats.md)
-- **Rust code**: No group *runtime*. [`crates/game/src/social/groups.rs`](../crates/game/src/social/groups.rs) (97 lines) defines a `Group` struct and a `LootMode` enum, but as of 2026-07-25 **nothing references it** — `grep -rn "social::groups" crates/` returns no hits outside the file itself. Treat it as an unwired sketch, not a partial implementation.
+- **Rust code**: None. An unwired 97-line `Group` / `LootMode` sketch in `crates/game/src/social/groups.rs` had no references and was deleted in #614; there is no partial implementation.
 - **Path forward**: Implement as lightweight Squad-type Organization; either wire `groups.rs` up or delete it.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
@@ -1088,7 +1088,7 @@ Corrected 2026-07-25 — trading and contact lists have left this table.
 | Black Market | black-market.md | black-market-wire-formats.md | 94 lines stubs on `main`; full Phase 1 waiting on `feat/571-black-market-phase1` |
 | Dueling | duel-system.md | duel-wire-formats.md | Not ported |
 | Pets | pet-system.md | pet-wire-formats.md | Not ported |
-| Groups | group-system.md | group-wire-formats.md | Not ported (`game/src/social/groups.rs` is an unwired 97-line sketch) |
+| Groups | group-system.md | group-wire-formats.md | Not ported |
 
 ### Rust Code Exists but Doc Lags
 

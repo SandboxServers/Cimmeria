@@ -235,6 +235,32 @@ pub(super) async fn handle_dhd(
         return true;
     }
     tracing::info!(entity_id, gate_addr, "gmDHD: dialing stargate");
+
+    // `handle_dial_gate` enforces the player's address book (CAT-O-01), and a
+    // GM debugging a world they have never visited will not hold its address.
+    // Top the caller's live book up instead of giving the dial primitive a
+    // bypass parameter: that would put a second authorization surface on a
+    // check whose whole value is having exactly one, and this arm has already
+    // been authorised by the cell-method GM gate against the session's
+    // `access_level`. In-memory only — a debug dial should not rewrite the
+    // character's persisted address book, and the grant is audit-logged.
+    // Mirrors 2009's `giveaddress` console command
+    // (`deprecated/python/cell/commands/Player.py:74`).
+    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+        let addr = i32::from(gate_addr);
+        if !entity.known_stargates.contains(&addr) {
+            tracing::warn!(
+                entity_id,
+                gate_addr,
+                access_level = entity.access_level,
+                reason = "gm_address_grant",
+                "gmDHD: caller does not hold this stargate address — granting it for \
+                 the rest of this session so the GM dial can proceed"
+            );
+            entity.known_stargates.push(addr);
+        }
+    }
+
     // source address is unused by the primitive.
     let dialed = handle_dial_gate(entity_id, i32::from(gate_addr), 0, tx, space_mgr, engine).await;
     // Report the actual outcome. This used to say "dialing" unconditionally,

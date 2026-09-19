@@ -23,6 +23,11 @@ use super::super::ConnectedClientState;
 use super::methods::{query_player_load_data, query_world_stargates};
 use super::space_registry::resolve_space_id_fallback;
 
+mod address_grant;
+mod persist_arrival;
+pub(crate) use address_grant::handle_grant_stargate_address;
+use persist_arrival::persist_arrival;
+
 #[cfg(test)]
 mod tests;
 
@@ -291,38 +296,35 @@ pub(crate) async fn handle_gate_travel(
         }
     }
 
-    // Persist the destination world + position to sgw_player so a future
-    // relog or RespawnReload reloads the player at the new world rather than
-    // snapping them back to the saved pre-gate location. `active_player_id`
-    // was resolved (fail-closed) before the teardown above.
-    if let Some(pool) = db_pool {
-        let pid = active_player_id;
-
-        let res = sqlx::query(
-            "UPDATE sgw_player \
-               SET world_location = $1, \
-                   world_id = COALESCE((SELECT world_id FROM resources.worlds WHERE world = $1), world_id), \
-                   pos_x = $2, pos_y = $3, pos_z = $4 \
-             WHERE player_id = $5 AND account_id = $6",
-        )
-        .bind(target_world_name)
-        .bind(position[0]).bind(position[1]).bind(position[2])
-        .bind(pid).bind(account_id as i32)
-        .execute(pool.as_ref()).await;
-
-        match res {
-            Ok(r) if r.rows_affected() == 0 => {
-                tracing::warn!(%addr, account_id, world = %target_world_name, "GateTravel: persistence UPDATE matched 0 rows");
-            }
-            Ok(_) => {}
-            Err(e) => {
-                tracing::error!(%addr, account_id, world = %target_world_name, "GateTravel: failed to persist destination: {e}");
-            }
-        }
-    }
-
     // Query stargates for the destination world (Bug #3: load stargate cache for new world)
     let world_stargates = query_world_stargates(db_pool, target_world_name).await;
+
+    // Persist the destination world, position and the newly learned stargate
+    // addresses in one statement, so a future relog or RespawnReload reloads
+    // the player at the new world rather than snapping them back to the saved
+    // pre-gate location. `active_player_id` was resolved (fail-closed) before
+    // the teardown above.
+    //
+    // Ordering matters twice over: this must run *after* the mid-transfer
+    // abort branches (nothing is written for a transfer that never happened)
+    // and *before* `query_player_load_data` below, which is what fills the
+    // `setupStargateInfo` address list the client is about to be handed. Get
+    // that second one wrong and the client renders an address book one hop
+    // out of date while the cell enforces the current one.
+    //
+    // Only the *destination* list is passed. The origin half — the half of
+    // the unlock rule that actually does any work — is resolved inside the
+    // statement from the row's own pre-update `world_location`, which is the
+    // only source that stays correct across consecutive hops.
+    persist_arrival(
+        db_pool,
+        active_player_id,
+        account_id,
+        target_world_name,
+        position,
+        &world_stargates,
+    )
+    .await;
 
     // Build the world entry info for the new destination
     let entry_info = WorldEntryInfo {

@@ -467,6 +467,16 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                 threat_level,
             })
         }
+        // `target_id` is `resources.stargates.stargate_id` — the address
+        // itself, not a world id and not the `address_origin` glyph (which
+        // repeats across rows and is not an identifier). No params: 2009's
+        // `addStargateAddress(addressId, isHidden)` had a hidden flag, but
+        // Cimmeria has no hidden list at all (no column, no wire slot —
+        // `mercury::world_data::map_loaded` always serialises an empty
+        // hidden array), so there is nothing for a `hidden` param to do.
+        "grant_stargate_address" => Some(Action::GrantStargateAddress {
+            stargate_id: row.target_id?,
+        }),
         // Entity lifecycle verbs live in a sibling module (see
         // `action_spawn`); it returns `None` for anything it doesn't own,
         // which lands us on the same "unknown action_type" path as before.

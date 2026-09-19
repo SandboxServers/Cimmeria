@@ -9,6 +9,12 @@
 //! (Cellblock C06) all landed on `main` while H07 was on a branch, merged
 //! cleanly, and shipped without the populator call.
 //!
+//! The three mission dispatchers are covered too. They are the ones the
+//! Harset seed leans on hardest: every offer chain that closes the
+//! edge-before-gate race (playtest finding H9) is a `world`-gated
+//! `mission_completed` or `mission_abandoned` chain, so a mission dispatcher
+//! that lost its populator would silently reopen that race in every lane.
+//!
 //! `chain_replay_tests/world_condition.rs` proves the loader, the evaluator
 //! and `fire_enter_region`. This module covers the dispatchers that one does
 //! not reach, in memory (no database), one positive and one negative each.
@@ -25,8 +31,12 @@ use cimmeria_content_engine::chain::{Chain, ChainEngine};
 use cimmeria_content_engine::conditions::{ComparisonOp, Condition};
 use cimmeria_content_engine::triggers::Trigger;
 
-use super::{fire_player_flanked_npc, fire_stargate_crossed, fire_stargate_dialed};
+use super::{
+    fire_mission_abandoned, fire_mission_accepted, fire_mission_completed, fire_player_flanked_npc,
+    fire_stargate_crossed, fire_stargate_dialed,
+};
 use crate::cell::space_manager::SpaceManager;
+use crate::cell::spawner::WorldRow;
 
 /// `resources.worlds.world_id` for `Harset`, the world the chains gate on.
 const HARSET: i32 = 57;
@@ -37,6 +47,9 @@ const PLAYER_EID: u32 = 1;
 const NPC_EID: u32 = 2;
 const PLAYER_ID: i32 = 100;
 const COUNTER: &str = "world_gate_fired";
+/// Mission id the three mission dispatchers are fired with. Not a seeded
+/// mission: the dispatchers key on the id alone.
+const MISSION_ID: i32 = 9_157;
 
 /// Both Harset worlds with their real ids stamped on, and a connected
 /// player plus one NPC standing in `world_name`.
@@ -56,9 +69,12 @@ fn make_mgr(world_name: &str) -> SpaceManager {
     </Spaces>"#,
     )
     .unwrap();
-    mgr.stamp_world_ids(&HashMap::from([
-        ("Harset".to_string(), HARSET),
-        ("Harset_CmdCenter".to_string(), HARSET_CMD_CENTER),
+    mgr.stamp_world_rows(&HashMap::from([
+        ("Harset".to_string(), WorldRow::enforcing(HARSET)),
+        (
+            "Harset_CmdCenter".to_string(),
+            WorldRow::enforcing(HARSET_CMD_CENTER),
+        ),
     ]));
     mgr.create_entity(PLAYER_EID, world_name, [0.0; 3], [0.0; 3])
         .unwrap();
@@ -107,6 +123,9 @@ enum Dispatcher {
     StargateDialed,
     StargateCrossed,
     PlayerFlankedNpc,
+    MissionAccepted,
+    MissionCompleted,
+    MissionAbandoned,
 }
 
 impl Dispatcher {
@@ -119,6 +138,15 @@ impl Dispatcher {
                 destination_world: None,
             },
             Self::PlayerFlankedNpc => Trigger::OnPlayerFlankedNpc { npc_template: None },
+            Self::MissionAccepted => Trigger::OnMissionAccepted {
+                mission_id: MISSION_ID,
+            },
+            Self::MissionCompleted => Trigger::OnMissionCompleted {
+                mission_id: MISSION_ID,
+            },
+            Self::MissionAbandoned => Trigger::OnMissionAbandoned {
+                mission_id: MISSION_ID,
+            },
         }
     }
 
@@ -134,14 +162,26 @@ impl Dispatcher {
             Self::PlayerFlankedNpc => {
                 fire_player_flanked_npc(NPC_EID, PLAYER_EID, "Jaffa Guard", engine, &tx, mgr).await;
             }
+            Self::MissionAccepted => {
+                fire_mission_accepted(PLAYER_EID, PLAYER_ID, MISSION_ID, engine, &tx, mgr).await;
+            }
+            Self::MissionCompleted => {
+                fire_mission_completed(PLAYER_EID, PLAYER_ID, MISSION_ID, engine, &tx, mgr).await;
+            }
+            Self::MissionAbandoned => {
+                fire_mission_abandoned(PLAYER_EID, PLAYER_ID, MISSION_ID, engine, &tx, mgr).await;
+            }
         }
     }
 }
 
-const ALL: [Dispatcher; 3] = [
+const ALL: [Dispatcher; 6] = [
     Dispatcher::StargateDialed,
     Dispatcher::StargateCrossed,
     Dispatcher::PlayerFlankedNpc,
+    Dispatcher::MissionAccepted,
+    Dispatcher::MissionCompleted,
+    Dispatcher::MissionAbandoned,
 ];
 
 /// A `world eq 57` chain fires for a player standing in Harset, through

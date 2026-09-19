@@ -105,7 +105,7 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnEntityHealthBelow { entity_tag, pct }` | A tagged entity's health crosses `pct` **downward** on a single damaging hit. Seed `event_key` is `"<tag>:<pct>"` (e.g. `"Rinla_Malac:30"`), parsed with `rsplit_once(':')` so a tag containing a colon still resolves; `pct` must be `1..=99` or the trigger row is dropped with a `health_pct_out_of_range` warn ([loader/trigger.rs](../../crates/content-engine/src/loader/trigger.rs)) — 100 is excluded because the band test's upper half is strict, so a full-health entity can never satisfy `before > 100` and `:100` would load a chain that never fires. See the band-test note below |
 | `OnAbilityUsed { ability_id? }` | Any entity uses an ability |
 | `OnInteraction { interaction_type? }` | Generic right-click |
-| `OnRegionEnter { region_key }` | Player enters a Kismet region (string key like `Castle_CellBlock.Region2`) |
+| `OnRegionEnter { region_key }` | Player enters a Kismet region (string key like `Castle_CellBlock.Region2`). Also **replayed by the server** when a mission step activates with the player already standing in the volume — see "Step-activation replay" below |
 | `OnRegionExit { region_key }` | Player exits region |
 | `OnMissionStep { mission_id, step }` | Mission advances to a specific step |
 | `OnItemAcquired { item_id? }` | Item enters inventory |
@@ -125,6 +125,7 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnMissionCompleted { mission_id }` | Mission marked complete |
 | `OnDialogSetOpen { dialog_set_name }` | Dialog set opened |
 | `OnMissionAccepted { mission_id }` | Mission just accepted or advanced (fired from the executor's combined `Action::AcceptMission \| Action::AdvanceMission` branch after the cell-side state commit; used by chains that highlight quest objects on mission start — e.g. chain 1097 for Aftermath) |
+| `OnMissionAbandoned { mission_id }` | Mission just abandoned, fired **after** the instance is removed so `mission_status <id> eq not_active` already holds. Seed `event_type` = `mission_abandoned`, `event_key` = the mission id; there is no wildcard. Fires from all three abandon paths — the client-callable `abandonMission` cell method (Missionary index 52), the `abandon_mission` chain action, and `gmMissionClear` / `gmMissionAbandon` — and only when a mission was really removed. Used by offer chains that must repaint their giver and clear a stranded dialog-set bind: Harset chains 6308 (1324), 6342 (1326) and 6120 (742) |
 | `OnPlayerEnteredCover { cover_set_id? }` | Player entered proximity of a cover set (`resources.cover_sets`). One event per set; a player can be in several at once. Wildcard (`NULL`) fires for any set |
 | `OnPlayerLeftCover { cover_set_id? }` | Player left a cover set's proximity — the symmetric partner of `OnPlayerEnteredCover` |
 | `OnPlayerInCoverDuration { cover_set_id?, seconds }` | Player has been continuously in a cover set for ≥ `seconds`. Debounced: leaving and re-entering resets the timer. Seed `event_key` convention is `"<seconds>"` or `"<seconds>:<set_id>"` ([loader/trigger.rs:87-100](../../crates/content-engine/src/loader/trigger.rs#L87-L100)) |
@@ -154,6 +155,35 @@ Within a single chain's bucket, `Trigger::matches` ([triggers/matching.rs:43](..
 | `effect_removed` | `OnEffectRemoved` | " |
 
 This is the trigger-side mirror of the action-side gap catalogued below, and it is the reason `apply_effect`'s one seeded row cannot fire: the row sits on an `effect`-scoped chain whose trigger is one of these.
+
+### Step-activation replay of `enter_region`
+
+`enter_region` is an **edge** event. The client reports a volume crossing once, and a chain gated on a step that is not yet active sees that edge, fails its gate, and never gets another one until the player physically leaves and comes back. The 2026-09-18 Castle playtest lost objective 2484 to this ordering race, and the Harset seed lanes found four more instances of the same shape.
+
+The server closes the `enter_region` half of it. Whenever a mission step activates — `Action::AcceptMission` / `Action::AdvanceMission` (first step), `Action::AdvanceStep`, `gmMissionAssign`, `gmMissionAdvance` — every client-hinted region of the player's world that contains the player's **server-known** position is re-fired through the normal trigger path. Implementation: [`content::event_dispatch::step_activation`](../../crates/services/src/cell/content/event_dispatch/step_activation/mod.rs). Log line: `reason = "already_inside_on_step_activation"`, plus a `region_replay` entry in the player journal that a `.bug` report picks up.
+
+What an author needs to know:
+
+- **Only mission-gated chains are replayed.** A chain is eligible when at least one of its conditions is `mission_status`, `step_status` or `objective_status` (`Chain::is_mission_gated`). Those are idempotent under a double delivery: the chain's own actions move the state its gate reads, so when the client's real hint lands a moment later the gate is closed. A chain with no mission gate — a bare `enter_region` → `display_dialog` — is **refused** and logged at `debug` with `reason = "filtered_out"`, because replaying it would show the dialog twice. If your chain should replay, give it the `step_status` gate it wanted anyway.
+- **`world` and `archetype` are not mission gates.** Neither changes when the chain runs, so neither makes a re-fire safe. A chain gated only on `world` is not replayed.
+- **Containment is the same test the client hint uses** (`spawner::is_point_in_region`, the tolerance band including its vertical arm), against the position the *server* accepted — never a client-supplied coordinate.
+- **Only client-hinted volumes replay.** A region without `REGION_FLAG_CLIENT_HINTED` was never handed to the client, so there is no hint to stand in for.
+- **Content chains only.** Ring-transporter forwarding and `REGION_FLAG_STARGATE` passage hang off the same client call but are sequenced by the dispatch arm in `cell_methods::player::world`, *after* `fire_enter_region`. A replay never starts a ring transport and never carries a player through a gate.
+- **Bounded.** A replayed chain can itself advance a step, which activates another step, which replays again. A depth cap plus a per-activation visited set of `(entity, mission, step)` triples stops the recursion; a refusal is a `warn!` naming `replay_depth_exceeded` or `step_already_replayed`, which reads as "this chain is looping".
+
+Cover edges and `player_loaded` are **not** replayed. The cover edge belongs to the Castle Cellblock lane (objective 2484); `player_loaded` keeps the seed-side second-trigger rule; and the abandon case has its own trigger, `mission_abandoned`, rather than a replay.
+
+### The abandon edge
+
+Abandoning a mission returns it to not-active with the player already past every edge that set the scene up. The offer gate reopens and the `player_loaded` chain that paints the offer has no edge left to fire, and whatever dialog-set binding the mission installed is stranded on its NPC — abandoning Harset's mission 1324 in the Command Center leaves Ba'al with a stale marker that replays the council dialog on click. Both self-heal on the next world transition, which is why the gap went unreported for so long.
+
+`OnMissionAbandoned` closes it. The dispatcher lives beside `fire_mission_accepted` / `fire_mission_completed` in [`content::event_dispatch::mission`](../../crates/services/src/cell/content/event_dispatch/mission.rs) and follows the same contract: world, archetype and mission context are populated **after** the mutation, so a repaint chain carries the offer chain's own `mission_status <id> eq not_active` gate verbatim. Populating before the removal would leave the status `active` and every repaint chain would fail closed.
+
+Authoring notes:
+
+- Gate the repaint chain on the **world where the stale state is observable**, usually the one holding the NPC. An abandon from anywhere else needs nothing: `available_interactions` is rebuilt empty on every world entry and the offer chain's `player_loaded` row repaints on the way back in.
+- **Unbind before you rebind.** The interact dispatcher takes the first bound entry on a template that carries a dialog, so a `remove_dialog_set` ordered after the `add_dialog_set` leaves the NPC handing out the old dialog. `remove_dialog_set` on a slot that holds nothing is a safe no-op, so clear every bind the mission could have had live.
+- The step is gone by the time the chain runs, so a repaint cannot tell which step was active. Clear all the candidates rather than trying to choose.
 
 ### Conditions — *gates that AND together*
 
@@ -222,6 +252,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `cross_world_teleport` | `CrossWorldTeleport` | 1 |
 | `launch_ability` | `LaunchAbility` | 3 |
 | `apply_effect` | `ApplyEffect` | 1 |
+| `grant_stargate_address` | `GrantStargateAddress` | 1 |
 
 > An `open_black_market` / `OpenBlackMarket` action exists on the unmerged
 > `feat/571-black-market-phase1` branch (PR #586) and is **not** on `main`. It is
@@ -238,6 +269,22 @@ resolves unconditionally as damage. The helper deliberately bypasses all
 three, so it is private to `cell::content` and takes no client-supplied id;
 see [../architecture/abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md)
 for the full rationale and the constraints that must not be widened.
+
+`grant_stargate_address` is the port of 2009's Atrea authoring node
+`Act_StargateAddress`, and it is the only content verb that writes a
+player's stargate address book. `target_id` is
+`resources.stargates.stargate_id` — the address itself, not a world id and
+not the repeating `address_origin` glyph. The executor arm
+([`executor/stargate.rs`](../../crates/services/src/cell/content/executor/stargate.rs))
+does three things per grant: appends to the acting player's in-memory
+`CellEntity::known_stargates` (which is what the dial handler enforces
+against), sends the client `updateStargateAddress` (client method 66, the
+only way a mid-session grant becomes visible — the full book is handed over
+just once, at map load), and asks the base to persist an idempotent append
+to `sgw_player.known_stargates`. A grant for an id with no `stargates` row,
+a grant by a non-player actor, and either failed send all warn. A second
+grant of an address the player already holds is a complete no-op: no write,
+no client method, no base round trip.
 
 Three caveats for authors:
 
@@ -331,7 +378,7 @@ These have a loader arm, so the seed accepts them and the engine resolves them, 
 
 #### Not authorable — defined in the enum, no loader arm
 
-No `content_actions` row can name these; they are reachable only from Rust (or not at all). `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`. None has an executor arm either, so wiring any of them is a two-sided job. `GrantXP` used to head this list; it was wired on both sides in issue #611 and now appears in the executed table above with **0 seed rows** — the plumbing exists, no content uses it yet, and the seed still has `reward_xp = 0` on all 1,040 mission rows (§9). `SpawnEntity` and `DespawnEntity` left it in Harset H03, wired on both sides in the same change.
+No `content_actions` row can name these; they are reachable only from Rust (or not at all). `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`. None has an executor arm either, so wiring any of them is a two-sided job. `GrantXP` used to head this list; it was wired on both sides in issue #611 and now appears in the executed table above with **0 seed rows** — the plumbing exists, no content uses it yet, and the seed still has `reward_xp = 0` on all 1,040 mission rows (§9). `SpawnEntity` and `DespawnEntity` left it in Harset H03, wired on both sides in the same change. `GrantStargateAddress` was added on both sides in Harset H55 and is the one entry in the table whose seed row is load-bearing on day one: it is the only way content can unlock a stargate destination, and Castle mission 708's dial step is unreachable without it.
 
 Four variants have an executor arm but no seed verb, reached only as internal aliases or from Rust: `AdvanceMission` (aliased onto the `AcceptMission` arm), `StartDialog` (aliased onto `DisplayDialog`), `Teleport` (same-space teleport; only `cross_world_teleport` is authorable), and `TriggerChain` (resolved by the engine, re-dispatched by the caller). `SendMessage` has an arm that only logs.
 
@@ -499,7 +546,7 @@ Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs:43-58](
 | **Step advance** | `OnInteractTag`, `OnDialogChoice`, `OnRegionEnter` | `StepStatus eq active` | `AdvanceStep` | `MissionUpdate` |
 | **Objective progress** | `OnEntityDeath`, `OnDialogChoice` | `ObjectiveStatus eq active` | `CompleteObjective` (or `IncrementCounter` for N-of) | `MissionUpdate` |
 | **Complete** | `OnDialogOpen`, `OnEntityDeath`, `OnDialogChoice` | `MissionStatus eq active` | `CompleteMission` (+ `GrantItem` reward, often `AcceptMission` for the next step in the chain) | `MissionUpdate` (status=2, repeats++) |
-| **Relog-restore (state)** | — | — | — | `sgw_mission` → `MissionManager` at world-entry; engine plays no part |
+| **Relog-restore (state)** | — | — | — | `sgw_mission` → `MissionManager` at world-entry; engine plays no part. Per-objective status round-trips as of #657: the row carries the current step's objective roster and every completed objective id, and hydration rebuilds `hidden` / `optional` from `resources.mission_objectives`, so `ObjectiveStatus` gates survive a relog |
 | **Relog-restore (world)** | `OnPlayerLoaded` | `StepStatus eq active` for the active step | `SetInteractionType` (re-paint quest-glow / Ring icons) | none (in-memory only — interaction flags don't persist on the entity) |
 
 Worked example chains in [chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/):
@@ -515,6 +562,7 @@ Worked example chains in [chain_replay_tests/](../../crates/services/src/cell/co
 |---|---|---|
 | `mission_<id>_status` | active/completed/not_active | `Condition::MissionStatus` |
 | `mission_<id>_step_<step>_status` | per-step state | `Condition::StepStatus` |
+| `mission_<id>_obj_<obj>_status` | per-objective state, from both `active_objectives` (current step, completed entries included) and `completed_objectives` (steps already advanced past) | `Condition::ObjectiveStatus` |
 | `counter_<name>` | every entity counter | `Condition::Counter` |
 | `stat_<id>_cur` / `stat_<id>_max` | populated only by `fire_item_use` (via `populate_stats_context`) | `Condition::StatBelowMax` |
 | `archetype` | set directly by every `fire_*` site | `Condition::Archetype` |
@@ -556,7 +604,7 @@ Eleven `Action` variants have **no match arm in [executor/mod.rs](../../crates/s
 
 Three of those **are authorable from seed data and are used today** — `qr_combat_damage` (2 rows), `remove_effect` (1), `fail_objective` (1). Those 4 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
 
-`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613; `spawn_entity` and `despawn_entity` came off it in Harset H03. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
+`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613; `spawn_entity` and `despawn_entity` came off it in Harset H03, and `grant_stargate_address` was added whole in Harset H55. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
 
 Two more arms exist but are log-only: `SystemMessage` (11 seeded rows — wire format unknown, see below) and `SendMessage` (no seed verb).
 

@@ -55,9 +55,39 @@
 //! [`super::threat::exit_player_combat`] handle `BSF_IN_COMBAT` — single-
 //! source flag, raw bit ops, no counter.
 
+use cimmeria_entity::cell_entity::{AiState, CellEntity};
+
 use crate::cell::space_manager::SpaceManager;
 
-use super::state::BSF_AUTO_CYCLING;
+use super::state::{is_dead_state, BSF_AUTO_CYCLING};
+
+/// Is `target` still a legal thing for an armed auto-cycle loop to keep
+/// re-firing at?
+///
+/// Two disqualifiers, and both must *stop* the loop rather than skip a
+/// tick — out-of-range and on-cooldown are the skip cases, and they live
+/// in the tick driver:
+///
+/// - **Dead.** A corpse can't be shot again; the loop would burn a
+///   rejected `handle_use_ability` every cooldown forever.
+/// - **Surrendered** (`AiState::Submit`). A surrendered NPC is alive and
+///   still selectable, so nothing else in the fire path refuses it — the
+///   loop would keep firing on its own cadence and kill the NPC seconds
+///   after it gave up. The AI-side submit handler also sweeps loops at
+///   the moment of surrender, but that handler only runs on the ~2 s AI
+///   cadence while the loop re-fires every cooldown; this predicate is
+///   what closes the gap, and it also covers a player who arms a *new*
+///   loop at an already-surrendered NPC.
+///
+/// Surrender is expressed here and not as a faction change on purpose:
+/// `faction` gates whether an offensive ability may target the entity at
+/// all, so flipping it would make the NPC unattackable. Deliberate
+/// single shots at a surrendered NPC stay legal — only the automatic
+/// loop stops.
+#[must_use]
+pub fn is_auto_cycle_target_valid(target: &CellEntity) -> bool {
+    !is_dead_state(target.state_field) && target.ai_state != AiState::Submit
+}
 
 /// Arm the auto-cycle loop on `player_id` with the given ability.
 ///
@@ -408,6 +438,39 @@ mod tests {
         );
         let p = mgr.get_entity(1).unwrap();
         assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
+    }
+
+    /// The target-validity predicate the tick driver gates re-fires on.
+    /// One test, three states, because the point is the *partition*: a
+    /// live fighting NPC keeps the loop, a corpse and a surrendered NPC
+    /// both stop it. Dropping either disqualifier flips exactly one
+    /// assertion here.
+    #[test]
+    fn target_validity_admits_the_living_and_refuses_corpses_and_surrenders() {
+        let mut mgr = make_mgr();
+        mgr.spawn_npc(50, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+
+        assert!(
+            is_auto_cycle_target_valid(mgr.get_entity(50).unwrap()),
+            "a live, fighting NPC is a valid loop target"
+        );
+
+        mgr.get_entity_mut(50).unwrap().ai_state = AiState::Submit;
+        assert!(
+            !is_auto_cycle_target_valid(mgr.get_entity(50).unwrap()),
+            "a surrendered NPC must stop the loop — it is alive and still \
+             targetable, so nothing else in the fire path refuses it"
+        );
+
+        // Dead beats surrendered, and the dead half must survive on its
+        // own if the surrender half is ever reverted.
+        let npc = mgr.get_entity_mut(50).unwrap();
+        npc.ai_state = AiState::Fighting;
+        npc.state_field |= crate::cell::combat::state::BSF_DEAD;
+        assert!(
+            !is_auto_cycle_target_valid(mgr.get_entity(50).unwrap()),
+            "a corpse still stops the loop"
+        );
     }
 
     /// Non-player entities can't auto-cycle. Defensive guard so a stray

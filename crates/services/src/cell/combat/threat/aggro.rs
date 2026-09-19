@@ -12,7 +12,51 @@ pub const LEASH_DISTANCE: f32 = 50.0;
 
 /// Maximum attack range in world units for NPC ranged attacks.
 /// NPCs won't fire until the target is within this distance.
+///
+/// Corroborated by the weapon table: `resources.items.max_ranged_range` is
+/// `30` for 1,298 of the 1,299 items that bind a melee ability (the lone
+/// exception is a ribbon device at 35). So the server-wide ranged default
+/// already equals the reach the shipped weapons express.
 pub const NPC_ATTACK_RANGE: f32 = 30.0;
+
+/// Maximum attack range in world units for NPC **melee** attacks — an
+/// ability whose def carries `is_ranged = false`.
+///
+/// # Why this is not [`NPC_ATTACK_RANGE`]
+///
+/// `resources.abilities.max_range` is the `0` sentinel ("use the server
+/// default") on every auto-attack in the seed, and `is_ranged` is read only
+/// by `calculate_qr` to pick the accuracy/defence branch — it has never
+/// gated distance. Before this constant existed, a melee auto-attack
+/// resolved to the full 30 m ranged default and the NPC played a swing
+/// animation at a target it could not possibly reach. That is the class of
+/// thing the 2026-09-18 Castle playtest testers reported as "broken AI": an
+/// animation that contradicts what the NPC is doing.
+///
+/// # Where the number comes from
+///
+/// Melee reach is per-weapon data, not per-ability data.
+/// `resources.items` carries `min_melee_range` / `max_melee_range`
+/// alongside `min_ranged_range` / `max_ranged_range` (see
+/// `docs/reverse-engineering/findings/combat-formulas-client-evidence.md`
+/// E4, which recovers the same `MeleeRanges` / `RangeRanges` pair from the
+/// client's cooked item schema). Across every item that binds an
+/// `EVENT_ITEM_MELEE` (`event_id = 6`) ability, `max_melee_range` takes
+/// exactly three values: `0` (5 items), `2` (1,116 items) and `3` (178
+/// items). **3 is the largest melee reach any shipped weapon expresses**,
+/// so a 3.0 gate can never truncate a real weapon, and it is also the value
+/// 177 of the 204 Jaffa staff items carry — the family this gate was added
+/// for.
+///
+/// # Why a constant rather than the item's own reach
+///
+/// An NPC has no resolvable weapon item: `entity_templates.weapon_item_id`
+/// has zero consumers under `crates/`, and the Goa'uld templates carry no
+/// `WP-*` component at all. Until an NPC can name its weapon, the ceiling
+/// of the observed range is the honest approximation. Swapping this for a
+/// per-weapon lookup is a strict refinement and needs no change at the call
+/// sites, which all go through `ability_select::effective_max_range`.
+pub const NPC_MELEE_RANGE: f32 = 3.0;
 
 /// Default NPC attack ability ID: "Pistol Shot" (ability 592, ranged DD).
 /// Was incorrectly 597 ("Heal Focus") — a self-heal, not an attack.

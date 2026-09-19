@@ -10,6 +10,8 @@ use crate::cell::content;
 use crate::cell::messages::{CellToBaseMsg, SavedMission};
 use crate::cell::space_manager::SpaceManager;
 
+pub(crate) mod mission_restore;
+
 /// Handles the `InitPlayerState` message: restores player missions, abilities,
 /// bandolier items, and fires the content-engine `player_loaded` trigger.
 ///
@@ -51,6 +53,9 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     engine: &ChainEngine,
 ) {
     tracing::debug!(entity_id, player_id, archetype_id, %world_name, saved_count = saved_missions.len(), ability_count = abilities.len(), "InitPlayerState");
+    // Reconstruct before the mutable entity borrow: hydration reads the
+    // `mission_defs` / `step_objectives` caches off `space_mgr`.
+    let restored_missions = mission_restore::build_restored_missions(&saved_missions, space_mgr);
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         entity.player_id = Some(player_id);
         entity.archetype_id = Some(archetype_id);
@@ -165,48 +170,20 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         // Restore saved missions BEFORE content engine fires, so that
         // chain conditions correctly see existing mission state and
         // don't re-trigger already-active or completed missions.
-        for saved in &saved_missions {
-            use cimmeria_entity::missions::{
-                MissionInstance, MissionObjective, STATUS_ACTIVE, STATUS_COMPLETED,
-            };
-            let objectives: Vec<MissionObjective> = saved
-                .active_objective_ids
-                .iter()
-                .map(|&oid| {
-                    let status = if saved.completed_objective_ids.contains(&oid) {
-                        STATUS_COMPLETED
-                    } else {
-                        STATUS_ACTIVE
-                    };
-                    MissionObjective {
-                        objective_id: oid,
-                        status,
-                        hidden: false,
-                        optional: false,
-                    }
-                })
-                .collect();
-
-            let mut mission = MissionInstance::new(
-                saved.mission_id,
-                saved.current_step_id.unwrap_or(0),
-                objectives,
-            );
-            mission.status = saved.status;
-            mission.completed_steps = saved.completed_step_ids.clone();
-            mission.completed_objectives = saved.completed_objective_ids.clone();
-            // Without this, `complete()` on a re-accepted repeatable
-            // mission post-relog would jump from 0 -> 1 instead of
-            // N -> N+1, defeating the numRepeats cap. (#118)
-            mission.repeats = saved.repeats;
-
-            entity.missions.add_mission(mission);
+        //
+        // Built outside the entity borrow because the reconstruction
+        // reads the mission/step definition caches off `space_mgr` — see
+        // `mission_restore` for why the roster comes from the definition
+        // rather than from the saved array.
+        for mission in restored_missions {
             tracing::debug!(
                 entity_id,
-                mission_id = saved.mission_id,
-                status = saved.status,
+                mission_id = mission.mission_id,
+                status = mission.status,
+                objectives = mission.active_objectives.len(),
                 "Restored saved mission"
             );
+            entity.missions.add_mission(mission);
         }
         entity.saved_missions_loaded = true;
 
@@ -361,50 +338,25 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     // base side packs them into ONE Mercury packet body. Client sees the
     // same method-call sequence; transport collapses 22 datagrams into 1.
     {
-        use crate::cell::space_manager::REGION_FLAG_CLIENT_HINTED;
-        let world_regions: Vec<_> = space_mgr
-            .regions_for_world(&world_name)
-            .iter()
-            .filter(|r| r.flags & REGION_FLAG_CLIENT_HINTED != 0)
-            .map(|r| (r.runtime_id, r.height, r.radius, r.flags, r.points.clone()))
-            .collect();
-
-        let region_count = world_regions.len();
         let burst_span = tracing::info_span!(
             "world_entry.region_burst",
             entity_id,
             world = %world_name,
-            count = region_count,
+            count = tracing::field::Empty,
         );
         let _burst_guard = burst_span.enter();
         let burst_start = std::time::Instant::now();
-        let mut batch: Vec<(u16, Vec<u8>)> = Vec::with_capacity(region_count);
-        for (rid, height, radius, flags, points) in world_regions {
-            let mut args = Vec::with_capacity(16 + points.len() * 12);
-            args.extend_from_slice(&(rid as i32).to_le_bytes());
-            args.extend_from_slice(&height.to_le_bytes());
-            args.extend_from_slice(&radius.to_le_bytes());
-            args.extend_from_slice(&flags.to_le_bytes());
-            args.extend_from_slice(&(points.len() as u32).to_le_bytes()); // ARRAY count
-            for p in &points {
-                args.extend_from_slice(&p[0].to_le_bytes()); // x
-                args.extend_from_slice(&p[1].to_le_bytes()); // y
-                args.extend_from_slice(&p[2].to_le_bytes()); // z
-            }
-            batch.push((
-                crate::mercury::method_idx::ADD_CLIENT_HINTED_GENERIC_REGION,
-                args,
-            ));
-        }
-        if !batch.is_empty() {
-            let _ = tx
-                .send(CellToBaseMsg::EntityMethodCallBatch {
-                    entity_id,
-                    calls: batch,
-                })
-                .await;
-        }
+        let region_count = crate::cell::cell_methods::player::world::send_client_hinted_regions(
+            entity_id,
+            &world_name,
+            // mapLoaded already sent the clear
+            crate::cell::cell_methods::player::world::ClearFirst::No,
+            tx,
+            space_mgr,
+        )
+        .await;
         let burst_elapsed = burst_start.elapsed();
+        burst_span.record("count", region_count);
         tracing::Span::current().record("regions", region_count);
         if region_count > 0 {
             tracing::info!(

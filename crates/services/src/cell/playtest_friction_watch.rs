@@ -191,23 +191,12 @@ impl PlayerWatch {
     }
 }
 
-/// XZ point-in-polygon (ray casting) against a region's `points`.
-pub(crate) fn region_contains_xz(points: &[[f32; 3]], x: f32, z: f32) -> bool {
-    if points.len() < 3 {
-        return false;
-    }
-    let mut inside = false;
-    let mut j = points.len() - 1;
-    for i in 0..points.len() {
-        let (xi, zi) = (points[i][0], points[i][2]);
-        let (xj, zj) = (points[j][0], points[j][2]);
-        if (zi > z) != (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi {
-            inside = !inside;
-        }
-        j = i;
-    }
-    inside
-}
+// The XZ containment test moved to `spawner::regions`, beside the loader
+// that builds `points` and beside the security gate that H06 layers on top
+// of it (`is_point_in_region`). Re-exported rather than relocated at the
+// call sites so `playtest_friction::region_contains_xz` — and this file's
+// own polygon tests — keep working unchanged.
+pub(crate) use crate::cell::spawner::region_contains_xz;
 
 static WATCHES: LazyLock<Mutex<HashMap<u32, PlayerWatch>>> = LazyLock::new(Mutex::default);
 

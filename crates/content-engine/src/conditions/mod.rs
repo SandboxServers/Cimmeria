@@ -167,6 +167,29 @@ pub enum StepStatusValue {
 }
 
 impl Condition {
+    /// Does this condition read per-player *mission* state?
+    ///
+    /// True for exactly the three conditions whose value is a function of
+    /// `MissionInstance`: [`Condition::MissionStatus`],
+    /// [`Condition::StepStatus`] and [`Condition::ObjectiveStatus`].
+    ///
+    /// Used by [`crate::chain::Chain::is_mission_gated`] to decide whether a
+    /// chain is safe to *re-evaluate* against an event the player already
+    /// generated once. A chain gated on mission state is idempotent by
+    /// construction — its own actions move that state, so the second
+    /// evaluation fails the gate — while an ungated chain would simply run
+    /// twice. `Condition::World` and `Condition::Archetype` look
+    /// mission-adjacent and are deliberately excluded: neither changes when
+    /// a chain runs, so neither makes a re-fire idempotent.
+    pub fn gates_on_mission_state(&self) -> bool {
+        matches!(
+            self,
+            Condition::MissionStatus { .. }
+                | Condition::StepStatus { .. }
+                | Condition::ObjectiveStatus { .. }
+        )
+    }
+
     /// Evaluate this condition against the current execution context.
     pub fn evaluate(&self, ctx: &ExecutionContext) -> bool {
         match self {

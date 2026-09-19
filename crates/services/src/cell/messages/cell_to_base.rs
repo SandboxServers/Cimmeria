@@ -117,6 +117,28 @@ pub enum CellToBaseMsg {
         destination_space_id: Option<u32>,
     },
 
+    /// Persist one learned stargate address onto `sgw_player.known_stargates`.
+    ///
+    /// Sent by the content executor's `Action::GrantStargateAddress` arm
+    /// after it has already appended to the player's *in-memory*
+    /// `CellEntity::known_stargates` and told the client
+    /// (`updateStargateAddress`, client method 66). This message is the
+    /// persistence leg only: nothing on the cell waits for it, and its
+    /// failure costs the player the address on their next login, not this
+    /// session.
+    ///
+    /// The base resolves `account_id` from the session and uses it as the
+    /// ownership predicate alongside `player_id`, the same fail-closed pair
+    /// [`crate::base::world_entry::gate_travel`]'s arrival persistence uses.
+    /// The append is idempotent, so a retried or duplicated message cannot
+    /// double-append — `resources.stargates.stargate_id` carries no
+    /// uniqueness constraint and the column is a bare `integer[]`.
+    GrantStargateAddress {
+        entity_id: u32,
+        player_id: i32,
+        stargate_id: i32,
+    },
+
     /// Persist a mission state change to the database.
     ///
     /// Uses `INSERT ... ON CONFLICT DO UPDATE` on `sgw_mission`. The

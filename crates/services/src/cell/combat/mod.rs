@@ -16,7 +16,9 @@ pub mod health_threshold;
 pub mod state;
 pub mod threat;
 
-pub use auto_cycle::{arm_auto_cycle, clear_auto_cycle, clear_auto_cycle_for_target};
+pub use auto_cycle::{
+    arm_auto_cycle, clear_auto_cycle, clear_auto_cycle_for_target, is_auto_cycle_target_valid,
+};
 pub use damage::{calculate_damage, calculate_qr, calculate_result, QrResult};
 pub use damage_credit::{note_pre_damage_health, HealthBelowSample};
 pub use health_threshold::{health_pct, health_pct_from, HealthPct};
@@ -34,5 +36,6 @@ pub use state::{
 };
 pub use threat::{
     clear_dead_npc_from_all_player_threat, enter_player_combat, exit_player_combat,
-    generate_threat, LEASH_DISTANCE, NPC_ATTACK_RANGE, NPC_DEFAULT_ABILITY, OOC_HOLSTER_DELAY,
+    generate_threat, LEASH_DISTANCE, NPC_ATTACK_RANGE, NPC_DEFAULT_ABILITY, NPC_MELEE_RANGE,
+    OOC_HOLSTER_DELAY,
 };

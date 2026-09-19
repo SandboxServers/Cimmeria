@@ -147,7 +147,7 @@ a mission without a def entry fails closed (treated as non-repeatable).
 - **Mission definitions**: 1,040 in `db/resources/Missions/Seed/missions.sql`
 - **Schema**: `Mission.xsd`
 - **Mission scripts**: `deprecated/python/cell/missions/` directory
-- **Persistence**: `sgw_mission` table (player_id, mission_id, status, current_step_id, completed/active/failed objective arrays, repeats)
+- **Persistence**: `sgw_mission` table (player_id, mission_id, status, current_step_id, completed/active/failed objective arrays, repeats). `active_objective_ids` holds the **current step's objective roster**, completed entries included, and `completed_objective_ids` the union of everything completed so far; both are serialized from the live `MissionInstance` after each mutation by [`cell/missions/persist.rs`](../../crates/services/src/cell/missions/persist.rs). Before #657 the accept and step-advance paths wrote the *step* id into the objective array and objective completion was never persisted at all. `hidden` / `optional` are not stored — hydration reads them back from `resources.mission_objectives`, which also repairs rows written before the fix
 
 ## RE Priorities
 
