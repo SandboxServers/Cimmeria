@@ -235,6 +235,32 @@ pub(crate) async fn handle_respawn(
         })
         .await;
 
+    // Re-register the world's trigger volumes after the reanchor, for the
+    // same reason the inventory is re-pushed below: CREATE_BASE_PLAYER
+    // recreates the client's pawn, and in the 2026-09-18 Castle playtest a
+    // respawned client sent no `triggerClientHintedGenericRegion` for the
+    // rest of its session (finding H8). Without the hints no `enter_region`
+    // chain, ring pad or stargate volume fires. Clear-then-add, so the
+    // outcome is the same whether or not the client kept its old list.
+    // Queued on the same channel AFTER `ReanchorPlayer`, so the base sends
+    // it behind the pawn-recreate burst.
+    if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
+        let regions = crate::cell::cell_methods::player::world::send_client_hinted_regions(
+            entity_id,
+            &world_name,
+            crate::cell::cell_methods::player::world::ClearFirst::Yes,
+            tx,
+            space_mgr,
+        )
+        .await;
+        tracing::info!(
+            entity_id,
+            world = %world_name,
+            regions,
+            "respawn: re-registered client-hinted regions after reanchor"
+        );
+    }
+
     // Re-push the full inventory snapshot after the reanchor.
     //
     // CREATE_BASE_PLAYER above re-instantiates the client-side pawn

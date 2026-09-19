@@ -13,9 +13,14 @@
 //! Reference: `tools/SceneEditor/src/commands/navmesh.rs` (XRC parser)
 //!
 //! Module layout: the XRC binary-reader helpers and the header sanity caps
-//! live in [`xrc`]; this module owns the [`NavMesh`] handle and its query API.
+//! live in [`xrc`]; the line-of-sight raycast and its three-state result live
+//! in [`line_of_sight`]; this module owns the [`NavMesh`] handle and the rest of
+//! its query API.
 
+mod line_of_sight;
 mod xrc;
+
+pub use line_of_sight::LineOfSight;
 
 use std::ffi::c_void;
 use std::io::{BufReader, Read as IoRead};
@@ -514,114 +519,6 @@ impl NavMesh {
         }
     }
 
-    /// Line-of-sight raycast from `start` to `end`.
-    ///
-    /// Returns `true` if the ray can travel from start to end without hitting
-    /// a navmesh boundary (i.e. there is clear line of sight).
-    ///
-    /// **Off-mesh start projection.** The raycast requires a start polygon
-    /// for Detour to walk the edges from. If `start` is off the navmesh
-    /// (a flying NPC hovering above the floor; a player on a ledge
-    /// barely outside the walkable surface), the tight `START_EXTENTS`
-    /// lookup fails, `start_ref == 0`, and the function would return
-    /// `false` — appearing to the caller as "LoS blocked" even when no
-    /// geometry actually intervenes. We retry with the more generous
-    /// `DEST_EXTENTS` (3-unit cube), and on success we raycast from the
-    /// **projected** point (the nearest valid polygon point) rather
-    /// than the original off-mesh coordinate. This recovers LoS for
-    /// `is_stationary = true` flyer NPCs whose `npc_ai_fight` tick
-    /// silently skipped them every cycle.
-    ///
-    /// **Off-mesh end projection.** Symmetric to the start case: the
-    /// Detour raycast walks navmesh polygons from `start_ref` toward
-    /// `end_pos`. If `end` lies outside any walkable polygon (player
-    /// standing on a crate the mesh doesn't cover, jumping past a
-    /// stair edge, or briefly clipped above geometry), Detour exits
-    /// the mesh at the boundary, reports `t < 1.0` and the function
-    /// returns `false` — `has_los = false` for what is visually a
-    /// clear shot. Stationary NPCs see this as "no LoS" and hold
-    /// fire silently (`npc_ai::stationary_holds` log). We project
-    /// `end` to its nearest poly within `DEST_EXTENTS` and raycast to
-    /// **that** point; if no poly is in range (the target is genuinely
-    /// far off-mesh — flying, in the sky, behind real geometry), we
-    /// fall back to the original raw `end_pos` so unreachable targets
-    /// still correctly fail.
-    ///
-    /// Reverting either fallback re-introduces a "stationary mob never
-    /// fires" bug shape. Original observation: Ambernol drone (entity
-    /// 100115) 54s aggro with zero `npc_ai.decision` events. End-side
-    /// regression observed on castle_cellblock NPC 100143 (lomiada
-    /// 2026-06-04 11:04:44–46): `dist_to_target=12.7–13.0m`,
-    /// `max_range=30m`, `in_range=true`, `has_los=false`, two
-    /// `stationary_holds` ticks back-to-back even though the player
-    /// was in unobstructed sight (mesh just didn't cover the player's
-    /// exact tile).
-    pub fn raycast(&self, start: &Vector3, end: &Vector3) -> bool {
-        // Try the tight extents first (matches the existing walking-NPC
-        // shape — agent stands on the polygon, original position == the
-        // polygon's closest point within 0.5u). Most NPCs and players
-        // satisfy this and we save the wider lookup.
-        let (start_ref, projected_start) = match self.project_to_polygon(start, &START_EXTENTS) {
-            Some(v) => v,
-            None => match self.project_to_polygon(start, &DEST_EXTENTS) {
-                Some(v) => v,
-                None => return false, // truly off-mesh; nothing to raycast from
-            },
-        };
-
-        // Project `end` for the same reason: Detour's raycast halts at
-        // the mesh boundary when `end` is off-poly, which is the
-        // off-navmesh-target case described in the doc above. Only the
-        // wider `DEST_EXTENTS` is used here — there is no "tight" case
-        // worth distinguishing for the destination, and if the target
-        // is more than ~3u from any walkable poly we want to fall back
-        // to the raw end so genuinely unreachable targets still fail.
-        let end_pos = match self.project_to_polygon(end, &DEST_EXTENTS) {
-            Some((_, projected_end)) => projected_end,
-            None => [end.x, end.y, end.z],
-        };
-
-        let mut hit_normal = [0.0f32; 3];
-        let mut t: f32 = 0.0;
-
-        let result = unsafe {
-            detour_ffi::detour_raycast(
-                self.query,
-                start_ref,
-                projected_start.as_ptr(),
-                end_pos.as_ptr(),
-                hit_normal.as_mut_ptr(),
-                &mut t,
-            )
-        };
-
-        // result == 1 means ray reached endPos unblocked
-        result == 1
-    }
-
-    /// Helper: find a polygon containing or near `pos`, return its ref
-    /// and the projected-to-polygon point. Returns `None` if Detour
-    /// can't find one within the requested extents box.
-    fn project_to_polygon(&self, pos: &Vector3, extents: &[f32; 3]) -> Option<(u32, [f32; 3])> {
-        let center = [pos.x, pos.y, pos.z];
-        let mut poly_ref: u32 = 0;
-        let mut projected = [0.0f32; 3];
-        let status = unsafe {
-            detour_ffi::detour_find_nearest_poly(
-                self.query,
-                center.as_ptr(),
-                extents.as_ptr(),
-                &mut poly_ref,
-                projected.as_mut_ptr(),
-            )
-        };
-        if dt_status_failed(status) || poly_ref == 0 {
-            None
-        } else {
-            Some((poly_ref, projected))
-        }
-    }
-
     /// Find a path from `start` to `end` across the navigation mesh.
     ///
     /// Returns a sequence of world-space waypoints forming a walkable path,
@@ -739,5 +636,7 @@ impl std::fmt::Debug for NavMesh {
     }
 }
 
+#[cfg(test)]
+mod line_of_sight_tests;
 #[cfg(test)]
 mod tests;
