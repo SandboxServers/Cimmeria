@@ -161,6 +161,73 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 -- prefab position).
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2085, 'Castle.CheckpointAlpha', 'AreaSet', 8, NULL, NULL, 'BoundingBox', 1);
 
+-- PLACEMENT PASS B (packet H15, world 57 named regions).
+-- Ledger: docs/analysis/harset-rebuild/placements/B-world57-population-and-regions.md
+--
+-- `spawner/regions.rs` loads `type = 'AreaSet'` only, and
+-- `is_point_in_region` needs EXACTLY four points, so every BoundingBox row
+-- below carries four corners in ring order with the fourth corner raised by
+-- the volume's height -- the same deliberate asymmetry the cylinder
+-- workaround produces and that rows 2078/2079/2083-2085 already use. The
+-- Cylinder rows carry ONE point and a radius; the loader expands them.
+--
+-- Names carry the world prefix and a dot so the cross-file region-key
+-- linter (crates/content-engine/tests/interact_tag_linter.rs) sees them.
+--
+-- TWO NAMES FROM THE H15 LIST ARE DELIBERATELY NOT HERE. `Harset.Bar` and
+-- `Harset.HoldingPens` have no landmark, no actor, no telemetry and no
+-- spec coordinate -- see the `## No idea` section of the ledger. Set ids
+-- 2108 and 2109 are reserved for them so a later pass can add them without
+-- renumbering. Market/Storage door regions are worker A's, not this pass.
+
+-- PL-B-16: Harset.JaffaZone. Encloses every `JF-*` instance in the map
+-- (tents x -125.7 to -202.2, z -63.9 to 133.2), `GA-Barracks01` at
+-- (-198.1, 84.4), `JF-HighWallArch00` at (-156.5, 35.7) and both Jaffa
+-- Zone fountains, with a 6 m margin. Floor -42.0 from `obj_slab` (the
+-- quarter's ground is a consistent y[-42, -41] slab at every column
+-- probed); ceiling +12 so a player on the tent-roof level is still inside.
+-- Used by 1343 step 3974 (patrol) and 1243 step 3611 (three Scarabs).
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2100, 'Harset.JaffaZone', 'AreaSet', 57, NULL, NULL, 'BoundingBox', 1);
+
+-- PL-B-17: Harset.OpCoreZone. Encloses the `EM-*` camp: `EM-Bunker00`
+-- (202.1, -9.0), `EM-Quartermaster01` (188.5, 156.7), the infirmary
+-- generator (149.9, 105.6), the `EM-Tent_*` rows (x 141-193), both
+-- `EM-Cover_Guardpost_Med01` (131.7, 133.2) and (154.1, -57.4),
+-- `GA-Base_Simp00` (221.0, 37.8) and `EM-WaterTower00` (249.0, 46.1).
+-- The Y band is the one place this volume is opinionated: it is set to the
+-- camp's own deck (-42 to -30) and therefore EXCLUDES the lower level that
+-- runs under it at y=-66 (the Market-door approach, worker A's region) and
+-- one outlying telemetry point at y=-47.8. Thirteen of the fifteen
+-- OP-CORE `last_valid` positions recovered from SigNoz fall inside it.
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2101, 'Harset.OpCoreZone', 'AreaSet', 57, NULL, NULL, 'BoundingBox', 1);
+
+-- PL-B-18: Harset.Bank. The courtyard that carries the `GA-Bank00` /
+-- `CA-Courtyard_Str00` pair at (-187.9 / -184.5, -41.4, 162.3) -- the only
+-- one of the map's five `GA-Bank00` instances that is on the navmesh
+-- (component 1441). Sized to the 180 m^2 floor `obj_slab` finds at
+-- y[-42, -41] over x[-193.4, -180.0] z[157.7, 167.0], plus margin.
+-- Used by 1374 objective 4088 and 1352.
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2102, 'Harset.Bank', 'AreaSet', 57, NULL, NULL, 'BoundingBox', 1);
+
+-- PL-B-19: Harset.PetbeQuarters. The terrace carrying the map's only two
+-- `HP-Props:HP-Brazier00` instances, reached by the `HarsetRingLeftTop`
+-- ring pad. Floor -28.2 (272.6 m^2 at y[-28.5, -28.0] from `obj_slab`,
+-- spanning x[-178.0, -155.5] z[224.2, 244.7]); the box is that slab with
+-- the ring pad's own step at y=-27.2 inside the +8 ceiling.
+-- Deliberately overlaps Harset.ShieldTower2 -- see spawn 313's comment.
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2103, 'Harset.PetbeQuarters', 'AreaSet', 57, NULL, NULL, 'BoundingBox', 1);
+
+-- PL-B-20 .. PL-B-23: the four point-target volumes, as Cylinders on the
+-- 1001 `Harset.Stargate` model (one point, radius, height). Each is
+-- centred on its landmark's prefab origin, not on the prop row, so that
+-- moving the prop during the in-client pass does not move the region.
+-- Radii are 5-8 m: big enough that a player standing at the console is
+-- inside, small enough that the three towers can never be confused.
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2104, 'Harset.ShieldControls', 'AreaSet', 57, 6, 4, 'Cylinder', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2105, 'Harset.ShieldTower1', 'AreaSet', 57, 8, 6, 'Cylinder', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2106, 'Harset.ShieldTower2', 'AreaSet', 57, 5, 6, 'Cylinder', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2107, 'Harset.ShieldTower3', 'AreaSet', 57, 8, 6, 'Cylinder', 1);
+
 --
 -- Interior named regions (packet H15, placement cluster PL-C).
 --
@@ -230,6 +297,7 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 -- Dependencies: 240
 -- Name: point_sets_set_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
+
 
 SELECT pg_catalog.setval('point_sets_set_id_seq', 2122, true);
 

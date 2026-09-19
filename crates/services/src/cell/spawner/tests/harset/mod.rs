@@ -41,11 +41,17 @@
 //! - [`interior_regions`]: the three interior `AreaSet` regions, including an
 //!   on-mesh guard for world 70 against the shipped `harset_storagerm.nav`.
 
+//! - [`world57_placement`]: live-DB guards on the world-57 population and
+//!   named regions placed by pass B (packets H14 and H15) -- tags the merged
+//!   mission chains already dispatch on, the D-H03 no-hostiles rule, the
+//!   recorded on-mesh/off-mesh verdict per row, and the region volumes.
+
 mod ability_sets;
 mod cmdcenter_population;
 mod factions;
 mod interior_regions;
 mod templates;
+mod world57_placement;
 
 use crate::cell::combat::{HOSTILE_FACTION, NPC_DEFAULT_ABILITY};
 use crate::cell::spawner::{load_spawn_templates, load_spawns_from_db};

@@ -366,5 +366,41 @@ INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUE
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2122, 2550, 19.0, 0.3, 97.0, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2122, 2551, 19.0, 10.3, 38.0, 0, 0, 0);
 
+
+-- PLACEMENT PASS B (packet H15, world 57). Four corners per BoundingBox in
+-- ring order, three at the floor and the fourth raised to the ceiling --
+-- `is_point_in_region` takes the AABB over all four, so the raised corner
+-- is what gives the volume its height. One point per Cylinder.
+
+-- 2100 Harset.JaffaZone: floor -42.0, ceiling -30.0 (+12).
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2500, -208.0, -42.0, -70.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2501, -208.0, -42.0, 140.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2502, -128.0, -42.0, 140.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2503, -128.0, -30.0, -70.0, 0, 0, 0);
+
+-- 2101 Harset.OpCoreZone: floor -42.0, ceiling -30.0 (+12).
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2504, 126.0, -42.0, -64.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2505, 126.0, -42.0, 164.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2506, 256.0, -42.0, 164.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2507, 256.0, -30.0, -64.0, 0, 0, 0);
+
+-- 2102 Harset.Bank: floor -42.0, ceiling -34.0 (+8).
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2508, -195.0, -42.0, 155.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2509, -195.0, -42.0, 170.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2510, -178.0, -42.0, 170.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2511, -178.0, -34.0, 155.0, 0, 0, 0);
+
+-- 2103 Harset.PetbeQuarters: floor -29.0, ceiling -21.0 (+8).
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2103, 2512, -176.0, -29.0, 222.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2103, 2513, -176.0, -29.0, 246.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2103, 2514, -154.0, -29.0, 246.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2103, 2515, -154.0, -21.0, 222.0, 0, 0, 0);
+
+-- 2104-2107: cylinder centres, each on its landmark's prefab origin.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2104, 2516, -88.3400002, -30.7000008, 213.925003, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2105, 2517, -226.039993, -41.3600006, 37.7199974, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2106, 2518, -166.117996, -31.1299992, 234.796997, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2107, 2519, 0.0, -30.7199993, 288.799988, 0, 0, 0);
+
 SELECT pg_catalog.setval('point_set_points_point_id_seq', 2551, true);
 
