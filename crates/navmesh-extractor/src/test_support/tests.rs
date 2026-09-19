@@ -267,7 +267,11 @@ fn a_static_mesh_actor_resolves_through_a_real_package_index() {
     let path = chunk.write(&maps, "Fix", 0x0000_0005);
 
     let pkg = open(&path);
-    let extraction = crate::staticmesh::extract_chunk_from_package(&pkg, Some(&index));
+    let extraction = crate::staticmesh::extract_chunk_from_package(
+        &pkg,
+        Some(&index),
+        &mut crate::staticmesh::ArchetypeCache::default(),
+    );
     assert_eq!(extraction.actors_total, 1);
     assert_eq!(extraction.actors_resolved, 1, "{:?}", extraction.skips);
     assert_eq!(extraction.triangles_emitted, 1);
@@ -285,7 +289,13 @@ fn an_archetype_stub_actor_is_counted_but_not_resolved() {
     let path = chunk.write(&dir, "Fix", 0x0000_0006);
 
     let pkg = open(&path);
-    let walk = crate::staticmesh::collect_static_mesh_instances(&pkg);
+    // No index: the archetype chain cannot be followed, so the stub
+    // stays a stub — which is what this fixture is asserting about.
+    let walk = crate::staticmesh::collect_static_mesh_instances(
+        &pkg,
+        None,
+        &mut crate::staticmesh::ArchetypeCache::default(),
+    );
     assert_eq!(walk.actors_total, 1);
     assert_eq!(walk.archetype_actors, 1, "export Archetype must be set");
     assert!(walk.instances.is_empty());

@@ -138,6 +138,25 @@ impl PackageIndex {
             .unwrap_or(&[])
     }
 
+    /// The file a package name lives in, if the index saw it at all.
+    ///
+    /// Derived from [`Self::exports`] rather than stored, deliberately:
+    /// adding a fourth serialized field would invalidate every
+    /// `package_index.bin` on disk (the Castle cache is 189 MB / ~45 s to
+    /// rebuild) for information already present. Callers that need it in
+    /// a loop should hoist it — this is a linear scan over ~2.8M entries.
+    ///
+    /// Use [`Self::find`] when you know an object name in the package;
+    /// this exists for the case where you have only the package name,
+    /// e.g. resolving a prefab archetype's owning `.upk` when the
+    /// object's own name is ambiguous within it.
+    pub fn package_file(&self, package_name: &str) -> Option<&Path> {
+        self.exports
+            .iter()
+            .find(|((pkg, _), _)| pkg == package_name)
+            .map(|(_, loc)| loc.file_path.as_path())
+    }
+
     /// Save the index to a bincode file for fast subsequent loading.
     ///
     /// Writes the bincode 1.x on-disk format — see [`CACHE_CONFIG`].

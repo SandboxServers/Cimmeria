@@ -52,6 +52,9 @@ pub mod chunk_fixtures;
 pub mod model_payload;
 pub mod names;
 pub mod package_bytes;
+// Added by `nav-archetype`: prefab template packages and the cooked
+// archetype-instanced actor shape that resolves against them.
+pub mod prefab_fixtures;
 pub mod props;
 pub mod static_mesh_payload;
 pub mod terrain_payload;
@@ -62,6 +65,7 @@ pub use chunk_fixtures::{
 pub use model_payload::{ModelPayload, NodeSpec, SurfSpec};
 pub use names::NameTable;
 pub use package_bytes::PackageBuilder;
+pub use prefab_fixtures::{prefab_package, PrefabInstanceSpec, PrefabSpec, TemplateMesh};
 pub use props::PropStream;
 pub use static_mesh_payload::StaticMeshPayload;
 pub use terrain_payload::TerrainPayload;

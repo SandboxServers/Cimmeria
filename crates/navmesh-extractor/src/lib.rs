@@ -300,6 +300,12 @@ pub fn extract_map_with_report(
     // C++ extractor produced.
     let mut combined_soups: Vec<geometry::TriangleSoup> = Vec::new();
 
+    // Memo of prefab-archetype path -> mesh key, shared across every
+    // chunk. Castle's 961 archetype-stub actors share 86 distinct
+    // archetype paths, so hoisting this out of the per-chunk walk is
+    // what keeps prefab-package opens down to those 86.
+    let mut archetype_cache = staticmesh::ArchetypeCache::default();
+
     for chunk_path in chunks {
         let id = chunk_id::ChunkId::from_umap_path(&chunk_path)?;
         tracing::debug!(
@@ -317,7 +323,8 @@ pub fn extract_map_with_report(
         let exports_total = pkg.exports.len() as u64;
 
         // Phase 1.2: StaticMesh extraction.
-        let mut extraction = staticmesh::extract_chunk_from_package(&pkg, index);
+        let mut extraction =
+            staticmesh::extract_chunk_from_package(&pkg, index, &mut archetype_cache);
         // Tag the soup with a group so NavBuilder can debug-print which
         // chunk a triangle came from. `Chunk_*` keeps it distinct from
         // the reserved `Terrain_*` prefix NavBuilder skips.
@@ -415,6 +422,9 @@ pub fn extract_map_with_report(
             archetype_actors: extraction.archetype_actors,
             archetype_actors_resolved: extraction.archetype_actors_resolved,
             prefab_outer_actors: extraction.prefab_outer_actors,
+            actors_resolved_via_archetype: extraction.actors_resolved_via_archetype,
+            triangles_via_archetype: extraction.triangles_via_archetype as u64,
+            prefab_packages_opened: extraction.prefab_packages_opened,
             class_census,
         };
 
@@ -504,11 +514,17 @@ pub fn extract_map_with_report(
     report.elapsed_secs = started.elapsed().as_secs_f64();
 
     let totals = report.totals();
+    let (arch_hits, arch_misses) = archetype_cache.stats();
     tracing::info!(
         chunks_with_geometry = report.chunks_with_geometry(),
         total_triangles = totals.triangles_emitted,
         total_actors_resolved = totals.actors_resolved,
         total_actors_unresolved = totals.skips.total(),
+        actors_via_archetype = totals.actors_resolved_via_archetype,
+        triangles_via_archetype = totals.triangles_via_archetype,
+        archetype_paths = archetype_cache.len(),
+        archetype_cache_hits = arch_hits,
+        archetype_cache_misses = arch_misses,
         elapsed_secs = report.elapsed_secs,
         terrain_actors = terrain_totals.terrain_actors,
         terrain_parse_failures = terrain_totals.parse_failures,

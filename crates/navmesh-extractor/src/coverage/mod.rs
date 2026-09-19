@@ -1,14 +1,16 @@
-//! Extraction-coverage accounting — "how much of this map did the
-//! StaticMesh path actually recover, and what did it leave on the floor?"
+//! Extraction-coverage accounting — "how much of this map did we
+//! actually recover, and what did we leave on the floor?"
 //!
-//! The extractor's Phase 1.2 walker only understands `StaticMeshActor`
-//! exports. Everything else in a `.umap` — `Terrain`, BSP (`Model` /
-//! `Polys` / `Brush`), `BlockingVolume`, `InterpActor`,
-//! `StaticMeshCollectionActor` — is silently ignored. Before deciding
-//! whether a StaticMesh-only navmesh is worth building for a given map,
-//! you need the numbers: how many actors resolved, why the rest didn't,
-//! and how much collision-bearing geometry sits in classes we don't
-//! decode.
+//! Three walkers feed the soup: `StaticMeshActor` (Phase 1.2,
+//! including prefab archetypes), `Terrain` (1.3) and BSP `Model`
+//! (1.4). Classes outside that set — `Polys`, `ModelComponent`,
+//! `InterpActor`, `KActor`, `FracturedStaticMeshActor`,
+//! `StaticMeshCollectionActor` — are still silently ignored. Before
+//! deciding whether a given map's navmesh is worth building, you need
+//! the numbers: how many actors resolved, why the rest didn't, how the
+//! triangles split by source, and how much collision-bearing geometry
+//! sits in classes nothing reads. [`decode_status`] is what keeps that
+//! last question honest as phases land.
 //!
 //! This module is the bookkeeping half of that answer. It is pure
 //! accounting — no UE3 parsing beyond a class-name census — so the
@@ -45,12 +47,39 @@ pub enum SkipReason {
     /// The `StaticMeshComponent` reference points outside the export
     /// table, at an import, or at a zero-length export.
     ComponentUnreadable,
-    /// The component parsed but has **no `StaticMesh` property**. This is
-    /// the archetype-stub shape described in the `staticmesh` module doc:
-    /// a ~76-byte cooked component holding only a `CullDistance`
-    /// override, with the real mesh reference living in the prefab
-    /// archetype's component in another package.
+    /// The component parsed but has **no `StaticMesh` property**, and no
+    /// [`cimmeria_upk_objects::PackageIndex`] was available to follow
+    /// its archetype. This is the archetype-stub shape described in the
+    /// `staticmesh` module doc: a cooked component holding only
+    /// per-instance overrides, with the real mesh reference living in
+    /// the prefab archetype's component in another package.
+    ///
+    /// With an index supplied this reason no longer fires — the stub is
+    /// resolved by `staticmesh::archetype`, or falls into one of the
+    /// five `Archetype*` reasons below.
     ArchetypeStubComponent,
+    /// The stub's `Archetype` is 0, points at a local export we could
+    /// not read, or is an import whose outer chain never reaches a root
+    /// package — so there is no `(package, path)` to look up.
+    ArchetypeUnrooted,
+    /// The archetype's owning package is not in the supplied
+    /// [`cimmeria_upk_objects::PackageIndex`], or failed to open.
+    ArchetypePackageNotFound,
+    /// The archetype's package opened but holds no export at the
+    /// template's dotted outer path.
+    ArchetypeExportNotFound,
+    /// The archetype chain revisited a path, or exceeded
+    /// [`crate::staticmesh::archetype::MAX_ARCHETYPE_DEPTH`] hops.
+    ArchetypeChainLoop,
+    /// The chain terminated at a template that has neither a
+    /// `StaticMesh` property nor a further archetype to climb to.
+    ArchetypeNoMesh,
+    /// `CollideActors` is explicitly `false` on the component or,
+    /// through UE3 property inheritance, on its archetype. The mesh is
+    /// rendered but nothing collides with it, so rasterising it would
+    /// put a wall or a floor in the navmesh that the player walks
+    /// straight through.
+    CollisionDisabled,
     /// The component has a `StaticMesh` property but it is a `None`-ref
     /// (object index 0).
     NullMeshRef,
@@ -74,10 +103,16 @@ pub enum SkipReason {
 impl SkipReason {
     /// Every variant, in declaration order. Used for deterministic TSV
     /// column ordering and for the `merge` / `total` loops.
-    pub const ALL: [SkipReason; 9] = [
+    pub const ALL: [SkipReason; 15] = [
         SkipReason::NoComponentRef,
         SkipReason::ComponentUnreadable,
         SkipReason::ArchetypeStubComponent,
+        SkipReason::ArchetypeUnrooted,
+        SkipReason::ArchetypePackageNotFound,
+        SkipReason::ArchetypeExportNotFound,
+        SkipReason::ArchetypeChainLoop,
+        SkipReason::ArchetypeNoMesh,
+        SkipReason::CollisionDisabled,
         SkipReason::NullMeshRef,
         SkipReason::UnresolvableMeshRef,
         SkipReason::MeshNotInIndex,
@@ -92,6 +127,12 @@ impl SkipReason {
             SkipReason::NoComponentRef => "skip_no_component_ref",
             SkipReason::ComponentUnreadable => "skip_component_unreadable",
             SkipReason::ArchetypeStubComponent => "skip_archetype_stub_component",
+            SkipReason::ArchetypeUnrooted => "skip_archetype_unrooted",
+            SkipReason::ArchetypePackageNotFound => "skip_archetype_package_not_found",
+            SkipReason::ArchetypeExportNotFound => "skip_archetype_export_not_found",
+            SkipReason::ArchetypeChainLoop => "skip_archetype_chain_loop",
+            SkipReason::ArchetypeNoMesh => "skip_archetype_no_mesh",
+            SkipReason::CollisionDisabled => "skip_collision_disabled",
             SkipReason::NullMeshRef => "skip_null_mesh_ref",
             SkipReason::UnresolvableMeshRef => "skip_unresolvable_mesh_ref",
             SkipReason::MeshNotInIndex => "skip_mesh_not_in_index",
@@ -106,12 +147,18 @@ impl SkipReason {
             SkipReason::NoComponentRef => 0,
             SkipReason::ComponentUnreadable => 1,
             SkipReason::ArchetypeStubComponent => 2,
-            SkipReason::NullMeshRef => 3,
-            SkipReason::UnresolvableMeshRef => 4,
-            SkipReason::MeshNotInIndex => 5,
-            SkipReason::MeshDecodeFailed => 6,
-            SkipReason::MeshNoCollision => 7,
-            SkipReason::NoPackageIndex => 8,
+            SkipReason::ArchetypeUnrooted => 3,
+            SkipReason::ArchetypePackageNotFound => 4,
+            SkipReason::ArchetypeExportNotFound => 5,
+            SkipReason::ArchetypeChainLoop => 6,
+            SkipReason::ArchetypeNoMesh => 7,
+            SkipReason::CollisionDisabled => 8,
+            SkipReason::NullMeshRef => 9,
+            SkipReason::UnresolvableMeshRef => 10,
+            SkipReason::MeshNotInIndex => 11,
+            SkipReason::MeshDecodeFailed => 12,
+            SkipReason::MeshNoCollision => 13,
+            SkipReason::NoPackageIndex => 14,
         }
     }
 }
@@ -156,17 +203,84 @@ impl SkipTally {
     }
 }
 
-/// Export classes that are NOT decoded by the Phase 1.2 StaticMesh path
-/// but plausibly carry collision geometry a navmesh would need.
+/// How much of a given export class the extractor actually turns into
+/// triangles.
+///
+/// The census used to answer this with one boolean — `class ==
+/// "StaticMeshActor"` — which was true when the extractor only shipped
+/// Phase 1.2. It has since grown Terrain (1.3), BSP (1.4) and prefab
+/// archetypes, so a boolean now reports `Terrain` as an undecoded
+/// collision risk while the same run emits 2.8 M terrain triangles.
+/// Three states keep "we read it" apart from "we read it through
+/// something else" apart from "this is still a hole".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecodeStatus {
+    /// A walker enumerates exports of this class directly.
+    Decoded,
+    /// Its geometry reaches the soup, but through another export — the
+    /// walker never looks this class up by name.
+    ViaOwner,
+    /// Nothing reads it.
+    NotDecoded,
+}
+
+impl DecodeStatus {
+    fn label(self) -> &'static str {
+        match self {
+            DecodeStatus::Decoded => "yes",
+            DecodeStatus::ViaOwner => "via-owner",
+            DecodeStatus::NotDecoded => "no",
+        }
+    }
+}
+
+/// What the extractor does with each export class it has an opinion
+/// about. Anything absent is [`DecodeStatus::NotDecoded`].
+///
+/// - `StaticMeshActor` — Phase 1.2, including prefab archetypes.
+/// - `StaticMeshComponent` — read through its owning actor.
+/// - `Terrain` — Phase 1.3. `TerrainComponent` holds the per-patch
+///   heights but is reached from the `Terrain` actor, never enumerated.
+/// - `Model` — Phase 1.4. `Brush` and `BlockingVolume` are read as
+///   *owners*: `bsp::classify_owner` keys the world-vs-actor-space
+///   decision on the class of whatever owns the `Model`.
+/// - `PrefabInstance` — the container is still ignored, but its actors
+///   are separately exported as `StaticMeshActor` and now resolve
+///   through `staticmesh::archetype`, so it is no longer a gap.
+const DECODE_STATUS: &[(&str, DecodeStatus)] = &[
+    ("StaticMeshActor", DecodeStatus::Decoded),
+    ("StaticMeshComponent", DecodeStatus::ViaOwner),
+    ("Terrain", DecodeStatus::Decoded),
+    ("TerrainComponent", DecodeStatus::ViaOwner),
+    ("Model", DecodeStatus::Decoded),
+    ("Brush", DecodeStatus::ViaOwner),
+    ("BlockingVolume", DecodeStatus::ViaOwner),
+    ("PrefabInstance", DecodeStatus::ViaOwner),
+];
+
+/// What the extractor does with `class`.
+pub fn decode_status(class: &str) -> DecodeStatus {
+    DECODE_STATUS
+        .iter()
+        .find(|(c, _)| *c == class)
+        .map(|(_, s)| *s)
+        .unwrap_or(DecodeStatus::NotDecoded)
+}
+
+/// Export classes that plausibly carry collision geometry a navmesh
+/// would need, decoded or not.
 ///
 /// These get their own named TSV columns; every other class still shows
 /// up in the full class census written by
-/// [`MapCoverage::write_class_census_tsv`].
+/// [`MapCoverage::write_class_census_tsv`]. The `collision_risk` flag
+/// there is this list **minus** whatever [`decode_status`] says we
+/// already read, so the column shrinks as phases land rather than
+/// staying frozen at the Phase 1.2 answer.
 ///
-/// - `Terrain` / `TerrainComponent` — Phase 1.3, heightfield ground.
-///   `Terrain` is the actor; the components hold the per-patch data.
-/// - `Brush` / `Model` / `Polys` — Phase 1.4 BSP. `Brush` is the actor,
-///   `Model` the geometry, `Polys` the face soup.
+/// - `Terrain` / `TerrainComponent` — heightfield ground.
+/// - `Brush` / `Model` / `Polys` — BSP. `Brush` is the actor, `Model`
+///   the geometry, `Polys` the face soup (unread: BSP collision comes
+///   from `UModel`'s own node tree).
 /// - `BrushComponent` / `ModelComponent` — the collision and rendering
 ///   halves of BSP. `ModelComponent` is the discriminator worth
 ///   watching: every chunk carries a `Model`/`Polys` pair (often the
@@ -176,11 +290,13 @@ impl SkipTally {
 ///   input with no render mesh.
 /// - `InterpActor` / `KActor` / `FracturedStaticMeshActor` — movers and
 ///   physics props that DO own a `StaticMeshComponent` but are not class
-///   `StaticMeshActor`, so the walker's class filter drops them.
+///   `StaticMeshActor`, so the walker's class filter drops them. Still
+///   genuine gaps.
 /// - `StaticMeshCollectionActor` — UE3's cooked batching actor; holds
-///   an array of components rather than one.
-/// - `PrefabInstance` — the prefab container; see the archetype columns.
-pub const UNDECODED_COLLISION_CLASSES: &[&str] = &[
+///   an array of components rather than one. Still a genuine gap.
+/// - `PrefabInstance` — the prefab container; its actors resolve
+///   through the archetype chain, so it is no longer a risk.
+pub const COLLISION_BEARING_CLASSES: &[&str] = &[
     "Terrain",
     "TerrainComponent",
     "Brush",
@@ -195,6 +311,31 @@ pub const UNDECODED_COLLISION_CLASSES: &[&str] = &[
     "StaticMeshCollectionActor",
     "PrefabInstance",
 ];
+
+/// Name of the per-chunk TSV's last column, whose value is `chunk` on
+/// every per-chunk row and `total` on the single summary row.
+pub const ROW_KIND_COLUMN: &str = "row_kind";
+
+/// Which kind of row a per-chunk TSV line is.
+///
+/// The summary row shares the schema of the data rows, so nothing in
+/// the bytes distinguishes them except this column and the literal
+/// `TOTAL` in the `chunk` cell. A reader that misses both double-counts
+/// the whole file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowKind {
+    Chunk,
+    Total,
+}
+
+impl RowKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            RowKind::Chunk => "chunk",
+            RowKind::Total => "total",
+        }
+    }
+}
 
 /// Count exports by class name for one package.
 pub fn census_export_classes(pkg: &Package) -> BTreeMap<String, u64> {
@@ -260,6 +401,15 @@ pub struct ChunkCoverage {
     /// Actors whose `Outer` chain passes through a `PrefabInstance`
     /// export in this same package.
     pub prefab_outer_actors: u64,
+    /// Actors whose mesh reference was recovered by walking the prefab
+    /// archetype chain rather than reading the instance's own
+    /// `StaticMesh` property. A subset of `actors_resolved`.
+    pub actors_resolved_via_archetype: u64,
+    /// Triangles those actors contributed. A subset of
+    /// `staticmesh_triangles`, so it does **not** enter the source sum.
+    pub triangles_via_archetype: u64,
+    /// Prefab packages opened while walking this chunk's archetypes.
+    pub prefab_packages_opened: u64,
     /// Full per-class export census for this chunk.
     pub class_census: BTreeMap<String, u64>,
 }
@@ -305,6 +455,9 @@ impl ChunkCoverage {
         self.archetype_actors += other.archetype_actors;
         self.archetype_actors_resolved += other.archetype_actors_resolved;
         self.prefab_outer_actors += other.prefab_outer_actors;
+        self.actors_resolved_via_archetype += other.actors_resolved_via_archetype;
+        self.triangles_via_archetype += other.triangles_via_archetype;
+        self.prefab_packages_opened += other.prefab_packages_opened;
         for (class, n) in &other.class_census {
             *self.class_census.entry(class.clone()).or_insert(0) += n;
         }
@@ -372,6 +525,14 @@ impl MapCoverage {
     }
 
     /// TSV emitter over any `Write`, so tests can render into a `Vec<u8>`.
+    ///
+    /// The last column is [`ROW_KIND_COLUMN`], `chunk` on every per-chunk
+    /// row and `total` on the single summary row. It exists because the
+    /// summary row is *also* a data row: a reader that sums the file
+    /// naively gets exactly twice the truth, which is plausible enough
+    /// to go unnoticed (it happened once — 12,860 `static_mesh_actors`
+    /// reported against 6,430 exports). Filter on `row_kind` rather
+    /// than string-matching the `chunk` cell.
     pub fn write_tsv_into<W: Write>(&self, w: &mut W) -> crate::Result<()> {
         // Header.
         let mut header: Vec<String> = vec![
@@ -396,19 +557,23 @@ impl MapCoverage {
         header.push("archetype_actors".into());
         header.push("archetype_actors_resolved".into());
         header.push("prefab_outer_actors".into());
+        header.push("actors_resolved_via_archetype".into());
+        header.push("triangles_via_archetype".into());
+        header.push("prefab_packages_opened".into());
         header.extend(
-            UNDECODED_COLLISION_CLASSES
+            COLLISION_BEARING_CLASSES
                 .iter()
-                .map(|c| format!("undecoded_{c}")),
+                .map(|c| format!("class_{c}")),
         );
         header.push("balanced".into());
         header.push("sources_balanced".into());
+        header.push(ROW_KIND_COLUMN.into());
         writeln!(w, "{}", header.join("\t"))?;
 
         for chunk in &self.chunks {
-            write_chunk_row(w, chunk)?;
+            write_chunk_row(w, chunk, RowKind::Chunk)?;
         }
-        write_chunk_row(w, &self.totals())?;
+        write_chunk_row(w, &self.totals(), RowKind::Total)?;
         Ok(())
     }
 
@@ -441,12 +606,17 @@ impl MapCoverage {
 
         writeln!(w, "class\texports\tchunks_present\tdecoded\tcollision_risk")?;
         for (class, exports, chunks_present) in rows {
-            let decoded = class == "StaticMeshActor";
-            let risk = UNDECODED_COLLISION_CLASSES.contains(&class) && !decoded;
+            let status = decode_status(class);
+            // A risk is a class that could carry collision AND that
+            // nothing reads — not merely "is not StaticMeshActor".
+            // `ViaOwner` counts as read: the geometry reaches the soup,
+            // just through a different export.
+            let risk =
+                COLLISION_BEARING_CLASSES.contains(&class) && status == DecodeStatus::NotDecoded;
             writeln!(
                 w,
                 "{class}\t{exports}\t{chunks_present}\t{}\t{}",
-                if decoded { "yes" } else { "no" },
+                status.label(),
                 if risk { "yes" } else { "no" },
             )?;
         }
@@ -454,7 +624,7 @@ impl MapCoverage {
     }
 }
 
-fn write_chunk_row<W: Write>(w: &mut W, chunk: &ChunkCoverage) -> crate::Result<()> {
+fn write_chunk_row<W: Write>(w: &mut W, chunk: &ChunkCoverage, kind: RowKind) -> crate::Result<()> {
     let mut row: Vec<String> = vec![
         chunk.chunk.clone(),
         format!("{:08x}", chunk.chunk_id),
@@ -481,293 +651,20 @@ fn write_chunk_row<W: Write>(w: &mut W, chunk: &ChunkCoverage) -> crate::Result<
     row.push(chunk.archetype_actors.to_string());
     row.push(chunk.archetype_actors_resolved.to_string());
     row.push(chunk.prefab_outer_actors.to_string());
+    row.push(chunk.actors_resolved_via_archetype.to_string());
+    row.push(chunk.triangles_via_archetype.to_string());
+    row.push(chunk.prefab_packages_opened.to_string());
     row.extend(
-        UNDECODED_COLLISION_CLASSES
+        COLLISION_BEARING_CLASSES
             .iter()
             .map(|c| chunk.class_count(c).to_string()),
     );
     row.push(if chunk.is_balanced() { "yes" } else { "NO" }.to_string());
     row.push(if chunk.sources_balance() { "yes" } else { "NO" }.to_string());
+    row.push(kind.label().to_string());
     writeln!(w, "{}", row.join("\t"))?;
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn chunk(name: &str, actors: u64, resolved: u64, tris: u64) -> ChunkCoverage {
-        let mut skips = SkipTally::default();
-        skips.add_n(SkipReason::ArchetypeStubComponent, actors - resolved);
-        ChunkCoverage {
-            chunk: name.to_string(),
-            chunk_id: 0x0001_0002,
-            position_x: 2,
-            position_z: 1,
-            exports_total: actors * 3,
-            actors_total: actors,
-            actors_resolved: resolved,
-            skips,
-            triangles_emitted: tris,
-            // The fixture is a StaticMesh-only chunk, so the whole soup
-            // came from that source and `sources_balance()` holds.
-            staticmesh_triangles: tris,
-            obj_bytes: tris * 30,
-            archetype_actors: actors - resolved,
-            archetype_actors_resolved: 0,
-            prefab_outer_actors: 0,
-            class_census: BTreeMap::from([
-                ("StaticMeshActor".to_string(), actors),
-                ("Terrain".to_string(), 3),
-            ]),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn skip_tally_add_and_total() {
-        let mut t = SkipTally::default();
-        t.add(SkipReason::NoComponentRef);
-        t.add(SkipReason::NoComponentRef);
-        t.add_n(SkipReason::MeshNotInIndex, 7);
-        assert_eq!(t.get(SkipReason::NoComponentRef), 2);
-        assert_eq!(t.get(SkipReason::MeshNotInIndex), 7);
-        assert_eq!(t.get(SkipReason::MeshNoCollision), 0);
-        assert_eq!(t.total(), 9);
-    }
-
-    #[test]
-    fn skip_tally_merge_sums_every_slot() {
-        let mut a = SkipTally::default();
-        a.add_n(SkipReason::NullMeshRef, 3);
-        a.add_n(SkipReason::MeshNoCollision, 1);
-        let mut b = SkipTally::default();
-        b.add_n(SkipReason::NullMeshRef, 4);
-        b.add_n(SkipReason::NoComponentRef, 2);
-        a.merge(&b);
-        assert_eq!(a.get(SkipReason::NullMeshRef), 7);
-        assert_eq!(a.get(SkipReason::MeshNoCollision), 1);
-        assert_eq!(a.get(SkipReason::NoComponentRef), 2);
-        assert_eq!(a.total(), 10);
-    }
-
-    /// Every variant must own a distinct slot — a duplicated `slot()`
-    /// arm would silently merge two reasons into one counter and make
-    /// the report lie about *why* actors were skipped.
-    #[test]
-    fn every_skip_reason_has_a_distinct_slot_and_column() {
-        let mut slots: Vec<usize> = SkipReason::ALL.iter().map(|r| r.slot()).collect();
-        slots.sort_unstable();
-        slots.dedup();
-        assert_eq!(slots.len(), SkipReason::ALL.len());
-
-        let mut cols: Vec<&str> = SkipReason::ALL.iter().map(|r| r.column()).collect();
-        cols.sort_unstable();
-        cols.dedup();
-        assert_eq!(cols.len(), SkipReason::ALL.len());
-    }
-
-    #[test]
-    fn balance_invariant_detects_an_untallied_drop() {
-        let mut c = chunk("a", 10, 4, 100);
-        assert!(c.is_balanced(), "6 skipped + 4 resolved == 10");
-        // Simulate the bug: an actor falls out without a tally.
-        c.actors_total += 1;
-        assert!(!c.is_balanced());
-    }
-
-    #[test]
-    fn totals_row_sums_every_chunk() {
-        let cov = MapCoverage {
-            map_name: "Castle".into(),
-            chunks: vec![chunk("a", 10, 4, 100), chunk("b", 20, 15, 900)],
-            ..Default::default()
-        };
-        let total = cov.totals();
-        assert_eq!(total.chunk, "TOTAL");
-        assert_eq!(total.actors_total, 30);
-        assert_eq!(total.actors_resolved, 19);
-        assert_eq!(total.triangles_emitted, 1000);
-        assert_eq!(total.skips.get(SkipReason::ArchetypeStubComponent), 11);
-        assert_eq!(total.class_count("Terrain"), 6);
-        assert_eq!(total.class_count("StaticMeshActor"), 30);
-        assert!(total.is_balanced());
-    }
-
-    #[test]
-    fn ranked_by_triangles_is_descending_and_tie_broken_by_name() {
-        let cov = MapCoverage {
-            chunks: vec![
-                chunk("b", 1, 1, 50),
-                chunk("a", 1, 1, 50),
-                chunk("c", 1, 1, 900),
-            ],
-            ..Default::default()
-        };
-        let ranked: Vec<&str> = cov
-            .ranked_by_triangles()
-            .iter()
-            .map(|c| c.chunk.as_str())
-            .collect();
-        assert_eq!(ranked, vec!["c", "a", "b"]);
-    }
-
-    #[test]
-    fn unbalanced_chunks_are_surfaced() {
-        let mut bad = chunk("bad", 10, 4, 100);
-        bad.actors_resolved = 99;
-        let cov = MapCoverage {
-            chunks: vec![chunk("ok", 10, 4, 100), bad],
-            ..Default::default()
-        };
-        let flagged: Vec<&str> = cov
-            .unbalanced_chunks()
-            .iter()
-            .map(|c| c.chunk.as_str())
-            .collect();
-        assert_eq!(flagged, vec!["bad"]);
-    }
-
-    #[test]
-    fn tsv_header_matches_row_width_and_ends_with_a_total_row() {
-        let cov = MapCoverage {
-            chunks: vec![chunk("a", 10, 4, 100), chunk("b", 20, 15, 900)],
-            ..Default::default()
-        };
-        let mut buf = Vec::new();
-        cov.write_tsv_into(&mut buf).unwrap();
-        let text = String::from_utf8(buf).unwrap();
-        let lines: Vec<&str> = text.lines().collect();
-
-        // header + 2 chunks + TOTAL
-        assert_eq!(lines.len(), 4);
-        let width = lines[0].split('\t').count();
-        for line in &lines {
-            assert_eq!(
-                line.split('\t').count(),
-                width,
-                "ragged TSV row: {line:?} (header width {width})"
-            );
-        }
-        assert!(lines[0].starts_with("chunk\tchunk_id\t"));
-        assert!(lines[0].contains("skip_archetype_stub_component"));
-        assert!(lines[0].contains("undecoded_Terrain"));
-        assert!(lines[3].starts_with("TOTAL\t"));
-        // 19 resolved across the two chunks shows up on the TOTAL row.
-        assert!(lines[3].contains("\t19\t"));
-    }
-
-    #[test]
-    fn tsv_flags_an_unbalanced_row() {
-        let mut bad = chunk("bad", 10, 4, 100);
-        bad.actors_total = 11;
-        let cov = MapCoverage {
-            chunks: vec![bad],
-            ..Default::default()
-        };
-        let mut buf = Vec::new();
-        cov.write_tsv_into(&mut buf).unwrap();
-        let text = String::from_utf8(buf).unwrap();
-        assert_eq!(
-            column(&text, "balanced", 1),
-            "NO",
-            "unbalanced chunk row must say NO: {text}"
-        );
-        assert_eq!(
-            column(&text, "sources_balanced", 1),
-            "yes",
-            "the actor invariant and the per-source invariant are different \
-             claims and must be reported in different columns: {text}"
-        );
-    }
-
-    #[test]
-    fn tsv_flags_a_row_whose_sources_do_not_sum() {
-        // A chunk whose OBJ holds more triangles than the three source
-        // tallies account for — the shape a new geometry source that
-        // forgot its tally would produce.
-        let mut bad = chunk("bad", 10, 10, 100);
-        bad.terrain_triangles = 50;
-        bad.triangles_emitted = 200;
-        assert!(!bad.sources_balance());
-        let cov = MapCoverage {
-            chunks: vec![bad],
-            ..Default::default()
-        };
-        let mut buf = Vec::new();
-        cov.write_tsv_into(&mut buf).unwrap();
-        let text = String::from_utf8(buf).unwrap();
-        assert_eq!(column(&text, "sources_balanced", 1), "NO", "{text}");
-        assert_eq!(column(&text, "balanced", 1), "yes", "{text}");
-    }
-
-    #[test]
-    fn tsv_carries_one_column_per_geometry_source() {
-        let mut c = chunk("c", 4, 4, 30);
-        c.staticmesh_triangles = 10;
-        c.terrain_triangles = 12;
-        c.terrain_quads_holed = 7;
-        c.terrain_parse_failures = 1;
-        c.bsp_triangles = 8;
-        c.bsp_hull_cap_triangles = 3;
-        c.bsp_models_failed = 2;
-        let cov = MapCoverage {
-            chunks: vec![c],
-            ..Default::default()
-        };
-        let mut buf = Vec::new();
-        cov.write_tsv_into(&mut buf).unwrap();
-        let text = String::from_utf8(buf).unwrap();
-        for (name, want) in [
-            ("triangles", "30"),
-            ("staticmesh_triangles", "10"),
-            ("terrain_triangles", "12"),
-            ("terrain_quads_holed", "7"),
-            ("terrain_parse_failures", "1"),
-            ("bsp_triangles", "8"),
-            ("bsp_hull_cap_triangles", "3"),
-            ("bsp_models_failed", "2"),
-        ] {
-            assert_eq!(column(&text, name, 1), want, "column {name} in {text}");
-        }
-        // 10 + 12 + 8 == 30; the dropped hull-cap triangles are not part
-        // of the sum because they never reached the OBJ.
-        assert_eq!(column(&text, "sources_balanced", 1), "yes");
-    }
-
-    /// Value of the named column on data row `row` (1-based, so row 1 is
-    /// the first chunk).
-    fn column<'a>(tsv: &'a str, name: &str, row: usize) -> &'a str {
-        let mut lines = tsv.lines();
-        let header: Vec<&str> = lines.next().expect("header").split('\t').collect();
-        let idx = header
-            .iter()
-            .position(|h| *h == name)
-            .unwrap_or_else(|| panic!("no column {name} in {header:?}"));
-        tsv.lines()
-            .nth(row)
-            .expect("data row")
-            .split('\t')
-            .nth(idx)
-            .expect("cell")
-    }
-
-    #[test]
-    fn class_census_sorts_by_count_and_marks_collision_risk() {
-        let cov = MapCoverage {
-            chunks: vec![chunk("a", 10, 4, 100), chunk("b", 20, 15, 900)],
-            ..Default::default()
-        };
-        let mut buf = Vec::new();
-        cov.write_class_census_into(&mut buf).unwrap();
-        let text = String::from_utf8(buf).unwrap();
-        let lines: Vec<&str> = text.lines().collect();
-        assert_eq!(
-            lines[0],
-            "class\texports\tchunks_present\tdecoded\tcollision_risk"
-        );
-        // StaticMeshActor (30) outranks Terrain (6).
-        assert_eq!(lines[1], "StaticMeshActor\t30\t2\tyes\tno");
-        assert_eq!(lines[2], "Terrain\t6\t2\tno\tyes");
-    }
-}
+mod tests;

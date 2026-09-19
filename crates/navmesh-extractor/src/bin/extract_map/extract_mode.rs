@@ -4,7 +4,7 @@
 use std::path::Path;
 use std::time::Instant;
 
-use cimmeria_navmesh_extractor::coverage::{MapCoverage, SkipReason, UNDECODED_COLLISION_CLASSES};
+use cimmeria_navmesh_extractor::coverage::{MapCoverage, SkipReason, COLLISION_BEARING_CLASSES};
 use cimmeria_navmesh_extractor::{extract_map_with_report, ExtractOptions};
 use cimmeria_upk_objects::PackageIndex;
 
@@ -147,7 +147,7 @@ fn print_summary(report: &MapCoverage, report_path: &Path, classes_path: &Path) 
     );
 
     println!("\nundecoded classes present (exports across the map):");
-    for class in UNDECODED_COLLISION_CLASSES {
+    for class in COLLISION_BEARING_CLASSES {
         let n = t.class_count(class);
         if n > 0 {
             println!("  {class:<34} {n:>8}");

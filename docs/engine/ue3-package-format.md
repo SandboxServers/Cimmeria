@@ -149,6 +149,98 @@ The property stream carries `CullDistance`, `CachedCullDistance`,
 empirical scan found no `class_idx`-shaped values in the 226-byte prefix — so
 copying both binary regions verbatim is safe when relocating a component.
 
+## Prefab archetypes — the cooked `StaticMeshComponent` stub
+
+When the cooker writes a `PrefabInstance` out to a streaming chunk, the
+prefab's actors are **flattened**: each becomes an ordinary top-level export
+outered straight to `PersistentLevel`, not to the `PrefabInstance`. Walking
+the `Outer` chain looking for a `PrefabInstance` parent therefore finds
+nothing — measured across all 144 `Castle` chunks, `prefab_outer_actors` is 0
+while 963 actors are archetype-instanced.
+
+What marks them instead is the export table's **`Archetype`** field, and there
+are two independent chains per actor:
+
+| Chain | Rooted at | Carries |
+|---|---|---|
+| component | `Archetype` of the `StaticMeshComponent` export | `StaticMesh` |
+| actor | `Archetype` of the `StaticMeshActor` export | `bCollideActors`, `Rotation`, `DrawScale3D` |
+
+The instance's own cooked `StaticMeshComponent` is a **stub**: a property
+stream holding only per-instance overrides — typically `CullDistance`,
+`CachedCullDistance`, `IrrelevantLights`, sometimes `BlockRigidBody` — and
+**no `StaticMesh` property at all**. UE3 does not need one there; property
+lookup falls through to the archetype for anything the instance does not
+override.
+
+```text
+chunk export   StaticMeshComponent          (stub, no StaticMesh)
+     |  ExportEntry::Archetype  (negative => import)
+     v
+import chain   Em-Props
+                 . EM-ComputerTower00_Pf0           (class Prefab)
+                 . EM-ComputerTower00_Pf0_Arc1      (class StaticMeshActor)
+                 . StaticMeshComponent0             (class StaticMeshComponent)
+     |  open Em-Props.upk, find the export at that dotted Outer path
+     v
+template component property stream (component prefix, offset 8)
+     StaticMesh = Obj(1541)  ->  Em-Props:EM-ComputerTower00
+```
+
+Three traps:
+
+1. **The actor archetype is a dead end for the mesh.** The template actor
+   (`..._Arc1`) carries `Tag`, `CollisionComponent` and placement properties —
+   but *not* `StaticMeshComponent`. Only the component's own archetype leads
+   to `StaticMesh`.
+2. **The template's object name is not unique.** Every SGW prefab names its
+   component `StaticMeshComponent0`; `Em-Props.upk` alone holds 218 of them
+   (and 278 `RB_BodySetup`). A `(package, object_name)` index cannot
+   disambiguate. Resolution has to match the full dotted `Outer` path inside
+   the package. The first path component after the package name *is* unique
+   (it is a top-level `Prefab` export), which is what lets a name-keyed index
+   still locate the right **file**.
+3. **A template's `StaticMesh` may itself be an import into a third package.**
+   `EM_Earth_Military`'s tent prefabs reference
+   `SGW_Weather:DoorwayPrecipitationPlanes`. The resulting key must name the
+   package the *mesh* lives in, not the prefab's.
+
+### `bCollideActors` — render-only geometry with real collision data
+
+`AActor::bCollideActors` defaults to `true` and the cooker omits defaults, so
+the property appears **only** when an actor is non-colliding. It is set on the
+prefab *template* actor and inherited, or set directly on a chunk-local actor.
+
+This matters because the cook does **not** strip collision from a
+non-colliding actor's `StaticMesh`: the kDOP tree is present and populated, so
+nothing downstream of the mesh can tell such an actor apart from a wall.
+Measured on `Castle`: 26 of 86 prefab templates and 1,196 chunk-local actors
+set it `false` — 1,570 actors in all. 17 of the 26 templates are
+`bHidden = true, Group = PrecipPlanes`: flat cards placed in tent, bunker and
+guardhouse **doorways** so snow renders there. The rest are icicles, floor
+signs, wall panels, hoses, pipes, security cameras, crates and wall lights.
+
+Any consumer that rasterises cooked geometry has to honour the flag. Emitting
+those 1,570 actors into `castle.nav` splits the exterior from one walkable
+component into three and leaves the Stargate DHD with no floor under it.
+
+### Property inheritance, and the one property that must NOT be inherited
+
+Instance properties override the archetype's; absent ones inherit. That is
+what makes the `StaticMesh` lookup work, and it applies equally to
+`bCollideActors`, `Rotation`, `DrawScale` and `DrawScale3D`.
+
+It does **not** apply to `Location`. A prefab template actor's `Location` is
+its offset *inside the prefab* (`(128, -2031.99, 0)`); inheriting it would
+place the instance at that offset from the world origin. Every cooked
+instance carries its own absolute `Location`, so the case does not arise in
+the SGW data — but a resolver that merges the whole property set blindly will
+scatter geometry the first time it meets a map where one does not.
+
+Component-local `Translation` / `Rotation` / `Scale` / `Scale3D` are absent
+from every `Castle` component, instance and template alike, so the actor
+transform is the whole story there.
+
 ## ULevel binary layout
 
 The `PersistentLevel` export (class `Level`) serializes:
