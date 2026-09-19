@@ -8,8 +8,11 @@
 mod console;
 mod content;
 mod db;
+mod entities;
 mod logs;
+mod packet_tap;
 mod sessions;
+mod witnesses;
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -54,6 +57,55 @@ struct DbQueryArgs {
     /// A single read-only SQL statement. Writes are rejected; results are
     /// capped at 500 rows.
     sql: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct EntityGetArgs {
+    /// Runtime entity id to snapshot.
+    entity_id: u32,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct EntityQueryArgs {
+    /// Restrict to a single space instance id.
+    #[serde(default)]
+    space_id: Option<u32>,
+    /// Restrict to entities of this `entity_templates.template_id`.
+    #[serde(default)]
+    template_id: Option<i32>,
+    /// Restrict to a wire class id (2 = SGWPlayer, 4 = SGWMob).
+    #[serde(default)]
+    class_id: Option<u8>,
+    /// Radius in world units. Requires a center: `around_entity` or `around_point`.
+    #[serde(default)]
+    radius: Option<f32>,
+    /// Center the radius on this entity's current position.
+    #[serde(default)]
+    around_entity: Option<u32>,
+    /// Center the radius on this explicit `[x, y, z]` world point.
+    #[serde(default)]
+    around_point: Option<[f32; 3]>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct WitnessesArgs {
+    /// Entity whose bidirectional witness relationship to report.
+    entity_id: u32,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct PacketTapStartArgs {
+    /// The session to tap, named by its in-world player entity id.
+    entity_id: u32,
+    /// Ring capacity (messages). Clamped to [1, 10000]; default 500.
+    #[serde(default)]
+    capacity: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct PacketTapArgs {
+    /// The tapped session's player entity id.
+    entity_id: u32,
 }
 
 #[tool_router]
@@ -152,6 +204,116 @@ impl LabTools {
             }
         }
     }
+
+    /// Snapshot one live cell entity by id.
+    #[tool(
+        description = "Snapshot one live cell entity by id: position, class/faction, health, AI state, appearance, and witness count."
+    )]
+    async fn server_entity_get(
+        &self,
+        Parameters(args): Parameters<EntityGetArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let audit_args = json!({ "entity_id": args.entity_id });
+        emit_result(
+            "server_entity_get",
+            &audit_args,
+            entities::entity_get(&self.state, args.entity_id).await,
+        )
+    }
+
+    /// Query live cell entities, filtered by space / template / class / radius.
+    #[tool(
+        description = "Query live cell entities filtered by space_id, template_id, class_id (2=player, 4=NPC), and/or a radius around an entity or point. Capped at 256 snapshots; reports total_matched and capped."
+    )]
+    async fn server_entity_query(
+        &self,
+        Parameters(args): Parameters<EntityQueryArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let audit_args = json!({
+            "space_id": args.space_id,
+            "template_id": args.template_id,
+            "class_id": args.class_id,
+            "radius": args.radius,
+            "around_entity": args.around_entity,
+            "around_point": args.around_point,
+        });
+        emit_result(
+            "server_entity_query",
+            &audit_args,
+            entities::entity_query(
+                &self.state,
+                args.space_id,
+                args.template_id,
+                args.class_id,
+                args.radius,
+                args.around_entity,
+                args.around_point,
+            )
+            .await,
+        )
+    }
+
+    /// Report who witnesses an entity and whom it witnesses (both directions).
+    #[tool(
+        description = "Report the bidirectional witness relationship for an entity: who has it in their AoI, and (for a player) whom it sees. Targets the invisible-corpse class of AoI bug."
+    )]
+    async fn server_witnesses(
+        &self,
+        Parameters(args): Parameters<WitnessesArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let audit_args = json!({ "entity_id": args.entity_id });
+        emit_result(
+            "server_witnesses",
+            &audit_args,
+            witnesses::witnesses(&self.state, args.entity_id).await,
+        )
+    }
+
+    /// Start a per-session decoded packet tap.
+    #[tool(
+        description = "Start capturing decoded Mercury messages (both directions) for ONE session, named by its in-world player entity id, into a bounded ring. Restarting clears the ring."
+    )]
+    async fn server_packet_tap_start(
+        &self,
+        Parameters(args): Parameters<PacketTapStartArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let audit_args = json!({ "entity_id": args.entity_id, "capacity": args.capacity });
+        emit_result(
+            "server_packet_tap_start",
+            &audit_args,
+            packet_tap::tap_start(&self.state, args.entity_id, args.capacity).await,
+        )
+    }
+
+    /// Drain a packet tap's ring (messages + dropped count).
+    #[tool(
+        description = "Drain the packet tap for a session: return captured decoded messages (oldest first) and the count dropped since the last read, then clear the ring."
+    )]
+    async fn server_packet_tap_read(
+        &self,
+        Parameters(args): Parameters<PacketTapArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let audit_args = json!({ "entity_id": args.entity_id });
+        emit_result(
+            "server_packet_tap_read",
+            &audit_args,
+            packet_tap::tap_read(args.entity_id),
+        )
+    }
+
+    /// Stop a packet tap and discard its ring.
+    #[tool(description = "Stop the packet tap for a session and discard its ring buffer.")]
+    async fn server_packet_tap_stop(
+        &self,
+        Parameters(args): Parameters<PacketTapArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let audit_args = json!({ "entity_id": args.entity_id });
+        emit_result(
+            "server_packet_tap_stop",
+            &audit_args,
+            packet_tap::tap_stop(args.entity_id),
+        )
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -160,8 +322,31 @@ impl ServerHandler for LabTools {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             "Cimmeria live-research-lab control endpoint. Fixed tool set: \
              inspect and drive a running SGW server (console, sessions, logs, \
-             content reload, read-only SQL).",
+             content reload, read-only SQL), snapshot live entities and witness \
+             relationships (entity_get/entity_query/witnesses), and capture \
+             decoded per-session Mercury traffic (packet_tap_start/read/stop).",
         )
+    }
+}
+
+/// Emit the one audit event for a tool call and wrap its `Result<Value, String>`
+/// into an MCP result — `OUTCOME_OK` + JSON on success, `OUTCOME_ERROR` + a
+/// model-visible error on failure. Collapses the repeated match arm the tools
+/// share.
+fn emit_result(
+    tool: &str,
+    audit_args: &Value,
+    result: Result<Value, String>,
+) -> Result<CallToolResult, ErrorData> {
+    match result {
+        Ok(v) => {
+            audit::emit(tool, audit_args, OUTCOME_OK);
+            ok(v)
+        }
+        Err(e) => {
+            audit::emit(tool, audit_args, OUTCOME_ERROR);
+            err(e)
+        }
     }
 }
 
