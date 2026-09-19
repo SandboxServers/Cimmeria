@@ -32,6 +32,7 @@
 
 pub mod chunk_id;
 pub mod geometry;
+pub mod nav_components;
 pub mod nav_roundtrip;
 pub mod obj;
 pub mod staticmesh;

@@ -33,6 +33,7 @@
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns BYTES CONSUMED, not the new absolute offset; chain with `offset += n`, never `offset = n`.
 - [dialog-set-bind-carries-no-dialog-id.md](dialog-set-bind-carries-no-dialog-id.md) — an `add_dialog_set` bind pushes only `InteractionType(UINT64 TypeId)`; NULL-dialog rows are bindable indicators, `onInitialInteraction` (104) is never emitted, `topic_text` is dead data.
 - [ue3-staticmesh-extraction.md](ue3-staticmesh-extraction.md) — UE3 StaticMeshActor→Component→Mesh resolution in SGW cooked .umap: tagged-prop offset varies by class kind (Actor=32, StaticMesh=4, Component=8); ~20% of actors use prefab archetypes; kDOP tri indices reference LOD0 vertices; master .umap files exist alongside chunks.
+- [navbuilder-obj-traps.md](navbuilder-obj-traps.md) — **read before touching the navmesh build chain.** UE3→BW is a Y/Z column swap (`v x z y`), CRLF is mandatory or faces vanish, NavBuilder exits 0 on every failure, and a stray non-`<hex8>o.obj` in a chunked input dir reads uninitialised bounds. Detail in `docs/engine/navmesh-build-pipeline.md`.
 
 ## Content engine / chain authoring
 
