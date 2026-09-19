@@ -22,4 +22,6 @@ mod wire;
 
 pub use defs::*;
 pub use manager::{AbilityManager, CooldownEntry};
-pub use wire::{serialize_effect_results, serialize_timer_update, ClientEffectResult};
+pub use wire::{
+    build_cooldown_timer_args, serialize_effect_results, serialize_timer_update, ClientEffectResult,
+};

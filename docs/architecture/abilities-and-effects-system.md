@@ -374,6 +374,37 @@ integration request A).
 doc comment; deleting both restores the pre-H08 behaviour and fails
 `a_dot_cannot_finish_a_surrendered_npc`.
 
+### 19. Cooldown timers carry an absolute `BigWorldTimeComplete` in the shared game-time domain
+
+**Decision:** the cooldown-start `onTimerUpdate` (timer type 2,
+`TIMER_ABILITY_COOLDOWN`) emits `BigWorldTimeComplete = game_time_secs() +
+cooldown` — an absolute expiry in the server's game-time domain — instead of
+the previous hardcoded `0.0`. The `gameTime` field of every ongoing
+`BASEMSG_TICK_SYNC` is driven from the same clock
+(`base::game_time::game_time_tick`, tick rate 100, so
+`tick / 100 == seconds`).
+
+**Why:** `CooldownManager_HandleOnTimerUpdate` (client side,
+`docs/reverse-engineering/findings/ability-resolution-pipeline.md`)
+classifies a timer as active or expired by comparing its
+`BigWorldTimeComplete` against its own view of the server game time, which
+it derives from `TICK_SYNC`. Cooldown end-state is never pushed by the
+server — the client's clock crossing the absolute expiry *is* the end.
+A `0.0` (or a relative offset) leaves the client with no reachable expiry:
+the bar either never appears or stays "on cooldown" for the rest of the
+session. The two halves are coupled by construction — an absolute expiry
+is only reachable if the tickSync the client anchors to carries the same
+clock the cell emits timers from; both read
+[`base::game_time`](../../crates/services/src/base/game_time.rs).
+
+**Scope limits:** the effect-duration timer (`TIMER_DURATION_EFFECT`)
+starts in `pulsing/register.rs` are still emitted with a relative time
+and the clears (`pulsing/tick.rs`, `pulsing/channel_cancel.rs`) still
+carry all-zero `0.0` — those are a separate surface and deliberately
+untouched here. Reverting the cooldown path to `0.0` fails
+`build_cooldown_timer_args_emits_absolute_expire_time` and the
+`self_target_commit_emits_absolute_cooldown_expire_time` fan-out guard.
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:

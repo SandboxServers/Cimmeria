@@ -28,6 +28,7 @@ pub(crate) mod crafting;
 pub(crate) mod deferred_aoi;
 pub(crate) mod dialog_overrides;
 pub(crate) mod dispatch;
+pub(crate) mod game_time;
 pub(crate) mod gm_feedback;
 pub(crate) mod gm_spawn;
 pub(crate) mod helpers;
