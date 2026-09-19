@@ -124,6 +124,14 @@ pub(super) async fn npc_ai_follow(
         .find_path(npc_id, &npc_pos, &dest)
         .unwrap_or_default();
     let routed = path.len() > 1;
+    // Unrouted: keep the follower on its OWN height. The raw lerp copied the
+    // leader's Y, so a jumping or upstairs leader dragged the escort into the
+    // air ("levitating, then he came down" -- 2026-09-18 playtest).
+    let dest = if routed {
+        dest
+    } else {
+        cimmeria_common::Vector3::new(dest.x, npc_pos.y, dest.z)
+    };
     let path_len = path.len();
     if !routed {
         // The unrouted `dest` is a raw 3-axis lerp toward the target,
@@ -339,5 +347,38 @@ mod tests {
         let npc = mgr.get_entity(101).unwrap();
         assert_eq!(npc.follow_target_id, None);
         assert_eq!(npc.ai_state, AiState::Idle);
+    }
+
+    /// The unrouted fallback must keep the follower on its OWN height. It used
+    /// to lerp toward the leader's Y, so a jumping or upstairs leader pulled
+    /// the escort into the air.
+    #[tokio::test]
+    async fn unrouted_follow_keeps_the_followers_own_height() {
+        let mut mgr = make_space_mgr();
+        mgr.spawn_npc(101, "Agnos", [0.0, 7.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.spawn_npc(102, "Agnos", [50.0, 11.5, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(101) {
+            npc.ai_state = AiState::Follow;
+            npc.follow_target_id = Some(102);
+        }
+        let (tx, _rx) = mpsc::channel(8);
+        npc_ai_follow(101, &tx, &mut mgr).await;
+
+        let dest = mgr
+            .get_entity(101)
+            .unwrap()
+            .nav_path
+            .front()
+            .copied()
+            .expect("fallback waypoint");
+        assert!(
+            (dest.y - 7.0).abs() < 1e-4,
+            "fallback waypoint must stay at the follower's Y (7.0), not drift \
+             toward the leader's 11.5; got {}",
+            dest.y
+        );
+        assert!(dest.x > 40.0, "still heads toward the leader in XZ");
     }
 }

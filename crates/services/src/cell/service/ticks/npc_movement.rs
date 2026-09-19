@@ -108,7 +108,10 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                         ndx.atan2(ndz),
                     )
                 } else {
-                    ([0.0; 3], 0.0)
+                    // Coincident waypoints: no heading to derive. Keep the
+                    // current facing -- 0.0 here snapped the NPC to north.
+                    let keep = space_mgr.get_entity(npc_id).map_or(0.0, |e| e.direction.y);
+                    ([0.0; 3], keep)
                 }
             } else {
                 // Last waypoint — stopping, keep current facing
