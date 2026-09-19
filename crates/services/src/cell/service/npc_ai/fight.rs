@@ -366,6 +366,14 @@ pub(super) async fn npc_ai_fight(
             // off-mesh flyer positions — and no log line surfaced
             // it. Same pattern that the existing `no_path` log
             // catches for non-stationary NPCs.
+            //
+            // Turn toward the target even while holding fire. A pinned
+            // NPC never gets a nav path, so the movement tick never
+            // writes its yaw; without this a sentry being shot from out
+            // of range (or across a navmesh gap that reads as no LoS)
+            // keeps its authored heading and stands with its back to the
+            // attacker. Harset seeds thirteen stationary sentries.
+            face_target(space_mgr, npc_id, npc_pos, target_pos);
             super::note_outcome("stationary_holds");
             tracing::info!(
                 target: "npc_ai",
@@ -513,11 +521,10 @@ pub(super) async fn npc_ai_fight(
     // strafed around it. Done before the ability check so a mob waiting on a
     // cooldown still tracks its target. No extra wire traffic: the AoI tick
     // already sends direction with every position update.
-    let face_yaw = (target_pos.x - npc_pos.x).atan2(target_pos.z - npc_pos.z);
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         npc.nav_path.clear();
-        npc.direction = cimmeria_common::Vector3::new(0.0, face_yaw, 0.0);
     }
+    face_target(space_mgr, npc_id, npc_pos, target_pos);
 
     // `chosen_ability` may still be `None` here when every known ability
     // is on cooldown — hold fire and let the next tick re-evaluate.
@@ -603,3 +610,24 @@ pub(super) async fn npc_ai_fight(
 /// the C++ AI tick says otherwise. The retry sweep tick is
 /// 100ms granular, so the actual latency lands in `[500, 600)` ms.
 const AI_LAUNCH_FAILURE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Point `npc_id`'s yaw at `target_pos`. `direction` is `[pitch, yaw, roll]`
+/// in radians and yaw is `atan2(dx, dz)` (0 = +Z), the same convention the
+/// movement tick writes. A target directly above or below (coincident in
+/// XZ) has no bearing, so the current yaw is kept rather than snapped to 0.
+/// No wire traffic of its own: the AoI tick sends direction with every
+/// position update.
+fn face_target(
+    space_mgr: &mut SpaceManager,
+    npc_id: u32,
+    npc_pos: cimmeria_common::Vector3,
+    target_pos: cimmeria_common::Vector3,
+) {
+    let (dx, dz) = (target_pos.x - npc_pos.x, target_pos.z - npc_pos.z);
+    if dx * dx + dz * dz < f32::EPSILON {
+        return;
+    }
+    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+        npc.direction = cimmeria_common::Vector3::new(0.0, dx.atan2(dz), 0.0);
+    }
+}
