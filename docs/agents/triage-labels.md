@@ -16,7 +16,7 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
-Only `wontfix` exists on the repo today. The other four are created the first time `/triage` applies them. Only a maintainer should apply `ready-for-agent`.
+Only `wontfix` exists on the repo today. The other four are created the first time a maintainer's `/triage` run applies them. Only a maintainer should apply `ready-for-agent`. An agent that thinks an issue qualifies does not label it: it comments with the missing pieces filled in (evidence, acceptance criteria, test type, doc rows) and leaves the label to the maintainer. If a label it needs does not exist yet, it says so in the comment and moves on.
 
 **Autonomous kickoff:** unattended agents following [autonomous-agent-kickoff.md](../guides/autonomous-agent-kickoff.md) may pick work **only** from issues that already carry `ready-for-agent`. The `/triage` skill is how maintainers promote an issue from `needs-triage` (or unlabeled) into that queue.
 
@@ -42,6 +42,6 @@ The ticket body should follow the contract in [`issue-tracker.md`](issue-tracker
 
 ## Category labels
 
-These existing labels describe what an issue is about and sit alongside the triage role: `bug`, `enhancement`, `documentation`, `security`. `good first issue` and `help wanted` are for human newcomers and do not imply `ready-for-agent`. `question` is not a substitute for `needs-info`.
+These existing labels describe what an issue is about and sit alongside the triage role: `bug`, `enhancement`, `documentation`, `security`. `duplicate` and `invalid` are closing reasons, applied by a maintainer when closing. `good first issue` and `help wanted` are for human newcomers and do not imply `ready-for-agent`. `question` is not a substitute for `needs-info`.
 
 `/wayfinder` adds its own `wayfinder:map` and `wayfinder:<type>` labels as described in [`issue-tracker.md`](issue-tracker.md).

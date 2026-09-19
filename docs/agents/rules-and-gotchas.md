@@ -52,9 +52,10 @@ Classify before you design.
 
 ## Build and CI
 
-- **CI floats on stable Rust; the repo has no `rust-toolchain` pin.** Every job uses `dtolnay/rust-toolchain@stable`, so CI clippy is often newer than yours and `-D warnings` fails on lints your local version does not have (seen: `unnecessary_sort_by`, `ptr_arg`, `doc_lazy_continuation`). Before pushing Rust changes, run clippy on current stable: `rustup toolchain install stable --profile minimal` (or a specific version side by side), then `cargo +<version> clippy -p <crates> --all-targets -- -D warnings`. Clippy stops at the first failing target, so rerun until it exits 0.
+- **CI floats on stable Rust; the repo has no `rust-toolchain` pin.** Every gating job in `test.yml` uses `dtolnay/rust-toolchain@stable`, so CI clippy is often newer than yours and `-D warnings` fails on lints your local version does not have (seen: `unnecessary_sort_by`, `ptr_arg`, `doc_lazy_continuation`). Before pushing Rust changes, run clippy on current stable: `rustup toolchain install stable --profile minimal` (or a specific version side by side), then `cargo +<version> clippy -p <crates> --all-targets -- -D warnings`. Clippy stops at the first failing target, so rerun until it exits 0.
 - **The build-memory rules in `CLAUDE.md` apply per machine, not per worktree.** One `cargo` at a time includes agents running in parallel. See [`development-workflow.md`](development-workflow.md).
 - **A PR with merge conflicts gets no CI run at all.** Merge `main` first.
+- **Two doc-side CI jobs block a merge**, unlike markdownlint, which only warns: `figure-sources-in-sync` (a figure source under `docs/drafts/spec/figures/sources/` committed without its re-rendered SVG) and `figure-style-lint`. Both fire on changes under `docs/drafts/spec/`. Run `tools/check-figure-sources.sh` and `tools/lint-figure-style.sh` before pushing any change there, including a text-only edit to a draft chapter.
 - **`tools/lint-md.sh <file>` is slow** because the config glob still walks the whole tree. Calling `markdownlint-cli2 --no-globs <files>` directly finishes in seconds.
 
 ## Windows and tooling traps

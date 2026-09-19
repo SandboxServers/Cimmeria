@@ -44,7 +44,7 @@ When adding a client method call, confirm the index against `docs/protocol/clien
 
 ## Required tests on every PR
 
-A PR that changes runtime behaviour must add or update a test. **Read [TESTING.md](../TESTING.md) before writing one** — it has the picker for the ten test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte / Mercury session / network chaos) and the gotchas mined from review comments since PR #131. Reviewer non-negotiables:
+A PR that changes runtime behaviour must add or update a test. **Read [TESTING.md](../TESTING.md) before writing one** — it has the picker for the twelve test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference / fan-out byte / Mercury session / network chaos / wire-level replay / negative-log) and the gotchas mined from review comments since PR #131. Reviewer non-negotiables:
 
 - The test must fail when the fix is reverted (regression-guard shape, not happy-path).
 - Tighten assertions: composite keys, exact final positions, `== 1` not `>= 1`, exact byte strings for serializers.
