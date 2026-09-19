@@ -17,8 +17,6 @@ mod handshake;
 mod result_dispatch;
 
 #[cfg(test)]
-mod admission_tests;
-#[cfg(test)]
 mod tests;
 
 use std::net::SocketAddr;

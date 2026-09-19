@@ -1,14 +1,7 @@
-//! Session-lifecycle guards for [`super::run_session`] and
-//! [`super::handle_connection`] (Castle CA04, defect B4).
-//!
-//! These drive a real loopback TCP pair rather than a fake, because the
-//! behaviour under test *is* the socket lifecycle: what the server reports
-//! upstream when the client half goes away versus when the game produced
-//! an outcome of its own. A mock socket would have to model EOF anyway.
-//!
-//! `Hack` is used as the game type: `PlaceholderGame` wins instantly on the
-//! `victory` extension command and reports `needs_tick() == false`, so no
-//! test here depends on the 250 ms tick timer.
+//! Session-lifecycle guards for [`super::super::run_session`] and
+//! [`super::super::handle_connection`] (Castle CA04, defect B4): what the
+//! server reports upstream when the client half goes away versus when the
+//! game produced an outcome of its own.
 
 use super::*;
 use crate::minigame::game::create_game;
@@ -26,12 +19,7 @@ async fn spawn_placeholder_session(
     mpsc::Receiver<CellToBaseMsg>,
     tokio::task::JoinHandle<()>,
 ) {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind loopback");
-    let addr = listener.local_addr().expect("local_addr");
-    let client = TcpStream::connect(addr).await.expect("connect loopback");
-    let (server, _) = listener.accept().await.expect("accept loopback");
+    let (client, server, _) = loopback_pair().await;
 
     let registry = SessionRegistry::new();
     let ticket = registry
@@ -114,72 +102,6 @@ fn count_failure_frames(stream: &str) -> usize {
     stream.matches("<var n='_cmd' t='s'>failure</var>").count()
 }
 
-/// One bounded read, for a phase with no later frame to miss.
-async fn read_one_chunk(client: &mut TcpStream) {
-    let mut sink = vec![0u8; MAX_MESSAGE_LEN];
-    let _ = tokio::time::timeout(
-        Duration::from_secs(5),
-        tokio::io::AsyncReadExt::read(client, &mut sink),
-    )
-    .await;
-}
-
-/// Read framed messages until `onGameBegin`, the last frame the server
-/// sends before entering its game loop.
-///
-/// A single bounded read is not enough: it can return after any one early
-/// startup frame, so closing the socket on the strength of it can make a
-/// *later* startup write fail. The session then exits through the handshake
-/// path instead of the mid-game path, and a test meaning to exercise a
-/// mid-game close silently exercises something else. Waiting for the
-/// milestone makes "the server is in its game loop" an assertion rather
-/// than an assumption.
-///
-/// Panics on timeout, EOF or I/O error — reaching the game loop is a
-/// precondition of every caller, not something to paper over.
-pub(super) async fn read_until_game_begin(client: &mut TcpStream) {
-    const MILESTONE: &str = "<var n='_cmd' t='s'>onGameBegin</var>";
-    let mut seen = String::new();
-    let mut chunk = vec![0u8; MAX_MESSAGE_LEN];
-    loop {
-        match tokio::time::timeout(
-            Duration::from_secs(5),
-            tokio::io::AsyncReadExt::read(client, &mut chunk),
-        )
-        .await
-        {
-            Ok(Ok(n)) if n > 0 => {
-                seen.push_str(&String::from_utf8_lossy(&chunk[..n]));
-                if seen.contains(MILESTONE) {
-                    return;
-                }
-            }
-            // EOF, read error, or timeout: the server never reached its
-            // game loop, so whatever the caller meant to exercise did not
-            // happen. Show the frames that did arrive, NULs swapped for
-            // newlines so the message stays printable.
-            other => panic!(
-                "server did not reach onGameBegin ({other:?}); frames so far:\n{}",
-                seen.replace('\0', "\n"),
-            ),
-        }
-    }
-}
-
-/// Collect every `MinigameResult` the session dispatched.
-fn drain_results(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(u8, Vec<i64>)> {
-    let mut out = Vec::new();
-    while let Ok(CellToBaseMsg::MinigameResult {
-        result_code,
-        on_victory_chains,
-        ..
-    }) = rx.try_recv()
-    {
-        out.push((result_code, on_victory_chains));
-    }
-    out
-}
-
 /// **Defect B4 regression guard (abort half).** A client that closes its
 /// socket mid-game must produce exactly one upstream result coded
 /// `RESULT_CANCELED`, *and* the instance's `aborted()` must actually run.
@@ -193,7 +115,7 @@ fn drain_results(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(u8, Vec<i64>)> 
 async fn closing_the_swf_reports_canceled_and_runs_aborted() {
     let (client, mut rx, handle) = spawn_placeholder_session(4301).await;
     let stream = half_close_and_read_to_eof(client).await;
-    handle.await.expect("session task must not panic");
+    join_within(handle, "session").await;
 
     let results = drain_results(&mut rx);
     assert_eq!(
@@ -235,16 +157,13 @@ async fn a_won_game_reports_victory_once_and_never_canceled() {
     // `PlaceholderGame` treats the `victory` extension command as an
     // instant win.
     read_until_game_begin(&mut client).await;
-    let victory = "<msg t='xt'><body action='xtReq'>\
-         <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
-         </body></msg>";
-    send_null_terminated(&mut client, victory)
+    send_null_terminated(&mut client, VICTORY)
         .await
         .expect("victory send must succeed");
     // The milestone is already behind us, so just let go of the socket —
     // waiting for a second `onGameBegin` would hang until the timeout.
     drop(client);
-    handle.await.expect("session task must not panic");
+    join_within(handle, "session").await;
 
     let results = drain_results(&mut rx);
     assert_eq!(
@@ -273,12 +192,7 @@ async fn a_won_game_reports_victory_once_and_never_canceled() {
 /// interaction registers a fresh session for the same entity.
 #[tokio::test]
 async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind loopback");
-    let addr = listener.local_addr().expect("local_addr");
-    let mut client = TcpStream::connect(addr).await.expect("connect loopback");
-    let (server, peer) = listener.accept().await.expect("accept loopback");
+    let (mut client, server, peer) = loopback_pair().await;
 
     let registry = SessionRegistry::new();
     let ticket = registry
@@ -288,40 +202,20 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
 
     let (tx, _rx) = mpsc::channel(16);
     let reg = registry.clone();
-    let handle = tokio::spawn(handle_connection(
-        server,
-        peer,
-        reg,
-        tx,
-        9339,
-        Duration::from_secs(30),
-    ));
+    let handle = spawn_connection(server, peer, reg, tx, Duration::from_secs(30));
 
     // Phase 1 — verChk. The server answers with the cross-domain policy
     // and apiOK; 154 is the version the original SWFs were built against.
-    send_null_terminated(
-        &mut client,
-        "<msg t='sys'><body action='verChk' r='0'><ver v='154'/></body></msg>",
-    )
-    .await
-    .expect("verChk send must succeed");
-    // One bounded read is right here: the version phase answers with the
-    // cross-domain policy and apiOK and then waits for login, so there is no
-    // later frame to miss.
-    read_one_chunk(&mut client).await;
+    assert!(
+        completes_version_check(&mut client).await,
+        "verChk must be served"
+    );
 
     // Phase 2 — login. `z` is the game name, `nick` the entity id, `pword`
     // the ticket minted above.
-    send_null_terminated(
-        &mut client,
-        &format!(
-            "<msg t='sys'><body action='login' r='0'><login z='Hack'>\
-             <nick><![CDATA[4303]]></nick><pword><![CDATA[{ticket}]]></pword>\
-             </login></body></msg>"
-        ),
-    )
-    .await
-    .expect("login send must succeed");
+    send_null_terminated(&mut client, &hack_login(4303, &ticket))
+        .await
+        .expect("login send must succeed");
 
     // The login handler has to have claimed the session before it starts the
     // room sends. Poll rather than assert immediately: this test races the
@@ -349,7 +243,7 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
 
     // Player closes the minigame window mid-game.
     drain_and_close(client).await;
-    handle.await.expect("connection task must not panic");
+    join_within(handle, "connection closed mid-game").await;
 
     assert!(
         registry
@@ -377,12 +271,7 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
 /// any `break 'session` to `return` fails this.
 #[tokio::test]
 async fn a_send_failure_during_handshake_still_reports_canceled() {
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind loopback");
-    let addr = listener.local_addr().expect("local_addr");
-    let client = TcpStream::connect(addr).await.expect("connect loopback");
-    let (server, _) = listener.accept().await.expect("accept loopback");
+    let (client, server, _) = loopback_pair().await;
 
     let registry = SessionRegistry::new();
     let ticket = registry
