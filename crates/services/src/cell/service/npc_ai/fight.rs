@@ -635,7 +635,11 @@ const AI_LAUNCH_FAILURE_RETRY_DELAY: std::time::Duration = std::time::Duration::
 /// XZ) has no bearing, so the current yaw is kept rather than snapped to 0.
 /// No wire traffic of its own: the AoI tick sends direction with every
 /// position update.
-fn face_target(
+///
+/// `pub(super)` so the surrender path in [`super::lifecycle`] can reuse
+/// it: an NPC that disengages must end up facing the player it gave up
+/// to, and that is the same geometry with a different trigger.
+pub(super) fn face_target(
     space_mgr: &mut SpaceManager,
     npc_id: u32,
     npc_pos: cimmeria_common::Vector3,
