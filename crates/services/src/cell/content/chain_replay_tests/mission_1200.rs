@@ -55,7 +55,11 @@ async fn engine_with(pool: &sqlx::PgPool, chain_id: i32) -> ChainEngine {
     engine
 }
 
-fn fire(engine: &ChainEngine, trigger_type: TriggerType, ctx: &ExecutionContext) -> ResolvedActions {
+fn fire(
+    engine: &ChainEngine,
+    trigger_type: TriggerType,
+    ctx: &ExecutionContext,
+) -> ResolvedActions {
     let event = TriggerEvent {
         trigger_type,
         source_entity: None,
@@ -80,6 +84,21 @@ fn ctx_step(step_id: i32, status: &str) -> ExecutionContext {
         format!("mission_1200_step_{step_id}_status"),
         serde_json::json!(status),
     );
+    ctx
+}
+
+/// A step context that also carries the `dialog_id` the event is about.
+///
+/// `Trigger::OnDialogOpen` and `OnDialogChoice` both match on
+/// `event.params["dialog_id"]` (`triggers/matching.rs:140-142`), so a
+/// dialog-triggered chain resolves NOTHING without this key — including
+/// in the negative assertions, which would then pass for the wrong
+/// reason. Every dialog test below goes through this helper so its
+/// negatives stay honest: they must fail the *condition*, not the
+/// trigger.
+fn ctx_dialog(dialog_id: i32, step_id: i32, status: &str) -> ExecutionContext {
+    let mut ctx = ctx_step(step_id, status);
+    ctx.set_param("dialog_id".to_string(), serde_json::json!(dialog_id));
     ctx
 }
 
@@ -151,10 +170,7 @@ async fn chain_6121_does_not_reaccept_or_fire_in_the_wrong_world() {
     for status in ["active", "completed"] {
         let mut ctx = ctx_world_entry(HARSET, "Harset");
         ctx.set_param("archetype".to_string(), serde_json::json!(GOAULD));
-        ctx.set_param(
-            "mission_1200_status".to_string(),
-            serde_json::json!(status),
-        );
+        ctx.set_param("mission_1200_status".to_string(), serde_json::json!(status));
         assert!(
             actions_of(&fire(&engine, TriggerType::PlayerLoaded, &ctx), 6121).is_empty(),
             "chain 6121 re-accepted 1200 with status {status}"
@@ -185,7 +201,7 @@ async fn chain_6122_advances_to_3585_and_opens_anat_and_baal() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6122).await;
 
-    let ctx = ctx_step(3584, "active");
+    let ctx = ctx_dialog(4452, 3584, "active");
     let actions = actions_of(&fire(&engine, TriggerType::DialogChoice, &ctx), 6122);
 
     assert_eq!(actions.len(), 4, "chain 6122 resolved {actions:?}");
@@ -240,7 +256,7 @@ async fn chain_6122_does_not_refire_once_past_step_3584() {
     let engine = engine_with(&pool, 6122).await;
 
     for status in ["completed", "not_active"] {
-        let ctx = ctx_step(3584, status);
+        let ctx = ctx_dialog(4452, 3584, status);
         assert!(
             actions_of(&fire(&engine, TriggerType::DialogChoice, &ctx), 6122).is_empty(),
             "chain 6122 re-resolved with step 3584 {status}"
@@ -257,7 +273,7 @@ async fn chain_6123_completes_1200_and_retires_both_topics() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6123).await;
 
-    let ctx = ctx_step(3585, "active");
+    let ctx = ctx_dialog(5435, 3585, "active");
     let actions = actions_of(&fire(&engine, TriggerType::DialogChoice, &ctx), 6123);
 
     assert_eq!(actions.len(), 3, "chain 6123 resolved {actions:?}");
@@ -296,7 +312,7 @@ async fn the_hidden_optional_never_blocks_completion() {
     let engine = engine_with(&pool, 6123).await;
 
     for status in ["active", "completed", "not_active"] {
-        let mut ctx = ctx_step(3585, "active");
+        let mut ctx = ctx_dialog(5435, 3585, "active");
         ctx.set_param(
             "mission_1200_obj_5399_status".to_string(),
             serde_json::json!(status),
@@ -327,7 +343,7 @@ async fn chain_6124_completes_only_the_optional_objective() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6124).await;
 
-    let mut ctx = ctx_step(3585, "active");
+    let mut ctx = ctx_dialog(5436, 3585, "active");
     ctx.set_param(
         "mission_1200_obj_5399_status".to_string(),
         serde_json::json!("active"),
@@ -373,7 +389,7 @@ async fn chain_6124_is_inert_before_step_3585_and_after_it_is_taken() {
     let engine = engine_with(&pool, 6124).await;
 
     // Already taken.
-    let mut taken = ctx_step(3585, "active");
+    let mut taken = ctx_dialog(5436, 3585, "active");
     taken.set_param(
         "mission_1200_obj_5399_status".to_string(),
         serde_json::json!("completed"),
@@ -384,7 +400,7 @@ async fn chain_6124_is_inert_before_step_3585_and_after_it_is_taken() {
     );
 
     // Too early — still convincing the Royal Guard.
-    let mut early = ctx_step(3584, "active");
+    let mut early = ctx_dialog(5436, 3584, "active");
     early.set_param(
         "mission_1200_obj_5399_status".to_string(),
         serde_json::json!("active"),
@@ -417,7 +433,10 @@ async fn world_entry_chains_paint_exactly_the_active_step() {
             serde_json::json!("active"),
         );
 
-        let actions = actions_of(&fire(&engine, TriggerType::PlayerLoaded, &ctx), chain_id as i64);
+        let actions = actions_of(
+            &fire(&engine, TriggerType::PlayerLoaded, &ctx),
+            chain_id as i64,
+        );
         assert_eq!(
             actions.len(),
             1,
@@ -440,8 +459,11 @@ async fn world_entry_chains_paint_exactly_the_active_step() {
             serde_json::json!("active"),
         );
         assert!(
-            actions_of(&fire(&engine, TriggerType::PlayerLoaded, &other), chain_id as i64)
-                .is_empty(),
+            actions_of(
+                &fire(&engine, TriggerType::PlayerLoaded, &other),
+                chain_id as i64
+            )
+            .is_empty(),
             "chain {chain_id} painted its binding while step {other_step} was active"
         );
 
@@ -452,8 +474,11 @@ async fn world_entry_chains_paint_exactly_the_active_step() {
             serde_json::json!("active"),
         );
         assert!(
-            actions_of(&fire(&engine, TriggerType::PlayerLoaded, &wrong), chain_id as i64)
-                .is_empty(),
+            actions_of(
+                &fire(&engine, TriggerType::PlayerLoaded, &wrong),
+                chain_id as i64
+            )
+            .is_empty(),
             "chain {chain_id} fired outside world 68"
         );
     }
@@ -485,7 +510,10 @@ async fn chain_6127_restores_baals_advice_only_while_it_is_outstanding() {
         serde_json::json!("active"),
     );
 
-    let actions = actions_of(&fire(&engine, TriggerType::PlayerLoaded, &outstanding), 6127);
+    let actions = actions_of(
+        &fire(&engine, TriggerType::PlayerLoaded, &outstanding),
+        6127,
+    );
     assert!(
         actions.len() == 1
             && matches!(
@@ -541,9 +569,12 @@ async fn exactly_one_world_entry_chain_binds_anat_for_1200() {
             serde_json::json!("active"),
         );
 
-        if actions_of(&fire(&engine, TriggerType::PlayerLoaded, &ctx), chain_id as i64)
-            .iter()
-            .any(|a| matches!(a, Action::AddDialogSet { slot: 43, .. }))
+        if actions_of(
+            &fire(&engine, TriggerType::PlayerLoaded, &ctx),
+            chain_id as i64,
+        )
+        .iter()
+        .any(|a| matches!(a, Action::AddDialogSet { slot: 43, .. }))
         {
             binders.push(chain_id);
         }

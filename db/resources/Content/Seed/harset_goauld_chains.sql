@@ -381,6 +381,45 @@ VALUES
 -- World gate: the baskets are world-57 entities and
 -- `set_interaction_type` resolves tags only within the acting player's
 -- own space, so these six chains carry `world eq 57`.
+--
+-- ============================================================
+-- NO PER-BASKET GLOW CLEAR. SET, NEVER CLEAR.  (H41-B2)
+-- ============================================================
+--
+-- The first draft of 6104-6106 ended each partial chain with a
+-- `set_interaction_type ~ INT_MissionWorldObject` on its own tag, to
+-- take the glow off a basket once its device was planted. That is a
+-- multiplayer soft-lock and the rows were removed.
+--
+-- `set_interaction_type` mutates the SHARED `CellEntity
+-- .interaction_type_flags` and broadcasts to every witness
+-- (executor/world/mod.rs); there is no per-player interaction state
+-- short of a dialog-set bind. World 57 Harset is a shared hub, not an
+-- instance. And template 164 (`Merchant Basket (Giving The Walls
+-- Ears)`) ships `interaction_type = 0` in entity_templates.sql, so the
+-- mission-set bit is the ONLY thing that makes a basket clickable at
+-- all.
+--
+-- Composition: player A plants in FirstBug -> the bit is cleared for
+-- EVERY player in world 57 -> player B, also on step 2504 with
+-- objective 2913 still active, now sees scenery. The client never sends
+-- a click for an entity with no interaction bit, so B's own
+-- `objective_status` gate never gets the chance to pass. B is stuck
+-- until a relog (chain 6113) repaints it -- and under H41-B1 that
+-- repaint does not work either.
+--
+-- What is lost by not clearing is cosmetic: a planted basket keeps
+-- glowing for the player who planted it. The mission log still ticks
+-- (`onObjectiveUpdate(COMPLETED)` from 6104-6106), and a second click on
+-- an already-planted basket resolves NOTHING, because the per-player
+-- guard was never the bit -- it is the `objective_status <own> eq
+-- active` condition on each chain. The glow is a lie; the gate is real.
+--
+-- This is the 2026-09-18 Castle playtest lesson applied ahead of the
+-- repro: in a shared world prefer "set, never clear" for props, and
+-- clear only NPC cue bits, where a stale "!" is the worse outcome. The
+-- NPC cues in this file ride dialog-set bindings and are per-player, so
+-- they are unaffected.
 
 -- Chain 6104: FirstBug partial -- objective 2913.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -398,8 +437,7 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (6104, 'complete_objective', 742, '2913', '{}', 0, 0),
-  (6104, 'remove_item', 2820, NULL, '{"qty": 1}', 0, 1),
-  (6104, 'set_interaction_type', NULL, 'FirstBug', '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 2);
+  (6104, 'remove_item', 2820, NULL, '{"qty": 1}', 0, 1);
 
 -- Chain 6105: SecondBug partial -- objective 2914.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -417,8 +455,7 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (6105, 'complete_objective', 742, '2914', '{}', 0, 0),
-  (6105, 'remove_item', 2820, NULL, '{"qty": 1}', 0, 1),
-  (6105, 'set_interaction_type', NULL, 'SecondBug', '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 2);
+  (6105, 'remove_item', 2820, NULL, '{"qty": 1}', 0, 1);
 
 -- Chain 6106: ThirdBug partial -- objective 2915.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -436,8 +473,7 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (6106, 'complete_objective', 742, '2915', '{}', 0, 0),
-  (6106, 'remove_item', 2820, NULL, '{"qty": 1}', 0, 1),
-  (6106, 'set_interaction_type', NULL, 'ThirdBug', '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 2);
+  (6106, 'remove_item', 2820, NULL, '{"qty": 1}', 0, 1);
 
 -- ------------------------------------------------------------
 -- Chains 6107-6109: the third basket, whichever it is
@@ -597,9 +633,18 @@ VALUES
 -- sufficient.
 --
 -- The three basket restores are separate chains rather than one, because
--- a player who planted one device and logged out must get back exactly
--- the two glows they had -- re-lighting a basket whose objective is
--- already complete would offer a fourth plant.
+-- a player who planted one device and logged out should get back exactly
+-- the two glows they still owe. Since H41-B2 removed the per-basket
+-- clear, re-lighting a finished basket would not be exploitable -- the
+-- `objective_status` gate on 6104-6106 is the real guard -- but it would
+-- be a misleading cue, so the restore stays per-objective.
+--
+-- These three are the ONE place in this file where a server restart is
+-- the load-bearing case rather than the player's own relog: a restart
+-- resets every `CellEntity.interaction_type_flags` to the template
+-- default, which for template 164 is 0. Under H41-B1 they cannot fire
+-- (see the header), so until H50 lands a restart during step 2504 leaves
+-- the baskets dark for everyone. Recorded in worknotes/H40-H41.md.
 --
 -- Step 2503 has no restore chain: between the disguise grant and its
 -- use, 742 owns no bit and no binding. The disguise itself is a normal
@@ -734,12 +779,50 @@ VALUES (6117, 'add_dialog_set', 3131, NULL, '{"slot": 53, "mission_id": 742}', 0
 -- keeps the chain readable and fails closed if 1200's own gating is ever
 -- widened.
 
+-- ------------------------------------------------------------
 -- Chain 6118: Anat offers 742 to a Goa'uld who has finished 1200.
+-- ------------------------------------------------------------
+--
+-- TWO TRIGGERS, AND THE SECOND ONE IS NOT OPTIONAL  (playtest H9).
+--
+-- `player_loaded Harset_CmdCenter` alone is an EDGE trigger on a state
+-- the player reaches while already standing inside the edge. Mission
+-- 1200 completes at Anat (chain 6123, dialog 5435), and Anat is spawn
+-- 222 in world 68 -- the Command Center. So at the instant
+-- `mission_status 1200` flips to `completed`, the player has already
+-- crossed the only boundary that fires this chain. The offer would not
+-- appear until they walked out of the Command Center and back in, with
+-- nothing on screen telling them to.
+--
+-- That is finding H9 from the 2026-09-18 Castle playtest: a chain keyed
+-- on an edge event and gated on a state never fires for a player who is
+-- already inside when the gate opens. The fix is to make the state
+-- reachable without the edge, so the second trigger row keys on the
+-- 1200 completion itself.
+--
+-- `fire_mission_completed` (event_dispatch/mission.rs) calls
+-- `populate_world_context` (which sets `world_id`), `populate_mission_
+-- context` and stamps `archetype`, and it runs AFTER the instance flips
+-- to MISSION_COMPLETED -- so all four conditions below evaluate against
+-- exactly the state they need, with no edit to the condition rows.
+--
+-- Multi-trigger OR is N rows on one chain materializing N in-memory
+-- `Chain`s that share id, conditions and actions (loader/mod.rs). Only
+-- one expansion can match any given event, so this cannot double-bind
+-- within a single event. It CAN bind a second copy across events (the
+-- completion binds, then a later door hop binds again), which is benign:
+-- `remove_dialog_set` retains-all (executor/dialog/mod.rs:254) so chain
+-- 6119 clears every copy, and `entries.first()` returns the same dsm
+-- either way. Note that `load_single_chain_for_test` returns only the
+-- FIRST expansion, so the replay guard uses
+-- `load_chain_expansions_for_test`.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (6118, '742 - Offer: bind Anat''s "Giving the Walls Ears" topic for a Goa''uld who has completed 1200', 'mission', 742, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (6118, 'player_loaded', 'Harset_CmdCenter', 'player', false, 0);
+VALUES
+  (6118, 'player_loaded', 'Harset_CmdCenter', 'player', false, 0),
+  (6118, 'mission_completed', '1200', 'player', false, 1);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES

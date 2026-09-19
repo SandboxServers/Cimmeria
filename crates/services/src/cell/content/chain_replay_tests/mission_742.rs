@@ -43,7 +43,9 @@ use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};
 use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 
-use super::super::engine_loader::{build_engine, load_single_chain_for_test};
+use super::super::engine_loader::{
+    build_engine, load_chain_expansions_for_test, load_single_chain_for_test,
+};
 use crate::test_support::require_db_or_skip;
 
 const HARSET: i32 = 57;
@@ -70,7 +72,11 @@ async fn engine_with(pool: &sqlx::PgPool, chain_id: i32) -> ChainEngine {
     engine
 }
 
-fn fire(engine: &ChainEngine, trigger_type: TriggerType, ctx: &ExecutionContext) -> ResolvedActions {
+fn fire(
+    engine: &ChainEngine,
+    trigger_type: TriggerType,
+    ctx: &ExecutionContext,
+) -> ResolvedActions {
     let event = TriggerEvent {
         trigger_type,
         source_entity: None,
@@ -96,6 +102,27 @@ fn ctx_with_step(step_id: i32, status: &str) -> ExecutionContext {
         format!("mission_742_step_{step_id}_status"),
         serde_json::json!(status),
     );
+    ctx
+}
+
+/// A step context that also carries the `dialog_id` the event is about.
+///
+/// `Trigger::OnDialogOpen` and `OnDialogChoice` match on
+/// `event.params["dialog_id"]` (`triggers/matching.rs:140-142`), so a
+/// dialog-triggered chain resolves NOTHING without this key. Omitting it
+/// would make every negative assertion below pass for the wrong reason —
+/// the trigger would miss before any condition was ever read.
+fn ctx_dialog(dialog_id: i32, step_id: i32, status: &str) -> ExecutionContext {
+    let mut ctx = ctx_with_step(step_id, status);
+    ctx.set_param("dialog_id".to_string(), serde_json::json!(dialog_id));
+    ctx
+}
+
+/// The same, for `item_use`: `Trigger::OnItemUse` matches on
+/// `event.params["item_id"]` (`triggers/matching.rs:153-155`).
+fn ctx_item_use(item_id: i32, step_id: i32, status: &str) -> ExecutionContext {
+    let mut ctx = ctx_with_step(step_id, status);
+    ctx.set_param("item_id".to_string(), serde_json::json!(item_id));
     ctx
 }
 
@@ -146,7 +173,11 @@ async fn chain_6101_binds_petbe_and_grants_exactly_three_scarabs() {
     assert!(
         matches!(
             &actions[0],
-            Action::AddDialogSet { dialog_set_id: 3129, slot: 163, .. }
+            Action::AddDialogSet {
+                dialog_set_id: 3129,
+                slot: 163,
+                ..
+            }
         ),
         "first action must bind dsm 3129 to Petbe's template 163 — `slot` is \
          the ENTITY TEMPLATE id, not a UI slot; got {:?}",
@@ -178,10 +209,7 @@ async fn chain_6101_does_not_resolve_when_742_is_not_active() {
     for status in ["not_active", "completed"] {
         let mut ctx = ExecutionContext::new();
         ctx.set_param("mission_id".to_string(), serde_json::json!(742));
-        ctx.set_param(
-            "mission_742_status".to_string(),
-            serde_json::json!(status),
-        );
+        ctx.set_param("mission_742_status".to_string(), serde_json::json!(status));
 
         let resolved = fire(&engine, TriggerType::MissionAccepted, &ctx);
         assert!(
@@ -200,7 +228,7 @@ async fn chain_6102_grants_the_disguise_then_unbinds_petbe_then_advances() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6102).await;
 
-    let ctx = ctx_with_step(2502, "active");
+    let ctx = ctx_dialog(2638, 2502, "active");
     let resolved = fire(&engine, TriggerType::DialogChoice, &ctx);
     let actions = actions_of(&resolved, 6102);
 
@@ -251,7 +279,7 @@ async fn chain_6102_cannot_grant_a_second_disguise_after_it_advances() {
     let engine = engine_with(&pool, 6102).await;
 
     for status in ["completed", "not_active"] {
-        let ctx = ctx_with_step(2502, status);
+        let ctx = ctx_dialog(2638, 2502, status);
         let resolved = fire(&engine, TriggerType::DialogChoice, &ctx);
         assert!(
             actions_of(&resolved, 6102).is_empty(),
@@ -274,7 +302,7 @@ async fn chain_6103_lights_all_three_baskets_and_never_consumes_the_disguise() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6103).await;
 
-    let ctx = ctx_with_step(2503, "active");
+    let ctx = ctx_item_use(2819, 2503, "active");
     let resolved = fire(&engine, TriggerType::ItemUse, &ctx);
     let actions = actions_of(&resolved, 6103);
 
@@ -286,7 +314,10 @@ async fn chain_6103_lights_all_three_baskets_and_never_consumes_the_disguise() {
             step_id: 2504
         }
     ));
-    assert!(matches!(actions[1], Action::DisplayDialog { dialog_id: 2637 }));
+    assert!(matches!(
+        actions[1],
+        Action::DisplayDialog { dialog_id: 2637 }
+    ));
 
     for (i, (tag, ..)) in BASKETS.iter().enumerate() {
         match &actions[2 + i] {
@@ -327,16 +358,28 @@ async fn chain_6103_does_not_refire_once_the_disguise_is_already_on() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6103).await;
 
-    let ctx = ctx_with_step(2503, "completed");
+    let ctx = ctx_item_use(2819, 2503, "completed");
     let resolved = fire(&engine, TriggerType::ItemUse, &ctx);
     assert!(actions_of(&resolved, 6103).is_empty());
 }
 
 // ── 2. The three baskets ────────────────────────────────────────────
 
-/// Each basket's partial chain completes its OWN objective, consumes
-/// exactly one Scarab, and clears only its own glow — regardless of what
-/// the other two baskets have done.
+/// Each basket's partial chain completes its OWN objective and consumes
+/// exactly one Scarab — regardless of what the other two baskets have
+/// done — and touches no interaction bit at all.
+///
+/// **The missing clear is the point (H41-B2).** An earlier draft ended
+/// each of these chains with `set_interaction_type ~
+/// INT_MissionWorldObject` on its own tag. `set_interaction_type` mutates
+/// the shared `CellEntity.interaction_type_flags` and broadcasts to every
+/// witness, world 57 Harset is a shared hub rather than an instance, and
+/// template 164 ships `interaction_type = 0` — so the mission-set bit is
+/// the only thing that makes a basket clickable. Clearing it when player
+/// A plants a device turns the basket into scenery for player B, whose
+/// client then never sends the click that B's own `objective_status`
+/// gate was waiting to evaluate. The assertion below is a reversion
+/// guard: re-adding any clear here fails it.
 #[tokio::test]
 async fn each_basket_completes_its_own_objective_and_consumes_one_scarab() {
     let pool = require_db_or_skip!();
@@ -350,11 +393,14 @@ async fn each_basket_completes_its_own_objective_and_consumes_one_scarab() {
             tag,
             &[(own, "active"), (other_a, "active"), (other_b, "active")],
         );
-        let actions = actions_of(&fire(&engine, TriggerType::InteractTag, &ctx), chain_id as i64);
+        let actions = actions_of(
+            &fire(&engine, TriggerType::InteractTag, &ctx),
+            chain_id as i64,
+        );
 
         assert_eq!(
             actions.len(),
-            3,
+            2,
             "chain {chain_id} ({tag}) resolved {actions:?}"
         );
         assert!(
@@ -384,13 +430,15 @@ async fn each_basket_completes_its_own_objective_and_consumes_one_scarab() {
             actions[1]
         );
         assert!(
-            matches!(
-                &actions[2],
-                Action::SetInteractionType { entity_tag, operation, .. }
-                    if entity_tag == tag && operation == "~"
-            ),
-            "chain {chain_id} must clear only its own glow, got {:?}",
-            actions[2]
+            !actions
+                .iter()
+                .any(|a| matches!(a, Action::SetInteractionType { .. })),
+            "chain {chain_id} ({tag}) must not touch any interaction bit. \
+             Clearing INT_MissionWorldObject here is zone-wide: it strips the \
+             basket's ONLY clickable bit (template 164 ships \
+             interaction_type = 0) out from under every other player still on \
+             step 2504. The per-player guard is the `objective_status {own} eq \
+             active` condition, never the bit. Got {actions:?}"
         );
     }
 }
@@ -506,10 +554,16 @@ async fn the_last_basket_advances_the_step_before_it_completes_the_objective() {
         });
 
         let advance_at = advance_at.unwrap_or_else(|| {
-            panic!("chain {final_id} must resolve AdvanceStep(742, 2505) when {tag} is last; got {:?}", resolved.actions)
+            panic!(
+                "chain {final_id} must resolve AdvanceStep(742, 2505) when {tag} is last; got {:?}",
+                resolved.actions
+            )
         });
         let complete_at = complete_at.unwrap_or_else(|| {
-            panic!("chain {partial_id} must still resolve CompleteObjective({own}); got {:?}", resolved.actions)
+            panic!(
+                "chain {partial_id} must still resolve CompleteObjective({own}); got {:?}",
+                resolved.actions
+            )
         });
 
         assert!(
@@ -522,14 +576,17 @@ async fn the_last_basket_advances_the_step_before_it_completes_the_objective() {
 
         // The third basket still pays its Scarab.
         assert!(
-            resolved.actions.iter().any(|(id, a)| *id == partial_id as i64
-                && matches!(
-                    a,
-                    Action::RemoveItem {
-                        item_id: 2820,
-                        count: 1
-                    }
-                )),
+            resolved
+                .actions
+                .iter()
+                .any(|(id, a)| *id == partial_id as i64
+                    && matches!(
+                        a,
+                        Action::RemoveItem {
+                            item_id: 2820,
+                            count: 1
+                        }
+                    )),
             "the last basket must consume its Scarab like the other two"
         );
 
@@ -537,7 +594,15 @@ async fn the_last_basket_advances_the_step_before_it_completes_the_objective() {
         let binds = resolved
             .actions
             .iter()
-            .filter(|(_, a)| matches!(a, Action::AddDialogSet { dialog_set_id: 3130, .. }))
+            .filter(|(_, a)| {
+                matches!(
+                    a,
+                    Action::AddDialogSet {
+                        dialog_set_id: 3130,
+                        ..
+                    }
+                )
+            })
             .count();
         assert_eq!(binds, 1, "Anat's report topic must bind exactly once");
     }
@@ -580,7 +645,7 @@ async fn chain_6110_anat_grants_the_map_and_opens_nerus() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6110).await;
 
-    let ctx = ctx_with_step(2505, "active");
+    let ctx = ctx_dialog(2639, 2505, "active");
     let actions = actions_of(&fire(&engine, TriggerType::DialogChoice, &ctx), 6110);
 
     assert_eq!(actions.len(), 4, "chain 6110 resolved {actions:?}");
@@ -630,7 +695,7 @@ async fn chain_6110_cannot_grant_a_second_scarab_map() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6110).await;
 
-    let ctx = ctx_with_step(2505, "completed");
+    let ctx = ctx_dialog(2639, 2505, "completed");
     assert!(actions_of(&fire(&engine, TriggerType::DialogChoice, &ctx), 6110).is_empty());
 }
 
@@ -643,7 +708,7 @@ async fn chain_6111_takes_the_map_and_completes_the_mission() {
     let pool = require_db_or_skip!();
     let engine = engine_with(&pool, 6111).await;
 
-    let ctx = ctx_with_step(2506, "active");
+    let ctx = ctx_dialog(2640, 2506, "active");
     let actions = actions_of(&fire(&engine, TriggerType::DialogChoice, &ctx), 6111);
 
     assert_eq!(actions.len(), 3, "chain 6111 resolved {actions:?}");
@@ -698,7 +763,10 @@ async fn step_gated_restore_chains_rebind_exactly_their_own_step() {
         ctx.world_id = Some(world);
         ctx.set_param("world_name".to_string(), serde_json::json!(world_name));
 
-        let actions = actions_of(&fire(&engine, TriggerType::PlayerLoaded, &ctx), chain_id as i64);
+        let actions = actions_of(
+            &fire(&engine, TriggerType::PlayerLoaded, &ctx),
+            chain_id as i64,
+        );
         assert_eq!(
             actions.len(),
             1,
@@ -719,8 +787,11 @@ async fn step_gated_restore_chains_rebind_exactly_their_own_step() {
         other.world_id = Some(world);
         other.set_param("world_name".to_string(), serde_json::json!(world_name));
         assert!(
-            actions_of(&fire(&engine, TriggerType::PlayerLoaded, &other), chain_id as i64)
-                .is_empty(),
+            actions_of(
+                &fire(&engine, TriggerType::PlayerLoaded, &other),
+                chain_id as i64
+            )
+            .is_empty(),
             "chain {chain_id} restored a binding for a step that is no longer active"
         );
     }
@@ -736,10 +807,34 @@ async fn step_gated_restore_chains_rebind_exactly_their_own_step() {
 /// `available_interactions[43].first()`, and a player holding both dsm
 /// 3127 (this offer) and dsm 4751 (1200 step 3585) would lose one of the
 /// two Anat beats to bind order.
+///
+/// Asserted over **both** trigger expansions. `load_chain_expansions_for_
+/// test` is deliberate: N `content_triggers` rows on one chain
+/// materialize N `Chain`s sharing id/conditions/actions, and
+/// `load_single_chain_for_test` would return only the `player_loaded`
+/// one — silently dropping the `mission_completed` row from the guard.
 #[tokio::test]
 async fn chain_6118_offers_742_only_to_a_goauld_who_finished_1200() {
     let pool = require_db_or_skip!();
-    let engine = engine_with(&pool, 6118).await;
+
+    let expansions = load_chain_expansions_for_test(&pool, 6118)
+        .await
+        .expect("DB query for chain 6118 must succeed");
+    assert_eq!(
+        expansions.len(),
+        2,
+        "chain 6118 must carry two triggers — `player_loaded \
+         Harset_CmdCenter` and `mission_completed 1200`. Dropping the second \
+         reintroduces playtest finding H9: mission 1200 completes at Anat, \
+         who stands in world 68, so a player who has just finished 1200 is \
+         already inside the only boundary the world-entry trigger fires on \
+         and never sees the 742 offer appear."
+    );
+
+    let mut engine = ChainEngine::new();
+    for chain in expansions {
+        engine.register_chain(chain);
+    }
 
     let eligible = || {
         let mut ctx = ExecutionContext::new();
@@ -760,23 +855,49 @@ async fn chain_6118_offers_742_only_to_a_goauld_who_finished_1200() {
         ctx
     };
 
-    let actions = actions_of(&fire(&engine, TriggerType::PlayerLoaded, &eligible()), 6118);
-    assert_eq!(actions.len(), 1, "chain 6118 resolved {actions:?}");
+    // Both routes to the offer must produce the identical single bind:
+    // walking into the Command Center, and finishing 1200 while already
+    // standing in it. The second needs `mission_id` in the context
+    // because `Trigger::OnMissionCompleted` matches on that param.
+    for trigger in [TriggerType::PlayerLoaded, TriggerType::MissionCompleted] {
+        let mut ctx = eligible();
+        ctx.set_param("mission_id".to_string(), serde_json::json!(1200));
+
+        let actions = actions_of(&fire(&engine, trigger.clone(), &ctx), 6118);
+        assert_eq!(
+            actions.len(),
+            1,
+            "chain 6118 on {trigger:?} resolved {actions:?}"
+        );
+        assert!(
+            matches!(
+                actions[0],
+                Action::AddDialogSet {
+                    dialog_set_id: 3127,
+                    slot: 43,
+                    ..
+                }
+            ),
+            "the offer restores dead `entity_interactions` row 35 (template \
+             43, dsm 3127) as a chain; on {trigger:?} got {:?}",
+            actions[0]
+        );
+    }
+
+    // The completion route must not fire for some other mission finishing
+    // in the Command Center — the trigger key is 1200, not "any".
+    let mut other_mission = eligible();
+    other_mission.set_param("mission_id".to_string(), serde_json::json!(1243));
     assert!(
-        matches!(
-            actions[0],
-            Action::AddDialogSet {
-                dialog_set_id: 3127,
-                slot: 43,
-                ..
-            }
-        ),
-        "the offer restores dead `entity_interactions` row 35 (template 43, \
-         dsm 3127) as a chain; got {:?}",
-        actions[0]
+        actions_of(
+            &fire(&engine, TriggerType::MissionCompleted, &other_mission),
+            6118
+        )
+        .is_empty(),
+        "chain 6118 offered 742 when mission 1243 completed"
     );
 
-    // Each gate, knocked out one at a time.
+    // Each gate, knocked out one at a time, on both routes.
     let knockouts: [(&str, serde_json::Value); 4] = [
         // Jaffa, not Goa'uld.
         ("archetype", serde_json::json!(8)),
@@ -787,18 +908,27 @@ async fn chain_6118_offers_742_only_to_a_goauld_who_finished_1200() {
         ("mission_742_status", serde_json::json!("active")),
     ];
     for (key, value) in knockouts {
-        let mut ctx = eligible();
-        ctx.set_param(key.to_string(), value.clone());
-        assert!(
-            actions_of(&fire(&engine, TriggerType::PlayerLoaded, &ctx), 6118).is_empty(),
-            "chain 6118 offered 742 with {key} = {value}"
-        );
+        for trigger in [TriggerType::PlayerLoaded, TriggerType::MissionCompleted] {
+            let mut ctx = eligible();
+            ctx.set_param("mission_id".to_string(), serde_json::json!(1200));
+            ctx.set_param(key.to_string(), value.clone());
+            assert!(
+                actions_of(&fire(&engine, trigger.clone(), &ctx), 6118).is_empty(),
+                "chain 6118 on {trigger:?} offered 742 with {key} = {value}"
+            );
+        }
     }
 
-    // And the world gate.
-    let mut wrong_world = eligible();
-    wrong_world.world_id = Some(HARSET);
-    assert!(actions_of(&fire(&engine, TriggerType::PlayerLoaded, &wrong_world), 6118).is_empty());
+    // And the world gate, on both routes.
+    for trigger in [TriggerType::PlayerLoaded, TriggerType::MissionCompleted] {
+        let mut wrong_world = eligible();
+        wrong_world.world_id = Some(HARSET);
+        wrong_world.set_param("mission_id".to_string(), serde_json::json!(1200));
+        assert!(
+            actions_of(&fire(&engine, trigger.clone(), &wrong_world), 6118).is_empty(),
+            "chain 6118 on {trigger:?} fired outside world 68"
+        );
+    }
 }
 
 /// Chain 6119 accepts, then retires the offer topic.
@@ -808,6 +938,7 @@ async fn chain_6119_accepts_742_and_retires_the_offer() {
     let engine = engine_with(&pool, 6119).await;
 
     let mut ctx = ExecutionContext::new();
+    ctx.set_param("dialog_id".to_string(), serde_json::json!(2636));
     ctx.set_param(
         "mission_742_status".to_string(),
         serde_json::json!("not_active"),
@@ -815,7 +946,10 @@ async fn chain_6119_accepts_742_and_retires_the_offer() {
 
     let actions = actions_of(&fire(&engine, TriggerType::DialogChoice, &ctx), 6119);
     assert_eq!(actions.len(), 2, "chain 6119 resolved {actions:?}");
-    assert!(matches!(actions[0], Action::AcceptMission { mission_id: 742 }));
+    assert!(matches!(
+        actions[0],
+        Action::AcceptMission { mission_id: 742 }
+    ));
     assert!(matches!(
         actions[1],
         Action::RemoveDialogSet {
@@ -826,10 +960,8 @@ async fn chain_6119_accepts_742_and_retires_the_offer() {
 
     for status in ["active", "completed"] {
         let mut ctx = ExecutionContext::new();
-        ctx.set_param(
-            "mission_742_status".to_string(),
-            serde_json::json!(status),
-        );
+        ctx.set_param("dialog_id".to_string(), serde_json::json!(2636));
+        ctx.set_param("mission_742_status".to_string(), serde_json::json!(status));
         assert!(
             actions_of(&fire(&engine, TriggerType::DialogChoice, &ctx), 6119).is_empty(),
             "chain 6119 re-accepted 742 with status {status}"
@@ -845,55 +977,248 @@ async fn chain_6119_accepts_742_and_retires_the_offer() {
 /// 3585) all bind template 43. Two of them resolving on one event would
 /// push two entries into `available_interactions[43]`, and
 /// `handle_interact` would silently take whichever landed first.
+///
+/// **Why the state list is walked rather than crossed.** 6116 and 6126
+/// are step-gated only; neither reads the other mission. What keeps them
+/// apart is upstream: 742 cannot be accepted until 1200 is completed
+/// (chain 6118's `mission_status 1200 eq completed`), so 742's steps and
+/// 1200's steps can never be active at the same time. A naive
+/// cross-product would therefore fabricate `742 step 2505 active` while
+/// `1200 step 3585 active` — two Anat binds, and a failure that reports a
+/// state the accept path cannot produce. The tuples below are the
+/// reachable player states instead, and the unreachable overlap is
+/// guarded where it is actually prevented, by the offer knockouts in
+/// `chain_6118_offers_742_only_to_a_goauld_who_finished_1200`.
 #[tokio::test]
 async fn at_most_one_dialog_set_ever_binds_to_anat_on_one_world_entry() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
-    // Every combination of the three mission states that can coexist.
-    for m742 in ["not_active", "active", "completed"] {
-        for m1200 in ["not_active", "active", "completed"] {
-            let mut ctx = ExecutionContext::new();
-            ctx.world_id = Some(CMD_CENTER);
+    // (742 status, 742 active step, 1200 status, 1200 active step) —
+    // every state a Goa'uld can actually stand in the Command Center in.
+    // A step is only ever active while its own mission is active, and
+    // 742 only ever starts after 1200 is completed.
+    let reachable: [(&str, Option<i32>, &str, Option<i32>); 9] = [
+        // Before and during 1200.
+        ("not_active", None, "not_active", None),
+        ("not_active", None, "active", Some(3584)),
+        ("not_active", None, "active", Some(3585)),
+        // 1200 done, 742 on offer.
+        ("not_active", None, "completed", None),
+        // 742 running, one entry per step that could bind Anat.
+        ("active", Some(2502), "completed", None),
+        ("active", Some(2504), "completed", None),
+        ("active", Some(2505), "completed", None),
+        ("active", Some(2506), "completed", None),
+        // Both done.
+        ("completed", None, "completed", None),
+    ];
+
+    for (m742, step742, m1200, step1200) in reachable {
+        let mut ctx = ExecutionContext::new();
+        ctx.world_id = Some(CMD_CENTER);
+        ctx.set_param(
+            "world_name".to_string(),
+            serde_json::json!("Harset_CmdCenter"),
+        );
+        ctx.set_param("archetype".to_string(), serde_json::json!(6));
+        ctx.set_param("mission_742_status".to_string(), serde_json::json!(m742));
+        ctx.set_param("mission_1200_status".to_string(), serde_json::json!(m1200));
+        if let Some(step) = step742 {
             ctx.set_param(
-                "world_name".to_string(),
-                serde_json::json!("Harset_CmdCenter"),
-            );
-            ctx.set_param("archetype".to_string(), serde_json::json!(6));
-            ctx.set_param("mission_742_status".to_string(), serde_json::json!(m742));
-            ctx.set_param("mission_1200_status".to_string(), serde_json::json!(m1200));
-            // The only steps that bind Anat, both "active" at once — the
-            // worst case the gate has to rule out.
-            ctx.set_param(
-                "mission_742_step_2505_status".to_string(),
+                format!("mission_742_step_{step}_status"),
                 serde_json::json!("active"),
             );
+        }
+        if let Some(step) = step1200 {
             ctx.set_param(
-                "mission_1200_step_3585_status".to_string(),
+                format!("mission_1200_step_{step}_status"),
                 serde_json::json!("active"),
             );
+        }
 
-            let resolved = fire(&engine, TriggerType::PlayerLoaded, &ctx);
-            let anat_binds: Vec<i32> = resolved
-                .actions
-                .iter()
-                .filter_map(|(_, a)| match a {
-                    Action::AddDialogSet {
-                        dialog_set_id,
-                        slot: 43,
-                        ..
-                    } => Some(*dialog_set_id),
-                    _ => None,
-                })
-                .collect();
+        let resolved = fire(&engine, TriggerType::PlayerLoaded, &ctx);
+        let anat_binds: Vec<i32> = resolved
+            .actions
+            .iter()
+            .filter_map(|(_, a)| match a {
+                Action::AddDialogSet {
+                    dialog_set_id,
+                    slot: 43,
+                    ..
+                } => Some(*dialog_set_id),
+                _ => None,
+            })
+            .collect();
 
-            assert!(
-                anat_binds.len() <= 1,
-                "742 = {m742}, 1200 = {m1200} bound {anat_binds:?} to Anat's \
-                 template 43 in one world entry. `handle_interact` takes \
-                 `.first()`, so the second binding is unreachable. The \
-                 `mission_status 1200 eq completed` gate on chain 6118 is what \
-                 makes these states disjoint (D-H20)."
+        assert!(
+            anat_binds.len() <= 1,
+            "742 = {m742} (step {step742:?}), 1200 = {m1200} (step \
+             {step1200:?}) bound {anat_binds:?} to Anat's template 43 in one \
+             world entry. `handle_interact` takes `.first()`, so the second \
+             binding is unreachable (D-H20)."
+        );
+    }
+
+    // And the states that DO expect a bind actually produce one, so the
+    // assertion above is not passing on an empty list everywhere.
+    let mut offered = ExecutionContext::new();
+    offered.world_id = Some(CMD_CENTER);
+    offered.set_param(
+        "world_name".to_string(),
+        serde_json::json!("Harset_CmdCenter"),
+    );
+    offered.set_param("archetype".to_string(), serde_json::json!(6));
+    offered.set_param(
+        "mission_742_status".to_string(),
+        serde_json::json!("not_active"),
+    );
+    offered.set_param(
+        "mission_1200_status".to_string(),
+        serde_json::json!("completed"),
+    );
+    let binds: Vec<i32> = fire(&engine, TriggerType::PlayerLoaded, &offered)
+        .actions
+        .iter()
+        .filter_map(|(_, a)| match a {
+            Action::AddDialogSet {
+                dialog_set_id,
+                slot: 43,
+                ..
+            } => Some(*dialog_set_id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        binds,
+        vec![3127],
+        "the post-1200 state must bind exactly the 742 offer to Anat, or the \
+         disjointness assertion above is vacuous"
+    );
+}
+
+/// The same disjointness, on the OTHER route into the offer. Completing
+/// 1200 fires `OnMissionCompleted`, and chain 6118's second trigger
+/// answers it — so this is the one event on which the offer binds Anat
+/// while the player is standing in front of her. Nothing else in the
+/// lane may bind template 43 on that event, or `handle_interact` picks a
+/// winner by insertion order.
+#[tokio::test]
+async fn completing_1200_binds_only_the_742_offer_to_anat() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+
+    let mut ctx = ExecutionContext::new();
+    ctx.world_id = Some(CMD_CENTER);
+    ctx.set_param(
+        "world_name".to_string(),
+        serde_json::json!("Harset_CmdCenter"),
+    );
+    ctx.set_param("archetype".to_string(), serde_json::json!(6));
+    ctx.set_param("mission_id".to_string(), serde_json::json!(1200));
+    ctx.set_param(
+        "mission_1200_status".to_string(),
+        serde_json::json!("completed"),
+    );
+    ctx.set_param(
+        "mission_742_status".to_string(),
+        serde_json::json!("not_active"),
+    );
+
+    let resolved = fire(&engine, TriggerType::MissionCompleted, &ctx);
+    let anat_binds: Vec<i32> = resolved
+        .actions
+        .iter()
+        .filter_map(|(_, a)| match a {
+            Action::AddDialogSet {
+                dialog_set_id,
+                slot: 43,
+                ..
+            } => Some(*dialog_set_id),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(
+        anat_binds,
+        vec![3127],
+        "completing 1200 must bind exactly the 742 offer (dsm 3127) to Anat; \
+         got {anat_binds:?}"
+    );
+}
+
+/// **Two Petbes must never both carry a marker.** Template 163 is the
+/// talking Petbe (spawn 223, world 57, faction 1); template 221 is
+/// `Petbe (hostile)` — same body set, faction 10, staff weapon — used by
+/// mission 1245 as the instance spawn `Storage_Petbe`.
+///
+/// The 2026-09-18 Castle playtest shipped two Zuritskas both showing
+/// "!", because two templates of one named NPC were painted for the same
+/// player. In this lane the marker rides the dialog-set binding
+/// (`add_dialog_set` pushes the bound dsm row's `interaction_flags`), so
+/// the guard is that no chain in the Goa'uld range ever addresses 221 —
+/// neither as a bind slot nor as a spawn.
+#[tokio::test]
+async fn no_goauld_chain_addresses_the_hostile_petbe_template() {
+    use sqlx::Row;
+
+    let pool = require_db_or_skip!();
+
+    let rows = sqlx::query(
+        "SELECT chain_id, action_type, target_id, target_key, params::text AS params \
+         FROM resources.content_actions \
+         WHERE chain_id BETWEEN 6101 AND 6300 \
+         ORDER BY chain_id, sort_order",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("content_actions query must succeed");
+
+    assert!(
+        !rows.is_empty(),
+        "no content_actions in 6101-6300 — harset_goauld_chains.sql is not loaded"
+    );
+
+    for row in rows {
+        let chain_id: i32 = row.get("chain_id");
+        let action_type: String = row.get("action_type");
+        let target_id: Option<i32> = row.get("target_id");
+        let target_key: Option<String> = row.get("target_key");
+        let params: String = row.get("params");
+
+        let slot: Option<i64> = serde_json::from_str::<serde_json::Value>(&params)
+            .ok()
+            .and_then(|v| v.get("slot").and_then(|s| s.as_i64()));
+        let template: Option<i64> = serde_json::from_str::<serde_json::Value>(&params)
+            .ok()
+            .and_then(|v| v.get("template_id").and_then(|s| s.as_i64()));
+
+        assert_ne!(
+            slot,
+            Some(221),
+            "chain {chain_id} ({action_type}) binds a dialog set to template \
+             221, the hostile Petbe. Petbe already talks to this player as \
+             template 163 (spawn 223); a marker on both is the two-Zuritskas \
+             bug from the 2026-09-18 Castle playtest."
+        );
+        assert_ne!(
+            template,
+            Some(221),
+            "chain {chain_id} ({action_type}) spawns the hostile Petbe \
+             (template 221) while template 163 is the lane's talking Petbe"
+        );
+        assert_ne!(
+            target_key.as_deref(),
+            Some("Storage_Petbe"),
+            "chain {chain_id} ({action_type}) addresses `Storage_Petbe`, \
+             mission 1245's hostile instance spawn. Cross-mission tag reuse \
+             puts two Petbes in play at once."
+        );
+        if action_type == "spawn_entity" {
+            assert_ne!(
+                target_id,
+                Some(221),
+                "chain {chain_id} spawns the hostile Petbe template"
             );
         }
     }
@@ -942,7 +1267,10 @@ async fn objective_params_do_not_survive_the_production_hydration_shape() {
     ctx.world_id = Some(HARSET);
     ctx.set_param("entity_tag".to_string(), serde_json::json!("FirstBug"));
     ctx.set_param(
-        format!("mission_742_step_{}_status", hydrated.current_step_id.unwrap()),
+        format!(
+            "mission_742_step_{}_status",
+            hydrated.current_step_id.unwrap()
+        ),
         serde_json::json!("active"),
     );
     // Mirror `populate_mission_context`'s objective loop over exactly the
