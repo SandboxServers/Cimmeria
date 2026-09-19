@@ -3,12 +3,14 @@
 //! shared `make_mgr_with_player` fixture live here; per-feature suites
 //! are split into siblings:
 //!   - `auto_cycle.rs` — `SET_AUTO_CYCLE` toggle behaviour.
+//!   - `region_scope.rs` — `TRIGGER_REGION` world scoping and containment.
 //!   - `reload.rs` — `handle_reload` core + wire format.
 //!   - `reload_holster.rs` — `handle_reload` holster/phase choreography.
 
 use super::*;
 
 mod auto_cycle;
+mod region_scope;
 mod reload;
 mod reload_holster;
 

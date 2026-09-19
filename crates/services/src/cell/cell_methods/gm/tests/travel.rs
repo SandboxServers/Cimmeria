@@ -538,3 +538,67 @@ async fn goto_summon_reject_non_numeric() {
         "non-numeric gmSummon must feed back a rejection"
     );
 }
+
+/// `gmDHD` reaches `handle_dial_gate`, which enforces the caller's address
+/// book (CAT-O-01). A GM debugging a world they have never visited does not
+/// hold its address, so the arm grants it for the session first — without
+/// that, H06's dial gate silently broke a GM command.
+///
+/// Deleting the grant block in `handle_dhd` fails this: no `GateTravel` is
+/// emitted and the caller stays in Castle.
+#[tokio::test]
+async fn gm_dhd_grants_the_address_it_needs_and_dials() {
+    use crate::cell::space_manager::SpaceManager;
+    use crate::cell::spawner::StargateEntry;
+
+    // Built inline rather than via `mgr_with_player`: a GM dial needs a
+    // *second* world to travel to (a same-world dial is a documented no-op),
+    // and the shared fixture only ever declares one.
+    let mut mgr = SpaceManager::new(1);
+    mgr.parse_spaces_xml(
+        r#"<?xml version="1.0"?><Spaces>
+            <Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
+            <Space WorldName="Agnos" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
+        </Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces>
+            <Space WorldName="Castle" /><Space WorldName="Agnos" />
+        </Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        e.access_level = 2; // GameMaster
+    }
+    mgr.connect_entity(1);
+    mgr.stargates.insert(
+        7,
+        StargateEntry {
+            world_name: "Agnos".to_string(),
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+            yaw: 0.0,
+            address_origin: 4,
+            arrival: None,
+        },
+    );
+    assert!(
+        mgr.get_entity(1).unwrap().known_stargates.is_empty(),
+        "the GM starts without the address — that is the point of the test"
+    );
+
+    let (tx, mut rx) = mpsc::channel(8);
+    assert!(dispatch(1, GM_DHD, &[7u8], &tx, &mut mgr).await);
+
+    assert!(
+        drain(&mut rx)
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GateTravel { .. })),
+        "a GM dial must not be blocked by the player-facing address book"
+    );
+}

@@ -146,6 +146,12 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
     mgr.create_entity(ENTITY_ID, "Agnos", [10.0; 3], [0.0; 3])
         .unwrap();
     mgr.connect_entity(ENTITY_ID);
+    // `handle_dial_gate` refuses an address the player does not hold
+    // (CAT-O-01), so the round-trip fixture has to grant one — this test is
+    // about the cell→base message shape, not the address book.
+    mgr.get_entity_mut(ENTITY_ID)
+        .expect("traveller")
+        .known_stargates = vec![TARGET_GATE];
 
     let (tx, mut rx) = mpsc::channel::<CellToBaseMsg>(16);
     handle_dial_gate(ENTITY_ID, TARGET_GATE, 0, &tx, &mut mgr).await;

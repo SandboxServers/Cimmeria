@@ -200,63 +200,91 @@ pub(crate) async fn handle_on_client_ready(
     // silently default a real player to empty bandolier state. The
     // two booleans come from the same SELECT so we make one
     // round-trip not three.
-    let (active_bandolier_slot, bandolier_items, system_options, state_field) = if let Some(pool) =
-        db_pool
-    {
-        #[derive(sqlx::FromRow)]
-        struct PlayerInitRow {
-            bandolier_slot: i32,
-            auto_reload: bool,
-            reload_on_activate: bool,
-            state_field: i32,
-        }
-        let row: Option<PlayerInitRow> = match sqlx::query_as::<_, PlayerInitRow>(
-            "SELECT bandolier_slot, auto_reload, reload_on_activate, state_field \
+    //
+    // `known_stargates` rides this same SELECT rather than a query of its
+    // own: it is the cell's dial-gate input (CAT-O-01) and the client's
+    // address book comes from the same column, so one read keeps the two
+    // from straddling a concurrent unlock UPDATE and rendering an address
+    // the client can click but the cell will refuse.
+    let (active_bandolier_slot, bandolier_items, system_options, state_field, known_stargates) =
+        if let Some(pool) = db_pool {
+            #[derive(sqlx::FromRow)]
+            struct PlayerInitRow {
+                bandolier_slot: i32,
+                auto_reload: bool,
+                reload_on_activate: bool,
+                state_field: i32,
+                known_stargates: Vec<i32>,
+            }
+            let row: Option<PlayerInitRow> = match sqlx::query_as::<_, PlayerInitRow>(
+                "SELECT bandolier_slot, auto_reload, reload_on_activate, state_field, \
+                    known_stargates \
                  FROM sgw_player WHERE player_id = $1",
-        )
-        .bind(pending.player_id)
-        .fetch_optional(pool.as_ref())
-        .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::error!(
+            )
+            .bind(pending.player_id)
+            .fetch_optional(pool.as_ref())
+            .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(
                     player_id = pending.player_id,
                     "Player init read failed; defaulting to XML defaults but logging error: {e}"
                 );
-                None
-            }
-        };
-        let (slot, opts, state_field) = match row {
-            Some(r) => (
-                r.bandolier_slot,
-                cimmeria_entity::cell_entity::SystemOptions {
-                    auto_reload: r.auto_reload,
-                    reload_on_activate: r.reload_on_activate,
-                },
-                // Stored masked (PERSISTED_STATE_FIELD_MASK + the
-                // schema's non-negative CHECK), so the lossless cast
-                // back to the in-memory u32 bitmask is safe.
-                r.state_field as u32,
-            ),
-            None => (0, cimmeria_entity::cell_entity::SystemOptions::default(), 0),
-        };
+                    None
+                }
+            };
+            let (slot, opts, state_field, known) = match row {
+                Some(r) => (
+                    r.bandolier_slot,
+                    cimmeria_entity::cell_entity::SystemOptions {
+                        auto_reload: r.auto_reload,
+                        reload_on_activate: r.reload_on_activate,
+                    },
+                    // Stored masked (PERSISTED_STATE_FIELD_MASK + the
+                    // schema's non-negative CHECK), so the lossless cast
+                    // back to the in-memory u32 bitmask is safe.
+                    r.state_field as u32,
+                    r.known_stargates,
+                ),
+                None => {
+                    // `PlayerLoadData::default()` carries `player_id: 0`, so a
+                    // transient failure earlier in world entry reaches here with
+                    // a key matching nothing. Now that the address book rides
+                    // this row, the visible consequence is a player who can walk
+                    // and fight but whose every dial is refused.
+                    tracing::warn!(
+                        player_id = pending.player_id,
+                        reason = "player_init_row_missing",
+                        "Player init read matched no row -- bandolier, options and the \
+                     stargate address book all default to empty; every dial is refused"
+                    );
+                    (
+                        0,
+                        cimmeria_entity::cell_entity::SystemOptions::default(),
+                        0,
+                        Vec::new(),
+                    )
+                }
+            };
 
-        let items = super::super::world_entry::methods::player_load::meta::query_bandolier_items(
-            db_pool,
-            pending.player_id,
-        )
-        .await;
+            let items =
+                super::super::world_entry::methods::player_load::meta::query_bandolier_items(
+                    db_pool,
+                    pending.player_id,
+                )
+                .await;
 
-        (slot, items, opts, state_field)
-    } else {
-        (
-            0,
-            Vec::new(),
-            cimmeria_entity::cell_entity::SystemOptions::default(),
-            0,
-        )
-    };
+            (slot, items, opts, state_field, known)
+        } else {
+            (
+                0,
+                Vec::new(),
+                cimmeria_entity::cell_entity::SystemOptions::default(),
+                0,
+                Vec::new(),
+            )
+        };
 
     // Cross-world ring transport carry-through: take the pending ring id
     // BEFORE we drop the connected lock so a concurrent disconnect can't
@@ -298,6 +326,7 @@ pub(crate) async fn handle_on_client_ready(
                 system_options,
                 state_field,
                 access_level,
+                known_stargates,
                 character_name: player_name.clone(),
             })
             .await

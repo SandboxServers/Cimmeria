@@ -144,6 +144,7 @@ pub(super) async fn handle_base_message(
             system_options,
             state_field,
             access_level,
+            known_stargates,
             character_name,
         } => {
             // Cache the display name on the cell entity so cell-side seams (GM
@@ -164,6 +165,14 @@ pub(super) async fn handle_base_message(
                 // field not threaded into its signature — which, like
                 // `character_name`, is at the argument-count lint ceiling.
                 entity.account_id = Some(account_id);
+                // Address book for the dial gate (CAT-O-01). Stamped here
+                // rather than threaded into `handle_init_player_state` for
+                // the same reason as `character_name`: that signature is at
+                // the `too_many_arguments` ceiling. Assigned unconditionally
+                // so a gate arrival — which replays world entry against the
+                // freshly-learned list — overwrites the pre-travel snapshot
+                // instead of leaving the old one in place.
+                entity.known_stargates = known_stargates;
             } else {
                 // The entity should already exist (ConnectEntity precedes
                 // InitPlayerState). If it doesn't, the name cache silently
