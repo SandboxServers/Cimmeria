@@ -40,6 +40,11 @@ pub mod nav_roundtrip;
 pub mod obj;
 pub mod staticmesh;
 pub mod terrain;
+/// Synthetic UE3 package fixtures. Behind `test-support` so nothing
+/// here reaches a release binary; see the module docs for why the
+/// builder lives in this crate rather than `cimmeria-upk`.
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 pub mod transform;
 pub mod umap;
 
