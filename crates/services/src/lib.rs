@@ -11,6 +11,7 @@ pub mod audit;
 pub mod auth;
 pub mod base;
 pub mod cell;
+pub(crate) mod credential_redaction;
 pub mod database;
 pub mod mercury;
 pub mod minigame;

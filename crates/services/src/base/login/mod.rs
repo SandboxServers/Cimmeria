@@ -13,6 +13,7 @@ use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUE
 
 use crate::auth::PendingLogin;
 use crate::cell::messages::BaseToCellMsg;
+use crate::credential_redaction::CredentialPrefix;
 use crate::mercury::{build_connect_reply, build_logged_off, build_time_sync};
 
 use super::helpers::{destroy_client_entities, to_hex};
@@ -52,7 +53,10 @@ pub(crate) async fn handle_login(
     let login = match login {
         Some(l) => l,
         None => {
-            tracing::warn!("Unknown or already-consumed ticket: {ticket}");
+            tracing::warn!(
+                ticket_prefix = %CredentialPrefix(ticket),
+                "Unknown or already-consumed ticket"
+            );
             return Ok(());
         }
     };

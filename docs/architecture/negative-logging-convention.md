@@ -111,6 +111,20 @@ A third, cheap: state is released on `destroy_entity`.
 | `world` | when the seam is space-scoped | The **world name**, not only `space_id`. A space id is a runtime allocation that means nothing outside the running process, so a log carrying only `space_id` cannot be grouped by zone after the fact. Pair them — `space_id` still identifies the instance. |
 | `suppressed` | required on a Pattern D seam | Count of occurrences elided since this seam last emitted for this entity. `0` on the first row of an episode. |
 
+### Credential fields
+
+Never log a credential value in full, at any level: this covers SIDs, tickets, session keys, passwords and password hashes, and raw request bodies that carry them. Disk logs, the admin `/ws/logs` stream and SigNoz all keep what they receive, and a harvested SID or ticket is enough to hijack a pending login ([#440](https://github.com/SandboxServers/Cimmeria/issues/440)).
+
+Log a redacted prefix under a `*_prefix` field instead, using `CredentialPrefix` from `crates/services/src/credential_redaction.rs`:
+
+```rust
+tracing::debug!(ticket_prefix = %CredentialPrefix(&ticket), "Phase 2 generated session credentials");
+```
+
+The prefix is six characters, which is enough to correlate one login's events and far too short to replay. `CredentialPrefix` slices on character boundaries, so it is safe on client-supplied input of any length. Don't use `&value[..6]`: it panics on short or non-ASCII input. For a request body, log `body_len` rather than the body. `auth/credential_log_guard.rs` is the regression guard: it runs a full login under `LogCapture` and fails if any captured event contains a credential.
+
+Two deliberate exceptions remain. Credentials of six characters or fewer appear in full in `CredentialPrefix` output — there is nothing left to truncate — and the `UDP_IN` TRACE hex dump in `base/connect_loop/mod.rs` captures pre-encryption packet bytes, including the ticket field in `baseAppLogin`. That dump is required for wire-level debugging; production login tickets are long enough that the prefix rule still holds in practice.
+
 ## Level discipline
 
 | Level | When |

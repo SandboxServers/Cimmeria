@@ -996,6 +996,7 @@ dependencies = [
  "base64 0.22.1",
  "cimmeria-client-launch",
  "png 0.17.16",
+ "reqwest 0.13.4",
  "rmcp",
  "serde",
  "serde_json",
