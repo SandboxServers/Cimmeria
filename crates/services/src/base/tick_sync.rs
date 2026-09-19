@@ -76,6 +76,11 @@ pub(crate) async fn run_tick_loop(
     cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    // Server-side client-gone reap: if the peer sends nothing for 60 s, exit
+    // the tick-sync loop and tear down session state. Distinct from UE3 R10's
+    // 15 s *server*-silence tolerance — the client tears down at 15 s of
+    // server quiet; we honor R10 by sending tickSync every ~100 ms, not by
+    // matching this timer to `UE3_INACTIVITY_TIMEOUT_MS`.
     const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(60);
 
     let mut tick: u32 = 0;

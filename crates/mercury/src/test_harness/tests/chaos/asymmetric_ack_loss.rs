@@ -5,7 +5,7 @@
 //!
 //! Expected behavior: A keeps retransmitting on RTO; A's TX-window
 //! entries accumulate retransmit_count; eventually
-//! `is_timed_out()` flips to true past `INACTIVITY_TIMEOUT_MS`.
+//! `is_timed_out()` flips to true past `MERCURY_PEER_DEAD_MS`.
 //! Throughout, no state corruption — the channel either survives
 //! (acks flow back) or is reaped (acks never flow back), no
 //! third-state hang.
@@ -52,20 +52,20 @@ async fn asymmetric_ack_loss_times_out_eventually() {
         "TX window holds all 5 sends — no ack arrived"
     );
 
-    // Advance A's clock past INACTIVITY_TIMEOUT_MS to surface the
+    // Advance A's clock past MERCURY_PEER_DEAD_MS to surface the
     // silent-peer detection. The channel-level is_timed_out check
     // reads last_received against the clock; since B's "ack carrier"
     // was dropped, last_received is still the handshake time.
     session
         .a
         .clock
-        .advance(Duration::from_millis(consts::INACTIVITY_TIMEOUT_MS + 1_000));
+        .advance(Duration::from_millis(consts::MERCURY_PEER_DEAD_MS + 1_000));
 
     {
         let channel = session.a.channel.lock().unwrap();
         assert!(
             channel.is_timed_out(),
-            "channel must be detectably timed out after INACTIVITY_TIMEOUT_MS \
+            "channel must be detectably timed out after MERCURY_PEER_DEAD_MS \
              of silent-peer + ack-less retransmits"
         );
         // Even when timed out, the safety invariants still hold —

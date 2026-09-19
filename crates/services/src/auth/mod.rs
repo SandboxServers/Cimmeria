@@ -16,6 +16,9 @@ mod service;
 mod tls;
 
 #[cfg(test)]
+mod credential_log_guard;
+
+#[cfg(test)]
 mod login_smoke;
 
 #[cfg(test)]

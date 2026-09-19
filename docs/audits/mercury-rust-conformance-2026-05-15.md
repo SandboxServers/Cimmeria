@@ -488,7 +488,7 @@ How to reproduce: `python tools/mercury_dispute_resolver.py game/sgw/Working/bin
 | M4 | §1.11 — 31 missing `UPDATE_AVATAR` variants (`0x11..0x2F`) | Per-variant emit functions matching the 32-way `{Alias\|NoAlias} × {FullPos\|OnChunk\|OnGround\|NoPos} × {YPR\|YP\|Y\|NoDir}` matrix from spec §2.5. Today only `0x10` (NoAliasFullPosYawPitchRoll, 25 bytes) is implemented |
 | M5 | §1.11.2 — `detailedPosition` (msg `0x30`, 41 bytes) | Add `BASEMSG_DETAILED_POSITION = 0x30` and an emit function. Currently absent |
 | M6 | §2.4.1 R14 — per-tick 5.0 retransmit work budget | In `crates/mercury/src/channel/mod.rs::check_timeouts`, wrap the retransmit loop in `let mut budget = 5.0f32; while budget > 0.0 { ... budget -= 1.0; }` — a packet over the lifetime cap aborts; a packet within budget but over the per-tick gate yields to next tick. See spec §1.16 Q5 closure for the exact semantics |
-| M7 | §2.4 R10 — 15-second silence-tolerance gate | Reconcile three inactivity-timeout constants (`crates/mercury/src/lib.rs:55` 300s; `crates/services/src/base/tick_sync.rs:32` 60s; spec 15s) into a coherent semantic. Recommend: name `MERCURY_PEER_DEAD_MS` for the bookkeeping value (current 300s) and add `UE3_INACTIVITY_TIMEOUT_MS = 15_000` for the wire-observable R10 silence-tolerance edge |
+| M7 | §2.4 R10 — 15-second silence-tolerance gate | Reconcile three inactivity-timeout constants (`crates/mercury/src/lib.rs:55` 300s; `crates/services/src/base/tick_sync.rs:32` 60s; spec 15s) into a coherent semantic. Recommend: name `MERCURY_PEER_DEAD_MS` for the bookkeeping value (current 300s) and add `UE3_INACTIVITY_TIMEOUT_MS = 15_000` for the wire-observable R10 silence-tolerance edge. ✅ **PARTIALLY RESOLVED** (see #293): constants split as recommended (`MERCURY_PEER_DEAD_MS = 300_000`, `UE3_INACTIVITY_TIMEOUT_MS = 15_000`); `tick_sync.rs` intentionally remains at 60 s (server-side client-gone reap). UE3 15 s is the client-side edge the server's ~100 ms tickSync send cadence must respect; faster client reaping via tick_sync is a separate decision |
 | M8 | §2.7 R/SHOULD — `restoreClient` flow + `restoreClientAck` consumer | When `restoreClient` is added to the emit path, also wire a `0x0B` ack handler that closes server-side restoration bookkeeping. Currently neither side exists |
 
 ---
@@ -526,13 +526,13 @@ V3 wire capture closed two former Critical-pending-verification items as spec bu
 
 8. **Enforce 28-bit sequence space** (finding #7). Apply mask `0x0FFFFFFF` at `crates/mercury/src/channel/mod.rs:175`. Reject incoming `seq == 0x10000000` at packet entry with the R4 drop semantic.
 
-9. **Reconcile inactivity-timeout constants** (finding #8). Rename `crates/mercury/src/lib.rs:55` to `MERCURY_PEER_DEAD_MS` (its actual semantic — Mercury-layer bookkeeping). Add `UE3_INACTIVITY_TIMEOUT_MS = 15_000` as a separate constant for the R10 silence-tolerance edge. Replace the third constant at `crates/services/src/base/tick_sync.rs:32` (currently 60 s) with the 15 s constant.
+9. **Reconcile inactivity-timeout constants** (finding #8). Rename `crates/mercury/src/lib.rs:55` to `MERCURY_PEER_DEAD_MS` (its actual semantic — Mercury-layer bookkeeping). Add `UE3_INACTIVITY_TIMEOUT_MS = 15_000` as a separate constant for the R10 silence-tolerance edge. Replace the third constant at `crates/services/src/base/tick_sync.rs:32` (currently 60 s) with the 15 s constant. ✅ **PARTIALLY RESOLVED** (see #293): constant naming/split landed; `tick_sync.rs` left at 60 s per review — rename + documented UE3 edge only; faster client reaping is a separate ready-for-human decision.
 
 10. **Implement per-tick `authenticate` token validation** (finding #9). Replace the skip-and-continue at `crates/services/src/base/connect_loop/encrypted.rs:89-103` with a per-tick rotating-token check against the SOAP-issued session material. Track the token rotation algorithm (out of scope for this audit; auth chapter's domain) before wiring the validator. Until the validator lands, the server is exposed to session-hijack-via-replay.
 
 ### 7.3 Minor and design debt
 
-11. **Verify and remove `PROTOCOL_VERSION`** (finding #11). The constant at `crates/mercury/src/lib.rs:69` is currently unused but its comment promises a wire handshake the spec forbids. Remove the constant and the comment.
+11. **Verify and remove `PROTOCOL_VERSION`** (finding #11). The constant at `crates/mercury/src/lib.rs:69` is currently unused but its comment promises a wire handshake the spec forbids. Remove the constant and the comment. ✅ **RESOLVED** (see #296).
 
 12. **Introduce an `InterfaceElement` table.** Replace per-emitter hardcoded length-prefix decisions with a static table of `(msg_id, flag, size, name)` rows matching spec §2.5.1's `flag=0/1` discriminator. Catches future descriptor-vs-emitter mismatches at compile time; unblocks `DWORD_LENGTH` (`AUTHENTICATE`) and the `compressLength` 1/2/3/4-byte widths.
 
@@ -544,9 +544,9 @@ V3 wire capture closed two former Critical-pending-verification items as spec bu
 
 ### 7.4 Documentation cleanup (chapter and code)
 
-16. **Drop the `OpenSSL` reference in `encryption.rs`.** Spec §1.4 explicitly notes the doc-comment is wrong (the runtime is RustCrypto; the binary it emulates is CryptoPP). One-line change.
+16. **Drop the `OpenSSL` reference in `encryption.rs`.** Spec §1.4 explicitly notes the doc-comment is wrong (the runtime is RustCrypto; the binary it emulates is CryptoPP). One-line change. ✅ **RESOLVED** (see #296). Both `encryption/mod.rs` doc mentions now say CryptoPP, with the RustCrypto-vs-CryptoPP distinction noted.
 
-17. **Reconcile the contradictory doc-comment at `crates/services/src/mercury/mod.rs:219-225`.** The doc-comment says "Extended (method_index >= 128)" and "We use the simpler boundary at 128" while the code at line 230 uses `if method_index >= 61`. The code is correct (V3 wire capture confirmed); update the doc-comment to match: extended encoding starts at index 61 with `sub_index = method_index - 61`, sentinel `0xBD` (cell) / `0xFD` (base).
+17. **Reconcile the contradictory doc-comment at `crates/services/src/mercury/mod.rs:219-225`.** The doc-comment says "Extended (method_index >= 128)" and "We use the simpler boundary at 128" while the code at line 230 uses `if method_index >= 61`. The code is correct (V3 wire capture confirmed); update the doc-comment to match: extended encoding starts at index 61 with `sub_index = method_index - 61`, sentinel `0xBD` (cell) / `0xFD` (base). ✅ **RESOLVED** (see #296). The `append_entity_method` doc had already been rewritten to the per-entity `idbase` model by #392; #296 fixed the two stale inline tables ("Direct encoding (0–127) / Extended encoding (128+)") that still claimed a 128 boundary.
 
 18. **Update the spec table at §1.10.5** (createEntity payload size). The table says "5 bytes" but the field list and C++ source both add to 8 bytes; Rust correctly emits 8. Fix the spec table.
 

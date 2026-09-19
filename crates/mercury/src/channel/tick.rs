@@ -62,7 +62,7 @@ pub struct TickActions {
     /// rather than silently suppressed for a full interval.
     pub keepalives: Vec<SocketAddr>,
     /// Channels removed from the registry this pass (silent peers past
-    /// `INACTIVITY_TIMEOUT_MS`, or any channel that exceeded
+    /// `MERCURY_PEER_DEAD_MS`, or any channel that exceeded
     /// `MAX_RETRIES` on a reliable packet). Returned so the caller can
     /// run cleanup against per-session state outside the channel itself.
     pub dead_channels: Vec<(SocketAddr, Channel)>,

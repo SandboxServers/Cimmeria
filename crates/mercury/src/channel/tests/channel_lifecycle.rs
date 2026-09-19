@@ -192,10 +192,10 @@ fn is_timed_out_fires_on_silent_peer_even_if_we_keep_sending() {
     let mut ch = Channel::new(test_addr());
     // Simulate "we keep blasting world updates at a dead client":
     // last_sent is fresh, but last_received is stale past the
-    // configured INACTIVITY_TIMEOUT_MS.
+    // configured MERCURY_PEER_DEAD_MS.
     ch.last_sent = std::time::Instant::now();
     ch.last_received = std::time::Instant::now()
-        - std::time::Duration::from_millis(consts::INACTIVITY_TIMEOUT_MS + 100);
+        - std::time::Duration::from_millis(consts::MERCURY_PEER_DEAD_MS + 100);
 
     // Conflated `last_activity` would have been refreshed by our own
     // sends — so dead clients would never be reaped. Splitting the
@@ -213,6 +213,29 @@ fn is_timed_out_does_not_fire_when_peer_is_chatty() {
     ch.last_sent = std::time::Instant::now();
     ch.last_received = std::time::Instant::now();
     assert!(!ch.is_timed_out());
+}
+
+/// Regression guard for #293 (Path A): the two inactivity constants must
+/// keep distinct semantics — Mercury peer-dead bookkeeping vs the UE3
+/// client-side edge for *server* silence (R10). tick_sync's 60 s client-gone
+/// reap is separate and intentionally not wired to `UE3_INACTIVITY_TIMEOUT_MS`.
+#[test]
+fn inactivity_constants_distinguish_mercury_bookkeeping_from_ue3_edge() {
+    use crate::consts::{MERCURY_PEER_DEAD_MS, UE3_INACTIVITY_TIMEOUT_MS};
+
+    // Spec §2.4 R10: `NetInactivityTimeout=15` seconds on the client.
+    assert_eq!(
+        UE3_INACTIVITY_TIMEOUT_MS, 15_000,
+        "UE3_INACTIVITY_TIMEOUT_MS must be 15 s (spec §2.4 R10)"
+    );
+    // The old single constant is gone — no call site may reference it.
+    // The bookkeeping value survives under its actual semantic name.
+    assert_eq!(
+        MERCURY_PEER_DEAD_MS, 300_000,
+        "MERCURY_PEER_DEAD_MS keeps the 5-minute Mercury peer-dead bookkeeping"
+    );
+    // Bookkeeping must remain longer than the UE3 silence-tolerance edge.
+    const _: () = assert!(MERCURY_PEER_DEAD_MS > UE3_INACTIVITY_TIMEOUT_MS);
 }
 
 #[test]

@@ -21,7 +21,8 @@ pub struct CapturedImage {
 pub fn bgra_to_rgba(bgra: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(bgra.len());
     // `as_chunks` (not `chunks_exact`) per clippy's chunks_exact_to_as_chunks
-    // on the CI-floating stable toolchain.
+    // on the CI-floating stable toolchain. `_rem` is the ragged tail, empty
+    // for a 32bpp buffer.
     let (pixels, _rem) = bgra.as_chunks::<4>();
     for px in pixels {
         out.push(px[2]); // R

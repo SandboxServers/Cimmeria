@@ -592,7 +592,7 @@ impl Channel {
     }
 
     /// Returns `true` if the channel has exceeded the maximum retry count
-    /// or the peer has been silent past `INACTIVITY_TIMEOUT_MS`.
+    /// or the peer has been silent past `MERCURY_PEER_DEAD_MS`.
     ///
     /// Reads `last_received`, not `last_sent` — disconnect detection gates
     /// on what the PEER does (or doesn't), not on what we do. If we're
@@ -623,7 +623,7 @@ impl Channel {
             .any(|entry| entry.retransmit_count > consts::MAX_RETRIES);
 
         // Peer has been silent past the configured tolerance — assume dead.
-        let peer_idle_timeout = peer_idle_ms > consts::INACTIVITY_TIMEOUT_MS;
+        let peer_idle_timeout = peer_idle_ms > consts::MERCURY_PEER_DEAD_MS;
 
         max_retries_exceeded || peer_idle_timeout
     }

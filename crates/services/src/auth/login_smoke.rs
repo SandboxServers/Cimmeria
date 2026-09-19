@@ -51,7 +51,7 @@ fn ephemeral_port() -> u16 {
 /// Returns the running service and the port it bound to. Closes the
 /// TOCTOU loophole the previous "bind once, hope nobody steals it"
 /// path had.
-async fn start_auth_on_ephemeral_port(
+pub(super) async fn start_auth_on_ephemeral_port(
     base_config: &ServerConfig,
     shards: &[ShardInfo],
 ) -> (AuthService, u16) {
@@ -244,7 +244,7 @@ async fn login_smoke_drives_phase1_and_phase2_through_real_http_stack() {
 /// smoke. quick-xml's full reader works but is overkill here — we
 /// just need to pull two attributes out of a known-shape success
 /// response.
-fn extract_attr(xml: &str, key: &str) -> Option<String> {
+pub(super) fn extract_attr(xml: &str, key: &str) -> Option<String> {
     let needle = format!("{key}=\"");
     let start = xml.find(&needle)? + needle.len();
     let end = start + xml[start..].find('"')?;

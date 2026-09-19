@@ -20,6 +20,7 @@ use rmcp::{
 use serde_json::{json, Value};
 
 use crate::supervisor::Supervisor;
+use crate::timeline::{Timeline, TimelineArgs};
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct LuaEvalArgs {
@@ -135,11 +136,31 @@ pub struct ServerArg {
     pub server: Option<String>,
 }
 
+/// Arguments for `lab_timeline`.
+#[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
+pub struct TimelineToolArgs {
+    /// Server session whose packet tap to merge in. Omit for a
+    /// client-only (heartbeat) timeline.
+    #[serde(default)]
+    pub session_id: Option<String>,
+    /// Lookback window in milliseconds, ending at the newest event.
+    /// Defaults to 60000.
+    #[serde(default)]
+    pub window_ms: Option<i64>,
+    /// Max packet-tap rows to request. Defaults to 1000.
+    #[serde(default)]
+    pub limit: Option<u32>,
+    /// Explicit server-clock lower bound handed to the packet-tap read.
+    #[serde(default)]
+    pub since_ms: Option<i64>,
+}
+
 /// The MCP server. Holds the shared supervisor (which owns the bridge
-/// client and the process lifecycle).
+/// client and the process lifecycle) and the timeline builder.
 #[derive(Clone)]
 pub struct LabServer {
     supervisor: Arc<Supervisor>,
+    timeline: Arc<Timeline>,
     tool_router: ToolRouter<LabServer>,
 }
 
@@ -148,6 +169,7 @@ impl LabServer {
     pub fn new(supervisor: Arc<Supervisor>) -> Self {
         Self {
             supervisor,
+            timeline: Arc::new(Timeline::from_env()),
             tool_router: Self::tool_router(),
         }
     }
@@ -351,6 +373,22 @@ impl LabServer {
     async fn lab_crash_report(&self) -> Result<CallToolResult, McpError> {
         self.wrap(self.supervisor.crash_report().await)
     }
+
+    #[tool(
+        description = "Merge local client events (bridge heartbeat ring today; the full client-event ring is gated on #686) with server packet-tap rows (fetched from cimmeria-lab-mcp over HTTP) into one time-ordered window. Estimates the client↔server clock offset from the packet-tap round trip and projects client events onto the server clock. SigNoz stays the durable copy under the dev-session id. Client-only when no session_id or no server endpoint is configured."
+    )]
+    async fn lab_timeline(
+        &self,
+        Parameters(args): Parameters<TimelineToolArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let ta = TimelineArgs {
+            session_id: args.session_id,
+            window_ms: args.window_ms,
+            limit: args.limit,
+            since_ms: args.since_ms,
+        };
+        self.wrap(self.timeline.build(&self.supervisor, ta).await)
+    }
 }
 
 impl LabServer {
@@ -384,7 +422,9 @@ impl ServerHandler for LabServer {
                  cimmeria-client-telemetry DLL over a token-gated loopback TCP \
                  channel. Supervisor tools (lab_client_start/stop/restart/status, \
                  lab_login, lab_screenshot, lab_crash_report) own the SGW.exe \
-                 process lifecycle and crash recovery."
+                 process lifecycle and crash recovery. lab_timeline merges \
+                 local client events with server packet-tap rows (from \
+                 cimmeria-lab-mcp over HTTP) into one clock-aligned window."
                     .to_string(),
             )
     }

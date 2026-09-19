@@ -191,7 +191,7 @@ dependencies = [
  "nom",
  "num-traits",
  "rusticata-macros",
- "thiserror 2.0.19",
+ "thiserror 2.0.20",
  "time",
 ]
 
@@ -996,6 +996,7 @@ dependencies = [
  "base64 0.22.1",
  "cimmeria-client-launch",
  "png 0.17.16",
+ "reqwest 0.13.4",
  "rmcp",
  "serde",
  "serde_json",
@@ -1126,6 +1127,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1 0.11.0",
+ "socket2",
  "sqlx",
  "thiserror 2.0.20",
  "tokio",
@@ -9301,7 +9303,7 @@ dependencies = [
  "oid-registry",
  "ring",
  "rusticata-macros",
- "thiserror 2.0.19",
+ "thiserror 2.0.20",
  "time",
 ]
 
