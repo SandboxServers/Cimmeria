@@ -1,7 +1,7 @@
 # Navmesh Build Pipeline (UE3 → OBJ → NavBuilder → `.nav`)
 
 > **Last updated**: 2026-09-19
-> **Status**: Verified end-to-end against the prebuilt `NavBuilder_d.exe` and the shipped 2013 `castle_cellblock.nav`. §2.5 and §6 (tunable NavBuilder, Recast 16-bit limits, Castle parameter set) measured on the 144-chunk Castle extraction the same day.
+> **Status**: Verified end-to-end against the prebuilt `NavBuilder_d.exe` and the shipped 2013 `castle_cellblock.nav`. §2.5, §6 (gap finding and classification) and §7 (Castle connectivity) measured on the 144-chunk Castle extraction the same day; the builder reference moved to [navbuilder-recast-limits.md](navbuilder-recast-limits.md).
 
 How a cooked UE3 map becomes a `data/spaces/<space>.nav` that
 `crates/entity/src/navigation/` can load, and the exact conventions each
@@ -85,25 +85,29 @@ names the low `u16` `positionX_` and the high `u16` `positionZ_`
 > states the opposite (low → BW Z, high → BW X). The UE3 labels there are
 > right; the BW labels are transposed.
 
-### 1.2 Required change to the extractor
+### 1.2 What the extractor emits
 
-`crates/navmesh-extractor/src/obj.rs` writes raw UE3 columns today
-(`v {v[0]} {v[1]} {v[2]}`, line 97). That puts UE3's up-axis on BW `x`, so
-every floor rasterises as a vertical wall and NavBuilder writes a
-structurally valid but **completely empty** `.nav` (measured:
-`npolys = 0`). Two changes are needed, both inside `write_obj_into`:
+`crates/navmesh-extractor/src/obj.rs::write_obj_into` emits
 
-1. **Column order** — emit `v <x> <z> <y>`:
+```text
+v <ue.x> <ue.z> <ue.y>\r\n
+```
 
-   ```rust
-   // UE3 is Z-up, the OBJ NavBuilder expects is Y-up.
-   writeln!(w, "v {} {} {}", v[0], v[2], v[1])?;
-   ```
+— UE3's up-axis moved off column 1, and CRLF throughout. Both are load
+bearing and both are pinned by tests:
 
-2. **Line endings** — the whole file must be CRLF (see §1.4).
+- **Column order.** Writing raw UE3 columns puts UE3's up-axis on BW `x`, so
+  every floor rasterises as a vertical wall and NavBuilder produces a
+  structurally valid but completely empty `.nav` (measured: `npolys = 0`).
+- **CRLF.** See §1.4 — with bare LF, every `f` line whose third index is a
+  single digit loses that index and the face is dropped.
 
-Nothing else changes: the face winding, the `o` group lines and the 1-based
-index numbering are all already correct.
+The face winding, the `o` group lines and the 1-based index numbering are
+emitted verbatim from the UE3 data; none of them needs compensating (§1.3).
+
+Anything else that writes chunk OBJs — or reads them back, as
+`crates/navmesh-extractor/src/obj_slab.rs` does (§6.2) — has to use the same
+convention.
 
 ### 1.3 Winding
 
@@ -378,6 +382,11 @@ nav_inspect <file.nav>
     [--h-tol METRES]          max horizontal gap to a polygon (default 2.0)
     [--v-tol METRES]          max |vertical| gap        (default 3.0)
     [--max-components N]      fail if the mesh has more than N regions
+    [--gaps]                  gap report between the probes' components (§6)
+    [--gap-pair A,B]...       gap report between two component ids
+    [--gap-h METRES]          gap search radius, horizontal (default 3.0)
+    [--gap-v METRES]          gap search radius, vertical   (default 3.0)
+    [--gap-count N]           approaches listed per pair    (default 5)
     [--quiet]                 suppress the per-component table
 ```
 
@@ -415,213 +424,202 @@ become their own island. CA14's criterion has to be *"these named points
 are mutually reachable"*, which is what `--probe` tests, not *"the mesh is
 one region"*.
 
-### A caveat when a probe reads `OUT OF TOLERANCE`
+### Probe location is tolerance-first
 
-`NavComponents::locate` (`nav_components.rs:273-301`) prefers **any** polygon
-whose XZ footprint contains the probe over a nearer polygon on the right
-storey, and only then applies `--v-tol`. On a map with terrain under the
-interiors, a probe that sits 1–2 m outside its floor polygon (inside the
-0.6 m erosion margin, or on top of a prop) resolves to the terrain tens of
-metres below and is reported `OUT OF TOLERANCE`, even though a floor polygon
-is well within `--h-tol`. On the whole-map Castle mesh this affects `armory`
-(h = 1.49 m to the interior component, reported `dy = -69.38 m`),
-`throne_room` and `opcore`. Treat `OUT OF TOLERANCE` with a large `dy` as
-"check by hand", not as "floor missing".
+`NavGraph::locate_within` (`nav_components/mod.rs`) considers only polygons
+inside **both** tolerances and then picks the nearest in 3-D. The naive
+"nearest in XZ" rule (`NavGraph::locate`, still there for the off-mesh
+fallback) prefers any polygon whose XZ footprint contains the probe over a
+nearer polygon on the right storey, so on a map with terrain and BSP hull
+skins under the interiors a probe sitting 1–2 m outside its floor polygon
+resolved to a sheet tens of metres below and was reported
+`OUT OF TOLERANCE` while standing on the mesh. That affected `armory`,
+`throne_room` and `opcore` on the whole-map Castle build; all three read
+`ok` now.
 
-## 6. Rebuilding NavBuilder, Recast's 16-bit limits, and the Castle parameter set
+The remaining thing to watch is the opposite: a probe reported `ok` at a
+horizontal distance close to `--h-tol` is *not* on a polygon. On the
+recommended Castle set `armory` reads `h=1.49 m ok` because its own 11 m²
+ring pad was below `minRegionSize` and got deleted, so the probe snapped to
+the interior floor 1.49 m away. **Read the `h=` column, not just `ok`.**
 
-### 6.1 Building `NavBuilder.exe`
+## 6. When probes land in different components: find the gap, then classify it
 
-```powershell
-tools\build-navbuilder.ps1                      # -> bin64\NavBuilder.exe
-tools\build-navbuilder.ps1 -Out C:\tmp\NavBuilder.exe -RecastRoot <recast checkout>
+`nav_inspect` exiting 3 tells you the mesh is split. It does not tell you
+*where*, and the useless way to find out is to measure component centroid to
+component centroid — on Castle that reports "these two regions are 300 m
+apart" for a route that is actually broken in four specific places.
+
+### 6.1 `nav_inspect --gaps` — where the rims nearly meet
+
+`--gaps` indexes every **boundary edge** (a polygon edge with no in-mesh
+neighbour, i.e. the rim of an island), buckets them into an XZ hash grid, and
+reports, for each pair of components that come within `(--gap-h, --gap-v)`:
+
+- the closest approaches between the two rims, best first, with the BigWorld
+  coordinates of both sides, the horizontal gap and the signed vertical step;
+- a **chain search** — the cheapest sequence of intermediate components that
+  would link the two if every gap under the thresholds were bridged.
+
+Horizontal and vertical are reported separately because they have different
+causes: a horizontal gap is erosion or missing geometry, a vertical one is
+`agentClimb` or a ledge. A pair whose rims overlap in XZ reports `h=0.00` and
+the whole obstacle in `dy` — that is the stacked-storey shape.
+
+The chain minimises the **widest** hop first and the total second, because
+the actionable number is the worst thing you have to bridge, not the sum. A
+route broken in three places therefore reads as three short gaps with named
+waypoints, not one impossible jump:
+
+```console
+$ nav_inspect castle.nav --probes castle_probes.txt --quiet --gaps \
+      --gap-h 6 --gap-v 6
+
+  component 218 (23186 m^2, 1114 polys) <-> 405 (37214 m^2, 1344 polys)
+    direct: nothing within the search radius
+    chain: 4 hop(s), widest 3.43 m, total 5.12 m
+       218 -> 306  h= 0.30 m  dy= -0.40 m   at (723.2, 28.4, 459.9)  [306 (407 m^2, 5 polys)]
+       306 -> 308  h= 0.00 m  dy= +4.20 m   at (715.1, 26.8, 468.0)  [308 (1560 m^2, 37 polys)]
+       308 -> 352  h= 3.43 m  dy= +2.29 m   at (676.2, 18.7, 488.5)  [352 (1306 m^2, 15 polys)]
+       352 -> 405  h= 1.39 m  dy= -1.31 m   at (622.7, 24.0, 508.5)  [405 (37214 m^2, 1344 polys)]
 ```
 
-`deprecated/cpp-build/projects/NavBuilder.vcxproj` cannot be built any more:
-its precompiled header (`deprecated/cpp/src/stdafx.hpp`) pulls in Boost
-(python, asio, thread), SOCI and TinyXML, and it links `unified_kernel.lib`
-— none of which `setup.ps1` provisions since the Rust rewrite. NavBuilder
-itself needs only a logger and three Boost.uBLAS names, so the script
-compiles the five `nav_builder/*.cpp` files plus `Recast/Source/*.cpp`
-straight into one exe with `cl` (located through `vswhere`), defining
-`NAVBUILDER_STANDALONE` and putting
-`deprecated/cpp/src/nav_builder/standalone/` first on the include path. That
-directory holds a `stdafx.hpp` shim (std headers + a synchronous logger with
-the original line format) and `ublas_min.hpp`. The legacy vcxproj build is
-untouched by either.
+Start at `--gap-h 3 --gap-v 3` and widen until a chain appears; the value at
+which it does is itself the answer ("nothing under 6 m links these"). The
+search is on the whole graph — the chain needs the intermediates even when
+only two components were named — and costs about 0.15 s on the 21,805-polygon
+Castle mesh. Gap reporting never changes the exit code.
 
-The script refuses to write to a file named `NavBuilder_d.exe`. The wrapper
-scripts prefer `bin64/NavBuilder.exe` when it exists.
+Implementation and unit tests: `crates/navmesh-extractor/src/nav_components/gaps/`.
 
-### 6.2 Parity with the reference binary
+### 6.2 `obj_slab` — what the source geometry is doing there
 
-Same input (`castle_int`, 17 interior tiles, 1,177,804 triangles), no
-trailing arguments:
-
-| Build | Recast source | Result |
-|---|---|---|
-| `bin64/NavBuilder_d.exe` (Debug, 2026-03-02) | `recastnavigation-main` snapshot of 2026-02-27 | 15,463 verts / 7,746 polys, 37 s |
-| rebuilt, Release | same snapshot (`external/_downloads/recastnavigation-main.zip`) | **byte-identical** (SHA-256 `37C188E8…11EDF5`), 3.2 s |
-| rebuilt, Release or Debug | `external/recast` = v1.6.0, what `setup.ps1` provisions today | 15,463 verts / 7,752 polys; same five interior probes in one component |
-
-The reference binary predates the v1.6.0 pin: the bootstrap downloaded
-`recastnavigation-main` until 2026-03-24 (commit `a7b7d66e9` switched to the
-1.6.0 release for the Detour FFI). Debug and Release builds of the new source
-are byte-identical with each other, so the 6-polygon difference is the Recast
-version, not floating-point behaviour. Either Recast is fine for production;
-use the snapshot only when you need to diff against the reference binary.
-
-`tests/navbuilder_axis_roundtrip.rs` passes 3/3 against the rebuilt binary
-(`CIMMERIA_NAVBUILDER=<path>`).
-
-### 6.3 Recast has three 16-bit limits, and only one is checked
-
-A single `rcPolyMesh` — which is all the XRC `.nav` format can hold — is
-bounded by three separate `unsigned short` index spaces.
-
-**1. Contour vertices < 65,534 — checked.** `rcBuildPolyMesh` sums the
-vertex counts of every contour *before* de-duplication and fails with
-`rcBuildPolyMesh: Too many vertices N` (`RecastMesh.cpp:1014-1016` in v1.6.0).
-The final `nverts` is 10–20 % lower than `N`; the rebuilt NavBuilder prints
-`N` on its `Contours:` line. Whole-map Castle at the
-default parameters: `N = 118,250`.
-
-**2. Adjacency edges ≤ 65,535 — NOT checked.** `buildMeshAdjacency` stores
-edge indices as `unsigned short` (`RecastMesh.cpp:75`,
-`firstEdge[v0] = (unsigned short)edgeCount`) with no overflow test. One edge
-is recorded per polygon side with `v0 < v1`, which comes to about
-`0.9 × (nverts + npolys)`. Past the cap the mesh still builds, saves and
-loads, but polygon neighbour links are garbage. Measured:
-
-| Build | nverts | npolys | edges | components | interior probes |
-|---|---|---|---|---|---|
-| 62 chunks, StaticMesh + terrain, defaults | 55,704 | 26,825 | **75,103** | 5,551 | — |
-| 144 chunks, `maxSimplificationError=2.0` `minRegionSize=24` | 54,413 | 26,688 | **74,942** | 4,320 | split; Zuritska's cell is a 23 m² island |
-| 144 chunks, `maxSimplificationError=2.5` `minRegionSize=24` | 45,115 | 21,799 | 60,850 | 987 | one component |
-
-The first row is the build that was believed to have "squeaked under" the
-vertex cap. It did — and was silently corrupt. With `minRegionSize=24` no
-component can be smaller than ~50 m², yet the second row has 3,055 of them:
-those are fragments of real regions whose links were truncated. The rebuilt
-NavBuilder counts edges exactly as Recast does and exits 3 above the cap.
-**In practice the binding limit is `nverts + npolys ≲ 72,000`, not
-`nverts < 65,534`.**
-
-**3. Region ids are 15-bit — checked only for watershed.** `RC_BORDER_REG`
-takes the top bit. `rcBuildRegions` tests for overflow
-(`RecastRegion.cpp:1621` in v1.6.0); `rcBuildRegionsMonotone` increments an
-`unsigned short id` with no test (`:1361`, `:1469`). Whole-map Castle with
-`agentClimb=0.5` and the default monotone partitioning dies with an access
-violation (`0xC0000005`) in the partitioning step under the 2026-02 snapshot,
-and under v1.6.0 runs to completion with implausible output (10,450 contours
-/ 72,567 contour vertices, against 5,592 / 104,022 for watershed on the same
-input). **Use `partition=watershed` for anything map-sized.** It costs
-nothing measurable here (15 s either way).
-
-### 6.4 Castle (World 8): what each parameter does
-
-Input: all 144 chunks (`StaticMesh` + `Terrain` + BSP), 4,179,133 triangles,
-grid 4,458 × 4,000. "Interior-5" = `zuritska_cell`, `romney_corridor`,
-`comms_room`, `nid_guard_116`, `armory` resolve (h-tol 2 m, v-tol 3 m) to one
-common component. Build time is wall-clock for NavBuilder alone, Release.
-
-| Parameters (others default) | contour verts | nverts / npolys / edges | components | Interior-5 | s |
-|---|---|---|---|---|---|
-| *(defaults, monotone)* | 118,250 | fails: vertex cap | — | — | 17 |
-| `minRegionSize=16` / `24` / `32` / `50` | 107,499 / 100,216 / 93,475 / 82,556 | fails | — | — | 15 |
-| `maxEdgeLen=0` | 115,211 | fails | — | — | 16 |
-| `mergeRegionSize=40` | 111,827 | fails | — | — | 18 |
-| `maxSimplificationError=2.0` | 84,268 | fails | — | — | 16 |
-| `partition=watershed` | 116,814 | fails | — | — | 16 |
-| `agentHeight=1.8 agentClimb=0.5` (monotone) | — | **crash**, limit 3 | — | — | 9 |
-| W = `partition=watershed agentHeight=1.8 agentClimb=0.6` | 110,845 | fails | — | — | 16 |
-| W + `minRegionSize=24 maxSimplificationError=2.0` | 63,655 | 54,413 / 26,688 / 74,942 — **corrupt**, limit 2 | 4,320 | **no** | 15 |
-| **W + `minRegionSize=24 maxSimplificationError=2.5`** | 54,355 | **45,115 / 21,799 / 60,850** | **987** | **yes** (17,006 m²) | **15** |
-| W + `minRegionSize=32 maxSimplificationError=2.2` | — | 46,379 / 22,931 / 63,816 | 682 | yes | 14 |
-| W + `minRegionSize=32 maxSimplificationError=2.5` | — | 41,739 / 20,460 / 56,766 | 682 | yes | 16 |
-| W + `minRegionSize=16 maxSimplificationError=2.8` | — | 45,343 / 21,430 / 59,662 | 1,532 | yes | 17 |
-| W + `maxSimplificationError=3.0` | — | 48,124 / 21,952 / 60,626 | 2,718 | yes | 18 |
-| default agent + `partition=watershed minRegionSize=24 maxSimplificationError=2.5` | — | 48,290 / 23,365 / 65,239 | 1,073 | yes | 15 |
-
-Reading it:
-
-- **`maxSimplificationError` is the only strong lever** (−29 % contour
-  vertices from 1.3 → 2.0). `minRegionSize` needs to reach 50 (a 225 m²
-  threshold) for the same effect, `maxEdgeLen` and `mergeRegionSize` are
-  worth 3–5 %, and monotone-vs-watershed is a wash. The vertices are in the
-  *boundaries* of large regions — 1.08 km² of bumpy terrain with 45° cut-outs
-  — not in the thousands of small islands.
-- **Cost of `maxSimplificationError=2.5`** (0.75 m of contour deviation, of
-  which the 0.6 m erosion margin absorbs most): rasterising the interior
-  component over `x[200,520] z[800,1100] y[40,80]` against an otherwise
-  identical 1.3 build gives 16,474 m² baseline, 152 m² lost (0.9 %), 321 m²
-  gained (1.9 %). At 3.0 it is 211 / 467 m².
-- **Cost of `minRegionSize=24`**: in the interior crop it removes 433 islands
-  totalling 7,900 m² (2 % of the area), every one under 52 m². Most are prop
-  tops. Any *sealed* room smaller than 52 m² goes with them; none of the
-  current probes is in one.
-- **Component histogram**, whole map, before → after the recommended set
-  (before = the corrupt 2.0 build, the only whole-map mesh with small
-  regions that exists): `<10 m²` 2,161 → 0; `10–50 m²` 894 → 1;
-  `50–500 m²` 1,069 → 800; `>500 m²` 196 → 186.
-
-Agent values:
-
-- `agentHeight=1.8` removes crawl-spaces and under-furniture floor: interior
-  tiles go 577 → 474 components and 329,798 → 312,909 m², all five interior
-  probes unaffected. With the default `agentClimb=0.9 > agentHeight=0.6`,
-  watershed logs `rcBuildRegions: 2 overlapping regions` and
-  `rcBuildContours: Multiple outlines for region N` on the whole map — the
-  storey-welding the mismatch was suspected of. Both errors disappear at
-  1.8 / 0.6.
-- `agentClimb=0.5` is **too low at `ch = 0.2`**: it floors to 2 voxels
-  (0.4 m). With all 144 chunks loaded, `comms_room` / `nid_guard_116` split
-  from `zuritska_cell` / `romney_corridor` (4,372 m² vs 12,330 m²
-  components) and total walkable area drops 10 %. `0.6` (3 voxels) restores
-  the single 16,8xx m² component; `0.7` is identical to `0.6`.
-- `agentRadius` stays `0.6`. `crates/entity/src/navigation/mod.rs` passes
-  height and climb straight to `dtCreateNavMeshData` and nothing else reads
-  them, but `is_point_valid` gates on `agent_radius * 2.0` horizontally and
-  `agent_radius * BELOW_SURFACE_TOLERANCE_FACTOR` below the surface
-  (`mod.rs:456-461`). Halving the radius would halve the player
-  movement-validation tolerance as a side effect.
-
-**Recommended Castle set** (`--preset castle` / `-Preset castle`):
+A gap's coordinates are only half an answer. `obj_slab` reads the chunk OBJs
+the navmesh was built from and measures a box of BigWorld space, so the gap
+can be classified against the geometry rather than guessed at:
 
 ```text
-partition=watershed agentHeight=1.8 agentClimb=0.6 minRegionSize=24 maxSimplificationError=2.5
+obj_slab <chunk-dir>
+    [--at NAME=X,Y,Z[,HALF_XZ[,HALF_Y]]]...   box centred on a point
+    [--box NAME=X0,Y0,Z0,X1,Y1,Z1]...        explicit box
+    [--column X,Z]...                        surfaces stacked at a point
+    [--line X0,Z0,X1,Z1]                     free runs across a line
+    [--band YLO,YHI]                         occupancy band
+    [--levels BUCKET_METRES]                 horizontal area by height
+    [--cell METRES]  [--tilt DEGREES]  [--margin METRES]
 ```
 
-7 % headroom under the edge cap. Against v1.6.0 Recast the same set gives
-45,124 / 21,803 / 60,862 and the same probe result. The 62 geometry-bearing
-chunks alone come to 25,278 / 11,889 / 33,319.
+Exit `2` means a box came back empty — no source geometry there at all,
+which is itself a classification. A chunk's id encodes its 100 m grid cell,
+so only the chunks that can touch a box are opened (9 of 144 for a typical
+query, ~0.3 s instead of a 400 MB scan); `--margin` widens that test for
+actors that overhang their owning chunk.
 
-What the recommended mesh does **not** do: connect all eleven probes. The
-gate room, stargate, `bunker_muelbach` and `checkpoint_bravo` share one
-exterior component (23,051 m²); the interior five plus `opcore` share
-another; `throne_room` is in a third. That is geometry (doors, ring
-transports), not tuning — it is identical at every parameter set above.
+The classification each measurement supports:
 
-### 6.5 When it stops fitting
+| Cause | Measure with | Signature |
+|---|---|---|
+| (a) opening narrower than the erosion budget | `--line` across the doorway with `--band` at knee-to-head height | widest clear run under ~1.5 m. `agentRadius 0.6` at `cs 0.3` erodes 2 cells (0.6 m) **per side** |
+| (b) step or ledge over `agentClimb` | `--column` at the gap | consecutive surfaces more than 0.6 m apart |
+| (c) slope over 45° | `--at` + the `footprint` line | area concentrated in the `ramp 45-60` / `steep>60` buckets. Confirm by rebuilding a crop with `slope=60` |
+| (d) geometry not extracted | `--at` returning `EMPTY`, or a `--levels` band with no surfaces | nothing where the client clearly has something. Cross-check `coverage.tsv`'s `skip_archetype_stub_component` and `undecoded_InterpActor` for that chunk |
+| (e) something blocking | `--line` fully blocked, plus `--column` showing a floor on both sides | a door mesh, BSP face or collision blocker standing in an otherwise walkable opening |
+| (f) low ceiling | `headroom` via `--column` | next surface less than `agentHeight` (1.8 m) above the floor |
+| (g) region simplification | rebuild a crop: `bounds=<box>` at `maxSimplificationError=1.3 minRegionSize=8` | the link appears in the cropped build. Cropped builds have plenty of edge budget |
 
-More geometry (or a finer `cs`) will push the edge count back over. In order
-of cost:
+Rebuilding a crop is the decisive test for (c) and (g) and the elimination
+test for everything else: if a link does not appear at
+`cs=0.15 ch=0.1 agentRadius=0.15 minRegionSize=2 maxSimplificationError=1.3`,
+no parameter will produce it and the cause is (d) or (e).
 
-1. `minRegionSize=32` — 56,766 edges, 13 % headroom, same probe result.
-2. `bounds=minX,minZ,maxX,maxZ` — crop to the region NPCs can reach.
-   `bounds=150,550,650,1150` (the interior complex) is 20,743 / 10,152 /
-   28,490 at **un-degraded** `maxSimplificationError=1.3 minRegionSize=8`.
-   The extractor need not change; Recast clips to the box.
-3. One `.nav` per region of interest, or a tiled Detour mesh — both need
-   server-side loader work and are out of scope here.
+Implementation and unit tests: `crates/navmesh-extractor/src/obj_slab/`.
 
-Decimating terrain in the extractor does **not** help with the caps: they
-count output contour vertices, which depend on the shape of the walkable
-boundary at `cs`, not on input tessellation. It would only trim the 2–3 s of
-rasterisation out of a 15 s build.
+## 7. Castle (World 8): why the probes sit in three components
+
+Measured 2026-09-19 on the 144-chunk extraction, recommended parameter set
+(45,209 verts / 21,805 polys / 60,926 edges / 997 components). The eleven
+probes resolve into:
+
+| Component | Area | Probes |
+|---|---|---|
+| 218 | 23,186 m² | `gate_room_dhd`, `stargate`, `bunker_muelbach`, `checkpoint_bravo` |
+| 754 | 17,022 m² | `zuritska_cell`, `romney_corridor`, `comms_room`, `nid_guard_116`, `opcore`, (`armory`, at h = 1.49 m) |
+| 405 | 37,214 m² | `throne_room` |
+
+### 7.1 405 ↔ 754 — a storey boundary, not a tuning problem
+
+The two components' rims overlap in XZ at many points around
+`(276…292, ·, 865…886)` with **`h = 0.00 m` and `dy = +12.00 m` exactly**.
+`obj_slab --column 282,875` shows why: a floor at `y = 43.2`, a slab
+underside at `51.2`, and the interior floor at `55.2`. They are two storeys
+of the same building, 12 m apart, with a 4 m slab between them.
+
+Nothing links them at any parameter set. Tested, all on the interior crop
+`bounds=150,500,700,1150`, and all still split:
+
+| Build | Result |
+|---|---|
+| `minRegionSize=8 maxSimplificationError=1.3` (rules out (g)) | split |
+| `slope=60` (rules out (c)) | split |
+| `agentClimb=1.2` (rules out (b)) | split |
+| `agentRadius=0.3` (rules out (a)) | split |
+| `agentHeight=1.2` (rules out (f)) | split |
+| `slope=60 agentClimb=1.5 agentRadius=0.2 agentHeight=1.2` | split, and `comms_room` splits from `zuritska_cell` as under-floor crawl space becomes walkable |
+| tight crop `bounds=190,830,470,960` at `cs=0.15 ch=0.1 agentRadius=0.15 minRegionSize=2` | split, still exactly 12.00 m |
+
+`obj_slab --levels 1.0` over the overlap does find near-horizontal surface
+at every metre between 43 and 56 (517 m² at 44–45, 1,217 m² at 47–48,
+3,042 m² at 51–52, 4,284 m² at 54–55), so the building has intermediate
+levels — but none of it is connected to either storey in the extracted
+geometry. **The vertical connection is missing geometry (d), not tuning.**
+The two chunks concerned, `00080002` and `00080003`, between them account
+for 111 of the 1,922 `skip_archetype_stub_component` counts in
+`coverage.tsv` and `00080003` holds an undecoded `InterpActor`; resolving
+prefab-archetype StaticMeshActors and InterpActor movers is the next step,
+and until then this gap cannot be closed from the build side.
+
+### 7.2 218 ↔ 405 — terrain cliffs
+
+The exterior and the mid plateau are separated by terrain, not by a door.
+`obj_slab --column 622.7,496…504` measures the bank between them at
+**45–58°**, and the chain hops are dominated by `h=0.00` approaches with
+`dy` of 3–8 m: cliffs. Relaxing to `slope=60` or `slope=70` on a crop
+covering the corridor shortens the chain from 13 hops to 9 and drops the
+worst horizontal gap from 2.72 m to 1.62 m, but never joins them, because
+the remaining hops are 7.87 m and 6.81 m vertical.
+
+### 7.3 The armory is a ring drop zone, not a walk-in room
+
+`db/resources/Worlds/Seed/ring_transport_regions.sql` has exactly one row
+for world 8: region 34, `Castle_ArmoryRingDropZone`, at
+`(466.365, 70.397, 991.466)` — which is the `armory` probe, to three
+decimal places — with an empty `destination_region_ids`. The row that
+targets it is region 33, `Cellblock_ArmoryRingSwitch`, in **world 12**
+(`required_mission_id` 688). So the armory is reached by a cross-world ring
+transport, and its 11 m² pad sits 1.50 m from the interior floor.
+
+That is evidence about one probe, not about the whole interior: the other
+five interior probes are in the same component as each other and are reached
+on foot from each other. It does **not** show how a player gets from the gate
+room to the interior, and nothing in the seed data does — there is no second
+ring region, and `generic_regions` has no world-8 level transition at either
+gap site. The owner's expectation that all three groups are walkable is
+therefore neither confirmed nor refuted by the seed; the build side has gone
+as far as it can until the un-extracted actors land.
+
+## 8. Rebuilding NavBuilder, and Recast's index limits
+
+Moved to its own reference page:
+**[navbuilder-recast-limits.md](navbuilder-recast-limits.md)**. It covers
+`tools/build-navbuilder.ps1`, parity with the 2026-03 reference binary, the
+four fixed-width index spaces that cap a single `rcPolyMesh` (contour
+vertices, adjacency edges, region ids, and the 24-bit compact-heightfield
+span index), the measured Castle (World 8) parameter table, and what to do
+when a build stops fitting.
 
 ## Cross-references
 
+- [navbuilder-recast-limits.md](navbuilder-recast-limits.md) — rebuilding NavBuilder, Recast's four index limits, the Castle parameter table
 - [crates/navmesh-extractor/README.md](../../crates/navmesh-extractor/README.md) — extractor phases and status
 - [ue3-package-format.md](ue3-package-format.md) — the `.umap` container this all starts from
 - `deprecated/cpp/src/nav_builder/` — NavBuilder source (`builder.cpp`, `chunk.cpp`, `mesh.cpp`, `mesh_exporter.cpp`)
