@@ -1283,7 +1283,7 @@ async fn objective_params_do_not_survive_the_production_hydration_shape() {
     }
 
     assert!(
-        ctx.params.get("mission_742_obj_2913_status").is_none(),
+        !ctx.params.contains_key("mission_742_obj_2913_status"),
         "H50 has landed: objective 2913 now survives hydration. Invert this \
          test, drop the `pending H50` note from worknotes/H41.md, and claim \
          the basket relog-restore acceptance via chains 6113-6115."
