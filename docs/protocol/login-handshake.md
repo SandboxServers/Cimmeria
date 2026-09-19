@@ -305,6 +305,20 @@ At this point, both sides activate the AES-256 encryption filter using the sessi
 
 This is a CME modification -- standard BigWorld uses Blowfish encryption.
 
+#### Cross-IP session binding (server-observed, warn-only)
+
+The server records the source IP each SID (Phase 1) and ticket (Phase 2) is issued
+to. At Phase 2 the SID is normally consumed over the same TCP connection that
+produced it, and at Phase 3 the Mercury `baseAppLogin` datagram is normally sent
+from that same host. The consumption seams log a `WARN` with `reason =
+"session_ip_mismatch"` (Phase 2) or `reason = "ticket_ip_mismatch"` (Phase 3)
+when the request source IP differs from the issuing IP.
+
+This is telemetry-only, intentionally **not** a rejection: NAT and IPv4/IPv6
+dual-stack can surface a different source IP for the same physical client, so a
+hard fail would lock out legitimate logins. The mismatch rows exist to measure
+the false-positive rate before the seam hardens to a config-gated rejection.
+
 ### Step 2: Time Synchronization
 
 The server sends three messages in a single flushed packet:

@@ -203,6 +203,26 @@ across `cell`, `base`, and `content/`. Subsequent PRs in the series:
 
 See issue #304 for the full per-seam catalog and tier ratings.
 
+## Cross-IP session-binding seams (issue #442)
+
+The SOAP login handoff records the issuing client IP on the Phase-1
+`SessionRecord` and the Phase-2 `PendingLogin`. Consuming that SID or
+ticket from a **different** IP is the replay signature of a harvested
+session token (a stolen SID or ticket is enough to hijack a pending
+login). Both consumption seams log at `warn!`:
+
+| Seam | `reason` | Fields |
+|---|---|---|
+| Phase 2 SID consumption in `auth/handlers.rs::handle_server_selection` | `session_ip_mismatch` | `user`, `account_id`, `session_ip`, `client_ip` |
+| Phase 3 ticket consumption in `base/login/mod.rs::handle_login` | `ticket_ip_mismatch` | `account_id`, `ticket_ip`, `client_ip` |
+
+These are **warn-first** by design: NAT and IPv4/IPv6 dual-stack can
+surface a different IP for the same physical client, and the false
+positive rate has to be measured (via these rows) before the gate
+hardens to a rejection. The `client_ips_match` helper in
+`auth/mod.rs` normalises IPv4-mapped-IPv6 (`::ffff:a.b.c.d`) to its
+IPv4 form so the dual-stack case does not pollute the signal.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

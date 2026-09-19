@@ -192,6 +192,7 @@ pub(super) async fn handle_user_auth(
                 account_id,
                 access_level,
                 account_name: req.account_name.clone(),
+                client_ip: addr.ip(),
                 created: Instant::now(),
             },
         );
@@ -253,6 +254,22 @@ pub(super) async fn handle_server_selection(
         None => return select_error(15, "Your logon session has expired. Please log in again."),
     };
 
+    // Cross-IP detection (issue #442, warn-only first): the SID was issued
+    // to a specific client IP at Phase 1. Consuming it from a different IP
+    // is the replay signature of a harvested session token. WARN (not
+    // reject) so NAT/dual-stack false positives are measured before the
+    // gate hardens; single-use SID semantics are unchanged.
+    if !crate::auth::client_ips_match(session.client_ip, addr.ip()) {
+        tracing::warn!(
+            user = %session.account_name,
+            account_id = session.account_id,
+            session_ip = %session.client_ip,
+            client_ip = %addr.ip(),
+            reason = "session_ip_mismatch",
+            "Phase 2 SID consumed from a different IP than it was issued to — possible stolen session"
+        );
+    }
+
     let selected = match parse_server_selection(&body) {
         Ok(s) => s,
         Err(e) => {
@@ -290,6 +307,7 @@ pub(super) async fn handle_server_selection(
                 access_level: session.access_level,
                 ticket: ticket.clone(),
                 session_key: session_key.clone(),
+                client_ip: addr.ip(),
                 created: Instant::now(),
             },
         );
@@ -694,6 +712,64 @@ mod tests {
         assert!(
             !xml.contains("SGWLoginSuccess"),
             "plaintext over plain HTTP must NOT succeed, got: {xml}"
+        );
+    }
+
+    /// **Cross-IP SID guard (#442).** A Phase-1 SID issued to IP A and
+    /// consumed from IP B is the replay signature of a harvested session
+    /// token and must log a WARN with `reason = "session_ip_mismatch"`.
+    /// The SID is still consumed (single-use semantics, warn-only first —
+    /// see the issue's NAT/dual-stack caveat), so the assertion is the log
+    /// event, not a rejection. Reverting the check in
+    /// `handle_server_selection` removes the event and trips this guard.
+    #[tokio::test]
+    async fn phase2_sid_consumed_from_different_ip_logs_mismatch() {
+        use axum::http::{header, HeaderMap};
+        use std::net::SocketAddr;
+
+        let capture = crate::test_support::LogCapture::install();
+        let state = test_handler_state();
+
+        // Seed a Phase-1 record issued to 198.51.100.10.
+        let sid = random_alphanumeric(40);
+        state.sessions.lock().unwrap().insert(
+            sid.clone(),
+            super::super::SessionRecord {
+                account_id: 0x4420_0001,
+                access_level: 0,
+                account_name: "ipcheck".to_string(),
+                client_ip: "198.51.100.10".parse().unwrap(),
+                created: std::time::Instant::now(),
+            },
+        );
+
+        // Phase 2 from a different IP (203.0.113.20) with the SID cookie.
+        let mut headers = HeaderMap::new();
+        headers.insert(header::COOKIE, format!("SID={sid}").parse().unwrap());
+        let state = Arc::clone(&state);
+        let addr: SocketAddr = "203.0.113.20:56789".parse().unwrap();
+        handle_server_selection(
+            State(state),
+            ConnectInfo(addr),
+            headers,
+            "<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin=\"http://www.stargateworlds.com/xml/sgwlogin\" ServerSelection=\"TestShard\" />".to_string(),
+        )
+        .await;
+
+        let warn = capture
+            .find_event(
+                tracing::Level::WARN,
+                "consumed from a different IP",
+                "session_ip_mismatch",
+            )
+            .expect("cross-IP SID consumption must log reason=session_ip_mismatch at WARN");
+        assert_eq!(
+            warn.fields.get("session_ip").map(String::as_str),
+            Some("198.51.100.10")
+        );
+        assert_eq!(
+            warn.fields.get("client_ip").map(String::as_str),
+            Some("203.0.113.20")
         );
     }
 }
