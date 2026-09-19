@@ -42,6 +42,12 @@ pub(crate) mod kinds {
     pub(crate) const RESPAWN: &str = "respawn";
     pub(crate) const KILL: &str = "kill";
     pub(crate) const TELEPORT: &str = "teleport";
+    /// The player learned a stargate address (content grant). Answers
+    /// "could they dial it yet?" from the bookmark alone — the client's
+    /// DHD list and the server's dial gate are separate copies, and a
+    /// player whose grant never landed sees a greyed-out destination with
+    /// no error.
+    pub(crate) const STARGATE_ADDRESS: &str = "stargate_address";
 }
 
 #[derive(Debug, Clone, PartialEq)]

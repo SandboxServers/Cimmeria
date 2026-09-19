@@ -65,7 +65,7 @@ The yaw is carried through unchanged even when the position falls back to a resp
 | DHD chevron lock animations | NOT IMPL | Events 6106–6112 exist in the DB for every gate; never triggered |
 | Stargate witness visibility | DONE | Both gate sequences fan to every witness of the dialer plus the dialer, one `onSequence` each. The 2009 server sent to `self.client` only; this is a deliberate addition |
 | Squad leader gate travel | NOT IMPL | `processSquadLeaderGateTravel` defined; blocked on the group system |
-| Gate address discovery | PARTIAL | `giveStargateAddressStr` / `removeStargateAddressStr` defined. Travel is the only grant path; a mid-session grant would also need a `BaseToCellMsg` refresh and client method 66 `updateStargateAddress` |
+| Gate address discovery | DONE | Two grant paths: a committed gate arrival, and the content action `grant_stargate_address` (Harset H55), which is the port of 2009's `Act_StargateAddress` node. The content grant is visible without a relog — it sends client method 66 `updateStargateAddress`. `giveStargateAddressStr` / `removeStargateAddressStr` are defined and unimplemented; there is still no revoke path |
 
 ## DHD interaction
 
@@ -105,7 +105,29 @@ A committed gate arrival appends the addresses the trip taught the traveller, in
 
 Two ordering constraints hold this together. The write runs after every mid-transfer abort branch, so nothing is persisted for a transfer that did not happen, and before `query_player_load_data`, which fills the `setupStargateInfo` list the client is about to receive. Get the second wrong and the client renders an address book one hop out of date while the cell enforces the current one.
 
-**A newly created character still starts with an empty book.** `base::character_create` does not name `known_stargates`, so the column defaults to `'{}'`. That predates this work — the dial UI only ever offered known destinations — but it is load-bearing now, and whether the origin gate is known from creation is an open decision.
+**A newly created character still starts with an empty book.** `base::character_create` does not name `known_stargates`, so the column defaults to `'{}'`. That predates this work — the dial UI only ever offered known destinations — and Harset H55 decided to leave it that way: in 2009 the first address was always authored content, and content now has a verb that can author it. See *Address grants from content* below.
+
+## Address grants from content
+
+`grant_stargate_address` is the content-engine port of the 2009 Atrea authoring node `Act_StargateAddress` (`entities-editor/editor/Nodes.xml:2428`), which called `SGWPlayer.addStargateAddress`. That node and the GM `giveaddress` console command were its only two callers, so in 2009 stargate addresses were authored content and nothing else. Cimmeria had no equivalent until Harset H55, which is why a character who had never travelled could dial nowhere.
+
+The seed verb takes `target_id` = `resources.stargates.stargate_id`. It is the address itself — not a world id, and not the repeating `address_origin` glyph.
+
+A grant has to reach three places, and all three are emitted from [`cell/content/executor/stargate.rs`](../../crates/services/src/cell/content/executor/stargate.rs):
+
+1. `CellEntity::known_stargates`, which is what the dial gate above enforces against.
+2. The client, via `updateStargateAddress` (client method 66: `INT32 addressId`, `UINT8 hasAddress = 1`, `UINT8 hidden = 0`). The client is handed its whole address book exactly once, by `setupStargateInfo` at map load, so without this the grant is invisible until a relog.
+3. `sgw_player.known_stargates`, through `CellToBaseMsg::GrantStargateAddress` and an idempotent append in [`base/world_entry/gate_travel/address_grant.rs`](../../crates/services/src/base/world_entry/gate_travel/address_grant.rs) — deliberately the same statement shape as the arrival append beside it, minus the origin-world union.
+
+Legs 1 and 2 go out **before** leg 3 is confirmed. The cell's copy is the thing the dial gate reads, so making the client's copy wait on a database round trip would reopen the divergence the arrival path closes: the server accepting a dial the client's UI does not offer. A lost leg-3 write costs the address at next login and warns; a lost leg-2 send makes a granted address undialable in silence.
+
+The grant is idempotent at both ends. A player who already holds the address gets no write, no client method and no base round trip, and the SQL append is a set difference rather than an `array_append` — `known_stargates` is a bare `integer[]` with no uniqueness constraint, so a duplicate would be silent, permanent, and visible in the player's DHD.
+
+Refusals are never silent: an id with no `stargates` row, a non-player actor, and either failed send each warn with a `reason` field, and the grant is noted in the player journal so a `.bug` bookmark shows when the address was learned.
+
+**Castle mission 708 is the first consumer.** Chain 1357 (the Livewire victory that repairs the DHD) grants `stargate_id = 3`, Harset. Step 4462 — "Use the DHD to dial the Stargate to Harset" — was unreachable before that row existed.
+
+**There is no revoke verb.** 2009's node had a `Remove` port and no shipped content used it; `revoke_stargate_address` can be added when a chain needs one.
 
 ## Entity Definition (GateTravel.def)
 

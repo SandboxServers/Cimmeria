@@ -23,7 +23,9 @@ use super::super::ConnectedClientState;
 use super::methods::{query_player_load_data, query_world_stargates};
 use super::space_registry::resolve_space_id_fallback;
 
+mod address_grant;
 mod persist_arrival;
+pub(crate) use address_grant::handle_grant_stargate_address;
 use persist_arrival::persist_arrival;
 
 #[cfg(test)]

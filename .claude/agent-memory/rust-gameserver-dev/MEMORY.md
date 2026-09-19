@@ -66,6 +66,10 @@
 
 - [mission-persist-hydrate-roundtrip.md](mission-persist-hydrate-roundtrip.md) — **read before touching mission save/restore.** One serializer (`missions/persist.rs`) + one hydrator (`player_init/mission_restore.rs`); the roster is rebuilt from `resources.mission_objectives` (self-heals pre-#657 rows, and there are NO migrations); `complete_objective` returns bool so a no-op cannot fake a live executor arm; the hand-built-fixture trap that let #657 survive.
 
+## Gate travel / address book
+
+- [stargate-address-book-three-legs.md](stargate-address-book-three-legs.md) — **read before touching `known_stargates` or any mid-session persistent-list grant.** Three copies (DB / `CellEntity` / client); the client gets the whole book only at map load so a grant needs client method 66; write the cell + client BEFORE confirming the DB write; `address_origin` is a glyph not an id; idempotency needed at both ends.
+
 ## Stats / entity systems
 
 - [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat existing in `StatList` + `PUBLIC_STATS` + the AoI create payload does NOT mean anything reads it (`MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` had zero server-side consumers until P47); plus the reject-don't-clamp GM-setter precedent and the canonical mutate→serialize_dirty→clear_dirty→`send_entity_method` publication pattern.

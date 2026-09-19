@@ -222,6 +222,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `cross_world_teleport` | `CrossWorldTeleport` | 1 |
 | `launch_ability` | `LaunchAbility` | 3 |
 | `apply_effect` | `ApplyEffect` | 1 |
+| `grant_stargate_address` | `GrantStargateAddress` | 1 |
 
 > An `open_black_market` / `OpenBlackMarket` action exists on the unmerged
 > `feat/571-black-market-phase1` branch (PR #586) and is **not** on `main`. It is
@@ -238,6 +239,22 @@ resolves unconditionally as damage. The helper deliberately bypasses all
 three, so it is private to `cell::content` and takes no client-supplied id;
 see [../architecture/abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md)
 for the full rationale and the constraints that must not be widened.
+
+`grant_stargate_address` is the port of 2009's Atrea authoring node
+`Act_StargateAddress`, and it is the only content verb that writes a
+player's stargate address book. `target_id` is
+`resources.stargates.stargate_id` — the address itself, not a world id and
+not the repeating `address_origin` glyph. The executor arm
+([`executor/stargate.rs`](../../crates/services/src/cell/content/executor/stargate.rs))
+does three things per grant: appends to the acting player's in-memory
+`CellEntity::known_stargates` (which is what the dial handler enforces
+against), sends the client `updateStargateAddress` (client method 66, the
+only way a mid-session grant becomes visible — the full book is handed over
+just once, at map load), and asks the base to persist an idempotent append
+to `sgw_player.known_stargates`. A grant for an id with no `stargates` row,
+a grant by a non-player actor, and either failed send all warn. A second
+grant of an address the player already holds is a complete no-op: no write,
+no client method, no base round trip.
 
 Three caveats for authors:
 
@@ -331,7 +348,7 @@ These have a loader arm, so the seed accepts them and the engine resolves them, 
 
 #### Not authorable — defined in the enum, no loader arm
 
-No `content_actions` row can name these; they are reachable only from Rust (or not at all). `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`. None has an executor arm either, so wiring any of them is a two-sided job. `GrantXP` used to head this list; it was wired on both sides in issue #611 and now appears in the executed table above with **0 seed rows** — the plumbing exists, no content uses it yet, and the seed still has `reward_xp = 0` on all 1,040 mission rows (§9). `SpawnEntity` and `DespawnEntity` left it in Harset H03, wired on both sides in the same change.
+No `content_actions` row can name these; they are reachable only from Rust (or not at all). `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`. None has an executor arm either, so wiring any of them is a two-sided job. `GrantXP` used to head this list; it was wired on both sides in issue #611 and now appears in the executed table above with **0 seed rows** — the plumbing exists, no content uses it yet, and the seed still has `reward_xp = 0` on all 1,040 mission rows (§9). `SpawnEntity` and `DespawnEntity` left it in Harset H03, wired on both sides in the same change. `GrantStargateAddress` was added on both sides in Harset H55 and is the one entry in the table whose seed row is load-bearing on day one: it is the only way content can unlock a stargate destination, and Castle mission 708's dial step is unreachable without it.
 
 Four variants have an executor arm but no seed verb, reached only as internal aliases or from Rust: `AdvanceMission` (aliased onto the `AcceptMission` arm), `StartDialog` (aliased onto `DisplayDialog`), `Teleport` (same-space teleport; only `cross_world_teleport` is authorable), and `TriggerChain` (resolved by the engine, re-dispatched by the caller). `SendMessage` has an arm that only logs.
 
@@ -557,7 +574,7 @@ Eleven `Action` variants have **no match arm in [executor/mod.rs](../../crates/s
 
 Three of those **are authorable from seed data and are used today** — `qr_combat_damage` (2 rows), `remove_effect` (1), `fail_objective` (1). Those 4 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
 
-`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613; `spawn_entity` and `despawn_entity` came off it in Harset H03. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
+`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/services/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613; `spawn_entity` and `despawn_entity` came off it in Harset H03, and `grant_stargate_address` was added whole in Harset H55. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
 
 Two more arms exist but are log-only: `SystemMessage` (11 seeded rows — wire format unknown, see below) and `SendMessage` (no seed verb).
 
