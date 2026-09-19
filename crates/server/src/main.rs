@@ -26,6 +26,11 @@
 //! | `CIMMERIA_TELEMETRY_HMAC_SECRET` | unset | HMAC-SHA256 secret for the launcher dev-session token mint at `/api/auth/dev-session` and the launcher upload endpoints at `/api/telemetry/upload-{chunk,bundle}`. See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). Unset ⇒ endpoint returns 500. |
 //! | `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` | `http://localhost:8443/api/telemetry` | Upload endpoint URL handed back to the launcher in the dev-session response. The default works when the launcher and server share a host; cross-host deployments MUST override (e.g. to a public LAN URL, or through the Cloudflare Tunnel). See [docs/operations/telemetry.md](../../../docs/operations/telemetry.md). |
 //! | `CIMMERIA_TELEMETRY_KILL_SWITCH` | unset | Set to `1` to pause telemetry ingest (every mint returns 503 + Retry-After). |
+//! | `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | Fixed window the dev-session mint/refresh quotas below are counted over. |
+//! | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints allowed per peer address per window on `/api/auth/dev-session`; over quota returns 429 + `Retry-After`. `0` disables. Note that a whole team behind one NAT or reverse proxy shares one bucket — raise it there. |
+//! | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_INSTALL` | `30` | Mints allowed per `install_id` per window. A speed bump for a launcher stuck relaunching, not a boundary: `install_id` is caller-supplied. `0` disables. |
+//! | `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Calls allowed per peer address per window on `/api/auth/dev-session/refresh`. `0` disables. |
+//! | `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | Longest a single minted session may be extended by chained refreshes, measured from the original mint. Past it, refresh returns 401 and the launcher mints a fresh session. |
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` | unset | OTLP collector endpoint (e.g. `http://otel-collector:4317`). Unset ⇒ OTLP exporter disabled; logs and Mercury packet events never leave the process via OTLP. See [docs/operations/signoz-deployment.md](../../../docs/operations/signoz-deployment.md). |
 //! | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | `grpc` (default) or `http/protobuf`. |
 //! | `OTEL_SERVICE_NAME` | `cimmeria-server` | Shown as `service.name` in SigNoz's service map. |
@@ -194,7 +199,11 @@ async fn main() {
         }
     };
     tokio::spawn(async move {
-        if let Err(e) = axum::serve(admin_listener, admin_router).await {
+        // Connect info is required, not decorative: the dev-session
+        // mint and refresh endpoints quota-limit by peer address and
+        // fail the request without it.
+        let service = admin_router.into_make_service_with_connect_info::<std::net::SocketAddr>();
+        if let Err(e) = axum::serve(admin_listener, service).await {
             tracing::error!("Admin API server error: {e}");
         }
     });

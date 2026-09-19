@@ -124,6 +124,46 @@ ssh cimmeria-server "systemctl unset-environment CIMMERIA_TELEMETRY_KILL_SWITCH 
 Only the literal value `1` enables the kill switch — `true`/`yes`/etc
 are treated as off (intentional crispness of contract).
 
+## Mint and refresh quotas
+
+Anyone who can route TCP to the admin port can mint a telemetry
+token, so mint and refresh are rate-limited. A caller over quota gets
+`429` with a `Retry-After` header; the launcher already backs off on
+that header and falls back to launching without telemetry.
+
+| Variable | Default | Counts |
+|---|---|---|
+| `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | The window everything below is counted over. |
+| `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints per peer address per window. |
+| `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_INSTALL` | `30` | Mints per `install_id` per window. |
+| `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Refreshes per peer address per window. |
+| `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | How long one minted session may be extended by chained refreshes. |
+
+Setting a quota to `0` disables that counter. A value that does not
+parse falls back to the default rather than refusing to serve — an
+operator typo must not take telemetry offline.
+
+**Raise the per-IP mint quota if the admin port sits behind a proxy
+or a shared egress address.** The counter keys on the peer address,
+and no `X-Forwarded-For` header is read (reading one unconditionally
+would let any caller pick its own quota key), so behind a Cloudflare
+Tunnel or an office NAT every launcher shares one bucket. The default
+of 120/hour covers a small team; a larger one, or a CI fleet, needs
+more.
+
+### Symptoms and what to change
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Developers see "Launch + Telemetry" fall back to a plain launch, server logs show `mint/ip quota exceeded` | Shared egress address | Raise `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP`, or `0` to disable |
+| One machine repeatedly refused while others are fine | A launcher relaunching in a loop | Investigate that install before raising `..._PER_INSTALL` |
+| Telemetry stops partway through a very long session | Session passed `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | Expected; the next launch mints a fresh session. Raise the cap only with a reason |
+
+Session-lifetime cap: `iat` records the original mint and is not
+reset by a refresh, so chained refreshes cannot extend one token
+indefinitely. Near the cap the last refresh hands back a token
+expiring exactly at the deadline rather than a full 8 hours past it.
+
 ## Where the data lives
 
 Every event ends up in one place: SigNoz / ClickHouse, indexed by:
@@ -159,8 +199,11 @@ enabled. When `false`:
 ## Privacy
 
 - `install_id` and `machine_id` are stable per-install identifiers.
-  Logged at **debug** level only (info gets an 8-char correlator) to
-  reduce leakage through any future log-upload pipeline.
+  The mint endpoint logs them at **debug** level only (info gets an
+  8-char correlator) to reduce leakage through any future log-upload
+  pipeline. `install_id` is rejected at mint unless it is 1-128 bytes
+  of ASCII alphanumerics, `-` or `_`, so a caller cannot forge log
+  lines or unbounded SigNoz field values through it.
 - `machine_id` is `sha256(HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid)`
   truncated to 16 hex chars — the raw GUID never leaves the dev's
   machine.
@@ -176,11 +219,15 @@ enabled. When `false`:
 
 | Path | Method | Auth | Purpose |
 |---|---|---|---|
-| `/api/auth/dev-session` | POST | none (anyone can mint) | Mint a token for a launcher session. |
-| `/api/auth/dev-session/refresh` | POST | bearer (own token) | Extend an almost-expired token. |
+| `/api/auth/dev-session` | POST | none (anyone can mint), quota-limited | Mint a token for a launcher session. |
+| `/api/auth/dev-session/refresh` | POST | bearer (own token), quota-limited | Extend an almost-expired token, up to the session cap. |
 | `/api/telemetry/upload-chunk` | POST | bearer | Streaming events (gzip(NDJSON)). |
 | `/api/telemetry/upload-bundle` | POST | bearer | End-of-session zip (multipart). |
 
 A 503 with `Retry-After` on any of these means the kill switch is on.
-A 401 on upload endpoints means the token expired (refresh) or was
-never valid (mint a fresh session).
+A 429 with `Retry-After` means a quota was hit — see
+[Mint and refresh quotas](#mint-and-refresh-quotas). A 401 on upload
+endpoints means the token expired, was never valid, or does not carry
+the `telemetry.write` scope; a 401 on refresh additionally means the
+session passed its lifetime cap, and the launcher's answer to all of
+them is to mint a fresh session.

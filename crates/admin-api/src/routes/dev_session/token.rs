@@ -1,32 +1,13 @@
-//! Dev-session telemetry auth endpoint.
-//!
-//! Mints a short-lived HMAC-SHA256 token the launcher uses to talk to
-//! the telemetry ingest Functions app. The Functions side verifies the
-//! token independently using the same shared
-//! `CIMMERIA_TELEMETRY_HMAC_SECRET`.
-//!
-//! Token shape:
+//! Dev-session token format: claims, HMAC encode/decode, secret loading.
 //!
 //! ```text
 //! payload = base64url(JSON {iss, sub, sid, iat, exp, scope})
 //! sig     = base64url(HMAC-SHA256(secret, payload))
 //! token   = payload || "." || sig
 //! ```
-//!
-//! v1 trust model: any caller is trusted. The token only grants
-//! `scope: ["telemetry.write"]` and is single-session-scoped, so the
-//! worst an attacker can do is upload garbage telemetry.
-//!
-//! `CIMMERIA_TELEMETRY_KILL_SWITCH=1` makes every mint return 503
-//! with `Retry-After: 60`.
 
-use std::sync::Arc;
-
-use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
-use axum::{Json, Router};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 // `new_from_slice` lives on `KeyInit` (not `Mac`) as of hmac 0.13 / digest 0.11.
@@ -34,59 +15,18 @@ use hmac::{digest::KeyInit, Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-use cimmeria_services::orchestrator::Orchestrator;
-
-pub const TOKEN_TTL_SECONDS: i64 = 8 * 60 * 60;
-
 /// Anything shorter is operator misconfiguration; refusing to mint is
 /// safer than issuing tokens against a weak key.
 pub const MIN_SECRET_BYTES: usize = 32;
-
-/// Default upload endpoint: the cimmeria-server's own admin port,
-/// localhost. For deployments where the launcher runs on a different
-/// host than the server, operators MUST set
-/// `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT` to the publicly-reachable
-/// URL (e.g. via the Cloudflare Tunnel that exposes the SigNoz UI,
-/// or directly via the LAN address).
-///
-/// Note: this points launcher uploads at cimmeria-server itself,
-/// which then replays the events through `tracing` so the OTLP layer
-/// ships them to SigNoz. The previous default was the Cosmos-backed
-/// Cimmeria-MCP Azure Function endpoint; that path is decommissioned
-/// in favor of single-store-of-truth (SigNoz) analytical retrieval.
-const DEFAULT_UPLOAD_ENDPOINT: &str = "http://localhost:8443/api/telemetry";
-const DEFAULT_CHUNK_MAX_BYTES: u64 = 1_048_576;
-const DEFAULT_FLUSH_INTERVAL_MS: u64 = 2_000;
 
 /// Generous vs. a realistic ~400-byte token, low enough to refuse a
 /// DoS-via-huge-payload on the public refresh endpoint.
 const MAX_TOKEN_LEN: usize = 4096;
 
-#[derive(Debug, Deserialize)]
-pub struct DevSessionRequest {
-    pub install_id: String,
-    pub machine_id: String,
-    pub branch: String,
-    pub git_sha: String,
-    pub launcher_version: String,
-    #[serde(default)]
-    pub tags: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct DevSessionResponse {
-    pub session_id: String,
-    pub token: String,
-    pub expires_at_ms: i64,
-    pub upload_endpoint: String,
-    pub chunk_max_bytes: u64,
-    pub flush_interval_ms: u64,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RefreshRequest {
-    pub token: String,
-}
+/// The only scope this endpoint family issues. The upload endpoints
+/// enforce it, so a token minted here can do nothing but write
+/// telemetry.
+pub const SCOPE_TELEMETRY_WRITE: &str = "telemetry.write";
 
 /// Wire format pinned: any field addition or rename is a breaking
 /// change for the Functions-side verifier.
@@ -98,6 +38,12 @@ pub struct TokenClaims {
     pub iat: i64,
     pub exp: i64,
     pub scope: Vec<String>,
+}
+
+impl TokenClaims {
+    pub fn has_scope(&self, wanted: &str) -> bool {
+        self.scope.iter().any(|s| s == wanted)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -120,150 +66,76 @@ pub enum AuthError {
     BadSignature,
     #[error("Token expired (exp={exp}, now={now})")]
     Expired { exp: i64, now: i64 },
+    #[error("Token is not scoped for {wanted}")]
+    MissingScope { wanted: &'static str },
+    #[error(
+        "Session lifetime cap reached ({elapsed}s since mint, cap {cap}s) — \
+         mint a fresh dev-session instead of refreshing"
+    )]
+    SessionLifetimeExceeded { elapsed: i64, cap: i64 },
+    #[error("{0}")]
+    QuotaExceeded(#[from] super::quota::QuotaExceeded),
+    #[error("Invalid install_id: {0}")]
+    BadInstallId(&'static str),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }
 
-impl IntoResponse for AuthError {
-    fn into_response(self) -> Response {
-        let (status, body) = match &self {
+impl AuthError {
+    pub fn status(&self) -> StatusCode {
+        match self {
             AuthError::SecretMissing | AuthError::SecretTooShort { .. } => {
-                (StatusCode::INTERNAL_SERVER_ERROR, self.to_string())
+                StatusCode::INTERNAL_SERVER_ERROR
             }
-            AuthError::KillSwitchActive => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
-            AuthError::BadPayload(_) | AuthError::BadSignature => {
-                (StatusCode::UNAUTHORIZED, self.to_string())
+            AuthError::KillSwitchActive => StatusCode::SERVICE_UNAVAILABLE,
+            AuthError::QuotaExceeded(_) => StatusCode::TOO_MANY_REQUESTS,
+            AuthError::BadPayload(_)
+            | AuthError::BadSignature
+            | AuthError::Expired { .. }
+            | AuthError::MissingScope { .. }
+            | AuthError::SessionLifetimeExceeded { .. } => StatusCode::UNAUTHORIZED,
+            AuthError::BadInstallId(_) | AuthError::Json(_) => StatusCode::BAD_REQUEST,
+        }
+    }
+
+    /// Cooperative back-off. The launcher's chunk uploader already
+    /// honours `Retry-After`, so both the kill switch and the quota
+    /// tell it exactly how long to wait instead of leaving it to
+    /// guess.
+    pub fn retry_after_secs(&self) -> Option<u64> {
+        match self {
+            AuthError::KillSwitchActive => Some(60),
+            AuthError::QuotaExceeded(q) => Some(q.retry_after_secs),
+            _ => None,
+        }
+    }
+
+    /// Borrowing form of [`IntoResponse`], so the ingest endpoints
+    /// can forward an `AuthError` they only hold by reference without
+    /// a second copy of this mapping drifting out of step.
+    pub fn to_response(&self) -> Response {
+        let mut resp = (self.status(), self.to_string()).into_response();
+        if let Some(secs) = self.retry_after_secs() {
+            if let Ok(v) = axum::http::HeaderValue::from_str(&secs.to_string()) {
+                resp.headers_mut()
+                    .insert(axum::http::header::RETRY_AFTER, v);
             }
-            AuthError::Expired { .. } => (StatusCode::UNAUTHORIZED, self.to_string()),
-            AuthError::Json(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-        };
-        let mut resp = (status, body).into_response();
-        // Cooperative back-off when the kill switch is on — the
-        // launcher's chunk uploader respects Retry-After.
-        if matches!(self, AuthError::KillSwitchActive) {
-            resp.headers_mut().insert(
-                axum::http::header::RETRY_AFTER,
-                axum::http::HeaderValue::from_static("60"),
-            );
         }
         resp
     }
 }
 
-pub fn routes() -> Router<Arc<Orchestrator>> {
-    Router::new()
-        .route("/dev-session", post(mint))
-        .route("/dev-session/refresh", post(refresh))
-}
-
-pub async fn mint(
-    State(_orchestrator): State<Arc<Orchestrator>>,
-    Json(req): Json<DevSessionRequest>,
-) -> Result<Json<DevSessionResponse>, AuthError> {
-    if kill_switch_active() {
-        return Err(AuthError::KillSwitchActive);
+impl IntoResponse for AuthError {
+    fn into_response(self) -> Response {
+        self.to_response()
     }
-    let secret = load_secret()?;
-    let session_id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().timestamp();
-    let exp = now + TOKEN_TTL_SECONDS;
-    let claims = TokenClaims {
-        iss: "cimmeria-server".into(),
-        sub: req.install_id,
-        sid: session_id.clone(),
-        iat: now,
-        exp,
-        scope: vec!["telemetry.write".into()],
-    };
-    let token = encode_token(&claims, &secret)?;
-    // install_id / machine_id stay at debug to avoid leaking
-    // persistent fingerprints into info-level pipelines.
-    tracing::info!(
-        session_id = %session_id,
-        branch = %req.branch,
-        git_sha = %req.git_sha,
-        launcher_version = %req.launcher_version,
-        exp,
-        "Minted dev-session telemetry token"
-    );
-    tracing::debug!(
-        session_id = %session_id,
-        install_id = %claims.sub,
-        machine_id = %req.machine_id,
-        "dev-session caller identifiers (debug-only)"
-    );
-    Ok(Json(DevSessionResponse {
-        session_id,
-        token,
-        expires_at_ms: exp * 1000,
-        upload_endpoint: upload_endpoint_env(),
-        chunk_max_bytes: DEFAULT_CHUNK_MAX_BYTES,
-        flush_interval_ms: DEFAULT_FLUSH_INTERVAL_MS,
-    }))
 }
 
-pub async fn refresh(
-    State(_orchestrator): State<Arc<Orchestrator>>,
-    Json(req): Json<RefreshRequest>,
-) -> Result<Json<DevSessionResponse>, AuthError> {
-    if kill_switch_active() {
-        return Err(AuthError::KillSwitchActive);
-    }
-    let secret = load_secret()?;
-    let claims = decode_token(&req.token, &secret)?;
-    let now = chrono::Utc::now().timestamp();
-    // Refresh of an already-expired token: forbid. The launcher's
-    // 401-on-expiry path mints a fresh session instead — refresh is
-    // only for "almost-expired but still valid."
-    if claims.exp <= now {
-        return Err(AuthError::Expired {
-            exp: claims.exp,
-            now,
-        });
-    }
-    let new_exp = now + TOKEN_TTL_SECONDS;
-    let new_claims = TokenClaims {
-        iss: claims.iss,
-        sub: claims.sub.clone(),
-        sid: claims.sid.clone(),
-        iat: now,
-        exp: new_exp,
-        scope: claims.scope,
-    };
-    let token = encode_token(&new_claims, &secret)?;
-    tracing::info!(
-        session_id = %new_claims.sid,
-        old_exp = claims.exp,
-        new_exp,
-        "Refreshed dev-session telemetry token"
-    );
-    Ok(Json(DevSessionResponse {
-        session_id: new_claims.sid,
-        token,
-        expires_at_ms: new_exp * 1000,
-        upload_endpoint: upload_endpoint_env(),
-        chunk_max_bytes: DEFAULT_CHUNK_MAX_BYTES,
-        flush_interval_ms: DEFAULT_FLUSH_INTERVAL_MS,
-    }))
-}
-
-fn kill_switch_active() -> bool {
-    matches!(
-        std::env::var("CIMMERIA_TELEMETRY_KILL_SWITCH"),
-        Ok(v) if v == "1"
-    )
-}
-
-fn upload_endpoint_env() -> String {
-    std::env::var("CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT")
-        .unwrap_or_else(|_| DEFAULT_UPLOAD_ENDPOINT.to_string())
-}
-
-/// Shared HMAC secret loader. Exposed at module visibility so the
+/// Shared HMAC secret loader. Exposed at crate visibility so the
 /// telemetry ingest endpoints (which verify tokens minted here) reuse
 /// the same parsing rules — drift between mint and verify would cause
 /// every launcher upload to fail validation.
-pub(super) fn load_secret() -> Result<Vec<u8>, AuthError> {
+pub fn load_secret() -> Result<Vec<u8>, AuthError> {
     let raw =
         std::env::var("CIMMERIA_TELEMETRY_HMAC_SECRET").map_err(|_| AuthError::SecretMissing)?;
     let raw_trimmed = raw.trim();
@@ -344,11 +216,11 @@ pub fn decode_token(token: &str, secret: &[u8]) -> Result<TokenClaims, AuthError
 /// Process-wide serialization for tests that mutate
 /// `CIMMERIA_TELEMETRY_*` env vars. `cargo test` is multi-threaded by
 /// default; any module that reads/writes these vars in `#[test]`
-/// scopes must lock this before doing so. Exposed at module
+/// scopes must lock this before doing so. Exposed at crate
 /// visibility so the sibling `telemetry` tests share the same lock —
 /// a per-module lock would still race against this one.
 #[cfg(test)]
-pub(super) fn env_lock() -> &'static std::sync::Mutex<()> {
+pub fn env_lock() -> &'static std::sync::Mutex<()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     LOCK.get_or_init(|| std::sync::Mutex::new(()))
 }
@@ -526,31 +398,6 @@ mod tests {
             None => std::env::remove_var("CIMMERIA_TELEMETRY_HMAC_SECRET"),
         }
     }
-
-    // Kill switch flips on with CIMMERIA_TELEMETRY_KILL_SWITCH=1; any
-    // other value treats it as off.
-    #[test]
-    fn kill_switch_respects_env() {
-        let _g = env_lock().lock().unwrap_or_else(|p| p.into_inner());
-        let prev = std::env::var("CIMMERIA_TELEMETRY_KILL_SWITCH").ok();
-
-        std::env::set_var("CIMMERIA_TELEMETRY_KILL_SWITCH", "1");
-        assert!(kill_switch_active());
-        std::env::set_var("CIMMERIA_TELEMETRY_KILL_SWITCH", "0");
-        assert!(!kill_switch_active());
-        std::env::set_var("CIMMERIA_TELEMETRY_KILL_SWITCH", "true");
-        assert!(
-            !kill_switch_active(),
-            "only literal '1' counts as on, not 'true' — keeps the contract crisp"
-        );
-        std::env::remove_var("CIMMERIA_TELEMETRY_KILL_SWITCH");
-        assert!(!kill_switch_active());
-
-        if let Some(v) = prev {
-            std::env::set_var("CIMMERIA_TELEMETRY_KILL_SWITCH", v);
-        }
-    }
-
     // hex_decode_lenient: round-trips valid hex, rejects non-hex,
     // rejects odd-length.
     #[test]
