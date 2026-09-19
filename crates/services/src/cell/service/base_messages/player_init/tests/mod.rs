@@ -10,3 +10,5 @@ mod relog_mission_resurrection;
 mod state_field_restore;
 #[cfg(test)]
 mod system_options_assignment;
+#[cfg(test)]
+mod witness_class_id;

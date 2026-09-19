@@ -64,6 +64,14 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         // (rather than trusting any per-call client byte) is the
         // server-authority fix for CAT-N-03 (#475).
         entity.access_level = access_level;
+        // The class other players are shown in CREATE_ENTITY when this
+        // player enters their AoI. Same derivation as the owning client's
+        // CREATE_BASE_PLAYER, so a GM is an SGWGmPlayer in both views.
+        // `connect_entity` could not decide this — it runs before the access
+        // level reaches the cell — but `is_introducible` holds the entity out
+        // of every AoI until this handler has run, so no witness can ever be
+        // sent the pre-init placeholder.
+        entity.class_id = crate::mercury::player_class_id_for_access_level(access_level);
 
         // Seed core stats from the archetype's base values. Without
         // this seed, the cell-side `CellEntity::stats` stays at the

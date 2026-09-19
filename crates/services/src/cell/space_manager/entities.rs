@@ -334,7 +334,10 @@ impl SpaceManager {
                 let id = match space.entities.get_mut(&entity_id) {
                     Some(entity) => {
                         entity.is_player = true;
-                        entity.class_id = 0x02; // SGWPlayer
+                        // Placeholder until `InitPlayerState` delivers the
+                        // access level and picks SGWPlayer vs SGWGmPlayer;
+                        // never sent — see `CellEntity::is_introducible`.
+                        entity.class_id = 0x02;
                         entity.identity()
                     }
                     None => PlayerIdentity::UNKNOWN,

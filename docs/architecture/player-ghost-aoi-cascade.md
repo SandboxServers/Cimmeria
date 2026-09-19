@@ -21,7 +21,7 @@ and live combat/death state. Before this change a player entering another
 player's AoI got the **NPC** `createOnClient` cascade with nothing in it: no
 `BeingAppearance`, no name, placeholder stats, `stateField = 0`.
 
-Four pieces make that work:
+Five pieces make that work:
 
 1. A dedicated **player-ghost cascade** composer that mirrors the 2009
    Python witness cascade for an `SGWPlayer`.
@@ -33,6 +33,8 @@ Four pieces make that work:
 4. A **base-to-cell witness broadcast** so a rebuilt `BeingAppearance`
    (weapon draw, holster, gear change) or a level-up reaches the players
    already watching, not just the player it belongs to.
+5. A GM is introduced to other players as `SGWGmPlayer`, the class its own
+   client runs as — verified safe against the defs and the client binary.
 
 Not yet validated with two real game clients — see
 [Known gaps](#known-gaps) and the [UAT checklist](#two-client-uat-checklist).
@@ -168,6 +170,42 @@ a witness renders a level, not the per-level training-point ceremony. The
 session's `player_level` is updated in the same handler, so players who
 arrive later get the same number from the introduction cascade.
 
+### 5. A GM is introduced as what it is: `SGWGmPlayer`
+
+Every current account is a GM, so this is the common case, not an edge. A
+GM's own client is created as `SGWGmPlayer` (`0x03`, the class flip that
+makes the native `gm*` console reachable — see
+[gm-cell-method-gating.md](gm-cell-method-gating.md)). The cell, however,
+stamped `class_id = 0x02` on every player in `connect_entity`, so other
+players were shown a GM as a plain `SGWPlayer`: two views of one entity that
+disagreed about its type.
+
+`InitPlayerState` now sets the cell entity's `class_id` from the access level
+through `mercury::player_class_id_for_access_level` — the same function the
+base uses for `CREATE_BASE_PLAYER`, so the two views cannot drift.
+`connect_entity` cannot decide it (the access level has not reached the cell
+yet), and does not need to: `is_introducible` holds the entity out of every
+AoI until `InitPlayerState` has run, so the `0x02` placeholder is never sent.
+That matters because the client binds an entity's description at
+`CREATE_ENTITY`; no later message can correct the class.
+
+This was blocked on one question — is `IDBASE_SGW_PLAYER` right for a
+`SGWGmPlayer` ghost? A wrong idBase is silent: no error, every method at or
+above it just dispatches to a different slot. Three facts settle it:
+
+| Fact | Evidence |
+|---|---|
+| Same idBase. `SGWGmPlayer` has 163 client methods, `SGWPlayer` 157; `idBase = 0x3E - (n + 0xC0) / 0xFF` is 61 for both (any `n` in 63..=317) | Recomputed from `entities/defs/` in parse order; agrees with [entity-property-sync.md](../drafts/spec/entity-property-sync.md) §2 (`SGWGmPlayer` row, 163). Formula: `EntityDescription_AssignClientMethodIds @ ghidra://SGW.exe@0x01590df0` |
+| Same indices. `SGWPlayer`'s client-method table is an exact prefix of `SGWGmPlayer`'s — `<Parent>SGWPlayer</Parent>`, no `<Implements>` — and the six GM-only methods (`onLOSResult`, `onShowWaypoints`, `onShowPath`, `onDisableShowPath`, `onSetTarget`, `onShowNavigation`) are appended at 157-162 | `entities/defs/SGWGmPlayer.def` |
+| Same client object. `Entity_RegisterAllTypes @ ghidra://SGW.exe@0x00c67781` registers `"SGWPlayer"` and `"SGWGmPlayer"` through the **same** function, `ghidra://SGW.exe@0x00c6cab0`, which installs `GameEntityFactory::EntityRegister<GamePlayer>` for the type id (`GameEntityFactory.h:0x2a` asserts `0 == mTypeRegistry.count( typeId )`). There is no GM-specific game class: the six factories are Account, Entity, Being, Mob, Pet, Player | Ghidra decompile |
+
+So a remote GM is the same `GamePlayer` object as any other remote player,
+with a method table that agrees on every index the cascade and the witness
+fan-outs use. The client also has no GM nameplate tag or `isGM` check — the
+other `SGWGmPlayer` strings in the binary are the outgoing `gm*` method
+bindings, which concern only a player's own entity — so the class is a
+correctness property of the entity description, not a visible feature.
+
 ## The cascade
 
 Composed by `compose_player_ghost_cascade_body` in
@@ -297,6 +335,7 @@ ends of a failed introduction. The row is catalogued in
 | `cell::space_manager::tests::aoi_player_intro::*` | The gate. `loading_player_is_introduced_once_and_only_after_init` is the regression guard — a player created but not yet initialised produces no `EnteredAoI`, and exactly one is produced after init. `player_observee_carries_its_live_state` and `npc_observee_is_introduced_immediately_with_npc_data` pin the two branches of `player_data` |
 | `cell::service::base_messages::tests::broadcast_to_witnesses::fans_out_to_witnessing_players_only`, `inventory::appearance::tests::refresh_player_appearance_asks_the_cell_to_fan_out_to_witnesses`, `base::helpers::witness_broadcast::tests::*` | The post-introduction fan-out. Three players in one shared space: the rebuilt `BeingAppearance` reaches the player standing next to the observee, not the observee's own client and not the player across the map, and is flagged `entity_is_player` so it encodes on the SGWPlayer idbase. The base side asserts the broadcast carries exactly the bytes it cached. The closed-channel WARN and the silent no-cell-service case are both pinned |
 | `progression::level_up_fanout_tests::*` (live-DB) | The level-up fan-out. A grant that crosses several boundaries hands the cell exactly one `onLevelUpdate` carrying the level that was persisted; a grant that crosses none sends nothing, so ordinary kill XP does not spam every witness. Live-DB because the level is only computed on the persisted-grant path |
+| `player_init::tests::witness_class_id::*`, `mercury::aoi::gm_ghost_class_tests::*` | The GM path. Two GMs and a regular player in one shared space, driven through the production order (identity stamp, connect, `InitPlayerState`): every witness is shown each observee's real class, and a connected GM whose init has not landed is not introduced at all, so the `0x02` placeholder is unobservable. The second suite reads `entities/defs/` and pins the two facts the decision rests on — shared idBase, prefix method table — so a def edit that breaks them fails a test instead of silently mis-decoding GM ghosts |
 | `cell_entity::tests::is_introducible_gates_players_until_connected_and_initialised` | The predicate itself, across all four states: NPC, created-only, connected-not-initialised, fully initialised |
 
 ## Known gaps
@@ -307,13 +346,6 @@ ends of a failed introduction. The row is catalogued in
   Castle or Harset yet. That is the outstanding step — see the checklist
   below. Until it passes, treat player-to-player visibility as `NT`, not
   `CW`.
-- **GMs are introduced as plain players.** `connect_entity` stamps
-  `class_id = 0x02` (`SGWPlayer`) for every player
-  ([`cell/space_manager/entities.rs:337`](../../crates/services/src/cell/space_manager/entities.rs)),
-  never `0x03` (`SGWGmPlayer`). Left alone on purpose: the witness method
-  encoding assumes `IDBASE_SGW_PLAYER` for every player ghost, and
-  `SGWGmPlayer`'s idbase has not been verified. Changing the class id
-  without that verification would break the ghost's method dispatch.
 - **Alignment, faction, archetype and name changes do not reach existing
   witnesses.** The legacy setters fan these out alongside the level
   (`SGWBeing.py:636-637`, `647-648`, `658-659`, `669-670`). Cimmeria has no
@@ -335,6 +367,12 @@ ends of a failed introduction. The row is catalogued in
 Run in Castle or Harset (shared worlds). Two accounts, two clients. Watch
 the server log for `aoi.player_ghost_incomplete` throughout — any WARN is a
 failure even if the visuals look right.
+
+Every current account is a GM, so a default run exercises **GM meets GM**:
+both ghosts are created as `SGWGmPlayer` (`0x03`). That is the path to
+validate first. If a non-GM account (`accesslevel = 0`) is available, repeat
+step 1 with one GM and one regular player, in both arrival orders, to cover
+the `0x02` ghost and the mixed pair.
 
 1. **Both arrive, then look at each other.** Each client sees the other's
    body with the correct armour and weapon, the correct nameplate name, and

@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use cimmeria_entity::manager::EntityManager;
 
 use crate::cell::messages::BaseToCellMsg;
-use crate::mercury::{WorldEntryInfo, DEFAULT_SPACE_ID, SGWGMPLAYER_CLASS_ID, SGWPLAYER_CLASS_ID};
+use crate::mercury::{WorldEntryInfo, DEFAULT_SPACE_ID};
 
 use super::super::space_registry::resolve_space_id_fallback;
 
@@ -16,14 +16,12 @@ use super::super::space_registry::resolve_space_id_fallback;
 /// (flattened indices 109+) is reachable; everyone else stays SGWPlayer
 /// (0x02). Inherited indices 0-108 don't shift either way (append-at-end
 /// inheritance), so the existing player wire path is byte-identical for
-/// access_level 0. See `docs/architecture/gm-cell-method-gating.md` and
-/// `crate::mercury::SGWGMPLAYER_CLASS_ID` for the derivation.
+/// access_level 0. See `docs/architecture/gm-cell-method-gating.md`.
+///
+/// Thin alias over [`crate::mercury::player_class_id_for_access_level`],
+/// which the cell also uses for the class other players are shown.
 fn class_id_for_access_level(access_level: u32) -> u8 {
-    if access_level > 0 {
-        SGWGMPLAYER_CLASS_ID
-    } else {
-        SGWPLAYER_CLASS_ID
-    }
+    crate::mercury::player_class_id_for_access_level(access_level)
 }
 
 /// Sentinel `player_entity_id` returned by [`query_world_entry`] when no real
@@ -238,6 +236,7 @@ pub async fn query_world_stargates(db_pool: &Option<Arc<PgPool>>, world_name: &s
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mercury::{SGWGMPLAYER_CLASS_ID, SGWPLAYER_CLASS_ID};
     use std::time::Duration;
     use tokio::time::timeout;
 

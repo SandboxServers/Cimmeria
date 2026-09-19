@@ -21,6 +21,8 @@ mod player_ghost;
 mod update;
 
 #[cfg(test)]
+mod gm_ghost_class_tests;
+#[cfg(test)]
 mod tests;
 
 pub use create::{build_create_entity_base, build_create_entity_cascade};

@@ -161,6 +161,36 @@ pub(crate) const SGWPLAYER_CLASS_ID: u8 = 0x02;
 /// `docs/architecture/gm-cell-method-gating.md` and
 /// `docs/protocol/cell-method-dispatch-table.md` for the full derivation.
 pub(crate) const SGWGMPLAYER_CLASS_ID: u8 = 0x03;
+
+/// The wire class a player entity is created as, from its account access
+/// level: GMs (`access_level > 0`) are `SGWGmPlayer`, everyone else
+/// `SGWPlayer`.
+///
+/// One derivation for BOTH views of a player — the owning client's
+/// `CREATE_BASE_PLAYER` and the `CREATE_ENTITY` other players receive when it
+/// enters their AoI — so the two can never disagree about what the entity is.
+///
+/// Introducing a GM to witnesses as `SGWGmPlayer` is safe, and was verified
+/// rather than assumed (see docs/architecture/player-ghost-aoi-cascade.md):
+/// - `SGWGmPlayer` has 163 client methods, `SGWPlayer` 157; both give
+///   `idBase = 0x3E - (n + 0xC0) / 0xFF = 61`, so [`IDBASE_SGW_PLAYER`]
+///   encodes a GM ghost's methods correctly.
+/// - `SGWPlayer`'s client-method table is an exact prefix of `SGWGmPlayer`'s
+///   (`<Parent>SGWPlayer</Parent>`, no `<Implements>`; the 6 GM-only methods
+///   land at 157-162), so every index the cascade uses means the same thing.
+/// - The client builds both from one factory: `Entity_RegisterAllTypes`
+///   (`ghidra://SGW.exe@0x00c67781`) registers `"SGWPlayer"` and
+///   `"SGWGmPlayer"` through the same
+///   `GameEntityFactory::EntityRegister<GamePlayer>` (`0x00c6cab0`).
+///
+/// [`IDBASE_SGW_PLAYER`]: cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER
+pub(crate) fn player_class_id_for_access_level(access_level: u32) -> u8 {
+    if access_level > 0 {
+        SGWGMPLAYER_CLASS_ID
+    } else {
+        SGWPLAYER_CLASS_ID
+    }
+}
 /// Default space ID for CombatSim (matches reference server pcap: 0x10010 = 65552).
 pub const DEFAULT_SPACE_ID: u32 = 65552;
 
