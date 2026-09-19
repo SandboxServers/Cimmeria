@@ -176,6 +176,9 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
         "npc_flanked" => Some(Trigger::OnNpcFlanked {
             npc_template: key.map(|s| s.to_string()),
         }),
+        "player_flanked_npc" => Some(Trigger::OnPlayerFlankedNpc {
+            npc_template: key.map(|s| s.to_string()),
+        }),
         _ => None,
     }
 }

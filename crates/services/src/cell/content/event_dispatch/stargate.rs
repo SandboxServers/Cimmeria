@@ -21,7 +21,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::executor;
-use super::super::mission_context::populate_mission_context;
+use super::super::mission_context::{populate_mission_context, populate_world_context};
 
 /// Fire `StargateDialed` for a successful dial to `destination_world`.
 pub async fn fire_stargate_dialed(
@@ -87,11 +87,12 @@ async fn fire(
     );
 
     // The ORIGIN world, for chains that want to distinguish "left Castle"
-    // from "left Harset" while keying on the same destination.
-    let world_name = space_mgr
-        .get_entity_world_name(entity_id)
-        .unwrap_or_else(|| "Unknown".to_string());
-    ctx.set_param("world_name".to_string(), serde_json::json!(&world_name));
+    // from "left Harset" while keying on the same destination. Goes through
+    // the shared populator so `ctx.world_id` is set as well as the
+    // `world_name` param: `Condition::World` fails closed on a context with
+    // no world id, so a `world eq 57` gate on a Harset gate chain would
+    // otherwise never fire (Harset H07 contract: every `fire_*` populates).
+    populate_world_context(entity_id, space_mgr, &mut ctx);
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);

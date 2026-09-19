@@ -122,7 +122,21 @@ pub async fn fire_entity_death(
             killer = killer_entity_id, player_id, %entity_tag,
             actions = resolved.actions.len(), "fire_entity_death: matched"
         );
+    } else {
+        tracing::debug!(
+            killer = killer_entity_id,
+            %entity_tag,
+            "fire_entity_death: no chains matched"
+        );
     }
+    crate::cell::player_journal::note(
+        killer_entity_id,
+        crate::cell::player_journal::kinds::KILL,
+        format!(
+            "tag={entity_tag} chains_matched={}",
+            !resolved.actions.is_empty()
+        ),
+    );
     executor::execute_actions(resolved, killer_entity_id, player_id, tx, space_mgr, engine).await;
 }
 

@@ -108,6 +108,8 @@ impl SpaceManager {
     /// If the entity was in an instanced space and was the last player, the
     /// entire space instance is destroyed (all remaining NPCs removed).
     pub fn destroy_entity(&mut self, entity_id: u32) {
+        crate::cell::playtest_friction::forget(entity_id);
+        crate::cell::player_journal::forget(entity_id);
         // Snapshot the identity while the entity still exists — it is removed
         // from its space below, and this is the last chance to attribute the
         // teardown to an account. `entity_id` alone is not enough here of all
@@ -445,10 +447,16 @@ impl SpaceManager {
         direction: [i8; 3],
         velocity: [f32; 3],
     ) {
+        // The wire carries three packed angle bytes in `(yaw, pitch, roll)`
+        // order (client packer `0x00de1720`); `CellEntity.direction` is
+        // `[pitch, yaw, roll]` in RADIANS. Storing the raw bytes as floats in
+        // wire order (the old behaviour) put byte-units yaw in the pitch slot,
+        // so `pack_angle` re-divided a byte by the byte scale and every moving
+        // player was broadcast with a saturated, meaningless facing (P49).
         let facing = Vector3::new(
-            direction[0] as f32,
-            direction[1] as f32,
-            direction[2] as f32,
+            crate::mercury::aoi::unpack_angle(direction[1]),
+            crate::mercury::aoi::unpack_angle(direction[0]),
+            crate::mercury::aoi::unpack_angle(direction[2]),
         );
         self.write_position(entity_id, position, Some(facing), velocity);
     }

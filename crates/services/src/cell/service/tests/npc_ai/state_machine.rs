@@ -572,3 +572,42 @@ async fn npc_ai_leash_emits_stat_update_then_state_field_to_witnesses() {
         "third witness method must be onStateFieldUpdate (19)"
     );
 }
+
+/// An attacking NPC must turn to face its target. `direction` used to be
+/// written only by the movement tick, which skips path-less NPCs, so an
+/// attacker's yaw froze the moment it stopped.
+#[tokio::test]
+async fn npc_ai_in_range_attacker_turns_to_face_its_target() {
+    use cimmeria_common::Vector3;
+
+    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+    // Target due WEST of the NPC: yaw = atan2(-10, 0) = -PI/2.
+    mgr.create_entity(101, "Castle", [-10.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(101) {
+        p.is_player = true;
+        if let Some(h) = p.stats.get_mut(HEALTH) {
+            h.update(0, 100, 100);
+            h.clear_dirty();
+        }
+    }
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.threat_list.insert(101, 10.0);
+        // Stale facing from an earlier leg: due east.
+        npc.direction = Vector3::new(0.0, std::f32::consts::FRAC_PI_2, 0.0);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    crate::cell::service::npc_ai::npc_ai_tick(
+        &tx,
+        &mut mgr,
+        &cimmeria_content_engine::chain::ChainEngine::new(),
+    )
+    .await;
+
+    let yaw = mgr.get_entity(200).unwrap().direction.y;
+    assert!(
+        (yaw + std::f32::consts::FRAC_PI_2).abs() < 1e-4,
+        "attacker must face its target (-PI/2), not keep the stale +PI/2; got {yaw}"
+    );
+}

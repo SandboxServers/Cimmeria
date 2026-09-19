@@ -552,6 +552,12 @@ impl SpaceManager {
     /// spurious speed warn on the first post-teleport client packet; see
     /// [`MovementValidator::note_authorized_teleport`].
     pub fn note_authorized_teleport(&mut self, entity_id: u32) {
+        crate::cell::player_journal::note(
+            entity_id,
+            crate::cell::player_journal::kinds::TELEPORT,
+            "authorized",
+        );
+        crate::cell::playtest_friction::leader_teleported(self, entity_id);
         self.movement_validator
             .note_authorized_teleport(entity_id, Instant::now());
     }

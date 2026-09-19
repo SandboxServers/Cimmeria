@@ -39,6 +39,7 @@ impl Trigger {
             Trigger::OnPlayerInCoverDuration { .. } => TriggerType::PlayerInCoverDuration,
             Trigger::OnEntityHealthBelow { .. } => TriggerType::EntityHealthBelow,
             Trigger::OnNpcFlanked { .. } => TriggerType::NpcFlanked,
+            Trigger::OnPlayerFlankedNpc { .. } => TriggerType::PlayerFlankedNpc,
         }
     }
 
@@ -249,7 +250,8 @@ impl Trigger {
                 let threshold = f64::from(*pct);
                 before > threshold && after <= threshold
             }
-            Trigger::OnNpcFlanked { npc_template } => match npc_template {
+            Trigger::OnNpcFlanked { npc_template }
+            | Trigger::OnPlayerFlankedNpc { npc_template } => match npc_template {
                 Some(expected) => event
                     .params
                     .get("npc_template")

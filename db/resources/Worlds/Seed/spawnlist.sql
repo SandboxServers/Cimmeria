@@ -398,7 +398,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- up the wall from this row's 66.79 floor -- on a grid spanning x[228.32, 333.29] and
 -- z[1021.82, 1099.58], which is the corridor bbox point set 2082 uses. Exact spot within the
 -- cell is a MEDIUM-confidence placement at the doorway itself.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (238, 268.0, 66.79, 1042.59, 0, 8, 168, 'Castle_Zuritska_Cell', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (238, 268.0, 66.79, 1042.59, 3.14159274, 8, 168, 'Castle_Zuritska_Cell', NULL);
 
 -- Two separable claims here; only the second is a reconstruction.
 --
@@ -450,7 +450,19 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- for every other player in the shared world after the first kill. No existing NID-guard
 -- value to copy, so this uses the packet's own fallback (120s) per the missions 702-704
 -- worker's finding (docs/analysis/castle-rebuild/worknotes/ca05.md).
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (240, 320.64, 66.79, 1042.59, 0, 8, 169, 'Castle_Romney', NULL, 120);
+-- UAT CORRECTION (2026-09-18 colo playtest, docs/analysis/playtests/2026-09-18-colo-castle
+-- section 8.5): the placement above is WRONG in practice. Tile Castle-000a0003 is an
+-- unfinished mirror wing the original developers sealed off -- untextured blocking wall,
+-- hole in the floor, solid panel where the connecting door should be -- so (320.64, 66.79,
+-- 1042.59) can only be reached with GM `.gotoxyz` or client `ghost`. A raw umap read cannot
+-- see that. Romney now stands at the far (dead) end of the ACCESSIBLE wing's cell corridor,
+-- ~24 units past Zuritska's door, on a line the playtest PROVED walkable: the player and the
+-- escort traversed x 240..277 at z ~1036 (movement.npc waypoints for npc 100112, 00:28:50-
+-- 00:29:38 UTC). heading = +PI/2 faces back along the corridor toward the approaching
+-- player. MEDIUM confidence on the exact spot; HIGH that it is reachable. Also: heading 0
+-- faces +Z, which for a cell on the +Z side of the corridor is the BACK WALL -- hence the
+-- PI heading on Castle_Zuritska_Cell above.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, respawn_secs) VALUES (240, 244.0, 66.79, 1036.0, 1.57079637, 8, 169, 'Castle_Romney', NULL, 120);
 
 -- RECONSTRUCTION (CA05, worknotes/ca05.md "Bunker above Checkpoint Bravo" -- MEDIUM-HIGH
 -- confidence): objective 2799 (mission_objectives.sql:6629) states outright that Muelbach

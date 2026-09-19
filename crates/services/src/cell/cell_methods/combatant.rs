@@ -18,7 +18,7 @@ pub const TOGGLE_HEAL_DEBUG: u16 = 6;
 pub const REQUEST_HOLSTER_WEAPON: u16 = 7;
 
 /// Being State Field bit positions (from Atrea.enums BSF_*).
-const BSF_CROUCHING: u32 = 1 << 2;
+pub(crate) const BSF_CROUCHING: u32 = 1 << 2;
 
 pub async fn dispatch(
     entity_id: u32,

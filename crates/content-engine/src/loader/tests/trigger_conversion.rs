@@ -253,6 +253,29 @@ fn convert_npc_flanked_wildcard() {
     }
 }
 
+#[test]
+fn convert_player_flanked_npc_with_template() {
+    let trigger =
+        convert_trigger(&cover_trigger_row("player_flanked_npc", Some("NID Guard"))).unwrap();
+    match trigger {
+        Trigger::OnPlayerFlankedNpc { npc_template } => {
+            assert_eq!(npc_template, Some("NID Guard".to_string()));
+        }
+        other => panic!("Expected OnPlayerFlankedNpc, got {:?}", other),
+    }
+}
+
+#[test]
+fn convert_player_flanked_npc_wildcard() {
+    let trigger = convert_trigger(&cover_trigger_row("player_flanked_npc", None)).unwrap();
+    match trigger {
+        Trigger::OnPlayerFlankedNpc { npc_template } => {
+            assert_eq!(npc_template, None);
+        }
+        other => panic!("Expected wildcard OnPlayerFlankedNpc, got {:?}", other),
+    }
+}
+
 // ─── entity_health_below (Harset H04) ───────────────────────────────
 
 fn health_row(event_key: Option<&str>) -> DbTriggerRow {

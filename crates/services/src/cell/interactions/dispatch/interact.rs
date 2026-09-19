@@ -220,6 +220,26 @@ pub async fn handle_interact(
                 target_entity_id,
                 "interact: target has no static interaction type"
             );
+            // Stuck-player detector: a target that advertises interaction
+            // flags but dead-ends here is a missing handler (the Castle DHD
+            // took 76 clicks like this with no warning).
+            let (npc_name, tag, flags) = space_mgr.get_entity(target_entity_id).map_or(
+                (String::new(), String::new(), 0),
+                |t| {
+                    (
+                        t.npc_name.clone().unwrap_or_default(),
+                        t.tag.clone().unwrap_or_default(),
+                        t.interaction_type_flags,
+                    )
+                },
+            );
+            crate::cell::playtest_friction::interact_no_effect(
+                entity_id,
+                target_entity_id,
+                &npc_name,
+                &tag,
+                flags,
+            );
             None
         }
     }

@@ -55,6 +55,7 @@
 ## Stats / entity systems
 
 - [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat existing in `StatList` + `PUBLIC_STATS` + the AoI create payload does NOT mean anything reads it (`MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` had zero server-side consumers until P47); plus the reject-don't-clamp GM-setter precedent and the canonical mutate→serialize_dirty→clear_dirty→`send_entity_method` publication pattern.
+- [seed-name-id-and-asset-naming.md](seed-name-id-and-asset-naming.md) — **read before authoring any named NPC/prop seed row or concluding a map asset is missing.** `name_id` is client-PAK-resolved so new `texts.sql` moniker ids can never render (and NULL ships a nameless NPC silently); a moniker names the UE3 *asset family*, which is how to find map assets an English-keyword scan misses; binary `grep` on a chunk-compressed `.umap` gives false negatives.
 
 ## Tooling quirks
 
@@ -62,6 +63,7 @@
 - [rustfmt-reorders-mod-declarations.md](rustfmt-reorders-mod-declarations.md) — `reorder_modules` is on by default, so a coordinator's "append your `mod` line at the END of the shared mod.rs" cannot survive `cargo fmt`; expect an alphabetical three-way merge.
 - [clippy-items-after-test-module.md](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be the LAST item in a file; clippy `-D warnings` rejects trailing free functions after it.
 - [sqlx-dynamic-sql-string.md](sqlx-dynamic-sql-string.md) — `sqlx::query` takes `&'static str` only, so a `fn(&str) -> String` shared-SELECT helper won't compile; use a `macro_rules!` + `concat!` re-exported with `pub(crate) use`.
+- [tooling-filter-and-path-traps.md](tooling-filter-and-path-traps.md) — live-db-test.sh takes POSITIONAL nextest substrings (a `test()` filterset matches nothing, exit 4, after a 30s reload); `gh -F body=@file` needs a Windows path.
 - [gitignore-swallows-new-dirs.md](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules (`server/`) silently hide a new `foo/mod.rs` split from `git add`; `git status --short` shows nothing. Check with `git check-ignore -v`.
 
 ## GM feedback (cell ↔ base)
@@ -110,6 +112,7 @@
 - [local-postgres-port.md](local-postgres-port.md) — probe the dev Postgres port AND database name before every live-DB run (both move; parallel campaigns use per-campaign scratch DBs like `sgw_harset`); on a wrong one `require_db_or_skip!` self-skips and still reports PASS, so green means nothing until you check the skip count.
 - [test-file-split-without-touching-mod-rs.md](test-file-split-without-touching-mod-rs.md) — `tests.rs` → `tests/mod.rs` + `tests/newfile.rs` needs ZERO edits to the shared parent `mod.rs` (`mod tests;` resolves identically either way); private helpers stay reachable via `super::` with no visibility changes.
 - [revert-verification-loses-uncommitted-fmt.md](revert-verification-loses-uncommitted-fmt.md) — `git checkout --` restoring from a WIP checkpoint silently discards an uncommitted `cargo fmt` pass; fmt BEFORE the checkpoint. Also: `git add crates/services` stages the gitignored `logs/`.
+- [vacuous-guard-and-sentinel-collision-review.md](vacuous-guard-and-sentinel-collision-review.md) — **review checklist for any packet branch**: vacuous guards (revert proof names the wrong test), fixture-checks-itself asserts, live-DB-only coverage of a pure-value feature (`require_db_or_skip!` PASSes on skip), and cross-branch `0x7000_xxxx` sentinel collisions + the current claim registry.
 
 ## legacy-command-parity campaign
 

@@ -21,6 +21,9 @@ pub(crate) mod kismet;
 pub mod mail;
 pub mod messages;
 pub mod missions;
+pub(crate) mod player_journal;
+pub(crate) mod playtest_friction;
+pub(crate) mod playtest_friction_watch;
 /// Crate-internal: the shared respawner search behind both
 /// [`arrival::resolve_arrival`] and `SpaceManager::resolve_recovery_position`.
 pub(crate) mod respawner_fallback;

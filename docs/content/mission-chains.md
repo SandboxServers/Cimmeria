@@ -511,6 +511,8 @@ if args['entering']:
 |---------|-------|------|
 | 2348 | 0 | "Kill the Guards" |
 
+**Flank objective (C06, 2026-09-18)**: step 2348 also carries secondary objective 2725 (seeded `is_optional = false`, but nothing completes the mission through it) ("Take position behind the long table to flank the guards and negate their cover."). Chain 1141 completes it on a `player_flanked_npc` event for an `NID Guard` while 681 is active. It is tracked only -- it never gates completion (the kill counter alone completes 681; D-CB05) and never completes the mission on its own because the kill objective 2724 stays open. Only fires when a guard already holds a cover slot (reserved only while the target is out of weapon range) and only credits the guard's top-threat player.
+
 **Triggers**:
 - `entity.dead.tag::MessHall_Guard1` -- guard 1 killed
 - `entity.dead.tag::MessHall_Guard2` -- guard 2 killed
@@ -610,6 +612,8 @@ All hallway controllers are `is_hidden=true`. They are background kill-tracking 
 **Triggers**: `entity.dead.tag::Hallway05_Guard1`, `entity.dead.tag::Hallway05_Guard2`
 
 **Action**: Kill counter initialized to 0, target = 2. When counter >= 2 and 686 is active -> `missions.complete(686)`
+
+**Flank objective (C06, 2026-09-18)**: step 2353 also carries secondary objective 2731 (seeded `is_optional = false`) ("Take a flanking position to negate the guards' protective cover."). Chain 1142 completes it on a `player_flanked_npc` event for an `NID Guard` while 686 is active. Tracked only -- it never gates 686's completion (or the Straegis scene that follows it).
 
 ##### Hallway Chain Orchestration (Space Script)
 

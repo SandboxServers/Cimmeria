@@ -430,6 +430,16 @@ pub(crate) fn destroy_client_entities(
     }
     if let Some(player_eid) = player_eid {
         tracing::debug!(%addr, player_entity_id = player_eid, "Destroying Player entity");
+        tracing::info!(
+            target: "session.end",
+            %addr,
+            entity_id = player_eid,
+            account_id,
+            player_name = ?player_name,
+            disconnect_reason = reason,
+            session_secs,
+            "player session ended"
+        );
         mgr.destroy_entity(EntityId(player_eid as i32));
 
         // Remove from entity->addr reverse index

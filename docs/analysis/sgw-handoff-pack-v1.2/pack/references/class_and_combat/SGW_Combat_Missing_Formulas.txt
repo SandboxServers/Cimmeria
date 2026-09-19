@@ -1,0 +1,35 @@
+STARGATE WORLDS — COMBAT FORMULAS STILL MISSING
+
+We already have many original weapon abilities, effects, Focus/Health damage values, ammo costs, cooldowns, ranges and status effects.
+
+What is still missing for an accurate combat reconstruction:
+
+1. Accuracy vs Defense
+   - Exact formula that converts Accuracy and Defense into hit/miss chance.
+
+2. Cover
+   - Exact numerical bonuses for Low / Medium / High cover.
+   - How Cover Defense and Cover Penetration interact.
+   - Exact Crouching Defense calculation.
+
+3. Weapon Scaling
+   - How TechComp, Tier, Quality, Applied Science and other item stats scale weapon damage/effectiveness.
+
+4. Armor / Resistance / Penetration
+   - Exact formula for Armor/Mitigation/Resistance reducing Focus and Health damage.
+   - How attack Penetration modifies or bypasses defensive values.
+   - Damage-type interactions: Physical, Energy, Contamination, Fire, Ice, Radiation, Plasma, Sonic, etc.
+
+5. Focus
+   - Exact formula for how low Focus reduces Accuracy.
+   - Exact formula for how low Focus increases the chance/amount of Health damage.
+
+6. Buff / Debuff Stacking
+   - Order of operations for flat bonuses, percentage bonuses, penalties and caps.
+
+7. Area Effects vs Cover
+   - How grenades, mortars, ground-target AoE and explosions interact with cover and line of sight.
+
+SHORT QUESTION IN ENGLISH
+
+Does anyone have original Stargate Worlds combat formulas or documentation for Accuracy vs Defense, Low/Medium/High Cover Defense and Cover Penetration, Crouching Defense, weapon TechComp/Quality scaling, Armor/Resistance/Penetration, Focus-based accuracy/health effects, or AoE vs cover? We already have the original abilities/effects and base Focus/Health damage values; these formulas are the main missing pieces.

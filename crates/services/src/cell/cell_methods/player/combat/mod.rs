@@ -36,7 +36,43 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let respawner_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(entity_id, respawner_id, "callForAid");
+                crate::cell::playtest_friction::respawned(entity_id);
+                crate::cell::player_journal::note(
+                    entity_id,
+                    crate::cell::player_journal::kinds::RESPAWN,
+                    format!("respawner={respawner_id}"),
+                );
+                let snap = |m: &SpaceManager| {
+                    m.get_entity(entity_id).map(|e| {
+                        let h = e.stats.get(cimmeria_entity::stats::HEALTH);
+                        (
+                            e.state_field,
+                            h.map_or(0, |s| s.cur),
+                            h.map_or(0, |s| s.max),
+                            [e.position.x, e.position.y, e.position.z],
+                        )
+                    })
+                };
+                let before = snap(space_mgr);
                 respawn::handle_respawn(entity_id, respawner_id, tx, space_mgr).await;
+                if let (Some(b), Some(a)) = (before, snap(space_mgr)) {
+                    let dead = crate::cell::combat::state::BSF_DEAD;
+                    tracing::info!(
+                        target: "player.respawn",
+                        entity_id,
+                        respawner_id,
+                        state_flags_before = b.0,
+                        state_flags_after = a.0,
+                        was_dead = b.0 & dead != 0,
+                        dead_flag_cleared = b.0 & dead != 0 && a.0 & dead == 0,
+                        health_before = b.1,
+                        health_after = a.1,
+                        health_max = a.2,
+                        from = ?b.3,
+                        to = ?a.3,
+                        "player revived -- if the client still shows death effects, compare what was sent after this row"
+                    );
+                }
             }
             true
         }

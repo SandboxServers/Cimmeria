@@ -43,10 +43,29 @@ pub(crate) const BASEMSG_LEAVE_AOI: u8 = 0x0C;
 
 /// Pack a float angle (radians) into a single byte (256 steps per circle).
 ///
-/// Matches C++ `(uint8_t)(angle / 0.024543693f)`.
-pub(super) fn pack_angle(radians: f32) -> u8 {
+/// Matches C++ `(uint8_t)(angle / 0.024543693f)` — which **wraps** modulo 256
+/// for a negative angle. Rust's float->int `as` cast *saturates* instead, so a
+/// bare `(radians / SCALE) as u8` sent every yaw in `(-PI, 0)` as byte 0: half
+/// the compass collapsed to due north, and every NPC travelling with `dx < 0`
+/// (`atan2(dx, dz) < 0`) rendered facing north -- "walks at me backwards".
+/// Wrapping into `[0, TAU)` first reproduces the C++ bit pattern for every
+/// input and changes nothing for the already-correct `[0, PI]` half.
+pub(crate) fn pack_angle(radians: f32) -> u8 {
     const SCALE: f32 = 0.024543693;
-    (radians / SCALE) as u8
+    if !radians.is_finite() {
+        return 0;
+    }
+    // Round to the nearest step (truncation turned an exact -PI/2 into 191 via
+    // float error, and biases every angle low by half a step), then
+    // `as u32 as u8` so a value that rounds up to exactly 256 wraps to 0
+    // rather than saturating to 255.
+    ((radians.rem_euclid(std::f32::consts::TAU) / SCALE).round() as u32) as u8
+}
+
+/// Inverse of [`pack_angle`] for a byte received from a client: the wire
+/// carries a signed 256-steps-per-turn angle, the entity stores radians.
+pub(crate) fn unpack_angle(packed: i8) -> f32 {
+    f32::from(packed) * (std::f32::consts::TAU / 256.0)
 }
 
 /// Pack a velocity Vec3 into 5 bytes using the C++ `packXYZ` format.
