@@ -222,7 +222,7 @@ pub async fn dispatch(
             missions::handle_mission_assign(entity_id, args, tx, space_mgr, engine).await
         }
         GM_MISSION_CLEAR | GM_MISSION_ABANDON => {
-            missions::handle_mission_clear(entity_id, args, tx, space_mgr).await
+            missions::handle_mission_clear(entity_id, args, tx, space_mgr, engine).await
         }
         GM_MISSION_ADVANCE => {
             missions::handle_mission_advance(entity_id, args, tx, space_mgr, engine).await

@@ -88,8 +88,11 @@ pub async fn dispatch_cell_method(
     if cell_methods::mail::dispatch(entity_id, method_index, args, tx, space_mgr).await {
         return;
     }
-    // Missionary interface (52–54)
-    if cell_methods::missionary::dispatch(entity_id, method_index, args, tx, space_mgr).await {
+    // Missionary interface (52–54) — needs engine for the `mission_abandoned`
+    // content trigger fired by `abandonMission`.
+    if cell_methods::missionary::dispatch(entity_id, method_index, args, tx, space_mgr, engine)
+        .await
+    {
         return;
     }
     // ContactListManager interface (55–60)

@@ -426,7 +426,10 @@ async fn execute_one(
             );
         }
         Action::AbandonMission { mission_id } => {
-            mission::abandon(mission_id, entity_id, chain_id, tx, space_mgr).await;
+            mission::abandon(
+                mission_id, entity_id, player_id, chain_id, tx, space_mgr, engine,
+            )
+            .await;
         }
         Action::IncrementCounter {
             counter_name,

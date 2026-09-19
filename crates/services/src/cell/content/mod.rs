@@ -36,7 +36,9 @@ pub(crate) use executor::deferred_content_action_tick;
 // because the guard's state lives on `SpaceManager` (the `&mut` borrow the
 // whole recursion already threads) while its logic belongs with the
 // dispatcher that owns it.
-pub(crate) use event_dispatch::{fire_step_activation_regions, StepRegionReplayGuard};
+pub(crate) use event_dispatch::{
+    fire_mission_abandoned, fire_step_activation_regions, StepRegionReplayGuard,
+};
 
 #[cfg(test)]
 mod tests {

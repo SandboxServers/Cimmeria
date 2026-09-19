@@ -228,13 +228,18 @@ pub(super) async fn advance_step(
     }
 }
 
-/// `Action::AbandonMission` — drop the mission from the player's tracker.
+/// `Action::AbandonMission` — drop the mission from the player's tracker,
+/// then fire the `mission_abandoned` follow-up event so an offer chain can
+/// repaint its giver and clear any stranded dialog-set binding.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn abandon(
     mission_id: i32,
     entity_id: u32,
+    player_id: i32,
     chain_id: i64,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) {
     tracing::info!(
         entity_id,
@@ -242,7 +247,15 @@ pub(super) async fn abandon(
         chain_id,
         "Content: abandoning mission"
     );
-    crate::cell::missions::abandon_mission(entity_id, mission_id, tx, space_mgr).await;
+    // H54: fire the follow-up event only on a real removal, mirroring how
+    // `complete` gates `fire_mission_completed` on a real active->completed
+    // transition.
+    if crate::cell::missions::abandon_mission(entity_id, mission_id, tx, space_mgr).await {
+        crate::cell::content::event_dispatch::fire_mission_abandoned(
+            entity_id, player_id, mission_id, engine, tx, space_mgr,
+        )
+        .await;
+    }
 }
 
 /// `Action::CompleteObjective` — mark a single objective complete.

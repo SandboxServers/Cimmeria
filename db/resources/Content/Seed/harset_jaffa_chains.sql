@@ -11,8 +11,8 @@
 -- 1xxx-5xxx id.
 --
 -- Populated so far:
---   1324 Present Yourself  6301-6310  (packet H20)
---   1326 Lan'toc           6331-6345  (packet H22)
+--   1324 Present Yourself  6301-6310  (packet H20; 6308 abandon, H54)
+--   1326 Lan'toc           6331-6345  (packet H22; 6342 abandon, H54)
 -- Worknote for both: docs/analysis/harset-rebuild/worknotes/H20-H22.md
 -- Still empty: 1325 (6311-6330, H21), 1343 (6346-6365, H23), 1347
 -- (6366-6380, H24), 1348 (6381-6400, H25), 1351 (6401-6415, H26),
@@ -482,9 +482,58 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (6307, 'add_dialog_set', 120001, NULL, '{"slot": 54}', 0, 0);
 
+-- Chain 6308: the player abandons 1324 while standing in the Command
+-- Center - put the offer back and clear whatever bind was live.
+--
+-- Abandon is the third form of the edge race (playtest finding H9), and
+-- until H54 no seed row could close it: `abandonMission` fired nothing
+-- into the content engine. It now fires `mission_abandoned`, keyed on the
+-- mission id, from all three abandon paths (the client cell method, the
+-- `abandon_mission` chain action, and gmMissionClear/gmMissionAbandon)
+-- and only when a mission was really removed.
+--
+-- WHY THE UNBINDS COME FIRST, AND WHY BOTH. The dispatcher populates the
+-- context AFTER `abandon_mission` removes the instance, so
+-- `mission_status 1324 eq not_active` holds and this chain can carry
+-- chain 6301's gate verbatim - but by the same token the STEP is gone, so
+-- nothing here can tell 3953 from 3954. Both possible binds are therefore
+-- cleared unconditionally; `remove_dialog_set` on a slot that holds
+-- nothing is a no-op (`executor/dialog/mod.rs` - `retain` removes nothing
+-- and the recomputed flag mask is pushed unchanged). Ordering is
+-- load-bearing on slot 54: `interactions/dispatch/interact.rs` takes the
+-- FIRST bound entry that has a dialog, so 120001 must be gone before 5149
+-- goes on, or Moh'katan would keep replaying the 3954 turn-in dialog.
+--
+-- Gated on world 68 because the binds are per-player entries keyed on a
+-- template in the player's CURRENT space. Abandoning from world 57, or
+-- anywhere else, needs nothing: `available_interactions` is rebuilt empty
+-- on every world entry and chain 6301's `player_loaded` repaints the
+-- offer on the way back in.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (6308, '1324 - Abandoned in the Command Center: clear the live bind and repaint Moh''katan''s offer', 'mission', 1324, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (6308, 'mission_abandoned', '1324', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (6308, 'world', 68, NULL, 'eq', NULL, 0),
+  (6308, 'archetype', NULL, NULL, 'eq', '8', 1),
+  (6308, 'mission_status', 1324, NULL, 'eq', 'not_active', 2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (6308, 'remove_dialog_set', 5151, NULL, '{"slot": 42}', 0, 0),
+  (6308, 'remove_dialog_set', 120001, NULL, '{"slot": 54}', 0, 1),
+  (6308, 'add_dialog_set', 5149, NULL, '{"slot": 54}', 0, 2);
+
 -- ------------------------------------------------------------
--- 6308-6310 — ARRIVAL DIALOG 6169: NOT AUTHORED, AND WHY
+-- 6309-6310 - ARRIVAL DIALOG 6169: NOT AUTHORED, AND WHY
 -- ------------------------------------------------------------
+--
+-- (This note used to claim 6308 as well. H54 took that id for the abandon
+-- chain above, which is a real 1324 chain; the arrival dialog is
+-- faction-neutral and was only ever parked in this range.)
 --
 -- The H20 packet asks for the Harset arrival briefing (dialog 6169,
 -- "You're on Harset now - once the site of one of Ra's archeological
@@ -658,27 +707,22 @@ VALUES (6331, 'add_dialog_set', 5159, NULL, '{"slot": 54}', 0, 0);
 -- partner, or 1325 inherits exactly this bug. Chain 6305's action order
 -- already reserves the slot for it.
 --
--- ONE EDGE IN THIS FAMILY IS STILL OPEN, AND NO SEED ROW CAN CLOSE IT:
--- MISSION ABANDON. `abandonMission` is a client-callable cell method
--- (index 52, `cell_methods/missionary.rs`) and `missions::abandon_mission`
--- removes the mission row and fires NOTHING into the content engine —
--- there is no `mission_abandoned` trigger in `loader/trigger.rs` and no
--- dispatcher in `content/event_dispatch/`. So a player who abandons 1324
--- or 1326 while standing in the Command Center flips that mission back to
--- `not_active`, re-satisfying chain 6301's or 6331's gate, with no edge
--- left to fire: the offer icon does not come back until they cross a
--- world boundary. The same abandon strands whatever bind was live — drop
--- 1324 on step 3953 and Ba'al keeps dsm 5151, so he shows a stale "!" and
--- Route B replays the council dialog 4363 on click, because chain 6304's
--- step gate no longer matches.
+-- THE ABANDON EDGE IS NOW CLOSED TOO (packet H54). It used to be the one
+-- form of this race no seed row could reach: `abandonMission` (client
+-- cell method index 52, `cell_methods/missionary.rs`) removed the mission
+-- row and fired NOTHING into the content engine, so abandoning 1324 or
+-- 1326 in the Command Center flipped that mission back to `not_active`,
+-- re-satisfying chain 6301's or 6331's gate with no edge left to fire,
+-- and stranded whatever bind was live — drop 1324 on step 3953 and Ba'al
+-- keeps dsm 5151, showing a stale "!" whose click replays the council
+-- dialog 4363 because chain 6304's step gate no longer matches.
 --
--- Both symptoms self-heal on the next world transition, which rebuilds
--- `available_interactions` empty and re-fires every `player_loaded`
--- chain. Nothing here is Harset-specific: every offer chain in every lane
--- has it, and the fix is a Rust one (a `fire_mission_abandoned`
--- dispatcher plus a `mission_abandoned` trigger), which belongs to an H0x
--- packet — seed packets own no Rust paths. Recorded in
--- worknotes/H20-H22.md for the coordinator; do not work around it here.
+-- H54 added the `mission_abandoned` trigger and a `fire_mission_abandoned`
+-- dispatcher, fired from every abandon path and only on a real removal.
+-- Chains 6308 (1324) and 6342 (1326) consume it, each carrying its offer
+-- chain's condition set verbatim. The symptoms still self-heal on a world
+-- transition, so both are gated on world 68 — the only place the stale
+-- state is observable.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (6341, '1326 - Moh''katan offer: bind the "?" the moment 1325 completes (edge closer for 6331)', 'mission', 1326, true, 0);
 
@@ -875,5 +919,38 @@ VALUES
   (6340, 'complete_mission', 1326, NULL, '{}', 0, 2);
 -- GC3: grant_xp goes here, same gate as chain 6305.
 
+-- Chain 6342: the player abandons 1326 while standing in the Command
+-- Center - clear the turn-in bind and put the offer back.
+--
+-- The abandon twin of 6341, and the same reasoning as chain 6308: the
+-- context is populated after the removal, so this chain carries 6331's
+-- condition set verbatim, including the 1324/1325 prerequisites - without
+-- them it would repaint an offer the player is not eligible for.
+--
+-- Only one bind can be live on Moh'katan when 1326 is abandoned in world
+-- 68: dsm 5161, the step-4603 turn-in "?" that chain 6339 paints. The
+-- step-3960 indicator is dsm 120002 on template 204 in world 57, and a
+-- world-57 bind is already gone by the time the player is standing here.
+-- 5161 is removed before 5159 goes on, for the `find_map` ordering reason
+-- in chain 6308's note.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (6342, '1326 - Abandoned in the Command Center: clear the turn-in bind and repaint Moh''katan''s offer', 'mission', 1326, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (6342, 'mission_abandoned', '1326', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (6342, 'world', 68, NULL, 'eq', NULL, 0),
+  (6342, 'archetype', NULL, NULL, 'eq', '8', 1),
+  (6342, 'mission_status', 1326, NULL, 'eq', 'not_active', 2),
+  (6342, 'mission_status', 1325, NULL, 'eq', 'completed', 3),
+  (6342, 'mission_status', 1324, NULL, 'eq', 'completed', 4);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (6342, 'remove_dialog_set', 5161, NULL, '{"slot": 54}', 0, 0),
+  (6342, 'add_dialog_set', 5159, NULL, '{"slot": 54}', 0, 1);
+
 -- 6341 is the offer edge-closer, authored above next to chain 6331 so the
--- two halves of one gate read together. 6342-6345 are unallocated.
+-- two halves of one gate read together. 6343-6345 are unallocated.

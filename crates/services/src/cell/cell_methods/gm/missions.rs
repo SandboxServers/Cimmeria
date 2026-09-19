@@ -146,6 +146,7 @@ pub(super) async fn handle_mission_clear(
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) -> bool {
     let Some((mission_id, _)) = parse_mission_id(entity_id, args, "gmMissionClear") else {
         send_gm_feedback(
@@ -157,7 +158,15 @@ pub(super) async fn handle_mission_clear(
         return true;
     };
     tracing::info!(entity_id, mission_id, "gmMissionClear: abandoning mission");
-    missions::abandon_mission(entity_id, mission_id, tx, space_mgr).await;
+    if missions::abandon_mission(entity_id, mission_id, tx, space_mgr).await {
+        // H54: a GM clearing a mission must repaint its offer too, otherwise
+        // the GM's own re-test of the flow starts from a broken giver.
+        let player_id = player_id_of(entity_id, space_mgr);
+        crate::cell::content::fire_mission_abandoned(
+            entity_id, player_id, mission_id, engine, tx, space_mgr,
+        )
+        .await;
+    }
     send_gm_feedback(
         entity_id,
         &format!("gmMissionClear: abandoned mission {mission_id}"),
