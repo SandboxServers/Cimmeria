@@ -394,6 +394,23 @@ pub enum Action {
         entity_tag: Option<String>,
         threat_level: i32,
     },
+
+    /// Teach the acting player a stargate address
+    /// (`resources.stargates.stargate_id`), so their DHD will offer it and
+    /// the server's dial gate will accept it.
+    ///
+    /// This is the port of the 2009 Atrea authoring node
+    /// `Act_StargateAddress`
+    /// (`deprecated/entities-editor/editor/Nodes.xml:2428`), which called
+    /// `SGWPlayer.addStargateAddress`. Addresses were authored content:
+    /// that node and the GM `giveaddress` console command
+    /// (`deprecated/python/cell/commands/Player.py:74`) were its only two
+    /// callers, so without this action no chain can unlock a destination.
+    ///
+    /// Grant-only. 2009's node also had a `Remove` port
+    /// (`removeStargateAddress`), and no shipped content used it; a
+    /// `revoke_stargate_address` verb can be added when a chain needs one.
+    GrantStargateAddress { stargate_id: i32 },
 }
 
 /// Arithmetic/assignment operation for [`Action::ModifyProperty`].

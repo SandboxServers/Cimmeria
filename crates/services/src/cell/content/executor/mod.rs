@@ -13,6 +13,8 @@
 //! - [`world`]     — interaction-type/visibility/move/threat/aggression
 //! - [`counter`]   — increment/reset
 //! - [`transport`] — teleport, ring transporter
+//! - [`stargate`]  — `GrantStargateAddress` (the address book: cell entity,
+//!   client method 66, and the base persistence request)
 //! - [`deferred`]  — `content_actions.delay_ms > 0` scheduling/tick-drain (C08a)
 //!
 //! Single-arm actions with no shared helpers (PlaySequence, StartMinigame,
@@ -37,6 +39,7 @@ mod dialog;
 mod inventory;
 mod mission;
 mod spawn;
+mod stargate;
 mod stats;
 mod transport;
 mod world;
@@ -519,6 +522,17 @@ async fn execute_one(
                     "GrantXP: cell→base send failed -- player silently loses the chain's XP reward"
                 );
             }
+        }
+        Action::GrantStargateAddress { stargate_id } => {
+            stargate::grant_stargate_address(
+                stargate_id,
+                entity_id,
+                player_id,
+                chain_id,
+                tx,
+                space_mgr,
+            )
+            .await;
         }
         Action::MoveEntity {
             entity_tag,

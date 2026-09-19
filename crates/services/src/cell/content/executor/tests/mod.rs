@@ -14,6 +14,9 @@
 //! - [`npc_state`]        — set aggression, generate threat, NPC POI /
 //!   follow-target / AI-state actions.
 //! - [`negative_logging`] — cell→base send-failure WARN guards.
+//! - [`stargate`]         — `Action::GrantStargateAddress`: the three legs
+//!   of a grant, client method 66's byte layout, and the refused-then-
+//!   accepted dial the packet exists for.
 //!
 //! Shared executor scope (`execute_actions`, `Action`, `ResolvedActions`,
 //! `SpaceManager`, `mpsc`, `CellToBaseMsg`) is re-exported below so each
@@ -34,6 +37,7 @@ mod inventory_counter;
 mod mission;
 mod negative_logging;
 mod npc_state;
+mod stargate;
 mod stats;
 mod teleport;
 
