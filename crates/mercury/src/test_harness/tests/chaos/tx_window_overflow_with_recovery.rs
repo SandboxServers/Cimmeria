@@ -40,8 +40,8 @@ async fn tx_window_overflow_drains_via_deferred_queue() {
     }
 
     // B receives the wire-arrived bundles. Only the TX-window-sized
-    // portion goes on the wire pre-ack; deferred entries wait for
-    // freed slots.
+    // portion is confirmed here; deferred entries wait for freed
+    // slots to promote.
     let expected_pre_ack = std::cmp::min(total_sends as usize, crate::consts::TX_WINDOW_SIZE);
     let received = session
         .b
@@ -52,6 +52,29 @@ async fn tx_window_overflow_drains_via_deferred_queue() {
         expected_pre_ack,
         "exactly the TX-window-sized portion ({expected_pre_ack}) must land at B pre-ack"
     );
+
+    // Wait for B's recv pump to have recorded an ack for **every**
+    // reliable burst packet before building the ack carrier. The pump
+    // is asynchronous: if the carrier is built while it is still
+    // catching up, the piggyback cumulative ack covers only a prefix
+    // of the burst, A drains the TX window plus that prefix, and the
+    // un-acked remainder is promoted back into the freed slots — the
+    // load-dependent `tx_window.len() != 0` failure this scenario used
+    // to see. Once B has all 50 seqs owed, the carrier returns the
+    // full cumulative ack and the drain below is deterministic.
+    let carrier_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if session.b.pending_acks_len() >= total_sends as usize {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < carrier_deadline,
+            "B must record an ack for every reliable burst packet \
+             before the carrier is sent (had {} of {total_sends})",
+            session.b.pending_acks_len(),
+        );
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
 
     // B sends one packet so the piggyback cumulative ack rides back
     // and drains A's TX window. Each freed slot promotes one
@@ -75,9 +98,15 @@ async fn tx_window_overflow_drains_via_deferred_queue() {
         );
     }
 
-    // After the cumulative ack drain, the channel state must
-    // satisfy the safety invariants — no overflow, no orphan
-    // retransmits.
+    // After the cumulative ack drain, the peer must be quiet: both
+    // TX windows empty and no acks owed either way. This asserts the
+    // end state the way the other chaos scenarios do instead of a
+    // single load-sensitive synchronous read.
+    let quiet = session.quiesce(Duration::from_millis(500)).await;
+    assert!(quiet, "session must quiesce after the cumulative ack drain");
+
+    // The channel state must satisfy the safety invariants — no
+    // overflow, no orphan retransmits.
     {
         let channel = session.a.channel.lock().unwrap();
         all_safety_invariants(&channel);
