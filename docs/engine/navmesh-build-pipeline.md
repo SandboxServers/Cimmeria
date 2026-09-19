@@ -25,7 +25,7 @@ data/spaces/<space>.nav
 Use [tools/build-navmesh.sh](../../tools/build-navmesh.sh) or
 [tools/build-navmesh.ps1](../../tools/build-navmesh.ps1) to drive all three
 stages; they encode the guards described under
-[Failure modes](#failure-modes-navbuilder-will-not-tell-you-about).
+[Failure modes](#3-failure-modes-navbuilder-will-not-tell-you-about).
 
 ## 1. The coordinate mapping
 
