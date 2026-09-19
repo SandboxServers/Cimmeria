@@ -147,6 +147,7 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
             system_options: cimmeria_entity::cell_entity::SystemOptions::default(),
             state_field: 0,
             access_level: 0,
+            known_stargates: vec![3, 41],
             character_name: Some("Daniel".into()),
         },
         &tx,
@@ -167,6 +168,16 @@ async fn init_player_state_caches_character_name_on_cell_entity() {
     // `mgr.create_entity` above), so InitPlayerState is the only thing that
     // can supply it — which is exactly the belt-and-braces case the
     // re-assert exists for.
+    // The dial gate's only input. Same dispatcher block as `character_name`
+    // (both sit above `handle_init_player_state`, which is at the
+    // `too_many_arguments` ceiling), so the same test covers both. Without
+    // this the cell entity keeps its empty default and `handle_dial_gate`
+    // refuses every address the player legitimately holds (CAT-O-01).
+    assert_eq!(
+        mgr.get_entity(1).unwrap().known_stargates,
+        vec![3, 41],
+        "InitPlayerState must carry the address book onto the cell entity",
+    );
     assert_eq!(
         mgr.get_entity(1).unwrap().account_id,
         Some(6),

@@ -27,6 +27,10 @@ pub(crate) mod kinds {
     pub(crate) const WORLD_ENTER: &str = "world_enter";
     pub(crate) const REANCHOR: &str = "reanchor";
     pub(crate) const REGION_HINT: &str = "region_hint";
+    /// A hint the server threw away. Paired with [`REGION_HINT`] so a `.bug`
+    /// report can tell "the client never sent it" from "the server refused
+    /// it" — the two look identical in-game (the door does nothing).
+    pub(crate) const REGION_HINT_REFUSED: &str = "region_hint_refused";
     pub(crate) const COVER_EDGE: &str = "cover_edge";
     pub(crate) const STEP_ADVANCE: &str = "step_advance";
     pub(crate) const MISSION_COMPLETE: &str = "mission_complete";

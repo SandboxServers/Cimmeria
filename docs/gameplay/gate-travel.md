@@ -2,12 +2,12 @@
 title: "Gate Travel System"
 type: reference
 audience: engineers
-last_updated: 2026-09-18
+last_updated: 2026-09-19
 ---
 
 # Gate Travel System
 
-> **Last updated**: 2026-09-18
+> **Last updated**: 2026-09-19
 > **Status**: Zone transition and ring transport both work. The two stargate animations the 2009 server emitted (6100, 6113) now fire and fan to witnesses; DHD chevrons and squad travel are still missing.
 
 ## Overview
@@ -47,6 +47,8 @@ The yaw is carried through unchanged even when the position falls back to a resp
 | Gate arrival validation | DONE | Per-gate `stargates.arrival_*` pin, validated against the destination navmesh with a respawner fallback — see [Arrival placement](#arrival-placement) |
 | Walking into the gate | DONE | `REGION_FLAG_Stargate` (bit 2) region routing plus the 4-second dial timer (CA10); the crossing shares the dial's arrival validation |
 | Stargate address tracking | DONE | `knownStargateAddresses` property, give/remove |
+| Known-address enforcement on dial | DONE | `handle_dial_gate` refuses an address not in `known_stargates` with `onErrorCode` 180 — see [Dial authorization](#dial-authorization) |
+| Address unlock on arrival | DONE | A committed arrival learns both worlds' gates in the destination-persistence UPDATE. **New behaviour, not 2009** — see [Address unlock on arrival](#address-unlock-on-arrival) |
 | Stargate zone transition | DONE | `base/world_entry/gate_travel/` — RESET_ENTITIES, persist destination, replay world entry |
 | Stargate dial timer | DONE | `onDialGate` arms a 4 s timer (`SGWPlayer.beginDialing`) instead of travelling; drained by `cell::gate_travel::gate_dial_tick` on the 100 ms cell tick |
 | Stargate walk-through crossing | DONE | Travel fires when the player enters the gate's `REGION_FLAG_Stargate` volume, not on the dial. Worlds with no such region fall back to travelling on the dial |
@@ -63,7 +65,7 @@ The yaw is carried through unchanged even when the position falls back to a resp
 | DHD chevron lock animations | NOT IMPL | Events 6106–6112 exist in the DB for every gate; never triggered |
 | Stargate witness visibility | DONE | Both gate sequences fan to every witness of the dialer plus the dialer, one `onSequence` each. The 2009 server sent to `self.client` only; this is a deliberate addition |
 | Squad leader gate travel | NOT IMPL | `processSquadLeaderGateTravel` defined; blocked on the group system |
-| Gate address discovery | PARTIAL | `giveStargateAddressStr` / `removeStargateAddressStr` defined |
+| Gate address discovery | PARTIAL | `giveStargateAddressStr` / `removeStargateAddressStr` defined. Travel is the only grant path; a mid-session grant would also need a `BaseToCellMsg` refresh and client method 66 `updateStargateAddress` |
 
 ## DHD interaction
 
@@ -77,7 +79,33 @@ Three things are easy to get wrong here:
 
 A DHD prop on a world with no `stargates` row logs `reason = "no_stargate_for_world"` and shows the player nothing. The 2009 server sent a free-text `onError` here; Cimmeria's `onErrorCode` is an enum-coded surface with no free-text arm, so there is nowhere for that string to go. Acceptable while every seeded DHD has a gate.
 
-**The dial itself is still unenforced.** `handle_dial_gate` validates that the target address exists in the `stargates` cache and that it is not the player's current world, but it does **not** check the player's `known_stargates` array, and a successful arrival does not append to it. The 2009 unlock-on-visit rule and the client-visible refusal are packet H06's; until then any client can dial any seeded gate.
+## Dial authorization
+
+`onDialGate` carries `targetAddressId` as a raw client `INT32`, so the address book is the only thing standing between a crafted packet and a cross-world teleport into unearned content. [`cell/gate_travel/address_book.rs`](../../crates/services/src/cell/gate_travel/address_book.rs) refuses any address not in `CellEntity::known_stargates`, which the base loads from `sgw_player.known_stargates` and hands to the cell on `InitPlayerState`.
+
+The check is the first thing `handle_dial_gate` does after the `-1` cancel sentinel, which matters three times over:
+
+- It runs **before** the 4-second dial is armed, so a refusal cannot leave a gate that opens on a timer.
+- It runs **before** the `stargates` cache lookup, so "that address does not exist" and "that address is not yours" are the same observable. A client cannot probe the id space.
+- Like 2009's three reject branches, it cancels any dial already in flight (`SGWPlayer.py:2061`). Without that, dialling a gate you hold and then one you do not would leave the first destination armed and crossable.
+
+The refusal reaches the player as `onErrorCode` (121): `SystemID = 0` (`ERRORCODE_SYSTEM_Ability`, the only token the enum defines), `InstanceID = 0`, `ErrorCodeID = 180` (`CONDITION_FEEDBACK_EntityDoesNotHaveStargateAddress`). `InstanceID` is deliberately zero rather than the stargate id — under system 0 the client reads that field as an ability id.
+
+**Transit is not gated.** The check is on the dial and only the dial, matching 2009, which gates `onDialGate` and never `GateTravel.stargatePassed`. A player may walk through a wormhole somebody else opened.
+
+**`gmDHD` is not exempted in the primitive.** An `access_level` branch would put a second authorization surface on a check whose whole value is having exactly one. Instead the GM arm — already authorized against the session's access level — tops the caller's *in-memory* address book up with a `reason = "gm_address_grant"` audit warn before dialling. Nothing is persisted; this mirrors 2009's `giveaddress` console command.
+
+## Address unlock on arrival
+
+A committed gate arrival appends the addresses the trip taught the traveller, in the same `sgw_player` UPDATE that persists the destination world and position ([`base/world_entry/gate_travel/persist_arrival.rs`](../../crates/services/src/base/world_entry/gate_travel/persist_arrival.rs)).
+
+**This is new behaviour, not a restoration.** There is no unlock-on-visit anywhere in the 2009 Python: `SGWPlayer.addStargateAddress` has exactly two callers, the GM console command `giveaddress` and the Atrea authoring node `Act_StargateAddress`. Addresses were authored content. Cimmeria has no content-engine equivalent, so with the dial gate enforced this is the only grant path in the game.
+
+**Both ends of the trip are learned, and the origin is the half that does any work.** On the dial route the destination is a no-op by construction — the dial gate refuses an address you do not already hold, so a dialled destination is always already known. What a traveller does not have is a way back, and `handle_gate_travel` is also the transport for GM `.gotolocation` cross-world, the respawn fork, content `cross_world_teleport` and cross-world rings, none of which consult the address book. The origin world's gates are resolved inside the UPDATE from the row's own pre-update `world_location`, which is the only source that stays correct across consecutive hops.
+
+Two ordering constraints hold this together. The write runs after every mid-transfer abort branch, so nothing is persisted for a transfer that did not happen, and before `query_player_load_data`, which fills the `setupStargateInfo` list the client is about to receive. Get the second wrong and the client renders an address book one hop out of date while the cell enforces the current one.
+
+**A newly created character still starts with an empty book.** `base::character_create` does not name `known_stargates`, so the column defaults to `'{}'`. That predates this work — the dial UI only ever offered known destinations — but it is load-bearing now, and whether the origin gate is known from creation is an open decision.
 
 ## Entity Definition (GateTravel.def)
 

@@ -5,6 +5,7 @@
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{SpaceManager, REGION_FLAG_STARGATE};
+use crate::cell::spawner::GENERIC_REGION_CHECK_THRESHOLD;
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
@@ -57,29 +58,17 @@ pub async fn dispatch(
             if args.len() >= 17 {
                 let region_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let b_entering = args[4] != 0;
+                // The client's own idea of where it was when it crossed the
+                // volume. Deliberately unread: `resolve_hinted_region` tests
+                // the server-known position instead, because these three
+                // floats are exactly what an attacker would forge.
                 let _x = f32::from_le_bytes([args[5], args[6], args[7], args[8]]);
                 let _y = f32::from_le_bytes([args[9], args[10], args[11], args[12]]);
                 let _z = f32::from_le_bytes([args[13], args[14], args[15], args[16]]);
 
-                // Region IDs are wire-encoded as i32 but stored as u32 internally.
-                // Reject negative values up-front rather than sign-extending them
-                // into a high u32 that no real region will match.
-                let (region_tag, db_set_id, region_flags) = match u32::try_from(region_id) {
-                    Ok(rid) => match space_mgr.get_region(rid) {
-                        Some(r) => (Some(r.tag.clone()), Some(r.db_set_id), r.flags),
-                        None => (None, None, 0),
-                    },
-                    Err(_) => {
-                        tracing::warn!(
-                            entity_id,
-                            region_id,
-                            "triggerClientHintedGenericRegion: negative region_id, ignoring"
-                        );
-                        (None, None, 0)
-                    }
-                };
-
-                if let Some(tag) = region_tag {
+                if let Some((tag, db_set_id, region_flags)) =
+                    resolve_hinted_region(entity_id, region_id, b_entering, space_mgr)
+                {
                     tracing::info!(entity_id, region_id, %tag, b_entering, "triggerClientHintedGenericRegion");
                     crate::cell::playtest_friction::region_hint(entity_id, region_id as u32);
                     crate::cell::player_journal::note(
@@ -107,12 +96,10 @@ pub async fn dispatch(
 
                     // Forward to the ring transporter FSM if this region is a
                     // ring pad (point_set_id matches a loaded ring region).
-                    if let Some(set_id) = db_set_id {
-                        crate::cell::ring_transport::handle_region_trigger(
-                            set_id, b_entering, entity_id, tx, space_mgr, engine,
-                        )
-                        .await;
-                    }
+                    crate::cell::ring_transport::handle_region_trigger(
+                        db_set_id, b_entering, entity_id, tx, space_mgr, engine,
+                    )
+                    .await;
 
                     // `REGION_FLAG_Stargate` volumes additionally drive
                     // `stargatePassed` (`GenericRegion.py:174-176`). Flag-keyed,
@@ -132,12 +119,6 @@ pub async fn dispatch(
                         )
                         .await;
                     }
-                } else {
-                    tracing::warn!(
-                        entity_id,
-                        region_id,
-                        "Unknown region ID in triggerClientHintedGenericRegion"
-                    );
                 }
             }
             true
@@ -192,6 +173,172 @@ pub async fn dispatch(
 
         _ => false,
     }
+}
+
+/// Refuse one client region hint: a WARN on the negative-logging seam
+/// (`docs/architecture/negative-logging-convention.md`) plus a journal note,
+/// then `None`.
+///
+/// Both halves are load-bearing, and the 2026-09-18 Castle playtest is why.
+/// The symptom of a *false* reject is "the door does nothing", which from
+/// the outside is indistinguishable from the client never having sent the
+/// hint at all. A silent `return None` here would make the two
+/// indistinguishable from the inside too. The WARN carries the server-known
+/// position so a reject can be plotted against the volume that refused it,
+/// and the journal note puts it in the player's own `.bug` bookmark, where
+/// the report is actually written.
+fn refuse_hinted_region(
+    entity_id: u32,
+    region_id: i32,
+    region_tag: &str,
+    position: Option<[f32; 3]>,
+    reason: &'static str,
+    detail: &str,
+) -> Option<(String, i32, i32)> {
+    // `Option<f32>` tracing fields are omitted entirely when `None`, which
+    // is the honest rendering: an entity we cannot find has no position,
+    // and a `0.0` there would read as "standing at the origin".
+    tracing::warn!(
+        entity_id,
+        region_id,
+        region_tag,
+        pos_x = position.map(|p| p[0]),
+        pos_y = position.map(|p| p[1]),
+        pos_z = position.map(|p| p[2]),
+        reason,
+        "triggerClientHintedGenericRegion refused: {detail}"
+    );
+    crate::cell::player_journal::note(
+        entity_id,
+        crate::cell::player_journal::kinds::REGION_HINT_REFUSED,
+        format!("{region_id} {region_tag} {reason}"),
+    );
+    None
+}
+
+/// Resolve a client-supplied `triggerClientHintedGenericRegion` id to the
+/// `(tag, db_set_id, flags)` the dispatch arm acts on, refusing anything the
+/// caller has no business triggering. `None` means "already logged and
+/// journaled, do nothing".
+///
+/// Three gates, all of which the 2009 server had and Cimmeria had lost:
+///
+/// 1. **Non-negative id.** Wire-encoded `i32`, stored `u32`; rejecting up
+///    front beats sign-extending into a high `u32` that could collide with
+///    a real runtime id.
+/// 2. **Caller's world.** [`SpaceManager::get_region`] is a world-*global*
+///    map keyed on the id the client hands us, while `RegionData` knows the
+///    world its point set was seeded against. In 2009 this scope was
+///    structural — `GenericRegionManager.load(worldId)` built one manager
+///    per space, so a region id simply did not exist outside its world.
+///    Cimmeria flattened that, which let a client in any world name any
+///    region in the game and fire its chains. (H10 worknote IR-1.)
+/// 3. **Server-known containment**, on entry only. Port of
+///    `deprecated/python/cell/GenericRegion.py:167-170`, which tests
+///    `entity.position` — the position the *server* accepted — never the
+///    x/y/z the RPC carried. Without it a forged `(region_id, entering)`
+///    pair fires an `enter_region` chain, and its `cross_world_teleport`,
+///    from anywhere on the map. Exits stay ungated, matching the Python's
+///    own `# TODO: Check !entering and isPointOutsideRegion() too`: a
+///    player who leaves a volume is by definition outside it, and gating
+///    the exit would strand every "on leave" chain.
+///
+/// All three run **above** the flag dispatch, so they also cover the ring
+/// forwarding below and Castle CA10's `REGION_FLAG_STARGATE` branch when it
+/// lands. Keep this one call at the top of the arm: that is what makes the
+/// CA10 rebase mechanical.
+fn resolve_hinted_region(
+    entity_id: u32,
+    region_id: i32,
+    b_entering: bool,
+    space_mgr: &SpaceManager,
+) -> Option<(String, i32, i32)> {
+    // Read once, up front: every refusal below wants it for the log, and
+    // the containment gate wants it for the test itself.
+    let position = space_mgr
+        .get_entity(entity_id)
+        .map(|e| [e.position.x, e.position.y, e.position.z]);
+
+    let Ok(runtime_id) = u32::try_from(region_id) else {
+        return refuse_hinted_region(
+            entity_id,
+            region_id,
+            "",
+            position,
+            "region_id_negative",
+            "negative region id — no chain, ring transition or gate crossing fires",
+        );
+    };
+
+    let Some(region) = space_mgr.get_region(runtime_id) else {
+        return refuse_hinted_region(
+            entity_id,
+            region_id,
+            "",
+            position,
+            "region_unknown",
+            "no region with this runtime id — no chain, ring transition or gate \
+             crossing fires",
+        );
+    };
+
+    let Some(caller_world) = space_mgr.get_entity_world_name(entity_id) else {
+        return refuse_hinted_region(
+            entity_id,
+            region_id,
+            &region.tag,
+            position,
+            "region_caller_unspaced",
+            "caller is bound to no space — no chain, ring transition or gate \
+             crossing fires",
+        );
+    };
+
+    if region.world_name != caller_world {
+        return refuse_hinted_region(
+            entity_id,
+            region_id,
+            &region.tag,
+            position,
+            "region_world_mismatch",
+            &format!(
+                "region belongs to world {} but the caller is in {caller_world} — a \
+                 client cannot trigger a region it is not standing in",
+                region.world_name
+            ),
+        );
+    }
+
+    if b_entering {
+        let Some(position) = position else {
+            return refuse_hinted_region(
+                entity_id,
+                region_id,
+                &region.tag,
+                position,
+                "region_caller_unspaced",
+                "caller has a space binding but no cell entity — no chain, ring \
+                 transition or gate crossing fires",
+            );
+        };
+        if !crate::cell::spawner::is_point_in_region(&region.points, position) {
+            return refuse_hinted_region(
+                entity_id,
+                region_id,
+                &region.tag,
+                Some(position),
+                "region_containment_failed",
+                &format!(
+                    "server-known position is outside the {}-corner volume (plus \
+                     {GENERIC_REGION_CHECK_THRESHOLD} units of slop) — refusing the \
+                     enter event",
+                    region.points.len()
+                ),
+            );
+        }
+    }
+
+    Some((region.tag.clone(), region.db_set_id, region.flags))
 }
 
 #[cfg(test)]
