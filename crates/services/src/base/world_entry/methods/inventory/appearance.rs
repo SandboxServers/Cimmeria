@@ -22,9 +22,11 @@ use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
+use tokio::sync::mpsc;
 
 use super::super::player_load::core::query_player_load_data;
 use crate::base::{helpers, world_entry_appearance, ConnectedClientState};
+use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 /// Re-run the player's appearance assembly and broadcast `BEING_APPEARANCE`.
@@ -40,6 +42,7 @@ pub async fn refresh_player_appearance(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
     let (account_id, holstered) = {
         let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
@@ -110,6 +113,18 @@ pub async fn refresh_player_appearance(
                 version,
             )
         },
+    )
+    .await;
+
+    // The send above reaches only the player's own client. Everyone else who
+    // can see this player learns about the new gear / drawn weapon here;
+    // players who arrive later get it from `cached_appearance_args` via the
+    // player-ghost cascade.
+    helpers::broadcast_to_witnesses(
+        cell_tx,
+        entity_id,
+        method_idx::BEING_APPEARANCE,
+        appearance_args,
     )
     .await;
 }
@@ -206,7 +221,16 @@ mod tests {
             );
         }
 
-        refresh_player_appearance(42, 100, &None, &transport, &connected, &entity_to_addr).await;
+        refresh_player_appearance(
+            42,
+            100,
+            &None,
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
 
         let clients = connected.lock().unwrap();
         let state = clients.get(&addr).expect("connected state must exist");
@@ -216,6 +240,58 @@ mod tests {
              without this, a later world_entry/AoI replay would still ship \
              the pre-refresh weapon visual",
         );
+    }
+
+    /// Regression guard for "other players never see a weapon draw / gear
+    /// change": the refresh used to reach only the player's own client. It
+    /// must now also hand the freshly built `BeingAppearance` args to the
+    /// cell for witness fan-out — the same bytes it cached for late
+    /// arrivals, so every viewer converges on one appearance.
+    #[tokio::test]
+    async fn refresh_player_appearance_asks_the_cell_to_fan_out_to_witnesses() {
+        let transport = make_transport();
+        let addr: SocketAddr = "127.0.0.1:55701".parse().unwrap();
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(42u32, addr)])));
+        let connected = Arc::new(Mutex::new(HashMap::from([(
+            addr,
+            make_connected_state(0x1234),
+        )])));
+        let (cell_tx, mut cell_rx) = mpsc::channel::<BaseToCellMsg>(4);
+
+        refresh_player_appearance(
+            42,
+            100,
+            &None,
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &Some(cell_tx),
+        )
+        .await;
+
+        let cached = connected
+            .lock()
+            .unwrap()
+            .get(&addr)
+            .unwrap()
+            .cached_appearance_args
+            .clone()
+            .expect("refresh caches the args");
+        match cell_rx
+            .try_recv()
+            .expect("refresh must ask the cell to fan out")
+        {
+            BaseToCellMsg::BroadcastToWitnesses {
+                entity_id,
+                method_index,
+                args,
+            } => {
+                assert_eq!(entity_id, 42);
+                assert_eq!(method_index, method_idx::BEING_APPEARANCE);
+                assert_eq!(args, cached, "witnesses get the bytes that were cached");
+            }
+            _ => panic!("expected BroadcastToWitnesses"),
+        }
     }
 
     /// When the entity has no addr mapping (already disconnected, never
@@ -232,7 +308,16 @@ mod tests {
             Arc::new(Mutex::new(HashMap::new()));
 
         // Should not panic; should not insert anything into `connected`.
-        refresh_player_appearance(42, 100, &None, &transport, &connected, &entity_to_addr).await;
+        refresh_player_appearance(
+            42,
+            100,
+            &None,
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
 
         assert!(
             connected.lock().unwrap().is_empty(),

@@ -21,7 +21,7 @@ and live combat/death state. Before this change a player entering another
 player's AoI got the **NPC** `createOnClient` cascade with nothing in it: no
 `BeingAppearance`, no name, placeholder stats, `stateField = 0`.
 
-Three pieces make that work:
+Four pieces make that work:
 
 1. A dedicated **player-ghost cascade** composer that mirrors the 2009
    Python witness cascade for an `SGWPlayer`.
@@ -30,6 +30,9 @@ Three pieces make that work:
 3. An **introduction gate** that keeps a player's cell entity out of
    everybody's AoI until it is actually a player, because introduction is
    one-shot.
+4. A **base-to-cell witness broadcast** so a rebuilt `BeingAppearance`
+   (weapon draw, holster, gear change) reaches the players already watching,
+   not just the player it belongs to.
 
 Not yet validated with two real game clients — see
 [Known gaps](#known-gaps) and the [UAT checklist](#two-client-uat-checklist).
@@ -135,6 +138,26 @@ later tick.
 stamped at `CreateEntity` and is `None` for every server-spawned entity, so
 NPCs and props short-circuit on the first clause and are never gated.
 
+### 4. Keep existing witnesses current: base-built updates fan out through the cell
+
+Introduction is only half of "players see each other". The base also owns
+state that changes *after* introduction — above all the `BeingAppearance` it
+rebuilds from the database on every equip, holster, draw and bandolier slot
+change. `refresh_player_appearance` sent that rebuild to the player's **own**
+client only; a player who drew a weapon in front of you stayed holstered on
+your screen.
+
+The base does not know who is looking: witness sets live on the cell, and a
+second copy on the base would be one more thing to leak on disconnect. So the
+base hands the finished args to the cell with
+`BaseToCellMsg::BroadcastToWitnesses { entity_id, method_index, args }`
+([`base/helpers/witness_broadcast.rs`](../../crates/services/src/base/helpers/witness_broadcast.rs)),
+and the cell fans them out through `send_entity_method_to_witnesses` — the
+same path every cell-originated state change already uses — producing one
+`CellToBaseMsg::WitnessEntityMethod` per observer. The bytes broadcast are
+the bytes cached in `cached_appearance_args`, so a player already watching
+and a player who arrives a second later converge on one appearance.
+
 ## The cascade
 
 Composed by `compose_player_ghost_cascade_body` in
@@ -239,7 +262,7 @@ placeholder. Skipping is a three-line guard; re-introduction is a protocol.
 
 ## Observability
 
-One new negative-log target, following
+Two new negative-log targets, following
 [negative-logging-convention.md](negative-logging-convention.md) Pattern C
 (lookup miss). Emitted from `player_ghost::resolve_identity`.
 
@@ -248,7 +271,9 @@ One new negative-log target, following
 | `aoi.player_ghost_incomplete` | WARN | `observee_session_unresolved` | The cell says a player entered AoI but the base cannot resolve its session. Also carries `addr_resolved` to separate "no entity→addr mapping" from "no session at that addr". Falls back to the bare cascade |
 | `aoi.player_ghost_incomplete` | WARN | `no_cached_appearance` | Session resolved but has no cached `BeingAppearance`. The ghost is still introduced with name, level and stats — a named entity with no body beats nothing — and gets a body on the next appearance rebroadcast |
 
-Both rows carry `witness_id` and `entity_id`, so a single query names both
+| `aoi.witness_broadcast_failed` | WARN | `cell_channel_closed` | `broadcast_to_witnesses` could not reach the cell loop (Pattern A, a formerly silent send). Carries `entity_id` and `method_index`. Other players keep the stale view of the entity until it re-enters their AoI |
+
+The two `aoi.player_ghost_incomplete` rows carry `witness_id` and `entity_id`, so a single query names both
 ends of a failed introduction. The row is catalogued in
 [observability.md](observability.md) alongside `aoi.create_emit` and
 `aoi.create_send_failed`.
@@ -260,6 +285,7 @@ ends of a failed introduction. The row is catalogued in
 | `mercury::aoi::player_ghost::tests::*` | Wire format. `cascade_emits_identity_appearance_and_live_state_in_legacy_order` decodes the body method-by-method against the expected index/arg pairs — it fails if the cascade regresses to the bare shape. `cascade_skips_absent_optionals_but_still_makes_the_ghost_visible` pins every conditional branch. `composed_body_matches_the_standalone_packet_body` is the compose↔build byte-equivalence guard the bundle path requires |
 | `base::world_entry::cell_dispatch::player_ghost::tests::*` | The join. A fan-out byte test drives `aoi::entered_aoi` end to end and asserts the packet the **witness** receives carries the **observee's** identity, and that both packets go to the witness and never to the observee. A second test mutates `cached_appearance_args` between two composes to prove the read is at emit time. Two negative-log guards cover both `reason` values via `LogCapture`; one guard asserts the NPC path is byte-unchanged and silent |
 | `cell::space_manager::tests::aoi_player_intro::*` | The gate. `loading_player_is_introduced_once_and_only_after_init` is the regression guard — a player created but not yet initialised produces no `EnteredAoI`, and exactly one is produced after init. `player_observee_carries_its_live_state` and `npc_observee_is_introduced_immediately_with_npc_data` pin the two branches of `player_data` |
+| `cell::service::base_messages::tests::broadcast_to_witnesses::fans_out_to_witnessing_players_only`, `inventory::appearance::tests::refresh_player_appearance_asks_the_cell_to_fan_out_to_witnesses`, `base::helpers::witness_broadcast::tests::*` | The post-introduction fan-out. Three players in one shared space: the rebuilt `BeingAppearance` reaches the player standing next to the observee, not the observee's own client and not the player across the map, and is flagged `entity_is_player` so it encodes on the SGWPlayer idbase. The base side asserts the broadcast carries exactly the bytes it cached. The closed-channel WARN and the silent no-cell-service case are both pinned |
 | `cell_entity::tests::is_introducible_gates_players_until_connected_and_initialised` | The predicate itself, across all four states: NPC, created-only, connected-not-initialised, fully initialised |
 
 ## Known gaps
@@ -290,8 +316,9 @@ ends of a failed introduction. The row is catalogued in
   `self.client` (`SGWBeing.py:684-685`), and the same pattern covers
   alignment (`647-648`), faction (`658-659`), archetype (`669-670`) and name
   (`636-637`). Those four change rarely enough that the introduction-time
-  value is usually right; the level does not. Adding the fan-out is
-  follow-up work, not part of this change.
+  value is usually right; the level does not. The plumbing now exists —
+  `broadcast_to_witnesses` — but `handle_grant_xp` has no cell channel and
+  four callers, so wiring it is follow-up work, not part of this change.
 - **`onMeleeRangeUpdate` is not sent.** `SGWBeing.createOnClient` emits it
   when `meleeRange != 0` (`SGWBeing.py:509-510`). The Rust ghost cascade
   omits it. Whether a player ever carries a non-zero `meleeRange` is
