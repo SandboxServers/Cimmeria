@@ -123,6 +123,9 @@ pub(crate) struct Bookmark {
     pub weapon_visual: String,
     pub weapon_holstered: bool,
     pub movement_unrestricted: bool,
+    /// `(cover_set_id, seconds inside)` per the server's proximity detection.
+    pub cover_sets: Vec<(i32, f32)>,
+    pub crouched: bool,
     pub speed_scale: f32,
     pub focus_cur: i32,
     pub focus_max: i32,
@@ -322,6 +325,10 @@ pub(crate) fn capture(
         weapon_visual: caller.weapon_visual.clone().unwrap_or_default(),
         weapon_holstered: caller.weapon_holstered,
         movement_unrestricted: caller.movement_unrestricted,
+        cover_sets: space_mgr
+            .cover_detection
+            .current_sets(caller.entity_id, now),
+        crouched: caller.state_field & crate::cell::cell_methods::combatant::BSF_CROUCHING != 0,
         speed_scale: caller.stats.movement_speed_scale(),
         focus_cur: focus.map_or(0, |s| s.cur),
         focus_max: focus.map_or(0, |s| s.max),
@@ -373,6 +380,7 @@ fn emit_entity(bookmark_id: u64, rank: usize, s: &EntitySnapshot) {
         health = s.health_cur,
         health_max = s.health_max,
         state_field = s.state_field,
+        crouched = s.state_field & crate::cell::cell_methods::combatant::BSF_CROUCHING != 0,
         interaction_flags = s.interaction_type_flags,
         ai_state = %s.ai_state,
         last_movement_type = %s.last_movement_type,
@@ -428,6 +436,9 @@ pub(crate) fn emit(b: &Bookmark, account_id: u32, player_id: i32, access_level: 
         speed = c.speed,
         is_on_ground = c.is_on_ground,
         movement_unrestricted = b.movement_unrestricted,
+        crouched = b.crouched,
+        in_cover = !b.cover_sets.is_empty(),
+        cover_sets = ?b.cover_sets,
         speed_scale = b.speed_scale,
         yaw_rad = c.yaw_rad,
         yaw_byte = c.yaw_byte,

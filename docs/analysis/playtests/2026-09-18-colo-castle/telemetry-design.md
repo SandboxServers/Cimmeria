@@ -151,7 +151,10 @@ not record. Log the outbound intent, not just the internal state:
 | `session.journal`, `play_session_id`, `service.version` (§9.5–9.6) | Not yet |
 | Unified `decision_outcome` (log + span + counter from one helper); `issue_move_order` + `leg_seq` | Not yet |
 | Outbound-intent logging (§9.4) | **Partly shipped:** `movement.movement_type` (every `setMovementType` outcome, including the `cleared` case that sends nothing), `wire.out.avatar_update` (1-in-100 record of the position and `yaw_byte` a witness was sent), and the reanchor log now lists `resent` / `not_resent`. Not yet: dialog / mission-log sends, respawner id list |
-| Console reject logging, `unhandled_interaction_flag`, `condition_failed`, region-hint containment | Not yet |
+| `condition_failed` — which condition stopped a chain whose trigger matched (`content.resolve`) | **Shipped** |
+| Cover: `cover.detection` edge rows (node, distance, crouched), miss logs on `fire_cover_left` / `fire_cover_duration` / both flank dispatchers, `in_cover` + `cover_sets` + `crouched` on `.bug` | **Shipped** |
+| `mission.step_context` — what is already true when a step activates (regions, cover, crouch, combat): the edge-trigger ordering seam | **Shipped** |
+| Console reject logging, region-hint containment | **Shipped** with the friction detectors. `unhandled_interaction_flag` is covered by `repeat_interact_no_effect` |
 
 No behaviour was changed in this PR — it is logging only. The defects in §2 are all still present.
 

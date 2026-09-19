@@ -24,6 +24,46 @@ pub async fn advance_step(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    // Ordering seam. Region / cover triggers are EDGE events: if the player is
+    // already inside when this step activates, the edge has already been spent
+    // and the step's chain never sees it (2026-09-18: take-cover fired 1 s
+    // before step 2144). Record what is already true at activation so that
+    // shape is visible instead of inferred from timestamps.
+    if let Some(e) = space_mgr.get_entity(entity_id) {
+        let world = space_mgr
+            .get_entity_world_name(entity_id)
+            .unwrap_or_default();
+        let regions_inside: Vec<&str> = space_mgr
+            .regions_for_world(&world)
+            .into_iter()
+            .filter(|r| {
+                crate::cell::playtest_friction::region_contains_xz(
+                    &r.points,
+                    e.position.x,
+                    e.position.z,
+                )
+            })
+            .map(|r| r.tag.as_str())
+            .collect();
+        let cover_sets = space_mgr
+            .cover_detection
+            .current_sets(e.entity_id, std::time::Instant::now());
+        tracing::debug!(
+            target: "mission.step_context",
+            entity_id,
+            mission_id,
+            new_step_id,
+            x = e.position.x,
+            y = e.position.y,
+            z = e.position.z,
+            ?regions_inside,
+            ?cover_sets,
+            crouched = e.state_field & crate::cell::cell_methods::combatant::BSF_CROUCHING != 0,
+            in_combat = !e.threatened_mobs.is_empty(),
+            "mission step activating -- state already true here will NOT re-fire as an edge trigger"
+        );
+    }
+
     // Load new step objectives from the cache before borrowing entity mutably
     let new_objectives: Vec<MissionObjective> = space_mgr
         .get_step_objectives(new_step_id)
