@@ -45,10 +45,11 @@
 //! follow-up PR — flagged here so a future implementer doesn't miss
 //! it.
 
-use std::io::{BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
 use crate::geometry::TriangleSoup;
+use crate::ExtractError;
 
 /// Write a single triangle soup to `path` as a Wavefront OBJ.
 ///
@@ -110,6 +111,112 @@ pub fn write_obj_into<W: Write>(w: &mut W, soups: &[TriangleSoup]) -> crate::Res
     Ok(())
 }
 
+/// Read an OBJ file back into a [`TriangleSoup`].
+///
+/// This is the inverse of [`write_obj`] and exists so the floor probe
+/// can be run against the *artifact NavBuilder will actually consume*
+/// rather than against in-memory state the extractor happened to hold.
+/// Vertices come back exactly as written — raw UE3 cm.
+pub fn read_obj(path: &Path) -> crate::Result<TriangleSoup> {
+    let file = std::fs::File::open(path)?;
+    read_obj_from(BufReader::new(file))
+}
+
+/// Reader over any `BufRead`, so tests can feed a `&[u8]`.
+///
+/// Tolerances, in the order a real OBJ will hit them:
+///
+/// - `#` comments and unrecognised keywords (`vt`, `vn`, `usemtl`, `s`,
+///   `g`) are skipped. `o` lines are kept only as the soup's group name;
+///   a multi-group file collapses into one soup, which is what the probe
+///   wants.
+/// - Face vertex tokens may carry `/<vt>/<vn>` suffixes — only the part
+///   before the first `/` is read.
+/// - Polygons with more than three vertices are fan-triangulated.
+/// - Negative (relative) vertex indices are resolved against the count
+///   read so far, per the OBJ spec.
+///
+/// A face referencing a vertex that does not exist is a hard error
+/// rather than a silent drop: a truncated OBJ would otherwise probe as
+/// "no floor here" and get misread as evidence about the map.
+pub fn read_obj_from<R: BufRead>(reader: R) -> crate::Result<TriangleSoup> {
+    let mut vertices: Vec<[f32; 3]> = Vec::new();
+    let mut soup = TriangleSoup::new(None);
+
+    for (lineno, line) in reader.lines().enumerate() {
+        let line = line?;
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut tokens = line.split_whitespace();
+        let Some(keyword) = tokens.next() else {
+            continue;
+        };
+        match keyword {
+            "v" => {
+                let coords: Vec<f32> = tokens.filter_map(|t| t.parse::<f32>().ok()).collect();
+                if coords.len() < 3 {
+                    return Err(ExtractError::Other(format!(
+                        "OBJ line {}: malformed vertex {line:?}",
+                        lineno + 1
+                    )));
+                }
+                vertices.push([coords[0], coords[1], coords[2]]);
+            }
+            "o" if soup.group.is_none() => {
+                soup.group = tokens.next().map(|s| s.to_string());
+            }
+            "f" => {
+                let idx: Vec<usize> = tokens
+                    .map(|t| resolve_face_index(t, vertices.len(), lineno + 1))
+                    .collect::<crate::Result<_>>()?;
+                if idx.len() < 3 {
+                    return Err(ExtractError::Other(format!(
+                        "OBJ line {}: face with {} vertices",
+                        lineno + 1,
+                        idx.len()
+                    )));
+                }
+                // Fan-triangulate: (0,1,2), (0,2,3), ...
+                for w in 1..idx.len() - 1 {
+                    soup.push([vertices[idx[0]], vertices[idx[w]], vertices[idx[w + 1]]]);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(soup)
+}
+
+/// Turn one `f` token into a 0-based index into the vertex list.
+fn resolve_face_index(token: &str, vertex_count: usize, lineno: usize) -> crate::Result<usize> {
+    let head = token.split('/').next().unwrap_or(token);
+    let raw: i64 = head
+        .parse()
+        .map_err(|_| ExtractError::Other(format!("OBJ line {lineno}: bad face index {token:?}")))?;
+    let zero_based = if raw > 0 {
+        raw as usize - 1
+    } else if raw < 0 {
+        // Relative index: -1 is the most recently declared vertex.
+        let back = (-raw) as usize;
+        vertex_count.checked_sub(back).ok_or_else(|| {
+            ExtractError::Other(format!("OBJ line {lineno}: index {raw} underflows"))
+        })?
+    } else {
+        return Err(ExtractError::Other(format!(
+            "OBJ line {lineno}: face index 0 is not valid (OBJ is 1-based)"
+        )));
+    };
+    if zero_based >= vertex_count {
+        return Err(ExtractError::Other(format!(
+            "OBJ line {lineno}: face index {raw} exceeds the {vertex_count} vertices declared so far"
+        )));
+    }
+    Ok(zero_based)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,5 +270,86 @@ mod tests {
 
         assert!(s.contains("f 1 2 3\n"));
         assert!(s.contains("f 4 5 6\n"));
+    }
+
+    // ----- reader -----
+
+    #[test]
+    fn write_then_read_round_trips_vertices_and_faces() {
+        let mut soup = TriangleSoup::new(Some("Chunk_000a0002".to_string()));
+        soup.push([[1.5, -2.25, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.5]]);
+        soup.push([[10.0, 11.0, 12.0], [13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]);
+
+        let mut buf = Vec::new();
+        write_obj_into(&mut buf, std::slice::from_ref(&soup)).unwrap();
+        let back = read_obj_from(buf.as_slice()).unwrap();
+
+        assert_eq!(back.triangle_count(), 2);
+        assert_eq!(back.vertices, soup.vertices);
+        assert_eq!(back.faces, soup.faces);
+        assert_eq!(back.group.as_deref(), Some("Chunk_000a0002"));
+    }
+
+    #[test]
+    fn reader_skips_comments_normals_and_unknown_keywords() {
+        let src = b"# header\nvt 0 0\nvn 0 1 0\nusemtl foo\ns off\n\
+                    v 0 0 0\nv 1 0 0\nv 0 0 1\nf 1 2 3\n";
+        let soup = read_obj_from(&src[..]).unwrap();
+        assert_eq!(soup.triangle_count(), 1);
+        assert_eq!(soup.vertices.len(), 3);
+    }
+
+    #[test]
+    fn reader_strips_slash_suffixes_from_face_tokens() {
+        let src = b"v 0 0 0\nv 1 0 0\nv 0 0 1\nf 1/1/1 2/2/1 3//1\n";
+        let soup = read_obj_from(&src[..]).unwrap();
+        assert_eq!(soup.triangle_count(), 1);
+        assert_eq!(soup.vertices[1], [1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn reader_fan_triangulates_a_quad() {
+        let src = b"v 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\nf 1 2 3 4\n";
+        let soup = read_obj_from(&src[..]).unwrap();
+        assert_eq!(soup.triangle_count(), 2);
+        // Fan from vertex 0: (0,1,2) then (0,2,3).
+        assert_eq!(soup.vertices[3], [0.0, 0.0, 0.0]);
+        assert_eq!(soup.vertices[4], [1.0, 0.0, 1.0]);
+        assert_eq!(soup.vertices[5], [0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn reader_resolves_negative_relative_indices() {
+        let src = b"v 0 0 0\nv 1 0 0\nv 0 0 1\nf -3 -2 -1\n";
+        let soup = read_obj_from(&src[..]).unwrap();
+        assert_eq!(soup.triangle_count(), 1);
+        assert_eq!(soup.vertices[0], [0.0, 0.0, 0.0]);
+        assert_eq!(soup.vertices[2], [0.0, 0.0, 1.0]);
+    }
+
+    /// A truncated OBJ must fail loudly. Silently dropping the face
+    /// would make the floor probe report "no geometry here" for what is
+    /// really a broken file — the exact kind of false negative this
+    /// spike must not produce.
+    #[test]
+    fn reader_errors_on_a_face_index_past_the_vertex_list() {
+        let src = b"v 0 0 0\nv 1 0 0\nf 1 2 3\n";
+        let err = read_obj_from(&src[..]).unwrap_err();
+        assert!(
+            format!("{err}").contains("exceeds"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn reader_errors_on_a_zero_face_index() {
+        let src = b"v 0 0 0\nv 1 0 0\nv 0 0 1\nf 0 1 2\n";
+        assert!(read_obj_from(&src[..]).is_err());
+    }
+
+    #[test]
+    fn reader_errors_on_a_short_vertex_line() {
+        let src = b"v 0 0\n";
+        assert!(read_obj_from(&src[..]).is_err());
     }
 }

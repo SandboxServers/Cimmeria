@@ -97,8 +97,17 @@ fn castle_cellblock_walks_static_mesh_actors() {
                 continue;
             }
         };
-        let instances = collect_static_mesh_instances(&pkg);
-        let count = instances.len();
+        let walk = collect_static_mesh_instances(&pkg);
+        // `collect_static_mesh_instances` now returns an `ActorWalk` so
+        // the coverage report can see *why* the rest were skipped; the
+        // resolvable-instance count this test asserts on is unchanged.
+        assert_eq!(
+            walk.actors_total,
+            walk.instances.len() as u64 + walk.skips.total(),
+            "actor walk does not balance for {}",
+            chunk_path.display()
+        );
+        let count = walk.instances.len();
         total_actors += count;
         if count > 0 {
             chunks_with_actors += 1;
