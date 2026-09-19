@@ -180,6 +180,60 @@ fn chain_search_prefers_the_narrowest_worst_gap() {
     assert!(widest < direct.horizontal);
 }
 
+/// The storey-jump regression. Two floors of one building whose rims overlap
+/// in XZ report `horizontal = 0.00` and the whole obstacle in `dy`. Ranking
+/// hops on the horizontal gap alone scores that jump as **free**, so the
+/// chain search takes it in preference to a real multi-hop route — which is
+/// exactly what `nav_inspect --gaps` did on Castle: "one hop, widest 0.00 m"
+/// for a pair whose actual connection is a stairwell 30 m away.
+///
+/// `Approach::bridge_size` is `max(horizontal, |vertical|)`, so the jump
+/// costs 12 and the stair route wins.
+#[test]
+fn a_stacked_storey_jump_does_not_beat_a_real_route() {
+    let mut b = MeshFixture::new();
+    // Lower floor and upper floor, footprints overlapping along x = 4,
+    // 12 m apart (12 cells at ch = 1.0).
+    let lower = b.wide_quad(0, 0, 0, 4, 4);
+    let upper = b.wide_quad(4, 12, 0, 4, 4);
+    // A stair: three landings climbing 4 m at a time up the +z side, each
+    // 1 m from the next in XZ.
+    let s1 = b.wide_quad(0, 4, 6, 2, 2);
+    let s2 = b.wide_quad(3, 8, 6, 2, 2);
+    let s3 = b.wide_quad(6, 12, 6, 2, 2);
+    let g = NavGraph::from_nav(&b.build());
+    let (lower, upper) = (g.component[lower as usize], g.component[upper as usize]);
+    for s in [s1, s2, s3] {
+        assert_ne!(
+            g.component[s as usize], lower,
+            "the stair is its own island"
+        );
+    }
+
+    let gaps = g.component_gaps(3.0, 13.0, 5);
+
+    // The direct storey jump exists and looks free horizontally.
+    let jump = gaps.best(lower, upper).expect("rims overlap in XZ");
+    assert!(jump.horizontal < 1e-4, "got {}", jump.horizontal);
+    assert!((jump.vertical.abs() - 12.0).abs() < 1e-4);
+    assert!(
+        (jump.bridge_size() - 12.0).abs() < 1e-4,
+        "bridge_size must see the 12 m drop, got {}",
+        jump.bridge_size()
+    );
+
+    let chain = gaps.bottleneck_path(lower, upper).expect("a route exists");
+    assert!(
+        chain.len() > 1,
+        "the 12 m storey jump must not win as a single free hop; got {chain:?}"
+    );
+    let widest = chain.iter().fold(0.0f32, |m, h| m.max(h.bridge_size()));
+    assert!(
+        widest < 12.0,
+        "the stair route's worst bridge must beat the jump's 12 m, got {widest}"
+    );
+}
+
 /// Disconnected in the gap graph too: no chain, and the caller can say so
 /// rather than printing a nonsense route.
 #[test]

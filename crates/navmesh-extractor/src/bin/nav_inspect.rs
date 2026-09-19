@@ -295,8 +295,10 @@ fn report_pair(
         )?,
         Some(chain) if chain.is_empty() => writeln!(out, "    chain: same component")?,
         Some(chain) => {
-            let widest = chain.iter().fold(0.0f32, |m, h| m.max(h.horizontal));
-            let total: f32 = chain.iter().map(|h| h.horizontal).sum();
+            // The widest *bridge*, not the widest horizontal gap: a storey
+            // jump is h=0.00 with a 12 m drop and must not read as free.
+            let widest = chain.iter().fold(0.0f32, |m, h| m.max(h.bridge_size()));
+            let total: f32 = chain.iter().map(|h| h.bridge_size()).sum();
             writeln!(
                 out,
                 "    chain: {} hop(s), widest {:.2} m, total {:.2} m",
