@@ -499,7 +499,7 @@ Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs:43-58](
 | **Step advance** | `OnInteractTag`, `OnDialogChoice`, `OnRegionEnter` | `StepStatus eq active` | `AdvanceStep` | `MissionUpdate` |
 | **Objective progress** | `OnEntityDeath`, `OnDialogChoice` | `ObjectiveStatus eq active` | `CompleteObjective` (or `IncrementCounter` for N-of) | `MissionUpdate` |
 | **Complete** | `OnDialogOpen`, `OnEntityDeath`, `OnDialogChoice` | `MissionStatus eq active` | `CompleteMission` (+ `GrantItem` reward, often `AcceptMission` for the next step in the chain) | `MissionUpdate` (status=2, repeats++) |
-| **Relog-restore (state)** | — | — | — | `sgw_mission` → `MissionManager` at world-entry; engine plays no part |
+| **Relog-restore (state)** | — | — | — | `sgw_mission` → `MissionManager` at world-entry; engine plays no part. Per-objective status round-trips as of #657: the row carries the current step's objective roster and every completed objective id, and hydration rebuilds `hidden` / `optional` from `resources.mission_objectives`, so `ObjectiveStatus` gates survive a relog |
 | **Relog-restore (world)** | `OnPlayerLoaded` | `StepStatus eq active` for the active step | `SetInteractionType` (re-paint quest-glow / Ring icons) | none (in-memory only — interaction flags don't persist on the entity) |
 
 Worked example chains in [chain_replay_tests/](../../crates/services/src/cell/content/chain_replay_tests/):
@@ -515,6 +515,7 @@ Worked example chains in [chain_replay_tests/](../../crates/services/src/cell/co
 |---|---|---|
 | `mission_<id>_status` | active/completed/not_active | `Condition::MissionStatus` |
 | `mission_<id>_step_<step>_status` | per-step state | `Condition::StepStatus` |
+| `mission_<id>_obj_<obj>_status` | per-objective state, from both `active_objectives` (current step, completed entries included) and `completed_objectives` (steps already advanced past) | `Condition::ObjectiveStatus` |
 | `counter_<name>` | every entity counter | `Condition::Counter` |
 | `stat_<id>_cur` / `stat_<id>_max` | populated only by `fire_item_use` (via `populate_stats_context`) | `Condition::StatBelowMax` |
 | `archetype` | set directly by every `fire_*` site | `Condition::Archetype` |

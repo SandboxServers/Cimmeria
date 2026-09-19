@@ -2,9 +2,7 @@
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::missions::{
-    MissionObjective, MISSION_ACTIVE, STATUS_ACTIVE, STATUS_COMPLETED,
-};
+use cimmeria_entity::missions::{MissionObjective, STATUS_ACTIVE, STATUS_COMPLETED};
 
 use super::{ON_MISSION_UPDATE, ON_OBJECTIVE_UPDATE, ON_STEP_UPDATE};
 use crate::cell::messages::CellToBaseMsg;
@@ -174,6 +172,12 @@ pub async fn advance_step(
 }
 
 /// Complete a mission objective and check if the mission advances.
+///
+/// Returns `true` only when the objective was actually flipped — i.e. it
+/// was on the current step's roster. Callers use that to gate the
+/// `MissionUpdate` persist: emitting one for a no-op would write the
+/// unchanged state back and make a regression guard unable to tell a
+/// working executor arm from a dead one.
 #[tracing::instrument(
     name = "mission.complete_objective",
     level = "info",
@@ -186,29 +190,62 @@ pub async fn complete_objective(
     objective_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-) {
+) -> bool {
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
-        None => return,
+        None => {
+            tracing::warn!(
+                entity_id,
+                mission_id,
+                objective_id,
+                "complete_objective: entity not found"
+            );
+            return false;
+        }
     };
 
     let mission = match entity.missions.get_mission_mut(mission_id) {
         Some(m) => m,
-        None => return,
+        None => {
+            tracing::warn!(
+                entity_id,
+                mission_id,
+                objective_id,
+                "complete_objective: mission not tracked"
+            );
+            return false;
+        }
     };
 
     if !mission.complete_objective(objective_id) {
-        return;
+        tracing::warn!(
+            entity_id,
+            mission_id,
+            objective_id,
+            current_step_id = ?mission.current_step_id,
+            "complete_objective: objective not on the current step's roster — no-op"
+        );
+        return false;
     }
 
     tracing::debug!(entity_id, mission_id, objective_id, "Objective completed");
 
-    // Send onObjectiveUpdate with completed status
+    // Send onObjectiveUpdate with completed status. `hidden`/`optional`
+    // ride the frame from the objective's own flags, not hardcoded zeroes
+    // — the client's journal renders an optional objective differently,
+    // and this frame is the only place it learns the flag outside the
+    // login resend.
+    let (hidden, optional) = mission
+        .active_objectives
+        .iter()
+        .find(|o| o.objective_id == objective_id)
+        .map(|o| (o.hidden, o.optional))
+        .unwrap_or((false, false));
     let mut args = Vec::with_capacity(7);
     args.extend_from_slice(&objective_id.to_le_bytes());
     args.push(STATUS_COMPLETED as u8);
-    args.push(0); // hidden
-    args.push(0); // optional
+    args.push(u8::from(hidden));
+    args.push(u8::from(optional));
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
@@ -218,11 +255,36 @@ pub async fn complete_objective(
         .await;
 
     // Check if all objectives are completed → advance mission
+    let required_count = mission
+        .active_objectives
+        .iter()
+        .filter(|o| !o.optional)
+        .count();
     let all_required_complete = mission
         .active_objectives
         .iter()
         .filter(|o| !o.optional)
         .all(|o| o.status == STATUS_COMPLETED);
+
+    // Vacuous truth. `.all()` over an empty filter is `true`, so on a step
+    // whose objectives are ALL optional the first completion of any one of
+    // them ends the mission. 37 seeded steps have that shape. This is not
+    // new — `advance_step` has always loaded the real `is_optional` from
+    // `resources.mission_objectives` — but H50 makes it reachable on the
+    // restore path too, where the flags used to be forced to `false`. Left
+    // as-is deliberately (matching the fresh path is the defensible
+    // behaviour and changing it is outside this packet), but logged so a
+    // surprise completion in UAT is attributable instead of mysterious.
+    if all_required_complete && required_count == 0 {
+        tracing::warn!(
+            entity_id,
+            mission_id,
+            objective_id,
+            current_step_id = ?mission.current_step_id,
+            optional_count = mission.active_objectives.len(),
+            "mission auto-completed on a step with no required objectives —              `all_required_complete` was vacuously true"
+        );
+    }
 
     if all_required_complete {
         mission.complete();
@@ -241,10 +303,14 @@ pub async fn complete_objective(
                 .await;
         }
 
-        // Send onMissionUpdate completed
+        // Send onMissionUpdate completed. The byte is `STATUS_COMPLETED`,
+        // matching `complete_mission_direct`'s frame. It used to read
+        // `MISSION_ACTIVE` with a comment about "completed removal" — both
+        // constants are 1, so the wire was accidentally right while the
+        // source lied about which enum it meant.
         let mut args = Vec::with_capacity(9);
         args.extend_from_slice(&mission_id.to_le_bytes());
-        args.push(MISSION_ACTIVE as u8); // Status sent as "completed" removal
+        args.push(STATUS_COMPLETED as u8);
         args.extend_from_slice(&0i32.to_le_bytes());
         let _ = tx
             .send(CellToBaseMsg::EntityMethodCall {
@@ -261,6 +327,8 @@ pub async fn complete_objective(
             format!("mission={mission_id}"),
         );
     }
+
+    true
 }
 
 /// Complete a mission directly (all objectives + step + mission update).
@@ -304,7 +372,7 @@ pub async fn complete_mission_direct(
     let never_completed: Vec<(i32, bool)> = mission
         .active_objectives
         .iter()
-        .filter(|o| o.status == cimmeria_entity::missions::STATUS_ACTIVE)
+        .filter(|o| o.status == STATUS_ACTIVE)
         .map(|o| (o.objective_id, o.optional))
         .collect();
     crate::cell::playtest_friction::objectives_never_completed(
@@ -313,13 +381,16 @@ pub async fn complete_mission_direct(
         &never_completed,
     );
 
-    // Complete all objectives
-    let objective_ids: Vec<i32> = mission
+    // Complete all objectives. The flags ride along so the wire frames
+    // below can report them (the client renders optional objectives
+    // differently); they are captured before the mutation because
+    // `complete_objective` borrows the instance mutably.
+    let objectives: Vec<(i32, bool, bool)> = mission
         .active_objectives
         .iter()
-        .map(|o| o.objective_id)
+        .map(|o| (o.objective_id, o.hidden, o.optional))
         .collect();
-    for oid in &objective_ids {
+    for (oid, _, _) in &objectives {
         mission.complete_objective(*oid);
     }
     mission.complete();
@@ -334,12 +405,12 @@ pub async fn complete_mission_direct(
     );
 
     // Send objective updates
-    for oid in &objective_ids {
+    for (oid, hidden, optional) in &objectives {
         let mut args = Vec::with_capacity(7);
         args.extend_from_slice(&oid.to_le_bytes());
         args.push(STATUS_COMPLETED as u8);
-        args.push(0); // hidden
-        args.push(0); // optional
+        args.push(u8::from(*hidden));
+        args.push(u8::from(*optional));
         let _ = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,

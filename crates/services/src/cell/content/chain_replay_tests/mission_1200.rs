@@ -489,12 +489,14 @@ async fn world_entry_chains_paint_exactly_the_active_step() {
 /// does not carry, because Anat's topic must come back until the mission
 /// is over while Ba'al's must not be re-offered once taken.
 ///
-/// **Pending H50**: like the 742 basket restores, this chain's
-/// `objective_status` gate cannot be satisfied by a real post-relog
-/// context today — objective ids never reach the database. The
-/// assertion below pins the intended semantics; the defect itself is
-/// pinned by `objective_params_do_not_survive_the_production_hydration_
-/// shape` in `mission_742.rs`.
+/// **H50 landed 2026-09-19**: this chain's `objective_status` gate is
+/// now satisfiable from a real post-relog context. 5399 round-trips
+/// through `sgw_mission` and comes back `hidden` + `optional` from
+/// `resources.mission_objectives`; see
+/// `optional_and_hidden_flags_survive_a_relog` in
+/// [`super::mission_relog_persistence`], which drives 1200 step 3585
+/// through the whole loop. The assertions below stay hand-seeded so they
+/// test this chain's gate in isolation.
 #[tokio::test]
 async fn chain_6127_restores_baals_advice_only_while_it_is_outstanding() {
     let pool = require_db_or_skip!();

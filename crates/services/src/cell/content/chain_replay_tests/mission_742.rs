@@ -29,14 +29,15 @@
 //!    including the `available_interactions[43]` disjointness argument
 //!    that gate exists to guarantee.
 //!
-//! **Pending H50.** Every `objective_status`-gated assertion below seeds
-//! the objective params by hand, which is what a *live* dispatch does
-//! only within one session: objective ids never reach the database
-//! (seed-file header, "KNOWN BLOCKER"), so after a relog the production
-//! context carries none of them. `objective_params_do_not_survive_the_
-//! production_hydration_shape` pins that defect deliberately, and is the
-//! test that must be inverted when H50 lands. The basket relog-restore
-//! acceptance for step 2504 is NOT claimed by this module.
+//! **H50 landed 2026-09-19.** Most `objective_status`-gated assertions
+//! below still seed the objective params by hand, for isolation: each
+//! one is testing its own chain's gate, not the persistence layer. That
+//! the params are now *reachable* for a relogged player is proved by
+//! `hydrated_step_2504_carries_the_objective_params_and_lights_chain_6104`,
+//! which drives the real hydration path, and end to end (executor ->
+//! `MissionUpdate` -> hydration -> context) by
+//! [`super::mission_relog_persistence`]. The basket relog-restore
+//! acceptance for step 2504 is claimed as of this change.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};
@@ -1224,44 +1225,67 @@ async fn no_goauld_chain_addresses_the_hostile_petbe_template() {
     }
 }
 
-// ── 5. H50 defect pin ───────────────────────────────────────────────
+// ── 5. H50: the hydrated context ─────────────────────────
 
-/// **Pins a known defect so the fix is forced to come back here.**
+/// **Inverted 2026-09-19 when H50 landed.** This test used to pin the
+/// defect: it hand-built the instance `player_init` produced, asserted
+/// the objective params were MISSING, and told the next reader to invert
+/// it. The three halves of the fix (objective ids in
+/// `active_objective_ids`, a `MissionUpdate` from the
+/// `complete_objective` arm, and def-driven hydration that carries
+/// `hidden`/`optional`) make all three assertions flip.
 ///
-/// Every `objective_status` assertion above seeds
-/// `mission_742_obj_<id>_status` by hand. Production can only produce
-/// those keys from `MissionInstance.active_objectives` /
-/// `.completed_objectives` — and after a relog those hold the STEP id,
-/// not the objective ids, because `executor/mission.rs:84-85` and
-/// `:241-242` persist `active_objective_ids: vec![step_id]` and
-/// `player_init/mod.rs:172-188` hydrates straight back from that array.
+/// What it guards now: the *production* hydration path rebuilds step
+/// 2504's roster, so the `objective_status` gates every other assertion
+/// in this module seeds by hand are reachable for a real relogged
+/// player, and chain 6104 is live rather than dead.
 ///
-/// This test reconstructs the hydrated shape exactly as `player_init`
-/// builds it and asserts the objective keys are MISSING, then that chain
-/// 6104 is consequently inert. That is the current, wrong behaviour.
-///
-/// **When H50 lands, invert this test**: the hydrated instance will carry
-/// 2913/2914/2915, the params will be present, and chain 6104 will
-/// resolve — at which point the basket relog-restore acceptance
-/// (chains 6113-6115) can be claimed for the first time.
+/// The end-to-end loop — executor arm through `MissionUpdate` through
+/// hydration through `populate_mission_context` — lives in
+/// [`super::mission_relog_persistence`]. This one stays here because it
+/// is 742's own claim on the basket relog-restore acceptance, which the
+/// module header used to disclaim.
 #[tokio::test]
-async fn objective_params_do_not_survive_the_production_hydration_shape() {
-    use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE};
+async fn hydrated_step_2504_carries_the_objective_params_and_lights_chain_6104() {
+    use crate::cell::messages::SavedMission;
+    use crate::cell::service::base_messages::player_init::mission_restore::build_restored_missions;
+    use crate::cell::space_manager::SpaceManager;
+    use crate::cell::spawner::{load_mission_defs, load_step_objectives};
+    use cimmeria_entity::missions::MISSION_ACTIVE;
 
     let pool = require_db_or_skip!();
 
-    // What `player_init` reconstructs for a player saved mid-step-2504:
-    // `active_objective_ids` contains the step id and nothing else.
-    let hydrated = MissionInstance::new(
-        742,
-        2504,
-        vec![MissionObjective {
-            objective_id: 2504,
-            status: STATUS_ACTIVE,
-            hidden: false,
-            optional: false,
-        }],
-    );
+    // The real caches: hydration reconstructs the roster from
+    // `resources.mission_objectives`, so hand-seeding them here would
+    // make the test agree with itself — which is what the pinned
+    // version did.
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Harset" Instanced="false" MinX="-1200" MaxX="1200" MinY="-1200" MaxY="1200" /></Spaces>"#;
+    let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Harset" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(cxml).unwrap();
+    mgr.mission_defs = load_mission_defs(&pool).await.unwrap();
+    mgr.step_objectives = load_step_objectives(&pool).await.unwrap();
+
+    // Deliberately the PRE-H50 row: `active_objective_ids` holding the
+    // step id is what every row written before this fix contains, and
+    // the repo does no DB migrations. If this test seeded the post-fix
+    // array instead it would pass under a reverted hydration too — the
+    // same self-agreement that let the old pin survive.
+    let saved = SavedMission {
+        mission_id: 742,
+        status: MISSION_ACTIVE,
+        current_step_id: Some(2504),
+        completed_step_ids: vec![2502, 2503],
+        completed_objective_ids: vec![],
+        active_objective_ids: vec![2504],
+        failed_objective_ids: vec![],
+        repeats: 0,
+    };
+    let hydrated = build_restored_missions(&[saved], &mgr)
+        .into_iter()
+        .next()
+        .expect("one saved row hydrates to one instance");
 
     let mut ctx = ExecutionContext::new();
     ctx.world_id = Some(HARSET);
@@ -1282,18 +1306,23 @@ async fn objective_params_do_not_survive_the_production_hydration_shape() {
         );
     }
 
+    for (_, own, _, _) in BASKETS.iter().map(|b| (b.0, b.1, b.2, b.3)) {
+        assert!(
+            ctx.params
+                .contains_key(&format!("mission_742_obj_{own}_status")),
+            "objective {own} must survive hydration — the whole basket              mechanism is gated on `objective_status`",
+        );
+    }
     assert!(
-        !ctx.params.contains_key("mission_742_obj_2913_status"),
-        "H50 has landed: objective 2913 now survives hydration. Invert this \
-         test, drop the `pending H50` note from worknotes/H41.md, and claim \
-         the basket relog-restore acceptance via chains 6113-6115."
+        !ctx.params.contains_key("mission_742_obj_2504_status"),
+        "the STEP id must not come back as a pseudo-objective",
     );
 
     let engine = engine_with(&pool, 6104).await;
     let resolved = fire(&engine, TriggerType::InteractTag, &ctx);
-    assert!(
-        actions_of(&resolved, 6104).is_empty(),
-        "chain 6104 resolved against a hydrated context — H50 is fixed, so \
-         invert this test"
+    assert_eq!(
+        actions_of(&resolved, 6104).len(),
+        2,
+        "chain 6104 must resolve against a hydrated context — pre-H50 it          was inert for every relogged player",
     );
 }

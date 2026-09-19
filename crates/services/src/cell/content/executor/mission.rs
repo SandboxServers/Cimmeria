@@ -9,18 +9,6 @@ use cimmeria_entity::missions::{MissionObjective, STATUS_ACTIVE};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-/// Look up a mission's current `repeats` count from the cell-side player
-/// instance. Returns 0 when the entity or mission isn't tracked — the cell
-/// is the authoritative source for this value, so a missing entry means
-/// "no completions yet" and 0 is the correct default.
-fn mission_repeats(space_mgr: &SpaceManager, entity_id: u32, mission_id: i32) -> i32 {
-    space_mgr
-        .get_entity(entity_id)
-        .and_then(|e| e.missions.get_mission(mission_id))
-        .map(|m| m.repeats)
-        .unwrap_or(0)
-}
-
 /// `Action::AcceptMission` and `Action::AdvanceMission` — identical handling
 /// (insert/refresh the mission instance, persist via `MissionUpdate`, fire
 /// the `mission_accepted` follow-up event).
@@ -70,30 +58,14 @@ pub(super) async fn accept_or_advance(
             );
             return;
         }
-        // Read repeats AFTER the helper runs — for a re-accept of
-        // a previously-completed repeatable mission, the count
-        // restored from DB is what should round-trip back, not 0.
-        let repeats = mission_repeats(space_mgr, entity_id, mission_id);
-        if let Err(e) = tx
-            .send(CellToBaseMsg::MissionUpdate {
-                player_id,
-                mission_id,
-                status: 1,
-                current_step_id: Some(step_id),
-                completed_step_ids: vec![],
-                completed_objective_ids: vec![],
-                active_objective_ids: vec![step_id],
-                failed_objective_ids: vec![],
-                repeats,
-            })
-            .await
-        {
-            tracing::error!(
-                entity_id, player_id, mission_id, step_id,
-                chain_id, error = %e,
-                "MissionUpdate (accept) send to base failed -- mission progress not persisted"
-            );
-        }
+        // Serialized from the live instance AFTER the helper runs, so
+        // the row carries the real objective ids (and, for a re-accept
+        // of a previously-completed repeatable mission, the `repeats`
+        // count restored from DB rather than 0).
+        crate::cell::missions::send_mission_update(
+            entity_id, player_id, mission_id, "accept", tx, space_mgr,
+        )
+        .await;
         // Fire the follow-up `mission_accepted` event so chains
         // tied to mission start can run their setup work
         // (e.g., chain 1097 highlighting Cellblock_WoodenCrate
@@ -159,28 +131,15 @@ pub(super) async fn complete(
     let transitioned_from_active = prior_status == Some(MISSION_ACTIVE);
 
     crate::cell::missions::complete_mission_direct(entity_id, mission_id, tx, space_mgr).await;
-    // Read repeats AFTER complete_mission_direct so we capture
-    // the post-bump value (`MissionInstance::complete` increments).
-    let repeats = mission_repeats(space_mgr, entity_id, mission_id);
-    if let Err(e) = tx
-        .send(CellToBaseMsg::MissionUpdate {
-            player_id,
-            mission_id,
-            status: 2,
-            current_step_id: None,
-            completed_step_ids: vec![],
-            completed_objective_ids: vec![],
-            active_objective_ids: vec![],
-            failed_objective_ids: vec![],
-            repeats,
-        })
-        .await
-    {
-        tracing::error!(
-            entity_id, player_id, mission_id, chain_id, error = %e,
-            "MissionUpdate (complete) send to base failed -- mission completion not persisted"
-        );
-    }
+    // Serialized AFTER complete_mission_direct so we capture the
+    // post-bump `repeats` (`MissionInstance::complete` increments), the
+    // completed step and the now-completed objectives — a chain gated on
+    // `objective_status <m> <o> eq completed` must still match once the
+    // mission itself is done.
+    crate::cell::missions::send_mission_update(
+        entity_id, player_id, mission_id, "complete", tx, space_mgr,
+    )
+    .await;
     // Fire the `mission_completed` chain-engine event only when the
     // mission was MISSION_ACTIVE before this call — that's the only
     // legitimate transition into MISSION_COMPLETED. Already-completed,
@@ -230,27 +189,20 @@ pub(super) async fn advance_step(
         "Content: advancing step"
     );
     crate::cell::missions::advance_step(entity_id, mission_id, step_id, tx, space_mgr).await;
-    let repeats = mission_repeats(space_mgr, entity_id, mission_id);
-    if let Err(e) = tx
-        .send(CellToBaseMsg::MissionUpdate {
-            player_id,
-            mission_id,
-            status: 1,
-            current_step_id: Some(step_id),
-            completed_step_ids: vec![],
-            completed_objective_ids: vec![],
-            active_objective_ids: vec![step_id],
-            failed_objective_ids: vec![],
-            repeats,
-        })
-        .await
-    {
-        tracing::error!(
-            entity_id, player_id, mission_id, step_id,
-            chain_id, error = %e,
-            "MissionUpdate (advance step) send to base failed -- step progress not persisted"
-        );
-    }
+    // `advance_step` completes the old step's objectives and swaps in the
+    // new step's, so the serialized arrays must be read back afterwards:
+    // the old objectives survive only in `completed_objective_ids` (what
+    // `objective_status 688 2734 eq completed` reads post-relog) and the
+    // completed step id survives only in `completed_step_ids`.
+    crate::cell::missions::send_mission_update(
+        entity_id,
+        player_id,
+        mission_id,
+        "advance_step",
+        tx,
+        space_mgr,
+    )
+    .await;
 }
 
 /// `Action::AbandonMission` — drop the mission from the player's tracker.
@@ -271,13 +223,23 @@ pub(super) async fn abandon(
 }
 
 /// `Action::CompleteObjective` — mark a single objective complete.
+///
+/// Persists the result. Pre-H50 this arm sent no `MissionUpdate` at all:
+/// objective completion was a client checkmark plus in-memory cell state,
+/// and a relog reverted it. Exactly one `MissionUpdate` is emitted, built
+/// from the instance *after* the call — `cell::missions::complete_objective`
+/// auto-completes the mission when every required objective is done, and
+/// in that case the same message carries `status = 2` and the bumped
+/// `repeats` rather than needing a second send.
 pub(super) async fn complete_objective(
     mission_id: i32,
     objective_id: i32,
     entity_id: u32,
+    player_id: i32,
     chain_id: i64,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) {
     tracing::info!(
         entity_id,
@@ -286,8 +248,70 @@ pub(super) async fn complete_objective(
         chain_id,
         "Content: complete objective"
     );
-    crate::cell::missions::complete_objective(entity_id, mission_id, objective_id, tx, space_mgr)
+    // Snapshot before the call so the auto-complete branch inside
+    // `cell::missions::complete_objective` (all required objectives done
+    // → `MissionInstance::complete`) can be detected here. Same shape as
+    // `complete`'s `transitioned_from_active`.
+    use cimmeria_entity::missions::{MISSION_ACTIVE, MISSION_COMPLETED};
+    let prior_status = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.missions.get_mission(mission_id))
+        .map(|m| m.status);
+
+    let mutated = crate::cell::missions::complete_objective(
+        entity_id,
+        mission_id,
+        objective_id,
+        tx,
+        space_mgr,
+    )
+    .await;
+    if !mutated {
+        // The helper already logged why. Persisting here would write the
+        // unchanged state back — harmless for the row, but it would make
+        // a regression guard unable to tell a live executor arm from a
+        // dead one.
+        return;
+    }
+    crate::cell::missions::send_mission_update(
+        entity_id,
+        player_id,
+        mission_id,
+        "complete_objective",
+        tx,
+        space_mgr,
+    )
+    .await;
+
+    // The auto-complete branch flips the mission to COMPLETED and bumps
+    // `repeats` but historically fired no `mission_completed` event —
+    // invisible while nothing persisted, player-bricking now that it
+    // does: the saved row would say "completed at the repeat cap" while
+    // the follow-on chains (auto-accept of the next mission, reward
+    // grants) never ran, and the offer guard would refuse a re-accept.
+    let now_status = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.missions.get_mission(mission_id))
+        .map(|m| m.status);
+    if prior_status == Some(MISSION_ACTIVE) && now_status == Some(MISSION_COMPLETED) {
+        tracing::info!(
+            entity_id,
+            mission_id,
+            objective_id,
+            chain_id,
+            "Content: final required objective completed the mission — firing mission_completed"
+        );
+        crate::cell::content::event_dispatch::fire_mission_completed(
+            entity_id, player_id, mission_id, engine, tx, space_mgr,
+        )
         .await;
+
+        let character_name = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.character_name.clone())
+            .unwrap_or_else(|| format!("entity:{entity_id}"));
+        cimmeria_discord::emit_mission_completed(character_name, mission_id, None);
+    }
 }
 
 #[cfg(test)]
@@ -304,6 +328,12 @@ mod offer_guard_tests {
     use cimmeria_entity::missions::{MissionInstance, MISSION_COMPLETED};
     use tokio::sync::mpsc;
 
+    /// Mission 622's real first step is 2113; the two objective ids are
+    /// stand-ins, chosen so `active_objective_ids` can never be confused
+    /// with the step id (the H50 bug wrote 2113 into that array).
+    const OBJ_A: i32 = 9001;
+    const OBJ_B: i32 = 9002;
+
     fn make_mgr_with_def() -> SpaceManager {
         let mut mgr = SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
@@ -314,7 +344,18 @@ mod offer_guard_tests {
             622,
             MissionDefEntry {
                 step_id: 2113,
-                objectives: vec![],
+                objectives: vec![
+                    crate::cell::spawner::MissionObjectiveDef {
+                        objective_id: OBJ_A,
+                        is_hidden: false,
+                        is_optional: false,
+                    },
+                    crate::cell::spawner::MissionObjectiveDef {
+                        objective_id: OBJ_B,
+                        is_hidden: true,
+                        is_optional: true,
+                    },
+                ],
                 is_hidden: false,
                 num_repeats: 1,
                 can_repeat_on_fail: true,
@@ -396,8 +437,11 @@ mod offer_guard_tests {
     /// Happy-path companion pinning the success contract: a fresh accept
     /// still persists exactly one `MissionUpdate` with status=1. Guards
     /// against the refusal gate accidentally swallowing legitimate accepts.
+    ///
+    /// Also the executor-level guard for the H50 headline fix: the
+    /// objective array must carry the OBJECTIVE ids, never the step id.
     #[tokio::test]
-    async fn fresh_accept_still_persists_mission_update() {
+    async fn fresh_accept_persists_mission_update_with_the_objective_ids() {
         let mut mgr = make_mgr_with_def();
         mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
         let engine = ChainEngine::new();
@@ -410,6 +454,39 @@ mod offer_guard_tests {
             mission_updates(&msgs),
             vec![1],
             "fresh accept must persist exactly one MissionUpdate(status=1)"
+        );
+
+        let update = msgs
+            .iter()
+            .find_map(|m| match m {
+                CellToBaseMsg::MissionUpdate {
+                    active_objective_ids,
+                    completed_objective_ids,
+                    current_step_id,
+                    ..
+                } => Some((
+                    active_objective_ids.clone(),
+                    completed_objective_ids.clone(),
+                    *current_step_id,
+                )),
+                _ => None,
+            })
+            .expect("a MissionUpdate must be present");
+        assert_eq!(
+            update.0,
+            vec![OBJ_A, OBJ_B],
+            "active_objective_ids must hold the step's OBJECTIVE ids — pre-H50 \
+             this array held the step id (2113), so nothing objective-shaped \
+             ever reached sgw_mission",
+        );
+        assert!(
+            update.1.is_empty(),
+            "a fresh accept has completed nothing yet"
+        );
+        assert_eq!(
+            update.2,
+            Some(2113),
+            "the step id belongs in current_step_id"
         );
     }
 }

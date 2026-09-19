@@ -62,6 +62,10 @@
 - [npc-range-gate-and-weapon-range-columns.md](npc-range-gate-and-weapon-range-columns.md) — **read before inventing any NPC range number.** `resources.items` has four range columns and both `NPC_ATTACK_RANGE`/`NPC_MELEE_RANGE` derive from them; range is gated in TWO places and `handle_use_ability`'s is still melee-blind (player path); 148 melee abilities carry bogus `max_range` 100-2500; layered-selector pattern for adding a filter without touching existing tests.
 - [npc-ai-fight-test-fixtures.md](npc-ai-fight-test-fixtures.md) — `make_ai_fixture` has NO navmesh, so `find_path` returns `None` and a chase cannot be asserted via `nav_path`; assert the arm's INFO log instead. `SpawnRecord` has no `Default`.
 
+## Mission persistence
+
+- [mission-persist-hydrate-roundtrip.md](mission-persist-hydrate-roundtrip.md) — **read before touching mission save/restore.** One serializer (`missions/persist.rs`) + one hydrator (`player_init/mission_restore.rs`); the roster is rebuilt from `resources.mission_objectives` (self-heals pre-#657 rows, and there are NO migrations); `complete_objective` returns bool so a no-op cannot fake a live executor arm; the hand-built-fixture trap that let #657 survive.
+
 ## Stats / entity systems
 
 - [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat existing in `StatList` + `PUBLIC_STATS` + the AoI create payload does NOT mean anything reads it (`MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` had zero server-side consumers until P47); plus the reject-don't-clamp GM-setter precedent and the canonical mutate→serialize_dirty→clear_dirty→`send_entity_method` publication pattern.

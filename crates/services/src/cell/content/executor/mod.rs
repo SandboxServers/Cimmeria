@@ -452,9 +452,11 @@ async fn execute_one(
                 mission_id,
                 objective_id,
                 entity_id,
+                player_id,
                 chain_id,
                 tx,
                 space_mgr,
+                engine,
             )
             .await;
         }

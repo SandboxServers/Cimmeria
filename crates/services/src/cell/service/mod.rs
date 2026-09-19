@@ -17,7 +17,10 @@ use cimmeria_common::ServerConfig;
 
 use super::messages::{BaseToCellMsg, CellToBaseMsg};
 
-mod base_messages;
+// `pub(crate)` so the mission-relog chain-replay guards can drive the
+// real `player_init::mission_restore` hydration instead of a hand-built
+// replica of it (Harset H50). Nothing outside the crate sees it.
+pub(crate) mod base_messages;
 mod message_loop;
 // `pub(in crate::cell)` rather than private so the Harset H09 live-DB guard in
 // `cell/spawner/tests/harset/ability_sets.rs` can reach `choose_npc_ability`.
