@@ -25,11 +25,14 @@ mod deferred_content_actions;
 mod entities;
 mod gate_dial_state;
 mod lifecycle;
+mod movement_telemetry;
 mod navmesh_mode;
 mod queries;
 mod spatial;
 mod spawn;
 mod xml;
+
+pub(crate) use movement_telemetry::{MovementTelemetry, RejectReport};
 
 #[cfg(test)]
 mod tests;
@@ -258,6 +261,14 @@ pub struct SpaceManager {
     /// per-entity server-clock sample for the speed/teleport layer; that
     /// state is released in `destroy_entity` via `forget`.
     pub movement_validator: MovementValidator,
+    /// Per-entity observability state for the movement path: the
+    /// reject-log and NPC-path-failure throttles, and the last accepted
+    /// position sample. Purely a reporting aid — nothing here changes
+    /// what is accepted. Released in `destroy_entity` alongside
+    /// `movement_validator.forget`, so it cannot outlive the entity
+    /// population. See
+    /// [`movement_telemetry`] for why each piece exists.
+    pub(crate) movement_telemetry: MovementTelemetry,
     /// Cover-system service handle. Loaded from `resources.cover_sets` +
     /// `resources.cover_nodes` at startup; carries the spatial index,
     /// reservation table, and per-set metadata. See
@@ -354,6 +365,7 @@ impl SpaceManager {
             ring_transporters: super::ring_transport::RingTransporterManager::new(),
             pending_ai_retries: std::collections::HashSet::new(),
             movement_validator: MovementValidator::new(),
+            movement_telemetry: MovementTelemetry::default(),
             cover: super::cover::Cover::empty(),
             cover_detection: super::cover::CoverDetectionTable::new(),
             authoring_changes: HashMap::new(),

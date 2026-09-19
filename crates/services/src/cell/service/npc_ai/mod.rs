@@ -32,6 +32,8 @@
 //! - [`leash`] — leash recovery (snap home + heal).
 //! - [`lifecycle`] — the terminal / quiescent states (despawn,
 //!   submit, error).
+//! - [`path_failure`] — the one throttled emitter every state above
+//!   uses when `find_path` gives it nothing usable.
 
 mod ability_select;
 mod dispatch;
@@ -40,6 +42,7 @@ mod follow;
 mod investigate;
 mod leash;
 mod lifecycle;
+mod path_failure;
 mod patrol;
 mod wander;
 

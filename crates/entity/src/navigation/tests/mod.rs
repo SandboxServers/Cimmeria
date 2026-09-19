@@ -2,8 +2,27 @@
 //! hostile-`.nav`-header regression guards that exercise the loader's
 //! per-section bounds checks. The pure-helper widening/log guards for
 //! the XRC reader live alongside the helpers in [`super::xrc`].
+//!
+//! The containment-diagnosis guards ([`super::NavMesh::diagnose_point`])
+//! live in [`diagnose`].
+
+mod diagnose;
 
 use super::*;
+
+/// Every fixture-backed test in this module and [`diagnose`] anchors on
+/// the real `castle_cellblock` mesh, which is not in a fresh CI
+/// checkout — the repo-standard `if !path.exists() { return; }` skip.
+pub(super) const FIXTURE: &str = "../../data/spaces/castle_cellblock.nav";
+
+/// A position known to be on the walkable surface of `castle_cellblock`
+/// — the guard spawn point, used by every geometry assertion in this
+/// module since the mesh was first loaded. Chosen over a poly index or
+/// a vertex count because it survives a mesh rebuild: the guard still
+/// has to stand somewhere walkable.
+pub(super) fn guard_spawn() -> Vector3 {
+    Vector3::new(-289.465, 68.542, -154.276)
+}
 
 #[test]
 fn load_castle_cellblock_nav() {
