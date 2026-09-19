@@ -112,3 +112,37 @@ const GM_ACCESS_LEVEL: u32 = 2;
 pub(crate) fn is_gm(access_level: u32) -> bool {
     access_level >= GM_ACCESS_LEVEL
 }
+
+/// Public, owned description of one registered `.`-console command. Exposed so
+/// out-of-crate callers — the live-research-lab MCP `server_console_list` tool
+/// (issue #687) — can enumerate the registry without touching the crate-private
+/// [`Spec`]/[`COMMANDS`]/[`registry::Target`] types.
+#[derive(Debug, Clone)]
+pub struct CommandInfo {
+    /// Command name as typed after the `.` (e.g. `"spawn"`).
+    pub name: String,
+    /// Minimum positional argument count.
+    pub min_args: usize,
+    /// Maximum positional argument count; `None` means unbounded.
+    pub max_args: Option<usize>,
+    /// Required selected-target type (human label, e.g. `"a player"`).
+    pub target: String,
+    /// One-line summary (the `.help` text).
+    pub help: String,
+}
+
+/// Enumerate every registered `.`-console command, in `.help` order. The single
+/// source of truth is the same [`COMMANDS`] table the in-world console
+/// dispatches from, so the two can never drift.
+pub fn command_catalog() -> Vec<CommandInfo> {
+    COMMANDS
+        .iter()
+        .map(|s| CommandInfo {
+            name: s.name.to_string(),
+            min_args: s.min,
+            max_args: (s.max != usize::MAX).then_some(s.max),
+            target: s.target.label().to_string(),
+            help: s.help.to_string(),
+        })
+        .collect()
+}

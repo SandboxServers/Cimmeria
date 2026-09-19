@@ -1,0 +1,24 @@
+[package]
+name = "cimmeria-lab-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "In-server MCP endpoint for the Cimmeria live research lab"
+
+[dependencies]
+# MCP over streamable HTTP. `server` (default) pulls schemars + the tool
+# macros; `transport-streamable-http-server` adds the tower service + local
+# session manager we nest into our own axum router.
+rmcp = { version = "3", features = ["server", "macros", "transport-streamable-http-server"] }
+
+tokio = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+
+# The running-server handles the tools reach through.
+cimmeria-services = { workspace = true }
+# The recent-log ring buffer (`LogBuffer`) that `server_log_tail` reads.
+cimmeria-admin-api = { workspace = true }

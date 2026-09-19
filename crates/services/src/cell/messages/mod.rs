@@ -13,7 +13,7 @@ mod base_to_cell;
 mod cell_to_base;
 mod data;
 
-pub use base_to_cell::BaseToCellMsg;
+pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};
 pub use cell_to_base::CellToBaseMsg;
 pub use data::{MailOp, NpcAoIData, SavedMission};
 

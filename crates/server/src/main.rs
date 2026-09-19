@@ -32,6 +32,8 @@
 //! | `OTEL_RESOURCE_ATTRIBUTES` | unset | Comma-separated `k=v` resource attrs piped onto every span. Common: `deployment.environment=colo,service.namespace=cimmeria`. Note: `deployment.environment` is also defaulted from `CIMMERIA_DEPLOY_ENV` below; this env var overrides it via the SDK's resource merge. |
 //! | `OTEL_TRACES_SAMPLER` | `always_on` | `always_on`, `always_off`, or `traceidratio` with `OTEL_TRACES_SAMPLER_ARG`. |
 //! | `CIMMERIA_DEPLOY_ENV` | `dev` | Sets `deployment.environment` on every span/log/metric resource. Typical values: `dev`, `staging`, `colo`. SigNoz dashboards split aggregates on this so colo production data isn't polluted by dev-laptop noise. |
+//! | `CIMMERIA_LAB_MCP_BIND` | unset | Bind address for the live-research-lab MCP endpoint (issue #687), e.g. `127.0.0.1:8451`. **No default** — the endpoint stays OFF unless this *and* `CIMMERIA_LAB_MCP_TOKEN` are both set. It runs on its OWN `TcpListener`, never on the admin API router (which binds all interfaces with no auth). Keep it off player-facing interfaces. |
+//! | `CIMMERIA_LAB_MCP_TOKEN` | unset | Shared bearer token for the lab MCP endpoint. Must be **≥32 bytes** or the endpoint logs an error and refuses to start. Every request must present `Authorization: Bearer <token>` (constant-time compared). |
 //!
 //! # Example
 //!
@@ -169,6 +171,9 @@ async fn main() {
     }
 
     // Start the admin API (REST + WebSocket) on the configured port.
+    // Clone the log ring for the lab MCP endpoint before it moves into the
+    // admin router below.
+    let lab_log_buffer = log_buffer.clone();
     let admin_router = cimmeria_admin_api::build_router(
         Arc::clone(&orch),
         log_tx.clone(),
@@ -193,6 +198,15 @@ async fn main() {
             tracing::error!("Admin API server error: {e}");
         }
     });
+
+    // Start the live-research-lab MCP endpoint on its OWN listener (issue
+    // #687). Fail-closed: it starts only when CIMMERIA_LAB_MCP_BIND and
+    // CIMMERIA_LAB_MCP_TOKEN are both set and the token is >=32 bytes. It is
+    // deliberately NOT mounted on the admin router — that binds 0.0.0.0 with
+    // no auth and is published to players (#439). Returns None (logged) when
+    // disabled/refused/bind-failed; the JoinHandle is held only to keep the
+    // task alive for the process lifetime.
+    let _lab_mcp = cimmeria_lab_mcp::spawn_if_configured(Arc::clone(&orch), lab_log_buffer).await;
 
     tracing::info!("Server ready. Press Ctrl-C to stop.");
 
