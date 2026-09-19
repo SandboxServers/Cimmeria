@@ -121,6 +121,7 @@ fn castle_interior_chunk_coverage_and_axis_mapping() {
             index: Some(&index),
             chunk_filter: Some(CHUNK),
             combined_obj: None,
+            ..Default::default()
         },
     )
     .expect("extract_map_with_report");

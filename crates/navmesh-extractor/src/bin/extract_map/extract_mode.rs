@@ -26,6 +26,7 @@ pub(crate) fn run(args: ExtractArgs) -> Result<(), Box<dyn std::error::Error>> {
             index: Some(&index),
             chunk_filter: args.chunk_filter.as_deref(),
             combined_obj: args.combined.as_deref(),
+            ..Default::default()
         },
     )?;
 

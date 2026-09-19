@@ -91,10 +91,16 @@ fn floor_quad(x0: f32, y0: f32, x1: f32, y1: f32, z0: f32, z1: f32) -> [[[f32; 3
     [[a, c, b], [a, d, c]]
 }
 
-/// Convert a UE3 centimetre vertex into the OBJ column order NavBuilder
-/// expects. This is the single line that has to change in
-/// `crates/navmesh-extractor/src/obj.rs`.
-fn ue3_to_obj(v: [f32; 3]) -> [f32; 3] {
+/// The soup convention the extractor really uses: raw UE3 centimetres.
+/// `obj::write_obj_into` owns the Y/Z column swap NavBuilder needs.
+fn raw_ue3(v: [f32; 3]) -> [f32; 3] {
+    v
+}
+
+/// Pre-swap Y and Z so the writer's own swap cancels out and the file on
+/// disk carries raw UE3 column order — what `obj.rs` emitted before the
+/// convention was pinned. Exists only to keep the failure shape guarded.
+fn cancels_writer_swap(v: [f32; 3]) -> [f32; 3] {
     [v[0], v[2], v[1]]
 }
 
@@ -113,8 +119,9 @@ fn fixture_soup(convention: fn([f32; 3]) -> [f32; 3]) -> TriangleSoup {
     soup
 }
 
-/// Write the soup the way `obj::write_obj_into` does, then fix the line
-/// endings.
+/// Write the soup exactly as `obj::write_obj_into` does (Y/Z-swapped,
+/// CRLF); `crlf = false` downgrades the line endings to reproduce the
+/// face-dropping failure.
 ///
 /// NavBuilder's face parser loops `while (pos < line.length() - 1)`
 /// (`mesh.cpp:115`), so the last token on an `f` line needs one trailing
@@ -126,10 +133,14 @@ fn write_obj(path: &Path, soup: &TriangleSoup, crlf: bool) {
     let mut buf = Vec::new();
     write_obj_into(&mut buf, std::slice::from_ref(soup)).expect("write_obj_into");
     let text = String::from_utf8(buf).expect("obj is ascii");
+    assert!(
+        text.contains("\r\n"),
+        "obj::write_obj_into must emit CRLF — NavBuilder drops faces otherwise"
+    );
     let out = if crlf {
-        text.replace('\n', "\r\n")
-    } else {
         text
+    } else {
+        text.replace("\r\n", "\n")
     };
     std::fs::write(path, out).expect("write obj");
 }
@@ -182,7 +193,7 @@ fn navbuilder_maps_ue3_cm_to_bigworld_metres() {
         return;
     }
 
-    let nav = build(&exe, "swizzled", ue3_to_obj, true)
+    let nav = build(&exe, "swizzled", raw_ue3, true)
         .expect("NavBuilder produced no .nav for the swizzled fixture");
     let graph = NavGraph::from_nav(&nav);
 
@@ -262,8 +273,9 @@ fn navbuilder_maps_ue3_cm_to_bigworld_metres() {
     );
 }
 
-/// The raw-UE3 emission `obj.rs` ships today puts UE3's up-axis on BW x.
-/// NavBuilder then finds no upward-facing triangle and writes an
+/// Raw-UE3 column order on disk (what `obj.rs` emitted before the swap
+/// landed) puts UE3's up-axis on BW x. NavBuilder then finds no
+/// upward-facing triangle and writes an
 /// **empty but structurally valid** `.nav` — the exact silent failure the
 /// swizzle test above exists to prevent regressing into.
 #[test]
@@ -276,8 +288,8 @@ fn raw_ue3_column_order_yields_an_empty_navmesh() {
         );
         return;
     }
-    let nav =
-        build(&exe, "raw", |v| v, true).expect("NavBuilder writes a header even with 0 polys");
+    let nav = build(&exe, "raw", cancels_writer_swap, true)
+        .expect("NavBuilder writes a header even with 0 polys");
     assert_eq!(
         nav.npolys, 0,
         "raw UE3 column order should rasterise the floor as a vertical wall"
@@ -301,8 +313,8 @@ fn lf_line_endings_drop_faces() {
         );
         return;
     }
-    let crlf = build(&exe, "crlf", ue3_to_obj, true).expect("crlf build");
-    let lf = build(&exe, "lf", ue3_to_obj, false).expect("lf build");
+    let crlf = build(&exe, "crlf", raw_ue3, true).expect("crlf build");
+    let lf = build(&exe, "lf", raw_ue3, false).expect("lf build");
     assert!(crlf.npolys > 0 && lf.npolys > 0);
     assert!(
         lf.npolys < crlf.npolys,

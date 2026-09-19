@@ -26,9 +26,9 @@
 //!
 //! This crate currently ships **Phase 0 (.nav round-trip smoke)**, the
 //! **Phase 1.1 scaffolding** (module skeleton + chunk-position decoding),
-//! and **Phase 1.2 (StaticMesh + StaticMeshActor extraction)**. Phase
-//! 1.3 (Terrain decode) lands in a follow-up change — its module hook
-//! is wired into [`extract_map`] as a `// TODO:` marker.
+//! **Phase 1.2 (StaticMesh + StaticMeshActor extraction)** and
+//! **Phase 1.3 (Terrain decode, holes honoured)**. Phase 1.4 (BSP
+//! `Model`) lands in a follow-up change.
 
 pub mod chunk_id;
 pub mod coverage;
@@ -108,8 +108,9 @@ pub type Result<T> = std::result::Result<T, ExtractError>;
 ///
 /// # Phase status
 ///
-/// Ships **Phase 1.2 (StaticMesh extraction)**. Phase 1.3 (Terrain) is
-/// still a `// TODO:` marker inside the per-chunk loop.
+/// Ships **Phase 1.2 (StaticMesh extraction)** and **Phase 1.3
+/// (Terrain)**. Terrain needs no index, so degraded mode still emits
+/// the ground.
 pub fn extract_map(
     map_dir: &Path,
     output_dir: &Path,
@@ -154,6 +155,10 @@ pub struct ExtractOptions<'a> {
     /// [`extract_map_with_report`] rejects a path inside `output_dir`
     /// rather than let that happen silently.
     pub combined_obj: Option<&'a Path>,
+    /// Leave `Terrain` exports out of the OBJs. Default `false`. Only
+    /// useful for measuring one geometry source in isolation — a map
+    /// built without its terrain has no ground.
+    pub skip_terrain: bool,
 }
 
 /// [`extract_map`] plus a machine-readable per-chunk coverage report.
@@ -171,7 +176,9 @@ pub fn extract_map_with_report(
         index,
         chunk_filter,
         combined_obj,
+        skip_terrain,
     } = opts;
+    let mut terrain_totals = terrain::TerrainStats::default();
     let started = std::time::Instant::now();
     tracing::info!(map_dir = %map_dir.display(), output_dir = %output_dir.display(), "extract_map: starting");
 
@@ -253,15 +260,33 @@ pub fn extract_map_with_report(
         // the reserved `Terrain_*` prefix NavBuilder skips.
         extraction.soup.group = Some(format!("Chunk_{:08x}", id.raw()));
 
-        // Phase 1.3: Terrain extraction. For each `Terrain` export,
-        // parse the tagged-property block, then decode the binary
-        // trailer (Heights → InfoData → AlphaXSize → AlphaYSize →
-        // WeightedTextureMaps → WeightMapTextures), triangulate via
-        // `geometry::triangulate_terrain`. The recipe is documented in
-        // `.claude/agent-memory/game-archaeology-specialist/ue3-terrain-serialize.md`.
-        // TODO: wire `Terrain` exports into `extraction.soup` (Phase 1.3).
+        // Phase 1.3: Terrain extraction. Holes (`TID_Visibility_Off`
+        // quads) are honoured, so building footprints stay open for the
+        // interior floors to fill.
+        let terrain_stats = if skip_terrain {
+            terrain::TerrainStats::default()
+        } else {
+            terrain::collect_terrain_triangles(&pkg, &mut extraction.soup)
+        };
+        if terrain_stats.parse_failures > 0 {
+            // Missing ground is never silently acceptable: a chunk whose
+            // terrain failed to decode produces a navmesh with a hole the
+            // size of the chunk.
+            tracing::warn!(
+                chunk_id = format!("{:08x}", id.raw()),
+                terrain_actors = terrain_stats.terrain_actors,
+                parse_failures = terrain_stats.parse_failures,
+                "extract_map: terrain export failed to decode; ground geometry missing"
+            );
+        }
+        terrain_totals.terrain_actors += terrain_stats.terrain_actors;
+        terrain_totals.parse_failures += terrain_stats.parse_failures;
+        terrain_totals.quads_total += terrain_stats.quads_total;
+        terrain_totals.quads_holed += terrain_stats.quads_holed;
+        terrain_totals.triangles_emitted += terrain_stats.triangles_emitted;
 
-        // Phase 1.4: BSP Model/Polys — deferred; needs Ghidra trace.
+        // Phase 1.4: BSP Model/Polys — decoder lands separately
+        // (`bsp::collect_bsp_triangles`); interior floors depend on it.
 
         let mut row = ChunkCoverage {
             chunk: chunk_path
@@ -276,7 +301,8 @@ pub fn extract_map_with_report(
             actors_total: extraction.actors_total as u64,
             actors_resolved: extraction.actors_resolved as u64,
             skips: extraction.skips,
-            triangles_emitted: extraction.triangles_emitted as u64,
+            // Everything that lands in the chunk's OBJ, all sources.
+            triangles_emitted: extraction.soup.triangle_count() as u64,
             obj_bytes: 0,
             archetype_actors: extraction.archetype_actors,
             archetype_actors_resolved: extraction.archetype_actors_resolved,
@@ -361,6 +387,10 @@ pub fn extract_map_with_report(
         total_actors_resolved = totals.actors_resolved,
         total_actors_unresolved = totals.skips.total(),
         elapsed_secs = report.elapsed_secs,
+        terrain_actors = terrain_totals.terrain_actors,
+        terrain_parse_failures = terrain_totals.parse_failures,
+        terrain_quads_holed = terrain_totals.quads_holed,
+        terrain_triangles = terrain_totals.triangles_emitted,
         "extract_map: done"
     );
 

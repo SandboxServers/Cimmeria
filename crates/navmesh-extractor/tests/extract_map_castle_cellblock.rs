@@ -101,6 +101,7 @@ fn extract_map_castle_cellblock_emits_chunk_obj_files() {
             index: Some(&index),
             chunk_filter: None,
             combined_obj: Some(&combined_path),
+            ..Default::default()
         },
     )
     .expect("extract_map_with_report");
