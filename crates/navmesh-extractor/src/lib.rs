@@ -27,8 +27,8 @@
 //! This crate currently ships **Phase 0 (.nav round-trip smoke)**, the
 //! **Phase 1.1 scaffolding** (module skeleton + chunk-position decoding),
 //! **Phase 1.2 (StaticMesh + StaticMeshActor extraction)** and
-//! **Phase 1.3 (Terrain decode, holes honoured)**. Phase 1.4 (BSP
-//! `Model`) lands in a follow-up change.
+//! **Phase 1.3 (Terrain decode, holes honoured)** and **Phase 1.4 (BSP
+//! `Model` world geometry)**.
 
 pub mod bsp;
 pub mod chunk_id;
@@ -109,9 +109,9 @@ pub type Result<T> = std::result::Result<T, ExtractError>;
 ///
 /// # Phase status
 ///
-/// Ships **Phase 1.2 (StaticMesh extraction)** and **Phase 1.3
-/// (Terrain)**. Terrain needs no index, so degraded mode still emits
-/// the ground.
+/// Ships **Phase 1.2 (StaticMesh)**, **1.3 (Terrain)** and **1.4
+/// (BSP)**. Terrain and BSP need no index, so degraded mode still
+/// emits the ground and the level geometry.
 pub fn extract_map(
     map_dir: &Path,
     output_dir: &Path,
@@ -160,6 +160,10 @@ pub struct ExtractOptions<'a> {
     /// useful for measuring one geometry source in isolation — a map
     /// built without its terrain has no ground.
     pub skip_terrain: bool,
+    /// Leave BSP `Model` geometry out of the OBJs. Default `false`. Same
+    /// purpose as `skip_terrain`; Castle's interior floors are BSP, so a
+    /// build without it has rooms with walls and no floor.
+    pub skip_bsp: bool,
 }
 
 /// [`extract_map`] plus a machine-readable per-chunk coverage report.
@@ -178,8 +182,10 @@ pub fn extract_map_with_report(
         chunk_filter,
         combined_obj,
         skip_terrain,
+        skip_bsp,
     } = opts;
     let mut terrain_totals = terrain::TerrainStats::default();
+    let (mut bsp_models_failed, mut bsp_triangles) = (0usize, 0usize);
     let started = std::time::Instant::now();
     tracing::info!(map_dir = %map_dir.display(), output_dir = %output_dir.display(), "extract_map: starting");
 
@@ -286,8 +292,25 @@ pub fn extract_map_with_report(
         terrain_totals.quads_holed += terrain_stats.quads_holed;
         terrain_totals.triangles_emitted += terrain_stats.triangles_emitted;
 
-        // Phase 1.4: BSP Model/Polys — decoder lands separately
-        // (`bsp::collect_bsp_triangles`); interior floors depend on it.
+        // Phase 1.4: BSP. The level `Model` is where Castle's interior
+        // floors live; trigger volumes are excluded inside the collector.
+        let bsp_stats = if skip_bsp {
+            bsp::BspStats::default()
+        } else {
+            bsp::collect_bsp_triangles(&pkg, &mut extraction.soup)
+        };
+        if bsp_stats.models_failed > 0 {
+            // The deserializer enforces exact consumption, so a failure
+            // is a decoder bug and the chunk is missing floors or walls.
+            tracing::warn!(
+                chunk_id = format!("{:08x}", id.raw()),
+                models_failed = bsp_stats.models_failed,
+                errors = ?bsp_stats.parse_errors,
+                "extract_map: BSP Model failed to decode; world geometry missing"
+            );
+        }
+        bsp_models_failed += bsp_stats.models_failed;
+        bsp_triangles += bsp_stats.triangles_emitted;
 
         let mut row = ChunkCoverage {
             chunk: chunk_path
@@ -392,6 +415,8 @@ pub fn extract_map_with_report(
         terrain_parse_failures = terrain_totals.parse_failures,
         terrain_quads_holed = terrain_totals.quads_holed,
         terrain_triangles = terrain_totals.triangles_emitted,
+        bsp_models_failed,
+        bsp_triangles,
         "extract_map: done"
     );
 
