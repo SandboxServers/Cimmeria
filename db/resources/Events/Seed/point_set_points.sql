@@ -350,7 +350,7 @@ INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUE
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2506, 30.0, 3.6, 100.0, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2507, 30.0, 13.6, 30.0, 0, 0, 0);
 
--- 2102 Harset_StorageRm.Storage -- pen grid, floor 0.30, ceiling 10.30. The
+-- 2102 Harset_StorageRm.Storage -- pen grid, floor 0.30, ceiling 4.00. The
 -- footprint is x[19.0,84.0] z[38.0,97.0]: not component 36's raw bounding box
 -- (x[16.1,87.5] z[34.1,99.2]) but the sub-rectangle where EVERY metre of it
 -- resolves to component 36, found by walking the mesh a metre at a time. The
@@ -361,10 +361,25 @@ INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUE
 -- z 51.2-96.7) are still inside. The corners themselves still land on an
 -- under-layer because the mesh is inset by its 0.6 m agent radius, which is
 -- why the on-mesh guard probes one metre inside each edge, not the corners.
+--
+-- The 3.70 m of headroom is the one number here fixed by TELEMETRY rather than
+-- by geometry, and it is deliberately far below the room's 15-17 roof. World 70
+-- has 20 distinct server-accepted player positions (see
+-- `placements/C-interiors-68-69-70.md`); inside this footprint they fall into
+-- four vertical bands -- seven on the pen floor at y 1.25-1.58, one under it at
+-- y -1.68 (the -1.2 under-layer), one on the upper arrival deck at y 7.06 where
+-- it overhangs to z 43.4, and five on interior gantries and catwalks at
+-- y 7.7-17.7 (obj_slab puts decks at 8-9, 11-13 and a roof sheet at 15-17).
+-- `is_point_in_region` widens the box 1.5 m on every axis including Y, so a
+-- 4.00 ceiling accepts y up to 5.50: all seven floor positions with 3.9 m to
+-- spare, and none of the other thirteen. A taller box would make a player who
+-- is still on the arrival deck "in Storage" before descending, which destroys
+-- the edge-crossing property the footprint was trimmed for. No mission step
+-- takes place on a catwalk.
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2508, 84.0, 0.3, 38.0, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2509, 84.0, 0.3, 97.0, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2510, 19.0, 0.3, 97.0, 0, 0, 0);
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2511, 19.0, 10.3, 38.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2511, 19.0, 4.0, 38.0, 0, 0, 0);
 
 SELECT pg_catalog.setval('point_set_points_point_id_seq', 2511, true);
 

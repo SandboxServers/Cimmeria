@@ -16,9 +16,63 @@
 //! - **The Storage box is on the navmesh.** World 70 is the one interior with
 //!   a shipped mesh, so it is the one place the "is this floor actually
 //!   walkable" claim can be tested rather than asserted.
+//! - **The Storage box matches where real players stood.** World 70 is also the
+//!   only interior with telemetry. Twenty server-accepted player positions say
+//!   which parts of the room people use and at what height, so the footprint
+//!   and the ceiling are both checked against evidence that is independent of
+//!   the `obj_slab` geometry they were derived from.
+//!
+//! Worlds 68 and 69 have **neither** a navmesh nor telemetry, so nothing here
+//! can check their two regions beyond load, key, world and containment.
 
 use super::*;
-use crate::cell::spawner::{load_regions_from_db, region_contains_xz};
+use crate::cell::spawner::{is_point_in_region, load_regions_from_db, region_contains_xz};
+
+/// World 70's twenty distinct **server-accepted** player positions, from three
+/// days of SigNoz `movement.validation_reject` logs (the `last_valid_*` field
+/// on each reject: wherever the player *was* when a move was refused, which the
+/// server had already accepted). Cleaned list:
+/// `$O\harset\harset_storagerm_last_valid_probes.txt`.
+///
+/// **Only the cleaned list counts as evidence.** Most of world 70's reject
+/// volume is synthetic — (50, 2, 50) x7,958, (2, 30, 50) x2,765,
+/// (2, 2, 50) x1,744, (2, 2, 100) x1,617 — an entity parked at a default or
+/// test position and refused on every packet. Those are excluded upstream; see
+/// `harset_suspicious_points.txt`.
+///
+/// Split by which vertical band they landed in, because that is what
+/// `Harset_StorageRm.Storage`'s ceiling has to discriminate. The seven
+/// `PEN_FLOOR` entries are the ones on navmesh component 36, the pen-grid
+/// floor; the rest are under it, on the upper arrival deck, or on interior
+/// gantries and catwalks.
+const STORAGE_ACCEPTED_PEN_FLOOR: [[f32; 3]; 7] = [
+    [37.07, 1.25, 82.27],
+    [75.67, 1.32, 83.43],
+    [56.27, 1.58, 62.65],
+    [68.93, 1.40, 63.43],
+    [73.87, 1.53, 73.31],
+    [76.45, 1.39, 78.54],
+    [77.24, 1.41, 81.23],
+];
+
+/// Accepted positions inside the Storage footprint in XZ but **not** on the pen
+/// floor, as `(position, what it is)`. The region must exclude every one of
+/// them: a player on the arrival deck must not read as "in Storage" before
+/// descending, or the `enter_region` edge never fires for them.
+const STORAGE_ACCEPTED_NOT_PEN_FLOOR: [([f32; 3], &str); 6] = [
+    (
+        [51.71, -1.68, 53.30],
+        "the -1.2 m under-layer below the pen floor",
+    ),
+    (
+        [52.26, 7.06, 43.36],
+        "the upper arrival deck, where it overhangs to z 43.4",
+    ),
+    ([65.63, 7.69, 46.53], "the y 8-9 gantry over the pen grid"),
+    ([69.77, 9.68, 58.25], "a y 8-9 gantry"),
+    ([63.20, 13.03, 45.05], "a y 11-13 catwalk"),
+    ([63.20, 17.68, 45.05], "the y 15-17 roof truss walkway"),
+];
 
 /// The three PL-C interior regions, as
 /// `(set_id, key, world_id, world_name, interior probe (x, y, z))`.
@@ -190,6 +244,61 @@ async fn interior_region_boxes_contain_their_room_and_exclude_the_approach() {
              who is already inside when the world loads never raises \
              `enter_region`, so swallowing the approach silently disables \
              every trigger on this key",
+        );
+    }
+}
+
+/// **Every real player position on the Storage floor is inside the region, and
+/// every real position that is *not* on the floor is outside it.**
+///
+/// This is the only PL-C coordinate with TELEMETRY evidence — worlds 68 and 69
+/// have neither telemetry nor a navmesh — and it is independent of the
+/// `obj_slab` geometry the footprint was derived from. Seven real players stood
+/// on the pen floor at y 1.25-1.58; if a later edit shrinks the box away from
+/// where people actually walked, this fails.
+///
+/// The negative half is what pins the **ceiling** at 4.00 rather than at the
+/// room's 15-17 roof. Thirteen more accepted positions share the footprint in
+/// XZ but sit under the floor, on the upper arrival deck where it overhangs to
+/// z 43.4, or on gantries and catwalks up to y 17.7. Admitting the arrival deck
+/// would mean a player reads as "in Storage" before descending, and then the
+/// `enter_region` edge never fires for them — the `player_loaded` shape that has
+/// already bitten three Harset chains. No mission step takes place on a
+/// catwalk, so the cheap, evidence-backed cut is floor-plus-headroom.
+///
+/// Uses `is_point_in_region` (the tolerance band the security gate applies,
+/// AABB widened 1.5 m on every axis **including Y**) rather than
+/// `region_contains_xz`, because the vertical discrimination is the whole point
+/// and `region_contains_xz` is Y-blind.
+#[tokio::test]
+async fn the_storage_region_matches_where_real_players_actually_stood() {
+    let pool = require_db_or_skip!();
+
+    let regions = load_regions_from_db(&pool)
+        .await
+        .expect("load_regions_from_db");
+    let storage = regions
+        .iter()
+        .find(|r| r.set_id == 2102)
+        .expect("point set 2102 must load");
+
+    for p in STORAGE_ACCEPTED_PEN_FLOOR {
+        assert!(
+            is_point_in_region(&storage.points, p),
+            "`Harset_StorageRm.Storage` must contain {p:?} -- the server \
+             accepted a real player there and it is on navmesh component 36, \
+             the pen-grid floor. A region that excludes it is smaller than the \
+             room players actually use",
+        );
+    }
+
+    for (p, what) in STORAGE_ACCEPTED_NOT_PEN_FLOOR {
+        assert!(
+            !is_point_in_region(&storage.points, p),
+            "`Harset_StorageRm.Storage` must NOT contain {p:?} ({what}). It \
+             shares the footprint in XZ, so only the ceiling excludes it; \
+             raising the ceiling admits the arrival deck and kills the \
+             `enter_region` edge for anyone descending into the room",
         );
     }
 }

@@ -210,13 +210,20 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2101, 'Harset_Market.Marketplace', 'AreaSet', 69, NULL, NULL, 'BoundingBox', 1);
 
 -- The Storage room floor: x[19.0,84.0] z[38.0,97.0], floor 0.30, ceiling
--- 10.30. MAP-GEOMETRY + on-mesh, HIGH: this is component 36 of the shipped
+-- 4.00. MAP-GEOMETRY + on-mesh + TELEMETRY, HIGH: this is component 36 of the shipped
 -- `data/spaces/harset_storagerm.nav` (314 polygons, 3055.7 m2,
 -- x[16.1,87.5] y[0.2,1.2] z[34.1,99.2]), trimmed to the sub-rectangle where
 -- every metre resolves to component 36 rather than to one of the six
 -- neighbouring components that overlap its bounding box -- found by walking
 -- the mesh a metre at a time, not by taking the component's bounds. It is the
--- same extent `obj_slab` reports for the 0.0-0.4 floor. The room is a grid of fenced pens -- 19 `GA-Fence00`/`GA-Fence03`
+-- same extent `obj_slab` reports for the 0.0-0.4 floor, and independently all
+-- seven of world 70's server-accepted player positions that lie on the pen
+-- floor (y 1.25-1.58) fall inside it -- real players walked here. The 4.00
+-- ceiling is set by those same positions; see `point_set_points.sql` for why a
+-- taller box breaks the edge trigger. A rebuilt mesh (`mse13.nav`, 20
+-- components, no outdoor terrain sheet) puts this whole footprint on one
+-- component too, so the "one connected island" claim does not rest on the
+-- shipped mesh alone. The room is a grid of fenced pens -- 19 `GA-Fence00`/`GA-Fence03`
 -- gates each with a TriggerVolume on it, at x 19-83 and z 51-97 -- which is
 -- what 1580 step 4701 "search containers" is searching. The box excludes the
 -- upper wing at x[45,75] z[0,40] (floor 5.10, nav component 6), the corridor

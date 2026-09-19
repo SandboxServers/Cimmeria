@@ -3,6 +3,16 @@
 > Type: reference. Audience: the owner's post-playtest correction pass, and the coordinator assembling [README.md](README.md). Written 2026-09-19 under [METHOD.md](METHOD.md): placed from map data, not from an in-client walk. **Every coordinate below is a labelled estimate, not a pin.**
 >
 > Scope: packet H12 (Command Center population, world 68), H14 (interior props, worlds 69 and 70), H15 (interior named regions), and encounter-anchor candidates for the world 69/70 mission fights. Door regions (`*.HarsetDoor`, `Harset.MarketDoor/StorageDoor`) are **not** here — they belong to the world-57 clusters.
+>
+> **Evidence available per world.** World 70 has a shipped navmesh, a rebuilt second-opinion mesh, and telemetry. Worlds 68 and 69 have **none of the three** — every coordinate in them rests on `obj_slab` geometry plus the three authored anchors below, and no row in 68 or 69 has ever been confirmed walkable by a real player or by a mesh.
+>
+> | World | Shipped navmesh | Rebuilt mesh (second opinion) | Real accepted player positions |
+> |---|---|---|---|
+> | 68 Harset_CmdCenter | none | none | none |
+> | 69 Harset_Market | none | none | none |
+> | 70 Harset_StorageRm | `data/spaces/harset_storagerm.nav` (1,917 v / 963 p / **104** components) | `$O\harset\Harset_StorageRm\mse13.nav` (1,150 v / 565 p / 20 components) | 20 distinct, cleaned |
+>
+> **Telemetry hygiene.** Only `$O\harset\harset_storagerm_last_valid_probes.txt` counts as evidence. Most of world 70's reject volume is synthetic — (50, 2, 50) x7,958, (2, 30, 50) x2,765, (2, 2, 50) x1,744, (2, 2, 100) x1,617 — an entity parked at a default or test position and refused on every packet; see `harset_suspicious_points.txt`. A raw `last_valid` histogram would have put a "walkable" anchor at (50, 2, 50), which is nowhere.
 
 ## Method validation on this cluster
 
@@ -52,7 +62,26 @@ All from `obj_slab` over `$O\Harset_CmdCenter` (a 5 m grid, refined to 2 m aroun
 | PL-C-11 | spawn 222 Anat — `tag` filled to `CmdCenter_Anat` | 68 | unchanged (61.969, 1.7715, 77.172, 3.11705) | AUTHORED | HIGH | no coordinate changed; the registry requires the tag on the existing row, not on a second spawn | Anat is where she always was | `spawnlist.sql` spawn 222 |
 | PL-C-12 | point set 2100 `Harset_CmdCenter.Lab`, points 2500-2503 | 68 | box x[27.5, 69.0] z[−31.0, 11.0], floor 0.32, ceiling 10.02 | MAP-LANDMARK + MAP-GEOMETRY | HIGH on the room, MEDIUM on the edges | contains the console row and all three tanks; excludes the cross hall so entry is an edge crossing; walls confirmed (no floor at x 25, x 70, z −32); no navmesh | Walk into the lab from the cross hall with 1241 step 3609 active; the scan objective should tick | `point_sets.sql` 2100 + `point_set_points.sql` 2500-2503 |
 | PL-C-13 | point set 2101 `Harset_Market.Marketplace`, points 2504-2507 | 69 | box x[30, 100] z[30, 100], floor 3.60, ceiling 13.60 | MAP-GEOMETRY + MAP-MARKER | HIGH on the floor plane, **MEDIUM on where to stop it** | the whole of world 69 is one 3.60 platform, and 217 of its 274 `SGWSpecCoverNode` actors sit on it at y 3.6-3.7; excludes the 4.80 torch-lit pocket at x[12,26] z[9,21], read as the vestibule the Harset door opens into; world 69 has **no navmesh** | Enter the Market from world 57 with 1352 step 4007 active; the objective should tick as you leave the first room, not on arrival | `point_sets.sql` 2101 + points 2504-2507. **If the world-57 Market door lands somewhere other than that pocket, this is the one number to revisit** |
-| PL-C-14 | point set 2102 `Harset_StorageRm.Storage`, points 2508-2511 | 70 | box x[19.0, 84.0] z[38.0, 97.0], floor 0.30, ceiling 10.30 | MAP-GEOMETRY + on-mesh | HIGH | every metre of the box resolves to navmesh component 36 (the pen-grid floor, 314 polys, 3055.7 m2); centre and all four edge midpoints are mutually path-reachable; all 19 pen gates are inside; excludes the upper wing at x[45,75] z[0,40] (floor 5.10, component 6) | Descend from the upper corridor into the pen grid with 1580 step 4700 active | `point_sets.sql` 2102 + points 2508-2511 |
+| PL-C-14 | point set 2102 `Harset_StorageRm.Storage`, points 2508-2511 | 70 | box x[19.0, 84.0] z[38.0, 97.0], floor 0.30, ceiling **4.00** | MAP-GEOMETRY + on-mesh + **TELEMETRY** | HIGH | **shipped `harset_storagerm.nav`: every metre of the box resolves to component 36** (pen-grid floor, 314 polys, 3055.7 m2), and the centre plus all four edge midpoints are mutually path-reachable. **Rebuilt `mse13.nav`: the same five probes all land on its component 4** — one connected island on both meshes, so the claim does not rest on the shipped mesh alone. **All 7 real accepted positions on the pen floor (y 1.25-1.58) are inside; all 13 that are not on the pen floor are outside.** All 19 pen gates inside; the upper arrival wing excluded | Descend from the upper corridor into the pen grid with 1580 step 4700 active; the objective should tick as you reach the floor, not while you are still on the deck above | `point_sets.sql` 2102 + points 2508-2511 |
+
+### What the world-70 evidence changed (2026-09-19, second pass)
+
+The telemetry and the rebuilt mesh arrived after the first draft of PL-C-14 and moved two things.
+
+**The ceiling came down from 10.30 to 4.00.** Of the 20 cleaned positions, 13 lie inside the footprint in XZ, in four vertical bands: seven on the pen floor at y 1.25-1.58 (navmesh component 36), one at y -1.68 on the -1.2 m under-layer, one at y 7.06 on the **upper arrival deck where it overhangs to z 43.4**, and four on interior gantries and catwalks at y 7.7-17.7. `obj_slab` corroborates that upper structure: decks at y 8-9 (x[54,72] z[44,48]) and 11-13, and a roof sheet at 15-17 spanning the whole room. `is_point_in_region` widens the box 1.5 m on **every** axis including Y, so:
+
+| Ceiling | Accepts y up to | Pen-floor positions in | Non-floor positions also in |
+|---|---|---|---|
+| 4.00 (chosen) | 5.50 | 7 of 7 | **none** |
+| 4.50 | 6.00 | 7 of 7 | none |
+| 10.30 (first draft) | 11.80 | 7 of 7 | 5 |
+| 17.00 (the room's real roof) | 18.50 | 7 of 7 | 7 |
+
+4.00 is the cut with the widest margin on both sides: 3.9 m of slack above the highest pen-floor position, and 0.64 m below the lowest arrival-deck position. The arrival deck is the one that matters — admitting it means a player reads as "in Storage" before descending, and the `enter_region` edge then never fires for them. No mission step takes place on a catwalk, so nothing is lost. A taller "whole room" box is defensible on the plain meaning of the name; it is not defensible against the edge trigger.
+
+**The shipped mesh disagrees with the rebuilt one about connectivity, and the rebuilt one is right.** On `harset_storagerm.nav` the pen floor (component 36) and the upper arrival wing (component 6) are **separate components**, so nothing can path between them — yet five real players stood on the upper deck and seven on the pen floor, and the only route between the two is the descent. `mse13.nav` merges both into its component 4 (355 polys, y[0.0,6.2], z[-1.7,98.2]), which matches the real topology. **Consequence for whoever writes the Storage fights (1365, 1375, 1580, 1245):** on the mesh the server actually loads today, a mission-scoped `spawn_entity` placed in the arrival corridor cannot path to a player on the pen floor, or the reverse. Spawn Storage hostiles **on the pen floor**, inside point set 2102, using the PL-C-E08 to E12 anchors rather than E13 to E15. The tests keep asserting against the shipped mesh, per instruction; `mse13.nav` is recorded here as a second opinion only, and `data/spaces` is untouched.
+
+**Vertical structure found, not previously mapped.** The same XZ column (63.20, 45.05) carries accepted positions at y 9.55, 13.03 and 17.68 — three stacked levels reached by something the floor map does not show. Not blocking anything in PL-C, but it means world 70 is a multi-storey room, and any future "Storage" volume meant to cover all of it needs more than one box.
 
 ## Encounter anchor candidates (ledger only — nothing seeded, no chains)
 
@@ -74,7 +103,7 @@ Confidence is **MEDIUM at best** for "a fight was designed here" and **LOW** for
 
 ### Harset_StorageRm (world 70), pen-grid floor 0.30
 
-All of these sit inside point set 2102 and on navmesh component 36.
+All of these sit inside point set 2102 and on navmesh component 36 — the component a player's own pen-floor position is on, which is what makes them usable as `spawn_entity` points. **Prefer these over PL-C-E13 to E15:** the shipped mesh has no path between the pen floor and the upper wing.
 
 | ID | Candidate | Centre | Nodes | Read |
 |---|---|---|---|---|
@@ -92,6 +121,8 @@ All of these sit inside point set 2102 and on navmesh component 36.
 | PL-C-E14 | upper corridor east | (70.7, 5.17, 9.5) | 17 | the corridor's side branch |
 | PL-C-E15 | upper corridor mouth | (50.8, 5.22, 40.7) | 15 | where the corridor meets the descent into the pen grid — a choke point, and the counterpart to E12 |
 
+E13 to E15 are on the arrival side. On the **shipped** mesh they are on component 6, which has no path to the pen floor, so a hostile spawned on any of them cannot reach a player in the pens — and the five real accepted positions up here confirm players do walk the corridor, so the missing link is a mesh defect, not real geometry. Use them only for something that fights *in the corridor*.
+
 ## No idea
 
 Per the METHOD.md NO-IDEA rule, these are **left unseeded** rather than given an invented coordinate.
@@ -107,8 +138,8 @@ Per the METHOD.md NO-IDEA rule, these are **left unseeded** rather than given an
 All in `crates/services/src/cell/spawner/tests/harset/`:
 
 - `cmdcenter_population.rs` — five live-DB guards: the world-68 roster is exactly the eleven rows above, nothing there uses a hostile template, every row is stationary with `respawn_secs` and a non-zero heading, the four chain-referenced tags resolve, and `load_spawns_from_db` returns the full roster (the row counts prove the seed; only the loader round-trip proves the cell would spawn it).
-- `interior_regions.rs` — three live-DB guards: all three sets survive `load_regions_from_db` as `AreaSet` in the right world with four corners, each box contains its room *and* excludes the room its visitors arrive from, and the world-70 box stands on one connected piece of `harset_storagerm.nav`.
+- `interior_regions.rs` — four live-DB guards: all three sets survive `load_regions_from_db` as `AreaSet` in the right world with four corners, each box contains its room *and* excludes the room its visitors arrive from, the world-70 box stands on one connected piece of `harset_storagerm.nav`, and the world-70 box contains all 7 real accepted pen-floor positions while excluding all 13 that are not on the pen floor (the guard that pins the 4.00 ceiling).
 
 **Why the world-70 guard is a reachability test and not `is_point_valid`.** `harset_storagerm.nav` has 104 components and three of them overlap the Storage footprint in Y: the pen-grid floor, a disconnected duplicate 1.4 m beneath it, and an 82,249 m2 outdoor terrain sheet at the same 0.2-0.4 Y band. A region dragged clean off the building still answers "on-mesh" at y 0.3 — it just answers from the terrain, which is exactly what happened on the first draft of this guard. `dtNavMeshQuery::findPath` is not the fix on its own either: it returns a *partial* corridor to the closest reachable polygon, so `find_path(...).is_some()` is `true` across a component boundary. The guard compares the path's last waypoint against the request, and carries a control asserting that a point 100 m outside the building reads on-mesh but is **not** reachable — so the test proves its own discriminating power rather than asserting it in a comment.
 
-Revert-verified by mutating the DB one property at a time and confirming the matching guard fails for the right reason: heading zeroed, `is_stationary` cleared, `respawn_secs` nulled, a template flipped to faction 10, a row deleted, Anat's tag cleared, point set 2100's `type` changed, and point set 2102's footprint shifted 30 m south.
+Revert-verified by mutating the DB one property at a time and confirming the matching guard fails for the right reason: heading zeroed, `is_stationary` cleared, `respawn_secs` nulled, a template flipped to faction 10, a row deleted, Anat's tag cleared, point set 2100's `type` changed, point set 2102's footprint shifted 30 m south, its ceiling raised back to 10.30 (which admits the arrival deck), and its footprint shrunk past the northern telemetry cluster.
