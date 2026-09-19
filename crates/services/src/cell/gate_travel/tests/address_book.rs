@@ -76,9 +76,14 @@ async fn the_refusal_emits_the_stargate_address_feedback_code() {
 
     let args = loop {
         match rx.try_recv() {
+            // 121 literal, not the `ON_ERROR_CODE` constant: this test is
+            // the byte-exact wire check, so it pins the index the client
+            // dispatches on rather than the name the server calls it.
             Ok(CellToBaseMsg::EntityMethodCall {
-                method_index, args, ..
-            }) if method_index == 121 => break args,
+                method_index: 121,
+                args,
+                ..
+            }) => break args,
             Ok(_) => continue,
             Err(_) => panic!("expected an onErrorCode (121) for the refused dial"),
         }

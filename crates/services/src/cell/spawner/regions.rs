@@ -62,10 +62,12 @@ pub(crate) fn region_contains_xz(points: &[[f32; 3]], x: f32, z: f32) -> bool {
 
 /// `(min, max)` of `points` on `axis` (0 = X, 1 = Y, 2 = Z).
 fn axis_extent(points: &[[f32; 3]], axis: usize) -> (f32, f32) {
-    points.iter().map(|p| p[axis]).fold(
-        (f32::INFINITY, f32::NEG_INFINITY),
-        |(min, max), v| (min.min(v), max.max(v)),
-    )
+    points
+        .iter()
+        .map(|p| p[axis])
+        .fold((f32::INFINITY, f32::NEG_INFINITY), |(min, max), v| {
+            (min.min(v), max.max(v))
+        })
 }
 
 /// Is `point` inside the region described by `points`, allowing for a
@@ -119,10 +121,7 @@ pub fn is_point_in_region(points: &[[f32; 3]], point: [f32; 3]) -> bool {
 
     let (min_x, max_x) = axis_extent(points, 0);
     let (min_z, max_z) = axis_extent(points, 2);
-    point[0] >= min_x - t
-        && point[0] <= max_x + t
-        && point[2] >= min_z - t
-        && point[2] <= max_z + t
+    point[0] >= min_x - t && point[0] <= max_x + t && point[2] >= min_z - t && point[2] <= max_z + t
 }
 
 /// Intermediate structure for loading region data before runtime ID assignment.

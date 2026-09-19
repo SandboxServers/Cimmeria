@@ -394,4 +394,137 @@ mod tests {
 
         cleanup(&pool, account_id, player_id).await;
     }
+    /// Packet acceptance, cross-layer: a dial to a gate the player does not
+    /// hold arms nothing, sends nothing, and leaves the `sgw_player` row
+    /// exactly as it was — then the *same* dial, with the address granted,
+    /// travels and rewrites the row.
+    ///
+    /// The second half is what stops the first from being vacuous. The cell
+    /// never touches the database itself, so "the row did not change" only
+    /// means something alongside a demonstration that it changes when the
+    /// dial is accepted. Deleting the `player_knows_stargate` call from
+    /// `handle_dial_gate` fails phase 1 on all three counts.
+    #[tokio::test]
+    async fn a_dial_to_an_unheld_address_arms_nothing_and_leaves_the_row_untouched() {
+        use crate::cell::gate_travel::handle_dial_gate;
+        use crate::cell::messages::CellToBaseMsg;
+        use crate::cell::space_manager::SpaceManager;
+        use crate::cell::spawner::StargateEntry;
+
+        let pool = require_db_or_skip!();
+        let (account_id, player_id) = (TEST_BASE + 4, TEST_BASE + 14);
+        seed(&pool, account_id, player_id, &[]).await;
+
+        const ENTITY_ID: u32 = 42;
+        const TARGET_GATE: i32 = 2;
+
+        // Agnos has no `REGION_FLAG_Stargate` volume here, so an accepted
+        // dial travels in one call and the `GateTravel` is observable.
+        let mut mgr = SpaceManager::new(1);
+        mgr.parse_spaces_xml(
+            r#"<?xml version="1.0"?><Spaces>
+                <Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" />
+                <Space WorldName="Castle" Instanced="false" MinX="0" MaxX="1000" MinY="0" MaxY="1000" />
+            </Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces>
+                <Space WorldName="Agnos" /><Space WorldName="Castle" />
+            </Spaces>"#,
+        )
+        .unwrap();
+        mgr.stargates.insert(
+            TARGET_GATE,
+            StargateEntry {
+                world_name: "Castle".to_string(),
+                x: 761.677,
+                y: 63.466,
+                z: 551.716,
+                yaw: 2.152,
+                address_origin: 18,
+                arrival: None,
+                event_set_id: None,
+            },
+        );
+        mgr.create_entity(ENTITY_ID, "Agnos", [10.0; 3], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(ENTITY_ID);
+        let space_before = mgr.get_entity_space_id(ENTITY_ID);
+
+        let db = Some(Arc::new(pool.clone()));
+        let before = row_of(&pool, player_id).await;
+
+        // ── Phase 1: the player does not hold the address ──
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<CellToBaseMsg>(16);
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        assert!(
+            !handle_dial_gate(ENTITY_ID, TARGET_GATE, 0, &tx, &mut mgr, &engine).await,
+            "a dial to an unheld address must report refusal"
+        );
+        assert!(
+            mgr.get_entity(ENTITY_ID).is_some(),
+            "a refused dial must not tear the traveller out of their space"
+        );
+        assert_eq!(mgr.get_entity_space_id(ENTITY_ID), space_before);
+        assert!(
+            mgr.gate_dial(ENTITY_ID).is_none(),
+            "a refused dial must arm nothing"
+        );
+        let mut travelled = None;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::GateTravel { position, .. } = msg {
+                travelled = Some(position);
+            }
+        }
+        assert!(
+            travelled.is_none(),
+            "a refused dial must enqueue no GateTravel, so nothing downstream can \
+             ever reach persist_arrival"
+        );
+        assert_eq!(
+            row_of(&pool, player_id).await,
+            before,
+            "world_location, pos_x and known_stargates must all be untouched"
+        );
+
+        // ── Phase 2: same dial, address granted ──
+        mgr.get_entity_mut(ENTITY_ID)
+            .expect("traveller")
+            .known_stargates = vec![TARGET_GATE];
+        assert!(
+            handle_dial_gate(ENTITY_ID, TARGET_GATE, 0, &tx, &mut mgr, &engine).await,
+            "the identical dial must succeed once the address is held"
+        );
+        let position = loop {
+            match rx.try_recv() {
+                Ok(CellToBaseMsg::GateTravel { position, .. }) => break position,
+                Ok(_) => continue,
+                Err(_) => panic!("an accepted dial must enqueue a GateTravel"),
+            }
+        };
+        persist_arrival(
+            &db,
+            player_id,
+            account_id as u32,
+            "Agnos",
+            position,
+            &[TARGET_GATE],
+        )
+        .await;
+        let after = row_of(&pool, player_id).await;
+        assert_ne!(
+            after, before,
+            "the accepted dial's arrival must rewrite the row -- otherwise phase 1 \
+             proves nothing"
+        );
+        assert_eq!(after.1, "Agnos", "destination world persisted");
+        assert!(
+            after.0.contains(&TARGET_GATE),
+            "the arrival must learn the dialled address, got {:?}",
+            after.0
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
 }
