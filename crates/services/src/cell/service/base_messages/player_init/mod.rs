@@ -12,6 +12,33 @@ use crate::cell::space_manager::SpaceManager;
 
 pub(crate) mod mission_restore;
 
+/// Seed each populated bandolier slot's `AmmoSlot{N}` stat from its persisted
+/// `current_ammo` / `clip_size`.
+///
+/// The default stat tuple is `(0,0,0)`, and `set_slot_ammo` clamps via the
+/// stat bounds — without this seed, every later refill/decrement would
+/// silently pin to 0. Clearing dirty avoids a duplicate stat send (the
+/// initial mapLoaded uses `serialize_all()`).
+///
+/// Extracted so the production `InitPlayerState` path and its regression
+/// guard exercise the same code.
+pub(in crate::cell::service) fn seed_bandolier_ammo_stats(
+    entity: &mut cimmeria_entity::cell_entity::CellEntity,
+) {
+    let slot_seed: Vec<(i32, i32, i32)> = entity
+        .bandolier_items
+        .iter()
+        .map(|(&slot, item)| (slot, item.current_ammo, item.clip_size))
+        .collect();
+    for (slot_id, current, clip) in slot_seed {
+        let stat_id = cimmeria_entity::stats::AMMO_SLOT_1 + slot_id;
+        if let Some(stat) = entity.stats.get_mut(stat_id) {
+            stat.update(0, current, clip);
+            stat.clear_dirty();
+        }
+    }
+}
+
 /// Handles the `InitPlayerState` message: restores player missions, abilities,
 /// bandolier items, and fires the content-engine `player_loaded` trigger.
 ///
@@ -149,23 +176,8 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         );
 
         // Stage B: Seed each populated bandolier slot's AmmoSlot{N} stat
-        // from its persisted current_ammo / clip_size. The default stat
-        // tuple is (0,0,0), and `set_slot_ammo` clamps via the stat
-        // bounds — without this seed, every later refill/decrement
-        // would silently pin to 0. Clearing dirty avoids a duplicate
-        // stat send (the initial mapLoaded uses serialize_all()).
-        let slot_seed: Vec<(i32, i32, i32)> = entity
-            .bandolier_items
-            .iter()
-            .map(|(&slot, item)| (slot, item.current_ammo, item.clip_size))
-            .collect();
-        for (slot_id, current, clip) in slot_seed {
-            let stat_id = cimmeria_entity::stats::AMMO_SLOT_1 + slot_id;
-            if let Some(stat) = entity.stats.get_mut(stat_id) {
-                stat.update(0, current, clip);
-                stat.clear_dirty();
-            }
-        }
+        // from its persisted current_ammo / clip_size.
+        seed_bandolier_ammo_stats(entity);
 
         // Restore saved missions BEFORE content engine fires, so that
         // chain conditions correctly see existing mission state and
