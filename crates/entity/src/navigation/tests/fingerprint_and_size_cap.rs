@@ -74,16 +74,21 @@ fn navmesh_hash_is_stable_for_the_shipped_meshes() {
 #[test]
 fn max_nav_file_bytes_brackets_the_real_assets() {
     // castle.nav, the largest shipped mesh at the time of writing.
-    assert!(
-        MAX_NAV_FILE_BYTES > 3_402_055 * 8,
-        "the cap must leave generous headroom over the largest shipped \
-         mesh, or a legitimate rebuild trips it"
-    );
-    assert!(
-        MAX_NAV_FILE_BYTES < 1 << 30,
-        "a cap at or above 1 GiB is not a cap — the whole point is to \
-         bound what a corrupt deployment asset can cost at startup"
-    );
+    const {
+        assert!(
+            // The cap must leave generous headroom over the largest
+            // shipped mesh, or a legitimate rebuild trips it.
+            MAX_NAV_FILE_BYTES > 3_402_055 * 8,
+        )
+    };
+    const {
+        assert!(
+            // A cap at or above 1 GiB is not a cap — the whole point is
+            // to bound what a corrupt deployment asset can cost at
+            // startup.
+            MAX_NAV_FILE_BYTES < 1 << 30,
+        )
+    };
     assert!(
         check_file_size(MAX_NAV_FILE_BYTES).is_ok(),
         "boundary is ok"

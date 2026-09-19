@@ -292,4 +292,10 @@ fn speed_warn_is_measured_against_the_entitys_own_movement_speed_mod() {
          not the class constant — the SigNoz tolerance-calibration pipeline reads \
          this field; got {warn:#?}"
     );
+    assert!(
+        warn.has_field("world", "Agnos"),
+        "every `movement.validation` row whose space id resolves carries \
+         `world`; a speed warn without it drops out of a world-filtered \
+         dashboard: {warn:#?}"
+    );
 }

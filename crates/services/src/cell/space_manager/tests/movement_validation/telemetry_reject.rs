@@ -18,12 +18,14 @@ use std::time::{Duration, Instant};
 use cimmeria_entity::movement_validation::{MovementReject, SpaceBounds};
 use tracing::Level;
 
-use super::super::super::{RejectReport, SpaceManager};
+use super::super::super::{
+    HardReject, RecoveryReport, RejectReport, SpaceManager, SuppressionReport,
+};
 use super::make_manager;
 use super::recovery::{navmesh_manager, nearby_off_mesh_point, ON_MESH};
 use crate::test_support::LogCapture;
 
-const SPAWN: [f32; 3] = [10.0, 0.0, 20.0];
+pub(super) const SPAWN: [f32; 3] = [10.0, 0.0, 20.0];
 
 /// Agnos (navmesh-less) with one entity, for the tests that only care
 /// about the world label and the throttle.
@@ -38,7 +40,7 @@ fn agnos_with(entity_id: u32) -> (SpaceManager, u32) {
 /// Create a **player** entity: `create_entity` alone leaves
 /// `is_player = false` (it is stamped by `connect_entity` during world
 /// entry), and the position sampler deliberately ignores non-players.
-fn player_in(mgr: &mut SpaceManager, entity_id: u32, world: &str) -> u32 {
+pub(super) fn player_in(mgr: &mut SpaceManager, entity_id: u32, world: &str) -> u32 {
     let space_id = mgr
         .create_entity(entity_id, world, SPAWN, [0.0; 3])
         .unwrap();
@@ -46,11 +48,29 @@ fn player_in(mgr: &mut SpaceManager, entity_id: u32, world: &str) -> u32 {
     space_id
 }
 
-fn report_for(entity_id: u32, space_id: u32, reason: MovementReject) -> RejectReport<'static> {
+pub(super) fn report_for(
+    entity_id: u32,
+    space_id: u32,
+    reason: MovementReject,
+) -> RejectReport<'static> {
     // `SpaceBounds::FALLBACK` is a const, so the borrow is 'static —
     // which keeps these helpers from needing a lifetime parameter.
     const B: &SpaceBounds = &SpaceBounds::FALLBACK;
     RejectReport {
+        common: common_for(entity_id, space_id, reason, [50_000.0, 5.0, 20.0]),
+        last_valid: SPAWN,
+        bounds: B,
+    }
+}
+
+/// The shared half of every hard-reject report.
+fn common_for(
+    entity_id: u32,
+    space_id: u32,
+    reason: MovementReject,
+    position: [f32; 3],
+) -> HardReject {
+    HardReject {
         entity_id,
         space_id,
         reason,
@@ -59,9 +79,7 @@ fn report_for(entity_id: u32, space_id: u32, reason: MovementReject) -> RejectRe
             MovementReject::OffNavmesh => "navmesh",
             MovementReject::Teleport => "teleport",
         },
-        position: [50_000.0, 5.0, 20.0],
-        last_valid: SPAWN,
-        bounds: B,
+        position,
     }
 }
 
@@ -131,11 +149,7 @@ fn navmesh_reject_reports_the_gate_distances_and_mesh_hash() {
     let nav_bounds = SpaceBounds::new(bmin, bmax);
     mgr.report_movement_reject(
         RejectReport {
-            entity_id: 100,
-            space_id,
-            reason: MovementReject::OffNavmesh,
-            reason_label: "navmesh",
-            position: off_mesh,
+            common: common_for(100, space_id, MovementReject::OffNavmesh, off_mesh),
             last_valid: ON_MESH,
             bounds: &nav_bounds,
         },
@@ -199,11 +213,12 @@ fn non_navmesh_reject_reports_no_gate() {
 
     mgr.report_movement_reject(
         RejectReport {
-            entity_id: 100,
-            space_id,
-            reason: MovementReject::OutOfBounds,
-            reason_label: "bounds",
-            position: [bmax[0] + 10_000.0, 0.0, 0.0],
+            common: common_for(
+                100,
+                space_id,
+                MovementReject::OutOfBounds,
+                [bmax[0] + 10_000.0, 0.0, 0.0],
+            ),
             last_valid: ON_MESH,
             bounds: &nav_bounds,
         },
@@ -306,32 +321,121 @@ fn one_entitys_throttle_does_not_silence_another() {
     );
 }
 
-/// Throttle state is released on teardown, so it neither leaks nor lets
-/// a recycled `entity_id` inherit a predecessor's open window (which
-/// would swallow the first reject of a fresh session).
+// ── Every hard reject, not just `Rejected` ───────────────────────────
+
+/// **The under-counting guard.** `reject_outcome` resolves a hard reject
+/// into `Rejected`, `Recovered` or `CorrectionSuppressed`. Only the
+/// first was reported, so a player stuck badly enough to exhaust the
+/// correction budget — the worst case there is — contributed nothing to
+/// `movement_validation_rejects_total` and got no navmesh diagnosis at
+/// all.
+///
+/// Counter emission is unobservable from a unit test (no Meter), so the
+/// assertable proxy for "this went through the shared accounting seam"
+/// is the diagnosis and the throttle bookkeeping the same seam
+/// produces. Reverting either of the other two outcomes to the old
+/// inline handler log drops `gate` / `nav_horiz_dist` / `navmesh_hash` /
+/// `suppressed` and fails here.
 #[test]
-fn telemetry_state_is_released_when_the_entity_is_destroyed() {
-    let mut mgr = make_manager();
-    let space_id = player_in(&mut mgr, 7006, "Agnos");
-    mgr.report_movement_reject(
-        report_for(7006, space_id, MovementReject::OutOfBounds),
+fn recovery_and_suppression_rows_carry_the_same_diagnosis_as_a_reject() {
+    let Some((mut mgr, space_id, bmin, bmax)) = navmesh_manager() else {
+        return; // fixture-less CI
+    };
+    let Some(off_mesh) = nearby_off_mesh_point(&mgr, bmin, bmax) else {
+        return;
+    };
+    let capture = LogCapture::install();
+
+    // Entity 100 is the one `navmesh_manager` puts in the meshed space,
+    // and both the diagnosis and the mesh hash are resolved through its
+    // space binding. Release the throttle between the two so the second
+    // row is not (correctly) absorbed — the shared-window behaviour is
+    // its own guard below.
+    mgr.report_movement_recovered(
+        RecoveryReport {
+            common: common_for(100, space_id, MovementReject::OffNavmesh, off_mesh),
+            from: off_mesh,
+            recovered_to: ON_MESH,
+        },
         Instant::now(),
     );
-    mgr.sample_accepted_position_at(7006, SPAWN, Instant::now());
-    assert_eq!(
-        mgr.movement_telemetry.tracked(),
-        2,
-        "precondition: both the reject throttle and the position sample \
-         must have a slot, or this test cannot prove they are both freed"
+    mgr.movement_telemetry.forget(100);
+    mgr.report_correction_suppressed(
+        SuppressionReport {
+            common: common_for(100, space_id, MovementReject::OffNavmesh, off_mesh),
+            from: off_mesh,
+            strikes: 6,
+        },
+        Instant::now(),
     );
 
-    mgr.destroy_entity(7006);
-    assert_eq!(
-        mgr.movement_telemetry.tracked(),
-        0,
-        "every per-entity telemetry slot must be dropped with the entity \
-         — dropping only some of them is how the next id reuse inherits \
-         a stale throttle window"
+    for (level, message) in [
+        (Level::WARN, "movement.validation_recovered"),
+        (Level::ERROR, "movement.correction_suppressed"),
+    ] {
+        let ev = capture
+            .find_event(level, message, "navmesh")
+            .unwrap_or_else(|| panic!("{message} must log"));
+        for field in ["world", "gate", "navmesh_hash", "suppressed"] {
+            assert!(
+                ev.fields.contains_key(field),
+                "{message} is a hard reject too and must carry `{field}` \
+                 — an operator triaging a stuck player should not have to \
+                 know which recovery branch fired to get the diagnosis: \
+                 {ev:#?}"
+            );
+        }
+    }
+}
+
+/// All three outcomes share one per-entity window, because they are one
+/// event seen three ways. A `CorrectionSuppressed` entity re-reports at
+/// the full 10 Hz client rate indefinitely; giving it its own unthrottled
+/// stream would reintroduce exactly the flood the throttle was added for.
+///
+/// Also the positive proof that the other two outcomes reach the
+/// accounting seam at all: an occurrence that never calls `admit` cannot
+/// show up in the next row's `suppressed` count.
+#[test]
+fn every_hard_reject_outcome_shares_one_throttle_window() {
+    let capture = LogCapture::install();
+    let (mut mgr, space_id) = agnos_with(7201);
+    let t0 = Instant::now();
+
+    mgr.report_movement_reject(report_for(7201, space_id, MovementReject::OutOfBounds), t0);
+    // Inside the window: counted, not written.
+    mgr.report_movement_recovered(
+        RecoveryReport {
+            common: common_for(7201, space_id, MovementReject::OutOfBounds, SPAWN),
+            from: SPAWN,
+            recovered_to: SPAWN,
+        },
+        t0 + Duration::from_millis(100),
+    );
+    assert!(
+        capture
+            .find_message(Level::WARN, "movement.validation_recovered")
+            .is_none(),
+        "a recovery inside the same entity's open window must be \
+         absorbed by the throttle, not written"
+    );
+
+    mgr.report_correction_suppressed(
+        SuppressionReport {
+            common: common_for(7201, space_id, MovementReject::OutOfBounds, SPAWN),
+            from: SPAWN,
+            strikes: 6,
+        },
+        t0 + Duration::from_secs(2),
+    );
+    let ev = capture
+        .find_message(Level::ERROR, "movement.correction_suppressed")
+        .expect("past the window, the next hard reject must emit");
+    assert!(
+        ev.has_field("suppressed", "1"),
+        "the elided recovery must be accounted for in the next emitted \
+         row's suppressed count — if it never reached `admit`, it was \
+         never counted either: {ev:#?}"
     );
 }
 
