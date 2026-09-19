@@ -182,7 +182,7 @@ pub struct BspStats {
     /// enclosing hull, i.e. where the cap filter could fire at all.
     pub models_with_hull: usize,
     /// Triangles dropped as outer-hull skin. Zero when
-    /// [`BspOptions::exclude_hull_caps`] is off.
+    /// [`BspOptions::terrain_ceiling`] is absent.
     pub hull_cap_triangles_excluded: usize,
     /// Surface area of those triangles, m². Reported because the cap is
     /// judged by how much unreachable *sheet* it removes, not by
@@ -190,7 +190,7 @@ pub struct BspStats {
     pub hull_cap_area_m2: f64,
 }
 
-/// Knobs for [`collect_bsp_triangles_with`].
+/// Knobs for [`collect_bsp_triangles`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BspOptions<'a> {
     /// The chunk's terrain surface, used to decide whether an outer

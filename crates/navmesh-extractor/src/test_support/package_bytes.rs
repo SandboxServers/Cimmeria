@@ -15,8 +15,8 @@
 //! the reader takes its uncompressed path and `read_export_data`
 //! seeks into the file directly. The 68-byte export record is only
 //! fixed-width because every fixture leaves `ComponentMap` and
-//! `GenerationNetObjectCount` empty; [`ExportRecord::SIZE`] asserts
-//! that assumption against the encoder.
+//! `GenerationNetObjectCount` empty; the encoder debug-asserts that
+//! assumption against its own output.
 
 use std::path::Path;
 
