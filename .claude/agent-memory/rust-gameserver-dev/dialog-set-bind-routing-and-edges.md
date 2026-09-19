@@ -46,9 +46,34 @@ Fix: a sibling chain on `mission_completed '<N>'`.
 the full mission context, so the partner chain can carry the *identical*
 condition set including `mission_status <N> eq completed`.
 
-Use two chain ids, not one chain with two trigger rows:
-`load_single_chain_for_test` returns only the first expansion, so a test
-written the obvious way guards one trigger and silently ignores the other.
+Two chain ids vs one chain with two trigger rows — both are used in the repo
+(Harset Jaffa lane pairs ids; the Goa'uld lane uses two trigger rows). Paired
+ids dodge the `load_single_chain_for_test` trap, which returns only the FIRST
+expansion of a multi-trigger chain, so a test written the obvious way guards
+one trigger and silently ignores the other. The cost is that the two condition
+sets can drift; buy that back with a structural guard comparing the
+`content_conditions` rows of both chains (ignore `sort_order` — it is
+meaningless across chains).
+
+### The edge that has no trigger at all: MISSION ABANDON
+
+`abandonMission` is a client-callable cell method (index 52,
+`cell_methods/missionary.rs`). `missions::abandon_mission` removes the mission
+row and fires **nothing** into the content engine — there is no
+`mission_abandoned` trigger in `loader/trigger.rs`, no dispatcher in
+`content/event_dispatch/`, and no seed chain in the repo keys on abandon. The
+chain action `abandon_mission` and the GM `gmMissionClear` /
+`gmMissionAbandon` share the same gap.
+
+So abandoning a mission in the world where its offer lives flips it back to
+`not_active`, re-satisfying the offer chain's gate, with no edge to fire — the
+icon stays missing until a world hop. The abandon also strands whatever bind
+was live, so the previous step's NPC keeps a stale cue and Route B replays
+that step's dialog. Both self-heal on the next world transition.
+
+**Campaign-wide, affects every offer chain in every lane.** The fix is Rust
+(a `fire_mission_abandoned` dispatcher + trigger), so a seed lane must record
+it, not work around it.
 
 ## Route A vs Route B decides whether a later `display_dialog` can work
 
