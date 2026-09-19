@@ -278,6 +278,18 @@ Design documents for development and administration tools.
 
 ---
 
+### `agents/` -- Engineering Agent Skill Configuration
+
+Per-repo settings consumed by the Matt Pocock engineering skills (`/triage`, `/to-tickets`, `/to-spec`, `/code-review`, `/domain-modeling`). Summarised in the `## Agent skills` block of [../CLAUDE.md](../CLAUDE.md); regenerate with `/mattpocock-skills:setup-matt-pocock-skills`.
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [issue-tracker.md](agents/issue-tracker.md) | Issues live in GitHub Issues via the `gh` CLI; PRs-as-request-surface flag (off by default); wayfinder map / child / blocking conventions | Complete |
+| [triage-labels.md](agents/triage-labels.md) | Maps the five canonical triage roles to this repo's label strings (defaults kept) | Complete |
+| [domain.md](agents/domain.md) | Consumer rules for `CONTEXT.md` / `docs/adr/`, plus repo-specific pointers to the `architecture/` ADRs and `spec/glossary.md` | Complete |
+
+---
+
 ### `analysis/` -- Investigation Logs
 
 Working notes and cross-reference indexes from ongoing RE sessions.
