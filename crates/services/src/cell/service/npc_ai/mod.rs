@@ -59,8 +59,14 @@ mod wander;
 // set out of Postgres, spawns it, and then drives this selector. Keeping
 // that guard next to the spawner tests it shares a fixture with is worth
 // one module level of visibility; nothing outside `cell` can see it.
+//
+// `choose_npc_ability_within_reach` is re-exported at the same scope for
+// the same reason: the Harset live-DB guard drives the *production*
+// selector (the reach-filtered one `fight` calls) over set 4 and set 5 as
+// the seed actually loads them, so the seed and the melee gate are pinned
+// together rather than in two tests that could drift apart.
 #[cfg(test)]
-pub(in crate::cell) use ability_select::choose_npc_ability;
+pub(in crate::cell) use ability_select::{choose_npc_ability, choose_npc_ability_within_reach};
 pub(super) use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
 
 // Test-only re-export: the sibling `tests/npc_ai.rs` exercises the

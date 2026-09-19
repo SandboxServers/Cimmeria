@@ -2,7 +2,36 @@
 //! pick an off-cooldown ability, resolve its `(max_range, min_range)`,
 //! and compute the min-range backup waypoint.
 
+use cimmeria_entity::abilities::AbilityDef;
+
 use crate::cell::space_manager::SpaceManager;
+
+/// The distance at which a given ability can actually be used.
+///
+/// Two different "use the server default" sentinels collapse here, and
+/// which one applies is decided by `is_ranged`, not by the ability row
+/// alone:
+///
+/// - **`is_ranged = false` → [`crate::cell::combat::NPC_MELEE_RANGE`].** A
+///   swing has swing reach. This wins even over a non-zero `max_range`,
+///   because 148 melee rows in `resources.abilities` carry a `max_range`
+///   between 100 and 2500 — plainly not the metres the fight tick measures
+///   in — and honouring those would reproduce the very defect this gate
+///   exists to remove, in a worse form.
+/// - **`is_ranged = true`** → the def's own `max_range` when non-zero, else
+///   `npc_attack_range` (the `0` sentinel).
+///
+/// A **missing def** resolves to `npc_attack_range`, not the melee reach:
+/// an ability the server knows nothing about must not be silently confined
+/// to 3 m. This keeps the pre-existing behaviour for every def-less ability
+/// the fixtures and the `NPC_DEFAULT_ABILITY` fallback rely on.
+fn effective_max_range(def: Option<&AbilityDef>, npc_attack_range: f32) -> f32 {
+    match def {
+        Some(d) if !d.is_ranged => crate::cell::combat::NPC_MELEE_RANGE,
+        Some(d) if d.max_range > 0 => d.max_range as f32,
+        _ => npc_attack_range,
+    }
+}
 
 /// Pick an off-cooldown ability for the NPC's fight tick. `None` → all
 /// cooling → caller holds fire. Empty bucket falls back to
@@ -43,9 +72,76 @@ pub(in crate::cell) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager)
         .find(|&id| !npc.abilities.is_on_cooldown(id))
 }
 
+/// [`choose_npc_ability`] with a reach filter: prefer the lowest-id
+/// off-cooldown ability that can actually be used at `target_dist`, and
+/// fall back to the unfiltered pick when none can.
+///
+/// This is the production entry point; the unfiltered
+/// [`choose_npc_ability`] is the fallback arm and stays reachable on its
+/// own so the selector tests keep exercising the partition directly.
+///
+/// # Why the filter exists
+///
+/// `ability_set_abilities` could hold one row per set until Harset packet
+/// H09 widened its primary key, so no NPC could own both a ranged and a
+/// melee ability and the question never arose. It does now: set 4 is
+/// `584 Staff Auto Attack` + `710 Staff Melee AA` and set 5 is
+/// `711 Ribbon Device Melee AA` + `712 Ribbon Device Auto Attack`. Since
+/// the unfiltered pick is "lowest off-cooldown id", set 5's *primary* would
+/// be the melee half — so without this filter a Goa'uld at 20 m plays a
+/// ribbon swing, and a Jaffa plays a staff swing on every tick 584 is
+/// cooling. Twelve of the fifteen stationary spawn rows in the seed use set
+/// 4, and a pinned sentry can never close the gap to make the swing
+/// truthful.
+///
+/// The 2009 Python selector never range-gated either —
+/// `deprecated/python/cell/SGWMob.py:227` carries the literal
+/// `# TODO: Check distance, LOS` above its `return ABILITY_Usable`. This is
+/// that TODO, server-side and client-compatible.
+///
+/// # Why a fallback rather than `None`
+///
+/// Returning `None` when nothing is in reach would make the caller treat
+/// the NPC as "all cooling" and hold fire — a melee-only NPC would freeze
+/// at distance instead of walking in. Handing back the out-of-reach pick
+/// instead lets [`ability_ranges`] report its real (short) `max_range`, so
+/// the fight tick's existing out-of-range arm does the right thing for
+/// free: a mobile NPC chases, and a stationary one holds and turns to face.
+///
+/// # Effect on single-ability sets
+///
+/// None. Every set that predates H09 — 1 (`579`), 2 (`221`), 3 (`559`), and
+/// the `NPC_DEFAULT_ABILITY` (`592`) empty-bucket fallback — holds one
+/// `is_ranged = true` ability, so the filter either accepts the same pick
+/// the unfiltered walk would have made, or accepts nothing and delegates to
+/// it. Sets 4 and 5 are the only sets in the seed carrying a melee ability.
+pub(in crate::cell) fn choose_npc_ability_within_reach(
+    npc_id: u32,
+    space_mgr: &SpaceManager,
+    target_dist: f32,
+    npc_attack_range: f32,
+) -> Option<i32> {
+    let npc = space_mgr.get_entity(npc_id)?;
+
+    let mut ability_ids = npc.abilities.known_ability_ids();
+    ability_ids.sort_unstable();
+
+    let in_reach = ability_ids.into_iter().find(|&id| {
+        !npc.abilities.is_on_cooldown(id)
+            && effective_max_range(space_mgr.ability_defs.get(&id), npc_attack_range) >= target_dist
+    });
+
+    in_reach.or_else(|| choose_npc_ability(npc_id, space_mgr))
+}
+
 /// Resolve `(max_range, min_range)` for a chosen ability, falling back
 /// to the server-default `NPC_ATTACK_RANGE` when the def is missing or
 /// the field carries the `0` sentinel meaning "use server default."
+///
+/// `max_range` goes through [`effective_max_range`], so a melee ability
+/// (`is_ranged = false`) reports `NPC_MELEE_RANGE` rather than the ranged
+/// default — that is what turns the fight tick's existing out-of-range arm
+/// into "walk in before swinging."
 ///
 /// `min_range` is `0.0` when the def carries `0` (no minimum). Distinct
 /// from `max_range` which never zeroes legitimately — `0` always means
@@ -63,13 +159,7 @@ pub(super) fn ability_ranges(
     npc_attack_range: f32,
 ) -> (f32, f32) {
     let def = chosen_ability.and_then(|id| space_mgr.ability_defs.get(&id));
-    let max_range = def.map_or(npc_attack_range, |d| {
-        if d.max_range > 0 {
-            d.max_range as f32
-        } else {
-            npc_attack_range
-        }
-    });
+    let max_range = effective_max_range(def, npc_attack_range);
     let min_range = def.map_or(0.0, |d| {
         if d.min_range > 0 {
             d.min_range as f32
