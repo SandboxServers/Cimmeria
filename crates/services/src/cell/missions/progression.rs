@@ -255,7 +255,11 @@ pub async fn complete_objective(
         .await;
 
     // Check if all objectives are completed → advance mission
-    let required_count = mission.active_objectives.iter().filter(|o| !o.optional).count();
+    let required_count = mission
+        .active_objectives
+        .iter()
+        .filter(|o| !o.optional)
+        .count();
     let all_required_complete = mission
         .active_objectives
         .iter()

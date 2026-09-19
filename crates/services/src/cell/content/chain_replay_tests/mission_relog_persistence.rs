@@ -213,7 +213,12 @@ async fn objective_completed_on_the_current_step_survives_a_relog() {
     let mut mgr = mgr_with_seeded_mission_caches(&pool).await;
     stage_player(&mut mgr, EID_BEFORE);
 
-    run_action(Action::AcceptMission { mission_id: 742 }, EID_BEFORE, &mut mgr).await;
+    run_action(
+        Action::AcceptMission { mission_id: 742 },
+        EID_BEFORE,
+        &mut mgr,
+    )
+    .await;
     run_action(
         Action::AdvanceStep {
             mission_id: 742,
@@ -279,7 +284,12 @@ async fn chain_6104_gate_tracks_the_objective_across_a_relog() {
     let mut mgr = mgr_with_seeded_mission_caches(&pool).await;
     stage_player(&mut mgr, EID_BEFORE);
 
-    run_action(Action::AcceptMission { mission_id: 742 }, EID_BEFORE, &mut mgr).await;
+    run_action(
+        Action::AcceptMission { mission_id: 742 },
+        EID_BEFORE,
+        &mut mgr,
+    )
+    .await;
     let msgs = run_action(
         Action::AdvanceStep {
             mission_id: 742,
@@ -348,7 +358,12 @@ async fn objective_completed_on_a_prior_step_survives_a_relog() {
     let mut mgr = mgr_with_seeded_mission_caches(&pool).await;
     stage_player(&mut mgr, EID_BEFORE);
 
-    run_action(Action::AcceptMission { mission_id: 688 }, EID_BEFORE, &mut mgr).await;
+    run_action(
+        Action::AcceptMission { mission_id: 688 },
+        EID_BEFORE,
+        &mut mgr,
+    )
+    .await;
     let msgs = run_action(
         Action::AdvanceStep {
             mission_id: 688,
@@ -544,7 +559,12 @@ async fn mission_update_is_emitted_on_a_real_completion_and_not_on_a_no_op() {
     let mut mgr = mgr_with_seeded_mission_caches(&pool).await;
     stage_player(&mut mgr, EID_BEFORE);
 
-    run_action(Action::AcceptMission { mission_id: 742 }, EID_BEFORE, &mut mgr).await;
+    run_action(
+        Action::AcceptMission { mission_id: 742 },
+        EID_BEFORE,
+        &mut mgr,
+    )
+    .await;
     run_action(
         Action::AdvanceStep {
             mission_id: 742,

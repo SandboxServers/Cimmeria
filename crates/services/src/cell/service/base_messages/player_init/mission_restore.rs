@@ -16,7 +16,9 @@
 //! the player's progress, so the seed stays the single source of truth
 //! and `sgw_mission` needs no schema change.
 
-use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE, STATUS_COMPLETED};
+use cimmeria_entity::missions::{
+    MissionInstance, MissionObjective, STATUS_ACTIVE, STATUS_COMPLETED,
+};
 
 use crate::cell::messages::SavedMission;
 use crate::cell::space_manager::SpaceManager;
@@ -289,11 +291,7 @@ mod tests {
         let restored = build_restored_missions(&[saved(vec![STEP], vec![])], &mgr);
         let m = &restored[0];
 
-        let ids: Vec<i32> = m
-            .active_objectives
-            .iter()
-            .map(|o| o.objective_id)
-            .collect();
+        let ids: Vec<i32> = m.active_objectives.iter().map(|o| o.objective_id).collect();
         assert_eq!(
             ids,
             vec![2913, 2914, 2915],
@@ -379,14 +377,24 @@ mod tests {
         let (tx, _rx) = mpsc::channel(64);
         crate::cell::missions::complete_objective(1, MISSION, 2913, &tx, &mut mgr).await;
         assert_ne!(
-            mgr.get_entity(1).unwrap().missions.get_mission(MISSION).unwrap().status,
+            mgr.get_entity(1)
+                .unwrap()
+                .missions
+                .get_mission(MISSION)
+                .unwrap()
+                .status,
             MISSION_COMPLETED,
             "2914 is still open — the mission must not complete yet",
         );
         crate::cell::missions::complete_objective(1, MISSION, 2914, &tx, &mut mgr).await;
 
         assert_eq!(
-            mgr.get_entity(1).unwrap().missions.get_mission(MISSION).unwrap().status,
+            mgr.get_entity(1)
+                .unwrap()
+                .missions
+                .get_mission(MISSION)
+                .unwrap()
+                .status,
             MISSION_COMPLETED,
             "both required objectives are done; the still-open optional 2915 must \
              not hold the mission open — pre-H50 it was restored as required and did",

@@ -483,6 +483,10 @@ mod offer_guard_tests {
             update.1.is_empty(),
             "a fresh accept has completed nothing yet"
         );
-        assert_eq!(update.2, Some(2113), "the step id belongs in current_step_id");
+        assert_eq!(
+            update.2,
+            Some(2113),
+            "the step id belongs in current_step_id"
+        );
     }
 }

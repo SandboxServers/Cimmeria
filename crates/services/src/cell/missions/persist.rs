@@ -51,9 +51,8 @@ pub fn mission_update_msg(player_id: i32, mission: &MissionInstance) -> CellToBa
         .map(|o| o.objective_id)
         .collect();
 
-    let mut completed_objective_ids: Vec<i32> = Vec::with_capacity(
-        mission.completed_objectives.len() + mission.active_objectives.len(),
-    );
+    let mut completed_objective_ids: Vec<i32> =
+        Vec::with_capacity(mission.completed_objectives.len() + mission.active_objectives.len());
     let push_unique = |id: i32, out: &mut Vec<i32>| {
         if !out.contains(&id) {
             out.push(id);
@@ -196,7 +195,10 @@ mod tests {
         let mut m = MissionInstance::new(
             688,
             2356,
-            vec![obj(2734, STATUS_ACTIVE, false), obj(4647, STATUS_ACTIVE, true)],
+            vec![
+                obj(2734, STATUS_ACTIVE, false),
+                obj(4647, STATUS_ACTIVE, true),
+            ],
         );
         m.complete();
         assert!(
@@ -262,7 +264,11 @@ mod tests {
         m.active_objectives = vec![obj(4647, STATUS_ACTIVE, false)];
 
         let (active, completed, steps, _) = arrays(&mission_update_msg(77, &m));
-        assert_eq!(active, vec![4647], "only the new step's objectives are active");
+        assert_eq!(
+            active,
+            vec![4647],
+            "only the new step's objectives are active"
+        );
         assert_eq!(
             completed,
             vec![2734],

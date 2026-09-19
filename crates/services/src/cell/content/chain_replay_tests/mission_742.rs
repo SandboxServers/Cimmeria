@@ -1267,14 +1267,18 @@ async fn hydrated_step_2504_carries_the_objective_params_and_lights_chain_6104()
     mgr.mission_defs = load_mission_defs(&pool).await.unwrap();
     mgr.step_objectives = load_step_objectives(&pool).await.unwrap();
 
-    // What `advance_step` now persists for a player mid-step-2504.
+    // Deliberately the PRE-H50 row: `active_objective_ids` holding the
+    // step id is what every row written before this fix contains, and
+    // the repo does no DB migrations. If this test seeded the post-fix
+    // array instead it would pass under a reverted hydration too — the
+    // same self-agreement that let the old pin survive.
     let saved = SavedMission {
         mission_id: 742,
         status: MISSION_ACTIVE,
         current_step_id: Some(2504),
         completed_step_ids: vec![2502, 2503],
         completed_objective_ids: vec![],
-        active_objective_ids: vec![2913, 2914, 2915],
+        active_objective_ids: vec![2504],
         failed_objective_ids: vec![],
         repeats: 0,
     };
