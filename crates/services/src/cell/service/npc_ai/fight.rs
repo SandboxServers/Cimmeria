@@ -8,7 +8,9 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-use super::ability_select::{ability_ranges, choose_npc_ability, compute_backup_waypoint};
+use super::ability_select::{
+    ability_ranges, choose_npc_ability_within_reach, compute_backup_waypoint,
+};
 
 /// Auto-aggro tick for Idle NPCs with `aggression > 0`.
 ///
@@ -213,31 +215,47 @@ pub(super) async fn npc_ai_fight(
         }
     }
 
+    // Distance is needed before the pick, not after: since H09 an ability
+    // set can hold both a ranged and a melee auto-attack, and which of the
+    // two is usable depends on how far away the target is.
+    let dist_to_target = npc_pos.distance_to(&target_pos);
+
     // Pick the ability up front so the range check can gate on the
     // ability's own `min_range` / `max_range` instead of a flat
-    // server-wide constant. `choose_npc_ability` returns:
+    // server-wide constant. `choose_npc_ability_within_reach` returns:
+    //   - `Some(id)` for the lowest-id off-cooldown ability that can be
+    //     used at `dist_to_target` — a melee ability only inside
+    //     `NPC_MELEE_RANGE`, so a staff or ribbon swing is never played at
+    //     a target the NPC cannot touch.
+    //   - `Some(id)` for the lowest-id off-cooldown ability regardless of
+    //     reach when none is in reach, so the out-of-range arm below can
+    //     walk the NPC in (or hold it, if stationary) rather than freeze.
     //   - `Some(NPC_DEFAULT_ABILITY)` when the NPC has no known abilities
     //     (misconfigured template — explicit fallback per the selector's
     //     "don't wedge silently" rule).
-    //   - `Some(id)` for the first non-cooling known ability.
     //   - `None` when every known ability is on cooldown.
     //
     // In the `None` case we keep the range/LOS logic running against the
     // server-wide fallback so the NPC still walks toward / tracks the
     // target while waiting for an off-cooldown ability — same effective
     // behavior as the pre-issue-329 flat-30.0 code path.
-    let chosen_ability = choose_npc_ability(npc_id, space_mgr);
+    let chosen_ability = choose_npc_ability_within_reach(
+        npc_id,
+        space_mgr,
+        dist_to_target,
+        combat::NPC_ATTACK_RANGE,
+    );
     let (max_range, min_range) =
         ability_ranges(chosen_ability, space_mgr, combat::NPC_ATTACK_RANGE);
 
     // Range check: don't attack until target is within the chosen
     // ability's `max_range` (or `NPC_ATTACK_RANGE` if the def is missing
-    // or carries the `0` sentinel meaning "use server default"). Pinned
+    // or carries the `0` sentinel meaning "use server default", or
+    // `NPC_MELEE_RANGE` if the ability is melee). Pinned
     // Previously: prior code used the flat constant and ignored
     // per-ability `max_range`, which produced "NPC walks into firing
     // distance but stands there" for any ability with `max_range < 30`
     // (e.g., a grenade at `max_range = 15`).
-    let dist_to_target = npc_pos.distance_to(&target_pos);
     let in_range = dist_to_target <= max_range;
     let has_los = space_mgr.has_line_of_sight(npc_id, target_id);
 
