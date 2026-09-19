@@ -7,11 +7,18 @@
 //! autologin, and crash recovery (see
 //! `docs/architecture/live-research-lab.md` §3.4).
 //!
-//! Config comes from the environment for phase 1; the supervisor will
-//! own it end to end once it writes the session file itself:
+//! Config comes from the environment:
 //!
-//! - `CIMMERIA_LAB_BRIDGE` — bridge address, default `127.0.0.1:8770`.
-//! - `CIMMERIA_LAB_TOKEN` — the 64-hex token the bridge expects.
+//! - `CIMMERIA_LAB_BRIDGE` — bridge address for attaching to an
+//!   already-running client, default `127.0.0.1:8770`. Once the
+//!   supervisor launches a client itself (`lab_client_start`) it
+//!   re-points the bridge at the fresh per-launch token.
+//! - `CIMMERIA_LAB_TOKEN` — the 64-hex token for that pre-existing
+//!   client (unused once the supervisor starts one).
+//! - `CIMMERIA_LAB_INSTALL_DIR` — game install dir (for the supervisor
+//!   lifecycle tools). `CIMMERIA_LAB_DLL` overrides the DLL path.
+//! - `CIMMERIA_LAB_BRIDGE_BIND` / `_PORT`, `CIMMERIA_LAB_UPLOAD_ENDPOINT`
+//!   — written into the session file the supervisor generates.
 
 use std::sync::Arc;
 
@@ -21,9 +28,11 @@ use tracing_subscriber::EnvFilter;
 
 mod client;
 mod server;
+mod supervisor;
 
 use client::BridgeClient;
 use server::LabServer;
+use supervisor::{Supervisor, SupervisorConfig};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -40,12 +49,17 @@ async fn main() -> Result<()> {
         std::env::var("CIMMERIA_LAB_BRIDGE").unwrap_or_else(|_| "127.0.0.1:8770".to_string());
     let token = std::env::var("CIMMERIA_LAB_TOKEN").unwrap_or_default();
     if token.is_empty() {
-        tracing::warn!("CIMMERIA_LAB_TOKEN is unset; the bridge will reject every call");
+        tracing::warn!(
+            "CIMMERIA_LAB_TOKEN is unset; attaching to a pre-existing client will \
+             fail until lab_client_start mints its own token"
+        );
     }
-    tracing::info!(%addr, "cimmeria-lab starting; proxying to client bridge");
+    let config = SupervisorConfig::from_env();
+    tracing::info!(%addr, install_dir = ?config.install_dir, "cimmeria-lab supervisor starting");
 
     let bridge = Arc::new(BridgeClient::new(addr, token));
-    let service = LabServer::new(bridge)
+    let supervisor = Arc::new(Supervisor::new(bridge, config));
+    let service = LabServer::new(supervisor)
         .serve(stdio())
         .await
         .inspect_err(|e| tracing::error!("serve error: {e:?}"))?;

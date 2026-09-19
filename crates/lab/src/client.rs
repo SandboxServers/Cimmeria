@@ -23,21 +23,42 @@ use tokio::sync::Mutex;
 /// Must match the bridge's `MAX_FRAME_LEN`.
 const MAX_FRAME_LEN: u32 = 1 << 20;
 
-pub struct BridgeClient {
+/// Connection state, all behind one lock: the current target
+/// (addr/token) and the cached authenticated stream. Folding target and
+/// stream into a single mutex means `reconfigure` and `call` take the
+/// same single lock in the same order — no lock-ordering hazard.
+struct ConnState {
     addr: String,
     token: String,
-    conn: Mutex<Option<TcpStream>>,
+    stream: Option<TcpStream>,
+}
+
+pub struct BridgeClient {
+    state: Mutex<ConnState>,
     next_id: AtomicI64,
 }
 
 impl BridgeClient {
     pub fn new(addr: impl Into<String>, token: impl Into<String>) -> Self {
         Self {
-            addr: addr.into(),
-            token: token.into(),
-            conn: Mutex::new(None),
+            state: Mutex::new(ConnState {
+                addr: addr.into(),
+                token: token.into(),
+                stream: None,
+            }),
             next_id: AtomicI64::new(1),
         }
+    }
+
+    /// Re-point the client at a fresh bridge target (new port and/or the
+    /// per-launch token the supervisor just wrote). Drops any cached
+    /// connection so the next call reconnects and re-auths with the new
+    /// token.
+    pub async fn reconfigure(&self, addr: impl Into<String>, token: impl Into<String>) {
+        let mut st = self.state.lock().await;
+        st.addr = addr.into();
+        st.token = token.into();
+        st.stream = None;
     }
 
     /// Call a bridge method and return its JSON-RPC `result`. A
@@ -45,12 +66,12 @@ impl BridgeClient {
     /// surfaces as `Err` (and drops the connection so the next call
     /// reconnects).
     pub async fn call(&self, method: &str, params: Value) -> Result<Value> {
-        let mut guard = self.conn.lock().await;
+        let mut guard = self.state.lock().await;
         match self.call_inner(&mut guard, method, params).await {
             Ok(v) => Ok(v),
             Err(e) => {
                 // Force a fresh connect + re-auth next time.
-                *guard = None;
+                guard.stream = None;
                 Err(e)
             }
         }
@@ -58,14 +79,15 @@ impl BridgeClient {
 
     async fn call_inner(
         &self,
-        guard: &mut Option<TcpStream>,
+        guard: &mut ConnState,
         method: &str,
         params: Value,
     ) -> Result<Value> {
-        if guard.is_none() {
-            *guard = Some(self.connect_and_auth().await?);
+        if guard.stream.is_none() {
+            let s = connect_and_auth(&guard.addr, &guard.token).await?;
+            guard.stream = Some(s);
         }
-        let stream = guard.as_mut().expect("just connected");
+        let stream = guard.stream.as_mut().expect("just connected");
 
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let req = json!({
@@ -91,24 +113,35 @@ impl BridgeClient {
             .ok_or_else(|| anyhow!("bridge response had neither result nor error"))
     }
 
-    async fn connect_and_auth(&self) -> Result<TcpStream> {
-        let mut stream = TcpStream::connect(&self.addr)
-            .await
-            .with_context(|| format!("connect to bridge at {}", self.addr))?;
-        // First frame: the token.
-        let auth = json!({ "token": self.token });
-        write_frame(&mut stream, &serde_json::to_vec(&auth)?).await?;
-        // Bridge acks with {"ok":true} on success, or closes on a bad
-        // token (read then returns EOF).
-        let ack = read_frame(&mut stream)
-            .await
-            .context("bridge closed the connection (bad or missing token?)")?;
-        let ack: Value = serde_json::from_slice(&ack).unwrap_or(Value::Null);
-        if ack.get("ok").and_then(Value::as_bool) != Some(true) {
-            bail!("bridge did not acknowledge the token: {ack}");
-        }
-        Ok(stream)
+    /// Read the bridge's Tick-drain heartbeat counter. Used by the
+    /// watchdog: a value that stops advancing (or a call that fails)
+    /// means the client's main thread is wedged.
+    pub async fn heartbeat(&self) -> Result<u64> {
+        let result = self.call("heartbeat", json!({})).await?;
+        result
+            .get("tick_count")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| anyhow!("heartbeat result missing tick_count: {result}"))
     }
+}
+
+async fn connect_and_auth(addr: &str, token: &str) -> Result<TcpStream> {
+    let mut stream = TcpStream::connect(addr)
+        .await
+        .with_context(|| format!("connect to bridge at {addr}"))?;
+    // First frame: the token.
+    let auth = json!({ "token": token });
+    write_frame(&mut stream, &serde_json::to_vec(&auth)?).await?;
+    // Bridge acks with {"ok":true} on success, or closes on a bad
+    // token (read then returns EOF).
+    let ack = read_frame(&mut stream)
+        .await
+        .context("bridge closed the connection (bad or missing token?)")?;
+    let ack: Value = serde_json::from_slice(&ack).unwrap_or(Value::Null);
+    if ack.get("ok").and_then(Value::as_bool) != Some(true) {
+        bail!("bridge did not acknowledge the token: {ack}");
+    }
+    Ok(stream)
 }
 
 async fn write_frame(stream: &mut TcpStream, body: &[u8]) -> Result<()> {

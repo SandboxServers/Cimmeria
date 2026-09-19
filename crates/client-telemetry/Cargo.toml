@@ -78,6 +78,11 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Threading",
     "Win32_System_Memory",
     "Win32_System_Diagnostics_Debug",
+    # EXCEPTION_POINTERS / MINIDUMP_EXCEPTION_INFORMATION (the lab-bridge
+    # outer-tier crash filter, #685) are gated behind this feature.
+    "Win32_System_Kernel",
+    # MiniDumpWriteDump is gated on FileSystem + Kernel + Memory.
+    "Win32_Storage_FileSystem",
 ] }
 
 # `minhook-sys` — raw FFI bindings to the MinHook C library, built

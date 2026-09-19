@@ -1,9 +1,14 @@
-//! The stdio MCP server surface: three tools that proxy to the
-//! client bridge. Phase 1 of the Live Research Lab supervisor.
+//! The stdio MCP server surface.
 //!
-//! Each tool is a thin translator — one MCP tool call becomes one
-//! framed JSON-RPC request against the bridge — matching the ADR's
-//! "the supervisor proxies tool calls to the bridge."
+//! Phase 1 (#684): three probe tools that proxy to the client bridge
+//! (`client_lua_eval`, `client_module_info`, `client_mem_read`).
+//! Phase 2 (#685): the supervisor tools that own the SGW.exe process
+//! lifecycle — start/stop/restart/status, autologin, screenshot, and
+//! crash reporting.
+//!
+//! All bridge traffic goes through the [`Supervisor`], which journals
+//! probe commands (for crash quarantine) and re-points the bridge at
+//! the per-launch token when it starts a client.
 
 use std::sync::Arc;
 
@@ -14,7 +19,7 @@ use rmcp::{
 };
 use serde_json::{json, Value};
 
-use crate::client::BridgeClient;
+use crate::supervisor::Supervisor;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct LuaEvalArgs {
@@ -33,22 +38,34 @@ pub struct MemReadArgs {
     pub len: u32,
 }
 
-/// The MCP server. Holds a shared bridge client; cloned per request
-/// by the rmcp router (cheap — the bridge lives behind an `Arc`).
+/// Optional target-server selector for the lifecycle tools. Overrides
+/// the `server` field in `lab-account.json` when present (local vs colo).
+#[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
+pub struct ServerArg {
+    /// Shard name to select at login (e.g. `"local"`, `"colo"`). Falls
+    /// back to `lab-account.json`'s `server` when omitted.
+    #[serde(default)]
+    pub server: Option<String>,
+}
+
+/// The MCP server. Holds the shared supervisor (which owns the bridge
+/// client and the process lifecycle).
 #[derive(Clone)]
 pub struct LabServer {
-    bridge: Arc<BridgeClient>,
+    supervisor: Arc<Supervisor>,
     tool_router: ToolRouter<LabServer>,
 }
 
 #[tool_router(router = tool_router)]
 impl LabServer {
-    pub fn new(bridge: Arc<BridgeClient>) -> Self {
+    pub fn new(supervisor: Arc<Supervisor>) -> Self {
         Self {
-            bridge,
+            supervisor,
             tool_router: Self::tool_router(),
         }
     }
+
+    // ---- Phase 1: probe tools (proxied + journaled) ------------------
 
     #[tool(
         description = "Evaluate a Lua chunk on the live SGW client's main thread via the client bridge. Returns the pcall status, any Lua error, results, and captured print output."
@@ -77,20 +94,86 @@ impl LabServer {
         self.proxy("mem_read", json!({ "addr": args.addr, "len": args.len }))
             .await
     }
+
+    // ---- Phase 2: supervisor lifecycle tools -------------------------
+
+    #[tool(
+        description = "Launch SGW.exe suspended, inject the lab-bridge telemetry DLL, and resume. Writes a fresh per-launch token into current-session.json and starts the heartbeat watchdog. Optional `server` selects local vs colo."
+    )]
+    async fn lab_client_start(
+        &self,
+        Parameters(args): Parameters<ServerArg>,
+    ) -> Result<CallToolResult, McpError> {
+        self.wrap(self.supervisor.start(args.server).await)
+    }
+
+    #[tool(description = "Terminate the supervised SGW.exe client.")]
+    async fn lab_client_stop(&self) -> Result<CallToolResult, McpError> {
+        self.wrap(self.supervisor.stop().await)
+    }
+
+    #[tool(
+        description = "Stop the client (if running) and start a fresh one. Optional `server` selects local vs colo."
+    )]
+    async fn lab_client_restart(
+        &self,
+        Parameters(args): Parameters<ServerArg>,
+    ) -> Result<CallToolResult, McpError> {
+        self.wrap(self.supervisor.restart(args.server).await)
+    }
+
+    #[tool(
+        description = "Report the client's PID, uptime, bridge heartbeat (tick count + age + alive/stale/unreachable), login state, and recent crash count."
+    )]
+    async fn lab_client_status(&self) -> Result<CallToolResult, McpError> {
+        self.wrap(self.supervisor.status().await)
+    }
+
+    #[tool(
+        description = "Drive Lua autologin (EULA/login/server-select/character-select) to enter the world on the lab character. NOTE: the screen reads need client_lua_eval return-value capture (a Phase-3 bridge TODO); the fire-and-forget actions work today."
+    )]
+    async fn lab_login(
+        &self,
+        Parameters(args): Parameters<ServerArg>,
+    ) -> Result<CallToolResult, McpError> {
+        self.wrap(self.supervisor.login(args.server).await)
+    }
+
+    #[tool(description = "Capture the client's main window and return it as a PNG image.")]
+    async fn lab_screenshot(&self) -> Result<CallToolResult, McpError> {
+        match self.supervisor.screenshot().await {
+            Ok((b64, w, h)) => Ok(CallToolResult::success(vec![
+                ContentBlock::text(format!("client window {w}x{h}")),
+                ContentBlock::image(b64, "image/png"),
+            ])),
+            Err(e) => Err(McpError::internal_error(format!("screenshot: {e}"), None)),
+        }
+    }
+
+    #[tool(
+        description = "Report the last minidump path, the last N bridge commands, the command quarantined at crash time, and the DLL crash marker."
+    )]
+    async fn lab_crash_report(&self) -> Result<CallToolResult, McpError> {
+        self.wrap(self.supervisor.crash_report().await)
+    }
 }
 
 impl LabServer {
-    /// Forward one call to the bridge and wrap the JSON result as MCP
-    /// text content. A bridge/transport failure becomes an MCP
-    /// internal error so the agent sees the message.
+    /// Forward one probe call through the supervisor (journaled) and wrap
+    /// the JSON result as MCP text content.
     async fn proxy(&self, method: &str, params: Value) -> Result<CallToolResult, McpError> {
-        match self.bridge.call(method, params).await {
+        self.wrap(self.supervisor.bridge_call(method, params).await)
+    }
+
+    /// Wrap a supervisor `Result<Value, String>` as an MCP result.
+    fn wrap(&self, r: Result<Value, String>) -> Result<CallToolResult, McpError> {
+        match r {
             Ok(result) => {
                 let text =
                     serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
                 Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
             }
-            Err(e) => Err(McpError::internal_error(format!("bridge: {e}"), None)),
+            Err(e) => Err(McpError::internal_error(e, None)),
         }
     }
 }
@@ -101,10 +184,12 @@ impl ServerHandler for LabServer {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::from_build_env())
             .with_instructions(
-                "Live Research Lab client bridge proxy. Tools: client_lua_eval, \
-                 client_module_info, client_mem_read. All calls are forwarded to the \
-                 injected cimmeria-client-telemetry DLL over a token-gated loopback \
-                 TCP channel."
+                "Live Research Lab supervisor. Probe tools (client_lua_eval, \
+                 client_module_info, client_mem_read) forward to the injected \
+                 cimmeria-client-telemetry DLL over a token-gated loopback TCP \
+                 channel. Supervisor tools (lab_client_start/stop/restart/status, \
+                 lab_login, lab_screenshot, lab_crash_report) own the SGW.exe \
+                 process lifecycle and crash recovery."
                     .to_string(),
             )
     }

@@ -120,6 +120,16 @@ pub fn dispatch(req: &RpcRequest) -> RpcResponse {
             }
             Err(e) => RpcResponse::error(id, INVALID_PARAMS, format!("lua_eval params: {e}")),
         },
+        "heartbeat" => {
+            // The Tick-drain counter (this very dispatch runs inside the
+            // drain, so the value is current for this frame). The
+            // supervisor polls it and compares successive reads: no
+            // advance ⇒ hung/crash-dialog ⇒ terminate (ADR §6).
+            RpcResponse::ok(
+                id,
+                serde_json::json!({ "tick_count": super::heartbeat_count() }),
+            )
+        }
         "module_info" => match memory::module_info() {
             Ok(info) => RpcResponse::ok(
                 id,
