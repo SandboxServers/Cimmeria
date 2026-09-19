@@ -9,8 +9,10 @@
 //!
 //! # v1 — legacy, byte-identical to the C++ client (frozen — do not change)
 //!
-//! The original C++ implementation uses OpenSSL's AES-256-CBC with PKCS7
-//! padding for confidentiality, and HMAC-MD5 for integrity. Wire format:
+//! The original C++ implementation uses CryptoPP's AES-256-CBC with PKCS7
+//! padding for confidentiality, and HMAC-MD5 for integrity. (The runtime here
+//! is RustCrypto; the library the binary emulates is CryptoPP — `HMAC_Base@
+//! CryptoPP` RTTI strings, spec §1.4.) Wire format:
 //!
 //! ```text
 //! [ ciphertext ][ 16-byte HMAC-MD5 tag ]
@@ -22,7 +24,7 @@
 //!   `EVP_aes_256_cbc` and `EVP_md5`/`HMAC_Init` in the C++ flow).
 //! - No version byte, no IV on the wire, no length/sequence inside the unit.
 //!
-//! The v1 output MUST stay byte-identical to the C++ OpenSSL output for the
+//! The v1 output MUST stay byte-identical to the C++ CryptoPP output for the
 //! same key material and plaintext — it is wire-compatible with unpatched
 //! clients during the v1→v2 transition. **Do not change v1 output bytes.**
 //!

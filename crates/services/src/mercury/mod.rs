@@ -164,8 +164,11 @@ pub const FRAG_FIRST_AND_LAST: u8 = 0x43;
 // Verified from .def files by traversing the entity hierarchy:
 // SGWEntity → SGWSpawnableEntity → SGWBeing (+ interfaces) → SGWPlayer (+ interfaces + own)
 //
-// Direct encoding (0–127): msg_id = index | 0x80
-// Extended encoding (128+): msg_id = 0xBD, payload = entity_id + (index - 61) as u8 + args
+// Wire encoding boundary: direct below idbase (61 for SGWPlayer), extended at
+// idbase and above — see `append_entity_method` doc. Constants in this table
+// that fall at or past 61 all use the extended encoding.
+// Direct encoding (0–60): msg_id = index | 0x80
+// Extended encoding (61+): msg_id = 0xBD, payload = entity_id + (index - 61) as u8 + args
 
 /// Flattened ClientMethod indices.
 ///
@@ -255,7 +258,8 @@ pub mod method_idx {
     pub const ADD_CLIENT_HINTED_GENERIC_REGION: u16 = 125;
     pub const ON_RESET_MAP_INFO: u16 = 126;
 
-    // Extended encoding (>= 128)
+    // Extended-method block — these indices are >= idbase (61 for SGWPlayer),
+    // so each is emitted with extended encoding (0xBD marker + sub-byte).
     pub const ON_EXTRA_NAME_UPDATE: u16 = 130;
     pub const ON_EXP_UPDATE: u16 = 131;
     pub const ON_MAX_EXP_UPDATE: u16 = 132;

@@ -68,12 +68,30 @@ pub const FLAG_ON_CHANNEL: u8 = 0x08;
 pub const FLAG_RELIABLE: u8 = 0x10;
 
 /// Packet is a fragment of a larger message bundle.
+///
+/// Naming-divergence note (spec §1.2 vs wire): the spec's flag-mask table
+/// places `IS_FRAGMENT` at bit 7; the SGW binary's
+/// `processFilteredPacket_inner` peels no fragment flag at all — bit 5 is
+/// not checked there and fragment handling lives downstream in
+/// `Mercury_Nub_ProcessPacket`. Bit 5 has no wire-visible role in SGW
+/// regardless of what it is called. See
+/// `docs/audits/mercury-rust-conformance-2026-05-15.md` §11.1.
 pub const FLAG_FRAGMENTED: u8 = 0x20;
 
 /// Packet carries a sequence number.
+///
+/// Wire-confirmed as the sequence-number flag: the binary peels a 4-byte
+/// sequence ID when bit 6 is set (audit §11.1, plus the send-side
+/// `Mercury_Bundle_Finalise` "+4 bytes of footer" accounting). The spec's
+/// §1.2 table mislabels this bit as `HAS_REQUESTS`.
 pub const FLAG_HAS_SEQUENCE: u8 = 0x40;
 
 /// Packet addresses an indexed sub-channel (unused in SGW).
+///
+/// No wire role in SGW: the binary treats bit 7 as a bad-flags/error path
+/// (`processFilteredPacket_inner` rejects unconditionally and bumps the
+/// channel error counter). The spec's §1.2 `IS_FRAGMENT` at bit 7 is wrong.
+/// See `docs/audits/mercury-rust-conformance-2026-05-15.md` §11.1.
 pub const FLAG_INDEXED: u8 = 0x80;
 
 /// Valid Mercury sequence-number range is 28 bits — `0x00000000` through

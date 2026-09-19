@@ -532,7 +532,7 @@ V3 wire capture closed two former Critical-pending-verification items as spec bu
 
 ### 7.3 Minor and design debt
 
-11. **Verify and remove `PROTOCOL_VERSION`** (finding #11). The constant at `crates/mercury/src/lib.rs:69` is currently unused but its comment promises a wire handshake the spec forbids. Remove the constant and the comment.
+11. **Verify and remove `PROTOCOL_VERSION`** (finding #11). The constant at `crates/mercury/src/lib.rs:69` is currently unused but its comment promises a wire handshake the spec forbids. Remove the constant and the comment. ✅ **RESOLVED** (see #296).
 
 12. **Introduce an `InterfaceElement` table.** Replace per-emitter hardcoded length-prefix decisions with a static table of `(msg_id, flag, size, name)` rows matching spec §2.5.1's `flag=0/1` discriminator. Catches future descriptor-vs-emitter mismatches at compile time; unblocks `DWORD_LENGTH` (`AUTHENTICATE`) and the `compressLength` 1/2/3/4-byte widths.
 
@@ -544,9 +544,9 @@ V3 wire capture closed two former Critical-pending-verification items as spec bu
 
 ### 7.4 Documentation cleanup (chapter and code)
 
-16. **Drop the `OpenSSL` reference in `encryption.rs`.** Spec §1.4 explicitly notes the doc-comment is wrong (the runtime is RustCrypto; the binary it emulates is CryptoPP). One-line change.
+16. **Drop the `OpenSSL` reference in `encryption.rs`.** Spec §1.4 explicitly notes the doc-comment is wrong (the runtime is RustCrypto; the binary it emulates is CryptoPP). One-line change. ✅ **RESOLVED** (see #296). Both `encryption/mod.rs` doc mentions now say CryptoPP, with the RustCrypto-vs-CryptoPP distinction noted.
 
-17. **Reconcile the contradictory doc-comment at `crates/services/src/mercury/mod.rs:219-225`.** The doc-comment says "Extended (method_index >= 128)" and "We use the simpler boundary at 128" while the code at line 230 uses `if method_index >= 61`. The code is correct (V3 wire capture confirmed); update the doc-comment to match: extended encoding starts at index 61 with `sub_index = method_index - 61`, sentinel `0xBD` (cell) / `0xFD` (base).
+17. **Reconcile the contradictory doc-comment at `crates/services/src/mercury/mod.rs:219-225`.** The doc-comment says "Extended (method_index >= 128)" and "We use the simpler boundary at 128" while the code at line 230 uses `if method_index >= 61`. The code is correct (V3 wire capture confirmed); update the doc-comment to match: extended encoding starts at index 61 with `sub_index = method_index - 61`, sentinel `0xBD` (cell) / `0xFD` (base). ✅ **RESOLVED** (see #296). The `append_entity_method` doc had already been rewritten to the per-entity `idbase` model by #392; #296 fixed the two stale inline tables ("Direct encoding (0–127) / Extended encoding (128+)") that still claimed a 128 boundary.
 
 18. **Update the spec table at §1.10.5** (createEntity payload size). The table says "5 bytes" but the field list and C++ source both add to 8 bytes; Rust correctly emits 8. Fix the spec table.
 
