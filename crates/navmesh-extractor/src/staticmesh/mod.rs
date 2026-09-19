@@ -31,20 +31,20 @@
 //! an empty soup — that's the path the integration test takes when the
 //! `Stargate Worlds-QA` directory is missing.
 //!
-//! # Known limitation — archetype-based actors
+//! # Archetype-based actors
 //!
 //! In SGW cooked chunks, most `StaticMeshActor` exports carry the
 //! `StaticMesh` reference directly on their cooked
-//! `StaticMeshComponent`. The rest reference a **prefab archetype** (an
-//! import into e.g. `Em-Props.upk:EM-WallLight02_Pf0`); their cooked
-//! component is a ~76-byte stub holding only the `CullDistance`
-//! override, and the actual mesh reference lives in the prefab
-//! template's component. Resolving these requires opening the archetype
-//! package and merging the inherited properties — that's a Phase 1.2
-//! follow-up. The walker tallies them as
-//! [`SkipReason::ArchetypeStubComponent`] so the coverage report can
-//! size the gap instead of guessing at it.
+//! `StaticMeshComponent`. The rest were instanced from a **prefab
+//! archetype** (an import into e.g. `Em-Props.upk:EM-WallLight02_Pf0`);
+//! their cooked component is a stub holding only per-instance overrides
+//! (`CullDistance`, `IrrelevantLights`, …) and the mesh reference lives
+//! on the archetype. [`archetype`] follows that chain; the walker only
+//! tallies [`SkipReason::ArchetypeStubComponent`] when no
+//! [`PackageIndex`] was supplied to follow it with. On Castle this is
+//! 961 of 6,430 actors — see the crate README.
 
+pub mod archetype;
 pub mod mesh_ref;
 
 use std::collections::HashMap;
@@ -58,6 +58,7 @@ use crate::geometry::TriangleSoup;
 use crate::transform::{transform_triangles, ActorTransform};
 use crate::{ExtractError, Result};
 
+pub use archetype::ArchetypeCache;
 pub use mesh_ref::transform_from_actor_props;
 
 /// One StaticMesh instance to be added to a chunk's triangle soup.
@@ -79,6 +80,14 @@ pub struct StaticMeshInstance {
     /// through so the coverage report can say how many *archetype*
     /// actors resolved anyway.
     pub from_archetype: bool,
+    /// `true` when the mesh reference came from the archetype chain
+    /// rather than from the instance's own `StaticMesh` property.
+    ///
+    /// Distinct from `from_archetype`: a prefab-instanced actor whose
+    /// cooked component *does* carry its own `StaticMesh` (the
+    /// instance-overrides-archetype case) is `from_archetype = true`,
+    /// `via_archetype = false`.
+    pub via_archetype: bool,
 }
 
 /// Result of walking a package's `StaticMeshActor` exports.
@@ -94,6 +103,8 @@ pub struct ActorWalk {
     pub archetype_actors: u64,
     /// Actors whose `Outer` chain passes through a `PrefabInstance`.
     pub prefab_outer_actors: u64,
+    /// Prefab packages this chunk had to open to follow archetypes.
+    pub prefab_packages_opened: u64,
 }
 
 /// Per-chunk extraction result.
@@ -122,6 +133,13 @@ pub struct ChunkExtraction {
     pub archetype_actors_resolved: u64,
     /// Actors whose `Outer` chain passes through a `PrefabInstance`.
     pub prefab_outer_actors: u64,
+    /// Actors whose mesh reference came from the archetype chain rather
+    /// than their own component, **and** that produced triangles.
+    pub actors_resolved_via_archetype: u64,
+    /// Triangles contributed by those actors.
+    pub triangles_via_archetype: usize,
+    /// Prefab packages opened while walking this chunk's archetypes.
+    pub prefab_packages_opened: u64,
 }
 
 /// Walk every `StaticMeshActor` in a chunk and produce its triangle soup.
@@ -132,7 +150,8 @@ pub struct ChunkExtraction {
 /// runner.
 pub fn extract_chunk(chunk_path: &Path, index: Option<&PackageIndex>) -> Result<ChunkExtraction> {
     let pkg = Package::open(chunk_path)?;
-    Ok(extract_chunk_from_package(&pkg, index))
+    let mut cache = ArchetypeCache::default();
+    Ok(extract_chunk_from_package(&pkg, index, &mut cache))
 }
 
 /// [`extract_chunk`] against an already-open package.
@@ -140,14 +159,25 @@ pub fn extract_chunk(chunk_path: &Path, index: Option<&PackageIndex>) -> Result<
 /// The orchestrator opens each chunk once — for the export-class census
 /// *and* the geometry walk — so it calls this rather than paying the LZO
 /// decompression twice.
-pub fn extract_chunk_from_package(pkg: &Package, index: Option<&PackageIndex>) -> ChunkExtraction {
-    let walk = collect_static_mesh_instances(pkg);
+///
+/// `cache` memoises archetype-path resolution **across** chunks: Castle's
+/// 961 stub actors share only 86 distinct archetype paths, so reusing one
+/// cache for the whole map turns 961 prefab-package opens into 86. Pass a
+/// fresh [`ArchetypeCache`] if you want per-chunk isolation; the result
+/// is identical, just slower.
+pub fn extract_chunk_from_package(
+    pkg: &Package,
+    index: Option<&PackageIndex>,
+    cache: &mut ArchetypeCache,
+) -> ChunkExtraction {
+    let walk = collect_static_mesh_instances(pkg, index, cache);
 
     let mut result = ChunkExtraction {
         actors_total: walk.actors_total as usize,
         skips: walk.skips,
         archetype_actors: walk.archetype_actors,
         prefab_outer_actors: walk.prefab_outer_actors,
+        prefab_packages_opened: walk.prefab_packages_opened,
         ..Default::default()
     };
 
@@ -217,6 +247,10 @@ pub fn extract_chunk_from_package(pkg: &Package, index: Option<&PackageIndex>) -
             if inst.from_archetype {
                 result.archetype_actors_resolved += 1;
             }
+            if inst.via_archetype {
+                result.actors_resolved_via_archetype += 1;
+                result.triangles_via_archetype += local_tris.len();
+            }
             result.triangles_emitted += local_tris.len();
         }
     }
@@ -267,8 +301,21 @@ fn load_static_mesh(
 /// Actors with a missing or dangling mesh reference are tallied by
 /// reason into [`ActorWalk::skips`]; the sum of `instances.len()` and
 /// `skips.total()` always equals `actors_total`.
-pub fn collect_static_mesh_instances(pkg: &Package) -> ActorWalk {
+///
+/// `index` is needed only to follow prefab archetypes; with `None` a
+/// stub component stays a [`SkipReason::ArchetypeStubComponent`] skip,
+/// which is what the degraded CI mode reports.
+pub fn collect_static_mesh_instances(
+    pkg: &Package,
+    index: Option<&PackageIndex>,
+    cache: &mut ArchetypeCache,
+) -> ActorWalk {
     let mut walk = ActorWalk::default();
+    // Prefab packages opened for *this* chunk only. Dropped on return,
+    // so peak memory is one chunk's prefab working set rather than every
+    // prefab package the map touches; `cache` is what stops that from
+    // costing repeat opens.
+    let mut open = archetype::OpenPrefabs::default();
 
     for export in &pkg.exports {
         if pkg.export_class_name(export) != "StaticMeshActor" {
@@ -305,7 +352,29 @@ pub fn collect_static_mesh_instances(pkg: &Package) -> ActorWalk {
         };
 
         let props = cimmeria_upk::parse_tagged_properties(&data, 32, &pkg.names);
-        let xf = mesh_ref::transform_from_actor_props(&props);
+
+        // The *actor* archetype chain (distinct from the component's —
+        // see `archetype`'s module doc) supplies `bCollideActors` and
+        // any rotation/scale the instance omits. Castle: 26 of 86
+        // archetype actors set `bCollideActors = false`, 17 of them
+        // `Group = PrecipPlanes` weather cards sitting in doorways with
+        // real kDOP collision. Emitting those splits the exterior
+        // navmesh, so this gate runs before anything else.
+        let arch = match index {
+            Some(index) if export.archetype != 0 => archetype::resolve_actor_archetype(
+                pkg,
+                export.archetype,
+                index,
+                cache,
+                &mut open,
+            ),
+            _ => archetype::ActorArchetypeProps::default(),
+        };
+        if !arch.collides(&props) {
+            walk.skips.add(SkipReason::CollisionDisabled);
+            continue;
+        }
+        let xf = arch.merge_transform(&props);
 
         // Recover the mesh import via the actor's StaticMeshComponent
         // sub-object. The component's tagged-property block lives at the
@@ -316,17 +385,33 @@ pub fn collect_static_mesh_instances(pkg: &Package) -> ActorWalk {
             walk.skips.add(SkipReason::NoComponentRef);
             continue;
         };
-        match mesh_ref::resolve_mesh_ref_from_component(pkg, component_ref) {
+        let mut via_archetype = false;
+        let resolved = match mesh_ref::resolve_mesh_ref_from_component(pkg, component_ref) {
+            // The cooked component is a stub: its `StaticMesh` lives on
+            // the prefab archetype. Follow the chain when we have an
+            // index to locate the archetype's package with.
+            Err(SkipReason::ArchetypeStubComponent) => match (index, pkg.exports.get((component_ref - 1) as usize)) {
+                (Some(index), Some(component)) => {
+                    via_archetype = true;
+                    archetype::resolve_via_archetype(pkg, component, index, cache, &mut open)
+                }
+                _ => Err(SkipReason::ArchetypeStubComponent),
+            },
+            other => other,
+        };
+        match resolved {
             Ok(mesh_ref) => walk.instances.push(StaticMeshInstance {
                 actor_name: export.object_name.clone(),
                 mesh_ref,
                 transform: xf,
                 from_archetype,
+                via_archetype,
             }),
             Err(reason) => walk.skips.add(reason),
         }
     }
 
+    walk.prefab_packages_opened = open.opened() as u64;
     walk
 }
 

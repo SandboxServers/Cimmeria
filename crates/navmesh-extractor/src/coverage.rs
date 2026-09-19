@@ -45,12 +45,39 @@ pub enum SkipReason {
     /// The `StaticMeshComponent` reference points outside the export
     /// table, at an import, or at a zero-length export.
     ComponentUnreadable,
-    /// The component parsed but has **no `StaticMesh` property**. This is
-    /// the archetype-stub shape described in the `staticmesh` module doc:
-    /// a ~76-byte cooked component holding only a `CullDistance`
-    /// override, with the real mesh reference living in the prefab
-    /// archetype's component in another package.
+    /// The component parsed but has **no `StaticMesh` property**, and no
+    /// [`cimmeria_upk_objects::PackageIndex`] was available to follow
+    /// its archetype. This is the archetype-stub shape described in the
+    /// `staticmesh` module doc: a cooked component holding only
+    /// per-instance overrides, with the real mesh reference living in
+    /// the prefab archetype's component in another package.
+    ///
+    /// With an index supplied this reason no longer fires — the stub is
+    /// resolved by `staticmesh::archetype`, or falls into one of the
+    /// five `Archetype*` reasons below.
     ArchetypeStubComponent,
+    /// The stub's `Archetype` is 0, points at a local export we could
+    /// not read, or is an import whose outer chain never reaches a root
+    /// package — so there is no `(package, path)` to look up.
+    ArchetypeUnrooted,
+    /// The archetype's owning package is not in the supplied
+    /// [`cimmeria_upk_objects::PackageIndex`], or failed to open.
+    ArchetypePackageNotFound,
+    /// The archetype's package opened but holds no export at the
+    /// template's dotted outer path.
+    ArchetypeExportNotFound,
+    /// The archetype chain revisited a path, or exceeded
+    /// [`crate::staticmesh::archetype::MAX_ARCHETYPE_DEPTH`] hops.
+    ArchetypeChainLoop,
+    /// The chain terminated at a template that has neither a
+    /// `StaticMesh` property nor a further archetype to climb to.
+    ArchetypeNoMesh,
+    /// `CollideActors` is explicitly `false` on the component or,
+    /// through UE3 property inheritance, on its archetype. The mesh is
+    /// rendered but nothing collides with it, so rasterising it would
+    /// put a wall or a floor in the navmesh that the player walks
+    /// straight through.
+    CollisionDisabled,
     /// The component has a `StaticMesh` property but it is a `None`-ref
     /// (object index 0).
     NullMeshRef,
@@ -74,10 +101,16 @@ pub enum SkipReason {
 impl SkipReason {
     /// Every variant, in declaration order. Used for deterministic TSV
     /// column ordering and for the `merge` / `total` loops.
-    pub const ALL: [SkipReason; 9] = [
+    pub const ALL: [SkipReason; 15] = [
         SkipReason::NoComponentRef,
         SkipReason::ComponentUnreadable,
         SkipReason::ArchetypeStubComponent,
+        SkipReason::ArchetypeUnrooted,
+        SkipReason::ArchetypePackageNotFound,
+        SkipReason::ArchetypeExportNotFound,
+        SkipReason::ArchetypeChainLoop,
+        SkipReason::ArchetypeNoMesh,
+        SkipReason::CollisionDisabled,
         SkipReason::NullMeshRef,
         SkipReason::UnresolvableMeshRef,
         SkipReason::MeshNotInIndex,
@@ -92,6 +125,12 @@ impl SkipReason {
             SkipReason::NoComponentRef => "skip_no_component_ref",
             SkipReason::ComponentUnreadable => "skip_component_unreadable",
             SkipReason::ArchetypeStubComponent => "skip_archetype_stub_component",
+            SkipReason::ArchetypeUnrooted => "skip_archetype_unrooted",
+            SkipReason::ArchetypePackageNotFound => "skip_archetype_package_not_found",
+            SkipReason::ArchetypeExportNotFound => "skip_archetype_export_not_found",
+            SkipReason::ArchetypeChainLoop => "skip_archetype_chain_loop",
+            SkipReason::ArchetypeNoMesh => "skip_archetype_no_mesh",
+            SkipReason::CollisionDisabled => "skip_collision_disabled",
             SkipReason::NullMeshRef => "skip_null_mesh_ref",
             SkipReason::UnresolvableMeshRef => "skip_unresolvable_mesh_ref",
             SkipReason::MeshNotInIndex => "skip_mesh_not_in_index",
@@ -106,12 +145,18 @@ impl SkipReason {
             SkipReason::NoComponentRef => 0,
             SkipReason::ComponentUnreadable => 1,
             SkipReason::ArchetypeStubComponent => 2,
-            SkipReason::NullMeshRef => 3,
-            SkipReason::UnresolvableMeshRef => 4,
-            SkipReason::MeshNotInIndex => 5,
-            SkipReason::MeshDecodeFailed => 6,
-            SkipReason::MeshNoCollision => 7,
-            SkipReason::NoPackageIndex => 8,
+            SkipReason::ArchetypeUnrooted => 3,
+            SkipReason::ArchetypePackageNotFound => 4,
+            SkipReason::ArchetypeExportNotFound => 5,
+            SkipReason::ArchetypeChainLoop => 6,
+            SkipReason::ArchetypeNoMesh => 7,
+            SkipReason::CollisionDisabled => 8,
+            SkipReason::NullMeshRef => 9,
+            SkipReason::UnresolvableMeshRef => 10,
+            SkipReason::MeshNotInIndex => 11,
+            SkipReason::MeshDecodeFailed => 12,
+            SkipReason::MeshNoCollision => 13,
+            SkipReason::NoPackageIndex => 14,
         }
     }
 }
@@ -260,6 +305,15 @@ pub struct ChunkCoverage {
     /// Actors whose `Outer` chain passes through a `PrefabInstance`
     /// export in this same package.
     pub prefab_outer_actors: u64,
+    /// Actors whose mesh reference was recovered by walking the prefab
+    /// archetype chain rather than reading the instance's own
+    /// `StaticMesh` property. A subset of `actors_resolved`.
+    pub actors_resolved_via_archetype: u64,
+    /// Triangles those actors contributed. A subset of
+    /// `staticmesh_triangles`, so it does **not** enter the source sum.
+    pub triangles_via_archetype: u64,
+    /// Prefab packages opened while walking this chunk's archetypes.
+    pub prefab_packages_opened: u64,
     /// Full per-class export census for this chunk.
     pub class_census: BTreeMap<String, u64>,
 }
@@ -305,6 +359,9 @@ impl ChunkCoverage {
         self.archetype_actors += other.archetype_actors;
         self.archetype_actors_resolved += other.archetype_actors_resolved;
         self.prefab_outer_actors += other.prefab_outer_actors;
+        self.actors_resolved_via_archetype += other.actors_resolved_via_archetype;
+        self.triangles_via_archetype += other.triangles_via_archetype;
+        self.prefab_packages_opened += other.prefab_packages_opened;
         for (class, n) in &other.class_census {
             *self.class_census.entry(class.clone()).or_insert(0) += n;
         }
@@ -396,6 +453,9 @@ impl MapCoverage {
         header.push("archetype_actors".into());
         header.push("archetype_actors_resolved".into());
         header.push("prefab_outer_actors".into());
+        header.push("actors_resolved_via_archetype".into());
+        header.push("triangles_via_archetype".into());
+        header.push("prefab_packages_opened".into());
         header.extend(
             UNDECODED_COLLISION_CLASSES
                 .iter()
@@ -481,6 +541,9 @@ fn write_chunk_row<W: Write>(w: &mut W, chunk: &ChunkCoverage) -> crate::Result<
     row.push(chunk.archetype_actors.to_string());
     row.push(chunk.archetype_actors_resolved.to_string());
     row.push(chunk.prefab_outer_actors.to_string());
+    row.push(chunk.actors_resolved_via_archetype.to_string());
+    row.push(chunk.triangles_via_archetype.to_string());
+    row.push(chunk.prefab_packages_opened.to_string());
     row.extend(
         UNDECODED_COLLISION_CLASSES
             .iter()

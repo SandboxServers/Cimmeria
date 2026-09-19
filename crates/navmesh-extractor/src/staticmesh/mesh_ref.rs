@@ -63,6 +63,20 @@ pub fn resolve_mesh_ref_from_component(pkg: &Package, component_ref: i32) -> Mes
     // pins this — reverting to offset 4 drops resolvable instances to 0.
     let props = cimmeria_upk::parse_tagged_properties(&data, 8, &pkg.names);
 
+    // A component the level author switched collision off on renders but
+    // does not block; rasterising it would add a wall or a floor the
+    // player walks straight through. UE3's default is `true` and the
+    // cooker omits defaults, so only an explicit `false` gates here.
+    //
+    // Measured: no Castle component, instance or prefab template, sets
+    // the *component*-level flag at all — the 26 Castle prefabs that
+    // disable collision do it on the **actor** (`bCollideActors`),
+    // which the walker gates on separately via
+    // `archetype::ActorArchetypeProps::collides`.
+    if crate::staticmesh::archetype::find_bool(&props, "CollideActors") == Some(false) {
+        return Err(SkipReason::CollisionDisabled);
+    }
+
     let Some(mesh_obj) = find_object(&props, "StaticMesh") else {
         // No `StaticMesh` property at all. In SGW cooked chunks this is
         // the prefab-archetype stub: the component carries only a
