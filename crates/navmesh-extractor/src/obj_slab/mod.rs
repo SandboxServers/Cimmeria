@@ -34,14 +34,20 @@
 //! [`SlabSet::margin`] (default 60 m) — raise it if a query comes back
 //! suspiciously empty, and compare against a `margin` large enough to read
 //! everything.
+//!
+//! The scan itself — which files, and the OBJ reader — lives in
+//! [`chunk_scan`]; this file is the pure geometry over triangles that
+//! are already in memory.
 
 use std::collections::BTreeMap;
-use std::io::{self, BufRead, BufReader};
-use std::path::{Path, PathBuf};
 
-use crate::chunk_id::ChunkId;
+pub mod chunk_scan;
 
-/// One source triangle, in BigWorld metres.
+pub use chunk_scan::{obj_to_bw, SlabSet};
+
+/// One source triangle, in BigWorld metres, **in the index order the
+/// extractor emitted** — which is what makes [`Surface::faces_up`]
+/// answerable with [`crate::floor_probe::recast_up`].
 #[derive(Debug, Clone, Copy)]
 pub struct Tri {
     pub v: [[f32; 3]; 3],
@@ -98,7 +104,7 @@ impl Tri {
         m
     }
 
-    fn overlaps(&self, bmin: [f32; 3], bmax: [f32; 3]) -> bool {
+    pub(crate) fn overlaps(&self, bmin: [f32; 3], bmax: [f32; 3]) -> bool {
         let lo = self.bmin();
         let hi = self.bmax();
         (0..3).all(|k| hi[k] >= bmin[k] && lo[k] <= bmax[k])
@@ -130,11 +136,19 @@ pub struct Surface {
     pub y: f32,
     /// Tilt from horizontal in degrees; 0 is a flat floor.
     pub tilt_degrees: f32,
-    /// True when the triangle faces up in UE3's winding convention. SGW's
-    /// cooked meshes are wound for a left-handed front face, so a floor top
-    /// has `normal.y < 0` after the axis permutation — see
-    /// `docs/engine/navmesh-build-pipeline.md` §1.3. Reported rather than
-    /// filtered on, because BSP and terrain do not all agree.
+    /// True when Recast will see this surface as facing **up** — i.e.
+    /// when it is a floor rather than a ceiling.
+    ///
+    /// The sign is not the obvious one. NavBuilder's `loadOBJ` pushes
+    /// each face as `(faces[i], faces[i-1], faces[0])`
+    /// (`mesh.cpp:123-128`), reversing the order the extractor wrote, so
+    /// Recast's normal is the negation of the right-hand normal of the
+    /// stored winding: an upward-facing SGW floor has `normal().y < 0`
+    /// here. Computed through [`crate::floor_probe::recast_up`] rather
+    /// than re-deriving the sign, so the two cannot drift apart.
+    ///
+    /// Reported rather than filtered on, because BSP and terrain do not
+    /// all agree.
     pub faces_up: bool,
 }
 
@@ -184,7 +198,7 @@ impl Slab {
                 t.height_at(x, z).map(|y| Surface {
                     y,
                     tilt_degrees: t.tilt_degrees(),
-                    faces_up: t.normal()[1] > 0.0,
+                    faces_up: crate::floor_probe::recast_up(&t.v) > 0.0,
                 })
             })
             .collect();
@@ -371,143 +385,6 @@ impl Occupancy {
             .into_iter()
             .map(|(s, e)| e - s)
             .fold(0.0f32, f32::max)
-    }
-}
-
-/// A batch of boxes, filled in one pass over the chunk directory.
-#[derive(Debug)]
-pub struct SlabSet {
-    pub slabs: Vec<Slab>,
-    /// Extra metres a chunk's grid cell is grown by before deciding it cannot
-    /// touch any box. Actors are placed in the chunk that owns them but their
-    /// meshes overhang.
-    pub margin: f32,
-    /// Chunk stems actually opened.
-    pub chunks_read: Vec<String>,
-    pub chunks_skipped: usize,
-}
-
-impl SlabSet {
-    pub fn new(slabs: Vec<Slab>) -> Self {
-        Self {
-            slabs,
-            margin: 60.0,
-            chunks_read: Vec::new(),
-            chunks_skipped: 0,
-        }
-    }
-
-    /// Read every `<hex8>o.obj` in `dir` that could touch a box, and fill the
-    /// slabs.
-    pub fn load(&mut self, dir: &Path) -> io::Result<()> {
-        let mut files: Vec<PathBuf> = std::fs::read_dir(dir)?
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("obj"))
-            .collect();
-        files.sort();
-
-        for path in files {
-            let stem = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or_default()
-                .to_string();
-            if !self.chunk_may_touch(&stem) {
-                self.chunks_skipped += 1;
-                continue;
-            }
-            self.chunks_read.push(stem.clone());
-            self.read_obj(&path, &stem)?;
-        }
-        Ok(())
-    }
-
-    /// Chunk-grid rejection test. Unparseable stems are always read — better
-    /// slow than silently missing geometry.
-    fn chunk_may_touch(&self, stem: &str) -> bool {
-        let Some(hex) = stem.strip_suffix('o') else {
-            return true;
-        };
-        let Ok(raw) = u32::from_str_radix(hex, 16) else {
-            return true;
-        };
-        let id = ChunkId::from_raw(raw);
-        // Low u16 → BW x index, high u16 → BW z index, 100 m per cell.
-        let x0 = id.position_x() as f32 * 100.0 - self.margin;
-        let x1 = (id.position_x() as f32 + 1.0) * 100.0 + self.margin;
-        let z0 = id.position_z() as f32 * 100.0 - self.margin;
-        let z1 = (id.position_z() as f32 + 1.0) * 100.0 + self.margin;
-        self.slabs
-            .iter()
-            .any(|s| s.bmax[0] >= x0 && s.bmin[0] <= x1 && s.bmax[2] >= z0 && s.bmin[2] <= z1)
-    }
-
-    fn read_obj(&mut self, path: &Path, stem: &str) -> io::Result<()> {
-        let file = std::fs::File::open(path)?;
-        let mut reader = BufReader::with_capacity(1 << 20, file);
-        let mut verts: Vec<[f32; 3]> = Vec::new();
-        let mut line = String::new();
-        loop {
-            line.clear();
-            if reader.read_line(&mut line)? == 0 {
-                break;
-            }
-            let s = line.trim_end();
-            if let Some(rest) = s.strip_prefix("v ") {
-                if let Some(v) = parse_vertex(rest) {
-                    verts.push(v);
-                }
-            } else if let Some(rest) = s.strip_prefix("f ") {
-                let Some(idx) = parse_face(rest, verts.len()) else {
-                    continue;
-                };
-                let tri = Tri {
-                    v: [verts[idx[0]], verts[idx[1]], verts[idx[2]]],
-                };
-                for slab in &mut self.slabs {
-                    if tri.overlaps(slab.bmin, slab.bmax) {
-                        slab.tris.push(tri);
-                        *slab.by_chunk.entry(stem.to_string()).or_insert(0) += 1;
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-/// `v <ue.x> <ue.z> <ue.y>` in centimetres → BigWorld metres.
-fn parse_vertex(rest: &str) -> Option<[f32; 3]> {
-    let mut it = rest.split_whitespace();
-    let c0: f32 = it.next()?.parse().ok()?;
-    let c1: f32 = it.next()?.parse().ok()?;
-    let c2: f32 = it.next()?.parse().ok()?;
-    // mesh.cpp:106-108 — bw = (col2, col1, col0) / 100.
-    Some([c2 / 100.0, c1 / 100.0, c0 / 100.0])
-}
-
-/// `f a b c` with 1-based indices; `a/b/c` forms are tolerated. Returns
-/// `None` for degenerate or out-of-range faces rather than panicking — a
-/// truncated last line is a real thing in these files.
-fn parse_face(rest: &str, nverts: usize) -> Option<[usize; 3]> {
-    let mut out = [0usize; 3];
-    let mut n = 0;
-    for tok in rest.split_whitespace() {
-        if n == 3 {
-            return None; // quads are not emitted by the extractor
-        }
-        let first = tok.split('/').next()?;
-        let i: usize = first.parse().ok()?;
-        if i == 0 || i > nverts {
-            return None;
-        }
-        out[n] = i - 1;
-        n += 1;
-    }
-    if n == 3 {
-        Some(out)
-    } else {
-        None
     }
 }
 

@@ -52,28 +52,50 @@ Bin unit tests do count for coverage; a bin with all its logic in `main()` is
 `parse_args_from(&[String])` and `run(&mut impl Write, …) -> io::Result<u8>`
 with stderr lines collected into a `Vec<String>` rather than printed.
 
-## Castle (World 8) is three components and always will be
+## Castle (World 8): the extraction currently produces two probe groups
 
-The 11 named probes sit in three groups (exterior / interior upper /
-throne-room storey) and **no Recast parameter set changes that** — verified
-across slope=60/70, agentClimb=1.2/1.5, agentRadius=0.2/0.3/0.15,
-agentHeight=1.2, minRegionSize 2..32, maxSimplificationError 1.3..3.5, and
-`cs=0.15 ch=0.1` crops.
+**Updated 2026-09-19.** An earlier revision of this note said "three
+components and always will be". That was wrong on both counts: the third
+group was an extractor bug, not geometry, and nothing about the count is
+permanent — it is a property of what the extractor emits, which changes.
 
-- Interior ↔ throne-room storey: rims overlap in XZ at `h=0.00 dy=+12.00 m`
-  exactly, around `(276…292, ·, 865…886)`. Two storeys, 4 m slab between.
-  Prop evidence (concrete cover at y 43.20 and 55.40) confirms both are real.
-- Exterior ↔ throne-room storey: terrain banks measured at **45–58°** plus
-  3–8 m cliffs. `slope=70` shortens the chain but never joins them.
+Current state: 40,068 verts / 19,815 polys / 55,101 edges, 549 components,
+the eleven probes in **two** groups (exterior, and everything indoors).
+
+- **Interior ↔ throne-room storey: SOLVED, and it was ours.**
+  `CA-Interior:CA-large_hallway_ramp_a_00` at BW (355.04, 55.04, 863.48) is
+  authored `DrawScale3D = (-1,1,1)`. Mirroring reverses triangle winding,
+  NavBuilder decides walkability from winding alone, and the walker emitted
+  the transformed vertices in their original order — so the ramp's tread
+  reached Recast as a **ceiling**. `ActorTransform::apply_triangle` now
+  swaps two vertices when the scale determinant is negative. 198 of
+  Castle's 6,436 actors are mirrored (93 of Cellblock's 2,098).
+  `throne_room` then merges into the interior component
+  (17,006 → 53,556 m²). The "12.00 m step with nothing between" reading
+  was the symptom, not the cause; no parameter set would ever have fixed it.
+- **The 108-byte `Brush`-owned `Model`s are correct cooked data**, not a
+  decoder gap: export-table `serial_size = 108`, bytes are bounds + zero
+  counts + a live `Polys` ref, and 36 of the 38 brushes in
+  `Castle-00080003` are `CSG_Subtract` room volumes already baked into the
+  level `Model`. Brush 11 is the stairwell shaft, x[339.7,370.4]
+  y[47.0,65.0] z[845.6,881.3].
+- **Still split: exterior ↔ interior.** A three-hop chain of terrain
+  shelves at (725.6, 30.4, 462.9) → (675.6, 18.6, 488.3) →
+  (622.4, 24.0, 508.2), 2.4–3.4 m steps, banks at 45–58°. Outdoor ground,
+  not a building; `slope=70` shortens the chain but never joins it.
 - **InterpActors are a dead end**: all 14 in Castle are 11 security-camera
   heads, an antenna, a shelf box and `GLB-RingTransporter00`. No lift, no
-  door. (The three `EM-Elevator00` are StaticMeshActors, already extracted.)
+  door. (The `EM-Elevator00` are StaticMeshActors, already extracted.)
 - The `armory` probe is a cross-world ring drop zone
   (`ring_transport_regions` region 34, world 8, fed from region 33 in
   world 12) — not a walk-in room.
 
-What is left: `Polys` / `ModelComponent` BSP in the interior chunks and
-`StaticMeshCollectionActor`. A stairwell would be there if anywhere.
+Full write-up: `docs/engine/castle-navmesh-connectivity.md`.
+
+**Transferable lesson**: when a navmesh splits at a place the geometry
+clearly covers, check the *winding* of the actors there before reaching
+for Recast parameters. A negative-determinant transform is invisible in
+every count the extractor reports.
 
 ## Two tool traps
 

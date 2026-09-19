@@ -204,6 +204,12 @@ pub struct PrefabInstanceSpec<'a> {
     /// `bCollideActors` on the instance actor, overriding whatever the
     /// template says.
     pub instance_collide_actors: Option<bool>,
+    /// Where the **actor** archetype points, when it differs from
+    /// `template`. A real cooked chunk points both chains at the same
+    /// prefab; splitting them is how a test builds the shape that
+    /// matters most — an actor chain that cannot be followed next to a
+    /// component chain that resolves a mesh perfectly well.
+    pub actor_template: Option<(&'a str, &'a str, &'a str)>,
 }
 
 impl<'a> PrefabInstanceSpec<'a> {
@@ -214,7 +220,13 @@ impl<'a> PrefabInstanceSpec<'a> {
             template,
             instance_mesh: None,
             instance_collide_actors: None,
+            actor_template: None,
         }
+    }
+
+    pub fn with_actor_template(mut self, template: (&'a str, &'a str, &'a str)) -> Self {
+        self.actor_template = Some(template);
+        self
     }
 
     pub fn with_instance_mesh(mut self, package: &'a str, object: &'a str) -> Self {
@@ -247,7 +259,7 @@ impl ChunkFixture {
         let component = pkg.add_export(component_class, actor, "StaticMeshComponent");
 
         // Import chain into the prefab package, shared by both
-        // archetype fields.
+        // archetype fields unless the spec splits them.
         let package_import = pkg.add_import("Core", "Package", 0, tpkg);
         let prefab_import = pkg.add_import("Engine", "Prefab", package_import, tprefab);
         let arc_import = pkg.add_import("Engine", "StaticMeshActor", prefab_import, tarc);
@@ -257,7 +269,15 @@ impl ChunkFixture {
             arc_import,
             "StaticMeshComponent0",
         );
-        pkg.set_archetype(actor, arc_import);
+        let actor_arc_import = match spec.actor_template {
+            None => arc_import,
+            Some((apkg, aprefab, aarc)) => {
+                let p = pkg.add_import("Core", "Package", 0, apkg);
+                let pf = pkg.add_import("Engine", "Prefab", p, aprefab);
+                pkg.add_import("Engine", "StaticMeshActor", pf, aarc)
+            }
+        };
+        pkg.set_archetype(actor, actor_arc_import);
         pkg.set_archetype(component, comp_import);
 
         let instance_mesh_import = spec.instance_mesh.map(|(p, o)| {
@@ -291,6 +311,126 @@ impl ChunkFixture {
         }
         pkg.set_payload(component, component_body);
 
+        actor
+    }
+
+    /// Add a `StaticMesh` **export** to the chunk itself and return its
+    /// object index.
+    ///
+    /// SGW's cooked chunks reference meshes as imports throughout, so
+    /// this shape is dormant on Castle — but the format allows it, and
+    /// an extractor that routes it through the cross-package index
+    /// loses the collision geometry with only a `MeshNotInIndex` tally
+    /// to show for it.
+    pub fn add_local_static_mesh(&mut self, name: &str, mesh: &StaticMeshPayload) -> i32 {
+        let pkg = self.package_mut();
+        let class = pkg.class_ref("StaticMesh");
+        let export = pkg.add_export(class, 0, name);
+        pkg.set_payload(export, mesh.encode());
+        export
+    }
+
+    /// A `StaticMeshActor` whose cooked component references a
+    /// **package-local** `StaticMesh` export rather than an import.
+    pub fn add_actor_with_local_mesh(
+        &mut self,
+        name: &str,
+        location: [f32; 3],
+        mesh_export: i32,
+    ) -> i32 {
+        let level = self.level();
+        let pkg = self.package_mut();
+        let actor_class = pkg.class_ref("StaticMeshActor");
+        let actor = pkg.add_export(actor_class, level, name);
+        let component_class = pkg.class_ref("StaticMeshComponent");
+        let component = pkg.add_export(component_class, actor, &format!("{name}_Component"));
+
+        let mut actor_body = vec![0u8; ACTOR_PROPS_OFFSET];
+        {
+            let mut props = pkg.props();
+            props
+                .vector("Location", location)
+                .object("StaticMeshComponent", component);
+            actor_body.extend_from_slice(&props.finish());
+        }
+        pkg.set_payload(actor, actor_body);
+
+        let mut component_body = vec![0u8; COMPONENT_PROPS_OFFSET];
+        {
+            let mut props = pkg.props();
+            props.object("StaticMesh", mesh_export);
+            component_body.extend_from_slice(&props.finish());
+        }
+        pkg.set_payload(component, component_body);
+        actor
+    }
+
+    /// A `StaticMeshActor` whose component is a stub with a
+    /// **positive** (same-package) `Archetype`, at the head of a chain
+    /// of `levels` local template components. Only the last template
+    /// carries the `StaticMesh` reference.
+    ///
+    /// `import_chain` returns `None` for *every* positive index, so a
+    /// walk that only follows import chains stops at the first template
+    /// and reports `ArchetypeNoMesh` — one hop short of the mesh. Two
+    /// or more levels is the shape that proves otherwise.
+    pub fn add_local_archetype_chain_actor(
+        &mut self,
+        name: &str,
+        location: [f32; 3],
+        levels: usize,
+        mesh_export: i32,
+    ) -> i32 {
+        assert!(levels >= 1, "a chain needs at least one template");
+        let level = self.level();
+        let pkg = self.package_mut();
+
+        // Templates, root first, so each child can point at its parent.
+        let component_class = pkg.class_ref("StaticMeshComponent");
+        let mut parent: Option<i32> = None;
+        for i in (0..levels).rev() {
+            let tmpl = pkg.add_export(component_class, 0, &format!("{name}_Template{i}"));
+            let mut body = vec![0u8; COMPONENT_PROPS_OFFSET];
+            {
+                let mut props = pkg.props();
+                if parent.is_none() {
+                    // The root of the chain is the only one with a mesh.
+                    props.object("StaticMesh", mesh_export);
+                } else {
+                    props.float("CachedCullDistance", 8000.0);
+                }
+                body.extend_from_slice(&props.finish());
+            }
+            pkg.set_payload(tmpl, body);
+            if let Some(p) = parent {
+                pkg.set_archetype(tmpl, p);
+            }
+            parent = Some(tmpl);
+        }
+
+        let actor_class = pkg.class_ref("StaticMeshActor");
+        let actor = pkg.add_export(actor_class, level, name);
+        let component = pkg.add_export(component_class, actor, &format!("{name}_Component"));
+        pkg.set_archetype(component, parent.expect("at least one template"));
+
+        let mut actor_body = vec![0u8; ACTOR_PROPS_OFFSET];
+        {
+            let mut props = pkg.props();
+            props
+                .vector("Location", location)
+                .object("StaticMeshComponent", component);
+            actor_body.extend_from_slice(&props.finish());
+        }
+        pkg.set_payload(actor, actor_body);
+
+        // The instance stub carries only per-instance overrides.
+        let mut component_body = vec![0u8; COMPONENT_PROPS_OFFSET];
+        {
+            let mut props = pkg.props();
+            props.float("CullDistance", 16000.0);
+            component_body.extend_from_slice(&props.finish());
+        }
+        pkg.set_payload(component, component_body);
         actor
     }
 }
