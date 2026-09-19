@@ -318,6 +318,9 @@ This is telemetry-only, intentionally **not** a rejection: NAT and IPv4/IPv6
 dual-stack can surface a different source IP for the same physical client, so a
 hard fail would lock out legitimate logins. The mismatch rows exist to measure
 the false-positive rate before the seam hardens to a config-gated rejection.
+Phase 2 (TCP to TCP) is the high-confidence seam and the one to harden first;
+Phase 3 compares a TCP source against a UDP source, which carrier-grade NAT and
+true dual-stack clients can legitimately split, so it should stay warn-only.
 
 ### Step 2: Time Synchronization
 

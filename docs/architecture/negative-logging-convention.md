@@ -213,7 +213,7 @@ login). Both consumption seams log at `warn!`:
 
 | Seam | `reason` | Fields |
 |---|---|---|
-| Phase 2 SID consumption in `auth/handlers.rs::handle_server_selection` | `session_ip_mismatch` | `user`, `account_id`, `session_ip`, `client_ip` |
+| Phase 2 SID consumption in `auth/handlers.rs::handle_server_selection` | `session_ip_mismatch` | `user`, `account_id`, `sid_prefix`, `session_ip`, `client_ip` |
 | Phase 3 ticket consumption in `base/login/mod.rs::handle_login` | `ticket_ip_mismatch` | `account_id`, `ticket_ip`, `client_ip` |
 
 These are **warn-first** by design: NAT and IPv4/IPv6 dual-stack can
@@ -222,6 +222,18 @@ positive rate has to be measured (via these rows) before the gate
 hardens to a rejection. The `client_ips_match` helper in
 `auth/mod.rs` normalises IPv4-mapped-IPv6 (`::ffff:a.b.c.d`) to its
 IPv4 form so the dual-stack case does not pollute the signal.
+
+The two rows are **not** equal-confidence. Phase 2 compares two requests
+on the same TCP SOAP listener minutes apart, so a mismatch there is a
+strong signal and is the seam to harden first. Phase 3 compares the
+Phase-2 **TCP** source against the Mercury **UDP** source: carrier-grade
+NAT pools that map TCP and UDP to different egress addresses, and a
+genuinely dual-stack client (IPv6 SOAP, IPv4 Mercury — `client_ips_match`
+cannot reconcile those), both produce a legitimate mismatch on every
+login. Expect a high benign rate on `ticket_ip_mismatch` and never harden
+Phase 3 to a rejection on this comparison alone. `sid_prefix` joins a
+Phase-2 mismatch to the Phase-1 `Phase 1 generated SID` row without
+logging the credential.
 
 ## Related
 

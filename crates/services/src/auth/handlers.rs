@@ -263,6 +263,7 @@ pub(super) async fn handle_server_selection(
         tracing::warn!(
             user = %session.account_name,
             account_id = session.account_id,
+            sid_prefix = %CredentialPrefix(&sid),
             session_ip = %session.client_ip,
             client_ip = %addr.ip(),
             reason = "session_ip_mismatch",
