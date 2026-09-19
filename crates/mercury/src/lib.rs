@@ -136,7 +136,4 @@ pub mod consts {
 
     /// Maximum number of fragments a single message may be split across.
     pub const MAX_FRAGMENTS: usize = 64;
-
-    /// Protocol version exchanged during channel creation handshake.
-    pub const PROTOCOL_VERSION: u32 = 391;
 }
