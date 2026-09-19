@@ -34,11 +34,18 @@ use std::time::Duration;
 use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use serde_json::Value;
 
+pub mod console;
 pub mod crash;
 pub mod dispatch;
+pub mod dynamic_hooks;
+pub mod events;
 pub mod journal;
+pub mod lua_capture;
 pub mod lua_eval;
+pub mod mem_write;
 pub mod memory;
+pub mod native_call;
+pub mod seh;
 pub mod transport;
 
 pub use crate::session::LabConfig;

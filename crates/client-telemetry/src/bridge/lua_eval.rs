@@ -20,13 +20,14 @@ use serde::Serialize;
 
 /// Result of running a Lua chunk.
 ///
-/// **Phase-1 scope:** `ok` and `status` come straight from the
-/// engine's `lua_pcall`. `results` and `print_output` capture is a
-/// documented TODO — the black-market finding only gives the
-/// fire-and-forget `pcall(L,0,0,0)` primitive (0 results), and
-/// reading return values / redirecting `print` back to Rust needs
-/// further RE of `lua_tolstring` / a `print` hook. The struct shape
-/// is final so the MCP surface doesn't churn when capture lands.
+/// **Return-value + `print` capture landed in #686 scope 6** via
+/// [`super::lua_capture`]: when the Lua 5.1 C API resolves by name,
+/// `eval_on_main_thread` runs a capturing wrapper and fills `results`
+/// (each user return value, `tostring`-ed) and `print_output`. If the
+/// client static-links Lua without exporting the C API, capture degrades
+/// to the wide fire-and-forget primitive and `error` carries the reason —
+/// `ok`/`status` still reflect the raw `lua_pcall`. The struct shape is
+/// final (set in #684) so the MCP surface doesn't churn.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct LuaEvalResult {
     /// `pcall` returned 0.
@@ -124,17 +125,47 @@ mod win {
 
     /// Run `chunk` on the current (main) thread's UI Lua VM.
     ///
+    /// Tries the full capture path first (#686 scope 6): resolve the Lua
+    /// 5.1 C API by name and run a wrapper that returns the chunk's
+    /// results and `print` output. If the C API can't be resolved (the
+    /// client static-links Lua without exports), fall back to the wide
+    /// fire-and-forget primitive and record *why* capture was skipped in
+    /// `error` — the caller still gets a valid `pcall` status. Captured
+    /// `print` output is teed to the local event ring so `events_read`
+    /// sees it too.
+    ///
     /// # Safety
     /// Must be called on the main thread only (never the network
     /// thread). Enforced by the sole call site being the
     /// `FEngineLoop::Tick` drain.
     pub unsafe fn eval_on_main_thread(chunk: &str) -> Result<LuaEvalResult, String> {
         let l = resolve_lua_state().ok_or_else(|| "UI lua_State not available".to_string())?;
-        let (wbuf, char_len) = encode_wide_chunk(chunk);
-        let wname = encode_wide_name(CHUNK_NAME);
-        let f: LuaDoStringWide = core::mem::transmute(LUA_DOSTRING_WIDE);
-        let status = f(l, wbuf.as_ptr(), char_len, wname.as_ptr());
-        Ok(LuaEvalResult::from_status(status))
+
+        // Preferred path: full capture via the resolved C API.
+        let resolver = crate::bridge::lua_capture::ModuleExportResolver;
+        match crate::bridge::lua_capture::capture_eval_with_chunk(l, &resolver, Some(chunk)) {
+            Ok(run) => {
+                if !run.result.print_output.is_empty() {
+                    crate::bridge::events::push(
+                        "lua.print",
+                        crate::bridge::crash::now_ms(),
+                        serde_json::json!({ "output": run.result.print_output }),
+                    );
+                }
+                Ok(run.result)
+            }
+            // C API not resolvable → degrade to the wide fire-and-forget
+            // primitive, but tell the caller why capture was skipped.
+            Err(reason) => {
+                let (wbuf, char_len) = encode_wide_chunk(chunk);
+                let wname = encode_wide_name(CHUNK_NAME);
+                let f: LuaDoStringWide = core::mem::transmute(LUA_DOSTRING_WIDE);
+                let status = f(l, wbuf.as_ptr(), char_len, wname.as_ptr());
+                let mut result = LuaEvalResult::from_status(status);
+                result.error = format!("ran fire-and-forget (no capture): {reason}");
+                Ok(result)
+            }
+        }
     }
 }
 

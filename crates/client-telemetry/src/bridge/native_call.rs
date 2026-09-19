@@ -86,7 +86,9 @@ pub fn parse_args(args: &[Value]) -> Result<Vec<u32>, String> {
 pub fn dispatch(id: Value, params: &Value) -> RpcResponse {
     let p: CallNativeParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
-        Err(e) => return RpcResponse::error(id, INVALID_PARAMS, format!("call_native params: {e}")),
+        Err(e) => {
+            return RpcResponse::error(id, INVALID_PARAMS, format!("call_native params: {e}"))
+        }
     };
     let Some(addr) = dispatch::parse_addr(&p.addr) else {
         return RpcResponse::error(id, INVALID_PARAMS, "call_native: unparseable addr");
@@ -277,7 +279,10 @@ mod tests {
     /// convention. Pins routing + response shape end to end.
     #[test]
     fn dispatch_echoes_id_and_validates_offtarget() {
-        let r = dispatch(json!(9), &json!({ "addr": "0x404030", "conv": "cdecl", "args": [] }));
+        let r = dispatch(
+            json!(9),
+            &json!({ "addr": "0x404030", "conv": "cdecl", "args": [] }),
+        );
         assert_eq!(r.id, json!(9));
         assert!(r.result.is_some() || r.error.is_some());
 

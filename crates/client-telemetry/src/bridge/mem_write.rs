@@ -84,9 +84,7 @@ pub fn encode_typed(value: &Value, ty: &str) -> Result<Vec<u8>, String> {
             Value::String(s) => {
                 let s = s.trim();
                 let (neg, body) = s.strip_prefix('-').map_or((false, s), |b| (true, b));
-                let hex = body
-                    .strip_prefix("0x")
-                    .or_else(|| body.strip_prefix("0X"));
+                let hex = body.strip_prefix("0x").or_else(|| body.strip_prefix("0X"));
                 let mag = match hex {
                     Some(h) => i128::from_str_radix(h, 16),
                     None => body.parse::<i128>(),
@@ -98,18 +96,43 @@ pub fn encode_typed(value: &Value, ty: &str) -> Result<Vec<u8>, String> {
         }
     }
     fn as_f64(v: &Value) -> Result<f64, String> {
-        v.as_f64().ok_or_else(|| "value is not a number".to_string())
+        v.as_f64()
+            .ok_or_else(|| "value is not a number".to_string())
     }
 
     match ty {
-        "u8" => Ok(vec![u8::try_from(as_i128(value)?).map_err(|_| "u8 out of range")?]),
-        "i8" => Ok((i8::try_from(as_i128(value)?).map_err(|_| "i8 out of range")? as u8).to_le_bytes().to_vec()),
-        "u16" => Ok(u16::try_from(as_i128(value)?).map_err(|_| "u16 out of range")?.to_le_bytes().to_vec()),
-        "i16" => Ok(i16::try_from(as_i128(value)?).map_err(|_| "i16 out of range")?.to_le_bytes().to_vec()),
-        "u32" => Ok(u32::try_from(as_i128(value)?).map_err(|_| "u32 out of range")?.to_le_bytes().to_vec()),
-        "i32" => Ok(i32::try_from(as_i128(value)?).map_err(|_| "i32 out of range")?.to_le_bytes().to_vec()),
-        "u64" => Ok(u64::try_from(as_i128(value)?).map_err(|_| "u64 out of range")?.to_le_bytes().to_vec()),
-        "i64" => Ok(i64::try_from(as_i128(value)?).map_err(|_| "i64 out of range")?.to_le_bytes().to_vec()),
+        "u8" => Ok(vec![
+            u8::try_from(as_i128(value)?).map_err(|_| "u8 out of range")?
+        ]),
+        "i8" => Ok(
+            (i8::try_from(as_i128(value)?).map_err(|_| "i8 out of range")? as u8)
+                .to_le_bytes()
+                .to_vec(),
+        ),
+        "u16" => Ok(u16::try_from(as_i128(value)?)
+            .map_err(|_| "u16 out of range")?
+            .to_le_bytes()
+            .to_vec()),
+        "i16" => Ok(i16::try_from(as_i128(value)?)
+            .map_err(|_| "i16 out of range")?
+            .to_le_bytes()
+            .to_vec()),
+        "u32" => Ok(u32::try_from(as_i128(value)?)
+            .map_err(|_| "u32 out of range")?
+            .to_le_bytes()
+            .to_vec()),
+        "i32" => Ok(i32::try_from(as_i128(value)?)
+            .map_err(|_| "i32 out of range")?
+            .to_le_bytes()
+            .to_vec()),
+        "u64" => Ok(u64::try_from(as_i128(value)?)
+            .map_err(|_| "u64 out of range")?
+            .to_le_bytes()
+            .to_vec()),
+        "i64" => Ok(i64::try_from(as_i128(value)?)
+            .map_err(|_| "i64 out of range")?
+            .to_le_bytes()
+            .to_vec()),
         "f32" => Ok((as_f64(value)? as f32).to_le_bytes().to_vec()),
         "f64" => Ok(as_f64(value)?.to_le_bytes().to_vec()),
         other => Err(format!("unknown type '{other}'")),
@@ -221,7 +244,10 @@ mod tests {
 
     #[test]
     fn hex_decode_round_trips() {
-        assert_eq!(decode_hex("deadbeef").unwrap(), vec![0xde, 0xad, 0xbe, 0xef]);
+        assert_eq!(
+            decode_hex("deadbeef").unwrap(),
+            vec![0xde, 0xad, 0xbe, 0xef]
+        );
         assert_eq!(decode_hex("00").unwrap(), vec![0]);
         assert_eq!(decode_hex("").unwrap(), Vec::<u8>::new());
         assert!(decode_hex("abc").is_err(), "odd length");
