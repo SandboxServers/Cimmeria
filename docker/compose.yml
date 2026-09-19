@@ -59,6 +59,11 @@ services:
       - "8081:8081"          # SOAP login (TCP)
       - "8443:8443"          # admin REST API (TCP) — telemetry ingest lives here
       - "30000:30000"        # minigame SmartFoxServer (TCP)
+      # NOTE: the Live Research Lab endpoint (cimmeria-lab-mcp, port 8444)
+      # is deliberately NOT in this public list. It is published on the
+      # WireGuard address only, via the opt-in overlay docker/compose.lab.yml
+      # (`docker compose -f compose.yml -f compose.lab.yml up -d`). See
+      # docs/operations/colo-deploy.md.
     environment:
       # MUST be overridden for any client that isn't on this host.
       BASE_EXTERNAL: "127.0.0.1"

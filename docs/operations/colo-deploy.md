@@ -142,6 +142,30 @@ The rendered TOML inherits the crate's `EventToggles::default()` for every flag 
 
 To adjust further, edit the `[discord.events]` block in [docker/compose.discord.yml](../../docker/compose.discord.yml) and cut a new release. cimmeria-discord supports live reload, but the colo's `configs:` mount snapshots content at container create time — so toggles only take effect on the next watchtower swap (or a manual `docker compose up -d --force-recreate`).
 
+## Optional: Live Research Lab endpoint (WireGuard only)
+
+The in-server Live Research Lab endpoint (`cimmeria-lab-mcp`) lets the owner's dev box read live entity/witness/packet-tap state and run captured-output dot-console commands against the running colo server (design: [../architecture/live-research-lab.md](../architecture/live-research-lab.md); rulebook: [../guides/live-research-lab.md](../guides/live-research-lab.md)). It is **off by default and never exposed on the public internet**.
+
+Two things gate it, both fail-closed:
+
+1. **Config.** The server starts the endpoint only when *both* env vars are set, and refuses a token shorter than 32 bytes:
+   - `CIMMERIA_LAB_MCP_BIND` — the in-container bind address, e.g. `0.0.0.0:8444`. There is no default; absent = endpoint absent.
+   - `CIMMERIA_LAB_MCP_TOKEN` — the shared bearer token (32+ bytes). Absent = endpoint absent.
+2. **Port publication.** The port is published on the host's **WireGuard address only**, via the opt-in overlay [docker/compose.lab.yml](../../docker/compose.lab.yml). It is deliberately *not* in `docker/compose.yml`'s public `ports:` list. If you don't add the overlay, nothing is published.
+
+Enable it on the colo box:
+
+```bash
+cd /opt/cimmeria
+export CIMMERIA_WG_IP=10.13.13.1              # this box's WireGuard address
+export CIMMERIA_LAB_MCP_TOKEN=$(openssl rand -hex 32)   # 64 hex chars = 32 bytes (the minimum)
+docker compose -f compose.yml -f compose.lab.yml up -d
+```
+
+The overlay's `${CIMMERIA_WG_IP:?...}` / `${CIMMERIA_LAB_MCP_TOKEN:?...}` markers make compose refuse to start if either is unset, so the port can never bind to all interfaces and the endpoint can never start tokenless. From the dev box, reach it over WireGuard at `http://$CIMMERIA_WG_IP:8444/mcp` with `Authorization: Bearer <token>`, and point the `lab-server` entry in `.mcp.json` there (see [.mcp.json.example](../../.mcp.json.example)).
+
+Every tool call on the endpoint emits one `lab.tool_call` audit event to SigNoz — that log line is the whole audit trail. On the colo, touch only the lab character and what it spawns unless the owner says otherwise in that session.
+
 ## Optional: watchtower notifications
 
 Watchtower itself can ping Discord / Slack / email / Matrix via [shoutrrr](https://containrrr.dev/watchtower/notifications/) every time it swaps a container. This is independent of the cimmeria-discord crate above — watchtower notifications announce *image swaps*, while cimmeria-discord notifications announce *server events*. Set `WATCHTOWER_NOTIFICATIONS` and `WATCHTOWER_NOTIFICATION_URL` in the compose file if you want both.

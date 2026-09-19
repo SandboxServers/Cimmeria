@@ -24,6 +24,7 @@ pub mod recovery;
 pub mod screenshot;
 pub mod session_file;
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -32,6 +33,8 @@ use serde_json::{json, Value};
 use tokio::sync::Mutex;
 
 use crate::client::BridgeClient;
+use crate::timeline::client_events::HeartbeatSample;
+use crate::timeline::clock::ClockOffset;
 
 use autologin::LoginOutcome;
 use heartbeat::{HeartbeatState, HeartbeatWatchdog};
@@ -49,6 +52,10 @@ const MAX_HEARTBEAT_FAILS: u32 = 5;
 const JOURNAL_CAP: usize = 64;
 /// Autologin poll budget.
 const AUTOLOGIN_MAX_POLLS: u32 = 120;
+/// Heartbeat-observation ring depth fed to `lab_timeline` as the client
+/// event source that exists today (ADR §5; the full #686 event ring
+/// plugs in later — see `timeline::client_events`).
+const HEARTBEAT_RING_CAP: usize = 256;
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -142,6 +149,12 @@ struct SupervisorState {
     watchdog: HeartbeatWatchdog,
     recovery: RecoveryTracker,
     journal: CommandJournal,
+    /// Recent heartbeat observations, the client-event source for
+    /// `lab_timeline`. Bounded ring; oldest dropped past the cap.
+    heartbeats: VecDeque<HeartbeatSample>,
+    /// Cached client↔server clock offset (ADR §5). Re-pinned whenever a
+    /// packet-tap ping is available; used by `lab_timeline` between pins.
+    clock_offset: Option<ClockOffset>,
 }
 
 impl SupervisorState {
@@ -154,7 +167,20 @@ impl SupervisorState {
             watchdog: HeartbeatWatchdog::new(HEARTBEAT_STALE_AFTER),
             recovery: RecoveryTracker::new_default(),
             journal: CommandJournal::new(JOURNAL_CAP),
+            heartbeats: VecDeque::with_capacity(HEARTBEAT_RING_CAP),
+            clock_offset: None,
         }
+    }
+
+    /// Append a heartbeat observation, dropping the oldest past the cap.
+    fn record_heartbeat(&mut self, tick_count: u64, observed_ms: i64) {
+        if self.heartbeats.len() == HEARTBEAT_RING_CAP {
+            self.heartbeats.pop_front();
+        }
+        self.heartbeats.push_back(HeartbeatSample {
+            tick_count,
+            observed_ms,
+        });
     }
 }
 
@@ -306,8 +332,10 @@ impl Supervisor {
         let (hb_count, hb_state, hb_age): (Option<u64>, &str, i64) = match hb {
             Ok(count) => {
                 let mut st = self.state.lock().await;
-                let s = st.watchdog.observe(count, now_ms());
-                let age = st.watchdog.age_ms(now_ms());
+                let ts = now_ms();
+                st.record_heartbeat(count, ts);
+                let s = st.watchdog.observe(count, ts);
+                let age = st.watchdog.age_ms(ts);
                 (
                     Some(count),
                     if s == HeartbeatState::Stale {
@@ -400,6 +428,25 @@ impl Supervisor {
         Ok(crash_report::build_report(&st.journal, &dir, JOURNAL_CAP))
     }
 
+    /// Snapshot the heartbeat-observation ring for `lab_timeline`. Cloned
+    /// out so the timeline builds without holding the state lock.
+    pub async fn heartbeat_samples(&self) -> Vec<HeartbeatSample> {
+        let st = self.state.lock().await;
+        st.heartbeats.iter().copied().collect()
+    }
+
+    /// The cached client↔server clock offset, if one has been pinned.
+    pub async fn cached_offset(&self) -> Option<ClockOffset> {
+        let st = self.state.lock().await;
+        st.clock_offset.clone()
+    }
+
+    /// Pin a freshly estimated clock offset (from a packet-tap ping).
+    pub async fn set_offset(&self, offset: ClockOffset) {
+        let mut st = self.state.lock().await;
+        st.clock_offset = Some(offset);
+    }
+
     /// Spawn the background heartbeat watchdog for `pid`. It exits once
     /// the current launch's pid changes (a restart), or after it handles
     /// this launch's death.
@@ -426,7 +473,9 @@ impl Supervisor {
                     fails = 0;
                     let stale = {
                         let mut st = self.state.lock().await;
-                        st.watchdog.observe(count, now_ms())
+                        let ts = now_ms();
+                        st.record_heartbeat(count, ts);
+                        st.watchdog.observe(count, ts)
                     };
                     if stale == HeartbeatState::Stale {
                         tracing::warn!(pid = my_pid, "heartbeat stale; terminating hung client");
