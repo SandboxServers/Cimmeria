@@ -429,3 +429,49 @@ async fn a_rejected_login_claims_nothing() {
         "a rejected login must leave the session unclaimed",
     );
 }
+
+/// A ticket admits one connection. While it is playing, a second login with
+/// the same ticket must be refused: each socket would otherwise get its own
+/// game instance, and every victory fires `on_victory_chains` again. The
+/// first connection keeps its session.
+#[tokio::test]
+async fn a_connected_session_cannot_be_claimed_twice() {
+    let reg = SessionRegistry::new();
+    let ticket = register_livewire(&reg, 42).await.unwrap();
+
+    assert!(
+        reg.authenticate_and_claim(42, &ticket, "Livewire")
+            .await
+            .is_some(),
+        "the first login must claim the session",
+    );
+    assert!(
+        reg.authenticate_and_claim(42, &ticket, "Livewire")
+            .await
+            .is_none(),
+        "a second login on a session already in play must be refused",
+    );
+    let session = reg
+        .authenticate(42, &ticket, "Livewire")
+        .await
+        .expect("the refused claim must leave the first connection's session in place");
+    assert!(session.connected, "the session must still be claimed");
+}
+
+/// The claim applies the sweep's own expiry rule. A never-connected session
+/// past the TTL is dead even if the sweep has not run yet, so a login in that
+/// window (up to one `SWEEP_INTERVAL`) must not revive it.
+#[tokio::test(start_paused = true)]
+async fn an_expired_pending_session_cannot_be_claimed_before_the_sweep() {
+    let reg = SessionRegistry::new();
+    let ticket = register_livewire(&reg, 42).await.unwrap();
+
+    tokio::time::advance(PENDING_SESSION_TTL + Duration::from_secs(1)).await;
+
+    assert!(
+        reg.authenticate_and_claim(42, &ticket, "Livewire")
+            .await
+            .is_none(),
+        "a session past PENDING_SESSION_TTL must not be claimable",
+    );
+}
