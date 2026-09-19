@@ -298,9 +298,29 @@ impl ChainEngine {
                 continue;
             }
 
-            let conditions_met = chain.conditions.iter().all(|c| c.evaluate(ctx));
-            if !conditions_met {
-                debug!(chain_id = chain.id, chain_name = %chain.name, "resolve_event: conditions not met");
+            // Name the FIRST failing condition. "no chains matched" at the
+            // dispatch site cannot distinguish "no chain listens for this"
+            // from "a chain listens but its step is not active yet" -- the
+            // second is an ordering bug (2026-09-18: cover-entered fired 1 s
+            // before the step that consumes it), and only this line shows it.
+            if let Some((idx, failed)) = chain
+                .conditions
+                .iter()
+                .enumerate()
+                .find(|(_, c)| !c.evaluate(ctx))
+            {
+                debug!(
+                    target: "content.resolve",
+                    chain_id = chain.id,
+                    chain_name = %chain.name,
+                    trigger_type = ?event.trigger_type,
+                    source_entity = ?ctx.source_entity_id,
+                    reason = "condition_failed",
+                    failed_condition_index = idx,
+                    failed_condition = ?failed,
+                    conditions_total = chain.conditions.len(),
+                    "content resolve: trigger matched but a condition failed -- chain skipped"
+                );
                 continue;
             }
 

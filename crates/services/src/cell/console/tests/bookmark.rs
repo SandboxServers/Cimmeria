@@ -45,6 +45,10 @@ fn playtest_bug_reports_wire_facing_relative_to_the_tester() {
     let b = capture(gm, Some(npc), "guard moonwalking", &mgr).expect("caller exists");
 
     assert_eq!(b.note, "guard moonwalking");
+    assert!(
+        !b.crouched && b.cover_sets.is_empty(),
+        "fixture player is neither"
+    );
     assert_eq!(b.world_name, "Agnos");
     assert!(!b.navmesh_loaded, "fixture space has no navmesh");
     assert_eq!(b.selected_target_id, npc);
