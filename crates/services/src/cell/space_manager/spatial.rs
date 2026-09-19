@@ -7,33 +7,69 @@
 
 use cimmeria_common::Vector3;
 
+use cimmeria_entity::navigation::LineOfSight;
+
 use super::SpaceManager;
 
 impl SpaceManager {
-    /// Line-of-sight check between two entities using the navmesh.
-    /// Returns `true` if there is clear LoS (or if no navmesh is loaded).
+    /// Check line-of-sight between two entities in the same space.
+    ///
+    /// `true` unless the navmesh positively reports a boundary between them.
+    /// No navmesh, an entity that is not in the space, and an endpoint the
+    /// mesh does not cover all count as clear: see [`Self::line_of_sight`].
     pub fn has_line_of_sight(&self, entity_a: u32, entity_b: u32) -> bool {
-        let space_id = match self.entity_space.get(&entity_a) {
-            Some(&sid) => sid,
-            None => return true, // No space info — assume LoS
+        self.line_of_sight(entity_a, entity_b).is_clear_or_unknown()
+    }
+
+    /// Three-state line of sight between two entities in the same space.
+    ///
+    /// [`LineOfSight::Unknown`] covers every case where the navmesh cannot
+    /// answer: no space, no navmesh loaded, an entity missing from the space,
+    /// or an endpoint further from the mesh than the projection box reaches.
+    /// The last case is logged at debug, because on a meshed world it means a
+    /// spawn or a player is standing somewhere the mesh does not cover (9 of
+    /// the 13 stationary Harset mobs against `harset.nav`), and that used to
+    /// read as "blocked" and silence the NPC for good.
+    pub fn line_of_sight(&self, entity_a: u32, entity_b: u32) -> LineOfSight {
+        let Some(space) = self
+            .entity_space
+            .get(&entity_a)
+            .and_then(|sid| self.spaces.get(sid))
+        else {
+            return LineOfSight::Unknown;
         };
-        let space = match self.spaces.get(&space_id) {
-            Some(s) => s,
-            None => return true,
+        let Some(navmesh) = &space.navmesh else {
+            return LineOfSight::Unknown;
         };
-        let navmesh = match &space.navmesh {
-            Some(nm) => nm,
-            None => return true, // No navmesh — can't check, assume LoS
+        let (Some(a), Some(b)) = (space.entities.get(&entity_a), space.entities.get(&entity_b))
+        else {
+            return LineOfSight::Unknown;
         };
-        let pos_a = match space.entities.get(&entity_a) {
-            Some(e) => e.position,
-            None => return true,
-        };
-        let pos_b = match space.entities.get(&entity_b) {
-            Some(e) => e.position,
-            None => return true,
-        };
-        navmesh.raycast(&pos_a, &pos_b)
+        let los = navmesh.line_of_sight(&a.position, &b.position);
+        if los == LineOfSight::Unknown {
+            tracing::debug!(
+                target: "movement.navmesh",
+                reason = "los_unknown_off_mesh",
+                entity_a,
+                entity_b,
+                a_on_mesh = navmesh.is_point_valid(&a.position),
+                b_on_mesh = navmesh.is_point_valid(&b.position),
+                "line of sight: an endpoint is outside navmesh coverage -- treated as clear"
+            );
+        }
+        los
+    }
+
+    /// Whether the space containing `entity_id` has a navmesh loaded.
+    ///
+    /// `has_line_of_sight`, `find_path` and `is_position_valid` all fail open
+    /// without one, so callers that report those results need this to tell
+    /// "clear" from "unknown".
+    pub fn space_has_navmesh(&self, entity_id: u32) -> bool {
+        self.entity_space
+            .get(&entity_id)
+            .and_then(|sid| self.spaces.get(sid))
+            .is_some_and(|s| s.navmesh.is_some())
     }
 
     /// Find a path between two positions within the space containing `entity_id`.

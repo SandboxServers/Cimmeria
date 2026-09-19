@@ -123,8 +123,29 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                 .and_then(|v| v.as_array())
                 .map(|arr| arr.iter().filter_map(|v| v.as_i64()).collect())
                 .unwrap_or_default();
+            // Optional; defaults to 1 (every seeded row today omits it).
+            // Out of range is a hard reject rather than a clamp: the
+            // original client asserted 1-5, so a 7 in the seed is an
+            // authoring mistake and silently serving difficulty 5 would
+            // hide it until someone played the minigame.
+            let difficulty = match params.get("difficulty") {
+                None => 1,
+                Some(v) => match v.as_i64() {
+                    Some(d) if (1..=5).contains(&d) => d as u32,
+                    _ => {
+                        warn!(
+                            chain_id = row.chain_id,
+                            %minigame_type,
+                            difficulty = %v,
+                            "start_minigame: difficulty must be an integer 1-5; dropping the action row"
+                        );
+                        return None;
+                    }
+                },
+            };
             Some(Action::StartMinigame {
                 minigame_type,
+                difficulty,
                 on_victory_chains: chains,
             })
         }

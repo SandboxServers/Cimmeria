@@ -62,6 +62,7 @@
 //! `docs/architecture/dev-console-channel.md`; the player-facing command list is
 //! in `docs/commands.md`.
 
+mod bookmark;
 mod crafting;
 mod dispatch;
 mod entity;

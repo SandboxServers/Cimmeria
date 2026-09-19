@@ -70,6 +70,21 @@ pub(super) use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
 #[cfg(test)]
 pub(super) use ability_select::compute_backup_waypoint_for_test;
 
+// Test-only re-export: GC1b-2's chain-replay suite
+// (`crate::cell::content::chain_replay_tests::gc1_escort`) drives
+// individual follow AI ticks directly rather than the full
+// `npc_ai_tick` dispatcher (which is `pub(in crate::cell::service)` and
+// snapshots the entire NPC list) so it can assert `nav_path` after each
+// step. `pub(crate)`, not `pub(super)`, because the caller lives outside
+// `cell::service` — same pattern as `compute_backup_waypoint_for_test`
+// above, one visibility level wider because this caller is a sibling of
+// `cell::service`, not a descendant of it. `npc_ai_follow` itself is
+// declared `pub(crate)` under `cfg(test)` in `follow.rs` (see that
+// wrapper's doc comment) — a `use` re-export cannot widen an item's
+// visibility beyond what it was declared with.
+#[cfg(test)]
+pub(crate) use follow::npc_ai_follow_for_test;
+
 /// Co-located span-field record + counter emission for the
 /// `decision_outcome` vocab. The dispatcher span at
 /// [`npc_ai_tick`] declares
@@ -80,9 +95,36 @@ pub(super) use ability_select::compute_backup_waypoint_for_test;
 /// Calling this twice in one handler emits two counter increments —
 /// callers should pick one terminal outcome per tick.
 pub(super) fn record_decision_outcome(outcome: &'static str) {
+    set_last_outcome(outcome);
     tracing::Span::current().record("decision_outcome", outcome);
     cimmeria_observability::counter!(
         "npc_ai_decisions_total",
         "decision_outcome" => outcome,
     );
+}
+
+/// The terminal outcome of the handler that just ran, for the per-tick
+/// `npc_ai.tick` row. The AI tick runs NPCs strictly one after another on the
+/// cell task, so one slot is enough; `dispatch` clears it before each handler.
+static LAST_OUTCOME: std::sync::Mutex<&'static str> = std::sync::Mutex::new("");
+
+fn set_last_outcome(outcome: &'static str) {
+    *LAST_OUTCOME
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = outcome;
+}
+
+pub(super) fn take_last_outcome() -> &'static str {
+    std::mem::take(
+        &mut *LAST_OUTCOME
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    )
+}
+
+/// `fight.rs` writes `decision_outcome` as an inline log field, so its
+/// decisions never reached the `npc_ai_decisions_total` counter or the span.
+/// Called immediately before each of those log lines.
+pub(super) fn note_outcome(outcome: &'static str) {
+    record_decision_outcome(outcome);
 }

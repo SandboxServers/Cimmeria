@@ -59,4 +59,10 @@ pub use regions::{load_regions_from_db, RegionLoadData};
 pub use respawners::{load_respawners, RespawnerDef};
 pub use stargates::{load_stargates, StargateEntry};
 pub use templates::load_spawn_templates;
+// The `entity_templates` SELECT + row mapper, shared between the cell's
+// startup template cache and the base-side GM spawn handler so a schema
+// change can only be missed in one place (PR #662 review, finding 3).
+// `cargo fmt` sorts these re-exports, so keep this comment glued to the
+// line below rather than to the group.
+pub(crate) use templates::{build_prototype, entity_template_select};
 pub use worlds::load_world_ids;

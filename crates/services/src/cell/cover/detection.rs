@@ -69,6 +69,25 @@ impl CoverDetectionTable {
     }
 
     /// Diagnostic: how many players are currently tracked.
+    /// Cover sets the player is currently inside, with seconds since entry.
+    pub fn current_sets(&self, entity_id: EntityId, now: Instant) -> Vec<(i32, f32)> {
+        self.players.get(&entity_id).map_or_else(Vec::new, |st| {
+            let mut v: Vec<(i32, f32)> = st
+                .current_sets
+                .iter()
+                .map(|set| {
+                    let secs = st
+                        .entry_times
+                        .get(set)
+                        .map_or(0.0, |t| now.saturating_duration_since(*t).as_secs_f32());
+                    (*set, secs)
+                })
+                .collect();
+            v.sort_by_key(|(set, _)| *set);
+            v
+        })
+    }
+
     pub fn tracked_player_count(&self) -> usize {
         self.players.len()
     }

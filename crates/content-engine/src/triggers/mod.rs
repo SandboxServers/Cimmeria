@@ -91,6 +91,18 @@ pub enum Trigger {
     /// Fires when a player arrives via teleporter at a destination region.
     OnTeleportIn { region_id: i32 },
 
+    /// Fires when a player successfully dials a stargate — after address
+    /// validation, when the four-second gate-open timer is armed.
+    /// `destination_world` filters by the destination world's name
+    /// (`resources.worlds.world`, e.g. `"Harset"`); `None` matches any
+    /// destination.
+    OnStargateDialed { destination_world: Option<String> },
+
+    /// Fires when a player steps through an open stargate, immediately
+    /// before the world transition tears the cell entity down. Same
+    /// `destination_world` filter as [`Self::OnStargateDialed`].
+    OnStargateCrossed { destination_world: Option<String> },
+
     /// Fires when an effect is first initialized on an entity.
     OnEffectInit,
 
@@ -167,6 +179,11 @@ pub enum Trigger {
     ///
     /// Seed form: `event_type = 'entity_health_below'`,
     /// `event_key = "<tag>:<pct>"` (e.g. `"Rinla_Malac:30"`).
+    ///
+    /// `pct` is `1..=99` (`loader::trigger::HEALTH_PCT_RANGE`); the
+    /// loader drops the trigger row otherwise. 100 is excluded because
+    /// the band test's upper half is strict, so a full-health entity
+    /// (`before == 100`) can never satisfy `before > 100`.
     OnEntityHealthBelow { entity_tag: String, pct: i32 },
 
     /// Fires when an NPC currently occupying a cover slot is flanked —
@@ -175,6 +192,15 @@ pub enum Trigger {
     /// react to "you outflanked the guard" (the AI itself already
     /// repositions; this is just an authoring hook).
     OnNpcFlanked { npc_template: Option<String> },
+
+    /// Player-perspective twin of [`Trigger::OnNpcFlanked`]: fires from the
+    /// same AI decision, but the chain's actions execute against the
+    /// **flanking player** (with that player's mission context), not the
+    /// NPC. `OnNpcFlanked` runs its actions on the NPC with player id 0, so
+    /// it cannot advance a mission objective; this variant exists for
+    /// "you outflanked the guard" objectives (Castle Cellblock C06,
+    /// objectives 2725/2731). Only fires when the top-threat is a player.
+    OnPlayerFlankedNpc { npc_template: Option<String> },
 }
 
 /// Runtime event payload passed to the chain engine when a game event occurs.
@@ -216,6 +242,8 @@ pub enum TriggerType {
     ItemUse,
     ItemEquipped,
     TeleportIn,
+    StargateDialed,
+    StargateCrossed,
     EffectInit,
     EffectPulseBegin,
     EffectPulseEnd,
@@ -228,4 +256,5 @@ pub enum TriggerType {
     PlayerInCoverDuration,
     EntityHealthBelow,
     NpcFlanked,
+    PlayerFlankedNpc,
 }

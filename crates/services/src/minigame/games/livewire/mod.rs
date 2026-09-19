@@ -80,6 +80,21 @@ pub struct LivewireGame {
 
 impl LivewireGame {
     pub fn new(session: &MinigameSession) -> Self {
+        // The content layer asserted difficulty 1-5
+        // (`deprecated/python/cell/Minigame.py:16`) but every per-game
+        // difficulty table only has rows 1-4 (`Livewire.py:52`,
+        // `Alignment.py:14`, `GoauldCrystals.py:52`) — difficulty 5 passed
+        // the original's assert and then raised `KeyError` inside the game.
+        // Clamping is the right call, but it silently downgrades an
+        // authored 5, so say so: the seed row is the thing to fix.
+        if session.difficulty > 4 {
+            tracing::warn!(
+                entity_id = session.entity_id,
+                difficulty = session.difficulty,
+                "Livewire: difficulty clamped to 4 -- the game has no table \
+                 above 4; fix the authored difficulty in the seed row"
+            );
+        }
         Self {
             difficulty: session.difficulty.clamp(1, 4),
             tech_competency: session.tech_competency,

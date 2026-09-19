@@ -1,8 +1,17 @@
 //! `convert_trigger` — DB row → `Trigger` enum variant.
 
+use std::ops::RangeInclusive;
+
 use crate::triggers::Trigger;
 
 use super::DbTriggerRow;
+
+/// Thresholds an `entity_health_below` trigger can actually fire on.
+///
+/// Bounded by the matcher's strict downward-crossing test, not by the
+/// percentage domain — see the arm in [`convert_trigger`]. Public so the
+/// matcher's own documentation and the loader tests read the same source.
+pub const HEALTH_PCT_RANGE: RangeInclusive<i32> = 1..=99;
 
 /// Convert a DB trigger row to a Trigger enum variant.
 pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
@@ -49,6 +58,17 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
         },
         "teleport_in" => Some(Trigger::OnTeleportIn {
             region_id: key?.parse().ok()?,
+        }),
+        // Stargate events (CA10). `event_key` is the destination world
+        // name from `resources.worlds.world` (e.g. `"Harset"`); NULL is
+        // the wildcard "any destination". Unlike the integer-keyed
+        // triggers there is nothing to reject on a typo — a world name
+        // that doesn't exist simply never matches.
+        "stargate_dialed" => Some(Trigger::OnStargateDialed {
+            destination_world: key.map(|s| s.to_string()),
+        }),
+        "stargate_crossed" => Some(Trigger::OnStargateCrossed {
+            destination_world: key.map(|s| s.to_string()),
         }),
         "effect_init" => Some(Trigger::OnEffectInit),
         "effect_pulse_begin" => Some(Trigger::OnEffectPulseBegin),
@@ -110,17 +130,42 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
         //
         // Every malformed shape rejects the chain rather than degrading:
         // no key, no colon, an empty tag, a non-integer percentage, or a
-        // percentage outside 1..=100. A `:0` key could never fire (an
-        // entity at 0% is dead and routes to `entity_dead_tag`), so
-        // accepting it would silently produce a chain that looks wired
-        // and never runs.
+        // percentage outside [`HEALTH_PCT_RANGE`].
+        //
+        // The range is `1..=99`, not `1..=100`. The matcher
+        // (`triggers::matching`) is a strict downward *crossing* test —
+        // `pct_before > threshold && pct_after <= threshold` — so a
+        // threshold of 100 can never match: a full-health entity is at
+        // 100, which is not strictly greater than 100, and any hit that
+        // damages it starts from below. `:100` would load a chain that
+        // looks wired and never runs. `:0` is dead for the mirror-image
+        // reason — an entity at 0% is dead and routes to
+        // `entity_dead_tag`.
         "entity_health_below" => {
             let (tag, pct_str) = key?.rsplit_once(':')?;
             if tag.is_empty() {
                 return None;
             }
             let pct: i32 = pct_str.parse().ok()?;
-            if !(1..=100).contains(&pct) {
+            if !HEALTH_PCT_RANGE.contains(&pct) {
+                // Distinct from the loader's generic "unknown event_type"
+                // warn: the event_type *is* known and the row is
+                // well-formed, so that message would send the author
+                // looking in the wrong place. Same disposal though — the
+                // trigger is dropped, and `load_chains` drops the chain if
+                // it has no surviving trigger.
+                tracing::warn!(
+                    chain_id = row.chain_id,
+                    event_type = %row.event_type,
+                    pct,
+                    min = *HEALTH_PCT_RANGE.start(),
+                    max = *HEALTH_PCT_RANGE.end(),
+                    reason = "health_pct_out_of_range",
+                    "entity_health_below: threshold outside the matchable band — \
+                     the trigger is a strict downward crossing, so 100 can never \
+                     fire (full health is not strictly above 100) and 0 is death \
+                     (use entity_dead_tag); dropping this trigger row"
+                );
                 return None;
             }
             Some(Trigger::OnEntityHealthBelow {
@@ -129,6 +174,9 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
             })
         }
         "npc_flanked" => Some(Trigger::OnNpcFlanked {
+            npc_template: key.map(|s| s.to_string()),
+        }),
+        "player_flanked_npc" => Some(Trigger::OnPlayerFlankedNpc {
             npc_template: key.map(|s| s.to_string()),
         }),
         _ => None,

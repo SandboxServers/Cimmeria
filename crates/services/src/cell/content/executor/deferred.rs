@@ -56,6 +56,29 @@ pub(crate) async fn deferred_content_action_tick(
             action = ?pending.action,
             "Content: firing deferred action"
         );
+        // Ordering seam: a delayed action lands relative to whatever else
+        // happened to this player in the meantime (2026-09-18: dialog 5859
+        // landed 0.6 s after 2516 and replaced it). Say what that was.
+        if let Some(r) = crate::cell::player_journal::deferred_fired(
+            entity_id,
+            pending.chain_id,
+            pending.fire_at,
+            &crate::cell::player_journal::action_kind(&pending.action),
+        ) {
+            tracing::info!(
+                target: "content.deferred",
+                entity_id,
+                chain_id = pending.chain_id,
+                action_kind = %crate::cell::player_journal::action_kind(&pending.action),
+                delay_ms = r.delay_ms,
+                late_ms = r.late_ms,
+                scheduled_seq = r.scheduled_seq,
+                fired_seq = r.fired_seq,
+                events_between = r.between.len(),
+                between = ?r.between,
+                "deferred content action fired -- `between` is everything journaled for this player since it was scheduled"
+            );
+        }
         execute_one(
             pending.chain_id,
             pending.action,

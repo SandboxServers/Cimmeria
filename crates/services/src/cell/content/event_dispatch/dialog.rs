@@ -117,6 +117,7 @@ pub async fn fire_dialog_choice(
             entity_id,
             player_id,
             dialog_id,
+            button_id,
             actions = resolved.actions.len(),
             "fire_dialog_choice: matched"
         );
@@ -124,6 +125,7 @@ pub async fn fire_dialog_choice(
         tracing::debug!(
             entity_id,
             dialog_id,
+            button_id,
             "fire_dialog_choice: no chains matched"
         );
     }

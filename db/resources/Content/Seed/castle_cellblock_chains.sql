@@ -40,9 +40,21 @@
 --   Mission 686 aftermath (C08b addition, 2026-09-17): chains 1161-1162,
 --     inside work-packets.md's reserved 1161-1170 range for C08. Verified
 --     free first (max chain_id in this file was 1112 before this packet).
+--   GC1 -- Escape escort (2026-09-17): chains 1171-1175, inside
+--     work-packets.md's own reserved 1171-1190 block for GC1's children
+--     (verified empty before use). 5 of 20 reserved ids used so far.
 --   (next free inside 1001-1111: 1026-1030, 1036-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
+--   Mission 639 (C05 addition, 2026-09-18): chains 1131-1133 (take-cover /
+--     drone-kill dual-objective gating for step 2144, replacing demo chain
+--     1035 -- see that section's comment for the auto-complete-trap
+--     rationale). Uses 3 of the 10 ids work-packets.md reserved for C05
+--     (1131-1140); 1134-1140 remain free.
+--   Missions 681/686 flank objectives (C06 addition, 2026-09-18): chains
+--     1141-1142 (work-packets.md's reserved range for C06 is 1141-1150;
+--     occupancy checked immediately before use: zero chain_ids in
+--     1141-1150 existed anywhere under db/resources/Content/Seed/).
 
 SET search_path = resources, pg_catalog;
 
@@ -688,33 +700,147 @@ VALUES
   (1031, 'set_interaction_type', NULL, 'ArmYourself_AmbernolVial', '{"op": "|", "mask": 1073741824}', 0, 1);
 
 -- ============================================================
--- COVER-SYSTEM DEMO
+-- TAKE-COVER OBJECTIVE (C05, replaces the COVER-SYSTEM DEMO chain 1035)
 -- ============================================================
 --
--- Chain 9209 — proof-of-trigger that the OnPlayerEnteredCover wire
--- path works end-to-end (DB → loader → trigger match → executor).
--- Fires when ANY player enters ANY cover set inside Castle Cellblock,
--- gated on the prisoner-retrieval-unit (med-bay drone) mission being
--- active. The action is a counter bump — observable in the entity's
--- `counters` map and verifiable from the chain-replay test harness.
+-- Step 2144 ("Defend yourself from the drone!") requires BOTH objective
+-- 2482 (kill the drone -- mission_objectives.sql) and 2484 (take cover at
+-- the med-station desk) before advancing to step 2343 (use the Ambernol
+-- cure). D-CB05: the flank objectives (2725/2731, C06) are tracked but do
+-- NOT gate here -- only 2482/2484 do, per the decision.
 --
--- Chain 1035: COVER DEMO — bump a counter on player_entered_cover
--- while step 2145 is active. Slots into the mission 639 range
--- (1031-1040) per the header allocation. v1 wires the trigger plumbing
--- with a wildcard cover_set_id (NULL); per-room tuning (e.g. swap NULL
--- for the med-bay set_id, add BSF_CROUCHING state-flag condition) is a
--- content-author follow-up.
+-- Cover-set data: chunk_id 1381 in cover_sets.sql/cover_nodes.sql -- a
+-- new, one-off, hand-authored entry for the 7 `SGWSpecCoverNode` actors
+-- found at the med-station desk by the C05 UE3 extraction pass (game-
+-- archaeology-specialist, 2026-09-18; see
+-- docs/analysis/castle-cellblock-rebuild/work-packets.md#c05). These are
+-- real world-space coordinates, not a reused prefab template.
+--
+-- AUTO-COMPLETE TRAP (load-bearing -- read before touching this section):
+-- `cell::missions::complete_objective` (progression.rs) auto-calls
+-- `mission.complete()` -- ending the WHOLE MISSION, not just the step --
+-- the moment ALL of the step's `active_objectives` become STATUS_COMPLETED
+-- via that path. Step 2144 has exactly two required objectives (2482,
+-- 2484), so calling `Action::CompleteObjective` for BOTH would complete
+-- mission 639 outright and skip step 2343 (the cure) entirely -- the same
+-- trap chain 1107/1109's comment documents for mission 688's step 2356.
+-- `Action::AdvanceStep` avoids it: `advance_step`'s own implementation
+-- completes the OLD step's remaining active objectives via the raw
+-- `MissionInstance::complete_objective` method directly, bypassing the
+-- wrapper's auto-complete-mission check. So: whichever of the two
+-- objectives is satisfied FIRST uses `complete_objective` (ticks the UI
+-- checkbox, mission stays on step 2144); whichever is satisfied SECOND
+-- uses `advance_step` instead of `complete_objective` (transitions to
+-- 2343, implicitly completing the other objective along the way, no
+-- separate `complete_objective` call needed or safe to add). Each trigger
+-- (drone death, cover entered) therefore needs two chain variants gated on
+-- the OTHER objective's `objective_status`, not one unconditional chain --
+-- this is why chain 1033 below is split into two ids instead of getting a
+-- second action appended to its existing one.
+--
+-- Relog safety (scope item 5): no `player_loaded` chain re-plays sequence
+-- 10001 (show) or 10014 (hide) here -- both are one-shot cinematics gated
+-- purely on live trigger events (vial pickup, cover entry), never on
+-- load. A relog mid-2144 re-derives `objective_status`/`step_status` from
+-- the persisted mission row (see `populate_mission_context`), so the
+-- gating conditions below are correct on the very first evaluation after
+-- login with no separate restore chain required.
+
+-- Chain 1033 (MODIFIED, C05): drone killed while cover NOT yet taken →
+-- mark the kill objective complete only (mission stays on step 2144,
+-- waiting on the cover objective). See the auto-complete-trap note above
+-- for why this no longer unconditionally advances to 2343.
+--
+-- Self-completion guard (found in review, 2026-09-18): condition 2 below
+-- checks its own target (2482) is not already completed, not just the
+-- other objective (2484). `entity_dead_tag` is normally one-shot so this
+-- is mostly defensive, but without it a second `entity_dead_tag` event
+-- for the same tag (e.g. a respawn/relog edge) would re-run
+-- `complete_objective` -- harmless on its own (idempotent), but keeps
+-- this chain's guard shape consistent with 1132's fix below.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1035, '639 - COVER DEMO: bump counter on player enter cover', 'mission', 639, true, 0);
+VALUES (1033, '639 - Guard killed (cover pending): complete kill objective', 'mission', 639, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (1035, 'player_entered_cover', NULL, 'player', false, 0);
+VALUES (1033, 'entity_dead_tag', 'ArmYourself_PrisonerRetrievalUnit', 'space', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (1035, 'step_status', 639, '2145', 'eq', 'active', 0);
+VALUES
+  (1033, 'step_status', 639, '2144', 'eq', 'active', 0),
+  (1033, 'objective_status', 639, '2484', 'neq', 'completed', 1),
+  (1033, 'objective_status', 639, '2482', 'neq', 'completed', 2);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1035, 'increment_counter', NULL, 'cover_demo_entered', '{"amount": 1}', 0, 0);
+VALUES (1033, 'complete_objective', 639, '2482', '{}', 0, 0);
+
+-- Chain 1131 (C05): drone killed while cover ALREADY taken → this is the
+-- second objective to complete, so advance the step directly (which also
+-- completes the kill objective as part of the step transition -- do not
+-- add a `complete_objective` here, see the trap note above).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1131, '639 - Guard killed (cover already taken): advance to 2343', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1131, 'entity_dead_tag', 'ArmYourself_PrisonerRetrievalUnit', 'space', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1131, 'step_status', 639, '2144', 'eq', 'active', 0),
+  (1131, 'objective_status', 639, '2484', 'eq', 'completed', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1131, 'advance_step', 639, '2343', '{}', 0, 0);
+
+-- Chain 1132 (C05): player takes cover at the med-station desk (cover_set
+-- 1381) while the drone is NOT yet dead → mark the cover objective
+-- complete and hide the TakeCoverIndicator (sequence 10014, shown by
+-- chain 1032's sequence 10001 when the drone first aggros).
+--
+-- Self-completion guard (found in review, 2026-09-18): `player_entered_cover`
+-- is edge-triggered on every proximity enter (once=false, see
+-- crates/services/src/cell/cover/detection.rs), and `Action::PlaySequence`
+-- sends unconditionally with no dedup (executor/mod.rs). Without condition
+-- 2 below, a player who leans out of cover and back in before killing the
+-- drone would re-fire this chain on every re-entry, resending
+-- PlaySequence(10014) each time (the complete_objective call itself is a
+-- harmless no-op the second time). Condition 2 checks the chain's own
+-- target (2484) isn't already completed, closing that gap.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1132, '639 - Take cover (kill pending): complete cover objective', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1132, 'player_entered_cover', '1381', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1132, 'step_status', 639, '2144', 'eq', 'active', 0),
+  (1132, 'objective_status', 639, '2482', 'neq', 'completed', 1),
+  (1132, 'objective_status', 639, '2484', 'neq', 'completed', 2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1132, 'complete_objective', 639, '2484', '{}', 0, 0),
+  (1132, 'play_sequence', 10014, NULL, '{}', 0, 1);
+
+-- Chain 1133 (C05): player takes cover while the drone is ALREADY dead →
+-- second objective to complete, advance the step directly (implicitly
+-- completes the cover objective too -- see the trap note above) and still
+-- hide the indicator.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1133, '639 - Take cover (kill already done): advance to 2343', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1133, 'player_entered_cover', '1381', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1133, 'step_status', 639, '2144', 'eq', 'active', 0),
+  (1133, 'objective_status', 639, '2482', 'eq', 'completed', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1133, 'advance_step', 639, '2343', '{}', 0, 0),
+  (1133, 'play_sequence', 10014, NULL, '{}', 0, 1);
 
 -- Chain 1032: interact with Ambernol vial while step 2145 active → pick up, destroy, aggro guard, advance
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -744,18 +870,10 @@ VALUES
   (1032, 'play_sequence',   10001, NULL,                               '{}',                             0, 5),
   (1032, 'advance_step',    639,  '2144',                              '{}',                             0, 6);
 
--- Chain 1033: entity dead tag for guard (space-scoped) while step 2144 active → advance to 2343
-INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1033, '639 - Guard killed: advance step to 2343', 'mission', 639, true, 0);
-
-INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (1033, 'entity_dead_tag', 'ArmYourself_PrisonerRetrievalUnit', 'space', false, 0);
-
-INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (1033, 'step_status', 639, '2144', 'eq', 'active', 0);
-
-INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1033, 'advance_step', 639, '2343', '{}', 0, 0);
+-- Chain 1033 is now defined above in the "TAKE-COVER OBJECTIVE (C05)"
+-- section (dual-objective gating for step 2144 -> 2343) alongside its
+-- 1131/1132/1133 siblings -- kept next to that logic instead of here so
+-- the four related chains aren't split across the file.
 
 -- Chain 1034: use item 19 (ambernol) while step 2343 active → complete 639, accept 640.
 --   The chain is responsible for consumption via `remove_item`. Mirrors python
@@ -2205,3 +2323,283 @@ VALUES
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1162, 'destroy_entity', NULL, 'Preparation_ColMarsh', '{}', 0, 0);
+
+-- ============================================================
+-- GC1 — Escape escort (spec rows 13-14, D-CB13: full escort approved)
+-- ============================================================
+--
+-- Chains 1171-1175, inside work-packets.md's reserved 1171-1190 block for
+-- GC1's children. Three child packets land here:
+--
+--   GC1a (dialogs only): chains 1171 (Marsh interact, step 2344) and 1172
+--     (post-death "you're on your own" beat, dialog 5859 from the v3 spec
+--     audit's `06_Marsh_Companion_Death` finding).
+--   GC1b-1 (ring the rings): chain 1173, one `move_waypoint` on the same
+--     `teleport_in` region-3 event chain 1072 already binds (kept as a
+--     separate chain in this block rather than appended to 1072 itself, so
+--     GC1's rows stay traceable as one unit and C02's chain-1072 assertions
+--     in mission_680.rs are untouched).
+--   GC1b-2 (follow across the topside): chains 1174 (start follow, same
+--     `teleport_in` region-3 event) and 1175 (clear follow on the Straegis
+--     scene, `mission_completed 686`).
+--
+-- Dialog selection for GC1a (documented judgment call, per work-packets.md
+-- GC1's "Approve... worker may decide with a documented rationale" note):
+--   - 2309 ("That's about all we can do from here... let's move out" / "What
+--     about the prisoners we just freed?" / "They'll follow later...") has
+--     speaker_id 261 on its Marsh lines -- confirmed by direct DB read to be
+--     the same speaker_id the v3 audit ties to "Col. Marsh" in his
+--     companion-phase dialogs. Content-wise it is a clean pre-departure
+--     exchange, so it is gated on step 2344 (Preparation-room "Find a way
+--     out of the Castle!", per mission_steps.sql -- the phase BEFORE ring
+--     travel, not after) rather than step 2345.
+--   - 4003 ("Damn!" / "...That sparkly energy field is what's wrong. It's
+--     blocking our way out." / speaker_id 261) is EXCLUDED. Read in full,
+--     it is unambiguously the GC1c lockdown/energy-field beat (spec row 14),
+--     which stays BlockedEvidence -- no energy-field actor or Kismet event
+--     id recovered (work-packets.md GC1c). Playing this dialog with no
+--     accompanying barrier would tell the player their way out is blocked
+--     when nothing in the world actually blocks it.
+--   - 5019 ("Let's move out! / I'll draw their fire!... / Crouch down.../
+--     Flank their position...") is EXCLUDED even though its first four
+--     screens read like a clean Mess Hall flanking cue (matching the v3
+--     audit's `06_Marsh_Companion_Death` note). Its fifth and final screen
+--     ("I don't have much time... I mean the Col. Marsh from this time...
+--     The Straegis can sense time travellers") is the excluded legacy
+--     "Future Self" time-travel content (work-packets.md's Explicit
+--     Non-Goals table: "Hidden mission 642, Frost-alive intro, Future Self
+--     dialog | Legacy revision; nothing in the seed references them").
+--     `display_dialog` shows every screen of a dialog in one action -- there
+--     is no way to author only 5019's first four screens -- so the whole
+--     dialog is out. This also resolves the open "5019 for whom" question
+--     the ledger flagged as unresolved (Legacy_Unresolved row): it was never
+--     resolvable because part of it belongs to different, out-of-scope
+--     content.
+--   - 5859 ("Find a way out of the Cellblock. Without Marsh.") is the v3
+--     spec's newly-surfaced post-death line (audit.md "New Evidence From
+--     v3" section). All its screens are speaker_id 0, so it qualifies for
+--     the monologue fallback in executor/dialog.rs (binds to the player,
+--     no NPC target needed) -- safe to fire from a bare `mission_completed`
+--     trigger with no interact context.
+--
+-- GC1b-1 destination (documented judgment call): (-91.689003, 45.1879997,
+-- -161.533005) is 2 units off the exact `CellblockRing3` ring-transport
+-- landing pad (ring_transport_regions.sql region_id=3: -89.689003,
+-- 45.1879997, -161.533005 -- the same point the player lands at), so Marsh
+-- appears beside the player rather than exactly on top of them. Verified
+-- directly against the real `data/spaces/castle_cellblock.nav` fixture (not
+-- guessed): `is_point_valid` is true at this point, and `find_path` from it
+-- reaches MessHall_Guard1's spawn (-96.25, 34.5909996, -91.5899963) and from
+-- there reaches Hallway01_Guard's spawn (-128.852997, 39.5519981,
+-- -73.5339966) with the path's LAST waypoint landing exactly on each
+-- destination -- the topside route is one connected component, confirming
+-- the GC1 feasibility pass's "component 8" finding operationally (this
+-- engine has no exposed component-id API; connectivity via `find_path`
+-- reaching the destination is the closest observable proxy, and is what the
+-- chain-replay test below asserts). By contrast, `find_path` from
+-- Preparation_ColMarsh's own spawn (-191, 54.7199974, -138.587997) toward
+-- this same destination returns a path whose LAST waypoint stops around
+-- (-181.9, 54.8, -143.8) -- a partial/best-effort route that never reaches
+-- the destination, confirming the Preparation room and the topside route
+-- are genuinely disconnected navmesh components ("component 24" in the
+-- feasibility pass's own numbering).
+--
+-- Known gap, NOT fixed here (documented per the same "watch for, don't
+-- scope-creep" instruction GC1b-1 was given for the #582 AoI-on-spawn risk
+-- class): Castle_CellBlock is an instanced-per-player space
+-- (`SpaceManager::find_or_create_space` -- "the space is NOT cached... it
+-- lives only in `spaces` and is destroyed when the last player leaves").
+-- A player who relogs mid-escort (after chain 1173/1174 fire, before
+-- mission 686 completes) gets a freshly spawned Marsh at his original
+-- Preparation-room position with no follow state -- there is no
+-- `player_loaded`-gated restore chain here for the reposition/follow state,
+-- unlike the interaction-type-bit restore chains elsewhere in this file
+-- (1045/1046/1074/1110/1111 etc.). A correct restore needs an OR across two
+-- mission-680/686 conditions (content_conditions AND within one chain, so
+-- an OR needs two chains) and was judged out of this packet's declared
+-- "seed only, no dependencies" scope; flagging for a coordinator decision
+-- on whether it needs its own follow-up packet.
+
+-- Chain 1171 (GC1a): interact Col Marsh while mission-680 step 2344 is
+-- active (Preparation room, before ring travel) → display dialog 2309.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1171, 'GC1a - Interact ColMarsh (step 2344): "let''s move out" dialog', 'mission', 680, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1171, 'interact_tag', 'Preparation_ColMarsh', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1171, 'step_status', 680, '2344', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1171, 'display_dialog', 2309, NULL, '{}', 0, 0);
+
+-- Chain 1172 (GC1a): mission 686 completes (the Straegis scene) → display
+-- the v3-surfaced post-death blurb 5859, after C08b's own aftermath beat
+-- finishes. C08b (chains 1161/1162, PR #650) landed before this packet
+-- and shares this same `mission_completed 686` trigger: chain 1161 plays
+-- the StraegisAttack Matinee (sequence 1751, ~10.0096s) and shows dialog
+-- 2516 at `delay_ms 10100`. Both chains default to `priority 0`, and the
+-- loader orders same-trigger chains by `chain_id`, so without a delay
+-- here 5859 would pop up at essentially the same instant chain 1161's
+-- Matinee starts (found in review, 2026-09-18). `delay_ms` 10600 reads
+-- 5859 after 2516 (10100 + a ~500ms read gap) instead of racing it.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1172, 'GC1a - Straegis scene: post-death "find a way out without Marsh" blurb', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1172, 'mission_completed', '686', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1172, 'display_dialog', 5859, NULL, '{}', 10600, 0);
+
+-- Chain 1173 (GC1b-1): teleport-in to region 3 (same event chain 1072
+-- binds) → snap Marsh from his Preparation-room position onto the topside
+-- navmesh component, beside the Ring 3 landing pad. Priority 1 (above
+-- 1174's default 0) so the reposition is documented as resolving first in
+-- the same event's action list, ahead of 1174 setting the follow target --
+-- matches this file's a51a10d-derived convention of using priority to
+-- document a before/after relationship between same-trigger chains, even
+-- though `execute_actions` runs both synchronously before any AI tick reads
+-- Marsh's position, so the final state does not depend on it.
+--
+-- AoI risk (per work-packets.md GC1b-1, "watch for... exercise deliberately
+-- in UAT", explicitly not something to fix here): Marsh has not been
+-- visible to this player before this point (he was left behind at his
+-- Preparation-room spawn when the player rang ahead), so this reposition is
+-- effectively a fresh AoI entry for whoever is in region 3's radius --
+-- the same `aoi.create_emit`/`create_send_failed` seams issue #582 added to
+-- localize the Castle Cellblock invisible-corpse bug. Nothing here rules
+-- that class of bug in or out for Marsh; flagging for UAT per the packet
+-- instructions.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1173, 'GC1b-1 - Teleport to topside: reposition Marsh near the Ring 3 pad', 'mission', 680, true, 1);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1173, 'teleport_in', '3', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1173, 'move_waypoint', NULL, 'Preparation_ColMarsh',
+ '{"destination": "-91.689003,45.1879997,-161.533005"}', 0, 0);
+
+-- Chain 1174 (GC1b-2): teleport-in to region 3 (same event as 1173,
+-- priority 0 so it resolves after 1173 in this trigger's bucket) → Marsh
+-- starts following the triggering player. `use_player: true` is the only
+-- way to point a follow target at a player (players carry no `tag`; see
+-- `SetFollowTarget`'s doc comment in executor/world/mod.rs). Requires
+-- GC1b-0 (merged) for both the `use_player` param and the move_speed fix
+-- that lets Marsh keep pace.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1174, 'GC1b-2 - Teleport to topside: Marsh starts following the player', 'mission', 680, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1174, 'teleport_in', '3', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1174, 'set_follow_target', NULL, 'Preparation_ColMarsh', '{"use_player": true}', 0, 0);
+
+-- Chain 1175 (GC1b-2): mission 686 completes (the Straegis scene) → clear
+-- Marsh's follow target. Gated directly on `mission_completed 686` rather
+-- than coordinated through C08b's own chain 1161 (PR #650, already landed
+-- in this seed): both default to `priority 0` and the loader orders
+-- same-trigger chains by `chain_id`, so 1161's `destroy_entity` on
+-- `Preparation_ColMarsh` actually runs BEFORE this chain's clear, not
+-- after (corrected 2026-09-18 -- the opposite of what this comment used
+-- to claim). This chain's `set_follow_target` clear then runs against an
+-- already-destroyed entity and is a harmless no-op; no coordination edit
+-- is required either way. No `target_tag` and no `use_player` in the
+-- params resolves to `resolved_target = None` in `SetFollowTarget`, which
+-- would drop the NPC to Idle and clear its follow state if it still
+-- existed (see executor/world/mod.rs `set_follow_target`).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1175, 'GC1b-2 - Straegis scene: clear Marsh''s follow target', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1175, 'mission_completed', '686', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1175, 'set_follow_target', NULL, 'Preparation_ColMarsh', '{}', 0, 0);
+
+-- ─────────────────────────────────────────────────────────────────────
+-- C06: flanking objectives 2725 (Mess Hall) and 2731 (Hallway05)
+-- ─────────────────────────────────────────────────────────────────────
+--
+-- Objectives 2725 ("Take position behind the long table to flank the
+-- guards and negate their cover") and 2731 ("Take a flanking position to
+-- negate the guards' protective cover") are the secondary objectives of
+-- steps 2348 (mission 681) and 2353 (mission 686). NOTE they are seeded
+-- `is_optional = false` in mission_objectives.sql, like the kill
+-- objectives 2724/2730 -- they are only "secondary" in that nothing
+-- completes the mission through them. D-CB05
+-- (took the recommended default): they are TRACKED but do NOT gate --
+-- chains 1087/1094 still complete the mission on the kill counter alone,
+-- so a player who kills the guards from range never soft-locks.
+--
+-- Trigger: `player_flanked_npc` (new in C06). It fires from the same NPC-AI
+-- decision as `npc_flanked` -- an NPC holding a cover slot whose top-threat
+-- moved outside the cover's defensive arc, i.e. exactly "negate their
+-- cover" -- but executes against the flanking PLAYER with that player's
+-- mission context. `npc_flanked` cannot be used here: it runs its actions
+-- on the NPC with player id 0, so `complete_objective` would target the
+-- NPC and mission conditions would read no mission state.
+--
+-- Filter: template name 'NID Guard' (entity_templates.template_id 24, the
+-- template of every MessHall_Guard*/Hallway05_Guard* spawn), gated on the
+-- mission being active so a flank in any other room does nothing.
+--
+-- AUTO-COMPLETE TRAP check (see the C05 comment above chain 1033):
+-- `cell::missions::complete_objective` completes the WHOLE mission when
+-- every required active objective is complete. Steps 2348/2353 each carry
+-- TWO objectives (kill 2724/2730 + flank 2725/2731), and the kill
+-- objective is never completed through this path (chains 1087/1094 use
+-- `complete_mission`), so completing only the flank objective cannot end
+-- the mission early. That safety rests on 2724/2730 staying off the
+-- `complete_objective` path (NOT on the flank objectives being optional):
+-- if the kill path is ever moved to `complete_objective`, a flank could
+-- end the mission early. Pinned by `flank_completes_only_the_flank_
+-- objective_and_keeps_the_mission_active` in event_dispatch/
+-- cover_flank_tests.rs and the replay tests in
+-- chain_replay_tests/mission_681_686_flank.rs.
+--
+-- KNOWN LIMITS (found in review, 2026-09-18): (1) the event fires only when
+-- a guard ALREADY HOLDS a cover slot -- slots are reserved only while the
+-- target is out of weapon range and a cover node scores nearby (see
+-- `cover/ai_integration.rs::maintain_cover_for_npc`) -- so where the room
+-- has no usable cover data or the guards engage inside weapon range these
+-- objectives never complete. Non-gating, so no soft-lock. (2) Credit goes
+-- to the guard's top-threat player only; a groupmate who flanks without
+-- holding threat gets nothing (objective progress is not shared).
+--
+-- Self-completion guard: the AI fires the flank event on every cover
+-- release, so each chain checks its own objective is not already
+-- completed (otherwise every re-flank would resend onObjectiveUpdate).
+
+-- Chain 1141 (C06): flank a Mess Hall guard while mission 681 is active.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1141, '681 - Flank a guard: complete flank objective 2725', 'mission', 681, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1141, 'player_flanked_npc', 'NID Guard', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1141, 'mission_status', 681, NULL, 'eq', 'active', 0),
+  (1141, 'objective_status', 681, '2725', 'neq', 'completed', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1141, 'complete_objective', 681, '2725', '{}', 0, 0);
+
+-- Chain 1142 (C06): flank a Hallway05 guard while mission 686 is active.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1142, '686 - Flank a guard: complete flank objective 2731', 'mission', 686, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1142, 'player_flanked_npc', 'NID Guard', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1142, 'mission_status', 686, NULL, 'eq', 'active', 0),
+  (1142, 'objective_status', 686, '2731', 'neq', 'completed', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1142, 'complete_objective', 686, '2731', '{}', 0, 0);

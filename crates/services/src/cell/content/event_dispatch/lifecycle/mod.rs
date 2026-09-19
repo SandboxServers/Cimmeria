@@ -122,8 +122,67 @@ pub async fn fire_entity_death(
             killer = killer_entity_id, player_id, %entity_tag,
             actions = resolved.actions.len(), "fire_entity_death: matched"
         );
+    } else {
+        tracing::debug!(
+            killer = killer_entity_id,
+            %entity_tag,
+            "fire_entity_death: no chains matched"
+        );
     }
+    crate::cell::player_journal::note(
+        killer_entity_id,
+        crate::cell::player_journal::kinds::KILL,
+        format!(
+            "tag={entity_tag} chains_matched={}",
+            !resolved.actions.is_empty()
+        ),
+    );
     executor::execute_actions(resolved, killer_entity_id, player_id, tx, space_mgr, engine).await;
+}
+
+/// Drain every pre-hit health sample the damage seams queued and fire
+/// `EntityHealthBelow` for each.
+///
+/// This is the content-layer half of [`crate::cell::combat::damage_credit`]:
+/// the seams (`abilities::damage_apply`, `effects::pulsing::tick`) have no
+/// `ChainEngine`, so they record `pct_before` on the `SpaceManager` and the
+/// callers that *do* hold an engine drain it. Every damage path is covered
+/// as long as each one calls this promptly — "promptly" meaning before
+/// anything else can move the same target's health, since
+/// [`fire_health_below_for_hit`] reads `pct_after` live.
+///
+/// Call sites, one per damage-producing path:
+///
+/// - `abilities::use_ability::kill_credit` — single target + cone
+///   secondaries, right after the ability resolves.
+/// - the `useAbilityOnGroundTarget` handler — AoE primaries + secondaries.
+/// - `effects::pulsing::tick::effect_pulse_tick` — once per fired pulse.
+/// - `cell::service::message_loop` — a per-tick safety drain so a sample
+///   queued by a path that forgot to drain (a future content action that
+///   deals damage, say) fires within one tick instead of lingering.
+///
+/// Samples queued *by* a chain this drain executes stay for the next
+/// drain: the queue is taken once, up front, so the loop cannot recurse
+/// into itself.
+pub async fn fire_pending_health_below(
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    if space_mgr.pending_health_below.is_empty() {
+        return;
+    }
+    for sample in std::mem::take(&mut space_mgr.pending_health_below) {
+        fire_health_below_for_hit(
+            sample.attacker_entity_id,
+            sample.target_entity_id,
+            Some(sample.pct_before),
+            engine,
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
 }
 
 /// Damage-path entry point: fire `EntityHealthBelow` for a hit that

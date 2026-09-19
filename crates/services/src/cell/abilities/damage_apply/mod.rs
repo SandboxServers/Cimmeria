@@ -140,6 +140,18 @@ pub(super) async fn apply_damage_to_target(
         health_base_damage
     };
 
+    // ── `entity_health_below` pre-hit sample ──
+    //
+    // This is the one seam every ability-driven health mutation passes
+    // through — single target, AoE secondary, cone secondary, and the
+    // effect scripts dispatched at the bottom of this function. Sampling
+    // here (rather than at the single-target caller, where H04 originally
+    // put it) is what makes the trigger fire for all of them; see
+    // `combat::damage_credit` for why a missed sample is unrecoverable
+    // rather than merely late. The content-layer drain runs at the
+    // caller that owns the `ChainEngine`.
+    combat::note_pre_damage_health(space_mgr, entity_id, target_eid);
+
     // Apply health damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {
         Some(e) => e,
@@ -419,6 +431,31 @@ pub(super) async fn apply_damage_to_target(
                 vec![]
             };
 
+            let (px, py, pz) = space_mgr
+                .get_entity(target_eid)
+                .map_or((0.0, 0.0, 0.0), |p| {
+                    (p.position.x, p.position.y, p.position.z)
+                });
+            let killer_name = space_mgr
+                .get_entity(entity_id)
+                .and_then(|k| k.npc_name.clone().or_else(|| k.character_name.clone()))
+                .unwrap_or_default();
+            let id = space_mgr.player_identity(target_eid);
+            tracing::info!(
+                target: "player.death",
+                entity_id = target_eid,
+                account_id = id.account_id,
+                player_id = id.player_id,
+                killer = entity_id,
+                killer_name = %killer_name,
+                ability_id,
+                world = ?world_name,
+                x = px,
+                y = py,
+                z = pz,
+                "player death"
+            );
+
             let mut aid_args = Vec::with_capacity(64);
             // INT32: TimeToAid (seconds until auto-respawn)
             aid_args.extend_from_slice(&30i32.to_le_bytes());
@@ -448,7 +485,14 @@ pub(super) async fn apply_damage_to_target(
                 target = target_eid,
                 world = ?world_name,
                 respawner_count = if matching_respawners.is_empty() { 1 } else { matching_respawners.len() },
+                respawner_ids = ?matching_respawners.iter().map(|r| r.respawner_id).collect::<Vec<_>>(),
+                filter = "world_name_only",
                 "Sent onBeginAidWait (Defeat Window)"
+            );
+            crate::cell::player_journal::note(
+                target_eid,
+                crate::cell::player_journal::kinds::DEATH,
+                format!("world={world_name:?}"),
             );
         }
     }
