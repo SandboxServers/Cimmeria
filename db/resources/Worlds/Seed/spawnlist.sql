@@ -547,6 +547,24 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- palace terrace are placed on the TRUE GEOMETRY FLOOR from `obj_slab` and
 -- recorded as off-mesh. See GH1.
 --
+-- SECOND OPINION: the REBUILT mesh (Castle-nav session, humanoid agent,
+-- 374 components instead of 1,939) covers this ground and is used here only
+-- to answer "could a player walk to this spot", never to validate a row --
+-- the tests load the shipped `data/spaces/harset.nav`, which is unchanged.
+-- On the rebuilt mesh 14 of these 15 rows are on-mesh and all 14 are on ONE
+-- component (11) together with the gate, the plaza exit, all four reachable
+-- ring pads, Petbe (223) and `FirstBug` (224). Two rows were moved after
+-- that check rather than left where the first pass put them:
+--   * `SecondBug` (306) z 117.5 -> 118.5: it sat 1.40 m outside the
+--     containment gate at the mesh edge.
+--   * `Harset_ShieldTower2` (309) moved off the tower's -31.1 pad up to the
+--     -28.25 terrace. The rebuilt mesh puts that pad on component 280 -- an
+--     ISLAND, not connected to the plaza -- which is the Castle "Romney in
+--     a sealed wing" failure exactly. The terrace beside it is component 11
+--     and is the floor `obj_slab` gives 272 m^2 at y[-28.5, -28.0].
+-- The remaining outlier is `Harset_ShieldTower1` (308), whose hillside Y is
+-- already flagged LOW.
+--
 -- `heading` is atan2(dx, dz) radians, 0 = +Z (cell/service/npc_ai/fight.rs
 -- line 633). Every value below is derived from an approach direction or
 -- from the landmark the entity faces -- never left at 0, which is the
@@ -605,7 +623,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- y[-42, -41] in both columns. Each faces the tent it belongs to.
 -- `respawn_secs` is set for consistency with D-H17; a prop never dies, so
 -- it never fires.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (306, -186.0, -41.28, 117.5, 2.8993, 57, 164, 'SecondBug', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (306, -186.0, -41.28, 118.5, 2.8993, 57, 164, 'SecondBug', NULL, true, 30);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (307, -147.0, -41.28, 104.5, 3.6932, 57, 164, 'ThirdBug', NULL, true, 30);
 
 -- PL-B-09 / PL-B-10 / PL-B-11: the three shield towers (1240 "examine 3
@@ -618,8 +636,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- the tower prefab's own origin height in each case, which `obj_slab`
 -- confirms as a real surface; tower 1 is the weakest of the three because
 -- its column is a hillside with no flat level at all (0.0 m^2 flat<=5deg).
+-- Tower 2's console is the exception: it stands on the -28.25 terrace rather
+-- than on the tower's own -31.1 pad, because the rebuilt mesh says that pad
+-- is an unreachable island. Its heading still faces the tower pivot.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (308, -223.0, -41.36, 37.72, 4.7124, 57, 243, 'Harset_ShieldTower1', NULL, true, 30);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (309, -169.5, -31.13, 234.6, 1.5126, 57, 243, 'Harset_ShieldTower2', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (309, -168.0, -28.25, 233.5, 1.2094, 57, 243, 'Harset_ShieldTower2', NULL, true, 30);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (310, -3.0, -30.72, 285.5, 0.7378, 57, 243, 'Harset_ShieldTower3', NULL, true, 30);
 
 -- PL-B-12: Shield Controls (1374 objective 4087). No landmark names it, so

@@ -30,6 +30,16 @@
 //! becomes walkable, this fails and forces the ledger row (and the
 //! `is_stationary` decision that rests on it) to be revisited rather than
 //! silently going stale.
+//!
+//! **A rebuilt mesh exists and is deliberately not asserted here.** The
+//! Castle-nav session produced a Harset rebuild with 374 components instead
+//! of 1,939, on which 14 of these 15 rows are on-mesh and on one component
+//! together with the gate, the plaza exit and the ring pads. It is used in
+//! the ledger as a *reachability* second opinion only: it loses 12 positions
+//! real players stood on, and `data/spaces` is what ships. Two coordinates
+//! were moved because of it (`SecondBug` by 1 m, and shield tower 2's console
+//! off a pad the rebuild says is an island), but both are still `Mesh::Off`
+//! against the shipped mesh, which is the only mesh this table describes.
 
 use cimmeria_common::Vector3;
 use cimmeria_entity::navigation::NavMesh;
