@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains 63 per-system reverse engineering findings with evidence.
+This directory contains 64 per-system reverse engineering findings with evidence.
 
 ## Documents
 
@@ -72,6 +72,7 @@ This directory contains 63 per-system reverse engineering findings with evidence
 | `black-market-restoration.md` | Restore | Black market / auction house — listings/bids/expiry/CoD; CEGUI UI; includes wire-format corrections (supersedes #67, tracked by #571) | HIGH |
 | `black-market-client-window-patch.md` | Restore/Client | Black market **client window** — runtime binary patch (deferred wide-Lua-injection) that opens the BM window; root-causes dropped method 90 (never bound into the dispatch map); owner-confirmed working; full recipe + addresses (tracked by #571 + launcher-integration issue) | HIGH |
 | `contact-list-restoration.md` | Restore | Contact list (friends/ignore/presence fanout) — generic named-list model; answers #275 (supersedes #71, tracked by #572) | HIGH |
+| `bsp-model-polys-serialize.md` | #46 (castle.nav) | `UModel`/`UPolys`/`FBspNode`/`FBspSurf`/`FPoly` binary serialize layout, byte-exact validated against real `Castle-000a0002.umap` exports; resolves "is `Polys` stripped in cooked packages?" (no); Rust decoder recipe for `crates/upk-objects` | HIGH (wire layout) / MEDIUM (a few unidentified trailing fields) |
 
 ## Finding Format
 
