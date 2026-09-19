@@ -65,6 +65,7 @@
 - [rustfmt-reorders-mod-declarations.md](rustfmt-reorders-mod-declarations.md) — `reorder_modules` is on by default, so a coordinator's "append your `mod` line at the END of the shared mod.rs" cannot survive `cargo fmt`; expect an alphabetical three-way merge.
 - [clippy-items-after-test-module.md](clippy-items-after-test-module.md) — `#[cfg(test)] mod tests` must be the LAST item in a file; clippy `-D warnings` rejects trailing free functions after it.
 - [sqlx-dynamic-sql-string.md](sqlx-dynamic-sql-string.md) — `sqlx::query` takes `&'static str` only, so a `fn(&str) -> String` shared-SELECT helper won't compile; use a `macro_rules!` + `concat!` re-exported with `pub(crate) use`.
+- [sqlx-chain-id-is-i32-vacuous-guards.md](sqlx-chain-id-is-i32-vacuous-guards.md) — `content_*.chain_id` is `integer` (i32), not i64; a wrong decode type PASSES forever inside a "must return no rows" guard and then panics with `ColumnDecode` instead of the assertion message on the day it catches something.
 - [tooling-filter-and-path-traps.md](tooling-filter-and-path-traps.md) — live-db-test.sh takes POSITIONAL nextest substrings (a `test()` filterset matches nothing, exit 4, after a 30s reload); `gh -F body=@file` needs a Windows path.
 - [gitignore-swallows-new-dirs.md](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules (`server/`) silently hide a new `foo/mod.rs` split from `git add`; `git status --short` shows nothing. Check with `git check-ignore -v`.
 
@@ -95,6 +96,7 @@
 ## Content chains (seed authoring)
 
 - [content-chain-condition-context-gaps.md](content-chain-condition-context-gaps.md) — **read before authoring any `content_*` rows.** `archetype` is NOT in the context on dialog chains so `archetype neq N` fails OPEN; zero-button dialogs DO fire `dialog_choice` with `button_id = -1` (adding a button kills the chain); `complete_objective` auto-complete sends the WRONG status byte; `delay_ms > 0` queues not runs; multi-trigger chains need `load_chain_expansions_for_test`; `set_interaction_type` is zone-wide so clearing can break other players.
+- [dialog-set-bind-routing-and-edges.md](dialog-set-bind-routing-and-edges.md) — **read before authoring any quest-icon bind.** `add_dialog_set target_id` is a dialog_set_MAP id; NULL-`dialog_id` rows are KEPT since CA02 (any "dropped at load" comment is stale) and are the right choice when an `interact_tag` chain supplies the dialog; a bind fans to EVERY entity of the template; `player_loaded` is an EDGE and needs a `mission_completed` partner when the gate opens in the same world; Route A kills the `last_interaction_target` pin a later `display_dialog` needs.
 
 ## Observability / logging
 

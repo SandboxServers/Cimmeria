@@ -32,6 +32,8 @@ mod harset_space;
 mod harset_spawn_entity;
 mod livewire_pairs;
 mod mission_1200;
+mod mission_1324;
+mod mission_1326;
 mod mission_1360;
 mod mission_1562;
 mod mission_622;

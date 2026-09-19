@@ -154,8 +154,10 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         // NOTE (#97): five entries added at once is right at the threshold this
         // allowlist's own doc comment calls out — the entity-template walker is
         // the real fix for the whole "bit comes from the template default"
-        // family, which is 16 of the 25 entries here (the other nine are
-        // sibling-chain and per-player-dialog-bind cases).
+        // family, which is 16 of the 30 entries here. Of the remaining
+        // fourteen, ten are per-player dialog binds (castle_701 and
+        // harset_jaffa), three are sibling-chain cases and one needs
+        // verification.
         | ("harset_space_chains.sql", 6001) // HarsetRingLeftBottom
         | ("harset_space_chains.sql", 6002) // HarsetRingRightBottom
         | ("harset_space_chains.sql", 6003) // HarsetRingLeft
@@ -179,6 +181,40 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         | ("castle_701_chains.sql", 1231) // Castle_Coppleman: per-player bind, dsm 3062 (chains 1204/1205/1240)
         | ("castle_701_chains.sql", 1233) // Castle_Coppleman: per-player bind, dsm 3062 (chains 1204/1205/1241)
         | ("castle_701_chains.sql", 1236) // Castle_Coppleman: per-player bind, dsm 3063 (chains 1235/1243)
+        // harset_jaffa_chains.sql — Harset Loyalist Jaffa talk chains
+        // (packets H20/H22). reason: these are the FIRST entries in this
+        // allowlist whose bit comes from neither a sibling chain nor an
+        // entity-template default — it comes from a per-player
+        // `add_dialog_set` bind, and that is a correctness requirement
+        // rather than a style choice.
+        //
+        // Templates 42 (Ba'al), 54 (Moh'katan) and 204 (Ra's Former
+        // Jaffa) all carry `entity_templates.interaction_type = 0`, so
+        // something must supply the bit. `set_interaction_type` cannot:
+        // it mutates `CellEntity::interaction_type_flags` and fans the
+        // new value to every witness, and worlds 57/68 are SHARED
+        // persistent hubs (Harset_CmdCenter is `Instanced="false"`), so
+        // one player clearing an icon would un-click the NPC for every
+        // other player still on the step. The Harset campaign's
+        // architecture guardrail (docs/analysis/harset-rebuild/README.md,
+        // "Architecture Guardrails") forbids it outright on shared-hub
+        // NPCs. `add_dialog_set` writes the firing player's
+        // `available_interactions` and pushes
+        // `base_flags | entry.interaction_flags` to that player alone.
+        //
+        // Each chain below has a matching `add_dialog_set` for its NPC's
+        // template in the same file — 120001 on slot 54, 5151 on slot 42,
+        // 120002 on slot 204 — plus a `player_loaded` restore chain,
+        // since binds are in-memory and die on a cross-world hop. The
+        // linter cannot see that pairing because it matches on
+        // `set_interaction_type`'s *tag* and `add_dialog_set` addresses a
+        // *template id*; teaching it the tag→template join needs the
+        // entity-template walker of #97.
+        | ("harset_jaffa_chains.sql", 6304) // CmdCenter_Baal: dsm 5151 bound by chains 6303/6306
+        | ("harset_jaffa_chains.sql", 6305) // CmdCenter_Mohkatan: dsm 120001 bound by chains 6304/6307
+        | ("harset_jaffa_chains.sql", 6335) // Harset_FormerRaJaffa: dsm 120002 bound by chain 6334
+        | ("harset_jaffa_chains.sql", 6336) // Harset_FormerRaJaffa2: same bind, same template (204)
+        | ("harset_jaffa_chains.sql", 6340) // CmdCenter_Mohkatan: dsm 5161 bound by chain 6339
         // sgc_w1_chains.sql — baseline (dialog NPCs / quest items / lootable bodies)
         | ("sgc_w1_chains.sql", 3002) // SGCW1_GenHammond: dialog NPC template default
         | ("sgc_w1_chains.sql", 3004) // SGC_W1_Tealc: dialog NPC template default
