@@ -456,8 +456,13 @@ async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
 /// state — the function logs and returns Ok. Without this, a
 /// replayed-ticket packet from a stale client could create a
 /// half-initialized ConnectedClientState (no key, no account).
+///
+/// The miss must be logged with a redacted `ticket_prefix`, never the
+/// full client-supplied ticket.
 #[tokio::test]
 async fn login_with_unknown_ticket_does_not_register_state() {
+    const TICKET: &str = "DOES_NOT_EXIST_00000";
+    let capture = crate::test_support::LogCapture::install();
     let transport = make_transport();
     let addr: SocketAddr = "127.0.0.1:55556".parse().unwrap();
 
@@ -472,7 +477,7 @@ async fn login_with_unknown_ticket_does_not_register_state() {
         &transport,
         addr,
         1,
-        "DOES_NOT_EXIST_00000",
+        TICKET,
         &pending_logins,
         &connected,
         &entity_manager,
@@ -487,6 +492,22 @@ async fn login_with_unknown_ticket_does_not_register_state() {
         connected.lock().unwrap().is_empty(),
         "unknown ticket must not produce a ConnectedClientState"
     );
+
+    let miss = capture
+        .find_message(tracing::Level::WARN, "Unknown or already-consumed ticket")
+        .expect("unknown ticket must be logged at WARN");
+    assert_eq!(
+        miss.fields.get("ticket_prefix").map(String::as_str),
+        Some("DOES_N…"),
+        "the miss must carry a redacted ticket_prefix"
+    );
+    for event in capture.all() {
+        assert!(
+            !event.message.as_deref().unwrap_or("").contains(TICKET)
+                && !event.fields.values().any(|v| v.contains(TICKET)),
+            "full ticket leaked into a log event: {event:?}"
+        );
+    }
 }
 
 /// Duplicate-login eviction (KI-7): when a second Phase 3 lands for
