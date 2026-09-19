@@ -1,6 +1,7 @@
 //! `handle_use_inventory_item` — fire the cell-side `OnItemUse` event for
 //! an inventory instance the player owns. Does not consume the stack;
 //! per-item consumption is the chain's responsibility via `Action::RemoveItem`.
+//! Authoring guide: `docs/content/consumable-via-onitemuse-pattern.md`.
 //!
 //! Right-click auto-equip routing: instances whose item type lists the
 //! bandolier (container 3) in `container_sets` bypass the `OnItemUse`

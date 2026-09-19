@@ -68,15 +68,21 @@ so a missing gate no longer corrupts saved mission rows — but it still
 fires the chain's *other* actions (dialogs, highlights) spuriously, so
 the condition remains a review requirement.
 
-## Inventory consumption
+## Inventory consumption (`item_use` / `remove_item` pairing)
 
-`UseInventoryItem` fires `OnItemUse` as a pure event — the base no longer auto-consumes the stack. Chains that need to consume (consumable vials, mission objects) must include an explicit `remove_item` action. This is the correct pattern for `item_use`-triggered chains:
+`UseInventoryItem` fires `OnItemUse` as a pure event — the base no longer auto-consumes the stack. Chains that need to consume (consumable vials, slappacks, mission objects) must include an explicit `remove_item` action. Reusable tools (radios, worn equipment, disguises) must omit it.
+
+Full pattern guide, worked examples, and the baseline audit table: [`docs/content/consumable-via-onitemuse-pattern.md`](../../docs/content/consumable-via-onitemuse-pattern.md).
+
+Regression lint: `crates/content-engine/tests/onitemuse_remove_item_pairing.rs` walks every `item_use` chain in seed data. New chains must add the item id to `KNOWN_CONSUMABLES` or `KNOWN_REUSABLES` in that test — unknown ids fail CI with *"add to one of the two lists"*.
+
+Consumable shape:
 
 ```sql
 (chain_id, 'remove_item', <design_id>, NULL, '{"qty": 1}', 0, 0),
 ```
 
-`Action::RemoveItem` routes through `CellToBaseMsg::RemoveInventoryItemByType`, which resolves the player's first matching stack (ordered by `container_id, slot_id` to prefer the main bag over the bandolier) and applies the full wire-update sequence. Non-consumable items (radios, multi-step "use on target" objectives) simply omit the `remove_item` action.
+`Action::RemoveItem` routes through `CellToBaseMsg::RemoveInventoryItemByType`, which resolves the player's first matching stack (ordered by `container_id, slot_id` to prefer the main bag over the bandolier) and applies the full wire-update sequence.
 
 ## Auto-generated `space_*_chains.sql` (chain IDs 5xxx)
 
