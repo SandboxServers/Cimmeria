@@ -132,7 +132,14 @@ pub mod consts {
     /// `client_inactivity_timeout` rather than reusing keepalive math —
     /// the two are separate dimensions (we want to keep NAT mappings warm
     /// far more frequently than we want to declare a peer dead).
-    pub const INACTIVITY_TIMEOUT_MS: u64 = 300_000;
+    pub const MERCURY_PEER_DEAD_MS: u64 = 300_000;
+
+    /// UE3 game-layer silence tolerance — the wire-observable edge the
+    /// client tears down at (spec §2.4 R10: `NetInactivityTimeout=15`).
+    /// Server code that must match the client's teardown timing (the
+    /// per-connection tick-sync loop) should use this constant, not
+    /// [`MERCURY_PEER_DEAD_MS`], which is a Mercury bookkeeping value.
+    pub const UE3_INACTIVITY_TIMEOUT_MS: u64 = 15_000;
 
     /// Maximum number of fragments a single message may be split across.
     pub const MAX_FRAGMENTS: usize = 64;
