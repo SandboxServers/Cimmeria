@@ -413,6 +413,21 @@ pub(super) async fn npc_ai_fight(
                         dist_to_target,
                         "NPC AI: pathfinding toward target"
                     );
+                } else {
+                    let stale_path_len =
+                        space_mgr.get_entity(npc_id).map_or(0, |e| e.nav_path.len());
+                    tracing::warn!(
+                        target: "npc_ai",
+                        event = "decision",
+                        decision_outcome = "repath_degenerate",
+                        npc_id,
+                        target_id,
+                        stale_path_len,
+                        in_range,
+                        has_los,
+                        dist_to_target,
+                        "NPC AI: repath returned <=1 waypoint -- previous path left in place, NPC may walk toward where the target used to be"
+                    );
                 }
             } else {
                 // No-path is the diagnostic signal for "navmesh missing in
@@ -432,6 +447,18 @@ pub(super) async fn npc_ai_fight(
                     "NPC AI: no path to target (zone may need navmesh)"
                 );
             }
+        } else {
+            tracing::debug!(
+                target: "npc_ai",
+                event = "decision",
+                decision_outcome = "hold_no_repath",
+                npc_id,
+                target_id,
+                in_range,
+                has_los,
+                dist_to_target,
+                "NPC AI: out of range/LoS but existing path still ends near the target -- no new order this tick"
+            );
         }
         return;
     }

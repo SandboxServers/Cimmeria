@@ -33,8 +33,14 @@ impl SpaceManager {
                 Some(nm)
             }
             Err(e) => {
-                tracing::debug!(space_id, world = %world_name, path = %nav_path,
-                    error = %e, "No navmesh for space (optional)");
+                // Every navmesh consumer fails OPEN without a mesh
+                // (`find_path` -> None -> straight-line fallbacks,
+                // `has_line_of_sight` / `is_position_valid` -> true), so
+                // NPCs in this space path blind through geometry. That is
+                // not an "optional" condition, so surface it.
+                tracing::warn!(target: "movement.navmesh", space_id, world = %world_name,
+                    path = %nav_path, error = %e, reason = "navmesh_missing",
+                    "navmesh: no .nav file for space -- NPCs here path in straight lines through geometry and LoS/position checks fail open");
                 None
             }
         };
