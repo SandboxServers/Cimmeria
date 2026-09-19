@@ -120,7 +120,7 @@ byte-verified) and is marked accordingly.
 | Offset | Field | Confidence | Evidence |
 |---|---|---|---|
 | `+0x00` | `Plane` (`FPlane`, 16B) | MEDIUM | Consistent with a helper call passing the node base pointer into a plane-read routine (`FUN_00827360`), not independently field-verified |
-| `+0x10`..`+0x27` | `ZoneMask`(8) + `iVertPool`? (canonical gap-fit only) | LOW-MEDIUM | Gap-fit against `FBspNode`'s canonical UE3 SDK member order; not decompiled field-by-field |
+| `+0x10`..`+0x17` | `ZoneMask`(8) (canonical gap-fit only) | LOW-MEDIUM | Gap-fit against `FBspNode`'s canonical UE3 SDK member order; not decompiled field-by-field |
 | **`+0x18`** | **`iVertPool`** (`INT`, index into `Verts[]`) | **HIGH** | Bounds-check sweep: 399/399 real nodes in export 443 have `0 <= iVertPool` and `iVertPool + NumVertices <= Verts.Num()` |
 | **`+0x1c`** | **`iSurf`** (`INT`, index into `Surfs[]`) | **HIGH** | Same sweep: 399/399 have `0 <= iSurf < Surfs.Num()` |
 | `+0x28` | `iChild[3]` (3×`INT`, Front/Back/Plane) | HIGH | Directly confirmed in decompile of `UModel_PointClassify_BspWalk` (ex-`FUN_009a7350`): `*(int*)(node+iVar3*4+0x28)` |
@@ -203,7 +203,7 @@ Then `Count` × `FPoly`, each variable length:
 of `UPolys::Serialize`) includes the 12-byte in-memory `TArray` header for
 `Vertices` (replaced on the wire by a 4-byte count) and the un-serialized
 `+0x58` gap. Confirmed byte-exact against 6 real `Polys` exports (840B/6
-elements up to 45080B/332 elements, `NumVertices` observed as low as... every
+elements up to 45080B/332 elements; every
 sample checked had `NumVertices=4` per face — consistent with box/quad-brush
 geometry).
 

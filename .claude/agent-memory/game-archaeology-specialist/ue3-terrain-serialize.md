@@ -35,7 +35,7 @@ Each Terrain export = **32-byte Actor header** + **UE3 tagged-property stream** 
 - `DrawScale`, `DrawScale3D` — ABSENT in Castle_CellBlock (default 1.0 / (1,1,1)); must default if absent
 
 **None FName** for Castle_CellBlock = `0x36 0x00 0x00 0x00  0x00 0x00 0x00 0x00` (name index 54).
-**GOTCHA**: The `Layers` array contains inner tagged-property sub-blocks each ending in their own None. First None occurrence is inside Layers. Use the LAST None occurrence as the outer terminator. For Terrain_A: inner None at +412, outer None at +805; trailer starts at +813.
+**SUPERSEDED (2026-09-19, terrain decoder):** the flat tagged-property walk in `crates/upk/src/properties.rs` skips `ArrayProperty` bodies by their declared size, so inner `None` terminators inside `Layers` are never seen and no "last None" search is needed. Kept for anyone hand-walking bytes. **GOTCHA (hand-walk only)**: The `Layers` array contains inner tagged-property sub-blocks each ending in their own None. First None occurrence is inside Layers. Use the LAST None occurrence as the outer terminator. For Terrain_A: inner None at +412, outer None at +805; trailer starts at +813.
 
 ### Binary trailer sequence (relative to start of binary trailer)
 
