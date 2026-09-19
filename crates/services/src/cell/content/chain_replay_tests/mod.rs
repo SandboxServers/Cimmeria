@@ -58,6 +58,7 @@ mod mission_704_restores;
 mod mission_706;
 mod mission_708;
 mod mission_742;
+mod mission_relog_persistence;
 mod region8_guard_aggro;
 mod region_transition_accepts;
 mod sgc_w1_move_entity;

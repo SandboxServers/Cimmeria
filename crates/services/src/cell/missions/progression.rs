@@ -255,11 +255,32 @@ pub async fn complete_objective(
         .await;
 
     // Check if all objectives are completed → advance mission
+    let required_count = mission.active_objectives.iter().filter(|o| !o.optional).count();
     let all_required_complete = mission
         .active_objectives
         .iter()
         .filter(|o| !o.optional)
         .all(|o| o.status == STATUS_COMPLETED);
+
+    // Vacuous truth. `.all()` over an empty filter is `true`, so on a step
+    // whose objectives are ALL optional the first completion of any one of
+    // them ends the mission. 37 seeded steps have that shape. This is not
+    // new — `advance_step` has always loaded the real `is_optional` from
+    // `resources.mission_objectives` — but H50 makes it reachable on the
+    // restore path too, where the flags used to be forced to `false`. Left
+    // as-is deliberately (matching the fresh path is the defensible
+    // behaviour and changing it is outside this packet), but logged so a
+    // surprise completion in UAT is attributable instead of mysterious.
+    if all_required_complete && required_count == 0 {
+        tracing::warn!(
+            entity_id,
+            mission_id,
+            objective_id,
+            current_step_id = ?mission.current_step_id,
+            optional_count = mission.active_objectives.len(),
+            "mission auto-completed on a step with no required objectives —              `all_required_complete` was vacuously true"
+        );
+    }
 
     if all_required_complete {
         mission.complete();

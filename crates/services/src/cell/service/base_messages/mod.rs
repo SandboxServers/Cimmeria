@@ -30,7 +30,7 @@ mod inventory_events;
 mod lifecycle;
 mod minigame;
 mod movement;
-mod player_init;
+pub(crate) mod player_init;
 mod request_entity_update;
 
 #[cfg(test)]

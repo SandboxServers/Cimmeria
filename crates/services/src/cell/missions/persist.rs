@@ -54,7 +54,7 @@ pub fn mission_update_msg(player_id: i32, mission: &MissionInstance) -> CellToBa
     let mut completed_objective_ids: Vec<i32> = Vec::with_capacity(
         mission.completed_objectives.len() + mission.active_objectives.len(),
     );
-    let mut push_unique = |id: i32, out: &mut Vec<i32>| {
+    let push_unique = |id: i32, out: &mut Vec<i32>| {
         if !out.contains(&id) {
             out.push(id);
         }
@@ -216,18 +216,33 @@ mod tests {
         assert_eq!(status, 2);
     }
 
-    /// `complete_objective` pushes without a contains-check, and
-    /// `advance_step` then `complete` can flip the same id again. The
-    /// serialized array must not carry the duplicate into the DB row.
+    /// The union in `mission_update_msg` reads the same objective from
+    /// two places: `completed_objectives` (pushed by
+    /// `complete_objective`) and `active_objectives` (flipped to
+    /// `STATUS_COMPLETED` by the same call). Without `push_unique` the
+    /// id lands in `completed_objective_ids` twice, and because that
+    /// array is UPSERTed into `sgw_mission` and read back by
+    /// `build_restored_missions` into `completed_objectives`, the
+    /// duplicate would re-enter the union on the next save and grow the
+    /// row by one entry per relog.
+    ///
+    /// `MissionInstance::complete_objective` has its own contains-guard
+    /// (`crates/entity/src/missions.rs`), so the in-memory list is
+    /// already clean; this pins the *serializer's* half, which is the
+    /// only thing standing between the two sources and the DB array.
     #[test]
-    fn duplicate_completions_are_deduped() {
+    fn an_objective_in_both_sources_is_written_once() {
         let mut m = MissionInstance::new(641, 2121, vec![obj(999, STATUS_ACTIVE, false)]);
-        m.complete_objective(999);
         m.complete_objective(999);
         assert_eq!(
             m.completed_objectives,
-            vec![999, 999],
-            "precondition: the in-memory list really does hold the duplicate",
+            vec![999],
+            "precondition: pushed into completed_objectives",
+        );
+        assert_eq!(
+            m.active_objectives[0].status, STATUS_COMPLETED,
+            "precondition: and flipped in place on the active roster — the \
+             union below sees it twice",
         );
 
         let (_, completed, _, _) = arrays(&mission_update_msg(77, &m));
