@@ -423,21 +423,19 @@ pub fn resolve_via_archetype(
         // rare in cooked chunks, since the cooker imports prefab
         // templates, but the editor writes it for a prefab instanced
         // from a template in the same map.
-        None if component.archetype > 0 => match local_template_probe(pkg, component.archetype) {
-            Err(reason) => return Err(reason),
-            Ok(probe) => {
-                if probe.collide_actors == Some(false) {
-                    return Err(SkipReason::CollisionDisabled);
-                }
-                if let Some(mesh) = probe.mesh {
-                    return mesh;
-                }
-                match probe.next {
-                    Some(next) => next,
-                    None => return Err(SkipReason::ArchetypeNoMesh),
-                }
+        None if component.archetype > 0 => {
+            let probe = local_template_probe(pkg, component.archetype)?;
+            if probe.collide_actors == Some(false) {
+                return Err(SkipReason::CollisionDisabled);
             }
-        },
+            if let Some(mesh) = probe.mesh {
+                return mesh;
+            }
+            match probe.next {
+                Some(next) => next,
+                None => return Err(SkipReason::ArchetypeNoMesh),
+            }
+        }
         None => return Err(SkipReason::ArchetypeUnrooted),
     };
     if chain.len() < 2 {
