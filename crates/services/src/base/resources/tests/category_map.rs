@@ -53,7 +53,7 @@ fn behavior_event_fragment_tags_category_21_on_the_wire() {
     use cimmeria_mercury::encryption::{EncryptionVersion, MercuryEncryption};
 
     use crate::mercury::protocol::build_resource_fragment;
-    use crate::mercury::{FRAG_FIRST_AND_LAST, FRAG_MIDDLE};
+    use crate::mercury::FRAG_FIRST_AND_LAST;
 
     const TEST_KEY: [u8; 32] = [0x42u8; 32];
     let xml = b"<COOKED_BEHAVIOR_EVENT Behavior=\"7\" />";
@@ -98,6 +98,9 @@ fn behavior_event_fragment_tags_category_21_on_the_wire() {
         1024,
         "element id must follow the category id",
     );
-    // The FRAG flag should not accidentally slip into the header.
-    assert_ne!(plaintext[4 + 3], FRAG_MIDDLE, "frag_flags byte sanity");
+    // Single-fragment transfer stays tagged first+last, not a bare MIDDLE.
+    assert_eq!(
+        payload[3], FRAG_FIRST_AND_LAST,
+        "frag_flags byte must carry the first+last marker for a single fragment",
+    );
 }
