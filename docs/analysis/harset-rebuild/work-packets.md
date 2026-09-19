@@ -106,6 +106,7 @@ Every chain packet ships a chain-replay test (`crates/services/src/cell/content/
 **Entries:** `db/resources/Abilities/Tables/ability_set_abilities.sql` (`PRIMARY KEY (ability_set_id)`), `db/resources/Abilities/Seed/ability_set_abilities.sql`, the three-bucket ability chooser in `crates/services/src/cell/service/npc_ai/`, H11 worknote finding.
 **Scope:** widen the key to `(ability_set_id, ability_id)`, confirm the loader and chooser handle a multi-row set, then give sets 4 and 5 their full staff / ribbon-device lists (1482 Ground Blast, 1768 Double Blast alongside 594 Strike for set 4). **Exclude:** new ability design, per-template overrides.
 **Acceptance:** live-DB test that a set with three rows loads three abilities and the chooser can select each; existing single-row sets unchanged.
+**Coordinator note (2026-09-19, integrated into `content/harset-wave2` as `2af04155`):** open follow-up from this packet, not Harset-specific and client-visible, so it needs its own packet and an owner decision: `handle_use_ability`'s range check has no `is_ranged` branch and resolves a melee ability's `max_range = 0` to 30 m. It is inert for NPCs now that the AI never asks for melee out of reach, but it is the gate the PLAYER melee path goes through, so a player can land a melee hit from 30 m. `NPC_MELEE_RANGE = 3.0` comes from `resources.items.max_melee_range` (the largest value any shipped weapon carries), the same table `NPC_ATTACK_RANGE = 30` already matches.
 
 ### H50
 
