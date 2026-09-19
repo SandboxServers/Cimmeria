@@ -51,6 +51,8 @@
 - [content-chain-authoring-traps.md](content-chain-authoring-traps.md) — `display_dialog` silently drops NPC dialogs on non-interact triggers (monologue fallback only); `set_interaction_type` is zone-global; NOTHING respawns (`respawn_secs` NULL everywhere) so `entity_dead_tag` missions are one-shot; victory chains evaluate no conditions; label-signature asserts mask later test assertions.
 - **zero-baseline rule** (in the same file) — `entity_templates.interaction_type` IS the runtime `interaction_type_flags` value (`spawn.rs:127`); never clear an entity's last cue bit or it goes unclickable zone-wide, and NO test type can observe it.
 - [content-chain-dispatch-traps.md](content-chain-dispatch-traps.md) — **read before authoring any chain.** `display_dialog` needs an interact in the player's history (follow-up chains have only `last_interaction_target`); `dialog_choice` carries NO archetype so splits key on dialog id; `enabled=false` does nothing to a victory chain; deferred actions survive death but not disconnect (+ the rewind-`fire_at` test pattern); button-less dialogs still raise `dialog_choice`.
+- [player-loaded-edge-trigger-race.md](player-loaded-edge-trigger-race.md) — a `player_loaded`/`enter_region` chain gated on a state NEVER fires for the player who was already inside when the gate opened; fix with a second trigger row on the state-change event.
+- [chain-replay-trigger-param-vacuity.md](chain-replay-trigger-param-vacuity.md) — a hand-built `TriggerEvent` missing `dialog_id`/`item_id`/`entity_tag` matches NOTHING, so every negative assertion passes on a trigger miss.
 
 ## Stats / entity systems
 
