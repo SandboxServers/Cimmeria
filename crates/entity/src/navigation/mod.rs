@@ -267,13 +267,25 @@ impl NavMesh {
     /// Phase 2 exists because Detour returns the polygon nearest in raw
     /// 3D distance, which on multi-level geometry can be a mezzanine
     /// rather than the floor below (see [`Self::is_point_valid`]'s doc).
-    /// When both phases fail, the verdict reports **phase 2's** polygon
-    /// if it found one, otherwise **phase 1's**. Falling back to phase 1
-    /// matters: a point clipped below the surface pushes phase 2's
-    /// downward-biased search box past the floor entirely, so phase 2
-    /// finds nothing — and reporting `no_poly_in_extents` there would
-    /// mislabel a floor-clip as a mesh hole, which are the two failures
-    /// an operator most needs to tell apart.
+    /// A valid verdict from either phase wins (phase 1 first), exactly as
+    /// in the boolean check. When **both** phases fail, the verdict
+    /// reports whichever polygon sits most directly above or below the
+    /// query point — the smaller horizontal distance, phase 1 on a tie —
+    /// because that is the surface the player is actually clipping or
+    /// over-jumping. Two cases pin the rule:
+    ///
+    /// - A point clipped under a floor. Phase 1 finds that floor straight
+    ///   overhead (`below_surface`). Phase 2's downward-biased box either
+    ///   finds nothing, or — on a mesh with a lower storey nearby, as the
+    ///   rebuilt Castle_CellBlock mesh has — finds that other storey a few
+    ///   metres to the side. Reporting the latter (`horizontal`) or
+    ///   nothing (`no_poly_in_extents`) would mislabel a floor-clip as a
+    ///   mesh hole, which are the two failures an operator most needs to
+    ///   tell apart.
+    /// - A jump that is one unit too high beside a mezzanine. Phase 1
+    ///   finds the mezzanine off to the side; phase 2 finds the floor
+    ///   straight below, and `above_jump_tolerance` against that floor is
+    ///   the useful answer.
     pub fn diagnose_point(&self, pos: &Vector3) -> PointVerdict {
         let phase1 = self
             .find_nearest_poly_with_extents(pos, &DEST_EXTENTS)
@@ -291,11 +303,23 @@ impl NavMesh {
             .find_nearest_poly_with_extents(&biased_center, &JUMP_SEARCH_EXTENTS)
             .map(|(_, closest)| closest);
 
-        match phase2.or(phase1) {
-            Some(closest) => self
-                .verdict_against(pos, &closest)
-                .unwrap_or_else(PointVerdict::no_poly),
-            None => PointVerdict::no_poly(),
+        let v1 = phase1.and_then(|closest| self.verdict_against(pos, &closest));
+        let v2 = phase2.and_then(|closest| self.verdict_against(pos, &closest));
+        match (v1, v2) {
+            // Phase 1 was not valid (it returned early above otherwise),
+            // so a valid phase 2 is the jump case and decides the answer.
+            (_, Some(v2)) if v2.valid => v2,
+            (Some(v1), Some(v2)) => {
+                let h1 = v1.horizontal_dist.unwrap_or(f32::INFINITY);
+                let h2 = v2.horizontal_dist.unwrap_or(f32::INFINITY);
+                if h2 < h1 {
+                    v2
+                } else {
+                    v1
+                }
+            }
+            (Some(v), None) | (None, Some(v)) => v,
+            (None, None) => PointVerdict::no_poly(),
         }
     }
 
