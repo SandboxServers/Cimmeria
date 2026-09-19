@@ -117,6 +117,21 @@ unsafe extern "thiscall" fn handle_message_detour(
         }
     });
 
+    // Live Research Lab: also mirror the dispatch into the local event
+    // ring so `client_events_read` sees it (#686 scope 4). Best-effort,
+    // non-blocking (bounded `try_send`, drop-on-full), panic-guarded — this
+    // is the network thread, so nothing here may block or unwind.
+    #[cfg(feature = "lab-bridge")]
+    {
+        let _ = std::panic::catch_unwind(|| {
+            crate::bridge::events::push(
+                "mercury.dispatch",
+                crate::bridge::crash::now_ms(),
+                serde_json::json!({ "dir": "in" }),
+            );
+        });
+    }
+
     // Call the original via the trampoline. MinHook builds it so
     // the calling convention is preserved end-to-end.
     if let Some(t) = HANDLE_MESSAGE_TRAMPOLINE.get() {

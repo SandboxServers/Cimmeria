@@ -38,6 +38,93 @@ pub struct MemReadArgs {
     pub len: u32,
 }
 
+/// Args for `client_mem_write` — either `hex` (raw bytes) or
+/// `value` + `type` (typed little-endian). See the bridge's `mem_write`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct MemWriteArgs {
+    /// Target address (hex or decimal; apply the ASLR slide to a Ghidra VA).
+    pub addr: String,
+    /// Raw bytes as hex, no separators (mutually exclusive with `value`).
+    #[serde(default)]
+    pub hex: Option<String>,
+    /// Typed value encoded little-endian (needs `type`).
+    #[serde(default)]
+    pub value: Option<serde_json::Value>,
+    /// Width for `value`: u8/i8/u16/…/f64.
+    #[serde(default, rename = "type")]
+    pub ty: Option<String>,
+}
+
+/// Args for `client_call_native`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CallNativeArgs {
+    /// Function address (hex or decimal).
+    pub addr: String,
+    /// Calling convention: cdecl (default), stdcall, thiscall, fastcall.
+    #[serde(default)]
+    pub conv: Option<String>,
+    /// Positional args (numbers or hex strings). For thiscall the first is
+    /// `this`; for fastcall the first two are ECX/EDX.
+    #[serde(default)]
+    pub args: Vec<serde_json::Value>,
+    /// Return interpretation: u32 (default), i32, void, f32, f64.
+    #[serde(default)]
+    pub ret: Option<String>,
+}
+
+/// Args for `client_hook_install`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct HookInstallArgs {
+    /// Function-entry address to hook (hex or decimal). Phase-3 native
+    /// hooks are cdecl-only.
+    pub addr: String,
+    /// Calling convention (default cdecl; only cdecl is patchable today).
+    #[serde(default)]
+    pub conv: Option<String>,
+    /// Re-apply this hook automatically after a crash.
+    #[serde(default)]
+    pub persistent: bool,
+    /// Capture spec object: `registers`, `stack_args`, `derefs`,
+    /// `hit_limit`, `sample_rate`.
+    #[serde(default)]
+    pub capture: Option<serde_json::Value>,
+}
+
+/// Args for `client_hook_remove`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct HookRemoveArgs {
+    /// Hook id returned by `client_hook_install`.
+    pub id: u32,
+}
+
+/// Args for `client_events_read`.
+#[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
+pub struct EventsReadArgs {
+    /// Max events to drain this call (default 512, capped at the ring).
+    #[serde(default)]
+    pub max: Option<u32>,
+}
+
+/// Args for `client_console`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ConsoleArgs {
+    /// Command line to submit (e.g. `"/who"`).
+    pub line: String,
+    /// String-taking console-exec address (from Ghidra; required until a
+    /// built-in one is confirmed — see the bridge's `console`).
+    #[serde(default)]
+    pub addr: Option<String>,
+    /// `this` object pointer for a thiscall target.
+    #[serde(default)]
+    pub this: Option<String>,
+    /// Whether the target expects a wide (UTF-16) string (default true).
+    #[serde(default)]
+    pub wide: Option<bool>,
+    /// Calling convention: thiscall (default), cdecl, stdcall.
+    #[serde(default)]
+    pub conv: Option<String>,
+}
+
 /// Optional target-server selector for the lifecycle tools. Overrides
 /// the `server` field in `lab-account.json` when present (local vs colo).
 #[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
@@ -93,6 +180,114 @@ impl LabServer {
     ) -> Result<CallToolResult, McpError> {
         self.proxy("mem_read", json!({ "addr": args.addr, "len": args.len }))
             .await
+    }
+
+    // ---- Phase 3: native probes (proxied + journaled) ----------------
+
+    #[tool(
+        description = "Write client process memory (VirtualProtect round-trip, exception-guarded, journaled). Provide `hex` for raw bytes, or `value` + `type` for a typed little-endian write. Never replayed after a crash."
+    )]
+    async fn client_mem_write(
+        &self,
+        Parameters(args): Parameters<MemWriteArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut params = json!({ "addr": args.addr });
+        if let Some(hex) = args.hex {
+            params["hex"] = json!(hex);
+        }
+        if let Some(value) = args.value {
+            params["value"] = value;
+        }
+        if let Some(ty) = args.ty {
+            params["type"] = json!(ty);
+        }
+        self.proxy("mem_write", params).await
+    }
+
+    #[tool(
+        description = "Call a client function by address with a stated calling convention (cdecl/stdcall/thiscall/fastcall), on the main thread, exception-guarded and journaled. Never replayed after a crash."
+    )]
+    async fn client_call_native(
+        &self,
+        Parameters(args): Parameters<CallNativeArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut params = json!({ "addr": args.addr, "args": args.args });
+        if let Some(conv) = args.conv {
+            params["conv"] = json!(conv);
+        }
+        if let Some(ret) = args.ret {
+            params["ret"] = json!(ret);
+        }
+        self.proxy("call_native", params).await
+    }
+
+    #[tool(
+        description = "Install a non-freezing logging hook at a function entry with a capture spec (stack args, typed dereferences, hit limit, sample rate). `persistent: true` re-applies it after a crash. Returns the hook id. Phase-3 native hooks are cdecl, function-entry only."
+    )]
+    async fn client_hook_install(
+        &self,
+        Parameters(args): Parameters<HookInstallArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut params = json!({ "addr": args.addr, "persistent": args.persistent });
+        if let Some(conv) = args.conv {
+            params["conv"] = json!(conv);
+        }
+        if let Some(capture) = args.capture {
+            params["capture"] = capture;
+        }
+        self.proxy("hook_install", params).await
+    }
+
+    #[tool(description = "Remove a dynamic hook by id (restores the patched bytes).")]
+    async fn client_hook_remove(
+        &self,
+        Parameters(args): Parameters<HookRemoveArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.proxy("hook_remove", json!({ "id": args.id })).await
+    }
+
+    #[tool(
+        description = "List installed dynamic hooks: id, address, convention, persistent flag, hit count, and capture spec."
+    )]
+    async fn client_hook_list(&self) -> Result<CallToolResult, McpError> {
+        self.proxy("hook_list", json!({})).await
+    }
+
+    #[tool(
+        description = "Drain the client's local event ring: hook hits, Lua prints, and Mercury dispatch events (the same events also upload to SigNoz). Returns the events plus a dropped-since-last-read count."
+    )]
+    async fn client_events_read(
+        &self,
+        Parameters(args): Parameters<EventsReadArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let params = match args.max {
+            Some(max) => json!({ "max": max }),
+            None => json!({}),
+        };
+        self.proxy("events_read", params).await
+    }
+
+    #[tool(
+        description = "Submit a native slash command through the client's console-exec path, exception-guarded. Supply `addr` (and `this` for a thiscall target) from Ghidra until a built-in console-exec address is confirmed."
+    )]
+    async fn client_console(
+        &self,
+        Parameters(args): Parameters<ConsoleArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut params = json!({ "line": args.line });
+        if let Some(addr) = args.addr {
+            params["addr"] = json!(addr);
+        }
+        if let Some(this) = args.this {
+            params["this"] = json!(this);
+        }
+        if let Some(wide) = args.wide {
+            params["wide"] = json!(wide);
+        }
+        if let Some(conv) = args.conv {
+            params["conv"] = json!(conv);
+        }
+        self.proxy("console", params).await
     }
 
     // ---- Phase 2: supervisor lifecycle tools -------------------------

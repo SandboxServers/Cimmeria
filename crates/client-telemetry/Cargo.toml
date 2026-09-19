@@ -17,7 +17,16 @@ crate-type = ["cdylib", "rlib"]
 # the bridge only starts when current-session.json carries a `lab`
 # block (the second half of the double activation gate). All bridge
 # code lives under `src/bridge/` and compiles only with this feature.
-lab-bridge = []
+#
+# `microseh` (issue #686 scope 1) is the inner-tier structured-exception
+# guard wrapped around every native dispatch body (mem_write,
+# call_native, hook trampoline). It is MSVC-only (its `cc` stub uses
+# real `__try/__except`), so it is only ever compiled on the MSVC
+# targets this crate builds for — the i686-pc-windows-msvc DLL and the
+# x86_64-pc-windows-msvc host test runner. On Linux CI the whole crate
+# is excluded from the workspace jobs, so microseh is never fetched
+# there. See the #686 SEH-spike comment for the MinGW/cargo-xwin caveat.
+lab-bridge = ["dep:microseh"]
 
 # Windows-only: the entire crate exists to be loaded into SGW.exe.
 # Targeting i686-pc-windows-msvc — the `-gnu` triple was demoted to
@@ -66,6 +75,13 @@ ureq = { version = "2.10", default-features = false, features = ["json", "tls"] 
 flate2 = "1.0"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+
+# Inner-tier structured-exception guard for the lab bridge's native
+# dispatch bodies (issue #686 scope 1). Optional — pulled in only by the
+# `lab-bridge` feature. MSVC-only (see the feature comment above); it
+# compiles for both the i686 DLL target and the x86_64 host test runner,
+# and the real guard path is `cfg(windows)` with a passthrough elsewhere.
+microseh = { version = "1.2", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 # Just what DllMain + the bootstrap-thread pattern + the inline-hook
