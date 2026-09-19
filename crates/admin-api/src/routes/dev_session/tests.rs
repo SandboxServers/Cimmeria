@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 use axum::response::IntoResponse;
 
 use super::handlers::{
-    mint_inner, refresh_inner, DevSessionRequest, QuotaPolicy, Tables, TOKEN_TTL_SECONDS,
+    kill_switch_active, mint_inner, refresh_inner, DevSessionRequest, QuotaPolicy, Tables,
+    TOKEN_TTL_SECONDS,
 };
 use super::token::{decode_token, encode_token, env_lock, AuthError, TokenClaims};
 use super::SCOPE_TELEMETRY_WRITE;
@@ -142,7 +143,7 @@ fn mint_refuses_one_address_past_the_per_ip_quota() {
 }
 
 // Rotating install_id does not buy more mints, because the per-IP
-// counter is charged before the body is even looked at. This is the
+// counter is charged before `install_id` is validated. This is the
 // property that makes the per-IP quota the load-bearing control.
 #[test]
 fn rotating_install_id_does_not_evade_the_per_ip_quota() {
@@ -234,6 +235,22 @@ fn kill_switch_refuses_mint_before_any_quota_is_charged() {
     assert!(matches!(err, AuthError::KillSwitchActive));
     assert_eq!(status(err), axum::http::StatusCode::SERVICE_UNAVAILABLE);
     std::env::remove_var("CIMMERIA_TELEMETRY_KILL_SWITCH");
+}
+
+// Only the literal `1` enables the kill switch — the contract
+// docs/operations/telemetry.md states. Loosening it to accept
+// `true`/`yes` would silently turn an operator's `=true` typo from
+// "off" into "telemetry dark".
+#[test]
+fn kill_switch_is_on_only_for_the_literal_one() {
+    let _g = EnvGuard::install();
+    assert!(!kill_switch_active(), "unset is off");
+    for off in ["0", "true", "yes", "", " 1"] {
+        std::env::set_var("CIMMERIA_TELEMETRY_KILL_SWITCH", off);
+        assert!(!kill_switch_active(), "{off:?} must not enable the switch");
+    }
+    std::env::set_var("CIMMERIA_TELEMETRY_KILL_SWITCH", "1");
+    assert!(kill_switch_active());
 }
 
 fn token_minted_at(iat: i64, exp: i64) -> String {

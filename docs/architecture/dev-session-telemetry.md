@@ -141,9 +141,11 @@ implementation:
 
 - **The per-IP quota is the load-bearing control; the per-`install_id`
   one is a speed bump.** `install_id` is chosen by the caller, so an
-  attacker rotates it. The IP counter is charged before the request
-  body is validated, which is what makes rotation pointless from one
-  address.
+  attacker rotates it. The IP counter is charged before `install_id`
+  is validated, which is what makes rotation pointless from one
+  address. (A body that fails JSON extraction is rejected by the
+  framework before the handler runs and is not charged; no token is
+  issued on that path.)
 - **The counter store cannot grow.** Both keys are caller-supplied, so
   a map keyed on either would be its own memory-exhaustion vector.
   The store is instead a fixed 4096-slot array indexed by

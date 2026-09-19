@@ -173,8 +173,11 @@ pub(super) fn mint_inner(
     if kill_switch_active() {
         return Err(AuthError::KillSwitchActive);
     }
-    // Charged before the body is validated so a flood of malformed
-    // requests is capped by the same counter as a flood of valid ones.
+    // Charged before `install_id` is validated, so rotating or
+    // malforming it buys nothing from one address. A body that fails
+    // JSON extraction never reaches this function (axum rejects it in
+    // the `Json` extractor) and is not charged; no token is issued on
+    // that path either.
     tables.mint_ip.check_and_record(
         ip_key(peer_ip),
         policy.mint_per_ip,
