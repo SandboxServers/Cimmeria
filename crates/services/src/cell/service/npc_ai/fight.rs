@@ -8,7 +8,9 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-use super::ability_select::{ability_ranges, choose_npc_ability, compute_backup_waypoint};
+use super::ability_select::{
+    ability_ranges, choose_npc_ability_within_reach, compute_backup_waypoint,
+};
 
 /// Auto-aggro tick for Idle NPCs with `aggression > 0`.
 ///
@@ -213,31 +215,47 @@ pub(super) async fn npc_ai_fight(
         }
     }
 
+    // Distance is needed before the pick, not after: since H09 an ability
+    // set can hold both a ranged and a melee auto-attack, and which of the
+    // two is usable depends on how far away the target is.
+    let dist_to_target = npc_pos.distance_to(&target_pos);
+
     // Pick the ability up front so the range check can gate on the
     // ability's own `min_range` / `max_range` instead of a flat
-    // server-wide constant. `choose_npc_ability` returns:
+    // server-wide constant. `choose_npc_ability_within_reach` returns:
+    //   - `Some(id)` for the lowest-id off-cooldown ability that can be
+    //     used at `dist_to_target` — a melee ability only inside
+    //     `NPC_MELEE_RANGE`, so a staff or ribbon swing is never played at
+    //     a target the NPC cannot touch.
+    //   - `Some(id)` for the lowest-id off-cooldown ability regardless of
+    //     reach when none is in reach, so the out-of-range arm below can
+    //     walk the NPC in (or hold it, if stationary) rather than freeze.
     //   - `Some(NPC_DEFAULT_ABILITY)` when the NPC has no known abilities
     //     (misconfigured template — explicit fallback per the selector's
     //     "don't wedge silently" rule).
-    //   - `Some(id)` for the first non-cooling known ability.
     //   - `None` when every known ability is on cooldown.
     //
     // In the `None` case we keep the range/LOS logic running against the
     // server-wide fallback so the NPC still walks toward / tracks the
     // target while waiting for an off-cooldown ability — same effective
     // behavior as the pre-issue-329 flat-30.0 code path.
-    let chosen_ability = choose_npc_ability(npc_id, space_mgr);
+    let chosen_ability = choose_npc_ability_within_reach(
+        npc_id,
+        space_mgr,
+        dist_to_target,
+        combat::NPC_ATTACK_RANGE,
+    );
     let (max_range, min_range) =
         ability_ranges(chosen_ability, space_mgr, combat::NPC_ATTACK_RANGE);
 
     // Range check: don't attack until target is within the chosen
     // ability's `max_range` (or `NPC_ATTACK_RANGE` if the def is missing
-    // or carries the `0` sentinel meaning "use server default"). Pinned
+    // or carries the `0` sentinel meaning "use server default", or
+    // `NPC_MELEE_RANGE` if the ability is melee). Pinned
     // Previously: prior code used the flat constant and ignored
     // per-ability `max_range`, which produced "NPC walks into firing
     // distance but stands there" for any ability with `max_range < 30`
     // (e.g., a grenade at `max_range = 15`).
-    let dist_to_target = npc_pos.distance_to(&target_pos);
     let in_range = dist_to_target <= max_range;
     let has_los = space_mgr.has_line_of_sight(npc_id, target_id);
 
@@ -366,6 +384,14 @@ pub(super) async fn npc_ai_fight(
             // off-mesh flyer positions — and no log line surfaced
             // it. Same pattern that the existing `no_path` log
             // catches for non-stationary NPCs.
+            //
+            // Turn toward the target even while holding fire. A pinned
+            // NPC never gets a nav path, so the movement tick never
+            // writes its yaw; without this a sentry being shot from out
+            // of range (or across a navmesh gap that reads as no LoS)
+            // keeps its authored heading and stands with its back to the
+            // attacker. Harset seeds thirteen stationary sentries.
+            face_target(space_mgr, npc_id, npc_pos, target_pos);
             super::note_outcome("stationary_holds");
             tracing::info!(
                 target: "npc_ai",
@@ -420,20 +446,24 @@ pub(super) async fn npc_ai_fight(
                         "NPC AI: pathfinding toward target"
                     );
                 } else {
-                    let stale_path_len =
-                        space_mgr.get_entity(npc_id).map_or(0, |e| e.nav_path.len());
                     super::note_outcome("repath_degenerate");
-                    tracing::warn!(
-                        target: "npc_ai",
-                        event = "decision",
-                        decision_outcome = "repath_degenerate",
-                        npc_id,
-                        target_id,
-                        stale_path_len,
-                        in_range,
-                        has_los,
-                        dist_to_target,
-                        "NPC AI: repath returned <=1 waypoint -- previous path left in place, NPC may walk toward where the target used to be"
+                    // Shared emitter — `in_range` / `has_los` /
+                    // `dist_to_target` are already on the per-tick
+                    // `npc_ai.tick` row for this same NPC, so dropping
+                    // them here loses nothing and buys one query shape
+                    // across all five AI states.
+                    super::path_failure::report_path_failure(
+                        space_mgr,
+                        super::path_failure::PathFailure {
+                            npc_id,
+                            state: "fight",
+                            decision_outcome: "repath_degenerate",
+                            from: npc_pos,
+                            to: nav_target_pos,
+                            reason: super::path_failure::PathFailReason::DegeneratePath,
+                            target_id: Some(target_id),
+                        },
+                        std::time::Instant::now(),
                     );
                 }
             } else {
@@ -443,16 +473,20 @@ pub(super) async fn npc_ai_fight(
                 // `groupBy=decision_outcome` across the npc_ai target and
                 // pivot per zone via the span's space_id attribute.
                 super::note_outcome("no_path");
-                tracing::info!(
-                    target: "npc_ai",
-                    event = "decision",
-                    decision_outcome = "no_path",
-                    npc_id,
-                    target_id,
-                    in_range,
-                    has_los,
-                    dist_to_target,
-                    "NPC AI: no path to target (zone may need navmesh)"
+                let reason =
+                    super::path_failure::PathFailReason::for_missing_path(space_mgr, npc_id);
+                super::path_failure::report_path_failure(
+                    space_mgr,
+                    super::path_failure::PathFailure {
+                        npc_id,
+                        state: "fight",
+                        decision_outcome: "no_path",
+                        from: npc_pos,
+                        to: nav_target_pos,
+                        reason,
+                        target_id: Some(target_id),
+                    },
+                    std::time::Instant::now(),
                 );
             }
         } else {
@@ -513,11 +547,10 @@ pub(super) async fn npc_ai_fight(
     // strafed around it. Done before the ability check so a mob waiting on a
     // cooldown still tracks its target. No extra wire traffic: the AoI tick
     // already sends direction with every position update.
-    let face_yaw = (target_pos.x - npc_pos.x).atan2(target_pos.z - npc_pos.z);
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         npc.nav_path.clear();
-        npc.direction = cimmeria_common::Vector3::new(0.0, face_yaw, 0.0);
     }
+    face_target(space_mgr, npc_id, npc_pos, target_pos);
 
     // `chosen_ability` may still be `None` here when every known ability
     // is on cooldown — hold fire and let the next tick re-evaluate.
@@ -603,3 +636,28 @@ pub(super) async fn npc_ai_fight(
 /// the C++ AI tick says otherwise. The retry sweep tick is
 /// 100ms granular, so the actual latency lands in `[500, 600)` ms.
 const AI_LAUNCH_FAILURE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Point `npc_id`'s yaw at `target_pos`. `direction` is `[pitch, yaw, roll]`
+/// in radians and yaw is `atan2(dx, dz)` (0 = +Z), the same convention the
+/// movement tick writes. A target directly above or below (coincident in
+/// XZ) has no bearing, so the current yaw is kept rather than snapped to 0.
+/// No wire traffic of its own: the AoI tick sends direction with every
+/// position update.
+///
+/// `pub(super)` so the surrender path in [`super::lifecycle`] can reuse
+/// it: an NPC that disengages must end up facing the player it gave up
+/// to, and that is the same geometry with a different trigger.
+pub(super) fn face_target(
+    space_mgr: &mut SpaceManager,
+    npc_id: u32,
+    npc_pos: cimmeria_common::Vector3,
+    target_pos: cimmeria_common::Vector3,
+) {
+    let (dx, dz) = (target_pos.x - npc_pos.x, target_pos.z - npc_pos.z);
+    if dx * dx + dz * dz < f32::EPSILON {
+        return;
+    }
+    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+        npc.direction = cimmeria_common::Vector3::new(0.0, dx.atan2(dz), 0.0);
+    }
+}

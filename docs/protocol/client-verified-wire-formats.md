@@ -114,7 +114,25 @@ index of `entities/entities.xml`. The client assigns it while parsing
   `desc+0x1c` and increments its counter unconditionally, but assigns
   `clientIndex_` (`desc+0x1e`) from a **separate** counter that only advances
   when `name_ == clientName_`. `ServerOnly` entities have `clientName_ == ""`,
-  so they never take a `clientIndex_`.
+  so they never take a `clientIndex_`. Each assignment is also recorded in a
+  clientIndex → raw-index map at `EntityDescriptionMap+0x00`.
+- `FUN_0158e710 @ ghidra://SGW.exe@0x0158e710` — the consumer. It looks a wire
+  typeID up in that clientIndex → raw-index map and returns `0xFFFF` on a miss.
+  Its callers are `Client_NetIn_EntityMethodDispatch @ ghidra://SGW.exe@0x00c6f8f0`
+  ("No client->server entity description mapping found for entity type %d")
+  and the RPC registrar at `ghidra://SGW.exe@0x00c6ef40` ("Cannot register rpc
+  … because a client-server id mapping was not found"). A raw document index
+  sent on the wire is therefore either the wrong entity or unmapped.
+
+> **Do not "fix" `Account` to `0x08`.** Issue #313 and PR #704 proposed it after
+> reading only the raw-index half of `EntityDescriptionMap_parse` (the
+> `desc+0x1c` counter that increments for every entry). Re-verified against the
+> binary on 2026-09-19: the wire value is the `desc+0x1e` clientIndex. Character
+> select also proves it behaviourally — `createCharacter` / `playCharacter` are
+> exposed base methods the client can only send from a live `Account` entity,
+> and they arrive with `0x07` on the wire. The guard is
+> `entity_class_ids_are_client_indices_not_raw_document_indices` in
+> `crates/services/src/mercury/protocol/tests.rs`.
 
 Of the 18 entries in `entities/entities.xml`, 10 are `<ServerOnly/>`, leaving
 8 client types:

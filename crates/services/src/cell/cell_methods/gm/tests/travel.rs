@@ -626,3 +626,51 @@ async fn gm_dhd_arms_a_dial_where_a_gate_volume_exists_and_travels_where_none_do
     );
     assert!(mgr.gate_dial(1).is_none(), "the fallback arms nothing");
 }
+
+/// `gmDHD` reaches `handle_dial_gate`, which enforces the caller's address
+/// book (CAT-O-01). A GM debugging a world they have never visited does not
+/// hold its address, so the arm grants it for the session first — without
+/// that, H06's dial gate silently broke a GM command.
+///
+/// Deleting the grant block in `handle_dhd` fails this: the dial is refused,
+/// no `GateTravel` is emitted and the feedback reports a refusal.
+#[tokio::test]
+async fn gm_dhd_grants_the_address_it_needs_and_dials() {
+    use crate::cell::spawner::StargateEntry;
+
+    const DEST_ADDR: i32 = 7;
+
+    // Castle has no `REGION_FLAG_Stargate` volume in this fixture, so the
+    // dial takes the CA10 immediate-travel fallback and the `GateTravel`
+    // below is observable in one call.
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.stargates.insert(
+        DEST_ADDR,
+        StargateEntry {
+            world_name: "Agnos".to_string(),
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+            yaw: 0.0,
+            address_origin: 4,
+            arrival: None,
+            event_set_id: None,
+        },
+    );
+    assert!(
+        mgr.get_entity(1).unwrap().known_stargates.is_empty(),
+        "the GM starts without the address — that is the point of the test"
+    );
+
+    let (tx, mut rx) = mpsc::channel(16);
+    assert!(dispatch(1, GM_DHD, &[DEST_ADDR as u8], &tx, &mut mgr, &test_engine()).await);
+
+    let msgs = drain(&mut rx);
+    assert!(
+        msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::GateTravel { target_world_name, .. } if target_world_name == "Agnos"
+        )),
+        "a GM dial must not be blocked by the player-facing address book. Got {msgs:?}"
+    );
+}

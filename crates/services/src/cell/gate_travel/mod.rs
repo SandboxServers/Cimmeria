@@ -30,11 +30,13 @@ use super::arrival::validate_gate_arrival;
 use super::messages::CellToBaseMsg;
 use super::space_manager::SpaceManager;
 
+mod address_book;
 // `pub(crate)` so the base-side fan-out byte test can drive the real
 // emitter rather than hand-building `WitnessEntityMethod` messages.
 pub(crate) mod sequences;
 mod tick;
 
+use address_book::player_knows_stargate;
 pub(crate) use sequences::world_has_stargate_region;
 pub use tick::gate_dial_tick;
 
@@ -54,9 +56,10 @@ use sequences::{origin_gate_event_set, send_gate_sequence, EVENT_STARGATE_CROSS_
 ///
 /// Returns `true` when the dial was *accepted* — either armed (the normal
 /// CA10 path) or, on a world with no gate volume, travelled immediately —
-/// and `false` on every refusal (cancel, unknown address, entity missing,
-/// same world, and, on the immediate path, an unrecoverable arrival or a
-/// closed base channel). The bool exists because
+/// and `false` on every refusal (cancel, an address the player does not
+/// hold, unknown address, entity missing, same world, and, on the immediate
+/// path, an unrecoverable arrival or a closed base channel). The bool exists
+/// because
 /// [`super::cell_methods::gm::travel`] is the one dial caller with a
 /// client-visible feedback channel and used to report "dialing gate address
 /// N" unconditionally — including for dials the primitive refused.
@@ -95,7 +98,38 @@ pub async fn handle_dial_gate(
     // before warning and returning. Without it a rejected re-dial leaves
     // the PREVIOUS destination armed and, once its timer expires,
     // crossable — the player walks into the gate and is sent somewhere
-    // they did not dial.
+    // they did not dial. The address-book gate immediately below is
+    // `SGWPlayer.py:2061` and cancels for the same reason.
+
+    // Address-book gate (CAT-O-01). `target_address_id` is a raw client
+    // integer; without this, any client could dial any of the 28 seeded
+    // gates and cross-world teleport itself into content it never
+    // unlocked.
+    //
+    // First thing after the cancel, deliberately. It is the dial *request*
+    // gate: the refusal has to land before `begin_gate_dial` arms anything,
+    // and answering before the `stargates` lookup below stops the pair of
+    // refusals being an existence oracle — an address that does not exist
+    // and an address that is not yours now look identical to a client
+    // probing the id space.
+    //
+    // 2009: `deprecated/python/cell/SGWPlayer.py:2060-2064`, which also
+    // accepted `hiddenStargates`. Cimmeria has no hidden list — neither a
+    // column nor a wire slot; `mercury::world_data::map_loaded` always
+    // serialises an empty hidden array — so "known" is the whole address
+    // book here.
+    //
+    // The check belongs here and *only* here. Passage through an open
+    // wormhole is transit, not a dial (2009 gates `onDialGate`, never
+    // `GateTravel.stargatePassed`), so
+    // [`handle_stargate_region_entered`] deliberately does not re-run it:
+    // otherwise a player could not walk through a gate somebody else
+    // opened, and the crossing would be re-authorising a decision the
+    // pending-dial record already carries.
+    if !player_knows_stargate(entity_id, target_address_id, tx, space_mgr).await {
+        space_mgr.cancel_gate_dial(entity_id);
+        return false;
+    }
 
     // Look up the destination stargate from the DB cache
     let gate = match space_mgr.stargates.get(&target_address_id) {

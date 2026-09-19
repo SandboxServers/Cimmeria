@@ -95,6 +95,13 @@ ignores:
   # Vendored Ghidra install — third-party tooling, not our docs.
   - "ghidra/**"
 
+  # External SGW handoff pack, imported verbatim as read-only evidence. Not
+  # authored by the Cimmeria project, and its ~45 markdown files (several
+  # near 1 MB each) take the full-tree lint from ~8 s to over 4 minutes,
+  # which blew the CI job's 5-minute timeout. Our own README, audits, and
+  # gap report one level up stay linted.
+  - "docs/analysis/sgw-handoff-pack-v1.2/pack/**"
+
 # Show progress in CI logs (one line per file batch) — easier to triage
 # slow lint runs.
 noProgress: false

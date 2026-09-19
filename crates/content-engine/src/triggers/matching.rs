@@ -32,6 +32,7 @@ impl Trigger {
             Trigger::OnEffectPulseEnd => TriggerType::EffectPulseEnd,
             Trigger::OnEffectRemoved => TriggerType::EffectRemoved,
             Trigger::OnMissionCompleted { .. } => TriggerType::MissionCompleted,
+            Trigger::OnMissionAbandoned { .. } => TriggerType::MissionAbandoned,
             Trigger::OnDialogSetOpen { .. } => TriggerType::DialogSetOpen,
             Trigger::OnMissionAccepted { .. } => TriggerType::MissionAccepted,
             Trigger::OnPlayerEnteredCover { .. } => TriggerType::PlayerEnteredCover,
@@ -179,7 +180,8 @@ impl Trigger {
             | Trigger::OnEffectPulseBegin
             | Trigger::OnEffectPulseEnd
             | Trigger::OnEffectRemoved => true,
-            Trigger::OnMissionCompleted { mission_id } => {
+            Trigger::OnMissionCompleted { mission_id }
+            | Trigger::OnMissionAbandoned { mission_id } => {
                 event.params.get("mission_id").and_then(|v| v.as_i64()) == Some(*mission_id as i64)
             }
             Trigger::OnDialogSetOpen { dialog_set_name } => event

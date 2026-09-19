@@ -323,6 +323,57 @@ future path that mutates health without going through either seam needs its own
 `note_pre_damage_health` call, and the per-tick safety drain bounds how long a sample from a
 forgotten drain site can sit unfired.
 
+### 18. A surrendered NPC is immune to the killing blow from an automatic damage source, not to damage
+
+**Decision:** `fire_pulse` floors an `AiState::Submit` target's `HEALTH.cur` at 1 instead
+of letting a pulse take it to zero. The pulse still lands its full damage; only the killing
+blow is refused. Direct hits are untouched, so a single deliberate shot still kills a
+surrendered NPC.
+
+**Why it is needed at all.** Decision 17's second half made a damage-over-time kill a real
+kill. Before that, a lethal pulse left the mob standing at zero health, which was a bug but
+was also, accidentally, harmless to Harset H08: the packet that makes an NPC's surrender
+stick. After it, a DoT the player applied *before* the surrender walks the NPC to a corpse
+a few seconds later. H08 stops the auto-attack loop, and the mob dies anyway on a different
+clock.
+
+**Why the line is drawn at "automatic", and where that line is.** H08's rule is that the
+surrender survives everything the *server* re-delivers on its own cadence, and changes
+nothing about what a player does deliberately. A pulse is on the automatic side by the same
+definition
+[`combat::is_auto_cycle_target_valid`](../../crates/services/src/cell/combat/auto_cycle.rs)
+uses for the auto-fire loop: the deliberate act was applying the effect, and every tick
+after it is the scheduler's. So the two guards are one rule applied at two seams, and
+neither of them touches a direct hit.
+
+This does mean a player who *wants* to finish a surrendered NPC cannot do it with a DoT.
+That is a real, narrow change to explicit-attack behaviour, taken knowingly: the alternative
+(strip hostile pulsing effects at the moment of surrender) leaves a ~2 s window, because the
+surrender handler runs on the AI tick while pulses run at 100 ms.
+
+**Why in `fire_pulse` rather than in `dot_kill_credit`.** The dirty-stat flush at the bottom
+of `fire_pulse` is the same pulse's `onStatUpdate` broadcast, so clamping above it means the
+client is told `1` and never renders a zero-health frame. It also collapses two guards into
+one: `dot_kill_credit`'s existing `cur > 0` probe early-outs on the floored value without
+needing its own `ai_state` check that could drift out of sync.
+
+**Not a faction flip, and not an immunity flag.** `faction` gates whether an offensive
+ability may target the entity at all, so flipping it would make the surrendered NPC
+unattackable and would read it as an ally to every other mob's idle scan. There is no
+`BSF_*` bit for "cannot be finished"; `ai_state == AiState::Submit` is the durable fact and
+both guards read it directly.
+
+**What is still lethal to a surrendered NPC** — all deliberate, all recorded rather than
+changed: a direct single-target hit, a ground- or cone-AoE secondary (one ability press, so
+the splash that catches a surrendered bystander is deliberate at the press), a content chain
+that applies damage through `effect_apply`, and the GM kill primitive. Harset H21's duel
+carries an `entity_dead_tag` fallback chain for exactly this reason (H04 worknote,
+integration request A).
+
+**Reversibility:** High. One `if` in `fire_pulse` and one sentence of the `dot_kill_credit`
+doc comment; deleting both restores the pre-H08 behaviour and fails
+`a_dot_cannot_finish_a_surrendered_npc`.
+
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:

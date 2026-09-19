@@ -297,9 +297,11 @@ async fn chain_1235_only_arms_on_step_2401() {
     );
 }
 
-/// `onStepUpdate` — `cell::missions::ON_STEP_UPDATE`, duplicated here
-/// because that constant is `pub(super)` to the missions module.
+/// `onStepUpdate` / `onObjectiveUpdate` — `cell::missions::ON_STEP_UPDATE` /
+/// `ON_OBJECTIVE_UPDATE`, duplicated here because those constants are
+/// `pub(super)` to the missions module.
 const ON_STEP_UPDATE: u16 = 81;
+const ON_OBJECTIVE_UPDATE: u16 = 82;
 
 /// Render one cell→base message compactly so the deferred test can assert
 /// the whole ordered list instead of filtering to the one variant it
@@ -319,6 +321,15 @@ fn describe(msg: &CellToBaseMsg) -> String {
         } if *method_index == ON_STEP_UPDATE && args.len() >= 5 => {
             let step = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
             format!("onStepUpdate(step={step}, status={})", args[4])
+        }
+        CellToBaseMsg::EntityMethodCall {
+            method_index, args, ..
+        } if *method_index == ON_OBJECTIVE_UPDATE && args.len() >= 5 => {
+            let objective = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+            format!(
+                "onObjectiveUpdate(objective={objective}, status={})",
+                args[4]
+            )
         }
         CellToBaseMsg::EntityMethodCall { method_index, .. } => {
             format!("EntityMethodCall(method={method_index})")
@@ -492,10 +503,13 @@ async fn chain_1235_escort_walk_defers_then_advances_to_2421() {
     assert_eq!(
         drained,
         vec![
-            // `cell::missions::advance_step` closes the old step, opens the
-            // new one, then emits one objective frame per objective of the
-            // new step (none here — a bare SpaceManager has no step-objective
-            // cache, and 2421's objectives are not what this test is about).
+            // `cell::missions::advance_step` first reports the old step's
+            // objectives it silently completes (here: 2401's single
+            // objective), then closes the old step, opens the new one, and
+            // emits one objective frame per objective of the new step (none
+            // here — a bare SpaceManager has no step-objective cache, and
+            // 2421's objectives are not what this test is about).
+            "onObjectiveUpdate(objective=2401, status=1)".to_string(),
             "onStepUpdate(step=2401, status=1)".to_string(),
             "onStepUpdate(step=2421, status=0)".to_string(),
             // Then the executor's own persist message.

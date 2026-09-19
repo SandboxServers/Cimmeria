@@ -1,0 +1,40 @@
+# Cimmeria — Live Research Lab colo overlay (opt-in)
+#
+# Publishes the in-server lab endpoint (cimmeria-lab-mcp) on the colo box
+# for the owner's dev box to reach. The endpoint is bound INSIDE the
+# container's namespace (0.0.0.0:8444) and published on the host's
+# WireGuard address ONLY — never in docker/compose.yml's public `ports:`
+# list next to 8081/8443/50000. This is a separate overlay precisely so
+# the port can never be published by accident: if you do not add
+# `-f compose.lab.yml`, the port is not published at all (fail-closed by
+# absence), and cimmeria-server itself refuses to start the endpoint
+# unless both CIMMERIA_LAB_MCP_BIND and CIMMERIA_LAB_MCP_TOKEN are set
+# (fail-closed by config; ADR §3.5).
+#
+# # Deploy on a colo box (alongside docker/compose.yml)
+#
+#   cd /opt/cimmeria
+#   export CIMMERIA_WG_IP=10.13.13.1          # this box's WireGuard address
+#   export CIMMERIA_LAB_MCP_TOKEN=<32+ byte random token>
+#   docker compose -f compose.yml -f compose.lab.yml up -d
+#
+# Both variables are required. The `:?` markers below make compose refuse
+# to start if either is unset, so you cannot accidentally bind the lab
+# port to all interfaces or start it without a token.
+#
+# From the dev box, reach it over WireGuard:
+#   http://$CIMMERIA_WG_IP:8444/mcp   (Authorization: Bearer <token>)
+# Point the `lab-server` entry in .mcp.json at that URL. See
+# docs/operations/colo-deploy.md and docs/guides/live-research-lab.md.
+
+services:
+  cimmeria:
+    environment:
+      # Bind inside the container namespace; the port is exposed to the
+      # host only via the WireGuard-scoped mapping below.
+      CIMMERIA_LAB_MCP_BIND: "0.0.0.0:8444"
+      CIMMERIA_LAB_MCP_TOKEN: "${CIMMERIA_LAB_MCP_TOKEN:?set a 32+ byte lab token}"
+    ports:
+      # WireGuard address ONLY. Never "8444:8444" (that would bind all
+      # interfaces, including the public one).
+      - "${CIMMERIA_WG_IP:?set to this box's WireGuard IP}:8444:8444"

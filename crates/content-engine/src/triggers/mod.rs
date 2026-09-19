@@ -118,6 +118,24 @@ pub enum Trigger {
     /// Fires when a mission is completed.
     OnMissionCompleted { mission_id: i32 },
 
+    /// Fires immediately after a mission is abandoned — after the instance
+    /// has been removed from the player's tracker, so a chain gated on
+    /// `mission_status <id> eq not_active` sees the post-removal state.
+    ///
+    /// Abandoning returns a mission to not-active with the player already
+    /// past every edge that would normally set the scene up: the offer gate
+    /// reopens and nothing repaints it, and whatever dialog-set binding the
+    /// mission installed is stranded on its NPC. Both self-heal on the next
+    /// world transition, which is why the gap went unreported. This is the
+    /// third form of playtest finding H9, after `enter_region` (closed in
+    /// the engine by H52) and `player_loaded` (closed in seed).
+    ///
+    /// Fires from every abandon path — the client-callable `abandonMission`
+    /// cell method, the `abandon_mission` chain action, and
+    /// `gmMissionClear` / `gmMissionAbandon` — and only when a mission was
+    /// actually removed.
+    OnMissionAbandoned { mission_id: i32 },
+
     /// Fires when a dialog set is opened for a player.
     OnDialogSetOpen { dialog_set_name: String },
 
@@ -249,6 +267,7 @@ pub enum TriggerType {
     EffectPulseEnd,
     EffectRemoved,
     MissionCompleted,
+    MissionAbandoned,
     DialogSetOpen,
     MissionAccepted,
     PlayerEnteredCover,

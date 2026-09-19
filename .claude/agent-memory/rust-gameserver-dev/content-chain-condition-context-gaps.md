@@ -76,19 +76,34 @@ Consequences:
   module-level `all_required_complete` check. It can never auto-complete a
   mission. Safe to use as "close this step".
 - `complete_objective` DOES auto-complete when every `!optional` objective of
-  the current step is done — and that branch sends `onMissionUpdate` with the
-  `MISSION_ACTIVE` status byte, not `STATUS_COMPLETED` (there is a
-  `// Status sent as "completed" removal` comment sitting right on it). **Never
-  finish a mission through it.** Use `complete_mission` → `complete_mission_direct`,
-  which emits onObjectiveUpdate(COMPLETED) per objective, onStepUpdate, then
-  onMissionUpdate(STATUS_COMPLETED).
+  the current step is done. **CORRECTED 2026-09-19 (H50): the status byte was
+  never wrong.** `onMissionUpdate` carries the two-value `STATUS_*` enum
+  (0 active / 1 completed), not the four-value `MISSION_*` enum, and all five
+  emitters agree — `accept_mission` 0, `abandon_mission` 1, `serialize_resend`
+  0, `complete_mission_direct` 1, auto-complete 1. `MISSION_ACTIVE` and
+  `STATUS_COMPLETED` are both `1`, so the old source named the wrong constant
+  while the wire was right; the name is now fixed. Do NOT "correct" it to
+  `MISSION_COMPLETED` (2) — that would break the client. `MISSION_*` is
+  server-side only (`MissionInstance.status`, `sgw_mission.status`), which is
+  the field `CellToBaseMsg::MissionUpdate` carries.
+- Auto-completing through `complete_objective` is now safe for persistence too:
+  as of H50 that branch fires `mission_completed` and its `MissionUpdate`
+  carries the post-transition status and bumped `repeats`. Prefer
+  `complete_mission` → `complete_mission_direct` when you want every objective
+  ticked on the wire, since that path emits onObjectiveUpdate(COMPLETED) per
+  objective and onStepUpdate first.
 - Ordering inside one action list: `complete_objective` must come BEFORE
   `advance_step`. Reversed, the objective is looked up in the NEW step's list,
   misses, and early-returns — the client never sees the tick.
 - **Vacuous-truth footgun:** `all_required_complete` is `.all()` over a filtered
   iterator, so a step whose objectives are ALL optional completes the mission on
-  the first `complete_objective`. "Every step has ≥1 required objective" is
-  load-bearing and asserted nowhere. Pin it with a test that asserts
+  the first `complete_objective`. **37 seeded steps have that shape** (333, 491,
+  553, 875, 3429, 4490, 4612, 4962, …) — counted 2026-09-19 over
+  `db/resources/Missions/Seed/mission_objectives.sql`, so "every step has ≥1
+  required objective" is false, not just unasserted. Since H50 this is reachable
+  on the relog path too (hydration carries the real `optional`), and
+  `complete_objective` emits a `warn!` when it auto-completes with
+  `required_count == 0`. Pin any new all-optional step with a test that asserts
   `mission.status == MISSION_ACTIVE` after the chain runs.
 
 ## `delay_ms > 0` QUEUES the action — it does not run it

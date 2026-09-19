@@ -186,12 +186,24 @@ With all three MCPs wired, Claude Code can:
 - Run dynamic analysis through x64dbg: set log breakpoints, read memory, attach to the live SGW process — see [`docs/guides/sgw-live-debugging.md`](sgw-live-debugging.md) for the techniques and gotchas.
 - Search the Cimmeria knowledge graph: code, docs, entity defs, findings — through the cloud-hosted `cimmeria-rag` server.
 - Structurally verify a reconstruction against the binary with the [`/re-verify`](../../.claude/commands/re-verify.md) slash command, which pairs Ghidra MCP ground truth with the LLM-free parity engine at [`tools/re_parity.py`](../../tools/re_parity.py). No extra setup beyond the MCPs above and a Python 3 on PATH — the engine is pure Python with no network calls. Details in the workflow doc. **Note:** as of 2026-07-25 neither file is on `main` yet, so a fresh `main` checkout won't have them.
+- **Ask the running game** through the Live Research Lab: evaluate Lua on the live client, install non-freezing logging hooks, screenshot the window, and read live server entity/witness/packet state — see the two extra MCP entries below and the rulebook at [`docs/guides/live-research-lab.md`](live-research-lab.md).
+
+### Live Research Lab (optional fourth + fifth MCPs)
+
+The lab is the runtime complement to Ghidra's static view: Ghidra finds the *where*, the lab proves the *what* (see [`reverse-engineering-with-claude.md`](reverse-engineering-with-claude.md#static-vs-runtime--ghidra-x64dbg-and-the-lab)). Two entries in `.mcp.json` wire it (both are in [`.mcp.json.example`](../../.mcp.json.example)):
+
+- **`cimmeria-lab`** (stdio) — the supervisor. Build it once with `cargo build -p cimmeria-lab` (Windows only), then point the `command` at `target\debug\cimmeria-lab.exe` and set `CIMMERIA_LAB_INSTALL_DIR` to your SGW install. To use the merged timeline it also needs `CIMMERIA_LAB_MCP_URL` + `CIMMERIA_LAB_MCP_TOKEN` pointing at the server endpoint below. The client bridge only exists in a telemetry DLL built `--features lab-bridge`.
+- **`lab-server`** (http) — the in-server endpoint, present only when `cimmeria-server` was started with `CIMMERIA_LAB_MCP_BIND` + `CIMMERIA_LAB_MCP_TOKEN` set (fail-closed). Locally that is `http://127.0.0.1:8444/mcp`; on the colo it is the WireGuard address only — see [`docs/operations/colo-deploy.md`](../operations/colo-deploy.md).
+
+The full tool set, the experiment loop, and the rules of the road are in [`docs/guides/live-research-lab.md`](live-research-lab.md); the design is the ADR at [`docs/architecture/live-research-lab.md`](../architecture/live-research-lab.md).
 
 The workflow that puts them together — when to invoke which agent, how to hand off findings, what NOT to delegate — is documented in [`docs/guides/reverse-engineering-with-claude.md`](reverse-engineering-with-claude.md). Read it before your first dig.
 
 ## Cross-references
 
 - [docs/guides/reverse-engineering-with-claude.md](reverse-engineering-with-claude.md) — the workflow doc
+- [docs/guides/live-research-lab.md](live-research-lab.md) — the Live Research Lab rulebook + operating manual
+- [docs/architecture/live-research-lab.md](../architecture/live-research-lab.md) — the Live Research Lab ADR
 - [docs/reverse-engineering/toolchain/install-ghidra-mcp.md](../reverse-engineering/toolchain/install-ghidra-mcp.md) — Ghidra MCP reference
 - [docs/guides/sgw-live-debugging.md](sgw-live-debugging.md) — manual x32dbg techniques and the pybag warning
 - [docs/guides/reading-decompiled-code.md](reading-decompiled-code.md) — interpret Ghidra output

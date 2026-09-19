@@ -3,9 +3,14 @@
 #include <string>
 #include <cstdint>
 #include <iostream>
+#ifdef NAVBUILDER_STANDALONE
+// Boost-free build (tools/build-navbuilder.ps1); see standalone/ublas_min.hpp.
+#include "standalone/ublas_min.hpp"
+#else
 #include <boost/numeric/ublas/matrix.hpp>
 
 using namespace boost::numeric::ublas;
+#endif
 
 void ParseVector(std::string const & str, float * vec, unsigned int length);
 unsigned int htoi(char c);

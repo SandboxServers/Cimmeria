@@ -122,10 +122,28 @@ pub(crate) const BASEMSG_RESOURCE_FRAGMENT: u8 = 0x36;
 /// Wire format: `[reason:u8]` (0 = normal logoff).
 pub(crate) const BASEMSG_LOGGED_OFF: u8 = 0x37;
 
-/// Account entity class ID (EntityTypeID 7 — client skips ServerOnly entities).
-/// entities.xml has SGWBlackMarket(ServerOnly) at index 7, but client numbering
-/// excludes it: 0=SGWSpawnableEntity..6=SGWDuelMarker, 7=Account.
-/// Confirmed by C++ server pcap: `Base Player Create: type=7`.
+/// Account entity class ID — the client's **clientIndex** for `Account` (0x07).
+///
+/// The wire typeID is NOT the raw `entities/entities.xml` document index.
+/// `EntityDescriptionMap_parse @ ghidra://SGW.exe@0x01590520` keeps two
+/// counters: the raw index (`desc+0x1c`, incremented for every entry) and the
+/// clientIndex (`desc+0x1e`, incremented only when `name_ == clientName_`).
+/// `EntityDescription_parse @ ghidra://SGW.exe@0x01593cd0` blanks `clientName_`
+/// for `<ServerOnly/>` defs, so those entries never take a clientIndex. The
+/// client resolves wire typeIDs through the clientIndex -> raw-index map
+/// (`FUN_0158e710`, "No client->server entity description mapping found for
+/// entity type %d").
+///
+/// ```text
+/// raw:    0 SGWSpawnableEntity 1 SGWBeing 2 SGWPlayer 3 SGWGmPlayer 4 SGWMob
+///         5 SGWPet 6 SGWDuelMarker 7 SGWBlackMarket (ServerOnly) 8 Account
+/// client: 0..=6 unchanged, SGWBlackMarket skipped, 7 Account
+/// ```
+///
+/// `0x08` (Account's raw document index) is unmapped on the client
+/// and breaks character select, which runs on Account's exposed base methods
+/// (`createCharacter`/`playCharacter`). See
+/// `docs/protocol/client-verified-wire-formats.md` "Entity Class IDs".
 pub(crate) const ACCOUNT_CLASS_ID: u8 = 0x07;
 /// SGWPlayer entity class ID (EntityTypeID 2 in entity definitions).
 pub(crate) const SGWPLAYER_CLASS_ID: u8 = 0x02;
@@ -164,8 +182,11 @@ pub const FRAG_FIRST_AND_LAST: u8 = 0x43;
 // Verified from .def files by traversing the entity hierarchy:
 // SGWEntity → SGWSpawnableEntity → SGWBeing (+ interfaces) → SGWPlayer (+ interfaces + own)
 //
-// Direct encoding (0–127): msg_id = index | 0x80
-// Extended encoding (128+): msg_id = 0xBD, payload = entity_id + (index - 61) as u8 + args
+// Wire encoding boundary: direct below idbase (61 for SGWPlayer), extended at
+// idbase and above — see `append_entity_method` doc. Constants in this table
+// that fall at or past 61 all use the extended encoding.
+// Direct encoding (0–60): msg_id = index | 0x80
+// Extended encoding (61+): msg_id = 0xBD, payload = entity_id + (index - 61) as u8 + args
 
 /// Flattened ClientMethod indices.
 ///
@@ -255,7 +276,8 @@ pub mod method_idx {
     pub const ADD_CLIENT_HINTED_GENERIC_REGION: u16 = 125;
     pub const ON_RESET_MAP_INFO: u16 = 126;
 
-    // Extended encoding (>= 128)
+    // Extended-method block — these indices are >= idbase (61 for SGWPlayer),
+    // so each is emitted with extended encoding (0xBD marker + sub-byte).
     pub const ON_EXTRA_NAME_UPDATE: u16 = 130;
     pub const ON_EXP_UPDATE: u16 = 131;
     pub const ON_MAX_EXP_UPDATE: u16 = 132;

@@ -41,20 +41,25 @@ fn castle_cellblock_nav_round_trips_byte_exact() {
 
     let parsed = XrcNav::round_trip(&bytes).expect("round-trip mismatch");
 
-    // Sanity-check the parsed metadata matches the values quoted in the
-    // asset-pipeline deep dive — guards against silent format drift.
-    assert_eq!(parsed.agent_height, 0.6);
-    assert_eq!(parsed.agent_climb, 0.9);
+    // Sanity-check the parsed metadata against the shipped file — guards
+    // against silent format drift. These are the header values of the mesh
+    // rebuilt from the client maps on 2026-09-19 (see
+    // `data/spaces/README.md`); the 2013 mesh it replaced read
+    // 0.6 / 0.9 / 0.6, 2778 verts, 1479 polys, 0x29_08B bytes. Rebuilding
+    // the mesh means updating this block, which is the point: a header
+    // that changes without anyone touching the file is format drift.
+    assert_eq!(parsed.agent_height, 1.8);
+    assert_eq!(parsed.agent_climb, 0.6);
     assert_eq!(parsed.agent_radius, 0.6);
-    assert_eq!(parsed.nverts, 2778);
-    assert_eq!(parsed.npolys, 1479);
+    assert_eq!(parsed.nverts, 3039);
+    assert_eq!(parsed.npolys, 1658);
     assert_eq!(parsed.nvp, 6);
-    assert_eq!(parsed.detail_nmeshes, 1479);
-    assert_eq!(parsed.detail_nverts, 6031);
-    assert_eq!(parsed.detail_ntris, 3102);
+    assert_eq!(parsed.detail_nmeshes, 1658);
+    assert_eq!(parsed.detail_nverts, 6550);
+    assert_eq!(parsed.detail_ntris, 3251);
 
-    // 0x29 08B from the deep dive — the parser must reach EOF exactly.
-    // The XrcNav::read() check ensures no trailing bytes; reasserting
-    // here makes the "the format is the format" claim visible.
-    assert_eq!(original_size, 0x29_08B);
+    // The parser must reach EOF exactly. The XrcNav::read() check
+    // ensures no trailing bytes; reasserting here makes the "the format
+    // is the format" claim visible.
+    assert_eq!(original_size, 0x2D_0C8);
 }

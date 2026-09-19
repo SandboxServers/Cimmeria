@@ -190,6 +190,12 @@ impl SpaceManager {
         // Release the entity's movement-validator clock so it can't leak
         // or carry a stale speed sample across `entity_id` reuse.
         self.movement_validator.forget(entity_id);
+        // Same reasoning for the movement observability state (reject-log
+        // and NPC-path-failure throttles, last position sample). A
+        // recycled id inheriting a predecessor's throttle window would
+        // silently swallow the *first* reject of a fresh session — the
+        // one row an incident timeline most needs.
+        self.movement_telemetry.forget(entity_id);
         tracing::debug!(
             entity_id,
             account_id = id.account_id,

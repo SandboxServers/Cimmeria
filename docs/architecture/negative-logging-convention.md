@@ -20,7 +20,7 @@ event, with enough context for ops to act.
 
 Source: issue #304 (`Negative-logging audit: 40+ expectation seams`).
 
-## The three patterns
+## The four patterns
 
 ### Pattern A — `let _ = tx.send(...)` / `let _ = query.execute(...)`
 
@@ -48,6 +48,56 @@ entity-to-addr miss (player-visible bug) and `debug!` for the
 client-disconnected case (normal during logoff races but should
 remain queryable). Both carry a stable `reason` field for triage.
 
+### Pattern D — High-frequency repeat, throttled with a suppressed count
+
+A negative log on a **per-packet or per-tick** seam reports a condition
+that usually persists. One player stuck against a wall re-reports the
+same rejected position at the client's 10 Hz update rate; one NPC with
+no route re-fails every AI tick for as long as the zone is up. Logging
+each occurrence is not extra information — it is the same fact, and it
+buries every other player's first occurrence underneath it.
+
+Measured: in three days of production logs, `movement.validation_reject`
+produced **146,760** WARN rows, **103,818** of them (71%) from a single
+entity in Harset.
+
+**Fix**: gate the emission per entity, and make the elision explicit.
+
+| Rule | Why |
+|---|---|
+| The **first** occurrence for an entity emits immediately | The row that says a problem *started* is the most useful one; delaying it to the end of a window is the wrong trade |
+| Subsequent occurrences inside the window are counted, not written | This is the repetition, not new information |
+| The next row that does emit carries `suppressed = N` | The magnitude survives. "1 row, suppressed=847" and "1 row, suppressed=0" are very different incidents and a plain rate limiter cannot tell them apart |
+| The **counter** increments on every occurrence, throttled or not | A throttle must never deflate the rate an operator alerts on. Log volume and metric volume are separate budgets |
+| Throttle state is keyed by entity and released in `destroy_entity` | Bounded by the live entity population, and a recycled `entity_id` must not inherit a predecessor's open window — that would swallow the first reject of a fresh session, the exact row Pattern D exists to protect |
+
+The shared primitive is `LogThrottle` in
+[`crates/services/src/cell/space_manager/movement_telemetry/`](../../crates/services/src/cell/space_manager/movement_telemetry/mod.rs),
+parameterised on the window so each caller picks its own
+(`movement.validation_reject` uses 1 s against a 10 Hz packet rate;
+`npc_ai.path_fail` uses 5 s against the AI tick). Reuse it rather than
+hand-rolling a second one.
+
+**Do not apply Pattern D to a one-shot seam.** A `rows_affected == 0`
+on a mission-complete UPSERT happens once and matters every time;
+throttling it would lose events, not repetition. The pattern is for
+seams where the *same* entity can re-trigger the *same* condition many
+times a second.
+
+#### Testing a throttle
+
+Two guards, both required — the first is the one reviewers forget:
+
+1. **The burst.** N occurrences inside the window produce exactly one
+   row, and the next emitted row carries `suppressed = N-1`. A test
+   that only asserts "a row was emitted" passes with the throttle
+   deleted.
+2. **Independence.** A second entity's *first* occurrence is not
+   swallowed by the first entity's open window. Without per-entity
+   keying the throttle is strictly worse than no throttle.
+
+A third, cheap: state is released on `destroy_entity`.
+
 ## Field naming rules
 
 | Field | Required? | Notes |
@@ -58,6 +108,22 @@ remain queryable). Both carry a stable `reason` field for triage.
 | `rows_affected` + `expected` | always paired on DB writes | Pair so a single ops query catches divergence. |
 | `phase` | optional | Short string naming a sub-step (e.g. `"create_base"` \| `"cascade"`). |
 | `reason` | optional | Short string naming why the expectation was unmet (e.g. `"entity_to_addr_miss"`, `"oneshot_dropped"`, `"rows_affected_zero"`). |
+| `world` | when the seam is space-scoped | The **world name**, not only `space_id`. A space id is a runtime allocation that means nothing outside the running process, so a log carrying only `space_id` cannot be grouped by zone after the fact. Pair them — `space_id` still identifies the instance. |
+| `suppressed` | required on a Pattern D seam | Count of occurrences elided since this seam last emitted for this entity. `0` on the first row of an episode. |
+
+### Credential fields
+
+Never log a credential value in full, at any level: this covers SIDs, tickets, session keys, passwords and password hashes, and raw request bodies that carry them. Disk logs, the admin `/ws/logs` stream and SigNoz all keep what they receive, and a harvested SID or ticket is enough to hijack a pending login ([#440](https://github.com/SandboxServers/Cimmeria/issues/440)).
+
+Log a redacted prefix under a `*_prefix` field instead, using `CredentialPrefix` from `crates/services/src/credential_redaction.rs`:
+
+```rust
+tracing::debug!(ticket_prefix = %CredentialPrefix(&ticket), "Phase 2 generated session credentials");
+```
+
+The prefix is six characters, which is enough to correlate one login's events and far too short to replay. `CredentialPrefix` slices on character boundaries, so it is safe on client-supplied input of any length. Don't use `&value[..6]`: it panics on short or non-ASCII input. For a request body, log `body_len` rather than the body. `auth/credential_log_guard.rs` is the regression guard: it runs a full login under `LogCapture` and fails if any captured event contains a credential.
+
+Two deliberate exceptions remain. Credentials of six characters or fewer appear in full in `CredentialPrefix` output — there is nothing left to truncate — and the `UDP_IN` TRACE hex dump in `base/connect_loop/mod.rs` captures pre-encryption packet bytes, including the ticket field in `baseAppLogin`. That dump is required for wire-level debugging; production login tickets are long enough that the prefix rule still holds in practice.
 
 ## Level discipline
 

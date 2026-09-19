@@ -20,6 +20,7 @@ use cimmeria_mercury::packet::{FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE};
 use cimmeria_mercury::transport::{BidirectionalTransport, Transport};
 
 use crate::cell::messages::BaseToCellMsg;
+use crate::credential_redaction::CredentialPrefix;
 
 use super::helpers::to_hex;
 use super::login::{handle_login, parse_baseapp_login};
@@ -183,7 +184,7 @@ async fn handle_datagram(
 
     match parse_baseapp_login(raw) {
         Ok((request_id, ticket_str)) => {
-            tracing::info!(%addr, ticket = %ticket_str, "baseAppLogin received");
+            tracing::info!(%addr, ticket_prefix = %CredentialPrefix(&ticket_str), "baseAppLogin received");
             handle_login(
                 transport,
                 addr,

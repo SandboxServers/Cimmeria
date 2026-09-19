@@ -182,6 +182,20 @@ The MCP tools amplify what a single Claude Code session can do, but the session 
 
 A practical pattern: scope each session to **one** Six-Phase pass on **one** subsystem. Cross-system investigations stretch context without producing better evidence.
 
+## Static vs runtime — Ghidra, x64dbg, and the lab
+
+Three runtime-facing surfaces, and when to reach for each:
+
+| Surface | What it is | Reach for it when |
+|---|---|---|
+| **Ghidra MCP** | Static analysis of the binary. | You need the *where*: an address, a struct, an xref. Always the first stop. |
+| **x64dbg MCP** | Dynamic single-step debugging. | Single-stepping is genuinely unavoidable — and expect the client to disconnect (any freeze past the heartbeat kills the Mercury channel). |
+| **Live Research Lab** | Non-freezing probes on the *running* game: Lua eval, logging hooks, memory read/write, native calls, screenshots, and live server-side entity/witness/packet reads. | You want the *what*: prove behavior on the live client without freezing it. This is the "ask the running game" path — the runtime complement to Ghidra's static view. |
+
+The governing rule (the lab's rulebook, [`live-research-lab.md`](live-research-lab.md)): **do not infer client behavior when the running client can answer the question.** Ghidra finds the candidate; the lab places a non-freezing probe, you cause the behavior (a slash command, a Lua call, a server-side spawn beside the lab character), and `lab_timeline` / `lab_screenshot` / the packet tap show what actually happened. Every finding cites its probe, the dev-session id, and the client build, so it is replayable — a finding without a probe is marked `inferred`. Prefer the lab over x64dbg for anything that isn't strict single-stepping: the lab's hooks are log-and-continue and cannot stall the heartbeat.
+
+Setup for the lab MCPs is in [`re-toolchain-setup.md`](re-toolchain-setup.md#live-research-lab-optional-fourth--fifth-mcps); the full tool set and experiment loop are in [`live-research-lab.md`](live-research-lab.md).
+
 ## A typical session shape
 
 A representative half-day archaeology session, scoped to one mid-sized system:
@@ -202,6 +216,8 @@ Bad shape: "use the specialist to research and implement and document and verify
 - [tools/re_parity.py](../../tools/re_parity.py) — the LLM-free structural parity engine (`--selftest` runs its own fixtures)
 - [.claude/agents/game-archaeology-specialist.md](../../.claude/agents/game-archaeology-specialist.md) — the persona
 - [.claude/agents/documentation-writer.md](../../.claude/agents/documentation-writer.md) — the publication partner
+- [docs/guides/live-research-lab.md](live-research-lab.md) — the Live Research Lab rulebook (the "ask the running game" path)
+- [docs/architecture/live-research-lab.md](../architecture/live-research-lab.md) — the Live Research Lab ADR
 - [docs/guides/re-toolchain-setup.md](re-toolchain-setup.md) — get the MCPs working in the first place
 - [docs/guides/sgw-live-debugging.md](sgw-live-debugging.md) — manual dynamic-analysis techniques, pybag warning
 - [docs/guides/reading-decompiled-code.md](reading-decompiled-code.md) — interpret Ghidra output

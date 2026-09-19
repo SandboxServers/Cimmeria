@@ -98,7 +98,7 @@ The gap between "code exists" (70.2%) and "confirmed working" (35.9%) is the sto
 | Dueling | KM | 6 (all KM) | Not ported. 5-state machine + 7 defeat conditions to implement |
 | Pets | KM | 7 (all KM) | Not ported. Entity extends spawner mob + Follow AI state |
 | Minigames | IM | 9 (6 IM, 3 KM) | **SmartFox server is in-process, not external** — 2,262 lines incl. the SFS codec and a 250 ms tick loop. Livewire fully implemented; six games run on an accept-anything placeholder; Alignment + GoauldCrystals are open TODOs |
-| Groups / parties | KM | 7 (all KM) | Not ported. `game/src/social/groups.rs` is a 97-line struct with zero call sites |
+| Groups / parties | KM | 7 (all KM) | Not ported. No group code exists (an unwired `game/src/social/groups.rs` sketch was deleted in #614) |
 
 ### Systems New Since the Original Audit
 

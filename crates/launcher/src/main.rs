@@ -4,15 +4,20 @@ mod app;
 mod client_paths;
 mod config;
 mod identity;
-mod inject;
 mod install;
-mod launch;
 mod logs;
 mod manifest;
-mod patch_rdata;
 mod state;
 mod telemetry;
 mod worker;
+
+// The suspended-launch, DLL-injection, and .rdata-patch modules moved
+// into the shared `cimmeria-client-launch` crate (issue #685, ADR
+// §3.4) so `cimmeria-lab` drives the same code path. Re-exporting them
+// at the crate root keeps every existing `crate::launch::…` /
+// `crate::inject::…` / `crate::patch_rdata::…` reference resolving
+// unchanged — a pure refactor with no behavior change here.
+use cimmeria_client_launch::{launch, patch_rdata};
 
 use std::sync::Arc;
 

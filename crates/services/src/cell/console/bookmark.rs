@@ -110,6 +110,12 @@ pub(crate) struct Bookmark {
     pub world_name: String,
     pub space_id: u32,
     pub navmesh_loaded: bool,
+    /// Short content hash of the mesh this space is running, or `None`
+    /// in a meshless space. `navmesh_loaded` alone says a mesh exists;
+    /// this says *which* one — so a `.bug` filed against a bad snap-back
+    /// can be attributed to a specific mesh build rather than to
+    /// "Castle_CellBlock's navmesh, whichever was deployed that week".
+    pub navmesh_hash: Option<String>,
     pub caller: EntitySnapshot,
     pub selected_target_id: u32,
     pub regions_inside: Vec<String>,
@@ -314,6 +320,7 @@ pub(crate) fn capture(
         world_name,
         space_id,
         navmesh_loaded: space_mgr.space_has_navmesh(caller_id),
+        navmesh_hash: space_mgr.navmesh_short_hash(caller_id).map(str::to_owned),
         caller: snapshot_entity(caller, caller, target_id, space_mgr, now),
         selected_target_id: target_id.unwrap_or(0),
         regions_inside,
@@ -438,6 +445,7 @@ pub(crate) fn emit(b: &Bookmark, account_id: u32, player_id: i32, access_level: 
         world_name = %b.world_name,
         space_id = b.space_id,
         navmesh_loaded = b.navmesh_loaded,
+        navmesh_hash = b.navmesh_hash.as_deref(),
         x = c.pos.x,
         y = c.pos.y,
         z = c.pos.z,

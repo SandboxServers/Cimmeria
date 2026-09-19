@@ -45,22 +45,60 @@ seconds on a cold cache for SGW's ~5000 packages. Cache via
 `PackageIndex::save` / `::load` to `package_index.bin` (the binary's
 default output name).
 
-## Archetype-based actors
+## Archetype-based actors — SHIPPED, and the obvious recipe is wrong
 
-About 20% of Castle_CellBlock `StaticMeshActor` exports DON'T have a
-direct `StaticMesh` ref on their cooked component — instead they
+15% of Castle and 19% of Castle_CellBlock `StaticMeshActor` exports
+DON'T have a direct `StaticMesh` ref on their cooked component — they
 inherit it from a prefab archetype. Symptoms:
 
 - Actor's `archetype` field is a negative import (e.g. `-462`).
-- Actor's component is a 76-byte stub with only `CullDistance`
-  override properties.
-- Walking the archetype chain through the imports lands at a `Prefab`
-  import in a content package (e.g. `Em-Props.upk:EM-WallLight02_Pf0`).
+- Actor's component is a stub carrying only per-instance overrides
+  (`CullDistance`, `CachedCullDistance`, `IrrelevantLights`).
+- Walking the archetype chain lands at a `Prefab` import in a content
+  package (e.g. `Em-Props.upk:EM-WallLight02_Pf0`).
 
-Resolving these properly means opening the prefab package, finding the
-template's `StaticMeshActor.StaticMeshComponent.StaticMesh`, and using
-THAT as the mesh ref. The current navmesh-extractor walker silently
-skips them — deferred Phase 1.2-extension work.
+Implemented in `staticmesh/archetype/`; all 961 Castle stubs resolve.
+Three things this note previously got wrong or omitted:
+
+1. **There are TWO archetype chains and they answer different
+   questions.** The *component's* `Archetype` carries `StaticMesh`.
+   The *actor's* carries `bCollideActors` / `Rotation` /
+   `DrawScale3D`. The recipe "find the template's
+   `StaticMeshActor.StaticMeshComponent.StaticMesh`" — what this file
+   used to say — **does not work**: the template actor has
+   `CollisionComponent` and no `StaticMeshComponent` at all.
+2. **Template object names are NOT unique.** Every SGW prefab names
+   its component `StaticMeshComponent0`; `Em-Props.upk` holds 218 of
+   them (and 278 `RB_BodySetup`). `PackageIndex` keys on
+   `(package, object_name)` and cannot disambiguate — match the full
+   dotted `Outer` path inside the package instead. The path's first
+   component after the package name IS unique (a top-level `Prefab`
+   export), which is what lets the name-keyed index still find the
+   *file*. No index format change was needed.
+3. **`Location` must never be inherited** — a template actor's is its
+   offset *inside the prefab* (`(128, -2031.99, 0)`). Rotation/scale
+   inherit fine (23 Castle instances inherit `DrawScale3D=(1,1,1.2)`).
+
+## `bCollideActors=false` — render-only geometry WITH real kDOP data
+
+The trap that matters more than the archetype chain itself.
+`AActor::bCollideActors` defaults true and the cooker omits defaults,
+so the property appears ONLY on non-colliding actors. **The cook does
+not strip collision from their `StaticMesh`** — the kDOP tree is
+present and populated, so nothing below the mesh layer can tell such
+an actor from a wall.
+
+Castle: 26 of 86 prefab templates (inherited by 374 instances) plus
+1,196 chunk-local actors = **1,570 actors**. 17 of the 26 templates
+are `bHidden=true, Group=PrecipPlanes` — flat weather cards sitting in
+tent/bunker/guardhouse **doorways**. The rest are icicles, floor signs,
+wall panels, hoses, pipes, cameras, crates, wall lights.
+
+Emitting them split Castle's exterior navmesh from one walkable
+component into three and left the Stargate DHD with no floor. Honour
+the flag on direct actors too, not just prefab ones — most of them are
+direct. Byte-level detail:
+`docs/engine/ue3-package-format.md` §"Prefab archetypes".
 
 ## kDOP collision triangles
 

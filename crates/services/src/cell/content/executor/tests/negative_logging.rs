@@ -418,3 +418,54 @@ async fn set_visible_hide_warns_when_cell_to_base_channel_closed() {
         capture.all()
     );
 }
+
+#[tokio::test]
+async fn move_waypoint_warns_when_cell_to_base_channel_closed() {
+    use crate::test_support::LogCapture;
+    use cimmeria_common::EntityId;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut mgr = make_space_mgr();
+    mgr.create_entity(7413, "Agnos", [5.0, 0.0, 5.0], [0.0; 3])
+        .unwrap();
+    if let Some(n) = mgr.get_entity_mut(7413) {
+        n.tag = Some("H03_NegLog_MoveWp".to_string());
+    }
+    stage_player_in_agnos(&mut mgr, 7414);
+    if let Some(p) = mgr.get_entity_mut(7414) {
+        p.witnesses.insert(EntityId(7413));
+    }
+
+    let (tx, rx) = mpsc::channel(8);
+    drop(rx); // close the cell→base channel
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        action_delays: Vec::new(),
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            6303,
+            Action::MoveWaypoint {
+                entity_tag: "H03_NegLog_MoveWp".to_string(),
+                destination: [10.0, 0.0, 10.0],
+                speed: 1.0,
+            },
+        )],
+    };
+
+    execute_actions(resolved, 7414, 42, &tx, &mut mgr, &engine).await;
+
+    assert!(
+        capture
+            .find_event(
+                Level::WARN,
+                "cell→base send failed",
+                "move_waypoint_send_failed"
+            )
+            .is_some(),
+        "negative-logging convention: move_waypoint must WARN per failed \
+         witness send; reverting to `let _ = tx.send(...)` hides the \
+         stale-position window until the next AoI tick. Captured: {:#?}",
+        capture.all()
+    );
+}

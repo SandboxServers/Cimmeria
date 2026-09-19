@@ -2,12 +2,12 @@
 title: "Mission System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-19
 ---
 
 # Mission System
 
-> **Last updated**: 2026-05-07
+> **Last updated**: 2026-09-19
 > **Status**: ~40% implemented; mission lifecycle in production runs through the [content engine](../content/content-engine.md).
 
 ## Overview
@@ -101,6 +101,23 @@ MissionManager.advance(missionId, stepId)
        |-> addStepObjectives(nextStep)
        |-> fire step completed/started events
 
+`advance_step`
+([crates/services/src/cell/missions/progression.rs](../../crates/services/src/cell/missions/progression.rs))
+reports each old-step objective it completes as a completed-status
+`onObjectiveUpdate` (method 82) before the `onStepUpdate` transition frames.
+Without that report, whichever objective on a multi-objective AND-gate step
+finishes second (via `advance_step` rather than `complete_objective`) never
+reaches the client as completed before the step disappears.
+
+**Frame order (not verified).** Sending objective-completed frames before
+the step transition is a deliberate choice, not a proven client requirement.
+The reference Python `MissionManager.advance()` emits step updates before
+objective updates (`MissionManager.py:851-862`). Rust inverts that order so
+checkmarks can land while the old step is still the client's current step.
+In-game validation is still needed on mission **639** step **2144** and
+mission **688** step **2356** — the two AND-gate steps that motivated issue
+**#656**.
+
 MissionManager.complete(missionId)
   |-> instance.complete()
        |-> status = MISSION_Completed
@@ -147,7 +164,7 @@ a mission without a def entry fails closed (treated as non-repeatable).
 - **Mission definitions**: 1,040 in `db/resources/Missions/Seed/missions.sql`
 - **Schema**: `Mission.xsd`
 - **Mission scripts**: `deprecated/python/cell/missions/` directory
-- **Persistence**: `sgw_mission` table (player_id, mission_id, status, current_step_id, completed/active/failed objective arrays, repeats)
+- **Persistence**: `sgw_mission` table (player_id, mission_id, status, current_step_id, completed/active/failed objective arrays, repeats). `active_objective_ids` holds the **current step's objective roster**, completed entries included, and `completed_objective_ids` the union of everything completed so far; both are serialized from the live `MissionInstance` after each mutation by [`cell/missions/persist.rs`](../../crates/services/src/cell/missions/persist.rs). Before #657 the accept and step-advance paths wrote the *step* id into the objective array and objective completion was never persisted at all. `hidden` / `optional` are not stored — hydration reads them back from `resources.mission_objectives`, which also repairs rows written before the fix
 
 ## RE Priorities
 

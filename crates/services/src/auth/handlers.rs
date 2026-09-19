@@ -15,6 +15,7 @@ use quick_xml::{events::Event, Reader};
 use rand::RngExt;
 
 use crate::audit::emit_login_event;
+use crate::credential_redaction::CredentialPrefix;
 
 use super::credentials::{
     classify_credential, validate_credentials, AuthCredError, CredentialGateError,
@@ -49,7 +50,7 @@ pub(super) async fn handle_user_auth(
 ) -> Response {
     let over_tls = over_tls.is_some();
     tracing::debug!(over_tls, "Phase 1: UserAuth");
-    tracing::trace!(body = %body, "Phase 1 raw SOAP request");
+    tracing::trace!(body_len = body.len(), "Phase 1 raw SOAP request");
 
     let client_ip = addr.ip().to_string();
 
@@ -183,7 +184,7 @@ pub(super) async fn handle_user_auth(
 
     // 40-char alphanumeric SID matching the C++ session cookie format.
     let sid = random_alphanumeric(40);
-    tracing::debug!(sid = %sid, "Phase 1 generated SID");
+    tracing::debug!(sid_prefix = %CredentialPrefix(&sid), "Phase 1 generated SID");
     {
         state.sessions.lock().unwrap().insert(
             sid.clone(),
@@ -232,7 +233,7 @@ pub(super) async fn handle_server_selection(
     body: String,
 ) -> Response {
     tracing::debug!("Phase 2: ServerSelection");
-    tracing::trace!(body = %body, "Phase 2 raw SOAP request");
+    tracing::trace!(body_len = body.len(), "Phase 2 raw SOAP request");
 
     let client_ip = addr.ip().to_string();
 
@@ -278,7 +279,7 @@ pub(super) async fn handle_server_selection(
     // 64-char hex AES-256 session key, 20-char hex ticket.
     let session_key = random_hex(32);
     let ticket = random_hex(10);
-    tracing::debug!(ticket = %ticket, "Phase 2 generated session credentials");
+    tracing::debug!(ticket_prefix = %CredentialPrefix(&ticket), "Phase 2 generated session credentials");
 
     {
         state.pending_logins.lock().unwrap().insert(
@@ -301,7 +302,7 @@ pub(super) async fn handle_server_selection(
         user = %session.account_name,
         shard = %shard.name,
         ip = %client_ip,
-        ticket_prefix = %&ticket[..6],
+        ticket_prefix = %CredentialPrefix(&ticket),
         "Phase 2 success — ticket issued"
     );
 

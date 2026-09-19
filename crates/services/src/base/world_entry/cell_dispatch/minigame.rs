@@ -10,6 +10,7 @@ use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
+use crate::credential_redaction::CredentialPrefix;
 use crate::mercury::build_player_entity_method_packet;
 
 use super::super::super::helpers::send_to_witness_reliable;
@@ -55,7 +56,12 @@ pub(super) async fn start_minigame(
                 "http://unused/{}/{}/{}/{}/{}",
                 minigame_external_host, minigame_external_port, game_name, entity_id, ticket
             );
-            tracing::info!(entity_id, %url, "Sending onStartMinigame to client");
+            tracing::info!(
+                entity_id,
+                %game_name,
+                ticket_prefix = %CredentialPrefix(&ticket),
+                "Sending onStartMinigame to client"
+            );
 
             // onStartMinigame(URL: WSTRING) — MinigamePlayer client method
             // Method index for onStartMinigame in the SGWPlayer flat dispatch table

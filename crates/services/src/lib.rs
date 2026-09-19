@@ -11,6 +11,7 @@ pub mod audit;
 pub mod auth;
 pub mod base;
 pub mod cell;
+pub(crate) mod credential_redaction;
 pub mod database;
 pub mod mercury;
 pub mod minigame;
@@ -19,5 +20,7 @@ mod orchestrator_postgres;
 mod orchestrator_shards;
 pub mod wire_log;
 
+#[cfg(test)]
+mod live_db_gate;
 #[cfg(test)]
 pub(crate) mod test_support;

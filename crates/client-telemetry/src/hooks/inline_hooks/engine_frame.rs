@@ -95,6 +95,16 @@ unsafe extern "thiscall" fn engine_tick_detour(this: *mut c_void) {
         }
     });
 
+    // Live Research Lab bridge: drain queued commands and dispatch
+    // them here on the main thread before the original tick runs
+    // (same ordering as the black-market patch's tick cave). No-op
+    // until a bridge is installed. Panic-guarded so a bad probe can
+    // never unwind into SGW.exe's tick.
+    #[cfg(feature = "lab-bridge")]
+    {
+        let _ = std::panic::catch_unwind(crate::bridge::drain_main_thread);
+    }
+
     if let Some(t) = TICK_TRAMPOLINE.get() {
         let original: unsafe extern "thiscall" fn(*mut c_void) = unsafe { std::mem::transmute(*t) };
         original(this);

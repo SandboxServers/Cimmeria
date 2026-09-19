@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use super::super::handle_dial_gate;
-use super::{engine, make_manager_with_stargates, strip_stargate_regions};
+use super::{engine, grant_all_addresses, make_manager_with_stargates, strip_stargate_regions};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::StargateEntry;
@@ -56,6 +56,7 @@ fn fixture() -> SpaceManager {
     strip_stargate_regions(&mut mgr);
     mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
+    grant_all_addresses(&mut mgr, 1);
     mgr.connect_entity(1);
     mgr
 }
@@ -113,6 +114,11 @@ async fn gate_travel_with_an_arrival_pin_uses_the_pin() {
             Some(([700.5, 60.25, 540.75], 1.0)),
         ),
     );
+    // Re-grant: the earlier grant covered the cache as it stood, and this
+    // test added a gate afterwards. A dial to an address the player does not
+    // hold is refused before the arrival contract is ever reached
+    // (CAT-O-01), which would make the assertions below pass vacuously.
+    grant_all_addresses(&mut mgr, 1);
 
     let (tx, mut rx) = mpsc::channel(16);
     assert!(handle_dial_gate(1, PINNED_GATE, 0, &tx, &mut mgr, &engine()).await);
@@ -157,6 +163,11 @@ async fn gate_travel_to_an_off_mesh_arrival_sends_the_respawner_position() {
         OFF_MESH_GATE,
         gate("Castle_CellBlock", OFF_MESH, 1.75, None),
     );
+    // Re-grant: the earlier grant covered the cache as it stood, and this
+    // test added a gate afterwards. A dial to an address the player does not
+    // hold is refused before the arrival contract is ever reached
+    // (CAT-O-01), which would make the assertions below pass vacuously.
+    grant_all_addresses(&mut mgr, 1);
 
     let (tx, mut rx) = mpsc::channel(16);
     assert!(handle_dial_gate(1, OFF_MESH_GATE, 0, &tx, &mut mgr, &engine()).await);
@@ -208,6 +219,11 @@ async fn dial_gate_to_an_unrecoverable_arrival_sends_no_transfer() {
         UNRECOVERABLE_GATE,
         gate("Castle_CellBlock", OFF_MESH, 1.75, None),
     );
+    // Re-grant: the earlier grant covered the cache as it stood, and this
+    // test added a gate afterwards. A dial to an address the player does not
+    // hold is refused before the arrival contract is ever reached
+    // (CAT-O-01), which would make the assertions below pass vacuously.
+    grant_all_addresses(&mut mgr, 1);
     let space_before = mgr.get_entity_space_id(1);
 
     let (tx, mut rx) = mpsc::channel(16);
@@ -248,11 +264,17 @@ async fn crossing_into_an_unrecoverable_arrival_sends_no_transfer() {
     test_insert_navmesh_space(&mut mgr, "Castle_CellBlock", mesh);
     mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
         .unwrap();
+    grant_all_addresses(&mut mgr, 1);
     mgr.connect_entity(1);
     mgr.stargates.insert(
         UNRECOVERABLE_GATE,
         gate("Castle_CellBlock", OFF_MESH, 1.75, None),
     );
+    // Re-grant: the earlier grant covered the cache as it stood, and this
+    // test added a gate afterwards. A dial to an address the player does not
+    // hold is refused before the arrival contract is ever reached
+    // (CAT-O-01), which would make the assertions below pass vacuously.
+    grant_all_addresses(&mut mgr, 1);
     let space_before = mgr.get_entity_space_id(1);
 
     let (tx, mut rx) = mpsc::channel(16);

@@ -49,6 +49,14 @@ pub(crate) fn is_unauthored(r: &RespawnerDef) -> bool {
 /// player there — which is how a "recovery" turns into a permanent freeze one
 /// position over. `navmesh` is `None` for a space that has no mesh, where
 /// `bounds` is the whole test.
+///
+/// Both callers pass the mesh in its **containment** role — the
+/// `SpaceManager::containment_navmesh` flavour — so an advisory world also
+/// arrives here as `None`. That is deliberate and belongs at the caller: a
+/// respawner row is a coordinate a human chose, and discarding it because a
+/// mesh the server has already declared untrustworthy does not cover it would
+/// leave the world with no recovery target at all. This function stays pure
+/// and takes the mode as an already-applied `Option`.
 pub(crate) fn nearest_valid_respawner(
     respawners: &[RespawnerDef],
     world_name: &str,
