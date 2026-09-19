@@ -60,7 +60,8 @@ pub mod static_mesh_payload;
 pub mod terrain_payload;
 
 pub use chunk_fixtures::{
-    index_over, mesh_package, scratch_dir, ChunkFixture, ACTOR_PROPS_OFFSET, COMPONENT_PROPS_OFFSET,
+    index_over, mesh_package, scratch_dir, ChunkFixture, Placement, ACTOR_PROPS_OFFSET,
+    COMPONENT_PROPS_OFFSET,
 };
 pub use model_payload::{ModelPayload, NodeSpec, SurfSpec};
 pub use names::NameTable;

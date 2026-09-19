@@ -152,6 +152,17 @@ grid 4,458 × 4,000. "Interior-5" = `zuritska_cell`, `romney_corridor`,
 `comms_room`, `nid_guard_116`, `armory` resolve (h-tol 2 m, v-tol 3 m) to one
 common component. Build time is wall-clock for NavBuilder alone, Release.
 
+**Which extraction.** The 4,179,133-triangle input is the pre-1.2c one:
+`bCollideActors = false` actors still emitted and the buried BSP hull skin
+retained (`keep_hull_caps = true`). Every absolute count in this table is
+therefore larger than what the current extractor produces — the same
+NavBuilder parameters over today's default extraction give
+40,068 / 19,815 / 55,101 over 549 components
+([castle-extraction-measurements.md](castle-extraction-measurements.md)).
+What the table is for is the *relative* effect of each parameter, which
+the extraction does not change; do not quote a row's absolute figures as
+the current mesh.
+
 | Parameters (others default) | contour verts | nverts / npolys / edges | components | Interior-5 | s |
 |---|---|---|---|---|---|
 | *(defaults, monotone)* | 118,250 | fails: vertex cap | — | — | 17 |
@@ -223,13 +234,19 @@ partition=watershed agentHeight=1.8 agentClimb=0.6 minRegionSize=24 maxSimplific
 45,124 / 21,803 / 60,862 and the same probe result. The 62 geometry-bearing
 chunks alone come to 25,278 / 11,889 / 33,319.
 
-What the recommended mesh does **not** do: connect all eleven probes. The
-gate room, stargate, `bunker_muelbach` and `checkpoint_bravo` share one
-exterior component (23,186 m²); the interior five plus `opcore` share
+What the recommended mesh does **not** do: connect all eleven probes. On
+the extraction this table was measured against they sit in three groups —
+the gate room, stargate, `bunker_muelbach` and `checkpoint_bravo` share
+one exterior component (23,186 m²); the interior five plus `opcore` share
 another (17,022 m²); `throne_room` is in a third (37,214 m²). That is
-geometry, not tuning — see
-[navmesh-build-pipeline.md §7](navmesh-build-pipeline.md#7-castle-world-8-why-the-probes-sit-in-three-components)
-for the measurements that rule tuning out.
+geometry, not tuning, and no parameter set changes it.
+
+Two of those three have since merged, and **not** through tuning: the
+mirrored-instance fix in the extractor put a hallway ramp's treads back
+the right way up, and `throne_room` joined the interior component
+(17,006 m² → 53,556 m², probe groups 3 → 2). See
+[castle-navmesh-connectivity.md](castle-navmesh-connectivity.md) for that
+and for what is still split.
 
 The whole-map sweep that confirms no parameter set does better (all six
 builds put the eleven probes in **three or more** groups):

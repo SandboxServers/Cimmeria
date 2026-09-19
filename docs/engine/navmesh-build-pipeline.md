@@ -1,7 +1,7 @@
 # Navmesh Build Pipeline (UE3 → OBJ → NavBuilder → `.nav`)
 
 > **Last updated**: 2026-09-19
-> **Status**: Verified end-to-end against the prebuilt `NavBuilder_d.exe` and the shipped 2013 `castle_cellblock.nav`. §2.5, §6 (gap finding and classification) and §7 (Castle connectivity) measured on the 144-chunk Castle extraction the same day; the builder reference moved to [navbuilder-recast-limits.md](navbuilder-recast-limits.md).
+> **Status**: Verified end-to-end against the prebuilt `NavBuilder_d.exe` and the shipped 2013 `castle_cellblock.nav`. §2.5 and §6 (gap finding and classification) measured on the 144-chunk Castle extraction the same day; the builder reference moved to [navbuilder-recast-limits.md](navbuilder-recast-limits.md) and the Castle connectivity analysis to [castle-navmesh-connectivity.md](castle-navmesh-connectivity.md).
 
 How a cooked UE3 map becomes a `data/spaces/<space>.nav` that
 `crates/entity/src/navigation/` can load, and the exact conventions each
@@ -534,194 +534,15 @@ no parameter will produce it and the cause is (d) or (e).
 
 Implementation and unit tests: `crates/navmesh-extractor/src/obj_slab/`.
 
-## 7. Castle (World 8): why the probes sit in three components
+## 7. Castle (World 8) connectivity
 
-Measured 2026-09-19 on the 144-chunk extraction, recommended parameter set,
-and re-measured against the same extraction with `bCollideActors = false`
-props suppressed (40,093 / 19,824 / 55,132, 553 components). **The grouping
-is identical in both**, and so is every number this section turns on:
-
-| Component (props on / suppressed) | Area | Probes |
-|---|---|---|
-| 218 / 116 | 23,186 → 22,844 m² | `gate_room_dhd`, `stargate`, `bunker_muelbach`, `checkpoint_bravo` |
-| 754 / 435 | 17,022 → 16,415 m² | `zuritska_cell`, `romney_corridor`, `comms_room`, `nid_guard_116`, `opcore`, `armory` |
-| 405 / 250 | 37,214 → 36,451 m² | `throne_room` |
-
-### 7.1 405 ↔ 754 — a storey boundary, not a tuning problem
-
-The two components' rims overlap in XZ at many points around
-`(276…292, ·, 865…886)` with **`h = 0.00 m` and `dy = +12.00 m` exactly**.
-`obj_slab --column 282,875` shows why: a floor at `y = 43.2`, a slab
-underside at `51.2`, and the interior floor at `55.2`. They are two storeys
-of the same building, 12 m apart, with a 4 m slab between them.
-
-Nothing links them at any parameter set. Tested, all on the interior crop
-`bounds=150,500,700,1150`, and all still split:
-
-| Build | Result |
-|---|---|
-| `minRegionSize=8 maxSimplificationError=1.3` (rules out (g)) | split |
-| `slope=60` (rules out (c)) | split |
-| `agentClimb=1.2` (rules out (b)) | split |
-| `agentRadius=0.3` (rules out (a)) | split |
-| `agentHeight=1.2` (rules out (f)) | split |
-| `slope=60 agentClimb=1.5 agentRadius=0.2 agentHeight=1.2` | split, and `comms_room` splits from `zuritska_cell` as under-floor crawl space becomes walkable |
-| tight crop `bounds=190,830,470,960` at `cs=0.15 ch=0.1 agentRadius=0.15 minRegionSize=2` | split, still exactly 12.00 m |
-
-`obj_slab --levels 1.0` over the overlap does find near-horizontal surface
-at every metre between 43 and 56 (517 m² at 44–45, 1,217 m² at 47–48,
-3,042 m² at 51–52, 4,284 m² at 54–55), so the building has intermediate
-levels — but none of it is connected to either storey.
-
-> **The direct 12 m approach is not where the connection is.** A
-> traversal-keyword scan of all 6,430 Castle `StaticMeshActor`s found two
-> flights of three `CA-Props:CA-Stair00` segments at
-> `x = 348.64 / 355.04 / 361.44`, `z = 846.34` (`y 46.24`) and `z = 884.32`
-> (`y 54.40`) — **30 m east of the box above**, with
-> `CA-Interior:CA-large_doorway_open_a_00` at the foot and head of each and
-> a `CA-large_hallway_ramp_a_00` between. All are direct actors with
-> collision on, so all are already in the OBJ and in the mesh.
->
-> The gap finder pointed at the wrong place because its hop cost weighted
-> only the horizontal gap, and two floors of one building overlap in XZ:
-> the storey jump reported `h = 0.00` and therefore scored as **free**.
-> `Approach::bridge_size` is now `max(horizontal, |vertical|)` and the
-> 12 m jump costs 12. Regression test:
-> `gaps::tests::a_stacked_storey_jump_does_not_beat_a_real_route`.
-
-With the cost fixed, the cheapest bridge between the two on the whole-map
-mesh runs through the stair spine, not through the slab: `250 → 430`
-(`h = 3.61 m`, `dy = +6.80 m`, at `(362.3, 48.4, 842.7)`) then `430 → 435`
-(`h = 8.10 m`, `dy = +7.20 m`, at `(362.0, 63.0, 872.7)`).
-
-**And the stairs still do not join the halls.** Cropping to
-`bounds=320,770,410,920` and probing the lower hall (`355.04, 48.4, 830`)
-against the upper (`355.04, 55.2, 885`):
-
-| Build | Components | Probes joined? |
-|---|---|---|
-| `minRegionSize=24 mse=2.5` | 15 | no, and no chain under 3 m |
-| `minRegionSize=8 mse=1.3` | 69 | no |
-| `minRegionSize=2 mse=1.3` | 138 | no |
-| `minRegionSize=2 mse=1.3 cs=0.15 ch=0.1 agentRadius=0.3` | 275 | no |
-| `minRegionSize=1 mse=0.8 cs=0.1 ch=0.05 agentRadius=0.3` | 328 | no |
-
-So it is not `minRegionSize` eating the treads either, even though they are
-small (20–40 m² per 0.5 m of height). Nor is it slope: the same box measures
-1,077 m² of `walkable ≤ 45°` against 1.2 m² of 45–60° and 8.9 m² over 60°.
-
-What `obj_slab --levels 0.5` shows is that **each flight only spans about
-five metres** — the lower one climbs 46.0 → 51.5, the upper 54.5 → 59.5 —
-while the halls sit at 48.4 and 55.2. Neither flight bridges 48.4 → 55.2 by
-itself, and there is a ~3 m dead band at 51.5–54.5 with nothing in it but
-single-triangle slabs (393 m² from 1 triangle at 52.0–52.5 is a ceiling, not
-a tread).
-
-Two candidates remain, and distinguishing them needs eyes on the level
-rather than more builds:
-
-1. **The flights serve within-storey level changes**, and the real route
-   between 48.4 and 55.2 is somewhere else entirely — or does not exist on
-   foot, which is what the seed data's silence would then mean.
-2. **Per-`Brush` BSP that we decode to nothing.** Note that "BSP is
-   undecoded" is *false* and not the candidate: the level `Model`'s node
-   tree is read, and `Castle-00080003` — the stair spine's own tile —
-   contributes **878 BSP triangles** to the OBJ already, the second-largest
-   of the 16 chunks that carry any (6,810 map-wide). What is empty is the
-   other half: every `Brush`-owned `Model` in Castle decodes to a
-   **108-byte stub**, 38 of them in `00080003` and 540 map-wide. Either the
-   cooker genuinely empties a brush's `Model` once CSG is baked into the
-   level `Model` — in which case those 878 triangles are all there is and
-   BSP is not the connector — or the 108 bytes are a header we mis-parse
-   and there is per-brush geometry being dropped in exactly this tile. One
-   `Brush` export hexdump separates the two; twenty more builds will not.
-
-Three classes that are **not** candidates, because Castle has zero exports
-of any of them: `StaticMeshCollectionActor`, `KActor`,
-`FracturedStaticMeshActor`, `BlockingVolume`.
-
-Two candidates already ruled out:
-
-- **Prefab-archetype StaticMeshActors.** The 33 actors resolved inside
-  `x[250,320] y[40,60] z[850,900]` are all set dressing — computer towers,
-  view screens, torches, a locker, a wall light, waist-high concrete cover.
-  Four of the cover blocks sit at `y = 43.20` and `y = 55.40`, which
-  independently confirms that both storeys are real and populated and that
-  the 12 m spacing is not an extraction artefact.
-- **`InterpActor` movers.** All 14 in Castle resolve to 11
-  `EM-SecurityCam01_Top` heads, one `EM-Antenna00`, one `EM-ShelfBox10` and
-  one `GLB-RingTransporter00`. **There is no lift, elevator or door among
-  them**, so extracting them (they are excluded today — the class filter is
-  `== "StaticMeshActor"`) would not close this gap or any other. The nine
-  `EM-Elevator00` / `EM-Elevator_Pad00` instances in Castle *are*
-  StaticMeshActors, already extracted, and all sit at `y 20–30` on the
-  exterior level — two of them on the `116 ↔ 250` side of the map, which is
-  where an off-mesh link would go if one is ever added.
-
-### 7.2 218 ↔ 405 — terrain cliffs
-
-The exterior and the mid plateau are separated by terrain, not by a door.
-`obj_slab --column 622.7,496…504` measures the bank between them at
-**45–58°**, and the chain hops are dominated by `h=0.00` approaches with
-`dy` of 3–8 m: cliffs. Relaxing to `slope=60` or `slope=70` on a crop
-covering the corridor shortens the chain from 13 hops to 9 and drops the
-worst horizontal gap from 2.72 m to 1.62 m, but never joins them, because
-the remaining hops are 7.87 m and 6.81 m vertical.
-
-There are **zero** prefab-archetype actors in
-`x[600,740] y[15,35] z[450,500]`, so the archetype gap contributes nothing
-here either. On the props-suppressed mesh the chain shortens to three hops
-(widest 3.12 m) around the same three places — `(715.0, 26.7, 467.9)` with
-a 4.25 m ledge, `(675.6, 18.6, 488.3)` with a 3.12 m horizontal gap, and
-`(622.4, 24.0, 508.2)` — which is where to look if this one is ever worth
-bridging by hand.
-
-### 7.3 The armory is a ring drop zone, not a walk-in room
-
-`db/resources/Worlds/Seed/ring_transport_regions.sql` has exactly one row
-for world 8: region 34, `Castle_ArmoryRingDropZone`, at
-`(466.365, 70.397, 991.466)` — which is the `armory` probe, to three
-decimal places — with an empty `destination_region_ids`. The row that
-targets it is region 33, `Cellblock_ArmoryRingSwitch`, in **world 12**
-(`required_mission_id` 688). So the armory is reached by a cross-world ring
-transport, and its 11 m² pad sits 1.50 m from the interior floor.
-
-That is evidence about one probe, not about the whole interior: the other
-five interior probes are in the same component as each other and are reached
-on foot from each other. It does **not** show how a player gets from the gate
-room to the interior, and nothing in the seed data does — there is no second
-ring region for world 8. The expectation that all three groups are walkable
-is therefore neither confirmed nor refuted by the seed.
-
-The one `InterpActor` with collision flags set explicitly
-(`bCollideActors` / `bBlockActors` / `bPathColliding`, all true) is
-`GLB-RingTransporter00` at `(466.45, 70.06, 991.55)` — the same pad. It is
-not extracted, but the floor under it is, so adding it would change nothing
-about connectivity; it would only raise the pad by the transporter's own
-thickness.
-
-### 7.4 What would actually close these gaps
-
-In order of likelihood, and none of it is Recast tuning:
-
-1. **Walk it in the client.** The stair spine at `x 348–361`, `z 840–890`
-   is the place to look: three flights, doorways at each end, and a mesh
-   that refuses to connect them at `cs = 0.1`. Either the route exists and
-   something about the collision hull is wrong, or it does not and §7.3's
-   silence in the seed is the answer.
-2. **Settle the 108-byte `Brush`-owned `Model` stub** (crate README, Known
-   unknowns). 38 of them sit in the stair tile. Hexdump one export: either
-   the cooker empties it after CSG bake, which closes BSP as a candidate,
-   or we are dropping real geometry here. This is a one-afternoon question
-   and it gates candidate 1's interpretation.
-3. **Accept that they are separate**, and give the cell a per-region
-   navmesh or an off-mesh link table. Both need server-side loader work.
-   The two `EM-Elevator00` + `EM-Elevator_Pad00` pairs at
-   `(588.0, 21.1, 564.3)` and `(768.8, 29.8, 415.7)` are the natural
-   anchors on the exterior side.
-
-Extracting `InterpActor`s is **not** on this list: the 14 in Castle are 11
-cameras, an antenna, a shelf box and a ring transporter.
+Moved to its own reference page:
+**[castle-navmesh-connectivity.md](castle-navmesh-connectivity.md)**. It
+covers where the eleven named probes land, the mirrored-instance bug that
+used to split the interior into two storeys, why the 108-byte `Brush`-owned
+`Model`s are correct cooked data rather than a decoder gap, the terrain
+shelves that still separate the exterior from the keep, and the classes
+that have been ruled out as the answer.
 
 ## 8. Rebuilding NavBuilder, and Recast's index limits
 
@@ -735,6 +556,8 @@ when a build stops fitting.
 
 ## Cross-references
 
+- [castle-navmesh-connectivity.md](castle-navmesh-connectivity.md) — where Castle's probes land, the mirrored-instance fix, and what is still split
+- [castle-extraction-measurements.md](castle-extraction-measurements.md) — what the extractor recovers from Castle, per source and per class
 - [navbuilder-recast-limits.md](navbuilder-recast-limits.md) — rebuilding NavBuilder, Recast's four index limits, the Castle parameter table
 - [crates/navmesh-extractor/README.md](../../crates/navmesh-extractor/README.md) — extractor phases and status
 - [ue3-package-format.md](ue3-package-format.md) — the `.umap` container this all starts from

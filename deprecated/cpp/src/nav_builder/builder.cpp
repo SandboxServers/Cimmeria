@@ -134,13 +134,21 @@ public:
 		config.cs = params.cs;
 		config.ch = params.ch;
 		config.walkableSlopeAngle = params.slope;
-		config.walkableHeight = (int)ceilf(agentHeight / config.ch);
-		config.walkableClimb = (int)floorf(agentClimb / config.ch);
-		config.walkableRadius = (int)ceilf(agentRadius / config.cs);
-		config.maxEdgeLen = (int)(params.maxEdgeLen / config.cs);
+		// Every one of these is a user-supplied quotient or square, and
+		// a bare `(int)` cast of a value the type cannot represent is
+		// undefined behaviour. `cs=1e-30` is in range on its own and
+		// still sends `agentRadius / cs` past INT_MAX; `minRegionSize`
+		// squared overflows above ~46341. navbuilderToInt throws, which
+		// main turns into a usage exit.
+		config.walkableHeight = navbuilderToInt("walkableHeight", ceil((double)agentHeight / config.ch));
+		config.walkableClimb = navbuilderToInt("walkableClimb", floor((double)agentClimb / config.ch));
+		config.walkableRadius = navbuilderToInt("walkableRadius", ceil((double)agentRadius / config.cs));
+		config.maxEdgeLen = navbuilderToInt("maxEdgeLen", (double)params.maxEdgeLen / config.cs);
 		config.maxSimplificationError = params.maxSimplificationError;
-		config.minRegionArea = (int)rcSqr(params.minRegionSize);
-		config.mergeRegionArea = (int)rcSqr(params.mergeRegionSize);
+		config.minRegionArea = navbuilderToInt("minRegionArea",
+			(double)params.minRegionSize * (double)params.minRegionSize);
+		config.mergeRegionArea = navbuilderToInt("mergeRegionArea",
+			(double)params.mergeRegionSize * (double)params.mergeRegionSize);
 		config.maxVertsPerPoly = params.maxVertsPerPoly;
 		config.detailSampleDist = params.detailSampleDist < 0.9f ? 0.0f : config.cs * params.detailSampleDist;
 		config.detailSampleMaxError = config.ch * params.detailSampleMaxError;

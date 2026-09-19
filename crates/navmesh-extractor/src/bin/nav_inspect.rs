@@ -45,6 +45,7 @@ const EXIT_PROBE_OUT_OF_TOLERANCE: u8 = 2;
 const EXIT_PROBES_DISCONNECTED: u8 = 3;
 const EXIT_TOO_MANY_COMPONENTS: u8 = 4;
 
+#[derive(Debug)]
 struct Probe {
     name: String,
     pos: [f32; 3],
@@ -70,6 +71,31 @@ const USAGE: &str = "usage: nav_inspect <file.nav> [--probe NAME=X,Y,Z]... [--pr
                      [--h-tol M] [--v-tol M] [--max-components N] [--gaps] \
                      [--gap-pair A,B]... [--gap-h M] [--gap-v M] [--gap-count N] [--quiet]";
 
+/// A finite coordinate. `f32::from_str` happily accepts `inf` and
+/// `NaN`, and a probe at either one compares unordered against every
+/// polygon — the report then says "NO POLYGON" about a mesh that is
+/// perfectly fine.
+fn finite(raw: &str, what: &str) -> Result<f32, String> {
+    let v: f32 = raw
+        .parse()
+        .map_err(|e| format!("bad {what} {raw:?}: {e}"))?;
+    if !v.is_finite() {
+        return Err(format!("bad {what} {raw:?}: not a finite number"));
+    }
+    Ok(v)
+}
+
+/// A distance flag: finite and not negative. A negative tolerance or
+/// search radius is not a tighter one, it is a filter nothing passes.
+fn distance(it: &mut impl Iterator<Item = String>, flag: &str) -> Result<f32, String> {
+    let raw = it.next().ok_or_else(|| format!("{flag} needs a value"))?;
+    let v = finite(&raw, flag)?;
+    if v < 0.0 {
+        return Err(format!("bad {flag}: {v} must not be negative"));
+    }
+    Ok(v)
+}
+
 fn parse_xyz(s: &str) -> Result<[f32; 3], String> {
     let parts: Vec<&str> = s.split(',').map(str::trim).collect();
     if parts.len() != 3 {
@@ -77,9 +103,7 @@ fn parse_xyz(s: &str) -> Result<[f32; 3], String> {
     }
     let mut out = [0.0f32; 3];
     for (i, p) in parts.iter().enumerate() {
-        out[i] = p
-            .parse::<f32>()
-            .map_err(|e| format!("bad coordinate {p:?}: {e}"))?;
+        out[i] = finite(p, "coordinate")?;
     }
     Ok(out)
 }
@@ -107,13 +131,8 @@ fn parse_probe_file(path: &Path) -> Result<Vec<Probe>, String> {
         };
         let mut pos = [0.0f32; 3];
         for (i, p) in nums.iter().enumerate() {
-            pos[i] = p.parse::<f32>().map_err(|e| {
-                format!(
-                    "{}:{}: bad coordinate {p:?}: {e}",
-                    path.display(),
-                    lineno + 1
-                )
-            })?;
+            pos[i] = finite(p, "coordinate")
+                .map_err(|e| format!("{}:{}: {e}", path.display(), lineno + 1))?;
         }
         out.push(Probe { name, pos });
     }
@@ -157,20 +176,8 @@ fn parse_args_from(argv: &[String]) -> Result<Args, String> {
                 let v = it.next().ok_or("--probes needs a file path")?;
                 probes.extend(parse_probe_file(Path::new(&v))?);
             }
-            "--h-tol" => {
-                h_tol = it
-                    .next()
-                    .ok_or("--h-tol needs a value")?
-                    .parse()
-                    .map_err(|e| format!("bad --h-tol: {e}"))?
-            }
-            "--v-tol" => {
-                v_tol = it
-                    .next()
-                    .ok_or("--v-tol needs a value")?
-                    .parse()
-                    .map_err(|e| format!("bad --v-tol: {e}"))?
-            }
+            "--h-tol" => h_tol = distance(&mut it, "--h-tol")?,
+            "--v-tol" => v_tol = distance(&mut it, "--v-tol")?,
             "--max-components" => {
                 max_components = Some(
                     it.next()
@@ -194,26 +201,22 @@ fn parse_args_from(argv: &[String]) -> Result<Args, String> {
                         .map_err(|e| format!("bad component id {b:?}: {e}"))?,
                 ));
             }
-            "--gap-h" => {
-                gap_h = it
-                    .next()
-                    .ok_or("--gap-h needs a value")?
-                    .parse()
-                    .map_err(|e| format!("bad --gap-h: {e}"))?
-            }
-            "--gap-v" => {
-                gap_v = it
-                    .next()
-                    .ok_or("--gap-v needs a value")?
-                    .parse()
-                    .map_err(|e| format!("bad --gap-v: {e}"))?
-            }
+            // A non-finite radius is not a wider search, it is a
+            // pathological one: `--gap-h inf` buckets every boundary
+            // edge in the mesh into one grid cell, so every edge pair
+            // passes the horizontal threshold and the gap graph goes
+            // quadratic in the edge count before it allocates.
+            "--gap-h" => gap_h = distance(&mut it, "--gap-h")?,
+            "--gap-v" => gap_v = distance(&mut it, "--gap-v")?,
             "--gap-count" => {
-                gap_count = it
-                    .next()
-                    .ok_or("--gap-count needs a value")?
-                    .parse()
-                    .map_err(|e| format!("bad --gap-count: {e}"))?
+                let raw = it.next().ok_or("--gap-count needs a value")?;
+                gap_count = raw.parse().map_err(|e| format!("bad --gap-count: {e}"))?;
+                // Zero was silently normalised to one deeper in the
+                // gap search, which made `--gap-count 0` quietly mean
+                // something other than what it says.
+                if gap_count == 0 {
+                    return Err("bad --gap-count: must be at least 1".to_string());
+                }
             }
             "--quiet" => quiet = true,
             "-h" | "--help" => return Err(USAGE.to_string()),

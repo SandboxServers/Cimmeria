@@ -10,11 +10,37 @@
 // Header-only on purpose: the legacy NavBuilder.vcxproj needs no new
 // ClCompile entry.
 
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+
+// Largest / smallest finite float, spelled out rather than pulled from
+// <cfloat> so the header stays self-contained for the legacy vcxproj.
+#define NAVBUILDER_FLT_MAX 3.402823466e+38
+
+// Narrow a derived cell count to `int`, refusing what the conversion
+// cannot represent.
+//
+// Converting an out-of-range floating value to `int` is undefined
+// behaviour, and every one of these is user-driven: `cs=1e-30` makes
+// `agentRadius / cs` astronomically large without either parameter
+// being out of range on its own, and there is no range check anywhere
+// between the command line and the cast. Throws, which `main` turns
+// into a usage exit rather than a garbage navmesh.
+inline int navbuilderToInt(char const * what, double v)
+{
+	if (!(v == v) || v < -2147483648.0 || v > 2147483647.0)
+	{
+		std::ostringstream s;
+		s << "Derived value '" << what << "' (" << v << ") is outside the int range; "
+			<< "check cs / ch and the agent dimensions";
+		throw std::runtime_error(s.str());
+	}
+	return (int)v;
+}
 
 struct BuildParams
 {
@@ -122,21 +148,45 @@ struct BuildParams
 	}
 
 private:
-	static float toFloat(std::string const & key, std::string const & value)
+	// Parse to `double` and range-check *before* narrowing.
+	//
+	// `(float)strtod(...)` is the wrong order: converting a double whose
+	// value is outside the float range to float is undefined behaviour,
+	// so a finite input like `1e39` has already invoked UB by the time
+	// any `> 3.4e38f` check runs. In practice MSVC yields +inf and the
+	// check catches it; the standard promises nothing.
+	static double toDouble(std::string const & key, std::string const & value)
 	{
 		char * end = nullptr;
-		float f = (float)strtod(value.c_str(), &end);
+		double d = strtod(value.c_str(), &end);
 		if (value.empty() || end == nullptr || *end != '\0')
 			throw std::runtime_error("Parameter '" + key + "' is not a number: '" + value + "'");
 		// strtod happily accepts "nan" and "inf". validate() below compares
 		// with <, which is false for NaN, so a non-finite value would slip
-		// past every range check and reach floorf/ceilf in builder.cpp; the
-		// subsequent conversion to int is undefined when the value is not
-		// representable. maxVertsPerPoly converts here, before validate()
-		// runs at all, so the check has to be in the parser.
-		if (!(f == f) || f > 3.4e38f || f < -3.4e38f)
+		// past every range check and reach floorf/ceilf in builder.cpp.
+		if (!(d == d))
 			throw std::runtime_error("Parameter '" + key + "' must be finite: '" + value + "'");
-		return f;
+		if (d > NAVBUILDER_FLT_MAX || d < -NAVBUILDER_FLT_MAX)
+			throw std::runtime_error("Parameter '" + key + "' is out of float range: '" + value + "'");
+		return d;
+	}
+
+	static float toFloat(std::string const & key, std::string const & value)
+	{
+		return (float)toDouble(key, value);
+	}
+
+	// An integral parameter. `(int)toFloat(...)` truncated silently, so
+	// `maxVertsPerPoly=3.9` passed the 3..6 check as 3 — the build then
+	// used a value the operator never asked for. And the cast itself ran
+	// before validate(), so `maxVertsPerPoly=1e10` was undefined
+	// behaviour rather than a rejected argument.
+	static int toInt(std::string const & key, std::string const & value)
+	{
+		double d = toDouble(key, value);
+		if (d != (double)(long long)d)
+			throw std::runtime_error("Parameter '" + key + "' must be a whole number: '" + value + "'");
+		return navbuilderToInt(key.c_str(), d);
 	}
 
 	void set(std::string const & key, std::string const & value)
@@ -151,7 +201,7 @@ private:
 		else if (key == "maxSimplificationError") maxSimplificationError = toFloat(key, value);
 		else if (key == "minRegionSize") minRegionSize = toFloat(key, value);
 		else if (key == "mergeRegionSize") mergeRegionSize = toFloat(key, value);
-		else if (key == "maxVertsPerPoly") maxVertsPerPoly = (int)toFloat(key, value);
+		else if (key == "maxVertsPerPoly") maxVertsPerPoly = toInt(key, value);
 		else if (key == "detailSampleDist") detailSampleDist = toFloat(key, value);
 		else if (key == "detailSampleMaxError") detailSampleMaxError = toFloat(key, value);
 		else if (key == "partition")
@@ -193,5 +243,19 @@ private:
 			throw std::runtime_error("maxVertsPerPoly must be 3..6 (Detour's DT_VERTS_PER_POLYGON is 6)");
 		if (hasBounds && (!(bounds[0] < bounds[2]) || !(bounds[1] < bounds[3])))
 			throw std::runtime_error("bounds must satisfy minX < maxX and minZ < maxZ");
+
+		// The derived cell counts are what actually reach Recast, and
+		// every one is a quotient or a square of parameters that are
+		// individually in range: `cs=1e-30` passes `cs > 0` and still
+		// sends `agentRadius / cs` far past INT_MAX, and
+		// `minRegionSize` squared overflows above ~46341. Checking here
+		// rather than at the cast site in builder.cpp is what makes a
+		// bad argument exit 1 (usage) instead of 2 (internal error).
+		navbuilderToInt("walkableHeight", std::ceil((double)agentHeight / (double)ch));
+		navbuilderToInt("walkableClimb", std::floor((double)agentClimb / (double)ch));
+		navbuilderToInt("walkableRadius", std::ceil((double)agentRadius / (double)cs));
+		navbuilderToInt("maxEdgeLen", (double)maxEdgeLen / (double)cs);
+		navbuilderToInt("minRegionArea", (double)minRegionSize * (double)minRegionSize);
+		navbuilderToInt("mergeRegionArea", (double)mergeRegionSize * (double)mergeRegionSize);
 	}
 };

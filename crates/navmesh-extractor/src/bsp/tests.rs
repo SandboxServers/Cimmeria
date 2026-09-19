@@ -8,7 +8,7 @@
 use cimmeria_upk::Package;
 
 use super::*;
-use crate::test_support::{scratch_dir, ChunkFixture, ModelPayload};
+use crate::test_support::{scratch_dir, ChunkFixture, ModelPayload, Placement};
 
 #[test]
 fn level_owned_models_are_world_space() {
@@ -142,11 +142,9 @@ fn a_brush_owned_model_is_placed_by_its_owner_transform_and_prepivot() {
     chunk.add_owned_model(
         "Brush",
         "Brush_Good",
-        [1000.0, 2000.0, 3000.0],
-        [0; 3],
-        2.0,
-        [1.0; 3],
-        [50.0, 50.0, 0.0],
+        Placement::at([1000.0, 2000.0, 3000.0])
+            .with_draw_scale(2.0)
+            .with_pre_pivot([50.0, 50.0, 0.0]),
         &quad(),
     );
     let pkg = open_chunk(&chunk, "bsp-placement-ok", 0x0000_0011);
@@ -227,11 +225,7 @@ fn an_unknown_volume_owner_is_excluded_and_named_in_the_report() {
     chunk.add_owned_model(
         "UTKillZVolume",
         "KillZ_0",
-        [0.0; 3],
-        [0; 3],
-        1.0,
-        [1.0; 3],
-        [0.0; 3],
+        Placement::default().with_pre_pivot([0.0; 3]),
         &quad(),
     );
     let pkg = open_chunk(&chunk, "bsp-unknown-volume", 0x0000_0014);
@@ -252,11 +246,7 @@ fn an_unknown_non_volume_owner_emits_and_is_reported() {
     chunk.add_owned_model(
         "SGWDoorBrush",
         "Door_0",
-        [500.0, 0.0, 0.0],
-        [0; 3],
-        1.0,
-        [1.0; 3],
-        [0.0; 3],
+        Placement::at([500.0, 0.0, 0.0]).with_pre_pivot([0.0; 3]),
         &quad(),
     );
     let pkg = open_chunk(&chunk, "bsp-unknown-actor", 0x0000_0015);

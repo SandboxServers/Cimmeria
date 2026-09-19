@@ -145,8 +145,16 @@ fn write_obj(path: &Path, soup: &TriangleSoup, crlf: bool) {
     std::fs::write(path, out).expect("write obj");
 }
 
-/// Returns `None` when NavBuilder produced no output (it exits 0 even on
-/// a hard failure — `builder.cpp::exportNavmesh` logs and returns `void`).
+/// `EXIT_BUILD_FAILED` from `build_params.hpp`'s exit-code table.
+const EXIT_BUILD_FAILED: i32 = 3;
+
+/// Returns `None` when NavBuilder produced no navmesh.
+///
+/// Two shapes count as "no navmesh": exit 0 with no file written (the
+/// legacy behaviour — `exportNavmesh` logged `FAULT` and returned
+/// `void`, which is the silent failure the exit-code table was added to
+/// end), and exit 3, which says the same thing out loud. Any other code
+/// is a real error and fails the test.
 fn run_navbuilder(exe: &Path, chunk_dir: &Path, out: &Path) -> Option<XrcNav> {
     let _ = std::fs::remove_file(out);
     let status = Command::new(exe)
@@ -156,7 +164,18 @@ fn run_navbuilder(exe: &Path, chunk_dir: &Path, out: &Path) -> Option<XrcNav> {
         .arg("nav")
         .status()
         .expect("spawn NavBuilder");
-    assert!(status.success(), "NavBuilder returned {status}");
+    let code = status.code().expect("no signal on Windows");
+    assert!(
+        code == 0 || code == EXIT_BUILD_FAILED,
+        "NavBuilder returned exit code {code}"
+    );
+    if code == EXIT_BUILD_FAILED {
+        assert!(
+            !out.exists(),
+            "a reported build failure must not also leave a .nav behind"
+        );
+        return None;
+    }
     if !out.exists() {
         return None;
     }
@@ -275,21 +294,30 @@ fn navbuilder_maps_ue3_cm_to_bigworld_metres() {
 
 /// Raw-UE3 column order on disk (what `obj.rs` emitted before the swap
 /// landed) puts UE3's up-axis on BW x. NavBuilder then finds no
-/// upward-facing triangle and writes an
-/// **empty but structurally valid** `.nav` — the exact silent failure the
-/// swizzle test above exists to prevent regressing into.
+/// upward-facing triangle and produces nothing usable — the exact
+/// silent failure the swizzle test above exists to prevent regressing
+/// into.
+///
+/// Two acceptable outcomes, and `run_navbuilder` has already rejected
+/// every other exit code: an empty-but-structurally-valid `.nav` (the
+/// legacy behaviour), or `EXIT_BUILD_FAILED` with nothing written (what
+/// the exit-code table in `build_params.hpp` introduced). What must
+/// never happen is a mesh with polygons in it.
 #[test]
-fn raw_ue3_column_order_yields_an_empty_navmesh() {
+fn raw_ue3_column_order_yields_no_usable_navmesh() {
     let exe = navbuilder_path();
     if !exe.exists() {
         eprintln!(
-            "SKIPPED raw_ue3_column_order_yields_an_empty_navmesh — NavBuilder not found at {}",
+            "SKIPPED raw_ue3_column_order_yields_no_usable_navmesh — NavBuilder not found at {}",
             exe.display()
         );
         return;
     }
-    let nav = build(&exe, "raw", cancels_writer_swap, true)
-        .expect("NavBuilder writes a header even with 0 polys");
+    let Some(nav) = build(&exe, "raw", cancels_writer_swap, true) else {
+        // Reported as a build failure. Nothing more to assert — the
+        // absence of a `.nav` is the whole finding.
+        return;
+    };
     assert_eq!(
         nav.npolys, 0,
         "raw UE3 column order should rasterise the floor as a vertical wall"
@@ -299,6 +327,110 @@ fn raw_ue3_column_order_yields_an_empty_navmesh() {
         (nav.bmax[0] - nav.bmin[0]) < 101.0,
         "with the raw ordering BW x collapses onto the chunk-padding span"
     );
+}
+
+/// Numeric parameters are range-checked *before* they are narrowed.
+///
+/// Every case here reached a cast whose result the target type cannot
+/// represent, which is undefined behaviour, or was silently truncated
+/// into something the operator did not ask for. The observable
+/// contract is exit 1 (usage) with the parameter named on stderr —
+/// never exit 2 (internal error), and never a navmesh built from a
+/// mangled value.
+///
+/// **Opt-in.** Unlike the axis tests, this one asserts the behaviour of
+/// C++ *in this working tree*, so a binary that merely exists proves
+/// nothing: the shipped 2026-03 reference predates `BuildParams`
+/// entirely, and any NavBuilder built before these checks landed
+/// silently truncates `maxVertsPerPoly=3.9` to 3 and exits 0. There is
+/// no capability probe that distinguishes them without being one of
+/// the assertions, so the operator states it:
+///
+/// ```bash
+/// tools/build-navbuilder.ps1 -Out $env:TEMP/NavBuilder.exe
+/// CIMMERIA_NAVBUILDER=$env:TEMP/NavBuilder.exe \
+/// CIMMERIA_NAVBUILDER_FROM_TREE=1 cargo test -p cimmeria-navmesh-extractor
+/// ```
+#[test]
+fn out_of_range_parameters_are_refused_with_a_usage_error() {
+    let exe = navbuilder_path();
+    if !exe.exists() {
+        eprintln!(
+            "SKIPPED out_of_range_parameters_are_refused_with_a_usage_error — \
+             NavBuilder not found at {}",
+            exe.display()
+        );
+        return;
+    }
+    if std::env::var_os("CIMMERIA_NAVBUILDER_FROM_TREE").is_none() {
+        eprintln!(
+            "SKIPPED out_of_range_parameters_are_refused_with_a_usage_error — {} was not \
+             declared to be built from this tree. Rebuild with tools/build-navbuilder.ps1 \
+             and set CIMMERIA_NAVBUILDER_FROM_TREE=1 to run it.",
+            exe.display()
+        );
+        return;
+    }
+    let dir = unique_tempdir("cimmeria-navparams");
+    let chunk_dir = dir.join("chunks");
+    std::fs::create_dir_all(&chunk_dir).unwrap();
+    write_obj(
+        &chunk_dir.join(format!("{CHUNK_ID:08x}o.obj")),
+        &fixture_soup(raw_ue3),
+        true,
+    );
+    let out = dir.join("out.nav");
+
+    let run = |param: &str| -> i32 {
+        let _ = std::fs::remove_file(&out);
+        Command::new(&exe)
+            .arg("chunked")
+            .arg(&chunk_dir)
+            .arg(&out)
+            .arg("nav")
+            .arg(param)
+            .status()
+            .expect("spawn NavBuilder")
+            .code()
+            .expect("no signal on Windows")
+    };
+
+    // Sanity check on the claim the env var makes: the default value
+    // of a tunable parameter must be accepted and build as if it were
+    // not passed at all.
+    assert_eq!(
+        run("maxVertsPerPoly=6"),
+        0,
+        "{} does not accept tunable build parameters, so it cannot have been built \
+         from this tree",
+        exe.display()
+    );
+
+    for param in [
+        // Finite as a double, outside the float range: the old
+        // `(float)strtod(...)` narrowed before checking.
+        "cs=1e39",
+        "cs=nan",
+        "agentHeight=inf",
+        // `(int)` of a float this large is undefined, and the cast ran
+        // before `validate()` had a chance to reject it.
+        "maxVertsPerPoly=1e10",
+        // Truncated to 3 and accepted, silently.
+        "maxVertsPerPoly=3.9",
+        // In range on its own; sends the derived `walkableRadius`
+        // cell count past INT_MAX.
+        "cs=1e-30",
+        // Squared into the region area: overflows above ~46341.
+        "minRegionSize=1e9",
+    ] {
+        assert_eq!(run(param), 1, "{param} must be a usage error");
+        assert!(!out.exists(), "{param} must not produce a navmesh");
+    }
+
+    // The control: a legitimate tweak of the same parameters still
+    // builds, so the checks above are not just refusing everything.
+    assert_eq!(run("maxVertsPerPoly=3"), 0, "a valid parameter must build");
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// LF-terminated OBJ silently loses faces. Same geometry, same convention
