@@ -244,8 +244,8 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `set_npc_poi` | `SetNpcPoi` | 0 |
 | `set_follow_target` | `SetFollowTarget` | 0 |
 | `set_npc_ai_state` | `SetNpcAiState` | 0 |
-| `move_waypoint` | `MoveWaypoint` | 0 |
-| `move_entity` | `MoveEntity` | 5 |
+| `move_waypoint` | `MoveWaypoint` | 5 |
+| `move_entity` | `MoveEntity` | 7 |
 | `set_active_slot` | `SetActiveSlot` | 0 |
 | `start_minigame` | `StartMinigame` | 4 |
 | `trigger_transporter` | `TriggerTransporter` | 2 |
@@ -285,6 +285,19 @@ to `sgw_player.known_stargates`. A grant for an id with no `stargates` row,
 a grant by a non-player actor, and either failed send all warn. A second
 grant of an address the player already holds is a complete no-op: no write,
 no client method, no base round trip.
+
+`move_entity` and `move_waypoint` are the two repositioning verbs.
+`move_entity` with `use_player: true` is a player-facing teleport that goes
+through the forced-position snap; with a `target_key` it repositions a
+tagged NPC. `move_waypoint` is the space-script spelling of the NPC form —
+an instant snap, not a path or an animation: `speed` is parsed from the
+seed row but the executor does not use it (see
+[proposed-extensions.md](proposed-extensions.md) for the escort-movement
+gap this leaves). The snap is broadcast to the moved NPC's current
+witnesses immediately as a per-witness `EntityMoved`, so a chain-driven
+reposition (escort arrival, tutorial staging) is visible on the next frame
+rather than waiting for the next 100 ms AoI tick; witnesses the move
+leaves behind get their `LeftAoI` from that same tick.
 
 Three caveats for authors:
 
