@@ -15,6 +15,8 @@ pub use client_move::ClientMoveOutcome;
 pub(crate) use deferred_content_actions::PendingContentAction;
 pub use entities::DespawnOutcome;
 pub(crate) use gate_dial_state::PendingGateDial;
+pub(crate) use navmesh_mode::mode_from_db_value;
+pub use navmesh_mode::NavmeshMode;
 pub use queries::PlayerNameLookup;
 
 mod aoi;
@@ -23,6 +25,7 @@ mod deferred_content_actions;
 mod entities;
 mod gate_dial_state;
 mod lifecycle;
+mod navmesh_mode;
 mod queries;
 mod spatial;
 mod spawn;
@@ -88,6 +91,15 @@ pub struct WorldDef {
     /// no `resources.worlds` row. `spaces.xml` itself carries names only,
     /// which is why this cannot be filled at parse time.
     pub world_id: Option<i32>,
+    /// Whether this world's navmesh may gate player movement, from
+    /// `resources.worlds.navmesh_mode`.
+    ///
+    /// [`NavmeshMode::Enforce`] until [`SpaceManager::stamp_world_rows`]
+    /// runs, and permanently so for a world with no `resources.worlds` row
+    /// — a DB-down startup must not silently drop a containment gate. Read
+    /// through [`SpaceManager::enforces_navmesh_containment`], never
+    /// directly, so every gate agrees about what the mode means.
+    pub navmesh_mode: NavmeshMode,
     pub instanced: bool,
     pub min_x: i32,
     pub max_x: i32,

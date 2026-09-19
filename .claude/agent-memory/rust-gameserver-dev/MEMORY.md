@@ -110,6 +110,10 @@
 
 - [tracing-span-fields-not-on-log-records.md](tracing-span-fields-not-on-log-records.md) — **read before any "stamp X onto every log" task.** `opentelemetry-appender-tracing` does NOT flatten ancestor span fields onto log records, so span-only enrichment is invisible in SigNoz Logs; spans don't cross the base↔cell mpsc boundary; `Option<T>` tracing fields are omitted when `None` (never `unwrap_or(0)`); `LogCapture` sees only event-own fields.
 
+## Navmesh / containment
+
+- [navmesh-containment-modes.md](navmesh-containment-modes.md) - **read before any code that rejects a position/arrival/ring trip for being off-mesh.** Per-world `navmesh_mode` names (`enforces_navmesh_containment`, `load_world_rows`, `stamp_world_rows` - the old `*_world_ids` names are gone); the shared `TEST_SPACES_XML` fixture pins space counts and ids so adding a world breaks 4 tests; `get_nearest_point` returns its input on a miss; harset.nav's two floors and the Z -200..-228 hole.
+
 ## AoI / entity lifecycle
 
 - [destroy-entity-vs-despawn-npc.md](destroy-entity-vs-despawn-npc.md) — `SpaceManager::destroy_entity` is bare state-removal with NO immediate LeftAoI fanout; `despawn_npc` is the correct primitive for any observer-visible NPC removal (content chains, GM commands). `content::executor::world::destroy_tagged_entity` had this exact gap until C08b fixed it.

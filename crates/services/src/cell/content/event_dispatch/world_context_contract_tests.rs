@@ -27,6 +27,7 @@ use cimmeria_content_engine::triggers::Trigger;
 
 use super::{fire_player_flanked_npc, fire_stargate_crossed, fire_stargate_dialed};
 use crate::cell::space_manager::SpaceManager;
+use crate::cell::spawner::WorldRow;
 
 /// `resources.worlds.world_id` for `Harset`, the world the chains gate on.
 const HARSET: i32 = 57;
@@ -56,9 +57,12 @@ fn make_mgr(world_name: &str) -> SpaceManager {
     </Spaces>"#,
     )
     .unwrap();
-    mgr.stamp_world_ids(&HashMap::from([
-        ("Harset".to_string(), HARSET),
-        ("Harset_CmdCenter".to_string(), HARSET_CMD_CENTER),
+    mgr.stamp_world_rows(&HashMap::from([
+        ("Harset".to_string(), WorldRow::enforcing(HARSET)),
+        (
+            "Harset_CmdCenter".to_string(),
+            WorldRow::enforcing(HARSET_CMD_CENTER),
+        ),
     ]));
     mgr.create_entity(PLAYER_EID, world_name, [0.0; 3], [0.0; 3])
         .unwrap();
