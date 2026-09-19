@@ -288,6 +288,27 @@ against the real `harset.nav` (self-skipping on a fixture-less checkout):
 - `a_teleport_sized_jump_is_still_rejected_in_an_advisory_world`
 - `a_player_standing_in_a_hole_is_corrected_back_not_relocated`
 - `a_gm_still_moves_freely_in_an_advisory_world`
+- `the_startup_summary_counts_off_mesh_spawn_rows` — pins that the boot line
+  names the mode and counts only this world's rows, one on the mesh and one
+  in the measured hole
+
+Every one of those asserts its fixture controls before its verdict: ring pad
+4 at `(-25.641, -67.828, 15.249)` reads on-mesh (so the mesh loaded), the
+start point reads on-mesh, and the target point reads off-mesh. Without the
+first, a mesh that failed to load would make the advisory half vacuously
+green.
+
+Two live-DB guards in
+[`crates/services/src/cell/spawner/worlds.rs`](../../crates/services/src/cell/spawner/worlds.rs)
+pin the seed itself: `harset_loads_advisory_and_a_meshed_neighbour_loads_enforce`
+and `exactly_one_world_is_seeded_advisory`. The second is a list comparison,
+not a count, on purpose — a count would not catch a loader bug that demoted
+every world.
+
+One arrival guard in
+[`crates/services/src/cell/arrival.rs`](../../crates/services/src/cell/arrival.rs):
+`an_advisory_destination_is_unvalidated_not_off_mesh`, which also covers the
+two ring-transport consumers because they both call `check_arrival`.
 
 Plus the predicate's own truth table in
 [`navmesh_mode.rs`](../../crates/services/src/cell/space_manager/navmesh_mode.rs):
