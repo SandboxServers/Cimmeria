@@ -112,9 +112,10 @@ fn decode_feedback_text(args: &[u8]) -> Option<String> {
     off += 4;
     let end = off.checked_add(text_len.checked_mul(2)?)?;
     let text_bytes = args.get(off..end)?;
-    let utf16: Vec<u16> = text_bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+    let (chunks, _rest) = text_bytes.as_chunks::<2>();
+    let utf16: Vec<u16> = chunks
+        .iter()
+        .map(|&[a, b]| u16::from_le_bytes([a, b]))
         .collect();
     String::from_utf16(&utf16).ok()
 }
