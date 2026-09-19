@@ -68,6 +68,17 @@ INSERT INTO stargates (address1, address2, address3, address4, address5, address
 --   * Clear of point set 1001 'Harset.Stargate' (a 2.5 m cylinder at
 --     (-0.372, -67.364, 37.353)) by 6.35 m, so arriving does not re-trigger
 --     the gate volume.
+--
+-- THIS PIN IS A WORKAROUND FOR THE SHIPPED MESH, NOT A CORRECTION OF THE DATA
+-- — treat it as reversible. Probed against the Castle-nav session's rebuilt
+-- Harset meshes (374 components instead of 1,939, humanoid agent 1.8/0.6), the
+-- raw gate row is itself on-mesh with dy -0.04, i.e. standing on the dais. So
+-- once data/spaces/harset.nav is rebuilt the right change may well be to set
+-- these four columns back to NULL and arrive on the gate, which is what the
+-- 2009 server did. The control assertion in
+-- `harset_gate_arrival_pin_is_on_the_mesh_and_the_gate_row_is_not` fails the
+-- moment the shipped mesh makes the row standable; that failure is the signal
+-- to revisit, not a regression.
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id, arrival_x, arrival_y, arrival_z, arrival_yaw) VALUES (21, 17, 24, 31, 10, 30, 6, 3, 'Harset', 0, 'Harset.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 57, -0.075999999999999998, -67.274001999999996, 3.141, 38.011001999999998, 25, -5, -68.989999999999995, 33, 3.141);
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (17, 27, 10, 7, 25, 31, 26, 10, 'Lucia', 0, 'Lucia.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 15, 66.718001999999998, -165.574997, -3.1200000000000001, -70.220000999999996, 10003);
