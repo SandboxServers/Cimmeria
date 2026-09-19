@@ -183,7 +183,15 @@ async fn chain_6501_removes_the_letter_exactly_once_in_the_seed() {
     let removes = chain
         .actions
         .iter()
-        .filter(|a| matches!(a, Action::RemoveItem { item_id: 3730, count: 1 }))
+        .filter(|a| {
+            matches!(
+                a,
+                Action::RemoveItem {
+                    item_id: 3730,
+                    count: 1
+                }
+            )
+        })
         .count();
     assert_eq!(
         removes, 1,

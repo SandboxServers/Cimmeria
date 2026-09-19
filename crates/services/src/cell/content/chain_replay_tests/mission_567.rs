@@ -49,7 +49,10 @@ fn copplemann_ctx() -> ExecutionContext {
         "entity_tag".to_string(),
         serde_json::json!("CmdCenter_Copplemann"),
     );
-    ctx.set_param("mission_567_status".to_string(), serde_json::json!("active"));
+    ctx.set_param(
+        "mission_567_status".to_string(),
+        serde_json::json!("active"),
+    );
     ctx.set_param(
         "mission_567_step_4039_status".to_string(),
         serde_json::json!("active"),
@@ -213,7 +216,10 @@ async fn chain_6503_is_authored_ready_for_the_day_2698_is_granted() {
         chain.actions[2]
     );
     assert!(
-        matches!(chain.actions[3], Action::CompleteMission { mission_id: 567 }),
+        matches!(
+            chain.actions[3],
+            Action::CompleteMission { mission_id: 567 }
+        ),
         "action 3 must COMPLETE 567 — step 4039 is its terminal step, so this also \
          closes objective 4652; got {:?}",
         chain.actions[3]

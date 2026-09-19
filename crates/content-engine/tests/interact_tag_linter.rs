@@ -202,7 +202,7 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         // H37, H41...) will add more of exactly this shape. The right fix is
         // a per-file exemption rule for dialog-set-driven files, or the #97
         // entity-template walker — NOT another nine entries per packet.
-        // Filed as a follow-up in docs/analysis/harset-rebuild/worknotes/H31.md.
+        // Filed as a follow-up in docs/analysis/harset-rebuild/worknotes/H30-H31.md.
         | ("harset_opcore_chains.sql", 6501) // CmdCenter_Marsh: dsm 5356 bound by chain 6502
         | ("harset_opcore_chains.sql", 6503) // CmdCenter_Copplemann: dsm 2817 bound by chain 6504
         | ("harset_opcore_chains.sql", 6512) // CmdCenter_Marsh: dsm 5254 bound by chain 6511

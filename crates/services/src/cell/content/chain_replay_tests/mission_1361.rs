@@ -14,11 +14,13 @@
 //! | 4694 | Return to Marsh | 68 | 4465 | 6526, 6527 |
 //!
 //! Chain ids 6517 and 6524 are deliberately unused — Hansen's and Anat's
-//! beats use the *bind path* (no `interact_tag` chain) because their
-//! outcome dialogs 4460/4463 are displayed from a `dialog_choice` trigger,
-//! which stamps no `target_entity_id`; only `handle_interact` pins
-//! `last_interaction_target`, and an `interact_tag` chain short-circuits
-//! it. See the seed file's note (C).
+//! beats use the *bind path* (no `interact_tag` chain). Their step is
+//! driven by a button on a dialog that only the bind can open:
+//! `fire_interact_tag` short-circuits `interactions::handle_interact`,
+//! which is the sole code that opens a bound dsm's dialog, so an
+//! `interact_tag` chain on either NPC would suppress 4459/4462 and the
+//! `dialog_choice` chains 6518/6525 could never fire. See the seed file's
+//! note (C).
 //!
 //! The acceptance trio (6511-6513) ships **disabled**: step 4041 is in
 //! world 57 and its neighbours are in world 68, so the mission requires a
@@ -346,12 +348,36 @@ async fn every_step_chain_is_silent_on_every_other_step() {
 
     // (chain, its own step, trigger, tag-or-dialog key, world)
     let cases: [(i32, &str, TriggerType, &str, i32); 6] = [
-        (6515, "4040", TriggerType::InteractTag, "CmdCenter_Mohkatan", CMD_CENTER),
+        (
+            6515,
+            "4040",
+            TriggerType::InteractTag,
+            "CmdCenter_Mohkatan",
+            CMD_CENTER,
+        ),
         (6518, "4041", TriggerType::DialogChoice, "4459", HARSET),
-        (6520, "4042", TriggerType::InteractTag, "CmdCenter_Mohkatan", CMD_CENTER),
-        (6522, "4043", TriggerType::InteractTag, "CmdCenter_Baal", CMD_CENTER),
+        (
+            6520,
+            "4042",
+            TriggerType::InteractTag,
+            "CmdCenter_Mohkatan",
+            CMD_CENTER,
+        ),
+        (
+            6522,
+            "4043",
+            TriggerType::InteractTag,
+            "CmdCenter_Baal",
+            CMD_CENTER,
+        ),
         (6525, "4693", TriggerType::DialogChoice, "4462", CMD_CENTER),
-        (6527, "4694", TriggerType::InteractTag, "CmdCenter_Marsh", CMD_CENTER),
+        (
+            6527,
+            "4694",
+            TriggerType::InteractTag,
+            "CmdCenter_Marsh",
+            CMD_CENTER,
+        ),
     ];
 
     for (chain_id, own_step, tt, key, world) in cases {
@@ -364,7 +390,10 @@ async fn every_step_chain_is_silent_on_every_other_step() {
                 TriggerType::DialogChoice => with_dialog(base, key.parse().unwrap()),
                 _ => with_tag(base, key),
             };
-            let resolved = resolve_one(&pool, chain_id, &ctx, tt).await;
+            // `TriggerType` is `Clone` but not `Copy`, and `tt` is bound
+            // once by the outer `for`, so it has to be cloned per inner
+            // iteration rather than moved.
+            let resolved = resolve_one(&pool, chain_id, &ctx, tt.clone()).await;
             assert!(
                 resolved.actions.is_empty(),
                 "chain {chain_id} (step {own_step}) must resolve nothing while step \
@@ -502,7 +531,10 @@ async fn marsh_interact_chains_are_pairwise_disjoint() {
             "entity_tag".to_string(),
             serde_json::json!("CmdCenter_Marsh"),
         );
-        ctx.set_param("archetype".to_string(), serde_json::json!(ARCHETYPE_SOLDIER));
+        ctx.set_param(
+            "archetype".to_string(),
+            serde_json::json!(ARCHETYPE_SOLDIER),
+        );
         ctx.set_param("mission_1360_status".to_string(), serde_json::json!(m1360));
         ctx.set_param(
             "mission_1360_step_4038_status".to_string(),
@@ -579,11 +611,13 @@ async fn mohkatan_interact_chains_are_pairwise_disjoint() {
 
 /// No template slot ever holds two live binds at once.
 ///
-/// `handle_interact` picks `available_interactions[template_id].first()`
-/// — a single insertion-ordered Vec — so a second live bind on one slot
-/// makes one of them permanently unreachable. Slot 10 (Col. Marsh,
-/// template 10) is the one at risk: mission 1360's letter bind (dsm 5356),
-/// the Praxis offer (5254) and the Praxis turn-in (5253) all target it.
+/// `interactions::handle_interact` scans
+/// `available_interactions[template_id]` with `find_map`, taking the first
+/// entry whose `dialog_id` is non-NULL — so a second live dialog-carrying
+/// bind on one slot makes one of them permanently unreachable. Slot 10
+/// (Col. Marsh, template 10) is the one at risk: mission 1360's letter
+/// bind (dsm 5356), the Praxis offer (5254) and the Praxis turn-in (5253)
+/// all target it, and all three carry a real dialog.
 ///
 /// This walks every `player_loaded` bind chain in the file and asserts
 /// that for any reachable mission state, at most one of them fires per
@@ -610,7 +644,10 @@ async fn no_template_slot_ever_holds_two_binds_at_once() {
             "world_name".to_string(),
             serde_json::json!("Harset_CmdCenter"),
         );
-        ctx.set_param("archetype".to_string(), serde_json::json!(ARCHETYPE_SOLDIER));
+        ctx.set_param(
+            "archetype".to_string(),
+            serde_json::json!(ARCHETYPE_SOLDIER),
+        );
         ctx.set_param("mission_1360_status".to_string(), serde_json::json!(m1360));
         ctx.set_param(
             "mission_1360_step_4038_status".to_string(),
@@ -648,13 +685,125 @@ async fn no_template_slot_ever_holds_two_binds_at_once() {
             assert!(
                 dsms.len() <= 1,
                 "world entry with 1360={m1360}/{s4038}, 1361={m1361}/{step:?} bound {} \
-                 dialog sets ({dsms:?}) to template slot {slot}. `handle_interact` only \
-                 ever opens `.first()`, so the rest would be unreachable — see \
-                 harset_opcore_chains.sql note (D).",
+                 dialog sets ({dsms:?}) to template slot {slot}. \
+                 `interactions::handle_interact` takes the first bind carrying a \
+                 non-NULL dialog and ignores the rest, so the others would be \
+                 permanently unreachable — see harset_opcore_chains.sql note (D).",
                 dsms.len()
             );
         }
     }
+}
+
+/// The hand-back that chain 6502's DISJOINTNESS row makes necessary.
+///
+/// 6502 stands down while 1361's turn-in step 4694 is active, so a player
+/// holding Frost's letter through the Praxis debrief has no bind on
+/// template slot 10 the moment 6527 completes 1361. `player_loaded` will
+/// not fire again — they are standing still in the Command Center — and
+/// template 10 ships `interaction_type = 0` with
+/// `static_interaction_sets = '{}'`, so with no bind the client never
+/// registers an interaction on Marsh and the right-click that would fire
+/// chain 6501 is never sent. The letter turn-in would be unreachable
+/// until the player crossed a world boundary.
+///
+/// Chain 6505 closes that on the `mission_completed 1361` event. This test
+/// pins both halves: it fires for a player who still owes the letter, and
+/// it stays silent for one who does not (the overwhelmingly common case,
+/// where a stray bind would put a "!" on Marsh with nothing behind it).
+#[tokio::test]
+async fn chain_6505_hands_the_letter_indicator_back_when_1361_completes() {
+    let pool = require_db_or_skip!();
+
+    // Positive: 1360 still active on step 4038 when 1361 completes.
+    let mut ctx = ExecutionContext::new();
+    ctx.world_id = Some(CMD_CENTER);
+    ctx.set_param("mission_id".to_string(), serde_json::json!(1361));
+    ctx.set_param(
+        "mission_1360_status".to_string(),
+        serde_json::json!("active"),
+    );
+    ctx.set_param(
+        "mission_1360_step_4038_status".to_string(),
+        serde_json::json!("active"),
+    );
+    let got = actions_of(&resolve_one(&pool, 6505, &ctx, TriggerType::MissionCompleted).await);
+    assert_eq!(
+        got,
+        vec![Action::AddDialogSet {
+            dialog_set_id: 5356,
+            slot: 10,
+            mission_id: Some(1360)
+        }],
+        "completing 1361 while Frost's letter is still undelivered must re-bind dsm \
+         5356 to template slot 10, or Marsh goes unclickable and mission 1360 \
+         dead-ends until the player crosses a world boundary"
+    );
+
+    // Negatives: no letter owed, and the wrong world.
+    for (label, m1360, s4038, world) in [
+        (
+            "letter already delivered",
+            "completed",
+            "completed",
+            CMD_CENTER,
+        ),
+        ("1360 never started", "not_active", "not_active", CMD_CENTER),
+        ("right state, wrong world", "active", "active", HARSET),
+    ] {
+        let mut ctx = ExecutionContext::new();
+        ctx.world_id = Some(world);
+        ctx.set_param("mission_id".to_string(), serde_json::json!(1361));
+        ctx.set_param("mission_1360_status".to_string(), serde_json::json!(m1360));
+        ctx.set_param(
+            "mission_1360_step_4038_status".to_string(),
+            serde_json::json!(s4038),
+        );
+        assert!(
+            resolve_one(&pool, 6505, &ctx, TriggerType::MissionCompleted)
+                .await
+                .actions
+                .is_empty(),
+            "chain 6505 must resolve nothing ({label}): a bind here paints a \"!\" on a \
+             shared-hub NPC with no chain behind the click"
+        );
+    }
+}
+
+/// Chain 6505 is scoped to mission 1361's completion specifically, not to
+/// "any mission completing in the Command Center".
+///
+/// `Trigger::OnMissionCompleted` carries a `mission_id` key, and
+/// `fire_mission_completed` stamps the completing mission into
+/// `ctx.params["mission_id"]`. If 6505's event_key drifted (or were left
+/// NULL), completing *any* mission while the letter is owed would re-run
+/// the bind — harmless once, but it would also mask a regression in
+/// 6502's gate by papering over it on every unrelated completion.
+#[tokio::test]
+async fn chain_6505_only_answers_to_1361() {
+    let pool = require_db_or_skip!();
+
+    let mut ctx = ExecutionContext::new();
+    ctx.world_id = Some(CMD_CENTER);
+    // A different mission completing in the same world with the same
+    // letter state.
+    ctx.set_param("mission_id".to_string(), serde_json::json!(1360));
+    ctx.set_param(
+        "mission_1360_status".to_string(),
+        serde_json::json!("active"),
+    );
+    ctx.set_param(
+        "mission_1360_step_4038_status".to_string(),
+        serde_json::json!("active"),
+    );
+
+    assert!(
+        resolve_one(&pool, 6505, &ctx, TriggerType::MissionCompleted)
+            .await
+            .actions
+            .is_empty(),
+        "chain 6505 must key on mission 1361's completion only; it fired for 1360"
+    );
 }
 
 // ── 3. The parked acceptance path ─────────────────────────────────────
@@ -678,8 +827,7 @@ async fn praxis_acceptance_is_enabled_iff_the_return_door_is() {
     for chain_id in [6511, 6512, 6513] {
         let chain = load(&pool, chain_id).await;
         assert_eq!(
-            chain.enabled,
-            door.enabled,
+            chain.enabled, door.enabled,
             "chain {chain_id} (1361 acceptance) is enabled={} but the 68->57 return \
              door chain 6007 is enabled={}. These must move together: step 4041 is at \
              Hansen in world 57 while 4040/4042 are in world 68, so accepting 1361 \
@@ -687,8 +835,7 @@ async fn praxis_acceptance_is_enabled_iff_the_return_door_is() {
              opening the door without enabling acceptance leaves the mission \
              unreachable. M0 flips 6007 (harset_space_chains.sql, after pinning its \
              arrival coordinate) and 6511/6512/6513 in the same change.",
-            chain.enabled,
-            door.enabled,
+            chain.enabled, door.enabled,
         );
     }
 }
@@ -705,7 +852,10 @@ async fn acceptance_chains_resolve_nothing_while_parked() {
         "world_name".to_string(),
         serde_json::json!("Harset_CmdCenter"),
     );
-    ctx.set_param("archetype".to_string(), serde_json::json!(ARCHETYPE_SOLDIER));
+    ctx.set_param(
+        "archetype".to_string(),
+        serde_json::json!(ARCHETYPE_SOLDIER),
+    );
     ctx.set_param(
         "mission_1361_status".to_string(),
         serde_json::json!("not_active"),
@@ -825,7 +975,10 @@ async fn the_praxis_offer_waits_for_the_letter_to_be_delivered() {
         let chain = load(&pool, chain_id).await;
         let mut ctx = ExecutionContext::new();
         ctx.world_id = Some(CMD_CENTER);
-        ctx.set_param("archetype".to_string(), serde_json::json!(ARCHETYPE_SOLDIER));
+        ctx.set_param(
+            "archetype".to_string(),
+            serde_json::json!(ARCHETYPE_SOLDIER),
+        );
         ctx.set_param(
             "mission_1361_status".to_string(),
             serde_json::json!("not_active"),
@@ -963,12 +1116,18 @@ async fn cross_world_restore_chains_do_not_fire_in_the_wrong_world() {
 /// Chain ids 6517 and 6524 must stay **absent**.
 ///
 /// They are the `interact_tag` chains a future author would naturally add
-/// for Hansen and Anat. Adding one would break chains 6518 and 6525:
-/// `fire_interact_tag` short-circuits `handle_interact`, which is the only
-/// place `last_interaction_target` is pinned, and the follow-up
-/// `display_dialog 4460` / `4463` fired from a `dialog_choice` trigger has
-/// no other way to resolve the NPC — so the outcome dialog would abort
-/// with a warn or speak from a stale NPC's portrait.
+/// for Hansen and Anat. Adding one would dead-end the mission:
+/// `fire_interact_tag` short-circuits `interactions::handle_interact`,
+/// which is the only code that opens a *bound* dsm's dialog. Hansen's
+/// 4459 and Anat's 4462 are exactly those bound dialogs, and each carries
+/// the button (`Convince Hansen.` / `Flatter Anat.`) whose `dialog_choice`
+/// drives chains 6518 and 6525. Suppress the dialog and the button never
+/// renders, so the step can never advance.
+///
+/// (An earlier version of this note blamed `last_interaction_target`
+/// instead. That is no longer the mechanism — the pin now happens in
+/// `cell_methods/player/interaction/interact.rs` ahead of all chain
+/// dispatch — but the guard itself stands on the stronger reason above.)
 ///
 /// This test is the tripwire for that edit.
 #[tokio::test]
