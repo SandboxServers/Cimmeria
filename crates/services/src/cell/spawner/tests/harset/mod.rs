@@ -27,15 +27,18 @@
 //! - [`factions`]: the faction design rules — Petbe's NULL-column fix, the
 //!   talk-vs-kill template pairs, and the two Praxis guard rows shared with
 //!   Castle.
-//! - [`ability_sets`]: the two new ability sets, and a loader round-trip
-//!   proving a spawn row picks both up through `load_spawns_from_db`.
+//! - [`ability_sets`]: the two new ability sets, a loader round-trip proving a
+//!   spawn row picks them up through `load_spawns_from_db`, and (packet H09)
+//!   the composite primary key that lets a set hold more than one ability at
+//!   all, plus the loader-to-`choose_npc_ability` round-trip over a multi-row
+//!   set.
 
 mod ability_sets;
 mod factions;
 mod templates;
 
 use crate::cell::combat::{HOSTILE_FACTION, NPC_DEFAULT_ABILITY};
-use crate::cell::spawner::load_spawns_from_db;
+use crate::cell::spawner::{load_spawn_templates, load_spawns_from_db};
 use crate::test_support::require_db_or_skip;
 
 /// Template-id block the packet ledger reserves for Harset.
@@ -45,10 +48,25 @@ const BLOCK_MAX: i32 = 299;
 /// The documented per-template respawn default for this packet (D-H17).
 const RESPAWN_DEFAULT: i32 = 300;
 
-/// Ability 584 "Staff Auto Attack" — the single member of ability set 4.
+/// Ability 584 "Staff Auto Attack" — the ranged half of ability set 4, and
+/// (lowest id in the set) the Jaffa's primary pick.
 const STAFF_AUTO_ATTACK: i32 = 584;
-/// Ability 712 "Ribbon Device Auto Attack" — the single member of set 5.
+/// Ability 710 "Staff Melee AA" — the melee half of set 4, added by packet
+/// H09 once the composite key made a second row possible.
+const STAFF_MELEE_AA: i32 = 710;
+/// Ability 712 "Ribbon Device Auto Attack" — the ranged half of set 5.
 const RIBBON_AUTO_ATTACK: i32 = 712;
+/// Ability 711 "Ribbon Device Melee AA" — the melee half of set 5. Sorts
+/// *below* 712, so it is set 5's primary pick; see `ability_sets.rs`.
+const RIBBON_MELEE_AA: i32 = 711;
+
+/// The full membership of the two Harset ability sets after H09, in the
+/// ascending-`ability_id` order every loader's `array_agg(... ORDER BY
+/// asa.ability_id)` returns and `choose_npc_ability` then selects from.
+const HARSET_ABILITY_SETS: [(i32, [i32; 2]); 2] = [
+    (4, [STAFF_AUTO_ATTACK, STAFF_MELEE_AA]),
+    (5, [RIBBON_MELEE_AA, RIBBON_AUTO_ATTACK]),
+];
 
 /// Every `class = 'mob'` template H11 seeds, as `(template_id, name)`.
 const MOB_TEMPLATES: [(i32, &str); 24] = [
@@ -103,6 +121,24 @@ const PREEXISTING_HARSET_TEMPLATES: [i32; 10] = [42, 43, 46, 48, 53, 54, 159, 16
 /// `0x7000_xxxx` base already in use by `crates/services` (highest today is
 /// `0x7000_5000`). Deleted by exact id before any assertion runs.
 const SENTINEL_SPAWN_ID: i32 = 0x7000_6100;
+
+/// Sentinel `ability_sets` row for the H09 three-row chooser round-trip.
+/// A three-member set has to be built rather than borrowed: padding the
+/// shipped set 4 to three rows would put a third ability on every live
+/// Harset Jaffa and change their attack rate a second time.
+const SENTINEL_ABILITY_SET_ID: i32 = 0x7000_6200;
+
+/// Sentinel `entity_templates` row that points at [`SENTINEL_ABILITY_SET_ID`],
+/// so the three abilities travel the real `load_spawn_templates` query rather
+/// than being hand-placed in a `SpawnRecord`.
+const SENTINEL_TEMPLATE_ID: i32 = 0x7000_6300;
+
+/// The three abilities the sentinel set holds, in the ascending order the
+/// loader must return them in. They are real ids because
+/// `ability_set_abilities_ability_id_fkey` is `ON DELETE/UPDATE RESTRICT` —
+/// an invented `0x7000_xxxx` ability id would be rejected by the FK, unlike
+/// [`SENTINEL_SPAWN_ID`] which references nothing.
+const SENTINEL_SET_ABILITIES: [i32; 3] = [STAFF_AUTO_ATTACK, STAFF_MELEE_AA, RIBBON_AUTO_ATTACK];
 
 /// World 57 = Harset, confirmed against `resources.worlds`.
 const HARSET_WORLD_ID: i32 = 57;

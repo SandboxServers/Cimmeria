@@ -16,10 +16,18 @@ use crate::cell::space_manager::SpaceManager;
 /// Stable sort over `known_ability_ids` keeps selection deterministic
 /// tick-to-tick; a future "prefer higher threat_level_id" refinement
 /// changes the ordering without touching the partition.
-pub(in crate::cell::service) fn choose_npc_ability(
-    npc_id: u32,
-    space_mgr: &SpaceManager,
-) -> Option<i32> {
+///
+/// # Multi-ability sets
+///
+/// The bucket is whatever `ability_set_abilities` held for the template's
+/// `ability_set_id` — since Harset packet H09 widened that table's primary
+/// key to `(ability_set_id, ability_id)`, a set can carry more than one
+/// ability and this walk is what makes the extra rows reachable. Ascending
+/// id order means the lowest-id ability is the NPC's primary and the rest
+/// are strictly cooldown fallbacks; that is a property of the data, not of
+/// this function, so composing a set is a decision about which ability
+/// should win the tie.
+pub(in crate::cell) fn choose_npc_ability(npc_id: u32, space_mgr: &SpaceManager) -> Option<i32> {
     use crate::cell::combat;
 
     let npc = space_mgr.get_entity(npc_id)?;
