@@ -1,5 +1,6 @@
 //! Helpers for populating the content engine [`ExecutionContext`] with
-//! per-entity mission and step state.
+//! per-entity mission and step state — plus the entity's stats, counters
+//! and current world, which ride the same dispatch sites.
 //!
 //! Every event-firing path needs to expose mission state to chain conditions
 //! (e.g., `mission_622_status == "active"`). This module centralizes that
@@ -7,6 +8,8 @@
 
 use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_entity::cell_entity::CellEntity;
+
+use crate::cell::space_manager::SpaceManager;
 use cimmeria_entity::missions::{
     MISSION_ACTIVE, MISSION_COMPLETED, MISSION_NOT_ACTIVE, STATUS_COMPLETED,
 };
@@ -24,6 +27,41 @@ pub(super) fn populate_stats_context(entity: &CellEntity, ctx: &mut ExecutionCon
         ctx.set_param(format!("stat_{}_cur", stat_id), serde_json::json!(stat.cur));
         ctx.set_param(format!("stat_{}_max", stat_id), serde_json::json!(stat.max));
     }
+}
+
+/// Populate both forms of "which world is the acting entity in" from its
+/// current space:
+///
+/// - `ctx.world_id` — the typed numeric `resources.worlds.world_id`, read
+///   by `Condition::World`.
+/// - the `world_name` param — the `spaces.xml` WorldName string, which
+///   predates the numeric form and is still what chain authors see in
+///   logs.
+///
+/// Both are set from one resolution on purpose: they cannot disagree, and
+/// a dispatcher only has to remember one call.
+///
+/// **Every `fire_*` dispatch site must call this.** `Condition::World`
+/// fails closed on a context with no `world_id` (unlike the mission
+/// conditions, which fall back to `not_active` and can fail *open*), so a
+/// dispatcher that skips it makes every `world`-gated chain dead on that
+/// path — quietly, except for a `debug!` in the evaluator.
+///
+/// `world_name` falls back to `"Unknown"` when the entity has no space, to
+/// preserve the string the region dispatchers have always emitted. There
+/// is deliberately no such fallback for `world_id`: a sentinel id would be
+/// indistinguishable from a real world to the evaluator.
+pub(super) fn populate_world_context(
+    entity_id: u32,
+    space_mgr: &SpaceManager,
+    ctx: &mut ExecutionContext,
+) {
+    ctx.world_id = space_mgr.get_entity_world_id(entity_id);
+
+    let world_name = space_mgr
+        .get_entity_world_name(entity_id)
+        .unwrap_or_else(|| "Unknown".to_string());
+    ctx.set_param("world_name".to_string(), serde_json::json!(world_name));
 }
 
 /// Populate per-entity counter values into the context as `counter_<name>`

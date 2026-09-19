@@ -26,6 +26,7 @@ use tokio::sync::mpsc;
 
 use cimmeria_content_engine::chain::ChainEngine;
 
+use super::arrival::validate_gate_arrival;
 use super::messages::CellToBaseMsg;
 use super::space_manager::SpaceManager;
 
@@ -50,6 +51,15 @@ use sequences::{origin_gate_event_set, send_gate_sequence, EVENT_STARGATE_CROSS_
 ///
 /// `target_address_id == -1` is the client's cancel sentinel and drops any
 /// armed dial (`SGWPlayer.cancelDialing`).
+///
+/// Returns `true` when the dial was *accepted* — either armed (the normal
+/// CA10 path) or, on a world with no gate volume, travelled immediately —
+/// and `false` on every refusal (cancel, unknown address, entity missing,
+/// same world, and, on the immediate path, an unrecoverable arrival or a
+/// closed base channel). The bool exists because
+/// [`super::cell_methods::gm::travel`] is the one dial caller with a
+/// client-visible feedback channel and used to report "dialing gate address
+/// N" unconditionally — including for dials the primitive refused.
 #[tracing::instrument(
     name = "gate_travel.dial",
     level = "info",
@@ -63,7 +73,7 @@ pub async fn handle_dial_gate(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
-) {
+) -> bool {
     // target_address_id == -1 means cancel dialing. The Python's
     // `cancelDialing` emits no sequence — not `Stargate_DestroyGate`
     // (6103), not anything — so neither do we (D-CA10).
@@ -76,7 +86,7 @@ pub async fn handle_dial_gate(
             ),
             None => tracing::debug!(entity_id, "onDialGate: cancel dial (nothing armed)"),
         }
-        return;
+        return false;
     }
 
     // Every rejection below cancels the dial in flight, because
@@ -97,7 +107,7 @@ pub async fn handle_dial_gate(
                 target_address_id,
                 "onDialGate: invalid stargate address — pending dial cancelled"
             );
-            return;
+            return false;
         }
     };
 
@@ -107,7 +117,7 @@ pub async fn handle_dial_gate(
         None => {
             space_mgr.cancel_gate_dial(entity_id);
             tracing::warn!(entity_id, "onDialGate: entity not found");
-            return;
+            return false;
         }
     };
 
@@ -118,7 +128,7 @@ pub async fn handle_dial_gate(
             entity_id, target_address_id, world = %gate.world_name,
             "onDialGate: already in destination world — pending dial cancelled"
         );
-        return;
+        return false;
     }
 
     let player_id = space_mgr
@@ -160,8 +170,7 @@ pub async fn handle_dial_gate(
             space_mgr,
         )
         .await;
-        perform_gate_travel(entity_id, target_address_id, tx, space_mgr).await;
-        return;
+        return perform_gate_travel(entity_id, target_address_id, tx, space_mgr).await;
     }
 
     tracing::info!(
@@ -187,6 +196,8 @@ pub async fn handle_dial_gate(
         space_mgr,
     )
     .await;
+
+    true
 }
 
 // ── Crossing ─────────────────────────────────────────────────────────────────
@@ -303,21 +314,65 @@ pub async fn handle_stargate_region_entered(
 // ── Transition ───────────────────────────────────────────────────────────────
 
 /// Tear the entity out of its space and hand the world transition to the
-/// BaseApp. Unchanged from the pre-CA10 tail of `handle_dial_gate`.
+/// BaseApp. Unchanged from the pre-CA10 tail of `handle_dial_gate`, plus the
+/// H01 arrival contract below.
+///
+/// Returns `true` only when a `GateTravel` was enqueued and the traveller was
+/// torn down cell-side.
 async fn perform_gate_travel(
     entity_id: u32,
     target_address_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-) {
+) -> bool {
     let Some(gate) = space_mgr.stargates.get(&target_address_id).cloned() else {
         tracing::warn!(
             entity_id,
             target_address_id,
             "gate travel: destination vanished from the stargate cache"
         );
-        return;
+        return false;
     };
+
+    // Resolve a standable arrival before anything destructive happens. Prefers
+    // the gate's authored `arrival_*` pin, falls back to the gate row, and
+    // replaces either with the destination world's respawner when the
+    // destination has a navmesh that rejects it — see `cell::arrival`.
+    //
+    // **This one line is the whole arrival contract**, and this is the only
+    // place it may appear: CA10 funnelled both destination-placement sites
+    // (the gate-volume crossing and the no-gate-region immediate fallback)
+    // through this function, so one call covers both. A second call in either
+    // caller would validate — and warn — twice per crossing.
+    let arrival = validate_gate_arrival(space_mgr, &gate);
+
+    // No standable point on the destination world: refuse the transfer.
+    //
+    // Shipping the rejected coordinate into `GateTravel` is the H-B1 defect
+    // with extra steps — the traveller is torn out of a world they *could*
+    // stand in and re-created off-mesh on one they can't, where every inbound
+    // position update is suppressed and the only trace is
+    // `CorrectionSuppressed`. A refused transfer is the strictly better
+    // failure: the player keeps their position and the operator gets a
+    // greppable warn naming the gate whose pin (or whose world's respawner
+    // seed) is missing.
+    if !arrival.is_usable() {
+        tracing::warn!(
+            entity_id,
+            target_address_id,
+            stargate_id = target_address_id,
+            world = %gate.world_name,
+            desired_x = arrival.position[0],
+            desired_y = arrival.position[1],
+            desired_z = arrival.position[2],
+            reason = "arrival_unrecoverable_off_mesh",
+            "gate travel: destination world has no standable arrival — \
+             refusing the transfer; the traveller stays where they are. \
+             Re-pin stargates.arrival_* for this gate or seed a respawner \
+             for the world"
+        );
+        return false;
+    }
 
     // Stage D: world transition destroys the cell entity and re-creates it on
     // the destination world. Flush any pending bandolier ammo writes before
@@ -338,8 +393,8 @@ async fn perform_gate_travel(
         .send(CellToBaseMsg::GateTravel {
             entity_id,
             target_world_name: gate.world_name.clone(),
-            position: [gate.x, gate.y, gate.z],
-            rotation: [0.0, 0.0, gate.yaw],
+            position: arrival.position,
+            rotation: [0.0, 0.0, arrival.yaw],
             destination_ring_id: None,
             // Stargate travel resolves the destination by world name.
             destination_space_id: None,
@@ -350,7 +405,7 @@ async fn perform_gate_travel(
             entity_id, world = %gate.world_name, error = %e,
             "gate travel: base channel closed — entity left in place, no transfer"
         );
-        return;
+        return false;
     }
 
     // Cancel any open trade before the entity goes. `destroy_entity` doesn't
@@ -363,6 +418,7 @@ async fn perform_gate_travel(
 
     // Remove entity from current space (CellService side)
     space_mgr.destroy_entity(entity_id);
+    true
 }
 
 #[cfg(test)]

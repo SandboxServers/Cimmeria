@@ -65,6 +65,64 @@ impl SpaceManager {
         self.world_spaces.contains_key(world_name)
     }
 
+    /// Stamp the numeric `resources.worlds.world_id` onto every matching
+    /// [`WorldDef`](super::WorldDef), from a map produced by
+    /// [`spawner::load_world_ids`](crate::cell::spawner::load_world_ids).
+    ///
+    /// Kept as a stamp on the existing world table rather than a parallel
+    /// `HashMap<String, i32>`: `self.worlds` is already the canonical
+    /// keyed-by-world-name structure, and a second map keyed identically
+    /// would be free to drift from it.
+    ///
+    /// Matching is exact and case-sensitive, like every other keyed lookup
+    /// in this module — both sides originate from the same 2009 content
+    /// pipeline, so a mismatch is a data bug worth surfacing, not something
+    /// to paper over. Both set differences are logged once at startup:
+    /// a `spaces.xml` world with no DB row silently disables every
+    /// content-engine `world` condition in that world (the condition fails
+    /// closed), and a DB world with no `spaces.xml` entry can never be
+    /// loaded as a space at all.
+    pub fn stamp_world_ids(&mut self, world_ids: &HashMap<String, i32>) {
+        let mut stamped = 0usize;
+        // Owned, not `&str`: the borrow would come out of `iter_mut` and
+        // block the immutable reads below.
+        let mut missing_in_db: Vec<String> = Vec::new();
+        for (name, def) in self.worlds.iter_mut() {
+            match world_ids.get(name) {
+                Some(&id) => {
+                    def.world_id = Some(id);
+                    stamped += 1;
+                }
+                None => missing_in_db.push(name.clone()),
+            }
+        }
+
+        let missing_in_xml: Vec<&str> = world_ids
+            .keys()
+            .filter(|name| !self.worlds.contains_key(*name))
+            .map(String::as_str)
+            .collect();
+
+        tracing::info!(
+            stamped,
+            worlds = self.worlds.len(),
+            "Stamped world ids onto spaces.xml world definitions"
+        );
+        if !missing_in_db.is_empty() {
+            tracing::warn!(
+                worlds = ?missing_in_db,
+                "spaces.xml worlds have no resources.worlds row — content-engine \
+                 `world` conditions will fail closed in these worlds"
+            );
+        }
+        if !missing_in_xml.is_empty() {
+            tracing::debug!(
+                worlds = ?missing_in_xml,
+                "resources.worlds rows have no spaces.xml entry — no space can be created for these"
+            );
+        }
+    }
+
     /// Check if a world is marked as instanced in spaces.xml.
     pub fn is_world_instanced(&self, world_name: &str) -> bool {
         self.worlds.get(world_name).is_some_and(|w| w.instanced)

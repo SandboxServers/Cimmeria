@@ -7,7 +7,10 @@
 //! - [`inventory`] — grant/remove items, bandolier seeding
 //! - [`dialog`]    — display, add/remove dialog set, add dialog
 //! - [`stats`]     — `Action::ChangeStat`
-//! - [`world`]     — interaction-type/visibility/destroy/move/threat/aggression
+//! - [`spawn`]     — `SpawnEntity` / `DespawnEntity` / `DestroyTaggedEntity`
+//!   (the last two share one `despawn_by_tag` routine and differ only in
+//!   the verb they log)
+//! - [`world`]     — interaction-type/visibility/move/threat/aggression
 //! - [`counter`]   — increment/reset
 //! - [`transport`] — teleport, ring transporter
 //! - [`deferred`]  — `content_actions.delay_ms > 0` scheduling/tick-drain (C08a)
@@ -33,6 +36,7 @@ mod deferred;
 mod dialog;
 mod inventory;
 mod mission;
+mod spawn;
 mod stats;
 mod transport;
 mod world;
@@ -342,8 +346,55 @@ async fn execute_one(
         Action::SetNpcAiState { entity_tag, state } => {
             world::set_npc_ai_state(entity_tag, state, entity_id, chain_id, space_mgr);
         }
+        // `destroy_entity` is the older spelling of `despawn_entity` and
+        // routes identically — same `despawn_by_tag`, same `LeftAoI` fan-out
+        // before the destroy. The two arms differ only in the `verb` they
+        // log. (The pass-through wrapper this used to call was deleted in
+        // the PR #662 review; the routing history lives on `despawn_by_tag`.)
         Action::DestroyTaggedEntity { entity_tag } => {
-            world::destroy_tagged_entity(entity_tag, entity_id, chain_id, tx, space_mgr).await;
+            spawn::despawn_by_tag(
+                entity_tag,
+                entity_id,
+                chain_id,
+                "destroy_entity",
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+        Action::DespawnEntity { entity_tag } => {
+            spawn::despawn_by_tag(
+                entity_tag,
+                entity_id,
+                chain_id,
+                "despawn_entity",
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+        Action::SpawnEntity {
+            template_id,
+            position,
+            heading,
+            tag,
+            is_stationary,
+            aggression,
+            allow_shared,
+        } => {
+            spawn::spawn_entity(
+                template_id,
+                position,
+                heading,
+                tag,
+                is_stationary,
+                aggression,
+                allow_shared,
+                entity_id,
+                chain_id,
+                space_mgr,
+            )
+            .await;
         }
         Action::TriggerTransporter { region_id } => {
             transport::trigger_transporter(region_id, entity_id, chain_id, tx, space_mgr, engine)

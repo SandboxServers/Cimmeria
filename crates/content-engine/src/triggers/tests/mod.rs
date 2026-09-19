@@ -2,6 +2,7 @@ use super::*;
 
 mod matching_cover;
 mod matching_entity;
+mod matching_health;
 mod matching_misc;
 mod matching_mission;
 mod matching_stargate;

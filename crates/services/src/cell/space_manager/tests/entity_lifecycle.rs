@@ -35,6 +35,42 @@ fn destroy_entity_removes_from_space() {
     assert!(!mgr.entity_space.contains_key(&100));
 }
 
+/// Only players can stand on a ring pad, so only a player's teardown
+/// belongs in the ring's `pending_player_gone` queue. Destroying an NPC —
+/// the overwhelmingly common case: mission despawns, GM `.despawn`, the
+/// respawn sweep — must leave it untouched (PR #662 review, finding 2).
+#[test]
+fn destroying_an_npc_does_not_queue_a_ring_player_gone() {
+    let mut mgr = make_manager();
+    mgr.spawn_npc(900, "Agnos", [10.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
+    mgr.destroy_entity(900);
+    assert!(
+        mgr.ring_transporters.take_pending_player_gone().is_empty(),
+        "an NPC teardown must not enter the ring transporter's pending \
+         player-gone queue",
+    );
+}
+
+/// The other half of the same gate: a player's teardown still has to
+/// queue, or a destroy mid-trip leaves the pad parked out of `Idle` and
+/// removes it from every peer in the mesh (audit H-B3).
+#[test]
+fn destroying_a_player_still_queues_a_ring_player_gone() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(100) {
+        p.is_player = true;
+    }
+    mgr.destroy_entity(100);
+    assert_eq!(
+        mgr.ring_transporters.take_pending_player_gone(),
+        vec![100],
+        "a player teardown must still queue the ring release",
+    );
+}
+
 #[test]
 fn connect_entity_marks_as_player() {
     let mut mgr = make_manager();

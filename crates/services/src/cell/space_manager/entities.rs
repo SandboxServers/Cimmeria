@@ -125,6 +125,39 @@ impl SpaceManager {
         // the action, not fire it later against a torn-down (and possibly
         // id-reused) entity.
         self.pending_content_actions.remove(&entity_id);
+        // Same reasoning for the `entity_health_below` sample queue: a
+        // sample naming a destroyed entity on either side would fire a
+        // threshold chain against a torn-down (and possibly id-reused)
+        // attacker or target. The drain re-looks-up both, so this is
+        // belt-and-braces against id reuse rather than a crash guard.
+        self.pending_health_below
+            .retain(|s| s.attacker_entity_id != entity_id && s.target_entity_id != entity_id);
+        // Ring transport: a destroy mid-trip (GM despawn, gate travel,
+        // respawn, content transport) must not leave the ring pad parked in
+        // a non-`Idle` state, because `handle_select_destination` refuses
+        // every destination that is not `Idle` — one stall removes that pad
+        // from every peer in an all-to-all mesh (audit H-B3).
+        //
+        // Queued, not applied: this method is synchronous and has no
+        // `CellToBaseMsg` sender, so it cannot dispatch the survivors'
+        // `ShowPlayer`/`UnlockMovement`. Flipping FSM state here while the
+        // wire effects waited for the tick would let a player re-trigger the
+        // pad inside the gap and receive the previous trip's release on top
+        // of their new one. The ring tick does both together.
+        //
+        // The real client-disconnect path takes
+        // `ring_transport::forget_player` from `disconnect_entity` below
+        // instead, which is async and releases everyone immediately.
+        //
+        // Gated on the entity actually being a player (it is still resident
+        // at this point, so the lookup works). `destroy_entity` is the
+        // teardown for every NPC too — mission despawns, GM `.despawn`, the
+        // respawn sweep — and only a *player* can be on a ring pad, so
+        // queueing all of them just made the ring tick walk a list that was
+        // mostly NPC ids it would never match (PR #662 review, finding 2).
+        if self.get_entity(entity_id).is_some_and(|e| e.is_player) {
+            self.ring_transporters.note_player_gone(entity_id);
+        }
         // CA10: an armed stargate dial dies with the space membership.
         // `SGWPlayer.cancelDialing` on leaving is the 2009 equivalent —
         // without this, `gate_dial_tick` would emit `Stargate_MakeGate`
@@ -329,6 +362,17 @@ impl SpaceManager {
         // content-engine action's delay elapses must drop the action, not
         // fire it later against a session that no longer exists.
         self.pending_content_actions.remove(&entity_id);
+        // Ring transport: release every trip this player was part of BEFORE
+        // the AoI teardown below, while `tx` is in hand. Synchronous by
+        // design — this is the one departure path that can dispatch the
+        // survivors' `ShowPlayer`/`UnlockMovement` in the same step as the
+        // FSM state flip, so there is no window in which a re-triggered pad
+        // receives the old trip's release. It is also the only path that may
+        // touch the *destination*'s expected-passenger set: a cross-world
+        // ring handoff destroys the cell entity too, and confusing the two
+        // would strand the traveller (see
+        // `RingTransporterManager::forget_source_side`).
+        crate::cell::ring_transport::forget_player(entity_id, tx, self).await;
         // CA10: same rationale — a disconnect mid-dial must not leave a
         // pending gate-open queued against a dead session.
         self.pending_gate_dials.remove(&entity_id);

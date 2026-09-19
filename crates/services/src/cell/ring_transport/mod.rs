@@ -17,8 +17,13 @@
 //! - `dispatch` — turns [`Effect`] values into `CellToBaseMsg` sends and
 //!   spatial-grid mutations.
 //! - `runtime` — public entry points (`handle_interact`,
-//!   `handle_select_destination`, `handle_region_trigger`,
+//!   `handle_select_destination`, `handle_region_trigger`, `forget_player`,
 //!   `run_tick_with_engine`).
+//!
+//! Every state that waits on something outside the FSM carries a bounded
+//! abort deadline, and a departing player releases the rings holding them —
+//! see [`transporter`] for the timeout table and audit defect H-B3 for what
+//! their absence cost.
 
 mod dispatch;
 mod regions;
@@ -30,11 +35,13 @@ mod wire_helpers;
 #[cfg(test)]
 mod tests;
 
-pub use regions::{load_ring_regions, RingRegion};
+pub use regions::{audit_ring_pads, load_ring_regions, RingRegion};
 pub use runtime::{
-    handle_interact, handle_region_trigger, handle_remote_player_loaded, handle_select_destination,
-    run_tick_with_engine,
+    forget_player, handle_interact, handle_region_trigger, handle_remote_player_loaded,
+    handle_select_destination, run_tick_with_engine,
 };
-pub use transporter::{Effect, RegionEvent, RingTransporter, RingTransporterManager, State};
+pub use transporter::{
+    AbortReason, Effect, RegionEvent, RingTransporter, RingTransporterManager, State,
+};
 pub use wire::{build_on_ring_transporter_list, encode_region_info};
 pub use wire_helpers::{BSF_MOVEMENT_LOCK, METHOD_ON_RING_TRANSPORTER_LIST};

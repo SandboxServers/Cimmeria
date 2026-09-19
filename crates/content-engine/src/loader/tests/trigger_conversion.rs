@@ -276,6 +276,19 @@ fn convert_player_flanked_npc_wildcard() {
     }
 }
 
+// ─── entity_health_below (Harset H04) ───────────────────────────────
+
+fn health_row(event_key: Option<&str>) -> DbTriggerRow {
+    DbTriggerRow {
+        chain_id: 6311,
+        event_type: "entity_health_below".to_string(),
+        event_key: event_key.map(|s| s.to_string()),
+        scope: "player".to_string(),
+        once: false,
+        sort_order: 0,
+    }
+}
+
 // ─── Stargate trigger conversions (CA10) ───────────────────────────
 
 fn stargate_trigger_row(event_type: &str, event_key: Option<&str>) -> DbTriggerRow {
@@ -286,6 +299,100 @@ fn stargate_trigger_row(event_type: &str, event_key: Option<&str>) -> DbTriggerR
         scope: "player".to_string(),
         once: false,
         sort_order: 0,
+    }
+}
+
+/// The authored form: `"<tag>:<pct>"` round-trips into a tag + integer
+/// percentage. This is the row Harset mission 1325 seeds for the Rin'la
+/// duel's submit beat.
+#[test]
+fn convert_entity_health_below_splits_tag_and_percentage() {
+    match convert_trigger(&health_row(Some("Rinla_Malac:30"))) {
+        Some(Trigger::OnEntityHealthBelow { entity_tag, pct }) => {
+            assert_eq!(entity_tag, "Rinla_Malac");
+            assert_eq!(pct, 30);
+        }
+        other => panic!("expected OnEntityHealthBelow(Rinla_Malac, 30), got {other:?}"),
+    }
+}
+
+/// Split from the RIGHT: a tag containing a colon keeps its colon and
+/// only the trailing field is read as the percentage. Splitting from the
+/// left would silently truncate the tag and produce a chain that never
+/// matches a real entity.
+#[test]
+fn convert_entity_health_below_splits_from_the_right() {
+    match convert_trigger(&health_row(Some("Harset_Market:Malac:30"))) {
+        Some(Trigger::OnEntityHealthBelow { entity_tag, pct }) => {
+            assert_eq!(entity_tag, "Harset_Market:Malac");
+            assert_eq!(pct, 30);
+        }
+        other => panic!("expected the tag to keep its embedded colon, got {other:?}"),
+    }
+}
+
+/// Every malformed shape must reject the chain outright. A trigger that
+/// degrades to "any tag" or "any percentage" would fire an unrelated
+/// mission step on an unrelated NPC — the same bug shape the
+/// `item_equipped` wildcard guard exists for.
+#[test]
+fn convert_entity_health_below_rejects_malformed_keys() {
+    for bad in [
+        None,                     // no key at all
+        Some("Rinla_Malac"),      // no separator
+        Some("Rinla_Malac:"),     // empty percentage
+        Some("Rinla_Malac:abc"),  // non-integer percentage
+        Some(":30"),              // empty tag
+        Some("Rinla_Malac:0"),    // 0% is death; routes to entity_dead_tag
+        Some("Rinla_Malac:-10"),  // negative
+        Some("Rinla_Malac:100"),  // unmatchable: the crossing test is strict
+        Some("Rinla_Malac:101"),  // above full health
+        Some("Rinla_Malac:30.5"), // fractional
+    ] {
+        assert!(
+            convert_trigger(&health_row(bad)).is_none(),
+            "malformed event_key {bad:?} must reject the chain, not load a \
+             degraded trigger",
+        );
+    }
+}
+
+/// The inclusive bounds are legal: `:99` is the first threshold a hit off
+/// full health can cross (100 → 99), `:1` is the last threshold above
+/// death.
+#[test]
+fn convert_entity_health_below_accepts_the_boundary_percentages() {
+    for (key, expected) in [("Boss:1", 1), ("Boss:99", 99)] {
+        match convert_trigger(&health_row(Some(key))) {
+            Some(Trigger::OnEntityHealthBelow { pct, .. }) => assert_eq!(pct, expected),
+            other => panic!("expected {key} to load, got {other:?}"),
+        }
+    }
+}
+
+/// PR #662 review, finding 2. The matcher is a **strict** downward
+/// crossing (`pct_before > threshold && pct_after <= threshold`), so a
+/// threshold of 100 is unmatchable: full health is 100, `100 > 100` is
+/// false, and any later hit starts from below. The loader used to accept
+/// `1..=100`, which let an author seed a chain that reads as wired and
+/// never runs — the worst failure mode for content, because there is no
+/// error to grep for.
+///
+/// Reverting `HEALTH_PCT_RANGE` to `1..=100` fails the `100` row.
+#[test]
+fn convert_entity_health_below_rejects_the_unmatchable_hundred_percent_band() {
+    for bad in [0, 100, 101] {
+        assert!(
+            convert_trigger(&health_row(Some(&format!("Boss:{bad}")))).is_none(),
+            "threshold {bad} is outside the matchable band and must drop the \
+             trigger row rather than load a chain that can never fire",
+        );
+    }
+    for good in [1, 99] {
+        assert!(
+            convert_trigger(&health_row(Some(&format!("Boss:{good}")))).is_some(),
+            "threshold {good} is inside the matchable band and must load",
+        );
     }
 }
 

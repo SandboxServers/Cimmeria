@@ -71,6 +71,8 @@ fn space_with_three_players() -> SpaceManager {
             y: 0.0,
             z: 0.0,
             yaw: 0.0,
+            address_origin: 18,
+            arrival: None,
             event_set_id: Some(EVENT_SET),
         },
     );

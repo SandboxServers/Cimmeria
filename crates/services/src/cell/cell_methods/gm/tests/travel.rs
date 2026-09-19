@@ -565,6 +565,8 @@ async fn gm_dhd_arms_a_dial_where_a_gate_volume_exists_and_travels_where_none_do
                 y: 2.0,
                 z: 3.0,
                 yaw: 0.0,
+                address_origin: 18,
+                arrival: None,
                 event_set_id: None,
             },
         );

@@ -15,7 +15,9 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::executor;
-use super::super::mission_context::{populate_mission_context, populate_stats_context};
+use super::super::mission_context::{
+    populate_mission_context, populate_stats_context, populate_world_context,
+};
 
 /// Fire `OnItemUse` event when a player uses an inventory item.
 ///
@@ -38,6 +40,7 @@ pub async fn fire_item_use(
     ctx.set_param("item_id".to_string(), serde_json::json!(item_id));
     ctx.set_param("instance_id".to_string(), serde_json::json!(instance_id));
 
+    populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
         // Stats are needed by `Condition::StatBelowMax` so chains like
@@ -87,6 +90,7 @@ pub async fn fire_item_equipped(
     let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("item_id".to_string(), serde_json::json!(type_id));
 
+    populate_world_context(entity_id, space_mgr, &mut ctx);
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
         if let Some(archetype_id) = entity.archetype_id {

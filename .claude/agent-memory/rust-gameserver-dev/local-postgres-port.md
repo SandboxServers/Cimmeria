@@ -1,10 +1,19 @@
 ---
 name: local-postgres-port
-description: The dev Postgres port is NOT stable across sessions/hosts — seen both 5544 and 5433 (CLAUDE.md's documented default). Always verify before trusting a live-DB run.
+description: Verify the dev Postgres port and database name before every live-DB run — they move, and require_db_or_skip! turns a wrong one into a green self-skip.
 type: project
 ---
 
-**Update 2026-09-17 (C08b session):** the shared main-checkout Postgres (started via `db.bat`, `PGDATA` under `server/pgdata/`) was listening on **5433** — the CLAUDE.md/TESTING.md documented default — not 5544. An earlier session recorded 5544 as this host's port; that was true then, isn't now. Don't trust either number — verify per-session with `psql -h localhost -p <port> -U w-testing -d sgw -c "SELECT 1;"` before running anything against it.
+**Probe, don't assume.** The port has been 5544 on this host in the past; as of 2026-09-17 the bundled cluster listens on the documented **5433**. Either way, check before trusting a run.
+
+**The database name also moves.** During parallel campaign work the coordinator may stand up a per-campaign scratch DB (e.g. `sgw_harset`) because a sibling session drops and recreates `sgw` mid-run. Rows applied to the wrong database vanish without an error. List first:
+
+```powershell
+$env:PGPASSWORD='w-testing'
+& external\postgresql_server\bin\psql.exe -h localhost -p 5433 -U w-testing -d postgres -tAc "select datname from pg_database order by 1"
+```
+
+A `FATAL: database "sgw" does not exist ... seems to have just been dropped or renamed` means a sibling session is mid-reload — retry, don't conclude the cluster is broken.
 
 Binary lives at `external/postgresql_server/bin/` (`psql.exe`, `postgres.exe`). Role `w-testing` (password same as the name) exists; role `sgw` does not.
 

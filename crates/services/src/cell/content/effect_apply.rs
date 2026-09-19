@@ -161,6 +161,14 @@ pub(super) async fn apply_effect(
     // carry their behaviour entirely in the pulse registration below, so a
     // `None` here is the common case and not worth a log line.
     if let Some(script_name) = effect.script_name.clone() {
+        // `entity_health_below` pre-hit sample — a damage script applied
+        // straight from a chain is a health mutation like any other. This
+        // path has no `ChainEngine` handle of its own (it is *inside* the
+        // executor), so the sample is picked up by the per-tick safety
+        // drain in `cell::service::message_loop` rather than immediately.
+        // See `combat::damage_credit`.
+        crate::cell::combat::note_pre_damage_health(space_mgr, invoker_id, target_id);
+
         let mut ctx = EffectContext {
             source_id: invoker_id,
             target_id,

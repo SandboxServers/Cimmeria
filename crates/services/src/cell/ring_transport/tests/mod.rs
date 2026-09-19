@@ -1,6 +1,20 @@
 //! Integration-style tests for the ring-transport runtime: exercise the
 //! full handle_interact → handle_select_destination → tick → effects path
 //! against a real `SpaceManager`.
+//!
+//! The bounded-timeout and disconnect-cleanup guards (H02 / audit defect
+//! H-B3) live in [`stall`], [`disconnect`] and [`harset_mesh`], which drive
+//! the FSM's injectable clock through the fixtures in [`support`].
+
+mod arrival;
+mod deadline_scan;
+mod disconnect;
+mod harset_mesh;
+mod pairing;
+mod readiness;
+mod stall;
+mod state_flag;
+mod support;
 
 use tokio::sync::mpsc;
 
@@ -149,17 +163,17 @@ async fn full_ring_cycle_dispatches_expected_messages() {
         let dst = mgr.ring_regions.get(&2).unwrap();
         ([dst.x, dst.y, dst.z], dst.world_name.clone())
     };
-    // Capture num_players BEFORE warmup (which clears send_players as part
-    // of the source's reset to Idle).
-    let warmup_num_players = mgr.ring_transporters.get(1).unwrap().send_players.len() as u32;
+    // Capture the passenger list BEFORE warmup (which takes send_players as
+    // part of the source's reset to Idle).
+    let warmup_players = mgr.ring_transporters.get(1).unwrap().send_players.clone();
     let warmup_effects = mgr
         .ring_transporters
         .get_mut(1)
         .unwrap()
         .warmup_timer_expired(dst_pos.0, &dst_pos.1);
-    // Same ordering as the production tick: count update before teleport
+    // Same ordering as the production tick: expectation set before teleport
     // so `mark_player_loaded` can advance the FSM synchronously.
-    advance_destination_after_warmup(2, warmup_num_players, &tx, &mut mgr, &engine).await;
+    advance_destination_after_warmup(2, warmup_players, &tx, &mut mgr, &engine).await;
     dispatch_effects(warmup_effects, &tx, &mut mgr, &engine).await;
 
     // After the warmup teleport step we should see a TeleportPlayer
@@ -314,7 +328,7 @@ async fn select_destination_cross_world_succeeds() {
         .warmup_timer_expired(dst_pos, &dst_world);
     // Destination is now in RemoteLoadWait — same shape as same-world but
     // we don't synchronously call mark_player_loaded on cross-world.
-    advance_destination_after_warmup(2, 1, &tx, &mut mgr, &engine).await;
+    advance_destination_after_warmup(2, vec![42], &tx, &mut mgr, &engine).await;
     dispatch_effects(warmup_effects, &tx, &mut mgr, &engine).await;
 
     // Source ring back at Idle (warmup_timer_expired clears it), destination
@@ -382,7 +396,7 @@ async fn handle_remote_player_loaded_advances_destination_fsm() {
     // `Effect::TeleportCrossWorld` dispatched from the source.
     let dst = mgr.ring_transporters.get_mut(2).unwrap();
     dst.state = State::RemoteLoadWait;
-    dst.num_remote_players = 1;
+    dst.remote_expect(vec![42]);
 
     let (tx, mut _rx) = mpsc::channel(16);
     let engine = ChainEngine::new();

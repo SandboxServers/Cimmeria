@@ -82,6 +82,9 @@ Win32/
 # =============================================================================
 logs/**
 !logs/*/.keep
+# The cimmeria-services test suite writes tracing artifacts here; a
+# `git add -A crates` from a worktree would otherwise sweep them in.
+crates/services/logs/
 
 # =============================================================================
 # Python

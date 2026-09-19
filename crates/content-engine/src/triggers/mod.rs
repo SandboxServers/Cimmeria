@@ -149,6 +149,43 @@ pub enum Trigger {
         seconds: u32,
     },
 
+    /// Fires when a tagged entity's health crosses **downward** through
+    /// `pct` percent of its maximum, as the result of a single damaging
+    /// hit. The acting player is the attacker, so mission/step context
+    /// comes from the attacker's entity (same frame of reference as
+    /// [`Self::OnEntityDeath`]).
+    ///
+    /// Matching is stateless: the runtime event carries the pre-hit and
+    /// post-hit percentages and the match is
+    /// `pct_before > pct && pct_after <= pct`. Consequences, all
+    /// intentional:
+    ///
+    /// - Fires **once per crossing** — a follow-up hit that lands while
+    ///   the entity is already at or below `pct` has `pct_before <= pct`
+    ///   and does not match.
+    /// - Fires **again** if the entity is healed back above `pct` and
+    ///   then crossed a second time.
+    /// - Two chains on the same tag at different thresholds (`:50` and
+    ///   `:30`) each fire on their own crossing; a single big hit that
+    ///   spans both fires both.
+    /// - A **killing blow never fires this trigger** — the damage path
+    ///   routes an alive→dead transition to [`Self::OnEntityDeath`]
+    ///   instead, so a chain can rely on the two being mutually
+    ///   exclusive. Note that this is a guarantee of the *dispatch site*
+    ///   (`fire_health_below_for_hit` in `cimmeria-services` suppresses
+    ///   any hit ending at zero health), not of the predicate below: the
+    ///   band test alone would match a `31% → 0%` hit against a `:30`
+    ///   chain.
+    ///
+    /// Seed form: `event_type = 'entity_health_below'`,
+    /// `event_key = "<tag>:<pct>"` (e.g. `"Rinla_Malac:30"`).
+    ///
+    /// `pct` is `1..=99` (`loader::trigger::HEALTH_PCT_RANGE`); the
+    /// loader drops the trigger row otherwise. 100 is excluded because
+    /// the band test's upper half is strict, so a full-health entity
+    /// (`before == 100`) can never satisfy `before > 100`.
+    OnEntityHealthBelow { entity_tag: String, pct: i32 },
+
     /// Fires when an NPC currently occupying a cover slot is flanked —
     /// the top-threat target moved outside the cover's defensive arc
     /// (cover orientation ± π/2). Used by encounter authors who want to
@@ -217,6 +254,7 @@ pub enum TriggerType {
     PlayerEnteredCover,
     PlayerLeftCover,
     PlayerInCoverDuration,
+    EntityHealthBelow,
     NpcFlanked,
     PlayerFlankedNpc,
 }

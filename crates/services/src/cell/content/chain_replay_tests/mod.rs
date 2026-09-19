@@ -25,8 +25,11 @@
 //! executor arm from the `other =>` catch-all.
 
 mod castle_702_704_executor;
+mod entity_health_below;
 mod gc1_escort;
 mod grant_xp;
+mod harset_space;
+mod harset_spawn_entity;
 mod livewire_pairs;
 mod mission_1360;
 mod mission_1562;
@@ -56,6 +59,7 @@ mod region_transition_accepts;
 mod sgc_w1_move_entity;
 mod stargate_triggers;
 mod start_minigame_difficulty;
+mod world_condition;
 
 /// Assert every action `chain_id` resolved is immediate (`delay_ms = 0`).
 ///

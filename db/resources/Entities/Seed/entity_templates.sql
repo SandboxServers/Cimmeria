@@ -282,9 +282,32 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (141, NULL, 'NPC_Child.NPC_Child_BS', '{NPC_Child.Kid_Base_Feet_00,NPC_Child.Kid_Base_Hands_00,NPC_Child.Kid_Base_Head_00,NPC_Child.Kid_Base_Legs_00,NPC_Child.Kid_Base_Torso_00,NPC_Child.NPC_LC_F_Shirt_00,NPC_Child.NPC_LC_Headband_00,NPC_Child.NPC_LC_Skirt_00}', 0, 0, 570, 1, 0, 10, NULL, NULL, NULL, NULL, 'NPC Child 2', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (160, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 0, 0, 570, 50, 0, 1, 8917, NULL, NULL, NULL, 'Praxis Jaffa Guard', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
+-- Harset H11 (defect H-B8): `ability_set_id` was NULL, so the eight plaza
+-- guards fell back to `NPC_DEFAULT_ABILITY = 592` (Pistol Shot) -- Jaffa with
+-- staff models firing a pistol. Set 4 is ability 584 Staff Auto Attack.
+-- `respawn_secs` is deliberately NOT set on this row, even though H-B7 is about
+-- exactly that column. Templates 159 and 160 are shared with Castle world 8
+-- (spawns 119, 121, 123, 124), and because the runtime resolves
+-- `COALESCE(spawnlist.respawn_secs, entity_templates.respawn_secs)` a template
+-- default would silently opt Castle's guards into respawning too. That is a
+-- Castle-ledger decision, not Harset's. Harset packet H13 sets
+-- `respawn_secs = 30` on each Harset spawn row of 159/160 instead, which is
+-- where the per-zone value belongs. The new Harset-only templates 200-248 do
+-- carry a template default; they are shared with nothing.
+-- NOT changed here: `components` still carries no `WP-Jaffa.*` entry, so the
+-- guard mimes the staff. That is an art fix outside this packet's scope
+-- (H-B14 is record-only); see worknotes/H11.md.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (160, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 0, 0, 570, 50, 0, 1, 8917, NULL, NULL, NULL, 'Praxis Jaffa Guard', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (159, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 0, 0, 570, 50, 0, 1, 8918, NULL, NULL, NULL, 'Praxis Jaffa Lieuternant', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
+-- Harset H11 (defect H-B8): same fix as template 160 above, applied to the four
+-- Harset lieutenants, and `respawn_secs` left NULL for the same Castle-sharing
+-- reason. There is only one staff ability set: 584 Staff Auto Attack is the sole
+-- ranged staff ability in the seed with a non-NULL `event_set_id`, and
+-- `ability_set_abilities` has `PRIMARY KEY (ability_set_id)`
+-- (db/resources/_primary_keys.sql), so a set cannot hold more than one ability.
+-- An elite variant is therefore blocked on widening that key; see
+-- worknotes/H11.md.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (159, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 0, 0, 570, 50, 0, 1, 8918, NULL, NULL, NULL, 'Praxis Jaffa Lieuternant', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (158, NULL, 'BS_GoauldMale.BS_GoauldMale', '{BS_GoauldMale.BS_GM_Boots_00,BS_GoauldMale.BS_GM_Hair_03,BS_GoauldMale.BS_GM_Hands_00,BS_GoauldMale.BS_GM_Head_00,BS_GoauldMale.BS_GM_Legs_00,BS_GoauldMale.BS_GM_Torso_00}', 0, 0, 570, 1, 0, 1, NULL, NULL, NULL, NULL, 'GoauldMale Template - DO NOT USE', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, -16777216, -340158464, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
@@ -298,7 +321,30 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (61, NULL, 'BS_GoauldMale.BS_GoauldMale', '{BS_GoauldMale.BS_GM_Base_Boots00_00,BS_GoauldMale.BS_GM_Base_Hands00_00,BS_GoauldMale.BS_GM_Base_Legs00_00,BS_GoauldMale.BS_GM_Base_Torso00_00,NPC_Goauld.NPC_RaG_FingerNail_00,NPC_Goauld.NPC_RaG_Helmet_01,NPC_Goauld.NPC_RaG_Shoulders_00,NPC_Goauld.NPC_RaG_Skirt_00,NPC_Goauld.NPC_RaG_Torso_00}', 0, 0, 570, 50, 0, 1, 20205, NULL, NULL, NULL, 'Ra 3', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, 2547, true, NULL, NULL);
 
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (163, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH100,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_FaceHair_01,BS_JaffaMale.BS_JM_FacePaint_01,BS_JaffaMale.BS_JM_Hair_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_08,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Petbe', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -627017216, NULL, '{}', NULL, NULL, true, NULL, NULL);
+-- Harset H11 (defect H-B8): this row shipped with NULL level, alignment,
+-- faction and name_id.
+--   level 42    -- INFERRED. No Petbe moniker carries a level band; mission
+--                  1245 Extreme Prejudice (the only mission that gives him a
+--                  combat role) is L42. Template 221 "Petbe (hostile)" uses
+--                  the same value so the two rows agree.
+--   alignment 0 -- every other template in the seed.
+--   faction 1   -- deliberately NOT 10. This is the shared-hub Petbe: he
+--                  carries mission 742's dialog binding (the game's only
+--                  `entity_interactions` row) and is the tag target of 1363
+--                  Prudence, whose spec test M-10 requires that tagging him
+--                  must not aggro. Faction cannot be changed at runtime, so
+--                  1245's ambush uses template 221 instead. NULL resolved to
+--                  0 at runtime already (`unwrap_or(0)`), so this is a
+--                  documentation fix, not a behavior change.
+--   name_id 7586 -- beyond the packet's stated three columns, flagged in
+--                  worknotes/H11.md. `onNameIdUpdate` is only sent when
+--                  `name_id` is Some and non-zero
+--                  (crates/services/src/mercury/aoi/create.rs:211-218), so
+--                  the hub Petbe currently renders with no display name at
+--                  all. 7586 is `DN_npc_mg_Petbe_Harset_Fac_fg` -> 'Petbe'.
+-- `ability_set_id` deliberately left NULL: an NPC that must never fight does
+-- not need an attack ability. The staff set is on template 221.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (163, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH100,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_FaceHair_01,BS_JaffaMale.BS_JM_FacePaint_01,BS_JaffaMale.BS_JM_Hair_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_08,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00}', 0, 0, NULL, 42, 0, 1, 7586, NULL, NULL, NULL, 'Petbe', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -627017216, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (24, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 7417, NULL, NULL, NULL, 'NID Guard', 'mob', NULL, NULL, NULL, NULL, 3, 'Bullet_Default', 2, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL);
 
@@ -432,10 +478,398 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (173, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 0, 0, NULL, NULL, NULL, NULL, 7720, NULL, NULL, NULL, 'Castle_CommsTerminal', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
 --
+-- Harset rebuild packet H11: entity templates for the Harset NPCs and props
+-- that the 2009 data declares but never gave a template row. Id block 200-299
+-- is reserved for Harset by docs/analysis/harset-rebuild/work-packets.md.
+--
+-- COLUMN LIST: the statements below add `respawn_secs`, which every
+-- pre-existing row's column list omits. That omission is defect H-B7
+-- (docs/analysis/harset-rebuild/audit.md): with NULL respawn on both the
+-- template and the spawn row, `mark_npc_dead` never stamps `respawn_at` and the
+-- zone depopulates permanently on first clear. Existing rows keep the old
+-- column list; only rows that need the new column carry it.
+--
+-- RESPAWN DEFAULT: 300 seconds on every mob template here, one documented
+-- value (D-H17). These are hub and story NPCs, not trash. Per-spawn
+-- `spawnlist.respawn_secs` wins -- `COALESCE(s.respawn_secs, t.respawn_secs)` in
+-- crates/services/src/cell/spawner/npcs.rs:149 -- so H13 can tune the plaza
+-- guards down without touching these rows. KNOWN LIMITATION: that COALESCE has
+-- no way to express 'this spawn never respawns', so a mission-scoped instance
+-- spawn of one of the hostile templates below will repopulate 300s after the
+-- player kills it. H03 owns `spawn_entity` and needs a per-spawn suppression
+-- (an explicit 0/sentinel, or a spawn-time override) before the instance beats
+-- in H23, H25, H33, H34, H43 and H45 ship.
+--
+-- LEVELS: where the original display-name moniker encodes a band
+-- (`DN_Mb_Harset_<who>_<rank>_<lo>-<hi>_Fac` in texts.sql) the midpoint is used
+-- and cited. Otherwise the value is INFERRED and the rule is named on the row.
+-- The mission `level` column is NOT the primary source: it reads 1 on every
+-- Human and Goa'uld Harset mission, which is a placeholder, not a design value.
+--
+-- FACTION: 10 means hostile and is load-bearing, not cosmetic. A player's
+-- single-target ability is rejected outright against any target whose faction
+-- is not 10 (cell/abilities/use_ability/handle.rs:223-237), and right-click on
+-- an alive faction-10 NPC is rerouted from dialog to auto-attack
+-- (cell/cell_methods/player/interaction/interact.rs:44-46). Nothing in the
+-- content executor can change an entity's faction at runtime. So an NPC that is
+-- talked to in one mission and killed in another needs TWO templates; see 216/222
+-- (Grogan), 217/223 (Dawson) and 163/221 (Petbe). Faction 10 alone does not make
+-- a mob attack on sight -- the AI tick admits an Idle NPC only when
+-- `aggression > 0` -- so the chain's `set_aggression` still starts every fight.
+--
+-- `loot_table_id` is NULL on every row (spec L-01: no invented loot).
+-- Vendor and trainer list columns are NULL on every row: GH2 owns them.
+--
+
+--
+-- Mobs (class 'mob'), templates 200-223.
+--
+-- Every row carries a weapon component matching its ability set. Ability set 4
+-- is ability 584 Staff Auto Attack, the ONLY ranged staff ability in the seed
+-- with a non-NULL `event_set_id` -- and `event_set_id` is what gates the whole
+-- Ability_Begin/Ability_End `onSequence` broadcast at
+-- cell/abilities/use_ability/handle.rs:524, so an ability without one deals
+-- damage with no animation at all. 594 Strike, 540 Staff Strike, 479 Staff
+-- Blast and 1768 Double Blast are all NULL there and were rejected for it.
+--
+
+-- Mala'c -- Rin'la ritual opponent, mission 1325 (packet H21).
+-- level 15: moniker 7590 `DN_Mb_Harset_Malac_Lt_14-16_Fac`, band 14-16,
+--   midpoint floored. The band is a range because the 2009 server rolled a
+--   level per spawn; `spawnlist` has no level column, so the midpoint is the
+--   collapse. H21 may retune -- level only moves max HP (950 here, so the
+--   30% health trigger needs 665 damage).
+-- faction 10 is MANDATORY, not a flavour choice: `useAbility` rejects a
+--   player single-target ability whenever `target.faction != HOSTILE_FACTION`
+--   (crates/services/src/cell/abilities/use_ability/handle.rs:223-237), and no
+--   executor arm can change faction at runtime (`ModifyProperty` has no arm,
+--   there is no `set_faction`). At faction 1 the duel's
+--   `entity_health_below Rinla_Malac:30` trigger could never fire.
+--   Consequence for H21: right-click on an alive faction-10 NPC is rerouted
+--   to auto-attack (interaction/interact.rs:44-46), so Mala'c's challenge
+--   dialog must be chain-driven (`add_dialog_set` / `display_dialog`), never
+--   right-click. Aggression stays 0 at spawn; the chain's `set_aggression`
+--   starts the fight.
+-- INFERRED: components cloned from template 159 (Praxis Jaffa Lieuternant);
+--   no art assignment for Mala'c survives.
+-- `is_stationary` is a spawnlist column, not a template column -- H21 sets it
+--   on the spawn row.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (200, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 15, 0, 10, 7590, NULL, NULL, NULL, 'Mala''c', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, 957, true, NULL, NULL, 300);
+
+-- Lo'rak -- Jaffa Requisitions Officer, bazaar (missions 1244, 1245, 1347).
+-- Talk-only in every mission that names him, so faction 1.
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED: components cloned from template 97 (Praxis Jaffa).
+-- INFERRED speaker_id NULL: no Lo'rak row in speakers.sql.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (201, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 50, 0, 1, 8249, NULL, NULL, NULL, 'Lo''rak', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Bra'hin -- Ra's former-Jaffa leader, kill target in missions 1371 and 1322.
+--   Neither mission talks to him first, so one faction-10 template is enough.
+-- INFERRED level 25: his own moniker 8356 carries no band; the rank-and-file
+--   Ra's Jaffa band (moniker 7587, 23-25) taken at the top for the leader.
+-- INFERRED: components cloned from template 143 (Ra's Officer).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (202, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Ra.AR_JM_RB1_RH100,AR_J_Ra.AR_JM_RG1_RB100,AR_J_Ra.AR_JM_RH1_RH101,AR_J_Ra.AR_JM_RL1_RS100,AR_J_Ra.AR_JM_RT1_RT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 25, 0, 10, 8356, NULL, NULL, NULL, 'Bra''hin', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Ra's Jaffa infiltrator -- instance-spawn kill wave for mission 1343 (H23).
+-- level 24: Harset moniker 7587 `DN_Mb_Harset_RaJaffa_Lt_23-25_Fac`, band
+--   23-25, midpoint.
+-- name_id 7455 ('Ra's Jaffa') rather than the Harset moniker 7587, because
+--   7587's `text` is EMPTY in the seed and would render a blank name over the
+--   head. Backfilling 7587 is an H99 follow-up.
+-- INFERRED: components cloned from template 144 (Ra's Jaffa).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (203, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Ra.AR_JM_RB1_RH100,AR_J_Ra.AR_JM_RG1_RB100,AR_J_Ra.AR_JM_RH1_RH100,AR_J_Ra.AR_JM_RL1_RS100,AR_J_Ra.AR_JM_RT1_RT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 24, 0, 10, 7455, NULL, NULL, NULL, 'Ra''s Jaffa Infiltrator', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Ra's Former Jaffa -- shared-hub Jaffa Zone talk NPC (missions 1326, 1371).
+-- faction 1: 1326 presents Lan'toc and 1371's arrest are dialog choices; the
+--   shared hub NPC is never attacked (README Architecture Guardrails).
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED: components cloned from template 99 (Ra Jaffa).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (204, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Ra.AR_JM_RB1_RH100,AR_J_Ra.AR_JM_RG1_RB100,AR_J_Ra.AR_JM_RH1_RH100,AR_J_Ra.AR_JM_RL1_RS100,AR_J_Ra.AR_JM_RT1_RT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 50, 0, 1, 7673, NULL, NULL, NULL, 'Ra''s Former Jaffa', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Suspicious Jaffa -- arrest dialog choice (missions 1322 step 3939, 1371).
+-- moniker 8357 `DN_npc_MG_Harset_SuspiciousJaffa_10Vendetta_fac`.
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED: components cloned from template 99 (Ra Jaffa).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (205, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Ra.AR_JM_RB1_RH100,AR_J_Ra.AR_JM_RG1_RB100,AR_J_Ra.AR_JM_RH1_RH100,AR_J_Ra.AR_JM_RL1_RS100,AR_J_Ra.AR_JM_RT1_RT100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 50, 0, 1, 8357, NULL, NULL, NULL, 'Suspicious Jaffa', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Angry Jaffa -- Storage Room 'soothe' social check (mission 1374, D-H12).
+-- moniker 8457 `DN_npc_MG_Harset_StorageRm_AngryJaffa_10SEcurityHoles_OPC`.
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED: components cloned from template 100 (Standard Jaffa).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (206, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Standard.AR_JM_SB1_SH100,AR_J_Standard.AR_JM_SG1_SG100,AR_J_Standard.AR_JM_SH1_SH100,AR_J_Standard.AR_JM_SL1_SS100,AR_J_Standard.AR_JM_ST1_ST100SS100SP100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 50, 0, 1, 8457, NULL, NULL, NULL, 'Angry Jaffa', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Jaffa Volunteer -- symbiote implant recipient (mission 1353 step 4713, H28).
+-- INFERRED name_id NULL: no moniker for this NPC exists anywhere in texts.sql.
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED: components cloned from template 100 (Standard Jaffa).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (207, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Standard.AR_JM_SB1_SH100,AR_J_Standard.AR_JM_SG1_SG100,AR_J_Standard.AR_JM_SH1_SH100,AR_J_Standard.AR_JM_SL1_SS100,AR_J_Standard.AR_JM_ST1_ST100SS100SP100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 50, 0, 1, NULL, NULL, NULL, NULL, 'Jaffa Volunteer', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Free Jaffa attacker -- Marketplace assault waves, mission 1348 (packet H25).
+-- INFERRED level 38: no moniker band exists for this mob; mission 1348 is L38
+--   in the DB, and the Jaffa chain's mission levels are real (unlike the Human
+--   and Goa'uld chains, where every row reads L1).
+-- INFERRED name_id 26723 ('Free Jaffa Warrior'): a Dakara moniker reused
+--   because Harset declares no Free Jaffa display name. Text is right, zone
+--   prefix is not.
+-- INFERRED: components cloned from template 100 (Standard Jaffa).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (208, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Standard.AR_JM_SB1_SH100,AR_J_Standard.AR_JM_SG1_SG100,AR_J_Standard.AR_JM_SH1_SH100,AR_J_Standard.AR_JM_SL1_SS100,AR_J_Standard.AR_JM_ST1_ST100SS100SP100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 38, 0, 10, 26723, NULL, NULL, NULL, 'Free Jaffa Attacker', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Anat's Royal Guard -- Command Center convince check (mission 1200, H40).
+-- level 32: moniker 7562 `DN_Mb_Harset_AnatsJaffa_Lt_31-34_Fac`, band 31-34,
+--   midpoint. Mission 1200 reads L1 in the DB, which is the placeholder value
+--   on every Human and Goa'uld Harset mission -- the moniker band is the
+--   evidence, not the mission row.
+-- faction 1: convinced by dialog, never fought.
+-- INFERRED: components cloned from template 159 (Praxis Jaffa Lieuternant).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (209, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH101,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_00,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 32, 0, 1, 7562, NULL, NULL, NULL, 'Anat''s Royal Guard', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Petbe, hostile clone -- the Storage-instance ambush in mission 1245
+--   (Extreme Prejudice, packet H45).
+-- SCOPE ADDITION beyond the packet's named roster, and the reason is a hard
+--   engine constraint: faction is fixed at spawn (no executor arm writes it),
+--   a faction-1 NPC cannot be damaged by a player at all, and a faction-10
+--   NPC cannot be right-clicked for dialog. Template 163 has to stay
+--   non-hostile -- it carries 742's dialog binding and 1363 Prudence, whose
+--   spec test M-10 says tagging Petbe must NOT aggro him. One template cannot
+--   be both, so 1245 needs this second row. Coordinator may veto; H45 is then
+--   blocked until a `set_faction` primitive exists.
+-- INFERRED level 42: no Petbe moniker band; mission 1245 is L42. Template 163
+--   is set to the same level by this packet so the two rows agree.
+-- Components are template 163's verbatim plus the staff weapon.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (221, NULL, 'BS_JaffaMale.BS_JaffaMale', '{AR_J_Praxis.AR_JM_PB1_PH100,AR_J_Praxis.AR_JM_PG1_PG100PB100,AR_J_Praxis.AR_JM_PH1_PH100,AR_J_Praxis.AR_JM_PL1_PL101,AR_J_Praxis.AR_JM_PT1_PT100PT101PC100PS100,BS_JaffaMale.BS_JM_Boots_00,BS_JaffaMale.BS_JM_FaceHair_01,BS_JaffaMale.BS_JM_FacePaint_01,BS_JaffaMale.BS_JM_Hair_00,BS_JaffaMale.BS_JM_Hands_00,BS_JaffaMale.BS_JM_Head_08,BS_JaffaMale.BS_JM_Legs_00,BS_JaffaMale.BS_JM_Torso_00,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 42, 0, 10, 7586, NULL, NULL, NULL, 'Petbe (hostile)', 'mob', NULL, NULL, NULL, NULL, 4, NULL, NULL, 0, 0, -627017216, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Haughty Goa'uld -- Market social check (mission 1374, D-H12).
+-- moniker 8461 `DN_MsMb_Harset_Market_HaughtyGoauld_OPC`.
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED: components cloned from template 46 (Lethander).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (210, NULL, 'BS_GoauldMale.BS_GoauldMale', '{AR_G_Praxis.AR_GM_PB1_PH100,AR_G_Praxis.AR_GM_PL1_PB100,AR_G_Praxis.AR_GM_PL1_PL101,AR_G_Praxis.AR_GM_PT1_PT101,AR_G_Praxis.AR_GM_PT1_PT106,BS_GoauldMale.BS_GM_Boots_00,BS_GoauldMale.BS_GM_Hands_00,BS_GoauldMale.BS_GM_Torso_00,WP-Goauld.WP_Ribbon_Elec_1A}', 0, 0, 570, 50, 0, 1, 8461, NULL, NULL, NULL, 'Haughty Goa''uld', 'mob', NULL, NULL, NULL, NULL, 5, NULL, NULL, 0, 0, -1772406528, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Ashrak assassin -- signal-source kill, mission 1240 step 4688 (packet H43).
+-- level 43: moniker 7751 `DN_Mb_Harset_Ashrak_Pvt_42-45_Fac`, band 42-45,
+--   midpoint.
+-- INFERRED: components cloned from template 158 (GoauldMale base); no Ashrak
+--   art assignment survives. The ribbon-device component matches ability set
+--   5; the seed's Ashrak-blade meshes would need a melee ability, and every
+--   melee staff/blade ability in the seed has a NULL `event_set_id`, which
+--   means no attack animation is ever broadcast.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (211, NULL, 'BS_GoauldMale.BS_GoauldMale', '{BS_GoauldMale.BS_GM_Boots_00,BS_GoauldMale.BS_GM_Hair_03,BS_GoauldMale.BS_GM_Hands_00,BS_GoauldMale.BS_GM_Head_00,BS_GoauldMale.BS_GM_Legs_00,BS_GoauldMale.BS_GM_Torso_00,WP-Goauld.WP_Ribbon_Elec_1A}', 0, 0, 570, 43, 0, 10, 7751, NULL, NULL, NULL, 'Ashrak Assassin', 'mob', NULL, NULL, NULL, NULL, 5, NULL, NULL, 0, 0, -1772406528, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Hansen -- OP-CORE, walks outward left of the gate (missions 1244, 1347,
+--   1361). Talk-only.
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED: components cloned from template 24 (NID Guard).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (212, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 50, 0, 1, 7572, NULL, NULL, NULL, 'Hansen', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, 950, true, NULL, NULL, 300);
+
+-- Jacobs -- OP-CORE, beside Hansen. Talk-only.
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED speaker_id NULL: no Jacobs row in speakers.sql.
+-- INFERRED: components cloned from template 24 (NID Guard).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (213, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 50, 0, 1, 7575, NULL, NULL, NULL, 'Jacobs', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Blackstock -- OP-CORE security officer (missions 1363, 1372, 1374).
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED: components cloned from template 24 (NID Guard).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (214, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 50, 0, 1, 7566, NULL, NULL, NULL, 'Blackstock', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, 948, true, NULL, NULL, 300);
+
+-- Opheltes -- slave trader, Command Center (mission 1351 Counter
+--   Intelligence).
+-- name_id 7068 (`DN_NPC_MG_Opheltes_Lucia_SlaveTrader`, 'Opheltes') rather
+--   than the Harset moniker 7585, whose `text` is EMPTY in the seed. Same
+--   character, and a blank name over the head is worse than a foreign prefix.
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED: components cloned from template 146 (civilian clothes).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (215, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Clothing00.AR_HM_WinterPants00,AR_H_Clothing00.AR_HM_WinterShirt00,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00,WP-Human.WP_SMG_1A}', 0, 0, 570, 50, 0, 1, 7068, NULL, NULL, NULL, 'Opheltes', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, 399, true, NULL, NULL, 300);
+
+-- Lance Corporal Grogan, talk row -- mission 1580 step 4700 'Approach Lance
+--   Corporal Grogan in Storage'. faction 1 so right-click reaches dialog.
+--   Step 4702 kills him; that beat uses template 222 (see the faction note
+--   there).
+-- level 36: moniker 25979 `Mb_Harset_Grogan_Pvt_35-37_Fac_NAME`, band 35-37,
+--   midpoint.
+-- INFERRED speaker_id NULL: no Grogan row in speakers.sql.
+-- INFERRED: components cloned from template 24 (NID Guard).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (216, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 36, 0, 1, 25979, NULL, NULL, NULL, 'Lance Corporal Grogan', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Lance Corporal Grogan, hostile clone -- mission 1580 step 4702 'Eliminate
+--   Grogan and the NID Operative he was smuggling' (packet H34).
+-- SCOPE ADDITION, same engine constraint as template 221: 1580 talks to Grogan
+--   at step 4700 and kills him at 4702, and no runtime primitive can move an
+--   entity between factions. Same name_id as 216 so the player sees one
+--   character; only `template_name` differs (it is UNIQUE).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (222, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 36, 0, 10, 25979, NULL, NULL, NULL, 'Lance Corporal Grogan (hostile)', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Dawson, talk row -- mission 741 steps 2493/2495 ('put Dawson at ease',
+--   'speak to Dawson'). faction 1 so right-click reaches dialog.
+-- level 11: moniker 7570 `DN_Mb_Harset_Dawson_Pvt_10-13_Fac`, band 10-13,
+--   midpoint.
+-- INFERRED: components cloned from template 24 (NID Guard).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (217, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 11, 0, 1, 7570, NULL, NULL, NULL, 'Dawson', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, 1139, true, NULL, NULL, 300);
+
+-- Dawson, hostile clone -- mission 1365 step 4052 'kill Dawson and extract
+--   symbiote' (packet H33), and the hostility flip legacy effect 3472 ('Use
+--   on Dawson: detects Goa'uld, prompts hostility switch') describes.
+-- SCOPE ADDITION, same engine constraint as templates 221 and 222.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (223, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 11, 0, 10, 7570, NULL, NULL, NULL, 'Dawson (hostile)', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, 1139, true, NULL, NULL, 300);
+
+-- NID Operative -- Market and Storage kill target (missions 1375, 1580).
+--   Kill-only in both, so one faction-10 row is enough.
+-- level 31: Harset moniker 7582 `DN_Mb_Harset_NIDOperative_Pvt_30-33_Fac`,
+--   band 30-33, midpoint. name_id uses 7581 ('NID Operative', the Sokar's-zone
+--   row) because 7582's `text` is EMPTY in the seed.
+-- INFERRED: components cloned from template 146 (NID Guard - Castle outside).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (218, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Clothing00.AR_HM_WinterPants00,AR_H_Clothing00.AR_HM_WinterShirt00,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00,WP-Human.WP_SMG_1A}', 0, 0, 570, 31, 0, 10, 7581, NULL, NULL, NULL, 'NID Operative', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Storage Lo'taur -- the bank NPC, moniker 29463 `DN_npc_Harset_Banker`
+--   ('Storage Lotaur').
+-- Seeded as an inert talk NPC. No bank deposit/withdraw handlers exist
+--   server-side (audit gap 15) and the vendor/trainer list columns belong to
+--   GH2, so buy/sell/repair/recharge and trainer_ability_list_id stay NULL.
+-- Ability set 1 (pistol) rather than 3 (SMG) only so the ability matches the
+--   weapon component she carries; she is never expected to fight.
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED: components cloned from template 153 (HumanFemale base).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (219, NULL, 'BS_HumanFemale.BS_HumanFemale', '{BS_HumanFemale.BS_HF_Boots_00,BS_HumanFemale.BS_HF_Hair_01,BS_HumanFemale.BS_HF_Hands_00,BS_HumanFemale.BS_HF_Head_00,BS_HumanFemale.BS_HF_Legs_00,BS_HumanFemale.BS_HF_Torso_00,WP-Human.WP_Pistol_1A}', 0, 0, 570, 50, 0, 1, 29463, NULL, NULL, NULL, 'Storage Lo''taur', 'mob', NULL, NULL, NULL, NULL, 1, NULL, NULL, 0, 0, -52773120, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+-- Lethander's Contact -- the Market scripted-grant source for the three
+--   Straegis Themes in mission 1246 (packet H46). The audit records that no
+--   Straegis encounter exists in-zone, so the themes come from a contact NPC.
+-- INFERRED name_id NULL: no moniker exists for this NPC.
+-- INFERRED level 50: no level band in the moniker. 50 is what every named
+--   Harset NPC template already carries (42 Ba'al, 43 Anat, 46 Lethander,
+--   48 CaptCoppleman, 53 Nerus, 54 Moh'Katan, plus 159/160 the Praxis
+--   guards). It is a house convention, not a semantic rank -- `level` only
+--   drives max HP (200 + 50*level), kill XP (10*level) and onLevelUpdate;
+--   nothing in AI, threat, range or leash reads it.
+-- INFERRED: components cloned from template 146 (civilian clothes).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (220, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Clothing00.AR_HM_WinterPants00,AR_H_Clothing00.AR_HM_WinterShirt00,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00,WP-Human.WP_SMG_1A}', 0, 0, 570, 50, 0, 1, NULL, NULL, NULL, NULL, 'Lethander''s Contact', 'mob', NULL, NULL, NULL, NULL, 3, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL, 300);
+
+--
+-- Props (class 'being'), templates 240-248.
+--
+-- `flags = 4` is ENTITYFLAG_DoNotDrop (entities/defs/enumerations.xml,
+-- EEntityFlags): a world object never drops loot. Matches every other
+-- interactable prop in the seed (3, 8, 18, 19, 37, 38, 39, 40).
+--
+-- `interaction_type = 0` on every prop: the mission chain OR's in
+-- INT_MissionWorldObject (or the minigame bit) when its step becomes active and
+-- clears it afterwards, per docs/content/interaction-flags.md. The bit is off at
+-- spawn.
+--
+-- `static_mesh` is MANDATORY here and INFERRED on every row. With NULL
+-- `components`, mercury/aoi/create.rs::append_appearance takes the
+-- `onStaticMeshNameUpdate` branch; with neither components nor mesh it logs
+-- `aoi.cascade_appearance_missing` and the entity is permanently invisible to
+-- every witness. Each value below is a mesh string an existing template already
+-- uses, so it is known to resolve in the cooked data -- but none of them is the
+-- mesh the 2009 designers picked, because no actor assignment for these props
+-- survives in the repo (audit.md, Props_Interactables). M0 replaces them if the
+-- cooked maps yield the real ones.
+--
+
+-- Surveillance anchor -- the six Scarab plant sites of mission 1243 (H42).
+-- moniker 7761 `DN_Ob_t_human_Harset_cameralocation_Fg` ('Camera location').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (240, 'Ga-Props.GA-PuzzleStation00', 'GLB_Components.WorldObject_Small', NULL, 4, 0, NULL, 1, 0, 1, 7761, NULL, NULL, NULL, 'Harset Camera Location', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- The three crates Devlin's device is used on, mission 1377 step 4100 (H35).
+-- moniker 8473 `Ob_It_Human_Harset_ReplitechCrates_12Replitech_OPC_NAME`.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (241, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 4, 0, NULL, 1, 0, 1, 8473, NULL, NULL, NULL, 'Replitech Crate', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- Searchable container -- mission 1580 step 4701 ('Search the containers in
+--   storage') and mission 1352's 'Empty Crate' body-hiding spot.
+-- moniker 7701 `DN_Ob_It_Human_Harset_StorageCrate_Fac` ('Storage Crate').
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (242, 'EM_Earth_Military.EM-Crate_Wooden01', 'GLB_Components.WorldObject_Small', NULL, 4, 0, NULL, 1, 0, 1, 7701, NULL, NULL, NULL, 'Harset Storage Crate', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- Shield tower examine anchor x3 -- mission 1240 objectives 4176-4178.
+-- INFERRED name_id NULL: the towers survive only as objective text (monikers
+--   19103-19105, 'Examine Shield Tower 1/2/3'), never as a display name.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (243, 'Ga-Props.GA-PuzzleStation00', 'GLB_Components.WorldObject_Small', NULL, 4, 0, NULL, 1, 0, 1, NULL, NULL, NULL, NULL, 'Harset Shield Tower', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- Search anchor for mission 1244 step 3619, whose original objective text is
+--   literally 'Placeholder minigame.' D-H13 routes it to the Cellblock chain
+--   1032 interact-grant-destroy pattern instead.
+-- INFERRED name_id NULL: only the objective text exists (moniker 14812).
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (244, 'Em-Props.EM-ShelfBox13', 'GLB_Components.WorldObject_Small', NULL, 4, 0, NULL, 1, 0, 1, NULL, NULL, NULL, NULL, 'Petbe''s Quarters Search Object', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- Symbiote source for missions 741 step 2491, 1353 step 4011 and 1365.
+-- moniker 7597 `DN_Ob_It_Goa'uld_Harset_SymbioteTank_Fac_fg`.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (245, 'Ga-Props.GA-PuzzleStation00', 'GLB_Components.WorldObject_Small', NULL, 4, 0, NULL, 1, 0, 1, 7597, NULL, NULL, NULL, 'Anat''s Symbiote Tank', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- Ra's beacon, dismantled in mission 1241 objective 5538 (packet H43).
+-- moniker 7603 `DN_Ob_ItG_Jaffa_Harset_Beacon_Fac`.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (246, 'GA-Props.GA-Naq_Bomb00', 'GLB_Components.WorldObject_Small', NULL, 4, 0, NULL, 1, 0, 1, 7603, NULL, NULL, NULL, 'Strange Beacon Technology', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- Livewire hack target, mission 1377 step 4099 (packet H35).
+-- moniker 26116 `MsIt_Fn_Harset_12Replitech_DevlinsDevice_NAME`.
+-- interaction_type stays 0: INT_MinigameLivewire (256) is OR'd in by the
+--   mission chain and cleared on the win, per the Cellblock 1060/1061
+--   lifecycle in docs/content/interaction-flags.md.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (247, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_WallTerminal', NULL, 4, 0, NULL, 1, 0, 1, 26116, NULL, NULL, NULL, 'Devlin''s Device', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+-- The four monitoring-device install anchors of mission 1362 step 4044 and
+--   the single removal anchor of mission 1410 step 4221.
+-- moniker 2695 `MsIt_Tk_Harset_02Security_MonitoringDevice_OCR_NAME`.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (248, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_WallTerminal', NULL, 4, 0, NULL, 1, 0, 1, 2695, NULL, NULL, NULL, 'Harset Monitoring Device Anchor', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL, NULL);
+
+--
 -- TOC entry 3316 (class 0 OID 0)
 -- Dependencies: 210
 -- Name: entity_templates_template_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('entity_templates_template_id_seq', 173, true);
+SELECT pg_catalog.setval('entity_templates_template_id_seq', 248, true);
 

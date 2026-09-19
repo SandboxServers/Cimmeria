@@ -182,7 +182,26 @@ pub(super) async fn run_cell_loop(
                 // entity filter inside the tick short-circuits when
                 // nobody has any active effects — cheap on idle
                 // worlds.
-                super::super::effects::effect_pulse_tick(tx, &mut space_mgr).await;
+                super::super::effects::effect_pulse_tick(
+                    &engine,
+                    tx,
+                    &mut space_mgr,
+                )
+                .await;
+
+                // Safety drain for the `entity_health_below` queue. Every
+                // damage path drains its own samples at the seam (see
+                // `content::fire_pending_health_below`); this bounds how
+                // long a sample from a path that forgot to — or from a
+                // content action that dealt damage from inside a chain —
+                // can sit unfired. Cheap: an empty queue returns before
+                // touching the engine.
+                super::super::content::fire_pending_health_below(
+                    &engine,
+                    tx,
+                    &mut space_mgr,
+                )
+                .await;
                 }
                 .instrument(tick_span)
                 .await;

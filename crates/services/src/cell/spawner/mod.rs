@@ -11,9 +11,13 @@
 //! - `npcs` — `SpawnRecord`, class-id mapping, DB-driven NPC population.
 //! - `respawners` — defeat-window respawn locations.
 //! - `stargates` — gate destination cache.
+//! - `worlds` — world name → `world_id` map (the DB-only half of `spaces.xml`).
 //! - `regions` — generic region (AreaSet) loading.
 //! - `abilities` — ability/effect defs + event-set sequence map.
 //! - `loot` — loot tables + item container map + weapon defs.
+//! - `templates` — prototype `SpawnRecord` per `entity_templates` row, for
+//!   the content engine's `spawn_entity` action (no `spawnlist` row exists
+//!   for a mission-scoped spawn).
 //!
 //! Reference: `python/base/SGWSpawnSet.py`, `python/cell/SGWMob.py`,
 //!            `python/cell/SGWSpawnableEntity.py`
@@ -26,6 +30,8 @@ mod npcs;
 mod regions;
 mod respawners;
 mod stargates;
+mod templates;
+mod worlds;
 
 #[cfg(test)]
 mod tests;
@@ -52,3 +58,11 @@ pub(crate) use npcs::load_patrol_points;
 pub use regions::{load_regions_from_db, RegionLoadData};
 pub use respawners::{load_respawners, RespawnerDef};
 pub use stargates::{load_stargates, StargateEntry};
+pub use templates::load_spawn_templates;
+// The `entity_templates` SELECT + row mapper, shared between the cell's
+// startup template cache and the base-side GM spawn handler so a schema
+// change can only be missed in one place (PR #662 review, finding 3).
+// `cargo fmt` sorts these re-exports, so keep this comment glued to the
+// line below rather than to the group.
+pub(crate) use templates::{build_prototype, entity_template_select};
+pub use worlds::load_world_ids;

@@ -5,6 +5,7 @@
 //! world into spatial cells and simulates entity interactions within them.
 
 pub mod abilities;
+pub mod arrival;
 pub mod cell_methods;
 pub mod chat;
 pub mod client_methods;
@@ -23,6 +24,9 @@ pub mod missions;
 pub(crate) mod player_journal;
 pub(crate) mod playtest_friction;
 pub(crate) mod playtest_friction_watch;
+/// Crate-internal: the shared respawner search behind both
+/// [`arrival::resolve_arrival`] and `SpaceManager::resolve_recovery_position`.
+pub(crate) mod respawner_fallback;
 pub mod ring_transport;
 mod service;
 pub mod space_manager;

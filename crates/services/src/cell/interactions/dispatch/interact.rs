@@ -143,6 +143,15 @@ pub async fn handle_interact(
         }
     }
 
+    // DHD — a static prop flag (`INT_DHD` on `entity_templates.interaction_type`),
+    // so it belongs with the static interaction types below rather than with
+    // the per-player dialog sets above; content that binds a dialog set to a
+    // DHD prop still wins. Mirrors `deprecated/python/cell/interactions/DHD.py`,
+    // which is an `Interaction` subclass on the prop itself.
+    if super::super::dhd::try_open_dhd(entity_id, target_entity_id, tx, space_mgr).await {
+        return None;
+    }
+
     // Dispatch based on static interaction type
     match interaction_type {
         Some(NpcInteractionType::Dialog { dialog_id }) => {
