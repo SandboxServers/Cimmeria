@@ -44,6 +44,10 @@ const HARSET: i32 = 57;
 /// returns, since it joins through `resources.worlds`.
 const HARSET_WORLD_NAME: &str = "Harset";
 
+/// The two shared-hub worlds D-H03 forbids hostile NPCs in: 57 `Harset` and 68
+/// `Harset_CmdCenter`.
+const SHARED_HUB_WORLDS: &[i32] = &[57, 68];
+
 /// Spawn-id block the placement ledger reserves for this pass.
 const SPAWN_BLOCK: (i32, i32) = (300, 399);
 
@@ -238,33 +242,60 @@ async fn world57_placement_rows_are_seeded_with_their_tags_and_templates() {
     }
 }
 
-/// Nothing this pass places in the shared hub is hostile (D-H03).
+/// No spawnlist row in either shared-hub world stands a hostile template
+/// (D-H03).
 ///
-/// Reads the faction off the template rather than trusting the H11 guards,
-/// because the failure this catches is a *placement* mistake — reaching for the
-/// hostile twin of a talk-to NPC (templates 221/222/223 exist precisely because
-/// `faction` is immutable at runtime) and standing it in the plaza.
+/// Deliberately zone-wide and deliberately joined through the DB rather than
+/// read off [`PLACED`]. The mistake this exists to catch is a *placement*
+/// mistake — reaching for the hostile twin of a talk-to NPC (templates
+/// 221/222/223 exist precisely because `faction` is immutable at runtime) and
+/// standing it in the shared hub. A version of this guard that looked up the
+/// faction of the template id in [`PLACED`] instead of the template id in the
+/// row would pass while the seed stood Grogan's hostile twin in the plaza,
+/// which is exactly what a revert check of an earlier draft showed it doing.
+///
+/// `faction` is nullable and the DHD row (spawn 37, template 1) has it NULL, so
+/// NULL is treated as "not hostile" rather than as a failure — the combat path
+/// reads a missing faction as non-hostile too.
 #[tokio::test]
-async fn no_world57_placement_is_hostile() {
+async fn no_shared_hub_spawn_stands_a_hostile_template() {
     let pool = require_db_or_skip!();
 
-    for (spawn_id, tag, template_id, _) in PLACED {
-        let faction: i32 = sqlx::query_scalar(
-            "SELECT faction FROM resources.entity_templates WHERE template_id = $1",
-        )
-        .bind(template_id)
-        .fetch_one(&pool)
-        .await
-        .expect("the template a placed row points at must exist");
+    let offenders: Vec<(i32, i32, Option<String>, String)> = sqlx::query_as(
+        "SELECT s.spawn_id, s.template_id, s.tag, t.template_name \
+         FROM resources.spawnlist s \
+         JOIN resources.entity_templates t ON t.template_id = s.template_id \
+         WHERE s.world_id = ANY($1) AND t.faction = $2 \
+         ORDER BY s.spawn_id",
+    )
+    .bind(SHARED_HUB_WORLDS)
+    .bind(i32::from(HOSTILE_FACTION))
+    .fetch_all(&pool)
+    .await
+    .expect("query must succeed");
 
-        assert_ne!(
-            faction,
-            i32::from(HOSTILE_FACTION),
-            "spawn {spawn_id} ({tag}) stands template {template_id} in the shared hub with \
-             faction {HOSTILE_FACTION} — D-H03 forbids hostiles in worlds 57 and 68, and \
-             faction cannot be changed at runtime"
-        );
-    }
+    assert!(
+        offenders.is_empty(),
+        "spawn rows in the shared hub worlds {SHARED_HUB_WORLDS:?} stand templates with \
+         faction {HOSTILE_FACTION}: {offenders:?}. D-H03 forbids hostiles in worlds 57 and \
+         68; `faction` cannot be changed at runtime, so the fix is to point the row at the \
+         non-hostile twin, not to flip a flag."
+    );
+
+    // Control: the hostile twins exist, so the query above is not silently
+    // matching nothing because `HOSTILE_FACTION` drifted away from the seed.
+    let hostile_templates: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM resources.entity_templates WHERE faction = $1")
+            .bind(i32::from(HOSTILE_FACTION))
+            .fetch_one(&pool)
+            .await
+            .expect("query must succeed");
+    assert!(
+        hostile_templates > 0,
+        "no template in the seed has faction {HOSTILE_FACTION} — either the constant no \
+         longer matches the data or the templates did not load, and the assertion above \
+         would pass for the wrong reason"
+    );
 }
 
 /// Every `interact_tag` key a merged world-57 chain dispatches on has a
@@ -485,11 +516,16 @@ async fn dotted_harset_regions_all_belong_to_world_57() {
     .await
     .expect("query must succeed");
 
+    // Not a count assertion: presence is
+    // `world57_named_regions_load_and_enclose_their_landmarks`'s job, and a
+    // `>= REGIONS.len()` check here passes even with one of them deleted,
+    // because `Harset.Stargate` (1001) and `Harset.CommandCenterTransition`
+    // (2078) make up the difference. This only refuses to pass on an empty
+    // result, which would mean the point-set seed did not load.
     assert!(
-        rows.len() >= REGIONS.len(),
-        "expected at least the {} regions this pass adds, found {}",
-        REGIONS.len(),
-        rows.len(),
+        !rows.is_empty(),
+        "no `Harset.`-prefixed point set loaded at all — the seed did not load and the \
+         per-row checks below would pass vacuously"
     );
 
     for (set_id, name, kind, world_id) in rows {
