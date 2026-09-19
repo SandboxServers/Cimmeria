@@ -456,3 +456,70 @@ fn lf_line_endings_drop_faces() {
         lf.npolys
     );
 }
+
+/// The cell counts Recast receives at DEFAULT parameters are part of the
+/// byte-parity contract with `NavBuilder_d.exe`, the binary that built
+/// every shipped 2013 mesh.
+///
+/// They are derived from float divisions, and the width of that
+/// arithmetic is observable: `12.0f / 0.3f` rounds to exactly `40.0f`,
+/// while the same division in `double` is `39.9999984` and truncates to
+/// 39. Widening it (as a well-meant overflow hardening once did) changes
+/// `maxEdgeLen`, and with it every navmesh built at defaults — silently,
+/// since both meshes are valid. NavBuilder logs the derived values so
+/// this can be pinned without diffing `.nav` files.
+///
+/// Needs a NavBuilder built from this tree (the log line is new); gated
+/// the same way as the parameter-validation test above.
+#[test]
+fn default_parameters_derive_the_same_cell_counts_as_the_reference_builder() {
+    let exe = navbuilder_path();
+    if !exe.exists() || std::env::var_os("CIMMERIA_NAVBUILDER_FROM_TREE").is_none() {
+        eprintln!(
+            "SKIPPED default_parameters_derive_the_same_cell_counts_as_the_reference_builder —              needs a NavBuilder built from this tree: rebuild with tools/build-navbuilder.ps1              and set CIMMERIA_NAVBUILDER_FROM_TREE=1."
+        );
+        return;
+    }
+    let dir = unique_tempdir("cimmeria-navderived");
+    let chunk_dir = dir.join("chunks");
+    std::fs::create_dir_all(&chunk_dir).unwrap();
+    write_obj(
+        &chunk_dir.join(format!("{CHUNK_ID:08x}o.obj")),
+        &fixture_soup(raw_ue3),
+        true,
+    );
+    let output = Command::new(&exe)
+        .arg("chunked")
+        .arg(&chunk_dir)
+        .arg(dir.join("out.nav"))
+        .arg("nav")
+        .output()
+        .expect("spawn NavBuilder");
+    let log = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let derived = log
+        .lines()
+        .find(|l| l.contains("Derived cells:"))
+        .unwrap_or_else(|| {
+            panic!(
+                "NavBuilder logged no `Derived cells:` line:
+{log}"
+            )
+        });
+    for expected in [
+        "walkableHeight=3",
+        "walkableClimb=4",
+        "walkableRadius=2",
+        "maxEdgeLen=40",
+        "minRegionArea=64",
+        "mergeRegionArea=400",
+    ] {
+        assert!(
+            derived.contains(expected),
+            "expected `{expected}` at default parameters; got: {derived}"
+        );
+    }
+}

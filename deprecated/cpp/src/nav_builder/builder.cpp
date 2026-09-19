@@ -140,10 +140,17 @@ public:
 		// still sends `agentRadius / cs` past INT_MAX; `minRegionSize`
 		// squared overflows above ~46341. navbuilderToInt throws, which
 		// main turns into a usage exit.
-		config.walkableHeight = navbuilderToInt("walkableHeight", ceil((double)agentHeight / config.ch));
-		config.walkableClimb = navbuilderToInt("walkableClimb", floor((double)agentClimb / config.ch));
-		config.walkableRadius = navbuilderToInt("walkableRadius", ceil((double)agentRadius / config.cs));
-		config.maxEdgeLen = navbuilderToInt("maxEdgeLen", (double)params.maxEdgeLen / config.cs);
+		//
+		// The quotients stay in FLOAT, as the original builder computed
+		// them; only the range check widens to double. That is not
+		// pedantry: 12.0f / 0.3f rounds to exactly 40.0f, while the same
+		// division in double is 39.9999984 and truncates to 39 -- a
+		// different maxEdgeLen, and therefore a different navmesh at
+		// DEFAULT parameters, breaking byte-parity with NavBuilder_d.exe.
+		config.walkableHeight = navbuilderToInt("walkableHeight", (double)ceilf(agentHeight / config.ch));
+		config.walkableClimb = navbuilderToInt("walkableClimb", (double)floorf(agentClimb / config.ch));
+		config.walkableRadius = navbuilderToInt("walkableRadius", (double)ceilf(agentRadius / config.cs));
+		config.maxEdgeLen = navbuilderToInt("maxEdgeLen", (double)(params.maxEdgeLen / config.cs));
 		config.maxSimplificationError = params.maxSimplificationError;
 		config.minRegionArea = navbuilderToInt("minRegionArea",
 			(double)params.minRegionSize * (double)params.minRegionSize);
@@ -152,6 +159,14 @@ public:
 		config.maxVertsPerPoly = params.maxVertsPerPoly;
 		config.detailSampleDist = params.detailSampleDist < 0.9f ? 0.0f : config.cs * params.detailSampleDist;
 		config.detailSampleMaxError = config.ch * params.detailSampleMaxError;
+
+		// The cell counts Recast actually receives. Logged because they
+		// are where a float-vs-double slip shows up (maxEdgeLen 40 vs
+		// 39 at defaults) long before anyone diffs two .nav files;
+		// tests/navbuilder_axis_roundtrip.rs pins the default line.
+		INFO("Derived cells: walkableHeight=%d walkableClimb=%d walkableRadius=%d maxEdgeLen=%d minRegionArea=%d mergeRegionArea=%d",
+			config.walkableHeight, config.walkableClimb, config.walkableRadius,
+			config.maxEdgeLen, config.minRegionArea, config.mergeRegionArea);
 
 		for (unsigned int i = 0; i < 3; i++)
 		{
