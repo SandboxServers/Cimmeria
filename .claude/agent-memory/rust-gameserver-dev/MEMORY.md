@@ -142,6 +142,7 @@
 
 ## Navmesh / containment
 
+- [harset-nav-does-not-cover-upper-quarters.md](harset-nav-does-not-cover-upper-quarters.md) - harset.nav covers only the plaza (component 187); the Jaffa Zone, OP-CORE, towers and palace terrace have NO mesh at their real floor, so "is_point_valid on every spawn" cannot pass there.
 - [navmesh-containment-modes.md](navmesh-containment-modes.md) - **read before any code that rejects a position/arrival/ring trip for being off-mesh.** Per-world `navmesh_mode` names (`enforces_navmesh_containment`, `load_world_rows`, `stamp_world_rows` - the old `*_world_ids` names are gone); the shared `TEST_SPACES_XML` fixture pins space counts and ids so adding a world breaks 4 tests; `get_nearest_point` returns its input on a miss; harset.nav's two floors and the Z -200..-228 hole.
 
 ## AoI / entity lifecycle
