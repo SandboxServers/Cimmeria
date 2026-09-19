@@ -1,6 +1,7 @@
 //! `BaseToCellMsg` — messages sent from BaseApp to CellApp.
 
 use super::data::SavedMission;
+use super::lab::{LabQuery, LabQueryResult};
 
 /// Result of a [`BaseToCellMsg::LabConsoleExec`]: on success, the GM-feedback
 /// lines the command produced (decoded from the single-recipient
@@ -280,6 +281,22 @@ pub enum BaseToCellMsg {
         entity_id: u32,
         line: String,
         reply_tx: tokio::sync::oneshot::Sender<LabConsoleResult>,
+    },
+
+    /// Read-only live-state snapshot for the live-research-lab MCP endpoint
+    /// (issue #688, phase 5). Answered *between ticks* by the cell loop reading
+    /// its owned `SpaceManager` — the same request/reply shape as
+    /// [`Self::CreateEntity`] and [`Self::LabConsoleExec`].
+    ///
+    /// **Read-only invariant.** The handler
+    /// (`cell::service::base_messages::lab_query`) takes `&SpaceManager` and
+    /// only copies out primitives into a [`LabQueryResult`]; it must never
+    /// mutate simulation state. Result sizes are bounded
+    /// ([`crate::cell::messages::LAB_ENTITY_QUERY_CAP`] entities per query) so a
+    /// snapshot can't stall the tick.
+    LabQuery {
+        query: LabQuery,
+        reply_tx: tokio::sync::oneshot::Sender<LabQueryResult>,
     },
 
     /// Minigame result callback (forwarded from BaseApp after minigame server reports).

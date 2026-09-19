@@ -22,6 +22,7 @@ mod client_move;
 mod deferred_content_actions;
 mod entities;
 mod gate_dial_state;
+mod lab_snapshots;
 mod lifecycle;
 mod queries;
 mod spatial;
