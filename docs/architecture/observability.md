@@ -213,6 +213,7 @@ to crate-rename churn) and **named for the question they answer**.
 | `cover.detection` | DEBUG | `cell::service::ticks::cover::log_cover_edge` | One row per player cover-set proximity edge (`edge = entered \| left`): position, `crouched`, `nodes_in_set_nearby`, `nearest_node_id` / `nearest_node_dist` / node position, `proximity_radius`. Cover detection is pure proximity and never consults crouch |
 | `mission.step_context` | DEBUG | `cell::missions::progression::advance_step` | State that is **already true** when a mission step activates: `regions_inside`, `cover_sets`, `crouched`, `in_combat`, position. Region and cover triggers are edge events, so anything listed here will not re-fire for the new step |
 | `movement.navmesh` | WARN | `cell::space_manager::lifecycle` | Space created with no `.nav` file (`reason = "navmesh_missing"`) — every navmesh consumer fails open, so NPCs there path in straight lines through geometry |
+| `movement.navmesh` | DEBUG | `cell::space_manager::spatial::line_of_sight` | `reason = "los_unknown_off_mesh"`: a line-of-sight query had an endpoint outside navmesh coverage (`a_on_mesh` / `b_on_mesh`), so the verdict is `Unknown` and is treated as clear. Frequent rows for one NPC id mean its spawn sits in a navmesh hole (9 of the 13 stationary Harset mobs against `harset.nav`) |
 | `navmesh.load` | ERROR | `entity::navigation::check_count` | Hostile `.nav` header rejected — space loads navmesh-less |
 
 #### Saved views for reading a playtest

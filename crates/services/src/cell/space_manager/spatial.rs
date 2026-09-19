@@ -48,8 +48,8 @@ impl SpaceManager {
         let los = navmesh.line_of_sight(&a.position, &b.position);
         if los == LineOfSight::Unknown {
             tracing::debug!(
-                target: "navmesh",
-                event = "los_unknown_off_mesh",
+                target: "movement.navmesh",
+                reason = "los_unknown_off_mesh",
                 entity_a,
                 entity_b,
                 a_on_mesh = navmesh.is_point_valid(&a.position),
