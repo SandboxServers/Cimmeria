@@ -122,7 +122,7 @@ Test with a Jaffa character and a Human character, relogging at each step:
 |---|---|
 | Cellblock | [castle-cellblock-rebuild/handoffs/session-resume.md](castle-cellblock-rebuild/handoffs/session-resume.md) |
 | Castle | [castle-rebuild/handoffs/session-resume.md](castle-rebuild/handoffs/session-resume.md) |
-| Harset | [harset-rebuild/handoffs/session-1-resume.md](harset-rebuild/handoffs/session-1-resume.md) |
+| Harset | [harset-rebuild/handoffs/session-3-resume.md](harset-rebuild/handoffs/session-3-resume.md) (newest; sessions 1 and 2 sit beside it) |
 
 Each coordinator was asked to refresh its handoff before it runs out of budget. Treat this guide as a snapshot: if a PR merged after 2026-09-18, the handoff is more current.
 
@@ -209,6 +209,17 @@ Provisional (reconstructed, MEDIUM confidence) coordinates: the four CA00 respaw
 | C5.2 | The five ring pads (regions 4-8) | Read the HUD coordinate at the centre of each | A point on the navmesh for each | Which pad is off-mesh |
 | C5.3 | Both Command Center transitions | Read a coordinate on the far side of each. For the return door (6007) pick a point about 8 units clear of point set 2078 | Two on-mesh points | Overlap or ping-pong when you walk through |
 | C5.4 | Each story NPC and vendor prop | `.spawn <template>` (templates 200-223 are mobs, 240-248 props), place it, then `.savespawn` | The NPC appears where placed | Which template failed or misplaced |
+| C5.4a | Every NPC you place | Turn it to face the way a player will approach before `.savespawn` (`.lookat`, or place it while you face that way) | The saved row has a real `heading`, not 0 | Castle shipped every reconstructed NPC facing +Z into a wall; a heading of exactly 0 on a placed NPC is almost always that mistake |
+| C5.4b | Every pin and every placed NPC | Type `.bug pin <what it is>` while standing on the spot (for an NPC, while standing next to it) | The server records your position, `on_navmesh`, `regions_inside`, and for each nearby entity its position, `yaw_byte` and `on_navmesh` | This replaces reading numbers off the HUD: a session pulls the pins from telemetry (`playtest.bookmark`, note starts with `pin`). `on_navmesh=false` on a spot you can plainly stand on is worth reporting; `harset.nav` has holes |
+| C5.4c | Every spot | Walk to it. Do not fly, `ghost` or `.gotoxyz` onto it | You got there on foot through open doors | A spot you cannot walk to is not a valid pin. Castle's Romney was placed from map data into a sealed, unfinished wing that only noclip could reach |
 | C5.5 | When done | Run `.seedconfirm` | It emits the seed SQL and never writes live rows | Hand the output to a session to commit. It is the only deliverable of M0 |
 
 After M0 is committed, the follow-up work (still gated on this) is: respawner rows 20/22/23, gate 3's `arrival_*` values, enabling chain 6007, and the H12/H14/H15 population and region packets. None of the Harset mission chains (M2-M4) can be tested before that.
+
+**C6. Castle playtest findings applied to Harset (packet H51, on `content/harset-wave2`; needs no placement).** These are the 2026-09-18 Castle defects that would have repeated here.
+
+| # | Where / command | Do | Expect | If it fails, report |
+|---|---|---|---|---|
+| C6.1 | Any plaza guard (they stand still by design) | Shoot it from its side or back, from beyond about 30 units, then strafe around it | It turns to face you within about 2 s (the AI tick) and keeps turning as you move | `.bug guard not turning` next to it: `wire_facing_vs_caller_deg` should be near 0 |
+| C6.2 | The gate-side sentries near (4.7, -58.7, -188.2) and (-4.4, -67.6, -231.1) | Aggro one from inside 30 units with a clear view | It shoots back. Before H51 these nine sentries could never fire, because `harset.nav` does not cover where they stand | `testLOS <guard> <you>` from the GM console: `BLOCKED` with a clear view is the bug; `UNKNOWN` is expected there and is treated as clear |
+| C6.3 | Anywhere in Harset | Die, respawn, then use a ring switch and walk onto the pad; then walk into the Command Center door | Both still work after the respawn | This is the Castle "Throne Room doesn't recognise me" bug. The server log should show `respawn: re-registered client-hinted regions after reanchor` and then `region_hint` lines again. If the friction detector logs `no_region_hints_since_respawn`, the fix did not take in the client |
