@@ -263,6 +263,83 @@ Two ways to fully disable SigNoz ingestion without removing code:
    zookeeper-1`. The exporter will log connection-refused errors but
    the game server keeps running fine — exporter failure is non-fatal.
 
+### Finding navmesh holes from telemetry
+
+The September 2026 Castle_CellBlock navmesh rebuild started from
+SigNoz showing real players being snapped back in places the 2013 mesh
+did not cover. That investigation was manual; this is the repeatable
+version.
+
+**1. Which worlds are rejecting players, and why.**
+
+```text
+scope_name = 'movement.validation'
+  AND reason = 'navmesh'
+groupBy = world, gate
+```
+
+`gate` splits the four failures apart. Read it as:
+
+| Dominant `gate` | What it means | Action |
+|---|---|---|
+| `no_poly_in_extents` | Players are standing where the mesh has **nothing at all** | Rebuild / re-bake that world's `.nav`. This is the mesh-hole signature |
+| `horizontal` | Players are just off the edge of the walkable surface | Mesh coverage is too tight against geometry — usually also a rebuild |
+| `below_surface` | Players are clipped *under* the floor | Not a mesh-coverage problem. Look at authoritative writes (content teleports, respawners, persisted positions) for that world |
+| `above_jump_tolerance` | Players are higher above the surface than the client's jump physics can produce | Either a fly-hack or a tolerance that needs calibration; check `nav_dy` for how far past 4.0 it goes |
+
+**2. Where, precisely.** Add `client_x`, `client_y`, `client_z` as
+columns and narrow to one world. Clusters of coordinates at the same
+`gate` are the actual holes; a scatter of one-offs is usually a single
+misbehaving client.
+
+**3. Confirm which mesh build.** Every reject carries `navmesh_hash`
+(8 hex digits). Join it to the load line:
+
+```text
+scope_name = 'movement.navmesh' AND event = 'navmesh_loaded'
+```
+
+That row has the full hash, `path`, `file_bytes`, `polys`, `verts` and
+the agent parameters. If rejects span two hashes, the mesh was
+redeployed inside your time window and the two halves must be read
+separately — a rebuild that fixed the hole looks like "the problem
+stopped" only when you can see the hash change underneath it.
+
+**4. Check the positive space too.**
+
+```text
+scope_name = 'movement.position_sample'
+groupBy = world
+```
+
+with `x` / `z` as columns gives the walked-surface map: where players
+successfully go. A region with rejects and **no** accepted samples
+nearby is unreachable, not merely awkward — which distinguishes "the
+mesh has a hole" from "the mesh is fine and one player is cheating".
+
+**5. NPCs see holes before players do.**
+
+```text
+scope_name = 'npc_ai.path_fail'
+groupBy = world, state, reason
+```
+
+`reason = no_mesh` means that world has no `.nav` at all — a content
+gap, not a hole. `reason = no_path` with a mesh loaded means the mesh
+is split or holed between the NPC and its destination. Because NPCs
+patrol fixed routes, a steady `patrol` / `no_path` count in one world
+localises a break without waiting for a player to find it.
+
+**Reading the counts.** Both `movement.validation_reject` and
+`npc_ai.path_fail` are **throttled per entity** — one row then at most
+one per window, with `suppressed = N` naming the elided rows. Do not
+read row counts as occurrence counts. For rates use the metrics,
+`movement_validation_rejects_total{world, gate}` and
+`npc_path_fail_total{world, state, reason}`, which are incremented on
+every occurrence including suppressed ones. A single row with a large
+`suppressed` is one entity stuck, not a widespread problem; many rows
+from many `entity_id`s is.
+
 ### Backfilling missed data
 
 There is no backfill story — events not shipped at the time they

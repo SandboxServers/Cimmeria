@@ -446,20 +446,24 @@ pub(super) async fn npc_ai_fight(
                         "NPC AI: pathfinding toward target"
                     );
                 } else {
-                    let stale_path_len =
-                        space_mgr.get_entity(npc_id).map_or(0, |e| e.nav_path.len());
                     super::note_outcome("repath_degenerate");
-                    tracing::warn!(
-                        target: "npc_ai",
-                        event = "decision",
-                        decision_outcome = "repath_degenerate",
-                        npc_id,
-                        target_id,
-                        stale_path_len,
-                        in_range,
-                        has_los,
-                        dist_to_target,
-                        "NPC AI: repath returned <=1 waypoint -- previous path left in place, NPC may walk toward where the target used to be"
+                    // Shared emitter — `in_range` / `has_los` /
+                    // `dist_to_target` are already on the per-tick
+                    // `npc_ai.tick` row for this same NPC, so dropping
+                    // them here loses nothing and buys one query shape
+                    // across all five AI states.
+                    super::path_failure::report_path_failure(
+                        space_mgr,
+                        super::path_failure::PathFailure {
+                            npc_id,
+                            state: "fight",
+                            decision_outcome: "repath_degenerate",
+                            from: npc_pos,
+                            to: nav_target_pos,
+                            reason: super::path_failure::PathFailReason::DegeneratePath,
+                            target_id: Some(target_id),
+                        },
+                        std::time::Instant::now(),
                     );
                 }
             } else {
@@ -469,16 +473,20 @@ pub(super) async fn npc_ai_fight(
                 // `groupBy=decision_outcome` across the npc_ai target and
                 // pivot per zone via the span's space_id attribute.
                 super::note_outcome("no_path");
-                tracing::info!(
-                    target: "npc_ai",
-                    event = "decision",
-                    decision_outcome = "no_path",
-                    npc_id,
-                    target_id,
-                    in_range,
-                    has_los,
-                    dist_to_target,
-                    "NPC AI: no path to target (zone may need navmesh)"
+                let reason =
+                    super::path_failure::PathFailReason::for_missing_path(space_mgr, npc_id);
+                super::path_failure::report_path_failure(
+                    space_mgr,
+                    super::path_failure::PathFailure {
+                        npc_id,
+                        state: "fight",
+                        decision_outcome: "no_path",
+                        from: npc_pos,
+                        to: nav_target_pos,
+                        reason,
+                        target_id: Some(target_id),
+                    },
+                    std::time::Instant::now(),
                 );
             }
         } else {

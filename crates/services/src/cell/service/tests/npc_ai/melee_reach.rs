@@ -247,9 +247,12 @@ async fn melee_only_npc_closes_the_distance_instead_of_swinging_from_range() {
         "a melee ability must not fire at {BEYOND_MELEE} m; a started cooldown is the \
          pre-fix signature, where `max_range = 0` resolved to the 30 m ranged default"
     );
+    // The movement arm reports through the shared `npc_ai.path_fail`
+    // emitter (WARN, one shape for every AI state), not a fight-local
+    // INFO line.
     assert!(
         capture
-            .find_message(Level::INFO, "NPC AI: no path to target")
+            .find_message(Level::WARN, "npc_ai.path_fail: fight found no navmesh path")
             .is_some(),
         "the NPC must take the movement arm at {BEYOND_MELEE} m (this fixture has no \
          navmesh, so that arm reports `no_path`). Captured: {:#?}",
