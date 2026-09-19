@@ -194,6 +194,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
+                ctx.cell_tx,
             )
             .await
         }
@@ -219,6 +220,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
+                ctx.cell_tx,
             )
             .await
         }
@@ -469,6 +471,7 @@ pub(super) async fn active_slot_update(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
 ) {
     bandolier::active_slot_update(
         entity_id,
@@ -478,6 +481,7 @@ pub(super) async fn active_slot_update(
         transport,
         connected,
         entity_to_addr,
+        cell_tx,
     )
     .await;
 }
@@ -511,6 +515,7 @@ pub(super) async fn refresh_appearance(
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
 ) {
     bandolier::refresh_appearance(
         entity_id,
@@ -520,6 +525,7 @@ pub(super) async fn refresh_appearance(
         transport,
         connected,
         entity_to_addr,
+        cell_tx,
     )
     .await;
 }

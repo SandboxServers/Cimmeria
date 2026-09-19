@@ -213,6 +213,11 @@ pub(crate) struct ConnectedClientState {
     pub player_name: Option<String>,
     pub player_level: Option<i32>,
     pub player_archetype: Option<i32>,
+    /// `sgw_player.alignment` of the character being played (1 = Praxis,
+    /// 2 = SGU). Cached for the player-ghost AoI cascade: another player's
+    /// client needs it for `onAlignmentUpdate`, and only the owning client's
+    /// `mapLoaded` body saw it before.
+    pub player_alignment: Option<i32>,
     pub world_name: Option<String>,
     pub player_xp: Option<u64>,
     pub player_training_points: Option<u32>,

@@ -199,6 +199,8 @@ last_updated: 2026-07-25
 
 > **Open defect — invisible entity until relog.** In Castle Cellblock a GuardBody corpse is not visible to a player until they relog. The 2026-06-20 colo repro **disproved** the address-gate hypothesis (the warns never fired), which puts the drop downstream in create + appearance delivery. PR #582 added the `aoi.create_emit` (DEBUG) / `aoi.create_send_failed` (WARN) seams at [`cell_dispatch/aoi.rs:26-27`](../crates/services/src/base/world_entry/cell_dispatch/aoi.rs) to localise it on the next repro. Until that lands, treat entity-introduction delivery as unproven.
 
+**Player-to-player introduction — implemented, awaiting two-client validation.** Players in a shared world (Castle, Harset) previously introduced each other with the NPC-shaped cascade: no `BeingAppearance`, no nameplate, placeholder stats, `stateField = 0`. A dedicated `SGWPlayer` ghost cascade now carries the observee's appearance, name, level, alignment and live combat/death state, joined from the cell (live state) and the base session (identity) at emit time, and an `is_introducible` gate keeps a player out of everyone's AoI until its client has finished loading — introduction is one-shot, so introducing early used to strand the witness with a blank. Pinned by wire-format, fan-out byte and negative-log tests plus the 2009 Python reference; **not yet run with two real clients**, so it is `NT`, not `CW`. Design + UAT checklist: [architecture/player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md). This is a different bug from the invisible-corpse defect above.
+
 - **Path forward**: Close the invisible-entity defect; finish the BeingAppearance fanout-helper consolidation (issue #278, parent of #219/#232/#240/#249/#270 — #232 closed by #580).
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
@@ -206,7 +208,7 @@ last_updated: 2026-07-25
 | Entity creation | CW | -- | entity/manager.rs | From template or dynamic |
 | Entity destruction | CW | -- | entity/manager.rs | Cleanup + witness notification |
 | Grid-based AoI | CW | -- | entity/world_grid.rs | Chunk-based witness management |
-| Witness enter/leave | IM | -- | entity/cell_entity/mod.rs | **Downgraded 2026-07-25.** onEnter/onLeave fire, but entity-introduction delivery to a witness has a known-open drop (invisible GuardBody corpse until relog — see the callout above). #582 instrumentation pending next repro |
+| Witness enter/leave | IM | -- | entity/cell_entity/mod.rs | **Downgraded 2026-07-25.** onEnter/onLeave fire, but entity-introduction delivery to a witness has a known-open drop (invisible GuardBody corpse until relog — see the callout above). #582 instrumentation pending next repro. Player-to-player introduction now uses the `SGWPlayer` ghost cascade instead of the NPC one and gates on client load — implemented but **unvalidated with two clients** (see the note above and [architecture/player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md)) |
 | Property synchronization | CW | -- | entity/properties.rs | Per-distribution-flag write paths |
 | State flag conventions | CW | -- | entity/cell_entity/state_flags.rs | bStateField, BSF_InCombat lifecycle |
 | Bandolier state | CW | -- | entity/cell_entity/bandolier.rs | Slot lifecycle, type_id vs item_id discipline |

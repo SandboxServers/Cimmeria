@@ -166,6 +166,7 @@ pub(crate) async fn handle_play_character(
             c.player_name = Some(player_load_data.player_name.clone());
             c.player_level = Some(player_load_data.level);
             c.player_archetype = Some(player_load_data.archetype);
+            c.player_alignment = Some(player_load_data.alignment);
             c.world_name = Some(entry_info.world_name.clone());
             c.player_xp = Some(player_load_data.exp as u64);
             c.player_training_points = Some(player_load_data.training_points as u32);
@@ -255,6 +256,7 @@ mod tests {
             player_name: None,
             player_level: None,
             player_archetype: None,
+            player_alignment: None,
             world_name: None,
             player_xp: None,
             player_training_points: None,

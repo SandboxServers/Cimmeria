@@ -629,6 +629,7 @@ pub async fn handle_move_inventory_item(
                 transport,
                 connected,
                 entity_to_addr,
+                cell_tx,
             )
             .await;
         }

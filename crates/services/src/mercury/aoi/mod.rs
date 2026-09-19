@@ -17,6 +17,7 @@
 mod create;
 mod leave;
 mod method;
+mod player_ghost;
 mod update;
 
 #[cfg(test)]
@@ -26,6 +27,10 @@ pub use create::{build_create_entity_base, build_create_entity_cascade};
 pub(crate) use create::{compose_create_entity_base_body, compose_create_entity_cascade_body};
 pub use leave::{build_entity_invisible, build_entity_leave};
 pub use method::{build_entity_method_packet, build_player_entity_method_packet};
+pub use player_ghost::{build_player_ghost_cascade, PlayerGhostCascade};
+pub(crate) use player_ghost::{
+    compose_player_ghost_cascade_body, PLAYER_FACTION, PLAYER_KISMET_EVENT_SET_ID,
+};
 pub(crate) use update::compose_forced_position_body;
 pub use update::{build_avatar_update, build_forced_position};
 
