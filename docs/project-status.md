@@ -2,7 +2,7 @@
 title: "Project Status"
 type: reference
 audience: anyone tracking the project
-last_updated: 2026-07-25
+last_updated: 2026-09-19
 ---
 
 # Project Status
@@ -60,7 +60,7 @@ The gap between "code exists" (70.2%) and "confirmed working" (35.9%) is the sto
 | Character creation | NT | 11 (8 NT, 1 IM, 2 KM) | 1,640 lines incl. delete + visuals live-DB tests. SGWGmPlayer now ported (#473/#518). Full client smoke would move to CW |
 | World entry & spaces | CW | 9 (7 CW, 2 IM) | 22,682 lines across 64 files. Castle Cellblock end-to-end. 23 other zones unchecked |
 | Movement & navigation | IM | 9 (1 CW, 8 IM) | **Detour is wired.** Pathfinding, LOS raycast, and navmesh containment all live; four-layer server-side movement validation shipped (#437/#478) |
-| Entity lifecycle (AoI) | IM | 9 (6 CW, 2 IM, 1 KM) | **Downgraded from CW.** Grid-based AoI and witness lifecycle work, but there is a known-open entity-introduction drop (invisible corpse until relog); #582 added instrumentation, awaiting repro; Player-to-player introduction (appearance, nameplate, live state, load-window gate) is implemented but **awaiting two-client validation** — see [architecture/player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md) |
+| Entity lifecycle (AoI) | IM | 9 (6 CW, 2 IM, 1 KM) | **Downgraded from CW.** Grid-based AoI and witness lifecycle work, but an entity a witness was correctly introduced to can still fail to render (invisible corpse until relog). The 2026-09-19 repro put the fault client-side — every create ACKed first try — and the first-login cinematic hold ships as the experiment on it, **unvalidated in game**; Player-to-player introduction (appearance, nameplate, live state, load-window gate) is implemented but **awaiting two-client validation** — see [architecture/player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md) |
 | Combat & abilities | IM | 23 (5 CW, 16 IM, 2 KM) | 5,918 lines + 142 tests. PR #420 closed ability+effect gaps. LOS primitive now exists and is enforced NPC-side, not yet on player `useAbility` |
 | Effects & buffs | IM | 13 (4 CW, 7 IM, 2 KM) | Framework CW. Long tail of 3,217 effect rows needs script coverage |
 | Stats | IM | 8 (5 CW, 2 KM, 1 NU) | Stat list + dirty sync + per-level scaling shipped. Equipment bonuses + derived formulas pending |
@@ -145,7 +145,11 @@ These didn't exist in the Python codebase and so weren't tracked. They're substa
 
 ### AoI entity-introduction drop (open)
 
-A witness can miss an entity introduction entirely — the reproducible case is a Castle Cellblock GuardBody corpse that stays invisible until the player relogs. The 2026-06-20 colo repro **disproved** the address-gate hypothesis (the expected warnings never fired), which puts the fault downstream in create + appearance delivery. PR #582 added `aoi.create_emit` / `aoi.create_send_failed` seams to localise it on the next repro. This is why Entity Lifecycle (AoI) is no longer CW.
+A witness can be correctly introduced to an entity and still never render it — the reproducible case is a Castle Cellblock GuardBody corpse (a `class_id 0` static mesh) that stays invisible until the player relogs. Two hypotheses are retired. The 2026-06-20 colo repro **disproved** the address-gate hypothesis (the expected warnings never fired). The 2026-09-19 colo repro retired Mercury delivery: the introduction went out as reliable packets with no `aoi.create_send_failed`, and only one reliable packet was retransmitted in the session's first 75 s, so the client ACKed every create before its RTO. **The drop is inside the client, after delivery.**
+
+That repro also found why the `aoi.create_emit` seam had never appeared in SigNoz — the OTLP `EnvFilter` did not name the target, so its DEBUG events inherited `info`. That is fixed and pinned by a unit test, so the next repro will carry the seam either way.
+
+The one thing that differed between the failing and succeeding session was the first-login cinematic (played in full vs. dismissed after 1.5 s), which is a single observation, not a finding. On that lead, a first-login cinematic AoI hold now buffers entity introductions until the intro movie ends — NPCs appear as the movie finishes rather than during it. It is shipped as an **experiment and has not been validated in game**, which is why Entity Lifecycle (AoI) is still not CW. Design and the alternatives if it fails: [architecture/first-login-cinematic-aoi-hold.md](architecture/first-login-cinematic-aoi-hold.md).
 
 ### Player-to-player visibility (implemented, unvalidated)
 

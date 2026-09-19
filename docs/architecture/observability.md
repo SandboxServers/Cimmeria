@@ -1,7 +1,7 @@
 # Server observability — design and tool choice
 
 **Status:** Accepted (2026-05-25)
-**Last updated:** 2026-07-25
+**Last updated:** 2026-09-19
 **Confidence:** High
 
 ## Context
@@ -174,6 +174,19 @@ field values, plot rate-over-time. Adding a new target is cheap; the
 discipline is that targets should be **stable strings** (not subject
 to crate-rename churn) and **named for the question they answer**.
 
+A new target is only cheap to *emit*. For it to **reach SigNoz** you
+also have to name it in `OTEL_FILTER`, the `EnvFilter` directive string
+shared by the OTLP trace and log layers in
+[`crates/server/src/logging.rs`](../../crates/server/src/logging.rs). A
+custom target that is not listed there inherits the leading `info`, so
+every DEBUG event it emits is dropped before the exporter sees it. That
+is what happened to `aoi.create_emit`: the seam was built to localise the
+invisible-static-NPC drop and was absent from the 2026-09-19 repro
+because the filter named only `aoi.entity_enter` and `aoi.entity_leave`.
+The unit test `otel_filter_exports_the_debug_level_aoi_seams` now pins
+the DEBUG-level `aoi.*` directives so the next seam you add does not go
+quiet the same way.
+
 | `target` | Level | Emitted from | What it counts |
 |---|---|---|---|
 | `mercury.packet` | INFO | `Channel::{send,receive}_packet`, `UnifiedCodec::{encode,decode}` | Every byte in/out of the server |
@@ -181,10 +194,11 @@ to crate-rename churn) and **named for the question they answer**.
 | `mercury.backpressure` | WARN | `Channel::send_packet` when TX window ≥ 50% full | Send-window saturation — early warning for stalled clients |
 | `wire.in` / `wire.out` | INFO | `wire_log::{log_inbound, log_outbound_entity_method}` | Decoded entity-method calls. `wire.in` resolves cell methods by **method index** (`msg_id - 0x80`, or `61 + sub_index` for the `0xBD` sub-slot form) and carries `method_index` + `entity_method`; base methods (`0xC2+`) are `baseMethod` with their index until a base name table exists |
 | `aoi.entity_enter` / `aoi.entity_leave` | DEBUG | AoI tick witness fanout | Per-entity AoI transitions |
-| `aoi.create_emit` | DEBUG | `base::world_entry::cell_dispatch::aoi::{entered_aoi, flush_deferred_aoi}` | Per-packet entity-introduction delivery (CREATE_ENTITY+UPDATE_AVATAR / createOnClient cascade) — fields `witness_id`, `entity_id`, `class_id`, `phase` (`create_base` \| `cascade`), `addr_resolved`, `bytes`, `seq`. Success-side visibility for the invisible-static-NPC drop |
-| `aoi.create_send_failed` | WARN | `base::world_entry::cell_dispatch::aoi::{entered_aoi, flush_deferred_aoi}` | Entity-introduction packet/bundle that could NOT be delivered — `reason` (`entity_to_addr_miss` \| `client_disconnected` \| `send_error`), `phase`, `addr_resolved`. Negative-logging seam for the invisible-corpse class |
+| `aoi.create_emit` | DEBUG | `base::world_entry::cell_dispatch::aoi::entered_aoi` (per-entity packets); `base::world_entry::cell_dispatch::deferred_flush` (flush bundles) | Per-packet entity-introduction delivery (CREATE_ENTITY+UPDATE_AVATAR / createOnClient cascade) — fields `witness_id`, `entity_id`, `class_id`, `phase` (`create_base` \| `cascade`), `addr_resolved`, `bytes`, `seq`. The bundle path carries N entities in one send, so it reports `entered` (the folded-in NPC count) and `packets` in place of a per-entity `entity_id`. Success-side visibility for the invisible-static-NPC drop — and it only reaches SigNoz because `OTEL_FILTER` names it, see above |
+| `aoi.create_send_failed` | WARN | `base::world_entry::cell_dispatch::aoi::entered_aoi` (per-entity packets); `base::world_entry::cell_dispatch::deferred_flush` (flush bundles) | Entity-introduction packet/bundle that could NOT be delivered — `reason` (`entity_to_addr_miss` \| `client_disconnected` \| `send_error`), `phase`, `addr_resolved`. Negative-logging seam for the invisible-corpse class |
 | `aoi.player_ghost_incomplete` | WARN | `base::world_entry::cell_dispatch::player_ghost::resolve_identity` | A **player** entering another player's AoI whose session half could not be fully resolved — `reason` (`observee_session_unresolved` \| `no_cached_appearance`), `witness_id`, `entity_id`, plus `addr_resolved` on the former. The first falls back to the bare NPC-shaped cascade (witness sees a nameless, bodyless player); the second still sends name + stats but no body. See [player-ghost-aoi-cascade.md](player-ghost-aoi-cascade.md) |
 | `aoi.witness_broadcast_failed` | WARN | `base::helpers::witness_broadcast::broadcast_to_witnesses` | Base-built entity method (rebuilt `BeingAppearance`, …) could not be handed to the cell for witness fan-out — `reason` (`cell_channel_closed`), `entity_id`, `method_index`. Other players keep a stale view of the entity until it re-enters their AoI |
+| `aoi.cinematic_hold` | INFO | `base::world_entry_appearance::cinematic_aoi_hold::{arm_timeout, release}` | The first-login cinematic AoI hold, one row per side. `event = "hold_started"` carries `witness_id`, `token` and `hold_ms`; `event = "hold_released"` carries `reason` (`cancel_movie` \| `timeout`), `flushed` (how many held messages went out) and `held_ms`. A `reason = "timeout"` row means the player let the whole intro movie run. Pair it with `aoi.create_emit` for the same `witness_id` to see the held introductions land. See [first-login-cinematic-aoi-hold.md](first-login-cinematic-aoi-hold.md) |
 | `movement.player` | DEBUG (1-in-10 sampled) | `cell::service::base_messages` position-update path | Player avatar position updates |
 | `movement.npc` | DEBUG (1-in-10 sampled `step`, always `waypoint_reached`) | `cell::service::ticks::npc_movement` | NPC nav-path movement. `step` logs the **first 5 steps of every leg** plus a 1-in-10 global sample, and carries `yaw_rad`, `yaw_byte`, `leg_step`, `y_source`, `ground_y` and `y_offset_from_ground` (navmesh height under the NPC; absent in meshless worlds) |
 | `npc_ai` | DEBUG / INFO | `cell::service::npc_ai_fight` | NPC AI tick outcomes — see `decision_outcome` |

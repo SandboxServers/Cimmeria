@@ -7,7 +7,10 @@
 > **Type**: Architecture decision + reference for the cascade contents
 > **Owner**: AoI / entity lifecycle
 > **Companions**: [mercury-bundle.md](mercury-bundle.md) (the bundle the
-> deferred path appends into), [negative-logging-convention.md](negative-logging-convention.md)
+> deferred path appends into),
+> [first-login-cinematic-aoi-hold.md](first-login-cinematic-aoi-hold.md) (the
+> hold that stretches the deferred window on a first login),
+> [negative-logging-convention.md](negative-logging-convention.md)
 > (the seam `aoi.player_ghost_incomplete` follows),
 > [observability.md](observability.md) (target catalog),
 > [state-field-bits.md](state-field-bits.md) (what `onStateFieldUpdate`
@@ -113,7 +116,16 @@ path. A witness still loading its own map has its `EnteredAoI` buffered in
 seconds, and the observee can holster a weapon or swap armour in that time.
 Joining at buffer time would ship a stale body. Both call sites use the same
 function: `aoi::entered_aoi` (standalone packets) and
-`aoi::flush_deferred_aoi` (phase-2 bundle).
+`deferred_flush::flush_deferred_aoi` (phase-2 bundle).
+
+On a character's **first** login that window is longer still. The
+first-login cinematic AoI hold keeps every entity introduction — players
+included — in the same buffer until the intro movie ends, so a witness who
+sits through `Cine-SGWLogo` joins identity up to 16 seconds after the cell
+fired the event. Emit-time joining is what makes that safe: the observee can
+equip, holster and change bandolier slots throughout the movie and the
+witness still gets the current body. See
+[first-login-cinematic-aoi-hold.md](first-login-cinematic-aoi-hold.md).
 
 Locks are released before any send — `entered_aoi` resolves the identity
 into an owned `PlayerGhostIdentity` up front, so no `connected` lock is held
