@@ -74,3 +74,9 @@ H52 is not dispatched: it edits the same step-activation seam in `progression.rs
 Running at time of writing, each in a new worktree off that base: agent `harset-H55` (branch `harset/H55`, P0: `grant_stargate_address` action + Castle chain 1357 grants Harset's gate; without it no player can dial Harset) and agent `harset-H52` (branch `harset/H52`: H52 step-activation region re-evaluation, then H54 `mission_abandoned` trigger). If they died, their commits are on those branches.
 
 Then: merge both, validate, push `content/harset-wave2`, open PR "wave 2" against `content/harset-rebuild` (or `main` if #662 has merged by then). Never started: H05 (minigame competency, unblocked). Follow-ups recorded in the ledger and owned by nobody: player melee reach in `handle_use_ability` (H09 note), `callForAid` and `setRingTransporterDestination` unscoped client ids (H55 Exclude), no "stopped" `setMovementType` (H08 note), `entity_interactions` is dead data, the 37 optional-only steps (H50 worknote), `mission_742.rs` over the 700-line cap.
+
+## Update 2026-09-19 (12:55 UTC): #662 merged, wave-2 PR open
+
+- **PR #662 merged to `main` as `f661a97d`** (merge commit, on the owner's go-ahead). Wave 1 is on `main`; the operator guide's "do not dial to Harset on `main`" warning about the missing arrival validation no longer applies.
+- **Wave 2 is PR #682** (`content/harset-wave2` -> `main`), pushed at `90769082` with H55 merged. H52 + H54 (agent `harset-H52`, branch `harset/H52`) are still to be merged into it: merge, full validation on `sgw_harset_integration`, push.
+- Do NOT merge #682 without the owner's explicit go-ahead; the go-ahead given on 2026-09-19 was for #662 only.
