@@ -98,7 +98,7 @@ last_updated: 2026-07-25
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| Resource loading from DB | CW | -- | base/resources/ | 22 resource categories, 112,626 DB rows |
+| Resource loading from DB | CW | -- | base/resources/ | 21 wire categories (client 1–21), 112,626 DB rows |
 | Client version sync | CW | -- | base/cooked_data.rs | versionInfoRequest() handled |
 | Cooked data (.pak) serving | CW | -- | base/cooked_data.rs | Binary pak files in data/cache/ |
 | Mission PAK overrides | CW | -- | base/mission_overrides.rs | Injects new steps without reshipping pak |

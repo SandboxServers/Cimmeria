@@ -247,9 +247,10 @@ red-black tree) of category ID → LibCategory pointer.
 
 ### `docs/engine/cooked-data-pipeline.md` — Resource Category IDs table
 
-**Status**: INCORRECT — must be fixed in a separate code-change session.
+**Status**: RESOLVED — `docs/engine/cooked-data-pipeline.md` was corrected and the
+Rust category map now registers 21 categories (issue #267).
 
-The existing table ("Resource Category IDs", from `src/baseapp/mercury/sgw/resource.cpp`) lists:
+The resolved table ("Resource Category IDs", from `src/baseapp/mercury/sgw/resource.cpp`) listed:
 - Category 0 as "Reserved"
 - Category 21 as `pet_command`
 - Category 22 as `behavior_event`
@@ -263,14 +264,19 @@ The binary shows:
 and counts differently at the high end, OR the server and client have drifted in numbering. The
 binary's LibCategoryKey<N> template parameters are authoritative for what the client expects.
 
-**Recommended fix for Cimmeria**: Audit `src/baseapp/mercury/sgw/resource.cpp` CategoryMap to ensure
-the server sends the same category IDs the client registers. The client's 1–21 mapping is the spec.
+**Recommended fix for Cimmeria (applied)**: `crates/services/src/base/resources/mod.rs`
+`CATEGORY_PAKS` now registers `behavior_event` as category 21 (`CookedBehaviorEvents.pak`),
+matching the client's 1–21 registration; a byte-exact wire test in
+`crates/services/src/base/resources/tests/category_map.rs` pins the fragment tag. The category
+is intentionally omitted from `CATEGORY_PAKS` only for the char-creation flow (category 7 note
+in the engine doc). No category 22 exists in the Rust map.
 
 ### `docs/engine/cooked-data-pipeline.md` — "22 resource categories" claim
 
 The pipeline doc says "22 resource categories." The binary has 21 ServerSource categories (1–21).
 The number 22 likely comes from counting the server's zero-indexed table (entries 0–21 = 22 entries,
 of which entry 0 is a placeholder). The client never receives or registers category 0.
+The engine doc was corrected to 21 categories (issue #267).
 
 ---
 
@@ -318,9 +324,14 @@ of which entry 0 is a placeholder). The client never receives or registers categ
 
 4. **`FUN_004349b0`** — CME emit call used by `onCookedDataError` to fire `Event_Cache_ElementError`. Not yet confirmed as the generic emit path or a specific wrapper.
 
-5. **Server category 0 vs client start at 1** — needs server-side code audit. The Cimmeria server's `src/baseapp/mercury/sgw/resource.cpp` must be checked to confirm whether it sends category IDs 1–21 or 0–21.
+5. **Server category 0 vs client start at 1** — **RESOLVED (issue #267)**: the Rust `CATEGORY_PAKS` in
+   `crates/services/src/base/resources/mod.rs` registers categories 1–21 (the client's enum), with no
+   category 0. The legacy `src/baseapp/mercury/sgw/resource.cpp` zero-indexed table is not the wire contract.
 
-6. **Category 21 server-side name** — the binary calls it `BehaviorEventData`. The server calls category 22 `behavior_event`. If the server sends 22 and the client registers 21, the category would be silently ignored. This may explain why some NPC behavior events were unreliable.
+6. **Category 21 server-side name** — **RESOLVED (issue #267)**: `CATEGORY_PAKS` registers category 21
+   as `CookedBehaviorEvents.pak` (`BehaviorEventData`), matching the binary. No category 22 exists in
+   the Rust map, and the engine doc's 21/22 rows were corrected. The observed "unreliable NPC behavior
+   events" cause is the client never receiving behavior-event data on a category it listens to.
 
 7. **Net_ProxyData handler body** — the callback for `Event_Net_ProxyData` in the LibCategory constructor passes `&LAB_0043dad0` (a label, not a function symbol) as the method pointer. This means the fragment reassembly handler starts at `0x0043dad0`. Not yet decompiled.
 

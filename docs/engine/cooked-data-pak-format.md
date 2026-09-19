@@ -521,6 +521,13 @@ first in Server), `<StepDisplayLogText>` moved to end of `<Steps>` in Server.
 
 ## Complete Per-Category Inventory
 
+> [!NOTE]
+> The `Category N` headings below are **local to this document** — they index the archived PAKs
+> alphabetically by filename, starting at 0. They are **not** the client's wire category IDs.
+> The client enumerates 21 resource categories numbered 1–21 (`CookedData_RegisterAllLibCategories`, SGW.exe `0x00420074`), and `CookedBehaviorEvents.pak` is wire category **21** — there is no
+> client category 22 (the legacy `resource.cpp` 21=pet_command/22=behavior_event numbering is a
+> server-side drift, resolved in issue #267). See [cooked-data-pipeline.md](cooked-data-pipeline.md).
+
 ### Category 0: CookedBehaviorEvents
 
 | | QA Build | Server Build | Discord Build |
