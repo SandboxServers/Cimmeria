@@ -2,10 +2,14 @@
 title: "Death & Respawn System"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-19
 ---
 
 # Death & Respawn System
+
+## Interaction While Dead
+
+The client `interact` entry point requires an existing actor without `BSF_DEAD` before combat rerouting, trainer UI, content chains, or fallback dialog/loot handling. Rejected requests emit no interaction messages and preserve the actor's interaction pins and counters. This uses the server-owned state bit, not current HP: a corpse can temporarily have positive health. Clearing dead state on respawn restores normal interaction. Living players can still interact with dead targets to loot corpses.
 
 ## Death Flow
 
@@ -116,7 +120,8 @@ Both rows reference the same cooked package. Only the death-side wiring is funct
 ## Wire Format
 
 ### onBeginAidWait (method 98)
-```
+
+```text
 [TimeToAid: i32]           // seconds until auto-respawn (30)
 [array_count: u32]         // number of respawners
 Per respawner:
@@ -125,13 +130,14 @@ Per respawner:
 ```
 
 ### onEndAidWait (method 99)
+
 No arguments. Sent by the cell at the start of respawn so the Defeat Window closes before the re-anchor.
 
 ### CellToBaseMsg::ReanchorPlayer (cell→base, internal RPC)
 
 Not on the client wire; this is the inter-service handoff. See [`crates/services/src/cell/messages/cell_to_base.rs`](../../crates/services/src/cell/messages/cell_to_base.rs) for the variant.
 
-```
+```text
 ReanchorPlayer {
     entity_id: u32,
     space_id: u32,    // entity's existing space — NOT a fresh space_id
