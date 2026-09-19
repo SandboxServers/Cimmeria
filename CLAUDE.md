@@ -218,5 +218,5 @@ Files should "do what it says on the tin" — a reader (human or LLM) should pre
 Per-repo configuration for agent skills that triage, write tickets, or model the domain lives in [docs/agents/](docs/agents/):
 
 - **Issue tracker:** GitHub Issues for `SandboxServers/Cimmeria` via the `gh` CLI — [issue-tracker.md](docs/agents/issue-tracker.md), including the ticket body contract.
-- **Triage labels:** `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` — [triage-labels.md](docs/agents/triage-labels.md), including what `ready-for-agent` requires here.
+- **Triage labels:** `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix` — [triage-labels.md](docs/agents/triage-labels.md), including what `ready-for-agent` requires here. Unattended agents pick work only from issues a maintainer has labeled `ready-for-agent` — see [docs/guides/autonomous-agent-kickoff.md](docs/guides/autonomous-agent-kickoff.md).
 - **Domain docs:** glossary is `docs/spec/glossary.md`, ADRs are `docs/architecture/`. Do **not** create `CONTEXT.md` or `docs/adr/` — [domain.md](docs/agents/domain.md).

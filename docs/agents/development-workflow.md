@@ -31,6 +31,8 @@ The repo already ships the pieces. Anyone who clones it with Claude Code gets th
 
 Fix warranted adjacent problems in the same pass: a file your change pushed over the 500-line cap, another instance of the bug a reviewer flagged, a doc your change made stale. Say what you fixed beyond the ask and why. Leave risky or judgment-heavy changes as a flagged follow-up.
 
+**Unattended sessions are stricter.** An agent running without a human at the terminal follows [`docs/guides/autonomous-agent-kickoff.md`](../guides/autonomous-agent-kickoff.md): it picks only `ready-for-agent` issues, never fixes drive-by findings in the same PR (it files an issue instead), and stops rather than implementing an issue whose premise the docs contradict.
+
 ## Agent roster
 
 | Area | Agent |

@@ -345,6 +345,7 @@ Practical guidance for contributors working on the RE effort or the emulator.
 | [reverse-engineering-with-claude.md](guides/reverse-engineering-with-claude.md) | Workflow doc: when to invoke `game-archaeology-specialist`, Six-Phase mapping to Claude Code sessions, evidence handoff to `documentation-writer`, what NOT to delegate | Complete |
 | [reading-decompiled-code.md](guides/reading-decompiled-code.md) | Tips for reading Ghidra decompiler output, common patterns, pitfalls | Complete |
 | [sgw-live-debugging.md](guides/sgw-live-debugging.md) | Live debugging SGW.exe with x32dbg + log breakpoints — manual fallback when MCP-driven flows fail; pybag incompatibility documented | Complete |
+| [autonomous-agent-kickoff.md](guides/autonomous-agent-kickoff.md) | **Kickoff prompt for unattended AI agents.** Issue selection and claim protocol, per-worktree build and DB discipline, draft-until-green PR flow with Cadacious as reviewer, budgets and escalation. Two marked deviations from the `CLAUDE.md` pre-PR checklist | Complete |
 
 Two former-guides files moved to their correct homes in #344: [evidence-standards.md](reverse-engineering/evidence-standards.md) is now under `reverse-engineering/` (it's the standards reference for the RE process), and [entity-def-guide.md](engine/entity-def-guide.md) is now under `engine/` (it's reference doc on entity definition files).
 

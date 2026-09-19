@@ -65,6 +65,8 @@ These touch wire formats or client expectations directly. The wrong byte = silen
 
 For RE work, start with [`docs/guides/re-toolchain-setup.md`](docs/guides/re-toolchain-setup.md) and [`docs/guides/reverse-engineering-with-claude.md`](docs/guides/reverse-engineering-with-claude.md). The `game-archaeology-specialist` agent (configured in `.claude/agents/`) is your friend.
 
+For unattended AI-agent sessions that pick their own issues, the kickoff prompt and its worktree, build, and PR protocol live in [`docs/guides/autonomous-agent-kickoff.md`](docs/guides/autonomous-agent-kickoff.md).
+
 ## The development loop
 
 ```text

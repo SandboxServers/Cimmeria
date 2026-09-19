@@ -18,6 +18,8 @@ When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the 
 
 Only `wontfix` exists on the repo today. The other four are created the first time `/triage` applies them. Only a maintainer should apply `ready-for-agent`.
 
+**Autonomous kickoff:** unattended agents following [autonomous-agent-kickoff.md](../guides/autonomous-agent-kickoff.md) may pick work **only** from issues that already carry `ready-for-agent`. The `/triage` skill is how maintainers promote an issue from `needs-triage` (or unlabeled) into that queue.
+
 ## What `ready-for-agent` means here
 
 An issue is `ready-for-agent` only when all of these hold. If any is missing, it is `needs-triage` or `ready-for-human`.
