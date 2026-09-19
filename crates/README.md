@@ -106,6 +106,7 @@ are workspace members that live outside `crates/`.
 | `wireclient` | `cimmeria-wireclient` | **Tier 3 headless test client.** Drives the SOAP auth, Mercury phase-3 handshake, and replays captured `.pcap` + AES-key sessions for end-to-end behavioral validation. Pairs with `tools/pcap_to_session.py` (JSONL exporter built atop `tools/pcap_dissect.py`). See [docs/architecture/wireclient.md](../docs/architecture/wireclient.md). |
 | `discord` | `cimmeria-discord` | Discord notification sink. Owns the `EventKind` catalogue and per-event `EventToggles`, hot-reloadable TOML config (`config::ConfigWatcher` over [config/discord.toml.example](../config/discord.toml.example)), channel routing (`router::channel_for`), embed formatting + budget trimming (`embed::format_event`), and a rate-limited async sender (`sender::` — HTTP, mock, and token-bucket). Also exposes `DiscordLayer`, a `tracing` layer that lifts warn/error records into notifications. Typed `emit_*` helpers are the intended call surface. See [docs/architecture/discord-notifications.md](../docs/architecture/discord-notifications.md). |
 | `observability` | `cimmeria-observability` | Metrics facade — `counter!`/`histogram!`/`gauge_add!` macros wrapping the OpenTelemetry SDK's metrics API. Lazily registers instruments on first emission, no-ops when telemetry is disabled. Initialised from `cimmeria-server`'s `otel::init` alongside traces + logs. See [docs/architecture/instrumentation-discipline.md](../docs/architecture/instrumentation-discipline.md). |
+| `lab` | `cimmeria-lab` | **Windows-only supervisor + stdio MCP server** for the Live Research Lab (phase 1). Proxies `client_lua_eval` / `client_module_info` / `client_mem_read` to the injected client bridge (`cimmeria-client-telemetry` built `--features lab-bridge`) over a token-gated framed-JSON-RPC loopback channel. Excluded from the workspace CI jobs (like `sgw-launcher`); not in `default-members`. See [docs/architecture/live-research-lab.md](../docs/architecture/live-research-lab.md). |
 
 ## Building
 
@@ -125,19 +126,19 @@ cargo test -p cimmeria-services
 # Full workspace check (high memory on WSL — skip the GUI apps and the
 # Windows-only client-telemetry cdylib):
 cargo check --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry
+  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-lab
 ```
 
 See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
 
 ## Testing
 
-The workspace currently carries **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**, of which **2,691 are gated in CI** (the five excluded crates below contribute the rest). 224 are live-DB regression guards — all in `cimmeria-services` — and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+The workspace currently carries **2,936 `#[test]` / `#[tokio::test]` cases across 461 files**, of which **2,691 are gated in CI** (the six excluded crates below contribute the rest). 224 are live-DB regression guards — all in `cimmeria-services` — and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
 
 ```bash
 # Unit + non-DB integration:
 cargo test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry
+  --exclude cimmeria-scene-editor --exclude sgw-launcher --exclude cimmeria-client-telemetry --exclude cimmeria-lab
 
 # Live-DB tests (start the bundled Postgres on :5433 first, then):
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
