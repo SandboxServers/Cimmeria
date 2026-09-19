@@ -48,7 +48,7 @@ The input is `SGW_Castle_Rebuild_Spec_v21.xlsx` (Revision 2, 2026-09-13, 25 shee
 | B4 | A minigame session whose client never connects is never expired (`session.rs:27,86` set `created_at`; nothing reads it), so re-interacting hits the duplicate reject (`session.rs:90-93`, warn at `cell_dispatch/minigame.rs:82-85`) until relog. Castle adds three Livewire touchpoints to the Cellblock's three. `MinigameInstance::aborted()` has no call site; SWF close sends nothing (`minigame/server.rs:288-292`). | minigame advisor pass | HIGH |
 | B5 | `start_minigame` difficulty is a literal 1 (`executor/mod.rs:213`); the original asserted 1-5. No chain-replay test pins any Livewire victory pair (1016/1017, 1041/1042, 1060/1061). | `castle_cellblock_chains.sql:317-326`, `base_messages/tests/minigame.rs` | HIGH |
 | B6 | Region-1002 gate travel works but emits neither 6100 nor 6113. | `gate-travel.md:34-36` | HIGH |
-| B7 | `move_waypoint` emits no position broadcast; witnesses learn the new position from the per-tick ghost relay only. | issue #616 | MEDIUM (unobserved in-client) |
+| B7 | `move_waypoint` emits no position broadcast; witnesses learn the new position from the per-tick ghost relay only. **Resolved:** the snap is now broadcast per-witness as an immediate `EntityMoved` (bypassing the 100 ms AoI tick), so a chain-repositioned NPC moves on the next frame. | issue #616 | MEDIUM (unobserved in-client) |
 
 ## Engine Facts The Packets Rely On
 

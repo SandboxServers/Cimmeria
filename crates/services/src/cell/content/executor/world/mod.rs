@@ -518,25 +518,72 @@ pub(super) async fn move_entity(
         }
     }
 
-    move_waypoint(entity_tag, destination, entity_id, chain_id, space_mgr);
+    move_waypoint(entity_tag, destination, entity_id, chain_id, tx, space_mgr).await;
 }
 
 /// `Action::MoveWaypoint` — snap the tagged entity to a new position.
 /// No yaw/orientation change; chains call `update_position_preserving_facing`
 /// directly.
-pub(super) fn move_waypoint(
+///
+/// The snap is broadcast to the entity's current witnesses immediately as a
+/// per-witness `EntityMoved`, so a scripted reposition is visible on the
+/// next frame rather than whenever the 100ms AoI tick next relays ghost
+/// positions. Witnesses the move drops entirely still get their `LeftAoI`
+/// from that tick, so a long-distance reposition needs no extra fan-out
+/// here.
+pub(super) async fn move_waypoint(
     entity_tag: String,
     destination: [f32; 3],
     entity_id: u32,
     chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
-        tracing::debug!(entity_id, %entity_tag, target_id, ?destination, chain_id, "Content: move waypoint");
-        space_mgr.update_position_preserving_facing(target_id, destination, [0.0; 3]);
-        // Authorized server move: reseed the movement-validator clock for
-        // the moved entity (harmless for NPC targets — they never pass
-        // through the client-position validator).
-        space_mgr.note_authorized_teleport(target_id);
+    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
+        return;
+    };
+    tracing::debug!(entity_id, %entity_tag, target_id, ?destination, chain_id, "Content: move waypoint");
+    let Some(t) = space_mgr.get_entity(target_id) else {
+        return;
+    };
+    let space_id = t.space_id.0 as u32;
+    let direction = [t.direction.x, t.direction.y, t.direction.z];
+    space_mgr.update_position_preserving_facing(target_id, destination, [0.0; 3]);
+    // Authorized server move: reseed the movement-validator clock for
+    // the moved entity (harmless for NPC targets — they never pass
+    // through the client-position validator).
+    space_mgr.note_authorized_teleport(target_id);
+
+    // Broadcast the snap to current witnesses now instead of waiting for
+    // the AoI tick's next pass, so a chain-driven reposition (escort
+    // arrival, tutorial staging) does not hold stale on the client for up
+    // to 100ms. Witness sets are last-tick snapshots, so a witness the
+    // move left behind still gets the snap before its `LeftAoI`, and a
+    // player newly in range gets a full `EnteredAoI` — the tick completes
+    // the picture either way. A failed send only delays the relay by one
+    // tick, but it is still an expectation seam, so log it.
+    let witnesses = space_mgr.get_witnesses_of(target_id);
+    for witness_id in witnesses {
+        if let Err(e) = tx
+            .send(CellToBaseMsg::EntityMoved {
+                witness_id,
+                entity_id: target_id,
+                space_id,
+                position: destination,
+                direction,
+                velocity: [0.0; 3],
+            })
+            .await
+        {
+            tracing::warn!(
+                entity_id,
+                witness_id,
+                target_id,
+                chain_id,
+                reason = "move_waypoint_send_failed",
+                "MoveWaypoint: cell→base send failed -- witness holds the stale \
+                 position until the next AoI tick relays it: {e}"
+            );
+        }
     }
 }

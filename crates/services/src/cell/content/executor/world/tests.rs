@@ -646,11 +646,11 @@ async fn destroy_tagged_entity_fans_left_aoi_to_witnesses() {
     );
 }
 
-/// `move_waypoint` updates the target's position. Pin the exact
-/// coordinates — destination is propagated verbatim, not
-/// clamped/zeroed/swapped. Bug shape: a regression that called
-/// `update_entity_position(entity_id, ...)` instead of
-/// `(target_id, ...)` would move the source player instead of the NPC.
+/// `move_waypoint` updates the target's position and broadcasts the snap
+/// to the target's witnesses. Pin the exact coordinates — destination is
+/// propagated verbatim, not clamped/zeroed/swapped. Bug shape: a
+/// regression that called `update_entity_position(entity_id, ...)` instead
+/// of `(target_id, ...)` would move the source player instead of the NPC.
 ///
 /// Also pins facing preservation: this function's own doc comment says
 /// "No yaw/orientation change", so it must go through
@@ -659,6 +659,12 @@ async fn destroy_tagged_entity_fans_left_aoi_to_witnesses() {
 /// Reverting to the raw call zeroes the drone's facing asserted below; the
 /// non-zero, non-uniform value is deliberate so a `[0, 0, 0]` regression
 /// can't accidentally match.
+///
+/// The broadcast assertion is the load-bearing part: exactly one
+/// `EntityMoved` must reach the witness, carrying the destination position
+/// verbatim, the preserved facing and zero velocity. A revert that drops
+/// the fan-out leaves the channel empty; one that absorbs the per-tick
+/// relay as "the existing broadcast" would not emit here at all.
 #[tokio::test]
 async fn move_waypoint_updates_target_position_to_destination() {
     let mut mgr = make_space_mgr();
@@ -666,7 +672,16 @@ async fn move_waypoint_updates_target_position_to_destination() {
     let player_pos_before = mgr.get_entity(1).unwrap().position;
     mgr.get_entity_mut(101).unwrap().direction = cimmeria_common::Vector3::new(0.0, 137.0, 0.0);
 
-    move_waypoint("Drone".to_string(), [50.0, 1.5, 75.0], 1, 1032, &mut mgr);
+    let (tx, mut rx) = mpsc::channel(16);
+    move_waypoint(
+        "Drone".to_string(),
+        [50.0, 1.5, 75.0],
+        1,
+        1032,
+        &tx,
+        &mut mgr,
+    )
+    .await;
 
     let drone = mgr.get_entity(101).unwrap();
     assert_eq!(
@@ -685,6 +700,86 @@ async fn move_waypoint_updates_target_position_to_destination() {
         "source player must NOT be moved — \
          a swap of target_id ↔ entity_id in the update_entity_position \
          call would trip here"
+    );
+
+    let mut snaps: Vec<(u32, u32, [f32; 3], [f32; 3])> = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        match msg {
+            CellToBaseMsg::EntityMoved {
+                witness_id,
+                entity_id,
+                position,
+                direction,
+                velocity,
+                ..
+            } => {
+                assert_eq!(velocity, [0.0; 3], "a snap carries zero velocity");
+                snaps.push((witness_id, entity_id, position, direction));
+            }
+            other => panic!("expected EntityMoved, got {other:?}"),
+        }
+    }
+    assert_eq!(
+        snaps,
+        vec![(1, 101, [50.0, 1.5, 75.0], [0.0, 137.0, 0.0])],
+        "move_waypoint must broadcast exactly one snap to the witness, with \
+         the new position and the preserved facing"
+    );
+}
+
+/// `move_waypoint` fans out exactly one `EntityMoved` per current witness
+/// of the target — no amplification, no missed witness. Two players both
+/// witness the drone, so two snaps must arrive, each routed to its own
+/// witness id. A regression that iterated the *source* player's witnesses
+/// or broadcast once regardless of the witness count trips here.
+#[tokio::test]
+async fn move_waypoint_broadcasts_one_snap_per_witness() {
+    let mut mgr = make_space_mgr();
+    stage_drone_with_witness(&mut mgr, /* player */ 1, /* npc */ 101, 0x00);
+    mgr.create_entity(2, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    let p = mgr
+        .get_entity_mut(2)
+        .expect("second player entity must exist immediately after create_entity");
+    p.is_player = true;
+    p.player_id = Some(43);
+    p.witnesses.insert(EntityId(101));
+    mgr.connect_entity(2);
+
+    let (tx, mut rx) = mpsc::channel(16);
+    move_waypoint(
+        "Drone".to_string(),
+        [50.0, 1.5, 75.0],
+        1,
+        1032,
+        &tx,
+        &mut mgr,
+    )
+    .await;
+
+    let mut snaps: Vec<(u32, u32)> = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        match msg {
+            CellToBaseMsg::EntityMoved {
+                witness_id,
+                entity_id,
+                position,
+                ..
+            } => {
+                assert_eq!(
+                    position,
+                    [50.0, 1.5, 75.0],
+                    "every snap must carry the destination"
+                );
+                snaps.push((witness_id, entity_id));
+            }
+            other => panic!("expected EntityMoved, got {other:?}"),
+        }
+    }
+    snaps.sort();
+    assert_eq!(
+        snaps,
+        vec![(1, 101), (2, 101)],
+        "exactly one snap per witness, both naming the repositioned NPC"
     );
 }
 
