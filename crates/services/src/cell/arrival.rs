@@ -61,8 +61,11 @@ use super::spawner::{RespawnerDef, StargateEntry};
 pub enum ArrivalCheck {
     /// The destination's navmesh (and its AABB) accept the point.
     Validated,
-    /// The destination space has no navmesh resident on this cell, so nothing
-    /// could be checked. Not a rejection — most worlds have no mesh.
+    /// Nothing could be checked, so nothing is refused. Two causes, treated
+    /// identically on purpose: the destination space has no navmesh resident
+    /// on this cell (most worlds), **or** the destination world is
+    /// [`NavmeshMode::Advisory`](crate::cell::space_manager::NavmeshMode) and
+    /// its mesh is not allowed to gate anything. Not a rejection.
     Unvalidated,
     /// The destination has a navmesh and the point is off it (or outside the
     /// mesh's bounds). Putting a player here means every position update they
@@ -77,7 +80,7 @@ pub fn check_arrival(
     world_name: &str,
     desired: [f32; 3],
 ) -> ArrivalCheck {
-    check_arrival_with(destination_navmesh(space_mgr, world_name), desired)
+    check_arrival_with(containment_navmesh(space_mgr, world_name), desired)
 }
 
 /// Pure core of [`check_arrival`], parameterised on the destination's navmesh
@@ -102,18 +105,23 @@ pub fn check_arrival_with(navmesh: Option<&NavMesh>, desired: [f32; 3]) -> Arriv
     }
 }
 
-/// The navmesh of `world_name`'s startup space, if one is resident here.
+/// The navmesh of `world_name`'s startup space **in its containment role**,
+/// if one is resident here and that world enforces containment.
 ///
 /// Non-instanced worlds keep their startup space (and its navmesh) resident
 /// for the life of the cell, so a stargate or ring destination is resolvable
 /// even though the traveller is not in it yet. Instanced worlds have no entry
 /// in `world_spaces` and come back `None`.
-fn destination_navmesh<'a>(space_mgr: &'a SpaceManager, world_name: &str) -> Option<&'a NavMesh> {
-    space_mgr
-        .world_spaces
-        .get(world_name)
-        .and_then(|space_id| space_mgr.spaces.get(space_id))
-        .and_then(|space| space.navmesh.as_ref())
+///
+/// An [`NavmeshMode::Advisory`](crate::cell::space_manager::NavmeshMode)
+/// world also comes back `None`, which is what makes an arrival there
+/// [`ArrivalCheck::Unvalidated`]. That is the intended reading: refusing to
+/// deliver a traveller to a coordinate because a mesh with known holes does
+/// not cover it is the same defect as snapping a walking player back, one
+/// event earlier. Harset gate 3 is the case — its floor is real, its mesh is
+/// not.
+fn containment_navmesh<'a>(space_mgr: &'a SpaceManager, world_name: &str) -> Option<&'a NavMesh> {
+    space_mgr.containment_navmesh_for_world(world_name)
 }
 
 /// Where a resolved arrival position came from.
@@ -204,7 +212,7 @@ pub fn resolve_arrival(
     desired: [f32; 3],
     yaw: f32,
 ) -> ResolvedArrival {
-    let navmesh = destination_navmesh(space_mgr, world_name);
+    let navmesh = containment_navmesh(space_mgr, world_name);
     resolve_arrival_with(navmesh, &space_mgr.respawners, world_name, desired, yaw)
 }
 
@@ -226,8 +234,9 @@ pub fn resolve_arrival_with(
             tracing::debug!(
                 world_name = %world_name,
                 reason = "no_navmesh",
-                "arrival: destination has no resident navmesh — accepting the \
-                 authored arrival unvalidated"
+                "arrival: destination has no navmesh this check may act on (none \
+                 resident, or the world is 'advisory') — accepting the authored \
+                 arrival unvalidated"
             );
             return ResolvedArrival {
                 position: desired,
@@ -361,6 +370,24 @@ pub(crate) fn test_insert_navmesh_space(
     space_mgr
         .world_spaces
         .insert(world_name.to_string(), space_id);
+    // A startup space implies a world definition, and without one the
+    // navmesh-mode lookup has nothing to read: `stamp_world_rows` walks
+    // `worlds`, so a grafted space whose world is absent from that table
+    // would silently stay `Enforce` however it was stamped, and a test that
+    // set it advisory would assert against the mode it was trying to change.
+    space_mgr
+        .worlds
+        .entry(world_name.to_string())
+        .or_insert_with(|| super::space_manager::WorldDef {
+            world_name: world_name.to_string(),
+            world_id: None,
+            navmesh_mode: super::space_manager::NavmeshMode::default(),
+            instanced: false,
+            min_x: -4000,
+            max_x: 4000,
+            min_y: -4000,
+            max_y: 4000,
+        });
 }
 
 #[cfg(test)]
@@ -539,6 +566,78 @@ mod tests {
         ];
         let out = resolve_arrival_with(Some(&mesh), &respawners, "Castle_CellBlock", OFF_MESH, 0.0);
         assert_eq!(out.position, near);
+    }
+
+    /// The advisory half of the arrival contract, on the real
+    /// `harset.nav`: the same coordinate is `OffMesh` in an enforcing
+    /// world and `Unvalidated` in an advisory one.
+    ///
+    /// This runs through [`check_arrival`] — the `SpaceManager` entry
+    /// point — rather than [`check_arrival_with`], because the mode lookup
+    /// is precisely the step the pure core does not have. It is also the
+    /// seam both ring-transport consumers reach: `runtime::tick` aborts a
+    /// trip on `OffMesh` and `audit_ring_pads` reports one at startup, so
+    /// routing this one function fixes all three call sites at once.
+    ///
+    /// The Command-Center return coordinate is the fixture on purpose: it
+    /// is a real authored point (chain 6007) that the mesh does not cover,
+    /// and under `enforce` Harset has no seeded respawner to recover to,
+    /// which is what turned an off-mesh arrival there into a silent freeze.
+    #[test]
+    fn an_advisory_destination_is_unvalidated_not_off_mesh() {
+        let path = std::path::Path::new("../../data/spaces/harset.nav");
+        if !path.exists() {
+            return; // fixture-less checkout: skip
+        }
+        let mesh = NavMesh::load(path).expect("load data/spaces/harset.nav");
+
+        // Controls, before any verdict: the mesh loaded and answers `true`
+        // for a coordinate the seed already stands a player on, and `false`
+        // for the one under test. Without the first, `OffMesh` below would
+        // be produced by an empty mesh rather than by the geometry.
+        assert!(
+            mesh.is_point_valid(&Vector3::new(-25.641, -67.828, 15.249)),
+            "control: ring pad 4 must read on-mesh or the mesh did not load",
+        );
+        let door = [0.0_f32, -67.6, -231.0];
+        assert!(
+            !mesh.is_point_valid(&Vector3::new(door[0], door[1], door[2])),
+            "control: the Command Center return point must read off-mesh -- \
+             it is the fixture the two verdicts below differ on",
+        );
+
+        let mut mgr = crate::test_support::make_space_manager();
+        test_insert_navmesh_space(&mut mgr, "Harset", mesh);
+
+        // Unstamped: `NavmeshMode::Enforce` by default, which is the
+        // pre-H53 behaviour and the reason chain 6007 ships disabled.
+        assert_eq!(
+            check_arrival(&mgr, "Harset", door),
+            ArrivalCheck::OffMesh,
+            "an enforcing world must still refuse an off-mesh arrival",
+        );
+
+        mgr.stamp_world_rows(&std::collections::HashMap::from([(
+            "Harset".to_string(),
+            crate::cell::spawner::WorldRow {
+                world_id: 57,
+                navmesh_mode: crate::cell::space_manager::NavmeshMode::Advisory,
+            },
+        )]));
+        assert_eq!(
+            check_arrival(&mgr, "Harset", door),
+            ArrivalCheck::Unvalidated,
+            "an advisory world's mesh may not refuse an arrival -- the floor \
+             is real even where the mesh is not, and refusing here is the \
+             same defect as snapping a walking player back, one event earlier",
+        );
+
+        // And the substituting flavour agrees: no respawner is consulted,
+        // the authored coordinate stands.
+        let out = resolve_arrival(&mgr, "Harset", door, 1.25);
+        assert_eq!(out.source, ArrivalSource::Unvalidated);
+        assert_eq!(out.position, door);
+        assert!(out.is_usable());
     }
 
     /// Most worlds have no mesh — the arrival stands, and the caller can
