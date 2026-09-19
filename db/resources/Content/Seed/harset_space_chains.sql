@@ -24,10 +24,12 @@
 -- chains, their triggers and actions, the five tag/region-id pairings and
 -- both arrival coordinates all come from the two Python scripts named
 -- above. Nothing here is RECONSTRUCTION or NEW CONTENT.
--- The one thing NOT recovered is chain 6007's `enabled = false`, which is
--- this packet's own safety call and is justified inline at that chain.
+-- Chain 6007 shipped `enabled = false` as H10's own safety call; placement
+-- PL-A-06 flipped it to true after measuring the recovered coordinate
+-- against the cooked map. The coordinate itself was never changed. The
+-- reasoning is inline at that chain.
 --
--- Packet: Harset H10. Base: main @ 3c1fed6c.
+-- Packet: Harset H10, amended by placement PL-A-06. Base: main @ 3c1fed6c.
 
 SET search_path = resources, pg_catalog;
 
@@ -218,35 +220,52 @@ VALUES (6006, 'cross_world_teleport', NULL, 'Harset_CmdCenter',
 -- Chain 6007: Harset_CmdCenter → Harset. Harset_CmdCenter.py:17-25,
 -- destination from Harset_CmdCenter.py:15 (`str2vec('0,-67.600,-231')`).
 --
--- *** DISABLED — awaiting an M0 in-client coordinate pin. ***
+-- *** ENABLED by placement PL-A-06. The coordinate is UNCHANGED. ***
 --
--- Unlike 6006's destination, this one lands in world 57, which DOES
--- have a navmesh (data/spaces/harset.nav). `NavMesh::is_point_valid`
--- returns FALSE for (0, -67.600, -231) — verified by the
--- `harset_return_coordinate_is_off_mesh` guard in
--- crates/services/src/cell/content/chain_replay_tests/harset_space.rs,
--- which loads the real .nav and asserts the verdict. The audit had
--- measured ~27 units off-mesh by vertex proximity; a Detour query
--- agrees.
+-- H10 shipped this disabled and asked M0 for a new coordinate. M0 was
+-- cancelled; the door was unblocked instead by measuring the recovered
+-- coordinate against the cooked map rather than replacing it
+-- (docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md,
+-- row PL-A-06). Three things were open and all three are now answered:
 --
--- Shipping this enabled would strand the player: `resolve_recovery_
--- position` has nothing to offer in world 57 (reprojection fails at
--- ±3 unit search extents, the AABB clamp declines because the point is
--- inside the mesh bounds, and no world-57 respawner row is seeded —
--- respawners row 20 also waits on M0). The result is a silent
--- `CorrectionSuppressed`: the player moves on their own screen, never
--- moves for witnesses, and gets no error. A visibly dead one-way door
--- is a strictly better failure than a silently ghosted player.
+-- 1. IS THERE A FLOOR THERE? Yes. `obj_slab` on the cooked Harset chunks
+--    reports an up-facing surface at y -67.64 in the columns at
+--    (0, -231), (-1, -231), (+1, -231) and (0, -230), with a second
+--    floor sheet at -68.92 below it and the nearest ceiling at -61.13 —
+--    6.5 m of headroom. The seeded y of -67.600 sits 0.04 m above that
+--    floor. The point is neither inside geometry nor above a fall, which
+--    was the only question the M0 walk was still needed for.
+-- 2. DOES IT PING-PONG? No. Point set 2078
+--    ('Harset.CommandCenterTransition', the outbound door in world 57)
+--    is an AABB spanning z -243.52..-238.41; the arrival at z -231 is
+--    7.41 m north of its nearest face, so a returning player is not
+--    standing in the outbound trigger and has to walk back into it
+--    deliberately. Pinned by
+--    `door_arrivals_and_respawner_sit_outside_the_opposing_trigger_box`.
+-- 3. WHAT ABOUT THE NAVMESH? It is still off-mesh, and that is now a
+--    navmesh defect rather than a reason to keep the door shut. Nothing
+--    within ~20 m of this door is on-mesh at the real floor height:
+--    `harset.nav`'s nearest polygon to the arrival is 28.6 m above it,
+--    and at the door threshold itself 51.7 m above it. There is no
+--    on-mesh alternative to move to, so "wait for an on-mesh
+--    coordinate" was waiting on a mesh rebuild (H53 / GH1), not on a
+--    playtest.
 --
--- The coordinate is NOT adjusted here. Campaign rule: every Harset
--- coordinate is either recovered from the Python or pinned in-game;
--- inventing one is out of scope for this packet. M0 must replace the
--- x/y/z below AND flip `enabled` to true in the same change, and must
--- keep the ~8 units of clearance from point set 2078's trigger box so
--- the door does not ping-pong. The replay guard asserts BOTH the
--- off-mesh verdict and `enabled = false`, so the two cannot drift.
+--    Off-mesh is survivable here for two independent reasons. World 57
+--    is `navmesh_mode = 'advisory'` (H53), so the movement validator
+--    fails open and the silent `CorrectionSuppressed` freeze H10 feared
+--    cannot happen. And `respawners` row 20 now exists (placement
+--    PL-A-02), so even if world 57 were flipped back to `enforce` the
+--    failure mode is "arrive at the gate plaza" rather than "ghosted
+--    player". Both halves are pinned by
+--    `harset_return_arrival_is_offmesh_but_survivable`.
+--
+-- Enabling this also unparks mission 1361's acceptance trio (chains
+-- 6511-6513 in harset_opcore_chains.sql) and its abandon twin 6528 — a
+-- biconditional pinned by `praxis_acceptance_is_enabled_iff_the_return_
+-- door_is`. Disabling 6007 again means disabling those four too.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (6007, 'Harset_CmdCenter - Harset door: cross-world teleport to Harset (DISABLED: arrival off-mesh, awaiting M0 pin)', 'space', 68, false, 0);
+VALUES (6007, 'Harset_CmdCenter - Harset door: cross-world teleport to Harset', 'space', 68, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (6007, 'enter_region', 'Harset_CmdCenter.HarsetTransition', 'player', false, 0);

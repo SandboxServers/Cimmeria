@@ -36,7 +36,39 @@ INSERT INTO stargates (address1, address2, address3, address4, address5, address
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (4, 29, 8, 22, 18, 25, 9, 4, 'Tollana', 0, 'Tollana.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 19, 211.04499799999999, 0.60599999999999998, -1.571, -547.64398200000005, 10012);
 
-INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (21, 17, 24, 31, 10, 30, 6, 3, 'Harset', 0, 'Harset.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 57, -0.075999999999999998, -67.274001999999996, 3.141, 38.011001999999998, 25);
+-- Harset (world 57) is the only gate row carrying an arrival pin, and the pin
+-- is PLACED FROM MAP DATA, not walked in-client (placement PL-A-01,
+-- docs/analysis/harset-rebuild/placements/A-arrival-and-travel.md). Correct it
+-- from a playtest by editing the four arrival_* values on this row only.
+--
+-- Why a pin is needed at all: x_pos/y_pos/z_pos is the
+-- GLB-Stargate_Prefab_Seq prop transform, and the gate stands on a raised dais
+-- (obj_slab: a 34 m^2 sheet at y -67.5..-67.0 spanning x[-4.7, 4.3]
+-- z[34.8, 39.2]) about 2 m above the plaza floor at y -69.3. harset.nav has no
+-- polygon on that dais: the row's nearest walkable poly is 4.60 m away in XZ.
+--
+-- Where the pin came from:
+--   * The gate approach is marked by two authored GA-Torch00 props at
+--     (4.33, -69.07, 34.08) and (-4.95, -69.15, 34.10) -- a 9.3 m gate mouth
+--     centred on x -0.31, on the z 34.1 line. The pin sits 1.1 m inside the
+--     west torch.
+--   * (-5.0, 33.0) is INTERIOR to navmesh component 187 -- the 24,770 m^2 hub
+--     component that also contains the two GA-GuardPost00 plaza props at
+--     (+/-12.9, -69.08, 3.5) -- and the whole agent-radius disc around it is
+--     too. The plaza strip on the gate centreline (x -4..+4, z 26..38) is a
+--     navmesh hole, so the pin is offset 7.03 m west-south-west of the gate;
+--     that offset is the H53 mesh-fragmentation defect showing through, not a
+--     wall. obj_slab reads one flat floor across x[-10, +3] z[20, 41].
+--   * y -68.99 is the topmost up-facing surface obj_slab reports in the column
+--     at (-5.0, 33.0) (a second, lower floor sheet sits at -69.31).
+--   * arrival_yaw repeats the row's own yaw 3.141 deliberately, NOT zero: yaw
+--     is atan2(dx, dz) with 0 = +Z, so 3.141 faces -Z, which is away from the
+--     gate (z 38) and down the plaza (z 0..20, where every telemetry point
+--     is). The authored facing was already correct.
+--   * Clear of point set 1001 'Harset.Stargate' (a 2.5 m cylinder at
+--     (-0.372, -67.364, 37.353)) by 6.35 m, so arriving does not re-trigger
+--     the gate volume.
+INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id, arrival_x, arrival_y, arrival_z, arrival_yaw) VALUES (21, 17, 24, 31, 10, 30, 6, 3, 'Harset', 0, 'Harset.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 57, -0.075999999999999998, -67.274001999999996, 3.141, 38.011001999999998, 25, -5, -68.989999999999995, 33, 3.141);
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (17, 27, 10, 7, 25, 31, 26, 10, 'Lucia', 0, 'Lucia.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 15, 66.718001999999998, -165.574997, -3.1200000000000001, -70.220000999999996, 10003);
 
