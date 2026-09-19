@@ -339,10 +339,35 @@ in every OBJ this crate has ever written:
 | `CA-Props:Ca-ThroneStairs` | (350.93, 36.64, 653.01) |
 | `EM-Cover:EM-PlatformRamp_00` ×4 | (335.92 / 374.40, 46.16, 809.92–822.52) |
 
-The two `CA-Stair00` flights bracket the 12.00 m interior storey step
-(floors at BigWorld y 43.2 and 55.2) that `nav_inspect --gaps` reports
-as unbridgeable — so that gap is a Recast question, not an extraction
-one.
+These bracket the 12.00 m interior storey step (halls at BigWorld y
+48.4 and 55.2) that `nav_inspect --gaps` reports as unbridgeable, and
+the cheapest bridge does route through them — but **they do not join
+the two halls**, and it is worth being precise about why, because the
+obvious reading of the table above is wrong.
+
+`obj_slab --levels 0.5` measures each flight at about five metres of
+rise: the lower climbs 46.0 → 51.5, the upper 54.5 → 59.5. Neither
+spans 48.4 → 55.2, and 51.5–54.5 is a dead band holding nothing but
+single-triangle ceiling slabs. The flights are *within-storey* level
+changes. Nor is it a Recast tuning question: the box holds 1,077 m² of
+walkable surface at ≤45° against 1.2 m² at 45–60°, and the split
+survives every parameter set down to `cs=0.1 ch=0.05 minRegionSize=1`.
+(Measured by `nav-connectivity`; see
+[docs/engine/navmesh-build-pipeline.md](../../docs/engine/navmesh-build-pipeline.md)
+§7.4.)
+
+So the storey connector is still unaccounted for, and the extractor's
+own numbers say where it is *not*. Per-chunk, for the stair spine's
+tile `Castle-00080003`: 878 BSP triangles already emitted from 40
+`Model` exports, alongside 38 `Brush` and 82 `ModelComponent`. BSP is
+therefore **not** an undecoded candidate there — Phase 1.4 reads it and
+it is already in the OBJ. `StaticMeshCollectionActor`, `KActor`,
+`FracturedStaticMeshActor` and `BlockingVolume` have **zero exports in
+Castle**, so none of them can be it either. What remains is the one
+gap [Known unknowns](#known-unknowns) already records: every
+`Brush`-owned `Model` in Castle decodes to a 108-byte stub, so those 38
+brushes emit nothing, and nobody has established whether that is
+correct cooked data or a decoder gap.
 
 The three `Em-Props:EM-Elevator00` shells are archetype-instanced and
 each pairs with a direct `EM-Elevator_Pad00` a metre away, at
@@ -612,7 +637,17 @@ crate; the NavBuilder-side write-up is
   set, so excluding it would delete all per-`Brush` geometry.
 - **Actor-placed BSP** (`Brush` / `BlockingVolume` with a non-empty
   `Model`) is implemented but has no real data to validate against —
-  every Castle brush `Model` is an empty stub.
+  every Castle brush `Model` decodes to an empty 108-byte stub.
+  **This is now the leading candidate for Castle's missing interior
+  storey connector**, so it has stopped being a curiosity: `Brush`
+  exports are not rare (38 in `Castle-00080003` alone, 540 map-wide
+  across all 144 chunks) and if their geometry is really there and we
+  are failing to read it, that is a hole in exactly the tile the
+  unbridgeable 48.4 → 55.2 step sits in. Two readings, and nobody has
+  distinguished them: either the cooker genuinely empties a `Brush`'s
+  `Model` once CSG has been baked into the level `Model` (in which
+  case the 878 triangles we already emit there are all there is), or
+  the 108 bytes are a header we are mis-parsing.
 - **Non-`StaticMeshActor` classes that own a `StaticMeshComponent`**
   are still dropped by the walker's class filter: 14 `InterpActor`s in
   Castle, which the archetype resolver handles unchanged when pointed
