@@ -76,12 +76,12 @@ pub(crate) async fn run_tick_loop(
     cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // Spec §2.4 R10: the UE3 game layer tears the connection down at 15 s
-    // of server silence (`NetInactivityTimeout=15`). Mirror that exact edge
-    // here so a stalled tick-sync loop is detected asynchronously at the
-    // same threshold the client will enforce — not 60 s later.
-    const INACTIVITY_TIMEOUT: Duration =
-        Duration::from_millis(cimmeria_mercury::consts::UE3_INACTIVITY_TIMEOUT_MS);
+    // Server-side client-gone reap: if the peer sends nothing for 60 s, exit
+    // the tick-sync loop and tear down session state. Distinct from UE3 R10's
+    // 15 s *server*-silence tolerance — the client tears down at 15 s of
+    // server quiet; we honor R10 by sending tickSync every ~100 ms, not by
+    // matching this timer to `UE3_INACTIVITY_TIMEOUT_MS`.
+    const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(60);
 
     let mut tick: u32 = 0;
 

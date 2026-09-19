@@ -216,9 +216,9 @@ fn is_timed_out_does_not_fire_when_peer_is_chatty() {
 }
 
 /// Regression guard for #293 (Path A): the two inactivity constants must
-/// keep distinct semantics — the Mercury bookkeeping value is deliberately
-/// longer than the UE3 wire-observable silence tolerance, and the shorter
-/// UE3 value is the one the client (and server tick-sync) enforces.
+/// keep distinct semantics — Mercury peer-dead bookkeeping vs the UE3
+/// client-side edge for *server* silence (R10). tick_sync's 60 s client-gone
+/// reap is separate and intentionally not wired to `UE3_INACTIVITY_TIMEOUT_MS`.
 #[test]
 fn inactivity_constants_distinguish_mercury_bookkeeping_from_ue3_edge() {
     use crate::consts::{MERCURY_PEER_DEAD_MS, UE3_INACTIVITY_TIMEOUT_MS};
@@ -234,9 +234,7 @@ fn inactivity_constants_distinguish_mercury_bookkeeping_from_ue3_edge() {
         MERCURY_PEER_DEAD_MS, 300_000,
         "MERCURY_PEER_DEAD_MS keeps the 5-minute Mercury peer-dead bookkeeping"
     );
-    // Bookkeeping must be longer than the UE3 silence tolerance so the
-    // client tears down first (its 15 s edge), and the server catches up
-    // shortly after instead of leaking session state for minutes.
+    // Bookkeeping must remain longer than the UE3 silence-tolerance edge.
     const _: () = assert!(MERCURY_PEER_DEAD_MS > UE3_INACTIVITY_TIMEOUT_MS);
 }
 

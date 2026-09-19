@@ -134,11 +134,12 @@ pub mod consts {
     /// far more frequently than we want to declare a peer dead).
     pub const MERCURY_PEER_DEAD_MS: u64 = 300_000;
 
-    /// UE3 game-layer silence tolerance — the wire-observable edge the
-    /// client tears down at (spec §2.4 R10: `NetInactivityTimeout=15`).
-    /// Server code that must match the client's teardown timing (the
-    /// per-connection tick-sync loop) should use this constant, not
-    /// [`MERCURY_PEER_DEAD_MS`], which is a Mercury bookkeeping value.
+    /// Client-side silence tolerance for *server* quiet (spec §2.4 R10:
+    /// `NetInactivityTimeout=15`). The UE3 client tears down after 15 s
+    /// without receiving server traffic. The server honors R10 by emitting
+    /// tickSync every ~100 ms so the client never hits this edge — not by
+    /// using this value as the server's client-inactivity reap timer.
+    /// See [`MERCURY_PEER_DEAD_MS`] for Mercury-layer peer-dead bookkeeping.
     pub const UE3_INACTIVITY_TIMEOUT_MS: u64 = 15_000;
 
     /// Maximum number of fragments a single message may be split across.
