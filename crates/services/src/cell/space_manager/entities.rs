@@ -401,10 +401,16 @@ impl SpaceManager {
         direction: [i8; 3],
         velocity: [f32; 3],
     ) {
+        // The wire carries three packed angle bytes in `(yaw, pitch, roll)`
+        // order (client packer `0x00de1720`); `CellEntity.direction` is
+        // `[pitch, yaw, roll]` in RADIANS. Storing the raw bytes as floats in
+        // wire order (the old behaviour) put byte-units yaw in the pitch slot,
+        // so `pack_angle` re-divided a byte by the byte scale and every moving
+        // player was broadcast with a saturated, meaningless facing (P49).
         let facing = Vector3::new(
-            direction[0] as f32,
-            direction[1] as f32,
-            direction[2] as f32,
+            crate::mercury::aoi::unpack_angle(direction[1]),
+            crate::mercury::aoi::unpack_angle(direction[0]),
+            crate::mercury::aoi::unpack_angle(direction[2]),
         );
         self.write_position(entity_id, position, Some(facing), velocity);
     }

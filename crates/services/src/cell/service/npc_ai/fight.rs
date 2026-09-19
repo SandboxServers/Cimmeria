@@ -496,8 +496,17 @@ pub(super) async fn npc_ai_fight(
     }
 
     // In range, LOS confirmed, and not too close — stop moving and attack.
+    //
+    // Face the target too. `direction` was only ever written by the movement
+    // tick, which skips path-less NPCs -- and this branch clears the path --
+    // so an attacker's yaw froze the moment it stopped while the player
+    // strafed around it. Done before the ability check so a mob waiting on a
+    // cooldown still tracks its target. No extra wire traffic: the AoI tick
+    // already sends direction with every position update.
+    let face_yaw = (target_pos.x - npc_pos.x).atan2(target_pos.z - npc_pos.z);
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         npc.nav_path.clear();
+        npc.direction = cimmeria_common::Vector3::new(0.0, face_yaw, 0.0);
     }
 
     // `chosen_ability` may still be `None` here when every known ability
