@@ -335,8 +335,18 @@ impl CellService {
                     }
                     space_mgr.ring_point_set_to_region = point_set_to_region;
                     space_mgr.ring_regions = regions;
+                    // One pass over the pad coordinates now, while the startup
+                    // spaces (and their navmeshes) are already resident. A pad
+                    // the navmesh rejects aborts every trip to it at runtime,
+                    // and "the rings don't work" is a long way from "this seed
+                    // row is off-mesh" without this line.
+                    let off_mesh_pads = super::super::ring_transport::audit_ring_pads(
+                        &space_mgr.ring_regions,
+                        &space_mgr,
+                    );
                     tracing::info!(
                         count = space_mgr.ring_regions.len(),
+                        off_mesh_pads = ?off_mesh_pads,
                         "Initialized ring transporters"
                     );
                 }

@@ -8,7 +8,7 @@ async fn feat_onphysics_turn_on_zero_sets_unrestricted_true() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
 
-    assert!(dispatch(1, GM_PHYSICS, &[0u8], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_PHYSICS, &[0u8], &tx, &mut mgr, &test_engine()).await);
 
     assert!(
         mgr.get_entity(1).unwrap().movement_unrestricted,
@@ -31,7 +31,7 @@ async fn feat_onphysics_turn_on_one_sets_unrestricted_false() {
     // Start from unrestricted=true so the flip is observable, not a no-op.
     mgr.get_entity_mut(1).unwrap().movement_unrestricted = true;
 
-    assert!(dispatch(1, GM_PHYSICS, &[1u8], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_PHYSICS, &[1u8], &tx, &mut mgr, &test_engine()).await);
 
     assert!(
         !mgr.get_entity(1).unwrap().movement_unrestricted,
@@ -53,7 +53,7 @@ async fn feat_onphysics_truncated_args_rejected_without_mutation() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, mut rx) = mpsc::channel(8);
 
-    assert!(dispatch(1, GM_PHYSICS, &[], &tx, &mut mgr).await);
+    assert!(dispatch(1, GM_PHYSICS, &[], &tx, &mut mgr, &test_engine()).await);
 
     assert!(
         !mgr.get_entity(1).unwrap().movement_unrestricted,

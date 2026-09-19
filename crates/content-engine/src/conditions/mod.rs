@@ -1,0 +1,352 @@
+//! Condition evaluators for chain predicate checks.
+//!
+//! Conditions gate whether a chain's actions execute. All conditions on a chain
+//! must evaluate to `true` (logical AND) for the action list to run.
+
+#[cfg(test)]
+mod tests;
+
+use serde::{Deserialize, Serialize};
+
+use crate::context::ExecutionContext;
+
+/// A condition that must be satisfied for a chain's actions to fire.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Condition {
+    /// The named property on the source entity must equal the given value.
+    PropertyEquals {
+        property: String,
+        value: serde_json::Value,
+    },
+
+    /// The named numeric property must fall within [min, max] inclusive.
+    PropertyInRange {
+        property: String,
+        min: f64,
+        max: f64,
+    },
+
+    /// The source entity must possess the given item.
+    HasItem {
+        item_id: i32,
+        min_count: Option<i32>,
+    },
+
+    /// The source entity must have the specified ability.
+    HasAbility { ability_id: i32 },
+
+    /// The source entity must currently be within the specified region.
+    InRegion { region_id: i32 },
+
+    /// Faction standing check.
+    FactionCheck {
+        faction: String,
+        relation: FactionRelation,
+    },
+
+    /// Free-form expression for complex conditions.
+    CustomExpression { expression: String },
+
+    // ── DB-driven condition types ─────────────────────────────────────────
+    /// Check if a mission has a specific status (not_active, active, completed).
+    MissionStatus {
+        mission_id: i32,
+        operator: ComparisonOp,
+        expected_status: MissionStatusValue,
+    },
+
+    /// Check if a mission step has a specific status.
+    StepStatus {
+        mission_id: i32,
+        step_id: i32,
+        operator: ComparisonOp,
+        expected_status: StepStatusValue,
+    },
+
+    /// Check if the player's archetype matches a value.
+    Archetype {
+        operator: ComparisonOp,
+        archetype_id: i32,
+    },
+
+    /// Check if a mission objective has a specific status.
+    ObjectiveStatus {
+        mission_id: i32,
+        objective_id: i32,
+        operator: ComparisonOp,
+        expected_status: String,
+    },
+
+    /// Check if a named counter meets a comparison threshold.
+    Counter {
+        counter_name: String,
+        operator: ComparisonOp,
+        value: i32,
+    },
+
+    /// True iff the source entity's stat is below its current max
+    /// (i.e., the stat has headroom to grow). Used to gate consumable
+    /// chains so e.g. Health Slappacks fizzle silently rather than
+    /// burning a stack when the player is already at full HP.
+    ///
+    /// Reads `stat_<id>_cur` and `stat_<id>_max` from the context;
+    /// callers must populate these via `populate_stats_context` before
+    /// resolving. Returns `false` (treat as "no headroom, don't fire")
+    /// if either param is missing — fail-closed so a wiring mistake
+    /// can't accidentally make consumables free-to-spam at full stat.
+    StatBelowMax { stat_id: i32 },
+
+    /// True iff the acting player's current world matches `world_id` under
+    /// `operator`. `world_id` is `resources.worlds.world_id` — the same id
+    /// space `spawnlist`, `stargates` and `ring_transport_regions` use;
+    /// `entities/spaces.xml` maps the id's world name to its bounds.
+    ///
+    /// Reads the typed [`ExecutionContext::world_id`] field, *not* a
+    /// `params` key: the value is resolved from the player's space by the
+    /// services-side populator, and a typed field makes "nobody populated
+    /// it" distinguishable from "populated with 0".
+    ///
+    /// Exists because no trigger carries the world. `OnRegionEnter` matches
+    /// a bare `point_sets.name` string, so two worlds that both contain a
+    /// region called `X.CommandCenterTransition` fire the same chain, and
+    /// `OnPlayerLoaded`'s optional `world_name` filter is the only other
+    /// world-aware primitive in the engine. A `world` condition lets any
+    /// chain — region, player_loaded, interact, death — be zone-scoped.
+    ///
+    /// **Fail-closed** when `ctx.world_id` is `None`, for *every* operator
+    /// including `Neq`: an unpopulated context means we do not know where
+    /// the player is, and firing a door teleport in the wrong world is the
+    /// exact bug class this condition was added to prevent. An author who
+    /// wants "anywhere but Harset" still writes `neq 57`, which holds
+    /// wherever the populator ran.
+    World {
+        operator: ComparisonOp,
+        world_id: i32,
+    },
+}
+
+/// Faction relationship levels.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FactionRelation {
+    Friendly,
+    Neutral,
+    Hostile,
+}
+
+/// Comparison operators used by DB-driven conditions.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ComparisonOp {
+    Eq,
+    Neq,
+    Gte,
+    Lte,
+    Gt,
+    Lt,
+}
+
+/// Mission status values for MissionStatus conditions.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MissionStatusValue {
+    NotActive,
+    Active,
+    Completed,
+}
+
+/// Step status values for StepStatus conditions.
+///
+/// `NotActive` is the catch-all for "this step is not the current step" — true
+/// both before the mission has been accepted and after the step has been
+/// advanced past. Use `Completed` (set by the populator from
+/// `MissionInstance.completed_steps`) when a chain needs to distinguish a step
+/// that's already been passed from one that hasn't been reached yet.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum StepStatusValue {
+    NotActive,
+    Active,
+    Completed,
+}
+
+impl Condition {
+    /// Evaluate this condition against the current execution context.
+    pub fn evaluate(&self, ctx: &ExecutionContext) -> bool {
+        match self {
+            Condition::PropertyEquals { property, value } => {
+                ctx.params.get(property) == Some(value)
+            }
+            Condition::PropertyInRange { property, min, max } => ctx
+                .params
+                .get(property)
+                .and_then(|v| v.as_f64())
+                .is_some_and(|val| val >= *min && val <= *max),
+            Condition::HasItem { item_id, min_count } => {
+                let key = format!("item_{}_count", item_id);
+                let required = min_count.unwrap_or(1) as f64;
+                ctx.params
+                    .get(&key)
+                    .and_then(|v| v.as_f64())
+                    .is_some_and(|count| count >= required)
+            }
+            Condition::HasAbility { ability_id } => {
+                let key = format!("ability_{}", ability_id);
+                ctx.params
+                    .get(&key)
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            }
+            Condition::InRegion { region_id } => {
+                ctx.params.get("current_region").and_then(|v| v.as_i64()) == Some(*region_id as i64)
+            }
+            Condition::FactionCheck { faction, relation } => {
+                let key = format!("faction_{}", faction);
+                let expected = match relation {
+                    FactionRelation::Friendly => "Friendly",
+                    FactionRelation::Neutral => "Neutral",
+                    FactionRelation::Hostile => "Hostile",
+                };
+                ctx.params.get(&key).and_then(|v| v.as_str()) == Some(expected)
+            }
+            Condition::CustomExpression { expression } => ctx
+                .params
+                .get(expression)
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+
+            // ── DB-driven conditions ──────────────────────────────────────
+            Condition::MissionStatus {
+                mission_id,
+                operator,
+                expected_status,
+            } => {
+                let key = format!("mission_{}_status", mission_id);
+                let actual_str = ctx
+                    .params
+                    .get(&key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("not_active");
+                let expected_str = match expected_status {
+                    MissionStatusValue::NotActive => "not_active",
+                    MissionStatusValue::Active => "active",
+                    MissionStatusValue::Completed => "completed",
+                };
+                compare_str(actual_str, expected_str, operator)
+            }
+            Condition::StepStatus {
+                mission_id,
+                step_id,
+                operator,
+                expected_status,
+            } => {
+                let key = format!("mission_{}_step_{}_status", mission_id, step_id);
+                let actual_str = ctx
+                    .params
+                    .get(&key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("not_active");
+                let expected_str = match expected_status {
+                    StepStatusValue::NotActive => "not_active",
+                    StepStatusValue::Active => "active",
+                    StepStatusValue::Completed => "completed",
+                };
+                compare_str(actual_str, expected_str, operator)
+            }
+            Condition::Archetype {
+                operator,
+                archetype_id,
+            } => {
+                let actual = ctx
+                    .params
+                    .get("archetype")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(-1);
+                compare_i64(actual, *archetype_id as i64, operator)
+            }
+            Condition::ObjectiveStatus {
+                mission_id,
+                objective_id,
+                operator,
+                expected_status,
+            } => {
+                let key = format!("mission_{}_obj_{}_status", mission_id, objective_id);
+                let actual_str = ctx
+                    .params
+                    .get(&key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("not_active");
+                compare_str(actual_str, expected_status, operator)
+            }
+            Condition::Counter {
+                counter_name,
+                operator,
+                value,
+            } => {
+                let key = format!("counter_{}", counter_name);
+                let actual = ctx.params.get(&key).and_then(|v| v.as_i64()).unwrap_or(0);
+                compare_i64(actual, *value as i64, operator)
+            }
+            Condition::StatBelowMax { stat_id } => {
+                let cur_key = format!("stat_{}_cur", stat_id);
+                let max_key = format!("stat_{}_max", stat_id);
+                let cur = ctx.params.get(&cur_key).and_then(|v| v.as_i64());
+                let max = ctx.params.get(&max_key).and_then(|v| v.as_i64());
+                match (cur, max) {
+                    (Some(c), Some(m)) => c < m,
+                    // Fail-closed: missing context means we don't know the
+                    // stat state, so treat as "no headroom" rather than
+                    // firing the chain blindly. A missing populator call
+                    // would otherwise let consumables burn at full stat.
+                    _ => false,
+                }
+            }
+            Condition::World { operator, world_id } => {
+                let Some(actual) = ctx.world_id else {
+                    // Fail-closed for every operator. A dispatcher that
+                    // forgot `populate_world_context` must not make a
+                    // world-gated chain fire everywhere — that is the
+                    // `OnRegionEnter`-ignores-world bug the condition
+                    // exists to close.
+                    tracing::debug!(
+                        expected_world_id = world_id,
+                        "Condition::World evaluated against a context with no world_id — \
+                         failing closed; the firing dispatcher did not populate it"
+                    );
+                    return false;
+                };
+                compare_world_id(actual, *world_id, operator)
+            }
+        }
+    }
+}
+
+/// Compare two world ids. Only `Eq` and `Neq` are meaningful — a world id
+/// is an opaque identifier, not a scale, so `world gt 57` has no sane
+/// meaning and answers `false` rather than "Harset_CmdCenter (68) is
+/// greater than Harset (57)". The loader keeps such a row (dropping it
+/// would leave the chain ungated) but warns at load time.
+fn compare_world_id(actual: i32, expected: i32, op: &ComparisonOp) -> bool {
+    match op {
+        ComparisonOp::Eq => actual == expected,
+        ComparisonOp::Neq => actual != expected,
+        _ => false,
+    }
+}
+
+/// Compare two strings using a ComparisonOp (only Eq and Neq are meaningful).
+fn compare_str(actual: &str, expected: &str, op: &ComparisonOp) -> bool {
+    match op {
+        ComparisonOp::Eq => actual == expected,
+        ComparisonOp::Neq => actual != expected,
+        _ => false,
+    }
+}
+
+/// Compare two integers using a ComparisonOp.
+fn compare_i64(actual: i64, expected: i64, op: &ComparisonOp) -> bool {
+    match op {
+        ComparisonOp::Eq => actual == expected,
+        ComparisonOp::Neq => actual != expected,
+        ComparisonOp::Gte => actual >= expected,
+        ComparisonOp::Lte => actual <= expected,
+        ComparisonOp::Gt => actual > expected,
+        ComparisonOp::Lt => actual < expected,
+    }
+}

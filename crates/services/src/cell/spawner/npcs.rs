@@ -306,6 +306,7 @@ pub fn spawn_npcs_from_records(records: &[SpawnRecord], space_mgr: &mut SpaceMan
                     class = %record.class, tag = ?record.tag,
                     "Spawned NPC from DB"
                 );
+                log_spawn_behaviour(space_mgr, npc_id);
                 count += 1;
             }
             Err(e) => {
@@ -352,6 +353,7 @@ pub fn spawn_instance_npcs_from_records(
                     world = %record.world_name, name = %record.template_name,
                     tag = ?record.tag, "Spawned instance NPC from DB"
                 );
+                log_spawn_behaviour(space_mgr, npc_id);
                 count += 1;
             }
             Err(e) => {
@@ -364,6 +366,45 @@ pub fn spawn_instance_npcs_from_records(
     }
     tracing::Span::current().record("spawned", count);
     count
+}
+
+/// The resolved behaviour of a freshly spawned NPC, so "why does this NPC act
+/// like that" is one query instead of a seed read: an `aggression` of 0 means
+/// it will never notice a player on its own; `use_cover = false` means the
+/// loaded cover nodes are irrelevant to it; `respawn_secs = None` is one-shot.
+fn log_spawn_behaviour(space_mgr: &SpaceManager, npc_id: u32) {
+    let Some(e) = space_mgr.get_entity(npc_id) else {
+        return;
+    };
+    tracing::debug!(
+        target: "spawner.npc_behaviour",
+        npc_id,
+        npc_name = e.npc_name.as_deref().unwrap_or(""),
+        tag = e.tag.as_deref().unwrap_or(""),
+        template_id = e.template_id.unwrap_or(0),
+        spawn_id = e.spawn_id.unwrap_or(0),
+        x = e.position.x,
+        y = e.position.y,
+        z = e.position.z,
+        spawn_yaw_rad = e.direction.y,
+        on_navmesh = space_mgr.is_position_valid(npc_id, &e.position),
+        navmesh_loaded = space_mgr.space_has_navmesh(npc_id),
+        ground_y = ?space_mgr.get_navmesh_height(npc_id, e.position.x, e.position.z),
+        level = e.level,
+        faction = e.faction,
+        aggression = e.aggression,
+        use_cover = e.use_cover,
+        is_stationary = e.is_stationary,
+        move_speed = e.move_speed,
+        respawn_secs = ?e.respawn_secs,
+        follow_min_distance = e.follow_min_distance,
+        follow_max_distance = e.follow_max_distance,
+        patrol_len = e.patrol_path.len(),
+        wander_radius = e.wander_radius,
+        interaction_flags = e.interaction_type_flags,
+        loot_table_id = ?e.loot_table_id,
+        "NPC spawned -- resolved behaviour"
+    );
 }
 
 #[cfg(test)]

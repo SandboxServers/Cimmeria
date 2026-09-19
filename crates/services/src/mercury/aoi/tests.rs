@@ -672,3 +672,48 @@ fn compose_forced_position_body_matches_build_forced_position_body() {
          space_id(4) + vehicleID(4) + pos(12) + prev_pos(12) + rot(12) + flags(1)"
     );
 }
+
+/// Regression guard for the saturating cast: every yaw in `(-PI, 0)` used to
+/// pack to byte 0 (due north). A fixture in `[0, PI]` passes WITH the bug, so
+/// these are all negative.
+#[test]
+fn pack_angle_wraps_negative_yaw_like_the_cpp_cast() {
+    use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI};
+    assert_eq!(pack_angle(-FRAC_PI_2), 192, "west, not north");
+    assert_eq!(pack_angle(-FRAC_PI_4), 224);
+    assert_eq!(pack_angle(-3.0 * FRAC_PI_4), 160);
+    // The positive half is unchanged.
+    assert_eq!(pack_angle(0.0), 0);
+    assert_eq!(pack_angle(FRAC_PI_2), 64);
+    assert_eq!(pack_angle(PI), 128);
+    // Out-of-range and non-finite inputs never panic or saturate high.
+    assert_eq!(pack_angle(FRAC_PI_2 + 4.0 * PI), 64);
+    assert_eq!(pack_angle(f32::NAN), 0);
+}
+
+/// A client facing byte must survive the store-as-radians round trip, in the
+/// right slot: wire order is (yaw, pitch, roll), `direction` is
+/// `[pitch, yaw, roll]`, and the broadcast reads yaw from `direction.y`.
+#[test]
+fn client_facing_bytes_round_trip_through_radians() {
+    use crate::cell::space_manager::SpaceManager;
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+    let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(cxml).unwrap();
+    mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+
+    for yaw in [0i8, 1, 64, 127, -1, -64, -128] {
+        mgr.update_entity_position(1, [10.0, 0.0, 10.0], [yaw, 5, -7], [0.0; 3]);
+        let d = mgr.get_entity(1).unwrap().direction;
+        assert_eq!(pack_angle(d.y), yaw as u8, "yaw byte {yaw} must round-trip");
+        assert_eq!(pack_angle(d.x), 5, "pitch lands in direction.x");
+        assert_eq!(pack_angle(d.z), (-7i8) as u8, "roll lands in direction.z");
+        assert!(
+            d.y.abs() <= std::f32::consts::PI + 1e-3,
+            "stored as radians"
+        );
+    }
+}

@@ -2,14 +2,14 @@
 title: "Cinematic System (Kismet/Matinee Sequences)"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-09-18
 ---
 
 # Cinematic System (Kismet/Matinee Sequences)
 
-> **Last updated**: 2026-07-25
-> **Status**: Partially implemented. Firing today: ability begin/end, entity death, item equip/unequip/reload/use, ring transport, content-chain `play_sequence`, and the debug console commands. Not firing: all effect-lifecycle sequences, ability interrupt/failed, stargate dialing and crossing, DHD chevrons, designer slots, spawn/despawn, the visibility-safety nudge, and every NVP parameter override.
-> **Implementation**: `crates/services/src/cell/abilities/` (ability + death), `cell/cell_methods/player/world/item_sequence.rs` (item handling), `cell/ring_transport/`, `cell/console/net.rs` (debug commands), `cell/spawner/abilities.rs` (`event_set_id → sequence_id` load)
+> **Last updated**: 2026-09-18
+> **Status**: Partially implemented. Firing today: ability begin/end, entity death, item equip/unequip/reload/use, ring transport, stargate open (`Stargate_MakeGate`) and crossing (`Stargate_CrossGate`), content-chain `play_sequence`, and the debug console commands. Not firing: all effect-lifecycle sequences, ability interrupt/failed, DHD chevrons, `Stargate_DestroyGate`, designer slots, spawn/despawn, the visibility-safety nudge, and every NVP parameter override.
+> **Implementation**: `crates/services/src/cell/abilities/` (ability + death), `cell/cell_methods/player/world/item_sequence.rs` (item handling), `cell/ring_transport/`, `cell/gate_travel/sequences.rs` (stargate 6100/6113), `cell/console/net.rs` (debug commands), `cell/spawner/abilities.rs` (`event_set_id → sequence_id` load)
 > **Data / defs**: `entities/defs/SGWSpawnableEntity.def`, `db/resources/Events/`
 >
 > The behavioural descriptions below that name `.py` files are historical — they document the original server's intent, which the Rust implementation mirrors. Where the two diverge, the Rust code is authoritative and the divergence is called out inline.
@@ -266,6 +266,8 @@ These are used for zone-specific cinematics — door animations, console activat
 | 6113 | `Stargate_CrossGate` | Player walks through the event horizon — triggered by `stargatePassed()` |
 
 Each stargate event set contains exactly **14 sequences** (one per event type above). 14 zones have stargate event sets.
+
+Of the fourteen, the server emits exactly **two**: `Stargate_MakeGate` (6100) four seconds after a successful dial, and `Stargate_CrossGate` (6113) as the player enters the gate volume. That is what the 2009 server did — `cancelDialing` sent no `Stargate_DestroyGate`, and nothing ever drove the chevron events. Both are emitted by [`cell::gate_travel::sequences`](../../crates/services/src/cell/gate_travel/sequences.rs) to the dialer **and every witness of them**; see the [gate travel reference](gate-travel.md).
 
 ### Region Transport Events (8000-8001)
 
@@ -545,7 +547,7 @@ Two points in the gate travel flow:
        Atrea.enums.KISMET_VIEW_EventInvoker, 0)
    ```
 
-Note: Both send only to `self.client`, not witnesses. Other players don't see the stargate animation — this is a known gap.
+Note: both Python sites send only to `self.client`, not witnesses, so in 2009 other players didn't see the stargate animation. Cimmeria deliberately diverges (CA10) and fans both to the witness list — see [gate travel](gate-travel.md).
 
 ### Ring Transport Sequences (`deprecated/python/cell/RingTransporter.py`)
 
@@ -727,7 +729,7 @@ All three fan the resulting `onSequence` to the broadcaster's own client plus it
 
 1. **Ring transport multi-player bug**: Only the first player in the ring region gets the Matinee animation. Playing it for each player messes up the ring model animation because the Matinee sequence controls a shared world object (the ring prop). Marked as `FIXME` in `RingTransporter.py:193-194`.
 
-2. **Stargate sequences not sent to witnesses**: `SGWPlayer.gateDialTimerExpired()` and `stargatePassed()` send `onSequence` only to `self.client`, not to `self.witnesses`. Other players in AoI don't see the gate open or the player walk through.
+2. **Stargate sequences not sent to witnesses** — *fixed in Cimmeria (CA10)*: `SGWPlayer.gateDialTimerExpired()` and `stargatePassed()` sent `onSequence` only to `self.client`, not to `self.witnesses`, so other players in AoI didn't see the gate open or the player walk through. `cell::gate_travel::sequences::send_gate_sequence` fans both events to the dialer and every witness of them.
 
 3. **No DHD chevron animations**: The 7 chevron lock events (`DHD1`-`DHD7`, values 6106-6112) have sequences defined in the DB for every stargate but are never triggered. The dialing flow goes directly from `beginDialing()` → 4-second timer → `Stargate_MakeGate`, skipping the per-chevron animation.
 

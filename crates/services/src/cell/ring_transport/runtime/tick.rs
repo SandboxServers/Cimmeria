@@ -11,7 +11,7 @@ use cimmeria_content_engine::chain::ChainEngine;
 use super::super::dispatch::{dispatch_effects, dispatch_release_effects, try_advance_after_load};
 use super::super::regions::RingRegion;
 use super::super::transporter::{AbortReason, Effect, State};
-use crate::cell::arrival::resolve_arrival;
+use crate::cell::arrival::{check_arrival, ArrivalCheck};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -49,8 +49,24 @@ pub async fn run_tick_with_engine(
         if ready.is_empty() {
             break;
         }
+        // Real transitions first; a bounded-stall abort is a last resort and
+        // must never pre-empt a transition that is still pending *anywhere*
+        // this tick. A tick that lags past 15s holds both the source's warmup
+        // and the peer's `RecvWarmup` stall, and it is the warmup that makes
+        // the peer healthy again — running the abort first would tear down a
+        // trip that was about to complete. Only when no real transition is
+        // left does the remaining set count as genuinely stalled.
+        let mut batch: Vec<(i32, super::super::transporter::RawDeadline)> = ready
+            .iter()
+            .copied()
+            .filter(|(_, d)| !d.is_stall())
+            .collect();
+        if batch.is_empty() {
+            batch = ready;
+        }
+
         let mut made_progress = false;
-        for (region_id, deadline) in ready {
+        for (region_id, deadline) in batch {
             let count = iterations.entry(region_id).or_insert(0);
             if *count >= MAX_PER_REGION {
                 tracing::error!(
@@ -60,9 +76,14 @@ pub async fn run_tick_with_engine(
                 );
                 continue;
             }
-            *count += 1;
-            run_one_deadline(region_id, deadline, now, tx, space_mgr, engine).await;
-            made_progress = true;
+            // Only an applied transition burns budget and counts as progress.
+            // A skip means an earlier entry in this same batch changed this
+            // region's state, so that entry is the progress; counting the
+            // skip too would let a busy pair exhaust the cap on no-ops.
+            if run_one_deadline(region_id, deadline, now, tx, space_mgr, engine).await {
+                *count += 1;
+                made_progress = true;
+            }
         }
         if !made_progress {
             break;
@@ -98,6 +119,9 @@ async fn reconcile_pending(
 /// Apply a single elapsed deadline transition for one region. Factored out
 /// of `run_tick_with_engine` so the scanner can re-poll for additional
 /// deadlines on the same region within one tick.
+///
+/// Returns `true` when a transition was actually applied. `false` means the
+/// snapshot entry went stale before its turn came and was skipped.
 async fn run_one_deadline(
     region_id: i32,
     deadline: super::super::transporter::RawDeadline,
@@ -105,7 +129,27 @@ async fn run_one_deadline(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
-) {
+) -> bool {
+    // `ready_regions` snapshots every elapsed deadline before the loop runs,
+    // but applying one region's deadline can change another's: the source's
+    // warmup drives its peer `RecvWarmup → RemoteLoadWait` and re-arms the
+    // peer's stall with a fresh 90s bound. The peer's snapshot entry is stale
+    // from that moment, and applying it would abort a trip that had just
+    // become healthy. Re-read the live deadline and skip if it no longer
+    // matches — the snapshot is advisory, the transporter is authoritative.
+    let live = space_mgr.ring_transporters.current_deadline(region_id, now);
+    if live != Some(deadline) {
+        tracing::debug!(
+            region_id,
+            snapshot = ?deadline,
+            live = ?live,
+            reason = "deadline_superseded",
+            "ring tick: deadline changed after the scan and before its turn — \
+             skipping the stale entry rather than applying it to the new state"
+        );
+        return false;
+    }
+
     // The bounded stall abort is terminal for the trip: no other transition
     // runs for this region this tick, so handle it before the borrow dance
     // below.
@@ -114,7 +158,7 @@ async fn run_one_deadline(
             .ring_transporters
             .abort_pair(region_id, AbortReason::Timeout, None);
         dispatch_release_effects(effects, tx, space_mgr).await;
-        return;
+        return true;
     }
 
     // Resolve any cross-region lookups (warmup needs the destination's
@@ -158,36 +202,74 @@ async fn run_one_deadline(
             None,
         );
         dispatch_release_effects(effects, tx, space_mgr).await;
-        return;
+        return true;
     }
 
-    // H01 arrival contract: the destination pad's own row coordinate is the
-    // only place a ring arrival is chosen, so validate it here against the
-    // destination world's navmesh (respawner fallback on a miss, never the
-    // raw input) before the transporter copies it into the teleport effects.
-    // Ring rows carry no yaw; the transporter does not use one either.
-    let warmup_arrival: Option<[f32; 3]> = destination_for_warmup.as_ref().map(|dst| {
-        resolve_arrival(space_mgr, &dst.world_name, [dst.x, dst.y, dst.z], 0.0).position
-    });
+    // H01 arrival contract, ring flavour: **validate-only**. The destination
+    // pad's own row coordinate is the arrival — the client plays the ring
+    // matinee at that pad and the FSM fires `FireTeleportIn` for that region
+    // — so there is no such thing as a substitute for it. In particular the
+    // respawner fallback `resolve_arrival` applies to gate travel is wrong
+    // here: it would quietly put every passenger somewhere else in the world
+    // while the ring sequence still played, with nothing in the log tying the
+    // two together (PR #662 review, finding 7). Ring rows carry no yaw; the
+    // transporter does not use one either.
+    let pad_check = destination_for_warmup
+        .as_ref()
+        .map(|dst| check_arrival(space_mgr, &dst.world_name, [dst.x, dst.y, dst.z]));
+
+    // A pad the destination world's navmesh rejects has no second answer, so
+    // abort the trip instead of teleporting onto it: `warmup_timer_expired`
+    // would copy the rejected coordinate into a
+    // `TeleportPlayer`/`TeleportCrossWorld` for every passenger, landing them
+    // hidden and movement-locked somewhere the position validator suppresses
+    // every update they send. Same disposal as the missing-destination-region
+    // arm directly above — release everyone and put both rings back to Idle.
+    // `ArrivalCheck::Unvalidated` (no mesh resident for that world) is not a
+    // rejection and is not aborted on.
+    if pad_check == Some(ArrivalCheck::OffMesh) {
+        let dst = destination_for_warmup.as_ref();
+        tracing::error!(
+            region_id,
+            destination_region_id = warmup_dst_id,
+            destination_world = dst.map(|d| d.world_name.as_str()).unwrap_or_default(),
+            pad_x = dst.map(|d| d.x).unwrap_or_default(),
+            pad_y = dst.map(|d| d.y).unwrap_or_default(),
+            pad_z = dst.map(|d| d.z).unwrap_or_default(),
+            reason = AbortReason::DestinationPadOffMesh.as_str(),
+            "ring warmup: destination pad row is off the destination world's navmesh — \
+             aborting the trip and releasing passengers rather than teleporting them onto a \
+             point every position update they send would be suppressed from; re-pin the row \
+             in db/resources/Worlds/Seed/ring_transport_regions.sql"
+        );
+        let effects = space_mgr.ring_transporters.abort_pair(
+            region_id,
+            AbortReason::DestinationPadOffMesh,
+            None,
+        );
+        dispatch_release_effects(effects, tx, space_mgr).await;
+        return true;
+    }
 
     let effects: Vec<Effect> = if let Some(t) = space_mgr.ring_transporters.get_mut(region_id) {
         if deadline.is_hide() {
             t.hide_timer_expired()
         } else if deadline.is_warmup() {
-            match (destination_for_warmup.as_ref(), warmup_arrival) {
-                (Some(dst), Some(arrival)) => t.warmup_timer_expired(arrival, &dst.world_name),
+            match destination_for_warmup.as_ref() {
+                // The pad row verbatim — validated above, never substituted.
+                Some(dst) => t.warmup_timer_expired([dst.x, dst.y, dst.z], &dst.world_name),
                 // Unreachable: the `is_none()` guard above returned already.
-                _ => return,
+                None => return false,
             }
         } else if deadline.is_remote_warmup() {
             t.remote_warmup_timer_expired(now)
         } else if deadline.is_cooldown() {
             t.cooldown_timer_expired()
         } else {
-            return;
+            return false;
         }
     } else {
-        return;
+        return false;
     };
 
     // For warmup we have to update the destination's expected-passenger set
@@ -203,6 +285,7 @@ async fn run_one_deadline(
     }
 
     dispatch_effects(effects, tx, space_mgr, engine).await;
+    true
 }
 
 /// After the source ring's warmup expires, push the destination ring through

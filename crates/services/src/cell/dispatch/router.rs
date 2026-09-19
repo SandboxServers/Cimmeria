@@ -73,7 +73,10 @@ pub async fn dispatch_cell_method(
         return;
     }
     // GateTravel interface (35)
-    if cell_methods::gate_travel::dispatch(entity_id, method_index, args, tx, space_mgr).await {
+    // GateTravel needs the engine for the `stargate_dialed` content trigger.
+    if cell_methods::gate_travel::dispatch(entity_id, method_index, args, tx, space_mgr, engine)
+        .await
+    {
         return;
     }
     // SGWInventoryManager interface (36–42) — needs engine for useItem content chains
@@ -106,7 +109,7 @@ pub async fn dispatch_cell_method(
     // reaching here means access_level >= GameMaster. Only a verified subset
     // is implemented; unimplemented 109+ indices return `false` and fall
     // through to the (already-authorized) warn arm below — harmless.
-    if cell_methods::gm::dispatch(entity_id, method_index, args, tx, space_mgr).await {
+    if cell_methods::gm::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await {
         return;
     }
 

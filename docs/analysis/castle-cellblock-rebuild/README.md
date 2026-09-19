@@ -1,7 +1,7 @@
 # Castle Cellblock Rebuild Handoff
 
 > Type: how-to. Audience: Claude Code coordinator and implementing engineers.
-> Updated: 2026-09-17. Companions: [audit.md](audit.md), [work-packets.md](work-packets.md), [parity campaign protocol](../legacy-command-parity/README.md), [documentation index](../../readme.md).
+> Updated: 2026-09-18. Companions: [audit.md](audit.md), [work-packets.md](work-packets.md), [in-game UAT guide](uat-guide.md), [parity campaign protocol](../legacy-command-parity/README.md), [documentation index](../../readme.md).
 
 ## Purpose And Evidence Boundary
 

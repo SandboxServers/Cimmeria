@@ -201,7 +201,18 @@ pub struct CellEntity {
 
     /// Per-player available interactions: template_id → Vec<(dialog_set_map_id, dialog_id, interaction_flags)>.
     /// Populated by `add_dialog_set` content action. Only used for player entities.
-    pub available_interactions: HashMap<i32, Vec<(i32, i32, i64)>>,
+    ///
+    /// `dialog_id` is `None` for an **interaction-only** bind — a
+    /// `dialog_set_maps` row with `dialog_id IS NULL`, which exists purely to
+    /// raise an indicator bit (`!` / `?` / quest glow) over an NPC's head with
+    /// no dialog behind the click. `Castle.py`'s `addDialog(149, 3062)` is one.
+    /// The client-visible push for a bind is
+    /// `SGWSpawnableEntity.InteractionType(UINT64 TypeId)`
+    /// (`entities/defs/SGWSpawnableEntity.def:114-116`) — a lone flags
+    /// bitfield with no dialog field — so a flag-only bind is wire-legal;
+    /// the dialog id is server-side state consulted later, when the player
+    /// actually clicks.
+    pub available_interactions: HashMap<i32, Vec<(i32, Option<i32>, i64)>>,
 
     /// Static mesh path for non-humanoid entities (e.g., `"CA-Props.CA-PrisonerCorpse00"`).
     pub static_mesh: Option<String>,

@@ -50,9 +50,38 @@ impl RingTransporter {
         self.arm_stall(now);
     }
 
+    /// Is `entity_id` one of the passengers this ring is currently holding a
+    /// slot for?
+    ///
+    /// The readiness gate counts `players_loaded` against
+    /// [`RingTransporter::num_remote_players`] — a *length* comparison — so
+    /// membership is the only thing that makes the two sides describe the
+    /// same people. Callers that receive a load notification from outside the
+    /// FSM (the cross-world `AdvanceRingDestination` hook) must check this
+    /// before recording it.
+    pub fn expects_player(&self, entity_id: u32) -> bool {
+        self.expected_players.contains(&entity_id)
+    }
+
     /// `playerLoaded()` — destination side. Returns true when the count of
     /// loaded players matches the source's expectation.
+    ///
+    /// An arrival this ring is not expecting is refused outright (PR #662
+    /// review, finding 5). The readiness gate compares *lengths*, so pushing
+    /// a stranger in satisfies it against a completely different passenger
+    /// list: trip 1 sends A, A's load times out on
+    /// `REMOTE_LOAD_WAIT_TIMEOUT`, trip 2 starts expecting `[B]`, and A's
+    /// late `AdvanceRingDestination` then makes `len(players_loaded) == 1 ==
+    /// num_remote_players()` — firing `all_players_loaded` for a trip whose
+    /// only real passenger, B, is still loading. B is then left hidden and
+    /// movement-locked with the ring already past the state that would
+    /// release them. The caller routes a refused id to the late-arrival
+    /// release in
+    /// [`crate::cell::ring_transport::handle_remote_player_loaded`] instead.
     pub fn player_loaded(&mut self, entity_id: u32) -> bool {
+        if !self.expects_player(entity_id) {
+            return false;
+        }
         if !self.players_loaded.contains(&entity_id) {
             self.players_loaded.push(entity_id);
         }

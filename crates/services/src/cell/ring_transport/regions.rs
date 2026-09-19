@@ -120,6 +120,53 @@ pub async fn load_ring_regions(pool: &PgPool) -> Result<HashMap<i32, RingRegion>
     Ok(regions)
 }
 
+/// Check every loaded pad row against its world's navmesh once, at startup,
+/// and return the ids of the pads that fail.
+///
+/// Ring arrival is validate-only at runtime (see the warmup arm of
+/// `runtime::tick::run_one_deadline`): an off-mesh pad aborts the trip,
+/// because the pad row *is* the arrival and there is no substitute for it.
+/// Finding that out the first time a player rings is the wrong moment — the
+/// symptom is "the rings don't work" with the cause three layers down in a
+/// seed table. Auditing at startup puts the offending `region_id` and `tag`
+/// in the boot log instead (PR #662 review, finding 7).
+///
+/// Only pads whose world has a resident navmesh are checked; everything else
+/// is unvalidatable and silently fine. Returns the failures rather than
+/// logging per row here so the caller owns one summary line.
+pub fn audit_ring_pads(
+    regions: &HashMap<i32, RingRegion>,
+    space_mgr: &crate::cell::space_manager::SpaceManager,
+) -> Vec<i32> {
+    use crate::cell::arrival::{check_arrival, ArrivalCheck};
+
+    let mut offenders: Vec<i32> = regions
+        .values()
+        .filter(|r| {
+            check_arrival(space_mgr, &r.world_name, [r.x, r.y, r.z]) == ArrivalCheck::OffMesh
+        })
+        .map(|r| {
+            tracing::error!(
+                region_id = r.region_id,
+                tag = %r.tag,
+                world_name = %r.world_name,
+                pad_x = r.x,
+                pad_y = r.y,
+                pad_z = r.z,
+                reason = "ring_pad_off_navmesh",
+                "ring pad row is off its own world's navmesh — every trip to this pad will \
+                 abort and release its passengers instead of arriving; re-pin the row in \
+                 db/resources/Worlds/Seed/ring_transport_regions.sql"
+            );
+            r.region_id
+        })
+        .collect();
+    // Deterministic order: the caller prints this list and a HashMap walk
+    // would reshuffle it between boots for no reason.
+    offenders.sort_unstable();
+    offenders
+}
+
 #[cfg(test)]
 mod live_db_tests {
     //! Live-DB regression guards on the seeded `ring_transport_regions`

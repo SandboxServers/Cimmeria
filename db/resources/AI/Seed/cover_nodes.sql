@@ -9351,3 +9351,40 @@ INSERT INTO resources.cover_nodes (chunk_id, node_id, pos_x, pos_y, pos_z, orien
   (1380, 15, 2943.999756, 912.000122, 0.000000, 0.374531, 'HEIGHT_High', 'QUALITY_Better', '\xb70cc9bf'::bytea),
   (1380, 16, 2943.999756, -911.999756, 0.000000, 0.374531, 'HEIGHT_High', 'QUALITY_Better', '\xff12c93f'::bytea),
   (1380, 17, 2943.999756, -559.999756, 0.000000, 0.374531, 'HEIGHT_High', 'QUALITY_Better', '\xb70cc9bf'::bytea);
+
+-- ============================================================
+-- C05 addition (2026-09-18) -- hand-authored, NOT auto-generated
+-- ============================================================
+-- 7 hand-placed `SGWSpecCoverNode` actors at the Castle_CellBlock
+-- med-station desk (chunk_id 1381, cover_sets.sql), extracted directly
+-- from `Castle_CellBlock-fffefffd.umap` by a game-archaeology-specialist
+-- pass (2026-09-18; see docs/analysis/castle-cellblock-rebuild/
+-- work-packets.md#c05). pos_x/pos_y/pos_z below are REAL WORLD-SPACE
+-- coordinates already (converted via the validated
+-- `world(uu) = HUD(Z,X,Y)*100` swizzle) -- unlike every prefab-local row
+-- above, do NOT apply a placement transform to these.
+--
+-- node_id -> source .umap export index: 0=1271, 1=1272, 2=1279 (center),
+-- 3=1281, 4=1282, 5=1284, 6=1286.
+--
+-- Fields not recovered by the extraction pass, defaulted:
+--   orient  - only `DrawScale3D.Y` (a mesh scale factor, not a facing
+--             angle) was captured, so true orientation is unknown.
+--             Defaulted to 0.0. Safe for this packet: `cover/detection.rs`
+--             (OnPlayerEnteredCover / OnPlayerLeftCover /
+--             OnPlayerInCoverDuration proximity matching) never reads
+--             `orient` -- only NPC flank-arc detection does, and no NPC
+--             is scripted against this cover set.
+--   quality - no source data; defaulted to QUALITY_Good (neutral).
+--   tail    - repo-wide unconfirmed semantics (see cover/types.rs doc
+--             comment); zeroed.
+-- height is real data: all 7 nodes are CoverHeight::Low (0) per the
+-- extraction.
+INSERT INTO resources.cover_nodes (chunk_id, node_id, pos_x, pos_y, pos_z, orient, height, quality, tail) VALUES
+  (1381, 0, -231.75, 65.44, -124.23, 0.0, 'HEIGHT_Low', 'QUALITY_Good', '\x00000000'::bytea),
+  (1381, 1, -231.76, 65.47, -120.71, 0.0, 'HEIGHT_Low', 'QUALITY_Good', '\x00000000'::bytea),
+  (1381, 2, -234.71, 65.47, -124.71, 0.0, 'HEIGHT_Low', 'QUALITY_Good', '\x00000000'::bytea),
+  (1381, 3, -231.27, 65.47, -122.93, 0.0, 'HEIGHT_Low', 'QUALITY_Good', '\x00000000'::bytea),
+  (1381, 4, -232.26, 65.47, -122.89, 0.0, 'HEIGHT_Low', 'QUALITY_Good', '\x00000000'::bytea),
+  (1381, 5, -228.81, 65.47, -124.72, 0.0, 'HEIGHT_Low', 'QUALITY_Good', '\x00000000'::bytea),
+  (1381, 6, -231.75, 65.44, -125.21, 0.0, 'HEIGHT_Low', 'QUALITY_Good', '\x00000000'::bytea);

@@ -1,0 +1,254 @@
+{
+  "schema_version": "1.0",
+  "status": "PROJECT FINAL v1",
+  "source_policy": "All numeric constants below are reconstruction unless explicitly noted. Raw ability/effect payloads remain source-backed candidates and must not be rewritten to fit this model.",
+  "pipeline": [
+    "validate action / weapon / program / cooldown / ammo-resource",
+    "resolve target, range, geometry and incoming direction",
+    "resolve direct/cone/melee cover and crouch",
+    "resolve Accuracy vs Defense hit result where applicable",
+    "for explosion/ground AoE resolve per-target LoS + blast exposure",
+    "load linked Effect payload",
+    "apply item-bound TechComp/quality/ammo scaling to numeric payload",
+    "resolve matching armor mitigation and penetration",
+    "resolve explicit damage resistance/vulnerability",
+    "apply Focus component",
+    "resolve Focus-dependent Health-component exposure",
+    "resolve statuses and explicit resist rolls",
+    "consume resources",
+    "update threat/AI/combat state"
+  ],
+  "accuracy_cover": {
+    "base_hit_chance": 0.75,
+    "min_hit_chance": 0.1,
+    "max_hit_chance": 0.95,
+    "rating_scale": 1000,
+    "cover_defense": {
+      "None": 0,
+      "Low": 100,
+      "Medium": 200,
+      "High": 300
+    },
+    "crouch_defense": 100,
+    "fallback_cover_arc_degrees": 120,
+    "direct_cover_damage_mitigation": 0,
+    "formula": {
+      "effective_accuracy": "base_accuracy + ability_accuracy_mod + signed_accuracy_mods + focus_accuracy_penalty",
+      "raw_cover_defense": "cover_tier_defense + signed_cover_defense_mods",
+      "cover_after_penetration": "max(0, raw_cover_defense - cover_penetration)",
+      "effective_defense": "base_defense + signed_defense_mods + crouch_defense_if_active + cover_after_penetration",
+      "final_hit_chance": "clamp(0.10,0.95,0.75 + (effective_accuracy-effective_defense)/1000)"
+    }
+  },
+  "armor_resistance_penetration": {
+    "armor_mitigation_cap": 0.6,
+    "slot_weights": {
+      "Head": 0.15,
+      "Torso": 0.35,
+      "Hands": 0.1,
+      "Legs": 0.25,
+      "Feet": 0.15,
+      "Accessory": 0.0,
+      "Back": 0.0,
+      "Waist": 0.0
+    },
+    "family_channels": {
+      "Ballistic": [
+        "Physical",
+        "Kinetic"
+      ],
+      "Ablative": [
+        "Energy",
+        "Plasma",
+        "Fire",
+        "Ice"
+      ],
+      "Contamination": [
+        "Contamination",
+        "Radiation",
+        "Poison",
+        "Disease"
+      ],
+      "Stealth": [
+        "Generic direct damage when explicit mitigation is present"
+      ]
+    },
+    "penetration_rating_scale": 1000,
+    "penetration_fraction_min": -0.3,
+    "penetration_fraction_max": 0.5,
+    "resistance_min": -0.5,
+    "resistance_max": 0.6,
+    "formula": {
+      "raw_armor": "sum(slot_weight * explicit_piece_mitigation_pct for matching/generic pieces)",
+      "penetration_fraction": "clamp(-0.30,0.50,penetration_rating/1000)",
+      "armor_after_penetration": "clamp(0,0.60,raw_armor-penetration_fraction)",
+      "resistance_pct": "clamp(-0.50,0.60,sum(explicit_matching_resistance_percentages))",
+      "damage_multiplier": "(1-armor_after_penetration)*(1-resistance_pct)"
+    },
+    "rule": "Penetration reduces armor mitigation only. It does not reduce Mental/Kinetic/Health status-resist ratings."
+  },
+  "focus_health": {
+    "focus_accuracy_penalty_max": -200,
+    "health_component_chance_full_focus": 0.1,
+    "health_component_chance_zero_focus": 0.9,
+    "formula": {
+      "focus_ratio": "clamp(0,1,current_focus/max_focus); entities without Focus use 1.0",
+      "accuracy_penalty": "-200*(1-focus_ratio_before_attack)",
+      "health_component_chance": "clamp(0.10,0.90,0.10+0.80*(1-focus_ratio_after_focus_damage))"
+    },
+    "rules": [
+      "paired F/H attack: apply mitigated Focus damage first, then roll the ordinary Health component",
+      "health-only effects bypass the Focus health-exposure gate",
+      "focus-only effects never invent Health damage",
+      "roll once per damaging pulse/effect so Health exposure can rise as Focus drains",
+      "heals affect only their explicit pool and clamp to maximum"
+    ]
+  },
+  "status_resistance": {
+    "base_apply_chance": 0.85,
+    "min_apply_chance": 0.1,
+    "max_apply_chance": 0.95,
+    "rating_scale": 1000,
+    "default_effect_power": 0,
+    "formula": "clamp(0.10,0.95,0.85+(effect_power-target_resist_rating)/1000)",
+    "rules": [
+      "use only where the linked effect requests a resistance roll",
+      "Mental Resist Roll -> Mental Resist",
+      "Kinetic Resist Roll -> Kinetic Resist",
+      "Health Resist Roll -> Health Resist",
+      "immunity moniker overrides generic roll with 0% application chance",
+      "without a resist-roll effect, state applies on successful parent effect unless immune",
+      "same status does not add duration; use max(current_remaining,new_duration)"
+    ]
+  },
+  "aoe_cover_los": {
+    "blast_exposure": {
+      "None": 1.0,
+      "Low": 0.85,
+      "Medium": 0.7,
+      "High": 0.5,
+      "HardOccluded": 0.0
+    },
+    "rules": [
+      "use explosion/detonation origin as incoming direction for target cover",
+      "hard world-geometry occlusion blocks blast damage/status",
+      "soft cover multiplies blast damage by exposure",
+      "post-resist status application chance is multiplied by blast exposure",
+      "ground-target detonation does not add a second ordinary Accuracy-vs-Defense roll unless ability semantics require it",
+      "cone attacks use normal per-target attack/cover resolution, not blast exposure",
+      "persistent ground hazards ignore cover after a target is inside the hazard volume",
+      "melee ignores cover tier but may still use normal Defense/crouch"
+    ]
+  },
+  "item_scaling": {
+    "techcomp_range_source": [
+      1,
+      55
+    ],
+    "techcomp_per_point": 0.0125,
+    "quality_multiplier": {
+      "Poor": 0.95,
+      "Normal": 1.0,
+      "Good": 1.03,
+      "Great": 1.06,
+      "Fantastic": 1.1
+    },
+    "tier_generic_multiplier": 1.0,
+    "applied_science_generic_multiplier": 1.0,
+    "global_level_payload_multiplier": 1.0,
+    "formula": "(1+(clamp(TC,1,55)-1)*0.0125) * quality_multiplier * explicit_item_payload_modifier",
+    "applies_to": [
+      "weapon auto-attacks",
+      "weapon-required numeric damage payloads",
+      "item-bound grenade/launcher numeric damage",
+      "Asgard program numeric payloads when bound to equipped program"
+    ],
+    "does_not_generically_scale": [
+      "cooldown",
+      "warmup",
+      "status duration",
+      "rating buffs/debuffs",
+      "resist chance",
+      "movement percentage",
+      "threat percentage"
+    ],
+    "rules": [
+      "Tier is progression/classification metadata only in v1",
+      "Applied Science ID has no hidden generic multiplier; explicit effects only",
+      "character level has no hidden generic payload multiplier"
+    ]
+  },
+  "ammo_fallbacks": {
+    "Hollow Point": {
+      "damage_multiplier": 1.15,
+      "penetration_rating": -100,
+      "authority": "PROJECT numeric fallback"
+    },
+    "Armor Piercing": {
+      "damage_multiplier": 0.9,
+      "penetration_rating": 150,
+      "authority": "PROJECT numeric fallback"
+    },
+    "Incendiary": {
+      "generic_multiplier": 1.0,
+      "authority": "EFFECT-DRIVEN",
+      "rule": "Use recovered fire/DoT effects; no invented generic DoT."
+    },
+    "EMP": {
+      "generic_multiplier": 1.0,
+      "authority": "EFFECT-DRIVEN"
+    },
+    "Explosive": {
+      "generic_multiplier": 1.0,
+      "authority": "EFFECT-DRIVEN"
+    },
+    "Dart variants": {
+      "generic_multiplier": 1.0,
+      "authority": "EFFECT-DRIVEN"
+    }
+  },
+  "stacking_caps": {
+    "flat_rating_mods": "different monikers sum; same moniker strongest absolute value wins and refreshes",
+    "percent_mods": "different monikers sum then clamp to stat-specific cap; same moniker does not stack",
+    "stances": "one active per stance family; new stance replaces old",
+    "ammo_modes": "one active mode per weapon",
+    "same_dot_hot_moniker": "replace/refresh",
+    "different_dot_hot_monikers": "may coexist unless explicit rule forbids",
+    "same_cc_state": "duration=max(current_remaining,new_duration), not additive",
+    "armor_mitigation_cap": 0.6,
+    "damage_resistance_range": [
+      -0.5,
+      0.6
+    ],
+    "movement_multiplier_range": [
+      0.4,
+      1.5
+    ],
+    "hit_chance_range": [
+      0.1,
+      0.95
+    ],
+    "status_apply_chance_range": [
+      0.1,
+      0.95
+    ],
+    "focus_accuracy_penalty_range": [
+      -200,
+      0
+    ],
+    "threat_cap": null
+  },
+  "still_unrecovered_retail_facts": [
+    "original Accuracy-vs-Defense formula",
+    "original Low/Medium/High cover numeric bonuses",
+    "original crouch numeric value",
+    "original armor aggregation and penetration formula",
+    "exact retail armor-family channel mapping",
+    "original Focus->Health probability curve",
+    "original status-resist probability curve",
+    "original AoE cover/LoS rule",
+    "original TechComp/Quality payload scaling",
+    "original Tier/Applied Science generic scaling if any",
+    "original global stacking caps"
+  ]
+}

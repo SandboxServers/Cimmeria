@@ -7,6 +7,7 @@
 - [admin-api-jsonwebtoken-unused.md](admin-api-jsonwebtoken-unused.md) — `jsonwebtoken` has ZERO call sites; the real dev-session token is hand-rolled HMAC-SHA256 in `dev_session.rs`. Read before triaging any JWT advisory/bump.
 - [password-storage-argon2id.md](password-storage-argon2id.md) — Phase 2a argon2id storage (server half) in `auth/credentials.rs`: dual-column schema, TLS-gated plaintext (`TlsConn` marker + `tls_marker_layer`), opportunistic on-login migration. Partly closes the "plain-HTTP SOAP" High and the "non-constant-time password comparison" Medium (argon2id verify is constant-time for migrated accounts; legacy SHA-1 compare remains).
 - [worktree-build-gotchas.md](worktree-build-gotchas.md) — building/testing `cimmeria-services` from a worktree: junction `external/` in, and ignore 3 `cell/` log-capture tests that only fail under parallel `cargo test`.
+- [player-id-zero-sentinel-trap.md](player-id-zero-sentinel-trap.md) — `player_id: 0` is a DB-failure sentinel that reaches `PendingClientReadyInfo`; any fail-closed check keyed on it silently denies for the whole session after a DB blip. Read before adding an authorization read in `client_ready.rs`.
 
 Inline-content section status:
 

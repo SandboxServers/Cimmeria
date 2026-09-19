@@ -60,7 +60,15 @@ const HEX_DUMP_CAP: usize = 256;
 /// like `AUTHENTICATE` (0x01) and `ENABLE_ENTITIES` (0x08) pass
 /// through this helper too.
 pub fn log_inbound(peer: SocketAddr, msg_id: u8, payload: &[u8]) {
-    let msg_name = client_names::inbound_msg_name(msg_id);
+    let msg_name = client_names::inbound_msg_name_with_payload(msg_id, payload);
+    // Index within its namespace, so base methods (no name table yet) are at
+    // least distinguishable: cell = id-0x80 (or 61+sub), base = id-0xC0.
+    let method_index: i32 = match msg_id {
+        0xBD => payload.get(4).map_or(-1, |s| 61 + i32::from(*s)),
+        0x80..=0xBC => i32::from(msg_id - 0x80),
+        0xC0..=0xFF => i32::from(msg_id - 0xC0),
+        _ => -1,
+    };
     let args_len = payload.len();
     let args_hex = hex_truncate(payload);
     let decoded = decoders::decode_inbound(msg_id, payload);
@@ -70,6 +78,8 @@ pub fn log_inbound(peer: SocketAddr, msg_id: u8, payload: &[u8]) {
         target: "wire.in",
         msg_id,
         msg_name,
+        method_index,
+        entity_method = msg_id >= 0x80,
         args_len,
         truncated = args_len > HEX_DUMP_CAP,
         args_hex = %args_hex,

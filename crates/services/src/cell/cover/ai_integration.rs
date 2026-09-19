@@ -147,7 +147,22 @@ pub fn maintain_cover_for_npc(
     // Step 1: in cover already?
     if let Some(slot) = reservations_guard.slot_for_entity(npc_id) {
         if let Some(node) = cover.index.node_by_key(slot) {
-            if is_flanked(node.pos, node.orient, threat_pos) {
+            let flanked = is_flanked(node.pos, node.orient, threat_pos);
+            tracing::debug!(
+                target: "cover.flank_check",
+                npc_id = npc_id.0,
+                slot = ?slot,
+                node_x = node.pos.x,
+                node_y = node.pos.y,
+                node_z = node.pos.z,
+                node_orient = node.orient,
+                threat_x = threat_pos.x,
+                threat_y = threat_pos.y,
+                threat_z = threat_pos.z,
+                flanked,
+                "cover flank check -- an NPC holding a cover slot tested whether its threat is outside the defensive arc"
+            );
+            if flanked {
                 // Release and let the caller re-evaluate next tick.
                 reservations_guard.release_for_entity(npc_id);
                 return CoverDecision::Released { prior_slot: slot };

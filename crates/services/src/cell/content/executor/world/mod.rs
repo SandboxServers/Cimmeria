@@ -1,5 +1,9 @@
 //! World-mutation action handlers: interaction-type flags, visibility,
-//! destruction, waypoint movement, aggression, threat generation.
+//! waypoint movement, aggression, threat generation.
+//!
+//! Entity destruction is **not** here: `DestroyTaggedEntity` dispatches
+//! straight to [`super::spawn::despawn_by_tag`] alongside
+//! `DespawnEntity`.
 //!
 //! These all locate a target entity by tag and either flip a flag or push
 //! a state change.
@@ -225,33 +229,6 @@ pub(super) fn set_npc_ai_state(
         // Clear in-flight nav so the new-state handler can re-route.
         npc.nav_path.clear();
     }
-}
-
-/// `Action::DestroyTaggedEntity` — remove the tagged entity from the space.
-///
-/// Identical behaviour to `Action::DespawnEntity`: both hand off to
-/// [`super::spawn::despawn_by_tag`], which fans `LeftAoI` to every current
-/// witness and scrubs the witness sets before destroying. This used to call
-/// bare `SpaceManager::destroy_entity`, which left the id in every
-/// observer's witness set — audit defect H-B6.
-/// C08b (PR #650) landed the same `despawn_npc` routing on `main` for this
-/// arm; H03 generalised it into `despawn_by_tag` so `despawn_entity` shares it.
-pub(super) async fn destroy_tagged_entity(
-    entity_tag: String,
-    entity_id: u32,
-    chain_id: i64,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    super::spawn::despawn_by_tag(
-        entity_tag,
-        entity_id,
-        chain_id,
-        "destroy_entity",
-        tx,
-        space_mgr,
-    )
-    .await;
 }
 
 /// `Action::GenerateThreat` — push the player's threat level on the tagged

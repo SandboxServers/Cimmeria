@@ -508,22 +508,18 @@ impl SpaceManager {
         // authored-bad respawn point is exactly as unusable a snap target as
         // the position being recovered *from* — and relocating there would
         // still `note_authorized_teleport`, clearing the correction budget and
-        // leaving the next reject with nothing left to spend. Same soundness
-        // test the navmesh branch above applies, so the fallback can only ever
-        // be a step towards a position the validator accepts.
-        let nearest_respawner = self
-            .respawners
-            .iter()
-            .filter(|r| r.world_name == world)
-            .map(|r| Vector3::new(r.pos[0], r.pos[1], r.pos[2]))
-            .filter(|p| {
-                position_within_bounds(*p, bounds)
-                    && space
-                        .navmesh
-                        .as_ref()
-                        .is_none_or(|nav| nav.is_point_valid(p))
-            })
-            .min_by(|a, b| a.distance_to(&from).total_cmp(&b.distance_to(&from)));
+        // leaving the next reject with nothing left to spend. The shared
+        // helper applies the same soundness test the navmesh branch above
+        // does, so the fallback can only ever be a step towards a position the
+        // validator accepts, plus the all-zero placeholder guard this path
+        // used to be missing (PR #662 review, finding 8).
+        let nearest_respawner = crate::cell::respawner_fallback::nearest_valid_respawner(
+            &self.respawners,
+            world,
+            from,
+            space.navmesh.as_ref(),
+            bounds,
+        );
         if let Some(p) = nearest_respawner {
             return Some([p.x, p.y, p.z]);
         }
@@ -556,6 +552,12 @@ impl SpaceManager {
     /// spurious speed warn on the first post-teleport client packet; see
     /// [`MovementValidator::note_authorized_teleport`].
     pub fn note_authorized_teleport(&mut self, entity_id: u32) {
+        crate::cell::player_journal::note(
+            entity_id,
+            crate::cell::player_journal::kinds::TELEPORT,
+            "authorized",
+        );
+        crate::cell::playtest_friction::leader_teleported(self, entity_id);
         self.movement_validator
             .note_authorized_teleport(entity_id, Instant::now());
     }

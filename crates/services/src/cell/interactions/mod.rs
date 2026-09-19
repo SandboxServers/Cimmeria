@@ -14,6 +14,7 @@ mod trainer;
 mod vendor;
 
 pub use dialog::send_dialog_display;
+pub(crate) use dispatch::interact_target_in_range;
 pub use dispatch::{handle_initial_response, handle_interact};
 pub use loot::handle_loot_item;
 pub(crate) use trainer::try_open_trainer;

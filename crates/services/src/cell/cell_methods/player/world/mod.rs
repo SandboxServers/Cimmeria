@@ -4,7 +4,7 @@
 //! the sibling submodules.
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{SpaceManager, REGION_FLAG_STARGATE};
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
@@ -12,6 +12,7 @@ use super::constants::*;
 
 mod auto_cycle;
 mod item_sequence;
+mod region_registration;
 mod reload;
 mod system_options;
 
@@ -20,6 +21,7 @@ mod system_options;
 // from bandolier, base_messages, ticks, and use_ability via
 // `cell_methods::player::world::<item>`.
 pub(crate) use item_sequence::fire_item_sequence;
+pub(crate) use region_registration::{send_client_hinted_regions, ClearFirst};
 pub(crate) use reload::{handle_reload, maybe_trigger_reload_on_activate, UNHOLSTER_DRAW_DURATION};
 // Only the in-module test files (`tests.rs`, `system_options_tests.rs`)
 // reach these through `super::*`; gate the re-exports so the non-test build
@@ -62,10 +64,10 @@ pub async fn dispatch(
                 // Region IDs are wire-encoded as i32 but stored as u32 internally.
                 // Reject negative values up-front rather than sign-extending them
                 // into a high u32 that no real region will match.
-                let (region_tag, db_set_id) = match u32::try_from(region_id) {
+                let (region_tag, db_set_id, region_flags) = match u32::try_from(region_id) {
                     Ok(rid) => match space_mgr.get_region(rid) {
-                        Some(r) => (Some(r.tag.clone()), Some(r.db_set_id)),
-                        None => (None, None),
+                        Some(r) => (Some(r.tag.clone()), Some(r.db_set_id), r.flags),
+                        None => (None, None, 0),
                     },
                     Err(_) => {
                         tracing::warn!(
@@ -73,12 +75,18 @@ pub async fn dispatch(
                             region_id,
                             "triggerClientHintedGenericRegion: negative region_id, ignoring"
                         );
-                        (None, None)
+                        (None, None, 0)
                     }
                 };
 
                 if let Some(tag) = region_tag {
                     tracing::info!(entity_id, region_id, %tag, b_entering, "triggerClientHintedGenericRegion");
+                    crate::cell::playtest_friction::region_hint(entity_id, region_id as u32);
+                    crate::cell::player_journal::note(
+                        entity_id,
+                        crate::cell::player_journal::kinds::REGION_HINT,
+                        format!("{tag} entering={b_entering}"),
+                    );
 
                     let player_id = space_mgr
                         .get_entity(entity_id)
@@ -102,6 +110,25 @@ pub async fn dispatch(
                     if let Some(set_id) = db_set_id {
                         crate::cell::ring_transport::handle_region_trigger(
                             set_id, b_entering, entity_id, tx, space_mgr, engine,
+                        )
+                        .await;
+                    }
+
+                    // `REGION_FLAG_Stargate` volumes additionally drive
+                    // `stargatePassed` (`GenericRegion.py:174-176`). Flag-keyed,
+                    // never region-id-keyed: all twelve gate regions route the
+                    // same way. Runs LAST because a successful crossing
+                    // destroys the cell entity, and anything after it would be
+                    // acting on a torn-down entity.
+                    //
+                    // Harset packet H01 owns the long-term home of this
+                    // routing; when the branches meet, its flag-2 entry point
+                    // calls `gate_travel::on_stargate_passage` and this block
+                    // goes away. The exit case has no handler in the 2009
+                    // server either.
+                    if b_entering && region_flags & REGION_FLAG_STARGATE != 0 {
+                        crate::cell::gate_travel::handle_stargate_region_entered(
+                            entity_id, tx, space_mgr, engine,
                         )
                         .await;
                     }

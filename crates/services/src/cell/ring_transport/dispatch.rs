@@ -266,12 +266,27 @@ pub(super) async fn mark_player_loaded(
 ) {
     let recorded = match space_mgr.ring_transporters.get_mut(dst_region_id) {
         Some(dst) => {
-            // `player_loaded` is idempotent on the same eid.
+            // `player_loaded` is idempotent on the same eid, and refuses an
+            // entity this ring is not expecting (PR #662 review, finding 5).
+            // `recorded` has to follow that refusal: clearing
+            // `destination_ring_id` for a player the ring never took
+            // responsibility for would strand them with no routing pointer.
+            let expected = dst.expects_player(entity_id);
             let _ = dst.player_loaded(entity_id);
-            true
+            expected
         }
         None => false,
     };
+    if !recorded {
+        tracing::warn!(
+            entity_id,
+            dst_region_id,
+            reason = "load_not_expected",
+            "ring: load notification for a player the destination ring is not \
+             expecting — not counted towards readiness (it would satisfy the \
+             length-based gate against a different passenger list)"
+        );
+    }
     // Python clears `destinationRingId` here once the destination ring has
     // taken responsibility for the player. Only clear after a successful
     // load record — otherwise we'd lose the routing pointer while the

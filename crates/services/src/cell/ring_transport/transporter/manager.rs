@@ -119,11 +119,42 @@ impl RingTransporterManager {
 
     /// Return all region_ids that have an elapsed deadline at `now`. Used by
     /// the tick to drive timers forward.
+    ///
+    /// Ordered, not `HashMap`-arbitrary: bounded-stall aborts come last, and
+    /// ties break on `region_id`. This is the cross-region extension of the
+    /// same rule [`RingTransporter::elapsed_deadline`] applies within one
+    /// transporter — a real transition wins over an abort. It matters
+    /// because a tick that lags past several deadlines at once can hold both
+    /// a source's warmup and its peer's `RecvWarmup` stall, and handling the
+    /// warmup is exactly what makes the peer's stall stale.
+    ///
+    /// The ordering is necessary but not sufficient on its own; the tick
+    /// also revalidates each deadline against live state before applying it
+    /// (see [`Self::current_deadline`]).
     pub fn ready_regions(&self, now: Instant) -> Vec<(i32, RawDeadline)> {
-        self.regions
+        let mut out: Vec<(i32, RawDeadline)> = self
+            .regions
             .iter()
             .filter_map(|(id, r)| r.elapsed_deadline(now).map(|dk| (*id, RawDeadline(dk))))
-            .collect()
+            .collect();
+        out.sort_by_key(|(id, d)| (d.is_stall(), *id));
+        out
+    }
+
+    /// Re-read `region_id`'s currently-elapsed deadline at `now`.
+    ///
+    /// The tick snapshots [`Self::ready_regions`] once and then applies the
+    /// entries one at a time, but applying one entry can change another
+    /// region: the source's warmup drives its peer `RecvWarmup →
+    /// RemoteLoadWait` and re-arms the peer's stall deadline. The peer's
+    /// snapshot entry is stale from that moment on, and applying it would
+    /// abort a trip that has just become healthy. Comparing against this
+    /// makes the snapshot advisory rather than authoritative.
+    pub(crate) fn current_deadline(&self, region_id: i32, now: Instant) -> Option<RawDeadline> {
+        self.regions
+            .get(&region_id)
+            .and_then(|r| r.elapsed_deadline(now))
+            .map(RawDeadline)
     }
 
     /// Tear down the trip on `region_id` **and** its peer, returning the

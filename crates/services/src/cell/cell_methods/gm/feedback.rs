@@ -61,6 +61,15 @@ pub(crate) async fn send_gm_feedback(
     text: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
+    // The only record of what a `.`-command told the GM (`.location`'s
+    // position, `.searchmission`'s hits, every rejection reason).
+    tracing::debug!(
+        target: "console.feedback",
+        entity_id = caller_entity_id,
+        text_len = text.chars().count(),
+        text = %text.chars().take(400).collect::<String>(),
+        "GM console feedback sent to client"
+    );
     let args = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text);
     if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
