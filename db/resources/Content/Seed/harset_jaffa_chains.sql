@@ -657,6 +657,28 @@ VALUES (6331, 'add_dialog_set', 5159, NULL, '{"slot": 54}', 0, 0);
 -- world 68) 1325's offer needs the same `mission_completed '1324'`
 -- partner, or 1325 inherits exactly this bug. Chain 6305's action order
 -- already reserves the slot for it.
+--
+-- ONE EDGE IN THIS FAMILY IS STILL OPEN, AND NO SEED ROW CAN CLOSE IT:
+-- MISSION ABANDON. `abandonMission` is a client-callable cell method
+-- (index 52, `cell_methods/missionary.rs`) and `missions::abandon_mission`
+-- removes the mission row and fires NOTHING into the content engine —
+-- there is no `mission_abandoned` trigger in `loader/trigger.rs` and no
+-- dispatcher in `content/event_dispatch/`. So a player who abandons 1324
+-- or 1326 while standing in the Command Center flips that mission back to
+-- `not_active`, re-satisfying chain 6301's or 6331's gate, with no edge
+-- left to fire: the offer icon does not come back until they cross a
+-- world boundary. The same abandon strands whatever bind was live — drop
+-- 1324 on step 3953 and Ba'al keeps dsm 5151, so he shows a stale "!" and
+-- Route B replays the council dialog 4363 on click, because chain 6304's
+-- step gate no longer matches.
+--
+-- Both symptoms self-heal on the next world transition, which rebuilds
+-- `available_interactions` empty and re-fires every `player_loaded`
+-- chain. Nothing here is Harset-specific: every offer chain in every lane
+-- has it, and the fix is a Rust one (a `fire_mission_abandoned`
+-- dispatcher plus a `mission_abandoned` trigger), which belongs to an H0x
+-- packet — seed packets own no Rust paths. Recorded in
+-- worknotes/H20-H22.md for the coordinator; do not work around it here.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (6341, '1326 - Moh''katan offer: bind the "?" the moment 1325 completes (edge closer for 6331)', 'mission', 1326, true, 0);
 

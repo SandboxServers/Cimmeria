@@ -842,3 +842,58 @@ async fn completing_some_other_mission_does_not_paint_the_lantoc_offer() {
         "chain 6341's trigger must name mission 1325 specifically"
     );
 }
+
+/// Chains 6331 and 6341 must carry byte-identical condition sets.
+///
+/// They are the two halves of one gate — "may this player see the Lan'toc
+/// offer?" — answered on two different triggers. The Goa'uld lane solves
+/// the same problem by putting a second `content_triggers` row on ONE
+/// chain, which makes the shared condition set structural. This lane uses
+/// two chain ids instead, because N trigger rows on one chain materialize
+/// N in-memory `Chain`s and `load_single_chain_for_test` returns only the
+/// first — a test written the obvious way would guard one trigger and
+/// silently ignore the other.
+///
+/// The cost of two ids is that the condition sets can drift: someone
+/// tightens 6331's gate, misses 6341, and the offer becomes visible to a
+/// player the `player_loaded` path would have refused. This test removes
+/// that cost. It compares the rows themselves rather than the resolved
+/// behaviour, so it catches a divergence even in a state no other test
+/// happens to exercise.
+#[tokio::test]
+async fn the_lantoc_offer_and_its_edge_closer_share_one_condition_set() {
+    let pool = require_db_or_skip!();
+
+    // `sort_order` is deliberately not selected: it orders evaluation
+    // within a chain and carries no meaning across two of them.
+    let conditions = |chain_id: i32| {
+        sqlx::query_as::<_, (String, Option<i32>, Option<String>, String, Option<String>)>(
+            "SELECT condition_type, target_id, target_key, operator, value \
+             FROM resources.content_conditions WHERE chain_id = $1 \
+             ORDER BY condition_type, target_id, target_key, operator, value",
+        )
+        .bind(chain_id)
+    };
+
+    let offer = conditions(6331)
+        .fetch_all(&pool)
+        .await
+        .expect("chain 6331 condition query must succeed");
+    let edge_closer = conditions(6341)
+        .fetch_all(&pool)
+        .await
+        .expect("chain 6341 condition query must succeed");
+
+    assert!(
+        !offer.is_empty(),
+        "chain 6331 has no conditions at all — an ungated offer bind. \
+         This guard has also lost its subject."
+    );
+    assert_eq!(
+        offer, edge_closer,
+        "chains 6331 (player_loaded) and 6341 (mission_completed 1325) \
+         must gate on exactly the same thing. They are one decision asked \
+         on two triggers; a difference means the offer appears under \
+         conditions one of the two paths would refuse."
+    );
+}
