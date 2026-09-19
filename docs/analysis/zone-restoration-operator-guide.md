@@ -175,7 +175,8 @@ Provisional (reconstructed, MEDIUM confidence) coordinates: the four CA00 respaw
 | B16 | Surrender or panel diagnosis | Trigger it | The crystal is revealed | Not revealed |
 | B17 | Bravo, or Muelbach (the bunker above Bravo) | Pick up the crystal | Grants 2790 exactly once | Twice or never |
 | B18 | Report-in | Human reports to Marsh; Jaffa reports to Moh'katan | Only your faction's NPC accepts it, never both | Wrong NPC accepted it, or both did |
-| B19 | DHD | Do the DHD Livewire | Wins; then the gate opens about 4 s after the dial | Gate did not open, opened at once, or took much longer than 4 s |
+| B19 | DHD | Do the DHD Livewire | Wins. **Harset appears in the DHD's destination list the moment you win, without a relog** (Harset H55: the victory chain grants gate address 3 and sends `updateStargateAddress`). Then dial it: the gate opens about 4 s later | Harset is missing or greyed out in the list; a dial that is refused with a feedback message; the gate did not open, opened at once, or took much longer than 4 s |
+| B19a | DHD, after B19 | Log out, log back in, open the DHD | Harset is still listed. The address is persisted, not session state | Harset is gone after the relog — that means the database append failed; the server log will carry a `reason = "grant_address_*"` line |
 | B20 | Two players | Put two players on different steps of 701-708 | Neither disturbs the other's indicators, actors or steps. A second player on step 2417 can still click Marsh after the first reports in | What one player saw change because of the other |
 
 ### C. Harset (worlds 57, 68, 69, 70)
@@ -197,6 +198,7 @@ Provisional (reconstructed, MEDIUM confidence) coordinates: the four CA00 respaw
 
 | # | Where / command | Do | Expect | If it fails, report |
 |---|---|---|---|---|
+| C4.0 | **Read before C4.1-C4.3** | Finish mission 708's DHD minigame (check B19) first | Every row below assumes you hold Harset's address. Before Harset H55 nothing in the game granted it: a created character's address book is empty, the dial UI only lists known addresses, and after Harset H06 the server refuses a dial to an address you do not hold, with a feedback message and no gate. A GM can still top their own book up with `gmDHD`, which does not persist | If you cannot select Harset in the DHD at all, the grant did not land — that is B19, not a gate-arrival failure |
 | C4.1 | Castle gate, on `main` **before** #662 | **Do not do this.** | You would be placed at the gate's raw coordinate inside a navmesh hole and silently frozen | Nothing, this is a known defect that #662 closes |
 | C4.2 | Castle gate, **after** #662 and **before** H53 | Dial Harset and walk into the gate | The transfer was **refused**: you stayed in Castle, with one `arrival_unrecoverable_off_mesh` warning per attempt | Superseded by C4.2a — this row records what the build did between #662 and H53 |
 | C4.2a | Castle gate, **after** H53 and **before** Harset M0 | Dial Harset and walk into the gate | The transfer now **goes through**. World 57 is `navmesh_mode = 'advisory'`, so the destination is `Unvalidated` rather than off-mesh, and you arrive on gate 3's authored coordinate. The server log has one `reason = "no_navmesh"` arrival line, not `arrival_unrecoverable`. **You should be able to walk away from wherever you land** — that is the whole check | If you cannot move, are inside geometry, or are falling. Give the coordinate you landed on. This is the residual risk of arriving on an unpinned prop transform, and it is what M0 closes |
