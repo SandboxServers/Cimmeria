@@ -214,8 +214,10 @@ prefab *template* actor and inherited, or set directly on a chunk-local actor.
 This matters because the cook does **not** strip collision from a
 non-colliding actor's `StaticMesh`: the kDOP tree is present and populated, so
 nothing downstream of the mesh can tell such an actor apart from a wall.
-Measured on `Castle`: 26 of 86 prefab templates and 1,196 chunk-local actors
-set it `false` — 1,570 actors in all. 17 of the 26 templates are
+Measured on `Castle`: 26 of 86 prefab templates set it `false`, and their
+**374 instances** inherit it; a further **1,196** chunk-local actors set it
+on themselves. 374 + 1,196 = **1,570** actors suppressed in all. 17 of the
+26 templates are
 `bHidden = true, Group = PrecipPlanes`: flat cards placed in tent, bunker and
 guardhouse **doorways** so snow renders there. The rest are icicles, floor
 signs, wall panels, hoses, pipes, security cameras, crates and wall lights.

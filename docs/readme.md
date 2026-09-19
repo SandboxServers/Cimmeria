@@ -199,6 +199,8 @@ How the underlying BigWorld engine and CME game framework operate inside sgw.exe
 | [ue3-package-format.md](engine/ue3-package-format.md) | SGW UE3 package binary format (ver 486 licensee fork): section ordering and the `total_header_size` trap, LZO chunking, variable-length export trailers, actor/component serial prefixes, ULevel `Actors` layout, ver-486 property tag stream, HUD↔world coordinate swizzle | Complete |
 | [navmesh-build-pipeline.md](engine/navmesh-build-pipeline.md) | UE3 -> OBJ -> NavBuilder -> `.nav` build pipeline: axis/handedness mapping, chunk-OBJ conventions, NavBuilder failure modes, the `nav_inspect` connectivity gate, and StaticMesh-only calibration against the shipped Castle Cellblock mesh | Complete |
 | [navbuilder-recast-limits.md](engine/navbuilder-recast-limits.md) | Rebuilding `NavBuilder.exe`, parity with the 2026-03 reference binary, Recast's four fixed-width index limits and how each one fails, and the measured Castle (World 8) Recast parameter table | Complete |
+| [castle-navmesh-connectivity.md](engine/castle-navmesh-connectivity.md) | Castle (World 8) navmesh connectivity: where the eleven probes land, the mirrored-instance bug that split the interior into two storeys, and the terrain shelves still separating exterior from interior | Complete |
+| [castle-extraction-measurements.md](engine/castle-extraction-measurements.md) | What `cimmeria-navmesh-extractor` recovers from Castle: coverage by source, the prefab-archetype census, the `bCollideActors` suppression set, and the Terrain / BSP findings | Complete |
 
 See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-analysis.md), [technical/sgw-binary-overview.md](technical/sgw-binary-overview.md)
 
