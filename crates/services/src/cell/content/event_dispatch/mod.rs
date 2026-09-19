@@ -13,6 +13,7 @@
 //!   `fire_entity_health_below`
 //! - [`interaction`] — `fire_interact_tag`, `fire_interact_template`
 //! - [`region`]      — `fire_enter_region`, `fire_exit_region`, `fire_teleport_in`
+//! - [`stargate`]    — `fire_stargate_dialed`, `fire_stargate_crossed`
 //! - [`inventory`]   — `fire_item_use`, `fire_item_equipped`
 //! - [`dialog`]      — `fire_dialog_open`, `fire_dialog_choice`
 //! - [`mission`]     — `fire_mission_accepted`, `fire_mission_completed`
@@ -31,21 +32,31 @@ use crate::cell::space_manager::SpaceManager;
 use super::executor;
 
 mod cover;
+#[cfg(test)]
+mod cover_flank_tests;
 mod dialog;
 mod interaction;
 mod inventory;
 mod lifecycle;
 mod mission;
 mod region;
+mod stargate;
+#[cfg(test)]
+mod world_context_contract_tests;
 
-pub use cover::{fire_cover_duration, fire_cover_entered, fire_cover_left, fire_npc_flanked};
+pub use cover::{
+    fire_cover_duration, fire_cover_entered, fire_cover_left, fire_npc_flanked,
+    fire_player_flanked_npc,
+};
 pub use dialog::{fire_dialog_choice, fire_dialog_open};
 pub use interaction::{fire_interact_tag, fire_interact_template};
 pub use inventory::{fire_item_equipped, fire_item_use};
 pub use lifecycle::{
-    fire_entity_death, fire_entity_health_below, fire_health_below_for_hit, fire_player_loaded,
+    fire_entity_death, fire_entity_health_below, fire_health_below_for_hit,
+    fire_pending_health_below, fire_player_loaded,
 };
 pub use region::{fire_enter_region, fire_exit_region, fire_teleport_in};
+pub use stargate::{fire_stargate_crossed, fire_stargate_dialed};
 
 pub(super) use mission::{fire_mission_accepted, fire_mission_completed};
 

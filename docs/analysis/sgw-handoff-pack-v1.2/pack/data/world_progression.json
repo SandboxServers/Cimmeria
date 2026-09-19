@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "scope_note": "High-level route/index only. Mission-level detail remains in included world workbooks.",
+  "starter_anchors": [
+    {
+      "profile": "SGU Human",
+      "world": "Earth SGC",
+      "status": "USER-CONFIRMED / PROJECT TARGET"
+    },
+    {
+      "profile": "Free Jaffa",
+      "world": "Dakara",
+      "status": "USER-CONFIRMED / PROJECT TARGET"
+    },
+    {
+      "profile": "Asgard",
+      "world": "Pertho",
+      "status": "USER-CONFIRMED / PROJECT TARGET"
+    }
+  ],
+  "praxis_routes_after_tollana": [
+    {
+      "faction": "Praxis Human / OP-Core",
+      "route": [
+        "Tollana",
+        "Harset",
+        "Pen-Lai",
+        "Dakara"
+      ],
+      "status": "USER-CONFIRMED"
+    },
+    {
+      "faction": "Praxis Loyalist Jaffa",
+      "route": [
+        "Tollana",
+        "Pen-Lai",
+        "Naitac",
+        "Dakara"
+      ],
+      "status": "USER-CONFIRMED"
+    },
+    {
+      "faction": "Praxis Goa'uld",
+      "route": [
+        "Tollana",
+        "Harset",
+        "Earth/SGC",
+        "Naitac",
+        "Dakara"
+      ],
+      "status": "USER-CONFIRMED"
+    }
+  ],
+  "instance_and_scope_rules": [
+    {
+      "world": "Castle_CellBlock",
+      "type": "instance",
+      "scope_end": "Mission 688 Secure the Armory",
+      "next": "Castle",
+      "status": "USER-CONFIRMED + SOURCE-AUDITED PROJECT RULE",
+      "do_not_mix": [
+        "Mission 701+",
+        "Copplemann active content",
+        "Dr. Zuritska active content",
+        "post-688 Castle-main progression"
+      ]
+    },
+    {
+      "world": "Tollana",
+      "type": "MMO",
+      "status": "PROJECT CLASSIFICATION"
+    },
+    {
+      "world": "Harset",
+      "type": "MMO",
+      "status": "PROJECT CLASSIFICATION"
+    },
+    {
+      "world": "Pen-Lai",
+      "type": "MMO",
+      "status": "PROJECT CLASSIFICATION"
+    },
+    {
+      "world": "Naitac",
+      "type": "MMO / unfinished client-map state",
+      "status": "PARTIAL"
+    }
+  ],
+  "important_partial_worlds": [
+    {
+      "world": "Naitac",
+      "world_id": 16,
+      "client_map": "",
+      "status": "PARTIAL / UNRESOLVED"
+    },
+    {
+      "world": "Pen-Lai",
+      "world_id": 76,
+      "status": "REFERENCE/MINIMAP SURVIVES; production UMAP absent in uploaded raw set"
+    }
+  ],
+  "workbook_index_file": "docs/WORLD_CONTENT_INDEX.md"
+}

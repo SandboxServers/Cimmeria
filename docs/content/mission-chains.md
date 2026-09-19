@@ -275,7 +275,7 @@ self.n132_var_Player.missions.complete(638)
    - Display dialog 2297
    - Play sequence 10001
    - Advance to step 2144
-3. Drone dies (`entity.dead.tag::ArmYourself_PrisonerRetrievalUnit`): advance to step 2343
+3. Drone dies (`entity.dead.tag::ArmYourself_PrisonerRetrievalUnit`): advance to step 2343 (original Python script)
 4. Player uses item 19 (`item.use::19`) when step 2343 is active:
    - Remove item 19 from inventory
    - Complete mission 639
@@ -305,6 +305,21 @@ if status == Constants.MISSION_Active:
     self.n33_var_Player.missions.complete(639)
     self.n34_var_Player.missions.accept(640)
 ```
+
+**Live data-driven shape (step 2144 dual-objective gate, C05, new gameplay requirement)**
+
+Cimmeria deliberately diverges from step 3 above: step 2144 does not advance on the drone's death alone. It requires **both** objective 2482 (kill the drone) and objective 2484 (take cover at the med-station desk, cover_set 1381) before advancing to step 2343 — a requirement the original 2009 script never had (`entity.dead.tag` was its only trigger for this step). Both objectives are `is_optional = false` in `mission_objectives.sql`.
+
+Four chains implement the AND-gate, split to route around `cell::missions::complete_objective`'s auto-complete-mission check (completing every required objective through that path ends the mission immediately, skipping step 2343 — the same trap `mission_688.rs`'s chains 1107/1109 document for step 2356):
+
+| Chain | Trigger | Condition | Actions |
+|---|---|---|---|
+| 1033 | `entity_dead_tag('ArmYourself_PrisonerRetrievalUnit')` | cover (2484) not completed, kill (2482) not completed | `complete_objective(639, 2482)` |
+| 1131 | `entity_dead_tag('ArmYourself_PrisonerRetrievalUnit')` | cover (2484) already completed | `advance_step(639, 2343)` (implicitly completes 2482) |
+| 1132 | `player_entered_cover(1381)` | kill (2482) not completed, cover (2484) not completed | `complete_objective(639, 2484)`, `play_sequence(10014)` (hide the TakeCoverIndicator) |
+| 1133 | `player_entered_cover(1381)` | kill (2482) already completed | `advance_step(639, 2343)` (implicitly completes 2484), `play_sequence(10014)` |
+
+Chains 1033/1132 each check their own target objective isn't already completed (not just the other one), so re-entering cover or a repeat death event doesn't resend `play_sequence(10014)` or re-run a no-op completion. Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql` (search `Mission 639 (C03 addition`). Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_639_cover.rs` (per-chain positive/negative cases for all four chains, plus both full kill/cover orderings end to end).
 
 ---
 
@@ -496,6 +511,8 @@ if args['entering']:
 |---------|-------|------|
 | 2348 | 0 | "Kill the Guards" |
 
+**Flank objective (C06, 2026-09-18)**: step 2348 also carries secondary objective 2725 (seeded `is_optional = false`, but nothing completes the mission through it) ("Take position behind the long table to flank the guards and negate their cover."). Chain 1141 completes it on a `player_flanked_npc` event for an `NID Guard` while 681 is active. It is tracked only -- it never gates completion (the kill counter alone completes 681; D-CB05) and never completes the mission on its own because the kill objective 2724 stays open. Only fires when a guard already holds a cover slot (reserved only while the target is out of weapon range) and only credits the guard's top-threat player.
+
 **Triggers**:
 - `entity.dead.tag::MessHall_Guard1` -- guard 1 killed
 - `entity.dead.tag::MessHall_Guard2` -- guard 2 killed
@@ -596,6 +613,8 @@ All hallway controllers are `is_hidden=true`. They are background kill-tracking 
 
 **Action**: Kill counter initialized to 0, target = 2. When counter >= 2 and 686 is active -> `missions.complete(686)`
 
+**Flank objective (C06, 2026-09-18)**: step 2353 also carries secondary objective 2731 (seeded `is_optional = false`) ("Take a flanking position to negate the guards' protective cover."). Chain 1142 completes it on a `player_flanked_npc` event for an `NID Guard` while 686 is active. Tracked only -- it never gates 686's completion (or the Straegis scene that follows it).
+
 ##### Hallway Chain Orchestration (Space Script)
 
 The Castle_CellBlock space script manages the hallway chain via region callbacks:
@@ -688,12 +707,23 @@ This is an orphaned hidden mission with step text that parallels missions 641 an
 
 ### Castle (Persistent Zone)
 
-**Confidence**: CONFIRMED
+**Confidence**: CONFIRMED for 701 and for every mission's DB data; RECONSTRUCTION for the 702/703/704/706/708 chains
 **Zone**: Castle (persistent open-world zone)
-**Total scripted missions**: 2 (701, 702)
+**Missions in zone**: 6 -- 701, 702, 703, 704, 706, 708
+**Covered by recovered server script**: 2 (701, 702) -- both in `Castle.py`, and for 702 only the accept; 703, 704, 706 and 708 are reconstruction with no recovered script
+**Ported to content chains**: 6 -- all of them (701, 706 and 708 already on `main`; 702, 703 and 704 in this packet)
 **All missions**: Level 3
 
-The Castle space script (`deprecated/python/cell/spaces/Castle.py`) handles all mission logic for this zone. There are no per-mission script files for 701 or 702 -- all logic lives in the space script.
+The Castle space script (`deprecated/python/cell/spaces/Castle.py`) handles all recovered mission logic for this zone. There are no per-mission script files for 701 or 702 -- all logic lives in the space script.
+
+`Castle.py` accepts mission 702 and then stops: it never references 702's steps, nor 703, 704, 706 or 708 anywhere. Missions 702, 703 and 704 are therefore **reconstructed** from original shipped data (mission steps/objectives/tasks, dialogs and dialog screens, items) rather than ported from recovered logic. Their chains live in [`db/resources/Content/Seed/castle_702_704_chains.sql`](../../db/resources/Content/Seed/castle_702_704_chains.sql), authored by packets CA06 (702, 703) and CA07 (704) of the [Castle rebuild ledger](../analysis/castle-rebuild/work-packets.md). Every row below labelled RECONSTRUCTION is an authoring decision, not a recovered fact; rows labelled ORIGINAL_DATA are literal values from the shipped seed.
+
+Two cross-packet notes apply to all three reconstructed missions:
+
+- The spawnlist tags (`Castle_Zuritska_Cell`, `Castle_Zuritska_Comms`, `Castle_Romney`, `Castle_CommsTerminal`) and the point sets (`Castle.InterrogationBlock`, `Castle.CommsRoom`) are contracts owned by packet CA05. Until CA05 lands they are referenced but not seeded. Three column-level requirements ride along: `spawnlist.respawn_secs` on the Romney row (no row in the shipped seed sets it, and without it Romney never respawns, so the first kill locks mission 703 for everyone else), and `move_speed` plus a null `wander_radius` / `patrol_path_id` on Zuritska's template.
+- `set_interaction_type` is global on the entity, not per player (see [interaction-flags.md](interaction-flags.md)). Castle is a persistent shared world, so one player's `!` set or clear is visible to everyone in the zone. The chains' `step_status` conditions mean nothing fires for the wrong player, but the cursor itself is shared. Each set therefore carries both a `player_loaded` restore and a region re-entry repair, so a player whose bit was cleared by someone else gets it back by walking out and in rather than by relogging. The per-player replacement is the dialog-set bind of packet CA02.
+
+Mission 701 has been **ported to content chains** in `db/resources/Content/Seed/castle_701_chains.sql` (chains 1201-1243) by campaign packets CA01 and CA03, and missions 706 and 708 in `castle_706_708_chains.sql` (chains 1321-1323 and 1341-1365) by packets CA08 and CA09; see the per-mission sections below. Missions 702, 703 and 704 remain unported and are tracked in [docs/analysis/castle-rebuild/work-packets.md](../analysis/castle-rebuild/work-packets.md).
 
 #### Mission 701: "Reinforce Copplemann" [CONFIRMED]
 
@@ -752,9 +782,92 @@ The Castle space script (`deprecated/python/cell/spaces/Castle.py`) handles all 
 
 **Link to next**: Explicitly calls `missions.complete(701)` and `missions.accept(702)` on dialog.choice::2576. [CONFIRMED]
 
+##### Shipped chains (castle_701_chains.sql, 1201-1243)
+
+Everything above describes the original Python. This is what the server
+actually runs. Evidence classes follow the campaign convention:
+`RECOVERED_SCRIPT` is a 1:1 port of a `Castle.py` node, `RECONSTRUCTION`
+is built from original DB data with no recovered logic, and `NEW CONTENT`
+is neither.
+
+| Chain | Trigger | Gate | Actions | Evidence |
+|---|---|---|---|---|
+| 1201 | `player_loaded Castle` | 701 `not_active` | bind dsm 3062 → tpl 149 | RECOVERED_SCRIPT |
+| 1202 | `interact_tag Castle_SgtGerschon` | step 2399 `not_active`, archetype ≠ 8 | dialog 2573 | RECOVERED_SCRIPT |
+| 1203 | `interact_tag Castle_SgtGerschon` | step 2399 `not_active`, archetype = 8 | dialog 5861 | NEW CONTENT (D-CA13) |
+| 1204 | `dialog_choice 2573` | 701 `not_active` | accept 701, unbind 3062/149, bind 3062/48 | RECOVERED_SCRIPT |
+| 1205 | `dialog_choice 5861` | 701 `not_active` | as 1204, then dialog 5862 | NEW CONTENT (D-CA13) |
+| 1231 | `interact_tag Castle_Coppleman` | step 2399 `active` | dialog 2574 | RECOVERED_SCRIPT |
+| 1232 | `dialog_choice 2574` | step 2399 `active` | advance 2400 | RECOVERED_SCRIPT |
+| 1233 | `interact_tag Castle_Coppleman` | step 2400 `active` | start Livewire, victory → 1234 | RECOVERED_SCRIPT |
+| 1234 | none (victory callback) | none | unbind 3062/48, dialog 2575, advance 2401 | RECOVERED_SCRIPT |
+| 1235 | `dialog_choice 2575` | step 2401 `active` | **delay 10500 ms**: advance 2421, bind 3063/48 | RECONSTRUCTION (D-CA02 A) |
+| 1236 | `interact_tag Castle_Coppleman` | step 2421 `active` | dialog 2576 | RECOVERED_SCRIPT (D-CA04) |
+| 1237 | `dialog_choice 2576` | step 2421 `active` | unbind 3063/48, complete 701 | RECOVERED_SCRIPT |
+| 1238 | `dialog_choice 2576` | step 2421 `active`, 702 `not_active` | accept 702 | RECOVERED_SCRIPT |
+| 1239 | `dialog_choice 2576` | step 2421 `active`, 703 `not_active` | accept 703 | RECONSTRUCTION (D-CA05) |
+| 1240 | `player_loaded Castle` | step 2399 `active` | bind 3062/48 | RECOVERED_SCRIPT |
+| 1241 | `player_loaded Castle` | step 2400 `active` | bind 3062/48 | RECOVERED_SCRIPT |
+| 1242 | `player_loaded Castle` | step 2401 `active` | **delay 10500 ms**: advance 2421, bind 3063/48 | RECONSTRUCTION (D-CA02 A) |
+| 1243 | `player_loaded Castle` | step 2421 `active` | bind 3063/48 | RECOVERED_SCRIPT |
+
+**The option-A escort compromise.** `Castle.py` implemented step 2401 by
+creating a second template-48 entity, hiding the static Copplemann with
+`setVisible(False)`, walking the clone 63 units down the hall and
+re-binding the topic from the arrival callback. None of those three
+primitives is usable: `set_visible` on an NPC is routed to the entity's
+own session and dropped (and undone by the AoI create packet's
+unconditional `onVisible(1)`), `move_waypoint` is an instant grid snap
+with no arrival event, and a per-player clone in a shared world would
+spawn one Copplemann per player, which decision D-CA15 forbids. Chain
+1235 substitutes a 10.5-second deferred action — 63.23 units at the
+6.0 u/s NPC speed — after which the step advances and the turn-in topic
+appears. Copplemann never moves. Chain 1242 re-arms the timer on login
+because the deferred queue is scrubbed on disconnect.
+
+Two other deliberate divergences from the Python, both labelled above:
+the turn-in binds row **3063** (the `INT_AStoryMissionTurnIn` "?" row)
+rather than reusing 3062's "!" row, and the `dialog_set.open 3062` node
+is re-authored as chain 1236 on `interact_tag` because the
+`dialog_set_open` trigger has no dispatch site in services and has never
+fired (D-CA04).
+
+**Known gaps at time of writing** (all tracked in
+[worknotes/m701.md](../analysis/castle-rebuild/worknotes/m701.md)):
+dialog-set row 3062 has a NULL `dialog_id` and is dropped by the loader,
+so every 3062 bind is a no-op until packet CA02 widens
+`DialogSetMapEntry.dialog_id`; and dialog 2576's "Take Missions" button is
+present on only 3 of its 5 screens, so a player who reads to the last
+screen raises no choice and the turn-in does not fire.
+
+**Dialog speakers.** Two engine fixes in this PR decide who the client
+shows on each of 701's chain-fired dialogs, and they pull in opposite
+directions on purpose:
+
+- Chain 1205's Moh'katan radio call (5862) **now renders**. It is fired
+  from a `dialog_choice`, which stamps no `target_entity_id`, and 5862 is
+  not a monologue, so it previously had no resolvable speaker and the
+  executor warned and bailed. The interact handler now pins
+  `last_interaction_target` before the content-chain dispatch, so
+  Gerschon is in scope and the dialog opens. The same fix is what lets
+  any minigame victory chain display an NPC dialog, which packets CA07
+  and CA09 both need.
+- Chain 1234's victory dialog (2575) **must not** pick up that pin. It is
+  one screen of player narration (`speaker_id = 0`), and `Castle.py`
+  displays it with an explicit `displayDialog(None, 2575)`. Because the
+  pin is sticky and the player always reaches this chain by clicking
+  Copplemann, the monologue cache is now checked *before* both the
+  `target_entity_id` param and the pin, so a monologue binds the player
+  and ignores any NPC in scope. See
+  [content-engine.md §4](content-engine.md) for the full resolution order.
+
+**Tests**: `crates/services/src/cell/content/chain_replay_tests/mission_701/`
+(live-DB chain-replay, split `arrival.rs` / `body.rs` / `restore.rs`, plus
+`persistence.rs` for the world-hop invariant).
+
 ---
 
-#### Mission 702: "Rescue Dr. Zuritska" [CONFIRMED]
+#### Mission 702: "Rescue Dr. Zuritska" [RECONSTRUCTION]
 
 | Field | Value |
 |-------|-------|
@@ -762,7 +875,7 @@ The Castle space script (`deprecated/python/cell/spaces/Castle.py`) handles all 
 | **Name** | Rescue Dr. Zuritska |
 | **Level** | 3 |
 | **is_story** | true |
-| **Script** | None (accepted by Castle.py, no further scripting) |
+| **Script** | None. Accepted by `Castle.py`; body reconstructed as chains 1261-1265 |
 
 **Steps** (from DB):
 
@@ -771,11 +884,243 @@ The Castle space script (`deprecated/python/cell/spaces/Castle.py`) handles all 
 | 2402 | 0 | "Make your way to the Interrogation Block." |
 | 2419 | 1 | "Zuritska is in one of the detention cells. Locate him and free him!" |
 
-**How it starts**: Accepted by Castle.py space script when mission 701 completes (dialog.choice::2576).
+**Objectives** (from DB): 2778 (required) and 2779 (optional, hidden) on 2402; 4653 on 2419 via task 5701 (`task_type 1`, no payload).
 
-**No further script logic exists for mission 702.** The DB has step data but there is no Python code to advance, complete, or otherwise interact with this mission. It is accepted and then becomes a dead end.
+**How it starts**: accepted by `Castle.py` when mission 701 completes (`dialog.choice::2576`). In Cimmeria that is chain **1238** in `castle_701_chains.sql` (packet CA01/CA03); chain **1239** additionally accepts mission 703 "Payback" on the same choice, which is a reconstruction (decision D-CA05 — `Castle.py` never references 703, and without it "Payback" has no acquisition path).
 
-**Link to next**: **DEAD END**. No script handles step advancement or completion for mission 702.
+**Chains**:
+
+| Chain | Trigger | Conditions | Actions | Evidence |
+|---|---|---|---|---|
+| 1261 | `enter_region Castle.InterrogationBlock` | 702 step 2402 active | `advance_step 702 2419`; `set_interaction_type Castle_Zuritska_Cell \| INT_AStoryMissionActive` | RECONSTRUCTION -- step 2402 is a travel instruction and region entry is the only verb that expresses it |
+| 1262 | `interact_tag Castle_Zuritska_Cell` | 702 step 2419 active | `display_dialog 2577` | ORIGINAL_DATA (dialog 2577, speaker 1114) wired by RECONSTRUCTION |
+| 1263 | `dialog_choice 2577` | 702 step 2419 active; 704 not_active | `complete_mission 702`; `accept_mission 704`; `set_follow_target Castle_Zuritska_Cell {"use_player": true}` | RECONSTRUCTION -- 2577 is the only accept point for 704 in the shipped data |
+| 1264 | `player_loaded Castle` | 702 step 2419 active | re-set the `!` bit | RECONSTRUCTION (relog restore) |
+| 1265 | `enter_region Castle.InterrogationBlock` | 702 step 2419 active | re-set the `!` bit | RECONSTRUCTION (shared-bit repair) |
+
+Objective 4653 is completed by `complete_mission 702`, not by a separate `complete_objective`: it is the only objective on the mission's last step, and completing a last non-optional objective completes the mission on its own.
+
+Chain 1265 exists because the `!` bit is global: another player's progress clears it for everyone, including a player still on step 2419, who then cannot click the actor at all. Chain 1264 repairs that only on a relog; 1265 repairs it on walking back into the volume.
+
+The `!` on `Castle_Zuritska_Cell` deliberately **outlives mission 702**. Chain 1263 does not clear it, because it is the affordance mission 704's chain 1302 needs to restart an escort broken by splash damage. Its lifecycle is: set by 1261 when the player enters the Interrogation Block, kept through 702's completion and the whole of 704 step 2405, cleared by 704's chain 1291 on Communications Room arrival.
+
+**Escort caveat**: the follow set by chain 1263 is presentation only and is **provisional** until `castle.nav` exists (packet CA14). With no navmesh, `find_path` returns `None` and the follower walks a straight line, so expect clipping through Castle interior geometry.
+
+**Link to next**: completes 702 and accepts **704**. Mission 703 is accepted alongside 702 by mission 701's chain under decision D-CA05.
+
+---
+
+#### Mission 703: "Payback" [RECONSTRUCTION]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 703 |
+| **Name** | Payback |
+| **Level** | 3 |
+| **is_story** | true |
+| **Script** | None. Reconstructed as chains 1271-1273 |
+
+**Steps** (from DB):
+
+| Step ID | Index | Text |
+|---------|-------|------|
+| 2403 | 0 | "Locate NID Interrogator Romney in the Castle." |
+| 2404 | 1 | "Romney must be somewhere in the Interrogation Block. Locate and eliminate him." |
+
+**Objectives** (from DB): 2780 on 2403; 2781 on 2404. Neither is optional and there is no mission-specific dialog -- 703 is a kill mission end to end.
+
+**How it starts**: accepted with 702 by mission 701's dialog-2576 chain (decision D-CA05).
+
+**Chains**:
+
+| Chain | Trigger | Conditions | Actions | Evidence |
+|---|---|---|---|---|
+| 1271 | `enter_region Castle.InterrogationBlock` | 703 step 2403 active | `advance_step 703 2404` | RECONSTRUCTION -- same volume as 702's chain 1261; both fire on one entry |
+| 1272 | `entity_dead_tag Castle_Romney` | 703 step 2404 active | `add_item 2135`; `complete_mission 703` | RECONSTRUCTION -- explicit grant, not loot |
+| 1273 | `entity_dead_tag Castle_Romney` | 703 step 2403 active | `advance_step 703 2404`; `add_item 2135`; `complete_mission 703` | RECONSTRUCTION -- the off-path kill |
+
+Item 2135 "Romney's NID Badge" is an **explicit chain grant**. There is no loot table and no `mission_reward_groups` row for 701-708, so a chain grant is the only mechanism available; the item is the one row in the seed that names Romney. Its description text is a copy-paste of the Ambernol vial's and is not evidence of anything.
+
+Chain 1273 exists because Castle is an open world and region entry is client-hinted: a player can reach Romney without ever crossing `Castle.InterrogationBlock`, and without 1273 the mission would stick on step 2403 behind a corpse. The two death chains can never both fire for one kill -- `fire_entity_death` snapshots the killer's mission context once and evaluates every chain against that single snapshot, so the badge is granted exactly once.
+
+Death credit is per killer (the killer must have a `player_id`), and Romney respawns on the ordinary spawner timer, so every player can take the kill.
+
+**Link to next**: none. 703 is a side branch off the 702 → 704 spine.
+
+---
+
+#### Mission 704: "Hack Communications" [RECONSTRUCTION]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 704 |
+| **Name** | Hack Communications |
+| **Level** | 3 |
+| **is_story** | true |
+| **Script** | None. Reconstructed as chains 1291-1302 |
+
+**Steps** (from DB):
+
+| Step ID | Index | Text |
+|---------|-------|------|
+| 2405 | 0 | "Escort Dr. Zuritska to the Communications Room down on Level 5." |
+| 2406 | 1 | "Use the Communications Terminal to download specifications for the Castle's security system." |
+| 2407 | 2 | "Deliver the Data crystal to Zuritska." |
+
+**Objectives** (from DB): 2782 (required) and 2783 (optional, hidden) on 2405; 2784 on 2406 via task 6341; 5151 on 2407.
+
+**How it starts**: accepted by mission 702's chain 1263 on the dialog-2577 choice.
+
+**Chains**:
+
+| Chain | Trigger | Conditions | Actions | Evidence |
+|---|---|---|---|---|
+| 1291 | `enter_region Castle.CommsRoom` | 704 step 2405 active | `advance_step 704 2406`; `set_follow_target Castle_Zuritska_Cell {}` (clear); arm the terminal and the workstation actor; clear the `!` on `Castle_Zuritska_Cell` | RECONSTRUCTION |
+| 1292 | `interact_tag Castle_CommsTerminal` | 704 step 2406 active | `start_minigame Livewire {"on_victory_chains": [1293]}` | RECONSTRUCTION, provisional minigame (D-CA09) |
+| 1293 | none -- invoked by 1292's `on_victory_chains` | none | `display_dialog 2580`; `add_item 5029`; `advance_step 704 2407`; clear the terminal bit; re-assert the `!` on `Castle_Zuritska_Comms` | RECONSTRUCTION; dialogs and item are ORIGINAL_DATA |
+| 1294 | `interact_tag Castle_Zuritska_Comms` | 704 step 2407 active | `display_dialog 2581` | ORIGINAL_DATA wired by RECONSTRUCTION |
+| 1295 | `dialog_choice 2581` | 704 step 2407 active; 706 not_active | `remove_item 5029`; clear the `!`; `complete_mission 704`; `accept_mission 706` | RECONSTRUCTION |
+| 1296 | `player_loaded Castle` | 704 step 2405 active | re-arm the escort follow and the cell actor's `!` | RECONSTRUCTION (relog restore) |
+| 1297 | `player_loaded Castle` | 704 step 2406 active | re-set the terminal bit and the workstation `!` | RECONSTRUCTION (relog restore) |
+| 1298 | `player_loaded Castle` | 704 step 2407 active | re-set the workstation `!` | RECONSTRUCTION (relog restore) |
+| 1299 | `interact_tag Castle_Zuritska_Comms` | 704 step 2406 active | `display_dialog 4866` | ORIGINAL_DATA wired by RECONSTRUCTION (click-to-play) |
+| 1300 | `enter_region Castle.CommsRoom` | 704 step 2406 active | re-set both 2406 bits | RECONSTRUCTION (shared-bit repair) |
+| 1301 | `enter_region Castle.CommsRoom` | 704 step 2407 active | re-set the workstation `!` | RECONSTRUCTION (shared-bit repair) |
+| 1302 | `interact_tag Castle_Zuritska_Cell` | 704 step 2405 active | `set_follow_target Castle_Zuritska_Cell {"use_player": true}` | RECONSTRUCTION (escort repair) |
+
+**Why clicking Zuritska restarts the escort (chain 1302)**: `AiState::Follow` is preemptable into Fighting by any threat, and the leash handler ends at Idle and never returns to Follow. One point of splash damage to Zuritska on the way down to Level 5 therefore ends the escort permanently, and the only other recovery is a relog. The click is the "follow me again" affordance, which is why the cell actor's `!` is kept alight for the whole of step 2405 rather than cleared at the rescue. Known gap: because the bit is global, another player reaching the Communications Room clears this player's affordance too, and the only repair for that is the relog restore -- step 2405 is spent in the corridor between the two rooms, which has no point set for a re-entry repair to trigger on.
+
+**Why the step gate lives on chain 1292 and not on 1293**: victory chains are fired by id with `ResolvedActions::default()` and evaluate **no conditions**. A condition row on 1293 would read as a guard while guarding nothing, so the single-grant guarantee for item 5029 comes entirely from 1292's `step_status 2406 active` plus 1293's own advance to 2407, which shuts that gate.
+
+**Why dialog 4866 is click-to-play rather than played on arrival** (a RECONSTRUCTION choice; the shipped data gives no ordering evidence): `display_dialog` needs an NPC to bind the client's portrait lookup to. It resolves the chain's `target_entity_id` param, which only `interact_tag` and `interact_template` triggers stamp, then the player's `last_interaction_target` pin, then a monologue fallback for dialogs whose every screen carries `speaker_id = 0`. If none resolves it warns and returns. Dialog 4866 carries `speaker_id = 1113` on two of its three screens, so on a region-entry chain it would bind through the pin — which resolves to the cell Zuritska the player just freed, and is empty after a relog. Chain 1299's interact trigger stamps the id directly and always resolves the workstation actor. Dialog 2580 needs none of this: it is a single screen with `speaker_id = 0`, so the monologue fallback carries it on the victory chain. The engine change that would let 4866 play on arrival is a `target_tag` param on `display_dialog`, recorded as a campaign follow-up candidate.
+
+**Possession is proved by step state, not by the item** (decision D-CA08). The cell service has no inventory view at all -- `CellEntity` carries only bandolier and loot -- so a `HasItem` gate could never evaluate true. Chain 1293 grants the crystal and advances the step in the same action list, which makes the step the proof. Accepted divergence: dropping or selling the crystal does not regress step 2407.
+
+**Walk home**: chain 1291 ends the escort by clearing the follow and then walks `Castle_Zuritska_Cell` back to the seeded spawn with `move_waypoint` to (268.0, 66.79, 1042.59) — spawn_id 238, template 168, world 8, authored by packet CA05. Order matters: the follow clear drops the actor to Idle and wipes `nav_path`, so the walk has to be issued after it, and `chain_1291_arrival_advances_ends_the_escort_and_arms_the_terminal` asserts the action signature positionally for that reason. The coordinate is a second copy of CA05's spawn row, so `chain_1291_destination_matches_the_seeded_spawn_row` cross-checks the two against `resources.spawnlist`.
+
+**Link to next**: completes 704 and accepts **706** ("Power Behind the Throne", packet CA08, not yet implemented).
+
+---
+
+#### Mission 706: "Power Behind the Throne" [RECONSTRUCTION]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 706 |
+| **Name** | Power Behind the Throne |
+| **Level** | 3 |
+| **is_story** | true |
+| **Script** | None recovered. `Castle.py` stops at mission 701 and never references 706. |
+| **Seed** | `db/resources/Content/Seed/castle_706_708_chains.sql`, chains 1321-1323 |
+| **Ledger** | [Castle rebuild packet CA08](../analysis/castle-rebuild/work-packets.md#ca08), [worknote](../analysis/castle-rebuild/worknotes/m706-708.md) |
+
+**Steps** (from DB, ORIGINAL_DATA):
+
+| Step ID | Index | Text | Objectives |
+|---------|-------|------|------------|
+| 2411 | 0 | "Get to the Throne Room." | 2790 (required) |
+| 2412 | 1 | "Hack into the Goa'uld communications grid." | 2791 "Use the access panel behind the throne to boost Zuritska's communications signal." + 2792 "Locate the access panel behind the Throne." (both required) |
+
+**How it starts**: accepted by mission 704's delivery chain (packet CA07). Nothing in this file accepts 706.
+
+**Chains** — every row below is RECONSTRUCTION; the ids, dialogs, region and spawn are original data, the wiring is not:
+
+| Chain | Trigger | Conditions | Actions |
+|-------|---------|-----------|---------|
+| 1321 | `enter_region('Castle.ThroneRoom')` | `step_status(706, 2411) = active` | `advance_step(706, 2412)`; `set_interaction_type(Castle_AccessPanel, \|, INT_MissionWorldObject)` |
+| 1322 | `interact_tag('Castle_AccessPanel')` | `step_status(706, 2412) = active`; `mission_status(708) = not_active` | `display_dialog(2584)`; `complete_mission(706)`; `accept_mission(708)` |
+| 1323 | `player_loaded('Castle')` | `step_status(706, 2412) = active` | `set_interaction_type(Castle_AccessPanel, \|, INT_MissionWorldObject)` — relog restore |
+
+**Entity tags**: `Castle_AccessPanel` (spawn 92, template 147, at 330.49, 41.18, 653.11).
+
+**Regions**: `Castle.ThroneRoom` (point set 2049).
+
+**Dialog IDs**: 2584 (Copplemann and Col. Marsh over the boosted radio; dialog-set map row 5711, set 654).
+
+**Why `complete_mission` and not two `complete_objective` calls**: step 2412's two objectives are both required, and `complete_objective` on the last required objective of a step routes through an auto-complete branch that sends `onMissionUpdate` with the *active* status byte rather than *completed*. `complete_mission_direct` emits the correct objective/step/mission sequence. Same reasoning applies to chain 1360 on mission 708.
+
+**The zero-baseline rule (why no mission cue is ever cleared here)**: `interaction_type_flags` live on the shared cell entity and broadcast to every witness, and `EInteractionNotificationType` is the bitfield that drives the client's right-click cursor. `entity_templates.interaction_type` is the spawn-time value of that bitfield, so clearing an entity's last bit drops it to `0` and removes its only affordance -- for every player in AoI at once, with no recovery short of a relog. These chains therefore clear a cue only when the target's template baseline is non-zero:
+
+| Tag | Template | Baseline | Cue cleared? |
+|---|---|---|---|
+| `Castle_DHD` | 162 | `16` (`INT_Dhd`) | Yes -- chain 1357 clears `INT_MinigameLivewire` and the DHD keeps `INT_Dhd` |
+| `Castle_AccessPanel` | 147 | `0` | No -- and 708 step 2415 needs the same panel immediately afterwards |
+| `Castle_ColMarsh` | 10 | `0` | No -- two players can sit on step 2417 at once |
+| `Castle_Mohkatan` | 54 | `0` | No -- same as Marsh |
+| `Castle_SurrenderGuard` | CA05 | unknown | No -- decide by this rule once CA05 seeds the template |
+
+The cost is a stale cue over an NPC or prop the player has finished with; the alternative is a hard stall. This deviates from packets CA08/CA09's literal wording. Per-player interaction state is design gate GCA1.
+
+**Link to next**: chain 1322 completes 706 and accepts 708 in the same action list. `accept_mission` synchronously fires the `mission_accepted` event, so mission 708's setup chain 1341 runs before chain 1322's list finishes.
+
+---
+
+#### Mission 708: "Secure the Stargate" [RECONSTRUCTION]
+
+| Field | Value |
+|-------|-------|
+| **Mission ID** | 708 |
+| **Name** | Secure the Stargate |
+| **Level** | 3 |
+| **is_story** | true |
+| **Script** | None recovered. |
+| **Seed** | `db/resources/Content/Seed/castle_706_708_chains.sql`, chains 1341-1365 |
+| **Ledger** | [Castle rebuild packet CA09](../analysis/castle-rebuild/work-packets.md#ca09), [worknote](../analysis/castle-rebuild/worknotes/m706-708.md) |
+
+**Steps** (from DB, ORIGINAL_DATA):
+
+| Step ID | Index | Text | Objectives |
+|---------|-------|------|------------|
+| 2415 | 0 | "Discover why the Stargate will not dial out." | 2796 (required, hidden); 2794 optional "(Option #1) Force a guard to surrender"; 2795 optional "(Option #2) Use the Access Panel on the Goa'uld Throne" |
+| 2416 | 1 | "Retrieve the DHD Control Crystal." | 2797 (required); 2798 optional "NID Officers at Checkpoint Bravo"; 2799 optional "Warden Muelbach... in the bunker above Checkpoint Bravo" |
+| 2417 | 2 | "Take the Control Crystal to Checkpoint Alpha." | 5184, 5185 "Report to Col. Marsh", 5186 "Report to Moh'katan" — **all three required** |
+| 2418 | 3 | "Repair the DHD." | 5197 (required) |
+| 4462 | 4 | "Use the DHD to dial the Stargate to Harset." | 5198 (task 6403) |
+| 4469 | 5 | "Enter the active Stargate to leave the Castle." | 5200 (task 6404) |
+
+**How it starts**: accepted by mission 706's chain 1322.
+
+**Chains** — all RECONSTRUCTION:
+
+| Chain | Trigger | Conditions | Actions |
+|-------|---------|-----------|---------|
+| 1341 | `mission_accepted('708')` | — | mark `Castle_SurrenderGuard` with `INT_AStoryMissionActive`; re-assert the `Castle_AccessPanel` glow |
+| 1342 | `interact_tag('Castle_SurrenderGuard')` | `step_status(708, 2415) = active` | `display_dialog(5003)` |
+| 1343 | `dialog_choice('5003')` | `step_status(708, 2415) = active` | `complete_objective(708, 2794)`; `advance_step(708, 2416)` |
+| 1344 | `interact_tag('Castle_AccessPanel')` | `step_status(708, 2415) = active` | `display_dialog(5004)` |
+| 1345 | `dialog_choice('5004')` | `step_status(708, 2415) = active` | `complete_objective(708, 2795)`; `advance_step(708, 2416)` |
+| 1346-1348 | `entity_dead_tag('Castle_BravoOfficer1\|2\|3')` | `mission_status(708) = active`; `step_status(708, 2416) = active` | `add_item(2790)`; `complete_objective(708, 2798)`; `advance_step(708, 2417)` |
+| 1349 | `entity_dead_tag('Castle_Muelbach')` | same | `add_item(2790)`; `add_item(2136)`; `complete_objective(708, 2799)`; `advance_step(708, 2417)` |
+| 1350 | any of the four deaths | `step_status(708, 2416) = active`; `archetype != 8` | mark `Castle_ColMarsh` |
+| 1351 | any of the four deaths | `step_status(708, 2416) = active`; `archetype = 8` | mark `Castle_Mohkatan` |
+| 1352 | `interact_tag('Castle_ColMarsh')` | `step_status(708, 2417) = active`; `archetype != 8` | `display_dialog(5008)` |
+| 1353 | `dialog_choice('5008')` | `step_status(708, 2417) = active` | `complete_objective(708, 5185)`; `advance_step(708, 2418)`; arm the DHD with `INT_MinigameLivewire` |
+| 1354 | `interact_tag('Castle_Mohkatan')` | `step_status(708, 2417) = active`; `archetype = 8` | `display_dialog(5009)` |
+| 1355 | `dialog_choice('5009')` | `step_status(708, 2417) = active` | `complete_objective(708, 5186)`; `advance_step(708, 2418)`; arm the DHD |
+| 1356 | `interact_tag('Castle_DHD')` | `step_status(708, 2418) = active` | `start_minigame(Livewire, on_victory_chains=[1357])` |
+| 1357 | none (minigame victory) | none — victory chains skip condition evaluation | `advance_step(708, 4462)`; clear the Livewire cue; `add_dialog_set(3073 → template 162)` |
+| 1358 | `stargate_dialed('Harset')` | `step_status(708, 4462) = active`; `archetype != 8` | `advance_step(708, 4469)`; `display_dialog(5010)`; unbind 3073 |
+| 1359 | `stargate_dialed('Harset')` | `step_status(708, 4462) = active`; `archetype = 8` | `advance_step(708, 4469)`; `display_dialog(5011)`; unbind 3073 |
+| 1360 | `stargate_crossed('Harset')` | `step_status(708, 4469) = active` | `complete_mission(708)` |
+| 1361-1365 | `player_loaded('Castle')` | one per step that owns a cue: 2415, 2417 (×2 by archetype), 2418, 4462 | repaint that cue |
+
+**Entity tags**: `Castle_SurrenderGuard`, `Castle_BravoOfficer1..3`, `Castle_Muelbach` (all owed by packet CA05 and not yet in `spawnlist`), `Castle_AccessPanel` (spawn 92), `Castle_ColMarsh` (spawn 118, template 10), `Castle_Mohkatan` (spawn 120, template 54), `Castle_DHD` (spawn 2, template 162).
+
+**Dialog IDs**: 5003 (guard interrogation), 5004 (panel diagnostic), 5008 / 5009 (report, by archetype), 5010 / 5011 (closing line, by archetype). All are set 656, and all are displayed directly by a chain's `display_dialog`.
+
+**Dialog 2586 is NOT bound by anything.** No `dialog_set_maps` row anywhere carries `dialog_id = 2586`. Chain 1357's `add_dialog_set(3073 → template 162)` binds row 3073, which is set 656, `interaction_flags = 16` (`INT_Dhd`), `topic_text = 'Dial Harset'` and **`dialog_id = NULL`** -- a bindable *indicator* row, not a dialog. So the bind makes a "Dial Harset" topic available on the DHD and displays no text; 2586's narration ("you dial the DHD... It fires") survives only as the weak evidence D-CA09 cites for which minigame the DHD repair originally used. Contrast row 5711 (set 654), which *does* bind dialog 2584 for mission 706. Chain 1357 is inert until CA02 widens `DialogSetMapEntry.dialog_id` to `Option<i32>` so NULL-dialog rows load at all.
+
+**Items**: 2790 DHD Control Crystal (explicit grant, `container_sets {2}`); 2136 (Muelbach's identifying drop — the item's role is reconstruction).
+
+**Minigames**: Livewire on the DHD at step 2418, labelled provisional per D-CA09 — the original minigame for the DHD repair is unrecovered.
+
+**Where the archetype split is enforced**: on the *interact* chains (1352 / 1354), never on the `dialog_choice` chains. The dialog-choice dispatcher does not populate `archetype` into the chain context, and a missing `archetype` evaluates as `-1`, which makes `archetype = 8` permanently false and `archetype != 8` permanently true — a condition that reads like a guard and fails open. The choice halves are discriminated by dialog id instead, which is server-authoritative because a `dialogButtonChoice` is rejected unless the server displayed that dialog to that player, and the only path that displays 5008 is the archetype-gated interact chain.
+
+**Zero-button dialogs**: none of 5003, 5004, 5008, 5009, 5010, 5011, 2584 or 2586 has a `dialog_screen_buttons` row. The 2009 client emits its dialog choice from the close path with button id `-1` when a dialog carries no buttons at all, and emits nothing on close when it does — which is why `Castle.py` could key on `dialog.choice::2574` and `::2575`. **Adding a button to any of these dialogs silently breaks the chain that keys on it.**
+
+**How the crystal can only be granted once**: the step gate is the guard. Each source chain advances out of step 2416 in the same action list it grants in, and the advance mutates the in-memory step synchronously, so a second kill — including re-killing a respawned officer, which reuses the same entity and tag — resolves nothing. This holds only while every action row carries `delay_ms = 0`; a deferred advance would leave the step active across the delay window. The replay guard executes the first death, re-derives the context from the mutated player and fires a second death, asserting exactly one grant reaches the base.
+
+**Link to next**: crossing to Harset completes 708. Castle has no further missions.
 
 ---
 

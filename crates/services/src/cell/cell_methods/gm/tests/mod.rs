@@ -3,6 +3,15 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use tokio::sync::mpsc;
 
+/// Empty content engine for `dispatch`'s `engine` parameter.
+///
+/// Only `gmDHD` reads it today (the `stargate_dialed` content trigger),
+/// and with no chains registered every `fire_*` is a no-op — so every
+/// other arm's assertions are unaffected by it.
+pub(super) fn test_engine() -> cimmeria_content_engine::chain::ChainEngine {
+    cimmeria_content_engine::chain::ChainEngine::new()
+}
+
 /// Re-assert the document-order count of `<Exposed/>` CellMethods in
 /// `SGWGmPlayer.def`. The first own exposed method (gmMissionAssign, def
 /// line 65) is index 109; counting forward in document order — skipping
@@ -209,7 +218,7 @@ async fn unimplemented_gm_index_returns_false() {
     let mut mgr = mgr_with_player(1, "Castle");
     let (tx, _rx) = mpsc::channel(8);
     // 142 = gmSetGodMode — in the tail, not implemented here.
-    assert!(!dispatch(1, 142, &[], &tx, &mut mgr).await);
+    assert!(!dispatch(1, 142, &[], &tx, &mut mgr, &test_engine()).await);
 }
 
 mod give;

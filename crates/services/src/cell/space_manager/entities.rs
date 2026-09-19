@@ -108,6 +108,8 @@ impl SpaceManager {
     /// If the entity was in an instanced space and was the last player, the
     /// entire space instance is destroyed (all remaining NPCs removed).
     pub fn destroy_entity(&mut self, entity_id: u32) {
+        crate::cell::playtest_friction::forget(entity_id);
+        crate::cell::player_journal::forget(entity_id);
         // Snapshot the identity while the entity still exists — it is removed
         // from its space below, and this is the last chance to attribute the
         // teardown to an account. `entity_id` alone is not enough here of all
@@ -123,6 +125,13 @@ impl SpaceManager {
         // the action, not fire it later against a torn-down (and possibly
         // id-reused) entity.
         self.pending_content_actions.remove(&entity_id);
+        // Same reasoning for the `entity_health_below` sample queue: a
+        // sample naming a destroyed entity on either side would fire a
+        // threshold chain against a torn-down (and possibly id-reused)
+        // attacker or target. The drain re-looks-up both, so this is
+        // belt-and-braces against id reuse rather than a crash guard.
+        self.pending_health_below
+            .retain(|s| s.attacker_entity_id != entity_id && s.target_entity_id != entity_id);
         // Ring transport: a destroy mid-trip (GM despawn, gate travel,
         // respawn, content transport) must not leave the ring pad parked in
         // a non-`Idle` state, because `handle_select_destination` refuses
@@ -139,7 +148,21 @@ impl SpaceManager {
         // The real client-disconnect path takes
         // `ring_transport::forget_player` from `disconnect_entity` below
         // instead, which is async and releases everyone immediately.
-        self.ring_transporters.note_player_gone(entity_id);
+        //
+        // Gated on the entity actually being a player (it is still resident
+        // at this point, so the lookup works). `destroy_entity` is the
+        // teardown for every NPC too — mission despawns, GM `.despawn`, the
+        // respawn sweep — and only a *player* can be on a ring pad, so
+        // queueing all of them just made the ring tick walk a list that was
+        // mostly NPC ids it would never match (PR #662 review, finding 2).
+        if self.get_entity(entity_id).is_some_and(|e| e.is_player) {
+            self.ring_transporters.note_player_gone(entity_id);
+        }
+        // CA10: an armed stargate dial dies with the space membership.
+        // `SGWPlayer.cancelDialing` on leaving is the 2009 equivalent —
+        // without this, `gate_dial_tick` would emit `Stargate_MakeGate`
+        // for an entity that is no longer in any space.
+        self.pending_gate_dials.remove(&entity_id);
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
             let mut should_destroy_space = false;
 
@@ -350,6 +373,9 @@ impl SpaceManager {
         // would strand the traveller (see
         // `RingTransporterManager::forget_source_side`).
         crate::cell::ring_transport::forget_player(entity_id, tx, self).await;
+        // CA10: same rationale — a disconnect mid-dial must not leave a
+        // pending gate-open queued against a dead session.
+        self.pending_gate_dials.remove(&entity_id);
         if let Some(&space_id) = self.entity_space.get(&entity_id) {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.remove(&entity_id);
@@ -421,10 +447,16 @@ impl SpaceManager {
         direction: [i8; 3],
         velocity: [f32; 3],
     ) {
+        // The wire carries three packed angle bytes in `(yaw, pitch, roll)`
+        // order (client packer `0x00de1720`); `CellEntity.direction` is
+        // `[pitch, yaw, roll]` in RADIANS. Storing the raw bytes as floats in
+        // wire order (the old behaviour) put byte-units yaw in the pitch slot,
+        // so `pack_angle` re-divided a byte by the byte scale and every moving
+        // player was broadcast with a saturated, meaningless facing (P49).
         let facing = Vector3::new(
-            direction[0] as f32,
-            direction[1] as f32,
-            direction[2] as f32,
+            crate::mercury::aoi::unpack_angle(direction[1]),
+            crate::mercury::aoi::unpack_angle(direction[0]),
+            crate::mercury::aoi::unpack_angle(direction[2]),
         );
         self.write_position(entity_id, position, Some(facing), velocity);
     }

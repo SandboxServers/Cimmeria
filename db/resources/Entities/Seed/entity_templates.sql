@@ -356,6 +356,127 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (167, '', 'BS_GoauldMale.BS_GoauldMale', '{AR_G_Praxis.AR_GM_PB1_PH100,AR_G_Praxis.AR_GM_PL1_PB100,AR_G_Praxis.AR_GM_PL1_PL100,AR_G_Praxis.AR_GM_PT1_PT100,AR_G_Praxis.AR_GM_PT1_PT102,AR_G_Praxis.AR_GM_PT1_PT105,BS_GoauldMale.BS_GM_Base_Boots00_00,BS_GoauldMale.BS_GM_Base_Hands00_00,BS_GoauldMale.BS_GM_Base_Legs00_00,BS_GoauldMale.BS_GM_Base_Torso00_00,NPC_Goauld.NPC_GM_Baal_Head_BC}', 0, 0, 570, 50, 0, 1, 8186, '', NULL, NULL, 'Sandbox Ba''al', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -1014470144, NULL, '{}', NULL, 942, true, 100001, NULL);
 
+-- RECONSTRUCTION (CA05 packet, docs/analysis/castle-rebuild/worknotes/ca05.md "Templates" table):
+-- Castle_Zuritska (D-CA06/D-CA07) -- non-hostile, faction 1, **human male**.
+--
+-- Gender is ORIGINAL_DATA, not a choice. Every shipped dialog screen that refers to
+-- Dr. Zuritska uses masculine pronouns, decisively in the one that drives this very actor:
+-- dialog 2576 screen 96821 (`dialog_screens.sql:11759`) -- "I need you to rescue Dr. Zuritska
+-- and take HIM to the Communications room on Level 5. HE has to patch me into the Castle's
+-- comm systems". Corroborated by dialog 88 screen 9427 (`dialog_screens.sql:124`, "Dr. Zuritska
+-- has also finished HIS weapon") and dialog 514 screen 5212 (`:1613`, "...if you can stand to
+-- be in the room with HIM"). Dialog 2576 screen 96825 is NOT cited: its "He has been working
+-- Zuritska over" refers to Romney, not Zuritska.
+-- A sweep of every Zuritska-bearing screen finds no feminine pronoun referring to him; the
+-- single "her" nearby (dialog 2572 screen 96765) is Copplemann, who IS female. An earlier
+-- draft of this row cloned template 48 (Capt. Copplemann) and shipped Zuritska as
+-- BS_HumanFemale -- right gender source, wrong character. work-packets.md:69 already said
+-- "human male"; the draft contradicted both it and the dialog.
+--
+-- Cloned from template 149 (Sgt. Gerschon) -- the closest in-zone friendly male civilian
+-- archetype: faction 1, level 50, event_set 570, BS_HumanMale, no WP-* weapon component.
+-- Two deliberate departures from 149:
+--   * head `BS_HM_Head_05` instead of Gerschon's character-specific `BS_HM_Head_09`, because
+--     both NPCs stand in World 8 and must not share a face. 05 is the head this seed already
+--     assigns to its scientist archetype (template 151, 'Lucian - Blue Faction Scientist'),
+--     which suits a "Dr."; appearance is out of CA05 scope, so flag it for visual QA rather
+--     than treat it as settled.
+--   * `AR_Global.Prisoner_Boots` added, since Zuritska is a detainee.
+-- speaker_id is NULL, inherited from the 149 base. That is the whole reason, and an earlier
+-- draft of this comment overstated it as a "Castle convention" -- it is not: templates 10
+-- (941 'Colonel Marsh'), 48 (968 'Copplemann') and 54 (945) all carry a speaker_id, and the
+-- column draws from the same `resources.speakers` table as `dialog_screens.speaker_id`, so
+-- audit.md:17's recorded 1114 ('Zuritska', speakers.sql:163) would be a legal value here.
+-- It is left unset rather than applied because nothing in this packet needs it and nothing
+-- establishes that it is load-bearing: the column is only written to the wire as
+-- `GENERICPROPERTY_DatabaseId` (propId 9) on the AoI create packet when non-NULL
+-- (mercury/aoi/create.rs:164-167); it does not appear anywhere on the interact path, and it
+-- does not drive the dialog portrait or the per-screen speaker, which come from the wire
+-- EntityId (executor/dialog/mod.rs:11-45). The decisive precedent is the 149 base itself:
+-- Gerschon carries NULL, speaks dialogue, and works in-client today. CA07 is where this gets
+-- settled -- see worknotes/ca05.md.
+-- patrol_path_id/patrol_point_delay left NULL (no patrol/wander for a cell/follow NPC;
+-- wander_radius etc. are also untouched and default to 0.0 -- see npcs.rs COALESCE).
+-- move_speed=0.9 (GC1b-0 column, world units per 100ms tick -> 9.0 u/s, per
+-- cell/service/ticks/npc_movement.rs:74's `speed_per_sec = move_speed * 10.0`): World 8's
+-- run_speed is 8.125 u/s (worlds.sql row 8); the engine default of 0.6 (6.0 u/s) can never
+-- re-close the 2-5 unit follow band behind an 8.125 u/s player (GC1b-0 finding). 0.9 matches
+-- the ONLY other non-NULL move_speed in this seed, template 10 (Col. Marsh, also a
+-- follow/escort-style NPC), giving Zuritska the same ~11% margin during the 704 escort.
+-- name_id 7066 is ORIGINAL_DATA, not a reconstruction: texts.sql moniker 7066
+-- `DN_npc_mg_Zuritska_Castle_OLD` = 'Dr. Zuritska', the same `DN_npc_*` display-name
+-- convention templates 48 (7035 'Capt. Copplemann') and 149 (7034 'Sgt. Gerschon') use.
+-- New moniker ids are NOT an option: `name_id` is written raw onto the AoI create packet
+-- (mercury/aoi/create.rs:211-218) and resolved by the client against its own PAK string
+-- table, so only ids that already shipped in the client can render.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (168, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_Global.Prisoner_Boots,AR_H_Clothing00.AR_HM_PL1_PL100,AR_H_Clothing00.AR_HM_PT1_PT100,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_05,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00}', 0, 0, 570, 50, 0, 1, 7066, NULL, NULL, NULL, 'Castle_Zuritska', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, -256, -256, -52773120, 21, '{}', NULL, NULL, true, NULL, 0.9);
+
+-- RECONSTRUCTION: Castle_Romney (D-CA06) -- hostile, verbatim clone of template 148
+-- (NID Guard - Castle inside) per packet scope. Stats/appearance unchanged; only
+-- template_id/template_name/name_id differ. Stats balancing is explicitly out of CA05 scope.
+-- name_id 6962 is ORIGINAL_DATA: texts.sql moniker `DN_MsMb_Castle_Romney_Uni_3` =
+-- 'NID Interrogator Romney' -- the shipped *unique mob* display name for this exact
+-- character ("Ms" = mission, "Mb" = mob, "Uni" = unique, "_3" = tier). Objective text
+-- 14017 ('Locate NID Interrogator Romney in the Castle.') corroborates the string.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (169, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 6962, NULL, NULL, NULL, 'Castle_Romney', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL);
+
+-- RECONSTRUCTION: Castle_Muelbach (D-CA06) -- hostile female per objective 2799
+-- (mission_objectives.sql:6629, ORIGINAL_DATA: "(Option #2) Warden Muelbach will
+-- certainly have one. She is holed up in the bunker above Checkpoint Bravo."). That one
+-- line fixes three things this row had to guess at: her rank/title, her gender, and her
+-- location (see the spawnlist row, which the line moved out of Checkpoint Bravo itself
+-- and into the bunker). Stats/faction/weapon cloned from template 148; body_set swapped
+-- to BS_HumanFemale with the nearest equivalent SGC tactical-gear component set
+-- (template 33's clothing style) since no hostile-female SGC-armed body set exists
+-- elsewhere in this seed -- that composite is still a judgment call, flag for visual QA
+-- at UAT M4.
+-- name_id 6965 is ORIGINAL_DATA: texts.sql moniker `DN_Mb_Castle_Warden_Uni_4` =
+-- 'Warden Muelbach', a byte-exact match for objective 2799's wording.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (170, NULL, 'BS_HumanFemale.BS_HumanFemale', '{AR_H_SGC.AR_HM_SL1_SL100,AR_H_SGC.AR_HM_ST1_ST100,BS_HumanFemale.BS_HF_Base_Boots00_00,BS_HumanFemale.BS_HF_Base_Hands00_00,BS_HumanFemale.BS_HF_Base_Legs00_00,BS_HumanFemale.BS_HF_Base_Torso00_00,BS_HumanFemale.BS_HF_Head_00,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 6965, NULL, NULL, NULL, 'Castle_Muelbach', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, 21, '{}', NULL, NULL, true, NULL, NULL);
+
+-- RECONSTRUCTION: Castle_BravoOfficer (D-CA06) -- hostile, verbatim clone of template 146
+-- (NID Guard - Castle outside) per packet scope, x3 via spawnlist (N=3 default, see
+-- worknotes/ca05.md "Checkpoint Bravo" evidence).
+-- name_id 6966 is ORIGINAL_DATA: texts.sql moniker `DN_MB_Castle_NID_Officer_St_4-5` =
+-- 'NID Officer', which is the literal noun objective 2798 uses ("(Option #1) NID Officers
+-- at Checkpoint Bravo may have a Control Crystal.", mission_objectives.sql:6625) -- so
+-- these are Officers, not the generic 'NID Guard' (7417) this row first reused, and the
+-- moniker's own `_St_4-5` tier band matches a step-2416 encounter.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (171, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Clothing00.AR_HM_WinterPants00,AR_H_Clothing00.AR_HM_WinterShirt00,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Feet_00,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00,WP-Human.WP_SMG_1A}', 0, 0, 570, 1, 0, 10, 6966, NULL, NULL, NULL, 'Castle_BravoOfficer', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, -65536, -16777216, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL);
+
+-- RECONSTRUCTION: Castle_SurrenderGuard (D-CA06) -- non-hostile variant of template 148
+-- (speaker 1093, see audit.md "Static World 8 spawns" table). Same body/appearance as
+-- 148 but faction changed 10 -> 1 (non-hostile) and the WP_SMG_1A weapon component
+-- dropped since he is surrendering. Judgment call; flag for UAT if he should stay armed.
+-- name_id stays 7417 ('NID Guard', `DN_Mb_Castle_NID_Guard_St_1-5`) on purpose: objective
+-- 2794 calls him only "a guard" ("(Option #1) Force a guard to surrender and reveal what
+-- he knows.", mission_objectives.sql:6619), so unlike Romney/Muelbach/the Officers there
+-- is no more specific shipped string to recover and the generic guard name is correct.
+-- speaker_id stays NULL even though audit.md:17 records 1093 for this guard: `speakers.sql:509`
+-- gives 1093 an EMPTY name, so populating GENERICPROPERTY_DatabaseId with it would publish a
+-- DatabaseId resolving to no name at all -- a strictly worse outcome than leaving the property
+-- off the wire. His base 148 also carries NULL and CA09 reaches him through `interact_tag`, not
+-- a template-level speaker. Same open question as template 168; CA07 settles both.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (172, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SH1_SH100,AR_H_SGC.AR_HM_SL1_SL101SB100SH100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_01}', 0, 0, 570, 1, 0, 1, 7417, NULL, NULL, NULL, 'Castle_SurrenderGuard', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -256076032, NULL, '{}', NULL, NULL, true, NULL, NULL);
+
+-- RECONSTRUCTION: Castle_CommsTerminal -- CA05 scope item (3). Structure is a clone of
+-- template 147 (Castle - Access Panel): class 'being', flags 0, interaction_type 0,
+-- body_set GLB_Components.WorldObject_Small -- i.e. the one interactable-prop shape this
+-- zone already proves works (spawn 92, which CA08/CA09 interact with). Two columns are
+-- ORIGINAL_DATA rather than cloned, both recovered from one texts.sql moniker:
+--   texts.sql 7720 `DN_Ob_D_HumanViewScreen_Castle_CommTerminal` = 'Communications
+--   Terminal'. The moniker names the asset family (HumanViewScreen) as well as the string,
+--   which is what finally located this prop -- the earlier recon passes searched for
+--   "terminal"/"comm" and found nothing because the asset is called a *ViewScreen*.
+-- So: name_id 7720 (not 147's 7722 `DN_Ob_G_GoauldPuzzle_Castle_AccessPanel`, which would
+-- label this a Goa'uld access panel), and static_mesh 'Em-Props.EM-ViewScreen02' -- the
+-- byte-exact mesh string template 19 ('View screen 2', name_id 7550 'Terminal') already
+-- ships, and a human view screen rather than a Goa'uld puzzle station, which is what the
+-- moniker asks for. The room the spawnlist row places it in is built around two
+-- `GP-Monitor_Wall00` monitor walls; no standalone interactable-terminal mesh exists in the
+-- Castle tree, so the prop itself is a reconstruction even though its name is not.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (173, 'Em-Props.EM-ViewScreen02', 'GLB_Components.WorldObject_Small', NULL, 0, 0, NULL, NULL, NULL, NULL, 7720, NULL, NULL, NULL, 'Castle_CommsTerminal', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
+
 --
 -- Harset rebuild packet H11: entity templates for the Harset NPCs and props
 -- that the 2009 data declares but never gave a template row. Id block 200-299

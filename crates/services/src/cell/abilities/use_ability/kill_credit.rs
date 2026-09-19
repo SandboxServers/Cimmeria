@@ -24,12 +24,17 @@ use super::handle::handle_use_ability;
 /// content event so mission KillCount chains (e.g., "kill 5
 /// Hallway_Guards") progress.
 ///
+/// It also drains the `entity_health_below` samples the damage seam
+/// queued for this cast — see
+/// [`crate::cell::content::fire_pending_health_below`].
+///
 /// **Not** for AoE / ground-target callers: those go through
 /// [`super::super::handle_use_ability_on_ground`], which returns the set of
 /// every NPC that died during the cast and fires per-death
-/// `fire_entity_death` at the caller layer. The AoE path is the only
-/// other single canonical kill-credit fan-out today; collapsing them
-/// would require returning a Vec<entity_id> from this helper too.
+/// `fire_entity_death` at the caller layer (and drains the same
+/// health-below queue itself). The AoE path is the only other single
+/// canonical kill-credit fan-out today; collapsing them would require
+/// returning a Vec<entity_id> from this helper too.
 ///
 /// Why this isn't baked into `handle_use_ability` itself: NPC AI also
 /// calls `handle_use_ability`, and NPC kills shouldn't fire
@@ -53,25 +58,24 @@ pub async fn handle_use_ability_with_kill_credit(
     // re-fire `fire_entity_death` and double-count mission progress on
     // every post-death swing. Player targets are excluded because PvP
     // kills don't drive mission progression today.
-    //
-    // The health *percentage* is snapshotted in the same pass for the
-    // `entity_health_below` trigger (Harset H04). It has to happen here:
-    // once `handle_use_ability` returns, the pre-hit value is gone, and
-    // a downward threshold crossing can only be computed from both
-    // sides of the hit.
-    let (was_alive_before, pct_before) = if target_id > 0 {
-        match space_mgr.get_entity(target_id as u32) {
-            Some(t) if !t.is_player => (
-                t.stats.get(HEALTH).is_some_and(|s| s.cur > 0),
-                crate::cell::combat::health_pct(t),
-            ),
-            _ => (false, None),
-        }
-    } else {
-        (false, None)
-    };
+    let was_alive_before = target_id > 0
+        && space_mgr
+            .get_entity(target_id as u32)
+            .is_some_and(|t| !t.is_player && t.stats.get(HEALTH).is_some_and(|s| s.cur > 0));
 
     let committed = handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr).await;
+
+    // `entity_health_below` drain (Harset H04, reworked in the PR #662
+    // review). The pre-hit percentages were sampled inside
+    // `apply_damage_to_target` — once per damaged target, so cone and AoE
+    // secondaries are covered, which they were not when this wrapper did
+    // its own single-target snapshot. Draining before the death dispatch
+    // below keeps `pct_after` as close to the hit as possible; a killing
+    // blow is suppressed inside `fire_health_below_for_hit` (the corpse
+    // already carries `BSF_DEAD` by now), which is what keeps
+    // `entity_dead_tag` and `entity_health_below` mutually exclusive per
+    // hit.
+    crate::cell::content::fire_pending_health_below(engine, tx, space_mgr).await;
 
     // Skip the death check when the ability was rejected pre-consume —
     // nothing was damaged, so nothing died. Also short-circuits the
@@ -85,20 +89,6 @@ pub async fn handle_use_ability_with_kill_credit(
         .get_entity(target_eid)
         .is_some_and(|t| t.stats.get(HEALTH).is_some_and(|s| s.cur <= 0));
     if !just_died {
-        // Survived the hit — the other half of the same decision, so a
-        // chain author gets exactly one of `entity_dead_tag` and
-        // `entity_health_below` per hit.
-        //
-        // This branch is defence-in-depth, not the enforcement. The
-        // authority for "a killing blow never fires a threshold chain"
-        // lives in `fire_health_below_for_hit`, which drops any hit
-        // whose target ends dead — it has to, because `just_died` here
-        // reads health, and an effect script can heal a corpse back
-        // above zero after the death transition has run.
-        crate::cell::content::fire_health_below_for_hit(
-            entity_id, target_eid, pct_before, engine, tx, space_mgr,
-        )
-        .await;
         return committed;
     }
 

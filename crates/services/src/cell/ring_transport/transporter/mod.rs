@@ -146,6 +146,23 @@ pub enum AbortReason {
     /// `run_one_deadline` could not resolve the destination region at warmup
     /// time — `ring_regions` and `ring_transporters` disagree.
     DestinationRegionMissing,
+    /// The destination pad's own row coordinate is off the destination
+    /// world's navmesh ([`crate::cell::arrival::ArrivalCheck::OffMesh`]).
+    ///
+    /// Ring arrival is validate-only — the pad row is the arrival and there
+    /// is no substitute for it — so an off-mesh pad has no second answer.
+    /// Aborting is the strictly better failure: teleporting the passengers
+    /// there leaves them off-mesh with every inbound position update
+    /// suppressed — hidden, locked and frozen with no trace but a
+    /// `CorrectionSuppressed`. An abort releases and re-shows them where
+    /// they already are, and the row is fixable in the seed.
+    DestinationPadOffMesh,
+    /// The destination ring did not advance into `RecvWarmup` alongside the
+    /// source's `start_sending`, because it is not holding a slot for this
+    /// source: either it is reserved by a different one, or its own
+    /// `RecvWait` reservation lapsed between destination selection and the
+    /// player stepping onto the pad.
+    PeerNotPrepared,
 }
 
 impl AbortReason {
@@ -157,6 +174,8 @@ impl AbortReason {
             AbortReason::PlayerGone => "player_gone",
             AbortReason::PeerAborted => "peer_aborted",
             AbortReason::DestinationRegionMissing => "destination_region_missing",
+            AbortReason::DestinationPadOffMesh => "ring_pad_off_navmesh",
+            AbortReason::PeerNotPrepared => "peer_not_prepared",
         }
     }
 }
