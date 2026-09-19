@@ -1,6 +1,6 @@
 //! Live-DB regression guards for the interior named regions seeded by packet
-//! H15 / placement cluster PL-C — `Harset_CmdCenter.Lab` (2100),
-//! `Harset_Market.Marketplace` (2101) and `Harset_StorageRm.Storage` (2102).
+//! H15 / placement cluster PL-C — `Harset_CmdCenter.Lab` (2120),
+//! `Harset_Market.Marketplace` (2121) and `Harset_StorageRm.Storage` (2122).
 //!
 //! Seed-data guards over `db/resources/Events/Seed/point_sets.sql` and
 //! `point_set_points.sql`. What they pin:
@@ -27,21 +27,21 @@ use crate::cell::spawner::{load_regions_from_db, region_contains_xz};
 /// Market's floor centre, the Storage pen grid's centre.
 const INTERIOR_REGIONS: [(i32, &str, i32, &str, [f32; 3]); 3] = [
     (
-        2100,
+        2120,
         "Harset_CmdCenter.Lab",
         68,
         "Harset_CmdCenter",
         [34.8, 0.32, -25.5],
     ),
     (
-        2101,
+        2121,
         "Harset_Market.Marketplace",
         69,
         "Harset_Market",
         [65.0, 3.6, 65.0],
     ),
     (
-        2102,
+        2122,
         "Harset_StorageRm.Storage",
         70,
         "Harset_StorageRm",
@@ -57,19 +57,19 @@ const INTERIOR_REGIONS: [(i32, &str, i32, &str, [f32; 3]); 3] = [
 /// `player_loaded` edge-trigger shape that has bitten three Harset chains.
 const ARRIVAL_SIDE_EXCLUSIONS: [(i32, &str, [f32; 3], &str); 3] = [
     (
-        2100,
+        2120,
         "Harset_CmdCenter.Lab",
         [0.0, 0.32, 20.0],
         "the cross hall the lab's two doorways open onto",
     ),
     (
-        2101,
+        2121,
         "Harset_Market.Marketplace",
         [19.0, 4.8, 15.0],
         "the torch-lit 4.80 vestibule in the south-west corner",
     ),
     (
-        2102,
+        2122,
         "Harset_StorageRm.Storage",
         [58.0, 5.2, 20.0],
         "the upper wing at floor 5.10 (navmesh component 6)",
@@ -219,7 +219,7 @@ async fn interior_region_boxes_contain_their_room_and_exclude_the_approach() {
 /// — it checks the last waypoint actually arrived.
 ///
 /// Asserting on the region read back from the DB, not on literals, is what
-/// makes this a guard on the seed: shrink or move set 2102 and the probes move
+/// makes this a guard on the seed: shrink or move set 2122 and the probes move
 /// with it.
 #[tokio::test]
 async fn the_storage_region_sits_on_the_shipped_world_70_navmesh() {
@@ -239,8 +239,8 @@ async fn the_storage_region_sits_on_the_shipped_world_70_navmesh() {
         .expect("load_regions_from_db");
     let storage = regions
         .iter()
-        .find(|r| r.set_id == 2102)
-        .expect("point set 2102 must load");
+        .find(|r| r.set_id == 2122)
+        .expect("point set 2122 must load");
 
     let xs: Vec<f32> = storage.points.iter().map(|p| p[0]).collect();
     let zs: Vec<f32> = storage.points.iter().map(|p| p[2]).collect();

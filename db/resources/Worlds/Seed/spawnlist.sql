@@ -579,13 +579,13 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- Goa'uld lord holds court. The competing reading is "beside Anat on her
 -- dais"; if the playtest prefers it, use (65.0, 1.75, 77.17) with the same
 -- heading and nothing else changes.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (300, 2.0, 1.95, 88.0, 3.14159274, 68, 42, 'CmdCenter_Baal', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (340, 2.0, 1.95, 88.0, 3.14159274, 68, 42, 'CmdCenter_Baal', NULL, true, 30);
 
 -- Anat's Royal Guard, on her dais at her right hand, facing the stair she
 -- faces. MAP-GEOMETRY + AUTHORED-adjacency, MEDIUM-HIGH: "near Anat" is the
 -- only spec text (harset-tags.md) and spawn 222 pins where that is. 3.5 m
 -- from her, clear of the 3.8-high dais columns at x 59 and x 67, z 80.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (301, 58.5, 1.75, 77.0, 3.14159274, 68, 209, 'CmdCenter_RoyalGuard', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (341, 58.5, 1.75, 77.0, 3.14159274, 68, 209, 'CmdCenter_RoyalGuard', NULL, true, 30);
 
 -- Anat's symbiote tank (1353, 741), on her dais at her left hand, 4 m from
 -- her and reachable from the stair. MAP-GEOMETRY + SPEC-DESCRIPTIVE, MEDIUM:
@@ -593,14 +593,14 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- where it belongs; the exact metre is not evidenced. Deliberately NOT
 -- placed on one of the six map `GA-PuzzleStation00` actors -- template 245
 -- draws that same mesh, and co-locating would z-fight the map's own copy.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (302, 66.0, 1.75, 77.0, 3.14159274, 68, 245, 'CmdCenter_SymbioteTank', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (342, 66.0, 1.75, 77.0, 3.14159274, 68, 245, 'CmdCenter_SymbioteTank', NULL, true, 30);
 
 -- Moh'katan in the entry hall, 13 m up the corridor from the arrival point
 -- and facing it. MAP-GEOMETRY + INFERRED, MEDIUM: he offers 1324 "Present
 -- Yourself", the Jaffa faction-entry mission, so he is the first NPC a new
 -- arrival must find; the entry hall is the only room every arrival crosses.
 -- Offset to x -5 so he does not stand in the corridor's centre line.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (303, -5.0, 0.37, -8.0, 2.74680114, 68, 54, 'CmdCenter_Mohkatan', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (343, -5.0, 0.37, -8.0, 2.74680114, 68, 54, 'CmdCenter_Mohkatan', NULL, true, 30);
 
 -- Col Marsh, west side of the ops room's central briefing dais, facing it.
 -- MAP-LANDMARK + MAP-GEOMETRY, MEDIUM: the room at x[-56,-28] z[-30,12] has
@@ -611,10 +611,10 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- with four TriggerVolumes on them). That is a war room, and Marsh is the
 -- ranking Tau'ri officer on Harset. Which of the three officers stands
 -- where inside it is not evidenced.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (304, -49.5, -0.59, -14.0, 1.57079637, 68, 10, 'CmdCenter_Marsh', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (344, -49.5, -0.59, -14.0, 1.57079637, 68, 10, 'CmdCenter_Marsh', NULL, true, 30);
 
 -- Capt Copplemann, east side of the same dais, facing it -- Marsh's mirror.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (305, -35.5, -0.59, -14.0, 4.71238899, 68, 48, 'CmdCenter_Copplemann', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (345, -35.5, -0.59, -14.0, 4.71238899, 68, 48, 'CmdCenter_Copplemann', NULL, true, 30);
 
 -- Blackstock inside the ops room's gated entrance, facing the dais.
 -- INFERRED, LOW: the spec says "office" and no room in the map is an office
@@ -624,7 +624,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- "office" claim is recorded as unresolved, not silently satisfied. Also
 -- note H14 may instead want `Harset_Blackstock` (same template 214) in world
 -- 57 -- one of the two must be dropped, and the coordinator picks.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (306, -50.0, -0.59, 6.0, 2.76109171, 68, 214, 'CmdCenter_Blackstock', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (346, -50.0, -0.59, 6.0, 2.76109171, 68, 214, 'CmdCenter_Blackstock', NULL, true, 30);
 
 -- Nerus in the lab, 2.4 m in front of the console row and facing the wing's
 -- west doorway (the way a visitor enters). MAP-LANDMARK + MAP-GEOMETRY,
@@ -634,9 +634,9 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- `GA-WaterTower00` tanks at (48.48, -25.36), (63.36, -14.60) and
 -- (63.36, -0.40), and 26 `GA-Viewscreens00` in banks along its walls -- and
 -- the packet says "Nerus 53 (lab)". This is the same room the H15 point set
--- `Harset_CmdCenter.Lab` (2100) covers, so a 1241 Lab scan and Nerus agree
+-- `Harset_CmdCenter.Lab` (2120) covers, so a 1241 Lab scan and Nerus agree
 -- by construction.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (307, 34.8, 0.37, -25.5, 0.18962985, 68, 53, 'CmdCenter_Nerus', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (347, 34.8, 0.37, -25.5, 0.18962985, 68, 53, 'CmdCenter_Nerus', NULL, true, 30);
 
 -- Opheltes at the foot of the north hall's terraced ramp, facing back down
 -- toward the cross hall. INFERRED, LOW: nothing in any chain, mission row or
@@ -645,7 +645,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- findable at all rather than left unseeded, since the row is cheap and a
 -- wrong-but-reachable NPC is correctable in one edit; a wrong-but-sealed one
 -- is the Romney mistake. Clear of the z[32,36] pillars at x -18/-22.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (308, -10.0, 0.45, 36.0, 3.14159274, 68, 215, 'CmdCenter_Opheltes', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (348, -10.0, 0.45, 36.0, 3.14159274, 68, 215, 'CmdCenter_Opheltes', NULL, true, 30);
 
 -- Athena on the north hall's 1.90 platform, off the centre line, facing the
 -- ramp. INFERRED, LOW on the metre. Not in the H12 scope list but required
@@ -654,7 +654,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- tag registry, so the row is added here rather than leaving H32 blocked on
 -- a second placement pass. Flag it to the coordinator if 1363 wants her
 -- elsewhere.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (309, -18.0, 1.95, 84.0, 2.49809170, 68, 44, 'CmdCenter_Athena', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (349, -18.0, 1.95, 84.0, 2.49809170, 68, 44, 'CmdCenter_Athena', NULL, true, 30);
 
 -- NOT SEEDED HERE, on purpose (see the `## No idea` section of the cluster
 -- file): the sarcophagus and the lab consoles named in the H12 scope. Both
@@ -670,5 +670,5 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- Name: spawnlist_spawn_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 309, true);
+SELECT pg_catalog.setval('spawnlist_spawn_id_seq', 349, true);
 

@@ -193,7 +193,7 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 -- two doorways onto the cross hall at z 11-12 (x~42 and x~60-62) are inside
 -- the box by 1 m, so a player entering from the cross hall crosses the edge.
 -- Consumer: mission 1241 step 3609, "scan CmdCenter Lab".
-INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2100, 'Harset_CmdCenter.Lab', 'AreaSet', 68, NULL, NULL, 'BoundingBox', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2120, 'Harset_CmdCenter.Lab', 'AreaSet', 68, NULL, NULL, 'BoundingBox', 1);
 
 -- The Market trading floor: x[30,100] z[30,100], floor 3.60, ceiling 13.60.
 -- MAP-GEOMETRY HIGH on the floor plane, MEDIUM on where to stop it. The whole
@@ -207,7 +207,7 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 -- If the world-57 Market door turns out to land elsewhere, this is the one
 -- number to revisit. Consumers: 1348 step 3994, 1352 step 4007, 1374 step
 -- 4089, 1241 step 3613.
-INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2101, 'Harset_Market.Marketplace', 'AreaSet', 69, NULL, NULL, 'BoundingBox', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2121, 'Harset_Market.Marketplace', 'AreaSet', 69, NULL, NULL, 'BoundingBox', 1);
 
 -- The Storage room floor: x[19.0,84.0] z[38.0,97.0], floor 0.30, ceiling
 -- 10.30. MAP-GEOMETRY + on-mesh, HIGH: this is component 36 of the shipped
@@ -223,7 +223,7 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 -- a visitor arrives along, so entering Storage is an edge crossing.
 -- Consumers: 1343 step 3975, 1352 step 4009, 1365 step 4051, 1374 step 4090,
 -- 1375 step 4094, 1580 steps 4700-4702, 1241 step 3615, 1245 step 3623.
-INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2102, 'Harset_StorageRm.Storage', 'AreaSet', 70, NULL, NULL, 'BoundingBox', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2122, 'Harset_StorageRm.Storage', 'AreaSet', 70, NULL, NULL, 'BoundingBox', 1);
 
 --
 -- TOC entry 3330 (class 0 OID 0)
@@ -231,5 +231,5 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 -- Name: point_sets_set_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('point_sets_set_id_seq', 2102, true);
+SELECT pg_catalog.setval('point_sets_set_id_seq', 2122, true);
 

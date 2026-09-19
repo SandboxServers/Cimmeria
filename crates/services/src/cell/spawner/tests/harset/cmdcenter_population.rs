@@ -45,16 +45,16 @@ const CMDCENTER_WORLD_NAME: &str = "Harset_CmdCenter";
 /// existing row rather than on a second spawn.
 const CMDCENTER_ROSTER: [(i32, i32, &str); 11] = [
     (222, 43, "CmdCenter_Anat"),
-    (300, 42, "CmdCenter_Baal"),
-    (301, 209, "CmdCenter_RoyalGuard"),
-    (302, 245, "CmdCenter_SymbioteTank"),
-    (303, 54, "CmdCenter_Mohkatan"),
-    (304, 10, "CmdCenter_Marsh"),
-    (305, 48, "CmdCenter_Copplemann"),
-    (306, 214, "CmdCenter_Blackstock"),
-    (307, 53, "CmdCenter_Nerus"),
-    (308, 215, "CmdCenter_Opheltes"),
-    (309, 44, "CmdCenter_Athena"),
+    (340, 42, "CmdCenter_Baal"),
+    (341, 209, "CmdCenter_RoyalGuard"),
+    (342, 245, "CmdCenter_SymbioteTank"),
+    (343, 54, "CmdCenter_Mohkatan"),
+    (344, 10, "CmdCenter_Marsh"),
+    (345, 48, "CmdCenter_Copplemann"),
+    (346, 214, "CmdCenter_Blackstock"),
+    (347, 53, "CmdCenter_Nerus"),
+    (348, 215, "CmdCenter_Opheltes"),
+    (349, 44, "CmdCenter_Athena"),
 ];
 
 /// Tags that a shipped `content_chain_triggers` row already keys on. These are
