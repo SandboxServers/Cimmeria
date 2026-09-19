@@ -56,9 +56,16 @@ The server binds the admin API to **loopback by default** (`ADMIN_BIND` defaults
 (JWT middleware is TODO — issue #439), so a non-loopback `ADMIN_BIND` exposes
 unauthenticated administrative control (server stop, content rewrite, log/credential
 streaming via `/ws/logs`) to every host that can route to the port. Only set it wide
-together with the JWT work. In a container, note that a published port (`-p 8443:8443`)
-is reachable from the host regardless of the in-container bind, so the colo must stop
-publishing 8443 until JWT lands (see [`colo-deploy.md`](../operations/colo-deploy.md)).
+together with the JWT work. Launcher telemetry (`POST /api/auth/dev-session`,
+`/api/telemetry/*`) shares this listener, so a launcher on another host cannot reach it
+under the loopback default; a cross-host telemetry deployment needs a wide `ADMIN_BIND`
+and accepts the unauthenticated-admin exposure until JWT lands.
+
+Containers are different: a Docker published port forwards to the container's bridge
+address and cannot reach an in-container loopback bind, so the image sets
+`ADMIN_BIND=0.0.0.0` and the **publish** is the exposure control — `-p 127.0.0.1:8443:8443`
+for operator-only access, or no publish at all (see
+[`colo-deploy.md`](../operations/colo-deploy.md)).
 
 All REST endpoints are prefixed with `/api/`. WebSocket endpoints are prefixed with `/ws/`.
 

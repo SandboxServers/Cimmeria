@@ -18,7 +18,7 @@
 //! | `BASE_PORT` | `32832` | BaseApp UDP port |
 //! | `CELL_PORT` | `50000` | CellApp port |
 //! | `ADMIN_PORT` | `8443` | Admin REST API port |
-//! | `ADMIN_BIND` | `127.0.0.1` | Admin REST API bind address. Loopback by default because the admin API has **no authentication** (#439); only set `0.0.0.0` with JWT wired and a trusted network path. |
+//! | `ADMIN_BIND` | `127.0.0.1` | Admin REST API bind address. Loopback by default because the admin API has **no authentication** (#439); only set `0.0.0.0` with JWT wired and a trusted network path. The container image sets `0.0.0.0` because a published port cannot reach an in-container loopback bind; there the `-p` publish is the exposure control. Launcher telemetry (`/api/auth/dev-session`, `/api/telemetry/*`) shares this listener, so a launcher on another host needs a wide bind too. |
 //! | `DB_URL` | `host=localhost port=5433 user=w-testing password=w-testing dbname=sgw` | PostgreSQL connection string |
 //! | `PROTOCOL_DIGEST` | `58AFA196...` | 32-char hex digest sent in auth response |
 //! | `DEVELOPER_MODE` | `true` | Enable relaxed auth / multi-login |
@@ -380,7 +380,12 @@ fn config_from_env() -> ServerConfig {
         }
     }
     if let Ok(v) = std::env::var("ADMIN_BIND") {
-        cfg.admin_bind = v;
+        // An empty value (e.g. compose `${ADMIN_BIND:-}`) would format to
+        // ":8443" and fail the bind; keep the loopback default instead.
+        let v = v.trim();
+        if !v.is_empty() {
+            cfg.admin_bind = v.to_string();
+        }
     }
     if let Ok(v) = std::env::var("DB_URL") {
         cfg.db_connection_string = v;

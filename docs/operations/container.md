@@ -74,7 +74,7 @@ Every variable that [`crates/server/src/main.rs`](../../crates/server/src/main.r
 | `BASE_PORT` | `32832` | |
 | `CELL_PORT` | `50000` | |
 | `ADMIN_PORT` | `8443` | |
-| `ADMIN_BIND` | `127.0.0.1` | **Leave loopback.** The admin API has no auth (#439); a wide bind exposes unauthenticated admin control. Note the colo's `-p 8443:8443` publish makes the port host-reachable regardless of this bind — remove that publish until JWT lands. |
+| `ADMIN_BIND` | `0.0.0.0` (image) / `127.0.0.1` (bare binary) | The admin API has no auth (#439). The bare binary binds loopback; the image binds wide because a Docker published port forwards to the container's bridge address and cannot reach an in-container loopback bind. **In a container the `-p` publish is the exposure control**, not this variable: publish as `-p 127.0.0.1:8443:8443` for operator-only access, or drop the publish. A plain `-p 8443:8443` exposes unauthenticated admin control to every host that can route to the port. Launcher telemetry ingest shares this listener, so launchers on other hosts need the port reachable. |
 | `DB_URL` | `host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw` | Libpq-style — see note below. Note this differs from the non-container default (`port=5433`). |
 | `DEVELOPER_MODE` | `true` | Relaxed auth + multi-login |
 | `RUST_LOG` | `info` | tracing-subscriber filter |
