@@ -67,7 +67,13 @@
 - [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat existing in `StatList` + `PUBLIC_STATS` + the AoI create payload does NOT mean anything reads it (`MOVEMENT_SPEED_MOD`/`ROTATION_SPEED_MOD` had zero server-side consumers until P47); plus the reject-don't-clamp GM-setter precedent and the canonical mutate→serialize_dirty→clear_dirty→`send_entity_method` publication pattern.
 - [seed-name-id-and-asset-naming.md](seed-name-id-and-asset-naming.md) — **read before authoring any named NPC/prop seed row or concluding a map asset is missing.** `name_id` is client-PAK-resolved so new `texts.sql` moniker ids can never render (and NULL ships a nameless NPC silently); a moniker names the UE3 *asset family*, which is how to find map assets an English-keyword scan misses; binary `grep` on a chunk-compressed `.umap` gives false negatives.
 
+## Handover / resuming work
+
+- [resuming-a-dead-workers-wip.md](resuming-a-dead-workers-wip.md) — a `wip(...) unbuilt, unverified` commit may not compile (H06's called a function nobody wrote); its tests encode the design it *started* from; its integration requests go stale; a `TBD` validation table means nothing is proven. Port hunks by hand across a file→directory split, never resolve modify/delete by taking a side.
+
 ## Tooling quirks
+
+- [python-write-mangles-utf8-and-crlf.md](python-write-mangles-utf8-and-crlf.md) — `pathlib.write_text` encodes cp1252 on this host, so a scripted edit that adds an em-dash writes byte `0x97` and the crate stops compiling; always `read_bytes().decode("utf-8")` / `write_bytes(...encode("utf-8"))` and restore CRLF by hand.
 
 - [rustfmt-trailing-line-comment-quirk.md](rustfmt-trailing-line-comment-quirk.md) — rustfmt sucks standalone comments into the trailing-comment column of the previous statement; insert a blank line to break the run.
 - [rustfmt-reorders-mod-declarations.md](rustfmt-reorders-mod-declarations.md) — `reorder_modules` is on by default, so a coordinator's "append your `mod` line at the END of the shared mod.rs" cannot survive `cargo fmt`; expect an alphabetical three-way merge.
