@@ -128,6 +128,14 @@ private:
 		float f = (float)strtod(value.c_str(), &end);
 		if (value.empty() || end == nullptr || *end != '\0')
 			throw std::runtime_error("Parameter '" + key + "' is not a number: '" + value + "'");
+		// strtod happily accepts "nan" and "inf". validate() below compares
+		// with <, which is false for NaN, so a non-finite value would slip
+		// past every range check and reach floorf/ceilf in builder.cpp; the
+		// subsequent conversion to int is undefined when the value is not
+		// representable. maxVertsPerPoly converts here, before validate()
+		// runs at all, so the check has to be in the parser.
+		if (!(f == f) || f > 3.4e38f || f < -3.4e38f)
+			throw std::runtime_error("Parameter '" + key + "' must be finite: '" + value + "'");
 		return f;
 	}
 

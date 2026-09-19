@@ -203,6 +203,29 @@ public:
 		rcFilterLedgeSpans(&ctx, config.walkableHeight, config.walkableClimb, *heightfield);
 		rcFilterWalkableLowHeightSpans(&ctx, config.walkableHeight, *heightfield);
 		
+		// rcCompactCell packs the index of a column's first span into a
+		// 24-bit field (Recast.h: `unsigned int index : 24`) and
+		// rcBuildCompactHeightfield assigns it with no overflow check. Past
+		// 0xffffff spans every column after the wrap points at the wrong
+		// run of spans; rcBuildRegions then finds nothing walkable and the
+		// whole build comes out empty with no Recast diagnostic at all.
+		//
+		// The span count grows as 1/cs^2, so this is the limit that bites
+		// first when you refine cs on a map-sized area. Measured on the
+		// Castle interior crop bounds=150,500,700,1150: cs=0.25 builds,
+		// cs=0.2 builds (and then trips the edge cap), cs=0.15 produced
+		// "Regions: 1" and an empty mesh at exit 0 before this check.
+		const int spanCount = rcGetHeightFieldSpanCount(&ctx, *heightfield);
+		INFO("Heightfield: %d spans over %d x %d columns (cap 16777215; rcCompactCell::index is 24-bit)",
+			spanCount, config.width, config.height);
+		if (spanCount > 0xffffff)
+		{
+			FAULT("Heightfield has %d spans; rcCompactCell indexes them with 24 bits (max 16777215), so the "
+				"compact heightfield would be silently corrupt and the build would produce an empty mesh. "
+				"Raise cs, or crop with bounds=", spanCount);
+			return EXIT_BUILD_FAILED;
+		}
+
 		DEBUG1("Partitioning surface ...");
 		rcCompactHeightfield * compact = rcAllocCompactHeightfield();
 		if (!compact)
@@ -316,6 +339,19 @@ public:
 		}
 		INFO("Poly mesh: nverts=%d npolys=%d adjacencyEdges=%u (caps: 65534 verts, 65535 edges; edges ~ nverts + npolys)",
 			polyMesh->nverts, polyMesh->npolys, adjacencyEdges);
+
+		// An empty poly mesh is a failed build, not a successful empty one.
+		// Recast reports nothing when every region is filtered away or the
+		// compact heightfield was corrupt, so exiting 0 with a 60-byte .nav
+		// hands the caller a file that loads, has zero polygons, and makes
+		// every NPC fall back to straight-line pathing.
+		if (polyMesh->npolys == 0)
+		{
+			FAULT("Poly mesh is EMPTY (nverts=0 npolys=0): no walkable surface survived. Check the OBJ axis "
+				"order and winding, the bounds= crop, and the span/edge caps logged above");
+			return EXIT_BUILD_FAILED;
+		}
+
 		if (adjacencyEdges > 0xffff)
 		{
 			FAULT("Poly mesh has %u adjacency edges; Recast indexes them with 16 bits (max 65535), so polygon "
@@ -363,8 +399,6 @@ public:
 			return EXIT_OUTPUT_NOT_WRITABLE;
 		}
 
-		if (polyMesh->npolys == 0)
-			WARN("Navmesh is EMPTY - no walkable surface survived (wrong OBJ axis order or winding?)");
 		INFO("Navmesh: nverts=%d npolys=%d edges=%u (caps: 65534 verts, 65535 edges) detailVerts=%d detailTris=%d",
 			polyMesh->nverts, polyMesh->npolys, adjacencyEdges, detail->nverts, detail->ntris);
 
