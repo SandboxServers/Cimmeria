@@ -1,0 +1,314 @@
+ --- Dialog #5863 --- 
+(0)	Items and Inventory
+ 
+ Access the inventory window by pressing the 'I' key on your keyboard. The window displays all the items your character owns. From the inventory window you can:
+ - Equip items by right-clicking once on them, or dragging them to your Character Sheet (press 'z' to open).
+ - Right-click once on an item to activate or use it.
+ - Mouse over an item to get a description.
+ - Filter which items are displayed by selecting a filter icon from the row at the top of the window.
+ - Switch between categories of items (Main, Mission, or Crafting) by clicking on the appropriate tab.
+ 
+ Click the next button for more details.
+(0)	Equipping Items
+ 
+ Equip items on your character by right-clicking on the icon. This will equip the item to the appropriate slot on your Character Sheet (press 'z' to open). Right-clicking once on a weapon will equip it to the first open bandolier slot. If all bandolier slots are taken, left-click and drag the weapon to a bandolier slot. This will replace the weapon that is currently equipped in that slot.
+ 
+ You can also left-click and drag items from your inventory to your Character Sheet (press 'z' to open). Drag useable items (see next screen) to shortcut buttons for easy activation.
+(0)	Activating Items
+ 
+ Some items can be activated or used by right-clicking once on them. Consumable items such as stim-packs and med kits activate this way as well as devices you use on missions. For items you use often, consider dragging them to a shortcut button on your HUD for easy access.
+(0)	Item Information
+ 
+ Information about items is gained by moving your mouse cursor over the item icon and pausing for a short period of time. This will display a tooltip listing the item name, a brief description, and gameplay information.
+(0)	Inventory Categories and Filters
+ 
+ The inventory window has 3 main categories you can access by clicking on the tabs on the Inventory UI:
+ - Main Items (armor, weapons, consumables, etc.)
+ - Mission Items (collectables, devices, etc.)
+ - Crafting Items (resources, sub-combines, etc.)
+ 
+ Within each category there are sub-filters indicated by icons at the top of the Inventory window. The Main inventory allows you to filter for types of items like weapons and armor. Every category has an "all items" filter you can click on to display everything within that category.
+
+ --- Dialog #5864 --- 
+(0)	Character Sheet
+ 
+ Activate the Character Sheet window by pressing the Z key on your keyboard. It displays all missions you have accepted, but not yet completed. From the Character Sheet window you can:
+ 
+ - Display items your character has equipped
+ - Display current values for your character’s Stats: Attributes, Ratings, Armor, Resistances and Weapons
+ - See a visual representation of your character.
+ 
+ Click the next button for more details.
+ 
+(0)	Equipment Tab
+ 
+ Left-click on the Equipment tab in the character sheet to see the items your character has equipped. Items can be equipped in these slots: Head, Torso, Hands, Legs, Feet, Accessory, Back, Waist, Artifact 1 and 2 and 4 bandolier slots. Right click on an equipped item to send it back to your inventory.
+ 
+(0)	Stats Tab
+ 
+ Left-click on the Stats tab in the character sheet to see the current state of your characters’ Stats. Stats will change throughout the game as your character gains levels, equips items uses items/consumables, and has effects added/removed. Stat gains from leveling up are permanent. Gains/Losses from equipped items last as long as the item is equipped. Gains/Losses from other effects are temporary as long as the effect lasts.
+
+ --- Dialog #5865 --- 
+(0)	Mission Log
+ 
+ Activate the Mission Log window by pressing the L key on your keyboard. You see all missions you have accepted, but not yet completed. From the Mission Log window you can:
+ - Display the current mission step by double clicking on the mission name
+ - Add a mission to the Mission Quick reference window by left-clicking on the button to the left of the mission icon.
+ - Remove missions from the log by clicking on the mission name to select it and then clicking on the Abandon Mission icon.
+ 
+ Click the next button for more details.
+ 
+(0)	Mission Quick Reference
+ 
+ Adding missions to the Mission Quick Reference allows you to display updated mission details without having the mission log open. Mission Quick Reference displays the same information as the mission log for that mission. You may have as many missions as you like displayed for Quick Reference. 
+ 
+ Remove a mission from the Quick Reference window by opening the Mission Log (press L) and clicking on the button to left of the mission name.
+(0)	Abandoning Missions
+ 
+ You may abandon missions by selecting them and then clicking the Abandon mission button. Abandoned missions may be reacquired by returning to the original mission giver. Some missions, such as 'A Story' missions, cannot be abandoned.
+
+ --- Dialog #5866 --- 
+(0)	Options
+ 
+ Options menu tutorial coming soon.
+
+ --- Dialog #5867 --- 
+(0)	Abilities
+ 
+ The abilities window is activated by pressing the “t” button on your keyboard. It displays all abilities you have available to you. Abilities you have not yet acquired are grayed out. From the abilities window you can:
+ 
+ - Display abilities your character has acquired.
+ - Assign abilities to UI buttons
+ - Display information about the ability
+ 
+ Click the next button for more details.
+ 
+(0)	Assigning Skills
+ 
+ Left-clicking on the Skill branch icon displays the skills associated with that branch of your skill tree. You can assign an ability to a UI button by left-clicking and dragging it to an open button. Dragging an ability to a button that is already assigned will remove the old ability and replace it with the one you just dragged. Some abilities are tied to certain weapons and are only active when that weapon is active. 
+ 
+
+ --- Dialog #5868 --- 
+(0)	Access Bar
+ 
+ Access Bar tutorial coming soon.
+
+ --- Dialog #5869 --- 
+(0)	Gate Mail
+ 
+ Gate Mail tutorial coming soon.
+
+ --- Dialog #5870 --- 
+(0)	Trainer
+ 
+ The Trainer window is activated by left-clicking on a trainer NPC. It displays all the skills you may purchase. Skills not available yet are grayed out. From the trainer you can:
+ 
+ - Display the skills from each skill branch by left-clicking on the branch icons
+ - Purchase skills by left-clicking on the skill icon
+ - See how many skill points you have available to spend
+ 
+ Click the next button for more details.
+ 
+(0)	Skill Branches
+ 
+ Each character’s skill tree has three branches. Left-clicking on the Skill Branch icons at the top of the window displays the skills for that branch. Skills in lower levels must be purchased before higher level skills may be purchased. Hovering the mouse pointer over a skill icon displays information on that skill. Left-clicking a skill purchases the skill. Available skill points are displayed at the bottom of the window.
+
+ --- Dialog #5871 --- 
+(0)	Vendor
+ 
+ The Vendor window is activated by right-clicking on a Vendor NPC. It displays all items you can purchase or sell. From the Vendor window you can:
+ 
+ - Display items your character can buy and their cost.
+ - Display items your character can sell and their selling price.
+ - Cue up items in a “shopping cart”.
+ - View items you can repair and the cost.
+ - Buy back items you sold by mistake.
+ - Display information on items by hovering the mouse pointer over the item icon.
+ 
+ Click the next button for more details.
+ 
+(0)	Buying Equipment
+ 
+ Left-click on the Buy tab to see the items your character can buy. Left-clicking items in the Buy list adds them to your shopping cart. Left-clicking items in the shopping cart removes them. Left-clicking on the Buy button purchases all the items in your shopping cart and removes the cost of the item from your character. 
+ 
+(0)	Selling Equipment
+ 
+ Left-click on the Sell tab to see items your character may sell. Left-clicking items in the Sell list adds them to your shopping cart. Left-clicking items in the shopping cart removes them. Left-clicking on the Sell button sells all the items in your shopping cart and adds the selling price of the items to your character. 
+ 
+(0)	Buying Back Equipment
+ 
+ Items you sell are added to a Sold list. You can reverse these sales if you sell an item by accident. Left-clicking items in the Sold list selects them. Left-click again to deselect. Left-clicking on the Buy Back button reverses the sale of those items. You will payback exactly what you received when you sold them. You can only buy back items sold within the same session. If you close the Vendor window you cannot then buy back the items sold when it was open. 
+ 
+(0)	Repairing Equipment
+ 
+ When you are defeated in combat, some of your items may be damaged. To repair them, click on the Repair tab on the Vendor window. All of your damaged items are displayed. Select the items you want to repair, and then click on the Repair button in the lower-right corner of the UI.
+ 
+
+ --- Dialog #5872 --- 
+(0)	Minigame Prompt
+ 
+ The Minigame Prompt window is activated anytime a minigame is activated (usually by right clicking on an NPC or interactive World Object). From the Minigame Prompt window you can:
+ 
+ - Display what archetypes are eligible to play the minigame.
+ - Play the minigame by left-clicking the play button.
+ - Call for assistance by left-clicking the call in button.
+ - Cancel the minigame by left-clicking on the cancel button.
+ 
+ Click the next button for more details.
+(0)	Playing the Minigame
+ 
+ Left clicking on the play button begins the minigame. You may play the game from there. If you fail at a minigame you can restart it by right-clicking on the NPC or World Object that launched the minigame.
+ 
+(0)	Calling for Assistance
+ 
+ Left-clicking on the call in button opens the call in window. The call in window has two tabs: Players and Contacts. Left-clicking on the Players tab displays a list of players who have made themselves available to play minigames. Left-clicking on the Contact tab displays a list of NPCs that are available to play minigames. 
+ 
+(0)	Player Tab
+ Once you have left-clicked on the player tab you will see a list of the players available to assist with the minigame. Next to each player is their level and a short message they have entered. Left-clicking on the player selects him. Left-clicking the Assist button calls that player to assist on your minigame. Once they have agreed to assist you the Observe Minigame Window opens.
+ 
+(0)	Contacts Tab
+ 
+ Once you have left-clicked on the player tab you will see a list of the NPCs available to assist. Next to each NPC is their level and the cost to call them in to assist. Left-clicking an NPC selects him and left-clicking the Assist button calls them to play the minigame. Once you have called an NPC the Observe Minigame window opens.
+ 
+(0)	Observing Minigames
+ 
+ Once your chosen player or NPC has begun the minigame, the Observe Minigame window opens. A progress bar is displayed along with the name and level of the player or NPC currently assisting. Once the progress bar reaches the end you will receive a message as to whether or not the assistant achieved success. If your character is interrupted before the progress bar completes, you will fail the minigame and lose any payment you have made.
+ 
+ 
+ 
+ 
+ 
+  --- Dialog #5882 --- 
+(0)	Equipping a Weapon
+ 
+ You've just received your first weapon. To prepare yourself for combat, you'll need to:
+ - Equip the weapon (press 'i' to open your inventory)
+ - Activate the weapon once it's equipped (click on the icon on your bandolier, or use the F1, F2, F3 and F4 keys to switch between weapons)
+ - Create a shortcut to an ability from your ability window (press 'T' to open)
+ 
+ Click the next button for more details.
+(0)	With your inventory open (press 'i'), right-click on the weapon icon to equip it. The icon disappears - this means it's been equipped to your Character Sheet (press 'z' to open).
+ 
+ Now that your weapon is equipped, you need to activate it. To do so, click the weapon icon in the bandolier or use the F1, F2, F3 or F4 keys to activate bandolier slots 1, 2, 3 or 4. 
+ 
+ The bandolier is a UI element on your HUD that looks like 4 Stargate rings. Your weapon icon will appear above one of these rings. The active weapon is indicated by an active stargate below the icon.
+(0)	Once your weapon is active, create an ability shortcut to use with that weapon. Open your ability window (press 'T'). Find the 'Pistol Shot' ability by mousing over the active icons - the ability name will appear in a tooltip.
+ 
+ Drag the Pistol Shot ability to one of the square shortcut buttons at the bottom right-hand side of the screen. These shortcut buttons can be activated using the number keys on your keyboard. The first button is activated by pressing 1, the second by pressing 2, and so on.
+ 
+ Once you have an ability shortcut created, you're ready to enter combat.
+
+ --- Dialog #5883 --- 
+(0)	Combat
+ 
+ This tutorial covers the following:
+ - Target an enemy by left-clicking or using TAB to cycle through targets.
+ - Right-click on an enemy to auto-attack and use the number keys to activate special abilities.
+ - Reload your weapon by clicking on the reload button.
+ - Using cover and the cover indicator.
+ - Health and Focus.
+ 
+ Click next for more details.
+(0)	Targeting
+ 
+ Target an enemy by left-clicking on them. You can also use the TAB key to cycle through available targets.
+ 
+ When something is targeted, the Target UI appears. This UI displays the target's name and their current health and focus. As you do damage to an enemy, their health (green) and focus (blue) bars deplete. When all of their health is gone, the enemy is dead.
+(0)	Attacking
+ 
+ Right-click on an enemy to begin auto-attacking. Each weapon has a basic auto-attack that fires at regular intervals without further input. Engaging your auto-attack allows you to damage an enemy while you are moving around the battlefield.
+ 
+ You can also activate special abilities to do more damage, apply states (like stun and knockdown), and augment the damage from your auto-attack.
+ 
+ Each attack uses ammo from your equipped weapon. When you are out of ammo, you will need to reload.
+(0)	Reloading
+ 
+ Reload your weapon by clicking on the Reload button (circle with a blue clip). You can also set options to reload your weapon automatically.
+ 
+ To auto-reload, open the Options Window (press 'O') and click on the UI category. There are two checkboxes you can set:
+ - Reload weapon on equip
+ - Reload weapon when empty
+(0)	Cover
+ 
+ Stargate Worlds is a ranged combat game that relies heavily on position on the battlefield and effective use of cover. Objects placed in the world provide cover from enemy attacks. As you move near objects that provide cover, the cover indicator displays what quality of cover you are receiving and what direction it provides protection from.
+(0)	The Cover Indicator
+ 
+ The Cover Indicator is a circle at the bottom center of your screen. Your health and focus appear as bars on either side of the indicator. When you are in cover, the center circle will display an arc that indicates what directions you have cover from. This arc is color-coded based on the quality of cover:
+ - Green is High / best cover.
+ - Yellow is Medium / good cover.
+ - Orange is Low / poor cover.
+(0)	Health and Focus
+ 
+ Your character's health and focus are indicated by two bars to the left and right of your cover indicator.
+ 
+ Health (green bar) indicates how many hit points your character has remaining. When the green bar is empty, your character dies.
+ 
+ Focus (blue bar) indicates your character's level of concentration on the battlefield, their ability to respond to attacks. As your focus depletes, you will take health damage more often and your accuracy will go down.
+
+
+
+
+ --- Dialog #5879 --- 
+(0)	Controls and Movement
+ 
+ This tutorial covers basic controls and how to move your character:
+ - Use the W, A, S, and D keyboard keys to move forward, left, back, and right.
+ - Click and hold the right mouse button to enter mouse-look mode.
+ - Click and hold the left mouse button to rotate the camera around your character.
+ - Press C to crouch and X to toggle walk mode.
+ - Press Q and E to turn your character, or enter mouse-look mode (right-click and hold) and point the camera in the direction you want to face.
+ - Press the space bar to jump.
+ 
+ Click the Next button for more details.
+(0)	The W, A, S, and D keys on your keyboard move your character forward, left, back, and to the right.
+ 
+ Your character moves in the direction they currently face. To rotate your character, click and hold the right mouse button to enter mouse-look mode and then face the camera in the direction you want to go. Your character automatically turns to face that direction.
+ 
+ You can also use the Q and E keys to turn your character without changing the camera.
+(0)	Use the C key on your keyboard to enter crouch mode. When you crouch, you move more slowly but gain defensive benefits in combat. Press C again to leave crouch mode.
+ 
+ You jump over many objects in the world by pressing the space bar on your keyboard. Jumping over objects can let you get behind them quickly to use as cover during combat.
+
+
+
+
+--- Dialog #5885 --- 
+(0)	World Interaction and Feedback
+ 
+ This tutorial covers:
+ - Right-click on NPCs and objects in the world to interact with them.
+ - Mouse cursors
+ - Particle feedback
+ 
+ Click next for more details.
+(0)	World Interaction
+ 
+ Right-click once on objects in the world and NPCs to interact with them. Interacting with an NPC may give you a new mission, advance a mission you are on, or open a specialized UI like the vendor or trainer UI.
+ 
+ Interacting with world objects can advance missions, bring up mini-games, teleport you to other areas of the world, and other features.
+(0)	Mouse Cursors
+ 
+ Move your mouse over objects in the world to see what you can interact with. Your mouse cursor will change from the default pointer to indicate the type of interaction that is possible. Cursor types are:
+ - Attackable Enemies, indicated by a cross-hair
+ - Interactable objects, indicated by a hand
+(0)	Particle Feedback
+ 
+ Objects in the world will often have visual effects to indicate the type of interactions they provide. Corpses with loot will all display the same particle. Mission givers, and NPCs you need to interact with on a mission, will display different particles.
+ 
+ In cities, look for vendors, trainers, crafting stations, and minigames by the particles that appear above them.
+
+
+
+
+ --- Dialog #5894 --- 
+(0)	Crafting
+ 
+ Crafting tutorial coming soon.
+ 
+ 
+ 
+  --- Dialog #6318 --- 
+(0)	A team is a permanent organization that can have up to 6 members and a unique name.
+
+ --- Dialog #6319 --- 
+(0)	A command is a permanent organization that can accept a large number of people. Commands can be created starting at level 10. Commands receive a common vault, a modifiable rank structure, and a unique name.

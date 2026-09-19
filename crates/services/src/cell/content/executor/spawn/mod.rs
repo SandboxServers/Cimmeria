@@ -57,7 +57,6 @@ pub(super) async fn spawn_entity(
     position: [f32; 3],
     heading: f32,
     tag: String,
-    respawn_secs: Option<i32>,
     is_stationary: Option<bool>,
     aggression: Option<i32>,
     allow_shared: Option<bool>,
@@ -133,21 +132,12 @@ pub(super) async fn spawn_entity(
         return;
     }
 
-    // Content-scoped spawns can never respawn — see
-    // `SpaceManager::spawn_npc_from_template` for why. Keep the param
-    // authorable (a seed row that asks for it is not *wrong*, just
-    // unsupported) but say so rather than dropping the whole spawn: a
-    // mission NPC that appears without respawn beats one that never
-    // appears.
-    if let Some(secs) = respawn_secs {
-        tracing::warn!(
-            entity_id, template_id, %tag, requested_respawn_secs = secs, chain_id,
-            reason = "content_respawn_unsupported",
-            "spawn_entity: content-scoped respawn is not supported (the respawn \
-             tick has no instance-lifetime awareness and a revived mission NPC \
-             would re-fire its entity_dead_tag chain) -- spawning one-shot"
-        );
-    }
+    // No `respawn_secs` parameter by design: a content-scoped spawn is
+    // always one-shot (see `SpaceManager::spawn_npc_from_template`), so
+    // the value never survived to the entity. A seed row that supplies it
+    // still loads and still spawns; the loader warns once at load time
+    // rather than this executor warning on every fire (PR #662 review,
+    // finding 5 — see `content_engine::loader::action_spawn`).
 
     let agg = aggression.unwrap_or(0);
     // Players are never assigned a faction (`CellEntity::new` sets 0 and no

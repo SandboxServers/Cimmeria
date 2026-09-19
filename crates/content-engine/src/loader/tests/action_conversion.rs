@@ -1,7 +1,7 @@
 //! DB-row → `Action` conversions: destination parsing, move-waypoint,
-//! set-active-slot, launch-ability, cross-world-teleport, and the
+//! set-active-slot, launch-ability, cross-world-teleport, the
 //! Phase 4/6/7 loader arms (set-npc-poi, set-follow-target,
-//! set-npc-ai-state).
+//! set-npc-ai-state), and start-minigame's difficulty range check.
 
 use super::super::action::{convert_action, parse_destination};
 use super::super::*;
@@ -411,5 +411,94 @@ fn set_npc_ai_state_drops_action_on_unknown_state() {
     assert!(
         convert_action(&row).is_none(),
         "unknown state must drop the action",
+    );
+}
+
+// ── start_minigame difficulty (Castle CA04, defect B5) ───────────────
+//
+// The range check lives at one `(1..=5).contains(&d)` in the
+// `start_minigame` arm. Its only other coverage is two live-DB
+// chain-replay tests behind `require_db_or_skip!`, which means it has
+// none at all in the no-DB CI job — an off-by-one on either boundary
+// would ship green. These pin both boundaries and both rejection
+// shapes without a database.
+
+/// Extract the difficulty from a `start_minigame` row, or `None` if the
+/// loader rejected the row outright.
+fn minigame_difficulty(params: serde_json::Value) -> Option<u32> {
+    use crate::actions::Action;
+    let row = make_row("start_minigame", Some("Livewire"), params);
+    match convert_action(&row) {
+        Some(Action::StartMinigame { difficulty, .. }) => Some(difficulty),
+        Some(other) => panic!("start_minigame must convert to StartMinigame, got {other:?}"),
+        None => None,
+    }
+}
+
+/// Omitting `difficulty` must yield the documented default of 1, not a
+/// rejection — every seeded row today omits it.
+#[test]
+fn start_minigame_difficulty_defaults_to_one_when_absent() {
+    assert_eq!(
+        minigame_difficulty(serde_json::json!({ "on_victory_chains": [1017] })),
+        Some(1),
+        "a row with no difficulty param must default to 1",
+    );
+}
+
+/// Both ends of the accepted range must convert. 1 and 5 are the
+/// boundaries the original content layer asserted
+/// (`deprecated/python/cell/Minigame.py`); an off-by-one in either
+/// direction fails exactly one of these.
+#[test]
+fn start_minigame_difficulty_accepts_both_boundaries() {
+    assert_eq!(
+        minigame_difficulty(serde_json::json!({ "difficulty": 1 })),
+        Some(1),
+        "difficulty 1 is in range and must convert",
+    );
+    assert_eq!(
+        minigame_difficulty(serde_json::json!({ "difficulty": 5 })),
+        Some(5),
+        "difficulty 5 is in range and must convert",
+    );
+}
+
+/// Just outside each boundary must drop the row. Rejecting rather than
+/// clamping is deliberate: a clamp would hide the authoring mistake
+/// until someone actually played the minigame.
+#[test]
+fn start_minigame_difficulty_rejects_just_outside_the_range() {
+    assert_eq!(
+        minigame_difficulty(serde_json::json!({ "difficulty": 0 })),
+        None,
+        "difficulty 0 is below the range and must drop the action row",
+    );
+    assert_eq!(
+        minigame_difficulty(serde_json::json!({ "difficulty": 6 })),
+        None,
+        "difficulty 6 is above the range and must drop the action row",
+    );
+}
+
+/// A `difficulty` that is present but not an integer must be rejected,
+/// not silently defaulted. Falling back to 1 would make a typo in the
+/// seed indistinguishable from an intentional easy board.
+#[test]
+fn start_minigame_difficulty_rejects_non_integer_values() {
+    assert_eq!(
+        minigame_difficulty(serde_json::json!({ "difficulty": "3" })),
+        None,
+        "a string difficulty must drop the row, not parse or default",
+    );
+    assert_eq!(
+        minigame_difficulty(serde_json::json!({ "difficulty": 2.5 })),
+        None,
+        "a float difficulty must drop the row rather than truncate",
+    );
+    assert_eq!(
+        minigame_difficulty(serde_json::json!({ "difficulty": null })),
+        None,
+        "an explicit null must drop the row, not take the absent-param default",
     );
 }

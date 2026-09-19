@@ -66,6 +66,7 @@ async fn start_minigame_warns_when_cell_to_base_channel_closed() {
             9002,
             Action::StartMinigame {
                 minigame_type: "livewire".to_string(),
+                difficulty: 1,
                 on_victory_chains: vec![],
             },
         )],
@@ -142,7 +143,11 @@ fn stage_dialog_set_witness(
         p.available_interactions
             .entry(template_id)
             .or_default()
-            .push((dialog_set_id, /* dialog_id */ 7, /* flags */ 0x10));
+            .push((
+                dialog_set_id,
+                /* dialog_id */ Some(7),
+                /* flags */ 0x10,
+            ));
     }
     if let Some(n) = mgr.get_entity_mut(npc_id) {
         n.template_id = Some(template_id);
@@ -209,7 +214,7 @@ async fn add_dialog_set_warns_when_cell_to_base_channel_closed() {
         mgr.dialog_set_maps.insert(
             88,
             DialogSetMapEntry {
-                dialog_id: 7,
+                dialog_id: Some(7),
                 interaction_flags: 0x10,
             },
         );
@@ -289,7 +294,6 @@ async fn run_spawn(
                 position: [1.0, 2.0, 3.0],
                 heading: 0.0,
                 tag: tag.to_string(),
-                respawn_secs: None,
                 is_stationary: None,
                 aggression: None,
                 allow_shared,

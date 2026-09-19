@@ -102,7 +102,7 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnEntityCreated { entity_type? }` | Entity spawns (filterable by template-string type) |
 | `OnEntityDestroyed { entity_type? }` | Entity removed |
 | `OnEntityDeath { entity_type?, entity_tag? }` | Entity dies; tag wins over type when both set |
-| `OnEntityHealthBelow { entity_tag, pct }` | A tagged entity's health crosses `pct` **downward** on a single damaging hit. Seed `event_key` is `"<tag>:<pct>"` (e.g. `"Rinla_Malac:30"`), parsed with `rsplit_once(':')` so a tag containing a colon still resolves; `pct` must be `1..=100` or the row is dropped ([loader/trigger.rs:117-130](../../crates/content-engine/src/loader/trigger.rs#L117-L130)). See the band-test note below |
+| `OnEntityHealthBelow { entity_tag, pct }` | A tagged entity's health crosses `pct` **downward** on a single damaging hit. Seed `event_key` is `"<tag>:<pct>"` (e.g. `"Rinla_Malac:30"`), parsed with `rsplit_once(':')` so a tag containing a colon still resolves; `pct` must be `1..=99` or the trigger row is dropped with a `health_pct_out_of_range` warn ([loader/trigger.rs](../../crates/content-engine/src/loader/trigger.rs)) — 100 is excluded because the band test's upper half is strict, so a full-health entity can never satisfy `before > 100` and `:100` would load a chain that never fires. See the band-test note below |
 | `OnAbilityUsed { ability_id? }` | Any entity uses an ability |
 | `OnInteraction { interaction_type? }` | Generic right-click |
 | `OnRegionEnter { region_key }` | Player enters a Kismet region (string key like `Castle_CellBlock.Region2`) |
@@ -119,6 +119,8 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnItemUse { item_id }` | Player double-clicked inventory item |
 | `OnItemEquipped { item_id? }` | Player moved a stack into the bandolier (`container_id = 3`) from any other container. `item_id` is the design / `type_id`, not the inventory instance id; `NULL` `event_key` is a wildcard that fires for any equip |
 | `OnTeleportIn { region_id }` | Player arrived via ring transporter |
+| `OnStargateDialed { destination_world? }` | Player successfully dialled a stargate — fired from `handle_dial_gate` when the four-second gate-open timer is armed. `event_key` is the destination world name (`resources.worlds.world`, e.g. `Harset`); `NULL` is a wildcard that fires for any destination |
+| `OnStargateCrossed { destination_world? }` | Player stepped through an open stargate, fired immediately before the world transition tears the cell entity down. Same `destination_world` filter as `OnStargateDialed` |
 | `OnEffectInit / PulseBegin / PulseEnd / Removed` | Effect lifecycle hooks (unit variants) |
 | `OnMissionCompleted { mission_id }` | Mission marked complete |
 | `OnDialogSetOpen { dialog_set_name }` | Dialog set opened |
@@ -127,6 +129,7 @@ Defined at [triggers/mod.rs:28-146](../../crates/content-engine/src/triggers/mod
 | `OnPlayerLeftCover { cover_set_id? }` | Player left a cover set's proximity — the symmetric partner of `OnPlayerEnteredCover` |
 | `OnPlayerInCoverDuration { cover_set_id?, seconds }` | Player has been continuously in a cover set for ≥ `seconds`. Debounced: leaving and re-entering resets the timer. Seed `event_key` convention is `"<seconds>"` or `"<seconds>:<set_id>"` ([loader/trigger.rs:87-100](../../crates/content-engine/src/loader/trigger.rs#L87-L100)) |
 | `OnNpcFlanked { npc_template? }` | An NPC occupying a cover slot was flanked — its top-threat target moved outside the cover's defensive arc (orientation ± π/2) |
+| `OnPlayerFlankedNpc { npc_template? }` | Player-perspective twin of `OnNpcFlanked`, fired from the same AI decision when the top-threat is a **player**. Unlike `OnNpcFlanked` (actions run on the NPC with player id 0), the chain's actions execute against the flanking player with that player's mission context, so mission-scoped chains (`objective_status`, `complete_objective`) work. Seed `event_type` = `player_flanked_npc`, `event_key` = the NPC template name (`entity_templates.template_name`, e.g. `NID Guard`) or `NULL` for any. Used by the Castle Cellblock flank objectives 2725/2731 (chains 1141/1142) |
 
 Within a single chain's bucket, `Trigger::matches` ([triggers/matching.rs:43](../../crates/content-engine/src/triggers/matching.rs#L43)) decides whether the event matches the chain's specific trigger variant + filter. Bucketing is by **`TriggerType` discriminant** — see §6.
 
@@ -134,8 +137,9 @@ Within a single chain's bucket, `Trigger::matches` ([triggers/matching.rs:43](..
 
 - A hit from 60% to 40% fires a `:50` chain once; the next hit, 40% → 25%, does not (`pct_before > 50` is false). Healing back above the threshold re-arms it.
 - Two thresholds on one tag are independent bands: a hit spanning both fires both.
+- **`:100` is refused at load, not silently unmatchable.** The upper half of the band test is strict, so a full-health entity (`pct_before == 100`) never satisfies `pct_before > 100`, and every later hit starts from below it. `:0` is the mirror image — an entity at 0% is dead and routes to `entity_dead_tag`. The loader drops both with a `health_pct_out_of_range` warn rather than registering a chain that reads as wired and never runs.
 - **A killing blow never fires it.** The suppression is at the dispatcher (`fire_health_below_for_hit`), not in the predicate — a `31% → 0%` hit satisfies the band test, so the dispatcher drops any hit whose target ends dead. Deadness is read from `BSF_DEAD` rather than `health.cur <= 0`, because an effect script runs after the damage path and can heal a corpse back above zero. The kill goes to `entity_dead_tag` instead; a chain author gets exactly one of the two per hit.
-- **Only single-target player damage fires it.** AoE secondaries reach `apply_damage_to_target` directly and surface only *deaths* to the caller layer, damage-over-time pulses run with no `ChainEngine` in scope, and the `apply_effect` content action can damage without firing it. The practical constraint: **do not put a DoT on an NPC whose ritual depends on this trigger** — once the DoT carries it past the threshold, `pct_before` is already at or below it on every later hit and the chain can never fire.
+- **Every player damage path fires it**, not just single-target shots: AoE and cone secondaries, damage-over-time pulses, and the `apply_effect` content action all cross the same two health-application seams. `pct_before` is sampled at the seam and queued on the `SpaceManager`; the callers that hold a `ChainEngine` drain the queue right after the hit (`fire_pending_health_below`), with a per-tick safety drain in the cell loop as a backstop. A DoT on a threshold-gated NPC is therefore safe — before this landed it silently and permanently disarmed the chain, because once the tick carried the target past the threshold no later hit could satisfy `pct_before > pct` again.
 
 **Not reachable from seed data.** `OnEntityCreated`, `OnEntityDestroyed`, `OnAbilityUsed`, `OnInteraction`, `OnMissionStep`, `OnItemAcquired`, and `OnTimer` have no match arm in [loader/trigger.rs](../../crates/content-engine/src/loader/trigger.rs), so no `content_triggers` row can bind them — a chain authored with those `event_type` strings is dropped with a `warn!`. `OnCustomEvent` has no arm either but is generated internally, as the synthetic `__direct_invoke_<id>` trigger for chains with zero trigger rows (§6). `OnEntityDeath` is reachable only through the `entity_dead_tag` (tag-filtered) form; there is no `event_type` that binds the `entity_type` form.
 
@@ -235,8 +239,21 @@ three, so it is private to `cell::content` and takes no client-supplied id;
 see [../architecture/abilities-and-effects-system.md](../architecture/abilities-and-effects-system.md)
 for the full rationale and the constraints that must not be widened.
 
-Two caveats for authors:
+Three caveats for authors:
 
+- **`add_dialog_set` / `add_dialog` can bind a row that has no dialog.** A
+  `dialog_set_maps` row with `dialog_id IS NULL` is an *interaction-only* bind:
+  it contributes its `interaction_flags` bit to the per-player indicator over
+  the NPC's head (`!`, `?`, quest glow — see
+  [interaction-flags.md](interaction-flags.md)) and nothing else. Clicking the
+  NPC then displays no dialog; pair the bind with an `interact_tag` chain if
+  the click should say something. This works because a bind's only
+  client-visible effect is `SGWSpawnableEntity.InteractionType(UINT64 TypeId)`
+  ([dispatch table](../protocol/client-method-dispatch-table.md), method 3) — a
+  lone flags bitfield with no dialog field, so the dialog id never leaves the
+  server. The seed has **626** such rows across every zone; Castle content binds
+  seven of them (3062, 3071, 3073, 5828, 5829, 5846, 5863). Before CA02 the
+  loader dropped all 626 and every one of those binds was a silent cache miss.
 - **`apply_effect` cannot fire today.** Its only seeded row is on an
   `effect`-scoped chain, and no `effect_*` trigger is dispatched anywhere in
   the cell service. The arm is correct and will work as soon as that
@@ -246,6 +263,27 @@ Two caveats for authors:
   runs nothing — that is the effect definition's own doing, not a failure of
   the action. Effect 1634, the sole effect on the Castle Cellblock wake-up
   ability 1372, is exactly this shape.
+
+##### `start_minigame` params
+
+`target_key` names the minigame type (`Livewire`, `Hack`, ...). Two params:
+
+| Param | Required | Meaning |
+|---|---|---|
+| `on_victory_chains` | no (defaults to `[]`) | Chain ids fired when the player wins. They are invoked directly, not through `resolve_event`, so **no conditions on them are evaluated** — put the gate on the launcher chain. |
+| `difficulty` | no (defaults to `1`) | Difficulty tier, integer 1-5. |
+
+`difficulty` is **rejected, not clamped**: a row outside 1-5 is dropped at
+load time with a `warn!` naming the chain id, so an authoring mistake shows
+up as a missing minigame rather than a silently different tier. The 1-5
+range is what the original content layer asserted
+(`deprecated/python/cell/Minigame.py`). Note that every per-game difficulty
+table only has rows 1-4, so an authored `5` reaches the game and is clamped
+down to 4 with a `warn!` — 1-4 is the range content should actually use.
+
+A victory chain needs no `content_triggers` row; the loader gives a
+triggerless chain a never-firing `OnCustomEvent` placeholder so it stays
+reachable only through `on_victory_chains`.
 
 #### Entity-lifecycle verbs
 
@@ -260,7 +298,7 @@ Two caveats for authors:
 | `params.is_stationary` | Optional. No template column exists, so absent means `false`, not "inherit" |
 | `params.aggression` | Optional, same reasoning — absent means `0` |
 | `params.allow_shared` | Optional. `true` opts out of the shared-world refusal below |
-| `params.respawn_secs` | Accepted but **not honoured** — see below |
+| `params.respawn_secs` | **Not a parameter.** A row that supplies it still loads and still spawns; the loader warns once (`respawn_secs_not_honoured`) — see below |
 
 Four refusals, each with a `warn!` carrying a stable `reason` ([executor/spawn/mod.rs](../../crates/services/src/cell/content/executor/spawn/mod.rs)):
 
@@ -269,7 +307,7 @@ Four refusals, each with a `warn!` carrying a stable `reason` ([executor/spawn/m
 3. **`shared_world_refused`** — the acting player's world is not instanced and `allow_shared` is not `true`. This is the guardrail behind the campaign rule "mission-scoped hostile NPCs go into the player's own instance, never into the shared hub".
 4. **`tag_already_live`** — an entity with that tag is already in this space. Relog-restore chains re-fire their step's actions by design, so a second spawn with the same tag is a no-op rather than a second NPC. The lookup matches **dead** entities too: a corpse still holds its tag, and resurrecting an NPC the player already killed would re-open completed content.
 
-`respawn_secs` is forced to `None` regardless of the param or the template column ([space_manager/spawn.rs:106-118](../../crates/services/src/cell/space_manager/spawn.rs#L106-L118)). The respawn tick keys on `(ai_state, respawn_at)` and has no instance-lifetime awareness, so a revived mission NPC would re-fire its `entity_dead_tag` chain and complete a kill objective twice. Content spawns are always one-shot; asking for a respawn warns (`content_respawn_unsupported`) and spawns anyway.
+`respawn_secs` is forced to `None` regardless of the template column ([space_manager/spawn.rs:106-118](../../crates/services/src/cell/space_manager/spawn.rs#L106-L118)). The respawn tick keys on `(ai_state, respawn_at)` and has no instance-lifetime awareness, so a revived mission NPC would re-fire its `entity_dead_tag` chain and complete a kill objective twice. Content spawns are always one-shot, so `Action::SpawnEntity` carries no respawn field at all — a `respawn_secs` param is dropped at load with a single `warn!` (`reason = "respawn_secs_not_honoured"`) rather than warning on every fire. The row is not rejected: a mission NPC that appears without respawn beats one that never appears.
 
 One more warn worth recognising in a log: **`aggressive_spawn_faction_zero`**. Auto-aggro compares the NPC's faction against the player's, and players are always faction 0, so a hostile template with `faction = 0` or `NULL` never attacks. The fix is in the `entity_templates` row, not the chain.
 
@@ -333,6 +371,22 @@ pub struct ResolvedActions {
 ```
 
 The forwarded `params` map is load-bearing — it carries trigger-time state (most importantly `instance_id`) into the executor so that `RemoveItem` consumes the exact stack the player clicked rather than first-by-type.
+
+### How `display_dialog` finds its speaker
+
+`onDialogDisplay` carries a wire `EntityId` that the client uses as its portrait-lookup key, so `display_dialog` has to decide who is speaking. [executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs) resolves it in this order:
+
+1. **Monologue dialogs win outright.** If every screen of the dialog has `speaker_id = 0` (the dialog is in the monologue cache), the player's own id is bound and any NPC in scope is ignored. That renders as inner thought, which is what narration is for.
+2. **`params["target_entity_id"]`** — stamped by `fire_interact_tag` / `fire_interact_template`, so it is present only for the chain fired directly off the click.
+3. **The player's `last_interaction_target`** — the per-player pin. This is what every *follow-up* chain relies on: a chain fired from `dialog_choice`, from a minigame victory, or from the deferred-action drain carries no `target_entity_id` of its own. `fire_chain_by_id` in particular builds `ResolvedActions` with empty `params` by construction, so a victory chain has nothing else to go on.
+
+Otherwise the action warns and returns without emitting a frame, because binding the player to an NPC dialog would blank the portrait and put the player's name on every line.
+
+**Why the monologue check is first and not a fallback.** `last_interaction_target` is sticky — it holds the last NPC the player clicked and is never cleared. So for any monologue fired after an interact, which is every minigame victory chain and most `dialog_choice` follow-ups, an NPC is always resolvable. Checked later, the NPC would always win, and the client would show that NPC delivering lines the author wrote as the player's own narration. `Castle.py` makes the same call explicitly: its monologue displays pass `displayDialog(None, …)`.
+
+The pin is written in two places, and both matter: `interactions::dispatch::handle_interact` writes it on the default interaction path, and [cell_methods/player/interaction/interact.rs](../../crates/services/src/cell/cell_methods/player/interaction/interact.rs) writes it *before* the content-chain dispatch. The second write is the load-bearing one for content authors. `handle_interact` runs only when no chain claimed the interact, so without it a chain-handled NPC left the pin stale and **any follow-up chain displaying an NPC-speaker dialog silently never opened** — only monologues survived, via source 3. The pin is deliberately not written on the hostile-NPC combat reroute, so attacking something cannot make it the next dialog's speaker.
+
+Practical consequence when authoring: a `display_dialog` on a non-`interact_tag` trigger works as long as the player reached that chain through an interact with the NPC you want on screen. A dialog with NPC speakers fired from a trigger that follows no interact at all (a bare `player_loaded`, a region entry, a timer) still has no speaker to resolve and will warn.
 
 ---
 
@@ -489,6 +543,7 @@ Worked example chains in [chain_replay_tests/](../../crates/services/src/cell/co
 | Action `Error` result | `warn!` at [chain.rs:201-209](../../crates/content-engine/src/chain.rs#L201-L209) |
 | `RemoveItem` channel send fails | `error!` at [executor/inventory.rs:226](../../crates/services/src/cell/content/executor/inventory.rs#L226) — explicitly loud because mission progress depends on the consume |
 | `ChangeStat` source entity missing | `warn!` at [executor/stats.rs:37](../../crates/services/src/cell/content/executor/stats.rs#L37) |
+| `display_dialog` cannot resolve a speaker | `warn!` ("no NPC entity id in chain params or last_interaction_target") at [executor/dialog.rs](../../crates/services/src/cell/content/executor/dialog.rs) + **no frame emitted**, so the dialog silently never opens for the player. Means the chain reached an NPC-speaker dialog with no interact in its history; see the resolution order in §4. Not reachable for monologue dialogs. |
 | Empty engine on startup | `warn!` ("No DB pool available") or `error!` ("Failed to load") at [engine_loader.rs:33-41](../../crates/services/src/cell/content/engine_loader.rs#L33-L41) — server runs without content |
 
 The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` site in [event_dispatch/](../../crates/services/src/cell/content/event_dispatch/) are the production observability story. Every action execution emits an `info!` with `chain_id`, the action params, and entity. Tracing-grep for `Content:` to scope to executor activity.

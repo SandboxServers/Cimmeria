@@ -217,9 +217,18 @@ pub(crate) async fn handle_reanchor_player(
         );
     }
 
+    // Same journal as the cell side: a reanchor with no `world_enter` after it
+    // means the cell never re-sent regions / missions to the recreated pawn.
+    crate::cell::player_journal::note(
+        entity_id,
+        crate::cell::player_journal::kinds::REANCHOR,
+        format!("space={space_id} replay={has_replay}"),
+    );
     if has_replay {
         tracing::info!(
             entity_id, %addr, space_id, ?position,
+            resent = "create_base_player,being_appearance,entity_tint",
+            not_resent = "generic_regions,mission_log,abilities,stats",
             "Reanchor: sent CREATE_BASE_PLAYER burst + BeingAppearance + onEntityTint (no RESET_ENTITIES)"
         );
     } else {

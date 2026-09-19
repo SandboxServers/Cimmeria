@@ -386,6 +386,44 @@ fn forget_participant_clears_both_destination_sets() {
     assert_eq!(dst.num_remote_players(), 1);
 }
 
+/// PR #662 review, finding 5. The readiness gate compares *lengths*
+/// (`players_loaded.len() == num_remote_players()`), so an arrival this ring
+/// is not expecting satisfies it against a completely different passenger
+/// list.
+///
+/// The live shape: trip 1 sends 100, whose load times out on
+/// `REMOTE_LOAD_WAIT_TIMEOUT`; trip 2 starts expecting `[101]`; 100's late
+/// `AdvanceRingDestination` then makes `len == 1 == num_remote_players()` and
+/// fires `all_players_loaded` for a trip whose only real passenger is still
+/// loading — leaving 101 hidden and movement-locked past the transition that
+/// would have released them.
+///
+/// Deleting the `expects_player` guard in `player_loaded` makes both
+/// assertions below fail.
+#[test]
+fn an_unexpected_arrival_is_not_counted_towards_readiness() {
+    let mut dst = RingTransporter::from_region(&make_region(2, "Castle", vec![1]));
+    let now = Instant::now();
+    dst.remote_wait(1, now);
+    dst.remote_send(now);
+    dst.remote_expect(vec![101]);
+    dst.remote_transport(now);
+
+    assert!(
+        !dst.player_loaded(100),
+        "100 is not on this trip's passenger list and must not satisfy the gate"
+    );
+    assert!(
+        dst.players_loaded.is_empty(),
+        "an unexpected arrival must not be recorded at all — recording it and \
+         returning false would still corrupt the count for the real passenger"
+    );
+
+    // The real passenger still works, and is still the only one that counts.
+    assert!(dst.player_loaded(101));
+    assert_eq!(dst.players_loaded, vec![101]);
+}
+
 /// A real deadline must win over the abort if the exclusivity invariant on
 /// `stall_at` is ever violated by a future change.
 #[test]

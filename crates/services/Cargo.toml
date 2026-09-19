@@ -43,6 +43,21 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 
 [dev-dependencies]
+# Socket options tokio does not expose without a deprecated wrapper. The
+# minigame handshake-failure guard needs SO_LINGER=0 so the client's close
+# is a reset rather than a FIN -- a FIN leaves the server's writes
+# succeeding and the test stops reproducing the bug. Already in the lock as
+# a tokio dependency; this only makes it directly nameable from tests.
+socket2 = "0.6"
+
+# Re-pull tokio with `test-util` so time-dependent tests can freeze and
+# advance the clock (`#[tokio::test(start_paused = true)]` +
+# `tokio::time::advance`). Used by the minigame session-expiry guards,
+# whose TTL is measured against `tokio::time::Instant`. Additive over the
+# `[dependencies]` entry — the feature only reaches test targets, not the
+# server binary.
+tokio = { workspace = true, features = ["test-util"] }
+
 # Re-pull mercury with the `test-support` feature so handler unit tests can
 # use `cimmeria_mercury::test_transport::TestTransport` (the recording UDP
 # fake) in place of a real socket. Additive over the `[dependencies]` entry

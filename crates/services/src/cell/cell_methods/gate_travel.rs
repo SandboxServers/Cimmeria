@@ -2,6 +2,7 @@
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
 pub const ON_DIAL_GATE: u16 = 35;
@@ -12,6 +13,7 @@ pub async fn dispatch(
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) -> bool {
     match method_index {
         ON_DIAL_GATE => {
@@ -24,12 +26,17 @@ pub async fn dispatch(
                     source_address_id,
                     "onDialGate"
                 );
-                crate::cell::gate_travel::handle_dial_gate(
+                // The dial outcome is reported to the player by the primitive's
+                // own logs; the ordinary client has no dial-failure wire
+                // surface (`onErrorCode` is enum-coded with no dial arm), so
+                // there is nothing to forward here.
+                let _dialed = crate::cell::gate_travel::handle_dial_gate(
                     entity_id,
                     target_address_id,
                     source_address_id,
                     tx,
                     space_mgr,
+                    engine,
                 )
                 .await;
             }

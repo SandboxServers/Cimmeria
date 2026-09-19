@@ -6,9 +6,12 @@
 //! H-B3) live in [`stall`], [`disconnect`] and [`harset_mesh`], which drive
 //! the FSM's injectable clock through the fixtures in [`support`].
 
+mod arrival;
+mod deadline_scan;
 mod disconnect;
 mod harset_mesh;
 mod pairing;
+mod readiness;
 mod stall;
 mod state_flag;
 mod support;

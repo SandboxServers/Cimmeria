@@ -29,7 +29,24 @@ Git Bash can still print bare `$`, so it looks LF). Read the file as bytes,
 write — otherwise the "revert" is a no-op and the guard looks like it passes
 when reverted.
 
-Another gotcha in this repo: `git add crates/services` staged files under the
+## Same trap when splitting one working tree into several commits
+
+Splitting a finished change into per-finding commits hits this harder, because
+the obvious technique for "commit only part of file X" is
+`git checkout -- X` → re-apply just the subset → `git add X` → commit. If X
+carries edits belonging to *two* commits (e.g. one doc file touched by two
+findings), the revert drops **both** subsets and you only re-apply one. The
+second is gone silently: it is no longer in the working tree, so nothing
+flags it and `git status` looks clean.
+
+Before splitting, copy every multi-owner file aside (`cp X /tmp/full/`) and
+after the last commit `diff` the working tree against those copies — **not**
+`git show HEAD:X`, which comes back LF-normalised against a CRLF file and
+reports the whole file as changed. Recovery without an interactive rebase:
+`git reset --soft HEAD~1` → `git restore --staged .` → re-apply → `git add` →
+`git commit --amend --no-edit` → re-stage and re-commit the undone commit.
+
+One more gotcha in this repo: `git add crates/services` staged files under the
 gitignored `crates/services/logs/`. Check `git status --short` after staging
 and `git restore --staged crates/services/logs` if they appear — the
 legacy-command-parity README explicitly requires keeping that directory out of

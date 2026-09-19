@@ -15,6 +15,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::context::ExecutionContext;
 
+/// Serde default for [`Action::StartMinigame`]'s `difficulty`.
+///
+/// Must stay equal to the DB-row loader's default in
+/// `loader/action.rs`; the two are the same contract reached by two paths.
+fn default_minigame_difficulty() -> u32 {
+    1
+}
+
 /// An action to execute when a chain's trigger fires and conditions pass.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Action {
@@ -75,12 +83,18 @@ pub enum Action {
     /// gets attacked by it). Mission content must not be able to do that by
     /// accident, so the executor refuses unless the author opts in.
     ///
-    /// `respawn_secs` / `is_stationary` / `aggression` complete the spawn
-    /// descriptor. Only `respawn_secs` has an `entity_templates` column at
-    /// all — `is_stationary` lives on `spawnlist` and aggression is a pure
-    /// runtime field — so `None` means "off" for those two rather than
-    /// "inherit". `respawn_secs` is accepted but not honoured; see the
-    /// executor for why a content-scoped spawn must be one-shot.
+    /// `is_stationary` / `aggression` complete the spawn descriptor.
+    /// Neither has an `entity_templates` column — `is_stationary` lives on
+    /// `spawnlist` and aggression is a pure runtime field — so `None` means
+    /// "off" rather than "inherit".
+    ///
+    /// There is deliberately **no `respawn_secs`**. A content-scoped spawn
+    /// is always one-shot (the respawn tick has no instance-lifetime
+    /// awareness, and a revived mission NPC would re-fire its
+    /// `entity_dead_tag` chain), so the field was parsed, carried here,
+    /// threaded through the executor and then unconditionally discarded. A
+    /// seed row that supplies it still loads; the loader warns once with
+    /// `reason = "respawn_secs_not_honoured"` (PR #662 review, finding 5).
     SpawnEntity {
         template_id: i32,
         position: [f32; 3],
@@ -90,7 +104,6 @@ pub enum Action {
         /// can never be despawned, killed-by-tag or interacted with, and the
         /// idempotence guard keys on it.
         tag: String,
-        respawn_secs: Option<i32>,
         is_stationary: Option<bool>,
         aggression: Option<i32>,
         /// Opt in to spawning into a non-instanced (shared) world.
@@ -186,6 +199,17 @@ pub enum Action {
     /// Start a minigame for the player.
     StartMinigame {
         minigame_type: String,
+        /// Difficulty tier handed to the SWF in the `joinOK` game params.
+        /// The original client asserted 1-5; the loader range-checks and
+        /// defaults to 1 when the seed row omits it.
+        ///
+        /// The serde default mirrors that loader default so the two agree.
+        /// `Action` is `Deserialize`, and this field was added after the
+        /// variant shipped — without the default, any previously serialized
+        /// payload fails to deserialize on a missing key rather than taking
+        /// the same 1 the DB-row path would give it.
+        #[serde(default = "default_minigame_difficulty")]
+        difficulty: u32,
         on_victory_chains: Vec<i64>,
     },
 
@@ -600,6 +624,46 @@ mod tests {
         match deserialized {
             Action::AcceptMission { mission_id } => assert_eq!(mission_id, 622),
             _ => panic!("Expected AcceptMission"),
+        }
+    }
+
+    /// A payload serialized before `difficulty` existed must still
+    /// deserialize, taking the same default the DB-row loader applies.
+    /// Without `#[serde(default)]` this fails on a missing field, so an
+    /// older stored `Action` would break rather than degrade.
+    #[test]
+    fn start_minigame_deserializes_a_payload_without_difficulty() {
+        let json = r#"{"StartMinigame":{"minigame_type":"Livewire","on_victory_chains":[1017]}}"#;
+        let action: Action =
+            serde_json::from_str(json).expect("a pre-difficulty payload must still deserialize");
+        match action {
+            Action::StartMinigame {
+                minigame_type,
+                difficulty,
+                on_victory_chains,
+            } => {
+                assert_eq!(minigame_type, "Livewire");
+                assert_eq!(difficulty, 1, "the omitted field must default to 1");
+                assert_eq!(on_victory_chains, vec![1017]);
+            }
+            other => panic!("expected StartMinigame, got {other:?}"),
+        }
+    }
+
+    /// An explicit difficulty must survive a round trip unchanged -- the
+    /// default must not shadow an authored value.
+    #[test]
+    fn start_minigame_round_trips_an_explicit_difficulty() {
+        let original = Action::StartMinigame {
+            minigame_type: "Livewire".to_string(),
+            difficulty: 4,
+            on_victory_chains: vec![1042],
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let back: Action = serde_json::from_str(&json).unwrap();
+        match back {
+            Action::StartMinigame { difficulty, .. } => assert_eq!(difficulty, 4),
+            other => panic!("expected StartMinigame, got {other:?}"),
         }
     }
 }
