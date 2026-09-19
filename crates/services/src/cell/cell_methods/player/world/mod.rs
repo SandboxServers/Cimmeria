@@ -12,6 +12,7 @@ use super::constants::*;
 
 mod auto_cycle;
 mod item_sequence;
+mod region_registration;
 mod reload;
 mod system_options;
 
@@ -20,6 +21,7 @@ mod system_options;
 // from bandolier, base_messages, ticks, and use_ability via
 // `cell_methods::player::world::<item>`.
 pub(crate) use item_sequence::fire_item_sequence;
+pub(crate) use region_registration::{send_client_hinted_regions, ClearFirst};
 pub(crate) use reload::{handle_reload, maybe_trigger_reload_on_activate, UNHOLSTER_DRAW_DURATION};
 // Only the in-module test files (`tests.rs`, `system_options_tests.rs`)
 // reach these through `super::*`; gate the re-exports so the non-test build

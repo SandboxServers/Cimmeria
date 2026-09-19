@@ -361,50 +361,25 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     // base side packs them into ONE Mercury packet body. Client sees the
     // same method-call sequence; transport collapses 22 datagrams into 1.
     {
-        use crate::cell::space_manager::REGION_FLAG_CLIENT_HINTED;
-        let world_regions: Vec<_> = space_mgr
-            .regions_for_world(&world_name)
-            .iter()
-            .filter(|r| r.flags & REGION_FLAG_CLIENT_HINTED != 0)
-            .map(|r| (r.runtime_id, r.height, r.radius, r.flags, r.points.clone()))
-            .collect();
-
-        let region_count = world_regions.len();
         let burst_span = tracing::info_span!(
             "world_entry.region_burst",
             entity_id,
             world = %world_name,
-            count = region_count,
+            count = tracing::field::Empty,
         );
         let _burst_guard = burst_span.enter();
         let burst_start = std::time::Instant::now();
-        let mut batch: Vec<(u16, Vec<u8>)> = Vec::with_capacity(region_count);
-        for (rid, height, radius, flags, points) in world_regions {
-            let mut args = Vec::with_capacity(16 + points.len() * 12);
-            args.extend_from_slice(&(rid as i32).to_le_bytes());
-            args.extend_from_slice(&height.to_le_bytes());
-            args.extend_from_slice(&radius.to_le_bytes());
-            args.extend_from_slice(&flags.to_le_bytes());
-            args.extend_from_slice(&(points.len() as u32).to_le_bytes()); // ARRAY count
-            for p in &points {
-                args.extend_from_slice(&p[0].to_le_bytes()); // x
-                args.extend_from_slice(&p[1].to_le_bytes()); // y
-                args.extend_from_slice(&p[2].to_le_bytes()); // z
-            }
-            batch.push((
-                crate::mercury::method_idx::ADD_CLIENT_HINTED_GENERIC_REGION,
-                args,
-            ));
-        }
-        if !batch.is_empty() {
-            let _ = tx
-                .send(CellToBaseMsg::EntityMethodCallBatch {
-                    entity_id,
-                    calls: batch,
-                })
-                .await;
-        }
+        let region_count = crate::cell::cell_methods::player::world::send_client_hinted_regions(
+            entity_id,
+            &world_name,
+            // mapLoaded already sent the clear
+            crate::cell::cell_methods::player::world::ClearFirst::No,
+            tx,
+            space_mgr,
+        )
+        .await;
         let burst_elapsed = burst_start.elapsed();
+        burst_span.record("count", region_count);
         tracing::Span::current().record("regions", region_count);
         if region_count > 0 {
             tracing::info!(
