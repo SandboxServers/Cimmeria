@@ -134,9 +134,9 @@ fn pairing_violations(filename: &str, sql: &str) -> Vec<String> {
 
         violations.push(format!(
             "  {filename}: chain {chain_id} (item_use item {item_id}) is not in \
-             KNOWN_CONSUMABLES or KNOWN_REUSABLES — add the item id to one of the \
-             two lists in tests/onitemuse_remove_item_pairing.rs and document the \
-             intent in docs/content/consumable-via-onitemuse-pattern.md"
+             KNOWN_CONSUMABLES or KNOWN_REUSABLES — add to one of the two lists \
+             (tests/onitemuse_remove_item_pairing.rs) and document the intent in \
+             docs/content/consumable-via-onitemuse-pattern.md"
         ));
 
         let _ = chain; // keep struct for mutation-test clarity
