@@ -137,7 +137,7 @@ async fn read_one_chunk(client: &mut TcpStream) {
 ///
 /// Panics on timeout, EOF or I/O error — reaching the game loop is a
 /// precondition of every caller, not something to paper over.
-async fn read_until_game_begin(client: &mut TcpStream) {
+pub(super) async fn read_until_game_begin(client: &mut TcpStream) {
     const MILESTONE: &str = "<var n='_cmd' t='s'>onGameBegin</var>";
     let mut seen = String::new();
     let mut chunk = vec![0u8; MAX_MESSAGE_LEN];
@@ -278,7 +278,7 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
         .expect("bind loopback");
     let addr = listener.local_addr().expect("local_addr");
     let mut client = TcpStream::connect(addr).await.expect("connect loopback");
-    let (server, _) = listener.accept().await.expect("accept loopback");
+    let (server, peer) = listener.accept().await.expect("accept loopback");
 
     let registry = SessionRegistry::new();
     let ticket = registry
@@ -288,7 +288,14 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
 
     let (tx, _rx) = mpsc::channel(16);
     let reg = registry.clone();
-    let handle = tokio::spawn(handle_connection(server, reg, tx, 9339));
+    let handle = tokio::spawn(handle_connection(
+        server,
+        peer,
+        reg,
+        tx,
+        9339,
+        Duration::from_secs(30),
+    ));
 
     // Phase 1 — verChk. The server answers with the cross-domain policy
     // and apiOK; 154 is the version the original SWFs were built against.

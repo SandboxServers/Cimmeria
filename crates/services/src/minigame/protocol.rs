@@ -190,7 +190,10 @@ pub fn parse_message(xml: &str) -> Option<SfsMessage> {
             Some(SfsMessage::ExtensionRequest { cmd, params })
         }
         _ => {
-            tracing::warn!(msg_type, body_action, "Unknown SFS message type");
+            // Debug: this is reachable by anyone who can open the port.
+            // Callers that hold an authenticated session log the rejection
+            // in context at WARN.
+            tracing::debug!(msg_type, body_action, "Unknown SFS message type");
             None
         }
     }

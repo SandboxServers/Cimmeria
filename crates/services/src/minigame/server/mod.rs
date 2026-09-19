@@ -4,24 +4,30 @@
 //! game instance and tick timer. This module owns the connection lifecycle;
 //! the siblings hold the pieces it leans on:
 //!
+//! - [`admission`] — the accept loop, connection cap and handshake deadline.
 //! - [`framing`] — null-terminated message framing over the socket.
 //! - [`handshake`] — the pre-game version check and ticket login.
 //! - [`result_dispatch`] — the single seam every outcome leaves through.
 //!
 //! Reference: `deprecated/cpp/src/baseapp/minigame_connection.cpp`.
 
+mod admission;
 mod framing;
 mod handshake;
 mod result_dispatch;
 
 #[cfg(test)]
+mod admission_tests;
+#[cfg(test)]
 mod tests;
 
+use std::net::SocketAddr;
 use std::time::Duration;
 
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
+use self::admission::{serve, ConnectionLimits};
 use self::framing::{read_null_terminated, send_null_terminated, MAX_MESSAGE_LEN};
 use self::handshake::{read_and_handle_login, read_and_handle_version};
 use self::result_dispatch::{send_minigame_result, RESULT_CANCELED, RESULT_DEFEAT, RESULT_VICTORY};
@@ -29,6 +35,13 @@ use super::game::{GameOutput, MinigameInstance};
 use super::protocol::{self, SfsMessage};
 use super::session::{MinigameSession, SessionRegistry, PENDING_SESSION_TTL, SWEEP_INTERVAL};
 use crate::cell::messages::CellToBaseMsg;
+
+/// How long a new connection has to finish the version check and ticket
+/// login before it is dropped.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Most minigame connections served at once.
+const MAX_CONNECTIONS: usize = 256;
 
 /// Start the minigame TCP server.
 pub async fn run(
@@ -55,46 +68,64 @@ pub async fn run(
     // registry until the player relogs.
     registry.spawn_sweep(PENDING_SESSION_TTL, SWEEP_INTERVAL);
 
-    loop {
-        match listener.accept().await {
-            Ok((stream, peer)) => {
-                tracing::debug!(peer = %peer, "Minigame connection accepted");
-                let reg = registry.clone();
-                let tx = result_tx.clone();
-                tokio::spawn(handle_connection(stream, reg, tx, external_port));
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "Minigame accept error");
-            }
-        }
-    }
+    serve(
+        listener,
+        registry,
+        result_tx,
+        external_port,
+        ConnectionLimits {
+            max_connections: MAX_CONNECTIONS,
+            handshake_timeout: HANDSHAKE_TIMEOUT,
+        },
+    )
+    .await;
 }
 
 /// Handle a single minigame connection through the full lifecycle.
 async fn handle_connection(
     mut stream: TcpStream,
+    peer: SocketAddr,
     registry: SessionRegistry,
     result_tx: mpsc::Sender<CellToBaseMsg>,
     external_port: u16,
+    handshake_timeout: Duration,
 ) {
     let mut buf = vec![0u8; MAX_MESSAGE_LEN];
     let mut buf_len = 0usize;
+    // One deadline for both phases; the game loop after login is not bound
+    // by it — a player may sit on a Livewire board for minutes.
+    let deadline = tokio::time::Instant::now() + handshake_timeout;
 
     // Phase 1: Version check
-    let api_version =
-        match read_and_handle_version(&mut stream, &mut buf, &mut buf_len, external_port).await {
-            Some(v) => v,
-            None => return,
-        };
+    let api_version = match read_and_handle_version(
+        &mut stream,
+        &mut buf,
+        &mut buf_len,
+        external_port,
+        deadline,
+        peer,
+    )
+    .await
+    {
+        Some(v) => v,
+        None => return,
+    };
 
     // Phase 2: Login
-    let (session, game) =
-        match read_and_handle_login(&mut stream, &mut buf, &mut buf_len, api_version, &registry)
-            .await
-        {
-            Some(pair) => pair,
-            None => return,
-        };
+    let (session, game) = match read_and_handle_login(
+        &mut stream,
+        &mut buf,
+        &mut buf_len,
+        api_version,
+        &registry,
+        deadline,
+        peer,
+    )
+    .await
+    {
+        Some(pair) => pair,
+        None => return,
+    };
 
     let entity_id = session.entity_id;
 
