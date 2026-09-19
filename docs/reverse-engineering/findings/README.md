@@ -61,7 +61,7 @@ This directory contains 64 per-system reverse engineering findings with evidence
 | `npc-movement-pathfinding.md` | V5 | NPC movement and pathfinding — client-binary analysis of mob movement, navmesh use, and patrol routing | MEDIUM |
 | `right-click-routing-on-corpse.md` | V5 | Right-click routing — why corpses fail to open loot; the corpse-context-menu dispatch diagnosis | HIGH |
 | `spawn-system-mechanics.md` | V5 | Spawn system mechanics — client-binary analysis of spawn sets, regions, and spawnable-entity wiring | HIGH |
-| `stargate-dhd-state-machine.md` | V5 | Stargate DHD state machine — dial-home-device interaction states and gate-activation flow | HIGH |
+| `stargate-dhd-state-machine.md` | V5 | Stargate DHD state machine — dial-home-device interaction states and gate-activation flow; `onDHDReply` subscriber, declaration, and Rust emission audit | HIGH / MEDIUM |
 | `stat-scaling-formulas.md` | V5 | Stat scaling & XP progression — recovered stat-scaling and leveling formulas | MEDIUM |
 | `struct-field-layouts.md` | V5 | FIXED_DICT struct field layouts — client-binary anatomy of key FIXED_DICT structures | HIGH |
 | `weapon-ammo-pipeline.md` | V5 | Weapon / ammo pipeline — clip sizes, ammo consumption, and bandolier-slot wiring recovered from the binary | HIGH |
