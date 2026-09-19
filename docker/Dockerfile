@@ -258,7 +258,8 @@ ENV AUTH_HOST=0.0.0.0 \
     BASE_EXTERNAL=127.0.0.1 \
     BASE_PORT=32832 \
     CELL_PORT=50000 \
-    ADMIN_PORT=8443     # The binary defaults ADMIN_BIND to 127.0.0.1 (#439: the admin API has
+    ADMIN_PORT=8443 \
+    # The binary defaults ADMIN_BIND to 127.0.0.1 (#439: the admin API has
     # no auth yet). Inside a container that default is unreachable: Docker's
     # `-p 8443:8443` forwards to the container's bridge address, never to its
     # loopback. Bind wide here and control exposure with the publish instead
