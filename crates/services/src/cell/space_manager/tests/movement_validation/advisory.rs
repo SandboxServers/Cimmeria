@@ -300,6 +300,106 @@ fn a_player_standing_in_a_hole_is_corrected_back_not_relocated() {
     );
 }
 
+/// The startup summary must count the world's off-mesh spawn rows
+/// correctly, and must name the mode.
+///
+/// This line is the only automated signal that a mesh which loads cleanly
+/// describes a different map from the one it is named after — a number that
+/// is silently wrong is worse than no line, because it is the number an
+/// operator would use to decide a rebake worked. Two rows, one on the mesh
+/// and one in the measured hole, so the count can only be right for the
+/// right reason.
+#[test]
+fn the_startup_summary_counts_off_mesh_spawn_rows() {
+    let Some(mesh) = harset_mesh() else { return };
+    let mut mgr = harset_manager();
+    let space_id = *mgr.world_spaces.get("Harset").unwrap();
+    mgr.spaces.get_mut(&space_id).unwrap().navmesh = Some(mesh);
+    mgr.stamp_world_rows(&HashMap::from([(
+        "Harset".to_string(),
+        WorldRow {
+            world_id: HARSET_WORLD_ID,
+            navmesh_mode: NavmeshMode::Advisory,
+        },
+    )]));
+
+    let rows = [
+        spawn_row("Harset", ON_MESH),
+        spawn_row("Harset", IN_THE_HOLE),
+        // A different world's row must not be counted against Harset.
+        spawn_row("Agnos", IN_THE_HOLE),
+    ];
+
+    let capture = crate::test_support::LogCapture::install();
+    mgr.log_navmesh_summary(&rows);
+    let event = capture
+        .find_event(
+            tracing::Level::INFO,
+            "mesh resident for this world",
+            "navmesh_mode_summary",
+        )
+        .expect("the startup summary must emit one INFO per meshed world");
+
+    assert!(event.has_field("world_name", "Harset"));
+    assert!(
+        event.has_field("navmesh_mode", "advisory"),
+        "the line must name the mode, or it cannot answer \
+         'did the seed load' -- which is the first thing an operator checks",
+    );
+    assert!(
+        event.has_field("spawn_rows", "2"),
+        "only this world's rows are counted",
+    );
+    assert!(
+        event.has_field("spawn_rows_off_mesh", "1"),
+        "exactly the row in the measured hole is off-mesh; a count that \
+         cannot distinguish the two rows cannot tell an operator whether a \
+         rebake worked",
+    );
+}
+
+/// Minimal `SpawnRecord` for the summary test — only `world_name` and the
+/// coordinate are read by it.
+fn spawn_row(world: &str, pos: [f32; 3]) -> crate::cell::spawner::SpawnRecord {
+    crate::cell::spawner::SpawnRecord {
+        spawn_id: -1,
+        world_name: world.to_string(),
+        x: pos[0],
+        y: pos[1],
+        z: pos[2],
+        heading: 0.0,
+        tag: None,
+        template_id: 1,
+        template_name: "H53 fixture".to_string(),
+        class: "mob".to_string(),
+        static_mesh: None,
+        body_set: "BS_HumanMale.BS_HumanMale".to_string(),
+        components: None,
+        flags: 0,
+        interaction_type: 0,
+        event_set_id: None,
+        level: None,
+        alignment: None,
+        faction: None,
+        name_id: None,
+        speaker_id: None,
+        static_interaction_sets: vec![],
+        has_dynamic_properties: false,
+        loot_table_id: None,
+        is_stationary: true,
+        ability_ids: vec![],
+        respawn_secs: None,
+        patrol_path: vec![],
+        patrol_point_delay_secs: 2.0,
+        wander_radius: 0.0,
+        wander_min_dwell_secs: 3.0,
+        wander_max_dwell_secs: 8.0,
+        follow_min_distance: 2.0,
+        follow_max_distance: 5.0,
+        move_speed: 0.6,
+    }
+}
+
 /// A GM is unaffected in an advisory world: they were already allowed off
 /// the mesh, and the mode must not accidentally turn the GM allowance into
 /// something narrower.
