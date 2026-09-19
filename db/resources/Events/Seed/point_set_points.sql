@@ -334,5 +334,37 @@ INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUE
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2411, 786.0, 55.2, 511.0, 0, 0, 0);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2085, 2412, 811.0, 63.5, 511.0, 0, 0, 0);
 
-SELECT pg_catalog.setval('point_set_points_point_id_seq', 2412, true);
+-- Interior named regions (packet H15, placement cluster PL-C). Corner order
+-- and the single elevated corner follow 2078/2079/2085: (xmax,zmin),
+-- (xmax,zmax), (xmin,zmax), then (xmin,zmin) carrying the ceiling Y.
+
+-- 2100 Harset_CmdCenter.Lab -- east wing, floor 0.32, ceiling 10.02.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2500, 69.0, 0.32, -31.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2501, 69.0, 0.32, 11.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2502, 27.5, 0.32, 11.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2100, 2503, 27.5, 10.02, -31.0, 0, 0, 0);
+
+-- 2101 Harset_Market.Marketplace -- trading floor, floor 3.60, ceiling 13.60.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2504, 100.0, 3.6, 30.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2505, 100.0, 3.6, 100.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2506, 30.0, 3.6, 100.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2101, 2507, 30.0, 13.6, 30.0, 0, 0, 0);
+
+-- 2102 Harset_StorageRm.Storage -- pen grid, floor 0.30, ceiling 10.30. The
+-- footprint is x[19.0,84.0] z[38.0,97.0]: not component 36's raw bounding box
+-- (x[16.1,87.5] z[34.1,99.2]) but the sub-rectangle where EVERY metre of it
+-- resolves to component 36, found by walking the mesh a metre at a time. The
+-- discarded margin is where the query snaps to a neighbour instead -- the
+-- -1.2 m under-layers 35/54/55 along all four walls, component 6 (the upper
+-- wing) below the south end, 84 at two spots on the z=98 line, and the
+-- outdoor terrain sheet 0 beyond x 15. All 19 pen gates (x 19.3-83.1,
+-- z 51.2-96.7) are still inside. The corners themselves still land on an
+-- under-layer because the mesh is inset by its 0.6 m agent radius, which is
+-- why the on-mesh guard probes one metre inside each edge, not the corners.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2508, 84.0, 0.3, 38.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2509, 84.0, 0.3, 97.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2510, 19.0, 0.3, 97.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2102, 2511, 19.0, 10.3, 38.0, 0, 0, 0);
+
+SELECT pg_catalog.setval('point_set_points_point_id_seq', 2511, true);
 
